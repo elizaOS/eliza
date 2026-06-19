@@ -9,11 +9,8 @@
 import { registerAppRoutePluginLoader } from "@elizaos/core";
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { registerBuiltinWidgets } from "@elizaos/ui/widgets";
-import { InventoryView } from "./InventoryView.tsx";
-// These were previously dynamic imports, but `./index.ts` re-exports both as
-// static bindings so the dynamic import never produced a separate chunk
-// (INEFFECTIVE_DYNAMIC_IMPORT). Collapse to static imports to silence the
-// warning; bundle size is unchanged because the static path was already used.
+// Keep route/widget metadata eager, but load the full inventory dashboard only
+// when the user opens /inventory.
 import { walletAppPlugin } from "./plugin.ts";
 import { WALLET_STATUS_WIDGET } from "./widgets/wallet-status.helpers.ts";
 
@@ -29,7 +26,10 @@ registerAppShellPage({
   icon: "Wallet",
   path: "/inventory",
   order: 50,
-  Component: InventoryView,
+  loader: () =>
+    import("./InventoryView.tsx").then((module) => ({
+      default: module.InventoryView,
+    })),
 });
 
 registerBuiltinWidgets([WALLET_STATUS_WIDGET]);

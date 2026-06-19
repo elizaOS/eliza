@@ -40,7 +40,7 @@
     "app": {
       "displayName": "Screen Share",
       "category": "utility",
-      "heroImage": "assets/hero.svg",
+      "heroImage": "assets/hero.png",
       "launchType": "connect",
       "launchUrl": "/api/apps/screenshare/viewer",
       "capabilities": [

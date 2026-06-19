@@ -1,0 +1,17 @@
+import { CalendarService, calendarPlugin } from "../src/index.js";
+import { CalendarMigrationService } from "../src/service/migration.js";
+import { describe, expect, it } from "vitest";
+
+describe("plugin-calendar surface", () => {
+  it("registers data services, schema, and the calendar view", () => {
+    expect(calendarPlugin.schema).toBeDefined();
+    expect(calendarPlugin.services).toContain(CalendarService);
+    expect(calendarPlugin.services).toContain(CalendarMigrationService);
+    expect(calendarPlugin.views?.[0]?.id).toBe("calendar");
+    expect(calendarPlugin.views?.[0]?.componentExport).toBe("CalendarView");
+  });
+
+  it("does not expose scaffold calendar actions directly", () => {
+    expect(calendarPlugin.actions ?? []).toEqual([]);
+  });
+});

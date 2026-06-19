@@ -51,14 +51,9 @@ describe("goalsPlugin manifest", () => {
     expect(typeof GoalsView).toBe("function");
   });
 
-  it("registers the four owner actions and the check-in service", () => {
+  it("registers migrated owner actions and the check-in service", () => {
     const actionNames = (goalsPlugin.actions ?? []).map((a) => a.name);
-    expect(actionNames).toEqual([
-      "OWNER_GOALS",
-      "OWNER_ROUTINES",
-      "OWNER_REMINDERS",
-      "OWNER_ALARMS",
-    ]);
+    expect(actionNames).toEqual(["OWNER_GOALS"]);
 
     expect(goalsPlugin.services).toContain(GoalsCheckinService);
   });

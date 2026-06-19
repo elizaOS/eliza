@@ -160,6 +160,47 @@ describe("LifeOps plugin action gating", () => {
     }
   });
 
+  it("auto-registers plugin-health after PA runtime registries exist", () => {
+    expect(runtime.plugins.some((plugin) => plugin.name === "plugin-health")).toBe(
+      true,
+    );
+
+    const host = runtime as AgentRuntime & {
+      connectorRegistry?: { get(kind: string): unknown };
+      anchorRegistry?: { get(anchorKey: string): unknown };
+      busFamilyRegistry?: {
+        has?: (family: string) => boolean;
+        list?: () => Array<{ family: string }>;
+      };
+    };
+
+    expect(host.connectorRegistry?.get("apple_health")).toBeTruthy();
+    expect(host.anchorRegistry?.get("wake.confirmed")).toBeTruthy();
+    expect(
+      host.busFamilyRegistry?.has?.("health.wake.confirmed") ??
+        host.busFamilyRegistry
+          ?.list?.()
+          .some((entry) => entry.family === "health.wake.confirmed"),
+    ).toBe(true);
+  });
+
+  it("keeps PA implementations for action names also exported by auto-registered split plugins", () => {
+    for (const name of [
+      "CALENDAR",
+      "CONFLICT_DETECT",
+      "OWNER_GOALS",
+      "OWNER_ROUTINES",
+      "OWNER_REMINDERS",
+      "OWNER_ALARMS",
+    ]) {
+      const action = runtime.actions.find((candidate) => candidate.name === name);
+      expect(action, `${name} should be registered in runtime.actions`).toBeDefined();
+      expect(action?.description ?? "", `${name} should not be a scaffold`).not.toMatch(
+        /scaffold_stub|not migrated|not yet implemented/i,
+      );
+    }
+  });
+
   it("does not advertise bare TASKS as a LifeOps scheduled-item alias", () => {
     const scheduledTasks = findAction("SCHEDULED_TASKS");
 

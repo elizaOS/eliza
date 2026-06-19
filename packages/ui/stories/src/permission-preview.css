@@ -1,0 +1,104 @@
+.permission-preview-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--txt);
+  padding: 24px 16px;
+  font-family: var(--font-body, "Poppins", system-ui, sans-serif);
+}
+
+.permission-preview-shell {
+  width: min(960px, 100%);
+  margin: 0 auto;
+}
+
+.permission-preview-heading {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.permission-preview-copy {
+  max-width: 640px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.permission-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.permission-preview-wide {
+  grid-column: 1 / -1;
+}
+
+[data-testid^="preview-"][data-testid$="-permission-callout"] {
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  padding: 12px;
+  text-align: left;
+}
+
+[data-testid^="preview-"][data-testid$="-permission-callout"]
+  > div:first-child {
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+[data-testid^="preview-"][data-testid$="-permission-callout"] p {
+  margin: 4px 0 0;
+  color: var(--txt);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+[data-testid^="preview-"][data-testid$="-permission-callout"] p + div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+[data-testid^="preview-"][data-testid$="-permission-callout"] button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  border: 0;
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+[data-testid^="preview-"][data-testid$="-permission-callout"]
+  button[data-testid$="-retry"] {
+  color: var(--txt);
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 640px) {
+  .permission-preview-page {
+    padding: 20px 14px;
+  }
+
+  .permission-preview-grid {
+    grid-template-columns: 1fr;
+  }
+}

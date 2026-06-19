@@ -18,7 +18,6 @@ import {
   sendJsonError as httpSendJsonError,
 } from "@elizaos/core";
 import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
-import { ownerDocumentsAction } from "./actions/owner-documents.ts";
 import { handleDocumentsRoutes } from "./routes.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
@@ -106,7 +105,9 @@ export const documentsPlugin: Plugin = {
   name: "@elizaos/plugin-documents-routes",
   description: "Document management, fragment listing, and search routes",
   routes: documentsRoutes,
-  actions: [ownerDocumentsAction],
+  // OWNER_DOCUMENTS is still host-adapted by plugin-personal-assistant.
+  // Do not register the scaffold action from this route/view plugin.
+  actions: [],
   views: [
     {
       id: "documents",

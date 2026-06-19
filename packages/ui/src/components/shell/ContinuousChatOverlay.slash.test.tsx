@@ -26,9 +26,13 @@ function makeController(
     phase: "summoned",
     messages: [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }],
     canSend: true,
+    responding: false,
     recording: false,
     transcript: "",
+    // Required ShellController surface the overlay reads unconditionally.
+    modelStatus: { kind: "ready" },
     send: vi.fn(),
+    stop: vi.fn(),
     toggleRecording: vi.fn(),
     handsFree: false,
     toggleHandsFree: vi.fn(),
@@ -223,6 +227,29 @@ describe("ContinuousChatOverlay slash commands", () => {
       viewId: "orchestrator",
       viewPath: "/orchestrator",
     });
+  });
+
+  it("renders a sent slash command bold in the transcript", () => {
+    const controller = makeController({
+      messages: [
+        { id: "u1", role: "user", content: "/help me out", createdAt: 1 },
+      ],
+    });
+    renderOverlay(makeSlash(), controller);
+    const tokens = screen.getAllByTestId("slash-command-token");
+    expect(tokens.length).toBeGreaterThan(0);
+    expect(tokens[0].textContent).toBe("/help");
+    expect(tokens[0].className).toContain("font-bold");
+  });
+
+  it("does not bold a leading slash in an assistant turn", () => {
+    const controller = makeController({
+      messages: [
+        { id: "a1", role: "assistant", content: "/help me out", createdAt: 1 },
+      ],
+    });
+    renderOverlay(makeSlash(), controller);
+    expect(screen.queryByTestId("slash-command-token")).toBeNull();
   });
 
   it("renders no menu when no slash controller is provided", () => {

@@ -31,7 +31,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: "Capture screen content for screenshots and vision",
     descriptionKey: "permissionssection.permission.screenRecording.description",
     icon: "monitor",
-    platforms: ["darwin"],
+    platforms: ["darwin", "ios", "android", "web"],
     requiredForFeatures: ["computeruse", "vision"],
   },
   {
@@ -51,7 +51,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: "Video input for vision and video capture",
     descriptionKey: "permissionssection.permission.camera.description",
     icon: "camera",
-    platforms: ["darwin", "win32", "linux"],
+    platforms: ["darwin", "win32", "linux", "ios", "android", "web"],
     requiredForFeatures: ["camera", "vision"],
   },
   {
@@ -61,7 +61,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: "Execute terminal commands and scripts",
     descriptionKey: "permissionssection.permission.shell.description",
     icon: "terminal",
-    platforms: ["darwin", "win32", "linux"],
+    platforms: ["darwin", "win32", "linux", "ios", "android", "web"],
     requiredForFeatures: ["shell"],
   },
   {
@@ -72,7 +72,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
       "Edit the system hosts file to block distracting websites. This may require admin/root approval each time.",
     descriptionKey: "permissionssection.permission.websiteBlocking.description",
     icon: "shield-ban",
-    platforms: ["darwin", "win32", "linux"],
+    platforms: ["darwin", "win32", "linux", "ios", "android", "web"],
     requiredForFeatures: ["website-blocker"],
   },
   {
@@ -113,7 +113,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: "Read HealthKit data, including sleep from paired devices",
     descriptionKey: "permissionssection.permission.health.description",
     icon: "heart-pulse",
-    platforms: ["darwin"],
+    platforms: ["darwin", "ios", "android"],
     requiredForFeatures: ["lifeops", "health", "sleep"],
   },
   {
@@ -123,7 +123,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: "Read app and device usage signals for LifeOps",
     descriptionKey: "permissionssection.permission.screentime.description",
     icon: "hourglass",
-    platforms: ["darwin"],
+    platforms: ["darwin", "ios", "android"],
     requiredForFeatures: ["lifeops", "screentime"],
   },
   {
@@ -133,7 +133,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: "Read and edit Apple Contacts for message name resolution",
     descriptionKey: "permissionssection.permission.contacts.description",
     icon: "contact",
-    platforms: ["darwin"],
+    platforms: ["darwin", "ios", "android"],
     requiredForFeatures: ["imessage", "contacts"],
   },
   {
@@ -154,7 +154,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
       "Show system notifications for reminders and background results",
     descriptionKey: "permissionssection.permission.notifications.description",
     icon: "bell",
-    platforms: ["darwin", "win32", "linux"],
+    platforms: ["darwin", "win32", "linux", "ios", "android", "web"],
     requiredForFeatures: ["notifications", "lifeops"],
   },
   {
@@ -176,6 +176,131 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     icon: "workflow",
     platforms: ["darwin"],
     requiredForFeatures: ["messages", "notes", "automation"],
+  },
+  {
+    id: "speech-recognition",
+    name: "Speech Recognition",
+    nameKey: "permissionssection.permission.speechRecognition.name",
+    description: "Transcribe speech through the platform speech recognizer",
+    descriptionKey:
+      "permissionssection.permission.speechRecognition.description",
+    icon: "audio-lines",
+    platforms: ["ios", "web"],
+    requiredForFeatures: ["talkmode", "voice", "swabble"],
+  },
+  {
+    id: "photos",
+    name: "Photos",
+    nameKey: "permissionssection.permission.photos.name",
+    description: "Read or save photos and videos when capturing media",
+    descriptionKey: "permissionssection.permission.photos.description",
+    icon: "image",
+    platforms: ["ios", "android", "web"],
+    requiredForFeatures: ["camera", "media"],
+  },
+  {
+    id: "phone",
+    name: "Phone",
+    nameKey: "permissionssection.permission.phone.name",
+    description: "Place calls and read recent call history on Android",
+    descriptionKey: "permissionssection.permission.phone.description",
+    icon: "phone",
+    platforms: ["android"],
+    requiredForFeatures: ["phone", "dialer"],
+  },
+  {
+    id: "messages",
+    name: "Messages",
+    nameKey: "permissionssection.permission.messages.name",
+    description: "Send SMS and read message threads on Android",
+    descriptionKey: "permissionssection.permission.messages.description",
+    icon: "message-square",
+    platforms: ["android"],
+    requiredForFeatures: ["messages", "sms"],
+  },
+  {
+    id: "wifi",
+    name: "Wi-Fi Scans",
+    nameKey: "permissionssection.permission.wifi.name",
+    description:
+      "Scan nearby Wi-Fi networks; Android gates scan results behind Location",
+    descriptionKey: "permissionssection.permission.wifi.description",
+    icon: "wifi",
+    platforms: ["android"],
+    requiredForFeatures: ["wifi", "gateway"],
+  },
+  {
+    id: "bluetooth",
+    name: "Bluetooth",
+    nameKey: "permissionssection.permission.bluetooth.name",
+    description: "Discover and connect to nearby Bluetooth accessories",
+    descriptionKey: "permissionssection.permission.bluetooth.description",
+    icon: "bluetooth",
+    platforms: ["ios", "android"],
+    requiredForFeatures: ["facewear", "gateway"],
+  },
+  {
+    id: "app-blocking",
+    name: "App Blocking",
+    nameKey: "permissionssection.permission.appBlocking.name",
+    description:
+      "Select and block distracting apps with Screen Time or Android usage controls",
+    descriptionKey: "permissionssection.permission.appBlocking.description",
+    icon: "shield-ban",
+    platforms: ["ios", "android"],
+    requiredForFeatures: ["app-blocker", "lifeops"],
+  },
+  {
+    id: "usage-access",
+    name: "Usage Access",
+    nameKey: "permissionssection.permission.usageAccess.name",
+    description: "Read Android app usage for Screen Time and app blocking",
+    descriptionKey: "permissionssection.permission.usageAccess.description",
+    icon: "hourglass",
+    platforms: ["android"],
+    requiredForFeatures: ["screentime", "app-blocker"],
+  },
+  {
+    id: "overlay",
+    name: "Draw Over Apps",
+    nameKey: "permissionssection.permission.overlay.name",
+    description: "Show Android blocking overlays above distracting apps",
+    descriptionKey: "permissionssection.permission.overlay.description",
+    icon: "app-window",
+    platforms: ["android"],
+    requiredForFeatures: ["app-blocker"],
+  },
+  {
+    id: "write-settings",
+    name: "Write Settings",
+    nameKey: "permissionssection.permission.writeSettings.name",
+    description: "Change Android system brightness and related device settings",
+    descriptionKey: "permissionssection.permission.writeSettings.description",
+    icon: "settings",
+    platforms: ["android"],
+    requiredForFeatures: ["device-settings"],
+  },
+  {
+    id: "local-network",
+    name: "Local Network",
+    nameKey: "permissionssection.permission.localNetwork.name",
+    description: "Discover nearby gateways and devices on the local network",
+    descriptionKey: "permissionssection.permission.localNetwork.description",
+    icon: "network",
+    platforms: ["ios", "android"],
+    requiredForFeatures: ["gateway", "device-discovery"],
+  },
+  {
+    id: "battery-optimization",
+    name: "Battery Optimization",
+    nameKey: "permissionssection.permission.batteryOptimization.name",
+    description:
+      "Allow background monitoring to keep LifeOps and device signals current",
+    descriptionKey:
+      "permissionssection.permission.batteryOptimization.description",
+    icon: "battery",
+    platforms: ["android"],
+    requiredForFeatures: ["lifeops", "mobile-signals"],
   },
 ];
 
@@ -289,8 +414,21 @@ export function getPermissionAction(
   label: string;
   type: "request" | "settings";
 } | null {
-  if (status === "granted" || status === "not-applicable") {
+  if (status === "not-applicable") {
     return null;
+  }
+
+  if (status === "granted" && id !== "shell") {
+    const label = translateWithFallback(
+      t,
+      "permissionssection.Manage",
+      "Manage",
+    );
+    return {
+      ariaLabelPrefix: label,
+      label,
+      type: "settings",
+    };
   }
 
   const usesWindowsPrivacySettings =

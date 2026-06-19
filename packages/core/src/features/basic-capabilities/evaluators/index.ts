@@ -1,19 +1,19 @@
 import type { RegisteredEvaluator } from "../../../types/index.ts";
-import { attachmentImageAnalysisEvaluator } from "./attachment-image-analysis.ts";
 import { linkExtractionEvaluator } from "./link-extraction.ts";
 
-export { attachmentImageAnalysisEvaluator } from "./attachment-image-analysis.ts";
 export { linkExtractionEvaluator } from "./link-extraction.ts";
 
 /**
  * Inbound auto-capture evaluators.
  *
- * Both run on every inbound message (gated by their `shouldRun`) and write
- * structured records to memory as a side effect. They never modify the
- * agent's response and never block the planner — failures are logged and
- * swallowed.
+ * Runs on every inbound message (gated by `shouldRun`) and writes structured
+ * records to memory as a side effect. Never modifies the agent's response and
+ * never blocks the planner — failures are logged and swallowed.
+ *
+ * Image attachments are no longer analyzed here: inbound images are described
+ * during message processing via the shared image-description cache, so a
+ * post-response evaluator would only duplicate that vision call.
  */
 export const basicCapabilitiesEvaluators: RegisteredEvaluator[] = [
-	attachmentImageAnalysisEvaluator,
 	linkExtractionEvaluator,
 ];

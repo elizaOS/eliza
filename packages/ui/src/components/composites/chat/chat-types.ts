@@ -50,6 +50,8 @@ export interface ChatAttachmentItem {
   id: string;
   name: string;
   src: string;
+  /** Attachment kind — drives the preview tile (image thumbnail vs file chip). */
+  kind?: "image" | "audio" | "video" | "document";
 }
 
 export interface ChatMessageReaction {

@@ -50,21 +50,13 @@ import {
   mergeAutonomyEvents,
 } from "./autonomy";
 import { normalizeConversationList } from "./chat-conversation-guards";
-import type { LoadConversationMessagesResult } from "./internal";
+import {
+  filterRenderableConversationMessages,
+  type LoadConversationMessagesResult,
+  shouldKeepConversationMessage,
+} from "./internal";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
-
-function shouldKeepConversationMessage(message: ConversationMessage): boolean {
-  if (message.role !== "assistant") return true;
-  if (message.text.trim().length > 0) return true;
-  return Boolean(message.blocks?.length);
-}
-
-function filterRenderableConversationMessages(
-  messages: ConversationMessage[],
-): ConversationMessage[] {
-  return messages.filter((message) => shouldKeepConversationMessage(message));
-}
 
 function hasConversationBootstrapMessage(
   messages: ConversationMessage[],

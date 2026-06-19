@@ -45,7 +45,7 @@ describe("parseActionBlock", () => {
 
   it("rejects permission_request with unknown permission id", () => {
     const text =
-      '```json\n{"action":"permission_request","reasoning":"x","permission":"bluetooth","reason":"y","feature":"a.b.c"}\n```';
+      '```json\n{"action":"permission_request","reasoning":"x","permission":"telepathy","reason":"y","feature":"a.b.c"}\n```';
     expect(parseActionBlock(text)).toBeNull();
   });
 

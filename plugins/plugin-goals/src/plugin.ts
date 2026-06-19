@@ -2,18 +2,15 @@
  * @elizaos/plugin-goals — life direction plugin.
  *
  * Decomposed out of @elizaos/plugin-personal-assistant. Owns owner-set long-horizon
- * goals, recurring routines, reminders, alarms, daily check-ins, and the
- * self-care / mood / journal surface. The corresponding @elizaos/plugin-personal-assistant
- * source still exists during the migration and is referenced by TODO(migrate)
- * comments in each stub.
+ * goals plus the goals/routines/reminders view and schema. Routines,
+ * reminders, alarms, and daily check-in handlers still run through
+ * @elizaos/plugin-personal-assistant during the migration and are referenced
+ * by TODO(migrate) comments in their scaffold files.
  */
 
 import type { Plugin } from "@elizaos/core";
 
-import { ownerAlarmsAction } from "./actions/alarms.ts";
 import { ownerGoalsAction } from "./actions/goals.ts";
-import { ownerRemindersAction } from "./actions/reminders.ts";
-import { ownerRoutinesAction } from "./actions/routines.ts";
 import * as dbSchema from "./db/index.ts";
 import { GoalsCheckinService } from "./services/checkin.ts";
 import { GoalsMigrationService } from "./services/migration.ts";
@@ -23,14 +20,12 @@ const GOALS_PLUGIN_NAME = "@elizaos/plugin-goals";
 export const goalsPlugin: Plugin = {
   name: GOALS_PLUGIN_NAME,
   description:
-    "Life direction: owner-set long-horizon goals, recurring routines, reminders, alarms, daily check-ins, and a self-care / mood / journal panel. Decomposed out of @elizaos/plugin-personal-assistant.",
+    "Life direction: owner-set long-horizon goals, goals/routines/reminders schema, and a self-care / mood / journal panel. Routines, reminders, alarms, and daily check-in handlers are still host-adapted by @elizaos/plugin-personal-assistant during migration.",
   dependencies: ["@elizaos/plugin-sql"],
-  actions: [
-    ownerGoalsAction,
-    ownerRoutinesAction,
-    ownerRemindersAction,
-    ownerAlarmsAction,
-  ],
+  // Only OWNER_GOALS has been fully migrated into this standalone package.
+  // Routines/reminders/alarms remain host-adapted PA actions for now; do not
+  // register their scaffold handlers here.
+  actions: [ownerGoalsAction],
   services: [GoalsCheckinService, GoalsMigrationService],
   schema: dbSchema,
   views: [

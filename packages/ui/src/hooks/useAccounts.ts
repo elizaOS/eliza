@@ -21,6 +21,7 @@ import type {
   AccountsListResponse,
   AccountTestResult,
 } from "../api/client-agent";
+import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
 
 type ActionTone = "info" | "success" | "error";
 
@@ -314,13 +315,11 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     };
   }, [refresh]);
 
-  useEffect(() => {
-    if (pollMs <= 0) return;
-    const id = setInterval(() => {
-      void refresh();
-    }, pollMs);
-    return () => clearInterval(id);
-  }, [pollMs, refresh]);
+  useIntervalWhenDocumentVisible(
+    () => void refresh(),
+    pollMs,
+    pollMs > 0,
+  );
 
   return {
     data,

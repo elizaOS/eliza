@@ -90,6 +90,9 @@
       "@elizaos/capacitor-calendar": [
         "../../plugins/plugin-native-calendar/src/index.ts"
       ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
+      ],
       "@elizaos/capacitor-contacts": [
         "../../plugins/plugin-native-contacts/src/index.ts"
       ],

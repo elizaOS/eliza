@@ -44,6 +44,7 @@ export {
   setupPlatformStyles,
 } from "./init";
 export * from "./ios-runtime";
+export * from "./mobile-permissions-client";
 export * from "./platform-guards";
 export type * from "./types";
 export type {

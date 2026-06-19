@@ -29,6 +29,8 @@ import {
   CORE_PLUGINS,
   ELIZAOS_ANDROID_CORE_PLUGINS,
   ELIZAOS_ANDROID_TERMINAL_PLUGINS,
+  LEAN_CHAT_EXCLUDED_PLUGINS,
+  LEAN_CHAT_PLUGINS,
   MOBILE_CORE_PLUGINS,
   MOBILE_VIEW_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
@@ -419,13 +421,30 @@ export function collectPluginNames(
   // unavailable in the app sandbox. Substitute the curated mobile-safe set.
   const onMobile = isMobilePlatform();
   const onElizaOsAndroid = isElizaOsAndroidRuntime();
-  const seedCorePlugins = onMobile ? MOBILE_CORE_PLUGINS : CORE_PLUGINS;
+  // Dedicated chat-only cloud agents opt into a lean plugin set (no shell/
+  // coding-tools/browser/orchestrator) to cut cold-boot time (#8434). Mobile keeps
+  // its own curated set; lean-chat only applies off-mobile.
+  const leanChat =
+    !onMobile &&
+    process.env.ELIZA_PLUGIN_SET?.trim().toLowerCase() === "lean-chat";
+  const seedCorePlugins = onMobile
+    ? MOBILE_CORE_PLUGINS
+    : leanChat
+      ? LEAN_CHAT_PLUGINS
+      : CORE_PLUGINS;
   const pluginsToLoad = new Set<string>(seedCorePlugins);
   const track = (name: string, reason: string) => {
     if (reasons && !reasons.has(name)) reasons.set(name, reason);
   };
   for (const core of seedCorePlugins) {
-    track(core, onMobile ? "MOBILE_CORE_PLUGINS" : "CORE_PLUGINS");
+    track(
+      core,
+      leanChat
+        ? "LEAN_CHAT_PLUGINS"
+        : onMobile
+          ? "MOBILE_CORE_PLUGINS"
+          : "CORE_PLUGINS",
+    );
   }
   // View-providing plugins register their /api/views entries on every platform
   // so their home tiles resolve (the orchestrator/inbox tiles dead-ended on
@@ -704,6 +723,15 @@ export function collectPluginNames(
       if (!mobileAllowed.has(pluginName)) {
         pluginsToLoad.delete(pluginName);
       }
+    }
+  }
+
+  // Lean chat: force-drop heavy surfaces even if a later gate (orchestrator env,
+  // gitpathologist .git auto-detect, config allow-list) added them, so a
+  // lean-chat agent is guaranteed minimal. (#8434)
+  if (leanChat) {
+    for (const name of LEAN_CHAT_EXCLUDED_PLUGINS) {
+      pluginsToLoad.delete(name);
     }
   }
 

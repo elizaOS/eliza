@@ -1,9 +1,9 @@
+import { describeImageCached } from "../../media/index.ts";
 import {
 	ContentType,
 	type IAgentRuntime,
 	type Media,
 	type Memory,
-	ModelType,
 } from "../../types/index.ts";
 
 type AttachmentWithInlineData = Media & {
@@ -63,43 +63,14 @@ async function describeImageAttachment(
 	if (!imageUrl) {
 		return "";
 	}
-	let response: unknown;
-	try {
-		response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-			prompt: "Describe this attachment so an agent can reference it later.",
-			imageUrl,
-		});
-	} catch (error) {
-		runtime.logger.warn(
-			{
-				src: "core:clipboard:attachment-context",
-				attachmentId: attachment.id,
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Image attachment description failed",
-		);
-		return "";
-	}
-	if (typeof response === "string") {
-		try {
-			const parsed = JSON.parse(response) as Record<string, unknown>;
-			const value =
-				(typeof parsed.text === "string" ? parsed.text : "") ||
-				(typeof parsed.description === "string" ? parsed.description : "");
-			return value.trim();
-		} catch {
-			return String(response).trim();
-		}
-	}
-	if (
-		response &&
-		typeof response === "object" &&
-		"description" in response &&
-		typeof response.description === "string"
-	) {
-		return response.description.trim();
-	}
-	return "";
+	// Reuse the shared content-addressed cache — the same image described during
+	// inbound processing is reused here instead of re-running the vision model.
+	const described = await describeImageCached(
+		runtime,
+		imageUrl,
+		"Describe this attachment so an agent can reference it later.",
+	);
+	return (described?.text || described?.description || "").trim();
 }
 
 async function readableAttachmentContent(

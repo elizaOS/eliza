@@ -92,6 +92,22 @@ export function parseSlashDraft(draft: string): ParsedSlashDraft {
   };
 }
 
+/**
+ * Split a sent message that begins with a slash-command token into the command
+ * and the trailing remainder, so the chat bubble can render `/command` in bold.
+ * Returns `null` unless the text starts with a `/word` token bounded by
+ * whitespace or end-of-string — so `/imagine a cat` and `/settings` split, but
+ * a path like `/usr/bin` (no boundary after the first segment) does not.
+ */
+export function splitLeadingSlashCommand(
+  text: string,
+): { command: string; rest: string } | null {
+  const match = /^(\/[\w-]+)(?=\s|$)/.exec(text);
+  if (!match) return null;
+  const command = match[1];
+  return { command, rest: text.slice(command.length) };
+}
+
 // ── Matching + filtering ─────────────────────────────────────────────────────
 
 function aliasMatches(

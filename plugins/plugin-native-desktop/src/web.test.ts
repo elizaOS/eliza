@@ -2,6 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DesktopWeb } from "./web";
 
+const EXPECTED_TEST_PLATFORM =
+  process.platform === "darwin" ||
+  process.platform === "win32" ||
+  process.platform === "linux"
+    ? process.platform
+    : "linux";
+
 function setNavigator(value: Partial<Navigator>): void {
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
@@ -52,7 +59,7 @@ describe("DesktopWeb browser fallback contracts", () => {
       status: "denied",
       lastChecked: 10_000,
       canRequest: false,
-      platform: "linux",
+      platform: EXPECTED_TEST_PLATFORM,
     });
     expect(permissionsCheck).toHaveBeenCalledWith({ id: "camera" });
   });
@@ -97,7 +104,7 @@ describe("DesktopWeb browser fallback contracts", () => {
       lastChecked: 20_000,
       lastRequested: 20_000,
       canRequest: false,
-      platform: "linux",
+      platform: EXPECTED_TEST_PLATFORM,
     });
     expect(permissionsRequest).toHaveBeenCalledWith({ id: "microphone" });
     expect(getUserMedia).toHaveBeenCalledWith({ video: false, audio: true });

@@ -1,18 +1,19 @@
-# Cloudflare Pages config for the hosted-web Eliza app (Topology A target).
+# Cloudflare Pages config for the hosted-web Eliza app (the agent app).
 #
-# INERT until the apex cutover. cloud-frontend stays the live deploy of the
-# `eliza-cloud` Pages project at elizacloud.ai; this file describes the app
-# build that will REPLACE it. At cutover the existing `eliza-cloud` Pages
-# project is repointed to build/deploy `packages/app` (see
-# docs/cloud-into-eliza/CUTOVER-RUNBOOK.md) — the project NAME stays
-# `eliza-cloud` so the apex domain, env vars (API_UPSTREAM, the Steward tenant
-# pin), and DNS carry over untouched.
+# The Eliza app is its own Pages project (`eliza-app`) served at
+# app.elizacloud.ai (prod) / app-staging.elizacloud.ai (develop). It is the
+# same web UI as `bun run dev`. The elizacloud.ai APEX is a SEPARATE Pages
+# project (`eliza-cloud`) serving packages/cloud-frontend (the lander +
+# dashboard) — see packages/cloud-frontend/wrangler.toml and
+# .github/workflows/cloud-cf-deploy.yml. Custom-domain attachment + DNS for
+# this project: docs/cloud-into-eliza/CUTOVER-RUNBOOK.md.
 #
-# Mirrors packages/cloud-frontend/wrangler.toml. Do NOT change the live
-# cloud-frontend wrangler.toml or cloud-api/wrangler.toml; this is a separate,
-# additive artifact owned by packages/app.
+# Mirrors packages/cloud-frontend/wrangler.toml (same _proxy.ts same-origin
+# /api + /steward forwarding). The Steward session cookie is scoped to the
+# parent `.elizacloud.ai` zone (cloud-shared auth/cookie-domain.ts), so a login
+# on the apex console carries over to this app subdomain automatically.
 
-name = "eliza-cloud"
+name = "eliza-app"
 pages_build_output_dir = "./dist"
 compatibility_date = "2026-04-29"
 

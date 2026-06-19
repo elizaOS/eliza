@@ -244,6 +244,9 @@ export function useShellController(): ShellController {
         createdAt: message.timestamp,
         failureKind: message.failureKind,
         ...(message.reasoning ? { reasoning: message.reasoning } : {}),
+        ...(message.attachments?.length
+          ? { attachments: message.attachments }
+          : {}),
       };
       next.set(message.id, mapped);
       return mapped;

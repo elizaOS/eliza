@@ -41,7 +41,7 @@
   },
   "elizaos": {
     "app": {
-      "heroImage": "assets/hero.svg"
+      "heroImage": "assets/hero.png"
     }
   },
   "publishConfig": {

@@ -47,7 +47,19 @@ type PermissionId =
   | "website-blocking"
   | "notifications"
   | "full-disk"
-  | "automation";
+  | "automation"
+  | "speech-recognition"
+  | "photos"
+  | "phone"
+  | "messages"
+  | "wifi"
+  | "bluetooth"
+  | "app-blocking"
+  | "usage-access"
+  | "overlay"
+  | "write-settings"
+  | "local-network"
+  | "battery-optimization";
 
 type PermissionStateFixture = {
   id: PermissionId;
@@ -76,6 +88,18 @@ const PERMISSION_IDS: readonly PermissionId[] = [
   "notifications",
   "full-disk",
   "automation",
+  "speech-recognition",
+  "photos",
+  "phone",
+  "messages",
+  "wifi",
+  "bluetooth",
+  "app-blocking",
+  "usage-access",
+  "overlay",
+  "write-settings",
+  "local-network",
+  "battery-optimization",
 ];
 
 const CORE_ROUTE_PROBES: readonly RouteProbe[] = [

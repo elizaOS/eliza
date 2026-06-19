@@ -355,6 +355,7 @@ export function isFeatureConfigured(feature: string): boolean {
     case "ai":
       return !!(
         process.env.BITROUTER_API_KEY ||
+        process.env.OPENROUTER_API_KEY ||
         process.env.OPENAI_API_KEY ||
         process.env.ANTHROPIC_API_KEY ||
         process.env.GROQ_API_KEY

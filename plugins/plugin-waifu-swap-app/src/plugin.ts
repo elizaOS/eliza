@@ -30,6 +30,7 @@ export const waifuSwapPlugin: Plugin = {
       description:
         "Swap tokens through PancakeSwap v3 with live quotes and route detail",
       icon: "ArrowLeftRight",
+      heroImagePath: "assets/hero.png",
       path: "/waifu-swap",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SwapAppView",
@@ -43,6 +44,7 @@ export const waifuSwapPlugin: Plugin = {
       description:
         "Swap tokens through PancakeSwap v3 with live quotes and route detail",
       icon: "ArrowLeftRight",
+      heroImagePath: "assets/hero.png",
       path: "/waifu-swap",
       viewType: "xr",
       bundlePath: "dist/views/bundle.js",

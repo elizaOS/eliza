@@ -131,6 +131,17 @@ export function buildAssistantLaunchHashRoute(
       ensureAssistantLaunchId(params, generateLaunchId);
       return formatHashRoute("chat", params);
     }
+    case "smart-reply":
+    case "chat/smart-reply": {
+      const params = withDefaultSearchParam(
+        searchParams,
+        "source",
+        ASSISTANT_ENTRY_SOURCE,
+      );
+      params.set("action", params.get("action") ?? "smart-reply");
+      ensureAssistantLaunchId(params, generateLaunchId);
+      return formatHashRoute("chat", params);
+    }
     case "chat": {
       const params = withDefaultSearchParam(
         searchParams,

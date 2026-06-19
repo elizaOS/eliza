@@ -27,6 +27,7 @@ export * from "./api/response.ts";
 export { sendJson, sendJsonError } from "./api/response.ts";
 export { registerAppShellPage } from "./app-shell-registry.ts";
 export * from "./bridge/index.ts";
+export * from "./cache-telemetry.ts";
 export * from "./chat/index.ts";
 export * from "./components/apps/AppWindowRenderer.helpers.ts";
 export * from "./components/apps/AppWindowRenderer.tsx";
@@ -46,7 +47,11 @@ export {
   EmptyWidgetState,
   WidgetSection,
 } from "./components/chat/widgets/shared.tsx";
-export { ChatSearchHint } from "./components/composites/chat-search-hint.tsx";
+// The orchestrator/task-coordinator plugin imports this from `@elizaos/ui`
+// (which the app build aliases to this browser entry). It is re-exported from
+// the root index.ts too; keep both in sync. Missing here breaks
+// `packages/app build:web` (plugin-task-coordinator/register-slots.ts).
+export { registerTaskWidget } from "./components/chat/widgets/task-widget.tsx";
 export { PagePanel } from "./components/composites/page-panel/index.ts";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content.tsx";
 export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel.tsx";

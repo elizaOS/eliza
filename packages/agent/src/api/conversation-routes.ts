@@ -1029,11 +1029,59 @@ function extractConversationMetaString(
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+type SerializedMessageAttachment = {
+  id: string;
+  url: string;
+  contentType?: string;
+  title?: string;
+  description?: string;
+  source?: string;
+  text?: string;
+  mimeType?: string;
+};
+
+/**
+ * Only URLs the browser can actually load are renderable. Inline-upload
+ * placeholders (e.g. `attachment:img-0`) whose bytes were never persisted are
+ * dropped here so the client never paints a broken image — real uploads and
+ * generated media carry a served `/api/media/...`, remote https, or inline
+ * `data:`/`blob:` URL.
+ */
+const RENDERABLE_ATTACHMENT_URL = /^(?:https?:|data:|blob:|\/)/i;
+
+export function serializeMessageAttachments(
+  content: Record<string, unknown> | undefined,
+): SerializedMessageAttachment[] | undefined {
+  const raw = content?.attachments;
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: SerializedMessageAttachment[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const a = item as Record<string, unknown>;
+    const url = typeof a.url === "string" ? a.url : "";
+    if (!url || !RENDERABLE_ATTACHMENT_URL.test(url)) continue;
+    const str = (v: unknown): string | undefined =>
+      typeof v === "string" && v.length > 0 ? v : undefined;
+    out.push({
+      id: str(a.id) ?? `att-${out.length}`,
+      url,
+      ...(str(a.contentType) ? { contentType: str(a.contentType) } : {}),
+      ...(str(a.title) ? { title: str(a.title) } : {}),
+      ...(str(a.description) ? { description: str(a.description) } : {}),
+      ...(str(a.source) ? { source: str(a.source) } : {}),
+      ...(str(a.text) ? { text: str(a.text) } : {}),
+      ...(str(a.mimeType) ? { mimeType: str(a.mimeType) } : {}),
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 type ConversationRouteMessageRecord = {
   id: string;
   role: "assistant" | "user";
   text: string;
   timestamp: number;
+  attachments?: SerializedMessageAttachment[];
   source?: string;
   actionName?: string;
   actionCallbackHistory?: string[];
@@ -1368,11 +1416,13 @@ export async function handleConversationRoutes(
             role === "assistant"
               ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
               : rawText;
+          const attachments = serializeMessageAttachments(content);
           return {
             id: m.id ?? "",
             role,
             text,
             timestamp: m.createdAt ?? 0,
+            ...(attachments ? { attachments } : {}),
             source: normalizedSource,
             actionName,
             actionCallbackHistory:
@@ -1435,8 +1485,11 @@ export async function handleConversationRoutes(
         })
         // Drop action-log memories that have no visible text (e.g.
         // plugin action logs with only `thought` / `actions` fields).
-        // Without this filter they appear as blank chat bubbles.
-        .filter((m) => m.text.trim().length > 0);
+        // Without this filter they appear as blank chat bubbles. Image-only
+        // turns (uploaded or generated media with no caption) are kept.
+        .filter(
+          (m) => m.text.trim().length > 0 || (m.attachments?.length ?? 0) > 0,
+        );
       const discordMessages = messages.filter((message) =>
         mayNeedDiscordMessageEnrichment(message.source),
       );

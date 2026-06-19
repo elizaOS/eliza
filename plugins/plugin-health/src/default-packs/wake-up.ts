@@ -18,6 +18,7 @@ export const wakeUpDefaultPack: DefaultPack = {
   description:
     "Fires a single low-pressure 'good morning' check-in at the wake.confirmed anchor (sustained-awake transition). Skips when the user has already started a chat session this morning.",
   defaultEnabled: true,
+  requiredCapabilities: [],
   records: [
     {
       kind: "checkin",

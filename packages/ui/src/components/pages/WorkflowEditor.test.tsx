@@ -1,0 +1,178 @@
+// @vitest-environment jsdom
+
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { client } from "../../api";
+import type {
+  WorkflowDefinition,
+  WorkflowExecution,
+} from "../../api/client-types-chat";
+import { WorkflowEditor } from "./WorkflowEditor";
+
+vi.mock("../../api", () => ({
+  client: {
+    activateWorkflowDefinition: vi.fn(),
+    createWorkflowDefinition: vi.fn(),
+    deactivateWorkflowDefinition: vi.fn(),
+    generateWorkflowDefinition: vi.fn(),
+    getWorkflowExecutions: vi.fn(),
+    runWorkflowDefinition: vi.fn(),
+    updateWorkflowDefinition: vi.fn(),
+  },
+}));
+
+const clientMock = client as unknown as {
+  activateWorkflowDefinition: ReturnType<typeof vi.fn>;
+  createWorkflowDefinition: ReturnType<typeof vi.fn>;
+  deactivateWorkflowDefinition: ReturnType<typeof vi.fn>;
+  generateWorkflowDefinition: ReturnType<typeof vi.fn>;
+  getWorkflowExecutions: ReturnType<typeof vi.fn>;
+  runWorkflowDefinition: ReturnType<typeof vi.fn>;
+  updateWorkflowDefinition: ReturnType<typeof vi.fn>;
+};
+
+vi.mock("./WorkflowGraphViewer", () => ({
+  WorkflowGraphViewer: ({
+    workflow,
+  }: {
+    workflow: WorkflowDefinition | null;
+  }) => (
+    <div data-testid="workflow-graph">
+      {workflow?.nodes?.map((node) => node.name).join(" -> ") || "empty graph"}
+    </div>
+  ),
+}));
+
+function workflowFixture(): WorkflowDefinition {
+  return {
+    id: "workflow-1",
+    name: "Cerebras review workflow",
+    active: false,
+    nodes: [
+      {
+        id: "manual",
+        name: "Manual Trigger",
+        type: "workflows-nodes-base.manualTrigger",
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      },
+      {
+        id: "set",
+        name: "Add Review Fields",
+        type: "workflows-nodes-base.set",
+        typeVersion: 1,
+        position: [220, 0],
+        parameters: {
+          assignments: {
+            assignments: [
+              { name: "source", value: "cerebras" },
+              { name: "verified", value: true },
+            ],
+          },
+        },
+      },
+    ],
+    connections: {
+      "Manual Trigger": {
+        main: [[{ node: "Add Review Fields", type: "main", index: 0 }]],
+      },
+    },
+  };
+}
+
+function executionFixture(
+  overrides: Partial<WorkflowExecution> = {},
+): WorkflowExecution {
+  return {
+    id: "execution-1",
+    workflowId: "workflow-1",
+    mode: "manual",
+    status: "success",
+    startedAt: "2026-06-19T19:01:00.000Z",
+    stoppedAt: "2026-06-19T19:01:01.500Z",
+    data: {
+      resultData: {
+        runData: {
+          "Add Review Fields": [
+            {
+              startTime: "2026-06-19T19:01:00.500Z",
+              executionTime: 8,
+              data: {
+                main: [
+                  [
+                    {
+                      json: {
+                        source: "cerebras",
+                        verified: true,
+                      },
+                    },
+                  ],
+                ],
+              },
+            },
+          ],
+        },
+      },
+    },
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  clientMock.getWorkflowExecutions.mockResolvedValue([]);
+  clientMock.runWorkflowDefinition.mockResolvedValue(executionFixture());
+});
+
+afterEach(() => cleanup());
+
+describe("WorkflowEditor", () => {
+  it("renders the graph, runs a saved workflow, and shows node output", async () => {
+    render(<WorkflowEditor initial={workflowFixture()} />);
+
+    expect(screen.getByTestId("workflow-graph").textContent).toContain(
+      "Manual Trigger -> Add Review Fields",
+    );
+    expect(screen.getByRole("button", { name: /run now/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /run now/i }));
+
+    await waitFor(() => {
+      expect(clientMock.runWorkflowDefinition).toHaveBeenCalledWith(
+        "workflow-1",
+      );
+    });
+    expect(await screen.findByText("Add Review Fields")).toBeTruthy();
+    expect(
+      screen.getByText('{"source":"cerebras","verified":true}'),
+    ).toBeTruthy();
+  });
+
+  it("keeps the editor open after saving a new workflow so it can be inspected", async () => {
+    const saved = workflowFixture();
+    clientMock.createWorkflowDefinition.mockResolvedValue(saved);
+    const onSaved = vi.fn();
+
+    render(<WorkflowEditor onSaved={onSaved} />);
+
+    fireEvent.change(screen.getByTestId("workflow-editor-json"), {
+      target: { value: JSON.stringify(saved, null, 2) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(clientMock.createWorkflowDefinition).toHaveBeenCalled();
+    });
+    expect(onSaved).toHaveBeenCalledWith(saved);
+    expect(
+      await screen.findByRole("button", { name: /run now/i }),
+    ).toBeTruthy();
+  });
+});

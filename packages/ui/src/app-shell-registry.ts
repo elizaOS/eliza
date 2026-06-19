@@ -1,9 +1,14 @@
 import type { ComponentType } from "react";
 
+export type AppShellPageLoader = () => Promise<{
+  default: ComponentType<Record<string, unknown>>;
+  cleanup?: () => void | Promise<void>;
+}>;
+
 /**
  * A page contributed at runtime by a plugin or host app. Mirrors the fields
- * on `PluginAppNavTab` from `@elizaos/core`, plus the resolved React
- * component the shell will mount.
+ * on `PluginAppNavTab` from `@elizaos/core`, plus either a resolved React
+ * component or a lazy loader the shell mounts on demand.
  */
 export interface AppShellPageRegistration {
   /** Stable id, scoped to the owning plugin (e.g. `"wallet.inventory"`). */
@@ -28,12 +33,19 @@ export interface AppShellPageRegistration {
    * orchestrator.
    */
   fullBleed?: boolean;
-  /** The React component the shell mounts when this page is active. */
-  Component: ComponentType<unknown>;
+  /**
+   * The React component the shell mounts when this page is active.
+   * Prefer `loader` for heavy pages so boot only pays metadata cost.
+   */
+  Component?: ComponentType<unknown>;
+  /** Lazy page loader. The shell wraps it in React.lazy + Suspense. */
+  loader?: AppShellPageLoader;
 }
 
 interface AppShellPageRegistryStore {
   entries: Map<string, AppShellPageRegistration>;
+  listeners: Set<() => void>;
+  version: number;
 }
 
 function appShellPageRegistryKey(): symbol {
@@ -50,6 +62,8 @@ function getRegistryStore(): AppShellPageRegistryStore {
   if (existing) return existing;
   const created: AppShellPageRegistryStore = {
     entries: new Map<string, AppShellPageRegistration>(),
+    listeners: new Set(),
+    version: 0,
   };
   globalObject[registryKey] = created;
   return created;
@@ -58,9 +72,24 @@ function getRegistryStore(): AppShellPageRegistryStore {
 export function registerAppShellPage(
   registration: AppShellPageRegistration,
 ): void {
-  getRegistryStore().entries.set(registration.id, registration);
+  const store = getRegistryStore();
+  store.entries.set(registration.id, registration);
+  store.version += 1;
+  for (const listener of store.listeners) listener();
 }
 
 export function listAppShellPages(): AppShellPageRegistration[] {
   return [...getRegistryStore().entries.values()];
+}
+
+export function subscribeAppShellPages(listener: () => void): () => void {
+  const store = getRegistryStore();
+  store.listeners.add(listener);
+  return () => {
+    store.listeners.delete(listener);
+  };
+}
+
+export function getAppShellPageRegistrySnapshot(): number {
+  return getRegistryStore().version;
 }

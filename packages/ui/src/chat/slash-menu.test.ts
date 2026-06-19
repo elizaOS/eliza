@@ -11,6 +11,7 @@ import {
   resolveSlashExecution,
   runSlashExecution,
   type SlashExecutionDeps,
+  splitLeadingSlashCommand,
 } from "./slash-menu";
 
 function cmd(
@@ -264,5 +265,37 @@ describe("runSlashExecution", () => {
 
     runSlashExecution({ kind: "send", text: "/model x" }, d);
     expect(d.send).toHaveBeenCalledWith("/model x");
+  });
+});
+
+describe("splitLeadingSlashCommand", () => {
+  it("splits a command with arguments", () => {
+    expect(splitLeadingSlashCommand("/imagine a cat")).toEqual({
+      command: "/imagine",
+      rest: " a cat",
+    });
+  });
+
+  it("splits a bare command", () => {
+    expect(splitLeadingSlashCommand("/settings")).toEqual({
+      command: "/settings",
+      rest: "",
+    });
+  });
+
+  it("matches hyphenated command tokens", () => {
+    expect(splitLeadingSlashCommand("/new-chat please")).toEqual({
+      command: "/new-chat",
+      rest: " please",
+    });
+  });
+
+  it("returns null for non-slash text", () => {
+    expect(splitLeadingSlashCommand("hello /world")).toBeNull();
+    expect(splitLeadingSlashCommand("")).toBeNull();
+  });
+
+  it("returns null when the slash token has no word boundary (a path)", () => {
+    expect(splitLeadingSlashCommand("/usr/bin/env")).toBeNull();
   });
 });

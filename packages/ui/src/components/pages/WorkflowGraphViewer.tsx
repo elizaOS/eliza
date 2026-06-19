@@ -705,8 +705,8 @@ export function WorkflowGraphViewer({
         ref={containerRef}
         role="img"
         aria-label={ariaLabel}
-        className={`relative overflow-hidden rounded-sm ${borderClass}`}
-        style={{ height: 420, background: chrome.canvasBg }}
+        className={`relative h-[260px] overflow-hidden rounded-sm sm:h-[360px] lg:h-[420px] ${borderClass}`}
+        style={{ background: chrome.canvasBg }}
       >
         {/* Loading skeleton */}
         {loading && !hasNodes && (

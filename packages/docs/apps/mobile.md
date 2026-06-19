@@ -12,11 +12,18 @@ The iOS platform under `packages/app-core/platforms/ios` is a native Capacitor
 app designed to run an Eliza agent on-device. Its Podfile wires the Bun runtime
 bridge, native agent bridge, mobile-agent bridge, llama.cpp inference, camera,
 calendar, canvas, gateway, location, mobile signals, screen capture, talk mode,
-and website-blocking plugins. The iOS target also includes App Intents, Screen
-Time extensions, a Safari content-blocker extension, ReplayKit broadcast
+and website-blocking plugins. The iOS target also includes App Intents/App
+Shortcuts for Siri and Shortcuts entry points, Screen Time extensions, a Safari
+content-blocker extension, ReplayKit broadcast
 support, BGTaskScheduler wakes, APNs silent-push wake plumbing, and a
 background-runner JS task that pokes the in-process agent over loopback within
 the OS time budget.
+
+The native assistant roadmap lives in
+`packages/app/docs/native-assistant-integration-plan.md`. That plan is the
+source of truth for Siri/App Intents, Android App Actions, widgets, keyboard
+extensions, share targets, Apple Intelligence schema work, and per-platform
+local-inference routing.
 
 Use `bun run build:ios:local` from `packages/app` to bake
 `runtimeMode=local`, build `packages/agent/dist-mobile-ios/agent-bundle.js`,

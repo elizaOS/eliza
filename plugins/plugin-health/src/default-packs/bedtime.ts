@@ -18,6 +18,7 @@ export const bedtimeDefaultPack: DefaultPack = {
   description:
     "Low-pressure nudge 30 minutes before the user's personal bedtime target. Quiet when the user has already started winding down (circadian state = winding_down or sleeping).",
   defaultEnabled: false,
+  requiredCapabilities: [],
   records: [
     {
       kind: "reminder",

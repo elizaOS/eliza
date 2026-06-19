@@ -41,6 +41,13 @@ export default defineConfig({
           "plugins/plugin-native-system/src/index.ts",
         ),
       },
+      {
+        find: /^@elizaos\/ui\/components\/permissions\/PermissionRecoveryCallout$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/ui/src/components/permissions/PermissionRecoveryCallout.tsx",
+        ),
+      },
     ],
   },
   test: {

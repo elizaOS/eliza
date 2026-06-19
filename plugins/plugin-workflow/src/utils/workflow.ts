@@ -280,6 +280,10 @@ function isPropertyVisible(prop: NodeProperty, parameters: Record<string, unknow
   return true;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 export function validateNodeInputs(workflow: WorkflowDefinition): string[] {
   const warnings: string[] = [];
 
@@ -483,6 +487,8 @@ export function correctOptionParameters(workflow: WorkflowDefinition): number {
       corrections++;
     }
 
+    corrections += normalizeSetNodeAssignments(node);
+
     const validVersions = Array.isArray(nodeDef.version) ? nodeDef.version : [nodeDef.version];
     if (node.typeVersion && !validVersions.includes(node.typeVersion)) {
       const maxVersion = Math.max(...validVersions);
@@ -521,6 +527,48 @@ export function correctOptionParameters(workflow: WorkflowDefinition): number {
   }
 
   return corrections;
+}
+
+export function normalizeWorkflowNodeParameterShapes(workflow: WorkflowDefinition): number {
+  let corrections = 0;
+  for (const node of workflow.nodes) {
+    corrections += normalizeSetNodeAssignments(node);
+  }
+  return corrections;
+}
+
+function normalizeSetNodeAssignments(node: WorkflowDefinition['nodes'][0]): number {
+  if (node.type !== 'workflows-nodes-base.set' || !isRecord(node.parameters)) {
+    return 0;
+  }
+
+  const assignmentContainer = node.parameters.assignments;
+  if (!isRecord(assignmentContainer)) {
+    return 0;
+  }
+
+  if (Array.isArray(assignmentContainer.assignments)) {
+    return 0;
+  }
+
+  const generatedValues = assignmentContainer.values;
+  if (!Array.isArray(generatedValues)) {
+    return 0;
+  }
+
+  const assignments = generatedValues.filter(isRecord).map((entry) => ({
+    name: entry.name,
+    value: entry.value,
+    ...(entry.type !== undefined ? { type: entry.type } : {}),
+  }));
+
+  assignmentContainer.assignments = assignments;
+  delete assignmentContainer.values;
+  logger.warn(
+    { src: 'plugin:workflow:correctOptions' },
+    `Node "${node.name}": assignments.values → assignments.assignments`
+  );
+  return 1;
 }
 
 function fixOptionValue(node: WorkflowDefinition['nodes'][0], prop: NodeProperty): number {
