@@ -26677,9 +26677,14 @@
     const headerMaxH = useTransform(threadHeight, [halfH - 64, halfH], [0, 100], {
       clamp: true
     });
-    const headerPadTop = useTransform(threadHeight, [halfH - 64, halfH], [0, 10], {
-      clamp: true
-    });
+    const headerPadTop = useTransform(
+      threadHeight,
+      [halfH - 64, halfH],
+      [0, 10],
+      {
+        clamp: true
+      }
+    );
     const settleDrag = React7.useCallback(() => {
       draggingRef.current = false;
       const open = pilled ? 0 : 1;
@@ -26844,6 +26849,13 @@
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
     }, [draft]);
+    const openFromPill = React7.useCallback(() => {
+      draggingRef.current = false;
+      setPilled(false);
+      if (reduce) openProgress.set(1);
+      else animate(openProgress, 1, OPEN_SPRING);
+      detentHaptic();
+    }, [openProgress, reduce]);
     const onDragOffset = React7.useCallback(
       (offset) => {
         draggingRef.current = true;
@@ -26920,8 +26932,7 @@
       // from). A tap on the pill brings the input back.
       onTap: () => {
         if (pilled) {
-          setPilled(false);
-          detentHaptic();
+          openFromPill();
           return;
         }
         const composerFocused2 = typeof document !== "undefined" && document.activeElement === inputRef.current;
@@ -27526,7 +27537,7 @@
                             PillHandle,
                             {
                               binding: pullBinding,
-                              onOpen: () => setPilled(false),
+                              onOpen: openFromPill,
                               glow: listening || responding
                             }
                           )

@@ -1513,6 +1513,20 @@ export function ContinuousChatOverlay({
     el.style.height = `${el.scrollHeight}px`;
   }, [draft]);
 
+  // Open the input back out of the collapsed pill (tap or keyboard-activate).
+  // A tap routes through the gesture's `onDrag(0)` first, which sets
+  // draggingRef=true AND openProgress=0 — so we MUST clear draggingRef here, or
+  // the pilled→openProgress effect early-returns and the morph stays stuck at 0
+  // (a visible-but-inert pill, no input: the "bad state"). We also spring
+  // openProgress → 1 directly so the open never depends on that effect's timing.
+  const openFromPill = React.useCallback(() => {
+    draggingRef.current = false;
+    setPilled(false);
+    if (reduce) openProgress.set(1);
+    else animate(openProgress, 1, OPEN_SPRING);
+    detentHaptic();
+  }, [openProgress, reduce]);
+
   // --- Pull gesture --------------------------------------------------------
   // The grabber is the draggable handle. A live drag sets the threadHeight motion
   // value DIRECTLY (no React state → no re-render per frame, so it tracks the
@@ -1614,8 +1628,7 @@ export function ContinuousChatOverlay({
     // from). A tap on the pill brings the input back.
     onTap: () => {
       if (pilled) {
-        setPilled(false);
-        detentHaptic();
+        openFromPill();
         return;
       }
       const composerFocused =
@@ -2352,7 +2365,7 @@ export function ContinuousChatOverlay({
           >
             <PillHandle
               binding={pullBinding}
-              onOpen={() => setPilled(false)}
+              onOpen={openFromPill}
               glow={listening || responding}
             />
           </motion.div>

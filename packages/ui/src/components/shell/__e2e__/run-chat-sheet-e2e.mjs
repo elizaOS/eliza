@@ -1042,6 +1042,56 @@ try {
     await p.close();
   }
 
+  // ── PILL TAP morphs to input (regression): a real TAP (pointerdown+up, no
+  // move) routes through the gesture's onDrag(0) → onTap path, which previously
+  // left draggingRef set so openProgress stayed STUCK at 0 (a visible-but-inert
+  // pill, no input). A synthetic .click() missed it because data-detent flipped
+  // to "collapsed" while the morph never animated — so assert the actual content
+  // opacity reaches ~1 (the input is really formed), not just the detent label.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(500);
+    await gesture(p, -90, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "pill", "PILL-TAP: collapsed to pill first");
+    // Real tap: pointerdown then pointerup at the SAME spot (no move).
+    const pb = await p.getByTestId("chat-pill").boundingBox();
+    const tx = pb.x + pb.width / 2;
+    const ty = pb.y + pb.height / 2;
+    await p.evaluate(
+      ({ tx, ty }) => {
+        const el = document.querySelector('[data-testid="chat-pill"]');
+        const opts = {
+          pointerId: 1,
+          pointerType: "touch",
+          clientX: tx,
+          clientY: ty,
+          bubbles: true,
+        };
+        el.dispatchEvent(new PointerEvent("pointerdown", opts));
+        el.dispatchEvent(new PointerEvent("pointerup", opts));
+      },
+      { tx, ty },
+    );
+    await p.waitForTimeout(SETTLE);
+    const openedOpacity = await p
+      .getByTestId("chat-content")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+    assert(
+      openedOpacity > 0.9,
+      `PILL-TAP: tap animates pill → input, content fully formed (opacity ${openedOpacity})`,
+    );
+    assert(
+      (await detent(p)) === "collapsed",
+      "PILL-TAP: lands in the input (collapsed) state",
+    );
+    await snap(p, "state-pill-tap-opened");
+    await p.close();
+  }
+
   // reduced-motion still opens via flick
   {
     const p = await ctrl();
