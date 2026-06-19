@@ -21,17 +21,6 @@ interface InternalToolAppDefinition {
 
 const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
   {
-    name: "@elizaos/plugin-personal-assistant",
-    displayName: "LifeOps",
-    description:
-      "Run tasks, reminders, calendar, inbox, and connected operational workflows.",
-    heroImage: "/api/apps/hero/lifeops",
-    targetTab: "lifeops",
-    capabilities: ["lifeops", "tasks", "calendar", "gmail"],
-    order: 0,
-    windowPath: "/apps/lifeops",
-  },
-  {
     name: "@elizaos/app-plugin-viewer",
     displayName: "Plugin Viewer",
     description:

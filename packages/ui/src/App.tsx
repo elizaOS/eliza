@@ -728,13 +728,11 @@ function renderStaticViewRouterTab({
   androidPhoneSurfaceEnabled,
   navigationPath,
   settingsInitialSection,
-  LifeOpsPageView,
 }: {
   tab: string;
   androidPhoneSurfaceEnabled: boolean;
   navigationPath: string;
   settingsInitialSection?: string | null;
-  LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     tutorial: (
@@ -822,9 +820,6 @@ function renderStaticViewRouterTab({
       </TabContentView>
     ),
   };
-  if (tab === "lifeops") {
-    return LifeOpsPageView ? <LifeOpsPageView /> : <ViewUnavailableFallback />;
-  }
   if (tab === "phone") {
     return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
   }
@@ -874,7 +869,6 @@ function renderViewRouterContent({
   availableViews,
   appSlug,
   androidPhoneSurfaceEnabled,
-  LifeOpsPageView,
   settingsInitialSection,
 }: {
   tab: string;
@@ -885,7 +879,6 @@ function renderViewRouterContent({
   availableViews: ViewRegistryEntry[];
   appSlug: string | null;
   androidPhoneSurfaceEnabled: boolean;
-  LifeOpsPageView: ComponentType | null | undefined;
   settingsInitialSection?: string | null;
 }): ReactNode {
   if (visibleDynamicPage(dynamicPage, developerModeEnabled)) {
@@ -914,7 +907,6 @@ function renderViewRouterContent({
     androidPhoneSurfaceEnabled,
     navigationPath,
     settingsInitialSection,
-    LifeOpsPageView,
   });
 }
 
@@ -924,7 +916,6 @@ function ViewRouter({
   settingsInitialSection?: string | null;
 }) {
   const { tab } = useApp();
-  const { lifeOpsPageView: LifeOpsPageView } = useBootConfig();
   const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
   const [navigationPath, setNavigationPath] = useState(() =>
@@ -959,7 +950,6 @@ function ViewRouter({
     availableViews,
     appSlug,
     androidPhoneSurfaceEnabled,
-    LifeOpsPageView,
     settingsInitialSection,
   });
 

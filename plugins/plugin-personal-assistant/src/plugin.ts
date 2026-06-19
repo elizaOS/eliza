@@ -750,49 +750,9 @@ const rawPersonalAssistantPlugin: Plugin = {
   ],
   responseHandlerEvaluators: [ownerProfileExtractionEvaluator],
   responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
-  views: [
-    {
-      id: "lifeops",
-      label: "LifeOps",
-      description:
-        "Personal assistant workspace for briefs, approvals, schedule repair, and owner operations.",
-      icon: "Sparkles",
-      path: "/lifeops",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "LifeOpsPageView",
-      tags: ["lifeops", "personal-assistant", "approvals"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "lifeops",
-      label: "LifeOps XR",
-      description:
-        "XR personal assistant workspace for briefs, approvals, schedule repair, and owner operations.",
-      icon: "Sparkles",
-      path: "/lifeops",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "LifeOpsPageView",
-      tags: ["lifeops", "personal-assistant", "approvals", "xr"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "lifeops",
-      label: "LifeOps TUI",
-      description:
-        "Terminal personal assistant workspace for briefs, approvals, schedule repair, and owner operations.",
-      icon: "Sparkles",
-      path: "/lifeops/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "LifeOpsTuiView",
-      tags: ["lifeops", "personal-assistant", "approvals", "terminal"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-  ],
+  // No views — the LifeOps overview surface was removed (owner: "no need for an
+  // overview"). Domain views live in the per-domain plugins; the personal
+  // assistant is the chat itself (PERSONAL_ASSISTANT action).
   events: {
     // Fold recognized voice turns into the entity/relationship graph via
     // the merge engine, then round-trip the binding to the voice-profile

@@ -49,7 +49,6 @@ export type BuiltinTab =
   | "messages"
   | "contacts"
   | "camera"
-  | "lifeops"
   | "tasks"
   | "automations"
   | "browser"
@@ -86,7 +85,6 @@ export type BuiltinTab =
 export type Tab = BuiltinTab | (string & {});
 
 export const APPS_TOOL_TABS = [
-  "lifeops",
   "plugins",
   "skills",
   "fine-tuning",
@@ -282,7 +280,6 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   messages: "/messages",
   contacts: "/contacts",
   camera: "/camera",
-  lifeops: "/apps/lifeops",
   tasks: "/apps/tasks",
   browser: "/browser",
   companion: "/companion",
@@ -365,7 +362,6 @@ export function resolveInitialTabForPath(
 
 /** Known apps-tool sub-paths under /apps/ (not actual app slugs). */
 const APPS_SUB_TABS: Record<string, Tab> = {
-  lifeops: "lifeops",
   tasks: "tasks",
   plugins: "plugins",
   skills: "skills",
@@ -518,8 +514,6 @@ export function titleForTab(tab: Tab): string {
       return "Contacts";
     case "camera":
       return "Camera";
-    case "lifeops":
-      return "LifeOps";
     case "browser":
       return "Browser";
     case "companion":

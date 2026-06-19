@@ -417,7 +417,11 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("LifeOps app supports deterministic reminders and alarm interactions", async ({
+// The LifeOps overview view was removed (owner: "no need for an overview"), so
+// the lifeops-nav-rail / reminders-manager / assistant-intents surfaces these
+// two tests drive no longer exist. Skipped pending removal of the dead lifeops
+// test fixtures; the Feed coverage below is unaffected.
+test.skip("LifeOps app supports deterministic reminders and alarm interactions", async ({
   page,
 }) => {
   const lifeOps = installLifeOpsInteractionRoutes(page);
@@ -492,7 +496,7 @@ test("LifeOps app supports deterministic reminders and alarm interactions", asyn
   await expect.poll(() => lifeOps.definitionGets).toBeGreaterThan(0);
 });
 
-test("LifeOps assistant launches chat-first command prompts", async ({
+test.skip("LifeOps assistant launches chat-first command prompts", async ({
   page,
 }) => {
   installLifeOpsInteractionRoutes(page);

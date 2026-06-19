@@ -34,40 +34,36 @@ const LEVELS = [
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },
   {
-    name: "plugin view lifeops",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
-  },
-  {
     name: "plugin view focus",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+    file: "plugins/plugin-blocker/src/components/focus/FocusView.tsx",
   },
   {
     name: "plugin view calendar",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+    file: "plugins/plugin-calendar/src/components/CalendarSection.tsx",
   },
   {
     name: "plugin view documents",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+    file: "plugins/plugin-documents/src/components/documents/DocumentsView.tsx",
   },
   {
     name: "plugin view finances",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+    file: "plugins/plugin-finances/src/components/finances/FinancesView.tsx",
   },
   {
     name: "plugin view goals",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+    file: "plugins/plugin-goals/src/components/goals/GoalsView.tsx",
   },
   {
     name: "plugin view health",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+    file: "plugins/plugin-health/src/components/health/HealthView.tsx",
   },
   {
     name: "plugin view inbox",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+    file: "plugins/plugin-inbox/src/components/inbox/InboxView.tsx",
   },
   {
     name: "plugin view todos",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+    file: "plugins/plugin-todos/src/components/todos/TodosView.tsx",
   },
   {
     name: "plugin view relationships",
