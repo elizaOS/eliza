@@ -33,6 +33,62 @@ def test_runtime_window_constants_match_wakeword_ts() -> None:
     assert tw.SAMPLE_RATE == 16_000
 
 
+def test_mel_rescale_flag_controls_front_end_preprocessing(monkeypatch) -> None:
+    """`mel_rescale` toggles openWakeWord's `mel/10 + 2` step.
+
+    The wakeword-cpp C runtime feeds the raw log-mel into the embedding model
+    (no rescale), so a head meant for that runtime must be trained with
+    `mel_rescale=False`. A head trained with the rescale fires on only a
+    fraction of positives through that runtime (measured ~31% true-accept vs
+    ~99% once parity is restored). This guards the plumbing without needing
+    onnxruntime: a fake mel session lets us observe the embedding input.
+
+    """
+    np = pytest.importorskip("numpy")
+
+    class _FakeSession:
+        def __init__(self, out):
+            self._out = out
+
+        def get_inputs(self):
+            class _I:
+                name = "x"
+
+            return [_I()]
+
+        def run(self, _names, _feed):
+            return [self._out]
+
+    # mel session returns a fixed [n_frames, 32] block; emb session echoes the
+    # mean of its input window so we can read back what scale it received.
+    n_frames = tw.EMBEDDING_WINDOW_FRAMES + 8
+    raw_mel = np.full((n_frames, tw.MEL_BINS), -40.0, dtype=np.float32)
+    captured: dict[str, float] = {}
+
+    class _EmbSession(_FakeSession):
+        def run(self, _names, feed):
+            win = list(feed.values())[0]
+            captured["mean"] = float(np.asarray(win).mean())
+            return [np.zeros((1, tw.EMBEDDING_DIM), dtype=np.float32)]
+
+    def _make(rescale: bool):
+        fe = tw.OpenWakeWordFrontEnd.__new__(tw.OpenWakeWordFrontEnd)
+        fe.mel = _FakeSession(raw_mel[None, :, :])
+        fe.emb = _EmbSession(None)
+        fe.mel_rescale = rescale
+        return fe
+
+    _make(rescale=True).embedding_windows([0.0] * 100)
+    with_rescale = captured["mean"]
+    _make(rescale=False).embedding_windows([0.0] * 100)
+    without_rescale = captured["mean"]
+
+    # raw mel is -40; without rescale the embedding sees ~-40, with rescale it
+    # sees -40/10 + 2 = -2.
+    assert without_rescale == pytest.approx(-40.0, abs=1e-3)
+    assert with_rescale == pytest.approx(-2.0, abs=1e-3)
+
+
 def test_head_forward_shape() -> None:
     model = tw.build_head_module()
     x = torch.zeros(3, tw.HEAD_WINDOW_EMBEDDINGS, tw.EMBEDDING_DIM, dtype=torch.float32)

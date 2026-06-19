@@ -184,7 +184,7 @@ class OpenWakeWordFrontEnd:
     (head architecture, ONNX export shape) is importable without it.
     """
 
-    def __init__(self, mel_path: Path, emb_path: Path) -> None:
+    def __init__(self, mel_path: Path, emb_path: Path, *, mel_rescale: bool = True) -> None:
         import onnxruntime as ort  # noqa: PLC0415 - optional dep, only here
 
         opts = ort.SessionOptions()
@@ -192,14 +192,26 @@ class OpenWakeWordFrontEnd:
         opts.intra_op_num_threads = 1
         self.mel = ort.InferenceSession(str(mel_path), sess_options=opts, providers=["CPUExecutionProvider"])
         self.emb = ort.InferenceSession(str(emb_path), sess_options=opts, providers=["CPUExecutionProvider"])
+        # The head must be trained on the SAME embeddings it will see at
+        # inference. The wakeword-cpp C runtime
+        # (packages/native/plugins/wakeword-cpp/src/wakeword_runtime.c) feeds
+        # the raw log-mel straight into the embedding model — it does NOT apply
+        # openWakeWord's `mel/10 + 2` rescale (its parity test confirms the C
+        # path and a no-rescale ONNX reference agree). A head trained WITH the
+        # rescale therefore fails through that runtime. Set `mel_rescale=False`
+        # to featurize exactly as the deployed C runtime does (train/inference
+        # parity); keep `True` to match the upstream openWakeWord Python path.
+        self.mel_rescale = mel_rescale
 
     def embedding_windows(self, pcm: list[float]) -> list[list[list[float]]]:
         import numpy as np  # noqa: PLC0415
 
         audio = np.asarray(pcm, dtype=np.float32)[None, :]
         mel = self.mel.run(None, {self.mel.get_inputs()[0].name: audio})[0]
-        # openWakeWord rescales the melspectrogram before the embedding model.
-        mel = (mel.squeeze() / 10.0) + 2.0  # shape [n_frames, 32]
+        mel = mel.squeeze()  # shape [n_frames, 32]
+        if self.mel_rescale:
+            # openWakeWord rescales the melspectrogram before the embedding model.
+            mel = (mel / 10.0) + 2.0
         n_frames = mel.shape[0]
         embeds: list[np.ndarray] = []
         # Slide a 76-frame window with hop 8 (the runtime's EMBEDDING_HOP).
@@ -462,10 +474,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--tts-source", default="caller-staged WAVs (record the real source here)", help="TTS provenance note (e.g. 'piper en_US-* voices, MIT/CC0').")
+    ap.add_argument(
+        "--no-mel-rescale",
+        action="store_true",
+        help="Featurize WITHOUT openWakeWord's `mel/10 + 2` rescale — matches the "
+        "wakeword-cpp C runtime (which omits it), giving train/inference parity "
+        "for heads deployed through that runtime. Default applies the rescale "
+        "(upstream openWakeWord Python path).",
+    )
     args = ap.parse_args(argv)
 
     front_mel, front_emb = ensure_front_end_graphs(args.front_end_dir)
-    front_end = OpenWakeWordFrontEnd(front_mel, front_emb)
+    front_end = OpenWakeWordFrontEnd(front_mel, front_emb, mel_rescale=not args.no_mel_rescale)
 
     cache: dict[str, list] = {}
     if args.cache and args.cache.is_file():
