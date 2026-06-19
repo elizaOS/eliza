@@ -5,7 +5,7 @@
 
 import { Button, PagePanel, Spinner } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Check, Clock, Copy, RefreshCw, X } from "lucide-react";
+import { Check, Clock, Copy, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatWeiValue, getChainName, truncateAddress } from "./chain-utils";
 import type {
@@ -230,14 +230,6 @@ export function ApprovalQueue({
   const [rejectReason, setRejectReason] = useState("");
   const prevCountRef = useRef(0);
 
-  const refreshElement = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: "Refresh approvals",
-    group: "approval-actions",
-    description: "Reload the pending approval queue",
-  });
-
   const loadData = useCallback(async () => {
     try {
       const data = await getStewardPending();
@@ -395,30 +387,13 @@ export function ApprovalQueue({
       ) : null}
 
       {items.length > 0 ? (
-        <PagePanel.Toolbar className="justify-between">
+        <PagePanel.Toolbar>
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-txt">Pending</span>
             <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-accent px-1.5 py-0.5 text-2xs font-bold text-accent-fg">
               {items.length}
             </span>
           </div>
-          <Button
-            ref={refreshElement.ref}
-            {...refreshElement.agentProps}
-            variant="outline"
-            size="icon"
-            className="h-8 w-8 rounded-xl"
-            onClick={() => {
-              setLoading(true);
-              void loadData();
-            }}
-            disabled={loading}
-            aria-label="Refresh approvals"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-            />
-          </Button>
         </PagePanel.Toolbar>
       ) : null}
 

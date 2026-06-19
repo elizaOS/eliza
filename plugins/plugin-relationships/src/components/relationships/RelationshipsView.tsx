@@ -10,8 +10,9 @@
  * It joins the two payloads into a per-entity projection (each entity with its
  * outbound edges) at the fetch boundary, then renders display-only. The view
  * has four distinct states (loading, error, empty, populated) and instruments
- * its refresh + entity-kind filter controls through the agent surface so the
- * floating chat can drive them. The default fetcher builds its URL from
+ * its entity-kind filter controls through the agent surface so the floating
+ * chat can drive them. There is no manual refresh control: the graph stays
+ * fresh via a quiet background poll. The default fetcher builds its URL from
  * `client.getBaseUrl()`; tests inject the fetcher seam so they stay offline.
  *
  * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
@@ -106,6 +107,9 @@ const defaultFetchers: RelationshipsFetchers = {
   fetchEntities: getEntities,
   fetchRelationships: getRelationships,
 };
+
+/** Background poll cadence — the only way server-side graph edits reach this view. */
+const RELATIONSHIPS_POLL_INTERVAL_MS = 20_000;
 
 export interface RelationshipsViewProps {
   /** Owner display name. Accepted for host compatibility; not rendered. */
@@ -227,18 +231,6 @@ const RELATIONSHIPS_VIEW_CSS = `
 .relationships-view-btn-primary:hover {
   background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
   border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
-}
-.relationships-view-btn-neutral {
-  background: var(--surface, rgba(0, 0, 0, 0.04));
-  color: var(--foreground, #000);
-  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
-}
-.relationships-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #000) 8%, transparent);
-}
-.relationships-view-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 .relationships-view-chip {
   min-height: 44px;
@@ -385,59 +377,6 @@ const kindBadgeStyle: CSSProperties = {
 // Agent-instrumented controls (hooks cannot run inside .map()).
 // ---------------------------------------------------------------------------
 
-function RefreshButton({
-  onActivate,
-  disabled,
-}: {
-  onActivate: () => void;
-  disabled: boolean;
-}): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "relationships-refresh",
-    role: "button",
-    label: "Refresh relationships",
-    group: "relationships-toolbar",
-    description: "Reload the owner's entities and relationship edges",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="relationships-view-btn relationships-view-btn-neutral"
-      onClick={onActivate}
-      disabled={disabled}
-      aria-label="Refresh"
-      {...agentProps}
-    >
-      <RefreshIcon />
-    </button>
-  );
-}
-
-/** Inline refresh glyph (no icon-package dependency in this plugin). */
-function RefreshIcon(): ReactNode {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-      <path d="M3 21v-5h5" />
-    </svg>
-  );
-}
-
 function KindChip({
   kind,
   label,
@@ -475,18 +414,11 @@ function KindChip({
   );
 }
 
-function RelationshipsHeader({
-  refetch,
-  busy,
-}: {
-  refetch: () => void;
-  busy: boolean;
-}): ReactNode {
+function RelationshipsHeader(): ReactNode {
   return (
     <header style={sectionStyle}>
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Relationships</h1>
-        <RefreshButton onActivate={refetch} disabled={busy} />
       </div>
     </header>
   );
@@ -589,9 +521,13 @@ export function RelationshipsView(
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
 
-  const load = useCallback(() => {
+  // `quiet` poll refreshes update in place: they don't flip the view back to
+  // the loading state, and a transient poll failure is swallowed rather than
+  // replacing a populated graph with an error. The initial (non-quiet) load
+  // drives the full loading/error/ready state machine.
+  const load = useCallback((quiet = false) => {
     let cancelled = false;
-    setState({ kind: "loading" });
+    if (!quiet) setState({ kind: "loading" });
     Promise.all([
       fetchersRef.current.fetchEntities(),
       fetchersRef.current.fetchRelationships(),
@@ -607,7 +543,7 @@ export function RelationshipsView(
         });
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (cancelled || quiet) return;
         setState({
           kind: "error",
           message:
@@ -621,7 +557,22 @@ export function RelationshipsView(
     };
   }, []);
 
-  useEffect(() => load(), [load]);
+  // No manual refresh control: load once on mount, then keep the graph fresh
+  // with a quiet background poll. The view has no store subscription, so the
+  // poll is how server-side graph changes reach the UI.
+  useEffect(() => {
+    const cancelInitial = load();
+    const interval = setInterval(
+      () => load(true),
+      RELATIONSHIPS_POLL_INTERVAL_MS,
+    );
+    return () => {
+      cancelInitial();
+      clearInterval(interval);
+    };
+  }, [load]);
+
+  const retry = useCallback(() => load(), [load]);
 
   const toggleKind = useCallback((kind: EntityKindFilter) => {
     setActiveKinds((prev) => {
@@ -646,9 +597,11 @@ export function RelationshipsView(
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="relationships-loading">
-        <RelationshipsHeader refetch={load} busy={true} />
+        <RelationshipsHeader />
         <KindFilters active={activeKinds} onToggle={toggleKind} />
-        <div style={{ ...messageStyle, ...dimStyle }}>Loading relationships…</div>
+        <div style={{ ...messageStyle, ...dimStyle }}>
+          Loading relationships…
+        </div>
       </div>
     );
   }
@@ -656,7 +609,7 @@ export function RelationshipsView(
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="relationships-error">
-        <RelationshipsHeader refetch={load} busy={false} />
+        <RelationshipsHeader />
         <KindFilters active={activeKinds} onToggle={toggleKind} />
         <div style={messageStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load relationships</div>
@@ -665,7 +618,7 @@ export function RelationshipsView(
             <button
               type="button"
               className="relationships-view-btn relationships-view-btn-primary"
-              onClick={load}
+              onClick={retry}
               aria-label="Retry loading relationships"
             >
               Retry
@@ -681,7 +634,7 @@ export function RelationshipsView(
   if (state.nodes.length === 0) {
     return (
       <div style={containerStyle} data-testid="relationships-empty">
-        <RelationshipsHeader refetch={load} busy={false} />
+        <RelationshipsHeader />
         <div style={messageStyle}>
           <div style={{ fontWeight: 600 }}>No people or relationships yet</div>
           <div style={dimStyle}>
@@ -706,7 +659,7 @@ export function RelationshipsView(
 
   return (
     <div style={containerStyle} data-testid="relationships-populated">
-      <RelationshipsHeader refetch={load} busy={false} />
+      <RelationshipsHeader />
       <KindFilters active={activeKinds} onToggle={toggleKind} />
       {visibleNodes.length > 0 ? (
         <section

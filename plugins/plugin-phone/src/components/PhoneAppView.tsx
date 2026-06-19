@@ -32,7 +32,6 @@ import {
   PhoneIncoming,
   PhoneMissed,
   PhoneOutgoing,
-  RefreshCw,
   Users as UsersIcon,
   Voicemail,
 } from "lucide-react";
@@ -385,16 +384,19 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     }
   }, []);
 
-  // Lazy-load the recent-calls tab on first activation.
+  // Lazy-load the recent-calls tab on first activation, then keep it fresh with
+  // a quiet 20s poll while the tab is active (no manual Refresh control). The
+  // poll is torn down when the tab changes or the view unmounts.
   useEffect(() => {
-    if (
-      activeTab === "recent" &&
-      !recentAutoLoadedRef.current &&
-      !callsLoading
-    ) {
+    if (activeTab !== "recent") return;
+    if (!recentAutoLoadedRef.current && !callsLoading) {
       recentAutoLoadedRef.current = true;
       void refreshCalls();
     }
+    const interval = setInterval(() => {
+      void refreshCalls();
+    }, 20_000);
+    return () => clearInterval(interval);
   }, [activeTab, callsLoading, refreshCalls]);
 
   const appendDigit = useCallback((digit: string) => {
@@ -455,7 +457,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
   }, []);
 
   const backLabel = t("nav.back", { defaultValue: "Back" });
-  const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
   const callLabel = t("phone.dialer.call", { defaultValue: "Call" });
   const intlLabel = t("phone.dialer.intl", {
     defaultValue: "Insert + for international dialing",
@@ -479,13 +480,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     group: "phone-nav",
     description: "Open the Contacts app to browse the address book",
     onActivate: openContacts,
-  });
-  const refreshAgent = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: refreshLabel,
-    group: "phone-recent",
-    description: "Reload the recent calls list",
   });
   const plusAgent = useAgentElement<HTMLButtonElement>({
     id: "dial-plus",
@@ -515,16 +509,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     group: "phone-recent",
     description: "Switch to the Dialer tab from the empty recent-calls state",
     onActivate: () => setActiveTab("dialer"),
-  });
-  const emptyRefreshAgent = useAgentElement<HTMLButtonElement>({
-    id: "recent-empty-refresh",
-    role: "button",
-    label: refreshLabel,
-    group: "phone-recent",
-    description: "Reload the recent calls list from the empty state",
-    onActivate: () => {
-      void refreshCalls();
-    },
   });
 
   return (
@@ -558,22 +542,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {activeTab === "recent" ? (
-            <Button
-              ref={refreshAgent.ref}
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-xl text-muted hover:text-txt"
-              onClick={() => void refreshCalls()}
-              disabled={callsLoading}
-              aria-label={refreshLabel}
-              {...refreshAgent.agentProps}
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${callsLoading ? "animate-spin" : ""}`}
-              />
-            </Button>
-          ) : null}
           <Button
             ref={contactsNavAgent.ref}
             variant="ghost"
@@ -757,16 +725,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                       {...emptyDialerAgent.agentProps}
                     >
                       {t("phone.tabs.dialer", { defaultValue: "Dialer" })}
-                    </Button>
-                    <Button
-                      ref={emptyRefreshAgent.ref}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void refreshCalls()}
-                      {...emptyRefreshAgent.agentProps}
-                    >
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      {t("actions.refresh", { defaultValue: "Refresh" })}
                     </Button>
                   </div>
                 </div>

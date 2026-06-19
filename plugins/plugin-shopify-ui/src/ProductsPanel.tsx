@@ -1,14 +1,18 @@
-import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Skeleton } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
-  ChevronLeft,
-  ChevronRight,
-  Image,
-  Package,
-  Plus,
-  Search,
-} from "lucide-react";
-import { useState } from "react";
+  Button,
+  ChatSearchHint,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Skeleton,
+} from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { useRegisterViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
+import { ChevronLeft, ChevronRight, Image, Package, Plus } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { ShopifyProduct } from "./useShopifyDashboard";
 
 function ProductStatusBadge({ status }: { status: ShopifyProduct["status"] }) {
@@ -329,13 +333,21 @@ export function ProductsPanel({
   const [createOpen, setCreateOpen] = useState(false);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const searchInput = useAgentElement<HTMLInputElement>({
-    id: "input-product-search",
-    role: "text-input",
-    label: "Search products",
-    group: "products",
-    description: "Filter the product list by name",
-  });
+  // The floating chat composer is this panel's product search: while the
+  // products tab is open it takes over the composer placeholder and feeds the
+  // live draft into the server query (?q=). Reset to page 1 on each new query.
+  const chatBinding = useMemo(
+    () => ({
+      placeholder: "Search products by name…",
+      onQuery: (q: string) => {
+        onSearchChange(q);
+        onPageChange(1);
+      },
+    }),
+    [onSearchChange, onPageChange],
+  );
+  useRegisterViewChatBinding(chatBinding);
+
   const createButton = useAgentElement<HTMLButtonElement>({
     id: "action-create-product",
     role: "button",
@@ -362,21 +374,8 @@ export function ProductsPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted/60" />
-          <Input
-            ref={searchInput.ref}
-            placeholder="Search products…"
-            value={search}
-            onChange={(e) => {
-              onSearchChange(e.target.value);
-              onPageChange(1);
-            }}
-            className="pl-8"
-            {...searchInput.agentProps}
-          />
-        </div>
+      <div className="flex items-center justify-between gap-2">
+        <ChatSearchHint noun="products" query={search} />
         <Button
           ref={createButton.ref}
           type="button"

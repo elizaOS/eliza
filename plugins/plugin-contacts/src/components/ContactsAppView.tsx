@@ -32,8 +32,6 @@ import {
   MessageSquareText,
   Phone,
   Plus,
-  RefreshCw,
-  Search,
   Star,
   Upload,
 } from "lucide-react";
@@ -48,7 +46,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { loadContactsState, matchesQuery } from "./ContactsAppView.helpers";
+import { loadContactsState } from "./ContactsAppView.helpers";
 
 type Mode = "list" | "detail" | "new";
 
@@ -91,7 +89,6 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
   const [contacts, setContacts] = useState<ContactSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
   const [mode, setMode] = useState<Mode>("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<NewContactForm>(EMPTY_FORM);
@@ -130,15 +127,14 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
     }
   }, []);
 
+  // The native bridge has no change subscription, so keep the list fresh with a
+  // quiet background poll (no user-facing Refresh control). Create/import still
+  // re-load eagerly via `refresh()`.
   useEffect(() => {
     void refresh();
+    const interval = setInterval(() => void refresh(), 20000);
+    return () => clearInterval(interval);
   }, [refresh]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim();
-    if (q.length === 0) return contacts;
-    return contacts.filter((c) => matchesQuery(c, q));
-  }, [contacts, query]);
 
   const selected = useMemo(
     () => contacts.find((c) => c.id === selectedId) ?? null,
@@ -227,14 +223,6 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
         ? "Leave the contacts app"
         : "Return to the contacts list",
   });
-  const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
-  const refreshEl = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: refreshLabel,
-    group: "contacts-actions",
-    description: "Reload the contacts list",
-  });
   const newLabel = t("contacts.new", { defaultValue: "New contact" });
   const newEl = useAgentElement<HTMLButtonElement>({
     id: "action-new",
@@ -242,16 +230,6 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
     label: newLabel,
     group: "contacts-actions",
     description: "Open the new contact form",
-  });
-  const searchLabel = t("contacts.search", {
-    defaultValue: "Search contacts",
-  });
-  const searchEl = useAgentElement<HTMLInputElement>({
-    id: "input-search",
-    role: "text-input",
-    label: searchLabel,
-    group: "contacts-actions",
-    description: "Filter contacts by name, phone, or email",
   });
 
   return (
@@ -294,56 +272,30 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
 
         {mode === "list" && (
-          <div className="flex items-center gap-2">
-            <Button
-              ref={refreshEl.ref}
-              {...refreshEl.agentProps}
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-xl text-muted hover:text-txt"
-              onClick={refresh}
-              disabled={loading}
-              aria-label={refreshLabel}
-              data-testid="contacts-refresh"
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-              />
-            </Button>
-            <Button
-              ref={newEl.ref}
-              {...newEl.agentProps}
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-xl text-muted hover:text-txt"
-              onClick={handleOpenNew}
-              aria-label={newLabel}
-              data-testid="contacts-new"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
+          <Button
+            ref={newEl.ref}
+            {...newEl.agentProps}
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 rounded-xl text-muted hover:text-txt"
+            onClick={handleOpenNew}
+            aria-label={newLabel}
+            data-testid="contacts-new"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         )}
       </header>
 
       {mode === "list" && (
-        <div className="shrink-0 px-4 py-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            <Input
-              ref={searchEl.ref}
-              {...searchEl.agentProps}
-              value={query}
-              onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                setQuery(e.target.value)
-              }
-              placeholder={searchLabel}
-              className="pl-9"
-              aria-label={searchLabel}
-              data-testid="contacts-search"
-            />
-          </div>
-        </div>
+        <p
+          data-testid="contacts-search-hint"
+          className="shrink-0 px-4 py-2 text-[13px] leading-relaxed text-txt/60"
+        >
+          {t("contacts.searchHint", {
+            defaultValue: "Search contacts by typing in the chat.",
+          })}
+        </p>
       )}
 
       <div className="chat-native-scrollbar flex-1 overflow-y-auto">
@@ -358,7 +310,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
 
         {mode === "list" && (
           <ContactList
-            contacts={filtered}
+            contacts={contacts}
             loading={loading && contacts.length === 0}
             empty={!loading && contacts.length === 0}
             onSelect={handleSelect}
@@ -430,16 +382,6 @@ function ContactList({
           })}
         </p>
         <ImportVCardButton onImport={onImport} t={t} />
-      </div>
-    );
-  }
-
-  if (contacts.length === 0) {
-    return (
-      <div className="px-4 py-10 text-center text-sm text-muted">
-        {t("contacts.noMatches", {
-          defaultValue: "No contacts match your search.",
-        })}
       </div>
     );
   }

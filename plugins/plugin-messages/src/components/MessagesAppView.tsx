@@ -12,7 +12,6 @@ import {
   ChevronLeft,
   MessageSquareText,
   Plus,
-  RefreshCw,
   Send,
   ShieldCheck,
 } from "lucide-react";
@@ -303,8 +302,13 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
     }
   }, []);
 
+  // Load on mount, then quietly poll so newly received SMS surface without a
+  // manual control. The bridge has no push channel, so a 20s interval keeps the
+  // thread list fresh; it is cleared on unmount.
   useEffect(() => {
     void refresh();
+    const interval = setInterval(() => void refresh(), 20000);
+    return () => clearInterval(interval);
   }, [refresh]);
 
   // Seed the composer from a cross-view handoff (e.g. a Contacts "Message"
@@ -412,13 +416,6 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
       ? "Return from the composer to the thread list"
       : "Leave Messages and return to the apps grid",
   });
-  const refreshAgent = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: t("actions.refresh", { defaultValue: "Refresh" }),
-    group: "messages-header",
-    description: "Reload SMS threads and system status",
-  });
   const newMessage = useAgentElement<HTMLButtonElement>({
     id: "action-new-message",
     role: "button",
@@ -502,19 +499,6 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button
-            ref={refreshAgent.ref}
-            {...refreshAgent.agentProps}
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 rounded-lg text-muted hover:text-txt"
-            onClick={() => void refresh()}
-            disabled={loading}
-            aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
-            data-testid="messages-refresh"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
           <Button
             ref={newMessage.ref}
             {...newMessage.agentProps}

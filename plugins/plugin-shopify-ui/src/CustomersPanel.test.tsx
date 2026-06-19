@@ -1,20 +1,36 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/ui", () => ({
-  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
-    React.createElement("input", props),
   Skeleton: (props: React.HTMLAttributes<HTMLDivElement>) =>
     React.createElement("div", { ...props, "data-skeleton": true }),
+  // The customer search box moved to the floating chat; the panel renders a
+  // query-aware hint. Render the active/resting copy so tests can assert it.
+  ChatSearchHint: ({ noun, query }: { noun: string; query?: string }) =>
+    React.createElement(
+      "p",
+      { "data-testid": "chat-search-hint" },
+      query?.trim()
+        ? `Showing ${noun} for “${query.trim()}”`
+        : `Search ${noun} by typing in the chat.`,
+    ),
   // formatShortDate is rendered verbatim so we can assert on a stable value.
   formatShortDate: (iso: string) => `date:${iso}`,
 }));
 
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+// Capture the registered chat binding so the search-moved-to-chat behaviour can
+// be exercised without an in-view input.
+let lastChatBinding: {
+  placeholder?: string;
+  onQuery?: (q: string) => void;
+} | null = null;
+vi.mock("@elizaos/ui/state/view-chat-binding", () => ({
+  useRegisterViewChatBinding: (binding: typeof lastChatBinding) => {
+    lastChatBinding = binding;
+  },
 }));
 
 import { CustomersPanel } from "./CustomersPanel";
@@ -47,6 +63,7 @@ const customers: ShopifyCustomer[] = [
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  lastChatBinding = null;
 });
 
 describe("CustomersPanel", () => {
@@ -133,7 +150,7 @@ describe("CustomersPanel", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("invokes onSearchChange when the search input changes", () => {
+  it("registers a chat-search binding that forwards the query (no in-view input)", () => {
     const onSearchChange = vi.fn();
     render(
       React.createElement(CustomersPanel, {
@@ -145,10 +162,33 @@ describe("CustomersPanel", () => {
         onSearchChange,
       }),
     );
-    const input = screen.getByPlaceholderText(
+    // No in-view search box — the floating chat is the panel's search bar.
+    expect(
+      screen.queryByPlaceholderText("Search customers by name or email…"),
+    ).toBeNull();
+    expect(
+      screen.getByText("Search customers by typing in the chat."),
+    ).toBeTruthy();
+
+    // Drive the binding the chat composer would feed us.
+    expect(lastChatBinding?.placeholder).toBe(
       "Search customers by name or email…",
     );
-    fireEvent.change(input, { target: { value: "Grace" } });
+    lastChatBinding?.onQuery?.("Grace");
     expect(onSearchChange).toHaveBeenCalledWith("Grace");
+  });
+
+  it("confirms the active query in the chat-search hint", () => {
+    render(
+      React.createElement(CustomersPanel, {
+        customers,
+        total: 2,
+        loading: false,
+        error: null,
+        search: "Grace",
+        onSearchChange: vi.fn(),
+      }),
+    );
+    expect(screen.getByText("Showing customers for “Grace”")).toBeTruthy();
   });
 });

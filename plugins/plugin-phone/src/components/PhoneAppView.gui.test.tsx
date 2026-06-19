@@ -223,24 +223,33 @@ describe("PhoneAppView — recent tab", () => {
     );
   });
 
-  it("re-fetches when the header Refresh button is pressed", async () => {
-    render(React.createElement(PhoneAppView, overlayContext()));
-    fireEvent.click(screen.getByRole("tab", { name: "Recent" }));
-    await screen.findByText("Ada Lovelace");
-    expect(phoneBridge.listRecentCalls).toHaveBeenCalledTimes(1);
+  it("polls the call log on an interval while the Recent tab is active", async () => {
+    vi.useFakeTimers();
+    try {
+      render(React.createElement(PhoneAppView, overlayContext()));
+      fireEvent.click(screen.getByRole("tab", { name: "Recent" }));
+      // Flush the lazy first load.
+      await vi.waitFor(() =>
+        expect(phoneBridge.listRecentCalls).toHaveBeenCalledTimes(1),
+      );
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    await waitFor(() =>
-      expect(phoneBridge.listRecentCalls).toHaveBeenCalledTimes(2),
-    );
+      // The quiet 20s poll re-fetches without any manual Refresh control.
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(phoneBridge.listRecentCalls).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(phoneBridge.listRecentCalls).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("shows the empty state with Dialer + Refresh actions and switches tabs", async () => {
+  it("shows the empty state with a Dialer action and switches tabs", async () => {
     phoneBridge.listRecentCalls.mockResolvedValue({ calls: [] });
     render(React.createElement(PhoneAppView, overlayContext()));
     fireEvent.click(screen.getByRole("tab", { name: "Recent" }));
 
-    // Empty-state body carries its own non-tab "Dialer" + "Refresh" actions.
+    // Empty-state body carries its own non-tab "Dialer" action (the manual
+    // Refresh control was removed — recent calls stay fresh via the poll).
     // Retry the locate+click through the re-fetch flicker until the dialer
     // pane (placeholder) reappears, proving the empty Dialer button switches
     // the active tab.
@@ -254,14 +263,6 @@ describe("PhoneAppView — recent tab", () => {
             b.textContent?.trim() === "Dialer",
         ) as HTMLButtonElement | undefined;
         expect(emptyDialer).toBeTruthy();
-        const emptyRefresh = Array.from(
-          document.querySelectorAll("button"),
-        ).find(
-          (b) =>
-            b.getAttribute("role") !== "tab" &&
-            b.textContent?.trim() === "Refresh",
-        ) as HTMLButtonElement | undefined;
-        expect(emptyRefresh).toBeTruthy();
         fireEvent.click(emptyDialer as HTMLButtonElement);
       },
       { timeout: 3000 },
@@ -313,13 +314,12 @@ describe("PhoneAppView — header", () => {
     expect(exit).toHaveBeenCalledTimes(1);
   });
 
-  it("only shows the header Refresh control on the Recent tab", async () => {
+  it("exposes no manual Refresh control on either tab", async () => {
     render(React.createElement(PhoneAppView, overlayContext()));
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Recent" }));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy(),
-    );
+    await screen.findByText("Ada Lovelace");
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
   });
 });
 

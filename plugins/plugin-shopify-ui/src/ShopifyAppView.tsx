@@ -17,7 +17,6 @@ import {
   KeyRound,
   type LucideIcon,
   Package,
-  RefreshCw,
   ShoppingBag,
   ShoppingCart,
   Store,
@@ -402,7 +401,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
     setCustomerSearch,
 
     counts,
-    refresh,
   } = useShopifyDashboard();
 
   const connected = status?.connected ?? false;
@@ -420,13 +418,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
     label: "Back to apps",
     group: "header",
     description: "Exit the Shopify dashboard and return to the apps grid",
-  });
-  const refreshButton = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: "Refresh",
-    group: "header",
-    description: "Reload Shopify status and dashboard data",
   });
   const viewAllOrdersButton = useAgentElement<HTMLButtonElement>({
     id: "overview-view-all-orders",
@@ -487,22 +478,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
           loading={statusLoading}
           domain={shop?.domain}
         />
-
-        <Button
-          ref={refreshButton.ref}
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          onClick={refresh}
-          aria-label="Refresh"
-          disabled={statusLoading}
-          {...refreshButton.agentProps}
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${statusLoading ? "animate-spin" : ""}`}
-          />
-        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(7rem+var(--safe-area-bottom,0px))]">

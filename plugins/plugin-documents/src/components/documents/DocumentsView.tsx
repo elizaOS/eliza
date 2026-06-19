@@ -7,8 +7,9 @@
  *   GET {base}/api/documents/search?q=        (semantic/keyword search)
  *
  * It renders one of four distinct states (loading, error, empty, populated) and
- * instruments its refresh button + search input through the agent surface so the
- * floating chat can drive them.
+ * instruments its search input through the agent surface so the floating chat can
+ * drive it. The list refreshes itself on a quiet 20s poll — no manual Refresh
+ * button (minimal/chat-forward redesign).
  *
  * The default fetchers build URLs from `client.getBaseUrl()`; tests inject the
  * fetcher seam so they stay offline. The view renders the real `PresentedDocument`
@@ -21,7 +22,6 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PresentedDocument } from "../../document-presenter.js";
@@ -85,6 +85,9 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 const DEFAULT_LIST_LIMIT = 100;
+
+/** Background-poll cadence that keeps the list fresh without a Refresh button. */
+const DOCUMENTS_POLL_MS = 20_000;
 
 const defaultFetchers: DocumentsFetchers = {
   fetchDocuments: () =>
@@ -312,36 +315,6 @@ const listStyle: CSSProperties = {
 // Agent-instrumented controls (hooks cannot run inside .map()).
 // ---------------------------------------------------------------------------
 
-function RefreshButton({
-  onActivate,
-  disabled,
-}: {
-  onActivate: () => void;
-  disabled: boolean;
-}): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "documents-refresh",
-    role: "button",
-    label: "Refresh documents",
-    group: "documents-toolbar",
-    description: "Reload the document list and counts",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="documents-view-btn documents-view-btn-neutral"
-      onClick={onActivate}
-      disabled={disabled}
-      aria-label="Refresh"
-      {...agentProps}
-    >
-      <RefreshCw className="h-4 w-4" aria-hidden />
-    </button>
-  );
-}
-
 function SearchInput({
   value,
   onChange,
@@ -383,18 +356,11 @@ function SearchInput({
   );
 }
 
-function DocumentsHeader({
-  refetch,
-  busy,
-}: {
-  refetch: () => void;
-  busy: boolean;
-}): ReactNode {
+function DocumentsHeader(): ReactNode {
   return (
     <header style={sectionStyle}>
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Documents</h1>
-        <RefreshButton onActivate={refetch} disabled={busy} />
       </div>
     </header>
   );
@@ -523,10 +489,16 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
 
-  const load = useCallback(() => {
+  // `silent` is the background-poll path: refresh the data in place without
+  // flashing the loading state, clearing the user's search, or surfacing a
+  // transient poll failure over an already-populated list.
+  const load = useCallback((options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
     let cancelled = false;
-    setState({ kind: "loading" });
-    setSearch({ kind: "idle" });
+    if (!silent) {
+      setState({ kind: "loading" });
+      setSearch({ kind: "idle" });
+    }
     Promise.all([
       fetchersRef.current.fetchDocuments(),
       fetchersRef.current.fetchStats(),
@@ -544,7 +516,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
         });
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (cancelled || silent) return;
         setState({
           kind: "error",
           message:
@@ -558,7 +530,16 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
     };
   }, []);
 
-  useEffect(() => load(), [load]);
+  // Load on mount, then keep the list fresh with a quiet 20s poll (no manual
+  // Refresh button). The poll reuses the existing load fn; cleared on unmount.
+  useEffect(() => {
+    const cancelInitial = load();
+    const timer = setInterval(() => load({ silent: true }), DOCUMENTS_POLL_MS);
+    return () => {
+      cancelInitial();
+      clearInterval(timer);
+    };
+  }, [load]);
 
   const runSearch = useCallback(() => {
     const trimmed = query.trim();
@@ -588,7 +569,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="documents-loading">
-        <DocumentsHeader refetch={load} busy={true} />
+        <DocumentsHeader />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading documents…</div>
       </div>
     );
@@ -597,7 +578,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="documents-error">
-        <DocumentsHeader refetch={load} busy={false} />
+        <DocumentsHeader />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load documents</div>
           <div style={dimStyle}>{state.message}</div>
@@ -605,7 +586,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
             <button
               type="button"
               className="documents-view-btn documents-view-btn-primary"
-              onClick={load}
+              onClick={() => load()}
               aria-label="Retry loading documents"
             >
               Retry
@@ -622,7 +603,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
   if (documents.length === 0) {
     return (
       <div style={containerStyle} data-testid="documents-empty">
-        <DocumentsHeader refetch={load} busy={false} />
+        <DocumentsHeader />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>No documents yet</div>
           <div style={dimStyle}>
@@ -636,7 +617,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
 
   return (
     <div style={containerStyle} data-testid="documents-populated">
-      <DocumentsHeader refetch={load} busy={false} />
+      <DocumentsHeader />
       <div style={statsRowStyle} data-testid="documents-stats">
         <span>
           {documentCount} document{documentCount === 1 ? "" : "s"}

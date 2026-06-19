@@ -25,7 +25,6 @@ import {
   Image as ImageIcon,
   Layers3,
   type LucideIcon,
-  RefreshCw,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -66,6 +65,7 @@ const SUPPORTED_WALLET_CHAINS = Object.keys(ALL_INVENTORY_FILTERS);
 
 const DASHBOARD_WINDOWS: DashboardWindow[] = ["24h", "7d", "30d"];
 const HIDDEN_TOKEN_IDS_KEY = "eliza:wallet:hidden-token-ids:v1";
+const WALLET_REFRESH_INTERVAL_MS = 20_000;
 interface InventoryPositionAsset {
   id: string;
   kind: "token" | "nft";
@@ -1375,25 +1375,12 @@ function WalletRailAccount({
   portfolioValueUsd,
   walletConfig,
   onOpenSettings,
-  onRefresh,
-  refreshing,
 }: {
   addresses: { evmAddress: string | null; solanaAddress: string | null };
   portfolioValueUsd: number;
   walletConfig: WalletConfigStatus | null;
   onOpenSettings: () => void;
-  onRefresh: () => void;
-  refreshing: boolean;
 }) {
-  const { ref: refreshRef, agentProps: refreshAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "account-refresh",
-      role: "button",
-      label: "Refresh wallet",
-      group: "wallet-account",
-      status: refreshing ? "active" : undefined,
-      description: "Reload wallet balances, NFTs, and trading data",
-    });
   const evmReady = Boolean(walletConfig?.evmBalanceReady);
   const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
   return (
@@ -1419,22 +1406,6 @@ function WalletRailAccount({
             walletConfig={walletConfig}
             onOpenSettings={onOpenSettings}
           />
-          <Button
-            ref={refreshRef}
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0 rounded-full text-muted hover:bg-bg/55 hover:text-txt"
-            onClick={onRefresh}
-            disabled={refreshing}
-            aria-label="Refresh wallet"
-            title="Refresh wallet"
-            {...refreshAgentProps}
-          >
-            <RefreshCw
-              className={cn("h-3.5 w-3.5", refreshing && "animate-spin")}
-            />
-          </Button>
         </div>
       </div>
       <WalletAddressCluster addresses={addresses} />
@@ -1658,8 +1629,6 @@ function WalletHoldingsSection({
   profile,
   onHideToken,
   onOpenRpcSettings,
-  onRefresh,
-  refreshing,
   walletEnabled,
   onEnableWallet,
 }: {
@@ -1672,8 +1641,6 @@ function WalletHoldingsSection({
   profile: WalletTradingProfileResponse | null;
   onHideToken: (row: TokenRow) => void;
   onOpenRpcSettings: () => void;
-  onRefresh: () => void;
-  refreshing: boolean;
   walletEnabled: boolean | null;
   onEnableWallet: () => void;
 }) {
@@ -1728,8 +1695,6 @@ function WalletHoldingsSection({
         portfolioValueUsd={totalUsd}
         walletConfig={walletConfig}
         onOpenSettings={onOpenRpcSettings}
-        onRefresh={onRefresh}
-        refreshing={refreshing}
       />
       <div className="mt-4 space-y-4">
         {visibleRows.length > 0 ? (
@@ -2117,6 +2082,27 @@ export function InventoryView() {
     void loadTradingProfile();
   }, [loadTradingProfile]);
 
+  // No manual refresh control: keep balances, NFTs, trading profile, and
+  // market data fresh with a quiet background poll while the view is mounted.
+  useEffect(() => {
+    if (walletEnabled === false) return;
+    const interval = window.setInterval(() => {
+      void loadWalletConfig();
+      void loadBalances();
+      void loadNfts();
+      void loadTradingProfile();
+      void loadMarketOverview();
+    }, WALLET_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [
+    loadBalances,
+    loadMarketOverview,
+    loadNfts,
+    loadTradingProfile,
+    loadWalletConfig,
+    walletEnabled,
+  ]);
+
   const inventoryData = useInventoryData({
     walletBalances,
     walletAddresses,
@@ -2175,20 +2161,6 @@ export function InventoryView() {
     [hiddenTokenIds, setActionNotice],
   );
 
-  const handleRefresh = useCallback(() => {
-    void loadWalletConfig();
-    void loadBalances();
-    void loadNfts();
-    void loadTradingProfile();
-    void loadMarketOverview();
-  }, [
-    loadBalances,
-    loadMarketOverview,
-    loadNfts,
-    loadTradingProfile,
-    loadWalletConfig,
-  ]);
-
   const handleOpenRpcSettings = useCallback(() => {
     setTab("settings");
     if (typeof window !== "undefined") {
@@ -2225,13 +2197,6 @@ export function InventoryView() {
           profile={tradingProfile}
           onHideToken={handleHideToken}
           onOpenRpcSettings={handleOpenRpcSettings}
-          onRefresh={handleRefresh}
-          refreshing={
-            walletLoading ||
-            walletNftsLoading ||
-            tradingProfileLoading ||
-            marketOverviewLoading
-          }
           walletEnabled={walletEnabled}
           onEnableWallet={handleEnableWallet}
         />

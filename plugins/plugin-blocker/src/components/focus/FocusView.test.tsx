@@ -111,10 +111,8 @@ describe("FocusView (fetch-driven)", () => {
 
     expect(screen.getByTestId("focus-loading")).toBeTruthy();
     expect(screen.getByText(/Loading focus status/i)).toBeTruthy();
-    // Header refresh control is always present.
-    expect(
-      screen.getByRole("button", { name: "Refresh focus status" }),
-    ).toBeTruthy();
+    // No manual Refresh control: freshness comes from the background poll.
+    expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
   });
 
   it("renders the error state and refetches when Retry is clicked", async () => {
@@ -235,17 +233,27 @@ describe("FocusView (fetch-driven)", () => {
     expect(fetchStatus).toHaveBeenCalledTimes(2);
   });
 
-  it("refetches when the header Refresh control is clicked", async () => {
-    const fetchStatus = vi.fn(async () => EMPTY_STATUS);
-    render(<FocusView fetchStatus={fetchStatus} />);
+  it("quietly refetches on the background poll (no Refresh button)", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchStatus = vi.fn(async () => EMPTY_STATUS);
+      render(<FocusView fetchStatus={fetchStatus} />);
 
-    await screen.findByTestId("focus-empty");
-    expect(fetchStatus).toHaveBeenCalledTimes(1);
+      // Initial load settles, then a quiet-refresh timer is armed.
+      await vi.waitFor(() =>
+        expect(screen.getByTestId("focus-empty")).toBeTruthy(),
+      );
+      expect(fetchStatus).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Refresh focus status" }),
-    );
-    await waitFor(() => expect(fetchStatus).toHaveBeenCalledTimes(2));
+      // No manual Refresh control exists anymore.
+      expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
+
+      // Advancing past the 15s settle-chained poll triggers a refetch.
+      await vi.advanceTimersByTimeAsync(15000);
+      expect(fetchStatus).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

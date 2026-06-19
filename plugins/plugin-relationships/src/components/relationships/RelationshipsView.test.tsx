@@ -7,10 +7,11 @@
  *   GET {base}/api/lifeops/relationships   -> { relationships: RelationshipWire[] }
  *
  * These tests cover the four-state machine (loading / error / empty / populated)
- * plus the retry, refresh, add-someone, and kind-filter affordances. The fetcher
- * seam is injected so the suite stays offline; `@elizaos/ui` and
- * `@elizaos/ui/agent-surface` are mocked so the instrumented controls render
- * outside a provider.
+ * plus the retry, add-someone, background-poll, and kind-filter affordances.
+ * There is no manual refresh control — the graph stays fresh via a quiet
+ * background poll. The fetcher seam is injected so the suite stays offline;
+ * `@elizaos/ui` and `@elizaos/ui/agent-surface` are mocked so the instrumented
+ * controls render outside a provider.
  *
  * The wire fixtures mirror the PA route DTOs field-for-field (Entity /
  * Relationship from plugin-personal-assistant/src/lifeops/{entities,relationships}/types.ts):
@@ -244,7 +245,7 @@ describe("RelationshipsView", () => {
     expect(screen.getByText(/relationships down/i)).toBeTruthy();
   });
 
-  it("refetches when the header refresh control is activated", async () => {
+  it("re-fetches the graph on the background poll interval (no manual refresh control)", async () => {
     let entityCalls = 0;
     let relationshipCalls = 0;
     const fetchers = makeFetchers({
@@ -257,13 +258,34 @@ describe("RelationshipsView", () => {
         return { relationships: [] };
       },
     });
-    render(<RelationshipsView fetchers={fetchers} />);
-    await screen.findByTestId("relationships-populated");
-    expect(entityCalls).toBe(1);
-    expect(relationshipCalls).toBe(1);
-    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
-    await waitFor(() => expect(entityCalls).toBe(2));
-    expect(relationshipCalls).toBe(2);
+
+    // Fake timers must be installed before render so the view's setInterval is
+    // scheduled on the fake clock. We flush async work by advancing the timers
+    // (which also drains the resolved-promise microtask queue) rather than the
+    // RTL `findBy*` helpers, which poll on real timers and would deadlock here.
+    vi.useFakeTimers();
+    try {
+      render(<RelationshipsView fetchers={fetchers} />);
+      // Flush the initial fetch's Promise.all + .then chain + React re-render.
+      // Two small advances drain the queued microtasks without tripping the poll.
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(screen.getByTestId("relationships-populated")).toBeTruthy();
+      expect(entityCalls).toBe(1);
+      expect(relationshipCalls).toBe(1);
+
+      // The slop refresh button is gone (reload moved to the chat). The only
+      // self-refresh is the quiet 20s background poll, which re-runs the same
+      // loader in place without flashing the loading state.
+      expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(entityCalls).toBe(2);
+      expect(relationshipCalls).toBe(2);
+      expect(screen.getByTestId("relationships-populated")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("narrows the visible entity cards when a kind filter chip is toggled", async () => {

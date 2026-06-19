@@ -4,7 +4,7 @@
 
 import { Button, PagePanel, Spinner, StatusBadge, statusLabelForState, statusToneForState } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Copy, ExternalLink, RefreshCw } from "lucide-react";
+import { Copy, ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   formatWeiValue,
@@ -33,6 +33,8 @@ interface TransactionHistoryProps {
   ) => void;
   embedded?: boolean;
 }
+
+const POLL_INTERVAL_MS = 20_000;
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "", label: "All Statuses" },
@@ -159,13 +161,6 @@ export function TransactionHistory({
       setPage(0);
     },
   });
-  const refreshElement = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: "Refresh transactions",
-    group: "history-actions",
-    description: "Reload the transaction history",
-  });
   const prevPageElement = useAgentElement<HTMLButtonElement>({
     id: "page-previous",
     role: "button",
@@ -204,6 +199,8 @@ export function TransactionHistory({
 
   useEffect(() => {
     void loadData();
+    const interval = setInterval(() => void loadData(), POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [loadData]);
 
   // Client-side chain filter + sort
@@ -307,21 +304,6 @@ export function TransactionHistory({
                 </option>
               ))}
             </select>
-
-            <Button
-              ref={refreshElement.ref}
-              {...refreshElement.agentProps}
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 rounded-xl"
-              onClick={() => void loadData()}
-              disabled={loading}
-              aria-label="Refresh transactions"
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-              />
-            </Button>
 
             <span className="ml-auto text-xs text-muted">
               {filtered.length} transaction{filtered.length !== 1 ? "s" : ""}

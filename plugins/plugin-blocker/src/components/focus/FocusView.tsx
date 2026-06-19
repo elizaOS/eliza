@@ -12,7 +12,6 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SelfControlStatus } from "../../services/website-blocker/index.ts";
@@ -215,36 +214,6 @@ function StatusDot({ tone }: { tone: StatusTone }): ReactNode {
 // Agent-instrumented control buttons (hooks cannot run inside .map()).
 // ---------------------------------------------------------------------------
 
-function RefreshButton({
-  onActivate,
-  disabled,
-}: {
-  onActivate: () => void;
-  disabled: boolean;
-}): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "focus-refresh",
-    role: "button",
-    label: "Refresh focus status",
-    group: "focus-toolbar",
-    description: "Reload website blocking status",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="focus-view-btn focus-view-btn-neutral"
-      onClick={onActivate}
-      disabled={disabled}
-      aria-label="Refresh focus status"
-      {...agentProps}
-    >
-      <RefreshCw className="h-4 w-4" aria-hidden />
-    </button>
-  );
-}
-
 function ReleaseButton({
   onActivate,
   disabled,
@@ -371,22 +340,11 @@ function formatTime(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-function FocusHeader({
-  refetch,
-  busy,
-  tone,
-}: {
-  refetch: () => void;
-  busy: boolean;
-  tone: StatusTone;
-}): ReactNode {
+function FocusHeader({ tone }: { tone: StatusTone }): ReactNode {
   return (
-    <header style={headerRowStyle}>
-      <div style={titleRowStyle}>
-        <StatusDot tone={tone} />
-        <h1 style={h1Style}>Focus</h1>
-      </div>
-      <RefreshButton onActivate={refetch} disabled={busy} />
+    <header style={titleRowStyle}>
+      <StatusDot tone={tone} />
+      <h1 style={h1Style}>Focus</h1>
     </header>
   );
 }
@@ -467,7 +425,7 @@ export function FocusView({
           })
           .catch(() => {
             // Keep the last good state on a transient failure; the next tick
-            // (or an explicit Refresh) re-attempts.
+            // re-attempts.
           })
           .finally(scheduleQuietRefresh);
       }, 15000);
@@ -488,7 +446,7 @@ export function FocusView({
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="focus-loading">
-        <FocusHeader refetch={load} busy={true} tone="idle" />
+        <FocusHeader tone="idle" />
         <div style={dimStyle}>Loading focus status…</div>
       </div>
     );
@@ -497,7 +455,7 @@ export function FocusView({
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="focus-error">
-        <FocusHeader refetch={load} busy={false} tone="error" />
+        <FocusHeader tone="error" />
         <div style={sectionStyle}>
           <div style={dimStyle}>
             Couldn’t load focus status — <span>{state.message}</span>
@@ -523,7 +481,7 @@ export function FocusView({
   if (!status.available) {
     return (
       <div style={containerStyle} data-testid="focus-unavailable">
-        <FocusHeader refetch={load} busy={false} tone="idle" />
+        <FocusHeader tone="idle" />
         <div style={sectionStyle}>
           <div style={{ fontWeight: 600 }}>Focus blocking is unavailable</div>
           <div style={dimStyle}>
@@ -540,7 +498,7 @@ export function FocusView({
   if (status.requiresElevation && !status.active) {
     return (
       <div style={containerStyle} data-testid="focus-permission">
-        <FocusHeader refetch={load} busy={false} tone="permission" />
+        <FocusHeader tone="permission" />
         <div style={sectionStyle}>
           <div style={{ fontWeight: 600 }}>Permission needed</div>
           <div style={dimStyle}>
@@ -570,7 +528,7 @@ export function FocusView({
   if (status.active) {
     return (
       <div style={containerStyle} data-testid="focus-active">
-        <FocusHeader refetch={load} busy={false} tone="active" />
+        <FocusHeader tone="active" />
         <section style={sectionStyle}>
           <div style={{ ...sectionStyle, gap: 8 }}>
             <div style={headerRowStyle}>
@@ -614,10 +572,12 @@ export function FocusView({
   // Available, not active, nothing blocked.
   return (
     <div style={containerStyle} data-testid="focus-empty">
-      <FocusHeader refetch={load} busy={false} tone="idle" />
+      <FocusHeader tone="idle" />
       <div style={sectionStyle}>
         <div style={dimStyle}>No active focus session.</div>
-        <div style={dimStyle}>Say “block distractions for 1 hour” to start one.</div>
+        <div style={dimStyle}>
+          Say “block distractions for 1 hour” to start one.
+        </div>
       </div>
     </div>
   );

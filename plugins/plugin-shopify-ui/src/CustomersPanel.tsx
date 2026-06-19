@@ -1,12 +1,12 @@
-import { formatShortDate, Input, Skeleton } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { ChatSearchHint, formatShortDate, Skeleton } from "@elizaos/ui";
+import { useRegisterViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
 import {
   CalendarDays,
   CircleDollarSign,
-  Search,
   ShoppingCart,
   Users,
 } from "lucide-react";
+import { useMemo } from "react";
 import type { ShopifyCustomer } from "./useShopifyDashboard";
 
 function CustomerRow({ customer }: { customer: ShopifyCustomer }) {
@@ -72,28 +72,22 @@ export function CustomersPanel({
   search,
   onSearchChange,
 }: CustomersPanelProps) {
-  const searchInput = useAgentElement<HTMLInputElement>({
-    id: "input-customer-search",
-    role: "text-input",
-    label: "Search customers",
-    group: "customers",
-    description: "Filter customers by name or email",
-  });
+  // The floating chat composer is this panel's customer search: while the
+  // customers tab is open it takes over the composer placeholder and feeds the
+  // live draft into the server query (?q=).
+  const chatBinding = useMemo(
+    () => ({
+      placeholder: "Search customers by name or email…",
+      onQuery: onSearchChange,
+    }),
+    [onSearchChange],
+  );
+  useRegisterViewChatBinding(chatBinding);
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted/60" />
-          <Input
-            ref={searchInput.ref}
-            placeholder="Search customers by name or email…"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-8"
-            {...searchInput.agentProps}
-          />
-        </div>
+      <div className="flex items-center justify-between gap-2">
+        <ChatSearchHint noun="customers" query={search} />
         {!loading ? (
           <span className="shrink-0 text-xs text-muted">
             {total.toLocaleString()} customer{total !== 1 ? "s" : ""}

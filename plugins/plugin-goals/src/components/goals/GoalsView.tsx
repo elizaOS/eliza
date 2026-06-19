@@ -11,8 +11,9 @@
  * display-only.
  *
  * It renders one of four distinct states (loading, error, empty, populated) and
- * instruments its refresh + status-filter controls through the agent surface so
- * the floating chat can drive them. The default fetcher polls from
+ * instruments its status-filter chips through the agent surface so the floating
+ * chat can drive them. The view has no subscription, so a quiet 20s poll keeps
+ * it fresh (no manual refresh control). The default fetcher reads from
  * `client.getBaseUrl()`; tests inject the fetcher seam so they stay offline.
  *
  * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
@@ -22,7 +23,6 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -359,15 +359,13 @@ const metaStyle: CSSProperties = {
 // One colored pill per row carries the review state. Red = at risk / needs
 // attention, muted green = on track, neutral gray = idle. Orange is reserved
 // for "busy", so it is never used here.
-const REVIEW_PILL_COLORS: Record<
-  GoalReviewState,
-  { bg: string; fg: string }
-> = {
-  idle: { bg: "rgba(10, 10, 10, 0.06)", fg: "rgba(10, 10, 10, 0.6)" },
-  on_track: { bg: "rgba(34, 134, 73, 0.12)", fg: "#1f7a44" },
-  at_risk: { bg: "rgba(239, 68, 68, 0.12)", fg: "#c23b3b" },
-  needs_attention: { bg: "rgba(239, 68, 68, 0.12)", fg: "#c23b3b" },
-};
+const REVIEW_PILL_COLORS: Record<GoalReviewState, { bg: string; fg: string }> =
+  {
+    idle: { bg: "rgba(10, 10, 10, 0.06)", fg: "rgba(10, 10, 10, 0.6)" },
+    on_track: { bg: "rgba(34, 134, 73, 0.12)", fg: "#1f7a44" },
+    at_risk: { bg: "rgba(239, 68, 68, 0.12)", fg: "#c23b3b" },
+    needs_attention: { bg: "rgba(239, 68, 68, 0.12)", fg: "#c23b3b" },
+  };
 
 function reviewPillStyle(state: GoalReviewState): CSSProperties {
   const { bg, fg } = REVIEW_PILL_COLORS[state];
@@ -387,36 +385,6 @@ function reviewPillStyle(state: GoalReviewState): CSSProperties {
 // ---------------------------------------------------------------------------
 // Agent-instrumented controls (hooks cannot run inside .map()).
 // ---------------------------------------------------------------------------
-
-function RefreshButton({
-  onActivate,
-  disabled,
-}: {
-  onActivate: () => void;
-  disabled: boolean;
-}): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "goals-refresh",
-    role: "button",
-    label: "Refresh goals",
-    group: "goals-toolbar",
-    description: "Reload the owner's goals, cadences, and review state",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="goals-view-btn goals-view-btn-neutral"
-      onClick={onActivate}
-      disabled={disabled}
-      aria-label="Refresh goals"
-      {...agentProps}
-    >
-      <RefreshCw className="h-4 w-4" aria-hidden />
-    </button>
-  );
-}
 
 function StatusChip({
   status,
@@ -455,17 +423,10 @@ function StatusChip({
   );
 }
 
-function GoalsHeader({
-  refetch,
-  busy,
-}: {
-  refetch: () => void;
-  busy: boolean;
-}): ReactNode {
+function GoalsHeader(): ReactNode {
   return (
     <header style={headerRowStyle}>
       <h1 style={h1Style}>Goals</h1>
-      <RefreshButton onActivate={refetch} disabled={busy} />
     </header>
   );
 }
@@ -594,7 +555,30 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
     };
   }, []);
 
-  useEffect(() => load(), [load]);
+  // Initial fetch on mount, then a quiet 20s background poll keeps the list
+  // fresh (the view has no store subscription and there is no manual refresh).
+  // The poll refetches silently: it never drops to the loading skeleton and a
+  // transient poll failure leaves the current data on screen.
+  useEffect(() => {
+    const cancelInitial = load();
+    let active = true;
+    const interval = setInterval(() => {
+      fetchersRef.current
+        .fetchGoals()
+        .then((wire) => {
+          if (active)
+            setState({ kind: "ready", goals: wire.goals.map(mapGoal) });
+        })
+        .catch(() => {
+          /* keep the last good render on a transient poll failure */
+        });
+    }, 20000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+      cancelInitial();
+    };
+  }, [load]);
 
   const toggleStatus = useCallback((status: GoalStatus) => {
     setActiveStatuses((prev) => {
@@ -623,7 +607,7 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="goals-loading">
-        <GoalsHeader refetch={load} busy={true} />
+        <GoalsHeader />
         <StatusFilters active={activeStatuses} onToggle={toggleStatus} />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading goals…</div>
       </div>
@@ -633,7 +617,7 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="goals-error">
-        <GoalsHeader refetch={load} busy={false} />
+        <GoalsHeader />
         <StatusFilters active={activeStatuses} onToggle={toggleStatus} />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load goals</div>
@@ -658,7 +642,7 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   if (state.goals.length === 0) {
     return (
       <div style={containerStyle} data-testid="goals-empty">
-        <GoalsHeader refetch={load} busy={false} />
+        <GoalsHeader />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>No goals yet</div>
           <div style={dimStyle}>
@@ -682,7 +666,7 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
 
   return (
     <div style={containerStyle} data-testid="goals-populated">
-      <GoalsHeader refetch={load} busy={false} />
+      <GoalsHeader />
       <StatusFilters active={activeStatuses} onToggle={toggleStatus} />
       {groups.length > 0 ? (
         <section style={sectionStyle} aria-label="Goals">

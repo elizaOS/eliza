@@ -19,8 +19,8 @@
  *                                Someday), active-only filter (completed
  *                                excluded), per-lane counts, and per-row title.
  *
- * The header Refresh control is agent-instrumented (useAgentElement, mocked to
- * an inert hook here) and refetches on activation.
+ * There is no manual refresh control: the board stays fresh via a quiet
+ * background poll (asserted with fake timers below).
  *
  * External-API contract test: the wire shape { todos: { id, title, status,
  * dueDate } } mirrors the projection PA emits from getOverview().owner
@@ -37,25 +37,19 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // `@elizaos/ui` is the giant renderer barrel; TodosView only touches
 // `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
-// `client.sendChatMessage()` (add-a-todo affordance). `@elizaos/ui/agent-surface`
-// is mocked to an inert hook so the instrumented button renders outside a
-// provider.
+// `client.sendChatMessage()` (add-a-todo affordance).
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
 vi.mock("@elizaos/ui", () => ({
   client: {
     getBaseUrl: () => "http://test.local",
     sendChatMessage,
   },
-}));
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 
 import { type TodosFetchers, TodosView } from "./TodosView.js";
@@ -259,17 +253,34 @@ describe("TodosView — lane assignment + filtering", () => {
   });
 });
 
-describe("TodosView — refresh", () => {
-  it("refetches when the header refresh control is activated", async () => {
-    let calls = 0;
-    const fetchTodos = async () => {
-      calls += 1;
-      return populated();
-    };
-    render(<TodosView fetchers={makeFetchers({ fetchTodos })} />);
+describe("TodosView — staying fresh", () => {
+  it("has no manual refresh control", async () => {
+    render(<TodosView fetchers={makeFetchers()} />);
     await screen.findByTestId("todos-populated");
-    expect(calls).toBe(1);
-    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
-    await waitFor(() => expect(calls).toBe(2));
+    expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
+  });
+
+  it("refetches on the background poll without manual interaction", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const fetchTodos = async () => {
+        calls += 1;
+        return populated();
+      };
+      render(<TodosView fetchers={makeFetchers({ fetchTodos })} />);
+      // Flush the initial mount fetch.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toBe(1);
+
+      // The quiet poll fires on its interval (15s) and refetches.
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(calls).toBe(2);
+
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(calls).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

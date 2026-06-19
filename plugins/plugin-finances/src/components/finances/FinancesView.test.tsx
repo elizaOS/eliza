@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // `@elizaos/ui` is the giant renderer barrel; FinancesView only touches
@@ -169,16 +163,23 @@ describe("FinancesView", () => {
     expect(await screen.findByTestId("finances-populated")).toBeTruthy();
   });
 
-  it("refetches when the header refresh control is activated", async () => {
-    let calls = 0;
-    const fetchDashboard = async () => {
-      calls += 1;
-      return dashboard();
-    };
-    render(<FinancesView fetchers={makeFetchers({ fetchDashboard })} />);
-    await screen.findByTestId("finances-populated");
-    expect(calls).toBe(1);
-    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
-    await waitFor(() => expect(calls).toBe(2));
+  it("polls quietly to refetch and stay fresh without a manual control", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const fetchDashboard = async () => {
+        calls += 1;
+        return dashboard();
+      };
+      render(<FinancesView fetchers={makeFetchers({ fetchDashboard })} />);
+      await vi.waitFor(() =>
+        expect(screen.getByTestId("finances-populated")).toBeTruthy(),
+      );
+      expect(calls).toBe(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.waitFor(() => expect(calls).toBe(2));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

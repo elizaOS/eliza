@@ -9,8 +9,8 @@
  *   GET {base}/api/lifeops/money/sources         (connected-vs-disconnected)
  *
  * It renders one of four distinct states (loading, error, empty, populated),
- * polls every 30s to stay fresh, and instruments its refresh + connect controls
- * through the agent surface so the floating chat can drive them.
+ * polls every 30s to stay fresh, and instruments its connect control through
+ * the agent surface so the floating chat can drive it.
  *
  * The default fetchers build URLs from `client.getBaseUrl()`; tests inject the
  * fetcher seam so they stay offline. The wire amounts arrive as USD floats; we
@@ -23,7 +23,6 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -264,18 +263,6 @@ const FINANCES_VIEW_CSS = `
   background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
   border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
 }
-.finances-view-btn-neutral {
-  background: var(--surface, rgba(0, 0, 0, 0.04));
-  color: var(--foreground, #111);
-  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
-}
-.finances-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #111) 8%, transparent);
-}
-.finances-view-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 `;
 
 function useFinancesViewStyles(): void {
@@ -312,14 +299,6 @@ const populatedSectionStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 32,
-};
-
-const headerRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
 };
 
 const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
@@ -386,36 +365,6 @@ const listStyle: CSSProperties = {
 // Agent-instrumented controls (hooks cannot run inside .map()).
 // ---------------------------------------------------------------------------
 
-function RefreshButton({
-  onActivate,
-  disabled,
-}: {
-  onActivate: () => void;
-  disabled: boolean;
-}): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "finances-refresh",
-    role: "button",
-    label: "Refresh finances",
-    group: "finances-toolbar",
-    description: "Reload balance, transactions, and recurring charges",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="finances-view-btn finances-view-btn-neutral"
-      onClick={onActivate}
-      disabled={disabled}
-      aria-label="Refresh"
-      {...agentProps}
-    >
-      <RefreshCw className="h-4 w-4" />
-    </button>
-  );
-}
-
 function ConnectButton({ onActivate }: { onActivate: () => void }): ReactNode {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "finances-connect",
@@ -439,19 +388,10 @@ function ConnectButton({ onActivate }: { onActivate: () => void }): ReactNode {
   );
 }
 
-function FinancesHeader({
-  refetch,
-  busy,
-}: {
-  refetch: () => void;
-  busy: boolean;
-}): ReactNode {
+function FinancesHeader(): ReactNode {
   return (
     <header style={sectionStyle}>
-      <div style={headerRowStyle}>
-        <h1 style={h1Style}>Finances</h1>
-        <RefreshButton onActivate={refetch} disabled={busy} />
-      </div>
+      <h1 style={h1Style}>Finances</h1>
     </header>
   );
 }
@@ -628,7 +568,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="finances-loading">
-        <FinancesHeader refetch={refresh} busy={true} />
+        <FinancesHeader />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading finances…</div>
       </div>
     );
@@ -637,7 +577,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="finances-error">
-        <FinancesHeader refetch={refresh} busy={false} />
+        <FinancesHeader />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load finances</div>
           <div style={dimStyle}>{state.message}</div>
@@ -663,7 +603,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
   if (!hasSource) {
     return (
       <div style={containerStyle} data-testid="finances-empty">
-        <FinancesHeader refetch={refresh} busy={false} />
+        <FinancesHeader />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>No money sources connected</div>
           <div style={dimStyle}>
@@ -681,7 +621,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
 
   return (
     <div style={containerStyle} data-testid="finances-populated">
-      <FinancesHeader refetch={refresh} busy={false} />
+      <FinancesHeader />
       <section style={populatedSectionStyle}>
         <BalanceCard balance={balance} />
         <TransactionsCard transactions={transactions} />

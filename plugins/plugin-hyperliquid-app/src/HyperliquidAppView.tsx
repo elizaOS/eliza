@@ -8,7 +8,6 @@ import {
   Cloud,
   KeyRound,
   type LucideIcon,
-  RefreshCw,
   Shield,
   ShieldX,
 } from "lucide-react";
@@ -62,7 +61,7 @@ function credentialModeLabel(
 }
 
 export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
-  const { status, markets, positions, orders, loading, error, refresh } =
+  const { status, markets, positions, orders, loading, error } =
     useHyperliquidState();
 
   const publicReadReady = status?.publicReadReady ?? false;
@@ -74,14 +73,6 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
     label: "Back to apps",
     group: "hyperliquid-header",
     description: "Exit the Hyperliquid view and return to the apps overlay",
-  });
-  const refreshButton = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: "Refresh",
-    group: "hyperliquid-header",
-    description: "Reload Hyperliquid status, markets, positions, and orders",
-    status: loading ? "active" : "inactive",
   });
 
   return (
@@ -107,19 +98,6 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
         </div>
 
         <div className="flex-1" />
-
-        <Button
-          ref={refreshButton.ref}
-          {...refreshButton.agentProps}
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 text-muted hover:text-txt"
-          onClick={() => void refresh()}
-          disabled={loading}
-          aria-label="Refresh"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
       </div>
 
       <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">

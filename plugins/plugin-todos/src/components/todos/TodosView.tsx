@@ -16,17 +16,14 @@
  *  - Someday  — active todos with no (or unparseable) due date.
  *
  * It renders one of four distinct states (loading, error, empty, populated) and
- * instruments its refresh control through the agent surface so the floating chat
- * can drive it. The default fetcher builds its URL from `client.getBaseUrl()`;
- * tests inject the fetcher seam so they stay offline.
+ * stays fresh via a quiet background poll. The default fetcher builds its URL
+ * from `client.getBaseUrl()`; tests inject the fetcher seam so they stay offline.
  *
  * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
  * DTO below is declared locally to match the JSON shape PA emits.
  */
 
 import { client } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -308,52 +305,11 @@ const statusDotStyle = (status: TodoStatus): CSSProperties => ({
       : "color-mix(in srgb, var(--foreground, #111) 35%, transparent)",
 });
 
-// ---------------------------------------------------------------------------
-// Agent-instrumented controls (hooks cannot run inside .map()).
-// ---------------------------------------------------------------------------
-
-function RefreshButton({
-  onActivate,
-  disabled,
-}: {
-  onActivate: () => void;
-  disabled: boolean;
-}): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "todos-refresh",
-    role: "button",
-    label: "Refresh todos",
-    group: "todos-toolbar",
-    description: "Reload the owner's todos across the Today, Upcoming, and Someday lanes",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="todos-view-btn todos-view-btn-neutral"
-      onClick={onActivate}
-      disabled={disabled}
-      aria-label="Refresh todos"
-      {...agentProps}
-    >
-      <RefreshCw className="h-4 w-4" aria-hidden />
-    </button>
-  );
-}
-
-function TodosHeader({
-  refetch,
-  busy,
-}: {
-  refetch: () => void;
-  busy: boolean;
-}): ReactNode {
+function TodosHeader(): ReactNode {
   return (
     <header style={sectionStyle}>
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Todos</h1>
-        <RefreshButton onActivate={refetch} disabled={busy} />
       </div>
       <div style={subtitleStyle}>
         Three lanes: Today, Upcoming, Someday.
@@ -455,8 +411,8 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
   useEffect(() => load(), [load]);
 
   // Background poll: refresh the board on an interval without flashing the
-  // loading state. Transient poll failures are ignored — the explicit Retry /
-  // manual refresh path is what surfaces errors to the user.
+  // loading state. Transient poll failures are ignored — the explicit Retry
+  // path is what surfaces errors to the user.
   useEffect(() => {
     const id = setInterval(() => {
       fetchersRef.current
@@ -492,7 +448,7 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="todos-loading">
-        <TodosHeader refetch={load} busy={true} />
+        <TodosHeader />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading todos…</div>
       </div>
     );
@@ -501,7 +457,7 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="todos-error">
-        <TodosHeader refetch={load} busy={false} />
+        <TodosHeader />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load todos</div>
           <div style={dimStyle}>{state.message}</div>
@@ -527,7 +483,7 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
   if (activeCount === 0) {
     return (
       <div style={containerStyle} data-testid="todos-empty">
-        <TodosHeader refetch={load} busy={false} />
+        <TodosHeader />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>No todos</div>
           <div style={dimStyle}>
@@ -551,7 +507,7 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
 
   return (
     <div style={containerStyle} data-testid="todos-populated">
-      <TodosHeader refetch={load} busy={false} />
+      <TodosHeader />
       <section style={lanesGridStyle} aria-label="Todo lanes">
         {LANES.map((lane) => (
           <Lane key={lane.id} lane={lane} todos={byLane[lane.id]} />

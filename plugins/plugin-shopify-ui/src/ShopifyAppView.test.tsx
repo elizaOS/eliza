@@ -104,11 +104,24 @@ vi.mock("@elizaos/ui", () => ({
         ),
       ),
     ),
+  // The per-view search box moved to the floating chat; views now render a
+  // static hint. Render the resting copy so tabs that own a chat-search can be
+  // identified by it.
+  ChatSearchHint: ({ noun }: { noun: string; query?: string }) =>
+    React.createElement(
+      "p",
+      { "data-testid": "chat-search-hint" },
+      `Search ${noun} by typing in the chat.`,
+    ),
   formatShortDate: (iso: string) => `date:${iso}`,
 }));
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+}));
+
+vi.mock("@elizaos/ui/state/view-chat-binding", () => ({
+  useRegisterViewChatBinding: () => {},
 }));
 
 import { ShopifyAppView } from "./ShopifyAppView";
@@ -292,19 +305,6 @@ describe("ShopifyAppView (gui + xr)", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
-  it("re-fetches status when the Refresh button is clicked", async () => {
-    const fetchMock = mockFetch();
-    render(React.createElement(ShopifyAppView, { exitToApps: vi.fn() }));
-    await screen.findAllByText("Eliza Store");
-
-    const statusCalls = () =>
-      fetchMock.mock.calls.filter(([u]) => String(u) === "/api/shopify/status")
-        .length;
-    const before = statusCalls();
-    fireEvent.click(screen.getByLabelText("Refresh"));
-    await vi.waitFor(() => expect(statusCalls()).toBeGreaterThan(before));
-  });
-
   it("calls exitToApps when the Back button is clicked", async () => {
     mockFetch();
     const exitToApps = vi.fn();
@@ -362,10 +362,16 @@ describe("ShopifyAppView (gui + xr)", () => {
     await screen.findAllByText("Eliza Store");
 
     await screen.findByText("7");
-    // ProductsPanel-specific control absent on the overview tab.
-    expect(screen.queryByPlaceholderText("Search products…")).toBeNull();
+    // ProductsPanel-specific control absent on the overview tab. The per-view
+    // search box moved to the chat, so the products tab is identified by its
+    // chat-search hint instead.
+    expect(
+      screen.queryByText("Search products by typing in the chat."),
+    ).toBeNull();
     fireEvent.click(screen.getByTitle("Products"));
-    expect(screen.getByPlaceholderText("Search products…")).toBeTruthy();
+    expect(
+      screen.getByText("Search products by typing in the chat."),
+    ).toBeTruthy();
     // The product row is now visible.
     expect(screen.getByText("Terminal Hoodie")).toBeTruthy();
   });
@@ -391,7 +397,7 @@ describe("ShopifyAppView (gui + xr)", () => {
     await screen.findByText("7");
     fireEvent.click(screen.getByTitle("Customers"));
     expect(
-      screen.getByPlaceholderText("Search customers by name or email…"),
+      screen.getByText("Search customers by typing in the chat."),
     ).toBeTruthy();
     expect(screen.getByText("Grace Hopper")).toBeTruthy();
     expect(screen.getByText("grace@example.com")).toBeTruthy();
@@ -435,14 +441,18 @@ describe("ShopifyAppView (gui + xr)", () => {
     }
 
     fireEvent.click(trigger("products"));
-    expect(screen.getByPlaceholderText("Search products…")).toBeTruthy();
+    expect(
+      screen.getByText("Search products by typing in the chat."),
+    ).toBeTruthy();
 
     fireEvent.click(trigger("customers"));
     expect(
-      screen.getByPlaceholderText("Search customers by name or email…"),
+      screen.getByText("Search customers by typing in the chat."),
     ).toBeTruthy();
-    // Switching away from products hides its control.
-    expect(screen.queryByPlaceholderText("Search products…")).toBeNull();
+    // Switching away from products hides its chat-search hint.
+    expect(
+      screen.queryByText("Search products by typing in the chat."),
+    ).toBeNull();
   });
 
   it("shows the setup card when not connected", async () => {
