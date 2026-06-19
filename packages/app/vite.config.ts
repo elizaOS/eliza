@@ -2249,6 +2249,14 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-polymarket-app",
           "plugins/plugin-polymarket-app/src/register.ts",
         ],
+        [
+          "@elizaos/plugin-waifu-imagegen-app",
+          "plugins/plugin-waifu-imagegen-app/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-waifu-swap-app",
+          "plugins/plugin-waifu-swap-app/src/register.ts",
+        ],
         ["@elizaos/plugin-wallet-ui", "plugins/plugin-wallet-ui/src/index.ts"],
         [
           "@elizaos/plugin-contacts/register",
