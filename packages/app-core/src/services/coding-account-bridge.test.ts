@@ -9,12 +9,16 @@ import {
   getDefaultAccountPool,
 } from "./account-pool.js";
 import { readTodayCounters } from "./account-usage.js";
-import { getCodingAgentSelectorBridge } from "./coding-account-bridge.js";
+import {
+  getCodingAgentSelectorBridge,
+  isAuthFailure,
+} from "./coding-account-bridge.js";
 
 const FAR_FUTURE = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;
 let home: string;
 let prevHome: string | undefined;
 let prevStateDir: string | undefined;
+let prevCodexModel: string | undefined;
 
 function writeAccount(
   providerId: AccountCredentialProvider,
@@ -57,6 +61,7 @@ async function setUsage(
 beforeEach(() => {
   prevHome = process.env.ELIZA_HOME;
   prevStateDir = process.env.ELIZA_STATE_DIR;
+  prevCodexModel = process.env.ELIZA_CODEX_MODEL;
   home = mkdtempSync(path.join(tmpdir(), "coding-acct-"));
   process.env.ELIZA_HOME = home;
   // account-usage counters live under resolveStateDir() (ELIZA_STATE_DIR), not
@@ -71,6 +76,8 @@ afterEach(() => {
   else process.env.ELIZA_HOME = prevHome;
   if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
   else process.env.ELIZA_STATE_DIR = prevStateDir;
+  if (prevCodexModel === undefined) delete process.env.ELIZA_CODEX_MODEL;
+  else process.env.ELIZA_CODEX_MODEL = prevCodexModel;
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -117,6 +124,35 @@ describe("coding-account-bridge", () => {
       "utf-8",
     );
     expect(configToml).toMatch(/^model = ".+"/m);
+  });
+
+  it("uses a valid ELIZA_CODEX_MODEL but rejects a malformed one (TOML injection guard)", async () => {
+    writeAccount("openai-codex", "cx", "cx-access", { organizationId: "a" });
+    process.env.ELIZA_CODEX_MODEL = "gpt-5.1-codex";
+    let sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    let cfg = readFileSync(
+      path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+      "utf-8",
+    );
+    expect(cfg).toContain('model = "gpt-5.1-codex"');
+
+    // A value with a quote/newline would break out of the TOML string — reject
+    // it and fall back to a safe model (operator's ~/.codex model or the
+    // compiled default), never the injected payload.
+    process.env.ELIZA_CODEX_MODEL = 'gpt"\n[evil]\nx = "1';
+    __resetDefaultAccountPoolForTests();
+    sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    cfg = readFileSync(
+      path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+      "utf-8",
+    );
+    // Clean single model line, no injected table/keys.
+    expect(cfg).toMatch(/^model = "[\w.:/-]+"\n$/);
+    expect(cfg).not.toContain("[evil]");
   });
 
   it("rotates opencode across least-used cerebras-api accounts → CEREBRAS_API_KEY", async () => {
@@ -203,5 +239,36 @@ describe("coding-account-bridge", () => {
         (p) => p.providerId === "openai-codex" && p.enabled === 1,
       ),
     ).toBe(true);
+  });
+});
+
+describe("isAuthFailure (token-resolve triage)", () => {
+  it("treats genuine auth failures + a missing credential as needs-reauth", () => {
+    expect(isAuthFailure(undefined)).toBe(true); // no credential at all
+    for (const m of [
+      "401 Unauthorized",
+      "403 Forbidden",
+      "invalid_grant",
+      "invalid token",
+      "token expired",
+      "refresh token revoked",
+      "re-auth required",
+    ]) {
+      expect(isAuthFailure(new Error(m))).toBe(true);
+    }
+  });
+
+  it("treats transient network/5xx errors as NOT auth (must not sideline account)", () => {
+    for (const m of [
+      "fetch failed",
+      "ECONNRESET",
+      "ETIMEDOUT",
+      "socket hang up",
+      "503 Service Unavailable",
+      "502 Bad Gateway",
+      "network timeout",
+    ]) {
+      expect(isAuthFailure(new Error(m))).toBe(false);
+    }
   });
 });

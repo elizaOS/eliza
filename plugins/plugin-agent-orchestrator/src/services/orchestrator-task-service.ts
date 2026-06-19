@@ -1819,11 +1819,12 @@ export class OrchestratorTaskService extends Service {
           outputTokens: session.outputTokens,
           reasoningTokens: session.reasoningTokens,
           cacheTokens: session.cacheTokens,
+          // totalTokens excludes cache (reported separately as cacheTokens) to
+          // match TaskSessionDto/summarizeUsageRows — same field, same math.
           totalTokens:
             session.inputTokens +
             session.outputTokens +
-            session.reasoningTokens +
-            session.cacheTokens,
+            session.reasoningTokens,
           costUsd: session.costUsd,
           usageState: session.usageState,
         });
@@ -1873,11 +1874,11 @@ export class OrchestratorTaskService extends Service {
           accountProviderId: session.accountProviderId,
           accountId: session.accountId,
           accountLabel: session.accountLabel ?? session.accountId,
+          // Excludes cache, matching TaskSessionDto/assignment totalTokens.
           totalTokens:
             session.inputTokens +
             session.outputTokens +
-            session.reasoningTokens +
-            session.cacheTokens,
+            session.reasoningTokens,
           usageState: session.usageState,
         }),
       );

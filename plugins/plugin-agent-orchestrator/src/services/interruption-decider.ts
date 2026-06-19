@@ -95,7 +95,14 @@ export function decideInterruption(
 
   // Explicit stop interrupts (busy or not), unless the message is really an
   // additive request that merely mentions stopping ("stop, and also add X").
-  if (STOP_PATTERN.test(text) && !additive) {
+  // In a multi-party room, an UNADDRESSED stop is ambient chatter from another
+  // participant — it must not cancel this agent's turn (only an addressed stop,
+  // or any stop in a solo room, interrupts).
+  if (
+    STOP_PATTERN.test(text) &&
+    !additive &&
+    !(input.multiParty && !addressed)
+  ) {
     return { action: "interrupt", reason: "explicit stop/cancel" };
   }
 

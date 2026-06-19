@@ -181,6 +181,11 @@ export function createAgentOrchestratorPlugin(): Plugin {
     | undefined;
   let disposeProgressHook: (() => void) | undefined;
   let disposeInboxFlush: (() => void) | undefined;
+  // In-flight inbox-flush poll timers + the set of sessions currently being
+  // polled — tracked at plugin scope so dispose() can clear them (an unref'd
+  // timer that fires post-dispose would touch a torn-down runtime/service).
+  const flushTimers = new Set<ReturnType<typeof setTimeout>>();
+  const flushPending = new Set<string>();
   let activeSessionForwardHandler:
     | ((payload: { message: Memory }) => Promise<void>)
     | undefined;
@@ -419,7 +424,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
             case "ignore":
               return;
             case "interrupt": {
-              if (!busy) return; // nothing in flight to cancel
+              if (!busy) {
+                // Nothing in flight to cancel — deliver the instruction to the
+                // idle agent instead of dropping it (an idle "stop using tabs"
+                // is still a real instruction the agent should receive).
+                const queued = subAgentInbox.drain(active.id);
+                await deliverNow(queued ? `${queued}\n${text}` : text);
+                return;
+              }
               // Cancel the in-flight turn (status → terminal `cancelled`). We do
               // not re-deliver to the dead session — the planner pipeline runs
               // on this same MESSAGE_RECEIVED and routes the user's redirect.
@@ -500,9 +512,21 @@ export function createAgentOrchestratorPlugin(): Plugin {
           // bridges the gap between the `task_complete` event and the session
           // status returning to a promptable state.
           if (acp) {
+            // Poll bound for the task_complete→ready settle gap. This is NOT a
+            // delivery deadline: every subsequent ready/task_complete/reconnected
+            // event re-triggers a flush, so a queued message survives a turn far
+            // longer than the poll window. Giving up here only stops polling;
+            // it never clears a non-terminal session's inbox.
+            const MAX_FLUSH_POLLS = 120;
             const scheduleFlush = (sessionId: string, tries = 0): void => {
               if (subAgentInbox.size(sessionId) === 0) return;
-              setTimeout(() => {
+              // Coalesce: one in-flight poll chain per session. External
+              // re-triggers (tries===0) are dropped while a chain is active;
+              // self-rescheduling continuations (tries>0) pass through.
+              if (tries === 0 && flushPending.has(sessionId)) return;
+              flushPending.add(sessionId);
+              const timer = setTimeout(() => {
+                flushTimers.delete(timer);
                 void (async () => {
                   const svc = runtime.getService<AcpService>(
                     AcpService.serviceType,
@@ -514,24 +538,31 @@ export function createAgentOrchestratorPlugin(): Plugin {
                     !session ||
                     TERMINAL_SESSION_STATUSES.has(session.status)
                   ) {
+                    flushPending.delete(sessionId);
                     subAgentInbox.clear(sessionId);
                     return;
                   }
                   // Still mid-turn (busy / tool_running / running / blocked /
                   // authenticating) — wait for it to return to `ready`.
                   if (isSessionBusy(session.status)) {
-                    if (tries < 20) scheduleFlush(sessionId, tries + 1);
+                    if (tries < MAX_FLUSH_POLLS) {
+                      scheduleFlush(sessionId, tries + 1);
+                    } else {
+                      // Stop polling; the next session event re-arms a flush.
+                      flushPending.delete(sessionId);
+                    }
                     return;
                   }
+                  flushPending.delete(sessionId);
                   const queued = subAgentInbox.drain(sessionId);
                   if (!queued) return;
                   try {
                     await svc?.sendPrompt(sessionId, queued);
                   } catch (err) {
-                    // Lost the race back to busy — requeue and retry rather than
-                    // drop the user's message.
+                    // Lost the race back to busy — requeue and re-arm rather
+                    // than drop the user's message.
                     subAgentInbox.enqueue(sessionId, queued);
-                    if (tries < 20) scheduleFlush(sessionId, tries + 1);
+                    scheduleFlush(sessionId);
                     runtime.logger?.warn?.(
                       {
                         src: "@elizaos/plugin-agent-orchestrator",
@@ -542,7 +573,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
                     );
                   }
                 })();
-              }, 1000).unref?.();
+              }, 1000);
+              timer.unref?.();
+              flushTimers.add(timer);
             };
             disposeInboxFlush = acp.onSessionEvent((sessionId, event) => {
               if (
@@ -602,6 +635,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
         }
         disposeInboxFlush = undefined;
       }
+      // Cancel any in-flight flush poll timers so none fire after teardown.
+      for (const timer of flushTimers) clearTimeout(timer);
+      flushTimers.clear();
+      flushPending.clear();
       subAgentInbox.clearAll();
       const acp = runtime.getService<AcpService>(AcpService.serviceType);
       await acp?.stop();
