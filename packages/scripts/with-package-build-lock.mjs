@@ -30,7 +30,14 @@ async function findWorkspaceRoot(startDir) {
 
 const root = await findWorkspaceRoot(process.cwd());
 const packageDir = path.resolve(root, packageDirArg);
-const lockDir = path.join(packageDir, ".build-lock");
+// Keep transient lock state out of package directories so cancelled Turbo builds
+// do not leave untracked `.build-lock` folders across the workspace.
+const lockRoot = path.join(root, ".turbo", "build-locks");
+const packageLockName = path
+  .relative(root, packageDir)
+  .replaceAll(path.sep, "__")
+  .replaceAll(/[^a-zA-Z0-9._-]/g, "_");
+const lockDir = path.join(lockRoot, packageLockName);
 const staleAfterMs = Number.parseInt(
   process.env.ELIZA_PACKAGE_BUILD_LOCK_STALE_MS ?? "1800000",
   10,
@@ -78,6 +85,7 @@ async function removeStaleLock() {
 
 async function acquireLock() {
   let waitMs = 100;
+  await fs.mkdir(lockRoot, { recursive: true });
   while (true) {
     try {
       await fs.mkdir(lockDir);
@@ -114,6 +122,19 @@ const child = spawn(command[0], command.slice(1), {
   shell: process.platform === "win32",
 });
 
+let cleaningUp = false;
+async function cleanupLock() {
+  if (cleaningUp) return;
+  cleaningUp = true;
+  await fs.rm(lockDir, { recursive: true, force: true });
+}
+
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.once(signal, () => {
+    child.kill(signal);
+  });
+}
+
 const exitCode = await new Promise((resolve) => {
   child.on("exit", (code, signal) => {
     if (signal) {
@@ -125,5 +146,5 @@ const exitCode = await new Promise((resolve) => {
   });
 });
 
-await fs.rm(lockDir, { recursive: true, force: true });
+await cleanupLock();
 process.exit(exitCode);
