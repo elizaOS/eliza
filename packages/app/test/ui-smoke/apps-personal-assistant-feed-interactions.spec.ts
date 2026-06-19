@@ -383,19 +383,28 @@ function installFeedTuiRoutes(page: Page) {
   return state;
 }
 
+// The shipped LifeOps GUI is the read-only chief-of-staff brief hub
+// (data-testid="lifeops-hub", plus loading/error states) — a real
+// /api/lifeops/overview-fed view, not the full interactive reminders manager
+// the rich branch below was authored against. When the hub renders, short-circuit
+// (assert the brief's summary + a refresh affordance) and skip the manager flow.
 async function expectLifeOpsDynamicViewFallback(page: Page): Promise<boolean> {
-  const smokeText = page.getByTestId("lifeops-dynamic-view-fallback");
+  const hub = page
+    .getByTestId("lifeops-hub")
+    .or(page.getByTestId("lifeops-loading"))
+    .or(page.getByTestId("lifeops-error"));
   try {
-    await smokeText.waitFor({ state: "visible", timeout: 5_000 });
+    await hub.first().waitFor({ state: "visible", timeout: 5_000 });
   } catch {
     return false;
   }
 
   await expect(
-    page.getByRole("heading", { name: "LifeOpsPageView" }),
+    page.getByRole("heading", { name: "Brief" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Refresh view" }).click();
-  await page.getByLabel("LifeOps input").fill("lifeops-smoke");
+  await expect(
+    page.getByRole("button", { name: "Refresh brief" }),
+  ).toBeVisible();
   return true;
 }
 
@@ -408,7 +417,11 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("LifeOps app supports deterministic reminders and alarm interactions", async ({
+// The LifeOps overview view was removed (owner: "no need for an overview"), so
+// the lifeops-nav-rail / reminders-manager / assistant-intents surfaces these
+// two tests drive no longer exist. Skipped pending removal of the dead lifeops
+// test fixtures; the Feed coverage below is unaffected.
+test.skip("LifeOps app supports deterministic reminders and alarm interactions", async ({
   page,
 }) => {
   const lifeOps = installLifeOpsInteractionRoutes(page);
@@ -483,7 +496,7 @@ test("LifeOps app supports deterministic reminders and alarm interactions", asyn
   await expect.poll(() => lifeOps.definitionGets).toBeGreaterThan(0);
 });
 
-test("LifeOps assistant launches chat-first command prompts", async ({
+test.skip("LifeOps assistant launches chat-first command prompts", async ({
   page,
 }) => {
   installLifeOpsInteractionRoutes(page);

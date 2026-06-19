@@ -36,6 +36,7 @@ plugins/plugin-native-wifi/
     definitions.ts          All TypeScript interfaces and DTO types (WiFiPlugin, WiFiNetwork, …)
     index.ts                registerPlugin("ElizaWiFi") + re-exports definitions
     web.ts                  WiFiWeb: explicit WebPlugin fallback used in browser/Node environments
+    web.test.ts             Vitest tests for the WiFiWeb fallback
   android/
     src/main/
       AndroidManifest.xml   Declares required permissions (ACCESS_WIFI_STATE, CHANGE_WIFI_STATE, ACCESS_FINE_LOCATION, …)
@@ -53,6 +54,7 @@ Only scripts defined in this package's `package.json`:
 ```bash
 bun run --cwd plugins/plugin-native-wifi build          # tsc + rollup → dist/
 bun run --cwd plugins/plugin-native-wifi clean          # delete dist/
+bun run --cwd plugins/plugin-native-wifi test           # vitest run
 bun run --cwd plugins/plugin-native-wifi prepublishOnly # clean + build (runs automatically before npm publish)
 ```
 

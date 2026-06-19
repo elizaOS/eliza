@@ -54,8 +54,8 @@ All implementations live in `@elizaos/agent`; these are thin async wrappers with
 src/
   index.ts                     Public barrel — all exports
   api/
-    plugin-routes.ts           handlePluginRoutes — agent-tier HTTP handler (~1922 lines)
-    app-plugins-routes.ts      handlePluginsCompatRoutes + buildPluginListResponse (~1740 lines)
+    plugin-routes.ts           handlePluginRoutes — agent-tier HTTP handler (~1946 lines)
+    app-plugins-routes.ts      handlePluginsCompatRoutes + buildPluginListResponse (~1762 lines)
   services/
     plugin-installer.ts        Lazy forwarders to @elizaos/agent install functions
 ```
@@ -74,7 +74,7 @@ This package reads no env vars directly. Plugin configuration env vars (e.g. `OP
 
 Env vars consumed indirectly at route-handler call time:
 
-- `ELIZA_SETTINGS_DEBUG` — if truthy, logs detailed before/after config state on PUT operations (via `isElizaSettingsDebugEnabled()` from `@elizaos/shared`)
+- `ELIZA_SETTINGS_DEBUG` — if truthy, logs detailed before/after config state on PUT operations in the **agent-tier handler** only (via `isElizaSettingsDebugEnabled()` from `@elizaos/shared`; used in `src/api/plugin-routes.ts`)
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_API_ROOT` — read in the Telegram plugin test probe inside `handlePluginsCompatRoutes`
 
 ## How to extend

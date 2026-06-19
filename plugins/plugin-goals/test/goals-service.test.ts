@@ -70,7 +70,7 @@ function makeRuntime(): {
     executedSql.push(text);
     const normalized = text.replace(/\s+/g, " ").trim();
 
-    if (normalized.startsWith("SELECT * FROM app_lifeops.life_goal_definitions")) {
+    if (normalized.startsWith("SELECT * FROM app_goals.life_goal_definitions")) {
       if (normalized.includes("AND id =")) {
         const idMatch = normalized.match(/AND id = '([^']+)'/);
         const id = idMatch?.[1];
@@ -80,7 +80,7 @@ function makeRuntime(): {
       return { rows: [...goals.values()] };
     }
     if (
-      normalized.startsWith("SELECT * FROM app_lifeops.life_goal_links")
+      normalized.startsWith("SELECT * FROM app_goals.life_goal_links")
     ) {
       const goalMatch = normalized.match(/AND goal_id = '([^']+)'/);
       const goalId = goalMatch?.[1];
@@ -88,12 +88,12 @@ function makeRuntime(): {
         rows: links.filter((l) => l.goal_id === goalId),
       };
     }
-    if (normalized.startsWith("INSERT INTO app_lifeops.life_goal_definitions")) {
+    if (normalized.startsWith("INSERT INTO app_goals.life_goal_definitions")) {
       const row = parseInsertGoal(text);
       goals.set(row.id, row);
       return { rows: [] };
     }
-    if (normalized.startsWith("UPDATE app_lifeops.life_goal_definitions")) {
+    if (normalized.startsWith("UPDATE app_goals.life_goal_definitions")) {
       const idMatch = normalized.match(/WHERE id = '([^']+)'/);
       const id = idMatch?.[1];
       if (id && goals.has(id)) {
@@ -107,13 +107,13 @@ function makeRuntime(): {
       return { rows: [] };
     }
     if (
-      normalized.startsWith("DELETE FROM app_lifeops.life_goal_definitions")
+      normalized.startsWith("DELETE FROM app_goals.life_goal_definitions")
     ) {
       const idMatch = normalized.match(/AND id = '([^']+)'/);
       if (idMatch?.[1]) goals.delete(idMatch[1]);
       return { rows: [] };
     }
-    if (normalized.startsWith("DELETE FROM app_lifeops.life_goal_links")) {
+    if (normalized.startsWith("DELETE FROM app_goals.life_goal_links")) {
       return { rows: [] };
     }
     if (normalized.startsWith("UPDATE app_lifeops.life_task_definitions")) {

@@ -84,6 +84,7 @@ bun run --cwd plugins/plugin-github clean       # rm dist .turbo
 | Env var | Required | Purpose |
 |---|---|---|
 | `GITHUB_ACCOUNTS` | No (preferred) | JSON array/object of `{ accountId, role, token }` records — supports multiple accounts |
+| `GITHUB_TOKEN` | No | Bootstrap PAT — if already set in the environment, it takes precedence over any locally saved credential; the plugin also writes the saved credential here at startup so that spawned processes (e.g. `gh`/`git`) see the same value |
 | `GITHUB_USER_PAT` | No (legacy) | PAT for the `user` role (acting on behalf of the human) |
 | `GITHUB_AGENT_PAT` | No (legacy) | PAT for the `agent` role (acting on behalf of the agent) |
 | `GITHUB_USER_ACCOUNT_ID` | No | Override account ID for the legacy `user` slot (default: `"user"`) |
@@ -94,7 +95,7 @@ bun run --cwd plugins/plugin-github clean       # rm dist .turbo
 | `GITHUB_OAUTH_CLIENT_SECRET` | OAuth only | GitHub OAuth app client secret |
 | `GITHUB_OAUTH_REDIRECT_URI` | OAuth only | OAuth redirect URI registered on the GitHub app |
 
-At least one of `GITHUB_ACCOUNTS`, `GITHUB_USER_PAT`, or `GITHUB_AGENT_PAT` must be set for the plugin to function. A missing `user` or `agent` account causes that role's operations to be rejected at runtime (logged as `[GitHubService] no GitHub <role> account configured`).
+At least one of `GITHUB_ACCOUNTS`, `GITHUB_TOKEN`, `GITHUB_USER_PAT`, or `GITHUB_AGENT_PAT` must be set for the plugin to function. A missing `user` or `agent` account causes that role's operations to be rejected at runtime (logged as `[GitHubService] no GitHub <role> account configured`).
 
 Character-level config is also supported under `character.settings.github.accounts` (array or object keyed by account ID).
 

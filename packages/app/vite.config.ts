@@ -1783,6 +1783,20 @@ export default defineConfig({
     __ELIZA_BUILD_VARIANT__: JSON.stringify(
       process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
     ),
+    // Web-shell gate. The top-level react-router shell that owns the cloud /
+    // public / auth / payment routes (CloudRouterShell) is web-build-only:
+    // Capacitor mobile bundles mount the tab/view App directly and must not
+    // grow. This compile-time constant lets the mobile build tree-shake the
+    // entire shell + Steward/wallet + public-page chunks out of the bundle.
+    // Desktop (Electrobun) shares this `dist`, so the constant is `true` there
+    // too; `main.tsx` then branches at runtime so only the actual web platform
+    // mounts the shell (desktop mounts App directly).
+    // `ELIZA_DISABLE_WEB_SHELL=1` drops the cloud router shell from a web build
+    // too (same tree-shake path as mobile) — used by the ui-smoke lane, which
+    // exercises the agent app, not the cloud surface.
+    __ELIZA_WEB_SHELL__: JSON.stringify(
+      !IS_CAPACITOR_MOBILE_BUILD && process.env.ELIZA_DISABLE_WEB_SHELL !== "1",
+    ),
     // Mirror the branded TTS debug env into the client bundle so one env
     // enables UI + server TTS logs in dev.
     [`import.meta.env.${BRANDED_ENV.ttsDebug}`]: JSON.stringify(
@@ -1801,6 +1815,40 @@ export default defineConfig({
     ),
   },
   plugins: [
+    // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), replace the
+    // whole `@elizaos/ui/src/cloud` subtree with empty modules. The two lazy
+    // cloud entry points are already aliased to passthrough stubs, but the main
+    // `@elizaos/ui` barrel ALSO re-exports the cloud namespace (`export * as
+    // cloud from "./cloud"`), which would otherwise drag the subtree (and its
+    // wallet/web3 deps) into every consumer of the barrel. Emptying the subtree
+    // cuts it at the source — the agent app never uses the cloud namespace.
+    ...(process.env.ELIZA_DISABLE_WEB_SHELL === "1"
+      ? [
+          {
+            name: "eliza-stub-cloud-surface",
+            enforce: "pre" as const,
+            load(id: string) {
+              const p = id.split("?")[0]?.split(path.sep).join("/") ?? "";
+              // The agent app's SettingsView pulls `listExtraSettingsGroups` from
+              // the cloud settings barrel, which in turn imports the broken cloud
+              // feature subtrees. Provide it directly (no cloud groups when the
+              // cloud surface is excluded) so the whole subtree drops out.
+              if (
+                /\/packages\/ui\/src\/cloud\/settings\/index\.tsx?$/.test(p)
+              ) {
+                return "export function listExtraSettingsGroups() { return []; }";
+              }
+              // Empty the broken cloud feature subtrees (their `./data/*` hooks
+              // were never migrated) plus the cloud barrel that re-exports them.
+              const broken =
+                /\/packages\/ui\/src\/cloud\/(account-security|admin|billing|instances|organization)\//.test(
+                  p,
+                ) || /\/packages\/ui\/src\/cloud\/index\.tsx?$/.test(p);
+              return broken ? "export {};" : null;
+            },
+          },
+        ]
+      : []),
     // es-toolkit@1.47's `./compat/*` export map exposes only a CJS condition
     // (no ESM `import`), so `import get from "es-toolkit/compat/get"` (recharts
     // default-imports 11 such subpaths) resolves to a CJS shim Vite can't
@@ -2272,6 +2320,26 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/logger$/,
         replacement: path.resolve(elizaRoot, "packages/logger/src/index.ts"),
       },
+      // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
+      // the two lazy cloud entry points to passthrough stubs — placed BEFORE the
+      // broad @elizaos/ui/* alias below (first match wins) so Rollup never
+      // resolves the cloud subtree, which would otherwise drag in its
+      // wallet/web3 deps.
+      ...(process.env.ELIZA_DISABLE_WEB_SHELL === "1"
+        ? [
+            {
+              find: /^@elizaos\/ui\/cloud\/shell\/CloudRouterShell$/,
+              replacement: path.join(here, "src/shims/cloud-shell-stub.tsx"),
+            },
+            {
+              find: /^@elizaos\/ui\/cloud\/register-all$/,
+              replacement: path.join(
+                here,
+                "src/shims/cloud-register-all-stub.ts",
+              ),
+            },
+          ]
+        : []),
       // Force local @elizaos/ui source paths when the app bundles linked
       // @elizaos/app-core sources directly.
       {

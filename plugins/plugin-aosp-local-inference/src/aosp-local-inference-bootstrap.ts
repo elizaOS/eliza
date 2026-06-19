@@ -35,6 +35,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -1119,9 +1120,12 @@ const AOSP_RECOMMENDED_MODELS: Record<
   AospRecommendedModel
 > = {
   chat: {
-    id: "eliza-1-2b",
+    // The quantized 4B is the shipped mobile minimum/default chat model;
+    // 0.8B/2B are too small for quality chat. Mirrors the capacitor bridge
+    // and the catalog FIRST_RUN_DEFAULT_MODEL_ID.
+    id: "eliza-1-4b",
     hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
+    ggufFile: "bundles/4b/text/eliza-1-4b-128k.gguf",
   },
   embedding: {
     id: "eliza-1-embedding",
@@ -1199,6 +1203,62 @@ async function downloadRecommendedAospModel(
 
 function resolveBundledModelsDir(): string {
   return path.join(resolveStateDir(), "local-inference", "models");
+}
+
+// OmniVoice TTS assets are NOT bundled into the APK (they're ~660MB). Like the
+// chat model, fetch them from HuggingFace into the active bundle's `tts/` dir so
+// the fused TextToSpeech handler has a real neural voice. Runs in the background
+// (the platform TextToSpeech fallback covers replies until it lands) and only
+// publishes `tts/` atomically once both files are complete, so the dir-existence
+// gate never sees a half-written bundle.
+const OMNIVOICE_TTS_FILES = [
+  "omnivoice-base-Q4_K_M.gguf",
+  "omnivoice-tokenizer-Q4_K_M.gguf",
+] as const;
+let omnivoiceTtsDownloadInflight: Promise<void> | null = null;
+
+function ensureOmnivoiceTtsAssetsInBackground(bundleRoot: string): void {
+  if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") return;
+  if (omnivoiceTtsDownloadInflight) return;
+  const ttsDir = path.join(bundleRoot, "tts");
+  if (existsSync(ttsDir)) return;
+  // The tier slug is the bundle-root dir name (e.g. `2b`); fall back to 2b.
+  const tier = path.basename(bundleRoot) || "2b";
+  const stagingDir = path.join(bundleRoot, "tts.staging");
+  omnivoiceTtsDownloadInflight = (async () => {
+    rmSync(stagingDir, { recursive: true, force: true });
+    mkdirSync(stagingDir, { recursive: true });
+    for (const name of OMNIVOICE_TTS_FILES) {
+      const url = `https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/${tier}/tts/${name}`;
+      logger.info(
+        `[aosp-local-inference] Auto-downloading OmniVoice TTS ${name} from ${url}`,
+      );
+      const response = await fetch(url, { redirect: "follow" });
+      if (!response.ok || !response.body) {
+        throw new Error(
+          `OmniVoice TTS download failed (${name}): HTTP ${response.status} ${response.statusText}`,
+        );
+      }
+      await pipeline(
+        Readable.fromWeb(response.body as never),
+        createWriteStream(path.join(stagingDir, name)),
+      );
+    }
+    // Atomic publish: `tts/` appears only when both GGUFs are fully written.
+    renameSync(stagingDir, ttsDir);
+    logger.info(`[aosp-local-inference] OmniVoice TTS staged under ${ttsDir}`);
+  })()
+    .catch((err) => {
+      logger.warn(
+        `[aosp-local-inference] OmniVoice TTS auto-download failed (falling back to system TTS): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      rmSync(stagingDir, { recursive: true, force: true });
+    })
+    .finally(() => {
+      omnivoiceTtsDownloadInflight = null;
+    });
 }
 
 /**
@@ -2104,7 +2164,12 @@ function resolveAospFusedOmnivoiceConfig(): AospFusedOmnivoiceConfig | null {
   } catch {
     return null;
   }
-  if (!existsSync(path.join(bundleRoot, "tts"))) return null;
+  if (!existsSync(path.join(bundleRoot, "tts"))) {
+    // No neural-voice assets yet — kick off a background fetch (system TTS
+    // covers replies meanwhile) and report unavailable for now.
+    ensureOmnivoiceTtsAssetsInBackground(bundleRoot);
+    return null;
+  }
   return { libPath, bundleRoot };
 }
 
@@ -2129,6 +2194,23 @@ function resolveAssignedVoiceBundleRoot(): string {
     );
   }
   return bundleRoot;
+}
+
+/**
+ * Non-throwing check for whether the assigned chat bundle carries the ASR
+ * assets the local TRANSCRIPTION handler needs. Used to gate handler
+ * REGISTRATION: the model registry is what readiness probes read, so a
+ * registered handler that throws on the first invocation reports the model as
+ * available when it is not. On AOSP the native SpeechRecognizer/SODA path owns
+ * on-device STT, so a missing whisper bundle is the normal case — not an error
+ * — and the honest signal is simply "no local TRANSCRIPTION handler".
+ */
+export function aospAsrAssetsPresent(): boolean {
+  try {
+    return existsSync(path.join(resolveAssignedChatBundleRoot(), "asr"));
+  } catch {
+    return false;
+  }
 }
 
 function readFfiStringAndFree(
@@ -2511,8 +2593,21 @@ export async function ensureAospLocalInferenceHandlers(
     ModelType.TEXT_LARGE,
     ModelType.TEXT_EMBEDDING,
     ModelType.TEXT_TO_SPEECH,
-    ModelType.TRANSCRIPTION,
   ];
+  // TRANSCRIPTION is registered ONLY when the ASR assets are actually on disk.
+  // Registering it unconditionally made the readiness probe report local
+  // transcription as available while every invocation threw "requires ASR
+  // assets". TEXT_TO_SPEECH stays unconditional because its handler degrades to
+  // the system TTS engine when neural assets are absent — TRANSCRIPTION has no
+  // such in-handler fallback (native SpeechRecognizer covers STT separately).
+  const asrAssetsPresent = aospAsrAssetsPresent();
+  if (asrAssetsPresent) {
+    slots.push(ModelType.TRANSCRIPTION);
+  } else {
+    logger.info(
+      "[aosp-local-inference] ASR assets absent under the chat bundle; NOT registering a local TRANSCRIPTION handler (native SpeechRecognizer owns on-device STT). Readiness probes will correctly report transcription as unavailable.",
+    );
+  }
   const baseOmnivoiceTextToSpeechHandler =
     makeAospFusedOmnivoiceTextToSpeechHandler(loader, lifecycle.markEvicted);
   let foregroundOmnivoiceTextToSpeechUsed = false;
@@ -2575,11 +2670,14 @@ export async function ensureAospLocalInferenceHandlers(
     shouldSkip: () => foregroundOmnivoiceTextToSpeechUsed,
   });
 
+  const registeredList = `TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH${
+    asrAssetsPresent ? " / TRANSCRIPTION" : ""
+  }`;
   console.log(
-    `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION (priority ${LOCAL_INFERENCE_PRIORITY})`,
+    `[aosp-local-inference] registered ${PROVIDER} handlers for ${registeredList} (priority ${LOCAL_INFERENCE_PRIORITY})`,
   );
   logger.info(
-    `[aosp-local-inference] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
+    `[aosp-local-inference] Registered ${PROVIDER} handlers for ${registeredList} at priority ${LOCAL_INFERENCE_PRIORITY}`,
   );
   registeredRuntimes.add(runtime);
   return true;

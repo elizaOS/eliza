@@ -2,7 +2,7 @@
  * InboxRepository unit tests.
  *
  * The repository runs raw SQL against the runtime DB handle (the
- * `app_lifeops.life_inbox_triage_*` tables PA registers). We mock
+ * `app_inbox.life_inbox_triage_*` tables PA registers). We mock
  * `runtime.adapter.db.execute` to capture the SQL and return canned rows, then
  * assert that writes emit the right statement and reads parse rows into
  * strongly-typed `TriageEntry` / `TriageExample` objects.
@@ -95,7 +95,7 @@ describe("InboxRepository", () => {
     const insert = env.calls.find((c) => c.sql.startsWith("INSERT INTO"));
     expect(insert).toBeDefined();
     expect(insert?.sql).toContain(
-      "INSERT INTO app_lifeops.life_inbox_triage_entries",
+      "INSERT INTO app_inbox.life_inbox_triage_entries",
     );
     expect(insert?.sql).toContain("'urgent'");
     expect(insert?.sql).toContain("'11111111-1111-1111-1111-111111111111'");
@@ -160,7 +160,7 @@ describe("InboxRepository", () => {
   it("storeExample persists context json and parses it back on read", async () => {
     let stored: Record<string, unknown> | null = null;
     env = makeRuntime((sql) => {
-      if (sql.startsWith("INSERT INTO app_lifeops.life_inbox_triage_examples")) {
+      if (sql.startsWith("INSERT INTO app_inbox.life_inbox_triage_examples")) {
         stored = { sql } as unknown as Record<string, unknown>;
         return [];
       }
@@ -176,7 +176,7 @@ describe("InboxRepository", () => {
     expect(ex.contextJson).toEqual({});
     expect(stored).not.toBeNull();
     expect(env.calls[0]?.sql).toContain(
-      "INSERT INTO app_lifeops.life_inbox_triage_examples",
+      "INSERT INTO app_inbox.life_inbox_triage_examples",
     );
   });
 

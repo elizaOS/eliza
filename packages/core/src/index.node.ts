@@ -255,6 +255,7 @@ export * from "./services/evaluator-priorities";
 export * from "./services/hook";
 export * from "./services/message";
 export * from "./services/optimized-prompt";
+export { resolveOptimizedPromptForRuntime } from "./services/optimized-prompt-resolver";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";

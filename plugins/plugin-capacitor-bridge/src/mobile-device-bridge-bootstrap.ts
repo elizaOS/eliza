@@ -50,18 +50,27 @@ const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	"eliza-1-4b": 2560,
 };
 
+// Same-file MTP draft window. Every Eliza-1 tier embeds a single NextN head
+// (`qwen35.nextn_predict_layers = 1`) in its text GGUF, so speculative
+// decoding needs no separate drafter download — just a draft window. Mirrors
+// `runtime.mtp` in @elizaos/shared catalog.ts (draftMin 1 / draftMax 2 is the
+// throughput peak for a single head). Kept local so this package does not take
+// a dependency on @elizaos/shared.
+const SAME_FILE_MTP_DRAFT = { draftMin: 1, draftMax: 2 } as const;
+
 const ELIZA_1_LOAD_METADATA: Record<
 	string,
 	{
 		contextSize: number;
+		mtp?: { draftMin: number; draftMax: number };
 	}
 > = {
-	"eliza-1-0_8b": { contextSize: 131072 },
-	"eliza-1-2b": { contextSize: 131072 },
-	"eliza-1-4b": { contextSize: 65536 },
-	"eliza-1-9b": { contextSize: 65536 },
-	"eliza-1-27b": { contextSize: 131072 },
-	"eliza-1-27b-256k": { contextSize: 262144 },
+	"eliza-1-0_8b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
+	"eliza-1-2b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
+	"eliza-1-4b": { contextSize: 65536, mtp: SAME_FILE_MTP_DRAFT },
+	"eliza-1-9b": { contextSize: 65536, mtp: SAME_FILE_MTP_DRAFT },
+	"eliza-1-27b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
+	"eliza-1-27b-256k": { contextSize: 262144, mtp: SAME_FILE_MTP_DRAFT },
 };
 
 type GenerateTextHandler = (
@@ -809,13 +818,23 @@ function resolveLocalModelPath(slot: string): string | null {
 	);
 }
 
-function buildLoadArgsFromRegistryModel(model: {
+export function buildLoadArgsFromRegistryModel(model: {
 	id: string;
 	path: string;
 }): LocalInferenceLoadArgs {
 	const args: LocalInferenceLoadArgs = { modelPath: model.path };
 	const eliza1 = ELIZA_1_LOAD_METADATA[model.id];
-	if (eliza1) args.contextSize = eliza1.contextSize;
+	if (eliza1) {
+		args.contextSize = eliza1.contextSize;
+		if (eliza1.mtp) {
+			// Same-file MTP: enable the draft window so the device's llama.cpp
+			// binding runs speculative decoding off the embedded NextN head. No
+			// `draftModelPath` — the head lives in the text GGUF already.
+			args.draftMin = eliza1.mtp.draftMin;
+			args.draftMax = eliza1.mtp.draftMax;
+			args.mobileSpeculative = true;
+		}
+	}
 	return args;
 }
 
@@ -897,17 +916,21 @@ const RECOMMENDED_MODELS: Record<
 	"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
 	RecommendedModel
 > = {
+	// The quantized 4B is the shipped mobile minimum/default. Both chat slots
+	// resolve to it — the 0.8B/2B tiers are too small for quality chat. The
+	// load path runs it at 64k context (see ELIZA_1_LOAD_METADATA) with
+	// compressed KV so it fits 8 GB-class phones.
 	TEXT_SMALL: {
-		id: "eliza-1-0_8b",
+		id: "eliza-1-4b",
 		hfRepo: "elizaos/eliza-1",
-		ggufFile: "bundles/0_8b/text/eliza-1-0_8b-128k.gguf",
-		localFile: "eliza-1-0_8b-128k.gguf",
+		ggufFile: "bundles/4b/text/eliza-1-4b-128k.gguf",
+		localFile: "eliza-1-4b-128k.gguf",
 	},
 	TEXT_LARGE: {
-		id: "eliza-1-2b",
+		id: "eliza-1-4b",
 		hfRepo: "elizaos/eliza-1",
-		ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
-		localFile: "eliza-1-2b-128k.gguf",
+		ggufFile: "bundles/4b/text/eliza-1-4b-128k.gguf",
+		localFile: "eliza-1-4b-128k.gguf",
 	},
 	TEXT_EMBEDDING: {
 		id: "eliza-1-embedding",

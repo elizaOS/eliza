@@ -1,19 +1,15 @@
+import { Volume2, VolumeX } from "lucide-react";
 import * as React from "react";
 import { createPortal } from "react-dom";
 
 /**
- * The tutorial spotlight: a full-screen overlay that
- *  - dims everything EXCEPT a hole cut around the target element (4 backdrop
- *    rects), so the target stays clickable and every other control is BLOCKED
- *    (the backdrop captures the click) — this is the "block wrong actions" seam;
- *  - draws a breathing orange glow ring around the target (the "glowing
- *    indicator pointing at the next control");
- *  - floats an instruction card near the target (auto-flips above/below to fit).
+ * The tour spotlight: a full-screen overlay that
+ *  - draws a breathing orange glow ring around the target (the indicator that
+ *    points at the next control);
+ *  - floats a small instruction card near the target (auto-flips above/below);
+ *  - for a centered card (welcome / finish) dims the whole screen instead.
  *
- * When `targetSelector` is null (e.g. the welcome / finish step) it dims the
- * whole screen and centers the card — no hole, nothing to point at.
- *
- * Brand orange (#FF5800) is the accent; resting→hover stays orange→darker.
+ * Brand orange (#FF5800) is the only accent; resting→hover stays orange→darker.
  */
 
 const BRAND = "#FF5800";
@@ -22,22 +18,19 @@ const PAD = 8; // glow ring inset around the target
 export interface SpotlightCardProps {
   title: string;
   body: string;
-  stepIndex: number;
-  totalSteps: number;
-  mode: "text" | "voice";
-  onToggleMode: () => void;
+  /** Narration muted — toggles the speaker control. */
+  muted: boolean;
+  onToggleMute: () => void;
   onSkip: () => void;
-  /** Optional manual-advance button (steps with no auto-detected success). */
+  /** Optional manual-advance button (centered cards, or a stalled frame). */
   onContinue?: () => void;
   continueLabel?: string;
-  /** Voice is currently speaking / listening — pulse the mode chip. */
-  voiceBusy?: boolean;
 }
 
 export interface TutorialSpotlightProps extends SpotlightCardProps {
   /** CSS selector for the element to spotlight, or null for a centered card. */
   targetSelector: string | null;
-  /** Block interaction everywhere except the target hole. */
+  /** Dim the whole screen behind a centered card. */
   blockOutside: boolean;
 }
 
@@ -124,15 +117,17 @@ export function TutorialSpotlight({
       // Inline z-index (not a Tailwind arbitrary class — that huge value isn't
       // reliably generated) so the spotlight + card always sit ABOVE the chat
       // overlay (z 9000), even when the chat is expanded full-screen while the
-      // user types the instructed command. Pass clicks through except over the
-      // card / backdrop rects.
+      // user performs the instructed action. Clicks pass through except the card.
       style={{ pointerEvents: "none", zIndex: 2147483000 }}
       aria-live="polite"
     >
       <style>{SPOTLIGHT_KEYFRAMES}</style>
 
-      {/* Dimming backdrop. With a hole: 4 rects around the target (block the rest,
-          leave the target clickable). Without a hole: one full-screen dim. */}
+      {/* Dim everything except the target so it pops on ANY background — the
+          bright-orange /chat ambient would otherwise swallow an orange glow ring.
+          With a target: four rects framing a hole (the target stays clickable,
+          and a drag started on it keeps pointer capture); without one: a single
+          full-screen dim behind the centered card. */}
       {blockOutside &&
         (hole ? (
           <BackdropWithHole hole={hole} />
@@ -170,9 +165,9 @@ function clampLeft(left: number): number {
   return Math.min(Math.max(14, left), window.innerWidth - w - 14);
 }
 
+/** Four dim rects framing the target hole; each blocks clicks. The hole is left
+ *  open so only the intended control is interactive. */
 function BackdropWithHole({ hole }: { hole: Rect }): React.ReactElement {
-  // Four dim rects framing the hole; each blocks clicks. The center (target)
-  // is left open so only the intended control is interactive.
   const dim = "absolute bg-black/55";
   const block: React.CSSProperties = { pointerEvents: "auto" };
   return (
@@ -218,57 +213,52 @@ function BackdropWithHole({ hole }: { hole: Rect }): React.ReactElement {
 function SpotlightCard({
   title,
   body,
-  stepIndex,
-  totalSteps,
-  mode,
-  onToggleMode,
+  muted,
+  onToggleMute,
   onSkip,
   onContinue,
   continueLabel,
-  voiceBusy,
   cardStyle,
 }: SpotlightCardProps & {
   cardStyle: React.CSSProperties;
 }): React.ReactElement {
   return (
     <div
-      className="absolute w-[320px] max-w-[calc(100vw-28px)] rounded-2xl border border-white/12 bg-neutral-950/95 p-4 text-white shadow-2xl backdrop-blur-md motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
+      className="absolute w-[300px] max-w-[calc(100vw-28px)] rounded-2xl border border-white/12 bg-neutral-950/95 p-4 text-white shadow-2xl backdrop-blur-md motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
       style={{ ...cardStyle, pointerEvents: "auto" }}
       data-testid="tutorial-card"
       role="dialog"
-      aria-label="Tutorial step"
+      aria-label="Tour step"
     >
-      <div className="mb-1 flex items-center justify-between">
-        <span
-          className="text-xs font-semibold tracking-wide"
-          style={{ color: BRAND }}
-        >
-          Step {stepIndex + 1} of {totalSteps}
-        </span>
-        <button
-          type="button"
-          onClick={onToggleMode}
-          className={`rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-white/80 transition-colors hover:bg-white/10 ${
-            voiceBusy ? "animate-pulse" : ""
-          }`}
-          aria-label={`Switch to ${mode === "voice" ? "text" : "voice"} mode`}
-        >
-          {mode === "voice" ? "🔊 Voice" : "💬 Text"}
-        </button>
-      </div>
       <h3 className="text-[15px] font-semibold leading-snug">{title}</h3>
       <p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-white/75">
         {body}
       </p>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={onSkip}
-          data-testid="tutorial-skip"
-          className="text-[12px] text-white/45 underline-offset-2 hover:text-white/70 hover:underline"
-        >
-          Skip tutorial
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onToggleMute}
+            data-testid="tutorial-mute"
+            aria-label={muted ? "Unmute narration" : "Mute narration"}
+            aria-pressed={muted}
+            className="text-white/45 transition-colors hover:text-white/80"
+          >
+            {muted ? (
+              <VolumeX className="h-4 w-4" aria-hidden />
+            ) : (
+              <Volume2 className="h-4 w-4" aria-hidden />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onSkip}
+            data-testid="tutorial-skip"
+            className="text-[12px] text-white/45 underline-offset-2 hover:text-white/70 hover:underline"
+          >
+            Skip tour
+          </button>
+        </div>
         {onContinue && (
           <button
             type="button"

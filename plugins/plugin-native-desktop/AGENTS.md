@@ -42,6 +42,7 @@ plugins/plugin-native-desktop/
     index.ts          Entry: registerPlugin("Desktop", …) + re-exports from definitions
     definitions.ts    All TypeScript interfaces + DesktopPlugin interface
     web.ts            DesktopWeb — browser fallback implementation
+    web.test.ts       Vitest tests for the web fallback
   rollup.config.mjs   Builds IIFE (dist/plugin.js) and CJS (dist/plugin.cjs.js) from tsc output
   tsconfig.json
   package.json
@@ -52,9 +53,11 @@ plugins/plugin-native-desktop/
 Scripts in package.json:
 
 ```bash
-bun run --cwd plugins/plugin-native-desktop build    # clean + tsc + rollup
-bun run --cwd plugins/plugin-native-desktop clean    # delete dist/
-bun run --cwd plugins/plugin-native-desktop watch    # tsc --watch (no rollup)
+bun run --cwd plugins/plugin-native-desktop build          # delegates to build:unlocked via with-package-build-lock.mjs
+bun run --cwd plugins/plugin-native-desktop build:unlocked # clean + tsc + rollup (actual build steps)
+bun run --cwd plugins/plugin-native-desktop clean          # delete dist/
+bun run --cwd plugins/plugin-native-desktop watch          # tsc --watch (no rollup)
+bun run --cwd plugins/plugin-native-desktop test           # vitest run
 # prepublishOnly runs build automatically before npm publish
 ```
 
@@ -81,5 +84,5 @@ None. This package reads no env vars and has no runtime configuration. All behav
 - **Electrobun bridge:** The native side is wired by the host app via `window.__ELIZA_ELECTROBUN_RPC__`. The web fallback (`DesktopWeb`) first checks for this RPC bridge before falling back to Web APIs.
 - **Platform availability:** System tray, global shortcuts, auto-launch, `getPath`, and `showItemInFolder` are Node/Electrobun only. Calling them on web returns unavailable results or throws. The `elizaos.platformDetails` field in `package.json` documents exactly what is available per platform.
 - **`DesktopPermissionId`** mirrors `PermissionId` from `@elizaos/shared/contracts/permissions`. The type is defined inline here to keep this package free of cross-package type imports.
-- **Build pipeline:** `tsc` compiles to `dist/esm/`, then rollup bundles to `dist/plugin.js` (IIFE) and `dist/plugin.cjs.js` (CJS). The `build` script must be run before publishing; `watch` only runs tsc, not rollup.
+- **Build pipeline:** `tsc` compiles to `dist/esm/`, then rollup bundles to `dist/plugin.js` (IIFE) and `dist/plugin.cjs.js` (CJS). The `build` script uses `with-package-build-lock.mjs` to serialize concurrent builds; `build:unlocked` runs the actual steps. `watch` only runs tsc, not rollup.
 - See root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM standards.

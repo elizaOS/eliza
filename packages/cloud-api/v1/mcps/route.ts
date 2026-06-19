@@ -4,11 +4,12 @@
  * x402).
  */
 
+import { isIP } from "node:net";
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
+import { isForbiddenIpAddress } from "@/lib/security/outbound-url";
 import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -111,16 +112,30 @@ app.post("/", async (c) => {
       );
     }
     if (data.endpointType === "external" && data.externalEndpoint) {
+      // SSRF guard at registration is synchronous only: require https and
+      // reject private/loopback IP-literal targets. We do NOT resolve DNS here
+      // (a momentarily-unresolvable host must not block registration, and the
+      // Worker runtime is not a reliable place for outbound DNS). Full
+      // DNS-based SSRF enforcement runs at proxy/fetch time in
+      // mcp/proxy/[mcpId] via assertSafeOutboundUrl.
+      let parsedEndpoint: URL;
       try {
-        await assertSafeOutboundUrl(data.externalEndpoint);
-      } catch (error) {
+        parsedEndpoint = new URL(data.externalEndpoint);
+      } catch {
+        return c.json({ error: "Invalid external endpoint URL" }, 400);
+      }
+      if (parsedEndpoint.protocol !== "https:") {
         return c.json(
-          {
-            error:
-              error instanceof Error
-                ? error.message
-                : "Unsafe external endpoint",
-          },
+          { error: "External endpoint must use https" },
+          400,
+        );
+      }
+      const endpointHost = parsedEndpoint.hostname
+        .replace(/^\[/, "")
+        .replace(/\]$/, "");
+      if (isIP(endpointHost) && isForbiddenIpAddress(endpointHost)) {
+        return c.json(
+          { error: "External endpoint must not target a private address" },
           400,
         );
       }

@@ -32,6 +32,7 @@ import {
   type VoiceSpeakerMetadata,
   type VoiceTranscriptEvent,
 } from "../../voice/voice-chat-types";
+import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { useCompanionSceneStatus } from "../companion/injected.hooks";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
@@ -313,7 +314,11 @@ export function useChatVoiceController(options: {
       if (!composedText) return;
       const speechEndedAtMs = nowMs();
       const voiceTurnId = event?.turn.id ?? makeVoiceTurnId(speechEndedAtMs);
-      const voiceTurnSignal = voiceTurnSignalFromTranscriptEvent(event);
+      // Prefer the signal the native VAD/turn engine computed (it folds in
+      // diarization + audio-frame end-of-turn); fall back to the transcript
+      // gate so transcript-only backends still reach the server ambient gate.
+      const voiceTurnSignal =
+        voiceTurnSignalFromTranscriptEvent(event) ?? buildVoiceTurnSignal(text);
       const turnSpeaker = event?.speaker ?? event?.turn.speaker ?? null;
       if (turnSpeaker) {
         setVoiceSpeaker(turnSpeaker);

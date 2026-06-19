@@ -35,11 +35,11 @@ import { describe, expect, it } from "vitest";
 import {
   createTaskGateRegistry,
   registerBuiltInGates,
-} from "../src/lifeops/scheduled-task/gate-registry.js";
+} from "@elizaos/plugin-scheduling";
 import type {
   GateEvaluationContext,
   ScheduledTask,
-} from "../src/lifeops/scheduled-task/types.js";
+} from "@elizaos/plugin-scheduling";
 
 /** Reproduces the legacy stretch-decider's weekend + late-evening rules. */
 function legacyStretchDecision(args: {

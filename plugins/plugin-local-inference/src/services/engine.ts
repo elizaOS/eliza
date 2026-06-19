@@ -32,6 +32,7 @@ import type {
 	LocalRuntimeLoadConfig,
 } from "./backend";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
+import { isMobilePlatform } from "@elizaos/shared";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	type Eliza1TierId,
@@ -1591,6 +1592,7 @@ export class LocalInferenceEngine {
 				const mode = readVoiceBackendModeFromEnv();
 				const decision = selectVoiceBackend({
 					mode,
+					mobile: isMobilePlatform(),
 					kokoroAvailable: kokoro !== null,
 					omnivoiceAvailable: isOmniVoiceBundleAvailable(bundle.root),
 					tierVoiceBackends: bundle.voiceBackends,

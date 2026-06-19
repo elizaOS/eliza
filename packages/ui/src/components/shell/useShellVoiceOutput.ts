@@ -87,15 +87,32 @@ export function useShellVoiceOutput(
   });
 
   const spokenRef = React.useRef<{ id: string; text: string } | null>(null);
+  // Voice-ness is decided PER assistant message at the moment it first appears,
+  // not re-checked on every render. `lastTurnVoice` is a single boolean that any
+  // later send (a typed turn, a hands-free re-arm) flips — reading it at speak
+  // time would silence an in-flight voice reply the instant the user typed.
+  // Instead, when a brand-new assistant message arrives we capture its id IFF
+  // the user's most recent turn was voice; from then on that reply is spoken
+  // regardless of subsequent turns. Replies to typed turns are never captured.
+  const voiceReplyIdsRef = React.useRef<Set<string>>(new Set());
+  const lastTurnVoiceRef = React.useRef(lastTurnVoice);
+  lastTurnVoiceRef.current = lastTurnVoice;
 
-  // Speak the latest assistant message as it streams and completes. Gated so we
-  // only speak replies the user asked for by voice — never a reply to a typed
-  // message, and never a pre-existing message on first mount.
+  // Speak the latest assistant message as it streams and completes. Never speaks
+  // a reply to a typed message, nor a pre-existing message on first mount.
   React.useEffect(() => {
-    if (agentVoiceMuted || !lastTurnVoice) return;
+    if (agentVoiceMuted) return;
     if (voiceBootstrapTick === 0) return; // voice config not loaded yet
     const latest = findLatestAssistantText(conversationMessages);
     if (!latest) return;
+
+    if (!voiceReplyIdsRef.current.has(latest.id)) {
+      // First sighting of this assistant message: it's a voice reply only if the
+      // turn that prompted it was voice. A typed-turn reply stays silent forever.
+      if (!lastTurnVoiceRef.current) return;
+      voiceReplyIdsRef.current.add(latest.id);
+    }
+
     const previous = spokenRef.current;
     if (
       previous &&
@@ -111,7 +128,6 @@ export function useShellVoiceOutput(
     queueAssistantSpeech(latest.id, latest.text, !chatSending, { replace });
   }, [
     agentVoiceMuted,
-    lastTurnVoice,
     voiceBootstrapTick,
     conversationMessages,
     chatSending,

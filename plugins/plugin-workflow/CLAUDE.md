@@ -89,6 +89,7 @@ plugins/plugin-workflow/
       automations.ts          /api/automations combined view
       embedded-webhooks.ts    Webhook trigger handlers
       workflow-routes.ts      Central route dispatcher
+      _helpers.ts             Shared route helper utilities
     db/
       schema.ts               Drizzle schema (5 tables)
     types/
@@ -99,6 +100,7 @@ plugins/plugin-workflow/
       schemaIndex.json        Node parameter schemas
       triggerSchemaIndex.json Trigger node schemas
     utils/                    generation, validateAndRepair, credentialResolver, catalog, etc.
+      workflow-prompts/       LLM prompt templates (keywordExtraction, feasibility, draftIntent, workflowGeneration, workflowMatching, fieldCorrection, parameterCorrection, actionResponse)
     lib/                      automations-builder, automations-types, workflow-clarification
     schemas/                  LLM structured-output schemas (keywordExtraction, feasibility, draftIntent, workflowMatching)
 ```
@@ -127,7 +129,14 @@ No required env vars. All configuration is read from `character.settings`:
 | `character.settings.workflows.credentials` | `Record<string, string>` | Optional pre-configured credential IDs keyed by credType (e.g. `"gmailOAuth2": "cred_abc"`). Note: `runtime.getSetting()` only returns primitives — read this nested value directly via `runtime.character.settings`. |
 | `workflow.enabled` | `boolean` | Set to `false` in agent config to disable the plugin entirely (checked by `auto-enable.ts`). |
 
-The plugin reads no environment variables at startup.
+The Smithers execution runtime also reads these optional environment variables (used in `src/services/smithers-runtime.ts`):
+
+| Env var | Default | Description |
+|---|---|---|
+| `SMITHERS_DB_PROVIDER` | `sqlite` | Database backend for the Smithers orchestrator (`sqlite` or `postgres`). |
+| `SMITHERS_DB_URL` | — | Connection string when `SMITHERS_DB_PROVIDER=postgres`. |
+| `SMITHERS_DB_DATA_DIR` | — | Data directory for SQLite storage. |
+| `ELIZA_SMITHERS_RUN_PAYLOAD` | `{}` | JSON payload injected into Smithers worker runs. |
 
 ## How to extend
 

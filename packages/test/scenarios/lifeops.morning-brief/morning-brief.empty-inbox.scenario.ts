@@ -135,7 +135,7 @@ export default scenario({
         // in the lifeops PG schema; deletes are idempotent on an empty DB.
         await executeRawSql(
           runtime,
-          `DELETE FROM app_lifeops.life_inbox_triage_entries WHERE agent_id = ${sqlQuote(agentId)}`,
+          `DELETE FROM app_inbox.life_inbox_triage_entries WHERE agent_id = ${sqlQuote(agentId)}`,
         );
         await executeRawSql(
           runtime,

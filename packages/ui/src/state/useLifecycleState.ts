@@ -12,6 +12,7 @@ import {
   savePersistedFirstRunComplete,
 } from "./persistence";
 import type {
+  ActionBanner,
   ActionNotice,
   AppState,
   LifecycleAction,
@@ -40,6 +41,7 @@ export interface LifecycleState {
   backendConnection: AppState["backendConnection"];
   backendDisconnectedBannerDismissed: boolean;
   systemWarnings: string[];
+  actionBanner: ActionBanner | null;
 }
 
 const INITIAL_LIFECYCLE_STATE: LifecycleState = {
@@ -66,6 +68,7 @@ const INITIAL_LIFECYCLE_STATE: LifecycleState = {
   },
   backendDisconnectedBannerDismissed: false,
   systemWarnings: [],
+  actionBanner: null,
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -94,7 +97,9 @@ type LifecycleAction_ =
   | { type: "RESET_BACKEND_CONNECTION" }
   | { type: "ADD_SYSTEM_WARNING"; warning: string }
   | { type: "DISMISS_SYSTEM_WARNING"; message: string }
-  | { type: "SET_SYSTEM_WARNINGS"; value: string[] };
+  | { type: "SET_SYSTEM_WARNINGS"; value: string[] }
+  | { type: "SET_ACTION_BANNER"; value: ActionBanner }
+  | { type: "CLEAR_ACTION_BANNER" };
 
 function lifecycleReducer(
   state: LifecycleState,
@@ -188,6 +193,10 @@ function lifecycleReducer(
       };
     case "SET_SYSTEM_WARNINGS":
       return { ...state, systemWarnings: action.value };
+    case "SET_ACTION_BANNER":
+      return { ...state, actionBanner: action.value };
+    case "CLEAR_ACTION_BANNER":
+      return { ...state, actionBanner: null };
     default:
       return state;
   }
@@ -231,6 +240,8 @@ export interface LifecycleStateHook {
   addSystemWarning: (warning: string) => void;
   dismissSystemWarning: (message: string) => void;
   setSystemWarnings: (v: string[]) => void;
+  showActionBanner: (banner: ActionBanner) => void;
+  dismissActionBanner: () => void;
 
   /** Derived startup status. */
   startupStatus: AppState["startupStatus"];
@@ -406,6 +417,14 @@ export function useLifecycleState(): LifecycleStateHook {
     dispatch({ type: "SET_SYSTEM_WARNINGS", value: v });
   }, []);
 
+  const showActionBanner = useCallback((banner: ActionBanner) => {
+    dispatch({ type: "SET_ACTION_BANNER", value: banner });
+  }, []);
+
+  const dismissActionBanner = useCallback(() => {
+    dispatch({ type: "CLEAR_ACTION_BANNER" });
+  }, []);
+
   // ── Derived state ──
 
   const startupStatus = useMemo<AppState["startupStatus"]>(() => {
@@ -448,6 +467,8 @@ export function useLifecycleState(): LifecycleStateHook {
     addSystemWarning,
     dismissSystemWarning,
     setSystemWarnings,
+    showActionBanner,
+    dismissActionBanner,
     startupStatus,
     lifecycleBusyRef,
     lifecycleActionRef,

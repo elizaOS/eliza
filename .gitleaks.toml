@@ -43,6 +43,13 @@ regexes = [
   '''sk-test_''',
   '''AKIAIOSFODNN7EXAMPLE''',
   '''wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY''',
+  # `Authorization: Bearer YOUR_API_KEY` placeholders in documented curl
+  # examples (affiliates monetization page, API route explorer, etc.). The
+  # curl-auth-header rule flags the literal placeholder token; it is the
+  # documentation stand-in, never a real key (a real key would be a different
+  # match and would not contain this literal).
+  '''YOUR_API_KEY''',
+  '''YOUR_CODE_HERE''',
 ]
 
 [[allowlists]]
