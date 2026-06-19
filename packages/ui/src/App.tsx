@@ -38,6 +38,7 @@ import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPan
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { TutorialOverlay } from "./components/pages/tutorial/TutorialOverlay";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
+import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { ChatAmbientBackground } from "./components/shell/ChatAmbientBackground";
@@ -1673,6 +1674,7 @@ export function App() {
         <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden">
           <ConnectionFailedBanner />
           <SystemWarningBanner />
+          <ActionBanner />
           {shellContent}
         </div>
         {/* Full-screen overlay app — renders whichever overlay app is active */}
