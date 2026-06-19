@@ -4,6 +4,7 @@ import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { loadPolymarketTuiState } from "./PolymarketAppView.helpers";
+import { PolymarketPositionsPanel } from "./PolymarketPositionsPanel";
 import type {
   PolymarketMarket,
   PolymarketStatusResponse,
@@ -39,6 +40,7 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
     markets,
     selectedMarket,
     setSelectedMarket,
+    positions,
     loading,
     error,
     refresh,
@@ -127,6 +129,13 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
               style={{ display: "flex", flexDirection: "column", gap: 12 }}
             >
               <ReadinessStrip status={status} />
+              {status?.account.ready ? (
+                <PolymarketPositionsPanel
+                  positions={positions?.positions ?? []}
+                  summary={positions?.summary ?? null}
+                  blockedReason={status.account.reason}
+                />
+              ) : null}
               {loading && markets.length === 0 ? (
                 <div style={{ display: "grid", gap: 10 }}>
                   {[0, 1, 2, 3].map((i) => (

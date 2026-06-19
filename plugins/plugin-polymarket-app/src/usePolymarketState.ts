@@ -4,6 +4,7 @@ import "./client";
 import type { PolymarketClient } from "./client";
 import type {
   PolymarketMarket,
+  PolymarketPositionsResponse,
   PolymarketStatusResponse,
 } from "./polymarket-contracts";
 
@@ -13,6 +14,8 @@ export function usePolymarketState() {
   const [selectedMarket, setSelectedMarket] = useState<PolymarketMarket | null>(
     null,
   );
+  const [positions, setPositions] =
+    useState<PolymarketPositionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +31,20 @@ export function usePolymarketState() {
       setStatus(statusResponse);
       setMarkets(marketsResponse.markets);
       setSelectedMarket(marketsResponse.markets[0] ?? null);
+
+      // Read the agent's own positions only when an account address is
+      // resolvable; the route falls back to the configured wallet so we call
+      // it without an explicit `user`. A position-read failure must not blank
+      // the whole view, so it's isolated from the markets fetch.
+      if (statusResponse.account.ready) {
+        try {
+          setPositions(await polymarketClient.polymarketPositions());
+        } catch {
+          setPositions(null);
+        }
+      } else {
+        setPositions(null);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Polymarket refresh failed",
@@ -46,6 +63,7 @@ export function usePolymarketState() {
     markets,
     selectedMarket,
     setSelectedMarket,
+    positions,
     loading,
     error,
     refresh,

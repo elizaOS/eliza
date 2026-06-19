@@ -17,6 +17,7 @@ import type {
   PolymarketMarketResponse,
   PolymarketMarketsResponse,
   PolymarketOrderbookResponse,
+  PolymarketPositionsResponse,
   PolymarketStatusResponse,
 } from "../polymarket-contracts";
 
@@ -236,5 +237,65 @@ export function validateStatusResponse(value: unknown): Violations {
   if (!isNonEmptyString(r.trading?.clobApiBase)) {
     v.push("trading.clobApiBase: expected non-empty string");
   }
+  if (typeof r.account?.ready !== "boolean") {
+    v.push("account.ready: expected boolean");
+  }
+  checkStringOrNull(v, "account.reason", r.account?.reason);
+  checkStringOrNull(v, "account.address", r.account?.address);
+  return v;
+}
+
+export function validatePositionsResponse(value: unknown): Violations {
+  const v: Violations = [];
+  if (typeof value !== "object" || value === null) {
+    return ["response: expected object"];
+  }
+  const r = value as PolymarketPositionsResponse;
+  if (!Array.isArray(r.positions)) {
+    v.push("positions: expected array");
+  } else {
+    r.positions.forEach((p, i) => {
+      for (const key of [
+        "marketId",
+        "conditionId",
+        "question",
+        "outcome",
+        "icon",
+        "slug",
+      ] as const) {
+        checkStringOrNull(v, `positions[${i}].${key}`, p?.[key]);
+      }
+      for (const key of [
+        "size",
+        "currentValue",
+        "cashPnl",
+        "percentPnl",
+      ] as const) {
+        checkNumericStringOrNull(v, `positions[${i}].${key}`, p?.[key]);
+      }
+    });
+  }
+  checkStringOrNull(v, "user", r.user);
+  if (r.summary !== null) {
+    if (typeof r.summary !== "object") {
+      v.push("summary: expected object|null");
+    } else {
+      checkNumericStringOrNull(v, "summary.totalValue", r.summary.totalValue);
+      checkNumericStringOrNull(
+        v,
+        "summary.totalCashPnl",
+        r.summary.totalCashPnl,
+      );
+      checkNumericStringOrNull(
+        v,
+        "summary.totalPercentPnl",
+        r.summary.totalPercentPnl,
+      );
+      if (typeof r.summary.openPositions !== "number") {
+        v.push("summary.openPositions: expected number");
+      }
+    }
+  }
+  validateSource(v, "source", r.source, "data");
   return v;
 }

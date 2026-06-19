@@ -18,6 +18,7 @@ import {
   type PolymarketOrderbookResponse,
   type PolymarketPosition,
   type PolymarketPositionsResponse,
+  type PolymarketPositionsSummary,
   type PolymarketStatusResponse,
   type PolymarketTradingEnvVar,
 } from "./polymarket-contracts";
@@ -77,6 +78,20 @@ interface ClobOrderbookRecord {
   last_trade_price?: unknown;
 }
 
+// Env keys consulted (in order) to resolve the agent's Polygon wallet for
+// reading its own Polymarket positions. POLYMARKET_WALLET_ADDRESS is the
+// venue-specific override; the STEWARD/managed keys mirror the resolution the
+// sibling Hyperliquid app-plugin uses so a single managed EVM address powers
+// both venues.
+const POLYMARKET_ADDRESS_ENV_KEYS = [
+  "POLYMARKET_WALLET_ADDRESS",
+  "POLYMARKET_ADDRESS",
+  "STEWARD_EVM_ADDRESS",
+  "ELIZA_MANAGED_EVM_ADDRESS",
+] as const;
+
+const HEX_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+
 const DISABLED_TRADING_REASON =
   "Trading and order management are disabled in this app integration. Configure a signed CLOB execution path before enabling these routes.";
 
@@ -125,7 +140,12 @@ export async function handlePolymarketRoute(
   }
 
   if (method === "GET" && pathname === "/api/polymarket/positions") {
-    await handlePositions(req, res, state.fetchImpl ?? fetch);
+    await handlePositions(
+      req,
+      res,
+      state.fetchImpl ?? fetch,
+      state.env ?? process.env,
+    );
     return true;
   }
 
@@ -137,6 +157,16 @@ export async function handlePolymarketRoute(
   return false;
 }
 
+function resolvePolymarketAddress(
+  env: Record<string, string | undefined>,
+): string | null {
+  for (const key of POLYMARKET_ADDRESS_ENV_KEYS) {
+    const raw = env[key]?.trim();
+    if (raw && HEX_ADDRESS_PATTERN.test(raw)) return raw;
+  }
+  return null;
+}
+
 function buildStatusResponse(
   env: Record<string, string | undefined>,
 ): PolymarketStatusResponse {
@@ -144,12 +174,20 @@ function buildStatusResponse(
     (name) => !hasTradingEnvVar(env, name),
   );
   const credentialsReady = missing.length === 0;
+  const accountAddress = resolvePolymarketAddress(env);
   return {
     publicReads: {
       ready: true,
       reason: null,
       gammaApiBase: POLYMARKET_GAMMA_API_BASE,
       dataApiBase: POLYMARKET_DATA_API_BASE,
+    },
+    account: {
+      ready: accountAddress !== null,
+      reason: accountAddress
+        ? null
+        : "No Polymarket wallet address configured. Set POLYMARKET_WALLET_ADDRESS (or a managed EVM address) to read positions.",
+      address: accountAddress,
     },
     trading: {
       ready: false,
@@ -331,14 +369,24 @@ async function handlePositions(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   fetchImpl: typeof fetch,
+  env: Record<string, string | undefined>,
 ): Promise<void> {
   const requestUrl = new URL(
     req.url ?? "/api/polymarket/positions",
     "http://x",
   );
-  const user = requestUrl.searchParams.get("user")?.trim();
+  // Prefer an explicit `user` query, else fall back to the agent's configured
+  // Polygon wallet so the AppView can read the agent's own positions without
+  // prompting for an address (mirrors the HL app-plugin's account resolution).
+  const user =
+    requestUrl.searchParams.get("user")?.trim() ||
+    resolvePolymarketAddress(env);
   if (!user) {
-    sendJsonError(res, 400, "Missing user wallet address");
+    sendJsonError(
+      res,
+      400,
+      "Missing user wallet address and no agent Polymarket address is configured",
+    );
     return;
   }
 
@@ -359,8 +407,11 @@ async function handlePositions(
       );
       return;
     }
+    const positions = payload.flatMap(readDataPosition);
     const response: PolymarketPositionsResponse = {
-      positions: payload.flatMap(readDataPosition),
+      positions,
+      user,
+      summary: summarizePositions(positions),
       source: { api: "data", endpoint: dataUrl.toString() },
     };
     sendJson(res, 200, response);
@@ -446,6 +497,58 @@ function readDataPosition(value: unknown): PolymarketPosition[] {
       slug: readString(record.slug),
     },
   ];
+}
+
+/**
+ * Aggregate a wallet's open positions into the account-health summary: total
+ * current value, total cash PnL, and the implied return on cost basis
+ * (cost basis = value - pnl). Returns null when there are no positions so the
+ * view can render an honest empty state. Mirrors the HL app-plugin's summed
+ * unrealized-PnL aggregate.
+ */
+function summarizePositions(
+  positions: readonly PolymarketPosition[],
+): PolymarketPositionsSummary | null {
+  if (positions.length === 0) return null;
+
+  let totalValue = 0;
+  let totalCashPnl = 0;
+  let hasValue = false;
+  let hasPnl = false;
+
+  for (const position of positions) {
+    const value = parseFiniteNumber(position.currentValue);
+    if (value !== null) {
+      totalValue += value;
+      hasValue = true;
+    }
+    const pnl = parseFiniteNumber(position.cashPnl);
+    if (pnl !== null) {
+      totalCashPnl += pnl;
+      hasPnl = true;
+    }
+  }
+
+  // Cost basis is value minus realized/unrealized gain; only meaningful when
+  // both aggregates are readable and the basis is non-zero.
+  const costBasis = totalValue - totalCashPnl;
+  const totalPercentPnl =
+    hasValue && hasPnl && Math.abs(costBasis) > 1e-9
+      ? String(totalCashPnl / costBasis)
+      : null;
+
+  return {
+    totalValue: hasValue ? String(totalValue) : null,
+    totalCashPnl: hasPnl ? String(totalCashPnl) : null,
+    totalPercentPnl,
+    openPositions: positions.length,
+  };
+}
+
+function parseFiniteNumber(value: string | null): number | null {
+  if (value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function buildDisabledResponse(): PolymarketDisabledResponse {
