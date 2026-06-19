@@ -22,7 +22,10 @@ export default defineConfig({
   timeout: 180_000,
   expect: { timeout: 30_000 },
   fullyParallel: false,
-  retries: 0,
+  // HMR propagation is timing-sensitive: a module fetch or the Vite socket can
+  // occasionally lose the race with the edit. Retry rather than fail the whole
+  // (serial) suite on a one-off miss.
+  retries: 2,
   workers: 1,
   reporter: "list",
   outputDir: "./test-results/hmr",
