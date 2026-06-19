@@ -112,9 +112,7 @@ function registerMediaModels(runtime: IAgentRuntime): void {
       cerebras &&
       !hasExplicitCapabilityOverride(runtime, mediaModelOverrideKeys[modelType] ?? [])
     ) {
-      logger.info(
-        `[OpenAI] Not registering ${modelType}: the Cerebras endpoint does not serve it`
-      );
+      logger.info(`[OpenAI] Not registering ${modelType}: the Cerebras endpoint does not serve it`);
       continue;
     }
     runtime.registerModel(
