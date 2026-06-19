@@ -3566,7 +3566,7 @@ export function OrchestratorWorkbench() {
                   })}
                   hint={t("orchestrator.empty.hint", {
                     defaultValue:
-                      "Dispatch a coding task and the orchestrator will spin up sub-agents, track their plans, and stream their work here.",
+                      "Ask me to start a coding task and it will appear here.",
                   })}
                 />
               )
