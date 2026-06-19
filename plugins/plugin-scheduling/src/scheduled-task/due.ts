@@ -1,6 +1,6 @@
 import { computeNextCronRunAtMs } from "@elizaos/core";
 
-import type { AnchorRegistry } from "../registries/anchor-registry.js";
+import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import type {
   OwnerFactsView,
   ScheduledTask,

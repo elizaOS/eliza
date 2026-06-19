@@ -14,7 +14,7 @@
  *    both are set.
  */
 
-import type { DispatchResult } from "../connectors/contract.js";
+import type { DispatchResult } from "../dispatch-types.js";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
 import type {
   AnchorRegistry,

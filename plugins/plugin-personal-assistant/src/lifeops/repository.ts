@@ -2139,9 +2139,9 @@ function parseOptionalJsonRecord<T>(value: unknown): T | undefined {
 
 function parseScheduledTaskRow(
   row: Record<string, unknown>,
-): import("./scheduled-task/types.js").ScheduledTask {
-  type StateShape = import("./scheduled-task/types.js").ScheduledTaskState;
-  type TaskShape = import("./scheduled-task/types.js").ScheduledTask;
+): import("@elizaos/plugin-scheduling").ScheduledTask {
+  type StateShape = import("@elizaos/plugin-scheduling").ScheduledTaskState;
+  type TaskShape = import("@elizaos/plugin-scheduling").ScheduledTask;
   const stateRaw = parseJsonRecord(row.state_json);
   const state: StateShape = {
     status: ((stateRaw.status as string) ??
@@ -2223,8 +2223,8 @@ function parseScheduledTaskRow(
 
 function parseScheduledTaskLogRow(
   row: Record<string, unknown>,
-): import("./scheduled-task/types.js").ScheduledTaskLogEntry {
-  type LogShape = import("./scheduled-task/types.js").ScheduledTaskLogEntry;
+): import("@elizaos/plugin-scheduling").ScheduledTaskLogEntry {
+  type LogShape = import("@elizaos/plugin-scheduling").ScheduledTaskLogEntry;
   return {
     logId: toText(row.id),
     taskId: toText(row.task_id),
@@ -7319,7 +7319,7 @@ export class LifeOpsRepository {
    */
   async upsertScheduledTask(
     agentId: string,
-    task: import("./scheduled-task/types.js").ScheduledTask,
+    task: import("@elizaos/plugin-scheduling").ScheduledTask,
     options?: {
       expectedVersion?: number;
       tx?: TransactionalDb;
@@ -7454,7 +7454,7 @@ export class LifeOpsRepository {
   ): Promise<
     | {
         kind: "fired";
-        task: import("./scheduled-task/types.js").ScheduledTask;
+        task: import("@elizaos/plugin-scheduling").ScheduledTask;
       }
     | { kind: "raced" }
   > {
@@ -7489,7 +7489,7 @@ export class LifeOpsRepository {
   async getScheduledTask(
     agentId: string,
     taskId: string,
-  ): Promise<import("./scheduled-task/types.js").ScheduledTask | null> {
+  ): Promise<import("@elizaos/plugin-scheduling").ScheduledTask | null> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -7505,7 +7505,7 @@ export class LifeOpsRepository {
   async getScheduledTaskByIdempotencyKey(
     agentId: string,
     idempotencyKey: string,
-  ): Promise<import("./scheduled-task/types.js").ScheduledTask | null> {
+  ): Promise<import("@elizaos/plugin-scheduling").ScheduledTask | null> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -7543,7 +7543,7 @@ export class LifeOpsRepository {
        */
       requireNextFireAt?: boolean;
     },
-  ): Promise<import("./scheduled-task/types.js").ScheduledTask[]> {
+  ): Promise<import("@elizaos/plugin-scheduling").ScheduledTask[]> {
     const clauses: string[] = [`agent_id = ${sqlQuote(agentId)}`];
     if (filter?.kind) {
       clauses.push(`kind = ${sqlQuote(filter.kind)}`);
@@ -7610,7 +7610,7 @@ export class LifeOpsRepository {
   }
 
   async appendScheduledTaskLog(
-    entry: import("./scheduled-task/types.js").ScheduledTaskLogEntry,
+    entry: import("@elizaos/plugin-scheduling").ScheduledTaskLogEntry,
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
@@ -7636,7 +7636,7 @@ export class LifeOpsRepository {
     untilIso?: string;
     excludeRollups?: boolean;
     limit?: number;
-  }): Promise<import("./scheduled-task/types.js").ScheduledTaskLogEntry[]> {
+  }): Promise<import("@elizaos/plugin-scheduling").ScheduledTaskLogEntry[]> {
     const clauses: string[] = [
       `agent_id = ${sqlQuote(args.agentId)}`,
       `task_id = ${sqlQuote(args.taskId)}`,

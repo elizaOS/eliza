@@ -8,7 +8,7 @@ import {
   createPendingPromptsStore,
   type RecordedPendingPrompt,
 } from "../pending-prompts/store.js";
-import { getAnchorRegistry } from "../registries/anchor-registry.js";
+import { getAnchorRegistry } from "@elizaos/plugin-scheduling";
 import { LifeOpsRepository } from "../repository.js";
 import {
   expectedReplyKindForTask,
@@ -17,9 +17,9 @@ import {
   isScheduledTaskDue,
   markWindowFireIfNeeded,
   pendingPromptRoomIdForTask,
-} from "./due.js";
+} from "@elizaos/plugin-scheduling";
 import { getScheduledTaskRunner } from "./service.js";
-import type { ScheduledTask } from "./types.js";
+import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 
 export interface ProcessDueScheduledTasksRequest {
   runtime: IAgentRuntime;
@@ -209,9 +209,9 @@ export async function processDueScheduledTasks(
 async function handleFireResult(args: {
   request: ProcessDueScheduledTasksRequest;
   repo: LifeOpsRepository;
-  fireResult: import("./runner.js").ScheduledTaskFireResult;
-  decision: import("./due.js").ScheduledTaskDueDecision;
-  dueContext: import("./due.js").ScheduledTaskDueContext;
+  fireResult: import("@elizaos/plugin-scheduling").ScheduledTaskFireResult;
+  decision: import("@elizaos/plugin-scheduling").ScheduledTaskDueDecision;
+  dueContext: import("@elizaos/plugin-scheduling").ScheduledTaskDueContext;
   result: ProcessDueScheduledTasksResult;
 }): Promise<boolean> {
   const { request, fireResult, decision, dueContext, result } = args;

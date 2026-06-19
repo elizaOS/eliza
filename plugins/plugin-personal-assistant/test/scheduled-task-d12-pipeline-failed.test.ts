@@ -12,32 +12,32 @@ import { describe, expect, it } from "vitest";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
-} from "../src/lifeops/scheduled-task/completion-check-registry.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createAnchorRegistry,
   createConsolidationRegistry,
-} from "../src/lifeops/scheduled-task/consolidation-policy.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createEscalationLadderRegistry,
   registerDefaultEscalationLadders,
-} from "../src/lifeops/scheduled-task/escalation.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createTaskGateRegistry,
   registerBuiltInGates,
-} from "../src/lifeops/scheduled-task/gate-registry.js";
+} from "@elizaos/plugin-scheduling";
 import {
   ChannelKeyError,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   TestNoopScheduledTaskDispatcher,
-} from "../src/lifeops/scheduled-task/runner.js";
-import { createInMemoryScheduledTaskLogStore } from "../src/lifeops/scheduled-task/state-log.js";
+} from "@elizaos/plugin-scheduling";
+import { createInMemoryScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
   ScheduledTask,
   SubjectStoreView,
-} from "../src/lifeops/scheduled-task/types.js";
+} from "@elizaos/plugin-scheduling";
 
 function makeRunner(opts?: { channelKeys?: () => ReadonlySet<string> }) {
   const gates = createTaskGateRegistry();

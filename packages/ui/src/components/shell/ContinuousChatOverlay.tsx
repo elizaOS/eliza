@@ -773,6 +773,10 @@ export function ContinuousChatOverlay({
   // re-render. Drives the glass/content crossfade + scale; `threadHeight` stays
   // 0 until the input is fully formed, then takes over for input → chat.
   const openProgress = useMotionValue(pilled ? 0 : 1);
+  // Latest `settleDrag` (defined below) exposed to the viewport-resize effect
+  // (which runs earlier). A rotation can orphan an in-flight drag — re-settling
+  // the morph keeps the pill↔input crossfade from stranding both bars visible.
+  const settleDragRef = React.useRef<(() => void) | null>(null);
   const draggingRef = React.useRef(false);
   // Push-to-talk phase (single source of truth) + a label-only mirror.
   const pttRef = React.useRef<PttPhase>({ kind: "idle" });
@@ -1088,14 +1092,26 @@ export function ContinuousChatOverlay({
         );
       }
     };
-    sync();
+    // A viewport SIZE change (rotation) must never strand the pill↔input morph
+    // mid-crossfade — rotation often cancels the in-flight pointer with no
+    // pointerup, leaving the drag orphaned (openProgress frozen mid-range = BOTH
+    // the grabber bar and the pill bar visible). Re-settle to a clean 0/1 end so
+    // the crossfade always resolves to exactly one bar. (No-op at rest; a live
+    // legit drag rotating is rare and settling is the right call there too.)
+    // Plain `sync` (no settle) stays on vv `scroll` — that fires constantly while
+    // the keyboard animates and must not interrupt an open sheet.
+    const syncAndSettle = () => {
+      sync();
+      settleDragRef.current?.();
+    };
+    syncAndSettle();
     const vv = window.visualViewport;
-    window.addEventListener("resize", sync);
-    vv?.addEventListener("resize", sync);
+    window.addEventListener("resize", syncAndSettle);
+    vv?.addEventListener("resize", syncAndSettle);
     vv?.addEventListener("scroll", sync);
     return () => {
-      window.removeEventListener("resize", sync);
-      vv?.removeEventListener("resize", sync);
+      window.removeEventListener("resize", syncAndSettle);
+      vv?.removeEventListener("resize", syncAndSettle);
       vv?.removeEventListener("scroll", sync);
     };
   }, [readViewport]);
@@ -1258,6 +1274,9 @@ export function ContinuousChatOverlay({
       animate(openProgress, open, OPEN_SPRING);
     }
   }, [threadHeight, openProgress, baseH, pilled, reduce]);
+  // Keep the ref the (earlier-declared) viewport-resize effect calls pointing at
+  // the latest settleDrag, so a rotation re-settles with current pilled/baseH.
+  settleDragRef.current = settleDrag;
 
   // Drive openProgress from the pilled flag for NON-drag transitions (tap the
   // pill, programmatic open/close): a live finger drag owns openProgress itself

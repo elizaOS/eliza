@@ -17,6 +17,7 @@ import {
   type VoiceCaptureHandle,
   type VoiceCaptureState,
 } from "../../voice/voice-capture-factory";
+import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
@@ -307,18 +308,28 @@ export function useShellController(): ShellController {
                 const replyAgeMs = reply.at
                   ? Math.max(0, Date.now() - reply.at)
                   : Number.POSITIVE_INFINITY;
-                if (
-                  !shouldRespondToVoiceTurn(turn, {
-                    recentAgentReply: reply.text,
-                    replyAgeMs,
-                    agentSpeaking: speakingRef.current,
-                  })
-                ) {
+                const respondContext = {
+                  recentAgentReply: reply.text,
+                  replyAgeMs,
+                  agentSpeaking: speakingRef.current,
+                };
+                // Cheap client pre-filter: drop an obvious echo/disfluency turn
+                // before it costs a server round-trip.
+                if (!shouldRespondToVoiceTurn(turn, respondContext)) {
                   return;
                 }
+                // Attach the ambient signal so the server gate
+                // (`core.voice_turn_signal`) is the single authority on whether
+                // to reply, and so diarization/wake-word enrichment composes in
+                // on platforms that have them. The transcript-only shell path
+                // contributes semantic end-of-turn + the echo/disfluency gate.
+                const voiceTurnSignal = buildVoiceTurnSignal(
+                  turn,
+                  respondContext,
+                );
                 send(turn, {
                   channelType: "VOICE_DM",
-                  metadata: { voiceSource: lastBackend },
+                  metadata: { voiceSource: lastBackend, voiceTurnSignal },
                 });
               },
             });

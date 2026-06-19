@@ -4,7 +4,9 @@
  * between siblings — each registry stands alone.
  */
 
-// Anchor / event-kind / family registries.
+// Anchor / event-kind / family registries. The anchor registry moved to
+// @elizaos/plugin-scheduling (the scheduling spine); re-exported here so PA's
+// registries barrel keeps its surface.
 export {
   __resetAnchorRegistryForTests,
   type AnchorContext,
@@ -15,7 +17,7 @@ export {
   getAnchorRegistry,
   registerAnchorRegistry,
   registerAppLifeOpsAnchors,
-} from "./anchor-registry.js";
+} from "@elizaos/plugin-scheduling";
 export { appBlockerContribution } from "./app-blocker-contribution.js";
 export type {
   BlockerAvailability,
