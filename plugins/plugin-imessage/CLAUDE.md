@@ -54,6 +54,7 @@ plugins/plugin-imessage/
     connector-account-provider.ts  ConnectorAccountProvider adapter
     setup-routes.ts             /api/setup/imessage/* route handlers
     data-routes.ts              /api/imessage/* CRUD route handlers
+    node-sqlite.d.ts            Type shim for node:sqlite (gitignored)
     providers/
       index.ts                  (reserved)
     api/

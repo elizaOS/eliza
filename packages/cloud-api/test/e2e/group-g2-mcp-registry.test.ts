@@ -43,7 +43,9 @@ interface McpDto {
   tools: Array<{ name: string }>;
 }
 
-async function createMcp(overrides: Record<string, unknown> = {}): Promise<McpDto> {
+async function createMcp(
+  overrides: Record<string, unknown> = {},
+): Promise<McpDto> {
   const slug = uniqueSlug();
   const res = await api.post(
     "/api/v1/mcps",
@@ -271,7 +273,7 @@ describe("Group G2 — user MCP registry CRUD", () => {
     expect(Array.isArray(body.registry)).toBe(true);
     // The platform built-ins (crypto, time, weather, eliza-platform, ...) are
     // always present even with zero community MCPs.
-    expect((body.platformMcps ?? 0)).toBeGreaterThan(0);
+    expect(body.platformMcps ?? 0).toBeGreaterThan(0);
     expect(body.registry?.some((e) => e.source === "platform")).toBe(true);
   });
 });

@@ -181,7 +181,10 @@ async function resumeAndRespond(
  */
 function extractQueryToken(request: Request, url: URL): string | null {
   // A header already carries auth → let the normal request validation handle it.
-  if (request.headers.get("authorization") || request.headers.get("x-api-key")) {
+  if (
+    request.headers.get("authorization") ||
+    request.headers.get("x-api-key")
+  ) {
     return null;
   }
   return url.searchParams.get("token")?.trim() || null;
@@ -240,7 +243,10 @@ export function handleDedicatedAgentProxy(
       // 4. Unified auth — swap the validated owner's cloud token for the agent's
       //    own ELIZA_API_TOKEN so the container accepts the request. For a WS
       //    upgrade the token rode in `?token=`, so rewrite that too.
-      const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
+      const envVars = (sandbox.environment_vars ?? {}) as Record<
+        string,
+        string
+      >;
       const agentToken = envVars.ELIZA_API_TOKEN?.trim();
       // No managed token (older / not-yet-provisioned agent) → pass through.
       return proxyToOrigin(

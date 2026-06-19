@@ -104,7 +104,7 @@ function formatEntry(entry: TriageEntry): string {
 }
 
 export const crossChannelContextProvider: Provider = {
-  name: "crossChannelContext",
+  name: "inboxCrossChannelContext",
   description:
     "Injects recent triage entries from the current message sender across other channels. " +
     "Use when the owner asks about a person or thread — surfaces cross-channel history automatically.",

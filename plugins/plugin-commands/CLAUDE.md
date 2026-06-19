@@ -37,8 +37,8 @@ src/
                         CommandScope, CommandCategory, CommandArgDefinition
   connector-catalog.ts  Connector-neutral command catalog: ConnectorCommand,
                         ConnectorCommandTarget, ConnectorCommandOption,
-                        ClientCommandAction, ConnectorCommandCatalog,
-                        buildConnectorCommandCatalog() — re-projects the text
+                        ClientCommandAction, getConnectorCommands(surface)
+                        — re-projects the text
                         command registry into a shape connectors (Discord, Telegram, …)
                         map onto their native command surfaces.
   settings-sections.ts  Settings section registry: SettingsSection, SETTINGS_SECTIONS,
@@ -121,4 +121,4 @@ registerCommand({
 - **Provider context-gates itself.** For non-command messages the provider returns an empty string to keep the prompt clean.
 - **Parser accepts `/` or `!` prefix.** The `!` prefix is treated the same as `/`.
 - **`auto-enable.ts` is a separate entry point** — it must stay lightweight (no plugin runtime imports) because it is loaded by the auto-enable engine for every plugin at boot.
-- **`connector-catalog.ts` for remote connectors.** Use `buildConnectorCommandCatalog()` to get a connector-neutral view of all commands; filter out `kind: "client"` targets for remote connectors (Discord, Telegram, etc.).
+- **`connector-catalog.ts` for remote connectors.** Use `getConnectorCommands(surface)` to get a connector-neutral view of all commands; `kind: "client"` targets are already filtered off remote connectors (Discord, Telegram, etc.).

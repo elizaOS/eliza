@@ -120,7 +120,8 @@ export function selectVoiceBackend(
     }
     return {
       backend: "kokoro",
-      reason: "mobile platform — Kokoro exclusively (OmniVoice not shipped on mobile)",
+      reason:
+        "mobile platform — Kokoro exclusively (OmniVoice not shipped on mobile)",
     };
   }
 

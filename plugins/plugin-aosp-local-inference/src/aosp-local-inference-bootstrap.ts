@@ -1316,6 +1316,32 @@ function fallbackFindBundledModels(modelsDir: string): {
 }
 
 /**
+ * Resolve chat / embedding GGUF paths from on-disk state, in priority order:
+ * device assignments (`assignments.json` + `registry.json`, written by the UI
+ * download flow) → bundled `manifest.json` (build-time staging) → glob
+ * fallback. Pure fs reads; safe to re-run on a long-lived process.
+ */
+function resolveBundledModelPaths(modelsDir: string): {
+  chat: string | null;
+  embedding: string | null;
+} {
+  const assigned = readAssignedBundledModels(modelsDir);
+  const manifest = readBundledModelManifest(modelsDir);
+  let resolved = {
+    chat: assigned.chat ?? manifest.chat,
+    embedding: assigned.embedding ?? manifest.embedding,
+  };
+  if (!resolved.chat || !resolved.embedding) {
+    const fallback = fallbackFindBundledModels(modelsDir);
+    resolved = {
+      chat: resolved.chat ?? fallback.chat,
+      embedding: resolved.embedding ?? fallback.embedding,
+    };
+  }
+  return resolved;
+}
+
+/**
  * Per-modelType auto-load gate. We track which model role is currently
  * loaded so a chat handler doesn't try to swap-in the embedding model
  * (and vice versa) on every call. Promise-shaped so two concurrent
@@ -1330,23 +1356,26 @@ function makeLoaderLifecycle(loader: AospLoader): {
   let currentRole: LoadedRole = null;
   let inflight: Promise<void> | null = null;
   const modelsDir = resolveBundledModelsDir();
-  const assigned = readAssignedBundledModels(modelsDir);
-  const manifest = readBundledModelManifest(modelsDir);
-  let resolved = {
-    chat: assigned.chat ?? manifest.chat,
-    embedding: assigned.embedding ?? manifest.embedding,
-  };
-  if (!resolved.chat || !resolved.embedding) {
-    const fallback = fallbackFindBundledModels(modelsDir);
-    resolved = {
-      chat: resolved.chat ?? fallback.chat,
-      embedding: resolved.embedding ?? fallback.embedding,
-    };
-  }
+  let resolved = resolveBundledModelPaths(modelsDir);
   async function loadRole(role: "chat" | "embedding"): Promise<void> {
     if (currentRole === role) return;
     if (inflight) return inflight;
     let target = role === "chat" ? resolved.chat : resolved.embedding;
+    if (!target) {
+      // The models dir is empty at first boot, so the lifecycle's initial
+      // resolve returns null. A device/UI download (the recommendation engine
+      // picks a device-appropriate tier) lands the GGUF + assignments.json +
+      // registry.json AFTER boot. Re-scan here before deciding to auto-download
+      // or fail — otherwise a long-lived agent never sees a model installed
+      // post-boot, and on a build with ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1
+      // (UI owns downloads) chat fails permanently with "No bundled model".
+      const rescan = resolveBundledModelPaths(modelsDir);
+      resolved = {
+        chat: resolved.chat ?? rescan.chat,
+        embedding: resolved.embedding ?? rescan.embedding,
+      };
+      target = role === "chat" ? resolved.chat : resolved.embedding;
+    }
     if (!target) {
       if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
         throw new Error(

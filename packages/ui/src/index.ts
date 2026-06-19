@@ -244,9 +244,9 @@ export {
   type ChatSurfaceProps,
 } from "./components/shell/ChatSurface";
 export { HomePill, type HomePillProps } from "./components/shell/HomePill";
-export {
-  type ShellMessage,
-  type ShellPhase,
+export type {
+  ShellMessage,
+  ShellPhase,
 } from "./components/shell/shell-state";
 export {
   Select,
