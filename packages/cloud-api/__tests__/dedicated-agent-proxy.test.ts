@@ -140,4 +140,41 @@ describe("dedicated-agent-proxy — unified auth", () => {
     expect(res.headers.get("Retry-After")).toBe("5");
     expect(captured).toBeNull();
   });
+
+  // A browser `new WebSocket()` can't set headers, so the app passes the cloud
+  // token as `?token=`. The proxy must validate it the same way and rewrite it
+  // to the agent token (the container reads `?token=` via ELIZA_ALLOW_WS_QUERY_TOKEN).
+  function makeWsRequest(cloudToken?: string): Request {
+    const u = new URL(`https://${AGENT}.elizacloud.ai/ws`);
+    if (cloudToken) u.searchParams.set("token", cloudToken);
+    return new Request(u.toString()); // no Authorization header
+  }
+
+  test("WS upgrade with ?token= (owner, running) → rewrites ?token= to the agent token + sets header", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = runningDedicated;
+
+    const r = makeWsRequest("cloud-token-abc");
+    await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(captured).not.toBeNull();
+    expect(new URL(captured?.url ?? "").searchParams.get("token")).toBe(
+      "agent-secret-token",
+    );
+    expect(captured?.headers.get("authorization")).toBe(
+      "Bearer agent-secret-token",
+    );
+  });
+
+  test("WS ?token= from a NON-OWNER → pass through, ?token= NOT rewritten (agent token never leaks)", async () => {
+    authResult = { user: { id: "att", organization_id: "attacker-org" } };
+    sandboxResult = null; // attacker's org does not own this agent
+
+    const r = makeWsRequest("attacker-cloud-token");
+    await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(new URL(captured?.url ?? "").searchParams.get("token")).toBe(
+      "attacker-cloud-token",
+    );
+  });
 });
