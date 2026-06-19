@@ -17,6 +17,32 @@ import {
 } from "../../../voice/voice-capture-factory";
 import { useShellController } from "../useShellController";
 
+// jsdom in this env ships a `window.localStorage` whose methods throw (the
+// beforeEach clear() is wrapped in try/catch for exactly that reason). The
+// hands-free persistence tests need a real one, so back it with an in-memory
+// Storage.
+{
+  const store = new Map<string, string>();
+  const memoryStorage: Storage = {
+    get length() {
+      return store.size;
+    },
+    clear: () => store.clear(),
+    getItem: (k) => (store.has(k) ? (store.get(k) as string) : null),
+    key: (i) => Array.from(store.keys())[i] ?? null,
+    removeItem: (k) => {
+      store.delete(k);
+    },
+    setItem: (k, v) => {
+      store.set(k, String(v));
+    },
+  };
+  Object.defineProperty(window, "localStorage", {
+    value: memoryStorage,
+    configurable: true,
+  });
+}
+
 const NOT_REQUIRED_STATUS = {
   kind: "not-required",
   blocksSend: false,

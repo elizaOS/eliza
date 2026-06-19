@@ -53,10 +53,6 @@ export interface ShellController {
   startRecording: (intent?: CaptureIntent) => void;
   /** End capture unconditionally. Used by push-to-talk release. */
   stopRecording: () => void;
-  /** True while the mic is muted (paused) but the voice session stays open. */
-  muted: boolean;
-  /** Pause/resume the mic without ending the voice session. */
-  toggleMute: () => void;
   /** Live interim transcription of the current utterance ("" when none). */
   transcript: string;
   /** True while an assistant reply is being spoken aloud (voice output). */
@@ -144,7 +140,6 @@ export function useShellController(): ShellController {
   const modelStatus = useHomeModelStatus();
   const [isOpen, setIsOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
-  const [muted, setMuted] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
   const [analyser, setAnalyser] = React.useState<AnalyserNode | null>(null);
   // True when the most recent user turn was voice-originated (VOICE_DM). Gates
@@ -311,18 +306,6 @@ export function useShellController(): ShellController {
     else startCapture();
   }, [recording, startCapture, stopCapture]);
 
-  // Mute = pause the mic but keep the voice session (overlay) open; unmute
-  // resumes capture. Modeled as a stop/restart of the capture handle.
-  const toggleMute = React.useCallback(() => {
-    if (muted) {
-      setMuted(false);
-      startCapture();
-    } else {
-      setMuted(true);
-      if (captureRef.current) stopCapture();
-    }
-  }, [muted, startCapture, stopCapture]);
-
   React.useEffect(() => stopCapture, [stopCapture]);
 
   // Restore a persisted "always-on" continuous-chat mode on boot: engage the
@@ -348,7 +331,6 @@ export function useShellController(): ShellController {
   }, []);
   const close = React.useCallback(() => {
     setIsOpen(false);
-    setMuted(false);
     setHandsFree(false);
     if (captureRef.current) stopCapture();
   }, [stopCapture]);
@@ -479,8 +461,6 @@ export function useShellController(): ShellController {
     toggleHandsFree,
     setDictationSink,
     setComposerHasDraft,
-    muted,
-    toggleMute,
     transcript,
     speaking: voiceOutput.speaking,
     agentVoiceMuted: voiceOutput.agentVoiceMuted,

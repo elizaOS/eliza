@@ -598,6 +598,141 @@ try {
     await p.close();
   }
 
+  // VOICE ↔ CHAT, direction 1 — DICTATION fills the chat box (transcription into
+  // the composer, editable, then sent as a normal turn). The user explicitly
+  // asked this be tested both ways.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-textarea"]');
+    await p.waitForTimeout(500);
+    await p.evaluate(() => window.__emitDictation?.("buy oat milk"));
+    await p.waitForTimeout(200);
+    let draft = await p.getByTestId("chat-composer-textarea").inputValue();
+    assert(
+      draft.includes("buy oat milk"),
+      `DICTATION: final transcript fills the composer box (draft="${draft}")`,
+    );
+    assert(
+      await p.getByTestId("chat-composer-action").isVisible(),
+      "DICTATION: send control morphs in once the box holds the dictated text",
+    );
+    await snap(p, "state-dictation-in-box");
+    // A second transcript APPENDS (proves it's an editable draft, not a replace).
+    await p.evaluate(() => window.__emitDictation?.("at noon"));
+    await p.waitForTimeout(150);
+    draft = await p.getByTestId("chat-composer-textarea").inputValue();
+    assert(
+      draft.includes("buy oat milk") && draft.includes("at noon"),
+      `DICTATION: a second transcript appends to the draft (draft="${draft}")`,
+    );
+    // Send the dictated draft → the box clears (the normal send path).
+    const n = sink.logs.length;
+    await p.getByTestId("chat-composer-action").click();
+    await p.waitForTimeout(300);
+    assert(
+      (await p.getByTestId("chat-composer-textarea").inputValue()) === "",
+      "DICTATION: sending the dictated draft clears the box",
+    );
+    assert(
+      sink.logs.slice(n).some((l) => l.includes("[fixture] send:")),
+      "DICTATION: the dictated text sends as a chat turn",
+    );
+    await p.close();
+  }
+
+  // VOICE ↔ CHAT, direction 2 — CONTINUOUS (hands-free) converse: a tap on the
+  // mic opens the loop and a final transcript sends a VOICE_DM (spoken reply),
+  // NOT a typed draft. Asserted via the fixture's channel-tagged send log.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForTimeout(500);
+    await p.getByTestId("chat-composer-mic").click(); // tap = hands-free converse
+    await p.waitForTimeout(200);
+    assert(
+      (await p.getByTestId("chat-composer-mic").getAttribute("aria-pressed")) === "true",
+      "CONTINUOUS: tapping the mic starts the hands-free loop",
+    );
+    const n = sink.logs.length;
+    await p.evaluate(() => window.__emitVoiceFinal?.("what is the weather"));
+    await p.waitForTimeout(300);
+    assert(
+      sink.logs.slice(n).some((l) => l.includes("(VOICE_DM)")),
+      "CONTINUOUS: a final transcript sends a VOICE_DM (spoken-reply turn), not a draft",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-textarea").inputValue()) === "",
+      "CONTINUOUS: converse does NOT leave text in the composer box",
+    );
+    await p.close();
+  }
+
+  // PUSH-TO-TALK: press-and-hold the mic (>200ms, no drag) starts a "dictate"
+  // capture; release stops it — and it must NOT toggle hands-free (the
+  // suppress-click guard). Asserted via the fixture intent log.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForTimeout(500);
+    const mic = p.getByTestId("chat-composer-mic");
+    const box = await mic.boundingBox();
+    const mx = box.x + box.width / 2;
+    const my = box.y + box.height / 2;
+    const n = sink.logs.length;
+    await p.mouse.move(mx, my);
+    await p.mouse.down();
+    await p.waitForTimeout(280); // exceed the 200ms press threshold (no movement)
+    await p.mouse.up();
+    await p.waitForTimeout(200);
+    assert(
+      sink.logs.slice(n).some((l) => l.includes("startRecording(dictate)")),
+      "PTT: press-and-hold starts a DICTATE capture",
+    );
+    assert(
+      sink.logs.slice(n).some((l) => l.includes("stopRecording")),
+      "PTT: release stops the capture",
+    );
+    assert(
+      !sink.logs.slice(n).some((l) => l.includes("toggleHandsFree")),
+      "PTT: a held press does NOT toggle hands-free (suppress-click guard)",
+    );
+    await p.close();
+  }
+
+  // TYPING-PAUSE: while the hands-free loop is on, typing a draft must signal the
+  // controller (setComposerHasDraft -> true) so the always-on mic pauses over the
+  // keyboard; clearing it resumes.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForTimeout(500);
+    await p.getByTestId("chat-composer-mic").click(); // hands-free on
+    await p.waitForTimeout(150);
+    const n = sink.logs.length;
+    await p.getByTestId("chat-composer-textarea").fill("hold on");
+    await p.waitForTimeout(150);
+    assert(
+      sink.logs.slice(n).some((l) => l.includes("setComposerHasDraft -> true")),
+      "TYPING-PAUSE: a draft pauses the always-on loop (setComposerHasDraft true)",
+    );
+    const m = sink.logs.length;
+    await p.getByTestId("chat-composer-textarea").fill("");
+    await p.waitForTimeout(150);
+    assert(
+      sink.logs.slice(m).some((l) => l.includes("setComposerHasDraft -> false")),
+      "TYPING-PAUSE: clearing the draft resumes the loop (setComposerHasDraft false)",
+    );
+    await p.close();
+  }
+
   // suggestions are feature-flagged off — no strip, no chips at rest
   {
     const p = await ctrl();
