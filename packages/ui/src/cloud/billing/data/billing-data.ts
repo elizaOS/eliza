@@ -8,7 +8,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../../lib/api-client";
+import { ApiError, api } from "../../lib/api-client";
 import type {
   BillingUser,
   CreditBalanceResponse,
@@ -32,7 +32,10 @@ function useAuthGate(enabled = true): AuthGate {
   };
 }
 
-function authKey(parts: readonly unknown[], gate: AuthGate): readonly unknown[] {
+function authKey(
+  parts: readonly unknown[],
+  gate: AuthGate,
+): readonly unknown[] {
   return [...parts, "auth", gate.userId];
 }
 
