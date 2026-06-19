@@ -25,3 +25,6 @@ Verdicts: `good` · `needs-work` · `broken`. Newest at bottom.
 ## P2 — plugin sweep wave 2 (typecheck-verified)
 - **Steward** (ApprovalQueue, TransactionHistory): text Refresh → icon-only (16/16 tests pass).
 - Wallet-ui / Vincent / Screenshare / Model-tester: audited, already clean (icon refresh, functional chips, no restating subtitles). Model-tester category swatches kept (they distinguish presets).
+
+## P5 — e2e coverage
+- Added `packages/app/test/ui-smoke/builtin-views-visual.spec.ts`: screenshots every App.tsx-rendered builtin view (views/settings/plugins/character/automations/memories/database/logs/camera/help) at **desktop + mobile**, asserting the view mounts, renders readable content, and throws no uncaught page error. 20/20 pass against the stub live stack. Complements the existing plugin-views-visual.spec (plugin bundles). Production-build screenshots confirm the launcher/settings/plugins redesigns render correctly at both viewports.
