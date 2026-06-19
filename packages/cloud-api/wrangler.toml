@@ -409,3 +409,10 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 [[env.production.r2_buckets]]
 binding = "BLOB"
 bucket_name = "eliza-cloud-blob"
+
+# Hyperdrive proxies the Worker's Postgres connection to Railway (workerd can't
+# reliably open a direct node-pg TCP/TLS connection to an external Postgres).
+# Inert until DATABASE_URL points at Railway (Neon uses the neon-http driver).
+[[env.production.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "9f59e4ec65f048f7b87e29e7b9c5d728"
