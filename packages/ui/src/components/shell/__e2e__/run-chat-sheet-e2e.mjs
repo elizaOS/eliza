@@ -78,9 +78,12 @@ const detent = (p) =>
 // OPEN_HALF_OR_OVER | MAXIMIZED) — the single source the overlay derives.
 const chatState = (p) =>
   p.getByTestId("chat-sheet").getAttribute("data-chat-state");
-// Header buttons (maximize/clear/home/settings) show only at half-or-over.
-const headerButtonCount = (p) =>
-  p.getByTestId("chat-sheet").locator('[data-testid^="chat-full-"]').count();
+// Header buttons (maximize/clear/home/settings) are always mounted (so they can
+// fade + lerp their space), so visibility is the LIVE-height `data-header-shown`
+// flag, not their presence in the DOM.
+const headerShown = async (p) =>
+  (await p.getByTestId("chat-sheet").getAttribute("data-header-shown")) ===
+  "true";
 // The history (thread) is the element whose height animates 0 → half → full;
 // the panel (chat-sheet) also holds the always-present input, so measure the
 // thread for detent heights.
@@ -1164,7 +1167,7 @@ try {
 
     assert((await chatState(p)) === "INPUT", "STATES: rest is INPUT");
     assert(
-      (await headerButtonCount(p)) === 0,
+      !(await headerShown(p)),
       "STATES: INPUT shows no header buttons",
     );
     await snap(p, "state-INPUT");
@@ -1176,7 +1179,7 @@ try {
       `STATES: flick-up → OPEN_HALF_OR_OVER (got ${await chatState(p)})`,
     );
     assert(
-      (await headerButtonCount(p)) > 0,
+      await headerShown(p),
       "STATES: OPEN_HALF_OR_OVER shows header buttons",
     );
     await snap(p, "state-OPEN_HALF_OR_OVER");
@@ -1210,7 +1213,7 @@ try {
       `STATES: slow free-rest below half → OPEN_UNDER_HALF (got ${await chatState(p)})`,
     );
     assert(
-      (await headerButtonCount(p)) === 0,
+      !(await headerShown(p)),
       "STATES: OPEN_UNDER_HALF hides header buttons",
     );
     await snap(p, "state-OPEN_UNDER_HALF");
@@ -1299,7 +1302,7 @@ try {
     await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     assert(
-      (await headerButtonCount(p)) > 0,
+      await headerShown(p),
       "HEADER-LIVE: header shown at full before the drag",
     );
     // Slow-drag DOWN well below half and HOLD (don't release) — the header must
@@ -1311,7 +1314,7 @@ try {
       steps: 10,
     });
     assert(
-      (await headerButtonCount(p)) === 0,
+      !(await headerShown(p)),
       "HEADER-LIVE: header is HIDDEN mid-drag once the panel renders below half",
     );
     await snap(p, "state-mid-drag-below-half-no-header");

@@ -26643,6 +26643,17 @@
     const pillOpacity = useTransform(openProgress, [0, 0.55], [1, 0], {
       clamp: true
     });
+    const headerOpacity = useTransform(
+      threadHeight,
+      [halfH - 64, halfH],
+      [0, 1],
+      {
+        clamp: true
+      }
+    );
+    const headerMaxH = useTransform(threadHeight, [halfH - 64, halfH], [0, 100], {
+      clamp: true
+    });
     const settleDrag = React7.useCallback(() => {
       draggingRef.current = false;
       const open = pilled ? 0 : 1;
@@ -27078,6 +27089,7 @@
                     "data-maximized": fullBleed ? "true" : void 0,
                     "data-revealed": sheetOpen ? "true" : "false",
                     "data-chat-state": chatState,
+                    "data-header-shown": headerVisible ? "true" : "false",
                     style: {
                       maxHeight: panelMaxH,
                       // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
@@ -27114,7 +27126,7 @@
                           }
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
                         motion.div,
                         {
                           "data-testid": "chat-content",
@@ -27125,7 +27137,7 @@
                             pointerEvents: pilled ? "none" : "auto",
                             borderRadius: fullBleed ? 0 : panelRadius
                           },
-                          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+                          children: [
                             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                               "div",
                               {
@@ -27153,11 +27165,13 @@
                                 transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                               }
                             ),
-                            headerVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-                              "div",
+                            !pilled ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                              motion.div,
                               {
+                                inert: !headerVisible || void 0,
+                                style: { opacity: headerOpacity, maxHeight: headerMaxH },
                                 className: cn(
-                                  "relative z-10 flex shrink-0 items-center justify-between gap-1.5 px-3",
+                                  "relative z-10 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
                                   // Maximized goes edge-to-edge under the status bar, so the
                                   // buttons must clear the safe-area inset (the clock/battery)
                                   // or they sit under it and become untappable.
@@ -27463,7 +27477,7 @@
                                 ]
                               }
                             )
-                          ] })
+                          ]
                         }
                       ),
                       /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
