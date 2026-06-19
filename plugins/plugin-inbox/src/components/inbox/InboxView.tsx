@@ -148,7 +148,7 @@ function formatTime(value: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Styling — dark theme, CSS vars, orange accent only.
+// Styling — light surface, CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "inbox-view-styles";
@@ -171,7 +171,7 @@ const INBOX_VIEW_CSS = `
 }
 .inbox-view-btn-primary {
   background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #0a0a0a);
+  color: var(--primary-foreground, #1a1206);
   border: 1px solid var(--primary, #ff8a24);
 }
 .inbox-view-btn-primary:hover {
@@ -179,12 +179,12 @@ const INBOX_VIEW_CSS = `
   border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
 }
 .inbox-view-btn-neutral {
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(255, 255, 255, 0.7));
+  color: var(--foreground, #0a1420);
+  border: 1px solid var(--border, rgba(10, 20, 32, 0.12));
 }
 .inbox-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a1420) 8%, transparent);
 }
 .inbox-view-btn:disabled {
   opacity: 0.5;
@@ -201,16 +201,16 @@ const INBOX_VIEW_CSS = `
   font-family: inherit;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(255, 255, 255, 0.7));
+  color: var(--foreground, #0a1420);
+  border: 1px solid var(--border, rgba(10, 20, 32, 0.12));
 }
 .inbox-view-chip:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a1420) 8%, transparent);
 }
 .inbox-view-chip[aria-pressed="true"] {
   background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #0a0a0a);
+  color: var(--primary-foreground, #1a1206);
   border-color: var(--primary, #ff8a24);
 }
 .inbox-view-chip[aria-pressed="true"]:hover {
@@ -238,8 +238,8 @@ const containerStyle: CSSProperties = {
   height: "100%",
   boxSizing: "border-box",
   overflowY: "auto",
-  background: "var(--background, #0a0a0a)",
-  color: "var(--foreground, #f5f5f5)",
+  background: "var(--background, #eef8ff)",
+  color: "var(--foreground, #0a1420)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -260,11 +260,17 @@ const headerRowStyle: CSSProperties = {
 const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
 const h2Style: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600 };
 
-const cardStyle: CSSProperties = {
-  padding: 16,
-  borderRadius: 8,
-  border: "1px solid var(--border, rgba(255,255,255,0.08))",
-  background: "var(--surface, rgba(255,255,255,0.02))",
+// A channel group is a flat block: its label plus a borderless row list. No
+// card edge — groups separate by section whitespace, not a card border.
+const groupStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+};
+
+// Empty / error / loading panel — borderless block: padding + content only.
+const panelStyle: CSSProperties = {
+  padding: "16px 0",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -296,9 +302,13 @@ const rowStyle: CSSProperties = {
   alignItems: "baseline",
   gap: 12,
   padding: "10px 0",
-  borderBottom: "1px solid var(--border, rgba(255,255,255,0.06))",
+  borderBottom: "1px solid var(--border, rgba(10, 20, 32, 0.08))",
   fontSize: 14,
 };
+
+// Last row in a group drops the divider so groups separate by whitespace, not
+// a trailing hairline.
+const lastRowStyle: CSSProperties = { ...rowStyle, borderBottom: "none" };
 
 const rowMainStyle: CSSProperties = {
   display: "flex",
@@ -445,10 +455,16 @@ const unreadDotStyle: CSSProperties = {
   marginRight: 6,
 };
 
-function ItemRow({ item }: { item: InboxItem }): ReactNode {
+function ItemRow({
+  item,
+  isLast,
+}: {
+  item: InboxItem;
+  isLast: boolean;
+}): ReactNode {
   const title = item.subject ?? item.sender;
   return (
-    <li style={rowStyle}>
+    <li style={isLast ? lastRowStyle : rowStyle}>
       <span style={rowMainStyle}>
         <span style={senderStyle}>
           {item.unread ? (
@@ -463,9 +479,8 @@ function ItemRow({ item }: { item: InboxItem }): ReactNode {
           {item.preview ? ` — ${item.preview}` : ""}
         </span>
       </span>
-      <span style={metaStyle}>
-        {INBOX_CHANNEL_LABELS[item.channel]} · {formatTime(item.receivedAt)}
-      </span>
+      {/* Channel is already the group heading, so the row meta is just time. */}
+      <span style={metaStyle}>{formatTime(item.receivedAt)}</span>
     </li>
   );
 }
@@ -478,7 +493,7 @@ function ChannelGroup({
   items: InboxItem[];
 }): ReactNode {
   return (
-    <div style={cardStyle} data-testid={`inbox-group-${channel}`}>
+    <div style={groupStyle} data-testid={`inbox-group-${channel}`}>
       <h2 style={h2Style}>
         {INBOX_CHANNEL_LABELS[channel]}{" "}
         <span style={dimStyle}>({items.length})</span>
@@ -487,8 +502,12 @@ function ChannelGroup({
         style={listStyle}
         aria-label={`${INBOX_CHANNEL_LABELS[channel]} items`}
       >
-        {items.map((item) => (
-          <ItemRow key={item.id} item={item} />
+        {items.map((item, index) => (
+          <ItemRow
+            key={item.id}
+            item={item}
+            isLast={index === items.length - 1}
+          />
         ))}
       </ul>
     </div>
@@ -582,7 +601,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
       <div style={containerStyle} data-testid="inbox-loading">
         <InboxHeader refetch={refetch} busy={true} />
         <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
-        <div style={{ ...cardStyle, ...dimStyle }}>Loading inbox…</div>
+        <div style={{ ...panelStyle, ...dimStyle }}>Loading inbox…</div>
       </div>
     );
   }
@@ -592,7 +611,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
       <div style={containerStyle} data-testid="inbox-error">
         <InboxHeader refetch={refetch} busy={false} />
         <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
-        <div style={cardStyle}>
+        <div style={panelStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load inbox</div>
           <div style={dimStyle}>{state.message}</div>
           <div>
@@ -627,7 +646,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
       <div style={containerStyle} data-testid="inbox-empty">
         <InboxHeader refetch={refetch} busy={false} />
         <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
-        <div style={cardStyle}>
+        <div style={panelStyle}>
           {noChannels ? (
             <>
               <div style={{ fontWeight: 600 }}>No channels connected</div>

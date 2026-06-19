@@ -279,7 +279,7 @@ export function TransactionHistory({
                 setPage(0);
               }}
               aria-label="Status filter"
-              className="h-9 rounded-xl border border-border/50 bg-card/80 px-3 text-sm text-txt shadow-sm focus:border-accent/40 focus:outline-none"
+              className="h-9 rounded-xl border border-border/50 bg-card/80 px-3 text-sm text-txt focus:border-accent/40 focus:outline-none"
             >
               {STATUS_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -299,7 +299,7 @@ export function TransactionHistory({
                 setPage(0);
               }}
               aria-label="Chain filter"
-              className="h-9 rounded-xl border border-border/50 bg-card/80 px-3 text-sm text-txt shadow-sm focus:border-accent/40 focus:outline-none"
+              className="h-9 rounded-xl border border-border/50 bg-card/80 px-3 text-sm text-txt focus:border-accent/40 focus:outline-none"
             >
               {CHAIN_OPTIONS.map((opt) => (
                 <option key={String(opt.value)} value={opt.value}>

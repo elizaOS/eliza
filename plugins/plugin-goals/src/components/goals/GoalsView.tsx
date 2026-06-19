@@ -12,7 +12,7 @@
  *
  * It renders one of four distinct states (loading, error, empty, populated) and
  * instruments its refresh + status-filter controls through the agent surface so
- * the floating chat can drive them. The default fetcher builds its URL from
+ * the floating chat can drive them. The default fetcher polls from
  * `client.getBaseUrl()`; tests inject the fetcher seam so they stay offline.
  *
  * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
@@ -88,8 +88,6 @@ const defaultFetchers: GoalsFetchers = {
 };
 
 export interface GoalsViewProps {
-  /** Owner display name shown in the header subtitle. */
-  ownerName?: string;
   /** Test/host injection seam. Defaults to the real `/api/lifeops/goals` GET. */
   fetchers?: GoalsFetchers;
 }
@@ -183,7 +181,7 @@ function formatDate(value: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Styling — dark theme, CSS vars, orange accent only.
+// Styling — light surface, CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "goals-view-styles";
@@ -205,21 +203,21 @@ const GOALS_VIEW_CSS = `
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .goals-view-btn-primary {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border: 1px solid var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #ffffff);
+  border: 1px solid var(--primary, #ff8a24);
 }
 .goals-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 85%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 85%, black);
 }
 .goals-view-btn-neutral {
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--foreground, #0a0a0a);
+  border: 1px solid var(--border, rgba(10, 10, 10, 0.12));
 }
 .goals-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
 }
 .goals-view-btn:disabled {
   opacity: 0.5;
@@ -236,21 +234,21 @@ const GOALS_VIEW_CSS = `
   font-family: inherit;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--foreground, #0a0a0a);
+  border: 1px solid var(--border, rgba(10, 10, 10, 0.12));
 }
 .goals-view-chip:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
 }
 .goals-view-chip[aria-pressed="true"] {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border-color: var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #ffffff);
+  border-color: var(--primary, #ff8a24);
 }
 .goals-view-chip[aria-pressed="true"]:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 85%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 85%, black);
 }
 `;
 
@@ -273,8 +271,8 @@ const containerStyle: CSSProperties = {
   height: "100%",
   boxSizing: "border-box",
   overflowY: "auto",
-  background: "var(--background, #0a0a0a)",
-  color: "var(--foreground, #f5f5f5)",
+  background: "var(--background, #eef8ff)",
+  color: "var(--foreground, #0a0a0a)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -296,10 +294,7 @@ const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
 const h2Style: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600 };
 
 const cardStyle: CSSProperties = {
-  padding: 16,
-  borderRadius: 8,
-  border: "1px solid var(--border, rgba(255,255,255,0.08))",
-  background: "var(--surface, rgba(255,255,255,0.02))",
+  padding: "8px 0",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -310,8 +305,6 @@ const dimStyle: CSSProperties = {
   fontSize: 13,
   lineHeight: 1.5,
 };
-
-const subtitleStyle: CSSProperties = { ...dimStyle, marginTop: 2 };
 
 const chipRowStyle: CSSProperties = {
   display: "flex",
@@ -333,7 +326,7 @@ const rowStyle: CSSProperties = {
   alignItems: "baseline",
   gap: 12,
   padding: "10px 0",
-  borderBottom: "1px solid var(--border, rgba(255,255,255,0.06))",
+  borderBottom: "1px solid var(--border, rgba(10,10,10,0.08))",
   fontSize: 14,
 };
 
@@ -356,14 +349,40 @@ const descStyle: CSSProperties = {
 
 const metaStyle: CSSProperties = {
   ...dimStyle,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
   whiteSpace: "nowrap",
   flexShrink: 0,
 };
 
-const reviewDotStyle: CSSProperties = {
-  color: "var(--primary, #ff6a00)",
-  marginRight: 6,
+// One colored pill per row carries the review state. Red = at risk / needs
+// attention, muted green = on track, neutral gray = idle. Orange is reserved
+// for "busy", so it is never used here.
+const REVIEW_PILL_COLORS: Record<
+  GoalReviewState,
+  { bg: string; fg: string }
+> = {
+  idle: { bg: "rgba(10, 10, 10, 0.06)", fg: "rgba(10, 10, 10, 0.6)" },
+  on_track: { bg: "rgba(34, 134, 73, 0.12)", fg: "#1f7a44" },
+  at_risk: { bg: "rgba(239, 68, 68, 0.12)", fg: "#c23b3b" },
+  needs_attention: { bg: "rgba(239, 68, 68, 0.12)", fg: "#c23b3b" },
 };
+
+function reviewPillStyle(state: GoalReviewState): CSSProperties {
+  const { bg, fg } = REVIEW_PILL_COLORS[state];
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 8px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 600,
+    background: bg,
+    color: fg,
+    whiteSpace: "nowrap",
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Agent-instrumented controls (hooks cannot run inside .map()).
@@ -437,23 +456,16 @@ function StatusChip({
 }
 
 function GoalsHeader({
-  ownerName,
   refetch,
   busy,
 }: {
-  ownerName: string;
   refetch: () => void;
   busy: boolean;
 }): ReactNode {
   return (
-    <header style={sectionStyle}>
-      <div style={headerRowStyle}>
-        <h1 style={h1Style}>Goals</h1>
-        <RefreshButton onActivate={refetch} disabled={busy} />
-      </div>
-      <div style={subtitleStyle}>
-        {`Long-horizon goals, cadences, and review state for ${ownerName}.`}
-      </div>
+    <header style={headerRowStyle}>
+      <h1 style={h1Style}>Goals</h1>
+      <RefreshButton onActivate={refetch} disabled={busy} />
     </header>
   );
 }
@@ -493,23 +505,10 @@ function GoalRow({ goal }: { goal: GoalItem }): ReactNode {
   if (goal.linkedCount > 0) {
     meta.push(`${goal.linkedCount} linked`);
   }
-  const atRisk =
-    goal.reviewState === "at_risk" || goal.reviewState === "needs_attention";
   return (
     <li style={rowStyle}>
       <span style={rowMainStyle}>
-        <span style={titleStyle}>
-          {atRisk ? (
-            <span
-              role="img"
-              aria-label="Needs attention"
-              style={reviewDotStyle}
-            >
-              ●
-            </span>
-          ) : null}
-          {goal.title}
-        </span>
+        <span style={titleStyle}>{goal.title}</span>
         {goal.description ? (
           <span style={descStyle}>{goal.description}</span>
         ) : null}
@@ -518,7 +517,10 @@ function GoalRow({ goal }: { goal: GoalItem }): ReactNode {
         ) : null}
       </span>
       <span style={metaStyle}>
-        {REVIEW_LABELS[goal.reviewState]} · {formatDate(goal.updatedAt)}
+        <span style={reviewPillStyle(goal.reviewState)}>
+          {REVIEW_LABELS[goal.reviewState]}
+        </span>{" "}
+        {formatDate(goal.updatedAt)}
       </span>
     </li>
   );
@@ -561,7 +563,6 @@ function requestNewGoal(): void {
 export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   useGoalsViewStyles();
 
-  const ownerName = props.ownerName ?? "Owner";
   const fetchers = props.fetchers ?? defaultFetchers;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [activeStatuses, setActiveStatuses] = useState<Set<GoalStatus>>(
@@ -622,7 +623,7 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="goals-loading">
-        <GoalsHeader ownerName={ownerName} refetch={load} busy={true} />
+        <GoalsHeader refetch={load} busy={true} />
         <StatusFilters active={activeStatuses} onToggle={toggleStatus} />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading goals…</div>
       </div>
@@ -632,7 +633,7 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="goals-error">
-        <GoalsHeader ownerName={ownerName} refetch={load} busy={false} />
+        <GoalsHeader refetch={load} busy={false} />
         <StatusFilters active={activeStatuses} onToggle={toggleStatus} />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load goals</div>
@@ -657,7 +658,7 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   if (state.goals.length === 0) {
     return (
       <div style={containerStyle} data-testid="goals-empty">
-        <GoalsHeader ownerName={ownerName} refetch={load} busy={false} />
+        <GoalsHeader refetch={load} busy={false} />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>No goals yet</div>
           <div style={dimStyle}>
@@ -681,7 +682,7 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
 
   return (
     <div style={containerStyle} data-testid="goals-populated">
-      <GoalsHeader ownerName={ownerName} refetch={load} busy={false} />
+      <GoalsHeader refetch={load} busy={false} />
       <StatusFilters active={activeStatuses} onToggle={toggleStatus} />
       {groups.length > 0 ? (
         <section style={sectionStyle} aria-label="Goals">

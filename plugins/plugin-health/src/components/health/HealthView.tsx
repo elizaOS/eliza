@@ -78,7 +78,7 @@ export type WindowDays = 7 | 14 | 30;
 const WINDOW_OPTIONS: readonly WindowDays[] = [7, 14, 30];
 
 // ---------------------------------------------------------------------------
-// Styling — dark theme, CSS vars, orange accent only.
+// Styling — light surface, CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "health-view-styles";
@@ -100,21 +100,21 @@ const HEALTH_VIEW_CSS = `
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .health-view-btn-primary {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border: 1px solid var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #ffffff);
+  border: 1px solid var(--primary, #ff8a24);
 }
 .health-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
 }
 .health-view-btn-neutral {
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(0, 0, 0, 0.03));
+  color: var(--foreground, #0a0a0a);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
 }
 .health-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
 }
 .health-view-btn:disabled {
   opacity: 0.5;
@@ -129,22 +129,22 @@ const HEALTH_VIEW_CSS = `
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(0, 0, 0, 0.03));
+  color: var(--foreground, #0a0a0a);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .health-view-range-btn:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
 }
 .health-view-range-btn[aria-pressed="true"] {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border-color: var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #ffffff);
+  border-color: var(--primary, #ff8a24);
 }
 .health-view-range-btn[aria-pressed="true"]:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
 }
 `;
 
@@ -167,8 +167,8 @@ const containerStyle: CSSProperties = {
   height: "100%",
   boxSizing: "border-box",
   overflowY: "auto",
-  background: "var(--background, #0a0a0a)",
-  color: "var(--foreground, #f5f5f5)",
+  background: "var(--background, #eef8ff)",
+  color: "var(--foreground, #0a0a0a)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -190,10 +190,6 @@ const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
 const h2Style: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600 };
 
 const cardStyle: CSSProperties = {
-  padding: 16,
-  borderRadius: 8,
-  border: "1px solid var(--border, rgba(255,255,255,0.08))",
-  background: "var(--surface, rgba(255,255,255,0.02))",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -218,10 +214,17 @@ const statValueStyle: CSSProperties = { fontWeight: 600 };
 const gridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: 12,
+  gap: 24,
 };
 
 const subtitleStyle: CSSProperties = { ...dimStyle, marginTop: 2 };
+
+const dividerStyle: CSSProperties = {
+  height: 1,
+  border: 0,
+  margin: "8px 0",
+  background: "var(--border, rgba(0,0,0,0.08))",
+};
 
 const visuallyHiddenStyle: CSSProperties = {
   position: "absolute",
@@ -647,8 +650,9 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
           <BaselineCard baseline={baseline} />
         </div>
       </section>
+      <hr style={dividerStyle} />
       <section style={sectionStyle}>
-        <div style={{ ...cardStyle }} data-testid="health-window-summary">
+        <div style={cardStyle} data-testid="health-window-summary">
           <h2 style={h2Style}>Window summary</h2>
           <StatRow
             label="Nights recorded"

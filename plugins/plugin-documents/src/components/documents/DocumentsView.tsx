@@ -136,7 +136,7 @@ function shortContentType(contentType: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Styling — dark theme, CSS vars, orange accent only.
+// Styling — light surface, CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "documents-view-styles";
@@ -158,21 +158,21 @@ const DOCUMENTS_VIEW_CSS = `
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .documents-view-btn-primary {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border: 1px solid var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #1a0f00);
+  border: 1px solid var(--primary, #ff8a24);
 }
 .documents-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 86%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 86%, black);
 }
 .documents-view-btn-neutral {
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(255, 255, 255, 0.7));
+  color: var(--foreground, #0a0a0a);
+  border: 1px solid var(--border, rgba(10, 20, 40, 0.08));
 }
 .documents-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
 }
 .documents-view-btn:disabled {
   opacity: 0.5;
@@ -186,16 +186,16 @@ const DOCUMENTS_VIEW_CSS = `
   border-radius: 8px;
   font-size: 14px;
   font-family: inherit;
-  color: var(--foreground, #f5f5f5);
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  color: var(--foreground, #0a0a0a);
+  background: var(--surface, rgba(255, 255, 255, 0.7));
+  border: 1px solid var(--border, rgba(10, 20, 40, 0.08));
 }
 .documents-view-search:focus {
   outline: none;
-  border-color: var(--primary, #ff6a00);
+  border-color: var(--primary, #ff8a24);
 }
 .documents-view-search::placeholder {
-  color: color-mix(in srgb, var(--foreground, #f5f5f5) 45%, transparent);
+  color: color-mix(in srgb, var(--foreground, #0a0a0a) 45%, transparent);
 }
 `;
 
@@ -218,8 +218,8 @@ const containerStyle: CSSProperties = {
   height: "100%",
   boxSizing: "border-box",
   overflowY: "auto",
-  background: "var(--background, #0a0a0a)",
-  color: "var(--foreground, #f5f5f5)",
+  background: "var(--background, #eef8ff)",
+  color: "var(--foreground, #0a0a0a)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -238,13 +238,17 @@ const headerRowStyle: CSSProperties = {
 };
 
 const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
-const h2Style: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600 };
 
 const cardStyle: CSSProperties = {
   padding: 16,
   borderRadius: 8,
-  border: "1px solid var(--border, rgba(255,255,255,0.08))",
-  background: "var(--surface, rgba(255,255,255,0.02))",
+  background: "var(--surface, rgba(255, 255, 255, 0.7))",
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+};
+
+const listPanelStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -276,7 +280,7 @@ const rowStyle: CSSProperties = {
   alignItems: "baseline",
   gap: 12,
   padding: "10px 0",
-  borderBottom: "1px solid var(--border, rgba(255,255,255,0.06))",
+  borderBottom: "1px solid var(--border, rgba(10, 20, 40, 0.08))",
   fontSize: 14,
 };
 
@@ -404,9 +408,7 @@ function DocumentRow({ document }: { document: PresentedDocument }): ReactNode {
   const meta = [
     shortContentType(document.contentType),
     formatFileSize(document.fileSize),
-    `${document.fragmentCount} fragment${document.fragmentCount === 1 ? "" : "s"}`,
     formatDate(document.createdAt),
-    document.provenance.label,
   ]
     .filter((part) => part && part !== "—")
     .join(" · ");
@@ -428,8 +430,7 @@ function DocumentList({
   documents: PresentedDocument[];
 }): ReactNode {
   return (
-    <div style={cardStyle} data-testid="documents-list">
-      <h2 style={h2Style}>Documents</h2>
+    <div style={listPanelStyle} data-testid="documents-list">
       <ul style={listStyle} aria-label="Documents">
         {documents.map((doc) => (
           <DocumentRow key={doc.id} document={doc} />
@@ -469,14 +470,19 @@ function SearchResults({
   query: string;
 }): ReactNode {
   return (
-    <div style={cardStyle} data-testid="documents-search-results">
-      <h2 style={h2Style}>Search results</h2>
+    <div style={listPanelStyle} data-testid="documents-search-results">
       {results.length > 0 ? (
-        <ul style={listStyle} aria-label="Search results">
-          {results.map((result) => (
-            <SearchResultRow key={result.id} result={result} />
-          ))}
-        </ul>
+        <>
+          <div style={rowMetaStyle}>
+            {results.length} result{results.length === 1 ? "" : "s"} for “
+            {query}”
+          </div>
+          <ul style={listStyle} aria-label="Search results">
+            {results.map((result) => (
+              <SearchResultRow key={result.id} result={result} />
+            ))}
+          </ul>
+        </>
       ) : (
         <div style={dimStyle}>No documents match “{query}”.</div>
       )}

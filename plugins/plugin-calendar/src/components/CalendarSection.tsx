@@ -137,22 +137,21 @@ function groupEventsByDay(
 // values rather than Tailwind classes: the view bundle is built separately from
 // the host's Tailwind pass, so arbitrary opacity-modified utility classes never
 // make it into the compiled CSS. Inline `color-mix` over fixed seeds renders
-// identically everywhere the bundle mounts.
+// identically everywhere the bundle mounts. Text is a dark ink derived from each
+// seed so filled blocks read on the light surface.
 interface EventPaletteEntry {
-  /** Filled event block background + border + text (day/week grid blocks). */
   readonly seed: string;
-  readonly text: string;
 }
 
 const EVENT_PALETTE: readonly EventPaletteEntry[] = [
   // Neutral grayscale ramp (light → mid).
-  { seed: "#d4d4d8", text: "#e7e7ea" },
-  { seed: "#a1a1aa", text: "#ededf0" },
-  { seed: "#71717a", text: "#f4f4f5" },
+  { seed: "#d4d4d8" },
+  { seed: "#a1a1aa" },
+  { seed: "#71717a" },
   // Warm, non-blue hues for additional differentiation.
-  { seed: "#f5a623", text: "#fff7e6" }, // amber
-  { seed: "#e8743b", text: "#fff1e8" }, // burnt orange
-  { seed: "#d65a5a", text: "#fdecec" }, // warm red
+  { seed: "#f5a623" }, // amber
+  { seed: "#e8743b" }, // burnt orange
+  { seed: "#d65a5a" }, // warm red
 ] as const;
 
 interface EventColor {
@@ -171,12 +170,15 @@ interface EventColor {
 }
 
 function eventColorFor(entry: EventPaletteEntry): EventColor {
+  // Dark ink derived from the seed: readable on both the filled block and the
+  // tinted soft pill over the light surface.
+  const ink = `color-mix(in srgb, ${entry.seed} 30%, #1a1a1a)`;
   return {
-    bg: `color-mix(in srgb, ${entry.seed} 85%, transparent)`,
+    bg: `color-mix(in srgb, ${entry.seed} 38%, var(--background, #eef8ff))`,
     softBg: `color-mix(in srgb, ${entry.seed} 18%, transparent)`,
-    border: `color-mix(in srgb, ${entry.seed} 60%, transparent)`,
-    text: entry.text,
-    softText: `color-mix(in srgb, ${entry.seed} 75%, var(--foreground, #f5f5f5))`,
+    border: `color-mix(in srgb, ${entry.seed} 55%, transparent)`,
+    text: ink,
+    softText: ink,
     dot: entry.seed,
   };
 }
@@ -520,16 +522,16 @@ function DayColumnGrid({
             <span
               className="h-2 w-2 rounded-full"
               style={{
-                background: "var(--accent, #ff6a00)",
+                background: "var(--accent, #ff8a24)",
                 boxShadow:
-                  "0 0 0 2px color-mix(in srgb, var(--accent, #ff6a00) 30%, transparent)",
+                  "0 0 0 2px color-mix(in srgb, var(--accent, #ff8a24) 30%, transparent)",
               }}
             />
             <span
               className="h-px flex-1"
               style={{
                 background:
-                  "color-mix(in srgb, var(--accent, #ff6a00) 80%, transparent)",
+                  "color-mix(in srgb, var(--accent, #ff8a24) 80%, transparent)",
               }}
             />
           </div>
@@ -550,7 +552,7 @@ function DayColumnGrid({
               onSelectEvent(event);
             }}
             aria-pressed={isSelected}
-            className={`group absolute overflow-hidden rounded-md border px-1.5 py-1 text-left shadow-sm transition-transform ${isSelected ? "ring-2 ring-white/50 z-10" : "hover:translate-y-[-1px]"}`}
+            className={`group absolute overflow-hidden rounded-md border px-1.5 py-1 text-left transition-transform ${isSelected ? "ring-2 ring-accent z-10" : "hover:translate-y-[-1px]"}`}
             style={{
               top: `calc(${position.topPct}% + 0.1rem)`,
               height: `calc(${position.heightPct}% - 0.2rem)`,
@@ -895,8 +897,8 @@ function AgendaEventButton({
         onSelectEvent(event);
       }}
       aria-pressed={isSelected}
-      className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
-        isSelected ? "bg-white/5" : "hover:bg-white/3"
+      className={`flex w-full items-start gap-3 px-2 py-3 text-left transition-colors ${
+        isSelected ? "bg-accent/8" : "hover:bg-bg-muted/40"
       }`}
       {...agentProps}
     >
@@ -950,16 +952,13 @@ function AgendaView({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
       {sections.map((section) => (
-        <div
-          key={section.key}
-          className="rounded-2xl border border-border/12 bg-bg/20"
-        >
-          <div className="border-b border-border/10 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted">
+        <div key={section.key} className="border-t border-border/12 pt-3">
+          <div className="px-2 pb-1 text-xs font-semibold text-muted">
             {formatAgendaDayLabel(section.day)}
           </div>
-          <div className="divide-y divide-border/10">
+          <div>
             {section.events.map((event) => (
               <AgendaEventButton
                 key={event.id}

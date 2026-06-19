@@ -205,7 +205,7 @@ function ApprovalsBody({
               </Text>
               <HStack gap={1} width="100%">
                 <Button
-                  tone="success"
+                  tone="primary"
                   grow={1}
                   agent={`approve-${item.queueId}`}
                   onPress={dispatch(`approve:${item.queueId}`)}

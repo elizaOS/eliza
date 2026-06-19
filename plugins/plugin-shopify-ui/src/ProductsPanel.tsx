@@ -13,9 +13,9 @@ import type { ShopifyProduct } from "./useShopifyDashboard";
 
 function ProductStatusBadge({ status }: { status: ShopifyProduct["status"] }) {
   const styles = {
-    ACTIVE: "bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.18)]",
-    DRAFT: "bg-muted shadow-[0_0_0_3px_rgba(148,163,184,0.18)]",
-    ARCHIVED: "bg-danger shadow-[0_0_0_3px_rgba(239,68,68,0.18)]",
+    ACTIVE: "bg-ok",
+    DRAFT: "bg-muted",
+    ARCHIVED: "bg-danger",
   } satisfies Record<ShopifyProduct["status"], string>;
 
   const labels: Record<ShopifyProduct["status"], string> = {

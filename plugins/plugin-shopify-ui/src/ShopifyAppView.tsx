@@ -39,7 +39,8 @@ const SH_TXT = "var(--txt, #111)";
 const SH_MUTED = "var(--muted, rgba(0,0,0,0.58))";
 const SH_BORDER = "var(--border, rgba(0,0,0,0.12))";
 const SH_SURFACE = "var(--surface, rgba(0,0,0,0.04))";
-const SH_OK = "var(--ok, #22c55e)";
+const SH_BG = "var(--background, #fff)";
+const SH_DANGER = "var(--danger, #ef4444)";
 
 function SetupField({
   icon: Icon,
@@ -158,24 +159,6 @@ function ShopifySetupCard() {
           Link a Shopify store to manage products, orders, and inventory right
           here.
         </p>
-        <div
-          style={{
-            marginTop: 4,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "3px 10px",
-            borderRadius: 99,
-            border: `1px solid ${SH_BORDER}`,
-            background: SH_SURFACE,
-            fontSize: 11.5,
-            fontWeight: 600,
-            color: SH_MUTED,
-          }}
-        >
-          <WifiOff className="h-3 w-3" />
-          Not connected
-        </div>
       </div>
 
       <div
@@ -230,7 +213,7 @@ function ShopifySetupCard() {
                 color: SH_TXT,
               }}
             >
-              <Icon style={{ width: 13, height: 13, color: SH_OK }} />
+              <Icon style={{ width: 13, height: 13, color: SH_MUTED }} />
               {label}
             </span>
           ))}
@@ -485,13 +468,9 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
           <span
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border"
             style={{
-              borderColor: connected
-                ? "var(--ok-subtle, rgba(34,197,94,0.4))"
-                : SH_BORDER,
-              background: connected
-                ? "var(--ok-subtle, rgba(34,197,94,0.1))"
-                : "var(--accent-subtle, rgba(255,138,36,0.14))",
-              color: connected ? SH_OK : SH_ACCENT,
+              borderColor: SH_BORDER,
+              background: "var(--accent-subtle, rgba(255,138,36,0.14))",
+              color: SH_ACCENT,
             }}
           >
             <Store className="h-4 w-4" />
@@ -568,14 +547,14 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                       icon={Package}
                       label="Products"
                       value={counts.productCount.toLocaleString()}
-                      accent="border-info/20 bg-info/10 text-info"
+                      accent="border-border/30 bg-bg-accent text-muted-strong"
                       onClick={() => setActiveTab("products")}
                     />
                     <OverviewTile
                       icon={ShoppingCart}
                       label="Orders"
                       value={counts.orderCount.toLocaleString()}
-                      accent="border-ok/20 bg-ok/10 text-ok"
+                      accent="border-border/30 bg-bg-accent text-muted-strong"
                       onClick={() => setActiveTab("orders")}
                     />
                     <OverviewTile
@@ -822,17 +801,17 @@ export function ShopifyTuiView() {
       data-view-state={JSON.stringify(viewState)}
       style={{
         minHeight: "100vh",
-        background: "#020617",
-        color: "#cbd5e1",
+        background: SH_BG,
+        color: SH_TXT,
         fontFamily:
           'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
         padding: 20,
       }}
     >
-      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+      <div style={{ color: SH_ACCENT, marginBottom: 4 }}>
         elizaos://shopify --type=tui
       </div>
-      <div style={{ color: "#475569", marginBottom: 16 }}>
+      <div style={{ color: SH_MUTED, marginBottom: 16 }}>
         {loading
           ? "loading"
           : state?.status.connected
@@ -851,7 +830,7 @@ export function ShopifyTuiView() {
         <section
           aria-label="Shopify status"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: `1px solid ${SH_BORDER}`,
             borderRadius: 6,
             padding: 16,
             minHeight: 420,
@@ -865,15 +844,15 @@ export function ShopifyTuiView() {
               marginBottom: 10,
             }}
           >
-            <strong style={{ color: "#e2e8f0" }}>store</strong>
+            <strong style={{ color: SH_TXT }}>store</strong>
             <button
               type="button"
               onClick={() => void refresh()}
               disabled={loading}
               style={{
                 background: "transparent",
-                color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
+                color: SH_ACCENT,
+                border: `1px solid ${SH_BORDER}`,
                 borderRadius: 4,
                 padding: "4px 8px",
                 cursor: loading ? "not-allowed" : "pointer",
@@ -883,31 +862,31 @@ export function ShopifyTuiView() {
               refresh
             </button>
           </div>
-          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          {error && <div style={{ color: SH_DANGER }}>{error}</div>}
           <div style={{ marginBottom: 12 }}>
             <div>
-              <span style={{ color: "#64748b" }}>connected</span>{" "}
+              <span style={{ color: SH_MUTED }}>connected</span>{" "}
               {state?.status.connected ? "yes" : "no"}
             </div>
             <div>
-              <span style={{ color: "#64748b" }}>shop</span>{" "}
+              <span style={{ color: SH_MUTED }}>shop</span>{" "}
               {state?.status.shop?.name ?? "not configured"}
             </div>
             <div>
-              <span style={{ color: "#64748b" }}>domain</span>{" "}
+              <span style={{ color: SH_MUTED }}>domain</span>{" "}
               {state?.status.shop?.domain ?? "SHOPIFY_STORE_DOMAIN required"}
             </div>
           </div>
-          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>counts</div>
+          <div style={{ color: SH_ACCENT, margin: "18px 0 8px" }}>counts</div>
           <div>products {state?.products?.total ?? 0}</div>
           <div>orders {state?.orders?.total ?? 0}</div>
           <div>customers {state?.customers?.total ?? 0}</div>
           <div>inventory rows {state?.inventory?.items.length ?? 0}</div>
-          <div style={{ color: "#fca5a5" }}>
+          <div style={{ color: SH_DANGER }}>
             low inventory {lowInventory.length}
           </div>
           {!state?.status.connected && !loading ? (
-            <div style={{ color: "#94a3b8", marginTop: 18 }}>
+            <div style={{ color: SH_MUTED, marginTop: 18 }}>
               Configure SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN for live
               data.
             </div>
@@ -917,17 +896,17 @@ export function ShopifyTuiView() {
         <section
           aria-label="Shopify commerce"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: `1px solid ${SH_BORDER}`,
             borderRadius: 6,
             padding: 16,
             minHeight: 420,
           }}
         >
-          <strong style={{ color: "#e2e8f0" }}>commerce</strong>
-          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+          <strong style={{ color: SH_TXT }}>commerce</strong>
+          <div style={{ color: SH_MUTED, margin: "6px 0 14px" }}>
             {state?.orders?.total ?? 0} orders / {lowInventory.length} low stock
           </div>
-          <div style={{ color: "#a7f3d0", marginBottom: 8 }}>recent orders</div>
+          <div style={{ color: SH_ACCENT, marginBottom: 8 }}>recent orders</div>
           {(state?.orders?.orders ?? []).slice(0, 4).map((order) => (
             <div
               key={order.id}
@@ -935,18 +914,18 @@ export function ShopifyTuiView() {
                 display: "grid",
                 gridTemplateColumns: "9ch minmax(0,1fr) 10ch",
                 gap: 10,
-                borderTop: "1px solid rgba(125,211,252,0.14)",
+                borderTop: `1px solid ${SH_BORDER}`,
                 padding: "7px 0",
               }}
             >
               <span>{order.name}</span>
-              <span style={{ color: "#94a3b8" }}>{order.email}</span>
-              <span style={{ color: "#e2e8f0" }}>
+              <span style={{ color: SH_MUTED }}>{order.email}</span>
+              <span style={{ color: SH_TXT }}>
                 {order.totalPrice} {order.currencyCode}
               </span>
             </div>
           ))}
-          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>
+          <div style={{ color: SH_ACCENT, margin: "18px 0 8px" }}>
             low inventory
           </div>
           {lowInventory.slice(0, 4).map((item) => (
