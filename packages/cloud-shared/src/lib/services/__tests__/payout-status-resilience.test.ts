@@ -7,15 +7,21 @@
  * when another network was fine. Now each per-network/per-wallet failure
  * degrades that single network to "not_configured" and getStatus() never throws.
  */
-import { beforeEach, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, expect, mock, test } from "bun:test";
+import * as realCloudBindings from "../../runtime/cloud-bindings";
 
 const getCloudAwareEnv = mock();
-mock.module("../../runtime/cloud-bindings", () => ({ getCloudAwareEnv }));
+const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
+mock.module("../../runtime/cloud-bindings", () => ({ ...REAL_CLOUD_BINDINGS, getCloudAwareEnv }));
 
 const resolveEvmRpc = mock();
 mock.module("../../config/evm-rpc", () => ({ resolveEvmRpc }));
 
 const { payoutStatusService } = await import("../payout-status");
+
+afterAll(() => {
+  mock.module("../../runtime/cloud-bindings", () => REAL_CLOUD_BINDINGS);
+});
 
 beforeEach(() => {
   getCloudAwareEnv.mockReset();

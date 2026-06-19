@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realCloudBindings from "../../runtime/cloud-bindings";
 
 const sessionCache = new Map<string, unknown>();
 const ensureElizaAppProvisioning = mock();
@@ -8,6 +9,7 @@ const linkPhoneToUser = mock();
 const generateText = mock();
 const launchManagedElizaAgent = mock();
 let cloudEnv: Record<string, string | undefined> = {};
+const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
 
 mock.module("../../cache/client", () => ({
   CacheClient: class CacheClient {
@@ -35,6 +37,7 @@ mock.module("../../cache/client", () => ({
 }));
 
 mock.module("../../runtime/cloud-bindings", () => ({
+  ...REAL_CLOUD_BINDINGS,
   getCloudAwareEnv: mock(() => cloudEnv),
 }));
 
@@ -100,6 +103,10 @@ describe("runOnboardingChat", () => {
 
   afterEach(() => {
     cloudEnv = process.env;
+  });
+
+  afterAll(() => {
+    mock.module("../../runtime/cloud-bindings", () => REAL_CLOUD_BINDINGS);
   });
 
   test("asks for a name before provisioning a trusted phone onboarding session", async () => {

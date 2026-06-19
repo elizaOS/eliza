@@ -181,15 +181,9 @@ describe("local inference catalog", () => {
 		// faster and is the exclusive mobile TTS. 9B keeps OmniVoice first with
 		// Kokoro bundled; large tiers are OmniVoice-only.
 		// See catalog.ts ELIZA_1_VOICE_BACKENDS for the policy rationale.
-		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual([
-			"kokoro",
-		]);
-		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual([
-			"kokoro",
-		]);
-		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual([
-			"kokoro",
-		]);
+		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual(["kokoro"]);
+		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual(["kokoro"]);
+		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
 		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
 			"omnivoice",
 			"kokoro",

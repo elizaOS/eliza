@@ -9,7 +9,8 @@
  * PayPerPixel example app and any x402-charging app depend on.
  */
 
-import { beforeEach, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, expect, mock, test } from "bun:test";
+import * as realCloudBindings from "../../runtime/cloud-bindings";
 
 const addPurchaseEarnings = mock();
 const addInferenceEarnings = mock();
@@ -47,6 +48,7 @@ mock.module("../redeemable-earnings", () => ({
 }));
 
 const settle = mock();
+const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
 mock.module("../x402-facilitator", () => ({
   x402FacilitatorService: {
     settle,
@@ -57,6 +59,7 @@ mock.module("../x402-facilitator", () => ({
 }));
 
 mock.module("../../runtime/cloud-bindings", () => ({
+  ...REAL_CLOUD_BINDINGS,
   getCloudAwareEnv: () => ({}),
 }));
 
@@ -68,6 +71,10 @@ mock.module("../../../db/helpers", () => ({
 }));
 
 const { x402PaymentRequestsService } = await import("../x402-payment-requests");
+
+afterAll(() => {
+  mock.module("../../runtime/cloud-bindings", () => REAL_CLOUD_BINDINGS);
+});
 
 const APP_ID = "11111111-1111-4111-8111-111111111111";
 const CREATOR_ID = "creator-1";
