@@ -13,161 +13,16 @@
  * NOT from `@/lib/auth`, which still pulls Next.
  */
 
-import { type JWTPayload, jwtVerify } from "jose";
-
 import type { UserWithOrganization } from "../../db/repositories/users";
 import type { AppContext, AuthedUser, Bindings } from "../../types/cloud-worker-env";
 import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
-import { cache } from "../cache/client";
 import { logger } from "../utils/logger";
 import {
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
   verifyPlaywrightTestSessionToken,
 } from "./playwright-test-session";
-
-const STEWARD_AUTH_TTL_SECS = 300;
-
-interface StewardClaims {
-  userId: string;
-  email?: string;
-  walletAddress?: string;
-  walletChain?: "ethereum" | "solana";
-  tenantId?: string;
-  expiration: number;
-}
-
-interface CachedStewardClaims extends StewardClaims {
-  cachedAt: number;
-}
-
-let _stewardSecret: { raw: string; key: Uint8Array } | null = null;
-function nonEmptySecret(value: string | undefined): string | null {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
-
-function getStewardSecret(env: Bindings): Uint8Array | null {
-  // Mirror @stwd/auth getJwtSecret() and the shared Steward verifier:
-  // STEWARD_JWT_SECRET is canonical; STEWARD_SESSION_SECRET is the legacy
-  // fallback. If both are configured, choosing SESSION first makes routes that
-  // authenticate via workers-hono-auth (notably CLI login completion) reject
-  // valid Steward JWTs even though /api/auth/steward-session accepts them.
-  const raw = nonEmptySecret(env.STEWARD_JWT_SECRET) ?? nonEmptySecret(env.STEWARD_SESSION_SECRET);
-  if (!raw) return null;
-  if (_stewardSecret && _stewardSecret.raw === raw) return _stewardSecret.key;
-  _stewardSecret = { raw, key: new TextEncoder().encode(raw) };
-  return _stewardSecret.key;
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function tokenCacheKey(token: string): Promise<string> {
-  const hex = await sha256Hex(token);
-  return `api:auth:steward:${hex.slice(0, 32)}`;
-}
-
-function stringClaim(payload: JWTPayload, key: string): string | undefined {
-  const value = payload[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function walletChainClaim(payload: JWTPayload): StewardClaims["walletChain"] {
-  const value = payload.walletChain ?? payload.wallet_chain;
-  return value === "ethereum" || value === "solana" ? value : undefined;
-}
-
-function extractStewardClaims(payload: JWTPayload): StewardClaims | null {
-  const userId = payload.sub ?? stringClaim(payload, "userId");
-  if (!userId) return null;
-
-  const walletAddress =
-    stringClaim(payload, "walletAddress") ??
-    stringClaim(payload, "address") ??
-    stringClaim(payload, "publicKey");
-  const tenantId = stringClaim(payload, "tenantId") ?? stringClaim(payload, "tenant_id");
-
-  return {
-    userId,
-    email: stringClaim(payload, "email"),
-    walletAddress,
-    walletChain: walletChainClaim(payload),
-    tenantId,
-    expiration: typeof payload.exp === "number" ? payload.exp : 0,
-  };
-}
-
-async function verifyStewardTokenCached(
-  env: Bindings,
-  token: string,
-): Promise<StewardClaims | null> {
-  const secret = getStewardSecret(env);
-  if (!secret) return null;
-
-  const key = cache.isAvailable() ? await tokenCacheKey(token) : null;
-  const now = Math.floor(Date.now() / 1000);
-
-  if (key) {
-    const cached = await cache.get<CachedStewardClaims>(key);
-    if (cached && cached.expiration > now) {
-      return {
-        userId: cached.userId,
-        email: cached.email,
-        walletAddress: cached.walletAddress,
-        walletChain: cached.walletChain,
-        tenantId: cached.tenantId,
-        expiration: cached.expiration,
-      };
-    }
-  }
-
-  let payload: JWTPayload;
-  try {
-    ({ payload } = await jwtVerify(token, secret, {
-      algorithms: ["HS256"],
-    }));
-  } catch {
-    return null;
-  }
-
-  const claims = extractStewardClaims(payload);
-  if (!claims) return null;
-
-  // Steward issues per-user tenants of the form `personal-<userId>` scoped
-  // inside the organization tenant (e.g. `elizacloud`). Accept the exact
-  // configured tenant OR a `personal-<userId>` tenant whose suffix matches
-  // the JWT's own userId — the canonical user-scoped Steward tenant.
-  const expectedTenant = env.STEWARD_TENANT_ID;
-  if (expectedTenant && claims.tenantId && claims.tenantId !== expectedTenant) {
-    const isOwnPersonalTenant = claims.tenantId === `personal-${claims.userId}`;
-    if (!isOwnPersonalTenant) {
-      return null;
-    }
-  }
-
-  if (key) {
-    const tokenRemaining = claims.expiration - now;
-    const ttl = Math.min(STEWARD_AUTH_TTL_SECS, tokenRemaining);
-    if (ttl > 0) {
-      await cache.set(
-        key,
-        {
-          ...claims,
-          cachedAt: now,
-        } satisfies CachedStewardClaims,
-        ttl,
-      );
-    }
-  }
-
-  return claims;
-}
+import { verifyStewardTokenCached } from "./steward-client";
 
 function readStewardCookie(c: AppContext): string | null {
   return readCookie(c, "steward-token");
