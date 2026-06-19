@@ -77,13 +77,19 @@ export const OPENWAKEWORD_DEFAULT_HEAD = "hey-eliza";
  * Heads that are placeholders, not trained on the Eliza-1 wake phrase.
  *
  * `hey-eliza` stays in this set until a head trained against the real
- * phrase ships in every tier bundle (currently the staging script falls
- * back to the upstream `hey_jarvis_v0.1` weights renamed). `hey_jarvis`
- * stays by definition — it is the wrong phrase.
+ * phrase ships in every tier bundle (the bundled binary is still the
+ * upstream `hey_jarvis_v0.1` weights renamed). `hey_jarvis` stays by
+ * definition — it is the wrong phrase.
  *
- * A future pass should teach the engine to consult the bundle manifest's
- * `releaseState` (so trained heads suppress the placeholder warning) and
- * then remove `hey-eliza` from this set.
+ * A real "hey eliza" head HAS been trained and verified end-to-end through
+ * this exact runtime — ~98.7% true-accept / ~3.3% false-accept on a held-out
+ * set scored via `libwakeword.so` (see
+ * `packages/training/scripts/wakeword/HEY_ELIZA_HEAD_PROVENANCE.md`). It must
+ * be trained with `train_eliza1_wakeword_head.py --no-mel-rescale` to match
+ * this runtime's mel preprocessing. The only step left before removing
+ * `hey-eliza` here is publishing that head's GGUF into the tier bundles; a
+ * future pass should also consult the bundle manifest's `releaseState` so the
+ * placeholder warning is data-driven rather than hard-coded.
  */
 export const OPENWAKEWORD_PLACEHOLDER_HEADS: ReadonlySet<string> = new Set([
 	"hey-eliza",
