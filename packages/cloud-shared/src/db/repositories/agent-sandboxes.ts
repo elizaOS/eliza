@@ -287,6 +287,15 @@ export class AgentSandboxesRepository {
           // Skip pool-owned rows (warm pool entries) — they get the new
           // image naturally on next claim, no need to disrupt them.
           sql`${agentSandboxes.pool_status} IS NULL`,
+          // Only agents that actually run on a fleet container can be
+          // blue/green upgraded. Shared-runtime / web-only agents are "running"
+          // through the router origin with no node_id/container_name, so
+          // executeUpgrade always returns "no node_id or container_name to
+          // upgrade from" — and because the failed upgrade never changes their
+          // digest, the reconciler re-selects them every cycle, producing an
+          // endless agent_upgrade retry storm. Exclude them here.
+          sql`${agentSandboxes.node_id} IS NOT NULL`,
+          sql`${agentSandboxes.container_name} IS NOT NULL`,
         ),
       )
       .limit(limit);
