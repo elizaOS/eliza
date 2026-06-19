@@ -185,10 +185,7 @@ function rubberBand(overshoot: number): number {
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
 // Stop generating: a centered rounded square (the universal "stop" affordance).
 const STOP_GLYPH = "M12 12H24V24H12Z";
-// Assistant voice output: a speaker (distinct from the mic waveform above) —
-// "on" = speaker + sound waves, "muted" = speaker + slash.
-const SPEAKER_GLYPH =
-  "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
+// Muted-speaker glyph for the autoplay-blocked "tap to enable sound" prompt.
 const SPEAKER_MUTED_GLYPH =
   "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
 function Glyph({ d }: { d: string }): React.JSX.Element {
@@ -679,9 +676,6 @@ export function ContinuousChatOverlay({
     setDictationSink,
     setComposerHasDraft,
     transcript,
-    speaking,
-    agentVoiceMuted,
-    toggleAgentVoiceMute,
     needsAudioUnlock,
     unlockAudio,
     openSettings,
@@ -2241,21 +2235,6 @@ export function ContinuousChatOverlay({
                 {agentName} is waking up — you can type now; your message sends
                 and the reply arrives in a moment.
               </span>
-              {/* Assistant-voice mute: shown only while the agent is speaking or
-              already muted, so the resting bar stays uncluttered. */}
-              {speaking || agentVoiceMuted ? (
-                <SoftButton
-                  glyph={agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH}
-                  label={
-                    agentVoiceMuted
-                      ? "unmute assistant voice"
-                      : "mute assistant voice"
-                  }
-                  active={agentVoiceMuted}
-                  onClick={toggleAgentVoiceMute}
-                  testId="chat-voice-mute"
-                />
-              ) : null}
               {/* One trailing control, ChatGPT-style: mic when there's nothing to
               send (or while recording, to stop), swapping to send once the user
               starts typing or attaches an image. It morphs IN PLACE (one

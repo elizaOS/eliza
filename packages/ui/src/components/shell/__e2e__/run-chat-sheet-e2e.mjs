@@ -488,27 +488,19 @@ try {
     await p.close();
   }
 
-  // speaking: assistant voice mute control appears
+  // speaking: the composer stays clean — no stray mute/speaker control pops in
+  // while the agent talks (the bar shows only the mic).
   {
     const p = await ctrl();
     attachConsole(p, sink);
     await p.goto(`${url}?speaking`);
-    await p.waitForSelector('[data-testid="chat-voice-mute"]');
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
     await p.waitForTimeout(500);
-    assert(await p.getByTestId("chat-voice-mute").isVisible(), "SPEAKING: voice-mute (speaker) button shown");
     assert(
-      (await p.getByTestId("chat-voice-mute").getAttribute("aria-label")) === "mute assistant voice",
-      "SPEAKING: voice-mute labelled 'mute assistant voice'",
+      (await p.getByTestId("chat-voice-mute").count()) === 0,
+      "SPEAKING: no stray voice-mute button shown while the agent speaks",
     );
     await snap(p, "state-speaking");
-    // click it → muted
-    await p.getByTestId("chat-voice-mute").click();
-    await p.waitForTimeout(300);
-    assert(
-      (await p.getByTestId("chat-voice-mute").getAttribute("aria-label")) === "unmute assistant voice",
-      "SPEAKING→MUTE: clicking toggles to 'unmute assistant voice' (active)",
-    );
-    await snap(p, "state-muted");
     await p.close();
   }
 

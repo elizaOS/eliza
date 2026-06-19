@@ -9,8 +9,10 @@ import {
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { deriveAgentReady } from "../../state/types";
+import { TurnAggregator } from "../../voice/end-of-turn";
 import {
   createVoiceCapture,
+  type VoiceCaptureBackend,
   type VoiceCaptureHandle,
   type VoiceCaptureState,
 } from "../../voice/voice-capture-factory";
@@ -146,6 +148,11 @@ export function useShellController(): ShellController {
   // whether the agent's reply is spoken back — typed turns stay silent.
   const [lastTurnVoice, setLastTurnVoice] = React.useState(false);
   const captureRef = React.useRef<VoiceCaptureHandle | null>(null);
+  // Semantic end-of-turn aggregator for the always-on/converse path: holds a
+  // turn that trails off mid-clause (a trailing conjunction/preposition) and
+  // appends the speaker's continuation, so a slow speaker is not cut off and
+  // sent prematurely. One per converse capture; reset on stop/barge-in.
+  const turnAggregatorRef = React.useRef<TurnAggregator | null>(null);
   // Hands-free conversation loop (tap the mic): the mic re-opens after each
   // spoken reply. A ref mirrors the state so the debounced re-listen timer reads
   // the live value at fire time.
@@ -226,6 +233,9 @@ export function useShellController(): ShellController {
   const stopCapture = React.useCallback(() => {
     const handle = captureRef.current;
     captureRef.current = null;
+    // Discard any turn still held for continuation — a toggle-off / barge-in
+    // must not submit a half-finished utterance.
+    turnAggregatorRef.current?.reset();
     if (handle) {
       void handle.stop().catch(() => {});
       handle.dispose();
@@ -245,6 +255,24 @@ export function useShellController(): ShellController {
       // though typing-and-sending worked. Only guard against a capture already
       // in flight.
       if (captureRef.current) return;
+      // Converse (always-on) routes finals through the semantic end-of-turn
+      // aggregator so a slow speaker who pauses mid-clause isn't cut off; a turn
+      // only sends once it reads as complete. Dictation (push-to-talk) bypasses
+      // it — the press-release is the turn boundary.
+      let lastBackend: VoiceCaptureBackend = "talkmode";
+      const aggregator =
+        intent === "dictate"
+          ? null
+          : new TurnAggregator({
+              onCommit: (turn) => {
+                send(turn, {
+                  channelType: "VOICE_DM",
+                  metadata: { voiceSource: lastBackend },
+                });
+              },
+            });
+      turnAggregatorRef.current?.dispose();
+      turnAggregatorRef.current = aggregator;
       // Read the user's VAD thresholds synchronously (local mirror of the
       // `messages.voice` setting) so end-of-turn silence detection honors the
       // configured sensitivity. Only consumed by the local-inference backend.
@@ -258,24 +286,28 @@ export function useShellController(): ShellController {
         onTranscript: (segment) => {
           const text = segment.text.trim();
           if (!segment.final) {
-            // Surface the interim best-guess as live transcription.
-            setTranscript(text);
+            // Surface the interim best-guess as live transcription, prefixed by
+            // any turn still held for continuation so the user sees the full
+            // utterance build up.
+            const held = aggregator?.pending;
+            setTranscript(held ? `${held} ${text}` : text);
             return;
           }
-          setTranscript("");
-          if (text) {
-            if (intent === "dictate") {
-              // Push-to-talk dictation: hand the text to the composer draft —
-              // don't send, and leave lastTurnVoice false so no reply is spoken.
-              onDictatedTextRef.current?.(text);
-            } else {
-              send(text, {
-                channelType: "VOICE_DM",
-                metadata: {
-                  voiceSource: segment.backend,
-                },
-              });
-            }
+          if (!text) {
+            setTranscript("");
+            return;
+          }
+          if (intent === "dictate") {
+            // Push-to-talk dictation: hand the text to the composer draft —
+            // don't send, and leave lastTurnVoice false so no reply is spoken.
+            setTranscript("");
+            onDictatedTextRef.current?.(text);
+          } else if (aggregator) {
+            lastBackend = segment.backend;
+            const committed = aggregator.addFinal(text);
+            // Keep the held turn visible while we wait for the speaker to
+            // continue; clear once it commits (and sends).
+            setTranscript(committed ? "" : aggregator.pending);
           }
         },
         onStateChange: (state: VoiceCaptureState) => {
@@ -284,6 +316,7 @@ export function useShellController(): ShellController {
             // analyser so the shell phase returns to idle/summoned and a later
             // startCapture is not blocked by a stale ref.
             if (captureRef.current === handle) captureRef.current = null;
+            aggregator?.reset();
             setAnalyser(null);
             setRecording(false);
             setTranscript("");
