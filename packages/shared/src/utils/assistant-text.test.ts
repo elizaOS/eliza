@@ -90,6 +90,19 @@ describe("assistant text helpers", () => {
     expect(extractAssistantReplyText('{"reply":7,"action":"NONE"}')).toBe("7");
   });
 
+  it("unwraps the `response` wrapper key too (the key drifts reply/response)", () => {
+    expect(extractAssistantReplyText('{"response":"54"}')).toBe("54");
+    expect(extractAssistantReplyText('{"response":42}')).toBe("42");
+    expect(extractAssistantReplyText('{"response":"hi","action":"NONE"}')).toBe(
+      "hi",
+    );
+    // still rejects a non-primitive value or an unknown-key payload
+    expect(extractAssistantReplyText('{"response":{"x":1}}')).toBeNull();
+    expect(
+      extractAssistantReplyText('{"response":"hi","userData":{"id":1}}'),
+    ).toBeNull();
+  });
+
   it("does not rewrite ordinary chat text that merely contains the word reply", () => {
     expect(
       extractAssistantReplyText("Sure — my reply is that the sky is blue."),

@@ -207,6 +207,7 @@ function isResponseHandlerPayload(
 // JSON with a `reply` field plus unrelated data.
 const REPLY_PAYLOAD_KEYS = new Set([
   "reply",
+  "response",
   "text",
   "message",
   "thought",
@@ -219,23 +220,32 @@ const REPLY_PAYLOAD_KEYS = new Set([
   "attachments",
 ]);
 
-function isSimpleReplyPayload(
-  value: Record<string, unknown>,
-): value is Record<string, unknown> & { reply: string | number | boolean } {
-  const reply = value.reply;
-  // Allow a primitive reply: models emit `{"reply":42}` / `{"reply":true}` too,
-  // not just `{"reply":"…"}`. Objects/arrays aren't user-facing text — reject.
-  if (
-    typeof reply !== "string" &&
-    typeof reply !== "number" &&
-    typeof reply !== "boolean"
-  ) {
-    return false;
+// The model wraps its answer under `reply` or `response` (the key drifts by
+// model/image — both observed on cloud agents). Return the primitive value from
+// whichever is present, but only when EVERY key is a known response-shape key,
+// so ordinary chat text that merely contains JSON is never rewritten. Allows a
+// primitive value (`{"reply":42}` / `{"response":true}`), not just strings;
+// objects/arrays aren't user-facing text and are rejected.
+const PRIMARY_REPLY_KEYS = ["reply", "response"] as const;
+
+function getSimpleReplyValue(value: Record<string, unknown>): string | null {
+  let found: string | number | boolean | undefined;
+  for (const key of PRIMARY_REPLY_KEYS) {
+    const candidate = value[key];
+    if (
+      typeof candidate === "string" ||
+      typeof candidate === "number" ||
+      typeof candidate === "boolean"
+    ) {
+      found = candidate;
+      break;
+    }
   }
+  if (found === undefined) return null;
   for (const key of Object.keys(value)) {
-    if (!REPLY_PAYLOAD_KEYS.has(key)) return false;
+    if (!REPLY_PAYLOAD_KEYS.has(key)) return null;
   }
-  return true;
+  return String(found);
 }
 
 /**
@@ -273,20 +283,22 @@ export function extractAssistantReplyText(input: string): string | null {
   }
 
   // Shape 2: the model emitted its whole reply object as text, e.g.
-  // `{"reply":"107"}` or `{"reply":"…","action":"NONE"}` (observed from
-  // gpt-oss/glm on cloud agents). Only unwrap a well-formed object whose keys
-  // are all known response-shape keys, so ordinary chat text that merely
-  // contains JSON is never rewritten.
+  // `{"reply":"107"}`, `{"response":"54"}`, or `{"reply":"…","action":"NONE"}`
+  // (observed from gpt-oss/glm on cloud agents; the wrapper key drifts between
+  // `reply` and `response`). Only unwrap a well-formed object whose keys are all
+  // known response-shape keys, so ordinary chat text that merely contains JSON
+  // is never rewritten.
   if (
     trimmed.startsWith("{") &&
     trimmed.endsWith("}") &&
-    trimmed.includes('"reply"')
+    (trimmed.includes('"reply"') || trimmed.includes('"response"'))
   ) {
     const parsed = tryParseObject(trimmed);
-    if (parsed && isSimpleReplyPayload(parsed)) {
-      const reply = String(parsed.reply).trim();
-      if (!reply) return null;
-      return stripAssistantStageDirections(reply).trim() || null;
+    const reply = parsed ? getSimpleReplyValue(parsed) : null;
+    if (reply !== null) {
+      const trimmedReply = reply.trim();
+      if (!trimmedReply) return null;
+      return stripAssistantStageDirections(trimmedReply).trim() || null;
     }
   }
 
