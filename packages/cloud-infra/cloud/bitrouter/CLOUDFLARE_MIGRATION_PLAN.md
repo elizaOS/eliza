@@ -1,192 +1,131 @@
-# BitRouter → Cloudflare migration plan
+# Remove BitRouter — Cloudflare Worker is the model gateway
 
-Status: **research + plan (awaiting direction decision)** · Author: agent · Date: 2026-06-19
+Status: **Phase 1 done (merged); Phase 2/3 in progress** · Updated 2026-06-19
 
-Goal (verbatim intent): move model routing off the separate Railway BitRouter
-service, unify it with the rest of the Cloudflare stack so routing runs *inside*
-our existing Worker APIs (no extra cross-region API hop), keep it **BYOK-only**
-(self-hosted, never BitRouter Cloud), make it work cleanly with Cerebras /
-OpenAI / Anthropic, and use **OpenRouter as the fallback when the primary
-router fails**. Everything tested, validated, landed.
+## Target architecture (decided)
 
----
-
-## 1. What we run today (verified against source)
-
-| Piece | Runtime | Path |
-|---|---|---|
-| `bitrouter serve` + Node `auth-proxy.mjs` | **Railway** (Docker) | `packages/cloud-infra/cloud/bitrouter/` |
-| `cloud-api` (Hono) | **Cloudflare Worker** | `packages/cloud-api/` |
-| Postgres | **Railway** (Worker reaches it via Hyperdrive binding `HYPERDRIVE`) | prod id `9f59e4ec…` |
-
-Request path for a routed model today:
+**The Cloudflare Worker (`cloud-api`) is the model gateway. Be as direct as
+possible — remove servers and hops.**
 
 ```
-client → cloud-api Worker (CF)  →  fetch https://bitrouter-production.up.railway.app/v1/chat/completions  →  Railway
-         (getLanguageModel)         (extra public-internet, cross-region hop)        BitRouter (axum) → Cerebras / OpenRouter
+client → cloud-api Worker (CF)
+           ├─ native key we hold?  → call that provider DIRECTLY (no hop)
+           │     Cerebras · OpenAI · Anthropic · Groq · Vast · (future native keys)
+           └─ no native key for it? → OpenRouter (BYOK)   ← the ONLY backup
 ```
 
-Key verified facts:
+- **Direct-first.** If we have the API key for a model's provider, the Worker
+  calls the provider's API directly. No intermediary.
+- **OpenRouter is the backup**, used *only* for models we cannot serve natively
+  (no native key for that provider) — e.g. a long-tail OpenRouter-catalog model.
+- **BitRouter (the separate Railway routing server) is removed entirely.** It
+  added a cross-region HTTP hop, a whole service to run/pay for, and a failure
+  surface — for routing we can do directly in the Worker.
+- **Payment/billing stays in the Worker** (already true): per-request cost is
+  computed from `model-id + tokens` against the `ai_pricing` table; usage +
+  credit reservation are Worker-side. BitRouter never did billing (its
+  auth-proxy only *logged* a redundant Cerebras cost line).
 
-- **BitRouter is a Rust binary** (`github.com/bitrouter/bitrouter`, Apache-2.0):
-  `tokio` (full) + `axum::serve` on a `tokio::net::TcpListener` + `reqwest` +
-  `sea-orm`/`sqlx` + a Unix control socket + filesystem config + SQLite wallet
-  signing self-issued JWTs. We pin `bitrouter@0.33.0`.
-- The npm package is just a `cargo-dist` binary installer — **not a library**.
-- **The default user path already bypasses BitRouter.** `getLanguageModel()`
-  routes bare `gpt-oss-120b` / `zai-glm-4.7` straight to Cerebras, and
-  `openai/*` / `anthropic/*` to native OpenAI/Anthropic clients *when their keys
-  are present*. BitRouter is only actually traversed for OpenRouter-catalog
-  models (`anthropic/claude-*`, `x-ai/grok-4.20`, `:nitro`/`:floor` variants)
-  and legacy gateway-id / apps-chat callers.
-  (`packages/cloud-shared/src/lib/providers/language-model.ts`)
-- **Pricing/usage is computed Worker-side** from `model id + token usage`
-  against the `ai_pricing` table. It does **not** depend on anything BitRouter
-  returns. The auth-proxy's `bitrouter_proxy_usage_cost` log is supplementary
-  telemetry only. (`services/ai-pricing/*`, `db/repositories/usage-records.ts`)
-- **OpenRouter has no direct inference path today.** It is reachable *only*
-  through BitRouter. The sole `openrouter.ai` reference in the inference/pricing
-  code is the price-catalog fetch (`ai-pricing/providers/openrouter.ts`). So if
-  BitRouter is down, there is **no OpenRouter fallback** for chat completions —
-  only the prefix-matched OpenAI/Anthropic native clients. **This is a real gap
-  vs. the stated goal.**
-- The Worker already uses the **Vercel AI SDK** (`@ai-sdk/openai`,
-  `@ai-sdk/anthropic`, `@ai-sdk/gateway`) and already owns a working router
-  (`getLanguageModel`) with Cerebras/OpenAI/Anthropic/Groq/Vast native clients,
-  transport retry/backoff (`_http.ts`), and `:nitro`/`:floor` failover. **Most
-  of "reimplement BitRouter's routing" already exists.**
+## Routing order (the one rule)
 
----
+Both `getLanguageModel` (AI-SDK path) and `getProviderForModelWithFallback`
+(raw-fetch path) resolve a model in this order:
 
-## 2. The three deployment shapes
+1. **Groq** native (`groq/*`, + `GROQ_API_KEY`) → Groq direct
+2. **Vast** native (`vast/*`) → Vast direct
+3. **Cerebras** native (`gpt-oss-120b`, `zai-glm-4.7`, + `CEREBRAS_API_KEY`) → Cerebras direct
+4. **OpenAI** native (`openai/*`, + `OPENAI_API_KEY`) → OpenAI direct
+5. **Anthropic** native (`anthropic/*`, + `ANTHROPIC_API_KEY`) → Anthropic direct
+6. *(future native providers as we add their keys — xAI, Google, … → direct)*
+7. **OpenRouter** (BYOK, `OPENROUTER_API_KEY`) → **backup** for everything else
+   (no native key: `x-ai/*`, `google/*`, `mistralai/*`, `deepseek/*`, OpenRouter-only
+   ids, `:nitro`/`:floor` variants, …)
+8. else → clear "not configured" error
 
-### Option A — compile BitRouter (Rust) to a Cloudflare Worker (WASM / `workers-rs`)
-**Verdict: ruled out. Effectively a rewrite, not a port.**
+Optional resilience (no happy-path cost): a native provider that returns a
+*retryable* upstream error (402/429/5xx) may fail over to OpenRouter for the
+same model, since OpenRouter mirrors the catalog. This is the existing
+`withOpenRouterFallback` wrapper — it only fires on error, adds no hop when the
+native call succeeds.
 
-BitRouter's entire spine is the canonical list of things that do **not** run in
-the Workers `wasm32-unknown-unknown` sandbox: `tokio` multi-thread runtime,
-`tokio::net::TcpListener` + `axum::serve` (Workers receive `fetch` events, they
-don't bind sockets), `reqwest`'s own TCP pool, `sqlx` opening its own
-connections (must go through Hyperdrive), bundled C SQLite, a Unix control
-socket, and filesystem state. `cloudflare/workers-rs#736` documents exactly this
-failure mode for the Axum/Tokio/Reqwest/SQLx stack. The project shows **zero**
-WASM/edge intent and is actively coupling *harder* to native/server features
-(TEE attestation, on-chain x402 pay, confidential inference). A fork to make it
-WASM-compatible is a parallel runtime, i.e. a rewrite. **Do not attempt.**
+## What changes vs. today
 
-### Option B — run BitRouter's existing Docker image as a Cloudflare Container
-**Verdict: viable, lowest code change, but does not fully meet the stated goal.**
+Today BitRouter is the **primary** gateway for every non-native model, reached
+by an outbound `fetch` to `https://bitrouter-production.up.railway.app`. We flip
+that: native providers become primary and direct; OpenRouter is the only
+backup; BitRouter is deleted.
 
-Cloudflare Containers went GA 2026-04-13. We could run the *exact* image we run
-on Railway, fronted by a Durable Object, and fold the Node auth-proxy into the
-fronting Worker. Pros: zero BitRouter code change; stays on the binary we trust;
-keeps OpenRouter-catalog routing + the live `/v1/models` feed exactly as-is.
-Cons: it is **still a separate containerized service** — the request path
-becomes `Worker → DO → Container → upstream`, the DO/Container/Postgres are
-**not guaranteed co-located**, there are cold-starts (need a warm instance), and
-it is *not* "inside our existing cloud APIs." It moves the box from Railway to
-Cloudflare; it does not remove the box. Pricing is active-CPU per-vCPU/GiB-s.
+### Phase 1 — DONE (merged: #8728, #8736)
+- Native **OpenRouter provider** (`providers/openrouter.ts`) + AI-SDK client.
+- OpenRouter wired as the fallback/catch-all; `OPENROUTER_API_KEY` plumbed.
+- Billing: OpenRouter-served requests bill under the shared `"bitrouter"` price
+  catalog key (OpenRouter == that catalog); `resolveAiProviderSource` returns a
+  valid `PricingBillingSource` (no spurious `"openrouter"` member).
+- Coverage tests for the OpenRouter-only and raw-fetch-selector paths.
 
-### Option C — retire BitRouter; route natively inside the cloud-api Worker, OpenRouter as universal BYOK fallback
-**Verdict: recommended. Best fit for the literal goal.**
+### Phase 2 — flip routing, remove BitRouter from the request path
+- `providers/language-model.ts`:
+  - Delete the BitRouter client + `getBitRouterLanguageModel` + the
+    `getBitRouterApiKey()` primary branch.
+  - Order: Groq → Vast → Cerebras → OpenAI(native) → Anthropic(native) →
+    OpenRouter(backup). `requiresBitRouterRouting` becomes
+    `requiresGatewayRouting` and routes OpenRouter-only ids (`:nitro`/`:floor`,
+    `openai/gpt-oss-120b` as an OR id) to OpenRouter, not a native client.
+  - `withOpenRouterFallback` generalized to wrap any native primary model.
+  - `resolveAiProviderSource`, `hasLanguageModelProviderConfigured`,
+    `hasGatewayProviderConfigured`, `getAiProviderConfigurationStatus`,
+    `hasAnyAiProviderConfigured`: drop BitRouter.
+- `providers/index.ts`: `getProviderForModelWithFallback` primary becomes the
+  native provider (OpenAI/Anthropic direct) or OpenRouter; delete
+  `getProvider()`/BitRouter singleton. Keep per-family direct providers.
+- `providers/bitrouter.ts` + `bitrouter.test.ts` + `language-model-nitro-failover.test.ts`:
+  remove (the nitro/`:floor` failover now lives on the OpenRouter path and is
+  covered by `openrouter.test.ts`).
+- `services/model-catalog.ts`: feed the catalog from **OpenRouter `/v1/models`**
+  (the backup catalog) + the static catalog of natively-served models, instead
+  of BitRouter `listModels()`. Rename `*BitRouter*` catalog helpers.
+- **Preserve** the `zai-glm-4.7` token-floor request fix (today in
+  `auth-proxy.mjs`) by applying it in the **Cerebras-direct** request builder in
+  the Worker. Drop the redundant Cerebras cost-audit log (Worker pricing is
+  authoritative).
+- Keep `toBitRouterModelId` / `model-id-translation.ts` **as-is** (it is the
+  shared OpenRouter-catalog id normaliser — still correct and used); a rename to
+  `toOpenRouterCatalogModelId` is optional cosmetic follow-up.
+- Keep `billingSource: "bitrouter"` as the price-catalog key (existing
+  `ai_pricing` rows use it; renaming is a risky DB migration, deferred).
 
-This is the only shape that satisfies "run the routing APIs *inside our existing
-cloud APIs* so we don't need another API call to another server in another part
-of the world." Because the AI SDK + the existing native clients already do
-protocol translation, streaming, and most routing, the remaining work is small
-and bounded:
+### Phase 3 — decommission
+- Delete `packages/cloud-infra/cloud/bitrouter/` (Dockerfile, `auth-proxy.mjs`,
+  `bitrouter.yaml`, `entrypoint.sh`, `railway.toml`, README) and
+  `packages/cloud-infra/tests/bitrouter-service.test.ts`.
+- Remove `BITROUTER_API_KEY` / `BITROUTER_BASE_URL` from `cloud-api/wrangler.toml`
+  (vars), the secret-push loop in `.github/workflows/cloud-cf-deploy.yml`,
+  `types/cloud-worker-env.ts`, and any provider-env reads.
+- Update `RAILWAY.md` and `cloud-infra` CLAUDE.md/AGENTS.md (drop the BitRouter
+  service row + section).
+- **Operator:** ensure `OPENROUTER_API_KEY` secret is set on the Worker (staging
+  + prod); deploy; then stop/delete the Railway `bitrouter` service.
 
-1. **Add a direct OpenRouter provider** (`createOpenAI({ baseURL:
-   "https://openrouter.ai/api/v1", apiKey: OPENROUTER_API_KEY })`) — BYOK. This
-   is also the no-regret resilience fix (closes the gap in §1).
-2. **Re-point the handful of BitRouter-only routes** to native targets:
-   `anthropic/claude-*` → native Anthropic (key present) else OpenRouter;
-   `x-ai/grok-4.20` and any OpenRouter-catalog pick → OpenRouter directly;
-   `gpt-oss-120b` aliases stay Cerebras-direct (already the case).
-3. **Make OpenRouter the universal fallback** in `getLanguageModel` /
-   `getProviderForModelWithFallback`: native provider first, OpenRouter (BYOK)
-   when no native key matches or when the primary returns a retryable error.
-   This *is* "OpenRouter is our backup if the (now-native) router can't serve."
-4. **Swap the model-catalog feed** from BitRouter `/v1/models` to OpenRouter
-   `/api/v1/models` (already fetched for pricing) + the static catalog. Drop the
-   BitRouter `listModels` dependency.
-5. **Decommission** the Railway BitRouter service + auth-proxy + the
-   `bitrouter.yaml` routing config once C is proven in prod. Port the auth-proxy's
-   only real value-adds — the `zai-glm-4.7` token-floor request fix and the
-   Cerebras cost audit — into the Worker (the token-floor as a request shim, the
-   cost audit is already redundant with Worker-side pricing).
+## Validation
 
-What we keep: BitRouter the *config knowledge* (the alias→endpoint table in
-`bitrouter.yaml`) becomes native routing rules we already largely encode in
-`model-id-translation.ts`.
+- Unit: routing-order tests (native-first, OpenRouter-backup), `withOpenRouterFallback`
+  on-error failover, raw-fetch selector, OpenRouter-only deployment. Keep the
+  whole pricing suite green.
+- `bun run --cwd packages/cloud-shared typecheck` and
+  `bun run --cwd packages/cloud-api typecheck` clean.
+- `bun run --cwd packages/cloud-shared test` (provider + pricing).
+- **Staging (operator):** set `OPENROUTER_API_KEY` + native keys, deploy, live
+  smoke across Cerebras / OpenAI / Anthropic (direct) + one OpenRouter-only
+  model (`x-ai/*` or `google/*`); confirm `usage_records` rows + costs are
+  correct; burn-in; then prod + Railway decommission.
 
----
+## Risks
 
-## 3. Recommended path: Option C, phased
-
-**Phase 1 — Native OpenRouter provider + fallback (no-regret; valuable under B *and* C).**
-- New `providers/openrouter.ts` (`OpenRouterProvider implements AIProvider`,
-  raw-fetch, mirrors `bitrouter.ts`) + a `getOpenRouterLanguageModel` AI-SDK
-  client in `language-model.ts`, keyed on `OPENROUTER_API_KEY`.
-- Wire it as the fallback in `withProviderFallback` / `getProviderForModelWithFallback`
-  and as a catch-all in `getLanguageModel` after the native providers.
-- Add `OPENROUTER_API_KEY` to `provider-env`, `cloud-worker-env.ts`,
-  `wrangler.toml` secret docs, and the CI secret push list.
-- Tests: new `providers/openrouter.test.ts` (same shape as `bitrouter.test.ts`);
-  extend `language-model` selection tests; keep the whole existing gate green
-  (`bitrouter.test.ts`, `_http.test.ts`, `language-model-nitro-failover.test.ts`,
-  `model-id-translation.test.ts`, `ai-pricing/*`).
-- **Outcome:** OpenRouter becomes a real fallback *today*, with BitRouter still
-  primary. Independently shippable. Reversible.
-
-**Phase 2 — Re-point BitRouter-only routes to native targets; flip default catch-all to OpenRouter.**
-- `anthropic/claude-*`, `x-ai/grok-4.20`, OpenRouter-catalog picks → native
-  Anthropic / OpenRouter instead of BitRouter.
-- Model catalog feed → OpenRouter `/v1/models` + static.
-- Behind a config flag so we can A/B and roll back: keep BitRouter reachable but
-  demoted to "fallback behind native" until parity is proven.
-
-**Phase 3 — Decommission Railway BitRouter.**
-- Port the `zai-glm-4.7` token-floor shim into the Worker request builder.
-- Remove `BITROUTER_*` from the hot path; delete the Railway service +
-  `bitrouter.yaml` + `auth-proxy.mjs` + the contract test once nothing routes
-  through it. Update `RAILWAY.md`.
-
-**Validation each phase:** `bun run --cwd packages/cloud-shared test` (provider +
-pricing suites), `bun run --cwd packages/cloud-api typecheck && test:e2e`, then a
-staging deploy with a real BYOK OpenRouter key and live chat/apps-chat smoke
-across Cerebras + Anthropic + an OpenRouter model, watching billing rows land
-correctly in `usage_records`. Five-loop parity check before prod.
-
----
-
-## 4. Risks + mitigations
-
-- **Production inference is the blast radius.** Mitigate with phasing + a flag:
-  Phase 1 only *adds* a fallback (no behavior change for healthy paths); Phase 2
-  keeps BitRouter as demoted fallback until parity is proven; Phase 3 removes it
-  only after burn-in.
-- **OpenRouter feature parity.** Confirm the specific models we route to
-  OpenRouter (`anthropic/claude-*`, `x-ai/grok-4.20`) resolve on OpenRouter BYOK
-  with our key. Streaming + usage shape already AI-SDK-handled.
-- **Billing drift.** Pricing is already Worker-side and model-id-driven, so
-  retiring BitRouter does not change cost math. Add OpenRouter as an explicit
-  `billingSource` if not already covered; verify `usage_records` rows.
-- **`:nitro`/`:floor` semantics.** These are OpenRouter conventions — they
-  become *native* OpenRouter routing prefs once we call OpenRouter directly; the
-  existing suffix-strip failover (`model-id-translation.ts`) carries over.
-- **Catalog gaps.** OpenRouter `/v1/models` is a superset of what BitRouter
-  surfaced; merge with the static catalog as today.
-
-## 5. If Option B is chosen instead
-Add a `packages/cloud-infra/cloud/bitrouter` Container binding + a fronting
-Worker that does auth + proxies to the container `defaultPort` 4356; keep one
-warm instance; move secrets from Railway to CF; still do **Phase 1** (native
-OpenRouter fallback) because B alone does not give OpenRouter-on-BitRouter-failure.
-
-## 6. Open decision (gates implementation)
-Which target architecture: **C** (native routing in the Worker, retire BitRouter)
-— recommended; **B** (BitRouter as a CF Container) — lower code change, keeps a
-separate service; or **keep BitRouter on Railway for now and only land Phase 1**
-(native OpenRouter fallback) as an immediate resilience win. Phase 1 is correct
-and worth doing under all three.
+- **Blast radius = all model routing.** Mitigate: keep `BITROUTER_*` env present
+  but unused until the new native+OpenRouter path is proven on staging; remove
+  infra only after burn-in.
+- **Model-id parity on the backup path.** Confirm OpenRouter (BYOK) actually
+  serves the specific ids we route to it (`x-ai/grok-4.20`, `google/*`, …) with
+  our key. Native ids are served by their own SDKs (already proven).
+- **Catalog completeness.** OpenRouter `/v1/models` ⊇ what BitRouter surfaced;
+  merge with the static native catalog as today. Log any dropped models.

@@ -26,6 +26,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, copyFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { androidArm64SimdCmakeFlags } from "./build-helpers/arm64-simd.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // scripts/ -> app-core -> packages -> eliza repo root
@@ -111,6 +112,18 @@ if (!existsSync(path.join(forkSrc, "tools/omnivoice/CMakeLists.txt"))) {
 const buildDir = path.join(repoRoot, ".cache", "elizavoice-android", abi);
 mkdirSync(buildDir, { recursive: true });
 
+// arm64 SIMD floor: GGML_NATIVE=OFF cross-builds to bare armv8-a, which leaves
+// the LLM + ASR matmul/dot kernels (ggml dotprod/i8mm/fp16) AND the eliza QJL
+// NEON-dotprod K-cache kernel dead — this fused .so would carry the full
+// LLM+ASR+voice stack but run it scalar. Pin armv8.2-a+dotprod+fp16+i8mm and
+// flip the QJL dispatch define (build-helpers/arm64-simd.mjs). The voice
+// classifier forward graphs are tiny scalar C and unaffected; this lights up
+// the heavy LLM/ASR paths the same lib carries.
+const arm64SimdFlags = androidArm64SimdCmakeFlags(abi);
+if (arm64SimdFlags.length > 0) {
+  log(`arm64 SIMD floor: ${arm64SimdFlags.join(" ")}`);
+}
+
 // Configure: static-link ggml/llama/mtmd into the SHARED elizainference .so.
 // LLAMA_BUILD_TOOLS=OFF + LLAMA_BUILD_MTMD=ON ensures the mtmd target exists
 // before tools/omnivoice configures (the fork's top-level CMakeLists orders
@@ -127,6 +140,7 @@ run("cmake", [
   "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
   "-DGGML_NATIVE=OFF",
   "-DGGML_OPENMP=OFF",
+  ...arm64SimdFlags,
   "-DLLAMA_BUILD_OMNIVOICE=ON",
   "-DLLAMA_BUILD_MTMD=ON",
   "-DLLAMA_BUILD_COMMON=ON",

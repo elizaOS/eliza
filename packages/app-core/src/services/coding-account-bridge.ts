@@ -145,6 +145,21 @@ function candidatesFor(agentType: string): readonly LinkedAccountProviderId[] {
   return AGENT_PROVIDER_CANDIDATES[agentType.toLowerCase()] ?? [];
 }
 
+/**
+ * Whether a token-resolve failure is a genuine auth problem (→ needs-reauth)
+ * vs a transient network/5xx blip. A transient failure must NOT sideline a
+ * healthy account — that would exclude it from the pool until the next
+ * keep-alive sweep (~5 min). `undefined` (getAccessToken returned null without
+ * throwing) means no credential is present at all → genuine needs-reauth.
+ */
+const AUTH_FAILURE_PATTERN =
+  /\b(40[13]|invalid[_ ]?grant|invalid[_ ]?token|unauthor|forbidden|re-?auth|revoked|expired)\b/i;
+export function isAuthFailure(err: unknown): boolean {
+  if (err === undefined) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return AUTH_FAILURE_PATTERN.test(msg);
+}
+
 function codexHomeDir(accountId: string): string {
   return path.join(
     process.env.ELIZA_HOME || resolveStateDir(),
@@ -195,11 +210,23 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
   const targetConfig = path.join(dir, "config.toml");
   try {
     let model = process.env.ELIZA_CODEX_MODEL?.trim();
+    // Validate the operator-supplied model: it is interpolated into TOML, so a
+    // stray quote/newline would break out of the string (corrupt config) — and
+    // a model name is a conservative token anyway. Reject anything else.
+    if (model && !/^[\w.:/-]+$/.test(model)) {
+      logger.warn(
+        `[coding-account-bridge] ignoring malformed ELIZA_CODEX_MODEL=${JSON.stringify(model)}`,
+      );
+      model = undefined;
+    }
     if (!model) {
       const machineConfig = path.join(os.homedir(), ".codex", "config.toml");
       if (existsSync(machineConfig)) {
+        // Accept both double- and single-quoted TOML strings (both are valid +
+        // common); the captured value can't contain the quote char so it's
+        // safe to re-emit double-quoted.
         const m = readFileSync(machineConfig, "utf-8").match(
-          /^\s*model\s*=\s*"([^"]+)"/m,
+          /^\s*model\s*=\s*["']([^"']+)["']/m,
         );
         if (m?.[1]) model = m[1];
       }
@@ -270,19 +297,25 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
         });
         if (!account) continue;
         let accessToken: string | null = null;
+        let resolveError: unknown;
         try {
           accessToken = await getAccessToken(providerId, account.id);
         } catch (err) {
+          resolveError = err;
           logger.warn(
             `[coding-account-bridge] token resolve failed for ${providerId}/${account.id}: ${String(err)}`,
           );
         }
         if (!accessToken) {
-          await pool.markNeedsReauth(
-            account.id,
-            "No valid credential / token refresh failed",
-            { providerId },
-          );
+          // Only flag for re-auth on a genuine auth failure; a transient
+          // network/5xx blip must not pull a healthy account out of rotation.
+          if (isAuthFailure(resolveError)) {
+            await pool.markNeedsReauth(
+              account.id,
+              "No valid credential / token refresh failed",
+              { providerId },
+            );
+          }
           continue;
         }
         const envPatch = await buildEnvPatch(

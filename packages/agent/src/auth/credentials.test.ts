@@ -292,3 +292,73 @@ describe("applySubscriptionCredentials", () => {
     expect(refreshMock).toHaveBeenCalledWith("work");
   });
 });
+
+describe("saveCredentials id_token preservation across refresh", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    for (const dir of tempHomes.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the prior id_token when a refresh omits it", () => {
+    useTempElizaHome();
+    // Initial login captures an id_token.
+    saveCredentials(
+      "openai-codex",
+      {
+        access: "access-1",
+        refresh: "refresh-1",
+        expires: Date.now() + 3600_000,
+        idToken: "id-token-login",
+      },
+      "acct",
+    );
+    expect(loadAccount("openai-codex", "acct")?.credentials.idToken).toBe(
+      "id-token-login",
+    );
+
+    // OAuth refresh typically re-issues access/refresh WITHOUT a new id_token.
+    saveCredentials(
+      "openai-codex",
+      {
+        access: "access-2",
+        refresh: "refresh-2",
+        expires: Date.now() + 3600_000,
+      },
+      "acct",
+    );
+    const after = loadAccount("openai-codex", "acct")?.credentials;
+    expect(after?.access).toBe("access-2"); // fresh access persisted
+    // ...but the id_token survives — codex-acp needs it or auth fails.
+    expect(after?.idToken).toBe("id-token-login");
+  });
+
+  it("overwrites the id_token when a refresh DOES supply a new one", () => {
+    useTempElizaHome();
+    saveCredentials(
+      "openai-codex",
+      {
+        access: "a1",
+        refresh: "r1",
+        expires: Date.now() + 3600_000,
+        idToken: "id-old",
+      },
+      "acct",
+    );
+    saveCredentials(
+      "openai-codex",
+      {
+        access: "a2",
+        refresh: "r2",
+        expires: Date.now() + 3600_000,
+        idToken: "id-new",
+      },
+      "acct",
+    );
+    expect(loadAccount("openai-codex", "acct")?.credentials.idToken).toBe(
+      "id-new",
+    );
+  });
+});

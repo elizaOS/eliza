@@ -49,6 +49,7 @@ import type { AccountsListResponse } from "../../../api/client-agent";
 import type {
   AppRunSummary,
   OrchestratorAccountOverview,
+  OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
 import { useApp } from "../../../state";
@@ -703,18 +704,23 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
   const [overview, setOverview] = useState<OrchestratorAccountOverview | null>(
     null,
   );
+  const [rooms, setRooms] = useState<OrchestratorRoomRosterOverview | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
-      const [acctRes, ovRes] = await Promise.allSettled([
+      const [acctRes, ovRes, roomsRes] = await Promise.allSettled([
         client.listAccounts(),
         client.getOrchestratorAccounts(),
+        client.getOrchestratorRooms(),
       ]);
       if (cancelled) return;
       if (acctRes.status === "fulfilled") setAccounts(acctRes.value);
       if (ovRes.status === "fulfilled") setOverview(ovRes.value);
+      if (roomsRes.status === "fulfilled") setRooms(roomsRes.value);
       setLoading(false);
     };
     void refresh();
@@ -743,6 +749,11 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
     }
     return map;
   }, [activeAssignments]);
+  // Rooms with at least one live sub-agent — the per-room participant roster.
+  const activeRooms = useMemo(
+    () => (rooms?.rooms ?? []).filter((r) => r.activeAgentCount > 0),
+    [rooms],
+  );
 
   if (loading) return null;
 
@@ -866,7 +877,55 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
             </div>
           );
         })}
-        {activeAssignments.length > 0 ? (
+        {activeRooms.length > 0 ? (
+          <div
+            className="space-y-1.5 border-t border-border/40 pt-1.5"
+            data-testid="orchestrator-room-roster"
+          >
+            <div className="text-3xs font-medium uppercase tracking-wide text-muted/60">
+              {t("agentorchestrator.taskRooms", { defaultValue: "Task rooms" })}
+            </div>
+            {activeRooms.map((room) => (
+              <div key={room.taskId} className="space-y-0.5">
+                <div className="flex items-center gap-1 text-3xs text-muted">
+                  <span className="truncate font-medium text-txt">
+                    {room.taskTitle}
+                  </span>
+                  {room.multiParty ? (
+                    <span className="ml-auto shrink-0 rounded-full bg-muted/15 px-1.5 py-0.5 text-3xs text-muted">
+                      {t("agentorchestrator.multiParty", {
+                        defaultValue: "{{count}} agents",
+                        count: room.activeAgentCount,
+                      })}
+                    </span>
+                  ) : null}
+                </div>
+                {room.participants.map((p) => (
+                  <div
+                    key={`${room.taskId}:${p.kind}:${p.id}`}
+                    className="flex items-center gap-1 pl-1 text-3xs text-muted"
+                  >
+                    <Workflow className="h-3 w-3 shrink-0 text-muted/60" />
+                    <span className="truncate font-medium text-txt">
+                      {p.label}
+                    </span>
+                    {p.accountLabel ? (
+                      <>
+                        <span className="shrink-0 text-muted/50">→</span>
+                        <span className="truncate">{p.accountLabel}</span>
+                      </>
+                    ) : null}
+                    {typeof p.totalTokens === "number" && p.totalTokens > 0 ? (
+                      <span className="ml-auto shrink-0 tabular-nums text-muted/60">
+                        {Math.round(p.totalTokens / 1000)}k
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : activeAssignments.length > 0 ? (
           <div className="space-y-0.5 border-t border-border/40 pt-1.5">
             {activeAssignments.map((a) => (
               <div

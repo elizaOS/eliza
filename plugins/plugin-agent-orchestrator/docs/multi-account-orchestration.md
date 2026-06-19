@@ -1,7 +1,8 @@
 # Multi-account coding-agent orchestration
 
-Goal: an Eliza orchestrator agent that runs **multiple Claude Code, Codex (and
-z.ai / OpenCode) subscriptions**, picks the **least-used** account for each new
+Goal: an Eliza orchestrator agent that runs **multiple Claude Code + Codex
+subscriptions** (and rotates OpenCode across pooled Cerebras accounts), picks
+the **least-used** account for each new
 sub-agent, tracks per-account **session + weekly usage**, manages those
 sub-agents in a **shared task room**, and decides **when to interrupt** a
 running sub-agent vs. let it keep working.
@@ -40,7 +41,7 @@ bridge**.
 
 ### P0 — Keystone: account selection on spawn (round-robin / least-used)
 - [x] `coding-account-bridge.ts` (app-core): install `Symbol.for("eliza.account-pool.coding-agent.v1")` bridge — `select(agentType)`, `markRateLimited`, `markNeedsReauth`, `recordUsage`, `describe()`.
-- [x] Per-agent credential injection: claude → `CLAUDE_CODE_OAUTH_TOKEN`; codex → per-account `CODEX_HOME/auth.json`; direct API providers → their env key; z.ai coding key.
+- [x] Per-agent credential injection: claude → `CLAUDE_CODE_OAUTH_TOKEN`; codex → per-account `CODEX_HOME/auth.json` + minimal `config.toml`; opencode → `CEREBRAS_API_KEY` (pooled Cerebras); direct API providers → their env key.
 - [x] Wire into `AcpService.spawnSession`: select before transport branch, merge `envPatch` into `customCredentials`, stamp `session.metadata.account*`, surface on `SpawnResult.metadata`.
 - [x] `buildEnv`: when `CLAUDE_CODE_OAUTH_TOKEN` is injected for claude, drop `ANTHROPIC_API_KEY` so the selected subscription wins.
 - [x] `OrchestratorTaskSession` carries `accountProviderId` / `accountId` / `accountLabel`; populate from `result.metadata`.

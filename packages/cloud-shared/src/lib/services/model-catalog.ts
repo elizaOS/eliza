@@ -9,9 +9,9 @@ import {
   STATIC_TEXT_CATALOG_MODELS,
 } from "../models";
 import {
-  getBitRouterProvider,
-  hasBitRouterProviderConfigured,
+  getOpenRouterProvider,
   hasGroqProviderConfigured,
+  hasOpenRouterProviderConfigured,
 } from "../providers";
 import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 import type { OpenAIModelsResponse } from "../providers/types";
@@ -35,21 +35,21 @@ function buildSWRValue<T>(data: T): SWRCachedValue<T> {
 
 async function fetchBitRouterModelCatalog(): Promise<CatalogModel[]> {
   try {
-    if (!hasBitRouterProviderConfigured()) {
+    if (!hasOpenRouterProviderConfigured()) {
       return [];
     }
 
-    const response = await getBitRouterProvider().listModels();
+    const response = await getOpenRouterProvider().listModels();
     const data = (await response.json()) as OpenAIModelsResponse;
 
     if (!Array.isArray(data.data)) {
-      logger.warn("[Model Catalog] BitRouter returned an invalid model catalog");
+      logger.warn("[Model Catalog] OpenRouter returned an invalid model catalog");
       return [];
     }
 
     return data.data;
   } catch (error) {
-    logger.warn("[Model Catalog] Failed to fetch BitRouter model catalog", {
+    logger.warn("[Model Catalog] Failed to fetch OpenRouter model catalog", {
       error,
     });
     return [];
@@ -68,7 +68,7 @@ export async function getCachedBitRouterModelCatalog(): Promise<CatalogModel[]> 
 }
 
 export function hasModelCatalogProviderConfigured(): boolean {
-  return hasBitRouterProviderConfigured() || hasGroqProviderConfigured();
+  return hasOpenRouterProviderConfigured() || hasGroqProviderConfigured();
 }
 
 export async function refreshBitRouterModelCatalog(): Promise<CatalogModel[]> {

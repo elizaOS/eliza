@@ -170,6 +170,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { androidArm64SimdCmakeFlags } from "../build-helpers/arm64-simd.mjs";
 import {
   fusedCmakeBuildTargets,
   fusedExtraCmakeFlags,
@@ -1101,10 +1102,44 @@ export function ensureZigDrivers({
         'done\n'
       : null;
 
+  // arm64: the ggml-cpu CMakeLists emits the GCC-style ISA string
+  // `-march=armv8.2-a+dotprod+fp16+i8mm` (from GGML_CPU_ARM_ARCH). Zig 0.13's
+  // bundled LLVM rejects that for the aarch64 target — it tries to translate
+  // `armv8.2-a` to a `-mcpu=` value and dies with "unknown CPU: 'armv8.2'"
+  // (the same class of breakage the riscv64 filter handles). Zig instead
+  // speaks `-mcpu=<cpu>+<feature>` with its OWN feature names. Rewrite the
+  // GCC `-march=armv8.x-a+...` into the equivalent zig `-mcpu=generic+...`:
+  // dotprod→dotprod, i8mm→i8mm, fp16→fullfp16. This sets exactly the same
+  // __ARM_FEATURE_DOTPROD / __ARM_FEATURE_MATMUL_INT8 /
+  // __ARM_FEATURE_FP16_VECTOR_ARITHMETIC macros (verified), so the live QJL
+  // NEON-dotprod / i8mm / fp16 kernel bodies survive preprocessing and the
+  // ggml ARM-feature configure probes pass. Any other `-march=` is passed
+  // through untouched (there shouldn't be one for arm64).
+  const arm64ArgFilter =
+    abi === "arm64-v8a"
+      ? '_n=$#\n' +
+        'i=0\n' +
+        'while [ $i -lt $_n ]; do\n' +
+        '  arg=$1\n' +
+        '  shift\n' +
+        '  i=$((i+1))\n' +
+        '  case "$arg" in\n' +
+        '    -march=armv8.*-a+*)\n' +
+        '      _feats=""\n' +
+        '      case "$arg" in *+dotprod*) _feats="${_feats}+dotprod" ;; esac\n' +
+        '      case "$arg" in *+i8mm*) _feats="${_feats}+i8mm" ;; esac\n' +
+        '      case "$arg" in *+fp16*) _feats="${_feats}+fullfp16" ;; esac\n' +
+        '      set -- "$@" "-mcpu=generic${_feats}" ;;\n' +
+        '    *) set -- "$@" "$arg" ;;\n' +
+        '  esac\n' +
+        'done\n'
+      : null;
+
+  const argFilter = riscv64ArgFilter ?? arm64ArgFilter;
   const exec =
-    riscv64ArgFilter !== null
+    argFilter !== null
       ? (subcmd) =>
-          riscv64ArgFilter +
+          argFilter +
           `exec "${zigBin}" ${subcmd} --target=${target.zigTarget} "$@"\n`
       : (subcmd) =>
           `exec "${zigBin}" ${subcmd} --target=${target.zigTarget} "$@"\n`;
@@ -1223,6 +1258,19 @@ export function buildLibllamaForAbi({
       ? ["-DGGML_AVX=ON", "-DGGML_AVX2=ON", "-DGGML_FMA=ON", "-DGGML_F16C=ON"]
       : [];
 
+  // arm64-v8a: GGML_NATIVE=OFF leaves the cross-build at the bare armv8-a
+  // baseline, which keeps ggml's dotprod/i8mm/fp16 NEON kernels AND the eliza
+  // QJL NEON-dotprod kernel dead. Pin the armv8.2-a+dotprod+fp16+i8mm floor and
+  // flip the QJL dispatch define so the Pixel-class Tensor G4 actually runs the
+  // accelerated paths. See build-helpers/arm64-simd.mjs for the full rationale.
+  const arm64BuildFlags = androidArm64SimdCmakeFlags(abi);
+  if (arm64BuildFlags.length > 0) {
+    log(
+      `[compile-libllama] arm64 SIMD floor: ${arm64BuildFlags.join(" ")} ` +
+        `(dotprod/i8mm/fp16 + QJL NEON-dotprod dispatch)`,
+    );
+  }
+
   // Per-ABI driver scripts that wrap `zig cc --target=<triple>` so cmake's
   // single-binary compiler probe works. See ensureZigDrivers() for why
   // passing `--target=` via CMAKE_C_FLAGS doesn't work on its own. When
@@ -1270,6 +1318,7 @@ export function buildLibllamaForAbi({
       "-DGGML_NATIVE=OFF",
       ...riscv64BuildFlags,
       ...x86_64BuildFlags,
+      ...arm64BuildFlags,
       // Don't bake in an absolute RUNPATH to the build tree. The default
       // CMAKE_BUILD_RPATH points at the per-ABI build dir, which is a
       // path-leak in shipped APKs and adds dead lookup entries at runtime.
@@ -2187,6 +2236,9 @@ export function describeAndroidTargetDryRun({
       ...riscv64CmakeFlagsForPlan({ abi: parsed.androidAbi, plan }),
     );
   }
+  // arm64-v8a SIMD floor (dotprod/i8mm/fp16 + QJL NEON-dotprod dispatch) — the
+  // real buildLibllamaForAbi() emits these too; surface them in the dry-run.
+  cmakeFlags.push(...androidArm64SimdCmakeFlags(parsed.androidAbi));
   cmakeFlags.push(
     "-DCMAKE_SKIP_BUILD_RPATH=TRUE",
     "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",

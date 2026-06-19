@@ -150,8 +150,11 @@ export interface OrchestratorAccountAssignment {
   outputTokens: number;
   reasoningTokens: number;
   cacheTokens: number;
-  /** input+output+reasoning+cache — the same basis the pool attributes to the
-   * account for least-used selection, so the dashboard number matches. */
+  /** Cumulative attributed tokens for this session (input+output+reasoning;
+   * cache reported separately as cacheTokens) — same definition as
+   * TaskSessionDto.totalTokens so per-session and per-account numbers agree.
+   * Note: least-used selection ranks by the OAuth usage probe (sessionPct),
+   * not this token count. */
   totalTokens: number;
   costUsd: number;
   usageState: UsageState;

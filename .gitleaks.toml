@@ -244,3 +244,17 @@ description = "Benchmark suite fixture data dirs (synthetic test credentials)"
 paths = [
   '''(^|/)packages/benchmarks/.*/(fixtures|config|configs|data|assets|task-configs|task_configs|test_files|envs|gem)/.*\.(json|env|ya?ml|md|txt|csv)$''',
 ]
+
+# eliza-1 smoke SFT corpus (~400 rows) is INTENTIONALLY tracked (see the
+# `!data/final-eliza1-smoke/**` re-includes in packages/training/.gitignore) so the
+# e2e SFT pipeline can be smoke-tested from a fresh clone. Its synthetic/captured
+# conversation rows carry tokens that trip generic-api-key: a documentation-style
+# `api_key: sk_live_abc123xyz` placeholder and a captured Daytona/Node sandbox env
+# dump whose `GPG_KEY=<40-hex>` is the official `node` base image's PUBLIC signing-key
+# fingerprint (plus non-secret DAYTONA_SANDBOX_* ids). No real credentials. Needed
+# because gitleaks scans the add in commit d28c72036d's range.
+[[allowlists]]
+description = "eliza-1 smoke SFT corpus (synthetic/captured-public tokens, not credentials)"
+paths = [
+  '''(^|/)packages/training/data/final-eliza1-smoke/.*\.jsonl$''',
+]

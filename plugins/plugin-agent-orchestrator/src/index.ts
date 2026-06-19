@@ -46,44 +46,24 @@ import { availableAgentsProvider } from "./providers/available-agents.js";
 import { codingSessionChangesProvider } from "./providers/coding-session-changes.js";
 import { AcpService } from "./services/acp-service.js";
 import {
+  createActiveSessionForwardHandler,
+  isSessionBusy,
+} from "./services/active-session-forward.js";
+import {
   appendAuditLine,
   defaultAuditLogPath,
   TASK_AUDIT_EVENT,
   type TaskAuditPayload,
 } from "./services/audit.js";
-import { decideInterruption } from "./services/interruption-decider.js";
 import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
 import { SubAgentInbox } from "./services/sub-agent-inbox.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
-import { requireTaskAgentAccess } from "./services/task-policy.js";
 import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
 import {
   type AcpToolCall,
-  type SessionInfo,
   TERMINAL_SESSION_STATUSES,
 } from "./services/types.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
-
-// Skip forwarding our own posts back into `acp.sendPrompt` — would echo-loop.
-// `entityId === runtime.agentId` is not enough: the router uses a synthetic
-// sub-agent UUID, so we also filter by Content.source.
-const INTERNAL_FORWARD_SKIP_SOURCES = new Set([
-  "sub_agent",
-  "sub_agent_progress",
-  "sub_agent_complete",
-]);
-
-/**
- * A session is "busy" (not safe to prompt now) whenever it is neither a
- * terminal status nor `ready`. This covers `busy`, `tool_running` (the dominant
- * mid-turn state on the native transport), `running`, `blocked`, and
- * `authenticating` — for all of these `acp.sendPrompt` would throw or be
- * inappropriate, so the message must queue and flush when the session returns
- * to `ready`. Only `ready` is promptable.
- */
-function isSessionBusy(status: string): boolean {
-  return status !== "ready" && !TERMINAL_SESSION_STATUSES.has(status);
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return (
@@ -181,6 +161,11 @@ export function createAgentOrchestratorPlugin(): Plugin {
     | undefined;
   let disposeProgressHook: (() => void) | undefined;
   let disposeInboxFlush: (() => void) | undefined;
+  // In-flight inbox-flush poll timers + the set of sessions currently being
+  // polled — tracked at plugin scope so dispose() can clear them (an unref'd
+  // timer that fires post-dispose would touch a torn-down runtime/service).
+  const flushTimers = new Set<ReturnType<typeof setTimeout>>();
+  const flushPending = new Set<string>();
   let activeSessionForwardHandler:
     | ((payload: { message: Memory }) => Promise<void>)
     | undefined;
@@ -266,198 +251,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
       // Forward mid-task user messages to the live sub-agent for this roomId.
       // Bind is on (source, roomId) — no Discord-thread dependency, so plain
       // SMS/WhatsApp follow-ups work too.
-      activeSessionForwardHandler = async ({ message }) => {
-        try {
-          if (!message?.entityId || message.entityId === runtime.agentId)
-            return;
-          // Skip orchestrator/sub-agent-router internal posts. The router
-          // emits MESSAGE_RECEIVED with a synthetic `entityId` (not
-          // `runtime.agentId`) for narration/status fan-out, so the
-          // entityId check above does not filter them out. Without the
-          // source filter the router's sub-agent narration would be fed
-          // straight back into `acp.sendPrompt` for the same session →
-          // echo loop on every sub-agent message.
-          const contentRecord = (message.content ?? {}) as Record<
-            string,
-            unknown
-          >;
-          const contentSource =
-            typeof contentRecord.source === "string"
-              ? contentRecord.source
-              : undefined;
-          if (contentSource && INTERNAL_FORWARD_SKIP_SOURCES.has(contentSource))
-            return;
-          // Skip transient status posts. These are persisted by the
-          // orchestrator's own progress hook (sub_agent_progress /
-          // sub_agent_complete) and by the discord plugin via
-          // `extraMetadata`. They can carry the agent's own entityId (so
-          // the agent-id check covers most), but defending against both
-          // top-level Memory.metadata.transient and nested
-          // content.metadata.transient matches the recentMessages
-          // provider's isTransientStatusMessage contract.
-          const topMeta = (message.metadata ?? {}) as Record<string, unknown>;
-          const nestedMeta = (contentRecord.metadata ?? {}) as Record<
-            string,
-            unknown
-          >;
-          if (topMeta.transient === true || nestedMeta.transient === true)
-            return;
-          const acp = runtime.getService<AcpService>(AcpService.serviceType);
-          if (!acp) return;
-          const sessions = await Promise.resolve(acp.listSessions()).catch(
-            (err: unknown) => {
-              runtime.logger?.warn?.(
-                {
-                  src: "@elizaos/plugin-agent-orchestrator",
-                  err: err instanceof Error ? err.message : String(err),
-                },
-                "active-session forward listSessions failed",
-              );
-              return [] as SessionInfo[];
-            },
-          );
-          const active = sessions.find((s) => {
-            if (TERMINAL_SESSION_STATUSES.has(s.status)) return false;
-            const meta = s.metadata;
-            const roomId =
-              typeof meta?.roomId === "string" ? meta.roomId : undefined;
-            // threadRoomId matches replies posted inside the per-label
-            // thread (where roomId derives from the thread id, not the
-            // parent channel). Without this, in-thread replies miss the
-            // session and the planner re-spawns instead of continuing.
-            const threadRoomId =
-              typeof meta?.threadRoomId === "string"
-                ? meta.threadRoomId
-                : undefined;
-            return roomId === message.roomId || threadRoomId === message.roomId;
-          });
-          if (!active) return;
-          const text =
-            typeof (message.content as { text?: unknown })?.text === "string"
-              ? ((message.content as { text: string }).text ?? "").trim()
-              : "";
-          if (!text) return;
-          if (typeof acp.sendPrompt !== "function") return;
-          // ACL: forwarding user text mid-flight is functionally identical
-          // to the TASKS_SEND_TO_AGENT action — bypassing this check would
-          // let any user with channel write access inject prompts into a
-          // sub-agent another user spawned ("scope drift"). The default
-          // policy requires ADMIN for `interact`; GUEST-allowed deployments
-          // pass through here too.
-          const access = await requireTaskAgentAccess(
-            runtime,
-            message,
-            "interact",
-          );
-          if (!access.allowed) return;
-
-          // Interruption decider: a working sub-agent keeps working unless the
-          // user explicitly stops/redirects it. "Working" means any non-terminal,
-          // non-`ready` status — crucially `tool_running` (the dominant mid-turn
-          // state on the native transport), not just the brief `busy` window.
-          // `acp.sendPrompt` throws while a session is mid-turn, so QUEUEd text
-          // lands in the inbox and is flushed when the session next goes idle.
-          const label =
-            typeof active.metadata?.label === "string"
-              ? active.metadata.label
-              : active.name;
-          // "Crowded room": more than one live sub-agent bound to this room.
-          // An unaddressed ambient line should not be force-injected then.
-          const multiParty =
-            sessions.filter((s) => {
-              if (TERMINAL_SESSION_STATUSES.has(s.status)) return false;
-              const meta = s.metadata;
-              const rid =
-                typeof meta?.roomId === "string" ? meta.roomId : undefined;
-              const trid =
-                typeof meta?.threadRoomId === "string"
-                  ? meta.threadRoomId
-                  : undefined;
-              return rid === message.roomId || trid === message.roomId;
-            }).length > 1;
-          const busy = isSessionBusy(active.status);
-          const decision = decideInterruption({
-            text,
-            agentType: active.agentType,
-            sessionBusy: busy,
-            multiParty,
-            ...(label ? { agentLabel: label } : {}),
-          });
-          runtime.logger?.debug?.(
-            {
-              src: "@elizaos/plugin-agent-orchestrator",
-              sessionId: active.id,
-              status: active.status,
-              busy,
-              multiParty,
-              action: decision.action,
-              reason: decision.reason,
-            },
-            "interruption decision",
-          );
-
-          // Deliver now (idle path): flush any queued messages, then this one.
-          // Requeue on failure (e.g. a racing busy transition) so the user's
-          // text is never silently dropped — the flush listener retries it.
-          const deliverNow = async (payload: string) => {
-            try {
-              await acp.sendPrompt(active.id, payload);
-            } catch (err) {
-              subAgentInbox.enqueue(active.id, payload);
-              runtime.logger?.warn?.(
-                {
-                  src: "@elizaos/plugin-agent-orchestrator",
-                  sessionId: active.id,
-                  err: err instanceof Error ? err.message : String(err),
-                },
-                "active-session forward failed; requeued for flush",
-              );
-            }
-          };
-
-          switch (decision.action) {
-            case "ignore":
-              return;
-            case "interrupt": {
-              if (!busy) return; // nothing in flight to cancel
-              // Cancel the in-flight turn (status → terminal `cancelled`). We do
-              // not re-deliver to the dead session — the planner pipeline runs
-              // on this same MESSAGE_RECEIVED and routes the user's redirect.
-              subAgentInbox.clear(active.id);
-              await acp.cancelSession?.(active.id)?.catch?.((err: unknown) =>
-                runtime.logger?.warn?.(
-                  {
-                    src: "@elizaos/plugin-agent-orchestrator",
-                    sessionId: active.id,
-                    err: err instanceof Error ? err.message : String(err),
-                  },
-                  "interrupt cancel failed",
-                ),
-              );
-              return;
-            }
-            default: {
-              // deliver / queue. If the agent is mid-turn, queue for the flush
-              // listener; otherwise flush + deliver immediately.
-              if (busy) {
-                subAgentInbox.enqueue(active.id, text);
-                return;
-              }
-              const queued = subAgentInbox.drain(active.id);
-              await deliverNow(queued ? `${queued}\n${text}` : text);
-              return;
-            }
-          }
-        } catch (err) {
-          runtime.logger?.warn?.(
-            {
-              src: "@elizaos/plugin-agent-orchestrator",
-              err: err instanceof Error ? err.message : String(err),
-            },
-            "active-session forward listener threw",
-          );
-        }
-      };
+      activeSessionForwardHandler = createActiveSessionForwardHandler(
+        runtime,
+        subAgentInbox,
+      );
       runtime.registerEvent(
         EventType.MESSAGE_RECEIVED,
         activeSessionForwardHandler,
@@ -500,9 +297,21 @@ export function createAgentOrchestratorPlugin(): Plugin {
           // bridges the gap between the `task_complete` event and the session
           // status returning to a promptable state.
           if (acp) {
+            // Poll bound for the task_complete→ready settle gap. This is NOT a
+            // delivery deadline: every subsequent ready/task_complete/reconnected
+            // event re-triggers a flush, so a queued message survives a turn far
+            // longer than the poll window. Giving up here only stops polling;
+            // it never clears a non-terminal session's inbox.
+            const MAX_FLUSH_POLLS = 120;
             const scheduleFlush = (sessionId: string, tries = 0): void => {
               if (subAgentInbox.size(sessionId) === 0) return;
-              setTimeout(() => {
+              // Coalesce: one in-flight poll chain per session. External
+              // re-triggers (tries===0) are dropped while a chain is active;
+              // self-rescheduling continuations (tries>0) pass through.
+              if (tries === 0 && flushPending.has(sessionId)) return;
+              flushPending.add(sessionId);
+              const timer = setTimeout(() => {
+                flushTimers.delete(timer);
                 void (async () => {
                   const svc = runtime.getService<AcpService>(
                     AcpService.serviceType,
@@ -514,24 +323,31 @@ export function createAgentOrchestratorPlugin(): Plugin {
                     !session ||
                     TERMINAL_SESSION_STATUSES.has(session.status)
                   ) {
+                    flushPending.delete(sessionId);
                     subAgentInbox.clear(sessionId);
                     return;
                   }
                   // Still mid-turn (busy / tool_running / running / blocked /
                   // authenticating) — wait for it to return to `ready`.
                   if (isSessionBusy(session.status)) {
-                    if (tries < 20) scheduleFlush(sessionId, tries + 1);
+                    if (tries < MAX_FLUSH_POLLS) {
+                      scheduleFlush(sessionId, tries + 1);
+                    } else {
+                      // Stop polling; the next session event re-arms a flush.
+                      flushPending.delete(sessionId);
+                    }
                     return;
                   }
+                  flushPending.delete(sessionId);
                   const queued = subAgentInbox.drain(sessionId);
                   if (!queued) return;
                   try {
                     await svc?.sendPrompt(sessionId, queued);
                   } catch (err) {
-                    // Lost the race back to busy — requeue and retry rather than
-                    // drop the user's message.
+                    // Lost the race back to busy — requeue and re-arm rather
+                    // than drop the user's message.
                     subAgentInbox.enqueue(sessionId, queued);
-                    if (tries < 20) scheduleFlush(sessionId, tries + 1);
+                    scheduleFlush(sessionId);
                     runtime.logger?.warn?.(
                       {
                         src: "@elizaos/plugin-agent-orchestrator",
@@ -542,7 +358,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
                     );
                   }
                 })();
-              }, 1000).unref?.();
+              }, 1000);
+              timer.unref?.();
+              flushTimers.add(timer);
             };
             disposeInboxFlush = acp.onSessionEvent((sessionId, event) => {
               if (
@@ -602,6 +420,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
         }
         disposeInboxFlush = undefined;
       }
+      // Cancel any in-flight flush poll timers so none fire after teardown.
+      for (const timer of flushTimers) clearTimeout(timer);
+      flushTimers.clear();
+      flushPending.clear();
       subAgentInbox.clearAll();
       const acp = runtime.getService<AcpService>(AcpService.serviceType);
       await acp?.stop();
