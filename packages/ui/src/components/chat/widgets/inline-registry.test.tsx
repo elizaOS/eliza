@@ -32,8 +32,11 @@ describe("inline-widget registry", () => {
   it("ships the built-in widgets after side-effect import", () => {
     const kinds = getInlineWidgets().map((w) => w.kind);
     expect(kinds).toEqual(
-      expect.arrayContaining(["choice", "followups", "form", "task"]),
+      expect.arrayContaining(["choice", "followups", "form"]),
     );
+    // `task` is owned by the orchestrator plugin (registerTaskWidget), not a
+    // ui built-in — it is absent until that plugin loads.
+    expect(kinds).not.toContain("task");
   });
 
   it("lets a plugin register a new marker and render it end to end", () => {
