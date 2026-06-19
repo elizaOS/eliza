@@ -78,6 +78,25 @@ held-out; the 150+150 subset agrees at 98.7% / 3.3%. True-accept holds
 98.0–98.8% across thresholds 0.3–0.9; best operating point t=0.6 gives 98.8% TA
 / 3.2% FA.)
 
+Independently re-confirmed on a larger held-out set (600 positives / 1000 mixed
+negatives / 200 dedicated hard-negatives, disjoint seeds 900–903) through a
+*separate* in-process C harness that links `libwakeword.a` directly (no bun:ffi,
+fresh `wakeword_open`/`process`/`close` session per clip, peak P(wake)) — a
+different code path from `verify_ffi.ts`, so the numbers are corroborated, not
+just re-run:
+
+| Set (no-rescale head)       | n    | accept @ t=0.5 | accept @ t=0.7 | score shape |
+| --------------------------- | ---- | -------------- | -------------- | ----------- |
+| Positives ("hey eliza")     | 600  | **98.2% TA**   | 97.7% TA       | p10=0.996, p50=1.0 — confident |
+| Negatives (mixed, 40% hard) | 1000 | **6.8% FA**    | 5.7% FA        | p50=0.0, p90=0.018 — silent |
+| Hard negatives (near-phrase)| 200  | **6.0% FA**    | 5.5% FA        | p50=0.0, p90=0.141 |
+
+The same harness on the WITH-rescale (default) head scored only 25% TA on those
+600 positives (p50≈0.005, bimodal) — independently reproducing the train/runtime
+featurization mismatch. The hard-negative FA (5–6%) is the dominant error source
+(generic-speech FA is far lower, p90=0.018), so a tighter operating point
+(t≈0.7) or more hard negatives in the corpus is the lever for a production run.
+
 Root cause cross-checked in pure ONNX (no C runtime): scoring the held-out
 positives through the front-end WITH the rescale and the WITH-rescale head gives
 100% (mean 0.994); feeding the same head NO-rescale embeddings drops it to
