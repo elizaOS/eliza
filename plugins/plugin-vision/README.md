@@ -55,7 +55,7 @@ The plugin auto-enables when `config.features.vision` is truthy or `config.media
 | `OCR_ENABLED` | `true` | Enable OCR on screen tiles |
 | `ENABLE_OBJECT_DETECTION` | `false` | ggml YOLOv8n object detection (`native/yolo.cpp`) |
 | `ENABLE_POSE_DETECTION` | `false` | Heuristic person detection (ggml pose pending) |
-| `ENABLE_FACE_RECOGNITION` | `false` | face-api.js face recognition |
+| `ENABLE_FACE_RECOGNITION` | `false` | Native ggml face recognition (BlazeFace + 128-d embed via `native/face-cpp`) |
 | `ENTITY_TIMEOUT` | `30000` | ms before an inactive entity is evicted from tracking |
 
 All settings can also be prefixed with `VISION_` (e.g. `VISION_CAMERA_NAME`).
@@ -95,7 +95,7 @@ The plugin registers a single `VISION` action that routes to one of these sub-op
 | Object detection | YOLOv8n ggml via `native/yolo.cpp` (`src/yolo-detector.ts`); build with `bun run build:native` + `bun run build:weights`. Service degrades to motion/heuristic + VLM when the lib/GGUF are absent. | — (TensorFlow.js path removed) |
 | Pose detection | Heuristic person detection (motion-derived) | Planned ggml MoveNet port |
 | OCR | Apple Vision (darwin, when a provider is registered) → doCTR ggml (`native/doctr.cpp`) | No ONNX or Tesseract path |
-| Face recognition | face-api.js (`src/face-recognition.ts`) | Experimental ggml backends (`face-detector-ggml.ts`, `face-recognition-ggml.ts`; gated until artifacts land). MediaPipe BlazeFace migration shim is deprecated. |
+| Face recognition | Native ggml BlazeFace + 128-d embed (`face-detector-ggml.ts`, `face-recognition-ggml.ts`, `native/face-cpp`); disabled until the lib/GGUF artifacts land. No tfjs/face-api.js path. | MediaPipe BlazeFace migration shim is deprecated. |
 
 ## Platform notes
 

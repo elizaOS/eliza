@@ -429,7 +429,6 @@
     "@nestjs/core",
     "@openapitools/openapi-generator-cli",
     "@swc/core",
-    "@tensorflow/tfjs-node",
     "bigint-buffer",
     "bufferutil",
     "canvas",

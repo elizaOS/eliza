@@ -13,9 +13,14 @@
 - **Pose: deferred to the heuristic path.** MoveNet is removed; a ggml MoveNet
   port remains the open item (Phase 3 below). `service.ts` falls back to
   motion-derived person detection when pose is requested.
-- **Remaining legacy:** `face-api.js` (pure-JS `tfjs-core`, not the native
-  addon) still backs face recognition; doCTR/RetinaFace/MobileFaceNet ggml
-  ports are scaffolded pending weights.
+- **face-api.js: REMOVED.** `face-api.js` (and the `canvas` polyfill it
+  required) are gone from `package.json`; `src/face-recognition.ts` is deleted.
+  Face recognition now runs entirely on the native ggml path
+  (`face-detector-ggml.ts` BlazeFace + `face-recognition-ggml.ts` 128-d embed),
+  disabled until the `native/face-cpp` lib/GGUF artifacts land. The face-api.js
+  expression and age/gender nets are dropped (not a product requirement).
+- **Remaining:** doCTR/RetinaFace/MobileFaceNet ggml ports are scaffolded
+  pending weights.
 
 ## Charter
 

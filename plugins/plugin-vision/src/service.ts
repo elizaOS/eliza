@@ -19,7 +19,7 @@ import {
   type StreamingAudioConfig,
 } from "./audio-capture-stream";
 import { EntityTracker } from "./entity-tracker";
-import { FaceRecognition } from "./face-recognition";
+import { FaceRecognition } from "./face-recognition-ggml";
 import {
   assertValidVisionImageBuffer,
   parseVisionDataImageUrl,
@@ -886,18 +886,10 @@ export class VisionService extends Service {
                     `[VisionService] Recognized face: ${profileId} (distance: ${match.distance})`,
                   );
                 } else {
-                  // Register new face
+                  // Register new face. The native ggml backend produces no
+                  // expression / age-gender estimates, so no attributes.
                   profileId = await this.faceRecognition.addOrUpdateFace(
                     face.descriptor,
-                    {
-                      attributes: {
-                        age: face.ageGender?.age.toString(),
-                        gender: face.ageGender?.gender,
-                        emotion: face.expressions
-                          ? this.getDominantExpression(face.expressions)
-                          : undefined,
-                      },
-                    },
                   );
                   logger.info(
                     `[VisionService] New face registered: ${profileId}`,
@@ -1596,38 +1588,6 @@ export class VisionService extends Service {
     const union = area1 + area2 - intersection;
 
     return intersection / union;
-  }
-
-  private getDominantExpression(expressions: {
-    neutral: number;
-    happy: number;
-    sad: number;
-    angry: number;
-    fearful: number;
-    disgusted: number;
-    surprised: number;
-  }): string {
-    let maxValue = 0;
-    let dominantExpression = "neutral";
-
-    const expressionEntries: [string, number][] = [
-      ["neutral", expressions.neutral],
-      ["happy", expressions.happy],
-      ["sad", expressions.sad],
-      ["angry", expressions.angry],
-      ["fearful", expressions.fearful],
-      ["disgusted", expressions.disgusted],
-      ["surprised", expressions.surprised],
-    ];
-
-    for (const [expression, value] of expressionEntries) {
-      if (value > maxValue) {
-        maxValue = value;
-        dominantExpression = expression;
-      }
-    }
-
-    return dominantExpression;
   }
 
   // Public methods for entity tracking
