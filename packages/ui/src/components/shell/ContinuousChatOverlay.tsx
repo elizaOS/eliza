@@ -1996,6 +1996,17 @@ export function ContinuousChatOverlay({
             style={{
               opacity: glassOpacity,
               borderRadius: fullBleed ? 0 : panelRadius,
+              // Full-bleed: extend the glass UP through the safe-area-top so the
+              // dark background reaches the true top of the screen. The panel
+              // height comes from visualViewport (which excludes the Android
+              // status bar) while the panel sits in a screen-top fixed container,
+              // so without this the glass starts a status-bar-height below the top
+              // (the "safe-area gap" above maximized chat). overflow-visible on the
+              // panel lets it bleed up; content (header, with its own safe-area
+              // padding) is untouched. Harmless when the inset is 0.
+              ...(fullBleed
+                ? { top: "calc(-1 * env(safe-area-inset-top, 0px))" }
+                : null),
             }}
           />
           {/* CONTENT — sheen, glow, thread, composer. Crossfades with the glass
