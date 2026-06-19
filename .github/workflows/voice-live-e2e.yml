@@ -94,7 +94,7 @@ jobs:
       - name: Stage OmniVoice GGUFs (HF elizaos/eliza-1)
         run: |
           set -euo pipefail
-          DEST="$HOME/.local/state/milady/local-inference/models/omnivoice"
+          DEST="$HOME/.local/state/eliza/local-inference/models/omnivoice"
           mkdir -p "$DEST"
           base="https://huggingface.co/elizaos/eliza-1/resolve/main/voice/omnivoice"
           for f in omnivoice-base-q4_k_m.gguf omnivoice-tokenizer-q4_k_m.gguf; do
