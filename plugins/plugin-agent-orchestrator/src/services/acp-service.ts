@@ -6,6 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { NativeAcpClient } from "./acp-native-transport.js";
+import { readConfigMcpServers } from "./config-env.js";
 import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
@@ -1174,6 +1175,10 @@ export class AcpService extends Service {
         opts.model,
         session.agentType,
       ),
+      // Auto-inherit the parent runtime's configured MCP servers (config
+      // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
+      // none are configured → the transport falls back to ELIZA_ACP_MCP_SERVERS.
+      mcpServers: readConfigMcpServers(),
       onEvent: (event, protocolSessionId) => {
         this.handleAcpEvent(
           event,
