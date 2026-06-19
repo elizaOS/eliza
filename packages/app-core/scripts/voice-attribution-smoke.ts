@@ -26,10 +26,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { handleLiveVoiceAttribution } from "../../../plugins/plugin-local-inference/src/runtime/voice-entity-binding.ts";
+import {
+  AudioFrameConsumer,
+  type AudioFrameEvent,
+} from "../../../plugins/plugin-local-inference/src/services/voice/audio-frame-consumer.ts";
 import { VoiceProfileStore } from "../../../plugins/plugin-local-inference/src/services/voice/profile-store.ts";
 import { VoiceAttributionPipeline } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/attribution-pipeline.ts";
 import { PyannoteDiarizer } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/diarizer.ts";
 import { SpeakerEncoderGgmlImpl } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/encoder-ggml.ts";
+import { VadDetector } from "../../../plugins/plugin-local-inference/src/services/voice/vad.ts";
 import { SileroVadGgml } from "../../../plugins/plugin-local-inference/src/services/voice/vad-ggml.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
@@ -339,6 +344,139 @@ console.log(
 
   await encoder.dispose();
   await diarizer.dispose?.();
+}
+
+// ── AudioFrameConsumer: Android `audioFrame` stream → live segmented turns ─────
+// Chunk freeman.wav into 20 ms base64 LE-s16 `audioFrame`-shaped frames (exactly
+// what plugin-native-talkmode emits on Android), feed them through the
+// platform-agnostic AudioFrameConsumer wired to the REAL ggml VAD/encoder/
+// diarizer, and assert it segments ≥ 1 turn, attributes a speaker, and emits a
+// voiceTurnSignal — the full on-device path minus the device.
+{
+  /** Encode a Float32 [-1,1] window → base64 LE-s16, as the native side does. */
+  function encodeFrame(
+    pcm: Float32Array,
+    timestamp: number,
+    frameIndex: number,
+  ): AudioFrameEvent {
+    const buf = Buffer.alloc(pcm.length * 2);
+    let sumSq = 0;
+    for (let i = 0; i < pcm.length; i++) {
+      const s = Math.max(-1, Math.min(1, pcm[i]));
+      sumSq += s * s;
+      buf.writeInt16LE(Math.round(s * 32767), i * 2);
+    }
+    return {
+      pcm16: buf.toString("base64"),
+      sampleRate: 16_000,
+      channels: 1,
+      samples: pcm.length,
+      rms: Math.sqrt(sumSq / Math.max(1, pcm.length)),
+      timestamp,
+      frameIndex,
+    };
+  }
+
+  const vadGgml = await SileroVadGgml.load({ ggufPath: M.vad });
+  const detector = new VadDetector(vadGgml, {
+    onsetThreshold: 0.5,
+    // freeman.wav is one continuous read; a generous end hangover lets the
+    // single utterance finalize at the trailing silence / end-of-stream flush.
+    pauseHangoverMs: 120,
+    endHangoverMs: 500,
+    minSpeechMs: 250,
+  });
+  const encoder = new SpeakerEncoderGgmlImpl({ ggufPath: M.enc });
+  const diarizer = await PyannoteDiarizer.load(M.dia);
+  const store = new VoiceProfileStore({
+    rootDir: mkdtempSync(path.join(tmpdir(), "vp-consumer-")),
+  });
+  await store.init();
+  const pipeline = new VoiceAttributionPipeline({
+    encoder,
+    diarizer,
+    profileStore: store,
+  });
+  const emitted: Array<Record<string, unknown>> = [];
+  const runtime = {
+    emitEvent: async (_type: unknown, payload: Record<string, unknown>) => {
+      emitted.push(payload);
+    },
+  };
+  const consumer = new AudioFrameConsumer(
+    { vad: detector, pipeline, runtime },
+    {
+      source: { kind: "device", deviceId: "freeman-wav" },
+      attributionOptions: {
+        ownerEntityId: "entity-owner",
+        knownSpeakerEntityIds: ["entity-owner"],
+        endOfTurnProbability: 0.95,
+      },
+      preRollSeconds: 0.3,
+      maxTurnSeconds: 30,
+    },
+  );
+
+  const turns: Array<{
+    turnId: string;
+    samples: number;
+    hasSpeaker: boolean;
+    agentShouldSpeak: boolean | null;
+  }> = [];
+  consumer.onTurn((t) => {
+    turns.push({
+      turnId: t.turnId,
+      samples: t.samples,
+      hasSpeaker: t.output.primarySpeaker != null,
+      agentShouldSpeak: t.signal.agentShouldSpeak,
+    });
+  });
+
+  // Stream the WAV as 20 ms (320-sample) frames on a 20 ms mic clock.
+  const FRAME_SAMPLES = 320;
+  let micClockMs = 0;
+  let frameIndex = 0;
+  for (let off = 0; off + FRAME_SAMPLES <= pcm.length; off += FRAME_SAMPLES) {
+    const frame = encodeFrame(
+      pcm.subarray(off, off + FRAME_SAMPLES),
+      micClockMs,
+      frameIndex++,
+    );
+    await consumer.onAudioFrame(frame);
+    micClockMs += 20;
+  }
+  await consumer.flush();
+
+  ok(
+    "AudioFrameConsumer segments ≥ 1 turn from the audioFrame stream",
+    turns.length >= 1,
+    `turns=${turns.length} frames=${frameIndex}`,
+  );
+  ok(
+    "AudioFrameConsumer buffers real turn PCM and attributes a speaker",
+    turns.some((t) => t.samples > 16_000 && t.hasSpeaker),
+    `firstTurnSamples=${turns[0]?.samples ?? 0} hasSpeaker=${turns[0]?.hasSpeaker}`,
+  );
+  ok(
+    "AudioFrameConsumer emits VOICE_TURN_OBSERVED for an attributed turn",
+    emitted.length >= 1,
+    `emits=${emitted.length}`,
+  );
+  ok(
+    "AudioFrameConsumer produces a voiceTurnSignal per turn (fail-open on a fresh profile)",
+    turns.every((t) => t.agentShouldSpeak !== false),
+    `agentShouldSpeak=[${turns.map((t) => String(t.agentShouldSpeak)).join(",")}]`,
+  );
+  ok(
+    "AudioFrameConsumer dropped no frames during the stream",
+    consumer.droppedFrames === 0,
+    `dropped=${consumer.droppedFrames}`,
+  );
+
+  await consumer.close();
+  await encoder.dispose();
+  await diarizer.dispose?.();
+  vadGgml.close();
 }
 
 console.log(
