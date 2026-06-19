@@ -99,6 +99,10 @@ export function scoreEndOfTurn(transcript: string): number {
   const text = transcript.trim();
   if (text.length === 0) return 0.5;
 
+  // A trailing ellipsis ("…" / "..") is the strongest trail-off signal — the
+  // speaker paused mid-thought. Checked BEFORE sentence-final punctuation, since
+  // "..." also ends in ".".
+  if (/(\.{2,}|…)$/.test(text)) return 0.2;
   // Sentence-final punctuation → almost certainly done.
   if (/[.!?]$/.test(text)) return 0.95;
 
@@ -113,14 +117,16 @@ export function scoreEndOfTurn(transcript: string): number {
     .filter(Boolean);
   if (words.length === 0) return 0.5;
 
-  // Short utterance (a command / acknowledgement) → likely complete.
-  if (words.length < 3) return 0.7;
-
   const lastWord = words[words.length - 1].replace(/[',;:-]+$/, "");
-  // Trailing conjunction → mid-clause, the speaker is continuing.
+  // Trailing conjunction / preposition / article → mid-clause, the speaker is
+  // continuing. Checked BEFORE the short-utterance rule so a 2-word trail-off
+  // ("going to", "and so") is NOT misread as a complete short command.
   if (TRAILING_CONJUNCTIONS.has(lastWord)) return 0.15;
-  // Trailing preposition / article → an incomplete noun phrase follows.
   if (TRAILING_INCOMPLETE.has(lastWord)) return 0.2;
+
+  // Short utterance that doesn't trail off (a command / acknowledgement) →
+  // likely complete ("go home", "yes", "stop").
+  if (words.length < 3) return 0.7;
 
   // No strong signal either way — the recognizer's silence is enough.
   return 0.5;
@@ -194,6 +200,23 @@ export class TurnAggregator {
       this.commit();
     }, this.maxHoldMs);
     return false;
+  }
+
+  /**
+   * Pre-load a held turn carried over from a previous capture (a one-shot
+   * backend like local-inference ends the capture on silence, so an unfinished
+   * turn must be carried into the next capture to append the continuation). Arms
+   * the max-hold timer so a carried turn that is never continued still commits.
+   */
+  seed(text: string): void {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    this.cancelTimer();
+    this.buffer = this.buffer ? `${this.buffer} ${trimmed}` : trimmed;
+    this.timer = this.setTimer(() => {
+      this.timer = null;
+      this.commit();
+    }, this.maxHoldMs);
   }
 
   /** Commit whatever is buffered right now (e.g. a hard stop that should send). */
