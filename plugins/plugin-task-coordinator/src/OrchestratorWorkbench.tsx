@@ -9,6 +9,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
   Button,
+  type ChangeSetData,
   type CodingAgentAddAgentInput,
   type CodingAgentOrchestratorStatus,
   type CodingAgentRerunFromEventInput,
@@ -23,6 +24,7 @@ import {
   type CodingAgentTaskTimelineItem,
   type CodingAgentTaskUsageSummary,
   client,
+  DiffReviewPanel,
   useApp,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -1694,6 +1696,13 @@ export function TaskInspector({
   const sessions = [...detail.sessions].sort(
     (a, b) => b.lastActivityAt - a.lastActivityAt,
   );
+  // The real git change set the latest sub-agent produced, mirrored onto its
+  // session record's metadata at task_complete and served by the existing
+  // task-detail route. Read-only review surface; absent for in-flight or
+  // no-op completions.
+  const latestChangeSet = sessions
+    .map((session) => readSessionChangeSet(session.metadata))
+    .find((value): value is ChangeSetData => value !== undefined);
   const artifacts = [...detail.artifacts].reverse().slice(0, 12);
   const latestPlanRevisionId =
     detail.planRevisions.length > 0
@@ -1998,6 +2007,14 @@ export function TaskInspector({
         )}
       </InspectorSection>
 
+      {latestChangeSet ? (
+        <InspectorSection
+          title={t("orchestrator.changes", { defaultValue: "Changes" })}
+        >
+          <DiffReviewPanel changeSet={latestChangeSet} />
+        </InspectorSection>
+      ) : null}
+
       {plan ? <PlanSection plan={plan} t={t} /> : null}
       {detail.currentPlan && !terminal ? (
         <EditedPlanRestartSection
@@ -2038,6 +2055,25 @@ function compactText(value: string, max = 6000): string {
 
 function hasRecordEntries(value: Record<string, unknown> | null | undefined) {
   return Boolean(value && Object.keys(value).length > 0);
+}
+
+/**
+ * Validate a captured change set off a session record's metadata. The orchestrator
+ * mirrors its `WorkspaceChangeSet` onto `metadata.lastChangeSet`; guard the shape
+ * here so a malformed value never reaches the read-only diff panel.
+ */
+function readSessionChangeSet(
+  metadata: Record<string, unknown>,
+): ChangeSetData | undefined {
+  const raw = metadata.lastChangeSet;
+  if (!raw || typeof raw !== "object") return undefined;
+  const candidate = raw as Partial<ChangeSetData>;
+  if (!Array.isArray(candidate.changedFiles)) return undefined;
+  if (typeof candidate.diff !== "string") return undefined;
+  if (typeof candidate.diffStat !== "string") return undefined;
+  if (typeof candidate.truncated !== "boolean") return undefined;
+  if (typeof candidate.capturedAt !== "number") return undefined;
+  return candidate as ChangeSetData;
 }
 
 function JsonBlock({
