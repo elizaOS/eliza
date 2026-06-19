@@ -56,7 +56,7 @@ import { VoiceLifecycleError } from "./lifecycle";
  *     voice pipeline runs through a single native lib. v5 callers that
  *     never touched the speaker/diarizer entries are source-compatible.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 6 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 7 as const;
 
 /** Status codes mirrored from `ffi.h`. Negative = failure. */
 export const ELIZA_OK = 0;
@@ -1157,16 +1157,19 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		loadedLib.symbols.eliza_inference_abi_version(),
 		ffi,
 	);
-	// v6 is the current full surface. Older fused builds may still be
-	// useful at degraded capability:
-	//   - v5: every v5 entry point works, just no speaker/diarizer
-	//     classifiers — JS reports them unsupported and throws on use.
-	//   - v4: additionally no wake-word — JS reports wake-word unsupported and
-	//     throws "runtime not ready" on use.
+	// v7 is the current full surface (v7 = real Silero VAD; v6 had the SAME
+	// symbol surface but VAD as a stub — the resolver probes
+	// `eliza_inference_vad_supported()` and falls back when VAD is stubbed, so a
+	// v6 library is still accepted at full symbol surface). Older fused builds
+	// may still be useful at degraded capability:
+	//   - v6: same symbols as v7; VAD may be a stub (probed at runtime).
+	//   - v5: no speaker/diarizer classifiers — JS reports them unsupported.
+	//   - v4: additionally no wake-word — JS reports wake-word unsupported.
 	//   - v3: additionally no reference-encode — accepted only when the
 	//     optional reference-encode symbols are absent from the binding.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
+		reported === "6" ||
 		(reported === "5" && !speakerSymbolsAvailable && !diarizSymbolsAvailable) ||
 		(reported === "4" &&
 			!wakewordSymbolsAvailable &&
