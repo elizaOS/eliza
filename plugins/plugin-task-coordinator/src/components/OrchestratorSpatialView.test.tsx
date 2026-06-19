@@ -263,7 +263,9 @@ describe("OrchestratorSpatialView one source, three modalities", () => {
       expect(flat).toContain("Orchestrator");
       expect(flat).toContain("Refactor auth pipeline");
       expect(flat).toContain("Fix flaky test suite");
-      expect(flat).toContain("New task");
+      // Tasks are created conversationally in chat — the workbench is a
+      // read-only dashboard, so it exposes no create affordance.
+      expect(flat).not.toContain("New task");
     }
   });
 
@@ -292,7 +294,6 @@ describe("OrchestratorSpatialView one source, three modalities", () => {
     for (const html of [gui, xr]) {
       expect(html).toContain("Refactor auth pipeline");
       expect(html).toContain("Orchestrator");
-      expect(html).toContain('data-agent-id="create"');
       expect(html).toContain('data-agent-id="open-t1"');
     }
   });
