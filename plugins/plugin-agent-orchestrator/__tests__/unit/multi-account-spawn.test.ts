@@ -247,6 +247,41 @@ describe("multi-account coding-agent spawn", () => {
     }
   });
 
+  it("injects the pooled CEREBRAS_API_KEY for an opencode spawn", async () => {
+    // opencode pool-rotates across cerebras-api accounts; the bridge injects
+    // CEREBRAS_API_KEY which buildOpencodeSpawnConfig reads to target Cerebras.
+    const select = installBridge({
+      opencode: {
+        providerId: "cerebras-api",
+        accountId: "cb-1",
+        label: "Cerebras 1",
+        source: "api-key",
+        strategy: "least-used",
+        envPatch: { CEREBRAS_API_KEY: "cb-key-pooled" },
+      },
+    });
+    const service = new AcpService(runtime());
+    await service.start();
+    const result = await service.spawnSession({
+      name: "opencode-mt",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    const env = firstNativeClient().opts.env ?? {};
+    expect(env.CEREBRAS_API_KEY).toBe("cb-key-pooled");
+    expect(select).toHaveBeenCalledWith(
+      "opencode",
+      expect.objectContaining({ sessionKey: result.sessionId }),
+    );
+    const account = (result.metadata as Record<string, unknown>)?.account as
+      | Record<string, unknown>
+      | undefined;
+    expect(account?.providerId).toBe("cerebras-api");
+    expect(account?.accountId).toBe("cb-1");
+    expect(JSON.stringify(account)).not.toContain("cb-key-pooled");
+    await service.stop();
+  });
+
   it("falls back to single-account behavior when no bridge is installed", async () => {
     const service = new AcpService(runtime());
     await service.start();

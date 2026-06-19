@@ -197,6 +197,46 @@ describe("AccountPool provider-scoped account resolution", () => {
     expect(otherSession?.id).toBe("second");
   });
 
+  it("burst-spreads least-used across equal-usage accounts (distinct fresh sessions)", async () => {
+    // Three accounts with identical usage + age. A burst of fresh-sessionKey
+    // least-used spawns must spread across DISTINCT accounts (the in-memory
+    // recentlySelectedAt tiebreak), not stack on whichever sorts first.
+    const accounts = {
+      "openai-codex:a": account("openai-codex", {
+        id: "a",
+        priority: 0,
+        createdAt: 1,
+        usage: { sessionPct: 10, refreshedAt: 1 },
+      }),
+      "openai-codex:b": account("openai-codex", {
+        id: "b",
+        priority: 0,
+        createdAt: 1,
+        usage: { sessionPct: 10, refreshedAt: 1 },
+      }),
+      "openai-codex:c": account("openai-codex", {
+        id: "c",
+        priority: 0,
+        createdAt: 1,
+        usage: { sessionPct: 10, refreshedAt: 1 },
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+    const picked = new Set<string>();
+    for (const sessionKey of ["s1", "s2", "s3"]) {
+      const sel = await pool.select({
+        providerId: "openai-codex",
+        strategy: "least-used",
+        sessionKey,
+      });
+      if (sel) picked.add(sel.id);
+    }
+    expect(picked.size).toBe(3); // spread across all three, no stacking
+  });
+
   it("uses usage-aware strategies across same-provider accounts", async () => {
     const accounts = {
       "openai-codex:near-limit": account("openai-codex", {
