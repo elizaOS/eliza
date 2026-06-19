@@ -48,8 +48,15 @@ function words(text: string): string[] {
 export interface ShouldRespondContext {
   /** The agent's most recent spoken reply, for the echo guard. */
   recentAgentReply?: string;
-  /** Age of that reply in ms; the echo guard only applies while it's recent. */
+  /** Age of that reply in ms; the echo guard applies while it's recent. */
   replyAgeMs?: number;
+  /**
+   * True while the agent is CURRENTLY speaking. Forces the echo guard on
+   * regardless of `replyAgeMs`, because a long reply's TTS is actively bleeding
+   * into the open mic even though its message was created many seconds ago (the
+   * age-only window would have already expired mid-speech).
+   */
+  agentSpeaking?: boolean;
 }
 
 /**
@@ -72,7 +79,8 @@ export function shouldRespondToVoiceTurn(
   // shouldn't be suppressed just because the word also appears in the reply).
   const reply = context.recentAgentReply?.trim();
   const age = context.replyAgeMs ?? Number.POSITIVE_INFINITY;
-  if (reply && age <= ECHO_WINDOW_MS && w.length >= 2) {
+  const echoActive = context.agentSpeaking === true || age <= ECHO_WINDOW_MS;
+  if (reply && echoActive && w.length >= 2) {
     const replyWords = new Set(words(reply));
     if (replyWords.size > 0) {
       const overlap =

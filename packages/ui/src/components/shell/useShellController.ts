@@ -135,6 +135,10 @@ export function useShellController(): ShellController {
   // greeted one (handleNewConversation resets draft state + creates a new
   // conversation with a bootstrap greeting).
   const clearConversation = React.useCallback(() => {
+    // A fresh conversation's bootstrap greeting is NOT a reply to a voice turn —
+    // clear the voice flag so the greeting isn't spoken aloud after a prior
+    // voice session.
+    setLastTurnVoice(false);
     void handleNewConversation();
   }, [handleNewConversation]);
 
@@ -306,6 +310,7 @@ export function useShellController(): ShellController {
                   !shouldRespondToVoiceTurn(turn, {
                     recentAgentReply: reply.text,
                     replyAgeMs,
+                    agentSpeaking: speakingRef.current,
                   })
                 ) {
                   return;
@@ -473,12 +478,19 @@ export function useShellController(): ShellController {
           ? "idle"
           : "summoned";
 
-  // The composer's stop control halts the WHOLE turn — text generation and the
-  // spoken reply — so one tap cleanly interrupts the agent mid-sentence.
+  // Live mirror of whether the agent is speaking, for the converse commit
+  // closure's echo guard (it reads at send time, after this render).
+  const speakingRef = React.useRef(false);
+  speakingRef.current = voiceOutput.speaking;
+
+  // The composer's stop control halts the turn — the spoken reply always, and
+  // text generation ONLY while it's actually streaming. During pure TTS playback
+  // `handleChatStop` must not fire: it's the broad chat-stop that also tears down
+  // unrelated coding-agent PTY sessions; here we just want to stop the speech.
   const stopTurn = React.useCallback(() => {
-    handleChatStop();
+    if (chatSending) handleChatStop();
     voiceOutput.stopSpeaking();
-  }, [handleChatStop, voiceOutput.stopSpeaking]);
+  }, [chatSending, handleChatStop, voiceOutput.stopSpeaking]);
 
   // Tap-to-talk: toggle a hands-free conversation. Enabling unlocks audio (the
   // tap is the gesture) and opens the mic in "converse" mode; disabling stops
