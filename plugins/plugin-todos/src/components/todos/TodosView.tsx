@@ -114,6 +114,19 @@ function laneFor(todo: TodoItem, now: number): LaneId {
   return ts <= now + DAY_MS ? "today" : "upcoming";
 }
 
+// Overdue = an active todo whose due date is already in the past. Distinct from
+// the Today lane (which also holds items due within the next 24h), so a count of
+// these is a non-redundant, actionable proactive signal.
+function overdueCount(todos: TodoItem[], now: number): number {
+  let count = 0;
+  for (const todo of todos) {
+    if (!isActive(todo) || !todo.dueDate) continue;
+    const ts = Date.parse(todo.dueDate);
+    if (!Number.isNaN(ts) && ts < now) count += 1;
+  }
+  return count;
+}
+
 interface LaneDef {
   id: LaneId;
   label: string;
@@ -445,6 +458,12 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
     return grouped;
   }, [state]);
 
+  // Proactive signal: how many active todos are already past due.
+  const overdue = useMemo(
+    () => (state.kind === "ready" ? overdueCount(state.todos, Date.now()) : 0),
+    [state],
+  );
+
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="todos-loading">
@@ -508,6 +527,11 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
   return (
     <div style={containerStyle} data-testid="todos-populated">
       <TodosHeader />
+      {overdue > 0 ? (
+        <p style={dimStyle} data-testid="todos-proactive">
+          {overdue === 1 ? "1 todo is overdue." : `${overdue} todos are overdue.`}
+        </p>
+      ) : null}
       <section style={lanesGridStyle} aria-label="Todo lanes">
         {LANES.map((lane) => (
           <Lane key={lane.id} lane={lane} todos={byLane[lane.id]} />

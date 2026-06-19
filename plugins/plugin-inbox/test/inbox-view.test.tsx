@@ -142,6 +142,26 @@ describe("InboxView", () => {
     expect(screen.getByText(/guildmate — gm everyone/)).toBeTruthy();
   });
 
+  it("tops the populated view with a quiet unread nudge derived from the loaded items", async () => {
+    render(<InboxView fetchers={makeFetchers()} />);
+    await screen.findByTestId("inbox-populated");
+    // The fixture has exactly one unread thread (gmail); discord is read.
+    const nudge = screen.getByTestId("inbox-nudge");
+    expect(nudge.textContent).toBe("1 thread still need a reply.");
+  });
+
+  it("omits the unread nudge entirely when nothing is unread (no '0 threads' placeholder)", async () => {
+    const allRead = () => {
+      const payload = populatedInbox();
+      for (const message of payload.messages) message.unread = false;
+      for (const count of Object.values(payload.channelCounts)) count.unread = 0;
+      return payload;
+    };
+    render(<InboxView fetchers={makeFetchers({ fetchInbox: async () => allRead() })} />);
+    await screen.findByTestId("inbox-populated");
+    expect(screen.queryByTestId("inbox-nudge")).toBeNull();
+  });
+
   it("shows the connect-a-channel empty state when nothing is connected (no fabricated threads)", async () => {
     render(
       <InboxView
@@ -190,17 +210,38 @@ describe("InboxView", () => {
     expect(await screen.findByTestId("inbox-populated")).toBeTruthy();
   });
 
-  it("refetches when the header refresh control is activated", async () => {
+  it("has no manual refresh control — the background poll keeps it fresh", async () => {
     let calls = 0;
     const fetchInbox = async () => {
       calls += 1;
       return populatedInbox();
     };
-    render(<InboxView fetchers={makeFetchers({ fetchInbox })} />);
-    await screen.findByTestId("inbox-populated");
-    expect(calls).toBe(1);
-    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
-    await waitFor(() => expect(calls).toBe(2));
+
+    // Fake timers must be installed before render so the view's setInterval is
+    // scheduled on the fake clock. We flush async work by advancing the timers
+    // (which also drains the resolved-promise microtask queue) rather than the
+    // RTL `findBy*` helpers, which poll on real timers and would deadlock here.
+    vi.useFakeTimers();
+    try {
+      render(<InboxView fetchers={makeFetchers({ fetchInbox })} />);
+      // Flush the initial fetch's promise chain + React re-render. A small
+      // advance drains the queued microtasks without tripping the poll interval.
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(screen.getByTestId("inbox-populated")).toBeTruthy();
+      expect(calls).toBe(1);
+
+      // The Refresh button is gone (search + reload moved to the chat). The only
+      // self-refresh is the quiet 20s background poll, which re-runs the same
+      // loader in place without flashing the loading state.
+      expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(calls).toBe(2);
+      expect(screen.getByTestId("inbox-populated")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("re-fetches with a server-side channel filter when a channel chip is toggled", async () => {

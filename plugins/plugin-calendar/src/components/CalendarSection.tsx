@@ -201,6 +201,27 @@ function paletteFor(event: LifeOpsCalendarEvent): EventColor {
   return eventColorFor(EVENT_PALETTE[hashString(seed) % EVENT_PALETTE.length]);
 }
 
+/**
+ * The single quiet proactive line under the title: the next upcoming event in
+ * the loaded feed. Returns null when nothing is upcoming so the line renders
+ * nothing rather than a placeholder. `events` is already sorted ascending by
+ * `startAt` (the feed hook sorts it), so the first event ending in the future
+ * is the soonest one still relevant.
+ */
+function nextUpcomingLine(events: LifeOpsCalendarEvent[]): string | null {
+  const nowMs = Date.now();
+  for (const event of events) {
+    const endMs = Date.parse(event.endAt);
+    if (Number.isFinite(endMs) && endMs <= nowMs) continue;
+    const title = event.title.trim();
+    if (!title) continue;
+    if (event.isAllDay) return `Next: ${title}, all day.`;
+    const time = formatTimeOfDay(event.startAt);
+    return time ? `Next: ${title} at ${time}.` : `Next: ${title}.`;
+  }
+  return null;
+}
+
 function sortAgendaEvents(
   events: LifeOpsCalendarEvent[],
 ): LifeOpsCalendarEvent[] {
@@ -1012,6 +1033,11 @@ export function CalendarSection({
     [calendar.events],
   );
 
+  const proactiveLine = useMemo(
+    () => nextUpcomingLine(calendar.events),
+    [calendar.events],
+  );
+
   const days = useMemo(() => {
     switch (calendar.viewMode) {
       case "day":
@@ -1204,6 +1230,15 @@ export function CalendarSection({
             </Button>
           </div>
         </div>
+
+        {proactiveLine ? (
+          <p
+            className="-mt-1 text-[13px] text-muted/70"
+            data-testid="lifeops-calendar-proactive"
+          >
+            {proactiveLine}
+          </p>
+        ) : null}
 
         {calendar.error ? (
           <div

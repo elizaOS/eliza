@@ -191,6 +191,31 @@ describe("HealthView (fetch-driven)", () => {
     expect(within(summary).getByText("Nights recorded")).toBeTruthy();
   });
 
+  it("shows a quiet proactive line only when regularity reads as off-rhythm", async () => {
+    const irregular: LifeOpsSleepRegularityResponse = {
+      ...REGULARITY,
+      classification: "very_irregular",
+    };
+    const fetchers: SleepFetchers = {
+      fetchHistory: vi.fn(async () => populatedHistory()),
+      fetchRegularity: vi.fn(async () => irregular),
+      fetchBaseline: vi.fn(async () => BASELINE),
+    };
+    render(<HealthView fetchers={fetchers} />);
+
+    const populated = await screen.findByTestId("health-populated");
+    expect(
+      within(populated).getByTestId("health-proactive").textContent,
+    ).toMatch(/very irregular/i);
+  });
+
+  it("renders no proactive line when regularity is regular", async () => {
+    render(<HealthView fetchers={makeFetchers(populatedHistory())} />);
+
+    const populated = await screen.findByTestId("health-populated");
+    expect(within(populated).queryByTestId("health-proactive")).toBeNull();
+  });
+
   it("refetches all three endpoints when the window-range control changes", async () => {
     const fetchers = makeFetchers(populatedHistory());
     render(<HealthView fetchers={fetchers} initialWindowDays={14} />);

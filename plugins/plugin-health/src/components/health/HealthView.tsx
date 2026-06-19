@@ -378,6 +378,24 @@ const REGULARITY_LABELS: Record<LifeOpsRegularityClass, string> = {
   insufficient_data: "Insufficient data",
 };
 
+/**
+ * Quiet proactive line for the top of the view: the agent only speaks up when
+ * the loaded regularity classification reads as off-rhythm. Returns null (render
+ * nothing) for regular/very-regular nights and when there isn't enough data to
+ * judge — no placeholder, no "all good" banner.
+ */
+function sleepProactiveLine(
+  regularity: LifeOpsSleepRegularityResponse,
+): string | null {
+  if (regularity.classification === "very_irregular") {
+    return "Sleep was very irregular this window — bedtime and wake times drifted a lot.";
+  }
+  if (regularity.classification === "irregular") {
+    return "Sleep was irregular this window — bedtime and wake times varied.";
+  }
+  return null;
+}
+
 function StatRow({
   label,
   value,
@@ -592,6 +610,7 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
 
   const { history, regularity, baseline } = state.data;
   const [latest] = history.episodes;
+  const proactiveLine = sleepProactiveLine(regularity);
 
   // No sleep episodes recorded → no linked source yet. Honest connect-a-source
   // affordance; this doubles as the disconnected state.
@@ -627,6 +646,11 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
         onSelectWindow={setWindowDays}
         busy={false}
       />
+      {proactiveLine ? (
+        <div style={dimStyle} data-testid="health-proactive">
+          {proactiveLine}
+        </div>
+      ) : null}
       <section style={sectionStyle}>
         <div style={gridStyle}>
           <LatestNightCard episode={latest} />

@@ -232,6 +232,37 @@ function formatDate(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 }
 
+/**
+ * One quiet line of proactive agent context (design law 10): surface a single
+ * genuine, actionable money signal — never a placeholder. Precedence:
+ *   1. a negative net balance (overdrawn), then
+ *   2. recurring bills landing within the next 7 days.
+ * Returns null when neither holds, so the line renders nothing on no signal.
+ * Computed entirely from data the view already loads; no new imports.
+ */
+function proactiveNote(
+  balance: FinanceBalanceSummaryDTO,
+  recurring: RecurringChargeDTO[],
+  now: number = Date.now(),
+): string | null {
+  if (balance.netBalanceMinor < 0) {
+    return `Balance is negative (${formatMinor(
+      balance.netBalanceMinor,
+      balance.currency,
+    )}).`;
+  }
+  const weekFromNow = now + 7 * 24 * 60 * 60 * 1000;
+  const dueSoon = recurring.filter((row) => {
+    if (!row.nextChargeAt) return false;
+    const due = new Date(row.nextChargeAt).getTime();
+    return !Number.isNaN(due) && due >= now && due <= weekFromNow;
+  }).length;
+  if (dueSoon > 0) {
+    return `${dueSoon} bill${dueSoon === 1 ? "" : "s"} due this week.`;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Styling — CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
@@ -619,9 +650,16 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
     );
   }
 
+  const note = proactiveNote(balance, recurring);
+
   return (
     <div style={containerStyle} data-testid="finances-populated">
       <FinancesHeader />
+      {note ? (
+        <div style={dimStyle} data-testid="finances-proactive-note">
+          {note}
+        </div>
+      ) : null}
       <section style={populatedSectionStyle}>
         <BalanceCard balance={balance} />
         <TransactionsCard transactions={transactions} />

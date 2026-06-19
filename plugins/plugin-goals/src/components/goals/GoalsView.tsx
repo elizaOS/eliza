@@ -521,6 +521,22 @@ function requestNewGoal(): void {
   client.sendChatMessage?.("Help me set a goal to head toward this quarter.");
 }
 
+// DESIGN LAW 10 — one quiet proactive line under the title. Counts the goals
+// whose last review flagged them (at_risk / needs_attention); these are the
+// only review states that call for owner attention. Returns null when nothing
+// is flagged so the line renders only on a real signal (never "0 goals").
+function reviewNudge(goals: GoalItem[]): string | null {
+  const flagged = goals.filter(
+    (goal) =>
+      goal.reviewState === "at_risk" ||
+      goal.reviewState === "needs_attention",
+  ).length;
+  if (flagged === 0) return null;
+  return flagged === 1
+    ? "1 goal needs a review."
+    : `${flagged} goals need a review.`;
+}
+
 export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   useGoalsViewStyles();
 
@@ -664,9 +680,16 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
     );
   }
 
+  const nudge = reviewNudge(state.goals);
+
   return (
     <div style={containerStyle} data-testid="goals-populated">
       <GoalsHeader />
+      {nudge ? (
+        <div style={dimStyle} data-testid="goals-review-nudge">
+          {nudge}
+        </div>
+      ) : null}
       <StatusFilters active={activeStatuses} onToggle={toggleStatus} />
       {groups.length > 0 ? (
         <section style={sectionStyle} aria-label="Goals">

@@ -124,6 +124,94 @@ describe("FinancesView", () => {
     expect(screen.getByText(/Netflix/)).toBeTruthy();
   });
 
+  it("tops the populated view with a quiet proactive note for a bill due this week", async () => {
+    const soon = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    render(
+      <FinancesView
+        fetchers={makeFetchers({
+          fetchRecurring: async () => ({
+            charges: [
+              {
+                merchantNormalized: "netflix",
+                merchantDisplay: "Netflix",
+                cadence: "monthly",
+                averageAmountUsd: 15.99,
+                nextExpectedAt: soon,
+                category: "entertainment",
+              },
+            ],
+          }),
+        })}
+      />,
+    );
+    expect(await screen.findByTestId("finances-populated")).toBeTruthy();
+    expect(
+      screen.getByTestId("finances-proactive-note").textContent,
+    ).toMatch(/1 bill due this week/);
+  });
+
+  it("flags a negative balance over a due-soon bill (urgency precedence)", async () => {
+    const soon = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    render(
+      <FinancesView
+        fetchers={makeFetchers({
+          fetchDashboard: async () => ({
+            spending: {
+              windowDays: 30,
+              fromDate: "2026-05-18",
+              toDate: "2026-06-17",
+              totalSpendUsd: 4000,
+              totalIncomeUsd: 1000,
+              netUsd: -3000,
+              transactionCount: 12,
+            },
+            generatedAt: "2026-06-17T12:00:00.000Z",
+          }),
+          fetchRecurring: async () => ({
+            charges: [
+              {
+                merchantNormalized: "netflix",
+                merchantDisplay: "Netflix",
+                cadence: "monthly",
+                averageAmountUsd: 15.99,
+                nextExpectedAt: soon,
+                category: "entertainment",
+              },
+            ],
+          }),
+        })}
+      />,
+    );
+    expect(await screen.findByTestId("finances-populated")).toBeTruthy();
+    expect(
+      screen.getByTestId("finances-proactive-note").textContent,
+    ).toMatch(/Balance is negative/);
+  });
+
+  it("renders no proactive note when nothing is due soon and the balance is healthy", async () => {
+    const far = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    render(
+      <FinancesView
+        fetchers={makeFetchers({
+          fetchRecurring: async () => ({
+            charges: [
+              {
+                merchantNormalized: "netflix",
+                merchantDisplay: "Netflix",
+                cadence: "monthly",
+                averageAmountUsd: 15.99,
+                nextExpectedAt: far,
+                category: "entertainment",
+              },
+            ],
+          }),
+        })}
+      />,
+    );
+    expect(await screen.findByTestId("finances-populated")).toBeTruthy();
+    expect(screen.queryByTestId("finances-proactive-note")).toBeNull();
+  });
+
   it("shows the connect-a-source empty state when no source is connected (no fabricated balances)", async () => {
     render(
       <FinancesView

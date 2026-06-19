@@ -253,6 +253,62 @@ describe("TodosView — lane assignment + filtering", () => {
   });
 });
 
+describe("TodosView — proactive overdue line", () => {
+  it("surfaces one quiet line when active todos are past due", async () => {
+    render(<TodosView fetchers={makeFetchers()} />);
+    await screen.findByTestId("todos-populated");
+    // The populated fixture has exactly one overdue active todo.
+    expect(screen.getByTestId("todos-proactive").textContent).toBe(
+      "1 todo is overdue.",
+    );
+  });
+
+  it("pluralizes the overdue line for multiple past-due todos", async () => {
+    render(
+      <TodosView
+        fetchers={makeFetchers({
+          fetchTodos: async () => ({
+            todos: [
+              todo({
+                title: "Late one",
+                dueDate: new Date(Date.now() - HOUR).toISOString(),
+              }),
+              todo({
+                title: "Late two",
+                status: "in_progress",
+                dueDate: new Date(Date.now() - DAY).toISOString(),
+              }),
+            ],
+          }),
+        })}
+      />,
+    );
+    await screen.findByTestId("todos-populated");
+    expect(screen.getByTestId("todos-proactive").textContent).toBe(
+      "2 todos are overdue.",
+    );
+  });
+
+  it("renders no proactive line when nothing is overdue", async () => {
+    render(
+      <TodosView
+        fetchers={makeFetchers({
+          fetchTodos: async () => ({
+            todos: [
+              todo({
+                title: "Future",
+                dueDate: new Date(Date.now() + 5 * DAY).toISOString(),
+              }),
+            ],
+          }),
+        })}
+      />,
+    );
+    await screen.findByTestId("todos-populated");
+    expect(screen.queryByTestId("todos-proactive")).toBeNull();
+  });
+});
+
 describe("TodosView — staying fresh", () => {
   it("has no manual refresh control", async () => {
     render(<TodosView fetchers={makeFetchers()} />);

@@ -139,6 +139,17 @@ function connectedChannels(
   });
 }
 
+/**
+ * Proactive one-liner (DESIGN LAW 10): the agent noticing unread threads that
+ * still need a reply. Returns null when nothing is unread so the line is absent
+ * rather than reading "0 threads". Computed from the already-loaded items.
+ */
+function unreadNudge(items: InboxItem[]): string | null {
+  const unread = items.reduce((n, item) => (item.unread ? n + 1 : n), 0);
+  if (unread === 0) return null;
+  return `${unread} thread${unread === 1 ? "" : "s"} still need a reply.`;
+}
+
 function formatTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -283,6 +294,15 @@ const dimStyle: CSSProperties = {
   opacity: 0.65,
   fontSize: 13,
   lineHeight: 1.5,
+};
+
+// DESIGN LAW 10: one quiet muted line of proactive agent context under the
+// title — no card, no border, no icon. Just a dim sentence.
+const nudgeStyle: CSSProperties = {
+  margin: 0,
+  fontSize: 13,
+  lineHeight: 1.5,
+  color: "color-mix(in srgb, var(--foreground, #0a1420) 60%, transparent)",
 };
 
 const chipRowStyle: CSSProperties = {
@@ -661,9 +681,16 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
     );
   }
 
+  const nudge = unreadNudge(items);
+
   return (
     <div style={containerStyle} data-testid="inbox-populated">
       <InboxHeader />
+      {nudge ? (
+        <p style={nudgeStyle} data-testid="inbox-nudge">
+          {nudge}
+        </p>
+      ) : null}
       <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
       <section style={sectionStyle} aria-label="Triage queue">
         {groups.map((group) => (
