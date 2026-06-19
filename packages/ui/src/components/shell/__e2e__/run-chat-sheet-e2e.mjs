@@ -488,14 +488,23 @@ try {
     await p.close();
   }
 
-  // speaking: the composer stays clean — no stray mute/speaker control pops in
-  // while the agent talks (the bar shows only the mic).
+  // speaking: the agent is delivering its reply aloud. Voice input is gated while
+  // a reply is in flight, so the trailing control is the STOP (interrupt) — NOT
+  // the mic — and no stray mute/speaker control pops in.
   {
     const p = await ctrl();
     attachConsole(p, sink);
     await p.goto(`${url}?speaking`);
-    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForSelector('[data-testid="chat-composer-stop"]');
     await p.waitForTimeout(500);
+    assert(
+      (await p.getByTestId("chat-composer-mic").count()) === 0,
+      "SPEAKING: mic hidden while a reply is in flight (voice gated)",
+    );
+    assert(
+      await p.getByTestId("chat-composer-stop").isVisible(),
+      "SPEAKING: stop control shown to interrupt the spoken reply",
+    );
     assert(
       (await p.getByTestId("chat-voice-mute").count()) === 0,
       "SPEAKING: no stray voice-mute button shown while the agent speaks",
@@ -1254,6 +1263,21 @@ try {
       midOpacity > 0.05 && midOpacity < 0.95,
       `PILL-MORPH: content lerps in mid-drag (opacity ${midOpacity})`,
     );
+    // NEVER two pills: the grabber bar and the (identical) pill bar must not both
+    // be visible at any point in the morph. They crossfade through ~0 at the
+    // midpoint — read both live opacities and assert they're never both shown.
+    const grabO = await p
+      .getByTestId("chat-sheet-grabber")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+    const pillO = await p
+      .getByTestId("chat-pill")
+      .evaluate((el) =>
+        Number.parseFloat(getComputedStyle(el.parentElement).opacity),
+      );
+    assert(
+      !(grabO > 0.15 && pillO > 0.15),
+      `PILL-MORPH: never two handle bars at once (grabber ${grabO}, pill ${pillO})`,
+    );
     await snap(p, "transition-pill-to-input-mid-drag");
     await release(p, "mouse");
     await p.waitForTimeout(SETTLE);
@@ -1353,6 +1377,50 @@ try {
       `STREAMING: dots are anchored inside the in-flight assistant bubble (found ${dotsInBubble})`,
     );
     await snap(p, "state-streaming-dots-in-bubble");
+    await p.close();
+  }
+
+  // ── MULTI-SEND + voice gating (Phase A): while a reply is in flight the mic is
+  // gated; the trailing control is STOP with no draft, and SWAPS to an ENABLED
+  // "send another" the instant you type — sending queues another turn into the
+  // room (serialized multi-send) instead of being blocked until the reply lands.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(`${url}?streaming`);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(400);
+    // No draft while responding → STOP, and the mic is gated (not rendered).
+    assert(
+      await p.getByTestId("chat-composer-stop").isVisible(),
+      "MULTI-SEND: STOP shown while responding with no draft",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-mic").count()) === 0,
+      "MULTI-SEND: mic gated while responding",
+    );
+    // Type → the trailing control swaps to an ENABLED send (queue another turn).
+    const input = p.getByTestId("chat-composer-textarea");
+    await input.fill("queue another");
+    await p.waitForTimeout(150);
+    const action = p.getByTestId("chat-composer-action");
+    assert(
+      await action.isVisible(),
+      "MULTI-SEND: send shown while responding + draft",
+    );
+    assert(
+      (await action.getAttribute("aria-disabled")) !== "true",
+      "MULTI-SEND: send ENABLED while responding (send another)",
+    );
+    const before = await p.getByTestId("thread-line").count();
+    await action.click();
+    await p.waitForTimeout(200);
+    const after = await p.getByTestId("thread-line").count();
+    assert(
+      after > before,
+      `MULTI-SEND: sending while responding appends another message (${before} → ${after})`,
+    );
+    await snap(p, "state-multi-send-while-responding");
     await p.close();
   }
 } finally {
