@@ -138,6 +138,11 @@ export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
  * GitHub issue ops live under GITHUB_ISSUE in plugin-github but that plugin
  * isn't loaded by default — kept out of the map to avoid validator noise; it
  * still gets surfaced when present because action listing is dynamic.
+ *
+ * TASKS comes from plugin-agent-orchestrator, which is opt-in (not a default
+ * core plugin). It stays mapped so coding/issues prompts keep its full param
+ * schema WHEN the orchestrator is loaded; it's listed in OPTIONAL_PLUGIN_ACTIONS
+ * below so validateIntentActionMap stays quiet when the plugin is absent.
  */
 export const INTENT_ACTION_MAP: Record<string, Set<string>> = {
   coding: new Set(["TASKS"]),
@@ -148,6 +153,13 @@ export const INTENT_ACTION_MAP: Record<string, Set<string>> = {
   wallet: new Set(),
   views: new Set(["VIEWS"]),
 };
+
+/**
+ * Mapped actions provided only by opt-in plugins (not loaded by default). They
+ * stay in INTENT_ACTION_MAP so they get full param detail when their plugin is
+ * present, but validateIntentActionMap does not warn when they're unregistered.
+ */
+const OPTIONAL_PLUGIN_ACTIONS = new Set(["TASKS"]);
 
 export function hasIntent(prompt: string, keywords: RegExp): boolean {
   const taskMatch = prompt.match(/<task>([\s\S]*?)<\/task>/i);
@@ -186,6 +198,10 @@ export function validateIntentActionMap(
   for (const [category, actions] of Object.entries(INTENT_ACTION_MAP)) {
     for (const action of actions) {
       if (!registered.has(action)) {
+        // Opt-in plugin actions are expected to be absent when their plugin
+        // isn't loaded — keep them mapped (for full param detail when present)
+        // without emitting startup noise.
+        if (OPTIONAL_PLUGIN_ACTIONS.has(action)) continue;
         logger?.warn(
           `[eliza] INTENT_ACTION_MAP["${category}"] references "${action}" which is not a registered action — may be renamed or removed upstream`,
         );

@@ -64,6 +64,12 @@ src/
     generate-media.ts             GENERATE_MEDIA action: keyword+classifier intent routing → IMAGE or TTS
     identify-speaker.ts           IDENTIFY_SPEAKER action: name a recent unidentified voice → merge engine
 
+  adapters/
+    capacitor-llama/              Capacitor/mobile llama adapter (environment, loader, browser stub)
+
+  backends/
+    apple-foundation.ts           Apple Foundation Models backend
+
   routes/
     index.ts                      Re-exports all route handlers
     local-inference-tts-route.ts  POST /api/tts/local-inference
@@ -99,7 +105,6 @@ src/
     downloader.ts                 Downloader — HuggingFace GGUF download with resume + progress events
     device-tier.ts                classifyDeviceTier(), DeviceTier thresholds
     router-handler.ts             installRouterHandler() — routing-policy layer (manual/cloud/local)
-    memory-arbiter.ts             MemoryArbiter + capability registration API
     cloud-fallback.ts             makeCloudFallbackHandler() — local → cloud fallback on error
     paths.ts                      localInferenceRoot(), elizaModelsDir(), registryPath()
     registry.ts                   listInstalledModels(), upsertElizaModel(), removeElizaModel()
@@ -132,18 +137,28 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `MODELS_DIR` | No | Override default GGUF model directory (default: `~/.eliza/models`) |
 | `LOCAL_SMALL_MODEL` | No | Filename of the small text model GGUF (Capacitor/mobile adapter) |
 | `LOCAL_LARGE_MODEL` | No | Filename of the large text model GGUF (Capacitor/mobile adapter) |
-| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | No | Set truthy to defer startup GGUF embedding prefetch until the dev/runtime server is ready |
+| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | No | Set truthy to defer startup GGUF embedding prefetch until the dev/runtime server is ready (consumed by app-core) |
 | `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP` | No | Set truthy to skip GGUF embedding prefetch entirely while leaving local embedding settings intact |
-| `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP` | No | Desktop startup opt-in that starts GGUF embedding warmup during runtime bootstrap when no skip/defer override is set |
+| `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP` | No | Desktop startup opt-in that starts GGUF embedding warmup during runtime bootstrap when no skip/defer override is set (consumed by app-core/electrobun) |
 | `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | No | Set `1` to disable local `TEXT_EMBEDDING` registration entirely |
 | `ELIZA_LOCAL_LLAMA` | No | Set `1` to force AOSP local inference path |
+| `ELIZA_LOCAL_ONLY` | No | Set `1` or `true` to force all model slots to local inference (overrides routing policy) |
 | `ELIZA_INFERENCE_BACKEND` | No | Override backend selection (`llama-cpp`) |
+| `ELIZA_LOCAL_INFERENCE_BACKEND` | No | Alternative backend selector override (e.g. `capacitor-llama`); checked by mtp-doctor |
 | `ELIZA_INFERENCE_LIB_DIR` | No | Directory for native llama.cpp shared library |
 | `ELIZA_INFERENCE_LIBRARY` | No | Path to specific native library file |
 | `ELIZA_IMAGEGEN_ACCELERATOR` | No | Accelerator for image-gen backend (`coreml`, `tensorrt`, `mflux`, `sd-cpp`) |
 | `ELIZA_DEVICE_BRIDGE_ENABLED` | No | Enable iOS/AOSP device-bridge mode |
 | `ELIZA_DEVICE_PAIRING_TOKEN` | No | Pairing token for device bridge |
+| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | No | Timeout in ms for device-bridge inference calls |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | No | Default Kokoro TTS voice id |
+| `ELIZA_LOCAL_IDLE_UNLOAD_MS` | No | Idle timeout (ms) before an inactive model is unloaded to free memory |
+| `ELIZA_LOCAL_SESSION_POOL_SIZE` | No | Number of parallel inference sessions to maintain in the session pool |
+| `ELIZA_LOCAL_MAX_SPECULATIVE_RESPONSES` | No | Maximum speculative decode responses buffered per request |
+| `ELIZA_LOCAL_AUTO_RESIZE_PARALLEL` | No | Enable automatic parallel resize for multi-session scenarios |
+| `ELIZA_NETWORK_POLICY` | No | Network access policy override for inference routing |
+| `ELIZA_VOICE_EOT_BACKEND` | No | End-of-turn detector backend selection for voice pipeline |
+| `ELIZA_VOICE_UPDATE_INTERVAL_MS` | No | Polling interval (ms) for voice model update checks |
 | `HF_TOKEN` / `HUGGINGFACE_TOKEN` / `HF_HUB_TOKEN` | No | HuggingFace token for gated model downloads |
 | `SD_CPP_BIN` | No | Absolute path to sd.cpp binary |
 | `MFLUX_BIN` | No | Absolute path to mflux binary |

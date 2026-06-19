@@ -48,6 +48,10 @@ src/
   ios/
     bridge.ts                       iOS CLI entry: argv env hydration, fs shim, bootElizaRuntime(), dispatchRoute in-process handler
                                     Native llama state, catalog models, download management, host IPC call protocol
+    model-grind.ts                  On-device grind telemetry self-test: loads and exercises every local Eliza-1 model
+                                    (text LLM, TTS, ASR) and emits per-model timing and pass/fail telemetry.
+                                    Exports: runModelGrind, wordErrorRate, decodeWavToPcm, resamplePcm, ModelGrindDeps,
+                                    ModelGrindResult, ModelGrindReport. Triggered by ELIZA_IOS_RUN_MODEL_GRIND=1.
   shared/
     fs-shim.ts                      installMobileFsShim() — patches live node:fs module; blocks system dirs, native binaries, require of file paths
     fs-sandbox.ts                   Low-level wrap helpers (wrapMobileFsPath, wrapMobileFsOpen, wrapMobileFsTwoPaths) and modeForMobileFsOpenFlags
@@ -132,6 +136,9 @@ bun run --cwd plugins/plugin-capacitor-bridge clean           # rm -rf dist .tur
 | `ELIZA_IOS_LLAMA_CONTEXT_SIZE` | Override llama context size (default: 4096). |
 | `ELIZA_IOS_LLAMA_USE_GPU` | `1`/`true` force Metal on; `0`/`false` force CPU. Auto-detects otherwise. |
 | `ELIZA_IOS_BRIDGE_TRANSPORT` | Set to `bun-host-ipc`. |
+| `ELIZA_IOS_LOCAL_BACKEND` | Set to `1` by `runIosBridgeCli` (default if not pre-set). |
+| `ELIZA_IOS_RUN_MODEL_GRIND` | Set to `1` to trigger the on-device model grind telemetry self-test after startup. |
+| `ELIZA_LOCAL_CONTEXT_SIZE` | Override llama context window size (integer; falls back to `ELIZA_IOS_LLAMA_CONTEXT_SIZE`). |
 
 ## How to extend
 

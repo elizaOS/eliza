@@ -45,17 +45,17 @@ src/
   accounts.ts                       Account config resolution (env vars + character.settings.shopify.accounts)
   shopify-client.ts                 Lightweight fetch-based GraphQL client (no external deps)
   connector-account-provider.ts     ConnectorAccountManager provider (list/create/patch/delete/OAuth)
+  shopify.ts                        SHOPIFY action; regex + explicit routing to sub-handlers
+  manage-products.ts                products op — list / create / update, with LLM intent classification
+  manage-orders.ts                  orders op — list / get / fulfill, with LLM intent classification
+  manage-customers.ts               customers op — list / search, with LLM intent classification
+  manage-inventory.ts               inventory op — check / adjust / locations, with LLM intent classification
+  search-store.ts                   search op — fan-out read across products + orders + customers
+  confirmation.ts                   requireShopifyConfirmation helper (wraps gateDestructiveConfirmation)
+  account-options.ts                getShopifyAccountId / hasShopifyConfig helpers; shopifyAccountIdParameter
+  json.ts                           parseJsonObject utility used by LLM intent classifiers
   services/ShopifyService.ts        Service class; one ShopifyClient per account; all Admin API calls
   providers/store-context.ts        shopifyStoreContext provider implementation
-  actions/shopify.ts                SHOPIFY action; regex + explicit routing to sub-handlers
-  actions/manage-products.ts        products op — list / create / update, with LLM intent classification
-  actions/manage-orders.ts          orders op — list / get / fulfill, with LLM intent classification
-  actions/manage-customers.ts       customers op — list / search, with LLM intent classification
-  actions/manage-inventory.ts       inventory op — check / adjust / locations, with LLM intent classification
-  actions/search-store.ts           search op — fan-out read across products + orders + customers
-  actions/confirmation.ts           requireShopifyConfirmation helper (wraps gateDestructiveConfirmation)
-  actions/account-options.ts        getShopifyAccountId / hasShopifyConfig helpers; shopifyAccountIdParameter
-  actions/json.ts                   parseJsonObject utility used by LLM intent classifiers
   accounts.test.ts                  Unit tests for account config resolution
 ```
 
@@ -102,8 +102,8 @@ Accounts can also be declared in `character.settings.shopify.accounts` (array or
 
 **Add a new operation to the SHOPIFY action:**
 
-1. Create `src/actions/manage-<thing>.ts` exporting an async handler matching the `ShopifyHandler` signature in `src/actions/shopify.ts`.
-2. Add the operation name to `ALL_OPS` in `src/actions/shopify.ts` and add a `ShopifyRoute` entry to `ROUTES` with a match regex and the new handler.
+1. Create `src/manage-<thing>.ts` exporting an async handler matching the `ShopifyHandler` signature in `src/shopify.ts`.
+2. Add the operation name to `ALL_OPS` in `src/shopify.ts` and add a `ShopifyRoute` entry to `ROUTES` with a match regex and the new handler.
 3. Add any required Admin API calls to `ShopifyService` in `src/services/ShopifyService.ts`. Add response types to `src/types.ts`.
 
 **Add a new provider:**

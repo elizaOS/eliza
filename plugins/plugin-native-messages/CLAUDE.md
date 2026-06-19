@@ -24,6 +24,7 @@ plugins/plugin-native-messages/
     definitions.ts    TypeScript interfaces: MessagesPlugin, SendSmsOptions, SendSmsResult,
                       ListMessagesOptions, SmsMessageSummary
     web.ts            Web fallback — sendSms throws; listMessages returns []
+    web.test.ts       Vitest unit tests for the web fallback
   android/
     src/main/
       AndroidManifest.xml               READ_SMS / SEND_SMS / RECEIVE_SMS / RECEIVE_MMS / RECEIVE_WAP_PUSH permission declarations
@@ -41,9 +42,11 @@ plugins/plugin-native-messages/
 Scripts defined in this package.json:
 
 ```bash
-bun run --cwd plugins/plugin-native-messages build          # clean + tsc + rollup
-bun run --cwd plugins/plugin-native-messages clean          # node ../../packages/scripts/rm-path-recursive.mjs dist
-bun run --cwd plugins/plugin-native-messages prepublishOnly # same as build
+bun run --cwd plugins/plugin-native-messages build           # lock-wrapped build; delegates to build:unlocked
+bun run --cwd plugins/plugin-native-messages build:unlocked  # clean + tsc + rollup
+bun run --cwd plugins/plugin-native-messages clean           # node ../../packages/scripts/rm-path-recursive.mjs dist
+bun run --cwd plugins/plugin-native-messages test            # vitest run
+bun run --cwd plugins/plugin-native-messages prepublishOnly  # same as build
 ```
 
 ## Config / env vars

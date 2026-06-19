@@ -38,14 +38,19 @@ All views are bundled at `dist/views/bundle.js`.
 
 ```
 src/
-  index.ts               Public barrel: re-exports panels, views, routes, shopifyPlugin, shopifyApp, the hook
+  index.ts               Public barrel: re-exports panels, views, routes, shopifyPlugin, shopifyApp, helpers
   plugin.ts              Plugin object: routes array + views array. Start here.
   routes.ts              handleShopifyRoute — all seven HTTP handlers; GraphQL helper shopifyGql
   shopify-app.ts         OverlayApp registration (shopifyApp, SHOPIFY_APP_NAME)
   register.ts            Side-effect import: calls registerOverlayApp at import time
   register-routes.ts     registerAppRoutePluginLoader call — dynamic lazy loader entry
+  register-terminal-view.tsx  Registers ShopifySpatialView into the @elizaos/tui terminal registry
   ShopifyAppView.tsx     Main React dashboard (tabs: overview/products/orders/inventory/customers)
-                         Also exports ShopifyTuiView and the interact() capability dispatcher
+                         Also exports ShopifyTuiView
+  ShopifyAppView.helpers.ts  Shared helpers (e.g. loadShopifyTuiState); exported from index
+  ShopifyAppView.interact.ts interact() capability dispatcher — split out to keep ShopifyAppView.tsx
+                         Fast-Refresh-compatible; re-exported by shopify-view-bundle.ts
+  shopify-view-bundle.ts Vite view-bundle entry: re-exports ShopifyAppView, ShopifyTuiView, interact
   useShopifyDashboard.ts Data hook: polls all five endpoints every 30 s; typed state per panel
   ProductsPanel.tsx      Products tab panel component
   OrdersPanel.tsx        Orders tab panel component
@@ -53,6 +58,8 @@ src/
   CustomersPanel.tsx     Customers tab panel component
   StoreOverviewCard.tsx  Overview tab summary card (shop name, counts)
   ShopifyTuiView.test.tsx  Co-located component test for the TUI view
+  components/
+    ShopifySpatialView.tsx  Unified spatial/terminal view (used by register-terminal-view.tsx)
 assets/
   hero.png               elizaos.app manifest hero image
 test/
@@ -64,7 +71,7 @@ test/
 ```bash
 bun run --cwd plugins/plugin-shopify-ui build           # tsup + vite views + tsc types
 bun run --cwd plugins/plugin-shopify-ui build:js        # tsup only (compiles every src/ file, no bundling)
-bun run --cwd plugins/plugin-shopify-ui build:views     # vite bundle (entry src/ShopifyAppView.tsx, also exports ShopifyTuiView)
+bun run --cwd plugins/plugin-shopify-ui build:views     # vite bundle (entry shopify-view-bundle.ts, exports ShopifyAppView, ShopifyTuiView, interact)
 bun run --cwd plugins/plugin-shopify-ui build:types     # tsc declaration emit
 bun run --cwd plugins/plugin-shopify-ui clean           # rm -rf dist
 bun run --cwd plugins/plugin-shopify-ui test            # vitest unit + component tests
@@ -96,12 +103,13 @@ Required Shopify API scopes: `read_products`, `write_products`, `read_orders`, `
 4. Export the component from `src/index.ts`.
 
 **Add a TUI capability:**
-1. Implement a new `if (capability === 'terminal-shopify-<name>')` branch in the `interact()` function in `src/ShopifyAppView.tsx`.
+1. Implement a new `if (capability === 'terminal-shopify-<name>')` branch in the `interact()` function in `src/ShopifyAppView.interact.ts`.
 2. Document the new capability name and its params in this file.
 
 ## Conventions / gotchas
 
-- **Dual build:** The plugin has two independent outputs. `tsup` compiles all `src/` files (all routes, views, and helpers — server-compatible ESM, no bundling). `vite build:views` bundles `ShopifyAppView.tsx` and `ShopifyTuiView` into `dist/views/bundle.js` for in-browser delivery. Server-side changes go through tsup; browser bundle changes go through vite.
+- **Dual build:** The plugin has two independent outputs. `tsup` compiles all `src/` files (all routes, views, and helpers — server-compatible ESM, no bundling). `vite build:views` bundles `shopify-view-bundle.ts` (which re-exports `ShopifyAppView`, `ShopifyTuiView`, and `interact`) into `dist/views/bundle.js` for in-browser delivery. Server-side changes go through tsup; browser bundle changes go through vite.
+- **interact() is split out:** `interact()` lives in `src/ShopifyAppView.interact.ts` (not in `ShopifyAppView.tsx`) so that `ShopifyAppView.tsx` exports only React components and stays Vite Fast-Refresh-compatible. The view bundle re-exports `interact` via `shopify-view-bundle.ts`.
 - **GraphQL API version is pinned:** `API_VERSION = "2025-04"` in `src/routes.ts`. When upgrading, update this constant and verify all field paths against the new schema.
 - **Inventory pagination cap:** The inventory endpoint fetches at most 50 products × 10 variants × 10 locations in a single GraphQL query. There is no cursor pagination for inventory. Large catalogs will be truncated.
 - **Product page cursor:** The products endpoint simulates page-N by re-fetching cursor chains from page 1. Deep pagination is expensive. Prefer search (`?q=`) to reduce result sets.
