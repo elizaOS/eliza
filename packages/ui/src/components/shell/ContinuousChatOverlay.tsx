@@ -324,7 +324,7 @@ function SheetGrabber({
         // vertically-centered textarea, so a tap on the composer lands natively
         // on the textarea and raises the keyboard (a programmatic focus from the
         // handle wouldn't). Pull gestures start from the bar / the upward zone.
-        "before:absolute before:-inset-x-4 before:-top-10 before:bottom-0 before:content-['']",
+        "before:absolute before:-inset-x-6 before:-top-16 before:bottom-0 before:content-['']",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
       )}
     >
@@ -332,7 +332,7 @@ function SheetGrabber({
         aria-hidden="true"
         className={cn(
           // 30% wider bar (w-11 → w-14), a touch taller, brighter.
-          "h-2 w-14 rounded-full transition-colors duration-300",
+          "h-2.5 w-16 rounded-full transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -370,7 +370,7 @@ function PillHandle({
       className={cn(
         // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
         // floating mid-air; the tall pt keeps a generous upward grab/flick zone.
-        "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-12 pb-1.5 pt-7 active:cursor-grabbing",
+        "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-16 pb-1.5 pt-10 active:cursor-grabbing",
         "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50",
       )}
     >
@@ -379,7 +379,7 @@ function PillHandle({
         className={cn(
           // Identical to the SheetGrabber bar — the handle keeps the same white
           // shape + color whether the chat is open or fully collapsed to the pill.
-          "h-2 w-14 rounded-full transition-colors duration-300",
+          "h-2.5 w-16 rounded-full transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
