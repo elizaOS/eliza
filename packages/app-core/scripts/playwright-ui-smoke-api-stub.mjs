@@ -4716,6 +4716,41 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Decomposed domain-view read routes — return 200-empty so the views render
+  // their EMPTY state (not the catch-all 501 error state) in the visual smoke.
+  if (req.method === "GET" && url.pathname === "/api/lifeops/goals") {
+    sendJson(req, res, 200, { goals: [] });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/lifeops/relationships") {
+    sendJson(req, res, 200, { relationships: [], entities: [] });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/lifeops/money/dashboard") {
+    sendJson(req, res, 200, {
+      balanceUsd: 0,
+      sources: [],
+      recentTransactions: [],
+      recurringCharges: [],
+      spendByCategory: [],
+    });
+    return;
+  }
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/api/lifeops/money/sources" ||
+      url.pathname === "/api/lifeops/money/transactions" ||
+      url.pathname === "/api/lifeops/money/recurring")
+  ) {
+    const key = url.pathname.endsWith("sources")
+      ? "sources"
+      : url.pathname.endsWith("transactions")
+        ? "transactions"
+        : "recurringCharges";
+    sendJson(req, res, 200, { [key]: [] });
+    return;
+  }
+
   if (
     req.method === "GET" &&
     url.pathname === "/api/lifeops/screen-time/summary"
