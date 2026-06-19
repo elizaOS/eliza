@@ -124,7 +124,6 @@ Checked 2026-05-14 against primary vendor docs:
   not the Play/Pixel cloud APK.
 - [ ] Confirm privileged capture/input capabilities do not change LifeOps
   persistence: reminders/check-ins/follow-ups still use `ScheduledTask`.
-- [ ] Run the AOSP system-app validation in `AOSP_SYSTEM_APP.md`.
 
 ## Static Coverage
 

@@ -53,7 +53,10 @@ src/
   index.ts                         Plugin definition — views + capabilities declared here
   register.ts                      App-shell page registration (/odysseus, /orchestrator, /orchestrator/tui)
   register-slots.ts                Slot registry fills for ui empty-slot defaults
+  register-terminal-view.tsx       Registers OrchestratorSpatialView in the @elizaos/tui terminal registry
   CodingAgentTasksPanel.tsx        Task thread list + PTY session panel; re-exports OrchestratorWorkbench
+  CodingAgentTasksPanel.interact.ts  View-bundle `interact` capability handler (split for Fast-Refresh compat)
+  task-coordinator-view-bundle.ts  Vite view-bundle entry; re-exports all view components + interact handler
   OrchestratorWorkbench.tsx        Multi-agent orchestration workbench (main UI)
   CodingAgentControlChip.tsx       Header chip: active session count + stop-all
   CodingAgentSettingsSection.tsx   Per-framework settings panel
@@ -67,14 +70,22 @@ src/
   PtyConsoleDrawer.tsx             Drawer variant wrapper
   PtyConsoleSidePanel.tsx          Side-panel variant wrapper
   PtyTerminalPane.tsx              Full terminal pane variant
+  TaskCardList.tsx                 Shared visual task-card language for /orchestrator and /task-coordinator landings
+  orchestrator-capabilities.ts     Capability dispatch handlers for /orchestrator view (voice/chat driven)
+  orchestrator-params.ts           Shared parameter helpers for orchestrator capability handlers
   orchestrator-stream.tsx          Conversation-view builder for orchestrator event/message records
+  orchestrator-stream.helpers.ts   Helper utilities for orchestrator-stream
   orchestrator-diff.tsx            Diff view component for file-change tool cards
+  orchestrator-diff.helpers.ts     Helper utilities for orchestrator-diff
   orchestrator-markdown.tsx        Markdown renderer (marked) for chat prose; shared MarkdownText
+  orchestrator-markdown.helpers.ts Helper utilities for orchestrator-markdown
   orchestrator-plan.tsx            Plan/checklist block renderer
   orchestrator-reasoning.tsx       Collapsible reasoning block renderer
   view-format.ts                   Pure display formatters (time, tokens, USD, ANSI-strip)
   session-hydration.ts             Re-exports mapServerTasksToSessions + TERMINAL_STATUSES from @elizaos/ui
   pty-status-dots.ts               Re-exports PULSE_STATUSES + STATUS_DOT from @elizaos/ui
+  components/
+    OrchestratorSpatialView.tsx    Spatial-vocabulary orchestrator workbench; renders in GUI/XR and TUI
   odysseus/                        Odysseus-style orchestrator chat UI (full-bleed /odysseus page)
     OdysseusShell.tsx              Root shell: sidebar/rail, composer, tool-window host
     SessionSidebar.tsx IconRail.tsx  Labeled nav sidebar + its collapsed 48px icon rail
@@ -82,7 +93,8 @@ src/
     MemoryPanel.tsx SkillsPanel.tsx NotesPanel.tsx SettingsPanel.tsx PresetsPanel.tsx ThemeMenu.tsx  Panels
     TasksView/ModelsView/EmailView/CalendarView/GroupChatView/AdminView/GalleryView/
       GalleryEditorView/CompareView/ResearchView/VoiceView/CookbookView/DocumentLibraryView.tsx  Tool views
-    WindowManager.tsx MinimizedDock.tsx ResizeHandles.tsx  Cross-view window registry + minimize dock + resize
+    WindowManager.tsx WindowManager.context.ts  Cross-view window registry + context
+    MinimizedDock.tsx ResizeHandles.tsx  Minimize dock + resize handles
     SearchPalette.tsx EmojiPicker.tsx Spinner.tsx BgEffect.tsx  Misc UI
     odysseus-theme.ts              ODYSSEUS_CSS — the theme stylesheet (CSS-in-template-literal)
     hooks/                         useWindowControls, useKeyboardShortcuts, useTaskRoom, useChatSubmit, useEscapeClose
@@ -126,7 +138,7 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 ### Add a new orchestrator capability
 
 1. Add an entry to `ORCHESTRATOR_CAPABILITIES` in `src/index.ts` with a unique `id`, a `description`, and typed `params`.
-2. Handle the capability dispatch in `OrchestratorWorkbench.tsx` inside `runOrchestratorCapability` (or the equivalent dispatch map).
+2. Handle the capability dispatch in `src/orchestrator-capabilities.ts` inside the capability dispatch map.
 
 ### Add a new agent framework tab
 
@@ -144,10 +156,11 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 
 ## Conventions / gotchas
 
-- **Two build steps.** The plugin has both a tsup JS build (`build:js`) and a Vite view-bundle build (`build:views`). The view bundle entry is `src/CodingAgentTasksPanel.tsx` and outputs `dist/views/bundle.js`. Both must be built; `build` runs them in sequence.
-- **View bundle re-exports.** `CodingAgentTasksPanel.tsx` re-exports `OrchestratorWorkbench` so a single bundle serves all `componentExport` names the view manifest declares.
+- **Two build steps.** The plugin has both a tsup JS build (`build:js`) and a Vite view-bundle build (`build:views`). The view bundle entry is `src/task-coordinator-view-bundle.ts` and outputs `dist/views/bundle.js`. Both must be built; `build` runs them in sequence.
+- **View bundle re-exports.** `task-coordinator-view-bundle.ts` re-exports all view components (`CodingAgentTasksPanel`, `TaskCoordinatorTuiView`, `OrchestratorWorkbench`, `OrchestratorTuiView`) plus the shared `interact` capability handler so the built bundle serves all `componentExport` names the view manifest declares.
 - **Slot registry is a side-effect import.** `register-slots.ts` must be imported by the host app to activate the slot fills. Without it, the UI renders empty slot defaults in place of the coding-agent components.
 - **No server runtime.** This plugin registers zero actions, providers, services, or evaluators. All task/session state lives in `@elizaos/plugin-agent-orchestrator`. API boundary helpers in `src/api/` are utilities for route handlers in app-core, not plugin-registered routes.
 - **PTY console buffer cap.** `PtyConsoleBase` caps displayed output at 200,000 characters (`MAX_BUFFER_CHARS`). Older output is silently trimmed from the head.
 - **Live e2e test requires real Codex CLI.** `test:e2e:manual` (`test/coding-agent-codex-artifact.live.e2e.test.ts`) is skipped unless the `codex` binary is in PATH and `~/.codex/auth.json` exists.
+- **Spatial view.** `src/components/OrchestratorSpatialView.tsx` is authored once using the spatial vocabulary and renders in both GUI/XR and terminal (TUI) contexts via `register-terminal-view.tsx`. It is purely presentational (typed snapshot + action callback in, primitives out).
 - See the root `AGENTS.md` for repo-wide conventions (logger-only, ESM, naming, architecture rules).

@@ -30,6 +30,7 @@ packages/feed/
         plugin-experience/    Experience/points system
         plugin-trajectory-logger/ Trajectory recording
         plugin-user-core/     User coordinator plugin (limited read-only actions)
+    contracts/    On-chain contract ABIs, deployments, and bootstrap scripts
     shared/       Shared types, content analysis utilities, logging
     a2a/          Agent-to-Agent protocol integration (@a2a-js/sdk)
     mcp/          Model Context Protocol server for tool-using agents
@@ -40,6 +41,8 @@ packages/feed/
 
   scripts/        Operational scripts — context inspection, market reports, DB seeds
   docs/           Vendor docs, analysis docs, observability notes
+  skills/         Runtime skill packages
+  tools/          Developer tooling (chroma, dag-visualizer, e2e)
   .ruler/         Ruler config — generates CLAUDE.md/AGENTS.md; edit here, not in files
 ```
 

@@ -20,6 +20,8 @@ packages/cloud-sdk/
                               (generated — do not hand-edit; refresh with
                               node scripts/generate-public-routes.mjs)
     client.test.ts            Unit tests for ElizaCloudClient (mock fetch)
+    http.test.ts              Unit tests for ElizaCloudHttpClient
+    public-routes.test.ts     Unit tests for ElizaCloudPublicRoutesClient
     live.e2e.test.ts          Live integration tests gated by env flags
     cloud-setup-session/
       index.ts                Barrel for the ./cloud-setup-session sub-export
@@ -129,6 +131,10 @@ The SDK reads no env vars at runtime — callers must supply credentials via `El
 | `ELIZA_CLOUD_SDK_LIVE_PROFILE_WRITE` | `"1"` + `ELIZA_CLOUD_SDK_PROFILE_FIELD` + `ELIZA_CLOUD_SDK_PROFILE_VALUE` to enable profile write checks |
 | `ELIZA_CLOUD_SDK_LIVE_OPENAPI` | `"1"` to force the OpenAPI spec check |
 | `ELIZA_CLOUD_PAIR_TOKEN` / `ELIZA_CLOUD_PAIR_ORIGIN` | Pairing token live test |
+| `ELIZA_CLOUD_SDK_TEXT_MODEL` | Override text model used in generation live tests |
+| `ELIZA_CLOUD_SDK_EMBEDDING_MODEL` | Override embedding model used in generation live tests |
+| `ELIZA_CLOUD_SDK_JOB_ID` | Job ID to use for the get-job live test |
+| `ELIZA_CLOUD_SDK_BACKUP_ID` | Agent backup ID to use for restore-backup live test |
 
 ## How to extend
 

@@ -10,6 +10,10 @@ Provides three things every privileged elizaOS service must use:
 2. `AuditDispatcher` + `AuditEvent` — Zod-validated event bus that fans out to one or more `AuditSink` implementations; every privileged action must emit through it.
 3. Low-level AEAD (AES-256-GCM) and HKDF-SHA256 primitives used internally by the KMS adapters.
 
+Also provides two sub-path security utilities:
+- `@elizaos/security/mcp-server-config` — MCP stdio/remote server config validation (SSRF and prototype-pollution guard, GHSA-54rx-pcr9-hg9x).
+- `@elizaos/security/network-policy` — IP/host allow-list primitives (`isBlockedPrivateOrLinkLocalIp`, `normalizeHostLike`) used internally and by the MCP config validator.
+
 Consumed by: `packages/cloud-shared` (field crypto, auth events), `packages/agent` (audit wiring), `packages/soc2-verify` (control verification), `packages/plugin-remote-manifest` (manifest signing), `packages/cloud-api` (auth layer), `packages/plugin-worker-runtime` (worker crypto).
 
 ## Layout
@@ -17,6 +21,8 @@ Consumed by: `packages/cloud-shared` (field crypto, auth events), `packages/agen
 ```
 src/
   index.ts              Re-exports kms/*, audit/*, and hkdfSha256
+  mcp-server-config.ts  MCP server config validation (SSRF / prototype-pollution guard)
+  network-policy.ts     IP/host network policy helpers (isBlockedPrivateOrLinkLocalIp, etc.)
   kms/
     types.ts            KmsClient interface + EncryptResult / SignResult / error classes
     key-namespace.ts    systemKey / orgKey / userKey builders + parseKeyId
@@ -55,6 +61,8 @@ import {
 // Sub-path exports
 import type { KmsClient, EncryptResult, SignResult } from "@elizaos/security/kms";
 import type { AuditEvent, AuditAction, AuditSink } from "@elizaos/security/audit";
+import { validateMcpServerConfig } from "@elizaos/security/mcp-server-config";
+import { isBlockedPrivateOrLinkLocalIp, normalizeHostLike } from "@elizaos/security/network-policy";
 ```
 
 ### KmsClient interface (src/kms/types.ts)
@@ -162,3 +170,5 @@ bun run --cwd packages/security clean        # rm -rf dist
 - **`METADATA_ALLOWLIST` is PII gate.** Keys not in the allowlist for the action prefix are silently dropped. Audit sinks see only allowlisted keys.
 - **`HttpSink` posts JSON events.** It sends one event per POST and throws on non-2xx responses so `AuditDispatcher.onSinkError` can report delivery failures.
 - The `scripts/kms-sign.ts` and `scripts/kms-verify.ts` CLIs are used by non-Node (e.g. Python) publish flows to sign blobs; they require `ELIZA_KMS_PASSPHRASE`.
+- **`@elizaos/security/mcp-server-config`** validates MCP server definitions before spawn/connection to prevent SSRF and prototype-pollution attacks (GHSA-54rx-pcr9-hg9x). Use this in any code path that accepts user-supplied MCP server configs.
+- **`@elizaos/security/network-policy`** provides `isBlockedPrivateOrLinkLocalIp` and `normalizeHostLike` for blocking requests to private/link-local IP ranges; used internally by `mcp-server-config` and available for direct use in HTTP client code.

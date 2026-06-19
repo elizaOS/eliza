@@ -31,8 +31,6 @@ packages/os/
         hooks/normal/          chroot hooks (agent install, branding, graphical session)
         package-lists/         per-arch .list.chroot package lists
         includes.chroot/       files dropped into the live image chroot
-    agent/                     runtime agent payload staging (node_modules)
-    desktop-shell/             desktop shell TypeScript package (staged node_modules only so far)
     crates/elizad/             Rust-based elizad system daemon (gen/ only so far)
     scripts/                   build helpers (prepare-elizaos-app-overlay.mjs, usb-write.sh …)
     schemas/                   JSON schemas: model-catalog, update-manifest
@@ -84,14 +82,21 @@ packages/os/
     validate-release-manifest.mjs  validates a manifest against release schema
     generate-release-checksums.mjs
     update-release-manifest.mjs
+    update-manifest-checksums.mjs
     verify-release-checksums.mjs
     verify-image-reproducibility.mjs
     verify-release.sh           end-to-end release verification entry point
     generate-tee-measurements.mjs
+    validate-tee-measurements.mjs
     generate-confidential-artifacts.mjs
-    check-confidential-*.mjs    TEE policy/layer/manifest checkers
+    check-confidential-*.mjs    TEE policy/layer/manifest/profile checkers
+    confidential-enforcement-map.mjs  TEE enforcement map helpers
+    tee-evidence-bridge.mjs     TEE evidence bridge
+    tee-state-volume-mount.mjs  TEE state volume mount helpers
     collect-release-evidence.mjs
     check-dstack-pins.mjs
+    json-schema-lite.mjs        lightweight JSON schema validator used by release scripts
+    __tests__/                  test files for release scripts
 
   release/
     schema/                    JSON schemas: confidential-image-manifest, confidential-policy, dstack-pins

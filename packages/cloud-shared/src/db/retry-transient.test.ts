@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isTransientDbError, retryOnTransientDbError } from "./retry-transient";
 
-const pgError = (code: string, message = "boom") =>
-  Object.assign(new Error(message), { code });
+const pgError = (code: string, message = "boom") => Object.assign(new Error(message), { code });
 
 describe("isTransientDbError", () => {
   it("classifies connection-class SQLSTATEs as transient", () => {
@@ -19,7 +18,9 @@ describe("isTransientDbError", () => {
   it("classifies connection-failure messages as transient", () => {
     expect(isTransientDbError(new Error("Connection terminated unexpectedly"))).toBe(true);
     expect(
-      isTransientDbError(new Error("could not accept SSL connection: unexpected eof while reading")),
+      isTransientDbError(
+        new Error("could not accept SSL connection: unexpected eof while reading"),
+      ),
     ).toBe(true);
   });
 
@@ -42,10 +43,13 @@ describe("retryOnTransientDbError", () => {
 
   it("returns immediately on success without retrying", async () => {
     let calls = 0;
-    const result = await retryOnTransientDbError(async () => {
-      calls++;
-      return "ok";
-    }, { sleep: noSleep });
+    const result = await retryOnTransientDbError(
+      async () => {
+        calls++;
+        return "ok";
+      },
+      { sleep: noSleep },
+    );
     expect(result).toBe("ok");
     expect(calls).toBe(1);
   });

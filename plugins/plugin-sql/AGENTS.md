@@ -29,7 +29,10 @@ plugins/plugin-sql/
     index.browser.ts            Browser entry: PGlite-only plugin
     base.ts                     BaseDrizzleAdapter — shared IDatabaseAdapter implementation
     types.ts                    DrizzleDatabase union type; getDb() helper
+    agent-mapping.ts            Utilities for normalizing agent message examples from DB rows
     utils.ts / utils.node.ts / utils.browser.ts  Platform-specific helpers (resolvePgliteDir)
+    utils/
+      string-to-uuid.ts         String-to-UUID conversion utility
     connector-credential-store.ts  ConnectorCredentialStore/Vault interfaces + factory
     migration-service.ts        DatabaseMigrationService — discovers plugin schemas, runs migrations, re-applies RLS
     migrations.ts               One-off migrations (e.g., entity RLS backfill)
@@ -42,6 +45,9 @@ plugins/plugin-sql/
       adapter.ts                PgliteDatabaseAdapter (wraps BaseDrizzleAdapter for PGlite)
       manager.ts                PGliteClientManager — PGlite singleton, lifecycle
       errors.ts                 PGlite-specific error types
+    neon/
+      adapter.ts                NeonDatabaseAdapter — serverless adapter using @neondatabase/serverless
+      manager.ts                NeonConnectionManager — WebSocket-based connection for Neon/Vercel/Cloudflare
     schema/
       index.ts                  Re-exports all table definitions
       agent.ts / room.ts / memory.ts / entity.ts / ...  One file per table
@@ -54,6 +60,8 @@ plugins/plugin-sql/
       runtime-migrator.ts       Diff-based migration engine
       schema-transformer.ts     Drizzle schema → SQL diff
       extension-manager.ts      PGlite extension loading
+    write-back/
+      index.ts                  WriteBackService — forwards local PGlite writes to cloud API (Electric Pattern 1)
     drizzle/                    Drizzle ORM re-exports
 ```
 
@@ -79,10 +87,17 @@ bun run --cwd plugins/plugin-sql test:e2e       # live smoke test (needs running
 | Variable | Required | Default | Effect |
 |----------|----------|---------|--------|
 | `POSTGRES_URL` | No | — | PostgreSQL connection string. When absent, PGlite is used. |
+| `DATABASE_URL` | No | — | Alternative connection string used by the Neon serverless adapter. |
 | `PGLITE_DATA_DIR` | No | `.eliza/.elizadb` | Directory (or `idb://` URL) for PGlite data storage. |
 | `ENABLE_DATA_ISOLATION` | No | `false` | When `true`, enables PostgreSQL Row Level Security per-server isolation. |
 | `ELIZA_SERVER_ID` | Conditional | — | Required when `ENABLE_DATA_ISOLATION=true`; becomes the RLS server UUID. |
 | `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS` | No | `false` | Allow column drops and other destructive schema changes at startup. |
+| `ELIZA_ELECTRIC_SYNC_URL` | No | — | URL for the Electric sync service; enables PGlite cloud sync read path. |
+| `ELIZA_CLOUD_WRITE_BASE_URL` | No | — | Base URL of the cloud API for WriteBackService (e.g. `https://api.elizacloud.ai`). If unset, write-back is a no-op. |
+| `ELIZA_CLOUD_SERVICE_KEY` | No | — | `X-Service-Key` header value sent by WriteBackService to the cloud API. |
+| `ELIZA_PGLITE_DISABLE_EXTENSIONS` | No | `false` | Disables PGlite extension loading when set. |
+| `ELIZA_IOS_LOCAL_BACKEND` | No | — | Overrides the local backend URL for iOS platform targets. |
+| `ELIZA_ANDROID_LOCAL_BACKEND` | No | — | Overrides the local backend URL for Android platform targets. |
 | `NODE_ENV` | No | `development` | `production` disables verbose migration logging and tightens safety checks. |
 
 Settings are read via `runtime.getSetting(key)` inside `plugin.init`.

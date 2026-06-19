@@ -5,8 +5,8 @@
  * domain). Repointed at the cloud shell's typed {@link api} client + auth gate.
  */
 
-import { useQuery } from "@tanstack/react-query";
 import type { CreditBalanceResponse } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../lib/api-client";
 import {
   authenticatedQueryKey,

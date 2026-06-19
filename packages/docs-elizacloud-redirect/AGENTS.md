@@ -12,7 +12,7 @@ This is a standalone infrastructure package — not an elizaOS plugin and not im
 packages/docs-elizacloud-redirect/
   src/worker.ts        Entry point — the entire Worker (one fetch handler, ~25 lines)
   wrangler.toml        Cloudflare Worker config: route binding for docs.elizacloud.ai/*
-  package.json         Two scripts: dev + deploy
+  package.json         Three scripts: test + dev + deploy
 ```
 
 ## Key logic (`src/worker.ts`)
@@ -31,6 +31,7 @@ packages/docs-elizacloud-redirect/
 ```bash
 bun run --cwd packages/docs-elizacloud-redirect dev     # wrangler local dev server
 bun run --cwd packages/docs-elizacloud-redirect deploy  # deploy to Cloudflare (production env)
+bun run --cwd packages/docs-elizacloud-redirect test    # vitest run
 ```
 
 `deploy` targets `[env.production]` in `wrangler.toml`, which binds the route `docs.elizacloud.ai/*` on the `elizacloud.ai` zone automatically — no Cloudflare dashboard step beyond the one-time DNS record pointing `docs.elizacloud.ai` at the Cloudflare proxy.

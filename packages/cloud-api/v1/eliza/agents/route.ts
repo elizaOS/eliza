@@ -467,9 +467,13 @@ app.post("/", async (c) => {
         }
       } catch (err) {
         // Don't block on claim errors — fall through to the async job path.
+        // Emit a stable `event` so a persistently broken warm pool is
+        // observable in aggregate (otherwise every claim silently degrades to
+        // the slow async path with no signal that the fast path is dead).
         logger.warn(
           "[agent-api] Warm pool claim threw on create; falling back",
           {
+            event: "warm_pool.claim_failed",
             agentId: agent.id,
             orgId: user.organization_id,
             error: err instanceof Error ? err.message : String(err),

@@ -47,6 +47,7 @@ src/
   accounts.ts                    Config resolution: env vars, character.settings.instagram, multi-account
   constants.ts                   INSTAGRAM_SERVICE_NAME, MAX_*, SUPPORTED_MEDIA_TYPES, EVENT_PREFIX
   types.ts                       All TS types/interfaces/enums (InstagramConfig, InstagramUser, etc.)
+  tests.ts                       InstagramTestSuite — in-process TestCase[] suite for message splitting and service internals
   actions/index.ts               Empty action surface; DMs/comments use connectors
   providers/index.ts             Empty provider surface; context comes from connector hooks
   __tests__/                     Vitest unit tests

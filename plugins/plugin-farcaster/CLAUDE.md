@@ -35,9 +35,12 @@ plugins/plugin-farcaster/
   auto-enable.ts                  shouldEnable() — connector-block check (loaded at boot, no heavy imports)
   connector-account-provider.ts   ConnectorAccountManager registration
   workflow-credential-provider.ts FarcasterWorkflowCredentialProvider service
+  actions/
+    index.ts                      farcasterActions = [] (empty barrel)
   client/
     FarcasterClient.ts            Neynar SDK wrapper (sendCast, getTimeline, getMentions, getCast, getProfile, publishReaction, deleteReaction); LRU cast + profile caches
   managers/
+    index.ts                      barrel re-export
     AgentManager.ts               FarcasterAgentManager — owns FarcasterClient, CastManager, InteractionManager per account
     CastManager.ts                Scheduled autonomous cast loop
     InteractionManager.ts         Polling / webhook interaction dispatcher
@@ -48,14 +51,16 @@ plugins/plugin-farcaster/
     FarcasterService.ts           Top-level Service — multi-agent, multi-account lifecycle
     CastService.ts                FarcasterCastService — getCasts, createCast, handleSendPost, fetchFeed, searchPosts, likeCast, recast, etc.
     MessageService.ts             FarcasterMessageService — getMessages, sendMessage, getThread, getMessage
+    index.ts                      barrel re-export
   providers/
+    index.ts                      farcasterProviders array
     profileProvider.ts            farcasterProfileProvider implementation
   routes/
     webhook.ts                    POST /webhook handler
   types/
     index.ts                      Cast, Profile, CastId, FarcasterConfig, FarcasterConfigSchema (zod), FarcasterEventTypes, FarcasterMessageType, NeynarWebhookData
   utils/
-    config.ts                     validateFarcasterConfig, getFarcasterFid, hasFarcasterEnabled, listFarcasterAccountIds, readFarcasterAccountId, normalizeFarcasterAccountId
+    config.ts                     validateFarcasterConfig, getFarcasterFid, hasFarcasterEnabled, listFarcasterAccountIds, readFarcasterAccountId, normalizeFarcasterAccountId, resolveDefaultFarcasterAccountId
     index.ts                      castUuid, neynarCastToCast, splitPostContent
     asyncqueue.ts                 Serial async queue used by interaction processor
     callbacks.ts                  Post-cast callback helpers
@@ -83,25 +88,28 @@ bun run --cwd plugins/plugin-farcaster format:check  # biome format (read-only)
 
 ## Config / env vars
 
-Read via `validateFarcasterConfig()` in `utils/config.ts` against `FarcasterConfigSchema` (zod). Multi-account: prefix any var with `FARCASTER_<ACCOUNT_ID>_` to support multiple accounts per agent.
+Read via `validateFarcasterConfig()` in `utils/config.ts` against `FarcasterConfigSchema` (zod). Multi-account: prefix any var with `FARCASTER_<ACCOUNT_ID>_` to support multiple accounts per agent, or pass a JSON array via `FARCASTER_ACCOUNTS`.
 
-| Env var                    | Required | Default          | Description |
-|----------------------------|----------|------------------|-------------|
-| `FARCASTER_NEYNAR_API_KEY` | yes      | —                | Neynar API key (sensitive) |
-| `FARCASTER_FID`            | yes      | —                | Farcaster user ID (integer) |
-| `FARCASTER_SIGNER_UUID`    | yes      | —                | Neynar signer UUID for signing casts |
-| `FARCASTER_MODE`           | no       | `polling`        | `polling` or `webhook` |
-| `FARCASTER_HUB_URL`        | no       | `hub.pinata.cloud` | Farcaster hub base URL |
-| `FARCASTER_POLL_INTERVAL`  | no       | `120`            | Polling interval in seconds |
-| `FARCASTER_DRY_RUN`        | no       | `false`          | Simulate actions without publishing |
-| `MAX_CAST_LENGTH`          | no       | `320`            | Max cast character length |
-| `ENABLE_CAST`              | no       | `true`           | Enable autonomous cast loop |
-| `CAST_INTERVAL_MIN`        | no       | `90`             | Min minutes between autonomous casts |
-| `CAST_INTERVAL_MAX`        | no       | `180`            | Max minutes between autonomous casts |
-| `CAST_IMMEDIATELY`         | no       | `false`          | Post first cast immediately on start |
-| `ENABLE_ACTION_PROCESSING` | no       | `false`          | Process interactions/mentions automatically |
-| `ACTION_INTERVAL`          | no       | `5`              | Minutes between action-processing cycles |
-| `MAX_ACTIONS_PROCESSING`   | no       | `1`              | Max interactions processed per cycle |
+| Env var                       | Required | Default          | Description |
+|-------------------------------|----------|------------------|-------------|
+| `FARCASTER_NEYNAR_API_KEY`    | yes      | —                | Neynar API key (sensitive) |
+| `FARCASTER_FID`               | yes      | —                | Farcaster user ID (integer) |
+| `FARCASTER_SIGNER_UUID`       | yes      | —                | Neynar signer UUID for signing casts |
+| `FARCASTER_ACCOUNTS`          | no       | —                | JSON array of per-account config objects for multi-account mode |
+| `FARCASTER_DEFAULT_ACCOUNT_ID`| no       | —                | Selects the default account when multiple accounts are configured |
+| `FARCASTER_ACCOUNT_ID`        | no       | —                | Alias for FARCASTER_DEFAULT_ACCOUNT_ID (legacy fallback) |
+| `FARCASTER_MODE`              | no       | `polling`        | `polling` or `webhook` |
+| `FARCASTER_HUB_URL`           | no       | `hub.pinata.cloud` | Farcaster hub base URL |
+| `FARCASTER_POLL_INTERVAL`     | no       | `120`            | Polling interval in seconds |
+| `FARCASTER_DRY_RUN`           | no       | `false`          | Simulate actions without publishing |
+| `MAX_CAST_LENGTH`             | no       | `320`            | Max cast character length |
+| `ENABLE_CAST`                 | no       | `true`           | Enable autonomous cast loop |
+| `CAST_INTERVAL_MIN`           | no       | `90`             | Min minutes between autonomous casts |
+| `CAST_INTERVAL_MAX`           | no       | `180`            | Max minutes between autonomous casts |
+| `CAST_IMMEDIATELY`            | no       | `false`          | Post first cast immediately on start |
+| `ENABLE_ACTION_PROCESSING`    | no       | `false`          | Process interactions/mentions automatically |
+| `ACTION_INTERVAL`             | no       | `5`              | Minutes between action-processing cycles |
+| `MAX_ACTIONS_PROCESSING`      | no       | `1`              | Max interactions processed per cycle |
 
 ## How to extend
 
@@ -117,7 +125,7 @@ Read via `validateFarcasterConfig()` in `utils/config.ts` against `FarcasterConf
 
 - **Neynar SDK is the only Farcaster API client.** `FarcasterClient` wraps `@neynar/nodejs-sdk`. All hub/network calls go through it. Do not call Neynar endpoints directly elsewhere.
 - **Cast deletion is not supported by the Farcaster protocol.** `FarcasterCastService.deleteCast` logs a warning and returns — this is intentional.
-- **Multi-account support.** `FarcasterService` tracks a map of `agentId → { managers, castServices, messageServices }`. Env vars can be namespaced by account ID. Use `listFarcasterAccountIds` / `normalizeFarcasterAccountId` from `utils/config.ts` — do not hand-roll account ID logic.
+- **Multi-account support.** `FarcasterService` tracks a map of `agentId → { managers, castServices, messageServices }`. Env vars can be namespaced by account ID, or a full multi-account config can be passed as a JSON array via `FARCASTER_ACCOUNTS`. Use `listFarcasterAccountIds` / `normalizeFarcasterAccountId` from `utils/config.ts` — do not hand-roll account ID logic.
 - **Post connector registration.** `FarcasterService.registerSendHandlers` wires `FarcasterCastService.handleSendPost` / `fetchFeed` / `searchPosts` into the runtime's `registerPostConnector`. This only succeeds if the runtime supports that method; absence is silently skipped.
 - **LRU caches.** `FarcasterClient` caches cast lookups (TTL 30 min, max 9 000 entries) and profile lookups (TTL 15 min, max 1 000). Keep this in mind during testing — stale cache entries will not trigger network calls.
 - **Webhook mode vs polling mode.** Set `FARCASTER_MODE=webhook` and point Neynar to `POST /webhook` on your agent's public URL. In `polling` mode, `InteractionManager` fetches mentions on `FARCASTER_POLL_INTERVAL`.

@@ -46,6 +46,7 @@ plugins/plugin-wechat/
     connector-account-provider.ts # ConnectorAccountProvider for ConnectorAccountManager
     utils/qrcode.ts           # displayQRUrl — prints QR code login URL to terminal
     index.test.ts             # Unit tests
+    connector-account-provider.test.ts # Unit tests for ConnectorAccountProvider
 ```
 
 ## Commands

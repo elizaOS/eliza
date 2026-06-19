@@ -244,6 +244,14 @@ jobs:
             # The daemons run under Node/tsx rather than Bun. Node resolves
             # linked workspace packages through their built `node` exports, so
             # refresh linked package dist files after installing dependencies.
+            #
+            # The `git clean -fdx` above wipes `.turbo`, so every deploy does a
+            # cold `build:core` (0 cached). Building the full graph includes
+            # `@elizaos/plugin-local-inference`, whose tsc/bundler step exceeds
+            # V8's default ~2 GB old-space and aborts the deploy with
+            # `FATAL ERROR: ... JavaScript heap out of memory` (exit 134). Raise
+            # the heap ceiling to match the repo's typecheck lane (8 GB).
+            export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=8192"
             bun run build:core
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
@@ -286,6 +294,17 @@ jobs:
             # "HEADSCALE_API_KEY is not configured" when a route is required).
             ENV_FILE=/opt/eliza/cloud/.env.local
             sudo touch "$ENV_FILE"
+            # Pin this control-plane daemon to the AGENT lane. Unset, a single
+            # daemon claims ALL job types (agent + apps); it would claim
+            # APP_DEPLOY / CONTAINER_* jobs it can't run (no apps backend wired
+            # here) and burn them down through retries. The dedicated apps
+            # daemon (apps-provisioning-worker.ts) owns the apps lane. Reconciled
+            # here so CI is the single source of truth and the box self-heals on
+            # every deploy (same mechanism as the HEADSCALE_* keys below). This
+            # value is constant — not a GH var — so it's reconciled directly,
+            # never blanked.
+            sudo sed -i "/^PROVISIONING_JOB_LANES=/d" "$ENV_FILE"
+            printf 'PROVISIONING_JOB_LANES=%s\n' "agent" | sudo tee -a "$ENV_FILE" >/dev/null
             for kv in \
               "HEADSCALE_API_URL=$HEADSCALE_API_URL" \
               "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \

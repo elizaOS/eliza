@@ -53,16 +53,18 @@ In `inline` mode each agent gets its own proxy server. In `shared` mode you run 
 
 ## Environment variables
 
-| Variable                    | Default                       | Notes                                                                |
-| --------------------------- | ----------------------------- | -------------------------------------------------------------------- |
-| `CLAUDE_MAX_PROXY_MODE`     | `inline`                      | `inline` / `shared` / `off`                                          |
-| `CLAUDE_MAX_PROXY_PORT`     | `18801`                       | inline mode listen port                                              |
-| `CLAUDE_MAX_PROXY_UPSTREAM` | (none)                        | shared mode upstream base URL, e.g. `http://172.18.0.1:18801`        |
-| `CLAUDE_MAX_PROXY_BIND_HOST` | `127.0.0.1`                  | inline mode bind address                                             |
-| `CLAUDE_MAX_PROXY_VERBOSE`  | `false`                       | extra request logging                                                |
-| `CLAUDE_MAX_CREDENTIALS_PATH` | (auto)                      | path to `.credentials.json`; defaults to `~/.claude/.credentials.json` |
-| `CLAUDE_CODE_OAUTH_TOKEN`   | (none)                        | direct OAuth bearer token; takes precedence over the file            |
-| `ANTHROPIC_BASE_URL`        | (auto-set by plugin)          | leave unset and the plugin picks. Set to `auto` to opt back in if you ever set it. Set to anything else and the plugin will leave it alone. |
+| Variable                      | Default                       | Notes                                                                |
+| ----------------------------- | ----------------------------- | -------------------------------------------------------------------- |
+| `CLAUDE_MAX_PROXY_MODE`       | `inline`                      | `inline` / `shared` / `off`                                          |
+| `CLAUDE_MAX_PROXY_PORT`       | `18801`                       | inline mode listen port                                              |
+| `CLAUDE_MAX_PROXY_UPSTREAM`   | (none)                        | shared mode upstream base URL, e.g. `http://172.18.0.1:18801`        |
+| `CLAUDE_MAX_PROXY_BIND_HOST`  | `127.0.0.1`                   | inline mode bind address                                             |
+| `CLAUDE_MAX_PROXY_AUTH_TOKEN` | (none)                        | required when `CLAUDE_MAX_PROXY_BIND_HOST` is not a loopback address; checked via `Authorization: Bearer <token>` or `x-claude-max-proxy-token` header |
+| `CLAUDE_MAX_PROXY_VERBOSE`    | `false`                       | extra request logging                                                |
+| `CLAUDE_MAX_PROXY_CONFIG_PATH` | (none)                       | explicit path to a `config.json` fingerprint override file; takes precedence over a `config.json` found next to the agent root |
+| `CLAUDE_MAX_CREDENTIALS_PATH` | (auto)                        | path to `.credentials.json`; defaults to `~/.claude/.credentials.json` |
+| `CLAUDE_CODE_OAUTH_TOKEN`     | (none)                        | direct OAuth bearer token; takes precedence over the file            |
+| `ANTHROPIC_BASE_URL`          | (auto-set by plugin)          | leave unset and the plugin picks. Set to `auto` to opt back in if you ever set it. Set to anything else and the plugin will leave it alone. |
 
 ## Diagnostics
 
@@ -133,5 +135,8 @@ plugins/plugin-anthropic-proxy/
     ├── proxy.test.ts
     ├── auto-enable.test.ts
     ├── eliza-fingerprint.test.ts
-    └── manifest-engine.integration.test.ts
+    ├── manifest-engine.integration.test.ts
+    ├── process-body.edge.test.ts
+    ├── proxy-server.routing.test.ts
+    └── sse-rewrite.test.ts
 ```

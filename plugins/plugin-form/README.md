@@ -15,7 +15,7 @@ Conversational forms for Eliza agents. Define structured data-collection workflo
 | Capability | How |
 |---|---|
 | FORM\_CONTEXT provider | Injects current form progress into every agent turn — filled/missing fields, uncertain extractions, pending external fields, and a single action directive |
-| FORM action | `action=restore` rehydrates the most recent stashed form before the agent responds |
+| FORM action | `action=restore` rehydrates the most recent stashed form before the agent responds. **Not auto-registered** — import `formAction` from `@elizaos/plugin-form` and add it to your consuming plugin's `actions` array to activate it. |
 | Form evaluator | Post-turn: detects submit / stash / cancel / undo / skip / autofill / fill\_form intents and updates session state |
 | FormService | Singleton service: register forms and custom control types, start/manage sessions, submit, stash, restore |
 

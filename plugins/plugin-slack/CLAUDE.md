@@ -85,6 +85,7 @@ Resolved via `runtime.getSetting(...)`. Single-account flat env vars or structur
 | `SLACK_APP_TOKEN` | Yes | App-level token for Socket Mode, must start `xapp-`. |
 | `SLACK_SIGNING_SECRET` | No | Passed to Bolt if set; needed for HTTP mode request verification. |
 | `SLACK_USER_TOKEN` | No | User token `xoxp-` for `OWNER`-role accounts; used for `chat:write` as user. |
+| `SLACK_ACCOUNT_ROLE` | No | Role for the default account. `"OWNER"` routes outbound messages through the user token; `"AGENT"` (default) uses the bot token. Applies only to the single-account (flat env) path. |
 | `SLACK_CHANNEL_IDS` | No | Comma-separated channel IDs (`C…`, `G…`, `D…`) to restrict inbound messages. |
 | `SLACK_SHOULD_IGNORE_BOT_MESSAGES` | No | `"true"` to suppress messages from other bots. Default: `false`. |
 | `SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS` | No | `"true"` to require `@mention` before responding. Default: `false`. |

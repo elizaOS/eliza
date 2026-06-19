@@ -3,6 +3,7 @@ import type { Plugin } from "@elizaos/core";
 import { inboxAction } from "./actions/inbox.ts";
 import { inboxDbSchema } from "./db/schema.ts";
 import { InboxMigrationService } from "./inbox/migration.ts";
+import { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
 import { inboxTriageProvider } from "./providers/inbox-triage.ts";
 
 export const inboxPlugin: Plugin = {
@@ -13,7 +14,7 @@ export const inboxPlugin: Plugin = {
   schema: inboxDbSchema,
   services: [InboxMigrationService],
   actions: [inboxAction],
-  providers: [inboxTriageProvider],
+  providers: [inboxTriageProvider, crossChannelContextProvider],
   views: [
     {
       id: "inbox",

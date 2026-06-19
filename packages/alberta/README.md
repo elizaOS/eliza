@@ -1,9 +1,9 @@
 # Alberta Framework
 
-[![CI](https://github.com/lalalune/alberta/actions/workflows/ci.yml/badge.svg)](https://github.com/lalalune/alberta/actions/workflows/ci.yml)
+[![CI](https://github.com/j-klawson/alberta-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/j-klawson/alberta-framework/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/alberta-framework.svg)](https://pypi.org/project/alberta-framework/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
 A JAX-based research framework implementing [The Alberta Plan for AI Research](https://arxiv.org/abs/2208.11173). All 12 steps are implemented and benchmarked.
 
@@ -17,7 +17,7 @@ pip install alberta-framework[gymnasium]   # RL environment support
 pip install alberta-framework[dev]         # tests, lint
 ```
 
-Requires Python 3.13+, JAX 0.4+.
+Requires Python 3.12+, JAX 0.4+.
 
 ## What's here
 
@@ -128,7 +128,7 @@ from alberta_framework.core.oak import OaKConfig
 from alberta_framework.core.options import STOMPConfig, SubtaskSpec
 ```
 
-See [docs](https://lalalune.github.io/alberta) for full construction examples.
+See [docs](https://j-klawson.github.io/alberta-framework) for full construction examples.
 
 ## Core abstractions
 
