@@ -384,16 +384,21 @@ export function getLanguageModel(model: string) {
 }
 
 export function getTextEmbeddingModel(model: string) {
-  if (getBitRouterApiKey()) {
-    return getBitRouterClient().textEmbeddingModel(toBitRouterModelId(model));
-  }
-
+  // BitRouter serves chat-completions ONLY (no `/v1/embeddings` route) — routing
+  // embeddings through it 404s ("Not Found" → 503 provider_error), which breaks
+  // every memory/RAG turn on agents that use cloud embeddings. So try the real
+  // embeddings providers (Vercel AI Gateway, then OpenAI native) FIRST, and only
+  // fall back to BitRouter as a last resort when nothing else is configured.
   if (getVercelAIGatewayApiKey()) {
     return getVercelAIGatewayClient().embeddingModel(model as never);
   }
 
-  if (isOpenAINativeModel(model) && getProviderKey("OPENAI_API_KEY")) {
+  if (getProviderKey("OPENAI_API_KEY")) {
     return getOpenAIClient().textEmbeddingModel(normalizeOpenAIModelId(model));
+  }
+
+  if (getBitRouterApiKey()) {
+    return getBitRouterClient().textEmbeddingModel(toBitRouterModelId(model));
   }
 
   throw new Error("AI text embedding provider is not configured");
@@ -456,16 +461,18 @@ export function resolveAiProviderSource(
 }
 
 export function resolveEmbeddingProviderSource(): "bitrouter" | "gateway" | "openai" | null {
-  if (getBitRouterApiKey()) {
-    return "bitrouter";
-  }
-
+  // Mirror getTextEmbeddingModel's order so billing attributes the embedding to
+  // the provider that actually served it. BitRouter is last (no embeddings route).
   if (getVercelAIGatewayApiKey()) {
     return "gateway";
   }
 
   if (getProviderKey("OPENAI_API_KEY")) {
     return "openai";
+  }
+
+  if (getBitRouterApiKey()) {
+    return "bitrouter";
   }
 
   return null;

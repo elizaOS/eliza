@@ -1,5 +1,9 @@
 import crypto from "node:crypto";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
+import {
+  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+} from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
 
@@ -220,6 +224,15 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
+      // Pin the cloud's healthy Cerebras-direct models so the container never
+      // resolves a tier to the `:nitro` default (which has no Cerebras route →
+      // BitRouter→OpenRouter → 503 / wrong model). Mirrors the shared + eliza-app
+      // model config; `ELIZAOS_CLOUD_{SMALL,LARGE}_MODEL` are the highest-priority
+      // settings the plugin reads. An explicit per-agent override still wins.
+      ELIZAOS_CLOUD_SMALL_MODEL:
+        existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+      ELIZAOS_CLOUD_LARGE_MODEL:
+        existingEnv.ELIZAOS_CLOUD_LARGE_MODEL ?? CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
       ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
       PUBLIC_BASE_URL: mergeManagedPublicBaseUrl(
         existingEnv.PUBLIC_BASE_URL,
