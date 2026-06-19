@@ -125,6 +125,12 @@ export interface SpawnAgentForTaskOptions {
   /** Concrete first instruction; defaults to the task goal. */
   task?: string;
   approvalPreset?: ApprovalPreset;
+  /**
+   * Recursion depth for nested spawns. 0 (default) = spawned by the main agent;
+   * a sub-agent spawning its own child passes parentDepth + 1. Enforced against
+   * the max-nesting-depth cap so self-spawning can't run away.
+   */
+  nestingDepth?: number;
 }
 
 export interface AddMessageInput {
@@ -1565,6 +1571,18 @@ export class OrchestratorTaskService extends Service {
   ): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    // Nested-spawn guard: a sub-agent can spawn its own children, but only up to
+    // a bounded depth so a misbehaving agent can't self-spawn without limit.
+    const nestingDepth = opts.nestingDepth ?? 0;
+    const maxNestingDepth = ((): number => {
+      const raw = Number(process.env.ELIZA_ACP_MAX_NESTING_DEPTH);
+      return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 3;
+    })();
+    if (nestingDepth > maxNestingDepth) {
+      throw new Error(
+        `sub-agent nesting depth ${nestingDepth} exceeds the max of ${maxNestingDepth} (raise ELIZA_ACP_MAX_NESTING_DEPTH to allow deeper nesting)`,
+      );
+    }
     const acp = this.acp();
     if (!acp) throw new Error("ACP service unavailable");
     const workdir = opts.workdir
@@ -1634,6 +1652,9 @@ export class OrchestratorTaskService extends Service {
         // Orchestrator sessions outlive their first prompt so follow-ups and
         // validation re-dispatch can reuse them.
         keepAliveAfterComplete: true,
+        // Carried so a child this sub-agent spawns can compute its own depth
+        // (parent depth + 1) and the nesting guard above can enforce the cap.
+        nestingDepth,
       },
     });
 
