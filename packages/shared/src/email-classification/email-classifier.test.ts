@@ -1,4 +1,24 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/core", () => ({
+  logger: {
+    warn: vi.fn(),
+  },
+  ModelType: {
+    TEXT_SMALL: "TEXT_SMALL",
+    TEXT_LARGE: "TEXT_LARGE",
+  },
+  parseJsonModelRecord: (raw: unknown) => {
+    if (typeof raw === "string") {
+      return JSON.parse(raw) as Record<string, unknown>;
+    }
+    return raw && typeof raw === "object"
+      ? (raw as Record<string, unknown>)
+      : null;
+  },
+  runWithTrajectoryContext: async (_context: unknown, fn: () => unknown) =>
+    fn(),
+}));
 
 import {
   _resetEmailClassifierCache,

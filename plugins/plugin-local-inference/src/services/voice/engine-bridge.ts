@@ -89,6 +89,9 @@ import {
 	type Diarizer,
 	PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
 } from "./speaker/diarizer";
+import { FusedDiarizer } from "./speaker/diarizer-fused";
+import type { SpeakerEncoder } from "./speaker/encoder";
+import { FusedSpeakerEncoder } from "./speaker/encoder-fused";
 import {
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
@@ -1127,10 +1130,17 @@ export class EngineVoiceBridge {
 		let attributionPipeline: VoiceAttributionPipeline | null = null;
 		if (opts.profileStore) {
 			const bundleRootForEncoder = opts.bundleRoot;
-			// Lazy encoder: resolves on first encode() call.
-			let resolvedEncoder:
-				| import("./speaker/encoder-ggml").SpeakerEncoderGgml
-				| null = null;
+			const fusedFfi = ffiHandle;
+			const fusedCtx = ffiContextRef;
+			// Lazy encoder: resolves on first encode() call. Prefers the FUSED
+			// `eliza_inference_speaker_*` path off the same `ffi`/`ctx` as
+			// VAD / TTS / ASR (the user directive: one native engine, no separate
+			// bun:ffi-musl libs). Falls back to the standalone
+			// `SpeakerEncoderGgmlImpl` (`voice/speaker-encoder/...gguf` via
+			// libvoice_classifier) only when the fused build does not advertise
+			// the speaker ABI.
+			let resolvedEncoder: import("./speaker/encoder").SpeakerEncoder | null =
+				null;
 			let encoderLoadError: Error | null = null;
 			const lazyEncoder: import("./speaker/encoder").SpeakerEncoder = {
 				embeddingDim: 256,
@@ -1138,14 +1148,12 @@ export class EngineVoiceBridge {
 				async encode(pcm: Float32Array): Promise<Float32Array> {
 					if (encoderLoadError) throw encoderLoadError;
 					if (!resolvedEncoder) {
-						const { SpeakerEncoderGgmlImpl } = await import(
-							"./speaker/encoder-ggml"
-						);
-						const ggufPath = `${bundleRootForEncoder}/voice/speaker-encoder/wespeaker-resnet34-lm.gguf`;
 						try {
-							const impl = new SpeakerEncoderGgmlImpl({ ggufPath });
-							// Warm the FFI handle on first call.
-							resolvedEncoder = impl;
+							resolvedEncoder = await resolveSpeakerEncoder(
+								fusedFfi,
+								fusedCtx,
+								bundleRootForEncoder,
+							);
 						} catch (err) {
 							encoderLoadError =
 								err instanceof Error ? err : new Error(String(err));
@@ -1158,18 +1166,18 @@ export class EngineVoiceBridge {
 					await resolvedEncoder?.dispose();
 				},
 			};
-			// Lazy diarizer: only wired when its GGUF is present. The diarizer is
-			// optional — a single-speaker turn collapses to one segment without it
-			// (attribution-pipeline's localSpeakerId=0 fallback). When present, it
-			// splits a multi-speaker turn so the encoder embeds the primary
-			// speaker's span only. Mirrors the lazy encoder; the FFI binding
-			// resolves on first diarizeWindow().
+			// Lazy diarizer. Prefers the FUSED `eliza_inference_diariz_*` path off
+			// the shared `ffi`/`ctx`; only when the fused build lacks it does it
+			// fall back to the standalone `PyannoteDiarizer`
+			// (`voice/diarizer/...gguf` via libvoice_classifier), and only when
+			// that GGUF is on disk. The diarizer is optional — a single-speaker
+			// turn collapses to one segment without it (attribution-pipeline's
+			// localSpeakerId=0 fallback).
 			const diarizerGgufPath = `${opts.bundleRoot}/voice/diarizer/pyannote-segmentation-3.0.gguf`;
+			const fusedDiarizerAvailable = FusedDiarizer.isSupported(fusedFfi);
 			let lazyDiarizer: Diarizer | undefined;
-			if (existsSync(diarizerGgufPath)) {
-				let resolvedDiarizer:
-					| import("./speaker/diarizer").PyannoteDiarizer
-					| null = null;
+			if (fusedDiarizerAvailable || existsSync(diarizerGgufPath)) {
+				let resolvedDiarizer: Diarizer | null = null;
 				let diarizerLoadError: Error | null = null;
 				lazyDiarizer = {
 					modelId: PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
@@ -1178,9 +1186,11 @@ export class EngineVoiceBridge {
 						if (diarizerLoadError) throw diarizerLoadError;
 						if (!resolvedDiarizer) {
 							try {
-								const { PyannoteDiarizer } = await import("./speaker/diarizer");
-								resolvedDiarizer =
-									await PyannoteDiarizer.load(diarizerGgufPath);
+								resolvedDiarizer = await resolveDiarizer(
+									fusedFfi,
+									fusedCtx,
+									diarizerGgufPath,
+								);
 							} catch (err) {
 								diarizerLoadError =
 									err instanceof Error ? err : new Error(String(err));
@@ -1969,6 +1979,43 @@ function ensureContext(
 	if (ref === null) return null;
 	if (typeof ref === "object" && "ensure" in ref) return ref.ensure();
 	return ref;
+}
+
+/**
+ * Resolve the speaker encoder, preferring the FUSED `libelizainference`
+ * path (`eliza_inference_speaker_*`) off the same `ffi`/`ctx` the rest of the
+ * voice pipeline uses. Only when the fused build does not advertise the
+ * speaker ABI does it fall back to the standalone `SpeakerEncoderGgmlImpl`
+ * (libvoice_classifier), and only when that GGUF is on disk.
+ */
+async function resolveSpeakerEncoder(
+	ffi: ElizaInferenceFfi | null,
+	ctxRef: FfiContextRef | null,
+	bundleRoot: string | undefined,
+): Promise<SpeakerEncoder> {
+	if (ffi && ctxRef && FusedSpeakerEncoder.isSupported(ffi)) {
+		return FusedSpeakerEncoder.load({ ffi, ctx: () => ctxRef.ensure() });
+	}
+	const { SpeakerEncoderGgmlImpl } = await import("./speaker/encoder-ggml");
+	const ggufPath = `${bundleRoot}/voice/speaker-encoder/wespeaker-resnet34-lm.gguf`;
+	return new SpeakerEncoderGgmlImpl({ ggufPath });
+}
+
+/**
+ * Resolve the diarizer, preferring the FUSED `libelizainference` path
+ * (`eliza_inference_diariz_*`). Falls back to the standalone `PyannoteDiarizer`
+ * (libvoice_classifier) when the fused build lacks the diarizer ABI.
+ */
+async function resolveDiarizer(
+	ffi: ElizaInferenceFfi | null,
+	ctxRef: FfiContextRef | null,
+	standaloneGgufPath: string,
+): Promise<Diarizer> {
+	if (ffi && ctxRef && FusedDiarizer.isSupported(ffi)) {
+		return FusedDiarizer.load({ ffi, ctx: () => ctxRef.ensure() });
+	}
+	const { PyannoteDiarizer } = await import("./speaker/diarizer");
+	return PyannoteDiarizer.load(standaloneGgufPath);
 }
 
 /**

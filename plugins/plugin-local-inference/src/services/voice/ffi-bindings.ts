@@ -47,8 +47,16 @@ import { VoiceLifecycleError } from "./lifecycle";
  *     the JS binding routes wake-word detection exclusively through this
  *     ABI with no ONNX fallback (AGENTS.md §3, §8). v4 callers that
  *     never touched the wake-word entries are source-compatible.
+ *
+ * v6: the FFI bridge gains the native speaker-encoder + diarizer
+ *     surfaces (`eliza_inference_speaker_supported/open/embed/free/close`
+ *     and `eliza_inference_diariz_supported/open/segment/close`). These
+ *     fuse the remaining standalone `libvoice_classifier` voice
+ *     classifiers into the one `libelizainference` handle so the whole
+ *     voice pipeline runs through a single native lib. v5 callers that
+ *     never touched the speaker/diarizer entries are source-compatible.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 5 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 6 as const;
 
 /** Status codes mirrored from `ffi.h`. Negative = failure. */
 export const ELIZA_OK = 0;
@@ -59,6 +67,21 @@ export const ELIZA_ERR_FFI_FAULT = -4;
 export const ELIZA_ERR_OOM = -5;
 export const ELIZA_ERR_ABI_MISMATCH = -6;
 export const ELIZA_ERR_CANCELLED = -7;
+
+/**
+ * WeSpeaker ResNet34-LM embedding dimension. The native
+ * `eliza_inference_speaker_embed` writes exactly this many L2-normalized
+ * fp32 values into the caller-owned output buffer. Mirrors the C-side
+ * `VOICE_SPEAKER_EMBEDDING_DIM` and `SPEAKER_GGML_EMBEDDING_DIM`.
+ */
+const SPEAKER_EMBEDDING_DIM = 256;
+
+/**
+ * Upper bound on the per-window diarizer label count. pyannote-3 emits 293
+ * int8 frame labels per 5 s window; the caller passes a generous capacity and
+ * the library reports the real count back via `*io_n_labels`.
+ */
+const DIARIZ_LABELS_CAPACITY = 2048;
 
 /**
  * Region names the lifecycle hands to `mmap_acquire` / `mmap_evict`.
@@ -84,6 +107,12 @@ export type NativeVadHandle = bigint;
 
 /** Opaque pointer to a native openWakeWord session. */
 export type NativeWakeWordHandle = bigint;
+
+/** Opaque pointer to a native WeSpeaker speaker-encoder session. */
+export type NativeSpeakerHandle = bigint;
+
+/** Opaque pointer to a native pyannote diarizer session. */
+export type NativeDiarizHandle = bigint;
 
 /** Opaque pointer to a streaming-LLM session. */
 export type LlmStreamHandle = bigint;
@@ -334,6 +363,54 @@ export interface ElizaInferenceFfi {
 	/** Close + free a native wake-word session. Idempotent on already-closed handles. */
 	wakewordClose?(wake: NativeWakeWordHandle): void;
 
+	/* ---- Native speaker encoder (ABI v6) -------------------------- */
+
+	/** True when this build exports and enables the native WeSpeaker encoder. */
+	speakerSupported?(): boolean;
+	/**
+	 * Open a native speaker-encoder session. `ggufPath` may be null to
+	 * resolve the bundle's `speaker/` dir, or an absolute path to a
+	 * WeSpeaker GGUF.
+	 */
+	speakerOpen?(args: {
+		ctx: ElizaInferenceContextHandle;
+		ggufPath: string | null;
+	}): NativeSpeakerHandle;
+	/**
+	 * Embed `pcm` (16 kHz mono fp32) into a 256-d L2-normalized speaker
+	 * embedding. Returns a freshly-allocated `Float32Array` of length 256.
+	 */
+	speakerEmbed?(args: {
+		speaker: NativeSpeakerHandle;
+		pcm: Float32Array;
+	}): Float32Array;
+	/** Close + free a native speaker-encoder session. Idempotent on already-closed handles. */
+	speakerClose?(speaker: NativeSpeakerHandle): void;
+
+	/* ---- Native diarizer (ABI v6) --------------------------------- */
+
+	/** True when this build exports and enables the native pyannote diarizer. */
+	diarizSupported?(): boolean;
+	/**
+	 * Open a native diarizer session. `ggufPath` may be null to resolve the
+	 * bundle's `diariz/` dir, or an absolute path to a pyannote GGUF.
+	 */
+	diarizOpen?(args: {
+		ctx: ElizaInferenceContextHandle;
+		ggufPath: string | null;
+	}): NativeDiarizHandle;
+	/**
+	 * Segment one 80000-sample (5 s @ 16 kHz) mono fp32 window into a
+	 * per-frame powerset-label sequence. Returns the `Int8Array` of frame
+	 * labels (293 for pyannote-segmentation-3.0), each in `[0, 7)`.
+	 */
+	diarizSegment?(args: {
+		diariz: NativeDiarizHandle;
+		pcm: Float32Array;
+	}): Int8Array;
+	/** Close + free a native diarizer session. Idempotent on already-closed handles. */
+	diarizClose?(diariz: NativeDiarizHandle): void;
+
 	/* ---- Streaming ASR (ABI v2) ----------------------------------- */
 
 	/**
@@ -548,6 +625,35 @@ interface BunFfiSymbols {
 	) => number;
 	eliza_inference_wakeword_reset?: (wake: bigint, outErr: unknown) => number;
 	eliza_inference_wakeword_close?: (wake: bigint) => void;
+	eliza_inference_speaker_supported?: () => number;
+	eliza_inference_speaker_open?: (
+		ctx: bigint,
+		ggufPath: unknown,
+		outErr: unknown,
+	) => unknown;
+	eliza_inference_speaker_embed?: (
+		speaker: bigint,
+		pcm: unknown,
+		nSamples: bigint | number,
+		outEmbedding: unknown,
+		outErr: unknown,
+	) => number;
+	eliza_inference_speaker_close?: (speaker: bigint) => void;
+	eliza_inference_diariz_supported?: () => number;
+	eliza_inference_diariz_open?: (
+		ctx: bigint,
+		ggufPath: unknown,
+		outErr: unknown,
+	) => unknown;
+	eliza_inference_diariz_segment?: (
+		diariz: bigint,
+		pcm: unknown,
+		nSamples: bigint | number,
+		outLabels: unknown,
+		ioNLabels: unknown,
+		outErr: unknown,
+	) => number;
+	eliza_inference_diariz_close?: (diariz: bigint) => void;
 	eliza_inference_asr_stream_supported: () => number;
 	eliza_inference_asr_stream_open: (
 		ctx: bigint,
@@ -734,6 +840,50 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			returns: T.void,
 		},
 	};
+	// Native voice classifiers (ABI v6): WeSpeaker speaker encoder + pyannote
+	// diarizer, fused into the one libelizainference handle. Additive;
+	// transitional builds may report v6 before the classifier symbols ship, so
+	// bind opportunistically and advertise unsupported when absent (the
+	// fused encoder/diarizer classes throw a structured error in that case —
+	// no standalone libvoice_classifier fallback).
+	let speakerSymbolsAvailable = true;
+	const speakerDefs = {
+		eliza_inference_speaker_supported: { args: [], returns: T.i32 },
+		eliza_inference_speaker_open: {
+			// ctx, gguf_path (cstr or NULL), out_error
+			args: [T.ptr, T.ptr, T.ptr],
+			returns: T.ptr,
+		},
+		eliza_inference_speaker_embed: {
+			// speaker (usize), pcm (ptr), n_samples (usize), out_embedding (ptr),
+			// out_error (ptr)
+			args: [T.usize, T.ptr, T.usize, T.ptr, T.ptr],
+			returns: T.i32,
+		},
+		eliza_inference_speaker_close: {
+			args: [T.usize],
+			returns: T.void,
+		},
+	};
+	let diarizSymbolsAvailable = true;
+	const diarizDefs = {
+		eliza_inference_diariz_supported: { args: [], returns: T.i32 },
+		eliza_inference_diariz_open: {
+			// ctx, gguf_path (cstr or NULL), out_error
+			args: [T.ptr, T.ptr, T.ptr],
+			returns: T.ptr,
+		},
+		eliza_inference_diariz_segment: {
+			// diariz (usize), pcm (ptr), n_samples (usize), out_labels (ptr),
+			// io_n_labels (ptr), out_error (ptr)
+			args: [T.usize, T.ptr, T.usize, T.ptr, T.ptr, T.ptr],
+			returns: T.i32,
+		},
+		eliza_inference_diariz_close: {
+			args: [T.usize],
+			returns: T.void,
+		},
+	};
 	// Streaming LLM (additive on top of v3). Bound opportunistically — when
 	// absent the runner reports native streaming as unsupported.
 	let llmStreamSymbolsAvailable = true;
@@ -859,6 +1009,13 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// Try the maximal additive symbol set first, then progressively drop
 	// optional families. Each fallback flips a sentinel so `*Supported()` probes
 	// report false instead of making an unavailable native call.
+	// The v6 voice-classifier families (speaker encoder + diarizer) ship
+	// together in the fused build, so they are bound and gated as one
+	// `classifiers` block layered on top of the v5 wake-word family. The
+	// cascade peels them in priority order: full v6 → v6-without-classifiers
+	// (a real v5 build) → progressively smaller. Each rung flips a sentinel so
+	// `*Supported()` reports false instead of calling an unbound symbol.
+	const classifierDefs = { ...speakerDefs, ...diarizDefs };
 	const attempts = [
 		{
 			defs: {
@@ -866,11 +1023,41 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				...referenceEncodeDefs,
 				...nativeVadDefs,
 				...wakewordDefs,
+				...classifierDefs,
 				...llmStreamDefs,
 			},
 			referenceEncode: true,
 			nativeVad: true,
 			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+		},
+		{
+			defs: {
+				...coreDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+			},
+			referenceEncode: false,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+		},
+		{
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...llmStreamDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: false,
 			llmStream: true,
 		},
 		{
@@ -883,6 +1070,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			referenceEncode: false,
 			nativeVad: true,
 			wakeword: true,
+			classifiers: false,
 			llmStream: true,
 		},
 		{
@@ -895,6 +1083,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			referenceEncode: true,
 			nativeVad: true,
 			wakeword: false,
+			classifiers: false,
 			llmStream: true,
 		},
 		{
@@ -902,6 +1091,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			referenceEncode: false,
 			nativeVad: true,
 			wakeword: false,
+			classifiers: false,
 			llmStream: true,
 		},
 		{
@@ -909,6 +1099,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			referenceEncode: true,
 			nativeVad: true,
 			wakeword: false,
+			classifiers: false,
 			llmStream: false,
 		},
 		{
@@ -916,6 +1107,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			referenceEncode: false,
 			nativeVad: true,
 			wakeword: false,
+			classifiers: false,
 			llmStream: false,
 		},
 		{
@@ -923,6 +1115,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			referenceEncode: true,
 			nativeVad: false,
 			wakeword: false,
+			classifiers: false,
 			llmStream: false,
 		},
 		{
@@ -930,6 +1123,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			referenceEncode: false,
 			nativeVad: false,
 			wakeword: false,
+			classifiers: false,
 			llmStream: false,
 		},
 	];
@@ -940,6 +1134,8 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			referenceEncodeSymbolsAvailable = attempt.referenceEncode;
 			nativeVadSymbolsAvailable = attempt.nativeVad;
 			wakewordSymbolsAvailable = attempt.wakeword;
+			speakerSymbolsAvailable = attempt.classifiers;
+			diarizSymbolsAvailable = attempt.classifiers;
 			llmStreamSymbolsAvailable = attempt.llmStream;
 			break;
 		} catch (err) {
@@ -961,17 +1157,25 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		loadedLib.symbols.eliza_inference_abi_version(),
 		ffi,
 	);
-	// v5 is the current full surface. Older fused builds may still be
+	// v6 is the current full surface. Older fused builds may still be
 	// useful at degraded capability:
-	//   - v4: every v4 entry point works, just no wake-word — JS reports
-	//     wake-word unsupported and throws "runtime not ready" on use.
+	//   - v5: every v5 entry point works, just no speaker/diarizer
+	//     classifiers — JS reports them unsupported and throws on use.
+	//   - v4: additionally no wake-word — JS reports wake-word unsupported and
+	//     throws "runtime not ready" on use.
 	//   - v3: additionally no reference-encode — accepted only when the
 	//     optional reference-encode symbols are absent from the binding.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
-		(reported === "4" && !wakewordSymbolsAvailable) ||
+		(reported === "5" && !speakerSymbolsAvailable && !diarizSymbolsAvailable) ||
+		(reported === "4" &&
+			!wakewordSymbolsAvailable &&
+			!speakerSymbolsAvailable &&
+			!diarizSymbolsAvailable) ||
 		(reported === "3" &&
 			!wakewordSymbolsAvailable &&
+			!speakerSymbolsAvailable &&
+			!diarizSymbolsAvailable &&
 			!referenceEncodeSymbolsAvailable);
 	if (!abiOk) {
 		loadedLib.close();
@@ -1498,6 +1702,137 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
 		wakewordClose(wake) {
 			loadedLib.symbols.eliza_inference_wakeword_close?.(wake);
+		},
+
+		/* ---- Native speaker encoder (ABI v6) ----------------------- */
+
+		speakerSupported(): boolean {
+			if (
+				!speakerSymbolsAvailable ||
+				typeof loadedLib.symbols.eliza_inference_speaker_supported !==
+					"function"
+			) {
+				return false;
+			}
+			return loadedLib.symbols.eliza_inference_speaker_supported() === 1;
+		},
+
+		speakerOpen({ ctx, ggufPath }) {
+			const open = loadedLib.symbols.eliza_inference_speaker_open;
+			if (!speakerSymbolsAvailable || typeof open !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_speaker_open is not exported by this libelizainference build",
+				);
+			}
+			const err = makeOutErr();
+			const ggufArg = cstr(ggufPath);
+			const handle = open(ctx, ggufArg.ptr, err.ptr);
+			if (isNullPointer(handle)) {
+				const message =
+					takeError(err.buf) ??
+					"[ffi-bindings] eliza_inference_speaker_open returned NULL with no diagnostic";
+				throw new VoiceLifecycleError("kernel-missing", message);
+			}
+			return handle as NativeSpeakerHandle;
+		},
+
+		speakerEmbed({ speaker, pcm }) {
+			const embed = loadedLib.symbols.eliza_inference_speaker_embed;
+			if (!speakerSymbolsAvailable || typeof embed !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_speaker_embed is not exported by this libelizainference build",
+				);
+			}
+			const err = makeOutErr();
+			const outEmbedding = new Float32Array(SPEAKER_EMBEDDING_DIM);
+			const rc = embed(
+				speaker,
+				ffi.ptr(pcm),
+				BigInt(pcm.length),
+				ffi.ptr(outEmbedding),
+				err.ptr,
+			);
+			if (rc !== ELIZA_OK) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_speaker_embed rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			return outEmbedding;
+		},
+
+		speakerClose(speaker) {
+			loadedLib.symbols.eliza_inference_speaker_close?.(speaker);
+		},
+
+		/* ---- Native diarizer (ABI v6) ------------------------------ */
+
+		diarizSupported(): boolean {
+			if (
+				!diarizSymbolsAvailable ||
+				typeof loadedLib.symbols.eliza_inference_diariz_supported !== "function"
+			) {
+				return false;
+			}
+			return loadedLib.symbols.eliza_inference_diariz_supported() === 1;
+		},
+
+		diarizOpen({ ctx, ggufPath }) {
+			const open = loadedLib.symbols.eliza_inference_diariz_open;
+			if (!diarizSymbolsAvailable || typeof open !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_diariz_open is not exported by this libelizainference build",
+				);
+			}
+			const err = makeOutErr();
+			const ggufArg = cstr(ggufPath);
+			const handle = open(ctx, ggufArg.ptr, err.ptr);
+			if (isNullPointer(handle)) {
+				const message =
+					takeError(err.buf) ??
+					"[ffi-bindings] eliza_inference_diariz_open returned NULL with no diagnostic";
+				throw new VoiceLifecycleError("kernel-missing", message);
+			}
+			return handle as NativeDiarizHandle;
+		},
+
+		diarizSegment({ diariz, pcm }) {
+			const segment = loadedLib.symbols.eliza_inference_diariz_segment;
+			if (!diarizSymbolsAvailable || typeof segment !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_diariz_segment is not exported by this libelizainference build",
+				);
+			}
+			const err = makeOutErr();
+			// The library writes `frames_per_window` (293 for pyannote-3) int8
+			// labels. Pass a generous capacity and read back the actual count
+			// the library writes into `*io_n_labels`.
+			const outLabels = new Int8Array(DIARIZ_LABELS_CAPACITY);
+			const ioNLabels = new BigUint64Array([BigInt(outLabels.length)]);
+			const rc = segment(
+				diariz,
+				ffi.ptr(pcm),
+				BigInt(pcm.length),
+				ffi.ptr(outLabels),
+				ffi.ptr(ioNLabels),
+				err.ptr,
+			);
+			if (rc !== ELIZA_OK) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_diariz_segment rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			const nFrames = Number(ioNLabels[0] ?? 0n);
+			return outLabels.slice(0, Math.min(nFrames, outLabels.length));
+		},
+
+		diarizClose(diariz) {
+			loadedLib.symbols.eliza_inference_diariz_close?.(diariz);
 		},
 
 		/* ---- Streaming ASR (ABI v2) -------------------------------- */

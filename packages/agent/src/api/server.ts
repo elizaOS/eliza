@@ -122,6 +122,11 @@ type LocalInferenceServerApi = {
     res: http.ServerResponse,
     state: { current: AgentRuntime | null },
   ) => Promise<boolean>;
+  handleLiveDiarizationRoute?: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    state: { current: AgentRuntime | null },
+  ) => Promise<boolean>;
 };
 
 let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
@@ -150,7 +155,9 @@ function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
         ) as Promise<
           Pick<
             LocalInferenceServerApi,
-            "handleLocalInferenceTtsRoute" | "handleLocalInferenceAsrRoute"
+            | "handleLocalInferenceTtsRoute"
+            | "handleLocalInferenceAsrRoute"
+            | "handleLiveDiarizationRoute"
           >
         >,
       ]);
@@ -159,6 +166,7 @@ function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
         handleLocalInferenceRoutes: routes.handleLocalInferenceRoutes,
         handleLocalInferenceTtsRoute: ttsRoutes.handleLocalInferenceTtsRoute,
         handleLocalInferenceAsrRoute: ttsRoutes.handleLocalInferenceAsrRoute,
+        handleLiveDiarizationRoute: ttsRoutes.handleLiveDiarizationRoute,
       };
     })().catch((err: unknown) => {
       // A cold-boot import failure must not poison the memoized promise: `??=`
@@ -1861,13 +1869,23 @@ async function handleRequest(
   if (
     (pathname.startsWith("/api/local-inference") ||
       pathname === "/api/tts/local-inference" ||
-      pathname.startsWith("/api/asr/local-inference")) &&
+      pathname.startsWith("/api/asr/local-inference") ||
+      pathname.startsWith("/api/voice/audio-frames")) &&
     (await (async () => {
       const localInferenceServerApi = await getLocalInferenceServerApi();
       if (
         typeof localInferenceServerApi.handleLocalInferenceRoutes ===
           "function" &&
         (await localInferenceServerApi.handleLocalInferenceRoutes(req, res))
+      ) {
+        return true;
+      }
+      // WebView → agent PCM transport for live on-device speaker diarization.
+      if (
+        localInferenceServerApi.handleLiveDiarizationRoute &&
+        (await localInferenceServerApi.handleLiveDiarizationRoute(req, res, {
+          current: state.runtime,
+        }))
       ) {
         return true;
       }

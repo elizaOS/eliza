@@ -25,10 +25,14 @@ Adds a 3D VRM avatar companion surface to an Eliza agent. It registers the `PLAY
 src/
   plugin.ts                  Plugin definition (PLAY_EMOTE action + 3 views); export: appCompanionPlugin
   register.ts                Side-effect entry: calls registerCompanionApp() on import
+  register-terminal-view.tsx Side-effect entry: registers the terminal/TUI view
   ui.ts                      Re-exports all UI/component public surface
   index.ts                   Full public API re-export barrel
   character-catalog.ts       Re-exports character asset helpers from @elizaos/ui
   vrm-assets.ts              VRM asset URL helpers (getVrmUrl, getVrmPreviewUrl, etc.)
+
+  types/
+    render-modes.ts          Render mode type definitions
 
   actions/
     emote.ts                 PLAY_EMOTE action implementation
@@ -59,16 +63,22 @@ src/
 
     companion/
       CompanionView.tsx      Main overlay view (avatar + chat + emote picker + settings)
+      CompanionView.helpers.ts   Helper utilities for CompanionView
+      CompanionView.interact.ts  Interaction logic for CompanionView
       CompanionAppView.tsx   Outermost app wrapper loaded by the overlay app registry
       CompanionShell.tsx     Shell with tab management and VRM prefetch gate
       CompanionSceneHost.tsx VrmStage host: wires zoom, pointer events, prefetch, scene context
+      CompanionSpatialView.tsx   Spatial/XR companion view
+      CompanionStageBackdrop.tsx Stage backdrop component
       CompanionHeader.tsx    Top bar with view tab switcher
       CompanionSettingsPanel.tsx  Settings panel (avatar selection, performance toggles)
       CompanionPerformanceSettings.tsx  VRM power / framerate / animate-when-hidden toggles
       EmotePicker.tsx        UI grid of triggerable emotes (AGENT_EMOTE_CATALOG)
+      emote-picker-grid.ts   Emote picker grid layout logic
       GlobalEmoteOverlay.tsx Full-screen emote trigger overlay
       InferenceCloudAlertButton.tsx  Alert button when cloud inference is unavailable
       VrmStage.tsx           Three.js canvas mount and VrmEngine lifecycle
+      companion-view-bundle.ts   View bundle entry point / exports for Vite build
       scene-overlay-bridge.ts  SceneOverlayDataBridge React component — syncs app state into SceneOverlayManager
       companion-app.ts       companionApp OverlayApp definition + registerCompanionApp()
       companion-scene-status-context.ts  React context for scene load/ready status

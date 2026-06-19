@@ -133,13 +133,15 @@ const HOME_TILES: HomeTile[] = [
 
 // Map an activity eventType to an icon + accent. Defaults to a generic pulse.
 const ACTIVITY_ICONS: Record<string, { icon: LucideIcon; tone: string }> = {
+  // Status palette only: green = ok, orange = busy/attention, red = error,
+  // white/gray = neutral. No off-brand sky/cyan or amber accents.
   task_registered: { icon: Plus, tone: "text-white/70" },
   task_complete: { icon: CheckCircle2, tone: "text-emerald-300/90" },
   stopped: { icon: Square, tone: "text-white/60" },
-  tool_running: { icon: Loader2, tone: "text-sky-300/90" },
-  blocked: { icon: OctagonAlert, tone: "text-amber-300/90" },
+  tool_running: { icon: Loader2, tone: "text-orange-300/90" },
+  blocked: { icon: OctagonAlert, tone: "text-orange-300/90" },
   blocked_auto_resolved: { icon: CheckCircle2, tone: "text-emerald-300/90" },
-  escalation: { icon: TriangleAlert, tone: "text-amber-300/90" },
+  escalation: { icon: TriangleAlert, tone: "text-red-300/90" },
   error: { icon: XCircle, tone: "text-red-300/90" },
   "proactive-message": { icon: MessageCircle, tone: "text-white/80" },
   reminder: { icon: Bell, tone: "text-white/80" },
@@ -188,9 +190,7 @@ function HomeCard({
     >
       <header className="mb-2.5 flex items-center gap-2">
         <Icon className="h-4 w-4 text-white/70" aria-hidden />
-        <h2 className="text-[13px] font-semibold uppercase tracking-wide text-white/70">
-          {title}
-        </h2>
+        <h2 className="text-[13px] font-semibold text-white/70">{title}</h2>
       </header>
       {children}
     </section>

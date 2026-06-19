@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import {
   client,
   type RuntimeDebugSnapshot,
@@ -18,7 +19,6 @@ import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";
-import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
@@ -74,16 +74,6 @@ const SECTION_TAB_KEYS: Array<{
     i18nKey: "common.evaluators",
   },
 ];
-
-const SECTION_DESCRIPTION_KEYS: Record<RuntimeSectionKey, string> = {
-  summary: "runtimeview.summaryDescription",
-  runtime: "runtimeview.runtimeDescription",
-  actions: "runtimeview.actionsDescription",
-  providers: "runtimeview.providersDescription",
-  plugins: "runtimeview.pluginsDescription",
-  services: "runtimeview.servicesDescription",
-  evaluators: "runtimeview.evaluatorsDescription",
-};
 
 function nodeSummary(value: unknown): string {
   if (value === null) return "null";
@@ -229,10 +219,7 @@ function OrderCard(props: { title: string; entries: RuntimeOrderItem[] }) {
         <div className="text-sm font-semibold text-txt">{title}</div>
         <MetaPill>{entries.length}</MetaPill>
       </div>
-      <PagePanel
-        variant="inset"
-        className="max-h-[18rem] overflow-auto px-4 py-3 text-xs font-mono leading-6 tabular-nums"
-      >
+      <div className="max-h-[18rem] overflow-auto text-xs font-mono leading-6 tabular-nums">
         {entries.length === 0 ? (
           <div className="text-muted">{t("runtimeview.none")}</div>
         ) : (
@@ -245,7 +232,7 @@ function OrderCard(props: { title: string; entries: RuntimeOrderItem[] }) {
             </div>
           ))
         )}
-      </PagePanel>
+      </div>
     </PagePanel>
   );
 }
@@ -264,18 +251,14 @@ function ServicesOrderCard(props: { entries: RuntimeServiceOrderItem[] }) {
           {entries.length} {t("runtimeview.types")}
         </MetaPill>
       </div>
-      <PagePanel
-        variant="inset"
-        className="max-h-[18rem] space-y-3 overflow-auto px-4 py-3 text-xs font-mono leading-6 tabular-nums"
-      >
+      <div className="max-h-[18rem] divide-y divide-border/40 overflow-auto text-xs font-mono leading-6 tabular-nums">
         {entries.length === 0 ? (
           <div className="text-muted">{t("runtimeview.none")}</div>
         ) : (
           entries.map((serviceGroup) => (
-            <PagePanel
+            <div
               key={`${serviceGroup.serviceType}-${serviceGroup.index}`}
-              variant="inset"
-              className="px-3 py-3"
+              className="py-2 first:pt-0 last:pb-0"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0 break-words text-txt">
@@ -283,7 +266,7 @@ function ServicesOrderCard(props: { entries: RuntimeServiceOrderItem[] }) {
                 </div>
                 <MetaPill>{serviceGroup.count}</MetaPill>
               </div>
-              <div className="mt-2 space-y-1 pl-3 text-muted">
+              <div className="mt-1 space-y-1 pl-3 text-muted">
                 {serviceGroup.instances.map((instance) => (
                   <div
                     key={`${serviceGroup.serviceType}-${instance.index}`}
@@ -293,10 +276,10 @@ function ServicesOrderCard(props: { entries: RuntimeServiceOrderItem[] }) {
                   </div>
                 ))}
               </div>
-            </PagePanel>
+            </div>
           ))
         )}
-      </PagePanel>
+      </div>
     </PagePanel>
   );
 }
@@ -308,12 +291,6 @@ function RuntimeSummaryCard(props: {
   const { snapshot, t } = props;
 
   const summaryRows = [
-    {
-      label: t("runtimeview.runtime"),
-      value: snapshot.runtimeAvailable
-        ? t("runtimeview.available")
-        : t("common.offline"),
-    },
     { label: t("runtimeview.agent"), value: snapshot.meta.agentName },
     { label: t("runtimeview.state"), value: snapshot.meta.agentState },
     { label: t("runtimeview.model"), value: snapshot.meta.model ?? "n/a" },
@@ -345,33 +322,79 @@ function RuntimeSummaryCard(props: {
         <div className="text-sm font-semibold text-txt">
           {t("runtimeview.Summary")}
         </div>
-        <div
+        <span
           className={
             snapshot.runtimeAvailable
-              ? "rounded-full border border-ok/30 bg-ok/10 px-2.5 py-1 text-xs-tight font-medium text-ok"
-              : "rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-xs-tight font-medium text-warning"
+              ? "inline-flex items-center gap-1.5 text-xs-tight font-medium text-ok"
+              : "inline-flex items-center gap-1.5 text-xs-tight font-medium text-accent"
           }
         >
+          <span
+            className={
+              snapshot.runtimeAvailable
+                ? "h-1.5 w-1.5 rounded-full bg-ok"
+                : "h-1.5 w-1.5 rounded-full bg-accent"
+            }
+          />
           {snapshot.runtimeAvailable
             ? t("runtimeview.available")
             : t("common.offline")}
-        </div>
+        </span>
       </div>
-      <div className="grid gap-2 text-xs tabular-nums">
+      <div className="divide-y divide-border/40 text-xs tabular-nums">
         {summaryRows.map((row) => (
-          <PagePanel
+          <div
             key={row.label}
-            variant="inset"
-            className="flex items-start justify-between gap-3 px-3 py-2"
+            className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0"
           >
             <span className="text-muted">{row.label}</span>
             <span className="min-w-0 break-all text-right font-semibold text-txt">
               {row.value}
             </span>
-          </PagePanel>
+          </div>
         ))}
       </div>
     </PagePanel>
+  );
+}
+
+function RuntimeSectionItem(props: {
+  section: { key: RuntimeSectionKey; i18nKey: string };
+  active: boolean;
+  label: string;
+  meta: string;
+  count: string | null;
+  onSelect: (key: RuntimeSectionKey) => void;
+}) {
+  const { section, active, label, meta, count, onSelect } = props;
+  const control = useAgentElement<HTMLElement>({
+    id: `runtime-section-${section.key}`,
+    role: "tab",
+    label,
+    group: "runtime-sections",
+    status: active ? "active" : "inactive",
+    description: meta,
+    onActivate: () => onSelect(section.key),
+  });
+  return (
+    <SidebarContent.Item
+      ref={control.ref}
+      role="tab"
+      aria-selected={active}
+      active={active}
+      onClick={() => onSelect(section.key)}
+      aria-current={active ? "page" : undefined}
+      {...control.agentProps}
+    >
+      <SidebarContent.ItemIcon active={active}>
+        {section.key === "summary" ? "Σ" : label.charAt(0).toUpperCase()}
+      </SidebarContent.ItemIcon>
+      <span className="min-w-0 flex-1 text-left">
+        <SidebarContent.ItemTitle>{label}</SidebarContent.ItemTitle>
+        <SidebarContent.ItemDescription>{meta}</SidebarContent.ItemDescription>
+      </span>
+      {count ? <MetaPill compact>{count}</MetaPill> : null}
+    </SidebarContent.Item>
   );
 }
 
@@ -446,6 +469,12 @@ export function RuntimeView({
     void loadSnapshot({
       silent: getCached<RuntimeDebugSnapshot>(snapshotCacheKey) != null,
     });
+    // Keep the snapshot live without a manual refresh button: poll silently
+    // while the view is mounted so registration order/state stays current.
+    const interval = window.setInterval(() => {
+      void loadSnapshot({ silent: true });
+    }, 5000);
+    return () => window.clearInterval(interval);
   }, [loadSnapshot, snapshotCacheKey]);
 
   useEffect(() => {
@@ -513,6 +542,38 @@ export function RuntimeView({
   );
   useRegisterViewChatBinding(chatBinding);
 
+  const expandTop = useCallback(() => {
+    setExpandedPaths(buildInitialExpanded(rootPath, sectionData));
+  }, [rootPath, sectionData]);
+  const collapseTree = useCallback(() => {
+    setExpandedPaths(new Set([rootPath]));
+  }, [rootPath]);
+
+  const sidebarExpandControl = useAgentElement<HTMLButtonElement>({
+    id: "runtime-expand-top",
+    role: "button",
+    label: t("runtimeview.ExpandTop"),
+    group: "runtime-tree",
+    description: "Expand the top layer of the active runtime section tree",
+    onActivate: expandTop,
+  });
+  const treeCollapseControl = useAgentElement<HTMLButtonElement>({
+    id: "runtime-tree-collapse",
+    role: "button",
+    label: t("common.collapse"),
+    group: "runtime-tree",
+    description: "Collapse the active runtime section tree to its root",
+    onActivate: collapseTree,
+  });
+  const treeExpandControl = useAgentElement<HTMLButtonElement>({
+    id: "runtime-tree-expand-top",
+    role: "button",
+    label: t("runtimeview.ExpandTop"),
+    group: "runtime-tree",
+    description: "Expand the top layer of the active runtime section tree",
+    onActivate: expandTop,
+  });
+
   const runtimeSidebar = (
     <AppPageSidebar
       testId="runtime-sidebar"
@@ -520,135 +581,110 @@ export function RuntimeView({
       contentIdentity="runtime"
     >
       <SidebarPanel>
-        <PagePanel.SummaryCard compact className="mt-2 space-y-2">
-          <label
-            htmlFor={depthInputId}
-            className="flex flex-col gap-1 text-xs-tight text-muted"
+        <div className="mt-2 space-y-2">
+          <Button
+            ref={sidebarExpandControl.ref}
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={expandTop}
+            disabled={activeSection === "summary"}
+            className="h-8 w-full rounded-full text-xs-tight font-semibold"
+            {...sidebarExpandControl.agentProps}
           >
-            <span>{t("runtimeview.depth")}</span>
-            <Input
-              id={depthInputId}
-              type="number"
-              min={1}
-              max={24}
-              value={depth}
-              onChange={(event) =>
-                setDepth(
-                  Math.max(1, Math.min(24, Number(event.target.value) || 1)),
-                )
-              }
-              className="relative overflow-hidden border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] backdrop-blur-md transition-[border-color,background-color,box-shadow] duration-200 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.24),transparent)] hover:border-border/40 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_96%,transparent))] focus-within:border-accent/24 focus-within:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] h-9 rounded-sm px-3 text-sm text-txt"
-            />
-          </label>
+            {t("runtimeview.ExpandTop")}
+          </Button>
 
-          <label
-            htmlFor={arrayCapInputId}
-            className="flex flex-col gap-1 text-xs-tight text-muted"
-          >
-            <span>{t("runtimeview.arrayCap")}</span>
-            <Input
-              id={arrayCapInputId}
-              type="number"
-              min={1}
-              max={5000}
-              value={maxArrayLength}
-              onChange={(event) =>
-                setMaxArrayLength(
-                  Math.max(1, Math.min(5000, Number(event.target.value) || 1)),
-                )
-              }
-              className="relative overflow-hidden border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] backdrop-blur-md transition-[border-color,background-color,box-shadow] duration-200 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.24),transparent)] hover:border-border/40 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_96%,transparent))] focus-within:border-accent/24 focus-within:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] h-9 rounded-sm px-3 text-sm text-txt"
-            />
-          </label>
+          <details className="text-xs-tight text-muted">
+            <summary className="cursor-pointer select-none rounded-sm px-1 py-1 text-muted-strong hover:text-txt">
+              {t("nav.advanced")}
+            </summary>
+            <div className="mt-2 space-y-2 px-1">
+              <label
+                htmlFor={depthInputId}
+                className="flex flex-col gap-1 text-xs-tight text-muted"
+              >
+                <span>{t("runtimeview.depth")}</span>
+                <Input
+                  id={depthInputId}
+                  type="number"
+                  density="compact"
+                  min={1}
+                  max={24}
+                  value={depth}
+                  onChange={(event) =>
+                    setDepth(
+                      Math.max(
+                        1,
+                        Math.min(24, Number(event.target.value) || 1),
+                      ),
+                    )
+                  }
+                />
+              </label>
 
-          <label
-            htmlFor={objectCapInputId}
-            className="flex flex-col gap-1 text-xs-tight text-muted"
-          >
-            <span>{t("runtimeview.objectCap")}</span>
-            <Input
-              id={objectCapInputId}
-              type="number"
-              min={1}
-              max={5000}
-              value={maxObjectEntries}
-              onChange={(event) =>
-                setMaxObjectEntries(
-                  Math.max(1, Math.min(5000, Number(event.target.value) || 1)),
-                )
-              }
-              className="relative overflow-hidden border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] backdrop-blur-md transition-[border-color,background-color,box-shadow] duration-200 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.24),transparent)] hover:border-border/40 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_96%,transparent))] focus-within:border-accent/24 focus-within:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] h-9 rounded-sm px-3 text-sm text-txt"
-            />
-          </label>
+              <label
+                htmlFor={arrayCapInputId}
+                className="flex flex-col gap-1 text-xs-tight text-muted"
+              >
+                <span>{t("runtimeview.arrayCap")}</span>
+                <Input
+                  id={arrayCapInputId}
+                  type="number"
+                  density="compact"
+                  min={1}
+                  max={5000}
+                  value={maxArrayLength}
+                  onChange={(event) =>
+                    setMaxArrayLength(
+                      Math.max(
+                        1,
+                        Math.min(5000, Number(event.target.value) || 1),
+                      ),
+                    )
+                  }
+                />
+              </label>
 
-          <div className="grid grid-cols-2 gap-1.5 pt-0.5">
-            <Button
-              variant="outline"
-              size="sm"
-              type="button"
-              onClick={() => void loadSnapshot()}
-              disabled={loading}
-              className={
-                loading
-                  ? "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-accent/26 bg-[linear-gradient(180deg,rgba(var(--accent-rgb),0.16),rgba(var(--accent-rgb),0.07))] text-txt-strong ring-1 ring-inset ring-accent/10 hover:border-accent/42 hover:bg-[linear-gradient(180deg,rgba(var(--accent-rgb),0.2),rgba(var(--accent-rgb),0.1))] hover:text-txt-strong"
-                  : "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
-              }
-            >
-              {loading ? t("common.refreshing") : t("common.refresh")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              type="button"
-              onClick={() =>
-                setExpandedPaths(buildInitialExpanded(rootPath, sectionData))
-              }
-              className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
-              disabled={activeSection === "summary"}
-            >
-              {t("runtimeview.ExpandTop")}
-            </Button>
-          </div>
-        </PagePanel.SummaryCard>
+              <label
+                htmlFor={objectCapInputId}
+                className="flex flex-col gap-1 text-xs-tight text-muted"
+              >
+                <span>{t("runtimeview.objectCap")}</span>
+                <Input
+                  id={objectCapInputId}
+                  type="number"
+                  density="compact"
+                  min={1}
+                  max={5000}
+                  value={maxObjectEntries}
+                  onChange={(event) =>
+                    setMaxObjectEntries(
+                      Math.max(
+                        1,
+                        Math.min(5000, Number(event.target.value) || 1),
+                      ),
+                    )
+                  }
+                />
+              </label>
+            </div>
+          </details>
+        </div>
 
-        <SidebarContent.SectionLabel className="mt-3">
-          {t("runtimeview.sections")}
-        </SidebarContent.SectionLabel>
-        <ChatSearchHint
-          noun="sections"
-          query={sidebarSearch}
-          className="px-1"
-        />
-        <SidebarScrollRegion className="mt-2">
+        <SidebarScrollRegion className="mt-3">
           <div className="space-y-1.5">
-            {filteredSections.map((section) => {
-              const active = section.key === activeSection;
-              return (
-                <SidebarContent.Item
-                  key={section.key}
-                  active={active}
-                  onClick={() => setActiveSection(section.key)}
-                  aria-current={active ? "page" : undefined}
-                >
-                  <SidebarContent.ItemIcon active={active}>
-                    {section.key === "summary"
-                      ? "Σ"
-                      : t(section.i18nKey).charAt(0).toUpperCase()}
-                  </SidebarContent.ItemIcon>
-                  <span className="min-w-0 flex-1 text-left">
-                    <SidebarContent.ItemTitle>
-                      {t(section.i18nKey)}
-                    </SidebarContent.ItemTitle>
-                    <SidebarContent.ItemDescription>
-                      {sectionMeta[section.key]}
-                    </SidebarContent.ItemDescription>
-                  </span>
-                  {getSectionCount(section.key) ? (
-                    <MetaPill compact>{getSectionCount(section.key)}</MetaPill>
-                  ) : null}
-                </SidebarContent.Item>
-              );
-            })}
+            {filteredSections.map((section) => (
+              <RuntimeSectionItem
+                key={section.key}
+                section={section}
+                active={section.key === activeSection}
+                label={t(section.i18nKey)}
+                meta={sectionMeta[section.key]}
+                count={getSectionCount(section.key)}
+                onSelect={setActiveSection}
+              />
+            ))}
           </div>
         </SidebarScrollRegion>
       </SidebarPanel>
@@ -710,82 +746,74 @@ export function RuntimeView({
             <>
               <PagePanel variant="padded">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-                      {t("runtimeview.sectionLabel")}
-                    </div>
-                    <div className="mt-2 text-[2rem] font-semibold leading-tight text-txt">
-                      {t(
-                        SECTION_TAB_KEYS.find(
-                          (section) => section.key === activeSection,
-                        )?.i18nKey ?? "runtimeview.runtime",
-                      )}
-                    </div>
-                    <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
-                      {t(SECTION_DESCRIPTION_KEYS[activeSection])}
-                    </p>
+                  <div className="text-[2rem] font-semibold leading-tight text-txt">
+                    {t(
+                      SECTION_TAB_KEYS.find(
+                        (section) => section.key === activeSection,
+                      )?.i18nKey ?? "runtimeview.runtime",
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button
+                      ref={treeCollapseControl.ref}
                       variant="outline"
                       size="sm"
                       type="button"
-                      onClick={() => setExpandedPaths(new Set([rootPath]))}
-                      className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
+                      onClick={collapseTree}
+                      className="h-8 rounded-full text-xs-tight font-semibold"
+                      {...treeCollapseControl.agentProps}
                     >
                       {t("common.collapse")}
                     </Button>
                     <Button
+                      ref={treeExpandControl.ref}
                       variant="outline"
                       size="sm"
                       type="button"
-                      onClick={() =>
-                        setExpandedPaths(
-                          buildInitialExpanded(rootPath, sectionData),
-                        )
-                      }
-                      className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
+                      onClick={expandTop}
+                      className="h-8 rounded-full text-xs-tight font-semibold"
+                      {...treeExpandControl.agentProps}
                     >
                       {t("runtimeview.ExpandTop")}
                     </Button>
                   </div>
                 </div>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <PagePanel variant="inset" className="px-4 py-4">
-                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                <div className="mt-5 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <div className="text-xs-tight text-muted">
                       {t("runtimeview.path")}
                     </div>
-                    <div className="mt-2 font-mono text-sm text-txt">
+                    <div className="mt-1 font-mono text-sm text-txt">
                       {rootPath}
                     </div>
-                  </PagePanel>
-                  <PagePanel variant="inset" className="px-4 py-4">
-                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                  </div>
+                  <div>
+                    <div className="text-xs-tight text-muted">
                       {t("runtimeview.lastUpdated")}
                     </div>
-                    <div className="mt-2 text-sm font-semibold text-txt">
+                    <div className="mt-1 text-sm font-semibold text-txt">
                       {formatDateTime(snapshot.generatedAt, {
                         fallback: "n/a",
                       })}
                     </div>
-                  </PagePanel>
-                  <PagePanel variant="inset" className="px-4 py-4">
-                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                  </div>
+                  <div>
+                    <div className="text-xs-tight text-muted">
                       {t("runtimeview.depth")}
                     </div>
-                    <div className="mt-2 text-sm font-semibold text-txt">
+                    <div className="mt-1 text-sm font-semibold text-txt">
                       {depth}
                     </div>
-                  </PagePanel>
-                  <PagePanel variant="inset" className="px-4 py-4">
-                    <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+                  </div>
+                  <div>
+                    <div className="text-xs-tight text-muted">
                       {t("runtimeview.objectCap")}
                     </div>
-                    <div className="mt-2 text-sm font-semibold text-txt">
+                    <div className="mt-1 text-sm font-semibold text-txt">
                       {maxObjectEntries}
                     </div>
-                  </PagePanel>
+                  </div>
                 </div>
               </PagePanel>
 

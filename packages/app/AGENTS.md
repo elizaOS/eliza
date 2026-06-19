@@ -22,15 +22,15 @@ packages/app/
     app-config.ts            Exports APP_CONFIG, APP_BRANDING_BASE, APP_LOG_PREFIX, APP_NAMESPACE, APP_URL_SCHEME
     brand-env.ts             buildBrandEnvAliases(): maps `<envPrefix>_*` vars to canonical `ELIZA_*` (e.g. <PREFIX>_API_PORT → ELIZA_API_PORT)
     character-catalog.ts     Default character catalog (calls buildElizaCharacterCatalog from @elizaos/shared)
+    deep-link-handler.ts     App-shell deep-link dispatcher (extracted from main.tsx; pure routing logic, injected deps for testability)
     deep-link-routing.ts     Maps custom URL scheme paths to hash routes (chat, voice, lifeops, wallet, etc.)
     ios-runtime.ts           Re-exports IosRuntimeConfig helpers from @elizaos/ui
     mobile-bridges.ts        Capacitor bridge init helpers
     mobile-lifecycle.ts      App pause/resume, back-button, network lifecycle
+    model-tester-entry.tsx   Standalone model-tester entry point (served from model-tester.html)
     plugin-registrations.ts  SIDE_EFFECT_APP_MODULE_LOADERS list (feed, scape, trajectory-logger, etc.)
     sw-registration.ts       Service worker registration
     url-trust-policy.ts      Validates deep-link gateway URLs
-    components/
-      AndroidVoicePill.tsx   Android-specific voice pill component
     native/
       voice-capture.ts       Native voice capture shim
     services/
@@ -150,7 +150,7 @@ Add an entry to `SIDE_EFFECT_APP_MODULE_LOADERS` in `src/plugin-registrations.ts
 
 ### Extend deep-link routing
 
-Add a new `case` in `buildAssistantLaunchHashRoute()` (`src/deep-link-routing.ts`) or a new `switch` branch in `handleDeepLink()` (`src/main.tsx`).
+Add a new `case` in `buildAssistantLaunchHashRoute()` (`src/deep-link-routing.ts`) or a new `switch` branch in `handleDeepLink()` (`src/deep-link-handler.ts`).
 
 ### Add a Playwright e2e spec
 

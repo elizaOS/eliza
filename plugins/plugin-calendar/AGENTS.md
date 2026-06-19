@@ -43,6 +43,7 @@ src/
   api/               client-calendar.ts (side-effect client augmentation)
   components/        Calendar views + event editor (React)
   hooks/             useCalendarWeek
+  internal/          Shared utilities (normalize, format, sql helpers, errors, constants)
   ui.ts              UI entry (side-effectful)
 ```
 

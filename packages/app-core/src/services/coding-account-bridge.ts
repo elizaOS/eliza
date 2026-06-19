@@ -45,8 +45,28 @@ const CODING_AGENT_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
   "eliza.account-pool.coding-agent.v1",
 );
 
-/** Default selection strategy for new coding sub-agents — spread the load. */
-const DEFAULT_CODING_STRATEGY: Strategy = "least-used";
+const VALID_CODING_STRATEGIES = new Set<Strategy>([
+  "priority",
+  "round-robin",
+  "least-used",
+  "quota-aware",
+]);
+
+/** Default selection strategy — overridable via ELIZA_CODING_ACCOUNT_STRATEGY env var. */
+function getDefaultCodingStrategy(): Strategy {
+  const env =
+    typeof process !== "undefined"
+      ? process.env.ELIZA_CODING_ACCOUNT_STRATEGY?.trim()
+      : undefined;
+  if (!env) return "least-used";
+  if (VALID_CODING_STRATEGIES.has(env as Strategy)) return env as Strategy;
+  logger.warn(
+    `[coding-account-bridge] ignoring invalid ELIZA_CODING_ACCOUNT_STRATEGY=${JSON.stringify(
+      env,
+    )}; using least-used`,
+  );
+  return "least-used";
+}
 
 /**
  * Ordered provider candidates per coding-agent type. The first provider with an
@@ -240,7 +260,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
     async select(agentType, opts) {
       const candidates = candidatesFor(agentType);
       if (candidates.length === 0) return null;
-      const strategy = opts?.strategy ?? DEFAULT_CODING_STRATEGY;
+      const strategy = opts?.strategy ?? getDefaultCodingStrategy();
       for (const providerId of candidates) {
         const account = await pool.select({
           providerId,

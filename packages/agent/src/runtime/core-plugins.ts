@@ -57,6 +57,13 @@ export const MOBILE_VIEW_PLUGINS: readonly string[] = [
   // appears in /api/views. The plugin's de-stub + client wiring are owned by a
   // separate effort; this keeps it in the mobile load/allow set.
   "@elizaos/plugin-inbox",
+  // App-control: provides the VIEWS navigation action + the contextual
+  // view-switch evaluators. Without it, mobile chat has no way to act on
+  // "open settings" / "go to my calendar" — view switching only worked on
+  // desktop/web. Its view-nav path (VIEWS action, evaluators, available-apps
+  // provider) needs no services; the app-launch/verification/worker-host
+  // services it also registers stay idle on mobile (no registered apps).
+  "@elizaos/plugin-app-control",
 ];
 
 /**

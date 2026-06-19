@@ -1,7 +1,7 @@
 import type { OverlayAppContext } from "@elizaos/app-core";
 import { Button } from "@elizaos/app-core";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { loadPolymarketTuiState } from "./PolymarketAppView.helpers";
 import { PolymarketPositionsPanel } from "./PolymarketPositionsPanel";
@@ -49,21 +49,22 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
 
   const selectedMarketId = selectedMarket?.id;
 
+  // The view has no live subscription, so keep the market list fresh with a
+  // quiet background poll instead of a manual Refresh button.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void refresh();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [refresh]);
+
   const backLabel = t("nav.back", { defaultValue: "Back" });
-  const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
   const back = useAgentElement<HTMLButtonElement>({
     id: "action-back",
     role: "button",
     label: backLabel,
     group: "polymarket-nav",
     description: "Exit Polymarket and return to the apps list",
-  });
-  const refreshControl = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: refreshLabel,
-    group: "polymarket-nav",
-    description: "Reload Polymarket status and active markets",
   });
 
   const showEmpty = !loading && markets.length === 0;
@@ -101,19 +102,6 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
             </h1>
           </div>
         </div>
-
-        <Button
-          ref={refreshControl.ref}
-          {...refreshControl.agentProps}
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 rounded-xl text-muted hover:text-txt"
-          onClick={refresh}
-          disabled={loading}
-          aria-label={refreshLabel}
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
       </div>
 
       <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">

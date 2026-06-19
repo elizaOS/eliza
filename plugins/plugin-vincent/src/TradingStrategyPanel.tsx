@@ -38,7 +38,7 @@ export function TradingStrategyPanel({ strategy }: TradingStrategyPanelProps) {
   });
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <div className="space-y-3 rounded-2xl border border-border/18 px-4 py-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-accent" />
@@ -55,55 +55,49 @@ export function TradingStrategyPanel({ strategy }: TradingStrategyPanelProps) {
       </div>
 
       {strategy === null && (
-        <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-xl border border-border/20 bg-card/45 px-3 py-3 text-center">
-            <Settings2 className="mx-auto h-4 w-4 text-muted" />
-            <div className="mt-2 text-xs font-semibold text-muted">Unset</div>
-          </div>
-          <div className="rounded-xl border border-border/20 bg-card/45 px-3 py-3 text-center">
-            <Gauge className="mx-auto h-4 w-4 text-muted" />
-            <div className="mt-2 text-xs font-semibold text-muted">0%</div>
-          </div>
-          <div className="rounded-xl border border-border/20 bg-card/45 px-3 py-3 text-center">
-            <Repeat2 className="mx-auto h-4 w-4 text-muted" />
-            <div className="mt-2 text-xs font-semibold text-muted">Idle</div>
-          </div>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-1 text-xs font-semibold text-muted">
+          <span className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4" />
+            Unset
+          </span>
+          <span className="flex items-center gap-2">
+            <Gauge className="h-4 w-4" />
+            0%
+          </span>
+          <span className="flex items-center gap-2">
+            <Repeat2 className="h-4 w-4" />
+            Idle
+          </span>
         </div>
       )}
 
       {strategy !== null && (
         <>
-          <div className="grid gap-2 sm:grid-cols-4">
-            <div className="rounded-xl border border-accent/20 bg-accent/10 px-3 py-3">
-              <Settings2 className="h-4 w-4 text-accent" />
-              <div className="mt-2 truncate text-xs font-semibold text-txt">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-1 text-xs font-semibold">
+            <span className="flex items-center gap-2 text-accent">
+              <Settings2 className="h-4 w-4" />
+              <span className="truncate text-txt">
                 {strategy.venues.join(" + ") || "Venue"}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/20 bg-card/45 px-3 py-3">
-              <Repeat2 className="h-4 w-4 text-muted" />
-              <div className="mt-2 text-xs font-semibold tabular-nums text-txt">
+              </span>
+            </span>
+            <span className="flex items-center gap-2 text-muted">
+              <Repeat2 className="h-4 w-4" />
+              <span className="tabular-nums text-txt">
                 {strategy.intervalSeconds}s
-              </div>
-            </div>
-            <div
-              className={`rounded-xl border px-3 py-3 ${
-                strategy.dryRun
-                  ? "border-warn/30 bg-warn/10 text-warn"
-                  : "border-ok/25 bg-ok/10 text-ok"
-              }`}
+              </span>
+            </span>
+            <span
+              className={`flex items-center gap-2 ${strategy.dryRun ? "text-warn" : "text-ok"}`}
             >
               <Gauge className="h-4 w-4" />
-              <div className="mt-2 text-xs font-semibold">
-                {strategy.dryRun ? "Dry" : "Live"}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/20 bg-card/45 px-3 py-3">
-              <Activity className="h-4 w-4 text-muted" />
-              <div className="mt-2 text-xs font-semibold tabular-nums text-txt">
+              {strategy.dryRun ? "Dry" : "Live"}
+            </span>
+            <span className="flex items-center gap-2 text-muted">
+              <Activity className="h-4 w-4" />
+              <span className="tabular-nums text-txt">
                 {paramEntries.length}
-              </div>
-            </div>
+              </span>
+            </span>
           </div>
 
           <div className="flex flex-wrap gap-2">

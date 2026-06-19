@@ -1576,6 +1576,20 @@ export function SettingsPanel({
                     </span>
                   </div>
                 </div>
+                <div className="od-settings-card">
+                  <CardTitle icon={ICON_WRENCH}>Inference Mode</CardTitle>
+                  <Sub>
+                    Force all model slots to use only local inference. Disables
+                    cloud fallback entirely — requests fail if a local model is
+                    not available for that slot.
+                  </Sub>
+                  <div className="od-settings-hint" style={{ marginTop: 6 }}>
+                    Set <code>ELIZA_LOCAL_ONLY=1</code> in the agent's
+                    environment to enforce this. It is read by the
+                    local-inference router on boot, forces every slot to local,
+                    and survives restarts.
+                  </div>
+                </div>
                 <div className="od-settings-note">
                   This agent's model map (default / utility / vision / research
                   endpoints and fallback chains) is owned by the eliza runtime,

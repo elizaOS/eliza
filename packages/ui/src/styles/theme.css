@@ -3,7 +3,7 @@
      stragglers that still reference it don't render blue. The Eliza Cloud
      palette is black + white + orange accent only. */
   --brand-blue: rgba(0, 0, 0, 0.6);
-  --brand-orange: #ff5800;
+  --brand-orange: #ff8a24;
   --brand-black: #000000;
   --brand-white: #ffffff;
   --sky-0: rgba(0, 0, 0, 0.8);

@@ -20,13 +20,11 @@ import {
   ArrowLeftRight,
   BarChart3,
   CheckCircle2,
-  CircleDot,
   Copy,
   EyeOff,
   Image as ImageIcon,
   Layers3,
   type LucideIcon,
-  RefreshCw,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -67,6 +65,7 @@ const SUPPORTED_WALLET_CHAINS = Object.keys(ALL_INVENTORY_FILTERS);
 
 const DASHBOARD_WINDOWS: DashboardWindow[] = ["24h", "7d", "30d"];
 const HIDDEN_TOKEN_IDS_KEY = "eliza:wallet:hidden-token-ids:v1";
+const WALLET_REFRESH_INTERVAL_MS = 20_000;
 interface InventoryPositionAsset {
   id: string;
   kind: "token" | "nft";
@@ -354,9 +353,9 @@ function TokenPerformance({
   const width =
     maxAbsPnl > 0 ? Math.max(18, (Math.abs(pnl) / maxAbsPnl) * 56) : 18;
   const TrendIcon = pnl >= 0 ? TrendingUp : TrendingDown;
-  const tone = pnl === 0 ? "text-muted" : pnl > 0 ? "text-ok" : "text-danger";
+  const tone = pnl === 0 ? "text-muted" : pnl > 0 ? "text-txt" : "text-danger";
   const barTone =
-    pnl === 0 ? "bg-border" : pnl > 0 ? "bg-ok/80" : "bg-danger/80";
+    pnl === 0 ? "bg-border" : pnl > 0 ? "bg-txt/70" : "bg-danger/80";
 
   return (
     <span className="flex min-w-[4.5rem] flex-col items-end gap-1">
@@ -412,7 +411,7 @@ function ChainLogoBadge({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg shadow-sm ring-2 ring-bg",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg ring-2 ring-bg",
         className,
       )}
       style={{ width: size, height: size }}
@@ -469,12 +468,12 @@ function allocationToneClass(index: number): string {
   return index === 0
     ? "bg-accent"
     : index === 1
-      ? "bg-ok"
+      ? "bg-accent/70"
       : index === 2
-        ? "bg-warn"
+        ? "bg-accent/45"
         : index === 3
-          ? "bg-danger"
-          : "bg-muted";
+          ? "bg-muted/60"
+          : "bg-muted/35";
 }
 
 function AssetAllocationStrip({
@@ -510,7 +509,7 @@ function AssetAllocationStrip({
           {allocationRows.slice(0, 3).map((row, index) => (
             <div
               key={tokenId(row)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-bg/35 px-2.5 py-1 text-[0.68rem] font-medium text-txt"
+              className="inline-flex items-center gap-1.5 text-[0.68rem] font-medium text-txt"
             >
               <span
                 className={cn(
@@ -555,7 +554,7 @@ function PortfolioMoverRow({
       : 18;
 
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl bg-bg/35 px-3 py-2.5">
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-1 py-2">
       <TokenIdentityIcon row={mover.row} size={34} />
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold text-txt">
@@ -565,7 +564,7 @@ function PortfolioMoverRow({
           <div
             className={cn(
               "h-full rounded-full",
-              isGain ? "bg-ok/85" : "bg-danger/85",
+              isGain ? "bg-txt/70" : "bg-danger/85",
             )}
             style={{ width: `${width}%` }}
           />
@@ -574,7 +573,7 @@ function PortfolioMoverRow({
       <div
         className={cn(
           "shrink-0 text-right font-mono text-xs font-semibold",
-          isGain ? "text-ok" : "text-danger",
+          isGain ? "text-txt" : "text-danger",
         )}
       >
         {formatSignedBnb(mover.realizedPnlBnb)}
@@ -596,16 +595,16 @@ function PortfolioMoverColumn({
 }) {
   return (
     <div className="min-w-0 space-y-2">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted">
+      <div className="flex items-center gap-2 text-sm font-semibold text-txt">
         {tone === "gain" ? (
-          <TrendingUp className="h-3.5 w-3.5 text-ok" />
+          <TrendingUp className="h-3.5 w-3.5 text-muted" />
         ) : (
           <TrendingDown className="h-3.5 w-3.5 text-danger" />
         )}
         {title}
       </div>
       {movers.length > 0 ? (
-        <div className="space-y-2">
+        <div className="space-y-1">
           {movers.map((mover) => (
             <PortfolioMoverRow
               key={`${tokenId(mover.row)}:${mover.realizedPnlBnb}`}
@@ -615,7 +614,7 @@ function PortfolioMoverColumn({
           ))}
         </div>
       ) : (
-        <div className="flex h-[3.75rem] items-center rounded-2xl bg-bg/25 px-3 text-xs-tight text-muted">
+        <div className="flex h-[3.75rem] items-center px-1 text-xs-tight text-muted">
           None
         </div>
       )}
@@ -661,15 +660,10 @@ function PortfolioMoversPanel({
   if (movers.length === 0) {
     if (marketOverview?.movers.length) {
       return (
-        <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-            Market-wide
-          </div>
-          <MarketMoverList
-            movers={marketOverview.movers}
-            source={marketOverview.sources.movers}
-          />
-        </div>
+        <MarketMoverList
+          movers={marketOverview.movers}
+          source={marketOverview.sources.movers}
+        />
       );
     }
 
@@ -745,11 +739,9 @@ function MarketSourceBadge({ source }: { source: WalletMarketOverviewSource }) {
       href={source.providerUrl}
       target="_blank"
       rel="noreferrer"
-      className="transition-opacity hover:opacity-80"
+      className="text-[0.68rem] font-medium text-muted transition-colors hover:text-txt"
     >
-      <span className="inline-flex items-center rounded-full border border-border/35 bg-bg/45 px-2.5 py-1 text-[0.68rem] font-semibold text-txt">
-        {source.providerName}
-      </span>
+      {source.providerName}
     </a>
   );
 }
@@ -793,14 +785,12 @@ function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
   const isPositive = snapshot.change24hPct >= 0;
 
   return (
-    <div className="min-w-0 rounded-[26px] border border-border/30 bg-bg/40 p-4">
+    <div className="min-w-0 rounded-[26px] bg-bg/40 p-4">
       <div className="flex items-center gap-3">
         <MarketAvatar imageUrl={snapshot.imageUrl} label={snapshot.symbol} />
         <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-            {snapshot.symbol}
-          </div>
-          <div className="truncate text-sm font-medium text-txt">
+          <div className="text-sm font-semibold text-txt">{snapshot.symbol}</div>
+          <div className="truncate text-xs-tight text-muted">
             {snapshot.name}
           </div>
         </div>
@@ -812,7 +802,7 @@ function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
         <div
           className={cn(
             "shrink-0 text-sm font-semibold",
-            isPositive ? "text-ok" : "text-danger",
+            isPositive ? "text-txt" : "text-danger",
           )}
         >
           {formatPercentDelta(snapshot.change24hPct)}
@@ -868,7 +858,7 @@ function MarketMoverList({
         return (
           <div
             key={mover.id}
-            className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/35 px-3 py-3"
+            className="flex min-w-0 items-center gap-3 px-1 py-2.5"
           >
             <MarketAvatar imageUrl={mover.imageUrl} label={mover.symbol} />
             <div className="min-w-0 flex-1">
@@ -881,7 +871,7 @@ function MarketMoverList({
                 </span>
               </div>
               {mover.marketCapRank !== null ? (
-                <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.08em] text-muted">
+                <div className="mt-1 text-[0.68rem] font-medium text-muted">
                   Cap rank #{mover.marketCapRank}
                 </div>
               ) : null}
@@ -893,7 +883,7 @@ function MarketMoverList({
               <div
                 className={cn(
                   "text-xs font-semibold",
-                  isPositive ? "text-ok" : "text-danger",
+                  isPositive ? "text-txt" : "text-danger",
                 )}
               >
                 {formatPercentDelta(mover.change24hPct)}
@@ -1124,7 +1114,7 @@ function PnlChart({
     })
     .join(" ");
   const latest = values[values.length - 1];
-  const stroke = latest >= 0 ? "rgb(var(--ok-rgb))" : "rgb(var(--danger-rgb))";
+  const stroke = latest >= 0 ? "var(--muted-strong)" : "var(--danger)";
 
   return (
     <svg
@@ -1160,12 +1150,8 @@ function SummaryChip({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium",
-        tone === "gain"
-          ? "border-ok/30 bg-ok/10 text-ok"
-          : tone === "loss"
-            ? "border-danger/30 bg-danger/10 text-danger"
-            : "border-border/35 bg-bg/35 text-txt",
+        "inline-flex items-center gap-2 rounded-full bg-bg/45 px-3 py-1.5 text-sm font-medium",
+        tone === "loss" ? "text-danger" : "text-txt",
       )}
       title={title}
     >
@@ -1216,10 +1202,8 @@ function WalletRailAddress({
       ref={ref}
       type="button"
       className={cn(
-        "group inline-flex min-w-0 items-center gap-2 rounded-full border px-2.5 py-1.5 text-left transition-colors",
-        address
-          ? "border-border/35 bg-bg/40 text-txt hover:bg-bg/65"
-          : "border-border/25 bg-bg/25 text-muted",
+        "group inline-flex min-w-0 items-center gap-2 rounded-full px-2.5 py-1.5 text-left transition-colors",
+        address ? "text-txt hover:bg-bg/55" : "text-muted",
       )}
       onClick={handleCopy}
       disabled={!address}
@@ -1239,7 +1223,7 @@ function WalletRailAddress({
           />
         ))}
       </span>
-      <span className="shrink-0 text-[0.68rem] font-semibold uppercase text-muted">
+      <span className="shrink-0 text-[0.68rem] font-medium text-muted">
         {label}
       </span>
       <span
@@ -1252,7 +1236,7 @@ function WalletRailAddress({
       </span>
       {address ? (
         copied ? (
-          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-ok" />
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-accent" />
         ) : (
           <Copy className="h-3.5 w-3.5 shrink-0 text-muted transition-colors group-hover:text-txt" />
         )
@@ -1272,19 +1256,15 @@ function WalletConnectionChip({
 }) {
   return (
     <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.68rem] font-semibold uppercase",
-        ready
-          ? "border-ok/25 bg-ok/10 text-ok"
-          : "border-warn/25 bg-warn/10 text-warn",
-      )}
+      className="inline-flex items-center gap-1.5 text-[0.68rem] font-medium text-muted"
       title={`${label} ${ready ? "ready" : "needs RPC"}`}
     >
-      {ready ? (
-        <CheckCircle2 className="h-3 w-3" />
-      ) : (
-        <AlertTriangle className="h-3 w-3" />
-      )}
+      <span
+        className={cn(
+          "h-1.5 w-1.5 rounded-full",
+          ready ? "bg-muted/60" : "bg-warn",
+        )}
+      />
       {label}
     </span>
   );
@@ -1292,15 +1272,14 @@ function WalletConnectionChip({
 
 function WalletChainCluster() {
   return (
-    <span className="flex min-w-0 flex-wrap gap-1.5">
+    <span className="flex shrink-0 -space-x-1.5">
       {SUPPORTED_WALLET_CHAINS.map((chain) => (
-        <span
+        <ChainLogoBadge
           key={chain}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border/25 bg-bg/35 px-2 py-1 text-[0.65rem] font-semibold uppercase text-muted"
-        >
-          <ChainLogoBadge chain={chain} size={16} className="ring-1 ring-bg" />
-          {chain === "ethereum" ? "ETH" : chain === "solana" ? "SOL" : chain}
-        </span>
+          chain={chain}
+          size={18}
+          className="ring-1 ring-bg"
+        />
       ))}
     </span>
   );
@@ -1338,23 +1317,16 @@ function WalletProviderDots({
 }: {
   walletConfig: WalletConfigStatus | null;
 }) {
-  const evmReady = Boolean(walletConfig?.evmBalanceReady);
-  const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
+  const allReady =
+    Boolean(walletConfig?.evmBalanceReady) &&
+    Boolean(walletConfig?.solanaBalanceReady);
   return (
-    <span className="inline-flex items-center -space-x-1">
-      <span
-        className={cn(
-          "h-2.5 w-2.5 rounded-full ring-2 ring-bg",
-          evmReady ? "bg-ok" : "bg-warn",
-        )}
-      />
-      <span
-        className={cn(
-          "h-2.5 w-2.5 rounded-full ring-2 ring-bg",
-          solanaReady ? "bg-ok" : "bg-warn",
-        )}
-      />
-    </span>
+    <span
+      className={cn(
+        "h-2 w-2 rounded-full",
+        allReady ? "bg-muted/60" : "bg-warn",
+      )}
+    />
   );
 }
 
@@ -1386,7 +1358,7 @@ function WalletRailRpcButton({
     <button
       ref={ref}
       type="button"
-      className="inline-flex h-9 items-center gap-2 rounded-full border border-border/35 bg-bg/40 px-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/65"
+      className="inline-flex h-9 items-center gap-2 rounded-full bg-bg/45 px-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/65"
       onClick={onOpenSettings}
       title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
       aria-label="Open RPC settings"
@@ -1403,35 +1375,19 @@ function WalletRailAccount({
   portfolioValueUsd,
   walletConfig,
   onOpenSettings,
-  onRefresh,
-  refreshing,
 }: {
   addresses: { evmAddress: string | null; solanaAddress: string | null };
   portfolioValueUsd: number;
   walletConfig: WalletConfigStatus | null;
   onOpenSettings: () => void;
-  onRefresh: () => void;
-  refreshing: boolean;
 }) {
-  const { ref: refreshRef, agentProps: refreshAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "account-refresh",
-      role: "button",
-      label: "Refresh wallet",
-      group: "wallet-account",
-      status: refreshing ? "active" : undefined,
-      description: "Reload wallet balances, NFTs, and trading data",
-    });
   const evmReady = Boolean(walletConfig?.evmBalanceReady);
   const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-4">
-        <div className="relative flex h-16 w-16 items-center justify-center rounded-[24px] border border-border/30 bg-bg/45">
+        <div className="relative flex h-16 w-16 items-center justify-center rounded-[24px] bg-bg/55">
           <Wallet className="h-7 w-7 text-accent" />
-          <span className="absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-bg ring-2 ring-bg">
-            <CircleDot className="h-4 w-4 text-ok" />
-          </span>
         </div>
         <div className="min-w-0 flex-1 basis-64">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -1450,22 +1406,6 @@ function WalletRailAccount({
             walletConfig={walletConfig}
             onOpenSettings={onOpenSettings}
           />
-          <Button
-            ref={refreshRef}
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0 rounded-full border border-border/35 bg-bg/40 hover:bg-bg/65"
-            onClick={onRefresh}
-            disabled={refreshing}
-            aria-label="Refresh wallet"
-            title="Refresh wallet"
-            {...refreshAgentProps}
-          >
-            <RefreshCw
-              className={cn("h-3.5 w-3.5", refreshing && "animate-spin")}
-            />
-          </Button>
         </div>
       </div>
       <WalletAddressCluster addresses={addresses} />
@@ -1496,7 +1436,7 @@ function WalletRailTabButton({
       type="button"
       className={cn(
         "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)_-_4px)] px-3 py-2 text-sm font-semibold transition-colors",
-        active ? "bg-bg text-txt shadow-sm" : "text-muted hover:text-txt",
+        active ? "bg-bg text-txt" : "text-muted hover:text-txt",
       )}
       onClick={() => onSelect(tab.id)}
       aria-label={tab.label}
@@ -1689,8 +1629,6 @@ function WalletHoldingsSection({
   profile,
   onHideToken,
   onOpenRpcSettings,
-  onRefresh,
-  refreshing,
   walletEnabled,
   onEnableWallet,
 }: {
@@ -1703,8 +1641,6 @@ function WalletHoldingsSection({
   profile: WalletTradingProfileResponse | null;
   onHideToken: (row: TokenRow) => void;
   onOpenRpcSettings: () => void;
-  onRefresh: () => void;
-  refreshing: boolean;
   walletEnabled: boolean | null;
   onEnableWallet: () => void;
 }) {
@@ -1752,15 +1688,13 @@ function WalletHoldingsSection({
   return (
     <section
       data-testid="wallets-sidebar"
-      className="rounded-[28px] border border-border/30 bg-bg/45 px-5 py-5 shadow-sm md:px-6"
+      className="rounded-[28px] bg-bg/40 px-5 py-5 md:px-6"
     >
       <WalletRailAccount
         addresses={addresses}
         portfolioValueUsd={totalUsd}
         walletConfig={walletConfig}
         onOpenSettings={onOpenRpcSettings}
-        onRefresh={onRefresh}
-        refreshing={refreshing}
       />
       <div className="mt-4 space-y-4">
         {visibleRows.length > 0 ? (
@@ -1778,7 +1712,7 @@ function WalletHoldingsSection({
           </Button>
         ) : null}
 
-        <div className="grid min-w-0 grid-cols-3 rounded-2xl border border-border/25 bg-bg/45 p-1">
+        <div className="grid min-w-0 grid-cols-3 rounded-2xl bg-bg/45 p-1">
           {tabs.map((tab) => (
             <WalletRailTabButton
               key={tab.id}
@@ -1863,8 +1797,8 @@ function DashboardSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[28px] border border-border/30 bg-bg/45 px-5 py-5 md:px-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-txt">
           <Icon className="h-4 w-4 text-accent" />
           {title}
@@ -1904,7 +1838,7 @@ function ActivityLog({
                 ? "bg-danger/10 text-danger"
                 : "bg-bg/55 text-muted";
         const body = (
-          <div className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/35 px-3 py-2.5 text-sm transition-colors hover:bg-bg/55">
+          <div className="flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 text-sm transition-colors hover:bg-bg/55">
             <span
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
@@ -1998,11 +1932,11 @@ function LpPositionsPanel({
   }
 
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-1">
       {positions.map((position) => (
         <div
           key={position.id}
-          className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/35 p-3"
+          className="flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55"
         >
           {position.imageUrl ? (
             <img
@@ -2148,6 +2082,27 @@ export function InventoryView() {
     void loadTradingProfile();
   }, [loadTradingProfile]);
 
+  // No manual refresh control: keep balances, NFTs, trading profile, and
+  // market data fresh with a quiet background poll while the view is mounted.
+  useEffect(() => {
+    if (walletEnabled === false) return;
+    const interval = window.setInterval(() => {
+      void loadWalletConfig();
+      void loadBalances();
+      void loadNfts();
+      void loadTradingProfile();
+      void loadMarketOverview();
+    }, WALLET_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [
+    loadBalances,
+    loadMarketOverview,
+    loadNfts,
+    loadTradingProfile,
+    loadWalletConfig,
+    walletEnabled,
+  ]);
+
   const inventoryData = useInventoryData({
     walletBalances,
     walletAddresses,
@@ -2206,20 +2161,6 @@ export function InventoryView() {
     [hiddenTokenIds, setActionNotice],
   );
 
-  const handleRefresh = useCallback(() => {
-    void loadWalletConfig();
-    void loadBalances();
-    void loadNfts();
-    void loadTradingProfile();
-    void loadMarketOverview();
-  }, [
-    loadBalances,
-    loadMarketOverview,
-    loadNfts,
-    loadTradingProfile,
-    loadWalletConfig,
-  ]);
-
   const handleOpenRpcSettings = useCallback(() => {
     setTab("settings");
     if (typeof window !== "undefined") {
@@ -2256,13 +2197,6 @@ export function InventoryView() {
           profile={tradingProfile}
           onHideToken={handleHideToken}
           onOpenRpcSettings={handleOpenRpcSettings}
-          onRefresh={handleRefresh}
-          refreshing={
-            walletLoading ||
-            walletNftsLoading ||
-            tradingProfileLoading ||
-            marketOverviewLoading
-          }
           walletEnabled={walletEnabled}
           onEnableWallet={handleEnableWallet}
         />
@@ -2433,7 +2367,7 @@ export function InventoryTuiView() {
         padding: 20,
       }}
     >
-      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+      <div style={{ color: "#ff8a24", marginBottom: 4 }}>
         elizaos://wallet --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
@@ -2451,7 +2385,7 @@ export function InventoryTuiView() {
         <section
           aria-label="Wallet inventory"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid rgba(148,163,184,0.25)",
             borderRadius: 6,
             padding: 16,
             minHeight: 420,
@@ -2473,8 +2407,8 @@ export function InventoryTuiView() {
               disabled={loading}
               style={{
                 background: "transparent",
-                color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
+                color: "#ff8a24",
+                border: "1px solid rgba(148,163,184,0.35)",
                 borderRadius: 4,
                 padding: "4px 8px",
                 cursor: loading ? "not-allowed" : "pointer",
@@ -2504,7 +2438,7 @@ export function InventoryTuiView() {
                 gridTemplateColumns: "4ch minmax(8ch, 1fr) 10ch",
                 gap: 10,
                 borderTop:
-                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+                  index === 0 ? "none" : "1px solid rgba(148,163,184,0.18)",
                 padding: "8px 0",
               }}
             >
@@ -2515,7 +2449,7 @@ export function InventoryTuiView() {
                 {token.symbol}{" "}
                 <span style={{ color: "#64748b" }}>{token.chain}</span>
               </span>
-              <span style={{ color: "#a7f3d0", textAlign: "right" }}>
+              <span style={{ color: "#ff8a24", textAlign: "right" }}>
                 {formatUsd(token.valueUsd)}
               </span>
               <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
@@ -2528,7 +2462,7 @@ export function InventoryTuiView() {
         <section
           aria-label="Wallet market and NFTs"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid rgba(148,163,184,0.25)",
             borderRadius: 6,
             padding: 16,
             minHeight: 420,
@@ -2543,7 +2477,7 @@ export function InventoryTuiView() {
             .slice(0, 4)
             .map((mover) => (
               <div key={mover.id} style={{ padding: "4px 0" }}>
-                <span style={{ color: "#a7f3d0" }}>{mover.symbol}</span>{" "}
+                <span style={{ color: "#ff8a24" }}>{mover.symbol}</span>{" "}
                 <span style={{ color: "#94a3b8" }}>
                   {formatUsd(mover.priceUsd)}
                 </span>{" "}
@@ -2551,7 +2485,7 @@ export function InventoryTuiView() {
               </div>
             ))}
 
-          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>nfts</div>
+          <div style={{ color: "#ff8a24", margin: "18px 0 8px" }}>nfts</div>
           {nfts.slice(0, 4).map((nft) => (
             <div key={nft.identity} style={{ padding: "4px 0" }}>
               <span style={{ color: "#64748b" }}>{nft.chain}</span> {nft.name}

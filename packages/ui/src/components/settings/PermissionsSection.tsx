@@ -295,7 +295,7 @@ function mobileSetupRequestTarget(action: MobileSignalsSetupAction) {
 
 function mobileSetupActionBadge(action: MobileSignalsSetupAction) {
   if (action.status === "ready") {
-    return { label: "Ready", className: "border-success/30 text-success" };
+    return { label: "Ready", className: "border-ok/30 text-ok" };
   }
   if (action.status === "unavailable") {
     return { label: "Unavailable", className: "border-border/50 text-muted" };
@@ -551,13 +551,11 @@ function DesktopPermissionsView() {
     useBootConfig();
   const {
     handleOpenSettings,
-    handleRefresh,
     handleRequest,
     handleToggleShell,
     loading,
     permissions,
     platform,
-    refreshing,
     shellEnabled,
   } = useDesktopPermissionsState();
 
@@ -615,26 +613,6 @@ function DesktopPermissionsView() {
         description={t(copy.systemDescription.key, {
           defaultValue: copy.systemDescription.defaultValue,
         })}
-        action={
-          <SettingsActionButton
-            agentId="perm-system-refresh"
-            agentLabel="Refresh system permissions"
-            agentGroup="permissions"
-            agentStatus={refreshing ? "loading" : undefined}
-            variant="outline"
-            size="sm"
-            data-testid="permissions-refresh-button"
-            className="h-9 rounded-sm px-3 text-xs font-semibold"
-            onClick={handleRefresh}
-            disabled={refreshing}
-          >
-            {refreshing
-              ? t("common.refreshing", {
-                  defaultValue: "Refreshing...",
-                })
-              : t("common.refresh", { defaultValue: "Refresh" })}
-          </SettingsActionButton>
-        }
         footer={t(copy.grantNote.key, {
           defaultValue: copy.grantNote.defaultValue,
         })}

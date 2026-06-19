@@ -41,8 +41,16 @@ src/
   index.ts                      Plugin entry; exports healthPlugin + all public surfaces
   actions/
     index.ts                    Health/screen-time action factories and runner adapters for host plugins
+    health.ts                   Health action implementation
+    owner-health.ts             Owner health action factory
+    owner-screentime.ts         Owner screen-time action factory
+    screen-time.ts              Screen-time action implementation
   anchors/
     index.ts                    Re-exports HEALTH_ANCHORS + registerHealthAnchors from connectors/
+  components/
+    health/
+      HealthView.tsx            React UI component for health data display
+      health-view-bundle.ts     Bundle entry for the health view
   connectors/
     index.ts                    registerHealthConnectors / registerHealthAnchors / registerHealthBusFamilies;
                                   HEALTH_CONNECTOR_KINDS, HEALTH_ANCHORS, HEALTH_BUS_FAMILIES constants
@@ -73,12 +81,16 @@ src/
     health-provider-registry.ts HealthProviderSpec registry; getHealthProviderSpec / setHealthProviderSpec
     health-records.ts           createLifeOpsHealth* record factories
     service-normalize-health.ts normalizeHealthSignal — normalizes inbound health-signal payloads
+  providers/
+    index.ts                    Barrel: health provider exports
+    health.ts                   createHealthProvider factory
   routes/
     index.ts                    Re-exports health-owned route factories
     sleep.ts                    createHealthSleepRouteHandler for sleep history / regularity / baseline
   screen-time/
     index.ts                    Screen-time exports and LifeOpsScreenTimeSummaryPayload contract
     builders.ts                 Pure summary / breakdown / metrics / visible-bucket builders
+    mobile-signal-setup.ts      Mobile signal setup helpers
     mobile-signals.ts           Android Usage Stats / iOS Screen Time signal parsing and data-source status helpers
     ranges.ts                   Screen-time range labels / current+prior windows / history day enumeration
     social-taxonomy.ts          Screen-time target classification by category / device / service / browser
@@ -96,6 +108,9 @@ src/
     sleep-service.ts            createHealthSleepServiceMethods for history / regularity / baseline DTOs
     sleep-wake-events.ts        Sleep/wake event detection helpers
     source-reliability.ts       resolveActivitySignalReliability — per-source confidence weights
+  ui/
+    index.ts                    Barrel: UI assistant command exports
+    assistant-commands.ts       UI assistant command helpers
   util/
     index.ts                    Barrel: re-exports time.ts + time-util.ts
     time.ts                     getZonedDateParts — IANA timezone date arithmetic
@@ -108,8 +123,9 @@ src/
 
 ```bash
 bun run --cwd plugins/plugin-health test          # vitest run
-bun run --cwd plugins/plugin-health build         # build:js (tsup) + build:types (tsc)
+bun run --cwd plugins/plugin-health build         # build:js (tsup) + build:views (vite) + build:types (tsc)
 bun run --cwd plugins/plugin-health build:js      # tsup only
+bun run --cwd plugins/plugin-health build:views   # vite build for UI views
 bun run --cwd plugins/plugin-health build:types   # tsc --noCheck
 bun run --cwd plugins/plugin-health clean         # rm -rf dist
 bun run --cwd plugins/plugin-health lint          # biome check --write --unsafe
@@ -125,7 +141,8 @@ bun run --cwd plugins/plugin-health lint:check    # biome check (read-only)
 | `ELIZA_HEALTHKIT_CLI_PATH` | `health-bridge/health-bridge.ts` | Path to the HealthKit native CLI helper (darwin). |
 | `ELIZA_GOOGLE_FIT_ACCESS_TOKEN` | `health-bridge/health-bridge.ts` | Access token for the Google Fit REST fallback. |
 | `ELIZA_TEST_HEALTH_BACKEND` | `health-bridge/health-bridge.ts` | Force a specific backend (test override). |
-| `ELIZA_MOCK_GOOGLE_BASE` / `ELIZA_MOCK_HEALTH_BASE` / `ELIZA_MOCK_<PROVIDER>_BASE` | `health-bridge/health-bridge.ts`, `health-bridge/health-connectors.ts` | Loopback-only mock API bases for tests (`<PROVIDER>` upper-cased). |
+| `ELIZA_MOCK_GOOGLE_BASE` | `health-bridge/health-bridge.ts` | Loopback-only mock API base for Google Fit tests. |
+| `ELIZA_MOCK_HEALTH_BASE` / `ELIZA_MOCK_<PROVIDER>_BASE` | `health-bridge/health-connectors.ts` | Loopback-only mock API bases for tests (`<PROVIDER>` upper-cased); `ELIZA_MOCK_HEALTH_BASE` is the fallback when no provider-specific override is set. |
 
 The OAuth-dir root is resolved via `resolveOAuthDir` from `@elizaos/core`, so its own env knobs are owned upstream, not here.
 

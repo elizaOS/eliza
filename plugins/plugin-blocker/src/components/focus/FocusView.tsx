@@ -12,7 +12,6 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SelfControlStatus } from "../../services/website-blocker/index.ts";
@@ -63,7 +62,7 @@ function defaultReleaseBlock(): Promise<unknown> {
 }
 
 // ---------------------------------------------------------------------------
-// Styling — dark theme, CSS vars, orange accent only.
+// Styling — light surface, CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "focus-view-styles";
@@ -85,21 +84,21 @@ const FOCUS_VIEW_CSS = `
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .focus-view-btn-primary {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border: 1px solid var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: #ffffff;
+  border: 1px solid var(--primary, #ff8a24);
 }
 .focus-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
 }
 .focus-view-btn-neutral {
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(255, 255, 255, 0.7));
+  color: var(--foreground, #0a1220);
+  border: 1px solid var(--border, rgba(10, 18, 32, 0.08));
 }
 .focus-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a1220) 6%, transparent);
 }
 .focus-view-btn:disabled {
   opacity: 0.5;
@@ -125,8 +124,8 @@ const containerStyle: CSSProperties = {
   padding: 24,
   height: "100%",
   boxSizing: "border-box",
-  background: "var(--background, #0a0a0a)",
-  color: "var(--foreground, #f5f5f5)",
+  background: "var(--background, #eef8ff)",
+  color: "var(--foreground, #0a1220)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -143,14 +142,21 @@ const headerRowStyle: CSSProperties = {
   gap: 12,
 };
 
+const titleRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
 const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
 const h2Style: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600 };
 
+// A panel is a single light, flat field — at most one hairline edge, no
+// card-in-card boxes or shadows.
 const cardStyle: CSSProperties = {
   padding: 16,
-  borderRadius: 8,
-  border: "1px solid var(--border, rgba(255,255,255,0.08))",
-  background: "var(--surface, rgba(255,255,255,0.02))",
+  borderRadius: 12,
+  background: "var(--surface, rgba(255, 255, 255, 0.7))",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -171,47 +177,42 @@ const listStyle: CSSProperties = {
   gap: 6,
 };
 
+// Borderless tinted text chips — orange wash, no box edge.
 const chipStyle: CSSProperties = {
-  padding: "4px 10px",
+  padding: "3px 10px",
   borderRadius: 6,
-  border: "1px solid var(--border, rgba(255,255,255,0.12))",
-  background: "var(--surface, rgba(255,255,255,0.03))",
+  background: "rgba(255, 138, 36, 0.08)",
+  color: "var(--foreground, #0a1220)",
   fontSize: 12,
 };
+
+type StatusTone = "active" | "idle" | "permission" | "error";
+
+const STATUS_DOT_COLOR: Record<StatusTone, string> = {
+  active: "#3fa34d",
+  idle: "rgba(10, 18, 32, 0.35)",
+  permission: "#ff8a24",
+  error: "#ef4444",
+};
+
+function StatusDot({ tone }: { tone: StatusTone }): ReactNode {
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: 9,
+        height: 9,
+        borderRadius: "50%",
+        flex: "0 0 auto",
+        background: STATUS_DOT_COLOR[tone],
+      }}
+    />
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Agent-instrumented control buttons (hooks cannot run inside .map()).
 // ---------------------------------------------------------------------------
-
-function RefreshButton({
-  onActivate,
-  disabled,
-}: {
-  onActivate: () => void;
-  disabled: boolean;
-}): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "focus-refresh",
-    role: "button",
-    label: "Refresh focus status",
-    group: "focus-toolbar",
-    description: "Reload website blocking status",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="focus-view-btn focus-view-btn-neutral"
-      onClick={onActivate}
-      disabled={disabled}
-      aria-label="Refresh focus status"
-      {...agentProps}
-    >
-      <RefreshCw className="h-4 w-4" aria-hidden />
-    </button>
-  );
-}
 
 function ReleaseButton({
   onActivate,
@@ -311,15 +312,13 @@ function OverrideView({
 }): ReactNode {
   return (
     <div style={containerStyle} data-testid="focus-overrides">
-      <header style={sectionStyle}>
+      <header style={titleRowStyle}>
         <h1 style={h1Style}>Focus</h1>
       </header>
       <section style={sectionStyle}>
-        <h2 style={h2Style}>Active</h2>
         <ActiveSessionCard session={activeSession ?? null} />
       </section>
       <section style={sectionStyle}>
-        <h2 style={h2Style}>Schedule</h2>
         <ScheduleList schedule={schedule} />
       </section>
     </div>
@@ -341,17 +340,11 @@ function formatTime(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-function FocusHeader({
-  refetch,
-  busy,
-}: {
-  refetch: () => void;
-  busy: boolean;
-}): ReactNode {
+function FocusHeader({ tone }: { tone: StatusTone }): ReactNode {
   return (
-    <header style={headerRowStyle}>
+    <header style={titleRowStyle}>
+      <StatusDot tone={tone} />
       <h1 style={h1Style}>Focus</h1>
-      <RefreshButton onActivate={refetch} disabled={busy} />
     </header>
   );
 }
@@ -411,9 +404,39 @@ export function FocusView({
       });
   }, [load]);
 
+  // Initial fetch + settle-chained polling. The first load shows the loading
+  // skeleton; thereafter we quietly refresh status in place (no skeleton flash)
+  // ~15s after each settle, so the panel stays fresh with no Refresh button
+  // required. Chaining off settle (rather than a fixed interval) means an
+  // in-flight request never stacks a second timer.
   useEffect(() => {
     if (hasOverride) return;
-    return load();
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const teardown = load();
+
+    const scheduleQuietRefresh = () => {
+      if (cancelled) return;
+      timer = setTimeout(() => {
+        fetchRef
+          .current()
+          .then((status) => {
+            if (!cancelled) setState({ kind: "ready", status });
+          })
+          .catch(() => {
+            // Keep the last good state on a transient failure; the next tick
+            // re-attempts.
+          })
+          .finally(scheduleQuietRefresh);
+      }, 15000);
+    };
+    scheduleQuietRefresh();
+
+    return () => {
+      cancelled = true;
+      teardown();
+      if (timer) clearTimeout(timer);
+    };
   }, [hasOverride, load]);
 
   if (hasOverride) {
@@ -423,8 +446,8 @@ export function FocusView({
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="focus-loading">
-        <FocusHeader refetch={load} busy={true} />
-        <div style={{ ...cardStyle, ...dimStyle }}>Loading focus status…</div>
+        <FocusHeader tone="idle" />
+        <div style={dimStyle}>Loading focus status…</div>
       </div>
     );
   }
@@ -432,10 +455,11 @@ export function FocusView({
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="focus-error">
-        <FocusHeader refetch={load} busy={false} />
-        <div style={cardStyle}>
-          <div style={{ fontWeight: 600 }}>Couldn’t load focus status</div>
-          <div style={dimStyle}>{state.message}</div>
+        <FocusHeader tone="error" />
+        <div style={sectionStyle}>
+          <div style={dimStyle}>
+            Couldn’t load focus status — <span>{state.message}</span>
+          </div>
           <div>
             <button
               type="button"
@@ -457,8 +481,8 @@ export function FocusView({
   if (!status.available) {
     return (
       <div style={containerStyle} data-testid="focus-unavailable">
-        <FocusHeader refetch={load} busy={false} />
-        <div style={cardStyle}>
+        <FocusHeader tone="idle" />
+        <div style={sectionStyle}>
           <div style={{ fontWeight: 600 }}>Focus blocking is unavailable</div>
           <div style={dimStyle}>
             The website-blocking engine isn’t available on this device
@@ -474,8 +498,8 @@ export function FocusView({
   if (status.requiresElevation && !status.active) {
     return (
       <div style={containerStyle} data-testid="focus-permission">
-        <FocusHeader refetch={load} busy={false} />
-        <div style={cardStyle}>
+        <FocusHeader tone="permission" />
+        <div style={sectionStyle}>
           <div style={{ fontWeight: 600 }}>Permission needed</div>
           <div style={dimStyle}>
             Eliza needs administrator/root approval to edit the system hosts
@@ -504,9 +528,9 @@ export function FocusView({
   if (status.active) {
     return (
       <div style={containerStyle} data-testid="focus-active">
-        <FocusHeader refetch={load} busy={false} />
+        <FocusHeader tone="active" />
         <section style={sectionStyle}>
-          <div style={cardStyle}>
+          <div style={{ ...sectionStyle, gap: 8 }}>
             <div style={headerRowStyle}>
               <h2 style={h2Style}>Focus session active</h2>
               {status.canUnblockEarly ? (
@@ -548,8 +572,13 @@ export function FocusView({
   // Available, not active, nothing blocked.
   return (
     <div style={containerStyle} data-testid="focus-empty">
-      <FocusHeader refetch={load} busy={false} />
-      <div style={{ ...cardStyle, ...dimStyle }}>No active focus session.</div>
+      <FocusHeader tone="idle" />
+      <div style={sectionStyle}>
+        <div style={dimStyle}>No active focus session.</div>
+        <div style={dimStyle}>
+          Say “block distractions for 1 hour” to start one.
+        </div>
+      </div>
     </div>
   );
 }

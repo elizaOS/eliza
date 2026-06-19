@@ -113,6 +113,13 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/shared\/steward-session-client$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/shared/src/steward-session-client/index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/shared\/types$/,
         replacement: path.join(repoRoot, "packages/shared/src/types/index.ts"),
       },

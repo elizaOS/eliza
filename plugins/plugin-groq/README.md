@@ -47,7 +47,7 @@ const agent = new AgentRuntime({
 | `GROQ_RESPONSE_HANDLER_MODEL` | No | nano tier | Model for response-handler role |
 | `GROQ_ACTION_PLANNER_MODEL` | No | large tier | Model for action-planner role |
 | `GROQ_TTS_MODEL` | No | `canopylabs/orpheus-v1-english` | Text-to-speech model |
-| `GROQ_TTS_VOICE` | No | `autumn` | TTS voice |
+| `GROQ_TTS_VOICE` | No | `troy` | TTS voice |
 | `GROQ_TTS_RESPONSE_FORMAT` | No | `wav` | TTS audio format |
 
 All settings can also be passed via `agentConfig.pluginParameters` in your agent's character file.

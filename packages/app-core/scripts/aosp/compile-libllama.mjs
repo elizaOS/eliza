@@ -175,6 +175,7 @@ import {
   fusedExtraCmakeFlags,
 } from "../build-helpers/omnivoice-merged.mjs";
 import { verifyFusedSymbols } from "../build-helpers/verify-fused-symbols.mjs";
+import { patchVulkanKernels } from "../kernel-patches/vulkan-kernels.mjs";
 import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
 import { main as compileShimMain } from "./compile-shim.mjs";
 
@@ -309,13 +310,15 @@ export function parseAndroidTarget(target) {
     );
   }
   const [, arch, backend] = match;
-  if (backend === "vulkan") {
+  // Android Vulkan is wired for arm64 only (the GPU device target). The
+  // GGML_VULKAN CMake flags + NDK glslc/headers + libggml-vulkan.so staging +
+  // the eliza-1 qjl/polar Vulkan kernel patches are applied in the build path
+  // when backend === "vulkan" (see resolveVulkanBuildConfig / the build fn).
+  if (backend === "vulkan" && arch !== "arm64") {
     throw new Error(
-      `[compile-libllama] unsupported --target ${target}: Android Vulkan ` +
-        `artifacts are not wired in this musl AOSP path yet. Refusing to ` +
-        `produce a CPU-only/basic libllama build for a Vulkan target. Use ` +
-        `android-${arch}-cpu${fused ? "-fused" : ""} or add real GGML_VULKAN ` +
-        `CMake flags plus Vulkan backend shared-object staging first.`,
+      `[compile-libllama] unsupported --target ${target}: Android Vulkan is ` +
+        `only wired for arm64 (the GPU device target). Use android-arm64-vulkan ` +
+        `or android-${arch}-cpu${fused ? "-fused" : ""}.`,
     );
   }
   // Map the parsed arch token to the Android ABI directory name. arm64 →
@@ -326,6 +329,147 @@ export function parseAndroidTarget(target) {
   else if (arch === "riscv64") androidAbi = "riscv64";
   else androidAbi = "arm64-v8a";
   return { target, arch, backend, fused, androidAbi };
+}
+
+/**
+ * GGML_VULKAN CMake flags for the android-arm64 Vulkan backend. Points cmake at
+ * the NDK's host `glslc` (the shader compiler ggml-vulkan's codegen invokes),
+ * the Vulkan headers, and the aarch64 Vulkan loader stub. ggml-vulkan dlopen()s
+ * the device's real libvulkan.so at runtime; the NDK stub only satisfies the
+ * link. Throws (fail-closed) if any NDK Vulkan prerequisite is missing, so the
+ * build never silently falls back to CPU for a Vulkan target.
+ */
+export function resolveAndroidVulkanCmakeFlags({
+  androidApi = 31,
+  stagingDir,
+} = {}) {
+  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+  if (!sdk) {
+    throw new Error(
+      "[compile-libllama] ANDROID_HOME/ANDROID_SDK_ROOT is required for the " +
+        "android Vulkan build (NDK glslc + Vulkan headers + loader).",
+    );
+  }
+  const ndkRoot = path.join(sdk, "ndk");
+  const ndks = fs.existsSync(ndkRoot)
+    ? fs
+        .readdirSync(ndkRoot)
+        .filter((d) => /^\d+\./.test(d))
+        .sort(compareSemver)
+    : [];
+  if (ndks.length === 0) {
+    throw new Error(
+      `[compile-libllama] No NDK found under ${ndkRoot}; install one for the Vulkan build.`,
+    );
+  }
+  const ndk = path.join(ndkRoot, ndks[ndks.length - 1]);
+  const sysroot = path.join(
+    ndk,
+    "toolchains/llvm/prebuilt/linux-x86_64/sysroot",
+  );
+  const glslc = path.join(ndk, "shader-tools/linux-x86_64/glslc");
+  const libBase = path.join(sysroot, "usr/lib/aarch64-linux-android");
+  const apis = fs.existsSync(libBase)
+    ? fs
+        .readdirSync(libBase)
+        .filter((d) => /^\d+$/.test(d))
+        .map(Number)
+        .filter((n) => n >= androidApi)
+        .sort((a, b) => a - b)
+    : [];
+  if (apis.length === 0) {
+    throw new Error(
+      `[compile-libllama] No aarch64 libvulkan.so >= API ${androidApi} under ${libBase}.`,
+    );
+  }
+  const libVulkan = path.join(libBase, String(apis[0]), "libvulkan.so");
+
+  // ggml-vulkan.cpp includes <vulkan/vulkan.hpp> (the C++ Vulkan-Hpp bindings).
+  // The NDK sysroot ships only the C headers (vulkan.h / vulkan_core.h) + the
+  // libvulkan.so loader, NOT the C++ wrapper. Vulkan headers are pure API
+  // declarations (arch-independent); only the loader is arch-specific. So we
+  // stage a complete host Vulkan-Hpp header set (vulkan.hpp + the structs/enums/
+  // handles/funcs/raii partials it pulls in) into an ISOLATED include root and
+  // point Vulkan_INCLUDE_DIR there. Staging only the `vulkan/` subtree keeps the
+  // musl/zig cross-compile from ever seeing host glibc headers via a wide -I.
+  const headerCandidates = [
+    process.env.VULKAN_SDK && path.join(process.env.VULKAN_SDK, "include"),
+    "/usr/include",
+    "/usr/local/include",
+  ].filter(Boolean);
+  const hostVulkanDir = headerCandidates
+    .map((d) => path.join(d, "vulkan"))
+    .find((d) => fs.existsSync(path.join(d, "vulkan.hpp")));
+  if (!hostVulkanDir) {
+    throw new Error(
+      "[compile-libllama] vulkan/vulkan.hpp (C++ Vulkan-Hpp bindings) not found. " +
+        "ggml-vulkan needs it; install the Vulkan headers (e.g. `apt install " +
+        "libvulkan-dev`) or set VULKAN_SDK. Searched: " +
+        headerCandidates.join(", "),
+    );
+  }
+  const incRoot = stagingDir
+    ? path.resolve(stagingDir)
+    : path.join(os.tmpdir(), "eliza-vulkan-headers");
+  const stagedVulkan = path.join(incRoot, "vulkan");
+  fs.rmSync(stagedVulkan, { recursive: true, force: true });
+  fs.mkdirSync(incRoot, { recursive: true });
+  fs.cpSync(hostVulkanDir, stagedVulkan, { recursive: true });
+  // vulkan_core.h `#include <vk_video/...>` the video-codec extension headers,
+  // which live in a sibling `vk_video/` dir next to `vulkan/`. Stage it too so
+  // the single -I<incRoot> resolves both.
+  const hostVkVideoDir = path.join(path.dirname(hostVulkanDir), "vk_video");
+  if (fs.existsSync(hostVkVideoDir)) {
+    const stagedVkVideo = path.join(incRoot, "vk_video");
+    fs.rmSync(stagedVkVideo, { recursive: true, force: true });
+    fs.cpSync(hostVkVideoDir, stagedVkVideo, { recursive: true });
+  }
+
+  // ggml-vulkan.cpp also `#include <spirv/unified1/spirv.hpp>` (SPIR-V Headers,
+  // for shader reflection). The NDK bundles SPIRV-Headers under shaderc; prefer
+  // those (they match the glslc/shaderc toolchain version), else fall back to a
+  // host spirv-headers install. Stage the `spirv/` subtree into the same root.
+  const spirvCandidates = [
+    path.join(
+      ndk,
+      "sources/third_party/shaderc/third_party/spirv-tools/external/spirv-headers/include",
+    ),
+    process.env.VULKAN_SDK && path.join(process.env.VULKAN_SDK, "include"),
+    "/usr/include",
+    "/usr/local/include",
+  ].filter(Boolean);
+  const hostSpirvRoot = spirvCandidates.find((d) =>
+    fs.existsSync(path.join(d, "spirv/unified1/spirv.hpp")),
+  );
+  if (!hostSpirvRoot) {
+    throw new Error(
+      "[compile-libllama] spirv/unified1/spirv.hpp (SPIRV-Headers) not found. " +
+        "ggml-vulkan needs it; expected it under the NDK shaderc third_party " +
+        "tree or a host spirv-headers install. Searched: " +
+        spirvCandidates.join(", "),
+    );
+  }
+  const stagedSpirv = path.join(incRoot, "spirv");
+  fs.rmSync(stagedSpirv, { recursive: true, force: true });
+  fs.cpSync(path.join(hostSpirvRoot, "spirv"), stagedSpirv, { recursive: true });
+
+  for (const [name, p] of [
+    ["vulkan/vulkan.hpp", path.join(stagedVulkan, "vulkan.hpp")],
+    ["glslc", glslc],
+    ["libvulkan.so", libVulkan],
+  ]) {
+    if (!fs.existsSync(p)) {
+      throw new Error(
+        `[compile-libllama] android Vulkan build prerequisite ${name} missing: ${p}`,
+      );
+    }
+  }
+  return [
+    "-DGGML_VULKAN=ON",
+    `-DVulkan_INCLUDE_DIR=${incRoot}`,
+    `-DVulkan_GLSLC_EXECUTABLE=${glslc}`,
+    `-DVulkan_LIBRARY=${libVulkan}`,
+  ];
 }
 
 export function parseArgs(argv) {
@@ -2369,6 +2513,22 @@ export async function mainTargets(args) {
       });
     }
 
+    // Vulkan target: graft the eliza-1 qjl/polar Vulkan compute shaders +
+    // ggml-vulkan dispatch patches into the source, and assemble the
+    // GGML_VULKAN CMake flags (NDK glslc + headers + aarch64 loader). The
+    // libggml-vulkan.so the build emits is glob-staged alongside the rest of
+    // the libggml family by buildLibllamaForAbi.
+    let vulkanCmakeFlags = [];
+    if (parsed.backend === "vulkan") {
+      console.log(
+        `[compile-libllama] Patching eliza-1 Vulkan kernels into ${srcDir} for ${parsed.target}`,
+      );
+      patchVulkanKernels(srcDir, { target: parsed.target });
+      vulkanCmakeFlags = resolveAndroidVulkanCmakeFlags({
+        stagingDir: path.join(args.cacheDir, "vulkan-headers"),
+      });
+    }
+
     // The existing per-ABI build helper handles the cmake configure +
     // build + per-ABI install for libllama + ggml + llama-server. We
     // reuse it as-is; the fused cmake flags + extra targets are applied
@@ -2385,13 +2545,21 @@ export async function mainTargets(args) {
       // The fused path needs `-DELIZA_FUSE_OMNIVOICE=ON` on the configure
       // line and the omnivoice-core + libelizainference + fused
       // llama-server targets on the build line. Pass-through hooks let
-      // the caller layer those in without forking the helper.
-      extraCmakeFlags: parsed.fused ? fusedExtraCmakeFlags() : [],
-      extraBuildTargets: parsed.fused
-        ? fusedCmakeBuildTargets().filter(
-            (t) => t !== "llama" && t !== "llama-server",
-          )
-        : [],
+      // the caller layer those in without forking the helper. The Vulkan
+      // target adds GGML_VULKAN=ON + the NDK toolchain paths and asks the
+      // build to also produce ggml-vulkan (libggml-vulkan.so).
+      extraCmakeFlags: [
+        ...(parsed.fused ? fusedExtraCmakeFlags() : []),
+        ...vulkanCmakeFlags,
+      ],
+      extraBuildTargets: [
+        ...(parsed.fused
+          ? fusedCmakeBuildTargets().filter(
+              (t) => t !== "llama" && t !== "llama-server",
+            )
+          : []),
+        ...(parsed.backend === "vulkan" ? ["ggml-vulkan"] : []),
+      ],
     });
 
     buildShimForAbi({

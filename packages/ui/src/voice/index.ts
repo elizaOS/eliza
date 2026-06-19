@@ -1,3 +1,12 @@
+export {
+  type DiarizationPumpControl,
+  installDiarizationPumpHarness,
+} from "./audio-frame-diarization-harness";
+export {
+  AudioFramePump,
+  type AudioFramePumpOptions,
+  type AudioFramePumpStartResult,
+} from "./audio-frame-pump";
 export * from "./character-voice-config";
 export * from "./emotion";
 export {

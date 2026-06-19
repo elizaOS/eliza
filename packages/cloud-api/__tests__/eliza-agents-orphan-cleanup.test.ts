@@ -163,9 +163,9 @@ describe("POST /api/v1/eliza/agents — orphan cleanup", () => {
   }
 
   test("deletes the just-created sandbox when env prep throws (no orphaned pending row)", async () => {
-    prepareManagedElizaEnvironment.mockRejectedValueOnce(
-      new Error("KMS key mint failed"),
-    );
+    prepareManagedElizaEnvironment.mockImplementationOnce(async () => {
+      throw new Error("KMS key mint failed");
+    });
 
     const response = await postAgent();
 
@@ -179,7 +179,9 @@ describe("POST /api/v1/eliza/agents — orphan cleanup", () => {
       changed: true,
       environmentVars: { FOO: "bar" },
     });
-    updateAgentEnvironment.mockRejectedValueOnce(new Error("db write failed"));
+    updateAgentEnvironment.mockImplementationOnce(async () => {
+      throw new Error("db write failed");
+    });
 
     const response = await postAgent();
 
@@ -188,9 +190,9 @@ describe("POST /api/v1/eliza/agents — orphan cleanup", () => {
   });
 
   test("deletes the just-created sandbox when the provision-job enqueue throws", async () => {
-    enqueueAgentProvision.mockRejectedValueOnce(
-      new Error("job table write failed"),
-    );
+    enqueueAgentProvision.mockImplementationOnce(async () => {
+      throw new Error("job table write failed");
+    });
 
     const response = await postAgent();
 
@@ -202,12 +204,14 @@ describe("POST /api/v1/eliza/agents — orphan cleanup", () => {
   });
 
   test("rethrows the original error even when the cleanup delete also fails", async () => {
-    prepareManagedElizaEnvironment.mockRejectedValueOnce(
-      new Error("KMS key mint failed"),
-    );
+    prepareManagedElizaEnvironment.mockImplementationOnce(async () => {
+      throw new Error("KMS key mint failed");
+    });
     // The best-effort cleanup itself throws: withOrphanCleanup's nested catch
     // logs cleanupErr but must rethrow the ORIGINAL err, not the cleanup error.
-    deleteSandbox.mockRejectedValueOnce(new Error("delete failed too"));
+    deleteSandbox.mockImplementationOnce(async () => {
+      throw new Error("delete failed too");
+    });
 
     const response = await postAgent();
 

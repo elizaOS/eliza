@@ -1351,6 +1351,37 @@ try {
     await p.close();
   }
 
+  // ── PILL → INPUT on a short SLOW pull: a slow drag up from the pill that only
+  // forms the input bar (past the halfway-open mark but short of the thread)
+  // must settle at the INPUT state, NOT overshoot to the half detent. Regression
+  // guard for the onSettleFree pill branch (it used to force half on any open).
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(500);
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "pill", "PILL-INPUT: collapsed to pill first");
+    // SLOW pull up ~80px: past the 60px halfway-open mark (commits to leaving the
+    // pill) but under PILL_OPEN_DISTANCE (120px), so only the input bar forms.
+    await gesture(p, 80, {
+      pointer: "mouse",
+      slow: true,
+      steps: 10,
+      target: "chat-pill",
+    });
+    await p.waitForTimeout(SETTLE);
+    const st = await chatState(p);
+    assert(
+      st === "INPUT",
+      `PILL-INPUT: short slow pull from pill settles at INPUT, not half (got ${st})`,
+    );
+    await snap(p, "transition-pill-slow-pull-to-input");
+    await p.close();
+  }
+
   // ── ROTATION re-settles to a single CLEAN bar (flip-to-side): a viewport SIZE
   // change must never leave the pill↔input morph stranded mid-crossfade. The
   // crossfade math already prevents two bars at once, but a rotation that fires

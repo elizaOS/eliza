@@ -25,9 +25,7 @@ function makeRuntime(rowsFor: (sql: string) => unknown): {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     adapter: {
       db: {
-        execute: async (query: {
-          queryChunks: Array<{ value?: unknown }>;
-        }) => {
+        execute: async (query: { queryChunks: Array<{ value?: unknown }> }) => {
           const chunk = query.queryChunks[0]?.value;
           const sql = Array.isArray(chunk) ? String(chunk[0]) : String(chunk);
           calls.push({ sql });
@@ -39,7 +37,9 @@ function makeRuntime(rowsFor: (sql: string) => unknown): {
   return { runtime, calls };
 }
 
-function triageRow(overrides: Record<string, unknown>): Record<string, unknown> {
+function triageRow(
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
   return {
     id: "row-1",
     agent_id: "11111111-1111-1111-1111-111111111111",
@@ -137,6 +137,35 @@ describe("InboxRepository", () => {
     expect(rows[0]?.classification).toBe("urgent");
     expect(env.calls[0]?.sql).toContain("classification = 'urgent'");
     expect(env.calls[0]?.sql).toContain("AND resolved = FALSE");
+  });
+
+  it("getUnresolvedForSender filters by sender identity and excludes current source", async () => {
+    env = makeRuntime((sql) =>
+      sql.includes("source_entity_id = 'entity-1'")
+        ? [
+            triageRow({
+              source: "gmail",
+              source_entity_id: "entity-1",
+              sender_name: "Alice",
+            }),
+          ]
+        : [],
+    );
+    const repo = new InboxRepository(env.runtime);
+    const rows = await repo.getUnresolvedForSender({
+      sourceEntityId: "entity-1",
+      senderName: "Alice",
+      excludeSource: "discord",
+      limit: 8,
+    });
+
+    expect(rows).toHaveLength(1);
+    const select = env.calls[0]?.sql ?? "";
+    expect(select).toContain("resolved = FALSE");
+    expect(select).toContain("source != 'discord'");
+    expect(select).toContain("source_entity_id = 'entity-1'");
+    expect(select).toContain("LOWER(sender_name) LIKE '%alice%'");
+    expect(select).toContain("LIMIT 8");
   });
 
   it("markResolved sets resolved + resolved_at and optional draft", async () => {

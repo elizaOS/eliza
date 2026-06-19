@@ -250,6 +250,47 @@ export class InboxRepository {
     return rows.map(parseTriageEntry);
   }
 
+  async getUnresolvedForSender(opts: {
+    sourceEntityId?: string | null;
+    senderName?: string | null;
+    excludeSource?: string | null;
+    limit?: number;
+  }): Promise<TriageEntry[]> {
+    const limit = opts.limit ?? 50;
+    const clauses = [`agent_id = ${sqlText(this.agentId)}`, "resolved = FALSE"];
+
+    if (opts.excludeSource) {
+      clauses.push(`source != ${sqlText(opts.excludeSource)}`);
+    }
+
+    const senderClauses: string[] = [];
+    if (opts.sourceEntityId) {
+      senderClauses.push(`source_entity_id = ${sqlText(opts.sourceEntityId)}`);
+    }
+    if (opts.senderName) {
+      const normalized = opts.senderName.trim().toLowerCase();
+      if (normalized) {
+        senderClauses.push(
+          `(LOWER(sender_name) LIKE ${sqlText(`%${normalized}%`)} OR ${sqlText(normalized)} LIKE '%' || LOWER(sender_name) || '%')`,
+        );
+      }
+    }
+
+    if (senderClauses.length === 0) return [];
+    clauses.push(`(${senderClauses.join(" OR ")})`);
+
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT * FROM app_inbox.life_inbox_triage_entries
+       WHERE ${clauses.join("\n         AND ")}
+       ORDER BY
+         CASE urgency WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+         created_at DESC
+       LIMIT ${limit}`,
+    );
+    return rows.map(parseTriageEntry);
+  }
+
   async getByClassification(
     classification: TriageClassification,
     opts?: { limit?: number; unresolvedOnly?: boolean },

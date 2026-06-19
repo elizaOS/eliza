@@ -184,7 +184,7 @@ class OpenWakeWordFrontEnd:
     (head architecture, ONNX export shape) is importable without it.
     """
 
-    def __init__(self, mel_path: Path, emb_path: Path) -> None:
+    def __init__(self, mel_path: Path, emb_path: Path, *, mel_rescale: bool = True) -> None:
         import onnxruntime as ort  # noqa: PLC0415 - optional dep, only here
 
         opts = ort.SessionOptions()
@@ -192,14 +192,26 @@ class OpenWakeWordFrontEnd:
         opts.intra_op_num_threads = 1
         self.mel = ort.InferenceSession(str(mel_path), sess_options=opts, providers=["CPUExecutionProvider"])
         self.emb = ort.InferenceSession(str(emb_path), sess_options=opts, providers=["CPUExecutionProvider"])
+        # The head must be trained on the SAME embeddings it will see at
+        # inference. The wakeword-cpp C runtime
+        # (packages/native/plugins/wakeword-cpp/src/wakeword_runtime.c) feeds
+        # the raw log-mel straight into the embedding model — it does NOT apply
+        # openWakeWord's `mel/10 + 2` rescale (its parity test confirms the C
+        # path and a no-rescale ONNX reference agree). A head trained WITH the
+        # rescale therefore fails through that runtime. Set `mel_rescale=False`
+        # to featurize exactly as the deployed C runtime does (train/inference
+        # parity); keep `True` to match the upstream openWakeWord Python path.
+        self.mel_rescale = mel_rescale
 
     def embedding_windows(self, pcm: list[float]) -> list[list[list[float]]]:
         import numpy as np  # noqa: PLC0415
 
         audio = np.asarray(pcm, dtype=np.float32)[None, :]
         mel = self.mel.run(None, {self.mel.get_inputs()[0].name: audio})[0]
-        # openWakeWord rescales the melspectrogram before the embedding model.
-        mel = (mel.squeeze() / 10.0) + 2.0  # shape [n_frames, 32]
+        mel = mel.squeeze()  # shape [n_frames, 32]
+        if self.mel_rescale:
+            # openWakeWord rescales the melspectrogram before the embedding model.
+            mel = (mel / 10.0) + 2.0
         n_frames = mel.shape[0]
         embeds: list[np.ndarray] = []
         # Slide a 76-frame window with hop 8 (the runtime's EMBEDDING_HOP).
@@ -375,14 +387,31 @@ def write_provenance(
     tts_source: str,
     n_positives: int,
     n_negatives: int,
+    mel_rescale: bool,
     openwakeword_release: str = OPENWAKEWORD_RELEASE,
 ) -> None:
+    # Record the exact mel preprocessing the head was trained with. This is
+    # load-bearing: the wakeword-cpp C runtime feeds the raw log-mel into the
+    # embedding model, so a head must be trained `--no-mel-rescale` to run
+    # correctly through it. Claiming the wrong featurization here would make the
+    # provenance lie about whether the head is runtime-compatible.
+    front_end = (
+        "melspectrogram.onnx -> embedding_model.onnx"
+        + (
+            " (mel/10 + 2 rescale before the embedding model — upstream openWakeWord "
+            "Python path; NOT what the wakeword-cpp C runtime feeds)"
+            if mel_rescale
+            else " (raw log-mel into the embedding model, no rescale — matches the "
+            "wakeword-cpp C runtime; required for runtime parity)"
+        )
+    )
     blob = {
         "wakePhrase": phrase,
         "headOnnx": str(head_onnx),
         "headSha256": _sha256(head_onnx) if head_onnx.is_file() else None,
         "openWakeWordRelease": openwakeword_release,
         "frontEndGraphs": list(FRONT_END_GRAPHS),
+        "melRescale": mel_rescale,
         "ttsSource": tts_source,
         "license": {
             "openWakeWord": "Apache-2.0",
@@ -395,8 +424,8 @@ def write_provenance(
         "runtimeContract": {
             "inputShape": [1, HEAD_WINDOW_EMBEDDINGS, EMBEDDING_DIM],
             "output": "scalar P(wake) in [0, 1]",
-            "frontEnd": "melspectrogram.onnx -> embedding_model.onnx (x/10 + 2 rescale before the embedding model)",
-            "consumer": "packages/app-core/src/services/local-inference/voice/wake-word.ts",
+            "frontEnd": front_end,
+            "consumer": "plugins/plugin-local-inference/src/services/voice/wake-word.ts",
         },
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -462,10 +491,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--tts-source", default="caller-staged WAVs (record the real source here)", help="TTS provenance note (e.g. 'piper en_US-* voices, MIT/CC0').")
+    ap.add_argument(
+        "--no-mel-rescale",
+        action="store_true",
+        help="Featurize WITHOUT openWakeWord's `mel/10 + 2` rescale — matches the "
+        "wakeword-cpp C runtime (which omits it), giving train/inference parity "
+        "for heads deployed through that runtime. Default applies the rescale "
+        "(upstream openWakeWord Python path).",
+    )
     args = ap.parse_args(argv)
 
     front_mel, front_emb = ensure_front_end_graphs(args.front_end_dir)
-    front_end = OpenWakeWordFrontEnd(front_mel, front_emb)
+    front_end = OpenWakeWordFrontEnd(front_mel, front_emb, mel_rescale=not args.no_mel_rescale)
 
     cache: dict[str, list] = {}
     if args.cache and args.cache.is_file():
@@ -493,6 +530,7 @@ def main(argv: list[str] | None = None) -> int:
         tts_source=args.tts_source,
         n_positives=len(list(args.positives_dir.glob("*.wav"))),
         n_negatives=len(list(args.negatives_dir.glob("*.wav"))),
+        mel_rescale=not args.no_mel_rescale,
     )
     print(f"[wakeword-train] wrote provenance -> {prov}")
     print(

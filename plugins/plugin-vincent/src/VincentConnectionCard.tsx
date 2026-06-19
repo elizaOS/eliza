@@ -1,10 +1,4 @@
-/**
- * VincentConnectionCard — OAuth connect/disconnect UI for Vincent.
- *
- * Shows a green connected state with timestamp when authenticated, or
- * a "Connect Vincent" call-to-action when not. Uses useVincentState for
- * the full PKCE-based OAuth flow.
- */
+/** VincentConnectionCard — OAuth connect/disconnect UI for Vincent. */
 
 import { Button, StatusDot } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -71,39 +65,35 @@ export function VincentConnectionCard({
   });
 
   return (
-    <div className="rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <div className="rounded-2xl border border-border/18 px-4 py-4">
       <div className="flex items-center justify-between gap-4">
-        <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-3">
-          <div
-            className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 ${
-              vincentConnected
-                ? "border-ok/25 bg-ok/10 text-ok"
-                : "border-border/25 bg-card/50 text-muted"
-            }`}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-5 gap-y-1.5 text-xs font-semibold">
+          <span
+            className={`flex items-center gap-2 ${vincentConnected ? "text-ok" : "text-muted"}`}
           >
             <StatusDot
               status={vincentConnected ? "connected" : "muted"}
               tone={vincentConnected ? "success" : "muted"}
               className="shrink-0"
             />
-            <span className="truncate text-xs font-semibold">
+            <span className="truncate">
               {vincentConnected
                 ? t("vincent.connected", { defaultValue: "Connected" })
                 : t("vincent.disconnected", { defaultValue: "Offline" })}
             </span>
-          </div>
-          <div className="flex items-center gap-2 rounded-xl border border-border/25 bg-card/50 px-3 py-2.5 text-muted">
+          </span>
+          <span className="flex items-center gap-2 text-muted">
             <KeyRound className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate text-xs font-semibold">OAuth</span>
-          </div>
-          <div className="hidden items-center gap-2 rounded-xl border border-border/25 bg-card/50 px-3 py-2.5 text-muted sm:flex">
+            <span className="truncate">OAuth</span>
+          </span>
+          <span className="hidden items-center gap-2 text-muted sm:flex">
             <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate text-xs font-semibold">
+            <span className="truncate">
               {vincentConnectedAt
                 ? formatConnectedAt(vincentConnectedAt)
                 : "Ready"}
             </span>
-          </div>
+          </span>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">

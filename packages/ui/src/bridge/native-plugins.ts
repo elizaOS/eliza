@@ -68,6 +68,30 @@ export interface TalkModeStateEvent {
   state?: string;
 }
 
+/**
+ * One frame of raw PCM from the native AudioRecord diarization path. Emitted
+ * continuously while `startAudioFrames` is active (Android only). `pcm16` is
+ * base64-encoded little-endian signed 16-bit mono PCM — the wire format the
+ * agent-side AudioFrameConsumer decodes.
+ */
+export interface TalkModeAudioFrameEvent {
+  pcm16: string;
+  sampleRate: number;
+  channels: number;
+  samples: number;
+  rms: number;
+  timestamp: number;
+  frameIndex: number;
+}
+
+export interface TalkModeAudioFrameResult {
+  started: boolean;
+  sampleRate?: number;
+  frameSamples?: number;
+  suspendedStt?: boolean;
+  error?: string;
+}
+
 export interface TalkModePlaybackStartEvent {
   provider?: "elevenlabs" | "local-inference" | "system";
   sampleRate?: number;
@@ -661,6 +685,19 @@ export interface TalkModePluginLike extends NativePlugin {
     eventName: "playbackStart",
     listenerFunc: (event: TalkModePlaybackStartEvent) => void,
   ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "audioFrame",
+    listenerFunc: (event: TalkModeAudioFrameEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  /** Start raw 16 kHz mono PCM frame capture (Android diarization source). */
+  startAudioFrames?(options?: {
+    sampleRate?: number;
+    frameMs?: number;
+  }): Promise<TalkModeAudioFrameResult>;
+  /** Stop raw PCM frame capture and resume SpeechRecognizer STT if suspended. */
+  stopAudioFrames?(): Promise<void>;
+  /** Query whether raw PCM frame capture is currently active. */
+  isCapturingAudioFrames?(): Promise<{ capturing: boolean }>;
   checkPermissions(): Promise<TalkModePermissionStatus>;
   requestPermissions(): Promise<TalkModePermissionStatus>;
   start(options?: {

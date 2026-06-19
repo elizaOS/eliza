@@ -133,15 +133,25 @@ describe("SkillsView", () => {
     );
   });
 
-  it("clicking refresh invokes refreshSkills", () => {
-    appMock.value = makeContext({ skills: [SKILL_A] });
+  it("polls refreshSkills in the background instead of exposing a manual refresh control", () => {
+    vi.useFakeTimers();
+    try {
+      appMock.value = makeContext({ skills: [SKILL_A] });
 
-    render(<SkillsView />);
+      render(<SkillsView />);
 
-    const refreshButton = screen.getByLabelText("Refresh Skills List");
-    fireEvent.click(refreshButton);
+      // No user-facing refresh control exists anymore.
+      expect(screen.queryByLabelText("Refresh Skills List")).toBeNull();
 
-    expect(appMock.value.refreshSkills).toHaveBeenCalled();
+      // The list revalidates itself on a slow interval.
+      expect(appMock.value.refreshSkills).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(20_000);
+      });
+      expect(appMock.value.refreshSkills).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("filters the list to nothing and shows the filter-empty state when the search excludes all skills", () => {

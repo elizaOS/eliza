@@ -1,4 +1,18 @@
 export {
+	type AttributedTurn,
+	type AttributedTurnListener,
+	type AttributionPipelineLike,
+	AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
+	AudioFrameConsumer,
+	type AudioFrameConsumerConfig,
+	type AudioFrameConsumerDeps,
+	AudioFrameDecodeError,
+	type AudioFrameEvent,
+	decodeAudioFramePcm,
+	type RuntimeEventSink,
+	type VadSegmenter,
+} from "./audio-frame-consumer";
+export {
 	BargeInController,
 	type BargeInControllerConfig,
 	type BargeInListener,
@@ -242,6 +256,10 @@ export {
 	type PyannoteDiarizerModelId,
 } from "./speaker/diarizer";
 export {
+	FusedDiarizer,
+	type FusedDiarizerOptions,
+} from "./speaker/diarizer-fused";
+export {
 	DIARIZER_GGML_FRAMES_PER_WINDOW,
 	DIARIZER_GGML_MIN_SAMPLES,
 	DIARIZER_GGML_NUM_CLASSES,
@@ -264,6 +282,10 @@ export {
 	WespeakerEncoder,
 	type WespeakerModelId,
 } from "./speaker/encoder";
+export {
+	FusedSpeakerEncoder,
+	type FusedSpeakerEncoderOptions,
+} from "./speaker/encoder-fused";
 export {
 	SPEAKER_GGML_EMBEDDING_DIM,
 	SPEAKER_GGML_MIN_SAMPLES,

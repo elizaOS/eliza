@@ -6,10 +6,10 @@
  *   GET {base}/api/lifeops/goals  ->  { goals: LifeOpsGoalRecord[] }
  *
  * These tests cover the four-state machine (loading / error / empty / populated)
- * plus the retry, refresh, status-filter, and set-a-goal affordances. The
- * fetcher seam is injected so the suite stays offline; `@elizaos/ui` and
- * `@elizaos/ui/agent-surface` are mocked so the instrumented controls render
- * outside a provider.
+ * plus the retry, quiet background poll, status-filter, and set-a-goal
+ * affordances. The fetcher seam is injected so the suite stays offline;
+ * `@elizaos/ui` and `@elizaos/ui/agent-surface` are mocked so the instrumented
+ * controls render outside a provider.
  *
  * External-API contract test: the wire shape is mirrored verbatim from the PA
  * `/api/lifeops/goals` response (LifeOpsGoalRecord = { goal, links } from
@@ -196,17 +196,32 @@ describe("GoalsView", () => {
     expect(await screen.findByTestId("goals-populated")).toBeTruthy();
   });
 
-  it("refetches when the header refresh control is activated", async () => {
+  it("quietly refetches on the background poll (no manual refresh control)", async () => {
+    // The manual Refresh button was removed for the chat-forward redesign; the
+    // view now stays fresh via a quiet 20s poll. There is no refresh affordance.
     let calls = 0;
     const fetchGoals = async () => {
       calls += 1;
-      return { goals: [goalRecord()] };
+      return { goals: [goalRecord({ title: `pass ${calls}` })] };
     };
-    render(<GoalsView fetchers={makeFetchers({ fetchGoals })} />);
-    await screen.findByTestId("goals-populated");
-    expect(calls).toBe(1);
-    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
-    await waitFor(() => expect(calls).toBe(2));
+    vi.useFakeTimers();
+    try {
+      render(<GoalsView fetchers={makeFetchers({ fetchGoals })} />);
+      // Drain the initial in-flight fetch under fake timers.
+      await vi.waitFor(() => {
+        expect(screen.getByTestId("goals-populated")).toBeTruthy();
+      });
+      expect(calls).toBe(1);
+      expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
+
+      // One poll tick → exactly one more silent refetch, no loading flash.
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(calls).toBe(2);
+      expect(screen.getByTestId("goals-populated")).toBeTruthy();
+      expect(screen.queryByTestId("goals-loading")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("narrows the visible groups when a status filter chip is toggled", async () => {

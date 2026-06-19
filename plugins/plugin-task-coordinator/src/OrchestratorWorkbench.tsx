@@ -827,7 +827,7 @@ function FilterSelect({
         ref={ref}
         aria-label={filterLabel}
         data-testid="orchestrator-filter"
-        className="h-9 rounded-xl border-border/50 bg-bg-accent/30 text-xs"
+        className="h-9 rounded-xl border-0 bg-bg-accent/30 text-xs"
         {...agentProps}
       >
         <span className="flex items-center gap-2">
@@ -949,7 +949,7 @@ function SubAgentCard({
       description: `Stop the "${session.label}" sub-agent`,
     });
   return (
-    <div className="rounded-md border border-border/40 bg-bg/40 p-2">
+    <div className="rounded-md bg-bg/40 p-2">
       <div className="flex items-center gap-1.5">
         <SessionGlyph status={session.status} t={t} />
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-txt">
@@ -1149,7 +1149,7 @@ function EditedPlanRestartSection({
           type="button"
           disabled={busy}
           onClick={() => setOpen((prev) => !prev)}
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-border/50 px-2 text-2xs font-semibold text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-2xs font-semibold text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
           data-testid="orchestrator-plan-edit-toggle"
           {...toggleAgentProps}
         >
@@ -1324,7 +1324,7 @@ function UsageSection({
 }
 
 const FIELD_CLASS =
-  "w-full rounded-sm border border-border bg-bg px-2.5 py-1.5 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent/30";
+  "w-full rounded-sm bg-bg-accent/40 px-2.5 py-1.5 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:bg-bg-accent/70";
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
@@ -1466,7 +1466,7 @@ function AddAgentForm({
     });
 
   return (
-    <div className="mt-1.5 space-y-1.5 rounded-md border border-border/50 bg-bg/40 p-2">
+    <div className="mt-1.5 space-y-1.5 rounded-md bg-bg/40 p-2">
       <input
         ref={labelRef}
         value={label}
@@ -1629,7 +1629,7 @@ function RecoveryActionButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border/50 px-2 text-2xs font-semibold text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
+      className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-2xs font-semibold text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
       data-testid={testId}
       {...agentProps}
     >
@@ -1893,7 +1893,7 @@ export function TaskInspector({
               const next = paramPriority(event.target.value);
               if (next && next !== detail.priority) onSetPriority(next);
             }}
-            className="rounded-md border border-border/50 bg-transparent px-2 py-1 text-2xs text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
+            className="rounded-md bg-bg-accent/30 px-2 py-1 text-2xs text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
             data-testid="orchestrator-priority-select"
             {...priorityAgentProps}
           >
@@ -2061,7 +2061,7 @@ function JsonBlock({
     typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return (
     <pre
-      className="max-h-72 overflow-auto rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-muted"
+      className="max-h-72 overflow-auto rounded-md bg-bg/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-muted"
       data-testid="orchestrator-detail-json"
     >
       {compactText(text)}
@@ -2108,7 +2108,7 @@ function OperatorTabs({
   ];
   return (
     <div
-      className="flex rounded-md border border-border/50 bg-bg/40 p-0.5"
+      className="flex rounded-md bg-bg/40 p-0.5"
       role="tablist"
       aria-label={t("orchestrator.detail.tabsLabel", {
         defaultValue: "Detail tabs",
@@ -2291,7 +2291,7 @@ function sessionError(
 function ErrorFirstBanner({ text }: { text: string | null }) {
   if (!text) return null;
   return (
-    <div className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-xs-tight text-red-500">
+    <div className="rounded-md bg-red-500/10 px-2.5 py-2 text-xs-tight text-red-500">
       {text}
     </div>
   );
@@ -2316,7 +2316,7 @@ function OperatorDrawerShell({
 }) {
   return (
     <div
-      className={`shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-border/60 bg-bg p-2.5 ${className ?? "flex w-80"}`}
+      className={`shrink-0 flex-col gap-2.5 overflow-y-auto bg-bg p-3 ${className ?? "flex w-80"}`}
       style={style}
       data-testid="orchestrator-operator-detail"
     >
@@ -2386,7 +2386,7 @@ function EventList({
           return (
             <div
               key={`message-${message.id}`}
-              className="rounded-md border border-border/40 bg-bg/40 p-2"
+              className="rounded-md bg-bg/40 p-2"
             >
               <div className="mb-1 flex items-center gap-2 text-2xs text-muted">
                 <span className="font-semibold text-txt">
@@ -2408,10 +2408,7 @@ function EventList({
         }
         const event = item.record;
         return (
-          <div
-            key={`event-${event.id}`}
-            className="rounded-md border border-border/40 bg-bg/40 p-2"
-          >
+          <div key={`event-${event.id}`} className="rounded-md bg-bg/40 p-2">
             <div className="mb-1 flex items-center gap-2 text-2xs text-muted">
               <span className="font-semibold text-txt">
                 {event.eventType.replace(/_/g, " ")}
@@ -2678,7 +2675,7 @@ function OperatorDetailDrawer({
       );
     } else if (block?.kind === "user") {
       body = (
-        <pre className="whitespace-pre-wrap rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
+        <pre className="whitespace-pre-wrap rounded-md bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
           {block.content}
         </pre>
       );
@@ -2758,13 +2755,13 @@ function OperatorDetailDrawer({
       );
     } else if (block?.kind === "agent" || block?.kind === "user") {
       body = (
-        <pre className="whitespace-pre-wrap rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
+        <pre className="whitespace-pre-wrap rounded-md bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
           {compactText(block.content)}
         </pre>
       );
     } else if (block?.kind === "reasoning") {
       body = (
-        <pre className="whitespace-pre-wrap rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
+        <pre className="whitespace-pre-wrap rounded-md bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
           {compactText(block.text)}
         </pre>
       );
@@ -2798,7 +2795,7 @@ function OperatorDetailDrawer({
       onClose={onClose}
     >
       <ErrorFirstBanner text={errorText} />
-      <div className="space-y-1.5 rounded-md border border-border/40 bg-bg/40 p-2">
+      <div className="space-y-1.5 rounded-md bg-bg/40 p-2">
         {session ? (
           <>
             <DetailRow
@@ -2823,7 +2820,7 @@ function OperatorDetailDrawer({
       </div>
       {recoveryActions.length > 0 ? (
         <div
-          className="space-y-1.5 rounded-md border border-border/40 bg-bg/40 p-2"
+          className="space-y-1.5 rounded-md bg-bg/40 p-2"
           data-testid="orchestrator-detail-recovery"
         >
           <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
@@ -2950,7 +2947,7 @@ function TimelineHeader({
 
   if (isMobile) {
     return (
-      <div className="border-b border-border/50 px-3 py-2">
+      <div className="px-3 py-2">
         <div className="flex items-center gap-2">
           <button
             ref={backRef}
@@ -2969,7 +2966,7 @@ function TimelineHeader({
             ref={detailsRef}
             type="button"
             onClick={onOpenInspector}
-            className="shrink-0 rounded-md border border-border/50 p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+            className="shrink-0 rounded-md p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
             aria-label={detailsLabel}
             title={detailsLabel}
             data-testid="orchestrator-open-inspector"
@@ -2986,7 +2983,7 @@ function TimelineHeader({
   }
 
   return (
-    <div className="flex items-center gap-2.5 border-b border-border/50 px-4 py-2.5">
+    <div className="flex items-center gap-2.5 px-4 py-2.5">
       <BackChip label={backLabel} onClick={onBack} testId="orchestrator-back" />
       {statusDot}
       {title}
@@ -2995,7 +2992,7 @@ function TimelineHeader({
         ref={detailsRef}
         type="button"
         onClick={onOpenInspector}
-        className="shrink-0 rounded-md border border-border/50 p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+        className="shrink-0 rounded-md p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
         aria-label={detailsLabel}
         title={detailsLabel}
         data-testid="orchestrator-open-inspector"
@@ -3496,12 +3493,12 @@ export function OrchestratorWorkbench() {
         </div>
       ) : null}
       {loadError ? (
-        <div className="border-b border-danger/30 bg-danger/10 px-3 py-1.5 text-xs text-danger">
+        <div className="bg-danger/10 px-3 py-1.5 text-xs text-danger">
           {loadError}
         </div>
       ) : null}
       {actionError ? (
-        <div className="border-b border-danger/30 bg-danger/10 px-3 py-1.5 text-xs text-danger">
+        <div className="bg-danger/10 px-3 py-1.5 text-xs text-danger">
           {actionError}
         </div>
       ) : null}
@@ -3538,10 +3535,10 @@ export function OrchestratorWorkbench() {
                   type="button"
                   onClick={() => setShowArchived((value) => !value)}
                   aria-pressed={showArchived}
-                  className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
+                  className={`inline-flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium transition-colors ${
                     showArchived
-                      ? "border-accent/40 bg-accent-subtle text-accent"
-                      : "border-border/50 bg-bg-accent/30 text-muted hover:text-txt"
+                      ? "bg-accent-subtle text-accent"
+                      : "bg-bg-accent/30 text-muted hover:text-txt"
                   }`}
                   data-testid="orchestrator-show-archived"
                   {...showArchivedAgentProps}
@@ -3566,7 +3563,7 @@ export function OrchestratorWorkbench() {
                   })}
                   hint={t("orchestrator.empty.hint", {
                     defaultValue:
-                      "Dispatch a coding task and the orchestrator will spin up sub-agents, track their plans, and stream their work here.",
+                      "Ask me to start a coding task and it will appear here.",
                   })}
                 />
               )
@@ -3622,7 +3619,7 @@ export function OrchestratorWorkbench() {
                       ref={loadOlderRef}
                       type="button"
                       onClick={() => void loadOlderTimeline()}
-                      className="flex items-center gap-1 rounded-full border border-border/50 px-2.5 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/50"
+                      className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/50"
                       data-testid="orchestrator-load-older"
                       aria-label={loadOlderLabel}
                       {...loadOlderAgentProps}
@@ -3681,7 +3678,7 @@ export function OrchestratorWorkbench() {
               </div>
               {detail.activeSessionCount > 0 ? (
                 <div
-                  className="flex items-center justify-between gap-2 border-t border-border/50 bg-warn/5 px-3 py-1.5"
+                  className="flex items-center justify-between gap-2 bg-warn/5 px-3 py-1.5"
                   data-testid="orchestrator-running-bar"
                 >
                   <span className="flex items-center gap-1.5 text-2xs font-medium text-warn">
@@ -3695,7 +3692,7 @@ export function OrchestratorWorkbench() {
                     type="button"
                     onClick={handleStopActive}
                     disabled={mutating}
-                    className="flex items-center gap-1 rounded-md border border-border/60 px-2 py-0.5 text-2xs text-txt transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+                    className="flex items-center gap-1 rounded-md px-2 py-0.5 text-2xs text-txt transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
                     data-testid="orchestrator-stop-active"
                     aria-label={stopLabel}
                     {...stopActiveAgentProps}
@@ -3712,7 +3709,7 @@ export function OrchestratorWorkbench() {
             </>
           ) : (
             <>
-              <div className="flex items-center gap-2.5 border-b border-border/50 px-4 py-2.5">
+              <div className="flex items-center gap-2.5 px-4 py-2.5">
                 <BackChip
                   label={t("orchestrator.action.backToList", {
                     defaultValue: "Tasks",

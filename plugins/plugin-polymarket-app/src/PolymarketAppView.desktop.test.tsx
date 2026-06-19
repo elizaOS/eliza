@@ -297,28 +297,39 @@ describe("PolymarketAppView (desktop/xr)", () => {
     expect(detailText).toContain("75%");
   });
 
-  it("Refresh control re-fetches; disabled while loading", async () => {
+  it("polls in the background to keep the market list fresh (no manual Refresh control)", async () => {
     mockState();
 
-    const { container } = render(
-      React.createElement(PolymarketAppView, overlayContext),
-    );
-    await waitForText(container, "Will BTC be above 100k?");
+    // Fake timers must be installed before mount so the poll's setInterval is
+    // registered on the controllable clock. Settle the resolved-promise loads by
+    // flushing microtasks between timer advances.
+    vi.useFakeTimers();
+    try {
+      const { container } = render(
+        React.createElement(PolymarketAppView, overlayContext),
+      );
+      // Settle the initial on-mount load.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
 
-    expect(polymarketClient.polymarketStatus).toHaveBeenCalledTimes(1);
-    expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(1);
+      // Manual refresh affordance is gone — freshness comes from the quiet poll.
+      expect(
+        container.querySelector('button[aria-label="Refresh"]'),
+      ).toBeNull();
+      expect(polymarketClient.polymarketStatus).toHaveBeenCalledTimes(1);
+      expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(1);
 
-    const refreshBtn = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Refresh"]',
-    );
-    expect(refreshBtn).toBeTruthy();
-    expect(refreshBtn?.disabled).toBe(false);
+      // Advancing past the 20s interval fires one background refetch.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20000);
+      });
 
-    clickButton(refreshBtn);
-    await flush();
-
-    expect(polymarketClient.polymarketStatus).toHaveBeenCalledTimes(2);
-    expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(2);
+      expect(polymarketClient.polymarketStatus).toHaveBeenCalledTimes(2);
+      expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("Back control invokes exitToApps", async () => {

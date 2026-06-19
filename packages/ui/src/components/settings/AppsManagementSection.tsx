@@ -86,8 +86,7 @@ type AsyncStatus =
   | { state: "loading"; message?: string }
   | { state: "error"; message: string };
 
-const HEAD_CELL_CLASS =
-  "px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted";
+const HEAD_CELL_CLASS = "px-3 py-2 text-xs font-medium text-muted";
 const BODY_CELL_CLASS = "px-3 py-2.5 align-middle text-sm";
 
 export function AppsManagementSection() {

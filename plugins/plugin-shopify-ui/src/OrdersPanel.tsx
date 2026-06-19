@@ -12,9 +12,9 @@ function FulfillmentBadge({
   if (!status) return null;
 
   const styles = {
-    FULFILLED: "bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.18)]",
-    UNFULFILLED: "bg-warn shadow-[0_0_0_3px_rgba(245,158,11,0.18)]",
-    PARTIALLY_FULFILLED: "bg-warn shadow-[0_0_0_3px_rgba(245,158,11,0.18)]",
+    FULFILLED: "bg-ok",
+    UNFULFILLED: "bg-warn",
+    PARTIALLY_FULFILLED: "bg-warn",
   } satisfies Record<NonNullable<ShopifyOrder["fulfillmentStatus"]>, string>;
 
   const labels: Record<
@@ -42,10 +42,10 @@ function FinancialBadge({
   status: ShopifyOrder["financialStatus"];
 }) {
   const styles = {
-    PAID: "bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.18)]",
-    PENDING: "bg-warn shadow-[0_0_0_3px_rgba(245,158,11,0.18)]",
-    REFUNDED: "bg-danger shadow-[0_0_0_3px_rgba(239,68,68,0.18)]",
-    PARTIALLY_REFUNDED: "bg-danger shadow-[0_0_0_3px_rgba(239,68,68,0.18)]",
+    PAID: "bg-ok",
+    PENDING: "bg-warn",
+    REFUNDED: "bg-danger",
+    PARTIALLY_REFUNDED: "bg-danger",
   } satisfies Record<ShopifyOrder["financialStatus"], string>;
 
   const labels: Record<ShopifyOrder["financialStatus"], string> = {
@@ -79,13 +79,13 @@ function OrderRow({ order }: { order: ShopifyOrder }) {
   });
 
   return (
-    <div className="rounded-xl border border-border/20 bg-card/30">
+    <div className="rounded-xl">
       <button
         ref={toggle.ref}
         type="button"
         onClick={() => setExpanded((prev) => !prev)}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-card/50 rounded-xl"
+        className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-card/40 rounded-xl"
         {...toggle.agentProps}
       >
         <div className="min-w-[4rem] shrink-0">
@@ -123,57 +123,29 @@ function OrderRow({ order }: { order: ShopifyOrder }) {
       </button>
 
       {expanded ? (
-        <div className="border-t border-border/20 px-4 py-3">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-lg border border-border/20 bg-card/35 px-3 py-2.5">
-              <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                Order ID
-              </div>
-              <div className="mt-1 text-xs font-semibold text-txt break-all">
-                {order.id}
-              </div>
-            </div>
-            <div className="rounded-lg border border-border/20 bg-card/35 px-3 py-2.5">
-              <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                Customer
-              </div>
-              <div className="mt-1 text-xs font-semibold text-txt">
-                {order.email || "—"}
-              </div>
-            </div>
-            <div className="rounded-lg border border-border/20 bg-card/35 px-3 py-2.5">
-              <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                Total
-              </div>
-              <div className="mt-1 text-xs font-semibold text-txt">
-                {order.totalPrice} {order.currencyCode}
-              </div>
-            </div>
-            <div className="rounded-lg border border-border/20 bg-card/35 px-3 py-2.5">
-              <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                Fulfillment
-              </div>
-              <div className="mt-1.5">
-                <FulfillmentBadge status={order.fulfillmentStatus} />
-              </div>
-            </div>
-            <div className="rounded-lg border border-border/20 bg-card/35 px-3 py-2.5">
-              <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                Payment
-              </div>
-              <div className="mt-1.5">
-                <FinancialBadge status={order.financialStatus} />
-              </div>
-            </div>
-            <div className="rounded-lg border border-border/20 bg-card/35 px-3 py-2.5">
-              <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                Created
-              </div>
-              <div className="mt-1 text-xs font-semibold text-txt">
-                {formatShortDate(order.createdAt)}
-              </div>
-            </div>
-          </div>
+        <div className="px-3 pb-3">
+          <dl className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
+            <dt className="text-muted">Order ID</dt>
+            <dd className="font-semibold text-txt break-all">{order.id}</dd>
+            <dt className="text-muted">Customer</dt>
+            <dd className="font-semibold text-txt">{order.email || "—"}</dd>
+            <dt className="text-muted">Total</dt>
+            <dd className="font-semibold text-txt">
+              {order.totalPrice} {order.currencyCode}
+            </dd>
+            <dt className="text-muted">Fulfillment</dt>
+            <dd>
+              <FulfillmentBadge status={order.fulfillmentStatus} />
+            </dd>
+            <dt className="text-muted">Payment</dt>
+            <dd>
+              <FinancialBadge status={order.financialStatus} />
+            </dd>
+            <dt className="text-muted">Created</dt>
+            <dd className="font-semibold text-txt">
+              {formatShortDate(order.createdAt)}
+            </dd>
+          </dl>
         </div>
       ) : null}
     </div>

@@ -20,6 +20,12 @@ export function fakeFfi(
 		asrStreamSupported?: boolean;
 		vadSupported?: boolean;
 		vadProbs?: readonly number[];
+		speakerSupported?: boolean;
+		/** The 256-float embedding `speakerEmbed` returns (defaults to zeros). */
+		speakerEmbedding?: Float32Array;
+		diarizSupported?: boolean;
+		/** The per-frame label sequence `diarizSegment` returns. */
+		diarizLabels?: Int8Array;
 	} = {},
 ): ElizaInferenceFfi {
 	const ttsSamples = opts.ttsSamples ?? 8;
@@ -27,6 +33,8 @@ export function fakeFfi(
 	const asrStreamSupported = opts.asrStreamSupported ?? false;
 	const vadSupported = opts.vadSupported ?? false;
 	const vadProbs = opts.vadProbs ?? [0];
+	const speakerSupported = opts.speakerSupported ?? false;
+	const diarizSupported = opts.diarizSupported ?? false;
 	let vadIdx = 0;
 	return {
 		libraryPath: "/fake/libelizainference.so",
@@ -64,6 +72,15 @@ export function fakeFfi(
 		},
 		vadReset: () => {},
 		vadClose: () => {},
+		speakerSupported: () => speakerSupported,
+		speakerOpen: () => 3n,
+		speakerEmbed: () =>
+			(opts.speakerEmbedding ?? new Float32Array(256)).slice(),
+		speakerClose: () => {},
+		diarizSupported: () => diarizSupported,
+		diarizOpen: () => 4n,
+		diarizSegment: () => (opts.diarizLabels ?? new Int8Array(293)).slice(),
+		diarizClose: () => {},
 		asrStreamSupported: () => asrStreamSupported,
 		asrStreamOpen: () => 1n,
 		asrStreamFeed: () => {},

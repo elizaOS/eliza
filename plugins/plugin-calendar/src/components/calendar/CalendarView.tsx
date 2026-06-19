@@ -46,8 +46,8 @@ export function CalendarView(): ReactElement {
         height: "100%",
         padding: "1.5rem",
         boxSizing: "border-box",
-        background: "var(--background, #0a0a0a)",
-        color: "var(--foreground, #f5f5f5)",
+        background: "var(--background, #eef8ff)",
+        color: "var(--foreground, #0a0a0a)",
       }}
       data-testid="calendar-view"
     >

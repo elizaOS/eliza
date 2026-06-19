@@ -47,7 +47,7 @@ function StewardTabItem({
       className={cn(
         "inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors sm:flex-none",
         active
-          ? "bg-bg-elevated text-txt-strong shadow-sm"
+          ? "bg-bg-elevated text-txt-strong"
           : "text-muted hover:bg-bg-hover hover:text-txt-strong",
       )}
       {...agentProps}
@@ -123,42 +123,40 @@ export function StewardView() {
       data-testid="steward-view"
       className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-4"
     >
-      <PagePanel variant="surface" className="px-4 py-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-bg-accent">
-              <StewardLogo size={18} />
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold text-txt-strong">
-                {activeTab === "approvals" ? "Approvals" : "History"}
-              </h1>
-              {stewardStatus?.evmAddress ? (
-                <div className="font-mono text-2xs text-muted">
-                  {stewardStatus.evmAddress.slice(0, 6)}...
-                  {stewardStatus.evmAddress.slice(-4)}
-                </div>
-              ) : null}
-            </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-bg-accent">
+            <StewardLogo size={18} />
           </div>
-
-          {stewardStatus?.connected ? (
-            <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1.5 text-xs-tight text-accent-fg">
-              <StewardLogo size={12} />
-              <span>Connected</span>
-            </div>
-          ) : (
-            <div className="shrink-0 text-xs text-muted">
-              {stewardStatus ? "Offline" : "Connecting..."}
-            </div>
-          )}
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold text-txt-strong">
+              {activeTab === "approvals" ? "Approvals" : "History"}
+            </h1>
+            {stewardStatus?.evmAddress ? (
+              <div className="font-mono text-2xs text-muted">
+                {stewardStatus.evmAddress.slice(0, 6)}...
+                {stewardStatus.evmAddress.slice(-4)}
+              </div>
+            ) : null}
+          </div>
         </div>
-      </PagePanel>
+
+        {stewardStatus?.connected ? (
+          <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1.5 text-xs-tight text-accent-fg">
+            <StewardLogo size={12} />
+            <span>Connected</span>
+          </div>
+        ) : (
+          <div className="shrink-0 text-xs text-muted">
+            {stewardStatus ? "Offline" : "Connecting..."}
+          </div>
+        )}
+      </div>
 
       <div
         role="tablist"
         aria-label="Steward sections"
-        className="mt-3 inline-flex w-full items-center gap-1 rounded-xl border border-border bg-surface p-1 shadow-sm sm:w-auto sm:self-start"
+        className="mt-3 inline-flex w-full items-center gap-1 sm:w-auto sm:self-start"
       >
         <StewardTabItem
           tab="approvals"
@@ -256,17 +254,17 @@ export function StewardTuiView() {
       data-view-state={JSON.stringify(viewState)}
       style={{
         minHeight: "100vh",
-        background: "#020617",
-        color: "#cbd5e1",
+        background: "var(--background, #eef8ff)",
+        color: "var(--foreground, #0a0a0a)",
         fontFamily:
           'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
         padding: 20,
       }}
     >
-      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+      <div style={{ color: "var(--accent, #ff8a24)", marginBottom: 4 }}>
         elizaos://steward --type=tui
       </div>
-      <div style={{ color: "#475569", marginBottom: 16 }}>
+      <div style={{ color: "var(--muted-foreground, #6b7280)", marginBottom: 16 }}>
         {loading
           ? "loading"
           : state?.status.connected
@@ -286,7 +284,7 @@ export function StewardTuiView() {
         <section
           aria-label="Steward approvals"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid var(--border, rgba(10,10,10,0.1))",
             borderRadius: 6,
             padding: 16,
             minHeight: 420,
@@ -300,15 +298,17 @@ export function StewardTuiView() {
               marginBottom: 10,
             }}
           >
-            <strong style={{ color: "#e2e8f0" }}>pending approvals</strong>
+            <strong style={{ color: "var(--foreground, #0a0a0a)" }}>
+              pending approvals
+            </strong>
             <button
               type="button"
               onClick={() => void refresh()}
               disabled={loading}
               style={{
                 background: "transparent",
-                color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
+                color: "var(--accent, #ff8a24)",
+                border: "1px solid var(--accent, #ff8a24)",
                 borderRadius: 4,
                 padding: "4px 8px",
                 cursor: loading ? "not-allowed" : "pointer",
@@ -318,26 +318,38 @@ export function StewardTuiView() {
               refresh
             </button>
           </div>
-          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          {error && (
+            <div style={{ color: "var(--destructive, #ef4444)" }}>{error}</div>
+          )}
           <div style={{ marginBottom: 12 }}>
             <div>
-              <span style={{ color: "#64748b" }}>configured</span>{" "}
+              <span style={{ color: "var(--muted-foreground, #6b7280)" }}>
+                configured
+              </span>{" "}
               {state?.status.configured ? "yes" : "no"}
             </div>
             <div>
-              <span style={{ color: "#64748b" }}>available</span>{" "}
+              <span style={{ color: "var(--muted-foreground, #6b7280)" }}>
+                available
+              </span>{" "}
               {state?.status.available ? "yes" : "no"}
             </div>
             <div>
-              <span style={{ color: "#64748b" }}>evm</span>{" "}
+              <span style={{ color: "var(--muted-foreground, #6b7280)" }}>
+                evm
+              </span>{" "}
               {state?.status.evmAddress ?? "no steward evm address"}
             </div>
             {state?.status.error ? (
-              <div style={{ color: "#fca5a5" }}>{state.status.error}</div>
+              <div style={{ color: "var(--destructive, #ef4444)" }}>
+                {state.status.error}
+              </div>
             ) : null}
           </div>
           {!state?.status.connected && !loading ? (
-            <div style={{ color: "#94a3b8", marginTop: 18 }}>
+            <div
+              style={{ color: "var(--muted-foreground, #6b7280)", marginTop: 18 }}
+            >
               Set STEWARD_API_URL and STEWARD_API_KEY to enable vault approvals.
             </div>
           ) : null}
@@ -345,19 +357,21 @@ export function StewardTuiView() {
             <div
               key={item.queueId}
               style={{
-                borderTop: "1px solid rgba(125,211,252,0.14)",
+                borderTop: "1px solid var(--border, rgba(10,10,10,0.08))",
                 padding: "9px 0",
               }}
             >
-              <div style={{ color: "#e2e8f0" }}>
+              <div style={{ color: "var(--foreground, #0a0a0a)" }}>
                 {item.transaction.id} / {item.transaction.status}
               </div>
-              <div style={{ color: "#94a3b8" }}>
+              <div style={{ color: "var(--muted-foreground, #6b7280)" }}>
                 chain {item.transaction.request.chainId} to{" "}
                 {item.transaction.request.to} value{" "}
                 {item.transaction.request.value}
               </div>
-              <div style={{ color: "#64748b" }}>{item.requestedAt}</div>
+              <div style={{ color: "var(--muted-foreground, #6b7280)" }}>
+                {item.requestedAt}
+              </div>
             </div>
           ))}
         </section>
@@ -365,14 +379,21 @@ export function StewardTuiView() {
         <section
           aria-label="Steward transaction history"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid var(--border, rgba(10,10,10,0.1))",
             borderRadius: 6,
             padding: 16,
             minHeight: 420,
           }}
         >
-          <strong style={{ color: "#e2e8f0" }}>transaction history</strong>
-          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+          <strong style={{ color: "var(--foreground, #0a0a0a)" }}>
+            transaction history
+          </strong>
+          <div
+            style={{
+              color: "var(--muted-foreground, #6b7280)",
+              margin: "6px 0 14px",
+            }}
+          >
             {state?.pending.length ?? 0} pending / {recent.length} recent
           </div>
           {recent.slice(0, 8).map((tx) => (
@@ -382,13 +403,22 @@ export function StewardTuiView() {
                 display: "grid",
                 gridTemplateColumns: "minmax(0,1fr) 10ch",
                 gap: 10,
-                borderTop: "1px solid rgba(125,211,252,0.14)",
+                borderTop: "1px solid var(--border, rgba(10,10,10,0.08))",
                 padding: "8px 0",
               }}
             >
-              <span style={{ color: "#e2e8f0" }}>{tx.id}</span>
-              <span style={{ color: "#a7f3d0" }}>{tx.status}</span>
-              <span style={{ gridColumn: "1 / 3", color: "#94a3b8" }}>
+              <span style={{ color: "var(--foreground, #0a0a0a)" }}>
+                {tx.id}
+              </span>
+              <span style={{ color: "var(--muted-foreground, #6b7280)" }}>
+                {tx.status}
+              </span>
+              <span
+                style={{
+                  gridColumn: "1 / 3",
+                  color: "var(--muted-foreground, #6b7280)",
+                }}
+              >
                 chain {tx.request.chainId} to {tx.request.to}
                 {tx.txHash ? ` hash ${tx.txHash}` : ""}
               </span>

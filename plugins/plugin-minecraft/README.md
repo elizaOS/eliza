@@ -56,9 +56,9 @@ All settings are optional. Defaults work for a local offline server.
 |---|---|---|
 | `MC_HOST` | `127.0.0.1` | Minecraft server host |
 | `MC_PORT` | `25565` | Minecraft server port |
-| `MC_USERNAME` | `ElizaBot` | Bot login name |
+| `MC_USERNAME` | `null` (bridge default: `ElizaBot`) | Bot login name |
 | `MC_AUTH` | `offline` | Auth mode: `offline` or `microsoft` |
-| `MC_VERSION` | `1.20.4` | Minecraft protocol version |
+| `MC_VERSION` | `null` (bridge default: `1.20.4`) | Minecraft protocol version |
 | `MC_SERVER_PORT` | `3457` | Local bridge WebSocket port (internal, rarely changed) |
 
 Set these as environment variables or via `agentConfig.pluginParameters` in your character config.

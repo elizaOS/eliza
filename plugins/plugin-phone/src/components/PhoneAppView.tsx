@@ -33,7 +33,6 @@ import {
   PhoneIncoming,
   PhoneMissed,
   PhoneOutgoing,
-  RefreshCw,
   Users as UsersIcon,
   Voicemail,
 } from "lucide-react";
@@ -268,9 +267,9 @@ function TuiDialKey({
       type="button"
       onClick={() => onPress(digit)}
       style={{
-        backgroundColor: "transparent",
-        color: "#e2e8f0",
-        border: "1px solid rgba(125,211,252,0.28)",
+        backgroundColor: "var(--surface)",
+        color: "var(--text)",
+        border: "1px solid var(--border)",
         borderRadius: 4,
         padding: "8px 0",
         cursor: "pointer",
@@ -312,9 +311,9 @@ function TuiRecentCallButton({
         gridTemplateColumns: "4ch minmax(8ch, 1fr) 10ch",
         gap: 10,
         border: "none",
-        borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+        borderTop: index === 0 ? "none" : "1px solid var(--border)",
         backgroundColor: "transparent",
-        color: "#cbd5e1",
+        color: "var(--text)",
         padding: "8px 0",
         cursor: "pointer",
         fontFamily: "inherit",
@@ -322,22 +321,22 @@ function TuiRecentCallButton({
       }}
       {...agentProps}
     >
-      <span style={{ color: "#64748b" }}>
+      <span style={{ color: "var(--muted)" }}>
         {String(index + 1).padStart(2, "0")}
       </span>
-      <span style={{ color: "#e2e8f0", overflow: "hidden" }}>{label}</span>
+      <span style={{ color: "var(--text)", overflow: "hidden" }}>{label}</span>
       <span
         style={{
-          color: call.type === "missed" ? "#fca5a5" : "#94a3b8",
+          color: call.type === "missed" ? "var(--danger)" : "var(--muted)",
         }}
       >
         {call.type}
       </span>
-      <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
+      <span style={{ gridColumn: "2 / 4", color: "var(--muted)" }}>
         {call.number} | {formatTimestamp(call.date)} | {call.durationSeconds}s
       </span>
       {(call.agentSummary || call.agentTranscript) && (
-        <span style={{ gridColumn: "2 / 4", color: "#a7f3d0" }}>
+        <span style={{ gridColumn: "2 / 4", color: "var(--accent)" }}>
           {call.agentSummary ?? call.agentTranscript}
         </span>
       )}
@@ -397,16 +396,19 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     }
   }, []);
 
-  // Lazy-load the recent-calls tab on first activation.
+  // Lazy-load the recent-calls tab on first activation, then keep it fresh with
+  // a quiet 20s poll while the tab is active (no manual Refresh control). The
+  // poll is torn down when the tab changes or the view unmounts.
   useEffect(() => {
-    if (
-      activeTab === "recent" &&
-      !recentAutoLoadedRef.current &&
-      !callsLoading
-    ) {
+    if (activeTab !== "recent") return;
+    if (!recentAutoLoadedRef.current && !callsLoading) {
       recentAutoLoadedRef.current = true;
       void refreshCalls();
     }
+    const interval = setInterval(() => {
+      void refreshCalls();
+    }, 20_000);
+    return () => clearInterval(interval);
   }, [activeTab, callsLoading, refreshCalls]);
 
   const appendDigit = useCallback((digit: string) => {
@@ -467,7 +469,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
   }, []);
 
   const backLabel = t("nav.back", { defaultValue: "Back" });
-  const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
   const callLabel = t("phone.dialer.call", { defaultValue: "Call" });
   const intlLabel = t("phone.dialer.intl", {
     defaultValue: "Insert + for international dialing",
@@ -491,13 +492,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     group: "phone-nav",
     description: "Open the Contacts app to browse the address book",
     onActivate: openContacts,
-  });
-  const refreshAgent = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: refreshLabel,
-    group: "phone-recent",
-    description: "Reload the recent calls list",
   });
   const plusAgent = useAgentElement<HTMLButtonElement>({
     id: "dial-plus",
@@ -527,16 +521,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     group: "phone-recent",
     description: "Switch to the Dialer tab from the empty recent-calls state",
     onActivate: () => setActiveTab("dialer"),
-  });
-  const emptyRefreshAgent = useAgentElement<HTMLButtonElement>({
-    id: "recent-empty-refresh",
-    role: "button",
-    label: refreshLabel,
-    group: "phone-recent",
-    description: "Reload the recent calls list from the empty state",
-    onActivate: () => {
-      void refreshCalls();
-    },
   });
 
   return (
@@ -570,22 +554,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {activeTab === "recent" ? (
-            <Button
-              ref={refreshAgent.ref}
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-xl text-muted hover:text-txt"
-              onClick={() => void refreshCalls()}
-              disabled={callsLoading}
-              aria-label={refreshLabel}
-              {...refreshAgent.agentProps}
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${callsLoading ? "animate-spin" : ""}`}
-              />
-            </Button>
-          ) : null}
           <Button
             ref={contactsNavAgent.ref}
             variant="ghost"
@@ -793,16 +761,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                       {...emptyDialerAgent.agentProps}
                     >
                       {t("phone.tabs.dialer", { defaultValue: "Dialer" })}
-                    </Button>
-                    <Button
-                      ref={emptyRefreshAgent.ref}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void refreshCalls()}
-                      {...emptyRefreshAgent.agentProps}
-                    >
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      {t("actions.refresh", { defaultValue: "Refresh" })}
                     </Button>
                   </div>
                 </div>
@@ -1016,17 +974,17 @@ export function PhoneTuiView() {
       data-view-state={JSON.stringify(state)}
       style={{
         minHeight: "100vh",
-        backgroundColor: "#020617",
-        color: "#cbd5e1",
+        backgroundColor: "var(--bg)",
+        color: "var(--text)",
         fontFamily:
           'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
         padding: 20,
       }}
     >
-      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+      <div style={{ color: "var(--accent)", marginBottom: 4 }}>
         elizaos://phone --type=tui
       </div>
-      <div style={{ color: "#475569", marginBottom: 16 }}>
+      <div style={{ color: "var(--muted)", marginBottom: 16 }}>
         {loading ? "loading" : `${calls.length} recent`} |{" "}
         {status?.canPlaceCalls ? "call-ready" : "call-blocked"} | {lastAction}
       </div>
@@ -1041,21 +999,21 @@ export function PhoneTuiView() {
         <section
           aria-label="Phone dialer"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid var(--border)",
             borderRadius: 6,
             padding: 16,
             minHeight: 420,
           }}
         >
-          <strong style={{ color: "#e2e8f0" }}>dialer</strong>
-          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+          <strong style={{ color: "var(--text)" }}>dialer</strong>
+          <div style={{ color: "var(--muted)", margin: "6px 0 14px" }}>
             default dialer: {status?.isDefaultDialer ? "yes" : "no"}{" "}
             {status?.defaultDialerPackage ?? ""}
           </div>
 
           <label
             htmlFor="phone-tui-number"
-            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+            style={{ display: "block", color: "var(--muted)", marginBottom: 6 }}
           >
             number
           </label>
@@ -1068,9 +1026,9 @@ export function PhoneTuiView() {
             style={{
               width: "100%",
               boxSizing: "border-box",
-              backgroundColor: "#0f172a",
-              color: "#e2e8f0",
-              border: "1px solid rgba(125,211,252,0.3)",
+              backgroundColor: "var(--surface)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
               borderRadius: 4,
               padding: 8,
               fontFamily: "inherit",
@@ -1105,8 +1063,8 @@ export function PhoneTuiView() {
               }
               style={{
                 backgroundColor: "transparent",
-                color: "#94a3b8",
-                border: "1px solid rgba(148,163,184,0.45)",
+                color: "var(--muted)",
+                border: "1px solid var(--border)",
                 borderRadius: 4,
                 padding: "6px 10px",
                 cursor: "pointer",
@@ -1122,8 +1080,8 @@ export function PhoneTuiView() {
               onClick={() => void openDialer()}
               style={{
                 backgroundColor: "transparent",
-                color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
+                color: "var(--accent)",
+                border: "1px solid var(--accent)",
                 borderRadius: 4,
                 padding: "6px 10px",
                 cursor: "pointer",
@@ -1139,9 +1097,9 @@ export function PhoneTuiView() {
               onClick={() => void callNumber()}
               disabled={!normalizeNumber(dialed) || calling}
               style={{
-                backgroundColor: "transparent",
-                color: "#7dd3fc",
-                border: "1px solid rgba(125,211,252,0.45)",
+                backgroundColor: "var(--accent)",
+                color: "var(--accent-foreground)",
+                border: "1px solid var(--accent)",
                 borderRadius: 4,
                 padding: "6px 10px",
                 cursor:
@@ -1149,6 +1107,7 @@ export function PhoneTuiView() {
                     ? "not-allowed"
                     : "pointer",
                 fontFamily: "inherit",
+                opacity: !normalizeNumber(dialed) || calling ? 0.5 : 1,
               }}
               {...tuiCallAgent.agentProps}
             >
@@ -1156,10 +1115,14 @@ export function PhoneTuiView() {
             </button>
           </div>
 
-          <strong style={{ color: "#e2e8f0" }}>transcript</strong>
+          <strong style={{ color: "var(--text)" }}>transcript</strong>
           <label
             htmlFor="phone-tui-call-id"
-            style={{ display: "block", color: "#94a3b8", margin: "12px 0 6px" }}
+            style={{
+              display: "block",
+              color: "var(--muted)",
+              margin: "12px 0 6px",
+            }}
           >
             call id
           </label>
@@ -1172,9 +1135,9 @@ export function PhoneTuiView() {
             style={{
               width: "100%",
               boxSizing: "border-box",
-              backgroundColor: "#0f172a",
-              color: "#e2e8f0",
-              border: "1px solid rgba(125,211,252,0.3)",
+              backgroundColor: "var(--surface)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
               borderRadius: 4,
               padding: 8,
               fontFamily: "inherit",
@@ -1184,7 +1147,7 @@ export function PhoneTuiView() {
           />
           <label
             htmlFor="phone-tui-transcript"
-            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+            style={{ display: "block", color: "var(--muted)", marginBottom: 6 }}
           >
             transcript
           </label>
@@ -1199,9 +1162,9 @@ export function PhoneTuiView() {
               width: "100%",
               boxSizing: "border-box",
               resize: "vertical",
-              backgroundColor: "#0f172a",
-              color: "#e2e8f0",
-              border: "1px solid rgba(125,211,252,0.3)",
+              backgroundColor: "var(--surface)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
               borderRadius: 4,
               padding: 8,
               fontFamily: "inherit",
@@ -1211,7 +1174,7 @@ export function PhoneTuiView() {
           />
           <label
             htmlFor="phone-tui-summary"
-            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+            style={{ display: "block", color: "var(--muted)", marginBottom: 6 }}
           >
             summary
           </label>
@@ -1224,9 +1187,9 @@ export function PhoneTuiView() {
             style={{
               width: "100%",
               boxSizing: "border-box",
-              backgroundColor: "#0f172a",
-              color: "#e2e8f0",
-              border: "1px solid rgba(125,211,252,0.3)",
+              backgroundColor: "var(--surface)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
               borderRadius: 4,
               padding: 8,
               fontFamily: "inherit",
@@ -1242,9 +1205,9 @@ export function PhoneTuiView() {
               !transcriptCallId.trim() || !transcript.trim() || savingTranscript
             }
             style={{
-              backgroundColor: "transparent",
-              color: "#a7f3d0",
-              border: "1px solid rgba(167,243,208,0.45)",
+              backgroundColor: "var(--accent)",
+              color: "var(--accent-foreground)",
+              border: "1px solid var(--accent)",
               borderRadius: 4,
               padding: "6px 10px",
               cursor:
@@ -1254,6 +1217,12 @@ export function PhoneTuiView() {
                   ? "not-allowed"
                   : "pointer",
               fontFamily: "inherit",
+              opacity:
+                !transcriptCallId.trim() ||
+                !transcript.trim() ||
+                savingTranscript
+                  ? 0.5
+                  : 1,
             }}
             {...saveTranscriptAgent.agentProps}
           >
@@ -1264,7 +1233,7 @@ export function PhoneTuiView() {
         <section
           aria-label="Recent calls"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid var(--border)",
             borderRadius: 6,
             padding: 16,
             minHeight: 420,
@@ -1278,7 +1247,7 @@ export function PhoneTuiView() {
               marginBottom: 10,
             }}
           >
-            <strong style={{ color: "#e2e8f0" }}>recent calls</strong>
+            <strong style={{ color: "var(--text)" }}>recent calls</strong>
             <button
               ref={tuiRefreshAgent.ref}
               type="button"
@@ -1286,21 +1255,22 @@ export function PhoneTuiView() {
               disabled={loading}
               style={{
                 backgroundColor: "transparent",
-                color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
+                color: "var(--accent)",
+                border: "1px solid var(--accent)",
                 borderRadius: 4,
                 padding: "4px 8px",
                 cursor: loading ? "not-allowed" : "pointer",
                 fontFamily: "inherit",
+                opacity: loading ? 0.5 : 1,
               }}
               {...tuiRefreshAgent.agentProps}
             >
               refresh
             </button>
           </div>
-          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
           {!loading && !error && calls.length === 0 && (
-            <div style={{ color: "#64748b" }}>no recent calls</div>
+            <div style={{ color: "var(--muted)" }}>no recent calls</div>
           )}
           {calls.slice(0, 12).map((call, index) => (
             <TuiRecentCallButton

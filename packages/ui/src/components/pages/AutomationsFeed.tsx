@@ -24,7 +24,6 @@ import {
   Pause,
   Play,
   Plus,
-  RefreshCw,
   Workflow,
   Zap,
 } from "lucide-react";
@@ -181,14 +180,6 @@ export function AutomationsFeed({
   const { link, setLink } = useAutomationDeepLink();
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
 
-  const refreshAgent = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: t("automationsfeed.refresh", { defaultValue: "Refresh" }),
-    group: "automations-actions",
-    description: "Reload the list of automations",
-    onActivate: () => void refresh(),
-  });
   const newAgent = useAgentElement<HTMLButtonElement>({
     id: "action-new",
     role: "button",
@@ -296,15 +287,6 @@ export function AutomationsFeed({
     return allRows.filter((r) => passesFilter(r, filter));
   }, [allRows, filter]);
 
-  const tasksCount = useMemo(
-    () => automations.filter((a) => a.type !== "workflow").length,
-    [automations],
-  );
-  const workflowsCount =
-    typeof data?.summary?.workflowCount === "number"
-      ? data.summary.workflowCount
-      : automations.filter((a) => a.type === "workflow").length;
-
   const filterCounts = useMemo<Record<FeedFilter, number>>(
     () => ({
       all: allRows.length,
@@ -368,58 +350,20 @@ export function AutomationsFeed({
             >
               <Zap className="h-5 w-5" />
             </span>
-            <div className="space-y-1">
-              <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
-                {t("automationsfeed.title", { defaultValue: "Automations" })}
-              </h1>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <StatChip
-                  icon={<CheckCircle2 className="h-3 w-3" />}
-                  count={tasksCount}
-                  label={t("automationsfeed.tasksStat", {
-                    defaultValue: "tasks",
-                  })}
-                  tone="neutral"
-                />
-                <StatChip
-                  icon={<Workflow className="h-3 w-3" />}
-                  count={workflowsCount}
-                  label={t("automationsfeed.workflowsStat", {
-                    defaultValue: "workflows",
-                  })}
-                  tone="accent"
-                />
-              </div>
-            </div>
+            <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
+              {t("automationsfeed.title", { defaultValue: "Automations" })}
+            </h1>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              ref={refreshAgent.ref}
-              variant="ghost"
-              size="sm"
-              onClick={() => void refresh()}
-              disabled={loading}
-              aria-label={t("automationsfeed.refresh", {
-                defaultValue: "Refresh",
-              })}
-              {...refreshAgent.agentProps}
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-                aria-hidden
-              />
-            </Button>
-            <Button
-              ref={newAgent.ref}
-              variant="default"
-              size="sm"
-              onClick={() => setChooser("task")}
-              {...newAgent.agentProps}
-            >
-              <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
-              {t("automationsfeed.new", { defaultValue: "New" })}
-            </Button>
-          </div>
+          <Button
+            ref={newAgent.ref}
+            variant="default"
+            size="sm"
+            onClick={() => setChooser("task")}
+            {...newAgent.agentProps}
+          >
+            <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
+            {t("automationsfeed.new", { defaultValue: "New" })}
+          </Button>
         </div>
 
         {/* Filter chips */}
@@ -543,32 +487,6 @@ export function AutomationsFeed({
   return feedContent;
 }
 
-function StatChip({
-  icon,
-  count,
-  label,
-  tone,
-}: {
-  icon: ReactNode;
-  count: number;
-  label: string;
-  tone: "accent" | "neutral";
-}) {
-  const toneClasses =
-    tone === "accent"
-      ? "border-accent/25 bg-accent/10 text-accent"
-      : "border-border/50 bg-bg-accent text-muted-strong";
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${toneClasses}`}
-    >
-      <span className="[&>svg]:h-3 [&>svg]:w-3">{icon}</span>
-      <span className="tabular-nums font-semibold">{count}</span>
-      <span className="text-[0.7rem] opacity-80">{label}</span>
-    </span>
-  );
-}
-
 function FilterChipButton({
   filter,
   label,
@@ -672,20 +590,6 @@ function FeedRowItem({
             />
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-strong">
-            <RowChip
-              icon={
-                isWorkflow ? (
-                  <Workflow className="h-3 w-3" />
-                ) : (
-                  <CheckCircle2 className="h-3 w-3" />
-                )
-              }
-              label={
-                isWorkflow
-                  ? t("automationsfeed.workflow", { defaultValue: "Workflow" })
-                  : t("automationsfeed.task", { defaultValue: "Task" })
-              }
-            />
             {row.schedule && (
               <RowChip
                 icon={<CalendarClock className="h-3 w-3" />}

@@ -625,17 +625,16 @@ export function pluginMonogram(plugin: PluginInfo): string {
 
 /**
  * Deterministic monogram-tile gradient derived from the plugin name hash.
- * Hues are pulled from a warm, accent-adjacent band (oranges, ambers, magentas,
- * violets, teals) and deliberately exclude the blue range to honor the brand
- * "no blue" rule. Returns an inline `background` value built from HSL stops so
- * it adapts without needing extra theme tokens.
+ * Hues stay inside the brand-orange family so every monogram tile reads
+ * on-brand while the hash still varies the exact stop. Returns an inline
+ * `background` value built from HSL stops so it adapts without extra tokens.
  */
 export function pluginTileGradient(plugin: PluginInfo): string {
-  // Allowed hue anchors (degrees). No blue band (≈200–260).
-  const HUE_BANDS = [18, 30, 42, 152, 168, 286, 310, 332];
+  // Warm orange/amber band only — keep tiles on-brand (brand orange ≈ 28°).
+  const HUE_BANDS = [18, 24, 30, 36, 42];
   const hash = hashString(plugin.id || plugin.name || "plugin");
   const base = HUE_BANDS[hash % HUE_BANDS.length];
-  const second = (base + 22) % 360;
+  const second = (base + 14) % 360;
   const angle = 120 + (hash % 6) * 12;
   return `linear-gradient(${angle}deg, hsl(${base} 82% 56%), hsl(${second} 78% 47%))`;
 }

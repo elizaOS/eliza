@@ -204,7 +204,7 @@ export function XRSettingsSection() {
             label={p.name}
             description={p.detail}
             trailing={
-              <span className="shrink-0 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-xs text-success">
+              <span className="shrink-0 rounded-full border border-ok/30 bg-ok/10 px-2 py-0.5 text-xs text-ok">
                 {p.status}
               </span>
             }

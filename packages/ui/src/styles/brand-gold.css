@@ -406,15 +406,18 @@
  * literals at the component layer.
  */
 :root {
-  --memory-type-messages-bg: rgba(99, 102, 241, 0.15);
-  --memory-type-messages-fg: rgb(99, 102, 241);
-  --memory-type-memories-bg: rgba(168, 85, 247, 0.15);
-  --memory-type-memories-fg: rgb(168, 85, 247);
-  --memory-type-facts-bg: rgba(34, 197, 94, 0.15);
-  --memory-type-facts-fg: rgb(34, 197, 94);
-  --memory-type-documents-bg: rgba(245, 158, 11, 0.15);
-  --memory-type-documents-fg: rgb(245, 158, 11);
-  --memory-type-unknown-bg: rgba(156, 163, 175, 0.15);
+  /* On-brand memory-type cues: orange (focal) + blue (info) + neutral grays.
+     No decorative indigo/purple/green/amber; the per-type icon carries the rest
+     of the distinction. */
+  --memory-type-messages-bg: rgba(29, 145, 232, 0.14);
+  --memory-type-messages-fg: rgb(29, 145, 232);
+  --memory-type-memories-bg: rgba(255, 138, 36, 0.16);
+  --memory-type-memories-fg: rgb(255, 138, 36);
+  --memory-type-facts-bg: rgba(100, 116, 139, 0.14);
+  --memory-type-facts-fg: rgb(100, 116, 139);
+  --memory-type-documents-bg: rgba(120, 113, 108, 0.14);
+  --memory-type-documents-fg: rgb(120, 113, 108);
+  --memory-type-unknown-bg: rgba(156, 163, 175, 0.14);
   --memory-type-unknown-fg: rgb(156, 163, 175);
 }
 

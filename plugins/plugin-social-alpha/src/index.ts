@@ -53,7 +53,7 @@ export const socialAlphaPlugin: Plugin = {
 			id: "social-alpha",
 			label: "Social Alpha",
 			description:
-				"Trust leaderboard for token calls — win rate, rank, and P&L-backed recommender analytics. Requires an agent wallet.",
+				"Trust leaderboard for token calls. Requires an agent wallet.",
 			icon: "UsersRound",
 			path: "/social-alpha",
 			bundlePath: "dist/views/bundle.js",

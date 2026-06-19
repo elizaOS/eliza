@@ -16,17 +16,14 @@
  *  - Someday  — active todos with no (or unparseable) due date.
  *
  * It renders one of four distinct states (loading, error, empty, populated) and
- * instruments its refresh control through the agent surface so the floating chat
- * can drive it. The default fetcher builds its URL from `client.getBaseUrl()`;
- * tests inject the fetcher seam so they stay offline.
+ * stays fresh via a quiet background poll. The default fetcher builds its URL
+ * from `client.getBaseUrl()`; tests inject the fetcher seam so they stay offline.
  *
  * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
  * DTO below is declared locally to match the JSON shape PA emits.
  */
 
 import { client } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -101,12 +98,6 @@ function mapTodo(wire: TodoWire): TodoItem {
   };
 }
 
-const STATUS_LABELS: Record<TodoStatus, string> = {
-  pending: "Pending",
-  in_progress: "In progress",
-  completed: "Completed",
-};
-
 // An active todo is one still on the board: pending or in_progress.
 function isActive(todo: TodoItem): boolean {
   return todo.status === "pending" || todo.status === "in_progress";
@@ -123,16 +114,28 @@ function laneFor(todo: TodoItem, now: number): LaneId {
   return ts <= now + DAY_MS ? "today" : "upcoming";
 }
 
+// Overdue = an active todo whose due date is already in the past. Distinct from
+// the Today lane (which also holds items due within the next 24h), so a count of
+// these is a non-redundant, actionable proactive signal.
+function overdueCount(todos: TodoItem[], now: number): number {
+  let count = 0;
+  for (const todo of todos) {
+    if (!isActive(todo) || !todo.dueDate) continue;
+    const ts = Date.parse(todo.dueDate);
+    if (!Number.isNaN(ts) && ts < now) count += 1;
+  }
+  return count;
+}
+
 interface LaneDef {
   id: LaneId;
   label: string;
-  description: string;
 }
 
 const LANES: readonly LaneDef[] = [
-  { id: "today", label: "Today", description: "Due now or overdue." },
-  { id: "upcoming", label: "Upcoming", description: "Scheduled for later." },
-  { id: "someday", label: "Someday", description: "No due date yet." },
+  { id: "today", label: "Today" },
+  { id: "upcoming", label: "Upcoming" },
+  { id: "someday", label: "Someday" },
 ];
 
 function formatDue(value: string): string {
@@ -145,7 +148,7 @@ function formatDue(value: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Styling — dark theme, CSS vars, orange accent only.
+// Styling — light theme, CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "todos-view-styles";
@@ -167,21 +170,21 @@ const TODOS_VIEW_CSS = `
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .todos-view-btn-primary {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border: 1px solid var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #ffffff);
+  border: 1px solid var(--primary, #ff8a24);
 }
 .todos-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
 }
 .todos-view-btn-neutral {
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(0, 0, 0, 0.04));
+  color: var(--foreground, #111);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
 }
 .todos-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #111) 8%, transparent);
 }
 .todos-view-btn:disabled {
   opacity: 0.5;
@@ -207,8 +210,8 @@ const containerStyle: CSSProperties = {
   padding: 24,
   height: "100%",
   boxSizing: "border-box",
-  background: "var(--background, #0a0a0a)",
-  color: "var(--foreground, #f5f5f5)",
+  background: "var(--background, #ffffff)",
+  color: "var(--foreground, #111)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -232,8 +235,8 @@ const h2Style: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600 };
 const cardStyle: CSSProperties = {
   padding: 16,
   borderRadius: 8,
-  border: "1px solid var(--border, rgba(255,255,255,0.08))",
-  background: "var(--surface, rgba(255,255,255,0.02))",
+  border: "1px solid var(--border, rgba(0,0,0,0.12))",
+  background: "var(--surface, rgba(0,0,0,0.04))",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -255,8 +258,12 @@ const lanesGridStyle: CSSProperties = {
   minHeight: 0,
 };
 
+// Lanes are separated by whitespace (grid gap) only — no card edge per lane.
 const laneCardStyle: CSSProperties = {
-  ...cardStyle,
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  padding: 0,
   minHeight: 0,
 };
 
@@ -278,17 +285,16 @@ const listStyle: CSSProperties = {
 const rowStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "baseline",
+  alignItems: "center",
   gap: 12,
-  padding: "10px 0",
-  borderBottom: "1px solid var(--border, rgba(255,255,255,0.06))",
+  padding: "8px 0",
   fontSize: 14,
 };
 
 const rowMainStyle: CSSProperties = {
   display: "flex",
-  flexDirection: "column",
-  gap: 2,
+  alignItems: "center",
+  gap: 8,
   minWidth: 0,
 };
 
@@ -300,52 +306,23 @@ const metaStyle: CSSProperties = {
   flexShrink: 0,
 };
 
-// ---------------------------------------------------------------------------
-// Agent-instrumented controls (hooks cannot run inside .map()).
-// ---------------------------------------------------------------------------
+// Status dot: orange = in_progress (busy/running), neutral = pending (idle).
+const statusDotStyle = (status: TodoStatus): CSSProperties => ({
+  width: 8,
+  height: 8,
+  borderRadius: "50%",
+  flexShrink: 0,
+  background:
+    status === "in_progress"
+      ? "var(--primary, #ff8a24)"
+      : "color-mix(in srgb, var(--foreground, #111) 35%, transparent)",
+});
 
-function RefreshButton({
-  onActivate,
-  disabled,
-}: {
-  onActivate: () => void;
-  disabled: boolean;
-}): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "todos-refresh",
-    role: "button",
-    label: "Refresh todos",
-    group: "todos-toolbar",
-    description: "Reload the owner's todos across the Today, Upcoming, and Someday lanes",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="todos-view-btn todos-view-btn-neutral"
-      onClick={onActivate}
-      disabled={disabled}
-      aria-label="Refresh todos"
-      {...agentProps}
-    >
-      <RefreshCw className="h-4 w-4" aria-hidden />
-    </button>
-  );
-}
-
-function TodosHeader({
-  refetch,
-  busy,
-}: {
-  refetch: () => void;
-  busy: boolean;
-}): ReactNode {
+function TodosHeader(): ReactNode {
   return (
     <header style={sectionStyle}>
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Todos</h1>
-        <RefreshButton onActivate={refetch} disabled={busy} />
       </div>
       <div style={subtitleStyle}>
         Three lanes: Today, Upcoming, Someday.
@@ -355,17 +332,19 @@ function TodosHeader({
 }
 
 function TodoRow({ todo }: { todo: TodoItem }): ReactNode {
-  const meta: string[] = [STATUS_LABELS[todo.status]];
-  if (todo.dueDate) {
-    const formatted = formatDue(todo.dueDate);
-    if (formatted) meta.push(`due ${formatted}`);
-  }
+  const due = todo.dueDate ? formatDue(todo.dueDate) : "";
   return (
     <li style={rowStyle}>
       <span style={rowMainStyle}>
+        <span
+          style={statusDotStyle(todo.status)}
+          aria-label={
+            todo.status === "in_progress" ? "In progress" : "Pending"
+          }
+        />
         <span style={titleStyle}>{todo.title}</span>
       </span>
-      <span style={metaStyle}>{meta.join(" · ")}</span>
+      {due ? <span style={metaStyle}>{due}</span> : null}
     </li>
   );
 }
@@ -383,7 +362,6 @@ function Lane({ lane, todos }: { lane: LaneDef; todos: TodoItem[] }): ReactNode 
           {todos.length}
         </span>
       </div>
-      <div style={dimStyle}>{lane.description}</div>
       {todos.length === 0 ? (
         <div style={{ ...dimStyle, fontStyle: "italic" }}>Nothing here.</div>
       ) : (
@@ -400,6 +378,8 @@ function Lane({ lane, todos }: { lane: LaneDef; todos: TodoItem[] }): ReactNode 
 // ---------------------------------------------------------------------------
 // Fetch-driven state machine.
 // ---------------------------------------------------------------------------
+
+const POLL_INTERVAL_MS = 15_000;
 
 type LoadState =
   | { kind: "loading" }
@@ -443,6 +423,25 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
 
   useEffect(() => load(), [load]);
 
+  // Background poll: refresh the board on an interval without flashing the
+  // loading state. Transient poll failures are ignored — the explicit Retry
+  // path is what surfaces errors to the user.
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchersRef.current
+        .fetchTodos()
+        .then((wire) => {
+          setState((prev) =>
+            prev.kind === "error"
+              ? prev
+              : { kind: "ready", todos: wire.todos.map(mapTodo) },
+          );
+        })
+        .catch(() => {});
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
+
   // Lane grouping is presentation-only over the active todos the route returns.
   const byLane = useMemo(() => {
     const grouped: Record<LaneId, TodoItem[]> = {
@@ -459,10 +458,16 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
     return grouped;
   }, [state]);
 
+  // Proactive signal: how many active todos are already past due.
+  const overdue = useMemo(
+    () => (state.kind === "ready" ? overdueCount(state.todos, Date.now()) : 0),
+    [state],
+  );
+
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="todos-loading">
-        <TodosHeader refetch={load} busy={true} />
+        <TodosHeader />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading todos…</div>
       </div>
     );
@@ -471,7 +476,7 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="todos-error">
-        <TodosHeader refetch={load} busy={false} />
+        <TodosHeader />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load todos</div>
           <div style={dimStyle}>{state.message}</div>
@@ -497,7 +502,7 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
   if (activeCount === 0) {
     return (
       <div style={containerStyle} data-testid="todos-empty">
-        <TodosHeader refetch={load} busy={false} />
+        <TodosHeader />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>No todos</div>
           <div style={dimStyle}>
@@ -521,7 +526,12 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
 
   return (
     <div style={containerStyle} data-testid="todos-populated">
-      <TodosHeader refetch={load} busy={false} />
+      <TodosHeader />
+      {overdue > 0 ? (
+        <p style={dimStyle} data-testid="todos-proactive">
+          {overdue === 1 ? "1 todo is overdue." : `${overdue} todos are overdue.`}
+        </p>
+      ) : null}
       <section style={lanesGridStyle} aria-label="Todo lanes">
         {LANES.map((lane) => (
           <Lane key={lane.id} lane={lane} todos={byLane[lane.id]} />

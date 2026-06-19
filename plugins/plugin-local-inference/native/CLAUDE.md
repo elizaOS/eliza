@@ -706,9 +706,11 @@ deprecated and will be removed from the runtime path once all native ports land.
 
 **Rule:** do NOT remove `onnxruntime-node` from `plugin-local-inference/package.json`
 until every compute-gated head above is replaced. Premature removal crashes the
-voice pipeline. The per-model migration protocol (flip `manifest.json` runtime field,
-rename GGML variant to canonical, delete ONNX file, run verify gate) should be
-documented in the project's implementation notes when available.
+voice pipeline. For each per-model migration, update the manifest runtime from
+`onnx` to the native/GGUF runtime, rename the promoted artifact to the canonical
+manifest path, remove the ONNX entry from the shipped bundle, run the relevant
+gate from `native/verify/PLATFORM_MATRIX.md`, and keep the HF ONNX artifact for
+one release cycle as described below.
 
 **HF deprecation runway:** ONNX model files remain on HF alongside GGUFs for one
 release after each native port lands. Do not delete ONNX from HF until the GGUF

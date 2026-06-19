@@ -402,13 +402,17 @@ describe("GgmlSileroVad", () => {
 		}
 	});
 
-	it("documents the auto provider order: Qwen toolkit → standalone Silero → fused native Silero", () => {
+	it("documents the auto provider order: Qwen toolkit → fused native Silero → standalone Silero", () => {
+		// Fused `silero-ggml` (the one libelizainference handle) is preferred
+		// over the standalone `silero-cpp` bun:ffi-musl lib per the
+		// single-fused-engine directive.
 		expect(vadProviderOrder()).toEqual([
 			"qwen-toolkit",
-			"silero-cpp",
 			"silero-ggml",
+			"silero-cpp",
 		]);
 		expect(vadProviderOrder("silero-ggml")).toEqual(["silero-ggml"]);
+		expect(vadProviderOrder("silero-cpp")).toEqual(["silero-cpp"]);
 	});
 
 	it("exposes NativeSileroVad as a back-compat alias for GgmlSileroVad", () => {
@@ -534,5 +538,27 @@ describe("GgmlSileroVad", () => {
 		const err = new VadUnavailableError("ffi-missing", "no symbols");
 		expect(err).toBeInstanceOf(VadUnavailableError);
 		expect(err.code).toBe("ffi-missing");
+	});
+
+	it("prefers the fused silero-ggml over standalone silero-cpp when the fused FFI advertises VAD", async () => {
+		// The fused handle advertises VAD support; the bundle carries the legacy
+		// GGML model. silero-cpp is tried second (no standalone lib/GGUF on this
+		// host) so resolution lands on the fused `silero-ggml` — the one
+		// libelizainference handle — per the single-fused-engine directive.
+		const dir = mkdtempSync(path.join(os.tmpdir(), "fused-vad-"));
+		try {
+			const ggml = path.join(dir, "vad", "silero-vad-v5.1.2.ggml.bin");
+			mkdirSync(path.dirname(ggml), { recursive: true });
+			writeFileSync(ggml, "");
+			const ffi = fakeFfi("x", { vadSupported: true, vadProbs: [0.1] });
+			const resolved = await resolveVadProvider({
+				ffi,
+				ctx: 1n,
+				bundleRoot: dir,
+			});
+			expect(resolved.id).toBe("silero-ggml");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

@@ -22499,6 +22499,9 @@
     }
   }
 
+  // packages/ui/src/events/index.ts
+  var TUTORIAL_CHAT_CONTROL_EVENT = "eliza:tutorial:chat-control";
+
   // packages/ui/src/lib/floating-layers.ts
   var Z_SHELL_OVERLAY = 9e3;
 
@@ -26806,6 +26809,35 @@
       setDetent((d) => d === "input" ? "half" : d);
     }, [hasThread, sheetOpen]);
     React7.useEffect(() => {
+      if (typeof window === "undefined") return void 0;
+      const onControl = (event) => {
+        const detail = event.detail;
+        if (!detail) return;
+        switch (detail.action) {
+          case "pill":
+            closeSheet();
+            setPilled(true);
+            inputRef.current?.blur();
+            break;
+          case "rest":
+            setPilled(false);
+            goToDetent("collapsed");
+            break;
+          case "expand":
+            setPilled(false);
+            goToDetent("full");
+            break;
+          case "prefill":
+            setPilled(false);
+            setDraft(detail.text ?? "");
+            requestAnimationFrame(() => inputRef.current?.focus());
+            break;
+        }
+      };
+      window.addEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
+      return () => window.removeEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
+    }, [closeSheet, goToDetent]);
+    React7.useEffect(() => {
       setDictationSink((text) => {
         setDraft((current) => current ? `${current} ${text}` : text);
         inputRef.current?.focus();
@@ -26998,15 +27030,7 @@
             return;
           }
           setPilled(false);
-          if (hasThread) {
-            focusThreadRef.current = true;
-            goToDetent(threadHeight.get() >= halfH ? "full" : "half");
-          } else if (reduce) {
-            threadHeight.set(0);
-          } else {
-            animate(threadHeight, 0, SHEET_SPRING);
-          }
-          return;
+          if (hasThread) focusThreadRef.current = true;
         }
         if (!sheetOpen && direction === "down") {
           setPilled(true);

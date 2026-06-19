@@ -110,6 +110,7 @@ export const lifePaymentTransactions = financesSchema.table(
     sourceId: text("source_id").notNull(),
     externalId: text("external_id"),
     postedAt: text("posted_at").notNull(),
+    // Legacy LifeOps-compatible storage; convert to minor units at API/UI edges.
     amountUsd: real("amount_usd").notNull().default(0),
     direction: text("direction").notNull().default("debit"),
     merchantRaw: text("merchant_raw").notNull().default(""),

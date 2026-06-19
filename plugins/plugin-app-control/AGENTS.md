@@ -4,7 +4,7 @@ Gives an Eliza agent the ability to launch, close, list, scaffold, and verify El
 
 ## Purpose / role
 
-This plugin registers three actions, one provider, and four services. It exposes those capabilities to any Eliza agent that loads it; it is opt-in (not default-enabled). All runtime communication with the Eliza dashboard happens over loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered via `resolveServerOnlyPort`.
+This plugin registers three actions, two evaluators, one provider, and four services. It exposes those capabilities to any Eliza agent that loads it; it is opt-in (not default-enabled). All runtime communication with the Eliza dashboard happens over loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered via `resolveServerOnlyPort`.
 
 ## Plugin surface
 
@@ -15,6 +15,13 @@ This plugin registers three actions, one provider, and four services. It exposes
 | `APP` | `src/actions/app.ts` | Unified app control. Sub-modes: `launch`, `relaunch`, `load_from_directory`, `list`, `create`. `create` runs a multi-turn scaffold+coding-agent flow. Owner-gated. |
 | `VIEWS` | `src/actions/views.ts` | Manage UI views contributed by plugins. Sub-modes: `list`, `current`, `show`/`open`, `search`, `manager`, `broadcast`, `interact`, `pin`, `window`, `create`, `edit`, `delete`/`remove`. Create/edit/delete are owner-gated; read modes are open. |
 | `HOMESCREEN` | `src/actions/homescreen.ts` | Customize the live homescreen canvas. Sub-modes: `edit`, `create` (model-generated scene document), `undo`, `redo`, `reset`, `duplicate`, `delete`, `save`. Broadcasts via `POST /api/views/events/broadcast`. |
+
+### Evaluators
+
+| Name | File | Description |
+|---|---|---|
+| `viewNavigationRoutingEvaluator` | `src/evaluators/view-navigation-routing.ts` | `responseHandlerEvaluator` that inspects agent responses and automatically routes to the appropriate view via the VIEWS action. |
+| `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | `responseHandlerEvaluator` that detects follow-up intent (create/delete/update) from agent output and dispatches the VIEWS action accordingly. |
 
 ### Provider
 
@@ -39,7 +46,7 @@ This plugin registers three actions, one provider, and four services. It exposes
 | `views-manager` | Views XR | `/views` | `ViewManagerView` (xr) |
 | `views-manager` | Views TUI | `/views/tui` | `ViewManagerTuiView` (tui) |
 
-View source lives in `src/views/ViewManagerView.tsx`. Bundled separately by `vite.config.views.ts` into `dist/views/bundle.js`.
+View source lives in `src/views/ViewManagerView.tsx` (exports both `ViewManagerView` and `ViewManagerTuiView`). Bundled separately by `vite.config.views.ts` into `dist/views/bundle.js`.
 
 ## Layout
 
@@ -50,6 +57,7 @@ src/
   params.ts                       Option normalisation + verb/noun extraction helpers
   resolve.ts                      App/run name resolution (exact + substring match)
   protected-apps.ts               List of built-in apps that cannot be deleted
+  register-terminal-view.tsx      Registers the TUI view at runtime
   client/
     api.ts                        AppControlClient — loopback HTTP to /api/apps/*
   actions/
@@ -69,6 +77,11 @@ src/
     views-create.ts               create sub-handler (multi-turn)
     views-edit.ts                 edit sub-handler
     views-delete.ts               delete sub-handler + confirmation flow
+  components/
+    ViewManagerSpatialView.tsx    Spatial/XR variant of the view manager component
+  evaluators/
+    view-followup-routing.ts      viewFollowupRoutingEvaluator — dispatches VIEWS on follow-up intent
+    view-navigation-routing.ts    viewNavigationRoutingEvaluator — routes to view from agent response
   providers/
     available-apps.ts             available_apps provider
   services/
@@ -79,9 +92,10 @@ src/
     verification-helpers.ts       Shared helpers: screenshot, diagnostics, package-manager detect
     index.ts                      Re-exports AppVerificationService + its public types
   views/
-    ViewManagerView.tsx           React view component (compiled to dist/views/bundle.js)
+    ViewManagerView.tsx           React view component; exports ViewManagerView + ViewManagerTuiView
     ViewManagerView.test.ts       Unit tests for the view component
     viewManagerData.ts            Data helpers for the view manager
+    app-control-view-bundle.ts    View bundle registration entry point
   workers/
     app-worker-entry.ts           Worker entry point for isolation="worker" apps
 ```

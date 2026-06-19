@@ -4,6 +4,7 @@ const ORIGINAL_FETCH = globalThis.fetch;
 
 process.env.BITROUTER_API_KEY = "test-key";
 delete process.env.BITROUTER_BASE_URL;
+process.env.CEREBRAS_API_KEY = "test-cerebras-key";
 
 mock.module("@/lib/utils/logger", () => ({
   logger: {
@@ -42,6 +43,12 @@ afterEach(() => {
 describe("getLanguageModel BitRouter :nitro failover (AI SDK path)", () => {
   let models: string[];
 
+  // A NON-Cerebras :nitro id so it routes through BitRouter. Cerebras-native
+  // :nitro ids (gpt-oss-120b / zai-glm-4.7) now route to cerebras-direct instead
+  // — see the cerebras-direct test below — so they must not be used here.
+  const NITRO = "openai/gpt-4o-mini:nitro";
+  const BASE = "openai/gpt-4o-mini";
+
   beforeEach(() => {
     models = [];
   });
@@ -57,13 +64,13 @@ describe("getLanguageModel BitRouter :nitro failover (AI SDK path)", () => {
     }) as typeof fetch;
 
     const result = await generateText({
-      model: getLanguageModel("openai/gpt-oss-120b:nitro"),
+      model: getLanguageModel(NITRO),
       prompt: "hi",
       maxRetries: 0,
     });
 
     expect(result.text).toBe("ok");
-    expect(models).toEqual(["openai/gpt-oss-120b:nitro", "openai/gpt-oss-120b"]);
+    expect(models).toEqual([NITRO, BASE]);
   });
 
   test("does not retry when the base model also fails (surfaces the error)", async () => {
@@ -74,11 +81,36 @@ describe("getLanguageModel BitRouter :nitro failover (AI SDK path)", () => {
 
     await expect(
       generateText({
-        model: getLanguageModel("openai/gpt-oss-120b:nitro"),
+        model: getLanguageModel(NITRO),
         prompt: "hi",
         maxRetries: 0,
       }),
     ).rejects.toBeDefined();
-    expect(models).toEqual(["openai/gpt-oss-120b:nitro", "openai/gpt-oss-120b"]);
+    expect(models).toEqual([NITRO, BASE]);
+  });
+
+  test("Cerebras-native :nitro ids route to cerebras-direct, not OpenRouter", async () => {
+    // Dedicated agents emit decorated ids like "openai/gpt-oss-120b:nitro" for
+    // what are really bare Cerebras models. Those must hit cerebras-direct (the
+    // request body carries the bare id, never the :nitro/openai/ decoration),
+    // otherwise they leak to the public BitRouter → OpenRouter and 429/500.
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const model = bodyModel(init);
+      models.push(model);
+      return completion(model);
+    }) as typeof fetch;
+
+    await generateText({
+      model: getLanguageModel("openai/gpt-oss-120b:nitro"),
+      prompt: "hi",
+      maxRetries: 0,
+    });
+    await generateText({
+      model: getLanguageModel("openai/zai-glm-4.7:nitro"),
+      prompt: "hi",
+      maxRetries: 0,
+    });
+
+    expect(models).toEqual(["gpt-oss-120b", "zai-glm-4.7"]);
   });
 });

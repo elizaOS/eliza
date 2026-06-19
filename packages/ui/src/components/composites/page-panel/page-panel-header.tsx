@@ -16,7 +16,7 @@ export function MetaPill({
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 items-center rounded-sm px-2.5 py-1 text-xs-tight ",
+        "inline-flex min-h-6 items-center rounded-sm px-2.5 py-1 text-xs-tight",
         tone === "accent"
           ? "border border-accent/55 bg-accent-subtle font-bold text-txt-strong"
           : tone === "strong"
@@ -52,7 +52,6 @@ export function PanelHeader({
         hasActions
           ? "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 sm:px-5"
           : "flex items-start gap-3 px-4 py-3 sm:px-5",
-        bordered && "",
         className,
       )}
       {...props}
@@ -63,7 +62,7 @@ export function PanelHeader({
           {eyebrow ? (
             <div
               className={cn(
-                "text-2xs font-semibold uppercase tracking-[0.16em] text-muted/60",
+                "text-2xs font-medium text-muted/70",
                 eyebrowClassName,
               )}
             >
@@ -108,7 +107,7 @@ export function SummaryCard({
   return (
     <div
       className={cn(
-        "rounded-sm border border-border bg-card p-4 ",
+        "rounded-sm border border-border bg-card p-4",
         compact && "p-3.5",
         className,
       )}
@@ -121,7 +120,7 @@ export function PageActionRail({ className, ...props }: PageActionRailProps) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-card ",
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-card",
         className,
       )}
       {...props}

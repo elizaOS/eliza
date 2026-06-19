@@ -64,6 +64,30 @@ packages/shared/
     brand-classic/               Eliza Classic variant brand tokens
     awareness/
       registry.ts                Awareness registry helpers
+    checkout/
+      index.ts                   Checkout flow types and helpers
+    cli/
+      parse-duration.ts          CLI duration string parser
+    db/
+      drizzle-database.ts        Drizzle database type helpers
+    email-classification/        Email classification types
+    hardware-catalog/
+      index.ts                   Hardware catalog types and constants
+    knowledge-graph/
+      index.ts                   EntityStore / RelationshipStore types
+      entity-types.ts            Entity type definitions
+      relationship-types.ts      Relationship type definitions
+      merge.ts                   Knowledge-graph merge helpers
+    lifeops-constants/           LifeOps shared constants
+    lifeops-normalize/           LifeOps normalization utilities
+    local-inference-gpu/         GPU-specific local inference helpers
+    platform/
+      is-native-server.ts        isNativeServer() platform detection
+    terminal/                    Terminal output helpers
+    test-support/                Test utilities for consumers
+    voice/
+      first-sentence-snip.ts     First-sentence extraction for TTS
+      voice-cancellation-token.ts  Voice cancellation token helpers
     i18n/
       keyword-matching.ts        i18n keyword matching utilities
       keywords/                  Source *.keywords.json files (hand-authored input)
@@ -86,6 +110,10 @@ packages/shared/
     connector-cred-types.ts      ConnectorCredentialType
     connectors.ts                Connector source alias helpers (normalizeConnectorSource, …)
     character-presets.ts         Built-in character preset definitions
+    character-language.ts        Character language type helpers
+    settings-debug.ts            Debug settings helpers
+    type-guards.ts               Shared TypeScript type guard utilities
+    validation-keywords.ts       Validation keyword exports
     voice.ts                     Voice system types (VoicePreset, …)
     spoken-text.ts               Spoken text normalization
     self-edit.ts                 Self-edit gating helpers (isSelfEditEnabled, env constants)
@@ -119,7 +147,7 @@ All items below are re-exported from the root `@elizaos/shared` barrel unless no
 
 **Events** — `AGENT_READY_EVENT`, `BRIDGE_READY_EVENT`, `COMMAND_PALETTE_EVENT`, `NETWORK_STATUS_CHANGE_EVENT`, … from `src/events/index.ts`.
 
-**Eliza Cloud helpers** — `@elizaos/shared/elizacloud` (base URL resolver, cloud provisioning types, server TTS helpers).
+**Eliza Cloud helpers** — `elizacloud/` directory (base URL resolver, cloud provisioning types, server TTS helpers); import via the root barrel or direct path.
 
 **Config sub-path exports** — `@elizaos/shared/config/allowed-hosts`, `@elizaos/shared/runtime-env`, `@elizaos/shared/character-presets`, `@elizaos/shared/local-inference`, `@elizaos/shared/brand`, `@elizaos/shared/steward-session-client`, `@elizaos/shared/dev-settings-*`.
 
@@ -135,6 +163,7 @@ bun run --cwd packages/shared typecheck      # tsgo --noEmit
 bun run --cwd packages/shared test           # vitest run
 bun run --cwd packages/shared lint           # biome check src
 bun run --cwd packages/shared lint:fix       # biome check --write src
+bun run --cwd packages/shared format         # biome format src (read-only check)
 bun run --cwd packages/shared format:fix     # biome format --write src
 bun run --cwd packages/shared clean          # rm -rf dist
 bun run --cwd packages/shared sync           # copy assets to consumer public/ dirs

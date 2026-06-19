@@ -214,42 +214,32 @@ export function EmotePicker() {
       document.removeEventListener(EMOTE_PICKER_EVENT, handleDesktopToggle);
   }, [emotePickerOpen, openEmotePicker, closeEmotePicker]);
 
-  // Focus search input on open
-  useEffect(() => {
-    if (emotePickerOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [emotePickerOpen]);
-
   if (!emotePickerOpen) return null;
 
   return (
     <div
       ref={panelRef}
       data-testid="emote-picker"
-      className="pointer-events-auto fixed bottom-4 left-4 w-[320px] rounded-xl shadow-2xl"
+      className="pointer-events-auto fixed bottom-4 left-4 w-[320px] rounded-xl"
       style={{
-        background: "rgba(18, 22, 32, 0.96)",
-        border: "1px solid rgba(240, 178, 50, 0.18)",
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border)",
         backdropFilter: "blur(24px)",
-        boxShadow: "0 8px 60px rgba(0,0,0,0.6), 0 0 40px rgba(240,178,50,0.06)",
+        WebkitBackdropFilter: "blur(24px)",
         zIndex: Z_SYSTEM_CRITICAL,
       }}
     >
       {/* Header */}
       <div
         className="flex cursor-move items-center justify-between px-3 py-2"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+        style={{ borderBottom: "1px solid var(--border)" }}
         onPointerDown={onPointerDown}
       >
         <div className="flex items-center gap-2">
-          <Menu
-            className="w-4 h-4"
-            style={{ color: "rgba(255,255,255,0.45)" }}
-          />
+          <Menu className="w-4 h-4" style={{ color: "var(--muted)" }} />
           <span
             className="text-sm font-semibold"
-            style={{ color: "rgba(240,238,250,0.92)" }}
+            style={{ color: "var(--text-strong)" }}
           >
             {t("emotepicker.Emotes")}
           </span>
@@ -260,7 +250,7 @@ export function EmotePicker() {
           <EmotePickerStopButton onStop={stopEmote} label={t("game.stop")} />
 
           {/* Shortcut label */}
-          <span className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>
+          <span className="text-xs" style={{ color: "var(--muted)" }}>
             ⌘E
           </span>
 
@@ -275,7 +265,7 @@ export function EmotePicker() {
       {/* Search */}
       <div
         className="px-3 py-2"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+        style={{ borderBottom: "1px solid var(--border)" }}
       >
         <Input
           ref={setSearchRef}
@@ -288,9 +278,9 @@ export function EmotePicker() {
           className="w-full rounded px-2 py-1 text-sm focus:outline-none focus:ring-1"
           data-testid="emote-picker-search"
           style={{
-            background: "rgba(255,255,255,0.06)",
-            color: "rgba(240,238,250,0.92)",
-            border: "1px solid rgba(255,255,255,0.1)",
+            background: "var(--surface)",
+            color: "var(--text-strong)",
+            border: "1px solid var(--border)",
           }}
           {...searchAgentProps}
         />
@@ -299,7 +289,7 @@ export function EmotePicker() {
       {/* Category tabs */}
       <div
         className="flex gap-1 overflow-x-auto px-3 py-2"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+        style={{ borderBottom: "1px solid var(--border)" }}
       >
         <EmotePickerCategoryButton
           categoryId="all"
@@ -335,7 +325,7 @@ export function EmotePicker() {
         {filteredEmotes.length === 0 && (
           <div
             className="py-8 text-center text-sm"
-            style={{ color: "rgba(255,255,255,0.3)" }}
+            style={{ color: "var(--muted)" }}
           >
             {t("emotepicker.NoEmotesFound")}
           </div>
@@ -397,12 +387,12 @@ function EmotePickerCloseButton({
       className="h-auto w-auto p-0"
       aria-label={label}
       data-testid="emote-picker-close"
-      style={{ color: "rgba(255,255,255,0.45)" }}
+      style={{ color: "var(--muted)" }}
       onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-        e.currentTarget.style.color = "rgba(240,238,250,0.92)";
+        e.currentTarget.style.color = "var(--text-strong)";
       }}
       onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-        e.currentTarget.style.color = "rgba(255,255,255,0.45)";
+        e.currentTarget.style.color = "var(--muted)";
       }}
       {...agentProps}
     >
@@ -442,8 +432,8 @@ function EmotePickerCategoryButton({
       data-testid={`emote-picker-category-${categoryId}`}
       aria-current={active ? "true" : undefined}
       style={{
-        background: active ? "var(--accent)" : "rgba(255,255,255,0.06)",
-        color: active ? "var(--accent-foreground)" : "rgba(255,255,255,0.6)",
+        background: active ? "var(--accent)" : "var(--surface)",
+        color: active ? "var(--accent-foreground)" : "var(--muted)",
       }}
       {...agentProps}
     >
@@ -485,7 +475,7 @@ function EmotePickerEmoteButton({
       title={emote.name}
       className="flex aspect-square items-center justify-center rounded h-auto w-auto"
       style={{
-        background: playing ? "var(--accent)" : "rgba(255,255,255,0.06)",
+        background: playing ? "var(--accent)" : "var(--surface)",
       }}
       {...agentProps}
     >
