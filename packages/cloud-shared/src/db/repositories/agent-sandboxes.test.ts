@@ -26,18 +26,12 @@ const set = mock((values: Record<string, unknown>) => {
 const update = mock(() => ({ set }));
 const ensureAgentSandboxSchema = mock(async () => {});
 
-// Read-side select() chain: select(...).from(...).where(clause) -> rows, with an
-// optional trailing .limit(n) (e.g. listReconcilableDisconnected). `where`
-// captures the clause into the shared `capturedWhere` so a test can assert on
-// the generated SQL, mirroring the write-side capture above. The returned value
-// is an empty array (so a `.where(...)`-terminated query awaits to `[]`) that
-// also carries a `.limit()` returning `[]` (so a `.where(...).limit(n)` query
-// resolves the same).
+// Read-side select() chain: select(...).from(...).where(clause) -> rows.
+// `where` captures the clause into the shared `capturedWhere` so a test can
+// assert on the generated SQL, mirroring the write-side capture above.
 const selectWhere = mock((clause: SQL) => {
   capturedWhere = clause;
-  const rows = [] as unknown[] & { limit: (n: number) => unknown[] };
-  rows.limit = () => [];
-  return rows;
+  return [] as unknown[];
 });
 const selectFrom = mock(() => ({ where: selectWhere }));
 const select = mock(() => ({ from: selectFrom }));
@@ -83,34 +77,6 @@ describe("AgentSandboxesRepository", () => {
     expect(sql).toContain("<>");
     // eq/ne bind their operands, so the values land in `params`, not the SQL.
     expect(query.params).toContain("running");
-    expect(query.params).toContain("shared");
-  });
-
-  test("reconcile selection targets recent disconnected dedicated agents with a bridge", async () => {
-    capturedWhere = undefined;
-
-    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
-
-    await new AgentSandboxesRepository().listReconcilableDisconnected();
-
-    if (!capturedWhere)
-      throw new Error("listReconcilableDisconnected did not build a where clause");
-    const query = new PgDialect().sqlToQuery(capturedWhere);
-    const sql = query.sql.toLowerCase();
-    // Only disconnected, non-shared rows are reconcile candidates...
-    expect(sql).toContain("status");
-    expect(sql).toContain("execution_tier");
-    expect(sql).toContain("<>");
-    // ...that still have a tailnet bridge to dial, are not soft-deleted, and
-    // dropped recently enough to plausibly still be alive. Pin the rendered
-    // operators, not just column names: a sign flip (IS NULL <-> IS NOT NULL,
-    // > <-> <) would keep every column-name substring green while re-probing
-    // deleted agents or inverting the recency window.
-    expect(sql).toContain('bridge_url" is not null');
-    expect(sql).toContain('deleted_at" is null');
-    expect(sql).not.toContain('deleted_at" is not null');
-    expect(sql).toMatch(/updated_at"?\s*>/);
-    expect(query.params).toContain("disconnected");
     expect(query.params).toContain("shared");
   });
 

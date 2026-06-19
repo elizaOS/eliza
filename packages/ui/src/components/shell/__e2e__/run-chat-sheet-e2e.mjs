@@ -78,9 +78,12 @@ const detent = (p) =>
 // OPEN_HALF_OR_OVER | MAXIMIZED) — the single source the overlay derives.
 const chatState = (p) =>
   p.getByTestId("chat-sheet").getAttribute("data-chat-state");
-// Header buttons (maximize/clear/home/settings) show only at half-or-over.
-const headerButtonCount = (p) =>
-  p.getByTestId("chat-sheet").locator('[data-testid^="chat-full-"]').count();
+// Header buttons (maximize/clear/home/settings) are always mounted (so they can
+// fade + lerp their space), so visibility is the LIVE-height `data-header-shown`
+// flag, not their presence in the DOM.
+const headerShown = async (p) =>
+  (await p.getByTestId("chat-sheet").getAttribute("data-header-shown")) ===
+  "true";
 // The history (thread) is the element whose height animates 0 → half → full;
 // the panel (chat-sheet) also holds the always-present input, so measure the
 // thread for detent heights.
@@ -485,27 +488,19 @@ try {
     await p.close();
   }
 
-  // speaking: assistant voice mute control appears
+  // speaking: the composer stays clean — no stray mute/speaker control pops in
+  // while the agent talks (the bar shows only the mic).
   {
     const p = await ctrl();
     attachConsole(p, sink);
     await p.goto(`${url}?speaking`);
-    await p.waitForSelector('[data-testid="chat-voice-mute"]');
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
     await p.waitForTimeout(500);
-    assert(await p.getByTestId("chat-voice-mute").isVisible(), "SPEAKING: voice-mute (speaker) button shown");
     assert(
-      (await p.getByTestId("chat-voice-mute").getAttribute("aria-label")) === "mute assistant voice",
-      "SPEAKING: voice-mute labelled 'mute assistant voice'",
+      (await p.getByTestId("chat-voice-mute").count()) === 0,
+      "SPEAKING: no stray voice-mute button shown while the agent speaks",
     );
     await snap(p, "state-speaking");
-    // click it → muted
-    await p.getByTestId("chat-voice-mute").click();
-    await p.waitForTimeout(300);
-    assert(
-      (await p.getByTestId("chat-voice-mute").getAttribute("aria-label")) === "unmute assistant voice",
-      "SPEAKING→MUTE: clicking toggles to 'unmute assistant voice' (active)",
-    );
-    await snap(p, "state-muted");
     await p.close();
   }
 
@@ -716,6 +711,39 @@ try {
     assert(
       !sink.logs.slice(n).some((l) => l.includes("toggleHandsFree")),
       "PTT: a held press does NOT toggle hands-free (suppress-click guard)",
+    );
+    await p.close();
+  }
+
+  // PTT CANCEL must NOT leak the click-suppress (the "next tap eaten" bug): a
+  // held press ended by pointercancel (not pointerup) stops dictation but leaves
+  // the NEXT quick tap free to toggle hands-free.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForTimeout(500);
+    const mic = p.getByTestId("chat-composer-mic");
+    const n0 = sink.logs.length;
+    await mic.dispatchEvent("pointerdown", { pointerId: 7, button: 0 });
+    await p.waitForTimeout(280); // > 200ms → dictation starts
+    await mic.dispatchEvent("pointercancel", { pointerId: 7 });
+    await p.waitForTimeout(150);
+    assert(
+      sink.logs.slice(n0).some((l) => l.includes("startRecording(dictate)")),
+      "PTT-CANCEL: the hold started dictation",
+    );
+    assert(
+      sink.logs.slice(n0).some((l) => l.includes("stopRecording")),
+      "PTT-CANCEL: pointercancel stops the capture",
+    );
+    const n1 = sink.logs.length;
+    await mic.click();
+    await p.waitForTimeout(150);
+    assert(
+      sink.logs.slice(n1).some((l) => l.includes("toggleHandsFree")),
+      "PTT-CANCEL: the NEXT tap still toggles hands-free (suppress did not leak)",
     );
     await p.close();
   }
@@ -1131,7 +1159,7 @@ try {
 
     assert((await chatState(p)) === "INPUT", "STATES: rest is INPUT");
     assert(
-      (await headerButtonCount(p)) === 0,
+      !(await headerShown(p)),
       "STATES: INPUT shows no header buttons",
     );
     await snap(p, "state-INPUT");
@@ -1143,7 +1171,7 @@ try {
       `STATES: flick-up → OPEN_HALF_OR_OVER (got ${await chatState(p)})`,
     );
     assert(
-      (await headerButtonCount(p)) > 0,
+      await headerShown(p),
       "STATES: OPEN_HALF_OR_OVER shows header buttons",
     );
     await snap(p, "state-OPEN_HALF_OR_OVER");
@@ -1177,7 +1205,7 @@ try {
       `STATES: slow free-rest below half → OPEN_UNDER_HALF (got ${await chatState(p)})`,
     );
     assert(
-      (await headerButtonCount(p)) === 0,
+      !(await headerShown(p)),
       "STATES: OPEN_UNDER_HALF hides header buttons",
     );
     await snap(p, "state-OPEN_UNDER_HALF");
@@ -1266,7 +1294,7 @@ try {
     await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     assert(
-      (await headerButtonCount(p)) > 0,
+      await headerShown(p),
       "HEADER-LIVE: header shown at full before the drag",
     );
     // Slow-drag DOWN well below half and HOLD (don't release) — the header must
@@ -1278,7 +1306,7 @@ try {
       steps: 10,
     });
     assert(
-      (await headerButtonCount(p)) === 0,
+      !(await headerShown(p)),
       "HEADER-LIVE: header is HIDDEN mid-drag once the panel renders below half",
     );
     await snap(p, "state-mid-drag-below-half-no-header");
@@ -1300,6 +1328,31 @@ try {
         `HEADER-LIVE: chat-state MAXIMIZED iff data-maximized (state=${cs}, maximized=${max})`,
       );
     }
+    await p.close();
+  }
+
+  // ── STREAMING (bug 2): the in-flight (empty) assistant turn breathes the dots
+  // ANCHORED inside its own bubble, not as a detached "..." sibling — so the
+  // streamed text fills in right there.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(`${url}?streaming`);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(500);
+    // Open the thread so the in-flight assistant bubble is on screen.
+    await gesture(p, 400, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    const dotsInBubble = await p
+      .locator(
+        '[data-testid="thread-line"][data-role="assistant"] [data-testid="typing-dots"]',
+      )
+      .count();
+    assert(
+      dotsInBubble >= 1,
+      `STREAMING: dots are anchored inside the in-flight assistant bubble (found ${dotsInBubble})`,
+    );
+    await snap(p, "state-streaming-dots-in-bubble");
     await p.close();
   }
 } finally {

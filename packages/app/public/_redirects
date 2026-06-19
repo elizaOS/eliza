@@ -1,0 +1,25 @@
+# Cloudflare Pages routing for the hosted-web Eliza app (SPA).
+# Format docs: https://developers.cloudflare.com/pages/configuration/redirects/
+#
+# Order matters: top-down, first match wins.
+#
+# /api/* and /steward/* are handled by the Pages Function in functions/
+# (_middleware.ts), which proxies server-side to the Workers API (true
+# same-origin, no CORS preflight). Pages Functions take precedence over
+# _redirects, so adding rewrite rules for those prefixes here would be
+# misleading dead config.
+
+# Hashed-asset 404s must NOT fall through to the SPA index.html. When a stale
+# browser HTML references an asset hash that no longer exists, the catch-all
+# below would otherwise return index.html with status 200 for the missing .js,
+# and the browser would fail strict MIME checking with "Expected a
+# JavaScript-or-Wasm module script but the server responded with a MIME type of
+# text/html". Returning a real 404 lets the app's chunk-load error boundary
+# catch it and self-heal via a single hard reload.
+/assets/*  /index.html  404
+
+# SPA fallback — every other path (incl. every backend-issued deep link:
+# /login, /auth/*, /app-auth/authorize, /invite/accept, /payment/*, /chat/*,
+# /approve/*, /ballot/*, /sensitive-requests/*, /dashboard*, legal, /bsc)
+# falls through to index.html so the app's client router resolves it.
+/*  /index.html  200

@@ -21,7 +21,7 @@ import {
 import type {
   HeartbeatResult,
   ProcessingResult,
-  ReconcileResult,
+  RecoveryResult,
 } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
 import { loadLocalEnv } from "./shared/load-env";
 
@@ -235,11 +235,11 @@ async function processHeartbeatCycle(
   return provisioningJobService.processRunningHeartbeats(concurrency);
 }
 
-async function processReconcileCycle(
+async function processRecoveryCycle(
   concurrency = 5,
-): Promise<ReconcileResult> {
+): Promise<RecoveryResult> {
   const { provisioningJobService } = await loadDeps();
-  return provisioningJobService.processDisconnectedReconcile(concurrency);
+  return provisioningJobService.processDisconnectedRecovery(concurrency);
 }
 
 interface NodeHealthSummary {
@@ -669,16 +669,17 @@ async function pollCycle(
   }
 
   try {
-    const reconcile = await processReconcileCycle();
-    if (reconcile.recovered > 0) {
-      logger.info("[provisioning-worker] disconnect reconcile cycle complete", {
-        total: reconcile.total,
-        recovered: reconcile.recovered,
-        stillDown: reconcile.stillDown,
+    const recovery = await processRecoveryCycle();
+    if (recovery.total > 0) {
+      logger.info("[provisioning-worker] recovery cycle complete", {
+        total: recovery.total,
+        recovered: recovery.recovered,
+        reprovisioned: recovery.reprovisioned,
+        failed: recovery.failed,
       });
     }
   } catch (error) {
-    logger.error("[provisioning-worker] disconnect reconcile cycle failed", {
+    logger.error("[provisioning-worker] recovery cycle failed", {
       error: error instanceof Error ? error.message : String(error),
     });
   }

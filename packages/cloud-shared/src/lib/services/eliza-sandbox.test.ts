@@ -392,36 +392,27 @@ describe("ElizaSandboxService wake", () => {
   );
 });
 
-describe("ElizaSandboxService reconcileDisconnected", () => {
+describe("ElizaSandboxService recoverDisconnected", () => {
   function disconnectedSandbox(): AgentSandbox {
     return { ...customSandbox(), status: "disconnected" };
   }
 
-  test("restores a reachable disconnected agent to running via guarded compare-and-set", async () => {
+  test("recovers a reachable disconnected agent via guarded compare-and-set", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = disconnectedSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findDisconnectedSandbox").mockResolvedValue(
-      sandbox,
-    );
-    // CAS wins: the row is still disconnected, so the guarded update returns it.
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
     const casSpy = spyOn(
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
     ).mockResolvedValue({ ...sandbox, status: "running" });
-    const probed: string[] = [];
-    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
-      probed.push(fetchUrl(input));
-      return new Response("ok", { status: 200 });
-    });
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
 
     try {
-      const recovered = await new ElizaSandboxService().reconcileDisconnected(
+      const result = await new ElizaSandboxService().recoverDisconnected(
         sandbox.id,
         sandbox.organization_id,
       );
-
-      expect(recovered).toBe(true);
-      expect(probed).toEqual(["https://legacy-bridge.example/api/health"]);
+      expect(result).toBe("recovered");
       expect(casSpy).toHaveBeenCalledTimes(1);
       expect(casSpy.mock.calls[0]?.[0]).toBe(sandbox.id);
     } finally {
@@ -430,14 +421,12 @@ describe("ElizaSandboxService reconcileDisconnected", () => {
     }
   });
 
-  test("does NOT revive when the row left disconnected during the probe (CAS loses)", async () => {
+  test("does NOT revive when the row left disconnected mid-probe (CAS loses -> gone)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = disconnectedSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findDisconnectedSandbox").mockResolvedValue(
-      sandbox,
-    );
-    // The agent was deleted/stopped/re-provisioned mid-probe → guarded update
-    // matches 0 rows. Reconcile must report not-recovered, never resurrect it.
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
+    // Probe succeeds, but the agent was deleted/stopped/re-provisioned during the
+    // probe → guarded update matches 0 rows. Must report "gone", never resurrect.
     const casSpy = spyOn(
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
@@ -445,12 +434,11 @@ describe("ElizaSandboxService reconcileDisconnected", () => {
     globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
 
     try {
-      const recovered = await new ElizaSandboxService().reconcileDisconnected(
+      const result = await new ElizaSandboxService().recoverDisconnected(
         sandbox.id,
         sandbox.organization_id,
       );
-
-      expect(recovered).toBe(false);
+      expect(result).toBe("gone");
       expect(casSpy).toHaveBeenCalledTimes(1);
     } finally {
       findSpy.mockRestore();
@@ -458,84 +446,52 @@ describe("ElizaSandboxService reconcileDisconnected", () => {
     }
   });
 
-  test("leaves an unreachable disconnected agent untouched (probe throws)", async () => {
+  test("reports unreachable without writing when the bridge does not answer", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = disconnectedSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findDisconnectedSandbox").mockResolvedValue(
-      sandbox,
-    );
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
     const casSpy = spyOn(
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
     ).mockResolvedValue(undefined);
-    globalThis.fetch = mock(async () => {
-      throw new Error("fetch failed");
+    globalThis.fetch = mock(async () => new Response("nope", { status: 502 }));
+
+    try {
+      const result = await new ElizaSandboxService().recoverDisconnected(
+        sandbox.id,
+        sandbox.organization_id,
+      );
+      expect(result).toBe("unreachable");
+      expect(casSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      casSpy.mockRestore();
+    }
+  });
+
+  test("reports gone (and never probes) when the row is no longer disconnected", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue({
+      ...customSandbox(),
+      status: "running",
     });
-
-    try {
-      const recovered = await new ElizaSandboxService().reconcileDisconnected(
-        sandbox.id,
-        sandbox.organization_id,
-      );
-
-      expect(recovered).toBe(false);
-      expect(casSpy).not.toHaveBeenCalled();
-    } finally {
-      findSpy.mockRestore();
-      casSpy.mockRestore();
-    }
-  });
-
-  test("leaves a responding-but-unhealthy disconnected agent untouched (non-200, no throw)", async () => {
-    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const sandbox = disconnectedSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findDisconnectedSandbox").mockResolvedValue(
-      sandbox,
-    );
     const casSpy = spyOn(
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
     ).mockResolvedValue(undefined);
-    // The bridge answers, but unhealthy (404). Only a real 200 may revive.
-    globalThis.fetch = mock(async () => new Response("not found", { status: 404 }));
-
-    try {
-      const recovered = await new ElizaSandboxService().reconcileDisconnected(
-        sandbox.id,
-        sandbox.organization_id,
-      );
-
-      expect(recovered).toBe(false);
-      expect(casSpy).not.toHaveBeenCalled();
-    } finally {
-      findSpy.mockRestore();
-      casSpy.mockRestore();
-    }
-  });
-
-  test("no-ops when the agent is no longer disconnected (never probes)", async () => {
-    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const findSpy = spyOn(agentSandboxesRepository, "findDisconnectedSandbox").mockResolvedValue(
-      undefined,
-    );
-    const casSpy = spyOn(
-      agentSandboxesRepository,
-      "markReconnectedFromDisconnected",
-    ).mockResolvedValue(undefined);
-    let fetched = false;
+    let probed = false;
     globalThis.fetch = mock(async () => {
-      fetched = true;
+      probed = true;
       return new Response("ok", { status: 200 });
     });
 
     try {
-      const recovered = await new ElizaSandboxService().reconcileDisconnected(
+      const result = await new ElizaSandboxService().recoverDisconnected(
         "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
         "22222222-2222-4222-8222-222222222222",
       );
-
-      expect(recovered).toBe(false);
-      expect(fetched).toBe(false);
+      expect(result).toBe("gone");
+      expect(probed).toBe(false);
       expect(casSpy).not.toHaveBeenCalled();
     } finally {
       findSpy.mockRestore();

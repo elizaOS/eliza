@@ -1783,6 +1783,15 @@ export default defineConfig({
     __ELIZA_BUILD_VARIANT__: JSON.stringify(
       process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
     ),
+    // Web-shell gate. The top-level react-router shell that owns the cloud /
+    // public / auth / payment routes (CloudRouterShell) is web-build-only:
+    // Capacitor mobile bundles mount the tab/view App directly and must not
+    // grow. This compile-time constant lets the mobile build tree-shake the
+    // entire shell + Steward/wallet + public-page chunks out of the bundle.
+    // Desktop (Electrobun) shares this `dist`, so the constant is `true` there
+    // too; `main.tsx` then branches at runtime so only the actual web platform
+    // mounts the shell (desktop mounts App directly).
+    __ELIZA_WEB_SHELL__: JSON.stringify(!IS_CAPACITOR_MOBILE_BUILD),
     // Mirror the branded TTS debug env into the client bundle so one env
     // enables UI + server TTS logs in dev.
     [`import.meta.env.${BRANDED_ENV.ttsDebug}`]: JSON.stringify(

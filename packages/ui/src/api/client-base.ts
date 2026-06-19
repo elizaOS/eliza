@@ -297,6 +297,60 @@ export function __getLastKnownNetworkConnected(): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Dedicated-agent resume (HTTP 202) handling
+// ---------------------------------------------------------------------------
+
+// A non-running dedicated cloud agent answers with `202 Accepted` + `Retry-After`
+// while it auto-resumes (the unified-auth Worker, #8628). The client honours that
+// contract: it waits the advertised delay and re-issues the request a bounded
+// number of times, so callers see the eventual real response instead of a 202
+// placeholder body — which otherwise surfaced as an empty reply on the first
+// message sent after a dedicated agent had idled.
+const RESUME_MAX_RETRIES = 6;
+const RESUME_DEFAULT_DELAY_MS = 5_000;
+const RESUME_MIN_DELAY_MS = 500;
+const RESUME_MAX_DELAY_MS = 10_000;
+
+/** Clamp the agent's advertised `Retry-After` (seconds) into a sane wait (ms). */
+function resumeRetryDelayMs(res: Response): number {
+  const header = res.headers.get("Retry-After");
+  const seconds =
+    header !== null && Number.isFinite(Number(header))
+      ? Number(header)
+      : Number.NaN;
+  const ms = Number.isFinite(seconds)
+    ? seconds * 1_000
+    : RESUME_DEFAULT_DELAY_MS;
+  return Math.min(RESUME_MAX_DELAY_MS, Math.max(RESUME_MIN_DELAY_MS, ms));
+}
+
+/** Resolve after `ms`, or early if `signal` aborts. Never rejects. */
+function sleepUnlessAborted(
+  ms: number,
+  signal?: AbortSignal | null,
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
 
@@ -536,6 +590,18 @@ export class ElizaClient {
           retryToken,
         );
       }
+    }
+    // 202 Accepted: a non-running dedicated cloud agent is auto-resuming (#8628).
+    // Wait the advertised Retry-After and re-issue, bounded, so callers see the
+    // eventual response instead of a 202 placeholder. Non-202 responses skip this
+    // loop entirely, so ordinary requests are byte-for-byte unaffected.
+    let resumeRetries = 0;
+    while (res.status === 202 && resumeRetries < RESUME_MAX_RETRIES) {
+      if (init?.signal?.aborted) break;
+      await sleepUnlessAborted(resumeRetryDelayMs(res), init?.signal);
+      if (init?.signal?.aborted) break;
+      resumeRetries += 1;
+      res = await this.rawRequestOnce(path, requestUrl, init, options, token);
     }
     if (!res.ok && !options?.allowNonOk) {
       const body = (await this.readBodyText(res, path, options?.timeoutMs, init)

@@ -2215,40 +2215,61 @@ export class ProvisioningJobService {
   }
 
   /**
-   * Re-probe `disconnected` dedicated agents and restore reachable ones to
-   * `running`. Complements processRunningHeartbeats (which only dials `running`
-   * rows): an always-on agent that drops past the grace window would otherwise
-   * stay disconnected forever, with no automatic path back. Runs from the
-   * on-prem worker only (HTTP over the Headscale tunnel).
+   * Reconcile `disconnected` always-on (paid) agents back to health. The
+   * heartbeat cycle only iterates RUNNING agents, so a `dedicated-always` agent
+   * that dropped past the grace window and flipped to `disconnected` would
+   * otherwise stay dead forever (the agent-router routes only `running`, so its
+   * subdomain 404s and the user's paid agent is unreachable). Each cycle
+   * re-probes the bridge: still reachable → flip straight back to `running`;
+   * truly down → enqueue a re-provision (idempotent — `enqueueAgentProvisionOnce`
+   * dedups an in-flight job, so running this every cycle won't pile up provisions).
    */
-  async processDisconnectedReconcile(concurrency = 5): Promise<ReconcileResult> {
-    const candidates = await agentSandboxesRepository.listReconcilableDisconnected();
-    const total = candidates.length;
-    if (total === 0) return { total: 0, recovered: 0, stillDown: 0 };
+  async processDisconnectedRecovery(concurrency = 5): Promise<RecoveryResult> {
+    const recoverable = await agentSandboxesRepository.listRecoverable();
+    const total = recoverable.length;
+    if (total === 0) {
+      return { total: 0, recovered: 0, reprovisioned: 0, failed: 0 };
+    }
 
     let recovered = 0;
-    let stillDown = 0;
-    const queue = [...candidates];
+    let reprovisioned = 0;
+    let failed = 0;
+    const queue = [...recoverable];
     const workers = Array.from({ length: Math.min(concurrency, total) }, async () => {
       while (true) {
         const r = queue.shift();
         if (!r) break;
-        const ok = await elizaSandboxService
-          .reconcileDisconnected(r.id, r.organization_id)
-          .catch((error: unknown) => {
-            logger.warn("[provisioning-jobs] reconcile threw", {
-              agentId: r.id,
-              error: error instanceof Error ? error.message : String(error),
-            });
-            return false;
+        try {
+          const outcome = await elizaSandboxService.recoverDisconnected(r.id, r.organization_id);
+          if (outcome === "recovered") {
+            recovered += 1;
+            continue;
+          }
+          if (outcome === "gone") {
+            // No longer disconnected (already recovered/deleted) — nothing to do.
+            continue;
+          }
+          // Still unreachable — rebuild it.
+          await this.enqueueAgentProvisionOnce({
+            agentId: r.id,
+            organizationId: r.organization_id,
+            userId: r.user_id,
+            agentName: r.agent_name ?? r.id,
+            expectedUpdatedAt: r.updated_at,
           });
-        if (ok) recovered += 1;
-        else stillDown += 1;
+          reprovisioned += 1;
+        } catch (error) {
+          failed += 1;
+          logger.warn("[provisioning-jobs] disconnected recovery failed", {
+            agentId: r.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     });
     await Promise.all(workers);
 
-    return { total, recovered, stillDown };
+    return { total, recovered, reprovisioned, failed };
   }
 
   private async recoverStaleJobs(
@@ -2380,10 +2401,15 @@ export interface HeartbeatResult {
   failed: number;
 }
 
-export interface ReconcileResult {
+export interface RecoveryResult {
+  /** disconnected always-on agents examined this cycle */
   total: number;
+  /** flipped back to `running` because the bridge answered again */
   recovered: number;
-  stillDown: number;
+  /** still unreachable → a re-provision job was enqueued */
+  reprovisioned: number;
+  /** recovery threw for this agent */
+  failed: number;
 }
 
 export interface ProcessingResult {
