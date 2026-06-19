@@ -26,6 +26,8 @@ import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { isRestrictedPlatform } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
+import { writeViewHeroAsset } from "./views-hero.js";
+import { locatePluginSourceDir } from "./views-plugin-source.js";
 
 export const VIEWS_CREATE_INTENT_TAG = "views-create-intent";
 
@@ -452,6 +454,7 @@ function buildCreatePrompt(
 		"workspaceRule: work in sourceDir, not the task agent scratch directory",
 		"referenceDocs: read SCAFFOLD.md for layout and conventions",
 		"viewRequirement: add a Plugin.views entry with a compiled view bundle so the view appears in the Eliza view registry",
+		"iconAsset: a branded assets/hero.svg is already seeded and is served as the view hero — keep it (or replace it with a real image at assets/hero.<ext>); do not delete it",
 		"implementation: edit and add files needed for the intent",
 		"verificationCommands[3]:",
 		"  bun run typecheck",
@@ -609,28 +612,6 @@ export function isChoiceReply(text: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Locate plugin source from a view entry
-// ---------------------------------------------------------------------------
-
-async function locatePluginSourceDir(
-	repoRoot: string,
-	view: ViewSummary,
-): Promise<string | null> {
-	const pluginBasename = view.pluginName.replace(/^@[^/]+\//, "").trim();
-	const candidates = [
-		...PLUGINS_DIR_CANDIDATES.map((d) =>
-			path.join(repoRoot, d, pluginBasename),
-		),
-		path.join(repoRoot, "eliza", "apps", pluginBasename),
-	];
-	for (const candidate of candidates) {
-		const stat = await fs.stat(candidate).catch(() => null);
-		if (stat?.isDirectory()) return candidate;
-	}
-	return null;
-}
-
-// ---------------------------------------------------------------------------
 // Create / edit helpers
 // ---------------------------------------------------------------------------
 
@@ -672,6 +653,17 @@ async function createNewViewPlugin({
 		[NAME_PLACEHOLDER]: name,
 		[DISPLAY_NAME_PLACEHOLDER]: displayName,
 	});
+
+	// Seed a self-contained branded hero icon so the scaffolded view has an image
+	// from the moment it registers — before the coding agent runs. Best-effort:
+	// a missing icon must not abort scaffolding.
+	try {
+		await writeViewHeroAsset(workdir, { id: name, label: displayName });
+	} catch (err) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/create could not seed hero icon for ${name}: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
 
 	const prompt = buildCreatePrompt(intent, name, displayName, workdir);
 	const dispatch = await dispatchCodingAgent({
