@@ -11,6 +11,7 @@
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
+import { decodeJwtPayload } from "../../lib/jwt";
 import { LocalStewardAuthContext } from "../../shell/StewardProvider";
 
 function isPlaywrightTestAuthEnabled(): boolean {
@@ -25,22 +26,12 @@ function isPlaywrightTestAuthEnabled(): boolean {
 }
 
 function tokenIsLive(token: string): boolean {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return false;
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(
-      base64.length + ((4 - (base64.length % 4)) % 4),
-      "=",
-    );
-    const payload = JSON.parse(atob(padded)) as { exp?: number };
-    if (typeof payload.exp === "number" && payload.exp * 1000 < Date.now()) {
-      return false;
-    }
-    return true;
-  } catch {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return false;
+  if (typeof payload.exp === "number" && payload.exp * 1000 < Date.now()) {
     return false;
   }
+  return true;
 }
 
 function readStoredAuthenticated(): boolean {

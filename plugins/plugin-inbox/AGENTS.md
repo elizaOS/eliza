@@ -21,10 +21,18 @@ This package is being extracted from `plugin-lifeops`. The current scaffold is a
 
 ### Schema
 
-- `inboxSchema` (`src/db/schema.ts`) — `pgSchema("app_inbox")` with three tables:
-  - `triage_decisions` — per-thread decision history.
-  - `snoozed` — threads to re-surface at `wake_at`.
-  - `archived` — threads explicitly removed from the active inbox.
+- `inboxSchema` (`src/db/schema.ts`) — `pgSchema("app_inbox")` with the three
+  inbox-triage tables carved out of PA's `app_lifeops` (column shape verbatim):
+  - `life_inbox_triage_entries` — per-thread triage decisions + draft replies.
+  - `life_inbox_triage_examples` — owner-labeled few-shot classification examples.
+  - `life_email_unsubscribes` — email unsubscribe attempts + outcomes.
+  Registered via the plugin `schema` field; `InboxMigrationService`
+  (`src/inbox/migration.ts`) does the non-destructive `app_lifeops -> app_inbox`
+  copy (skip if source missing / target non-empty, never drop the source). PA
+  auto-registers this plugin (`ensureLifeOpsInboxPluginRegistered`) so the schema
+  exists + the migration runs whenever PA is loaded. The gmail sync/projection
+  tables (`life_gmail_*`, `life_inbox_messages`) are NOT part of this domain —
+  they stay PA-owned in `app_lifeops`.
 
 ### View
 

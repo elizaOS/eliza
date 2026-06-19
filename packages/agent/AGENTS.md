@@ -26,9 +26,25 @@ src/
     plugin-resolver.ts    resolvePlugins() — resolve plugin names → modules; getLastFailedPluginNames()
     plugin-collector.ts   collectPluginNames(), CHANNEL/OPTIONAL/PROVIDER_PLUGIN_MAP
     plugin-lifecycle.ts   Plugin install/eject/reinject lifecycle
+    plugin-role-gating.ts Role-based plugin access gating
+    roles.ts / roles/     Role definitions and role-resolution helpers
+    agent-wallets.ts      Agent wallet bootstrap and TEE-gated wallet logic
+    model-resolution.ts   Model name resolution helpers
+    prompt-optimization.ts / prompt-compaction.ts  Prompt optimization and compaction strategies
+    tool-call-cache/ tool-call-cache-wrapper.ts  Tool-call result caching layer
+    first-time-setup.ts   First-run initialization logic
+    load-plugin-from-directory.ts / load-plugin-from-vfs.ts  Plugin loading from local dirs and VFS
+    sandbox-registry.ts / sandbox-character.ts  Sandbox plugin registry and character isolation
+    restart.ts            Runtime restart helpers
+    release-plugin-policy.ts  Plugin release-channel gating policy
+    boot-telemetry.ts / boot-timer.ts  Boot timing and telemetry
+    view-action-affinity.ts  View↔action routing affinity
+    web-search-tools.ts / vault-profile-resolver.ts  Miscellaneous runtime helpers
     trajectory-*.ts       Trajectory persistence / query / internals
     conversation-compactor*.ts  Conversation summarization/compaction
-    operations/vault-bridge.ts   Vault-backed config env resolution
+    operations/           vault-bridge.ts (Vault-backed config env resolution), classifier.ts,
+                          cold-strategy.ts, manager.ts, health.ts, health-checks.ts,
+                          reload-hot.ts, repository.ts, types.ts
   api/
     server.ts             startApiServer() — HTTP stack, auth, CORS, WS upgrade, route dispatch
     dispatch-route.ts     dispatchRoute() — maps requests to handlers
@@ -48,6 +64,7 @@ src/
   triggers/               runtime.ts (registerTriggerTaskWorker), scheduling.ts, types.ts
   auth/                   Credential storage + OAuth/Anthropic/OpenAI-Codex flows (account-storage, oauth-flow, refresh-mutex)
   security/               access.ts, audit-log.ts, network-policy.ts, mcp-server-config.ts (validateMcpServerConfig)
+  tui/                    agent-terminal-tui.ts, slash-commands.ts, tui-enabled.ts — terminal UI implementation
   awareness/              Re-exports AwarenessRegistry from @elizaos/shared
   hooks/                  loadHooks() / triggerHook() — workspace hook discovery + dispatch
   contracts/awareness.ts  Local-only awareness contract types

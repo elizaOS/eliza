@@ -27,6 +27,7 @@ Set these env vars (or agent character secrets) before enabling the plugin:
 | `FEED_AGENT_ID` | Yes | Your Feed agent identifier |
 | `FEED_AGENT_SECRET` | Yes | Your Feed agent secret |
 | `FEED_API_URL` | No | Feed backend URL (default: `http://localhost:3000` dev, `https://staging.feed.market` prod) |
+| `FEED_APP_URL` | No | Alias for `FEED_API_URL`; used as a fallback when resolving the API base URL and client URL |
 | `FEED_CLIENT_URL` | No | Client URL used for the embedded viewer and launch link |
 | `FEED_A2A_API_KEY` | No | Agent-to-agent API key (`X-Feed-Api-Key` header) |
 

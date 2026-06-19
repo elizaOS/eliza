@@ -48,10 +48,12 @@ the other.
 ## Surface
 
 - **Actions** — `COMPUTER_USE` (canonical screenshot / click / key /
-  scroll / etc.) and `WINDOW` (list / focus / arrange / move /...).
-  Subactions are promoted to virtual top-level actions
-  (e.g. `COMPUTER_USE_CLICK`, `WINDOW_FOCUS`) so the planner picks a
-  specific verb directly from the catalogue.
+  scroll / etc.), `WINDOW` (list / focus / arrange / move /...), and
+  `COMPUTER_USE_AGENT` (high-level goal-driven autonomous desktop loop:
+  Brain → Cascade → dispatch up to `maxSteps` iterations).
+  Subactions of `COMPUTER_USE` and `WINDOW` are promoted to virtual
+  top-level actions (e.g. `COMPUTER_USE_CLICK`, `WINDOW_FOCUS`) so the
+  planner picks a specific verb directly from the catalogue.
 - **Services** — `ComputerUseService` (`serviceType = "computeruse"`)
   and `VisionContextProvider`.
 - **Providers** — `computerStateProvider`, `sceneProvider`.

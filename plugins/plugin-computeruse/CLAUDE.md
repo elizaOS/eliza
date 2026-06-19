@@ -120,8 +120,13 @@ src/
   mobile/
     ocr-provider.ts          OcrProvider / CoordOcrProvider interfaces (plugin-vision contributes impls)
     ios-bridge.ts            iOS computer-use bridge
+    ios-computer-interface.ts  iOS-specific ComputerInterface implementation
+    ios-app-intent-registry.ts  Registry of iOS app intents for automation
     android-bridge.ts        AOSP input bridge
+    android-scene.ts         Android scene capture and representation
+    android-trajectory.ts    Android action trajectory recording
     mobile-computer-interface.ts  MobileComputerInterface
+    mobile-screen-capture.ts Screen capture abstraction for mobile targets
     index.ts                 Mobile public surface
 
   osworld/
@@ -154,7 +159,7 @@ bun run --cwd plugins/plugin-computeruse typecheck   # tsgo --noEmit
 
 ## Config / env vars
 
-All read via `runtime.getSetting()` / `process.env`. Declared in `package.json#agentConfig.pluginParameters`.
+All read via `runtime.getSetting()` / `process.env`. Core vars are declared in `package.json#agentConfig.pluginParameters`; sandbox vars are read directly.
 
 | Env var | Type | Default | Required | Description |
 |---------|------|---------|----------|-------------|
@@ -164,6 +169,9 @@ All read via `runtime.getSetting()` / `process.env`. Declared in `package.json#a
 | `COMPUTER_USE_APPROVAL_MODE` | enum | `"smart_approve"` | No | `full_control` / `smart_approve` / `approve_all` / `off` |
 | `COMPUTER_USE_BROWSER_HEADLESS` | boolean | `false` | No | Headless browser (useful in CI) |
 | `ELIZA_COMPUTERUSE_DRIVER` | enum | `"nutjs"` | No | Input driver: `nutjs` (@nut-tree-fork/nut-js) or `legacy` (cliclick/xdotool/PowerShell) |
+| `COMPUTER_USE_MODE` | enum | `"yolo"` | No | Runtime mode: `yolo` (direct desktop) or `sandbox` (Docker-isolated). Alias: `COMPUTERUSE_MODE` |
+| `COMPUTER_USE_SANDBOX_BACKEND` | string | — | No | Sandbox backend when `COMPUTER_USE_MODE=sandbox` (currently only `"docker"`). Alias: `COMPUTERUSE_SANDBOX_BACKEND` |
+| `COMPUTER_USE_SANDBOX_IMAGE` | string | — | No | Docker image to use for sandbox mode. Alias: `COMPUTERUSE_SANDBOX_IMAGE` |
 
 `BROWSER_EXECUTE_DISABLED` is declared in `package.json#agentConfig.pluginParameters` but is **inert**: `browser_execute` is unconditionally disabled in `src/security/browser-script-policy.ts` (`isBrowserExecuteAllowed()` always returns `false`, GHSA-rcvr-766c-4phv). No setting re-enables it.
 

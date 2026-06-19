@@ -121,11 +121,19 @@ All variables are optional. Read by `AgentSkillsService` at `initialize()` time 
 
 | Var | Default | Description |
 |-----|---------|-------------|
-| `SKILLS_DIR` | `./skills` | Directory to load and install skills from. |
-| `SKILLS_AUTO_LOAD` | `true` | Load installed skills on startup. |
-| `SKILLS_REGISTRY` | `https://clawhub.ai` | Skill registry base URL. |
+| `SKILLS_DIR` | `./skills` | Directory to load and install skills from. Alias: `CLAWHUB_SKILLS_DIR`. |
+| `SKILLS_AUTO_LOAD` | `true` | Load installed skills on startup. Alias: `CLAWHUB_AUTO_LOAD`. |
+| `SKILLS_REGISTRY` | `https://clawhub.ai` | Skill registry base URL. Alias: `CLAWHUB_REGISTRY`. |
+| `SKILLS_STORAGE_TYPE` | — | Storage backend override (`memory` or `filesystem`). Auto-detected if unset. |
+| `SKILLS_SYNC_CATALOG_ON_START` | `true` | Sync the remote catalog on plugin startup. Set to `false` to skip. |
+| `SKILLS_AUTO_REFRESH` | `false` | Automatically refresh skills from disk on access. |
+| `SKILLS_ALLOWLIST` | — | Comma-separated slugs to allow (all others blocked). Alias: `skills.allowlist`. |
+| `SKILLS_DENYLIST` | — | Comma-separated slugs to block. Alias: `skills.denylist`. |
 | `BUNDLED_SKILLS_DIRS` | — | Comma-separated paths containing read-only bundled skill dirs. |
 | `OTTO_BUNDLED_SKILLS_DIR` | — | Legacy: single Otto bundled skills directory. |
+| `WORKSPACE_SKILLS_DIR` | — | Directory for workspace-scoped skills. Alias: `OTTO_WORKSPACE_SKILLS_DIR`. |
+| `PLUGIN_SKILLS_DIRS` | — | Comma-separated directories for plugin-contributed skills. Alias: `OTTO_PLUGIN_SKILLS_DIRS`. |
+| `EXTRA_SKILLS_DIRS` | — | Additional skill directories. Aliases: `OTTO_EXTRA_SKILLS_DIRS`, `skills.load.extraDirs`. |
 
 Auto-enable gate (not a runtime env var): `config.features.agentSkills` must be truthy in the agent character config.
 

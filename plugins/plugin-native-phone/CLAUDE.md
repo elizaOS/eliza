@@ -32,6 +32,7 @@ plugins/plugin-native-phone/
     definitions.ts      TypeScript interfaces and types (PhonePlugin, PhoneStatus, CallLogEntry, etc.)
     index.ts            registerPlugin call — exports Phone + re-exports definitions
     web.ts              PhoneWeb: WebPlugin fallback — getStatus returns all-false; call/transcript methods throw
+    web.test.ts         Vitest unit tests for the PhoneWeb fallback
   android/
     src/main/
       AndroidManifest.xml         Declares permissions: CALL_PHONE, READ_PHONE_STATE, ANSWER_PHONE_CALLS,
@@ -50,6 +51,7 @@ Only scripts defined in this package's `package.json`:
 ```bash
 bun run --cwd plugins/plugin-native-phone build     # tsc + rollup (produces dist/)
 bun run --cwd plugins/plugin-native-phone clean     # removes dist/
+bun run --cwd plugins/plugin-native-phone test      # vitest run
 ```
 
 ## Config / env vars

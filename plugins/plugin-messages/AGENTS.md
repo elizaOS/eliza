@@ -27,12 +27,22 @@ src/
   plugin.ts              Plugin object — defines the three views registered with @elizaos/core
   index.ts               Public package entry — re-exports plugin, register, ui
   register.ts            Side-effect entry — calls registerMessagesApp() when isElizaOS()
+  register-terminal-view.tsx  Registers the messages view for terminal rendering via @elizaos/tui
   ui.ts                  Re-exports MessagesAppView, MessagesPluginView, messagesApp, registerMessagesApp
   components/
     messages-app.ts      OverlayApp descriptor + registerMessagesApp() helper
-    MessagesAppView.tsx  Three React components: MessagesAppView (full overlay), MessagesPluginView
-                         (plugin view wrapper), MessagesTuiView (terminal view + interact() fn)
-    MessagesTuiView.test.ts  Vitest tests for TUI view and interact() terminal capabilities
+    MessagesAppView.tsx  React components: MessagesAppView (full overlay), MessagesPluginView
+                         (plugin view wrapper)
+    MessagesAppView.helpers.ts  Shared helper functions for MessagesAppView
+    MessagesAppView.interact.ts  interact() terminal capability handler (split from MessagesAppView.tsx)
+    MessagesSpatialView.tsx  Unified spatial SMS surface (renders in GUI, XR, and TUI contexts)
+    messages-view-bundle.ts  View bundle entry — re-exports interact and view components for Vite bundle
+    MessagesAppView.gui.test.tsx      GUI-level tests for MessagesAppView
+    MessagesAppView.helpers.test.ts   Tests for helpers
+    messages-app.test.ts              Tests for overlay app descriptor/registration
+    messages-bridge-contract.test.ts  Contract tests for the Capacitor bridge
+    MessagesSpatialView.test.tsx      Tests for the spatial view
+    MessagesTuiView.test.ts           Vitest tests for TUI view and interact() terminal capabilities
 ```
 
 ### Key exports
@@ -41,7 +51,7 @@ src/
 - `MessagesAppView` — full-screen overlay React component (used as the app entry).
 - `MessagesPluginView` — same view, wrapped with a default `OverlayAppContext` for plugin-view use.
 - `MessagesTuiView` — terminal-style React component; exposes `data-view-state` JSON for agent inspection. Exported from `src/components/MessagesAppView.tsx` only — not re-exported from the package root.
-- `interact(capability, params?)` — programmatic terminal API for agents; see capabilities below. Exported from `src/components/MessagesAppView.tsx` only — not re-exported from the package root.
+- `interact(capability, params?)` — programmatic terminal API for agents; see capabilities below. Defined in `src/components/MessagesAppView.interact.ts`; re-exported via `src/components/messages-view-bundle.ts`. Not re-exported from the package root.
 - `messagesApp` / `registerMessagesApp` / `MESSAGES_APP_NAME` — overlay app descriptor and registration.
 
 ### `interact()` terminal capabilities
@@ -82,10 +92,10 @@ The Android **default SMS role** (`android.app.role.SMS`) must be granted to the
 1. Define the React component in `src/components/`.
 2. Export it from `src/components/MessagesAppView.tsx` (or a new file re-exported from `src/ui.ts`).
 3. Add a view entry to the `views` array in `src/plugin.ts` with the correct `bundlePath`, `componentExport`, and `viewType`.
-4. If the component needs to be in the view bundle, ensure it is reachable from `src/components/MessagesAppView.tsx` (the Vite entry; see `vite.config.views.ts`).
+4. If the component needs to be in the view bundle, ensure it is reachable from `src/components/messages-view-bundle.ts` (the Vite entry; see `vite.config.views.ts`).
 
 **Add a new terminal capability:**
-1. Extend the `interact()` function in `src/components/MessagesAppView.tsx` with a new `if (capability === "...")` branch.
+1. Extend the `interact()` function in `src/components/MessagesAppView.interact.ts` with a new `if (capability === "...")` branch.
 2. Add a corresponding test case in `src/components/MessagesTuiView.test.ts`.
 
 **Register the plugin in an agent:**
@@ -102,3 +112,4 @@ import messagesPlugin from "@elizaos/plugin-messages";
 - **SMS role vs bridge mode.** The UI shows two modes: "Default SMS app" (owns the role, full inbox) and "Android SMS bridge" (read-only via the capacitor bridge, no role held). Agents can request the role via `interact("terminal-request-sms-role")` or via the TUI button.
 - **`data-view-state` attribute.** `MessagesTuiView` serialises its full state to `data-view-state` on the root element; agent test harnesses can read it without parsing inner DOM structure.
 - **Cross-view recipient handoff.** `MessagesAppView` consumes a pending recipient via `consumePendingMessageRecipient()` from `@elizaos/ui/app-navigate-view` on mount, opening the composer with the "To" field pre-seeded. Callers (e.g. a Contacts "Text" control) seed it with `navigateToMessagesWithNumber(address)` from the same module — the `eliza:navigate:view` bus carries no payload to a mounted view, so the recipient is stashed module-side and consumed once.
+- **Spatial view.** `MessagesSpatialView` is the unified presentational component that renders correctly in GUI, XR, and TUI contexts. It is purely presentational (a snapshot + action callback in, spatial primitives out) and does not import Capacitor runtime code, making it safe to render in the Node agent process.

@@ -11,6 +11,7 @@
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
+import { decodeJwtPayload } from "../../lib/jwt";
 import { LocalStewardAuthContext } from "../../shell/StewardProvider";
 
 type SessionAuthSource = "none" | "steward";
@@ -72,24 +73,14 @@ function decodeStewardToken(token: string): {
   walletAddress?: string;
   exp?: number;
 } | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(
-      base64.length + ((4 - (base64.length % 4)) % 4),
-      "=",
-    );
-    const payload = JSON.parse(atob(padded));
-    return {
-      id: payload.userId ?? payload.sub ?? "",
-      email: payload.email ?? "",
-      walletAddress: payload.address ?? undefined,
-      exp: payload.exp,
-    };
-  } catch {
-    return null;
-  }
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+  return {
+    id: payload.userId ?? payload.sub ?? "",
+    email: payload.email ?? "",
+    walletAddress: payload.address ?? undefined,
+    exp: payload.exp,
+  };
 }
 
 function readStewardSessionFromStorage(): StewardSessionUser {

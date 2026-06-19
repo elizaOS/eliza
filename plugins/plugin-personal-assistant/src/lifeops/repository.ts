@@ -15,6 +15,7 @@ import {
   type BrowserBridgeTabSummary,
   browserBridgeSchema,
 } from "@elizaos/plugin-browser";
+import { inboxDbSchema } from "@elizaos/plugin-inbox";
 import type {
   LifeOpsScheduleMergedState,
   LifeOpsScheduleObservation,
@@ -2391,6 +2392,14 @@ export class LifeOpsRepository {
         {
           name: "@elizaos/plugin-personal-assistant",
           schema: lifeOpsSchema,
+        },
+        // Inbox-triage tables were carved to @elizaos/plugin-inbox (app_inbox);
+        // PA auto-registers that plugin in production. Mirror it here so test
+        // harnesses that only call bootstrapSchema still materialize the
+        // app_inbox tables the inbox repositories read.
+        {
+          name: "@elizaos/plugin-inbox",
+          schema: inboxDbSchema,
         },
         // The knowledge-graph tables are runtime-owned (registered by the
         // agent "eliza" plugin in production). Migrate them under the same

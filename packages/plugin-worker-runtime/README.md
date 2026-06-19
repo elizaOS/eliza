@@ -44,6 +44,7 @@ Plugin handlers receive a `runtime` argument that is a `RuntimeProxyApi` — a s
 - `emitEvent(name, payload)`
 - `getSetting(key)` / `setSetting(key, value)`
 - `composeState(message, options?)`
+- `actionCallback(callbackId, response, actionName)`
 
 Methods not in this list are absent by design. Accessing live-object properties of the runtime (e.g. `databaseAdapter`) is not supported in remote mode.
 Event handlers are declared statically on `Plugin.events`, where bootstrap can

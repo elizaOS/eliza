@@ -58,6 +58,7 @@ plugins/plugin-native-screencapture/
     definitions.ts       All TypeScript interfaces and the ScreenCapturePlugin contract
     index.ts             Entry point — calls registerPlugin("ScreenCapture", { web: loadWeb })
     web.ts               Browser implementation: getDisplayMedia, MediaRecorder, ImageCapture API
+    web.test.ts          Vitest unit tests for the web implementation
   ios/
     Sources/ScreenCapturePlugin/
       ScreenCapturePlugin.swift   iOS impl: RPScreenRecorder + AVAssetWriter; thread-safe CaptureState
@@ -79,9 +80,8 @@ All scripts come from `package.json`. Run from repo root with `--cwd`:
 bun run --cwd plugins/plugin-native-screencapture build    # clean + tsc + rollup
 bun run --cwd plugins/plugin-native-screencapture clean    # remove dist/
 bun run --cwd plugins/plugin-native-screencapture watch    # tsc --watch (no rollup)
+bun run --cwd plugins/plugin-native-screencapture test     # vitest run (src/web.test.ts)
 ```
-
-There are no test scripts in this package. Tests for screen-capture behavior live in the consuming elizaOS packages.
 
 ## Config / Env Vars
 

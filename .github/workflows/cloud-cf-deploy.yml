@@ -53,8 +53,12 @@ on:
           - production
 
 concurrency:
-  group: cloud-cf-deploy-${{ github.ref }}
-  cancel-in-progress: true
+  # Manual production deploys (workflow_dispatch) must run to completion: they
+  # are intentional and must NOT be cancelled by routine pushes. Give them a
+  # per-run-unique group + no cancel-in-progress. Push/PR runs keep the
+  # dedupe-to-latest behavior (a new push cancels the older in-progress run).
+  group: cloud-cf-deploy-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 # Default to least privilege. Override per-job where needed.
 permissions:

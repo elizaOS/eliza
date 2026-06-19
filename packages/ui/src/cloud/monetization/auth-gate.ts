@@ -15,6 +15,7 @@
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
+import { decodeJwtPayload } from "../lib/jwt";
 import { LocalStewardAuthContext } from "../shell/StewardProvider";
 
 export interface MonetizationAuthState {
@@ -24,28 +25,12 @@ export interface MonetizationAuthState {
   authenticated: boolean;
 }
 
-function decodeStewardTokenExpAndUser(token: string): { exp?: number } | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(
-      base64.length + ((4 - (base64.length % 4)) % 4),
-      "=",
-    );
-    const payload = JSON.parse(atob(padded));
-    return { exp: payload.exp };
-  } catch {
-    return null;
-  }
-}
-
 function hasValidStoredStewardToken(): boolean {
   if (typeof window === "undefined") return false;
   try {
     const token = localStorage.getItem(STEWARD_TOKEN_KEY);
     if (!token) return false;
-    const decoded = decodeStewardTokenExpAndUser(token);
+    const decoded = decodeJwtPayload(token);
     if (!decoded) return false;
     if (decoded.exp && decoded.exp * 1000 < Date.now()) return false;
     return true;

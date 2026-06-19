@@ -16,13 +16,17 @@ The wire message types are defined in `@elizaos/plugin-remote-manifest`. Securit
 src/
   index.ts           Re-exports all public symbols; serves as the "." export
   bootstrap.ts       bootstrap() — the author-facing entrypoint
+  bootstrap.test.ts  Unit tests for bootstrap
   descriptor.ts      buildAnnounceDescriptor(), HandlerRegistry, WorkerPluginShape
+  descriptor.test.ts Unit tests for descriptor
   dispatch.ts        createWorkerRpcDispatcher() — routes worker-rpc to live handlers
+  dispatch.test.ts   Unit tests for the dispatcher
   envelope.ts        WorkerChannel contract + createWorkerChannel / createSubprocessChannel
                        / createDefaultChannel / createRequestIdAllocator
+  envelope.test.ts   Unit tests for envelope/channel
   runtime-proxy.ts   RuntimeProxy class + buildRuntimeProxyApi() + SUPPORTED_RUNTIME_METHODS
+  runtime-proxy.test.ts Unit tests for runtime proxy
   error.ts           toWireError / fromWireError / WireError — error serialisation
-  dispatch.test.ts   Unit tests for the dispatcher
 ```
 
 ### Export subpaths

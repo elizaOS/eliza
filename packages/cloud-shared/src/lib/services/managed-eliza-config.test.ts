@@ -136,9 +136,7 @@ describe("managed Eliza environment", () => {
   });
 
   test("pins embeddings to the elizacloud Worker base so /embeddings never 503s", async () => {
-    const { prepareManagedElizaBaseEnvironment } = await import(
-      "./managed-eliza-config"
-    );
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
       organizationId: "org-1",
@@ -156,9 +154,7 @@ describe("managed Eliza environment", () => {
   });
 
   test("honors an explicit per-agent embedding URL override", async () => {
-    const { prepareManagedElizaBaseEnvironment } = await import(
-      "./managed-eliza-config"
-    );
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
       organizationId: "org-1",

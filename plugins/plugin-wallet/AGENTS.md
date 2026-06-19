@@ -62,6 +62,13 @@ plugins/plugin-wallet/
     index.ts                   Package barrel — re-exports everything
     plugin.ts                  walletPlugin object (services/providers/actions/init/dispose)
     core-augmentation.ts       Augments @elizaos/core interfaces with wallet types
+    contracts.ts               On-chain contract type definitions and exports
+    register-routes.ts         Route registration helpers
+    wallet-action.ts           Top-level wallet action re-export
+    actions/
+      failure-codes.ts         Failure code constants
+      intent-trajectory.ts     Intent trajectory types
+    browser-shim/              Browser environment shim (build-shim.ts, shim.template.js)
     chains/
       wallet-action.ts         walletRouterAction (WALLET action, all subactions)
       registry.ts              registerDefaultWalletChainHandlers (EVM + Solana)
@@ -81,6 +88,9 @@ plugins/plugin-wallet/
         providers/wallet.ts    Solana wallet provider
         routes/                Solana REST routes
         dex/                   Raydium, Orca, Meteora DEX adapters
+    lib/
+      server-wallet-trade.ts   canUseLocalTradeExecution, resolveTradePermissionMode helpers
+      wallet-export-guard.ts   Wallet export audit log and guard
     services/
       wallet-backend-service.ts  WalletBackendService — top-level chain router
     wallet/
@@ -105,6 +115,7 @@ plugins/plugin-wallet/
       index.ts                 ERC-6551 wallet-core, x402, CCTP, escrow, swap, identity
       abi.ts                   AgentAccountV2Abi, AgentAccountFactoryV2Abi
       wallet-core.ts           createWallet, setSpendPolicy, agentTransferToken, checkBudget
+      convenience.ts           x402 convenience helpers (reads X402_* env vars)
       x402/                    x402 micropayment protocol types + helpers
     policy/
       policy.ts                PolicyModule (spend-policy enforcement)
@@ -151,11 +162,15 @@ All read via `runtime.getSetting()` (or `process.env` fallback where noted).
 | `BIRDEYE_WALLET_ADDR` | No | Enables `agentPortfolioProvider` for this wallet address. |
 | `BIRDEYE_NO_TRENDING` | No | Set to `true` to skip trending provider registration. |
 | `ELIZA_AGENT_WALLET_AUTO_ENABLE` | No | Set to `0` to disable auto-enable logic entirely. |
+| `COINGECKO_API_KEY` | No | CoinGecko API key (also accepts `COINGECKO_DEMO_API_KEY` / `COINGECKO_PRO_API_KEY`). |
+| `HELIUS_API_KEY` | No | Helius API key for enhanced Solana RPC. |
+| `ELIZAOS_CLOUD_API_KEY` | No | Eliza Cloud API key for cloud-routing fallbacks. |
+| `ELIZA_WALLET_EXPORT_TOKEN` | No | Auth token required to export wallet keys via HTTP routes. |
 | `X402_SUPPORTED_NETWORKS` | No | Comma-separated network list for x402 SDK. |
 | `X402_GLOBAL_DAILY_LIMIT` | No | Daily USDC spend cap for x402. |
 | `X402_PER_REQUEST_MAX` | No | Per-request USDC cap for x402. |
 
-EVM RPC (LP manager / chain routing): `ETHEREUM_RPC_URL` / `EVM_PROVIDER_MAINNET`, `BASE_RPC_URL` / `EVM_PROVIDER_BASE`, `BSC_RPC_URL` / `EVM_PROVIDER_BSC`, `ARBITRUM_RPC_URL` / `EVM_PROVIDER_ARBITRUM`.
+EVM RPC (LP manager / chain routing): `ETHEREUM_RPC_URL` / `EVM_PROVIDER_MAINNET`, `BASE_RPC_URL` / `EVM_PROVIDER_BASE`, `BSC_RPC_URL` / `EVM_PROVIDER_BSC`, `ARBITRUM_RPC_URL` / `EVM_PROVIDER_ARBITRUM`, `AVALANCHE_RPC_URL`, `EVM_PROVIDER_OPTIMISM`, `EVM_PROVIDER_POLYGON`.
 
 ## How to extend
 

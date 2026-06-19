@@ -67,6 +67,7 @@ Adds full wallet capability to an Eliza agent: native balance/address providers 
 ### Views
 - `StewardView` (web + XR) — transaction history + approval queue dashboard panel, path `/steward`
 - `StewardTuiView` (tui) — terminal-compatible version, path `/steward/tui`
+- `StewardSpatialView` (`src/components/StewardSpatialView.tsx`) — unified component authored once and rendered across web, XR, and terminal modalities; registered in the terminal via `src/register-terminal-view.tsx`
 
 ## Layout
 
@@ -124,17 +125,35 @@ src/
     bsc-trade.ts                   # BSC trade request/response types
     index.ts                       # Barrel
 
+  components/
+    StewardSpatialView.tsx         # Unified approvals+history panel rendered across web, XR, and terminal
+    StewardSpatialView.test.tsx    # Vitest tests for StewardSpatialView
+
   ApprovalQueue.tsx                # React component: pending approval list + approve/deny buttons
+  ApprovalQueue.test.tsx           # Vitest tests for ApprovalQueue
   TransactionHistory.tsx           # React component: Steward transaction history list
+  TransactionHistory.test.tsx      # Vitest tests for TransactionHistory
   StewardView.tsx                  # React panel: tabs history + approvals (web + XR)
+  StewardView.test.tsx             # Vitest tests for StewardView
+  StewardView.helpers.ts           # StewardView helper utilities
+  StewardView.interact.ts          # StewardView interaction handlers
   StewardVaultOverview.tsx         # Vault status overview card
+  StewardVaultOverview.test.tsx    # Vitest tests for StewardVaultOverview
   StewardLogo.tsx                  # SVG logo component
   StewardTuiView.test.tsx          # Vitest test for TUI view
+  StewardVisualCopy.test.ts        # Vitest visual copy tests
   steward-ui-state.ts              # Shared UI state types
+  steward-view-bundle.ts           # View bundle entry point (re-exports StewardView, StewardTuiView, interact)
+  steward-logo.svg                 # SVG asset
+  register-terminal-view.tsx       # Registers StewardSpatialView as a terminal view at startup (auto-imported via index.ts)
   chain-utils.ts                   # Chain ID/name helpers
+  chain-utils.test.ts              # Vitest tests for chain-utils
   register-routes.ts               # Route registration helper
   ui.ts                            # UI re-exports
-  steward-logo.svg                 # SVG asset
+  steward-bridge.contract.test.ts  # Contract tests for steward-bridge
+
+  __fixtures__/
+    steward-sdk-fixtures.ts        # Test fixtures for Steward SDK responses
 ```
 
 ## Commands
@@ -158,11 +177,40 @@ bun run --cwd plugins/plugin-steward-app test:e2e:manual  # live E2E tests (need
 | `STEWARD_AGENT_TOKEN` | Conditional | JWT bearer token for agent authentication with Steward. |
 | `STEWARD_AGENT_ID` | No | Steward agent ID. Falls back to EVM address if unset. Also `ELIZA_STEWARD_AGENT_ID`. |
 | `STEWARD_TENANT_ID` | No | Steward tenant ID for multi-tenant deployments. |
+| `STEWARD_EVM_ADDRESS` | No | EVM address reported by Steward (set in cloud-provisioned mode). |
+| `STEWARD_SOLANA_ADDRESS` | No | Solana address reported by Steward (set in cloud-provisioned mode). |
 | `EVM_PRIVATE_KEY` | No | EVM wallet private key. Hydrated from OS keychain if unset. |
 | `SOLANA_PRIVATE_KEY` | No | Solana wallet private key. Hydrated from OS keychain if unset. |
+| `SOLANA_PUBLIC_KEY` | No | Solana public key override. |
+| `WALLET_PUBLIC_KEY` | No | Generic wallet public key override. |
 | `ELIZA_CLOUD_PROVISIONED` | No | Set to `1` in cloud containers to activate Steward EVM account bridge (no local keys). |
+| `ELIZA_MANAGED_EVM_ADDRESS` | No | EVM address injected in cloud-managed mode. |
 | `ELIZA_API_PORT` | No | Loopback API port. Resolved via `resolveDesktopApiPort(process.env)`; do not hardcode. |
-| `ELIZA_API_TOKEN` | No | Bearer token for loopback API calls between providers and route handlers. |
+| `ELIZA_WALLET_NETWORK` | No | Network selection (e.g. `mainnet`, `testnet`). |
+| `ELIZAOS_CLOUD_API_KEY` | No | elizaOS cloud API key for cloud backend calls. |
+| `ELIZAOS_CLOUD_BASE_URL` | No | elizaOS cloud base URL override. |
+| `SOLANA_RPC_URL` | No | Custom Solana RPC endpoint. |
+| `SOLANA_TESTNET_RPC_URL` | No | Custom Solana testnet RPC endpoint. |
+| `ETHEREUM_RPC_URL` | No | Custom Ethereum mainnet RPC endpoint. |
+| `BASE_RPC_URL` | No | Custom Base chain RPC endpoint. |
+| `AVALANCHE_RPC_URL` | No | Custom Avalanche RPC endpoint. |
+| `BSC_RPC_URL` | No | Custom BSC mainnet RPC endpoint. |
+| `BSC_TESTNET_RPC_URL` | No | Custom BSC testnet RPC endpoint. |
+| `BSC_SWAP_ROUTER_ADDRESS` | No | DEX router address on BSC mainnet. |
+| `BSC_TESTNET_SWAP_ROUTER_ADDRESS` | No | DEX router address on BSC testnet. |
+| `BSC_WRAPPED_NATIVE_ADDRESS` | No | WBNB address on BSC mainnet. |
+| `BSC_TESTNET_WRAPPED_NATIVE_ADDRESS` | No | WBNB address on BSC testnet. |
+| `BSC_TESTNET_CHAIN_ID` | No | Chain ID override for BSC testnet. |
+| `BSC_TESTNET_EXPLORER_BASE_URL` | No | Block explorer base URL for BSC testnet. |
+| `NODEREAL_BSC_RPC_URL` | No | NodeReal BSC RPC endpoint. |
+| `QUICKNODE_BSC_RPC_URL` | No | QuickNode BSC RPC endpoint. |
+| `ALCHEMY_API_KEY` | No | Alchemy API key for EVM RPC. |
+| `ANKR_API_KEY` | No | Ankr API key for EVM RPC. |
+| `INFURA_API_KEY` | No | Infura API key for EVM RPC. |
+| `HELIUS_API_KEY` | No | Helius API key for Solana RPC. |
+| `BIRDEYE_API_KEY` | No | Birdeye API key for token prices. |
+| `ZEROX_API_KEY` | No | 0x API key for DEX quotes. |
+| `ZEROX_BSC_API_BASE_URL` | No | 0x BSC API base URL override. |
 
 Credentials also persist to `$ELIZA_STATE_DIR/steward-credentials.json` (written by `saveStewardCredentials`).
 
@@ -192,4 +240,5 @@ Credentials also persist to `$ELIZA_STATE_DIR/steward-credentials.json` (written
 - The views bundle (`dist/views/bundle.js`) is built separately by `build:views` using Vite. The JS build (`build:js`) does not produce the views bundle.
 - `src/services/steward-credentials.ts` and `src/services/steward-sidecar.ts` are thin re-exports of `@elizaos/app-core`. The real implementations live upstream.
 - Wallet keys (`EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`) and Steward credentials can be hydrated from the OS keychain at startup via `hydrateWalletKeysFromNodePlatformSecureStore()` in `src/security/`.
+- `StewardSpatialView` (`src/components/StewardSpatialView.tsx`) is the single source-of-truth panel for approvals and history. It is used by `StewardView.tsx` (web/XR) and registered as a terminal view by `src/register-terminal-view.tsx` (auto-imported in `index.ts`).
 - See `../../AGENTS.md` for global architecture rules (dependency direction, logger-only, ESM, naming).

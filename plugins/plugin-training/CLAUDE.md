@@ -65,16 +65,39 @@ src/
     trajectory-export-cron.ts   Nightly export cron registration
     trajectory-hf-upload.ts     HuggingFace JSONL uploader (shells out to hf CLI)
     trajectory-task-datasets.ts Per-task JSONL export (eliza_native_v1 format)
+    trajectory-consumer.ts      Trajectory consumption utilities
     privacy-filter.ts           Anonymizer + PII/credential/geo stripping
     skill-scoring-cron.ts       Nightly skill eval cron
     dataset-generator.ts        Dataset generation utilities
     scenario-runner.ts          Scenario execution harness
+    scenario-blueprints.ts      Scenario blueprint definitions
     action-benchmark-runner.ts  Eliza-1 action benchmark runner
     eliza1-benchmark-recipe.ts  Tier/variant definitions for Eliza-1 benchmarks
+    eliza1-bundle-stager.ts     Bundle staging for Eliza-1 benchmarks
+    benchmark-matrix-artifact.ts  Benchmark matrix artifact builder
+    benchmark-vs-cerebras-runner.ts  Cerebras comparison benchmark runner
+    cerebras-eval-model.ts      Cerebras eval model adapter
+    eval-comparison-artifact.ts Eval comparison artifact builder
+    artifact-store.ts           Artifact persistence store
     cli.ts                      Data collection CLI (run-collection, list-collections)
     context-catalog.ts          Context catalog builder
     context-audit.ts            Context audit
+    context-types.ts            Shared context type definitions
     replay-validator.ts         Skill scoring against trajectory replays
+    feed-generation-runner.ts   Feed generation pipeline runner
+    huggingface-dataset-ingest.ts  HuggingFace dataset ingestion
+    test-trajectory-collector.ts   Test trajectory collection
+    roleplay-executor.ts        Roleplay execution harness
+    roleplay-trajectories.ts    Roleplay trajectory utilities
+    prompt-compare.ts           Prompt comparison utilities
+    promotion-gate.ts           Promotion gating logic
+    promotion-persist.ts        Promotion persistence
+    training-analysis-index.ts  Training analysis index
+    training-readiness-report.ts  Training readiness reporting
+    ensure-cron-job.ts          Cron job registration helper
+    track-c-queue-task.ts       Track-C queue task management
+    wait-for-service.ts         Service readiness wait utility
+    workspace-runtime.ts        Workspace runtime utilities
   backends/
     native.ts                   Native in-process optimizer backend
   optimizers/
@@ -96,6 +119,7 @@ src/
     experience-routes.ts        Experience service routes
   services/
     training-service.ts         TrainingService class
+    training-service-like.ts    TrainingService interface/base
     training-trigger.ts         TrainingTriggerService + bootstrapOptimizationFromAccumulatedTrajectories
     training-vast-service.ts    VastTrainingService
     training-service-registry.ts  getActiveTrainingService / setActiveTrainingService
@@ -127,6 +151,7 @@ bun run --cwd plugins/plugin-training clean            # Remove dist/
 | Var | Required | Purpose |
 |---|---|---|
 | `ELIZA_STATE_DIR` | no | State root override (default `~/.eliza`) |
+| `TRAINING_STATE_DIR` | no | Override for training-specific state dir |
 | `ELIZA_DISABLE_TRAINING_CRONS` | no | Set to `1`/`true`/`yes` to skip cron registration |
 | `ELIZA_DISABLE_AUTO_BOOTSTRAP` | no | Disable auto-bootstrap of prompt optimization on start |
 | `TRAIN_MODEL` | no | Model id for native optimizer (overrides runtime default) |
@@ -138,6 +163,8 @@ bun run --cwd plugins/plugin-training clean            # Remove dist/
 | `ELIZA_TRAJECTORY_DIR` | no | Override trajectory storage dir |
 | `ELIZA_TEST_TRAJECTORY_DIR` | no | Override dir for test trajectory collection |
 | `ELIZA_ACTION_BENCHMARK_TRAJECTORY_DIR` | no | Override dir for action benchmark trajectories |
+| `ELIZA_ACTION_BENCHMARK_REPORT_PATH` | no | Override path for action benchmark text report |
+| `ELIZA_ACTION_BENCHMARK_REPORT_JSON_PATH` | no | Override path for action benchmark JSON report |
 | `ELIZA_INFERENCE_STATS_PATH` | no | Override inference stats JSONL path |
 | `ELIZA_VAST_MAX_USD` | no | Budget cap for Vast.ai GPU jobs |
 | `ANTHROPIC_API_KEY` | no | Required for Anthropic-backed optimizer runs |
@@ -145,6 +172,10 @@ bun run --cwd plugins/plugin-training clean            # Remove dist/
 | `CEREBRAS_API_KEY` | no | Required for Cerebras benchmark comparisons |
 | `CEREBRAS_MODEL` | no | Model id for Cerebras benchmark |
 | `LOCAL_LLAMA_CPP_API_KEY` | no | API key for local llama.cpp endpoint |
+| `OLLAMA_URL` | no | URL for local Ollama inference endpoint |
+| `DATABASE_URL` | no | Database connection URL (used by workspace runtime) |
+| `ELIZA_LIVE_TEST_LARGE_MODEL` | no | Model id override for live large-model tests |
+| `REAL_LLM_MODEL` | no | Model id override for real-LLM integration tests |
 
 Training config is persisted at `<stateDir>/training/config.json`. Key fields: `autoTrain` (bool, default true), `triggerThreshold` (int, default 100 trajectories per task), `triggerCooldownHours` (default 12), `backends` (default `["native"]`), `perTaskOverrides`.
 
