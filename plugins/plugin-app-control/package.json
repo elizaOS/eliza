@@ -29,6 +29,7 @@
 		}
 	},
 	"files": [
+		"assets",
 		"dist"
 	],
 	"scripts": {

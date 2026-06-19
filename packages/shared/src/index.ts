@@ -297,6 +297,7 @@ export * from "./utils/subscription-auth.js";
 export * from "./utils/trajectory-format.js";
 export * from "./utils/tts-debug.js";
 export * from "./validation-keywords.js";
+export * from "./view-hero-art.js";
 export * from "./voice/first-sentence-snip.js";
 export * from "./voice/voice-cancellation-token.js";
 export * from "./voice.js";
