@@ -14,11 +14,13 @@
  *     disk) is REFUSED → fall back to the libllama runtime, which has the
  *     optimizations through the shim. We never fall through to an unoptimized
  *     fused loop.
- *   - Vision describe stays on the libllama runtime this phase (the fused
- *     ABI does not expose `eliza_inference_llm_stream_*` vision-describe). When
- *     a load needs vision (`overrides.mmprojPath` is set) the gate routes the
- *     whole session to libllama so native vision-describe keeps working exactly
- *     as before. Text-only loads prefer the fused runtime.
+ *   - Vision describe prefers the fused runtime when the fused lib was built
+ *     with vision (ABI v9 `eliza_inference_describe_image`, reusing the mtmd
+ *     machinery already linked for ASR), so text + vision share one lib. When
+ *     a load needs vision (`overrides.mmprojPath` is set) but the fused lib has
+ *     no vision symbol, the gate routes the whole session to libllama so the
+ *     mtmd vision-describe path keeps working exactly as before. Text-only
+ *     loads prefer the fused runtime.
  *
  * The gate binds one runtime per acquire and forwards every subsequent call
  * (`release`, `parallelSlots`, `resizeParallel`, `describeImage`, …) to it.
@@ -66,13 +68,17 @@ export class DesktopGatedFfiBackendRuntime implements FfiBackendRuntime {
 
 	/**
 	 * Pick the runtime for THIS load:
-	 *   - vision load (mmproj present) → libllama (native vision-describe).
-	 *   - else prefer fused when its probes pass, else libllama.
+	 *   - text-only load → prefer fused when its v8 probes pass, else libllama.
+	 *   - vision load (mmproj present) → fused when the fused lib was built with
+	 *     vision (ABI v9 `eliza_inference_describe_image`) AND its text probes
+	 *     pass, so text + vision share one lib; else libllama (the libllama mtmd
+	 *     path stays as the guarded fallback — no regression).
 	 */
 	private pick(plan: BackendPlan): FfiBackendRuntime {
 		const needsVision = Boolean(plan.overrides?.mmprojPath);
-		if (!needsVision && this.fused.supported()) return this.fused;
-		return this.libllama;
+		if (!this.fused.supported()) return this.libllama;
+		if (needsVision && !this.fused.visionSupportedStatic()) return this.libllama;
+		return this.fused;
 	}
 
 	async acquire(plan: BackendPlan): Promise<FfiBackendSession> {
@@ -102,11 +108,12 @@ export class DesktopGatedFfiBackendRuntime implements FfiBackendRuntime {
 		return this.bound.resizeParallel(target);
 	}
 
-	// Vision-describe surface — only the libllama runtime implements it, and the
-	// gate only binds it for vision loads. Forwarded through the bound runtime;
-	// when the fused runtime is bound (text-only load) this throws the same
-	// "runtime lacks describeImage support" the FfiStreamingBackend surfaces,
-	// and `canDescribeImages()` is already false for that session.
+	// Vision-describe surface. Both runtimes can implement it now: the fused
+	// runtime via `eliza_inference_describe_image` (ABI v9, preferred for vision
+	// loads when the lib was built with vision), the libllama runtime via its
+	// mtmd path (the guarded fallback). Forwarded through the bound runtime;
+	// when the bound runtime lacks vision (a text-only fused session) this
+	// throws, and `canDescribeImages()` is already false for that session.
 	async describeImage(args: {
 		imageBytes: Uint8Array;
 		mmprojPath: string;

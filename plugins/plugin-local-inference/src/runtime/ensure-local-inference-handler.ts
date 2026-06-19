@@ -22,6 +22,7 @@
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
 
+import { existsSync } from "node:fs";
 import path from "node:path";
 import {
 	type AgentRuntime,
@@ -644,19 +645,123 @@ async function getDesktopEmbeddingContext(): Promise<CapacitorLlamaContext> {
 }
 
 /**
- * Desktop TEXT_EMBEDDING handler. Routes through the canonical capacitor
- * contract — `initCapacitorLlama(...).embedding()` over the bun:ffi →
- * libllama backend — using the compact gte-small GGUF (384-dim, an exact
- * match for plugin-sql's dim384 column). This is the same
- * `CapacitorLlamaContext.embedding()` path the mobile loader serves, so
- * desktop and mobile share one embedding implementation. Throws when the
- * GGUF can't be loaded so the runtime falls through to the
- * operator-configured provider — no silent zero-vector (Commandment 8).
+ * Resolve the bundle root the fused `eliza_inference_embed` should anchor at
+ * for a given embedding model. The fused C side picks the single GGUF under
+ * `<root>/text/`, so:
+ *   1. `ELIZA_EMBED_BUNDLE_ROOT` — explicit override.
+ *   2. If the model lives under a `text/` dir (`<root>/text/<model>.gguf`),
+ *      the bundle root is its grandparent.
+ *   3. If `<modelsDir>/text/<model>` exists, anchor at `<modelsDir>`.
+ * Returns null when no `<root>/text/` layout resolves — the caller then keeps
+ * the libllama path.
+ */
+function resolveFusedEmbedBundleRoot(cfg: DesktopEmbeddingConfig): string | null {
+	const override = process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim();
+	if (override && existsSync(path.join(override, "text"))) return override;
+	const modelPath = path.resolve(cfg.modelsDir, cfg.model);
+	const parent = path.dirname(modelPath);
+	if (path.basename(parent) === "text" && existsSync(modelPath)) {
+		return path.dirname(parent);
+	}
+	if (existsSync(path.join(cfg.modelsDir, "text", cfg.model))) {
+		return cfg.modelsDir;
+	}
+	return null;
+}
+
+/**
+ * Lazily-resolved fused embedding handle. When the fused `libelizainference`
+ * (ABI v9) is present, reports `embedSupported()`, and a `<root>/text/` bundle
+ * root resolves for the embedding model, the desktop TEXT_EMBEDDING handler
+ * computes embeddings through `eliza_inference_embed` over the fused handle's
+ * resident text vocab — retiring the node-llama-cpp / libllama embedding path.
+ * `null` once resolution fails (the handler then falls back).
+ */
+let fusedEmbedHandlePromise: Promise<{
+	ffi: import("../services/voice/ffi-bindings").ElizaInferenceFfi;
+	ctx: import("../services/voice/ffi-bindings").ElizaInferenceContextHandle;
+	embed: NonNullable<
+		import("../services/voice/ffi-bindings").ElizaInferenceFfi["embed"]
+	>;
+} | null> | null;
+
+async function getFusedEmbeddingHandle(
+	cfg: DesktopEmbeddingConfig,
+): Promise<{
+	embed: (text: string) => Float32Array;
+} | null> {
+	if (fusedEmbedHandlePromise === null) {
+		fusedEmbedHandlePromise = (async () => {
+			try {
+				require.resolve("bun:ffi");
+			} catch {
+				return null;
+			}
+			const { resolveFusedLibraryPath } = await import(
+				"../services/desktop-fused-ffi-backend-runtime"
+			);
+			const bundleRoot = resolveFusedEmbedBundleRoot(cfg);
+			if (!bundleRoot) return null;
+			const libPath = resolveFusedLibraryPath(bundleRoot);
+			if (!libPath) return null;
+			const { loadElizaInferenceFfi } = await import(
+				"../services/voice/ffi-bindings"
+			);
+			const ffi = loadElizaInferenceFfi(libPath);
+			if (
+				typeof ffi.embedSupported !== "function" ||
+				ffi.embedSupported() !== true ||
+				typeof ffi.embed !== "function"
+			) {
+				ffi.close();
+				return null;
+			}
+			const ctx = ffi.create(bundleRoot);
+			logger.info(
+				`[local-inference] Desktop embeddings via fused libelizainference (eliza_inference_embed) anchored at ${bundleRoot} — node-llama-cpp embedding path retired`,
+			);
+			return { ffi, ctx, embed: ffi.embed };
+		})().catch(() => {
+			fusedEmbedHandlePromise = null;
+			return null;
+		});
+	}
+	const handle = await fusedEmbedHandlePromise;
+	if (!handle) return null;
+	// gte-small / BERT bi-encoders use MEAN pooling; a decoder-as-embedder
+	// (`--pooling last`) is selected via ELIZA_EMBED_POOLING=last.
+	const pooling =
+		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase() === "last"
+			? 3
+			: 1;
+	return {
+		embed: (text: string) =>
+			handle.embed({ ctx: handle.ctx, text, pooling }),
+	};
+}
+
+/**
+ * Desktop TEXT_EMBEDDING handler. Prefers the FUSED `libelizainference`
+ * (`eliza_inference_embed`, ABI v9) over the fused handle's resident text
+ * vocab when available — that is the default desktop embedding path, retiring
+ * node-llama-cpp. When the fused lib is absent / older / no bundle root
+ * resolves, it falls back to the canonical capacitor contract
+ * (`initCapacitorLlama(...).embedding()` over bun:ffi → libllama) using the
+ * compact gte-small GGUF (384-dim, an exact match for plugin-sql's dim384
+ * column) — the same `CapacitorLlamaContext.embedding()` path the mobile
+ * loader serves. Throws when neither path can produce a real vector so the
+ * runtime falls through to the operator-configured provider — no silent
+ * zero-vector (Commandment 8).
  */
 function makeCapacitorEmbeddingHandler(): EmbeddingHandler {
 	return async (_runtime, params) => {
-		const ctx = await getDesktopEmbeddingContext();
 		const text = extractEmbeddingText(params);
+		const cfg = resolveDesktopEmbeddingConfig();
+		const fused = await getFusedEmbeddingHandle(cfg);
+		if (fused) {
+			return Array.from(fused.embed(text));
+		}
+		const ctx = await getDesktopEmbeddingContext();
 		const result = await ctx.embedding(text, { embd_normalize: 2 });
 		return result.embedding;
 	};

@@ -34,12 +34,17 @@ class FakeRuntime implements FfiBackendRuntime {
 	constructor(
 		readonly name: string,
 		private supportedValue: boolean,
+		private visionValue = false,
 	) {}
 	supported(): boolean {
 		return this.supportedValue;
 	}
 	setSupported(v: boolean): void {
 		this.supportedValue = v;
+	}
+	/** Mirrors DesktopFusedFfiBackendRuntime.visionSupportedStatic(). */
+	visionSupportedStatic(): boolean {
+		return this.visionValue;
 	}
 	async acquire(_plan: BackendPlan): Promise<FfiBackendSession> {
 		this.acquired += 1;
@@ -94,8 +99,10 @@ describe("DesktopGatedFfiBackendRuntime", () => {
 		expect(libllama.acquired).toBe(1);
 	});
 
-	it("routes vision loads (mmproj present) to libllama even when fused is preferred", async () => {
-		const fused = new FakeRuntime("fused", true);
+	it("routes vision loads to libllama when the fused lib has no vision symbol (v8)", async () => {
+		// fused is preferred for text but visionSupportedStatic() is false → a
+		// vision load (mmproj present) must route to the libllama mtmd path.
+		const fused = new FakeRuntime("fused", true, /* vision= */ false);
 		const libllama = new FakeRuntime("libllama", true);
 		const gate = new DesktopGatedFfiBackendRuntime(
 			fused as never,
@@ -104,6 +111,20 @@ describe("DesktopGatedFfiBackendRuntime", () => {
 		await gate.acquire(VISION_PLAN);
 		expect(fused.acquired).toBe(0);
 		expect(libllama.acquired).toBe(1);
+	});
+
+	it("keeps vision loads on the fused runtime when the fused lib has vision (v9)", async () => {
+		// fused reports visionSupportedStatic() → text + vision share one lib;
+		// the gate keeps the vision load on the fused runtime.
+		const fused = new FakeRuntime("fused", true, /* vision= */ true);
+		const libllama = new FakeRuntime("libllama", true);
+		const gate = new DesktopGatedFfiBackendRuntime(
+			fused as never,
+			libllama as never,
+		);
+		await gate.acquire(VISION_PLAN);
+		expect(fused.acquired).toBe(1);
+		expect(libllama.acquired).toBe(0);
 	});
 
 	it("reports supported when either runtime is usable, unsupported when neither is", () => {
