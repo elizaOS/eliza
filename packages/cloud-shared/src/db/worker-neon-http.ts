@@ -76,15 +76,24 @@ function createPgPool(env: WorkerNeonEnvSlice): PgPool {
   const isLocal = isLocalTcpPostgresUrl(url);
   const options: PoolConfig = {
     connectionString: url,
-    max: parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 4),
     // 0 disables pg-pool's idle timer; the timer's `.unref()` call crashes
     // on the workerd runtime ("Uncaught TypeError: o.unref is not a function").
-    // Connections sit idle until process exit, which is fine for short-lived
-    // wrangler dev / e2e runs.
     idleTimeoutMillis: 0,
     connectionTimeoutMillis: 30_000,
     allowExitOnIdle: true,
   };
+  if (isLocal) {
+    // Local PGlite socket bridge is fragile — churning a fresh TCP connection
+    // per query causes mid-stream resets, so keep connections and reuse them.
+    options.max = parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 8);
+  } else {
+    // Remote Postgres (Hyperdrive/Railway) on workerd: workerd kills I/O objects
+    // across requests, so a reused pg connection terminates mid-query
+    // ("Connection terminated unexpectedly"). Use a single connection used once
+    // then discarded; Hyperdrive pools the origin side.
+    options.max = parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 1);
+    options.maxUses = 1;
+  }
   if (!isLocal && !hyperdriveUrl) {
     // Direct remote Postgres must use TLS. node-pg's connection-string `sslmode`
     // parsing is unreliable on workerd, so set `ssl` explicitly. A self-signed
