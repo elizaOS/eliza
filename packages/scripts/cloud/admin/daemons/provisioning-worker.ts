@@ -21,6 +21,7 @@ import {
 import type {
   HeartbeatResult,
   ProcessingResult,
+  RecoveryResult,
 } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
 import { loadLocalEnv } from "./shared/load-env";
 
@@ -232,6 +233,13 @@ async function processHeartbeatCycle(
 ): Promise<HeartbeatResult> {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.processRunningHeartbeats(concurrency);
+}
+
+async function processRecoveryCycle(
+  concurrency = 5,
+): Promise<RecoveryResult> {
+  const { provisioningJobService } = await loadDeps();
+  return provisioningJobService.processDisconnectedRecovery(concurrency);
 }
 
 interface NodeHealthSummary {
@@ -656,6 +664,22 @@ async function pollCycle(
     }
   } catch (error) {
     logger.error("[provisioning-worker] heartbeat cycle failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    const recovery = await processRecoveryCycle();
+    if (recovery.total > 0) {
+      logger.info("[provisioning-worker] recovery cycle complete", {
+        total: recovery.total,
+        recovered: recovery.recovered,
+        reprovisioned: recovery.reprovisioned,
+        failed: recovery.failed,
+      });
+    }
+  } catch (error) {
+    logger.error("[provisioning-worker] recovery cycle failed", {
       error: error instanceof Error ? error.message : String(error),
     });
   }

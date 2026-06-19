@@ -208,6 +208,45 @@ export class AgentSandboxesRepository {
   }
 
   /**
+   * `disconnected` always-on (paid) agents that should be reconciled back to
+   * `running`. A `dedicated-always` agent is contractually meant to stay up, so
+   * a transient tailnet drop that flipped it to `disconnected` must self-heal —
+   * the recovery cycle re-probes the bridge and either flips it back to
+   * `running` (still reachable) or re-provisions it (truly down). Scoped to
+   * `dedicated-always` because `dedicated-lazy`/`shared` are NOT meant to hold
+   * an always-on container. Deleted rows are excluded.
+   */
+  async listRecoverable(limit = 100): Promise<
+    Array<{
+      id: string;
+      organization_id: string;
+      user_id: string;
+      agent_name: string | null;
+      bridge_url: string | null;
+      updated_at: Date;
+    }>
+  > {
+    return dbRead
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+        agent_name: agentSandboxes.agent_name,
+        bridge_url: agentSandboxes.bridge_url,
+        updated_at: agentSandboxes.updated_at,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.status, "disconnected"),
+          eq(agentSandboxes.execution_tier, "dedicated-always"),
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+        ),
+      )
+      .limit(limit);
+  }
+
+  /**
    * Find running, non-deleted agents whose stored `image_digest` differs
    * from `targetDigest` (treating NULL as different). Used by the
    * fleet-upgrade reconciler to enqueue blue/green swaps onto the
