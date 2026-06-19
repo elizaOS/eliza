@@ -10,6 +10,7 @@ import {
 import {
   AnimatePresence,
   animate,
+  type MotionValue,
   motion,
   useMotionValue,
   useMotionValueEvent,
@@ -303,15 +304,29 @@ function SheetGrabber({
   onClose,
   binding,
   glow,
+  opacity,
+  pilled,
 }: {
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
   binding: PullGestureBinding;
   glow: boolean;
+  // Crossfade opacity (driven by openProgress): 0 while the pill capsule owns the
+  // handle, fading to 1 only AFTER the pill has fully faded out — so the grabber
+  // bar and the (identical) pill bar are NEVER both visible (the "two pills" bug).
+  opacity: MotionValue<number>;
+  // Inert while pilled so the invisible grabber can't steal taps meant for the
+  // pill capsule (or pass-through to the home screen) below it.
+  pilled: boolean;
 }): React.JSX.Element {
   return (
-    <button
+    <motion.button
+      style={{ opacity, pointerEvents: pilled ? "none" : "auto" }}
+      // Invisible + inert while pilled: the pill capsule below owns the drag, so
+      // keep this out of the tab order and the a11y tree until it's the handle.
+      tabIndex={pilled ? -1 : undefined}
+      aria-hidden={pilled || undefined}
       // A disclosure toggle for the chat history, not a value-bearing separator:
       // button + aria-expanded is the accurate semantic and stays keyboard-
       // operable (Enter/Space toggle, Arrow keys nudge) per WCAG 2.1.1.
@@ -342,7 +357,7 @@ function SheetGrabber({
         // zone reaches UP into the empty space above the panel (3× taller/wider
         // than the bar) so it's easy to grab without covering the edge buttons.
         // z-20 keeps it above the input row (z-10) so it always wins the drag.
-        "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-1 active:cursor-grabbing",
+        "absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-1 active:cursor-grabbing",
         // The hit zone reaches UP into the empty space above the panel (easy to
         // grab) and stops at the handle's own bottom — it never reaches the
         // vertically-centered textarea, so a tap on the composer lands natively
@@ -360,7 +375,7 @@ function SheetGrabber({
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
-    </button>
+    </motion.button>
   );
 }
 
@@ -666,6 +681,7 @@ export function ContinuousChatOverlay({
   const {
     messages,
     phase,
+    responding,
     send,
     canSend,
     recording,
@@ -796,7 +812,6 @@ export function ContinuousChatOverlay({
 
   const booting = phase === "booting";
   const listening = phase === "listening";
-  const responding = phase === "responding";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
 
@@ -976,7 +991,10 @@ export function ContinuousChatOverlay({
         pttRef.current.kind !== "idle" ||
         event.button !== 0 ||
         hasDraft ||
-        recording
+        recording ||
+        // Voice input is gated while a reply is in flight; type + send to queue
+        // another turn instead. Re-enabled the instant the reply finishes.
+        responding
       )
         return;
       const { pointerId } = event;
@@ -996,7 +1014,7 @@ export function ContinuousChatOverlay({
       }, 200);
       pttRef.current = { kind: "pending", pointerId, timer };
     },
-    [hasDraft, recording, startRecording],
+    [hasDraft, recording, responding, startRecording],
   );
 
   // One funnel for BOTH pointerup (cancelled=false) and pointercancel
@@ -1028,10 +1046,13 @@ export function ContinuousChatOverlay({
       suppressNextClickRef.current = false;
       return;
     }
+    // Voice can't be turned ON while a reply is in flight (it's gated until the
+    // turn finishes), but an active hands-free session can always be turned OFF.
+    if (responding && !handsFree) return;
     // Quick tap = hands-free conversation: the agent speaks its replies back and
     // the mic re-opens after each one. Tap again to end.
     toggleHandsFree();
-  }, [toggleHandsFree]);
+  }, [responding, handsFree, toggleHandsFree]);
 
   const hasThread = visibleMessages.length > 0;
 
@@ -1180,6 +1201,14 @@ export function ContinuousChatOverlay({
   const pillOpacity = useTransform(openProgress, [0, 0.55], [1, 0], {
     clamp: true,
   });
+  // The drag-handle (SheetGrabber) bar is IDENTICAL to the pill bar, so they must
+  // never both be on screen. The pill fades OUT over [0, 0.55]; the grabber fades
+  // IN only over [0.55, 0.95] — a strict crossfade with no overlap. (Before, the
+  // grabber mounted at full opacity the instant `pilled` flipped false, while the
+  // pill was still fading out → two bars = the "two pills" bug.)
+  const grabberOpacity = useTransform(openProgress, [0.55, 0.95], [0, 1], {
+    clamp: true,
+  });
   // Header reveal tracks the LIVE height: as the panel approaches the half
   // detent the top buttons FADE in and their space LERPS open; pulling back
   // below half fades them out and collapses the space — no pop. (Maximized sits
@@ -1196,6 +1225,20 @@ export function ContinuousChatOverlay({
   const headerMaxH = useTransform(threadHeight, [halfH - 64, halfH], [0, 100], {
     clamp: true,
   });
+  // The header's top padding LERPS with the same live height. A flex item's
+  // `min-height:auto` lets its padding survive `max-height:0`, so a static
+  // `pt-2.5` would leak ~10px above the composer in the collapsed/input state
+  // (extra, irregular top margin). Driving padding-top 0 → 10px alongside the
+  // reveal keeps the collapsed panel exactly the input-bar height, then opens
+  // the breathing room as the header fades in.
+  const headerPadTop = useTransform(
+    threadHeight,
+    [halfH - 64, halfH],
+    [0, 10],
+    {
+      clamp: true,
+    },
+  );
 
   // Sub-threshold release: spring back to the current detent (no state change).
   // Also settles the pill→input morph to its resting end (0 while pilled, 1 once
@@ -1470,6 +1513,20 @@ export function ContinuousChatOverlay({
     el.style.height = `${el.scrollHeight}px`;
   }, [draft]);
 
+  // Open the input back out of the collapsed pill (tap or keyboard-activate).
+  // A tap routes through the gesture's `onDrag(0)` first, which sets
+  // draggingRef=true AND openProgress=0 — so we MUST clear draggingRef here, or
+  // the pilled→openProgress effect early-returns and the morph stays stuck at 0
+  // (a visible-but-inert pill, no input: the "bad state"). We also spring
+  // openProgress → 1 directly so the open never depends on that effect's timing.
+  const openFromPill = React.useCallback(() => {
+    draggingRef.current = false;
+    setPilled(false);
+    if (reduce) openProgress.set(1);
+    else animate(openProgress, 1, OPEN_SPRING);
+    detentHaptic();
+  }, [openProgress, reduce]);
+
   // --- Pull gesture --------------------------------------------------------
   // The grabber is the draggable handle. A live drag sets the threadHeight motion
   // value DIRECTLY (no React state → no re-render per frame, so it tracks the
@@ -1571,8 +1628,7 @@ export function ContinuousChatOverlay({
     // from). A tap on the pill brings the input back.
     onTap: () => {
       if (pilled) {
-        setPilled(false);
-        detentHaptic();
+        openFromPill();
         return;
       }
       const composerFocused =
@@ -1697,11 +1753,11 @@ export function ContinuousChatOverlay({
         }}
       />
 
-      {/* Live interim transcript while listening. Before the first words land we
-          still show a "Listening…" cue the instant the mic opens, so the user
-          always has confirmation it's hot (the native recognizer streams partials
-          in as they're heard, replacing the placeholder). */}
-      {recording ? (
+      {/* Live interim transcript while listening. There's no "Listening…" text
+          cue — the input bar (or collapsed pill) glows with the speech glow to
+          confirm the mic is hot. Once the recognizer streams partials in, the
+          words appear here above the composer (replaced as more are heard). */}
+      {recording && transcript ? (
         <div
           role="status"
           aria-live="polite"
@@ -1711,14 +1767,8 @@ export function ContinuousChatOverlay({
             FLOAT_SHADOW,
           )}
         >
-          {transcript ? (
-            <>
-              {transcript}
-              <span aria-hidden="true">…</span>
-            </>
-          ) : (
-            <span className="text-white/60">Listening…</span>
-          )}
+          {transcript}
+          <span aria-hidden="true">…</span>
         </div>
       ) : null}
 
@@ -1796,7 +1846,7 @@ export function ContinuousChatOverlay({
           fullBleed ? "max-w-none" : "max-w-3xl",
         )}
       >
-        {!pilled && !fullBleed ? (
+        {!fullBleed ? (
           <SheetGrabber
             open={sheetOpen}
             onOpen={() => {
@@ -1807,6 +1857,8 @@ export function ContinuousChatOverlay({
             onClose={collapse}
             binding={pullBinding}
             glow={listening || responding}
+            opacity={grabberOpacity}
+            pilled={pilled}
           />
         ) : null}
         <motion.fieldset
@@ -1943,15 +1995,20 @@ export function ContinuousChatOverlay({
                 // interactivity + the a11y tree so the faded/collapsed header
                 // can't be clicked or read.
                 inert={!headerVisible || undefined}
-                style={{ opacity: headerOpacity, maxHeight: headerMaxH }}
+                style={{
+                  opacity: headerOpacity,
+                  maxHeight: headerMaxH,
+                  // Collapsed → 0 top padding (no leaked margin above the
+                  // composer); opens to ~10px as the header reveals. Full-bleed
+                  // keeps its fixed safe-area inset (it's always fully revealed).
+                  paddingTop: fullBleed ? undefined : headerPadTop,
+                }}
                 className={cn(
                   "relative z-10 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
                   // Maximized goes edge-to-edge under the status bar, so the
                   // buttons must clear the safe-area inset (the clock/battery)
                   // or they sit under it and become untappable.
-                  fullBleed
-                    ? "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]"
-                    : "pt-2.5",
+                  fullBleed && "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]",
                 )}
               >
                 <div className="flex items-center gap-1.5">
@@ -2245,7 +2302,13 @@ export function ContinuousChatOverlay({
                 {(hasDraft || hasImages) && !recording ? (
                   <SoftButton
                     icon={SendHorizontal}
-                    label={canSend ? "send" : "send (waiting for reply)"}
+                    label={
+                      !canSend
+                        ? "send (agent stopped)"
+                        : responding
+                          ? "send another"
+                          : "send"
+                    }
                     disabled={!canSend}
                     // Keep focus in the textarea on tap: without this the
                     // button steals focus, the textarea blurs, the keyboard
@@ -2302,7 +2365,7 @@ export function ContinuousChatOverlay({
           >
             <PillHandle
               binding={pullBinding}
-              onOpen={() => setPilled(false)}
+              onOpen={openFromPill}
               glow={listening || responding}
             />
           </motion.div>

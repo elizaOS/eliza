@@ -64,7 +64,11 @@ function mtpSupportedForTier(id: Eliza1TierId): boolean {
   return _ELIZA_1_MTP_TIER_ID_SET.has(id);
 }
 
-export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
+// The quantized 4B (Qwen3.5) is the minimum tier that is good enough to ship
+// as the default chat model. The 0.8B/2B tiers remain in the catalog (and as
+// MTP drafter companions) but are no longer first-run defaults — they are too
+// small for a quality conversational experience.
+export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-4b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_RELEASE_TIER_IDS,
@@ -150,8 +154,12 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b) → OmniVoice first with Kokoro bundled as
- *     the low-latency fallback.
+ *   - Mobile-class tiers (0_8b / 2b / 4b) → Kokoro only. Kokoro is ~82M
+ *     params (a single ~60-80 MB GGUF) and hits ~97ms CPU TTFB, so it is
+ *     both smaller and faster than OmniVoice (~400-625 MB) — the right
+ *     trade for phones. OmniVoice is not shipped in these bundles. On
+ *     mobile, `selectVoiceBackend({ mobile: true })` also forces Kokoro
+ *     regardless of any env override, so the path is Kokoro-exclusive.
  *   - 9B → OmniVoice first with Kokoro bundled for hosts with enough memory.
  *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
@@ -161,9 +169,9 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["omnivoice", "kokoro"],
-  "eliza-1-2b": ["omnivoice", "kokoro"],
-  "eliza-1-4b": ["omnivoice", "kokoro"],
+  "eliza-1-0_8b": ["kokoro"],
+  "eliza-1-2b": ["kokoro"],
+  "eliza-1-4b": ["kokoro"],
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
@@ -244,8 +252,12 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     id: "eliza-1-4b",
     params: "4B",
     sizeGb: 2.6,
-    minRamGb: 10,
-    q4MinRamGb: 10,
+    // 4B is the shipped mobile minimum/default. The Q4_K_M weights are 2.6 GB
+    // and the mobile bundle runs a 64k context with compressed KV
+    // (qjl1_256/tbq3_0), so an 8 GB-class phone clears it. The floor stays
+    // above the model size to leave headroom for the OS, app, and KV cache.
+    minRamGb: 6,
+    q4MinRamGb: 6,
     bucket: "mid",
     contextLength: 131072,
     textFile: "text/eliza-1-4b-128k.gguf",

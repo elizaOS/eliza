@@ -25998,7 +25998,6 @@
   }
   var PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
   var STOP_GLYPH = "M12 12H24V24H12Z";
-  var SPEAKER_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
   var SPEAKER_MUTED_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
   function Glyph({ d }) {
     return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
@@ -26068,11 +26067,16 @@
     onOpen,
     onClose,
     binding,
-    glow
+    glow,
+    opacity,
+    pilled
   }) {
     return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-      "button",
+      motion.button,
       {
+        style: { opacity, pointerEvents: pilled ? "none" : "auto" },
+        tabIndex: pilled ? -1 : void 0,
+        "aria-hidden": pilled || void 0,
         type: "button",
         "aria-expanded": open,
         "aria-label": open ? "drag down to close chat" : "drag up to open chat",
@@ -26100,7 +26104,7 @@
           // zone reaches UP into the empty space above the panel (3× taller/wider
           // than the bar) so it's easy to grab without covering the edge buttons.
           // z-20 keeps it above the input row (z-10) so it always wins the drag.
-          "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-1 active:cursor-grabbing",
+          "absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-1 active:cursor-grabbing",
           // The hit zone reaches UP into the empty space above the panel (easy to
           // grab) and stops at the handle's own bottom — it never reaches the
           // vertically-centered textarea, so a tap on the composer lands natively
@@ -26371,6 +26375,7 @@
     const {
       messages,
       phase,
+      responding,
       send,
       canSend,
       recording,
@@ -26381,9 +26386,6 @@
       setDictationSink,
       setComposerHasDraft,
       transcript,
-      speaking,
-      agentVoiceMuted,
-      toggleAgentVoiceMute,
       needsAudioUnlock,
       unlockAudio,
       openSettings,
@@ -26438,7 +26440,6 @@
     const scrollPinnedIdRef = React7.useRef(lastId);
     const booting = phase === "booting";
     const listening = phase === "listening";
-    const responding = phase === "responding";
     const hasDraft = draft.trim().length > 0;
     const hasImages = pendingImages.length > 0;
     const suggestionsVisible = SHOW_PROMPT_SUGGESTIONS && !pilled && !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
@@ -26543,7 +26544,9 @@
     }, []);
     const beginPushToTalkPress = React7.useCallback(
       (event) => {
-        if (pttRef.current.kind !== "idle" || event.button !== 0 || hasDraft || recording)
+        if (pttRef.current.kind !== "idle" || event.button !== 0 || hasDraft || recording || // Voice input is gated while a reply is in flight; type + send to queue
+        // another turn instead. Re-enabled the instant the reply finishes.
+        responding)
           return;
         const { pointerId } = event;
         try {
@@ -26559,7 +26562,7 @@
         }, 200);
         pttRef.current = { kind: "pending", pointerId, timer };
       },
-      [hasDraft, recording, startRecording]
+      [hasDraft, recording, responding, startRecording]
     );
     const finishPushToTalkPress = React7.useCallback(
       (event, cancelled) => {
@@ -26582,8 +26585,9 @@
         suppressNextClickRef.current = false;
         return;
       }
+      if (responding && !handsFree) return;
       toggleHandsFree();
-    }, [toggleHandsFree]);
+    }, [responding, handsFree, toggleHandsFree]);
     const hasThread = visibleMessages.length > 0;
     const readViewport = React7.useCallback(() => {
       if (typeof window === "undefined") return { height: 800, keyboardInset: 0 };
@@ -26659,6 +26663,9 @@
     const pillOpacity = useTransform(openProgress, [0, 0.55], [1, 0], {
       clamp: true
     });
+    const grabberOpacity = useTransform(openProgress, [0.55, 0.95], [0, 1], {
+      clamp: true
+    });
     const headerOpacity = useTransform(
       threadHeight,
       [halfH - 64, halfH],
@@ -26670,6 +26677,14 @@
     const headerMaxH = useTransform(threadHeight, [halfH - 64, halfH], [0, 100], {
       clamp: true
     });
+    const headerPadTop = useTransform(
+      threadHeight,
+      [halfH - 64, halfH],
+      [0, 10],
+      {
+        clamp: true
+      }
+    );
     const settleDrag = React7.useCallback(() => {
       draggingRef.current = false;
       const open = pilled ? 0 : 1;
@@ -26834,6 +26849,13 @@
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
     }, [draft]);
+    const openFromPill = React7.useCallback(() => {
+      draggingRef.current = false;
+      setPilled(false);
+      if (reduce) openProgress.set(1);
+      else animate(openProgress, 1, OPEN_SPRING);
+      detentHaptic();
+    }, [openProgress, reduce]);
     const onDragOffset = React7.useCallback(
       (offset) => {
         draggingRef.current = true;
@@ -26910,8 +26932,7 @@
       // from). A tap on the pill brings the input back.
       onTap: () => {
         if (pilled) {
-          setPilled(false);
-          detentHaptic();
+          openFromPill();
           return;
         }
         const composerFocused2 = typeof document !== "undefined" && document.activeElement === inputRef.current;
@@ -27001,7 +27022,7 @@
               }
             }
           ),
-          recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
             "div",
             {
               role: "status",
@@ -27011,10 +27032,10 @@
                 "pointer-events-none relative mb-2 w-full max-w-3xl text-center text-sm italic text-white/85",
                 FLOAT_SHADOW2
               ),
-              children: transcript ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+              children: [
                 transcript,
                 /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
-              ] }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "text-white/60", children: "Listening\u2026" })
+              ]
             }
           ) : null,
           needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -27080,7 +27101,7 @@
                 fullBleed ? "max-w-none" : "max-w-3xl"
               ),
               children: [
-                !pilled && !fullBleed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                !fullBleed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                   SheetGrabber,
                   {
                     open: sheetOpen,
@@ -27091,7 +27112,9 @@
                     },
                     onClose: collapse,
                     binding: pullBinding,
-                    glow: listening || responding
+                    glow: listening || responding,
+                    opacity: grabberOpacity,
+                    pilled
                   }
                 ) : null,
                 /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
@@ -27194,13 +27217,20 @@
                               motion.div,
                               {
                                 inert: !headerVisible || void 0,
-                                style: { opacity: headerOpacity, maxHeight: headerMaxH },
+                                style: {
+                                  opacity: headerOpacity,
+                                  maxHeight: headerMaxH,
+                                  // Collapsed → 0 top padding (no leaked margin above the
+                                  // composer); opens to ~10px as the header reveals. Full-bleed
+                                  // keeps its fixed safe-area inset (it's always fully revealed).
+                                  paddingTop: fullBleed ? void 0 : headerPadTop
+                                },
                                 className: cn(
                                   "relative z-10 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
                                   // Maximized goes edge-to-edge under the status bar, so the
                                   // buttons must clear the safe-area inset (the clock/battery)
                                   // or they sit under it and become untappable.
-                                  fullBleed ? "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]" : "pt-2.5"
+                                  fullBleed && "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]"
                                 ),
                                 children: [
                                   /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
@@ -27454,21 +27484,11 @@
                                     agentName,
                                     " is waking up \u2014 you can type now; your message sends and the reply arrives in a moment."
                                   ] }),
-                                  speaking || agentVoiceMuted ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                    SoftButton,
-                                    {
-                                      glyph: agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH,
-                                      label: agentVoiceMuted ? "unmute assistant voice" : "mute assistant voice",
-                                      active: agentVoiceMuted,
-                                      onClick: toggleAgentVoiceMute,
-                                      testId: "chat-voice-mute"
-                                    }
-                                  ) : null,
                                   /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                                     SoftButton,
                                     {
                                       icon: SendHorizontal,
-                                      label: canSend ? "send" : "send (waiting for reply)",
+                                      label: !canSend ? "send (agent stopped)" : responding ? "send another" : "send",
                                       disabled: !canSend,
                                       onPointerDown: (e) => e.preventDefault(),
                                       onClick: submit,
@@ -27517,7 +27537,7 @@
                             PillHandle,
                             {
                               binding: pullBinding,
-                              onOpen: () => setPilled(false),
+                              onOpen: openFromPill,
                               glow: listening || responding
                             }
                           )
@@ -27711,6 +27731,11 @@
     }, []);
     const controller = {
       phase,
+      // Raw in-flight predicate — mirrors the real controller's `chatSending ||
+      // speaking`. In the fixture, "responding" phase stands in for chatSending and
+      // `?speaking` for the spoken reply, so the trailing control + voice-gating
+      // behave exactly as they do in the app.
+      responding: phase === "responding" || initialSpeaking,
       messages,
       canSend: initialCanSend && phase !== "booting",
       recording,

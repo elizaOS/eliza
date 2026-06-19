@@ -242,6 +242,11 @@ function Harness(): React.JSX.Element {
 
   const controller = {
     phase,
+    // Raw in-flight predicate — mirrors the real controller's `chatSending ||
+    // speaking`. In the fixture, "responding" phase stands in for chatSending and
+    // `?speaking` for the spoken reply, so the trailing control + voice-gating
+    // behave exactly as they do in the app.
+    responding: phase === "responding" || initialSpeaking,
     messages,
     canSend: initialCanSend && phase !== "booting",
     recording,

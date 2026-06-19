@@ -1120,9 +1120,12 @@ const AOSP_RECOMMENDED_MODELS: Record<
   AospRecommendedModel
 > = {
   chat: {
-    id: "eliza-1-2b",
+    // The quantized 4B is the shipped mobile minimum/default chat model;
+    // 0.8B/2B are too small for quality chat. Mirrors the capacitor bridge
+    // and the catalog FIRST_RUN_DEFAULT_MODEL_ID.
+    id: "eliza-1-4b",
     hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
+    ggufFile: "bundles/4b/text/eliza-1-4b-128k.gguf",
   },
   embedding: {
     id: "eliza-1-embedding",
@@ -2193,6 +2196,23 @@ function resolveAssignedVoiceBundleRoot(): string {
   return bundleRoot;
 }
 
+/**
+ * Non-throwing check for whether the assigned chat bundle carries the ASR
+ * assets the local TRANSCRIPTION handler needs. Used to gate handler
+ * REGISTRATION: the model registry is what readiness probes read, so a
+ * registered handler that throws on the first invocation reports the model as
+ * available when it is not. On AOSP the native SpeechRecognizer/SODA path owns
+ * on-device STT, so a missing whisper bundle is the normal case — not an error
+ * — and the honest signal is simply "no local TRANSCRIPTION handler".
+ */
+export function aospAsrAssetsPresent(): boolean {
+  try {
+    return existsSync(path.join(resolveAssignedChatBundleRoot(), "asr"));
+  } catch {
+    return false;
+  }
+}
+
 function readFfiStringAndFree(
   ffi: BunFfiModule,
   symbols: Record<string, (...args: unknown[]) => unknown>,
@@ -2573,8 +2593,21 @@ export async function ensureAospLocalInferenceHandlers(
     ModelType.TEXT_LARGE,
     ModelType.TEXT_EMBEDDING,
     ModelType.TEXT_TO_SPEECH,
-    ModelType.TRANSCRIPTION,
   ];
+  // TRANSCRIPTION is registered ONLY when the ASR assets are actually on disk.
+  // Registering it unconditionally made the readiness probe report local
+  // transcription as available while every invocation threw "requires ASR
+  // assets". TEXT_TO_SPEECH stays unconditional because its handler degrades to
+  // the system TTS engine when neural assets are absent — TRANSCRIPTION has no
+  // such in-handler fallback (native SpeechRecognizer covers STT separately).
+  const asrAssetsPresent = aospAsrAssetsPresent();
+  if (asrAssetsPresent) {
+    slots.push(ModelType.TRANSCRIPTION);
+  } else {
+    logger.info(
+      "[aosp-local-inference] ASR assets absent under the chat bundle; NOT registering a local TRANSCRIPTION handler (native SpeechRecognizer owns on-device STT). Readiness probes will correctly report transcription as unavailable.",
+    );
+  }
   const baseOmnivoiceTextToSpeechHandler =
     makeAospFusedOmnivoiceTextToSpeechHandler(loader, lifecycle.markEvicted);
   let foregroundOmnivoiceTextToSpeechUsed = false;
@@ -2637,11 +2670,14 @@ export async function ensureAospLocalInferenceHandlers(
     shouldSkip: () => foregroundOmnivoiceTextToSpeechUsed,
   });
 
+  const registeredList = `TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH${
+    asrAssetsPresent ? " / TRANSCRIPTION" : ""
+  }`;
   console.log(
-    `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION (priority ${LOCAL_INFERENCE_PRIORITY})`,
+    `[aosp-local-inference] registered ${PROVIDER} handlers for ${registeredList} (priority ${LOCAL_INFERENCE_PRIORITY})`,
   );
   logger.info(
-    `[aosp-local-inference] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
+    `[aosp-local-inference] Registered ${PROVIDER} handlers for ${registeredList} at priority ${LOCAL_INFERENCE_PRIORITY}`,
   );
   registeredRuntimes.add(runtime);
   return true;
