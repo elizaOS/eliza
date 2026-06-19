@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.app.eliza</string>
+		<string>group.ai.elizaos.app</string>
 	</array>
 </dict>
 </plist>

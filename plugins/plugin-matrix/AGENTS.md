@@ -47,10 +47,15 @@ plugins/plugin-matrix/
     workflow-credential-provider.ts   MatrixWorkflowCredentialProvider — duck-typed for plugin-workflow
     types.ts                          MatrixSettings, MatrixMessage, MatrixRoom, IMatrixService,
                                         MatrixEventTypes enum, error classes, utility functions
+    fake-indexeddb-auto.d.ts          Type shim for fake-indexeddb used in tests
     providers/
       index.ts                        Empty; rooms exposed through MessageConnector, not providers
     __tests__/
+      accounts.test.ts                Account config resolution unit tests
       connector.test.ts               Connector integration tests
+      crypto-store.test.ts            Crypto store tests
+      service-hardening.test.ts       MatrixService hardening / error-path tests
+      workflow-credential-provider.test.ts  WorkflowCredentialProvider unit tests
 ```
 
 ## Commands
@@ -76,11 +81,14 @@ Settings are resolved in priority order: per-account object in `MATRIX_ACCOUNTS`
 | `MATRIX_ACCESS_TOKEN` | Yes | Access token for the Matrix bot account |
 | `MATRIX_HOMESERVER` | Yes (validated at init) | Homeserver URL, e.g. `https://matrix.org` |
 | `MATRIX_USER_ID` | Yes (validated at init) | Full Matrix user ID, e.g. `@bot:matrix.org` |
+| `MATRIX_PASSWORD` | No | Password for password-based login (alternative to access token) |
 | `MATRIX_DEVICE_ID` | No | Device ID for this session (auto-assigned if absent) |
 | `MATRIX_ROOMS` | No | Comma-separated room IDs / aliases to auto-join on start |
 | `MATRIX_AUTO_JOIN` | No (`false`) | Auto-accept room invites |
 | `MATRIX_ENCRYPTION` | No (`false`) | Enable E2EE (requires SDK support) |
 | `MATRIX_REQUIRE_MENTION` | No (`false`) | Only process messages that mention the bot |
+| `MATRIX_VERIFY_ALLOWLIST` | No | Allowlist of user IDs / devices permitted for verification |
+| `MATRIX_PERSONAL` | No | Enable personal mode (single-user, non-bot usage) |
 | `MATRIX_ACCOUNTS` | No | JSON array/object of per-account configs for multi-account setups |
 | `MATRIX_DEFAULT_ACCOUNT_ID` | No | Which account is the default when multiple are configured |
 | `MATRIX_ACCOUNT_ID` | No | Alias for `MATRIX_DEFAULT_ACCOUNT_ID` |

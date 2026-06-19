@@ -40,6 +40,7 @@ plugins/plugin-x/
     interactions.ts                TwitterInteractionClient — mention/reply polling loop
     timeline.ts                    TwitterTimelineClient — home timeline action loop (like/retweet/quote)
     discovery.ts                   TwitterDiscoveryClient — autonomous follow/like/reply discovery loop
+    lifeops-message-adapter.ts     LifeOps BaseMessageAdapter adapter — bridges XService DM send/list to the LifeOps message-adapter interface
     connector-account-provider.ts  ConnectorAccountProvider impl; bridges env-mode + OAuth PKCE to ConnectorAccountManager
     connector-credential-refs.ts   Persists connector credential references into runtime cache
     workflow-credential-provider.ts XWorkflowCredentialProvider service
@@ -104,6 +105,7 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 | `TWITTER_CLIENT_ID` | oauth-mode | — | OAuth 2.0 Client ID |
 | `TWITTER_REDIRECT_URI` | oauth-mode | — | OAuth 2.0 redirect URI (loopback recommended) |
 | `TWITTER_SCOPES` | No | `tweet.read tweet.write users.read offline.access` | OAuth 2.0 scopes |
+| `TWITTER_ACCOUNT_ID` | No | `""` | Account ID for the default X account when connector account routing is enabled |
 | `TWITTER_DEFAULT_ACCOUNT_ID` | No | `default` | Default account ID for multi-account routing |
 | `TWITTER_ACCOUNTS` | No | — | JSON blob of account-scoped credentials for multi-account pilots |
 | `TWITTER_DRY_RUN` | No | `false` | Simulate all actions; nothing is actually posted |
