@@ -807,3 +807,43 @@ decomposition — the substantive "scheduling → plugin-scheduling."
   (consistent with how the spine wiring stays PA-side).
 - Slices 3–6 (runtime-service promotions; goals/calendar schema carves) —
   independent, finances-proven, landable as separate clean PRs.
+
+## 8. Execution status update (2026-06-19) — data-layer carves complete
+
+**✅ All LifeOps data-layer carves LANDED + pushed.** Every dual-writer /
+shared-schema-squat in the LifeOps domain is now eliminated; each domain plugin
+owns its own `app_*` schema with a non-destructive `app_lifeops → app_*`
+migration (the finances carve pattern: `to_regclass` source guard +
+target-empty check + `INSERT … SELECT s.*`, source never dropped). PA keeps the
+`app_lifeops` defs only as the dormant migration source and auto-registers each
+plugin so the schema exists + the migration runs.
+
+| Carve | Schema | Tables | Migration service | Notes |
+|---|---|---|---|---|
+| reminders (slice 14-ish) | `app_reminders` | life_reminder_plans / _attempts / life_escalation_states | `RemindersMigrationService` | PA-exclusive tables; data layer only (engine stays PA-resident) |
+| calendar (slice 6) | `app_calendar` | life_calendar_events / _sync_states | `CalendarMigrationService` | killed the PA↔plugin-calendar dual-writer; schema was an unregistered squat |
+| goals (slice 5) | `app_goals` | life_goal_definitions / _links | `GoalsMigrationService` | resolved the documented shared-schema counter-position by carving cleanly; replaced the dead `app_goals.goals` placeholder; reminder/scheduling goal-link reads follow the repository to app_goals |
+| inbox | `app_inbox` | life_inbox_triage_entries / _examples / life_email_unsubscribes | `InboxMigrationService` | sole writer was plugin-inbox (PA's src/inbox/repository.ts is a shim); gmail projection tables stay PA-owned; 22 lifeops.* scenarios + bootstrapSchema repointed |
+
+Each: plugin typecheck clean + migration unit test (3-4 guard cases); PA
+build:types clean; PA tsgo **470 == baseline** (zero net new errors); full PA
+suite **548/548**; decomposition-integration **6/6** (no migration-serviceType
+collision across reminders/calendar/goals/inbox/finances); tripwire holds (no PA
+import in the carved plugin's `src`); no live writer/reader left on the
+`app_lifeops` source tables.
+
+**Deliberately NOT done (each needs an owner decision or a dedicated focused
+effort — out of scope for a high-confidence cleanup sweep):**
+- Slices 3–4 (promote pending-prompts / global-pause / handoff / approval-queue
+  → `@elizaos/agent`). This moves assistant-workflow state INWARD into the core
+  runtime (every agent would carry it), the opposite direction from the carves
+  above, and its main stated rationale was enabling the deferred spine-engine
+  move. Architecturally debatable — wants an owner call on whether the runtime is
+  the right home, not a unilateral sweep.
+- Slices 9–12 (move the tick driver + runner Service + `SCHEDULED_TASKS` into
+  plugin-scheduling; invert runtime-wiring) — high-risk wiring inversion,
+  marginal benefit over the slice-8 library extraction.
+- Slices 13/16–19 (lift the reminders delivery/escalation ENGINE out of the
+  5,468-LOC `service-mixin-reminders.ts` behind plugin-scheduling tick-hook
+  ports) — the riskiest tick/engine surgery; the reminders *data* layer is
+  already carved, so the headline ("reminders → plugin-reminders") is delivered.
