@@ -47,8 +47,7 @@ async function resolveSenderLabel(
       const entity = await runtime.getEntityById?.(entityId);
       const metaName = entity?.metadata?.name;
       name =
-        entity?.names?.[0] ??
-        (typeof metaName === "string" ? metaName : null);
+        entity?.names?.[0] ?? (typeof metaName === "string" ? metaName : null);
     } catch {
       // entity lookup is best-effort
     }
@@ -126,10 +125,7 @@ export const crossChannelContextProvider: Provider = {
     try {
       entries = await repo.getUnresolved({ limit: 200 });
     } catch (error) {
-      logger.debug(
-        "[cross-channel-context] DB query failed:",
-        String(error),
-      );
+      logger.debug("[cross-channel-context] DB query failed:", String(error));
       return EMPTY;
     }
 

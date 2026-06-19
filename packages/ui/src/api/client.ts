@@ -222,6 +222,7 @@ export {
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
 };
+
 // ---------------------------------------------------------------------------
 // Domain method augmentations (declaration merging + prototype assignment)
 // These import ElizaClient from client-base directly, avoiding circular deps.

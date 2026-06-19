@@ -72,10 +72,9 @@ app.post("/", async (c) => {
 
     const token = parsed.data.token ?? c.req.query("token");
     const user = await getCurrentUser(c).catch(() => null);
-    const actor =
-      user && user.organization_id
-        ? actorFromUser({ ...user, organization_id: user.organization_id })
-        : undefined;
+    const actor = user?.organization_id
+      ? actorFromUser({ ...user, organization_id: user.organization_id })
+      : undefined;
 
     const request = await sensitiveRequestsService.submit({
       id,

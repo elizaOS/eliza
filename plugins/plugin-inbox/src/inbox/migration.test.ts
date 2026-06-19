@@ -67,8 +67,8 @@ describe("InboxMigration", () => {
     );
     const results = await migrateInboxTables(exec);
     expect(results.map((r) => r.table)).toEqual([...MIGRATED_INBOX_TABLES]);
-    expect(log.some((s) => /CREATE SCHEMA IF NOT EXISTS app_inbox/.test(s))).toBe(
-      true,
-    );
+    expect(
+      log.some((s) => /CREATE SCHEMA IF NOT EXISTS app_inbox/.test(s)),
+    ).toBe(true);
   });
 });

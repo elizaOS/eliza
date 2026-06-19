@@ -229,8 +229,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({ data }) => {
 						<TableRow
 							className={cn(
 								"border-b border-border/20 hover:bg-muted/30 transition-colors",
-								expandedUser === entry.userId.toString() &&
-									"bg-primary/5",
+								expandedUser === entry.userId.toString() && "bg-primary/5",
 							)}
 						>
 							<TableCell className="font-bold text-2xl text-center text-primary/80 py-4">

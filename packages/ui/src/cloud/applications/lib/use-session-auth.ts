@@ -60,7 +60,7 @@ function readStewardSessionFromStorage(): StewardSessionUser {
     const token = localStorage.getItem(STEWARD_TOKEN_KEY);
     if (!token) return null;
     const decoded = decodeStewardToken(token);
-    if (!decoded || !decoded.id) return null;
+    if (!decoded?.id) return null;
     if (decoded.exp && decoded.exp * 1000 < Date.now()) return null;
     return {
       id: decoded.id,

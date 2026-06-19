@@ -320,7 +320,6 @@ export function CloudAgentsSection() {
                     className="h-5 w-5 shrink-0 text-txt-muted"
                     aria-hidden
                   />
-                  {/* biome-ignore lint/a11y/noAutofocus: focus the rename field on open */}
                   <Input
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
