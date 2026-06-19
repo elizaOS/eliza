@@ -63,6 +63,15 @@ function controller(
     },
     primaryLabel: "Continue",
     canBack: false,
+    pickerAgents: [],
+    pickerPhase: "loading",
+    pickerError: null,
+    pickerActiveAgentId: null,
+    pickerBindingId: null,
+    onPickAgent: vi.fn(),
+    onCreateNewAgent: vi.fn(),
+    onRetryPicker: vi.fn(),
+    onBackFromPicker: vi.fn(),
     updateDraft: vi.fn(),
     setStep: vi.fn(),
     goBack: vi.fn(),
@@ -87,9 +96,9 @@ describe("CompactOnboarding", () => {
 
     render(<CompactOnboarding />);
 
-    expect(screen.getByText("Let's get you started")).toBeTruthy();
-    expect(screen.getByText("Start now")).toBeTruthy();
-    expect(screen.getByText("Keep it on this phone")).toBeTruthy();
+    expect(screen.getByText("How should Eliza run?")).toBeTruthy();
+    expect(screen.getByText("Eliza Cloud")).toBeTruthy();
+    expect(screen.getByText("This device")).toBeTruthy();
     expect(screen.getByTestId("onboarding-option-cloud")).toBeTruthy();
     expect(screen.getByTestId("onboarding-option-remote")).toBeTruthy();
     expect(screen.getByTestId("onboarding-option-local")).toBeTruthy();
@@ -213,5 +222,43 @@ describe("CompactOnboarding", () => {
     expect(
       screen.getByTestId<HTMLButtonElement>("onboarding-option-local").disabled,
     ).toBe(true);
+  });
+
+  it("renders the agent picker on the pick-agent step and forwards a row pick", () => {
+    const onPickAgent = vi.fn();
+    controllerMock.current = controller({
+      step: "pick-agent",
+      pickerPhase: "ready",
+      pickerAgents: [
+        {
+          agent_id: "agent-1",
+          agent_name: "Agent One",
+          node_id: null,
+          container_id: null,
+          headscale_ip: null,
+          bridge_url: null,
+          web_ui_url: null,
+          status: "running",
+          agent_config: {},
+          created_at: "2026-06-18T00:00:00.000Z",
+          updated_at: "2026-06-18T00:00:00.000Z",
+          containerUrl: "",
+          webUiUrl: null,
+          database_status: "ready",
+          error_message: null,
+          last_heartbeat_at: null,
+        },
+      ],
+      onPickAgent,
+    });
+
+    render(<CompactOnboarding />);
+
+    expect(screen.getByTestId("onboarding-agent-picker")).toBeTruthy();
+    // The welcome choice buttons are NOT rendered on the picker step.
+    expect(screen.queryByTestId("onboarding-option-cloud")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("onboarding-agent-option-agent-1"));
+    expect(onPickAgent).toHaveBeenCalledWith("agent-1");
   });
 });
