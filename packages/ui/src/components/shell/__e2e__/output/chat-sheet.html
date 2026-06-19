@@ -26399,7 +26399,9 @@
     const threadHeight = useMotionValue(0);
     const openProgress = useMotionValue(pilled ? 0 : 1);
     const draggingRef = React7.useRef(false);
-    const [pushToTalkActive, setPushToTalkActive] = React7.useState(false);
+    const pttRef = React7.useRef({ kind: "idle" });
+    const [pttHolding, setPttHolding] = React7.useState(false);
+    const suppressNextClickRef = React7.useRef(false);
     const [pendingImages, setPendingImages] = React7.useState(
       []
     );
@@ -26411,9 +26413,6 @@
     const panelRef = React7.useRef(null);
     const threadRef = React7.useRef(null);
     const focusThreadRef = React7.useRef(false);
-    const pushToTalkTimerRef = React7.useRef(null);
-    const pushToTalkActiveRef = React7.useRef(false);
-    const suppressMicClickRef = React7.useRef(false);
     const visibleMessages = React7.useMemo(
       () => messages.filter((m2) => m2.content.trim()).slice(-MAX_RENDERED_MESSAGES),
       [messages]
@@ -26432,9 +26431,11 @@
     });
     React7.useEffect(
       () => () => {
-        if (pushToTalkTimerRef.current !== null) {
-          window.clearTimeout(pushToTalkTimerRef.current);
-        }
+        const phase2 = pttRef.current;
+        if (phase2.kind === "pending") window.clearTimeout(phase2.timer);
+        if (phase2.kind === "holding") stopRecording();
+        pttRef.current = { kind: "idle" };
+        suppressNextClickRef.current = false;
       },
       []
     );
@@ -26524,42 +26525,45 @@
     const removeImage = React7.useCallback((index) => {
       setPendingImages((prev) => prev.filter((_, i) => i !== index));
     }, []);
-    const clearPushToTalkTimer = React7.useCallback(() => {
-      if (pushToTalkTimerRef.current === null) return;
-      window.clearTimeout(pushToTalkTimerRef.current);
-      pushToTalkTimerRef.current = null;
-    }, []);
     const beginPushToTalkPress = React7.useCallback(
       (event) => {
-        if (hasDraft || recording || event.button !== 0) return;
-        event.currentTarget.setPointerCapture(event.pointerId);
-        clearPushToTalkTimer();
-        pushToTalkTimerRef.current = window.setTimeout(() => {
-          pushToTalkTimerRef.current = null;
-          pushToTalkActiveRef.current = true;
-          setPushToTalkActive(true);
+        if (pttRef.current.kind !== "idle" || event.button !== 0 || hasDraft || recording)
+          return;
+        const { pointerId } = event;
+        try {
+          event.currentTarget.setPointerCapture(pointerId);
+        } catch {
+        }
+        const timer = window.setTimeout(() => {
+          const phase2 = pttRef.current;
+          if (phase2.kind !== "pending" || phase2.pointerId !== pointerId) return;
+          pttRef.current = { kind: "holding", pointerId };
+          setPttHolding(true);
           startRecording("dictate");
         }, 200);
+        pttRef.current = { kind: "pending", pointerId, timer };
       },
-      [clearPushToTalkTimer, hasDraft, recording, startRecording]
+      [hasDraft, recording, startRecording]
     );
-    const endPushToTalkPress = React7.useCallback(
-      (event) => {
-        clearPushToTalkTimer();
-        if (!pushToTalkActiveRef.current) return;
-        suppressMicClickRef.current = true;
-        pushToTalkActiveRef.current = false;
-        setPushToTalkActive(false);
-        stopRecording();
+    const finishPushToTalkPress = React7.useCallback(
+      (event, cancelled) => {
+        const phase2 = pttRef.current;
+        if (phase2.kind === "pending") window.clearTimeout(phase2.timer);
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
           event.currentTarget.releasePointerCapture(event.pointerId);
         }
+        pttRef.current = { kind: "idle" };
+        if (phase2.kind === "holding") {
+          stopRecording();
+          setPttHolding(false);
+          if (!cancelled) suppressNextClickRef.current = true;
+        }
       },
-      [clearPushToTalkTimer, stopRecording]
+      [stopRecording]
     );
     const handleMicClick = React7.useCallback(() => {
-      if (suppressMicClickRef.current) {
-        suppressMicClickRef.current = false;
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
         return;
       }
       toggleHandsFree();
@@ -27445,12 +27449,12 @@
                                     SoftButton,
                                     {
                                       icon: Mic,
-                                      label: pushToTalkActive ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
+                                      label: pttHolding ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
                                       active: recording || handsFree,
                                       onClick: handleMicClick,
                                       onPointerDown: beginPushToTalkPress,
-                                      onPointerUp: endPushToTalkPress,
-                                      onPointerCancel: endPushToTalkPress,
+                                      onPointerUp: (e) => finishPushToTalkPress(e, false),
+                                      onPointerCancel: (e) => finishPushToTalkPress(e, true),
                                       testId: "chat-composer-mic"
                                     }
                                   ) })
