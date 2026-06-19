@@ -258,6 +258,14 @@ jobs:
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
+      # Gate: refuse to deploy a bundle where Rolldown folded the bn.js/crypto
+      # graph into an eager chunk — that ships the "Class constructor cannot be
+      # invoked without 'new'" Buffer.allocUnsafe crash that blanks every route.
+      # This regression has reached prod multiple times; fail the deploy instead.
+      - name: Verify bundle chunk safety
+        working-directory: packages/cloud-frontend
+        run: node scripts/verify-chunk-safety.mjs
+
       - name: Resolve Pages branch
         id: pages
         env:
