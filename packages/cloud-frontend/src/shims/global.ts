@@ -27,33 +27,38 @@ const getSafeGlobal = (): SafeGlobal => {
   } catch (_) {}
 
   // Fallback minimal shadow (same logic as the early script, in case this
-  // module is evaluated extremely early).
-  const g = Object.create(
-    typeof globalThis !== "undefined" ? globalThis : {},
-  ) as SafeGlobal;
-  const readonlys = [
-    "close",
-    "open",
-    "name",
-    "status",
-    "self",
-    "top",
-    "parent",
-    "frames",
-    "window",
-    "document",
-  ];
-  for (const k of readonlys) {
-    try {
-      Object.defineProperty(g, k, {
-        configurable: true,
-        enumerable: false,
-        get: () => (globalThis as Record<string, unknown>)?.[k],
-        set: () => {
-          /* ignore */
-        },
-      });
-    } catch (_) {}
+  // module is evaluated extremely early). Native DOM globals (navigator,
+  // location, crypto, name, self, ...) are accessor properties on
+  // Window.prototype: reading one through this derived shadow invokes the
+  // getter with the wrong receiver and throws "Illegal invocation". Re-install
+  // every inherited accessor as a pass-through to globalThis so reads resolve;
+  // writes are swallowed so they never touch the read-only DOM globals.
+  const base = typeof globalThis !== "undefined" ? globalThis : {};
+  const g = Object.create(base) as SafeGlobal;
+  for (
+    let obj: object | null = base;
+    obj && obj !== Object.prototype;
+    obj = Object.getPrototypeOf(obj)
+  ) {
+    for (const key of Object.getOwnPropertyNames(obj)) {
+      if (Object.hasOwn(g, key)) {
+        continue;
+      }
+      const desc = Object.getOwnPropertyDescriptor(obj, key);
+      if (!desc || typeof desc.get !== "function") {
+        continue;
+      }
+      try {
+        Object.defineProperty(g, key, {
+          configurable: true,
+          enumerable: false,
+          get: () => (globalThis as Record<string, unknown>)?.[key],
+          set: () => {
+            /* ignore */
+          },
+        });
+      } catch (_) {}
+    }
   }
   if (!g.process) {
     g.process = {
