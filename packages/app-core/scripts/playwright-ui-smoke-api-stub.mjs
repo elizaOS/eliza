@@ -108,21 +108,9 @@ const smokeViewDeclarations = [
     "HyperliquidTuiView",
     "tui",
   ],
-  [
-    "lifeops",
-    "LifeOps",
-    "plugin-personal-assistant",
-    "/lifeops",
-    "LifeOpsPageView",
-  ],
-  [
-    "lifeops",
-    "LifeOps TUI",
-    "plugin-personal-assistant",
-    "/lifeops/tui",
-    "LifeOpsTuiView",
-    "tui",
-  ],
+  // NOTE: the LifeOps overview view was removed (PA no longer registers a
+  // `lifeops` view). Its stub entries are deleted so the smoke launcher matches
+  // production. The decomposed per-domain views below are the real surfaces.
   // Decomposed personal-assistant domain views — registered so their dynamic
   // bundles load in keyless ui-smoke and the decomposed-interactions spec can
   // drive them (closing INTERACTION_DEBT in view-interaction-coverage.test.ts).

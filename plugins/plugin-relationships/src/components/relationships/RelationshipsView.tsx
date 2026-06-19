@@ -198,7 +198,7 @@ function edgeMeta(edge: RelationshipEdgeItem): string {
 }
 
 // ---------------------------------------------------------------------------
-// Styling — dark theme, CSS vars, orange accent only.
+// Styling — CSS vars with light fallbacks, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "relationships-view-styles";
@@ -220,21 +220,21 @@ const RELATIONSHIPS_VIEW_CSS = `
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .relationships-view-btn-primary {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border: 1px solid var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #fff);
+  border: 1px solid var(--primary, #ff8a24);
 }
 .relationships-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
 }
 .relationships-view-btn-neutral {
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(0, 0, 0, 0.04));
+  color: var(--foreground, #000);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
 }
 .relationships-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #000) 8%, transparent);
 }
 .relationships-view-btn:disabled {
   opacity: 0.5;
@@ -251,21 +251,24 @@ const RELATIONSHIPS_VIEW_CSS = `
   font-family: inherit;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(0, 0, 0, 0.04));
+  color: var(--foreground, #000);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
 }
 .relationships-view-chip:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #000) 8%, transparent);
 }
 .relationships-view-chip[aria-pressed="true"] {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border-color: var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #fff);
+  border-color: var(--primary, #ff8a24);
 }
 .relationships-view-chip[aria-pressed="true"]:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
+}
+.relationships-view-nodes > * + * {
+  border-top: 1px solid var(--border, rgba(0, 0, 0, 0.12));
 }
 `;
 
@@ -288,8 +291,8 @@ const containerStyle: CSSProperties = {
   height: "100%",
   boxSizing: "border-box",
   overflowY: "auto",
-  background: "var(--background, #0a0a0a)",
-  color: "var(--foreground, #f5f5f5)",
+  background: "var(--background, #fff)",
+  color: "var(--foreground, #000)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -310,11 +313,10 @@ const headerRowStyle: CSSProperties = {
 const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
 const h2Style: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600 };
 
-const cardStyle: CSSProperties = {
-  padding: 16,
-  borderRadius: 8,
-  border: "1px solid var(--border, rgba(255,255,255,0.08))",
-  background: "var(--surface, rgba(255,255,255,0.02))",
+// Entity nodes are separated by whitespace and a single hairline divider, not a
+// box-per-node. No border, no surface fill — one panel edge max for the view.
+const nodeStyle: CSSProperties = {
+  padding: "16px 0",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -324,6 +326,15 @@ const dimStyle: CSSProperties = {
   opacity: 0.65,
   fontSize: 13,
   lineHeight: 1.5,
+};
+
+// Single-message states (loading / error / empty / no-match) render flat — a
+// heading + dim line + button, no box.
+const messageStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  padding: "8px 0",
 };
 
 const chipRowStyle: CSSProperties = {
@@ -345,8 +356,7 @@ const edgeRowStyle: CSSProperties = {
   justifyContent: "space-between",
   alignItems: "baseline",
   gap: 12,
-  padding: "8px 0",
-  borderBottom: "1px solid var(--border, rgba(255,255,255,0.06))",
+  padding: "4px 0",
   fontSize: 14,
 };
 
@@ -366,7 +376,7 @@ const metaStyle: CSSProperties = {
 };
 
 const kindBadgeStyle: CSSProperties = {
-  color: "var(--primary, #ff6a00)",
+  opacity: 0.6,
   fontSize: 12,
   fontWeight: 600,
 };
@@ -529,7 +539,7 @@ function EntityCard({ node }: { node: EntityNodeItem }): ReactNode {
           .join(" · ")
       : null;
   return (
-    <div style={cardStyle} data-testid={`relationships-entity-${node.id}`}>
+    <div style={nodeStyle} data-testid={`relationships-entity-${node.id}`}>
       <div style={headerRowStyle}>
         <h2 style={h2Style}>{node.name}</h2>
         <span style={kindBadgeStyle}>
@@ -638,7 +648,7 @@ export function RelationshipsView(
       <div style={containerStyle} data-testid="relationships-loading">
         <RelationshipsHeader refetch={load} busy={true} />
         <KindFilters active={activeKinds} onToggle={toggleKind} />
-        <div style={{ ...cardStyle, ...dimStyle }}>Loading relationships…</div>
+        <div style={{ ...messageStyle, ...dimStyle }}>Loading relationships…</div>
       </div>
     );
   }
@@ -648,7 +658,7 @@ export function RelationshipsView(
       <div style={containerStyle} data-testid="relationships-error">
         <RelationshipsHeader refetch={load} busy={false} />
         <KindFilters active={activeKinds} onToggle={toggleKind} />
-        <div style={cardStyle}>
+        <div style={messageStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load relationships</div>
           <div style={dimStyle}>{state.message}</div>
           <div>
@@ -672,7 +682,7 @@ export function RelationshipsView(
     return (
       <div style={containerStyle} data-testid="relationships-empty">
         <RelationshipsHeader refetch={load} busy={false} />
-        <div style={cardStyle}>
+        <div style={messageStyle}>
           <div style={{ fontWeight: 600 }}>No people or relationships yet</div>
           <div style={dimStyle}>
             Eliza hasn’t learned about anyone in your network yet. Tell her
@@ -699,13 +709,17 @@ export function RelationshipsView(
       <RelationshipsHeader refetch={load} busy={false} />
       <KindFilters active={activeKinds} onToggle={toggleKind} />
       {visibleNodes.length > 0 ? (
-        <section style={sectionStyle} aria-label="Relationships graph">
+        <section
+          className="relationships-view-nodes"
+          style={sectionStyle}
+          aria-label="Relationships graph"
+        >
           {visibleNodes.map((node) => (
             <EntityCard key={node.id} node={node} />
           ))}
         </section>
       ) : (
-        <div style={{ ...cardStyle, ...dimStyle }}>
+        <div style={{ ...messageStyle, ...dimStyle }}>
           No entities match the selected kind filters.
         </div>
       )}

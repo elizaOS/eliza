@@ -7,7 +7,6 @@ import {
   Activity,
   ArrowLeft,
   CheckCircle2,
-  CircleAlert,
   Cpu,
   FileAudio,
   Headphones,
@@ -64,19 +63,16 @@ const PROMPT_PRESETS = [
     id: "smoke",
     label: "Smoke",
     prompt: DEFAULT_PROMPT,
-    tone: "border-accent/40 bg-accent/10 text-accent",
   },
   {
     id: "vision",
     label: "Vision",
     prompt: "Describe the attached image in one compact sentence.",
-    tone: "border-cyan-500/40 bg-cyan-500/10 text-cyan-700",
   },
   {
     id: "voice",
     label: "Voice",
     prompt: "Say a short warm audio check for the model tester.",
-    tone: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700",
   },
 ] as const;
 
@@ -405,10 +401,10 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                   type="button"
                   onClick={() => setPrompt(preset.prompt)}
                   aria-pressed={prompt === preset.prompt}
-                  className={`h-12 rounded-lg border px-3 text-left text-xs font-semibold transition ${
+                  className={`h-12 rounded-lg px-3 text-left text-xs font-semibold transition ${
                     prompt === preset.prompt
-                      ? preset.tone
-                      : "border-border/24 bg-bg text-muted hover:bg-bg-accent hover:text-txt"
+                      ? "bg-accent/10 text-accent"
+                      : "text-muted hover:bg-bg-accent hover:text-txt"
                   }`}
                 >
                   {preset.label}
@@ -464,7 +460,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
             ) : null}
           </section>
 
-          <main className="grid grid-cols-1 gap-3">
+          <main className="divide-y divide-border/15">
             {TEST_ORDER.map((id) => {
               const copy = TEST_COPY[id];
               const Icon = copy.Icon;
@@ -474,10 +470,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
               const audio = id === "text-to-speech" ? audioSrc(result) : null;
               const urls = id === "image" ? generatedImageUrls(result) : [];
               return (
-                <section
-                  key={id}
-                  className="rounded-lg border border-border/20 bg-bg-accent/60 p-4"
-                >
+                <section key={id} className="py-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-border/20 bg-bg">
@@ -493,7 +486,11 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <StatusPill ready={status?.available ?? id === "vad"} />
+                      <StatusPill
+                        ready={status?.available ?? id === "vad"}
+                        running={isRunning}
+                        failed={result ? !result.ok : false}
+                      />
                       <TestRunButton
                         id={id}
                         title={copy.title}
@@ -505,20 +502,13 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
 
                   {result ? (
                     <div className="mt-4">
-                      <div className="flex items-center gap-2">
-                        {result.ok ? (
-                          <CheckCircle2 className="h-4 w-4 text-ok" />
-                        ) : (
-                          <CircleAlert className="h-4 w-4 text-danger" />
-                        )}
-                        <span
-                          className={`text-xs font-semibold ${
-                            result.ok ? "text-ok" : "text-danger"
-                          }`}
-                        >
-                          {result.ok ? `${result.durationMs ?? 0}ms` : "Failed"}
-                        </span>
-                      </div>
+                      <span
+                        className={`text-xs font-semibold ${
+                          result.ok ? "text-muted" : "text-danger"
+                        }`}
+                      >
+                        {result.ok ? `${result.durationMs ?? 0}ms` : "Failed"}
+                      </span>
                       {audio ? (
                         // biome-ignore lint/a11y/useMediaCaption: This is generated TTS output, not source media with available captions.
                         <audio controls src={audio} className="mt-3 w-full" />
@@ -531,15 +521,11 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                           className="mt-3 aspect-square w-full rounded-lg object-cover"
                         />
                       ))}
-                      <pre className="mt-3 max-h-60 overflow-auto rounded-lg border border-border/20 bg-bg p-3 text-xs leading-relaxed text-muted">
+                      <pre className="mt-3 max-h-60 overflow-auto rounded-lg bg-bg p-3 text-xs leading-relaxed text-muted">
                         {outputText(result.ok ? result.output : result.error)}
                       </pre>
                     </div>
-                  ) : (
-                    <div className="mt-4 flex min-h-20 items-center justify-center rounded-lg border border-dashed border-border/25">
-                      <Sparkles className="h-4 w-4 text-muted" />
-                    </div>
-                  )}
+                  ) : null}
                 </section>
               );
             })}
@@ -605,21 +591,30 @@ function TestRunButton({
   );
 }
 
-function StatusPill({ ready }: { ready: boolean }) {
+function StatusPill({
+  ready,
+  running,
+  failed,
+}: {
+  ready: boolean;
+  running: boolean;
+  failed: boolean;
+}) {
+  const { color, state } = running
+    ? { color: "bg-accent", state: "Running" }
+    : failed
+      ? { color: "bg-danger", state: "Failed" }
+      : ready
+        ? { color: "bg-ok", state: "Ready" }
+        : { color: "bg-muted", state: "Missing" };
   return (
     <span
-      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
-        ready
-          ? "border-ok/35 bg-ok/12 text-ok"
-          : "border-border bg-bg text-muted"
-      }`}
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center"
       role="status"
-      aria-label={ready ? "Ready" : "Missing"}
-      title={ready ? "Ready" : "Missing"}
+      aria-label={state}
+      title={state}
     >
-      <span
-        className={`h-2 w-2 rounded-full ${ready ? "bg-ok" : "bg-muted"}`}
-      />
+      <span className={`h-2 w-2 rounded-full ${color}`} />
     </span>
   );
 }

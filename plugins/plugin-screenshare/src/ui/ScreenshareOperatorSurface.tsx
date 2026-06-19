@@ -72,8 +72,8 @@ function ScreenshareMetric({
 }) {
   return (
     <div
-      className={`flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-lg border px-3 py-2 transition-colors ${
-        active ? "border-ok/35 bg-ok/8" : "border-border/35 bg-bg/55"
+      className={`flex min-h-16 flex-col items-center justify-center gap-1.5 px-3 py-2 ${
+        active ? "border-ok/35" : ""
       }`}
       title={label}
       role="status"
@@ -82,11 +82,13 @@ function ScreenshareMetric({
       <div className="flex items-center gap-1.5">
         <span
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-            active ? "bg-ok" : "bg-muted/40"
+            active ? "bg-accent" : "bg-muted/40"
           }`}
           aria-hidden
         />
-        <Icon className={`h-3.5 w-3.5 ${active ? "text-ok" : "text-muted"}`} />
+        <Icon
+          className={`h-3.5 w-3.5 ${active ? "text-accent" : "text-muted"}`}
+        />
       </div>
       <span
         className={`truncate text-sm font-semibold ${
@@ -529,11 +531,11 @@ export function ScreenshareOperatorSurface({
               ([name, capability]) => (
                 <div
                   key={name}
-                  className="flex min-h-14 items-center justify-center gap-2 rounded-lg border border-border/35 bg-bg/65 px-3 py-2"
+                  className="flex min-h-14 items-center justify-center gap-2 px-3 py-2"
                   title={`${name}: ${capability.tool}`}
                 >
                   {capability.available ? (
-                    <CheckCircle2 className="h-4 w-4 text-ok" />
+                    <CheckCircle2 className="h-4 w-4 text-accent" />
                   ) : (
                     <XCircle className="h-4 w-4 text-muted" />
                   )}

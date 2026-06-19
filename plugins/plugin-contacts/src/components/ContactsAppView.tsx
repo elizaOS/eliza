@@ -327,7 +327,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
       </header>
 
       {mode === "list" && (
-        <div className="shrink-0 border-b border-border/20 px-4 py-2">
+        <div className="shrink-0 px-4 py-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <Input
@@ -583,7 +583,7 @@ function ContactListItem({
             </span>
             {contact.starred && (
               <Star
-                className="h-3.5 w-3.5 shrink-0 text-amber-400"
+                className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]"
                 fill="currentColor"
                 aria-label={t("contacts.starred", {
                   defaultValue: "Starred",
@@ -615,7 +615,7 @@ function ContactDetail({ contact, t }: { contact: ContactSummary; t: TFn }) {
               t("contacts.unnamed", { defaultValue: "Unnamed" })}
           </h2>
           {contact.starred && (
-            <div className="mt-1 inline-flex items-center gap-1 text-xs text-amber-400">
+            <div className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--accent)]">
               <Star className="h-3 w-3" fill="currentColor" />
               {t("contacts.starred", { defaultValue: "Starred" })}
             </div>
@@ -733,14 +733,12 @@ function ContactFieldGroup({
   emptyLabel: string;
 }) {
   return (
-    <section className="rounded-xl border border-border/30 bg-bg-accent/40 px-4 py-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-        {label}
-      </h3>
+    <section className="flex flex-col gap-2 border-t border-border/20 pt-4">
+      <h3 className="text-sm font-medium text-muted">{label}</h3>
       {items.length === 0 ? (
-        <p className="mt-2 text-sm text-muted">{emptyLabel}</p>
+        <p className="text-sm text-muted">{emptyLabel}</p>
       ) : (
-        <ul className="mt-2 flex flex-col gap-2">
+        <ul className="flex flex-col gap-2">
           {dedupePreservingOrder(items).map((value) => (
             <li key={value}>{renderItem(value)}</li>
           ))}
@@ -813,10 +811,7 @@ function NewContactForm({
       className="mx-auto flex max-w-md flex-col gap-4 px-4 py-6"
     >
       <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor={nameId}
-          className="text-xs font-semibold uppercase tracking-wide text-muted"
-        >
+        <label htmlFor={nameId} className="text-sm font-medium text-muted">
           {t("contacts.form.name", { defaultValue: "Name" })}
         </label>
         <Input
@@ -836,10 +831,7 @@ function NewContactForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor={phoneId}
-          className="text-xs font-semibold uppercase tracking-wide text-muted"
-        >
+        <label htmlFor={phoneId} className="text-sm font-medium text-muted">
           {t("contacts.form.phone", { defaultValue: "Phone" })}
         </label>
         <Input
@@ -857,10 +849,7 @@ function NewContactForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor={emailId}
-          className="text-xs font-semibold uppercase tracking-wide text-muted"
-        >
+        <label htmlFor={emailId} className="text-sm font-medium text-muted">
           {t("contacts.form.email", { defaultValue: "Email" })}
         </label>
         <Input

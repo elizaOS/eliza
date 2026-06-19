@@ -10,7 +10,6 @@ import {
   type LucideIcon,
   RefreshCw,
   Shield,
-  ShieldCheck,
   ShieldX,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -18,28 +17,20 @@ import "./client";
 import { loadHyperliquidTuiState } from "./HyperliquidAppView.interact";
 import { useHyperliquidState } from "./useHyperliquidState";
 
-function ReadinessPill({ ready, label }: { ready: boolean; label: string }) {
+function BlockedPill({ label }: { label: string }) {
   return (
     <span
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
-        ready
-          ? "border-ok/35 bg-ok/12 text-ok"
-          : "border-border bg-bg-accent text-muted"
-      }`}
+      className="inline-flex items-center text-muted"
       role="status"
       aria-label={label}
       title={label}
     >
-      {ready ? (
-        <ShieldCheck className="h-4 w-4" />
-      ) : (
-        <ShieldX className="h-4 w-4" />
-      )}
+      <ShieldX className="h-4 w-4" />
     </span>
   );
 }
 
-function StatusTile({
+function StatusItem({
   icon: Icon,
   label,
   ready,
@@ -49,9 +40,9 @@ function StatusTile({
   ready: boolean;
 }) {
   return (
-    <div className="flex min-h-16 items-center justify-center gap-2 rounded-lg border border-border/24 bg-card/50 px-3">
+    <div className="flex items-center gap-2">
       <Icon className={`h-4 w-4 ${ready ? "text-ok" : "text-muted"}`} />
-      <span className="truncate text-sm font-semibold text-txt">{label}</span>
+      <span className="truncate text-sm font-medium text-txt">{label}</span>
     </div>
   );
 }
@@ -131,37 +122,49 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
       </div>
 
       <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-        <div className="mx-auto max-w-5xl space-y-4">
+        <div className="mx-auto max-w-5xl space-y-5">
           {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
 
-          <section className="grid gap-3">
-            <StatusTile
+          <p className="text-sm text-muted">
+            {publicReadReady ? "Read-only" : "Reads blocked"} ·{" "}
+            {markets?.markets.length ?? 0} markets ·{" "}
+            {status?.account.address ? "account connected" : "no account"}
+          </p>
+
+          <section className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <StatusItem
               icon={BarChart3}
               label="Reads"
               ready={publicReadReady}
             />
-            <StatusTile
+            <StatusItem
               icon={credentialMode === "managed_vault" ? Cloud : KeyRound}
               label={credentialModeLabel(credentialMode)}
               ready={status?.signerReady ?? false}
             />
-            <StatusTile
+            <StatusItem
               icon={Shield}
               label={status?.account.address ? "Account" : "No account"}
               ready={Boolean(status?.account.address)}
             />
           </section>
 
-          {status?.executionBlockedReason && (
-            <div className="flex items-start gap-2 rounded-lg border border-border/24 bg-bg-accent px-4 py-3 text-sm text-muted">
+          {(status?.executionBlockedReason ||
+            (status &&
+              !status.vault.ready &&
+              credentialMode !== "local_key")) && (
+            <div className="flex items-start gap-2 text-sm text-muted">
               <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{status.executionBlockedReason}</span>
-            </div>
-          )}
-
-          {status && !status.vault.ready && credentialMode !== "local_key" && (
-            <div className="rounded-lg border border-border/24 bg-bg-accent px-4 py-3 text-sm text-muted">
-              {status.vault.guidance}
+              <div className="space-y-1">
+                {status?.executionBlockedReason && (
+                  <span className="block">{status.executionBlockedReason}</span>
+                )}
+                {status &&
+                  !status.vault.ready &&
+                  credentialMode !== "local_key" && (
+                    <span className="block">{status.vault.guidance}</span>
+                  )}
+              </div>
             </div>
           )}
 
@@ -172,7 +175,7 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
             </div>
           ) : (
             <div className="space-y-4">
-              <section className="rounded-lg border border-border/24 bg-card/50">
+              <section className="rounded-lg border border-border/24">
                 <div className="flex items-center gap-2 border-b border-border/20 px-4 py-3">
                   <BarChart3 className="h-4 w-4 text-muted" />
                   <h2 className="text-sm font-semibold text-txt">Markets</h2>
@@ -200,52 +203,36 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                 </div>
               </section>
 
-              <section className="grid gap-4">
-                <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-semibold text-txt">
-                      Positions
-                    </h2>
-                    <ReadinessPill
-                      ready={!positions?.readBlockedReason}
-                      label={
-                        positions?.readBlockedReason
-                          ? "Blocked"
-                          : "Positions readable"
-                      }
-                    />
-                  </div>
+              <section className="divide-y divide-border/14">
+                <div className="flex items-center justify-between gap-3 py-3">
+                  <h2 className="text-sm font-semibold text-txt">Positions</h2>
                   {positions?.readBlockedReason ? (
-                    <div className="mt-2 truncate text-xs text-muted">
-                      {positions.readBlockedReason}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="min-w-0 truncate text-xs text-muted">
+                        {positions.readBlockedReason}
+                      </span>
+                      <BlockedPill label="Blocked" />
                     </div>
                   ) : (
-                    <div className="mt-2 text-2xl font-semibold text-txt">
+                    <span className="text-sm font-semibold text-txt">
                       {positions?.positions.length ?? 0}
-                    </div>
+                    </span>
                   )}
                 </div>
 
-                <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-semibold text-txt">Orders</h2>
-                    <ReadinessPill
-                      ready={!orders?.readBlockedReason}
-                      label={
-                        orders?.readBlockedReason
-                          ? "Blocked"
-                          : "Orders readable"
-                      }
-                    />
-                  </div>
+                <div className="flex items-center justify-between gap-3 py-3">
+                  <h2 className="text-sm font-semibold text-txt">Orders</h2>
                   {orders?.readBlockedReason ? (
-                    <div className="mt-2 truncate text-xs text-muted">
-                      {orders.readBlockedReason}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="min-w-0 truncate text-xs text-muted">
+                        {orders.readBlockedReason}
+                      </span>
+                      <BlockedPill label="Blocked" />
                     </div>
                   ) : (
-                    <div className="mt-2 text-2xl font-semibold text-txt">
+                    <span className="text-sm font-semibold text-txt">
                       {orders?.orders.length ?? 0}
-                    </div>
+                    </span>
                   )}
                 </div>
               </section>

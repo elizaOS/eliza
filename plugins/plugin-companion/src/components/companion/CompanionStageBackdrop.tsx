@@ -37,8 +37,8 @@ export const CompanionStageBackdrop = memo(function CompanionStageBackdrop({
         style={{
           ...fill,
           background: dark
-            ? "radial-gradient(120% 90% at 50% 18%, rgba(255,88,0,0.12) 0%, rgba(255,88,0,0) 46%), radial-gradient(140% 120% at 50% 120%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #0a0810 0%, #0e0b16 48%, #060509 100%)"
-            : "radial-gradient(120% 90% at 50% 16%, rgba(255,88,0,0.14) 0%, rgba(255,88,0,0) 46%), radial-gradient(140% 120% at 50% 122%, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0) 55%), linear-gradient(180deg, #fafafa 0%, #f3f3f5 52%, #ececef 100%)",
+            ? "radial-gradient(120% 90% at 50% 18%, rgba(255,138,36,0.12) 0%, rgba(255,138,36,0) 46%), radial-gradient(140% 120% at 50% 120%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 55%), linear-gradient(180deg, #0a0810 0%, #0e0b16 48%, #060509 100%)"
+            : "radial-gradient(120% 90% at 50% 16%, rgba(255,138,36,0.14) 0%, rgba(255,138,36,0) 46%), radial-gradient(140% 120% at 50% 122%, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0) 55%), linear-gradient(180deg, #fafafa 0%, #f3f3f5 52%, #ececef 100%)",
         }}
       />
 
@@ -52,8 +52,8 @@ export const CompanionStageBackdrop = memo(function CompanionStageBackdrop({
           height: "120%",
           transform: "translate(-50%, -50%)",
           background: dark
-            ? "radial-gradient(closest-side, rgba(255,88,0,0.09) 0%, rgba(255,88,0,0) 70%)"
-            : "radial-gradient(closest-side, rgba(255,88,0,0.08) 0%, rgba(255,88,0,0) 70%)",
+            ? "radial-gradient(closest-side, rgba(255,138,36,0.09) 0%, rgba(255,138,36,0) 70%)"
+            : "radial-gradient(closest-side, rgba(255,138,36,0.08) 0%, rgba(255,138,36,0) 70%)",
         }}
       />
 
@@ -71,8 +71,8 @@ export const CompanionStageBackdrop = memo(function CompanionStageBackdrop({
           borderRadius: "50%",
           filter: "blur(40px)",
           background: dark
-            ? "radial-gradient(50% 50% at 50% 50%, rgba(255,88,0,0.24) 0%, rgba(255,88,0,0) 72%)"
-            : "radial-gradient(50% 50% at 50% 50%, rgba(255,88,0,0.18) 0%, rgba(255,88,0,0) 72%)",
+            ? "radial-gradient(50% 50% at 50% 50%, rgba(255,138,36,0.24) 0%, rgba(255,138,36,0) 72%)"
+            : "radial-gradient(50% 50% at 50% 50%, rgba(255,138,36,0.18) 0%, rgba(255,138,36,0) 72%)",
         }}
       />
     </div>
@@ -106,26 +106,26 @@ function CompanionAvatarSilhouette({ dark }: { dark: boolean }) {
           height: "100%",
           display: "block",
           filter: dark
-            ? "drop-shadow(0 24px 60px rgba(255,88,0,0.22))"
-            : "drop-shadow(0 24px 60px rgba(255,88,0,0.16))",
+            ? "drop-shadow(0 24px 60px rgba(255,138,36,0.22))"
+            : "drop-shadow(0 24px 60px rgba(255,138,36,0.16))",
         }}
         role="img"
         aria-label="Companion avatar placeholder"
       >
         <defs>
           <linearGradient id="companion-figure" x1="0.5" y1="0" x2="0.5" y2="1">
-            <stop offset="0%" stopColor="rgba(255,88,0,0.55)" />
-            <stop offset="46%" stopColor="rgba(255,88,0,0.30)" />
+            <stop offset="0%" stopColor="rgba(255,138,36,0.55)" />
+            <stop offset="46%" stopColor="rgba(255,138,36,0.30)" />
             <stop
               offset="100%"
               stopColor={
-                dark ? "rgba(120,40,255,0.18)" : "rgba(255,140,70,0.16)"
+                dark ? "rgba(255,138,36,0.10)" : "rgba(255,140,70,0.16)"
               }
             />
           </linearGradient>
           <radialGradient id="companion-halo" cx="0.5" cy="0.28" r="0.42">
-            <stop offset="0%" stopColor="rgba(255,88,0,0.30)" />
-            <stop offset="100%" stopColor="rgba(255,88,0,0)" />
+            <stop offset="0%" stopColor="rgba(255,138,36,0.30)" />
+            <stop offset="100%" stopColor="rgba(255,138,36,0)" />
           </radialGradient>
         </defs>
 

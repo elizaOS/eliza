@@ -16,9 +16,9 @@ export interface StatChip {
 }
 
 const STATE_COLOR: Record<ChipState, string> = {
-  ready: "var(--ok, #22c55e)",
+  ready: "var(--accent, #ff8a24)",
   active: "var(--accent, #ff8a24)",
-  pending: "var(--warn, #f59e0b)",
+  pending: "var(--accent, #ff8a24)",
   idle: "var(--muted, #9ca3af)",
   danger: "var(--danger, #ef4444)",
 };
@@ -124,7 +124,6 @@ export function HeroCta({
         letterSpacing: "0.01em",
         cursor: disabled ? "default" : "pointer",
         opacity: disabled ? 0.55 : 1,
-        boxShadow: "0 4px 16px rgba(0,0,0,0.28)",
         whiteSpace: "nowrap",
       }}
     >
@@ -156,7 +155,6 @@ export function GameSurfaceStrip({ chips }: { chips: StatChip[] }) {
             gap: 10,
             padding: "10px 12px",
             borderRadius: 14,
-            border: "1px solid var(--border, rgba(0,0,0,0.08))",
             background: "var(--bg, rgba(255,255,255,0.6))",
           }}
         >
@@ -178,10 +176,8 @@ export function GameSurfaceStrip({ chips }: { chips: StatChip[] }) {
           <div style={{ minWidth: 0 }}>
             <div
               style={{
-                fontSize: 10,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
+                fontSize: 11,
+                fontWeight: 500,
                 color: "var(--muted, #6b7280)",
               }}
             >

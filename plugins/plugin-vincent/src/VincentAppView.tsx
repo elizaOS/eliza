@@ -1,15 +1,4 @@
-/**
- * VincentAppView — full-screen overlay app for Vincent trading access.
- *
- * Layout:
- *   - Header with back button and connection status badge
- *   - VincentConnectionCard (OAuth connect/disconnect)
- *   - WalletStatusCard (agent wallet addresses + balances) — when connected
- *   - TradingStrategyPanel (strategy config) — when connected
- *   - TradingProfileCard (P&L analytics) — when connected
- *
- * Implements the OverlayApp Component contract.
- */
+/** VincentAppView — full-screen overlay app for Vincent trading access. */
 
 import type { WalletAddresses } from "@elizaos/shared";
 import type { OverlayAppContext } from "@elizaos/ui";
@@ -155,31 +144,19 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
               )}
 
               {!vincentConnected && !loading && (
-                <div className="grid gap-3 rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:grid-cols-3">
-                  <div className="flex items-center gap-3 rounded-xl border border-accent/20 bg-accent/10 px-3 py-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-accent/25 bg-accent/12 text-accent">
-                      <ShieldCheck className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 text-sm font-semibold text-txt">
-                      Vincent
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 rounded-xl border border-border/20 bg-card/45 px-3 py-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border/25 bg-bg/50 text-muted">
-                      <Wallet className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 text-sm font-semibold text-txt">
-                      Wallet
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 rounded-xl border border-border/20 bg-card/45 px-3 py-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border/25 bg-bg/50 text-muted">
-                      <KeyRound className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 text-sm font-semibold text-txt">
-                      OAuth
-                    </div>
-                  </div>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-1 py-2 text-sm font-semibold text-muted">
+                  <span className="flex items-center gap-2 text-accent">
+                    <ShieldCheck className="h-4 w-4" />
+                    Vincent
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4" />
+                    Wallet
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <KeyRound className="h-4 w-4" />
+                    OAuth
+                  </span>
                 </div>
               )}
             </div>
