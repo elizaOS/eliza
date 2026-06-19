@@ -74,6 +74,13 @@ const variant = (p) =>
   p.getByTestId("chat-sheet").getAttribute("data-variant");
 const detent = (p) =>
   p.getByTestId("chat-sheet").getAttribute("data-detent");
+// The canonical state-machine value (CLOSED | INPUT | OPEN_UNDER_HALF |
+// OPEN_HALF_OR_OVER | MAXIMIZED) — the single source the overlay derives.
+const chatState = (p) =>
+  p.getByTestId("chat-sheet").getAttribute("data-chat-state");
+// Header buttons (maximize/clear/home/settings) show only at half-or-over.
+const headerButtonCount = (p) =>
+  p.getByTestId("chat-sheet").locator('[data-testid^="chat-full-"]').count();
 // The history (thread) is the element whose height animates 0 → half → full;
 // the panel (chat-sheet) also holds the always-present input, so measure the
 // thread for detent heights.
@@ -123,9 +130,17 @@ const SETTLE = 480; // spring settle time before measuring a detent
 async function gesture(
   p,
   up,
-  { pointer = "mouse", slow = false, hold = false, steps = 12 } = {},
+  {
+    pointer = "mouse",
+    slow = false,
+    hold = false,
+    steps = 12,
+    // Which handle to drag: the open-sheet grabber (default) or the collapsed
+    // pill — the pill→input→chat open paths must be driven from the pill itself.
+    target = "chat-sheet-grabber",
+  } = {},
 ) {
-  const b = await grabberBox(p);
+  const b = await p.getByTestId(target).boundingBox();
   const cx = b.x + b.width / 2;
   const cy = b.y + b.height / 2;
   const targetY = (i) => cy - (up * i) / steps;
@@ -139,8 +154,8 @@ async function gesture(
     if (!hold) await p.mouse.up();
   } else {
     await p.evaluate(
-      ({ cx, cy }) => {
-        const el = document.querySelector('[data-testid="chat-sheet-grabber"]');
+      ({ cx, cy, target }) => {
+        const el = document.querySelector(`[data-testid="${target}"]`);
         window.__g = el;
         el.dispatchEvent(
           new PointerEvent("pointerdown", {
@@ -152,7 +167,7 @@ async function gesture(
           }),
         );
       },
-      { cx, cy },
+      { cx, cy, target },
     );
     for (let i = 1; i <= steps; i += 1) {
       await p.evaluate(
@@ -1099,6 +1114,138 @@ try {
         box?.y ?? -1,
       )}, bottom=${Math.round((box?.y ?? 0) + (box?.height ?? 0))}, vh=${vh})`,
     );
+    await p.close();
+  }
+
+  // ── ALL FIVE CHATSTATES (the canonical machine) — assert data-chat-state + the
+  // header-button gate, screenshot each (the user asked for a shot of every
+  // state). Driven by real gestures on the grabber + the pill.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    const vh = await viewportH(p);
+    const halfH = Math.round(vh * 0.46);
+
+    assert((await chatState(p)) === "INPUT", "STATES: rest is INPUT");
+    assert(
+      (await headerButtonCount(p)) === 0,
+      "STATES: INPUT shows no header buttons",
+    );
+    await snap(p, "state-INPUT");
+
+    await gesture(p, halfH, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await chatState(p)) === "OPEN_HALF_OR_OVER",
+      `STATES: flick-up → OPEN_HALF_OR_OVER (got ${await chatState(p)})`,
+    );
+    assert(
+      (await headerButtonCount(p)) > 0,
+      "STATES: OPEN_HALF_OR_OVER shows header buttons",
+    );
+    await snap(p, "state-OPEN_HALF_OR_OVER");
+
+    await p.getByTestId("chat-full-maximize").click();
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await chatState(p)) === "MAXIMIZED",
+      `STATES: maximize → MAXIMIZED (got ${await chatState(p)})`,
+    );
+    await snap(p, "state-MAXIMIZED");
+    await p.close();
+  }
+
+  // OPEN_UNDER_HALF + CLOSED on a fresh page (cleaner than stepping down from
+  // MAXIMIZED, which is full-bleed and has no grabber to drag).
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    const vh = await viewportH(p);
+    const halfH = Math.round(vh * 0.46);
+
+    // OPEN_UNDER_HALF — a slow short pull from INPUT rests in the gap below half.
+    await gesture(p, Math.round(halfH * 0.5), { pointer: "mouse", slow: true });
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await chatState(p)) === "OPEN_UNDER_HALF",
+      `STATES: slow free-rest below half → OPEN_UNDER_HALF (got ${await chatState(p)})`,
+    );
+    assert(
+      (await headerButtonCount(p)) === 0,
+      "STATES: OPEN_UNDER_HALF hides header buttons",
+    );
+    await snap(p, "state-OPEN_UNDER_HALF");
+
+    // CLOSED — flick down to input, then down again to the pill. Touch pointer:
+    // the grabber sits near the screen bottom, so a downward mouse drag clamps at
+    // the viewport edge; dispatched touch events carry the full downward delta.
+    await gesture(p, -vh, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await chatState(p)) === "CLOSED",
+      `STATES: flick-down from input → CLOSED (got ${await chatState(p)})`,
+    );
+    await snap(p, "state-CLOSED");
+    await p.close();
+  }
+
+  // ── PILL → INPUT → CHAT liquid-glass morph. A flick-up from the pill reaches
+  // the chat (B4 fix — used to dead-stop at the bare input); a slow drag LERPS
+  // the morph (content opacity strictly between 0 and 1 mid-pull).
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert((await chatState(p)) === "CLOSED", "PILL-MORPH: collapsed to pill");
+
+    // MID-DRAG hold: slow-pull the PILL up ~half the open distance and HOLD —
+    // the glass/content crossfades in proportionally (not a discrete pop).
+    await gesture(p, 60, {
+      pointer: "mouse",
+      slow: true,
+      hold: true,
+      steps: 8,
+      target: "chat-pill",
+    });
+    const midOpacity = await p
+      .getByTestId("chat-content")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+    assert(
+      midOpacity > 0.05 && midOpacity < 0.95,
+      `PILL-MORPH: content lerps in mid-drag (opacity ${midOpacity})`,
+    );
+    await snap(p, "transition-pill-to-input-mid-drag");
+    await release(p, "mouse");
+    await p.waitForTimeout(SETTLE);
+
+    // FLICK up from the pill → reaches the chat (history present), not a stop.
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    await gesture(p, 140, {
+      pointer: "mouse",
+      slow: false,
+      steps: 2,
+      target: "chat-pill",
+    });
+    await p.waitForTimeout(SETTLE);
+    const after = await chatState(p);
+    assert(
+      after === "OPEN_HALF_OR_OVER" || after === "OPEN_UNDER_HALF",
+      `PILL-MORPH: a flick from the pill reaches the chat (got ${after})`,
+    );
+    await snap(p, "transition-pill-to-chat-flick");
     await p.close();
   }
 } finally {

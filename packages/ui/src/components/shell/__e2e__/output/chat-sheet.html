@@ -26931,7 +26931,7 @@
               }
             }
           ),
-          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
             "div",
             {
               role: "status",
@@ -26941,10 +26941,10 @@
                 "pointer-events-none relative mb-2 w-full max-w-3xl text-center text-sm italic text-white/85",
                 FLOAT_SHADOW2
               ),
-              children: [
+              children: transcript ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
                 transcript,
                 /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
-              ]
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "text-white/60", children: "Listening\u2026" })
             }
           ) : null,
           needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
