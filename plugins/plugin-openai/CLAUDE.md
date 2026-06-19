@@ -83,9 +83,9 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 
 | Var | Required | Default | Purpose |
 |---|---|---|---|
-| `OPENAI_API_KEY` | yes* | — | Auth for all OpenAI endpoints |
-| `CEREBRAS_API_KEY` | yes* | — | Auth when using Cerebras endpoint |
-| `EVOLINK_API_KEY` | yes* | — | Auth when using EvoLink endpoint |
+| `OPENAI_API_KEY` | one-of | — | Auth for all OpenAI endpoints |
+| `CEREBRAS_API_KEY` | one-of | — | Auth when using Cerebras endpoint |
+| `EVOLINK_API_KEY` | one-of | — | Auth when using EvoLink endpoint |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | Override API endpoint |
 | `OPENAI_SMALL_MODEL` / `SMALL_MODEL` | no | `gpt-5.4-mini` | TEXT_SMALL model |
 | `OPENAI_NANO_MODEL` / `NANO_MODEL` | no | falls back to small | TEXT_NANO model |
