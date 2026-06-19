@@ -6,6 +6,7 @@ import {
   type Tab,
   tabFromPath,
 } from "../navigation";
+import { isNavAllowed } from "../navigation/nav-lock";
 import type { AppState } from "./internal";
 
 function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
@@ -34,7 +35,9 @@ export function useNavigationPathSync({
       return;
     }
     const routeTab = tabFromPath(navPath);
-    if (routeTab && routeTab !== tab) {
+    // Respect a guided-flow nav lock: don't let a diverging URL (deep link,
+    // browser back) reconcile the tab to a state the tour doesn't allow.
+    if (routeTab && routeTab !== tab && isNavAllowed(routeTab)) {
       setTabRaw(routeTab);
     }
   }, [tab, setTabRaw]);
