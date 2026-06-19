@@ -721,13 +721,13 @@ class TalkModePlugin : Plugin() {
                             put("usedSystemTts", false)
                         })
                     } else {
-                        Log.e(TAG, "Local inference TTS failed", e)
-                        call.resolve(JSObject().apply {
-                            put("completed", false)
-                            put("interrupted", false)
-                            put("usedSystemTts", false)
-                            put("error", e.message ?: "Local inference TTS failed")
-                        })
+                        // The on-device OmniVoice TTS assets aren't always staged
+                        // (it 502s "TEXT_TO_SPEECH not available"). Rather than go
+                        // silent — the JS browser-SpeechSynthesis fallback doesn't
+                        // exist in the Android WebView — fall back to the platform
+                        // TextToSpeech so replies are always spoken aloud.
+                        Log.w(TAG, "Local inference TTS failed, falling back to system TTS", e)
+                        speakWithSystemTts(text, call)
                     }
                 }
             } else if (canUseElevenLabs) {
