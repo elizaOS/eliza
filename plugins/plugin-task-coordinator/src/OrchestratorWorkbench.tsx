@@ -2840,7 +2840,10 @@ function OperatorDetailDrawer({
 
 function readInitialTaskId(): string | null {
   if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get("task");
+  // Accept both producers: `?task=` (copy-link) and `?taskId=` (the in-chat
+  // task widget). Either opens the workbench straight onto that task.
+  const params = new URLSearchParams(window.location.search);
+  return params.get("task") ?? params.get("taskId");
 }
 
 const MOBILE_QUERY = "(max-width: 767px)";
