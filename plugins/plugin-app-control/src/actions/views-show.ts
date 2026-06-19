@@ -15,6 +15,7 @@ import type {
 	ViewType,
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { scoreView } from "./views-search.js";
 
@@ -236,6 +237,11 @@ const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 export function resolveIntentView(text: string | undefined): string | null {
 	const t = (text ?? "").toLowerCase();
 	if (!t) return null;
+	// Fast rigid multilingual matcher first (every explicit "open X" phrasing in
+	// every language); fall back to the legacy intent rules for the few passive
+	// phrasings it intentionally does not cover (e.g. "am i free" → calendar).
+	const rigid = matchViewCommand(text);
+	if (rigid) return rigid;
 	for (const rule of INTENT_VIEW_RULES) {
 		if (rule.re.test(t)) return rule.viewId;
 	}

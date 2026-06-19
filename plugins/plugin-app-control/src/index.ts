@@ -20,9 +20,11 @@ import {
 	closeViewAction,
 	viewsAction,
 } from "./actions/views.js";
+import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
+import { currentViewProvider } from "./providers/current-view.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
 import { AppWorkerHostService } from "./services/app-worker-host-service.js";
@@ -48,6 +50,9 @@ export {
 export type { ViewSummary } from "./actions/views-client.js";
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
+export { currentViewProvider } from "./providers/current-view.js";
+export { matchViewCommand } from "./actions/view-command-matcher.js";
+export { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 export { viewContextEvaluator } from "./evaluators/view-context.js";
 export { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 export {
@@ -103,13 +108,22 @@ export const appControlPlugin: Plugin = {
 		closeAllViewsAction,
 		homescreenAction,
 	],
-	// Direct nav commands ("open my calendar") are handled by the VIEWS action
-	// (deterministic resolveIntentView, no model). This evaluator runs separately,
-	// post-response, to catch CONTEXTUAL intent the user never spelled out
-	// ("fix the login bug" -> task-coordinator).
+	// Three-stage view-switch cascade:
+	//  1. EARLY  — viewCommandShortcutEvaluator (responseHandlerEvaluator, no
+	//     model): on an explicit multilingual command ("open settings"), FORCES
+	//     the VIEWS action so navigation never depends on weak-model selection.
+	//  2. ACTION — viewsAction: navigates; deterministic target via
+	//     resolveIntentView → matchViewCommand. The agent may also pick it.
+	//  3. POST   — viewContextEvaluator (small model): catches CONTEXTUAL intent
+	//     the user never spelled out ("fix the login bug" -> task-coordinator).
+	//     Its gate defers whenever the rigid matcher already matched.
+	// view-followup-routing handles mutation follow-ups on the active view.
 	evaluators: [viewContextEvaluator],
-	responseHandlerEvaluators: [viewFollowupRoutingEvaluator],
-	providers: [availableAppsProvider],
+	responseHandlerEvaluators: [
+		viewCommandShortcutEvaluator,
+		viewFollowupRoutingEvaluator,
+	],
+	providers: [availableAppsProvider, currentViewProvider],
 	services: [
 		AppRegistryService,
 		AppVerificationService,
