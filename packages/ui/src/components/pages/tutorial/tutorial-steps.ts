@@ -1,180 +1,151 @@
 /**
- * The interactive tutorial script. Each step points a glowing spotlight at one
- * real control, gives a text + voice instruction, and (where possible) AUTO-
- * ADVANCES the moment the user actually performs the action — so the tutorial
- * "checks when the user does something right". Steps with no reliable auto-signal
- * fall back to a manual Continue button (still spotlit + instructive).
+ * The interactive tour script — six frames, each pointing a glowing spotlight at
+ * ONE real control. The engine (TutorialOverlay) drives the chat into a clean,
+ * known state when a frame begins, narrates the line aloud through the app's real
+ * voice, and auto-advances the instant the user actually performs the action.
  *
- * Targets are existing stable test ids on the live UI (chat-pill,
- * chat-sheet-grabber, chat-sheet, chat-composer-textarea, home-tile-settings),
- * so the spotlight always lands on the genuine control.
+ * Frames teach the chat as the single remote control: open it, resize it, ask it
+ * to navigate (the tour pre-types the request and the user just taps send), and
+ * talk to it. Targets are stable test ids on the live UI (chat-pill,
+ * chat-sheet-grabber, chat-composer-action, chat-composer-mic) so the spotlight
+ * always lands on the genuine control.
  */
 
-/** Live, observable UI state the engine samples each frame (see TutorialView). */
+/** The chat's resting detent, read from the live `data-testid="chat-sheet"`. */
+export type ChatDetent = "pill" | "collapsed" | "half" | "full";
+
+/** Live UI state the engine samples each frame and feeds to `isDone`. */
 export interface TutorialObservable {
   /** Current nav tab / view. */
   tab: string;
-  /** The chat is open (not collapsed to the pill). */
-  chatOpen: boolean;
-  /** The chat sheet is expanded (HALF/FULL detent). */
-  chatExpanded: boolean;
-  /** The chat is collapsed to the small floating pill. */
-  chatPilled: boolean;
-  /** Seconds elapsed on the current step (drives Continue fallbacks). */
+  /** The chat's detent (null when the chat isn't mounted yet). */
+  detent: ChatDetent | null;
+  /** Current composer draft text (read from the live textarea). */
+  composerText: string;
+  /** Live interim voice transcription ("" when not listening). */
+  transcript: string;
+  /**
+   * True once a frame's pre-filled command has been observed and then cleared —
+   * i.e. the user sent it. Used by the guided "ask to navigate" frame.
+   */
+  prefillSent: boolean;
+  /** Seconds elapsed on the current frame. */
   secondsOnStep: number;
 }
 
-export interface TutorialStep {
-  id: string;
-  title: string;
+/** A single instruction within a frame (frames may have a second beat). */
+export interface TutorialBeat {
   /** On-screen instruction. */
   body: string;
-  /** Spoken instruction (TTS) in voice mode. */
+  /** Spoken instruction, narrated through the app's real voice. */
   voiceLine: string;
+  /** Auto-advance when this becomes true. */
+  isDone?: (s: TutorialObservable) => boolean;
+}
+
+export interface TutorialStep extends TutorialBeat {
+  id: string;
+  title: string;
   /** CSS selector for the control to spotlight, or null for a centered card. */
   targetSelector: string | null;
-  /** Dim + block everything except the target (the "block wrong action" gate). */
-  blockOutside: boolean;
-  /** Auto-advance when this predicate becomes true. */
-  isComplete?: (s: TutorialObservable) => boolean;
-  /** Offer a manual Continue button (after `continueAfterSec`, if auto-detected). */
+  /** Drive the chat into this state when the frame begins (clean per-frame state). */
+  enterChat?: "pill" | "rest" | "expand";
+  /** Pre-fill the composer with this command when the frame begins. */
+  prefill?: string;
+  /** A second instruction shown after the first beat completes (same target). */
+  beat2?: TutorialBeat;
+  /**
+   * On success, navigate here first so the action the tour staged actually
+   * completes for real (the "ask to navigate" + voice frames). Not set on frames
+   * where the user's own action already moved them.
+   */
+  navigateOnDone?: string;
+  /**
+   * The only tabs navigation may reach while this frame is showing — so nothing
+   * (a stray control, a deep link, an agent action) can drift the app off the
+   * guided path. Include the frame's own tab plus its `navigateOnDone` target.
+   * Defaults to the home base.
+   */
+  lockTabs?: string[];
+  /** A short line shown for a beat after success, before advancing. */
+  doneBody?: string;
+  /** Centered cards advance with this button instead of an action. */
   manualContinue?: boolean;
   continueLabel?: string;
-  /** Show the Continue fallback after N seconds even on auto-detected steps. */
-  continueAfterSec?: number;
-  /**
-   * When the user advances this step MANUALLY (the Continue fallback) rather than
-   * doing the action themselves, navigate to this tab first — so a "Take me to
-   * Settings" fallback actually lands them there instead of stranding them on the
-   * next step's screen. Not applied on auto-detected success (they already moved).
-   */
-  advanceNavigateTo?: string;
-  /** In voice mode, the command the user should speak for this step. */
-  voiceCommandHint?: string;
 }
+
+const isExpanded = (d: ChatDetent | null): boolean =>
+  d === "half" || d === "full";
+const isShrunk = (d: ChatDetent | null): boolean =>
+  d === "collapsed" || d === "pill";
 
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: "welcome",
-    title: "Welcome to Eliza 👋",
-    body: "Eliza is your AI agent. This 90-second tour shows you the one thing that runs everything: the chat. Ready?",
+    title: "Meet Eliza",
+    body: "Your AI agent. The chat runs everything — here's the quick version.",
     voiceLine:
-      "Welcome to Eliza, your A I agent. In about ninety seconds I'll show you how everything works. The secret is the chat. Let's go.",
+      "Hi, I'm Eliza, your A I agent. The chat runs everything — here's the quick version.",
     targetSelector: null,
-    blockOutside: true,
     manualContinue: true,
-    continueLabel: "Start the tour",
+    continueLabel: "Start",
   },
   {
-    id: "meet-chat",
-    title: "This is your chat",
-    body: "The bar at the bottom is your chat — it floats over every screen and is how you talk to Eliza by text or voice. Tap it, then continue.",
-    voiceLine:
-      "The bar at the bottom is your chat. It floats over every screen and it's how you talk to Eliza, by text or voice. Tap it, then press continue.",
-    targetSelector: '[data-testid="chat-composer-textarea"]',
-    blockOutside: false,
-    manualContinue: true,
-    continueLabel: "Got it",
-  },
-  {
-    id: "expand-chat",
-    title: "Make it bigger",
-    body: "Drag the little handle up — or tap it — to expand the chat to full screen for longer conversations.",
-    voiceLine:
-      "Now make the chat bigger. Drag the handle at the top of the chat upward, or just tap it, to expand it to full screen.",
-    targetSelector: '[data-testid="chat-sheet-grabber"]',
-    blockOutside: false,
-    isComplete: (s) => s.chatExpanded,
-    continueLabel: "Skip this",
-    continueAfterSec: 6,
-  },
-  {
-    id: "minimize-chat",
-    title: "Shrink it to a pill",
-    body: "Now swipe down on the handle (or tap it) to collapse the whole chat into a small floating pill, out of your way.",
-    voiceLine:
-      "Great. Now shrink it down. Swipe down on the handle, or tap it, to collapse the chat into a small floating pill.",
-    targetSelector: '[data-testid="chat-sheet-grabber"]',
-    blockOutside: false,
-    isComplete: (s) => s.chatPilled,
-    continueLabel: "Skip this",
-    continueAfterSec: 6,
-  },
-  {
-    id: "reopen-chat",
-    title: "Bring it back",
-    body: "There's your pill. Tap it to open the chat again — it's always one tap away, on every screen.",
-    voiceLine:
-      "There's your pill. Tap it to open the chat again. It's always one tap away, on every screen.",
+    id: "open-chat",
+    title: "Open the chat",
+    body: "Tap the pill to open it.",
+    voiceLine: "Tap the pill to open the chat.",
     targetSelector: '[data-testid="chat-pill"]',
-    blockOutside: false,
-    isComplete: (s) => s.chatOpen && !s.chatPilled,
-    continueLabel: "Skip this",
-    continueAfterSec: 6,
+    enterChat: "pill",
+    isDone: (s) => s.detent != null && s.detent !== "pill",
   },
   {
-    id: "switch-by-text",
-    title: "Just ask to go somewhere",
-    body: "You can move around Eliza by talking to it. Open the chat and type “open settings”, then press Enter.",
-    voiceLine:
-      "Here's the magic: you can move around Eliza just by asking. Open the chat and type, open settings, then press enter.",
-    targetSelector: '[data-testid="chat-composer-textarea"]',
-    blockOutside: false,
-    isComplete: (s) => s.tab === "settings",
-    manualContinue: true,
-    continueAfterSec: 18,
-    continueLabel: "Take me to Settings",
-    advanceNavigateTo: "settings",
-    voiceCommandHint: "open settings",
+    id: "resize-chat",
+    title: "Resize it",
+    body: "Drag the handle up to make the chat bigger.",
+    voiceLine: "Drag the handle up to make the chat bigger.",
+    targetSelector: '[data-testid="chat-sheet-grabber"]',
+    enterChat: "rest",
+    isDone: (s) => isExpanded(s.detent),
+    beat2: {
+      body: "Now drag it back down to tuck it away.",
+      voiceLine: "Now drag it back down to tuck it away.",
+      isDone: (s) => isShrunk(s.detent),
+    },
   },
   {
-    id: "settings-tour",
-    title: "You're in Settings",
-    body: "This is where you choose your AI model, turn voice on, connect apps, and pick local vs cloud. Have a look, then continue.",
+    id: "ask-to-navigate",
+    title: "Just ask",
+    body: "You can ask Eliza to go anywhere. I've typed it for you — tap send.",
     voiceLine:
-      "Nicely done — you navigated by talking. This is Settings, where you choose your A I model, turn on voice, connect apps, and pick local or cloud. Take a look, then continue.",
-    targetSelector: null,
-    blockOutside: false,
-    manualContinue: true,
-    continueLabel: "Got it",
+      "You can ask Eliza to go anywhere. I've typed it for you — tap send.",
+    targetSelector: '[data-testid="chat-composer-action"]',
+    enterChat: "rest",
+    prefill: "open settings",
+    isDone: (s) => s.prefillSent,
+    navigateOnDone: "settings",
+    lockTabs: ["chat", "settings"],
+    doneBody: "Here's Settings.",
   },
   {
-    id: "say-it",
-    title: "Now try your voice",
-    body: "Tap the mic in the chat and say “go home”. Eliza listens and navigates — hands-free.",
-    voiceLine:
-      "Let's try voice. Tap the microphone in the chat and say, go home. Eliza will take you there, hands free.",
-    // Spotlight the actual mic control (the step says "tap the mic"), not the
-    // collapsed chat pill — the composer (and its mic) is what's on screen once
-    // the chat is open, so targeting the pill left the step with no glow.
+    id: "use-voice",
+    title: "Talk to it",
+    body: "Tap the mic and say “go home”.",
+    voiceLine: "You can talk to me, too. Tap the mic and say: go home.",
     targetSelector: '[data-testid="chat-composer-mic"]',
-    blockOutside: false,
-    isComplete: (s) => s.tab === "chat" || s.tab === "views",
-    manualContinue: true,
-    continueAfterSec: 16,
-    continueLabel: "Skip voice",
-    advanceNavigateTo: "chat",
-    voiceCommandHint: "go home",
-  },
-  {
-    id: "help",
-    title: "Stuck? Open Help",
-    body: "The Help tile on your home screen has searchable answers for everything — what Eliza is, models, voice, privacy, connecting apps, and more.",
-    voiceLine:
-      "Any time you're stuck, open the Help tile on your home screen. It has searchable answers for everything.",
-    targetSelector: '[data-testid="home-tile-help"]',
-    blockOutside: false,
-    manualContinue: true,
-    continueLabel: "Finish",
+    enterChat: "rest",
+    isDone: (s) => /\bhome\b/i.test(s.transcript),
+    navigateOnDone: "chat",
+    lockTabs: ["settings", "chat"],
+    doneBody: "Welcome home.",
   },
   {
     id: "done",
-    title: "You're ready 🎉",
-    body: "That's it! The chat is your remote control — tap, expand, type, or talk. Re-run this tour any time from the Tutorial tile.",
+    title: "You're set",
+    body: "The chat is your remote — tap, drag, type, or talk. Re-run this tour anytime from the Tutorial tile.",
     voiceLine:
-      "That's it — you're ready. The chat is your remote control. Tap, expand, type, or talk. You can re-run this tour any time from the Tutorial tile. Have fun with Eliza.",
+      "That's it. The chat is your remote — tap, drag, type, or talk. Have fun.",
     targetSelector: null,
-    blockOutside: true,
     manualContinue: true,
     continueLabel: "Done",
   },
