@@ -133,7 +133,7 @@ plugins/plugin-elizacloud/
       setup-observer.ts             CloudSetupObserver interface
       reconnect.ts                  Reconnect helpers
       validate-url.ts               validateCloudBaseUrl
-      duffel-client.ts              Duffel travel/flight booking client (DuffelClient, SearchFlightsRequest, readDuffelConfigFromEnv)
+      duffel-client.ts              Duffel travel/flight booking client (searchFlights, createOrder, readDuffelConfigFromEnv, DuffelConfigError)
       lifeops-schedule-sync-client.ts  LifeOps schedule sync client (resolveLifeOpsScheduleSyncConfig)
       lifeops-schedule-sync-contracts.ts  LifeOps schedule sync contract types
       managed-payment-clients.ts    Managed payment client helpers

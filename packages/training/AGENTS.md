@@ -189,7 +189,7 @@ calls). That script:
 
 1. Assembles files matching the bundle layout contract.
 2. Runs every quantization recipe required for the tier.
-3. Calls `make -C ../../inference/verify reference-test` and the
+3. Calls `make -C ../../plugins/plugin-local-inference/native/verify reference-test` and the
    relevant `metal_verify` / `vulkan_verify` runs against the
    quantized artifacts. **Hardware verification is required.**
 4. Runs the eval harness: text-eval, voice-rtf, e2e-loop, 30-turn.
