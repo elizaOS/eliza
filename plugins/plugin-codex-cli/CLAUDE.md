@@ -30,11 +30,10 @@ plugins/plugin-codex-cli/
   index.node.ts             Node build re-export (re-exports index.ts default)
   index.browser.ts          Unsupported browser export; plugin is node-only
   auto-enable.ts            Auto-enable module (shouldEnable + shouldForce); referenced by package.json elizaos.plugin.autoEnableModule
-  src/
-    codex-backend.ts        CodexBackend class — HTTP client for ChatGPT Codex /responses SSE endpoint; FIFO queue + jitter
-    codex-auth.ts           OAuth token load/save/refresh with file-level lock; isExpired() JWT check
-    sse-parser.ts           Spec-compliant SSE AsyncGenerator parser for ReadableStream<Uint8Array>
-    tool-format-openai.ts   toOpenAITool() / toOpenAITools() — maps elizaOS ToolDefinition to OpenAI function tool shape
+  codex-backend.ts          CodexBackend class — HTTP client for ChatGPT Codex /responses SSE endpoint; FIFO queue + jitter
+  codex-auth.ts             OAuth token load/save/refresh with file-level lock; isExpired() JWT check
+  sse-parser.ts             Spec-compliant SSE AsyncGenerator parser for ReadableStream<Uint8Array>
+  tool-format-openai.ts     toOpenAITool() / toOpenAITools() — maps elizaOS ToolDefinition to OpenAI function tool shape
   __tests__/
     codex-backend.test.ts   Unit tests for CodexBackend, message translation, and auth
   build.ts                  Bun.build script (node + browser bundles via Bun bundler; declarations via tsc)
@@ -88,7 +87,7 @@ No auto-enable env var trigger exists. Auto-enable logic lives in `auto-enable.t
 
 ## Conventions / gotchas
 
-- **Node-only.** The browser export (`index.browser.ts`) exists to satisfy the build; the plugin will not function in a browser runtime. The `src/codex-auth.ts` module uses `node:fs`, `node:crypto`, and `node:os`.
+- **Node-only.** The browser export (`index.browser.ts`) exists to satisfy the build; the plugin will not function in a browser runtime. The `codex-auth.ts` module uses `node:fs`, `node:crypto`, and `node:os`.
 - **Single in-flight FIFO queue.** `CodexBackend` chains requests via `this.tail` promise — all calls on the same backend instance serialize. One `CodexBackend` instance per runtime is maintained via `backendByRuntime` WeakMap in `index.ts`.
 - **Base URL validation.** `CODEX_BASE_URL` must target `https://chatgpt.com` or `localhost`; any other host throws at backend construction to prevent OAuth token exfiltration.
 - **401 auto-refresh.** On a 401 from the Responses endpoint, the backend refreshes the OAuth token (with a file lock) and retries exactly once.

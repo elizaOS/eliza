@@ -85,7 +85,23 @@ if (asset.sha256) {
 }
 
 log('extracting artifact bundle at repo root…');
-execFileSync('tar', ['-xzf', tmp, '-C', ROOT], { stdio: 'inherit' });
-rmSync(tmp, { force: true });
-writeFileSync(MARKER, version + '\n');
-log(`done — artifacts synced to ${version}`);
+// Prefer the Windows system bsdtar (System32\tar.exe): a GNU tar that may be
+// first on PATH (Git-for-Windows / MSYS) misreads a `C:\...` archive path as an
+// rsh `host:path` and dies with "Cannot connect to C: resolve failed". bsdtar
+// (shipped with Windows 10 1803+/11) handles drive-letter paths natively.
+// Like the download step above, never let extraction failure block `bun install`.
+const tarBin =
+  process.platform === 'win32'
+    ? join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')
+    : 'tar';
+try {
+  execFileSync(tarBin, ['-xzf', tmp, '-C', ROOT], { stdio: 'inherit' });
+  writeFileSync(MARKER, version + '\n');
+  log(`done — artifacts synced to ${version}`);
+} catch (err) {
+  warn(`extraction failed: ${err.message}`);
+  warn(`the repo is usable, but large fixtures/binaries are absent.`);
+  warn(`retry later with:  bun run sync:artifacts`);
+} finally {
+  try { rmSync(tmp, { force: true }); } catch {}
+}

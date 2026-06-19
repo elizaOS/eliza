@@ -14,7 +14,6 @@ import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
-import { CloudDashboard } from "../pages/ElizaCloudDashboard";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
@@ -183,7 +182,12 @@ export function CloudPanel({
           {t("providerpanels.cloud", { defaultValue: "Cloud" })}
         </SettingsActionButton>
       </ProviderPanelHeader>
-      <CloudDashboard />
+      {/*
+       * The buried account + billing dashboard that used to live here moved to
+       * the dedicated Settings → Cloud sections (Account & Profile, Billing &
+       * Credits). The AI Model panel keeps only the cloud routing toggle (above)
+       * and the model routing controls (below).
+       */}
       <ProviderRoutingPanel
         largeModelOptions={largeModelOptions}
         cloudModelSchema={cloudModelSchema}

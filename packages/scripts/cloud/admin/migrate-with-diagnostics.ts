@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import pg from "pg";
 
 const { Client } = pg;
@@ -198,7 +199,11 @@ async function createPGliteClient(url: string): Promise<MigrationClient> {
 }
 
 async function createPgClient(url: string): Promise<MigrationClient> {
-  const client = new Client({ connectionString: url });
+  const { url: clientUrl, ssl: clientSsl } = enforceTlsForRemote(url);
+  const client = new Client({
+    connectionString: clientUrl,
+    ...(clientSsl ? { ssl: clientSsl } : {}),
+  });
   await client.connect();
   return {
     query: async <T>(text: string, params?: unknown[]) => {

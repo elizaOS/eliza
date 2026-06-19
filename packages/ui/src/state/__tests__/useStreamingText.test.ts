@@ -108,6 +108,41 @@ describe("applyStreamingTextModification", () => {
     expect(harness.current[0].failureKind).toBeUndefined();
   });
 
+  it("complete stamps reasoning alongside the final text", () => {
+    const initial = [assistantMsg("a1", "partial")];
+    const harness = makeSetter(initial);
+
+    applyStreamingTextModification(harness.setter, {
+      messageId: "a1",
+      mode: "complete",
+      fullText: "Done",
+      reasoning: "Considered the options, picked the short answer.",
+    });
+
+    expect(harness.current[0].text).toBe("Done");
+    expect(harness.current[0].reasoning).toBe(
+      "Considered the options, picked the short answer.",
+    );
+  });
+
+  it("complete stamps reasoning even when the text already matched", () => {
+    const initial = [assistantMsg("a1", "Done")];
+    const harness = makeSetter(initial);
+
+    applyStreamingTextModification(harness.setter, {
+      messageId: "a1",
+      mode: "complete",
+      fullText: "Done",
+      reasoning: "Late reasoning attached on the done event.",
+    });
+
+    expect(harness.current).not.toBe(initial);
+    expect(harness.current[0].text).toBe("Done");
+    expect(harness.current[0].reasoning).toBe(
+      "Late reasoning attached on the done event.",
+    );
+  });
+
   it("fail sets failureKind without touching text", () => {
     const initial = [assistantMsg("a1", "Streaming text")];
     const harness = makeSetter(initial);

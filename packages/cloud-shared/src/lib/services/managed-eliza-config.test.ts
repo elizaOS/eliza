@@ -134,4 +134,43 @@ describe("managed Eliza environment", () => {
       "https://waifu.fun https://staging.waifu.fun",
     );
   });
+
+  test("pins embeddings to the elizacloud Worker base so /embeddings never 503s", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import(
+      "./managed-eliza-config"
+    );
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+    });
+
+    // Embeddings must target the elizacloud Worker base (which has a working
+    // /embeddings route), NOT fall back to the BitRouter text base (no
+    // /embeddings → 503). By default it matches the general cloud API base.
+    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
+    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_URL).toBe(
+      result.environmentVars.ELIZAOS_CLOUD_BASE_URL,
+    );
+  });
+
+  test("honors an explicit per-agent embedding URL override", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import(
+      "./managed-eliza-config"
+    );
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+      existingEnv: {
+        ELIZAOS_CLOUD_EMBEDDING_URL: "https://custom.example.com/api/v1",
+      },
+    });
+
+    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_URL).toBe(
+      "https://custom.example.com/api/v1",
+    );
+  });
 });

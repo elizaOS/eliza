@@ -66,6 +66,37 @@ export const FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT =
 // ── Sidebar sync ─────────────────────────────────────────────────────────
 export const SELF_STATUS_SYNC_EVENT = "eliza:self-status-refresh" as const;
 
+// ── Tutorial ─────────────────────────────────────────────────────────────
+/**
+ * The interactive tour drives the floating chat into a known state at the start
+ * of each frame (and pre-fills the composer for the guided "ask to navigate"
+ * demo) via this event; {@link ContinuousChatOverlay} applies it. Keeps the tour
+ * decoupled from the overlay's internal detent state (same pattern as the slash
+ * navigation events).
+ */
+export const TUTORIAL_CHAT_CONTROL_EVENT =
+  "eliza:tutorial:chat-control" as const;
+
+export interface TutorialChatControlDetail {
+  /**
+   * `pill` collapses the chat to the floating pill; `rest` opens it to the peek
+   * detent (grabber + composer visible, history hidden); `expand` opens it
+   * full-screen; `prefill` opens to rest and sets the composer draft to `text`.
+   */
+  action: "pill" | "rest" | "expand" | "prefill";
+  text?: string;
+}
+
+/** Dispatch a tutorial chat-control instruction to the overlay. */
+export function dispatchTutorialChatControl(
+  detail: TutorialChatControlDetail,
+): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(TUTORIAL_CHAT_CONTROL_EVENT, { detail }),
+  );
+}
+
 export interface AppEmoteEventDetail {
   emoteId: string;
   path: string;
@@ -101,7 +132,8 @@ export type ElizaWindowEventName =
   | typeof ELIZA_CLOUD_STATUS_UPDATED_EVENT
   | typeof VRM_TELEPORT_COMPLETE_EVENT
   | typeof FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT
-  | typeof SELF_STATUS_SYNC_EVENT;
+  | typeof SELF_STATUS_SYNC_EVENT
+  | typeof TUTORIAL_CHAT_CONTROL_EVENT;
 
 export type ElizaEventName = ElizaDocumentEventName | ElizaWindowEventName;
 

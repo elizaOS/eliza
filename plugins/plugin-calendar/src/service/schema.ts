@@ -1,21 +1,22 @@
 /**
  * Calendar Drizzle schema.
  *
- * The calendar tables continue to live in the `app_lifeops` PostgreSQL schema
- * with their original table and column names (`life_calendar_events`,
- * `life_calendar_sync_states`) so rows written while the calendar domain was
- * part of `@elizaos/plugin-personal-assistant` remain valid after extraction. Do not
- * rename the schema, tables, or columns without a data migration.
+ * The calendar tables (`life_calendar_events`, `life_calendar_sync_states`)
+ * were carved out of `@elizaos/plugin-personal-assistant`'s `app_lifeops`
+ * schema into `app_calendar`, owned by this plugin. Table + column names are
+ * preserved verbatim so the non-destructive `CalendarMigrationService` can copy
+ * existing `app_lifeops` rows across on first boot. Do not rename the tables or
+ * columns without updating that migration.
  *
- * Raw SQL in this package must qualify table names with the `app_lifeops.`
+ * Raw SQL in this package must qualify table names with the `app_calendar.`
  * prefix; the bare `life_*` names do not resolve in the default search path.
  */
 
 import { boolean, pgSchema, text, unique } from "drizzle-orm/pg-core";
 
-export const appLifeopsPgSchema = pgSchema("app_lifeops");
+export const calendarPgSchema = pgSchema("app_calendar");
 
-export const calendarEvents = appLifeopsPgSchema.table(
+export const calendarEvents = calendarPgSchema.table(
   "life_calendar_events",
   {
     id: text("id").primaryKey(),
@@ -51,7 +52,7 @@ export const calendarEvents = appLifeopsPgSchema.table(
   ],
 );
 
-export const calendarSyncStates = appLifeopsPgSchema.table(
+export const calendarSyncStates = calendarPgSchema.table(
   "life_calendar_sync_states",
   {
     id: text("id").primaryKey(),

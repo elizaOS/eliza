@@ -11,8 +11,9 @@
 import { randomUUID } from "node:crypto";
 import { Redis as UpstashRedis } from "@upstash/redis";
 import { createClient } from "redis";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { KvCacheAdapter, type KvNamespaceLike } from "./adapters/kv-cache-adapter";
 import { MemoryCacheAdapter } from "./adapters/memory-cache-adapter";
 import { NodeRedisAdapter } from "./adapters/node-redis-adapter";
 import { SocketRedisAdapter } from "./adapters/socket-redis-adapter";
@@ -120,7 +121,7 @@ export class CacheClient {
     );
   }
 
-  private getBackendPreference(): "auto" | "redis" | "redis-rest" | "wadis" | "memory" {
+  private getBackendPreference(): "auto" | "redis" | "redis-rest" | "wadis" | "kv" | "memory" {
     const env = getCloudAwareEnv();
     const raw = (env.CACHE_BACKEND || env.CACHE_ADAPTER || env.CACHE_DRIVER || "auto")
       .trim()
@@ -129,8 +130,19 @@ export class CacheClient {
     if (raw === "native-redis" || raw === "redis-native") return "redis";
     if (raw === "upstash" || raw === "rest" || raw === "redis-rest") return "redis-rest";
     if (raw === "wadis" || raw === "wasm-redis" || raw === "wasm_redis") return "wadis";
+    if (raw === "kv" || raw === "cloudflare-kv" || raw === "workers-kv") return "kv";
     if (raw === "memory" || raw === "in-memory" || raw === "in_memory") return "memory";
     return "auto";
+  }
+
+  /**
+   * The Cloudflare KV namespace bound as `CACHE_KV`, if present. KV is the only
+   * Worker-reachable cache backend (the Worker can't reliably open raw TCP to an
+   * external Redis), so we prefer it inside the Worker. Object bindings aren't
+   * exposed by `getCloudAwareEnv()`; read it from the request binding store.
+   */
+  private getKvBinding(): KvNamespaceLike | undefined {
+    return getCloudBinding<KvNamespaceLike>("CACHE_KV");
   }
 
   private initializeWadis(): void {
@@ -227,6 +239,23 @@ export class CacheClient {
     if (!inWorker && (backendPreference === "wadis" || redisUrl === "wadis://local")) {
       this.initializeWadis();
       return;
+    }
+
+    // Cloudflare Workers cannot reliably open raw TCP to an external Redis: the
+    // `cloudflare:sockets` connection to Railway's public proxy hangs under load
+    // (no connect timeout → the whole request stalls). So when a KV namespace is
+    // bound (`CACHE_KV`), prefer it for the Worker's cache — KV is HTTP-native
+    // and reliable from Workers. Atomic/list ops degrade (see KvCacheAdapter);
+    // supportsAtomicOperations() reports false so locks use the dummy path.
+    if (inWorker && backendPreference !== "redis-rest" && backendPreference !== "redis") {
+      const kv = this.getKvBinding();
+      if (kv) {
+        this.redis = new KvCacheAdapter(kv);
+        this.nativeRedisConnectPromise = null;
+        this.nativeRedisReady = true;
+        logger.info("[Cache] ✓ Cache client initialized with Cloudflare KV");
+        return;
+      }
     }
 
     // Workers can't speak raw TCP via the `redis` package, but `cloudflare:sockets`
@@ -351,7 +380,10 @@ export class CacheClient {
    */
   supportsAtomicOperations(): boolean {
     this.initialize();
-    return this.enabled !== false;
+    if (this.enabled === false) return false;
+    // Cloudflare KV is eventually consistent with no atomic SET NX / INCR, so
+    // callers (distributed locks) must fall back to their non-distributed path.
+    return this.redis?.backend !== "cloudflare-kv";
   }
 
   /**

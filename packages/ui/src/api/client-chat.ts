@@ -417,6 +417,8 @@ declare module "./client-base" {
       text: string;
       agentName: string;
       completed: boolean;
+      /** Agent reasoning/thought for this turn, when the model emitted one. */
+      reasoning?: string;
       noResponseReason?: "ignored";
       usage?: ChatTokenUsage;
       /** See sendConversationMessage above. */

@@ -182,8 +182,12 @@ async function generateEvaluationOutput(params: {
 }): Promise<unknown> {
 	const { runtime, prompt, schema } = params;
 	const messages = [{ role: "user" as const, content: prompt }];
+	// Post-turn evaluation runs on the SMALL model: it is a cheap, frequent,
+	// structured extraction/classification pass (all active evaluators share one
+	// merged call), not generation — the large model is wasted cost here,
+	// especially for local-first tiers.
 	try {
-		return await runtime.useModel(ModelType.TEXT_LARGE, {
+		return await runtime.useModel(ModelType.TEXT_SMALL, {
 			messages,
 			responseSchema: schema,
 			responseFormat: { type: "json_object" },
@@ -196,7 +200,7 @@ async function generateEvaluationOutput(params: {
 			"Post-turn evaluator schema request rejected; retrying JSON-object fallback",
 		);
 		try {
-			return await runtime.useModel(ModelType.TEXT_LARGE, {
+			return await runtime.useModel(ModelType.TEXT_SMALL, {
 				messages,
 				responseFormat: { type: "json_object" },
 				temperature: 0,
@@ -207,7 +211,7 @@ async function generateEvaluationOutput(params: {
 				{ src: "service:evaluator" },
 				"Post-turn evaluator JSON-object fallback rejected; retrying plain JSON prompt",
 			);
-			return await runtime.useModel(ModelType.TEXT_LARGE, {
+			return await runtime.useModel(ModelType.TEXT_SMALL, {
 				messages,
 				temperature: 0,
 			});

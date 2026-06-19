@@ -292,6 +292,137 @@ public class ElizaAgentService extends Service {
         ).toString();
     }
 
+    /**
+     * Streaming variant of {@link #requestLocalAgent}. Where that buffers the
+     * whole loopback response into one JSON string (so an SSE body's token
+     * frames arrive all at once and the chat reply never streams on mobile),
+     * this opens the same request and reads the response InputStream
+     * INCREMENTALLY, pushing each fragment to {@code onEvent} as a small JSON
+     * envelope the AgentPlugin maps to Capacitor events:
+     *   {"type":"response","status":..,"statusText":..,"headers":{..}}  (once, first)
+     *   {"type":"chunk","dataBase64":".."}                              (per read)
+     *   {"type":"complete"}  or  {"type":"complete","error":".."}        (terminal)
+     *
+     * Single attempt by design: a connect failure emits a terminal error event
+     * and the WebView falls back to the buffered {@link #requestLocalAgent}
+     * (which carries the cold-load connect retry), so non-idempotent POSTs are
+     * never replayed here. Runs on the caller's thread (AgentPlugin spawns one).
+     */
+    public static void requestLocalAgentStream(String requestJson, java.util.function.Consumer<String> onEvent) {
+        try {
+            JSONObject request = requestJson == null || requestJson.trim().isEmpty()
+                ? new JSONObject()
+                : new JSONObject(requestJson);
+            String path = request.optString("path", "").trim();
+            if (!isSafeLocalAgentPath(path)) {
+                throw new IllegalArgumentException("Local agent request requires a path that starts with /");
+            }
+            String method = request.optString("method", "GET").trim().toUpperCase(Locale.US);
+            if (!method.matches("^[A-Z]{1,16}$")) {
+                throw new IllegalArgumentException("Unsupported HTTP method");
+            }
+            int timeoutMs = request.optInt("timeoutMs", LOCAL_REQUEST_DEFAULT_TIMEOUT_MS);
+            if (isLongRunningInferencePath(path)) {
+                timeoutMs = Math.max(timeoutMs, LOCAL_INFERENCE_REQUEST_TIMEOUT_MS);
+            }
+            timeoutMs = Math.max(1_000, Math.min(timeoutMs, LOCAL_REQUEST_MAX_TIMEOUT_MS));
+            JSONObject headers = request.optJSONObject("headers");
+            if (headers == null) headers = new JSONObject();
+            Object rawBody = request.opt("body");
+            String body = rawBody == null || rawBody == JSONObject.NULL ? null : rawBody.toString();
+            streamLocalAgentRequest(method, path, headers, body, timeoutMs, currentLocalAgentToken, onEvent);
+        } catch (Exception error) {
+            emitStreamComplete(onEvent, error.getMessage() == null ? "Local agent stream failed" : error.getMessage());
+        }
+    }
+
+    private static void streamLocalAgentRequest(
+        String method,
+        String path,
+        JSONObject headers,
+        String body,
+        int timeoutMs,
+        String token,
+        java.util.function.Consumer<String> onEvent
+    ) throws IOException, JSONException {
+        byte[] bodyBytes = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
+        if (bodyBytes != null && bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
+            throw new IOException("Request body is too large");
+        }
+
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(LOCAL_AGENT_BASE_URL + path);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod(method);
+            conn.setConnectTimeout(timeoutMs);
+            conn.setReadTimeout(timeoutMs);
+            conn.setInstanceFollowRedirects(false);
+            conn.setUseCaches(false);
+            applyLocalAgentHeaders(conn, headers);
+            if (token != null && !token.trim().isEmpty() && !hasHeader(headers, "authorization")) {
+                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            }
+            if (bodyBytes != null && !"GET".equals(method) && !"HEAD".equals(method)) {
+                if (!hasHeader(headers, "content-type")) {
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                }
+                conn.setDoOutput(true);
+                try (OutputStream out = conn.getOutputStream()) {
+                    out.write(bodyBytes);
+                    out.flush();
+                }
+            }
+
+            int status = conn.getResponseCode();
+            JSONObject responseHeaders = new JSONObject();
+            for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet()) {
+                String key = entry.getKey();
+                List<String> values = entry.getValue();
+                if (key == null || values == null || values.isEmpty()) continue;
+                responseHeaders.put(key.toLowerCase(Locale.US), String.join(", ", values));
+            }
+            onEvent.accept(new JSONObject()
+                .put("type", "response")
+                .put("status", status)
+                .put("statusText", conn.getResponseMessage() == null ? "" : conn.getResponseMessage())
+                .put("headers", responseHeaders)
+                .toString());
+
+            // Read the body as it arrives. The agent flushes each SSE frame, so a
+            // blocking read returns per-frame rather than waiting for the whole
+            // body — that is exactly the incremental delivery the WebView needs.
+            InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            if (stream != null) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = stream.read(buffer)) != -1) {
+                    if (read == 0) continue;
+                    String dataBase64 = android.util.Base64.encodeToString(
+                        java.util.Arrays.copyOf(buffer, read), android.util.Base64.NO_WRAP);
+                    onEvent.accept(new JSONObject()
+                        .put("type", "chunk")
+                        .put("dataBase64", dataBase64)
+                        .toString());
+                }
+            }
+            emitStreamComplete(onEvent, null);
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private static void emitStreamComplete(java.util.function.Consumer<String> onEvent, String error) {
+        try {
+            JSONObject complete = new JSONObject().put("type", "complete");
+            if (error != null) complete.put("error", error);
+            onEvent.accept(complete.toString());
+        } catch (JSONException ignored) {
+            // A complete event with no error is the worst case if JSON fails.
+            onEvent.accept("{\"type\":\"complete\"}");
+        }
+    }
+
     private static boolean isSafeLocalAgentPath(String path) {
         return path != null
             && path.startsWith("/")

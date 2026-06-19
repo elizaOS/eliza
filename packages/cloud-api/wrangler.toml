@@ -72,10 +72,12 @@ crons = [
 binding = "BLOB"
 bucket_name = "eliza-cloud-blob"
 
-# Cache + rate-limit storage runs through Upstash Redis REST in Worker envs
-# (set KV_REST_API_URL / KV_REST_API_TOKEN as Wrangler secrets). Shared-runtime
-# chat history depends on this being durable across Worker requests. Local dev
-# still uses embedded Wadis by default when no Redis credentials are present.
+# Cache + rate-limit storage runs through Railway TCP Redis via REDIS_URL in
+# Worker envs (in-Worker SocketRedis, RESP2 over cloudflare:sockets); set
+# REDIS_URL as a Wrangler secret. Upstash REST (KV_REST_API_URL /
+# KV_REST_API_TOKEN) remains a legacy fallback only. Shared-runtime chat history
+# depends on this being durable across Worker requests. Local dev still uses
+# embedded Wadis by default when no Redis credentials are present.
 
 # Vectorize — embeddings (uncomment after `wrangler vectorize create`)
 # [[vectorize]]
@@ -83,8 +85,8 @@ bucket_name = "eliza-cloud-blob"
 # index_name = "eliza-cloud-embeddings"
 
 # -----------------------------------------------------------------------------
-# Queue: Stripe webhook fan-out runs on Redis (Upstash REST in cloud, embedded
-# Wadis locally), not Cloudflare Queues. The webhook route LPUSHes a JSON
+# Queue: Stripe webhook fan-out runs on Redis (Railway TCP via REDIS_URL in
+# cloud, embedded Wadis locally), not Cloudflare Queues. The webhook route LPUSHes a JSON
 # envelope; the `* * * * *` cron fires `/api/cron/process-stripe-queue`
 # which drains a bounded batch via the queue helper in
 # `packages/lib/queue/redis-queue.ts`. Failed messages are retried with
@@ -133,7 +135,10 @@ CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
 CACHE_ENABLED = "true"
-CACHE_BACKEND = "redis-rest"
+# auto: in-Worker SocketRedis (RESP2 over cloudflare:sockets) when REDIS_URL
+# (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
+# would force the dead Upstash path and skip Railway Redis (client.ts:235).
+CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
@@ -157,7 +162,10 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 # publishes it; if names diverge, Agent B's c.env.X usage wins — update this
 # file and leave a note in cloud/INFRA.md).
 #
-#   DATABASE_URL                       Neon Postgres
+#   DATABASE_URL                       Railway Postgres (Worker reaches it via the HYPERDRIVE binding;
+#       DATABASE_URL is the origin string for the sidecar/scripts — public-proxy DSNs need
+#       ?sslmode=no-verify or DATABASE_SSL_NO_VERIFY=true for direct node-pg consumers)
+#   REDIS_URL                          Railway TCP Redis (primary cache/queue/rate-limit; rediss://...)
 #   STEWARD_API_URL                    Optional Steward base URL override;
 #       defaults to NEXT_PUBLIC_STEWARD_API_URL or NEXT_PUBLIC_API_URL + /steward
 #   STEWARD_SESSION_SECRET             HS256 secret for Steward JWT verify (jose); MUST match Steward host
@@ -173,9 +181,9 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STRIPE_SECRET_KEY                  Stripe billing
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
-#   KV_REST_API_URL                    Upstash Redis (rate-limit/cache fallback)
-#   KV_REST_API_TOKEN                  Upstash auth
-#   KV_REST_API_READ_ONLY_TOKEN        Upstash read-only token
+#   KV_REST_API_URL                    Upstash Redis REST (LEGACY fallback only; primary is REDIS_URL)
+#   KV_REST_API_TOKEN                  Upstash auth (legacy fallback)
+#   KV_REST_API_READ_ONLY_TOKEN        Upstash read-only token (legacy fallback)
 #   BITROUTER_API_KEY                 BitRouter proxy bearer token
 #   BITROUTER_BASE_URL                 BitRouter proxy base URL (Railway service or BitRouter Cloud)
 #   ANTHROPIC_API_KEY                  Claude
@@ -293,7 +301,10 @@ CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
 CACHE_ENABLED = "true"
-CACHE_BACKEND = "redis-rest"
+# auto: in-Worker SocketRedis (RESP2 over cloudflare:sockets) when REDIS_URL
+# (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
+# would force the dead Upstash path and skip Railway Redis (client.ts:235).
+CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
@@ -319,6 +330,13 @@ bucket_name = "eliza-cloud-blob-staging"
 [[env.staging.hyperdrive]]
 binding = "HYPERDRIVE"
 id = "ef65eb94c74144a3a3848ad1945571fb"
+
+# KV is the Worker's cache backend (CacheClient). Workers can't reliably open raw
+# TCP to an external Redis (Railway's public proxy hangs under load), so the Worker
+# caches auth/api-key/model-catalog in KV instead of Redis.
+[[env.staging.kv_namespaces]]
+binding = "CACHE_KV"
+id = "f7e24faaff734e7c8cd8e12b093c3571"
 
 [env.production]
 name = "eliza-cloud-api-prod"
@@ -390,7 +408,10 @@ CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
 CACHE_ENABLED = "true"
-CACHE_BACKEND = "redis-rest"
+# auto: in-Worker SocketRedis (RESP2 over cloudflare:sockets) when REDIS_URL
+# (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
+# would force the dead Upstash path and skip Railway Redis (client.ts:235).
+CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
@@ -412,7 +433,15 @@ bucket_name = "eliza-cloud-blob"
 
 # Hyperdrive proxies the Worker's Postgres connection to Railway (workerd can't
 # reliably open a direct node-pg TCP/TLS connection to an external Postgres).
-# Inert until DATABASE_URL points at Railway (Neon uses the neon-http driver).
+# Inert until DATABASE_URL points at Railway (Neon uses the neon-serverless
+# WebSocket driver in client.ts, which bypasses this binding).
 [[env.production.hyperdrive]]
 binding = "HYPERDRIVE"
 id = "9f59e4ec65f048f7b87e29e7b9c5d728"
+
+# KV is the Worker's cache backend (CacheClient). Workers can't reliably open raw
+# TCP to an external Redis (Railway's public proxy hangs under load), so the Worker
+# caches auth/api-key/model-catalog in KV instead of Redis.
+[[env.production.kv_namespaces]]
+binding = "CACHE_KV"
+id = "1dafabf1293d4b6b97f61c5cc22d6fec"

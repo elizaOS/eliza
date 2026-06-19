@@ -47,15 +47,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "lifeops app window",
-    path: "/apps/lifeops",
-    readyChecks: [
-      { text: "LifeOps" },
-      { selector: '[data-testid="lifeops-nav-rail"]' },
-    ],
-    timeoutMs: 90_000,
-  },
-  {
     name: "plugins app window",
     path: "/apps/plugins",
     readyChecks: [{ text: "Browser Workspace" }, { text: "AI Providers" }],
@@ -269,7 +260,6 @@ const managerVisibleViewTileCases = [
   { viewId: "hyperliquid", path: "/hyperliquid" },
   { viewId: "hyperscape", path: "/hyperscape" },
   { viewId: "inbox", path: "/inbox" },
-  { viewId: "lifeops", path: "/lifeops" },
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
   { viewId: "orchestrator", path: "/orchestrator" },
@@ -312,7 +302,6 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
   { viewId: "companion", path: "/companion" },
-  { viewId: "lifeops", path: "/lifeops" },
   { viewId: "model-tester", path: "/model-tester" },
 ].map(({ viewId, path }) => ({
   viewId,

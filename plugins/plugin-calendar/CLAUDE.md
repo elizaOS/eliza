@@ -17,6 +17,14 @@ methods augmented onto `@elizaos/ui`, and the owner-facing calendar views.
   which injects a `CalendarConnectorGate` into `CalendarService` at init. Never
   import `@elizaos/plugin-personal-assistant` from this package — the dependency direction
   is `plugin-lifeops -> plugin-calendar`.
+- **Schema namespace is `app_calendar`.** The two calendar tables
+  (`life_calendar_events`, `life_calendar_sync_states`) were carved out of PA's
+  `app_lifeops` schema. `calendarPgSchema = pgSchema("app_calendar")` is
+  registered via the plugin `schema` field, and `CalendarMigrationService`
+  performs a non-destructive one-time copy of any existing `app_lifeops` rows
+  (the plugin-finances carve pattern: skip if source missing / target non-empty,
+  never drop the source). Requires `@elizaos/plugin-sql` loaded first. Raw SQL
+  must qualify table names with the `app_calendar.` prefix.
 - **Contract types live in `@elizaos/shared/contracts/calendar`** so `@elizaos/ui`
   (which types its `client` against them) and the plugins can both depend on them
   without a cycle.
@@ -35,6 +43,7 @@ src/
   api/               client-calendar.ts (side-effect client augmentation)
   components/        Calendar views + event editor (React)
   hooks/             useCalendarWeek
+  internal/          Shared utilities (normalize, format, sql helpers, errors, constants)
   ui.ts              UI entry (side-effectful)
 ```
 

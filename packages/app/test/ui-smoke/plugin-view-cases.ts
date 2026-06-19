@@ -22,8 +22,6 @@ export const VIEW_CASES: ViewCase[] = (
     ["contacts", "tui", "/contacts/tui"],
     ["hyperliquid", "gui", "/hyperliquid"],
     ["hyperliquid", "tui", "/hyperliquid/tui"],
-    ["lifeops", "gui", "/lifeops"],
-    ["lifeops", "tui", "/lifeops/tui"],
     ["focus", "gui", "/focus"],
     ["calendar", "gui", "/calendar"],
     ["documents", "gui", "/documents"],

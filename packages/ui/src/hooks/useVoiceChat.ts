@@ -1046,6 +1046,15 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       audioSourceRef.current = null;
     }
 
+    // Native TalkMode TTS — interrupt any in-flight native speak so barge-in
+    // actually silences the agent. Without this the awaited TalkMode.speak()
+    // plays to completion and the agent talks over the user.
+    if (Capacitor.isNativePlatform()) {
+      void getTalkModePlugin()
+        .stopSpeaking?.()
+        .catch(() => {});
+    }
+
     clearSpeechTimers();
     usingAudioAnalysisRef.current = false;
     setUsingAudioAnalysis(false);

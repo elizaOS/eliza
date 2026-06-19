@@ -1,6 +1,9 @@
 name: Cloud CF Deploy
 
-# Cloudflare deployment for the eliza-cloud SPA + Workers API.
+# Cloudflare deployment for the eliza-cloud app (Eliza web app) + Workers API.
+# As of the Topology-A cutover, the eliza-cloud Pages project serves the hosted
+# web Eliza app (packages/app) at the elizacloud.ai apex — it replaced the old
+# packages/cloud-frontend SPA. The project name, domain, and env carry over.
 # - push to develop  -> staging   (api-staging.elizacloud.ai + Pages preview "develop")
 # - push to main     -> production (api.elizacloud.ai + Pages production)
 # - pull_request     -> preview    (Pages preview branch backed by staging API)
@@ -24,6 +27,8 @@ on:
       - "packages/cloud-shared/**"
       - "packages/cloud-services/**"
       - "packages/cloud-sdk/**"
+      - "packages/app/**"
+      - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   pull_request:
     branches: [main, develop]
@@ -33,6 +38,8 @@ on:
       - "packages/cloud-shared/**"
       - "packages/cloud-services/**"
       - "packages/cloud-sdk/**"
+      - "packages/app/**"
+      - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   workflow_dispatch:
     inputs:
@@ -46,8 +53,12 @@ on:
           - production
 
 concurrency:
-  group: cloud-cf-deploy-${{ github.ref }}
-  cancel-in-progress: true
+  # Manual production deploys (workflow_dispatch) must run to completion: they
+  # are intentional and must NOT be cancelled by routine pushes. Give them a
+  # per-run-unique group + no cancel-in-progress. Push/PR runs keep the
+  # dedupe-to-latest behavior (a new push cancels the older in-progress run).
+  group: cloud-cf-deploy-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -189,7 +200,7 @@ jobs:
   # Frontend (Cloudflare Pages)
   # ---------------------------------------------------------------------------
   deploy-frontend:
-    name: Deploy Frontend (Pages)
+    name: Deploy App (Pages)
     runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -212,11 +223,12 @@ jobs:
       - name: Build linked elizaOS core workspace
         run: bun run build:core
 
-      - name: Verify Frontend
-        run: bun run --cwd packages/cloud-frontend typecheck
-
-      - name: Build
-        run: bun run --cwd packages/cloud-frontend build
+      # Topology A cutover: the hosted-web Eliza app (packages/app) replaces
+      # cloud-frontend as the eliza-cloud Pages deploy at the elizacloud.ai apex.
+      # The vite build is the gate (it resolves @elizaos/* to source); typecheck
+      # is enforced by the separate verify workflow, not here.
+      - name: Build app
+        run: bun run --cwd packages/app build:web
         env:
           # Pages preview/staging/prod all share the same API host today;
           # override per-env if that changes.
@@ -274,7 +286,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true'
-        working-directory: packages/cloud-frontend
+        working-directory: packages/app
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -293,29 +305,40 @@ jobs:
         env:
           API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
         run: |
-          check_json() {
-            local label="$1"
-            local url="$2"
-            local expected="$3"
-            local tmp
-            tmp="$(mktemp)"
-            local code
-            code="$(curl -sS -o "$tmp" -w '%{http_code}' -m 20 "$url" || echo "000")"
-            local content_type
-            content_type="$(file -b --mime-type "$tmp" 2>/dev/null || true)"
-            if [ "$code" != "$expected" ]; then
-              echo "::error::$label returned HTTP $code, expected $expected: $url"
-              head -c 500 "$tmp" || true
-              echo
-              exit 1
-            fi
-            if ! head -c 1 "$tmp" | grep -q '[{[]'; then
-              echo "::error::$label did not return JSON-looking content ($content_type): $url"
-              head -c 500 "$tmp" || true
-              echo
-              exit 1
-            fi
+          # Probe an endpoint up to 5 times (transient blips right after a deploy
+          # shouldn't fail the gate). Echoes "PASS"/"FAIL" on the last line.
+          # Diagnostics go to stderr (visible in the job log); only PASS/FAIL is
+          # written to stdout so the caller can capture it.
+          probe_json() {
+            local label="$1" url="$2" expected="$3"
+            local tmp code content_type
+            for attempt in 1 2 3 4 5; do
+              tmp="$(mktemp)"
+              code="$(curl -sS -o "$tmp" -w '%{http_code}' -m 20 "$url" || echo "000")"
+              content_type="$(file -b --mime-type "$tmp" 2>/dev/null || true)"
+              if [ "$code" = "$expected" ] && head -c 1 "$tmp" | grep -q '[{[]'; then
+                echo "$label OK ($code)" >&2
+                rm -f "$tmp"; echo PASS; return 0
+              fi
+              echo "$label attempt $attempt: HTTP $code ($content_type): $url" >&2
+              head -c 300 "$tmp" >&2 2>/dev/null || true; echo >&2
+              rm -f "$tmp"
+              [ "$attempt" -lt 5 ] && sleep 8
+            done
+            echo FAIL; return 0
           }
 
-          check_json "direct API health" "${API_URL%/}/api/health" 200
-          check_json "direct Steward providers" "${API_URL%/}/steward/auth/providers" 200
+          # Worker liveness is what THIS deploy is responsible for: hard-fail.
+          if [ "$(probe_json 'direct API health' "${API_URL%/}/api/health" 200 | tail -1)" != "PASS" ]; then
+            echo "::error::API health check failed after retries — the deployed Worker is not responding."
+            exit 1
+          fi
+
+          # The Steward providers endpoint is DB-backed. A failure here usually
+          # means a downstream database/infra incident, NOT a bad Worker deploy —
+          # so do NOT block the deploy on it (that turns any DB incident into an
+          # undeployable state, exactly when a fix needs to ship). Warn loudly.
+          if [ "$(probe_json 'direct Steward providers' "${API_URL%/}/steward/auth/providers" 200 | tail -1)" != "PASS" ]; then
+            echo "::warning::Steward providers (DB-backed) check failed after retries. The Worker deployed; this points at a database/infra issue — investigate the DB, do not assume the deploy is bad."
+            echo "⚠️ Steward providers (DB-backed) health check failed post-deploy — likely a downstream DB incident, not this deploy." >> "$GITHUB_STEP_SUMMARY"
+          fi

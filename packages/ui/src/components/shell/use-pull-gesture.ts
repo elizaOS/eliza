@@ -38,6 +38,10 @@ export interface PullGestureBinding {
   onPointerMove: (event: React.PointerEvent) => void;
   onPointerUp: (event: React.PointerEvent) => void;
   onPointerCancel: (event: React.PointerEvent) => void;
+  /** The OS can revoke pointer capture without a pointerup/pointercancel — most
+   *  notably on device ROTATION, which otherwise strands the gesture mid-drag
+   *  (the consumer's morph freezes). Treat it as a release so the sheet settles. */
+  onLostPointerCapture: (event: React.PointerEvent) => void;
 }
 
 /** Decide whether a release should fire a pull, and in which direction. */
@@ -137,5 +141,6 @@ export function usePullGesture(
     onPointerMove,
     onPointerUp: finish,
     onPointerCancel: finish,
+    onLostPointerCapture: finish,
   };
 }

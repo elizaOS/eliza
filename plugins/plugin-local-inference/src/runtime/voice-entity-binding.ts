@@ -24,7 +24,12 @@ import {
 	resolveStateDir,
 	type VoiceEntityBoundPayload,
 } from "@elizaos/core";
+import type {
+	VoiceNextSpeaker,
+	VoiceTurnSignal,
+} from "../services/voice/eot-classifier.js";
 import { VoiceProfileStore } from "../services/voice/profile-store.js";
+import type { VoiceAttributionOutput } from "../services/voice/speaker/attribution-pipeline.js";
 
 // ---------------------------------------------------------------------------
 // Store wiring (injectable for tests, mirrors the route handlers)
@@ -88,6 +93,185 @@ export async function emitVoiceTurnObserved(
 		observedAt: args.observedAt ?? new Date().toISOString(),
 		...(args.isOwner !== undefined ? { isOwner: args.isOwner } : {}),
 	});
+}
+
+// ---------------------------------------------------------------------------
+// Live-turn attribution → VOICE_TURN_OBSERVED + voiceTurnSignal (gating)
+// ---------------------------------------------------------------------------
+
+/** Server SUPPRESS threshold for EOT — below this reads as "user still talking". */
+const SERVER_EOT_SUPPRESS_THRESHOLD = 0.4;
+/** Only a CONFIDENT bystander attribution is allowed to silence a turn. */
+const BYSTANDER_SUPPRESS_CONFIDENCE = 0.7;
+
+export interface HandleLiveVoiceAttributionOptions {
+	/**
+	 * Entity id the agent treats as the device owner / primary enrolled
+	 * speaker. A turn attributed to this entity is always allowed to speak.
+	 */
+	ownerEntityId?: string | null;
+	/**
+	 * Entity ids the agent answers to without a wake word (owner + enrolled
+	 * household members). A confident bystander is anyone attributed to an
+	 * entity NOT in this set.
+	 */
+	knownSpeakerEntityIds?: readonly string[];
+	/**
+	 * The EOT-based turn signal the turn-controller already computed for this
+	 * turn (from `eot-classifier` / `turn-controller`). The speaker decision is
+	 * folded into it. When omitted, a neutral base is synthesized from
+	 * `endOfTurnProbability` (default 0.5 — "unknown", fail open).
+	 */
+	baseSignal?: VoiceTurnSignal;
+	/** P(turn complete) when no `baseSignal` is supplied (default 0.5). */
+	endOfTurnProbability?: number;
+	/** True when a wake word fired within the recent listen window. */
+	wakeWordActive?: boolean;
+}
+
+/**
+ * Resolve owner / enrolled state for the attributed primary speaker.
+ *
+ * `isOwner` is `entityId === ownerEntityId`; "enrolled" is owner OR an entity
+ * id present in `knownSpeakerEntityIds`. An unbound speaker (`entityId == null`)
+ * is neither — it can never be a "confident bystander" (fail open).
+ */
+function resolveSpeakerStanding(
+	output: VoiceAttributionOutput,
+	opts: HandleLiveVoiceAttributionOptions,
+): {
+	entityId: string | null;
+	confidence: number;
+	isOwner: boolean;
+	enrolled: boolean;
+} {
+	const speaker = output.primarySpeaker;
+	const entityId = speaker?.entityId ?? output.observation?.entityId ?? null;
+	const confidence = speaker?.confidence ?? output.observation?.confidence ?? 0;
+	const ownerEntityId = opts.ownerEntityId ?? null;
+	const isOwner = entityId !== null && entityId === ownerEntityId;
+	const known = new Set<string>(opts.knownSpeakerEntityIds ?? []);
+	const enrolled = isOwner || (entityId !== null && known.has(entityId));
+	return { entityId, confidence, isOwner, enrolled };
+}
+
+/**
+ * Compose the EOT base signal with the live speaker decision.
+ *
+ * Mirrors `packages/ui/src/voice/voice-turn-signal.ts buildVoiceTurnSignal`
+ * (the transcript-only producer) on the audio-frame side: a CONFIDENT bystander
+ * who did NOT say the wake word is cross-talk → suppress. A wake word is an
+ * explicit address → always speak. Uncertain attribution never silences a real
+ * turn. The server gate `core.voice_turn_signal` reads the returned object.
+ */
+function foldSpeakerIntoSignal(
+	base: VoiceTurnSignal,
+	standing: {
+		entityId: string | null;
+		confidence: number;
+		isOwner: boolean;
+		enrolled: boolean;
+	},
+	opts: HandleLiveVoiceAttributionOptions,
+): VoiceTurnSignal {
+	let agentShouldSpeak = base.agentShouldSpeak !== false;
+
+	const confidentBystander =
+		!standing.enrolled &&
+		standing.entityId !== null &&
+		standing.confidence >= BYSTANDER_SUPPRESS_CONFIDENCE;
+	if (agentShouldSpeak && opts.wakeWordActive !== true && confidentBystander) {
+		agentShouldSpeak = false;
+	}
+
+	// Wake word overrides bystander doubt — the user deliberately summoned us.
+	if (opts.wakeWordActive === true) agentShouldSpeak = true;
+
+	const eot = base.endOfTurnProbability;
+	const nextSpeaker: VoiceNextSpeaker = !agentShouldSpeak
+		? "user"
+		: eot < SERVER_EOT_SUPPRESS_THRESHOLD
+			? "user"
+			: "agent";
+
+	const source = opts.wakeWordActive
+		? "voice-bridge+wakeword"
+		: "voice-bridge+diarization";
+
+	return {
+		endOfTurnProbability: eot,
+		nextSpeaker,
+		agentShouldSpeak,
+		source: "custom",
+		transcript: base.transcript,
+		...(base.model ? { model: base.model } : {}),
+		...(base.latencyMs !== undefined ? { latencyMs: base.latencyMs } : {}),
+		// Stash the human-readable provenance so traces show the fold source even
+		// though the typed `source` enum stays "custom".
+		metadata: { provenance: source },
+	} as VoiceTurnSignal & { metadata: { provenance: string } };
+}
+
+/**
+ * Handle a live per-turn attribution result. This is the single automatic seam
+ * the engine bridge calls from its `onAttribution` path: any caller that wires a
+ * `profileStore` gets diarization-driven gating for free.
+ *
+ * 1. Emits `VOICE_TURN_OBSERVED` when the turn produced a profile observation
+ *    (so the merge engine can fold the recognized speaker into the entity
+ *    graph and round-trip the binding back onto the profile).
+ * 2. Composes the EOT-based turn signal with the speaker decision and stamps it
+ *    onto `output.turn.metadata.voiceTurnSignal`, which the chat-view producer
+ *    forwards to the server gate verbatim.
+ *
+ * Returns the composed signal (also written onto the turn metadata in place).
+ * Never throws on the emit path — observation emission is best-effort and is
+ * logged, never propagated, so an attribution turn never crashes a voice turn.
+ */
+export async function handleLiveVoiceAttribution(
+	runtime: IAgentRuntime,
+	output: VoiceAttributionOutput,
+	opts: HandleLiveVoiceAttributionOptions = {},
+): Promise<VoiceTurnSignal> {
+	const standing = resolveSpeakerStanding(output, opts);
+
+	if (output.observation) {
+		const obs = output.observation;
+		try {
+			await emitVoiceTurnObserved(runtime, {
+				turnId: output.turnId,
+				text: "",
+				imprintClusterId: obs.imprintClusterId,
+				matchConfidence: obs.confidence,
+				matchedEntityId: obs.entityId,
+				isOwner: standing.isOwner,
+			});
+		} catch (err) {
+			logger.warn(
+				{
+					turnId: output.turnId,
+					imprintClusterId: obs.imprintClusterId,
+					error: err instanceof Error ? err.message : String(err),
+				},
+				"[local-inference] VOICE_TURN_OBSERVED emit failed during live attribution",
+			);
+		}
+	}
+
+	const base: VoiceTurnSignal = opts.baseSignal ?? {
+		endOfTurnProbability: opts.endOfTurnProbability ?? 0.5,
+		nextSpeaker: "unknown",
+		agentShouldSpeak: null,
+		source: "custom",
+		transcript: "",
+	};
+
+	const signal = foldSpeakerIntoSignal(base, standing, opts);
+
+	const turn = output.turn;
+	turn.metadata = { ...(turn.metadata ?? {}), voiceTurnSignal: signal };
+
+	return signal;
 }
 
 // ---------------------------------------------------------------------------

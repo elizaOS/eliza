@@ -8,6 +8,7 @@ const trajectoryLoggerPlugin: Plugin = {
     {
       id: "trajectory-logger",
       label: "Trajectory Logger",
+      developerOnly: true,
       description:
         "Realtime view of the agent's last and pending HANDLE / PLAN / ACTION / EVALUATE turns",
       icon: "Activity",

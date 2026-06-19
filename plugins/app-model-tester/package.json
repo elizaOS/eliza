@@ -50,6 +50,7 @@
     "test:e2e": "node scripts/model-tester-e2e.mjs"
   },
   "files": [
+    "assets",
     "dist"
   ],
   "devDependencies": {

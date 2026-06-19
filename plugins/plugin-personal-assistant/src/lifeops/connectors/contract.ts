@@ -15,40 +15,13 @@ export interface ConnectorStatus {
   observedAt: string;
 }
 
-/**
- * Typed dispatch result.
- *
- * Failure shapes carry enough information for the runner-side dispatch policy
- * (`./dispatch-policy.ts`) to choose between advance-escalation /
- * retry-with-backoff / fail-loud / queue-for-recovery without inspecting the
- * concrete error.
- *
- * Reason taxonomy:
- * - `disconnected` — connector currently has no live session (token revoked,
- *   socket closed, app uninstalled).
- * - `rate_limited` — transport refused due to per-window throttle. When set,
- *   `retryAfterMinutes` SHOULD also be populated.
- * - `auth_expired` — credentials valid but expired and the user must
- *   re-authorize. Always `userActionable: true`.
- * - `unknown_recipient` — the target identity does not resolve (e.g. wrong
- *   handle, blocked channel). Almost always permanent for that recipient.
- * - `transport_error` — generic infrastructure failure (network, 5xx, timeout).
- *   Connector decides whether to mark `userActionable`.
- */
-export type DispatchResult =
-  | { ok: true; messageId?: string }
-  | {
-      ok: false;
-      reason:
-        | "disconnected"
-        | "rate_limited"
-        | "auth_expired"
-        | "unknown_recipient"
-        | "transport_error";
-      retryAfterMinutes?: number;
-      userActionable: boolean;
-      message?: string;
-    };
+// The typed dispatch result is the scheduling spine's contract — it now lives
+// in @elizaos/plugin-scheduling (the runner consumes it). Imported here for the
+// connector contract below + re-exported so PA's connector layer (which produces
+// these values) keeps importing it from this module unchanged.
+import type { DispatchResult } from "@elizaos/plugin-scheduling";
+
+export type { DispatchResult };
 
 /**
  * OAuth surface a connector contribution may advertise. URL provided by the

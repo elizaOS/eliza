@@ -26,7 +26,7 @@ import type { FamilyRegistry } from "../registries/family-registry.js";
 import type {
   ActivitySignalBusView,
   ScheduledTaskSubject,
-} from "../scheduled-task/types.js";
+} from "@elizaos/plugin-scheduling";
 
 export interface ActivitySignalEnvelope {
   family: LifeOpsBusFamily;

@@ -793,13 +793,15 @@ export function useChatSend(deps: UseChatSendDeps) {
             mode: "drop",
           });
         } else if (
-          shouldApplyFinalStreamText(streamedAssistantText, data.text)
+          shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
+          data.reasoning
         ) {
           applyStreamingTextModification(setConversationMessages, {
             messageId: assistantMsgId,
             mode: "complete",
             fullText: data.text,
             ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+            ...(data.reasoning ? { reasoning: data.reasoning } : {}),
           });
         } else if (data.failureKind) {
           // Streaming text already matched but the server flagged a failure

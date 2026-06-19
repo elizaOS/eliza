@@ -4,6 +4,7 @@
  * commands that would be sent. Everything else runs the real production code.
  */
 
+import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildSandboxRegistryFromEnv,
@@ -157,5 +158,184 @@ describe("buildSandboxRegistryFromEnv", () => {
       SANDBOX_PUBLIC_URL: "http://1.2.3.4:1999/api",
     });
     expect(reg).not.toBeNull();
+  });
+
+  it("accepts a redis:// URL with NO token (TCP transport carries auth inline)", () => {
+    const reg = buildSandboxRegistryFromEnv({
+      SANDBOX_REGISTRY_REDIS_URL: "redis://default:pw@host:6379",
+      // no SANDBOX_REGISTRY_REDIS_TOKEN
+      SANDBOX_AGENT_ID: "sandbox-id",
+      SANDBOX_SERVER_NAME: "sandbox-name",
+      SANDBOX_PUBLIC_URL: "http://1.2.3.4:1999/api",
+    });
+    expect(reg).not.toBeNull();
+  });
+
+  it("still requires a token for an https:// (Upstash REST) URL", () => {
+    expect(
+      buildSandboxRegistryFromEnv({
+        SANDBOX_REGISTRY_REDIS_URL: "https://example.upstash.io",
+        // no token
+        SANDBOX_AGENT_ID: "sandbox-id",
+        SANDBOX_SERVER_NAME: "sandbox-name",
+        SANDBOX_PUBLIC_URL: "http://1.2.3.4:1999/api",
+      }),
+    ).toBeNull();
+  });
+});
+
+/**
+ * In-process RESP server: parses the client's RESP2 command stream against a
+ * real `node:net` socket and replies like Redis (SET/GET/DEL/AUTH/SELECT),
+ * exercising the registry's native TCP transport end-to-end without an external
+ * Redis. `requirePassword` + `fragmentReplies` let tests assert auth and the
+ * partial-read parser.
+ */
+interface FakeRedis {
+  port: number;
+  store: Map<string, string>;
+  authedWith: string[][];
+  close: () => Promise<void>;
+}
+
+async function startFakeRedis(opts?: {
+  requirePassword?: string;
+  fragmentReplies?: boolean;
+}): Promise<FakeRedis> {
+  const store = new Map<string, string>();
+  const authedWith: string[][] = [];
+
+  const server = net.createServer((socket) => {
+    let buf = Buffer.alloc(0);
+    let authed = !opts?.requirePassword;
+
+    const send = (s: string): void => {
+      if (opts?.fragmentReplies) {
+        // Write one byte at a time to force the client's incremental parser.
+        for (const byte of Buffer.from(s)) socket.write(Buffer.from([byte]));
+      } else {
+        socket.write(s);
+      }
+    };
+
+    const tryParseCommand = (): string[] | null => {
+      if (buf.length === 0 || buf[0] !== 0x2a) return null; // '*'
+      const headerEnd = buf.indexOf("\r\n");
+      if (headerEnd === -1) return null;
+      const argc = Number(buf.toString("utf8", 1, headerEnd));
+      let offset = headerEnd + 2;
+      const args: string[] = [];
+      for (let i = 0; i < argc; i++) {
+        if (buf[offset] !== 0x24) return null; // '$'
+        const lenEnd = buf.indexOf("\r\n", offset);
+        if (lenEnd === -1) return null;
+        const len = Number(buf.toString("utf8", offset + 1, lenEnd));
+        const dataStart = lenEnd + 2;
+        const dataEnd = dataStart + len;
+        if (buf.length < dataEnd + 2) return null;
+        args.push(buf.toString("utf8", dataStart, dataEnd));
+        offset = dataEnd + 2;
+      }
+      buf = buf.subarray(offset);
+      return args;
+    };
+
+    socket.on("data", (chunk: Buffer) => {
+      buf = Buffer.concat([buf, chunk]);
+      let cmd = tryParseCommand();
+      while (cmd) {
+        const verb = cmd[0]?.toUpperCase();
+        if (verb === "AUTH") {
+          authedWith.push(cmd.slice(1));
+          authed = cmd[cmd.length - 1] === opts?.requirePassword;
+          send(authed ? "+OK\r\n" : "-WRONGPASS invalid password\r\n");
+        } else if (!authed) {
+          send("-NOAUTH Authentication required.\r\n");
+        } else if (verb === "SELECT") {
+          send("+OK\r\n");
+        } else if (verb === "SET") {
+          store.set(cmd[1], cmd[2]);
+          send("+OK\r\n");
+        } else if (verb === "GET") {
+          const v = store.get(cmd[1]);
+          send(
+            v === undefined
+              ? "$-1\r\n"
+              : `$${Buffer.byteLength(v)}\r\n${v}\r\n`,
+          );
+        } else if (verb === "DEL") {
+          let n = 0;
+          for (const k of cmd.slice(1)) if (store.delete(k)) n++;
+          send(`:${n}\r\n`);
+        } else {
+          send("-ERR unknown command\r\n");
+        }
+        cmd = tryParseCommand();
+      }
+    });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const addr = server.address() as net.AddressInfo;
+  return {
+    port: addr.port,
+    store,
+    authedWith,
+    close: () =>
+      new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve())),
+      ),
+  };
+}
+
+describe("SandboxRegistry (native TCP transport)", () => {
+  let fake: FakeRedis;
+  afterEach(async () => {
+    await fake?.close();
+    vi.restoreAllMocks();
+  });
+
+  const tcpConfig = (port: number, auth = "") => ({
+    redisUrl: `redis://${auth}127.0.0.1:${port}`,
+    agentId: "char-tcp",
+    serverName: "sandbox-tcp",
+    serverUrl: "http://5.6.7.8:1999/api",
+    ttlSeconds: 90,
+  });
+
+  it("register() writes both keys over a redis:// socket", async () => {
+    fake = await startFakeRedis();
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+    await reg.register();
+    expect(fake.store.get("server:sandbox-tcp:url")).toBe(
+      "http://5.6.7.8:1999/api",
+    );
+    expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-tcp");
+  });
+
+  it("authenticates with the URL password before writing", async () => {
+    fake = await startFakeRedis({ requirePassword: "s3cret" });
+    const reg = new SandboxRegistry(tcpConfig(fake.port, "default:s3cret@"));
+    await reg.register();
+    expect(fake.authedWith).toContainEqual(["default", "s3cret"]);
+    expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-tcp");
+  });
+
+  it("unregister() deletes only keys still pointing at this sandbox", async () => {
+    fake = await startFakeRedis();
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+    await reg.register();
+    fake.store.set("agent:char-tcp:server", "sandbox-other");
+    await reg.unregister();
+    // agent key was overwritten -> kept; server url still ours -> deleted.
+    expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-other");
+    expect(fake.store.has("server:sandbox-tcp:url")).toBe(false);
+  });
+
+  it("parses replies that arrive one byte at a time (fragmented reads)", async () => {
+    fake = await startFakeRedis({ fragmentReplies: true });
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+    await reg.register();
+    expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-tcp");
   });
 });

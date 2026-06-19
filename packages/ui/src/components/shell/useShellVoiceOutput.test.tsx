@@ -185,6 +185,48 @@ describe("useShellVoiceOutput", () => {
     );
   });
 
+  it("keeps speaking a captured voice reply even after a later typed turn (per-message)", () => {
+    const { rerender } = render({
+      ...BASE,
+      lastTurnVoice: true,
+      conversationMessages: [userMsg("u1", "hey"), assistantMsg("a1", "Hi")],
+    });
+    // a1 captured as a voice reply (lastTurnVoice was true) and spoken.
+    expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+
+    // The user types mid-stream → lastTurnVoice flips false, but a1 keeps
+    // growing. The OLD shared-boolean gate would silence it here; the
+    // per-message capture keeps speaking a1's continuation.
+    rerender({
+      ...BASE,
+      lastTurnVoice: false,
+      conversationMessages: [
+        userMsg("u1", "hey"),
+        assistantMsg("a1", "Hi there."),
+      ],
+    });
+    expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(2);
+    expect(hoisted.queueAssistantSpeech).toHaveBeenLastCalledWith(
+      "a1",
+      "Hi there.",
+      true,
+      { replace: false },
+    );
+
+    // A reply to the typed turn (new id, lastTurnVoice false) is NOT spoken.
+    rerender({
+      ...BASE,
+      lastTurnVoice: false,
+      conversationMessages: [
+        userMsg("u1", "hey"),
+        assistantMsg("a1", "Hi there."),
+        userMsg("u2", "typed"),
+        assistantMsg("a2", "Typed answer."),
+      ],
+    });
+    expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(2);
+  });
+
   it("barges in — stops speech the instant the mic opens", () => {
     const { rerender } = render({
       ...BASE,

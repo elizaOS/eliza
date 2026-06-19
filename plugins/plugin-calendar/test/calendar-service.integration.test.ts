@@ -90,7 +90,7 @@ function fakeGate(): CalendarHostGate {
 let pg: PGlite;
 let calendar: CalendarService;
 
-const CREATE_EVENTS_TABLE = `CREATE TABLE app_lifeops.life_calendar_events (
+const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL,
   provider TEXT NOT NULL DEFAULT 'google',
@@ -119,7 +119,7 @@ const CREATE_EVENTS_TABLE = `CREATE TABLE app_lifeops.life_calendar_events (
   UNIQUE (agent_id, provider, side, calendar_id, external_event_id)
 )`;
 
-const CREATE_SYNC_TABLE = `CREATE TABLE app_lifeops.life_calendar_sync_states (
+const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL,
   provider TEXT NOT NULL DEFAULT 'google',
@@ -139,7 +139,7 @@ const CREATE_SYNC_TABLE = `CREATE TABLE app_lifeops.life_calendar_sync_states (
 beforeAll(async () => {
   pg = new PGlite();
   const db = drizzle(pg);
-  await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_lifeops"));
+  await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_calendar"));
   await db.execute(sql.raw(CREATE_EVENTS_TABLE));
   await db.execute(sql.raw(CREATE_SYNC_TABLE));
 

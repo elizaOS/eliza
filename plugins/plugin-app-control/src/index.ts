@@ -20,8 +20,8 @@ import {
 	closeViewAction,
 	viewsAction,
 } from "./actions/views.js";
+import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
-import { viewNavigationRoutingEvaluator } from "./evaluators/view-navigation-routing.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
@@ -48,8 +48,8 @@ export {
 export type { ViewSummary } from "./actions/views-client.js";
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
+export { viewContextEvaluator } from "./evaluators/view-context.js";
 export { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
-export { viewNavigationRoutingEvaluator } from "./evaluators/view-navigation-routing.js";
 export {
 	APP_REGISTRY_SERVICE_TYPE,
 	type AppRegistryEntry,
@@ -103,10 +103,12 @@ export const appControlPlugin: Plugin = {
 		closeAllViewsAction,
 		homescreenAction,
 	],
-	responseHandlerEvaluators: [
-		viewNavigationRoutingEvaluator,
-		viewFollowupRoutingEvaluator,
-	],
+	// Direct nav commands ("open my calendar") are handled by the VIEWS action
+	// (deterministic resolveIntentView, no model). This evaluator runs separately,
+	// post-response, to catch CONTEXTUAL intent the user never spelled out
+	// ("fix the login bug" -> task-coordinator).
+	evaluators: [viewContextEvaluator],
+	responseHandlerEvaluators: [viewFollowupRoutingEvaluator],
 	providers: [availableAppsProvider],
 	services: [
 		AppRegistryService,

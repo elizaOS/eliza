@@ -12,7 +12,9 @@ import {
 } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  // Opt out of the once-ever first-run tour so its spotlight doesn't pop over
+  // the chat mid-test (this suite exercises the chat overlay, not the tour).
+  await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
   await installDefaultAppRoutes(page);
 });
 

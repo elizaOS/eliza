@@ -7,6 +7,7 @@
 
 import { logger } from "@elizaos/logger";
 import { FIRST_RUN_PROVIDER_CATALOG, getStylePresets } from "@elizaos/shared";
+import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { client, type FirstRunOptions } from "../api";
 import {
   getBackendStartupTimeoutMs,
@@ -280,7 +281,11 @@ export async function applyRestoredConnection(args: {
   if (restoredActiveServer.kind === "cloud") {
     const resolved = await backfillCloudApiBase(restoredActiveServer);
     clientRef.setBaseUrl(resolved.apiBase ?? null);
-    clientRef.setToken(resolved.accessToken ?? null);
+    // Cloud = Steward everywhere (DECISIONS.md D3): prefer the live Steward
+    // session token (it auto-refreshes ahead of expiry) over the token captured
+    // at provision time, which may have rotated since.
+    const stewardToken = readStoredStewardToken()?.trim();
+    clientRef.setToken(stewardToken || resolved.accessToken || null);
     return;
   }
 
@@ -333,12 +338,12 @@ function preserveCloudAuthTokenForFirstRun(
   server: PersistedActiveServer,
 ): void {
   if (server.kind !== "cloud") return;
-  const token = server.accessToken?.trim();
+  // Cloud = Steward everywhere (DECISIONS.md D3): the Steward session token
+  // persists in localStorage independently of the dropped active server, so
+  // prefer it; fall back to the token captured on the persisted server.
+  const token = readStoredStewardToken()?.trim() || server.accessToken?.trim();
   if (!token) return;
   client.setToken(token);
-  if (typeof globalThis !== "undefined") {
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ = token;
-  }
 }
 
 /**

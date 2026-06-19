@@ -31,7 +31,7 @@ export interface LifeOpsEmailUnsubscribeService {
  * it preserves the LifeOpsService method surface (the `requestUrl` argument the
  * route callers pass), but forwards to the standalone inbox service, which
  * resolves Gmail through the `@elizaos/plugin-google` runtime service and
- * persists to the same `app_lifeops.life_email_unsubscribes` table.
+ * persists to the same `app_inbox.life_email_unsubscribes` table.
  *
  * The two-phase confirmation gate (`requireConfirmation`) stays in the PA route
  * layer; the inbox service trusts the pre-confirmed `userAuthorization` flag.
