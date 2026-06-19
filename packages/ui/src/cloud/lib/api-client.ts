@@ -173,6 +173,19 @@ export async function apiFetch(
   });
 
   if (!res.ok) {
+    // A 401 on an authed call means our session was rejected (token revoked or
+    // expired out from under the proactive refresh). Nudge the Steward runtime
+    // to refresh-or-clear so a stale session self-heals instead of leaving the
+    // UI "authed" until the next interaction. Purely additive — the call still
+    // throws ApiError exactly as before; the listener is single-flight and never
+    // retries the request.
+    if (res.status === 401 && !skipAuth && typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(new CustomEvent("steward-unauthorized"));
+      } catch {
+        // no-op: event dispatch is best-effort
+      }
+    }
     const payload = await readPayload(res, false);
     const { code, message } = errorDetails(payload, res.status);
     throw new ApiError(res.status, code, message, payload);

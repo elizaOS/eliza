@@ -101,46 +101,57 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
         );
     };
 
-    const checkAndRefresh = async () => {
+    // Single-flight: never run two refreshes at once. The refresh-token rotation
+    // is not concurrency-safe, so overlapping refreshes (the timer plus a 401
+    // nudge, say) would race and one would invalidate the other's refresh token.
+    let refreshInFlight: Promise<void> | null = null;
+
+    const checkAndRefresh = async (force = false): Promise<void> => {
       const token = readStoredToken();
-      if (token) {
+      if (!token) return;
+      if (!force) {
         const secs = tokenSecsRemaining(token);
         if (secs !== null && secs >= REFRESH_AHEAD_SECS) return;
-      } else {
-        return;
       }
+      if (refreshInFlight) return refreshInFlight;
 
-      try {
-        const res = await fetch(configuredRefreshEndpoint(), {
-          method: "POST",
-          credentials: "include",
-        });
-        if (res.ok) {
-          const body = (await res.json().catch(() => null)) as {
-            token?: string;
-          } | null;
-          if (body?.token) {
-            writeStoredStewardToken(body.token);
-            lastSyncedToken.current = body.token;
-            wasAuthenticated.current = true;
+      refreshInFlight = (async () => {
+        try {
+          const res = await fetch(configuredRefreshEndpoint(), {
+            method: "POST",
+            credentials: "include",
+          });
+          if (res.ok) {
+            const body = (await res.json().catch(() => null)) as {
+              token?: string;
+            } | null;
+            if (body?.token) {
+              writeStoredStewardToken(body.token);
+              lastSyncedToken.current = body.token;
+              wasAuthenticated.current = true;
+            }
+            try {
+              window.dispatchEvent(new CustomEvent("steward-token-sync"));
+            } catch {
+              // ignore
+            }
+            return;
           }
-          try {
-            window.dispatchEvent(new CustomEvent("steward-token-sync"));
-          } catch {
-            // ignore
+          if (res.status === 401) {
+            if (wasAuthenticated.current && lastSyncedToken.current) {
+              lastSyncedToken.current = null;
+              wasAuthenticated.current = false;
+            }
+            clearStaleStewardSession();
           }
-          return;
+        } catch (err) {
+          console.warn("[steward] Auto-refresh failed", err);
         }
-        if (res.status === 401) {
-          if (wasAuthenticated.current && lastSyncedToken.current) {
-            lastSyncedToken.current = null;
-            wasAuthenticated.current = false;
-          }
-          clearStaleStewardSession();
-        }
-      } catch (err) {
-        console.warn("[steward] Auto-refresh failed", err);
-      }
+      })().finally(() => {
+        refreshInFlight = null;
+      });
+
+      return refreshInFlight;
     };
 
     syncToken();
@@ -166,11 +177,20 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
     };
     window.addEventListener("online", onlineHandler);
 
+    // A 401 from any authed API call (dispatched by api-client) means the server
+    // rejected our session — force a refresh-or-clear so a revoked/expired token
+    // self-heals instead of leaving the UI "authed" until the next interaction.
+    const unauthorizedHandler = () => {
+      void checkAndRefresh(true);
+    };
+    window.addEventListener("steward-unauthorized", unauthorizedHandler);
+
     return () => {
       clearInterval(refreshInterval);
       window.removeEventListener("storage", handler);
       document.removeEventListener("visibilitychange", visibilityHandler);
       window.removeEventListener("online", onlineHandler);
+      window.removeEventListener("steward-unauthorized", unauthorizedHandler);
     };
   }, [isAuthenticated, user]);
 
