@@ -59,7 +59,6 @@ import {
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
-import { getNeonClient, NeonClientError } from "./neon-client";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
@@ -70,9 +69,6 @@ import {
   type SharedAgentCharacter,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
-
-/** Shared Neon project used as branch parent for per-agent databases. */
-const NEON_PARENT_PROJECT_ID: string = process.env.NEON_PARENT_PROJECT_ID ?? "";
 
 export interface CreateAgentParams {
   organizationId: string;
@@ -674,7 +670,6 @@ export class ElizaSandboxService {
 
       logger.info("[agent-sandbox] Deleting agent", {
         agentId,
-        neon: rec.neon_project_id,
         sandbox: rec.sandbox_id,
       });
 
@@ -700,21 +695,6 @@ export class ElizaSandboxService {
             status: rec.status,
             error: errorMessage,
           });
-        }
-      }
-      if (rec.neon_project_id) {
-        try {
-          await this.cleanupNeon(rec.neon_project_id, rec.neon_branch_id);
-        } catch (e) {
-          logger.warn("[agent-sandbox] Neon cleanup failed during delete", {
-            projectId: rec.neon_project_id,
-            branchId: rec.neon_branch_id,
-            error: e instanceof Error ? e.message : String(e),
-          });
-          return {
-            success: false,
-            error: "Failed to delete database project",
-          } as const;
         }
       }
 
@@ -4229,31 +4209,6 @@ export class ElizaSandboxService {
     });
 
     return { success: true, connectionUri: sharedDbUrl };
-  }
-
-  private async cleanupNeon(projectId: string | null | undefined, branchId?: string | null) {
-    // In shared-DB mode no per-agent Neon project exists; nothing to clean up.
-    if (!projectId) return;
-
-    const neon = getNeonClient();
-    try {
-      if (projectId === NEON_PARENT_PROJECT_ID && branchId) {
-        // Branch-based: delete the branch, not the shared project
-        await neon.deleteBranch(NEON_PARENT_PROJECT_ID, branchId);
-      } else if (projectId !== NEON_PARENT_PROJECT_ID) {
-        // Legacy project-based: delete the entire project
-        await neon.deleteProject(projectId);
-      }
-    } catch (error) {
-      if (error instanceof NeonClientError && error.statusCode === 404) {
-        logger.info("[agent-sandbox] Neon resource already absent during cleanup", {
-          projectId,
-          branchId,
-        });
-        return;
-      }
-      throw error;
-    }
   }
 
   private isIgnorableSandboxStopError(error: unknown): boolean {

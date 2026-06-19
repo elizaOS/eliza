@@ -10,8 +10,6 @@ type DatabaseStateColumns = Pick<
   AppDatabase,
   | "app_id"
   | "user_database_uri"
-  | "user_database_project_id"
-  | "user_database_branch_id"
   | "user_database_region"
   | "user_database_status"
   | "user_database_error"
@@ -25,8 +23,6 @@ type AppDatabaseStateUpdate = Partial<
   Pick<
     NewAppDatabase,
     | "user_database_uri"
-    | "user_database_project_id"
-    | "user_database_branch_id"
     | "user_database_region"
     | "user_database_status"
     | "user_database_error"
@@ -139,8 +135,6 @@ export class AppDatabasesRepository {
     return {
       app_id: database.app_id,
       user_database_uri: database.user_database_uri,
-      user_database_project_id: database.user_database_project_id,
-      user_database_branch_id: database.user_database_branch_id,
       user_database_region: database.user_database_region,
       user_database_status: database.user_database_status as UserDatabaseStatus,
       user_database_error: database.user_database_error,

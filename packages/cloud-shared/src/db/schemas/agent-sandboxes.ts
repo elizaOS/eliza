@@ -7,7 +7,7 @@
  * ─────────────────────────────────────────────────────────────────────────
  *   • Provisioned by the system as part of agent creation flows (character
  *     creation, `eliza-sandbox.ts`, `provisioning-jobs.ts` worker).
- *   • Each row has a managed Neon PostgreSQL database, a bridge proxy URL,
+ *   • Each row has a managed PostgreSQL database, a bridge proxy URL,
  *     a heartbeat monitor, backup snapshots, pairing tokens, and optional
  *     headscale VPN allocation.
  *   • Async multi-step provisioning via the jobs queue.
@@ -110,8 +110,6 @@ export const agentSandboxes = pgTable(
     health_url: text("health_url"),
     agent_name: text("agent_name"),
     agent_config: jsonb("agent_config").$type<Record<string, unknown>>(),
-    neon_project_id: text("neon_project_id"),
-    neon_branch_id: text("neon_branch_id"),
     database_uri: text("database_uri"),
     database_status: text("database_status")
       .$type<"none" | "provisioning" | "ready" | "error">()
