@@ -31,7 +31,13 @@ const ensureAgentSandboxSchema = mock(async () => {});
 // assert on the generated SQL, mirroring the write-side capture above.
 const selectWhere = mock((clause: SQL) => {
   capturedWhere = clause;
-  return [] as unknown[];
+  // Most readers await the where() result directly (an array). Queries that
+  // paginate (e.g. listRunningWithDigestOtherThan) chain `.limit(n)` after
+  // where(); expose a chainable limit() that yields the same array so both
+  // shapes resolve to `[]`.
+  const rows: unknown[] = [];
+  (rows as unknown as { limit: () => unknown[] }).limit = () => rows;
+  return rows;
 });
 const selectFrom = mock(() => ({ where: selectWhere }));
 const select = mock(() => ({ from: selectFrom }));
@@ -116,5 +122,34 @@ describe("AgentSandboxesRepository", () => {
     expect(String(capturedSet?.error_message)).toContain("no agent_provision job was enqueued");
     // updated_at is bumped so the row no longer matches the cron on the next tick.
     expect(capturedSet?.updated_at instanceof Date).toBe(true);
+  });
+
+  test("fleet-upgrade candidates exclude containerless (shared-runtime) agents", async () => {
+    capturedWhere = undefined;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().listRunningWithDigestOtherThan(
+      "sha256:target",
+      "ghcr.io/elizaos/eliza-agent:prod",
+      5,
+    );
+
+    if (!capturedWhere)
+      throw new Error("listRunningWithDigestOtherThan did not build a where clause");
+    const sql = new PgDialect().sqlToQuery(capturedWhere).sql.toLowerCase();
+    // Only running, non-deleted, default-image, non-pool rows on a stale digest
+    // are upgrade candidates...
+    expect(sql).toContain("status");
+    expect(sql).toContain("is distinct from");
+    expect(sql).toContain("pool_status");
+    // ...AND they must actually have a fleet container. Shared-runtime / web-only
+    // agents are "running" through the router origin with no node_id /
+    // container_name; including them makes executeUpgrade fail forever and the
+    // reconciler re-selects them every cycle (an endless agent_upgrade retry
+    // storm). The NOT NULL guards on both columns are the fix — assert both.
+    expect(sql).toContain("node_id");
+    expect(sql).toContain("container_name");
+    expect(sql).toContain("is not null");
   });
 });
