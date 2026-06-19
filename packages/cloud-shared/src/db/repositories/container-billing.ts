@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { containerBillingRecords, containers } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
@@ -192,13 +192,25 @@ export class ContainerBillingRepository {
         };
       }
 
-      await tx
+      // Atomic relative decrement — NOT an absolute write of a JS-computed
+      // newBalance derived from a stale read. The net credit-balance movement
+      // is -fromCredits (= dailyCost - fromEarnings; the earnings portion is
+      // debited from the redeemable-earnings ledger separately and never
+      // touches credit_balance), identical to the old
+      // `currentBalance + fromEarnings - dailyCost`. Decrementing the LIVE
+      // column instead of overwriting it with a stale-derived absolute means a
+      // concurrent inference debit / top-up that lands between the caller's
+      // balance read and this commit is no longer lost. The `credit_balance >= 0`
+      // check constraint backstops a concurrent-overdraft race; the per-container
+      // billing loop isolates the resulting error and retries next run.
+      const [updatedOrg] = await tx
         .update(organizations)
         .set({
-          credit_balance: String(input.newBalance),
+          credit_balance: sql`${organizations.credit_balance} - ${String(input.fromCredits)}`,
           updated_at: input.now,
         })
-        .where(eq(organizations.id, input.organizationId));
+        .where(eq(organizations.id, input.organizationId))
+        .returning({ credit_balance: organizations.credit_balance });
 
       // Record only the credit-balance movement (fromCredits). The earnings
       // portion is debited from the redeemable-earnings ledger via
@@ -249,7 +261,11 @@ export class ContainerBillingRepository {
         created_at: input.now,
       });
 
-      return { newBalance: input.newBalance, transactionId: creditTx.id, alreadyBilled: false };
+      return {
+        newBalance: updatedOrg ? Number(updatedOrg.credit_balance) : input.newBalance,
+        transactionId: creditTx.id,
+        alreadyBilled: false,
+      };
     });
   }
 }
