@@ -39,10 +39,10 @@ export type LlmCtxHandle = ElizaInferenceContextHandle;
 
 /**
  * The streaming-LLM contract `FfiStreamingRunner` consumes. Methods
- * mirror the C ABI declared in `ffi-streaming-llm.h` (additive surface
- * over the omnivoice ABI), but the binding doesn't have to come from
- * libelizainference — any implementation that satisfies this interface
- * works.
+ * mirror the C ABI declared in `tools/omnivoice/include/eliza-inference-ffi.h`
+ * (the `eliza_inference_llm_stream_*` surface), but the binding doesn't have
+ * to come from libelizainference — any implementation that satisfies this
+ * interface works.
  *
  * Slot save/restore are optional because the desktop libllama path
  * does not expose `llama_state_seq_save_file` / `_load_file` through
@@ -112,7 +112,7 @@ export function wrapElizaInferenceFfi(
 			"[llm-streaming-binding] The loaded libelizainference does not expose " +
 				"the streaming-LLM symbol set (llmStreamSupported/Open/Prefill/Next/" +
 				"Cancel/Close). Rebuild the omnivoice fuse against the current " +
-				"ffi-streaming-llm.h, or use the desktop libllama path instead.",
+				"eliza-inference-ffi.h, or use the desktop libllama path instead.",
 		);
 	}
 	// Narrowed function references so the returned object types are

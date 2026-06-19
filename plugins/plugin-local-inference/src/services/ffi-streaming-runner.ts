@@ -247,7 +247,7 @@ export class FfiStreamingRunner {
 		) {
 			throw new Error(
 				"[ffi-streaming-runner] libelizainference is missing streaming-LLM symbols. " +
-					"Rebuild against the current ffi-streaming-llm.h.",
+					"Rebuild against the current eliza-inference-ffi.h.",
 			);
 		}
 

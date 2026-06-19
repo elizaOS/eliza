@@ -56,7 +56,7 @@ import { VoiceLifecycleError } from "./lifecycle";
  *     voice pipeline runs through a single native lib. v5 callers that
  *     never touched the speaker/diarizer entries are source-compatible.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 7 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 8 as const;
 
 /** Status codes mirrored from `ffi.h`. Negative = failure. */
 export const ELIZA_OK = 0;
@@ -119,7 +119,8 @@ export type LlmStreamHandle = bigint;
 
 /**
  * Per-session config handed to `llmStreamOpen`. Mirrors
- * `eliza_llm_stream_config_t` in `ffi-streaming-llm.h`.
+ * `eliza_llm_stream_config_t` in
+ * `native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h` (ABI v8).
  */
 export interface LlmStreamConfig {
 	maxTokens: number;
@@ -145,6 +146,20 @@ export interface LlmStreamConfig {
 	gbnfGrammar?: string | null;
 	/** Qwen3-style thinking-tag suppression passthrough (v1 no-op). */
 	disableThinking?: boolean;
+	/**
+	 * Per-load GPU offload (ABI v8). Number of model layers to place on GPU.
+	 * `undefined`/-1 selects the runtime default (all layers); 0 forces CPU.
+	 * The model is loaded once per ctx, so the FIRST session's value wins.
+	 */
+	gpuLayers?: number;
+	/**
+	 * KV-cache K quant type name (ABI v8), e.g. "f16", "q8_0", "qjl1_256".
+	 * `undefined`/null leaves the f16 default. Mirrors
+	 * `desktop-llama-adapter.ts` GGML_KV_CACHE_TYPES.
+	 */
+	cacheTypeK?: string | null;
+	/** KV-cache V quant type name (ABI v8); see `cacheTypeK`. */
+	cacheTypeV?: string | null;
 }
 
 /**
@@ -452,6 +467,21 @@ export interface ElizaInferenceFfi {
 	 */
 	llmStreamSupported?(): boolean;
 	/**
+	 * True when this build wires same-file / separate-drafter MTP
+	 * speculative decoding into the streaming-LLM text path (ABI v8). A v7
+	 * library returns `false` here (the symbol is absent), so the fused TEXT
+	 * path can refuse to route through it without a speculative-decode
+	 * regression. Anti-regression guard — see ABI v8 changelog.
+	 */
+	llmMtpSupported?(): boolean;
+	/**
+	 * True when this build maps + applies KV-cache quant types in the
+	 * streaming-LLM text path (ABI v8). A v7 library returns `false` (symbol
+	 * absent); the fused TEXT path refuses it to avoid a silent fallback to
+	 * f16 KV when a quantized cache was requested.
+	 */
+	llmKvQuantSupported?(): boolean;
+	/**
 	 * Open a streaming-LLM session against `ctx`. Failure throws
 	 * `VoiceLifecycleError`. Close exactly once via `llmStreamClose`.
 	 */
@@ -685,6 +715,9 @@ interface BunFfiSymbols {
 	eliza_inference_asr_stream_close: (stream: bigint) => void;
 	eliza_inference_free_string: (str: bigint | number) => void;
 	// Streaming LLM (additive). Optional — transitional builds may omit.
+	// ABI v8 capability probes — absent on v7 (treated as unsupported).
+	eliza_inference_llm_mtp_supported?: () => number;
+	eliza_inference_llm_kv_quant_supported?: () => number;
 	eliza_inference_llm_stream_open?: (
 		ctx: bigint,
 		cfg: unknown,
@@ -887,6 +920,14 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// Streaming LLM (additive on top of v3). Bound opportunistically — when
 	// absent the runner reports native streaming as unsupported.
 	let llmStreamSymbolsAvailable = true;
+	// ABI v8 streaming-LLM capability probes. Bound as their own family so a
+	// v7 library (which has the `llm_stream_*` symbols but not these probes)
+	// still binds `llmStreamDefs` while reporting MTP / KV-quant unsupported.
+	let llmCapabilitySymbolsAvailable = true;
+	const llmCapabilityDefs = {
+		eliza_inference_llm_mtp_supported: { args: [], returns: T.i32 },
+		eliza_inference_llm_kv_quant_supported: { args: [], returns: T.i32 },
+	};
 	const llmStreamDefs = {
 		eliza_inference_llm_stream_open: {
 			// ctx (ptr), cfg (ptr to eliza_llm_stream_config_t), out_error (ptr)
@@ -1025,12 +1066,14 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				...wakewordDefs,
 				...classifierDefs,
 				...llmStreamDefs,
+				...llmCapabilityDefs,
 			},
 			referenceEncode: true,
 			nativeVad: true,
 			wakeword: true,
 			classifiers: true,
 			llmStream: true,
+			llmCapability: true,
 		},
 		{
 			defs: {
@@ -1039,12 +1082,14 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				...wakewordDefs,
 				...classifierDefs,
 				...llmStreamDefs,
+				...llmCapabilityDefs,
 			},
 			referenceEncode: false,
 			nativeVad: true,
 			wakeword: true,
 			classifiers: true,
 			llmStream: true,
+			llmCapability: true,
 		},
 		{
 			defs: {
@@ -1059,6 +1104,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			wakeword: true,
 			classifiers: false,
 			llmStream: true,
+			llmCapability: false,
 		},
 		{
 			defs: {
@@ -1072,6 +1118,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			wakeword: true,
 			classifiers: false,
 			llmStream: true,
+			llmCapability: false,
 		},
 		{
 			defs: {
@@ -1085,6 +1132,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			wakeword: false,
 			classifiers: false,
 			llmStream: true,
+			llmCapability: false,
 		},
 		{
 			defs: { ...coreDefs, ...nativeVadDefs, ...llmStreamDefs },
@@ -1093,6 +1141,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			wakeword: false,
 			classifiers: false,
 			llmStream: true,
+			llmCapability: false,
 		},
 		{
 			defs: { ...coreDefs, ...referenceEncodeDefs, ...nativeVadDefs },
@@ -1101,6 +1150,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			wakeword: false,
 			classifiers: false,
 			llmStream: false,
+			llmCapability: false,
 		},
 		{
 			defs: { ...coreDefs, ...nativeVadDefs },
@@ -1109,6 +1159,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			wakeword: false,
 			classifiers: false,
 			llmStream: false,
+			llmCapability: false,
 		},
 		{
 			defs: { ...coreDefs, ...referenceEncodeDefs },
@@ -1117,6 +1168,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			wakeword: false,
 			classifiers: false,
 			llmStream: false,
+			llmCapability: false,
 		},
 		{
 			defs: coreDefs,
@@ -1125,6 +1177,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			wakeword: false,
 			classifiers: false,
 			llmStream: false,
+			llmCapability: false,
 		},
 	];
 	let lastOpenError: unknown = null;
@@ -1137,6 +1190,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			speakerSymbolsAvailable = attempt.classifiers;
 			diarizSymbolsAvailable = attempt.classifiers;
 			llmStreamSymbolsAvailable = attempt.llmStream;
+			llmCapabilitySymbolsAvailable = attempt.llmCapability ?? false;
 			break;
 		} catch (err) {
 			lastOpenError = err;
@@ -1157,11 +1211,15 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		loadedLib.symbols.eliza_inference_abi_version(),
 		ffi,
 	);
-	// v7 is the current full surface (v7 = real Silero VAD; v6 had the SAME
-	// symbol surface but VAD as a stub — the resolver probes
-	// `eliza_inference_vad_supported()` and falls back when VAD is stubbed, so a
-	// v6 library is still accepted at full symbol surface). Older fused builds
-	// may still be useful at degraded capability:
+	// v8 is the current full surface (v8 = streaming-LLM text parity: same-file
+	// MTP speculative decoding + KV-cache quant + per-load GPU layers, probed
+	// via `eliza_inference_llm_{mtp,kv_quant}_supported()`). A v7 library has
+	// the identical voice/ASR/VAD symbol surface but lacks those LLM
+	// optimizations, so it is still accepted for voice — the new capability
+	// probes report unsupported, and the fused TEXT path refuses to route
+	// through it (the anti-regression guard). Older fused builds may still be
+	// useful at degraded capability:
+	//   - v7: real Silero VAD; LLM-text optimizations absent (probed).
 	//   - v6: same symbols as v7; VAD may be a stub (probed at runtime).
 	//   - v5: no speaker/diarizer classifiers — JS reports them unsupported.
 	//   - v4: additionally no wake-word — JS reports wake-word unsupported.
@@ -1169,6 +1227,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	//     optional reference-encode symbols are absent from the binding.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
+		reported === "7" ||
 		reported === "6" ||
 		(reported === "5" && !speakerSymbolsAvailable && !diarizSymbolsAvailable) ||
 		(reported === "4" &&
@@ -1907,6 +1966,27 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			);
 		},
 
+		llmMtpSupported(): boolean {
+			// ABI v8 capability probe. Absent (or the whole probe family
+			// unbound) on a v7 library → unsupported, so the fused text path
+			// refuses to route MTP through it.
+			const probe = loadedLib.symbols.eliza_inference_llm_mtp_supported;
+			return (
+				llmCapabilitySymbolsAvailable &&
+				typeof probe === "function" &&
+				probe() === 1
+			);
+		},
+
+		llmKvQuantSupported(): boolean {
+			const probe = loadedLib.symbols.eliza_inference_llm_kv_quant_supported;
+			return (
+				llmCapabilitySymbolsAvailable &&
+				typeof probe === "function" &&
+				probe() === 1
+			);
+		},
+
 		llmStreamOpen({ ctx, config }) {
 			const open = loadedLib.symbols.eliza_inference_llm_stream_open;
 			if (!llmStreamSymbolsAvailable || typeof open !== "function") {
@@ -1918,7 +1998,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			const err = makeOutErr();
 			// Marshal the config struct into a Buffer. Layout matches
 			// `eliza_llm_stream_config_t` in `eliza-inference-ffi.h`
-			// (8-byte aligned):
+			// (8-byte aligned, ABI v8):
 			//   off  0 : i32  max_tokens
 			//   off  4 : f32  temperature
 			//   off  8 : f32  top_p
@@ -1931,9 +2011,11 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			//   off 40 : ptr  mtp_drafter_path
 			//   off 48 : ptr  gbnf_grammar
 			//   off 56 : i32  disable_thinking
-			//   off 60 : (4 bytes tail padding)
-			//   sizeof = 64
-			const buf = Buffer.alloc(64);
+			//   off 60 : i32  n_gpu_layers          (ABI v8 — fills old tail pad)
+			//   off 64 : ptr  cache_type_k          (ABI v8)
+			//   off 72 : ptr  cache_type_v          (ABI v8)
+			//   sizeof = 80
+			const buf = Buffer.alloc(80);
 			buf.writeInt32LE(config.maxTokens, 0);
 			buf.writeFloatLE(config.temperature, 4);
 			buf.writeFloatLE(config.topP, 8);
@@ -1947,12 +2029,29 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 					? config.gbnfGrammar
 					: null,
 			);
+			const cacheKArg = cstr(
+				config.cacheTypeK && config.cacheTypeK.length > 0
+					? config.cacheTypeK
+					: null,
+			);
+			const cacheVArg = cstr(
+				config.cacheTypeV && config.cacheTypeV.length > 0
+					? config.cacheTypeV
+					: null,
+			);
 			buf.writeBigUInt64LE(toPtrBigInt(keyArg.ptr), 24);
 			buf.writeInt32LE(config.draftMin, 32);
 			buf.writeInt32LE(config.draftMax, 36);
 			buf.writeBigUInt64LE(toPtrBigInt(drafterArg.ptr), 40);
 			buf.writeBigUInt64LE(toPtrBigInt(grammarArg.ptr), 48);
 			buf.writeInt32LE(config.disableThinking ? 1 : 0, 56);
+			// -1 = runtime default (all layers); 0 = CPU. `undefined` -> -1.
+			buf.writeInt32LE(
+				config.gpuLayers === undefined ? -1 : config.gpuLayers,
+				60,
+			);
+			buf.writeBigUInt64LE(toPtrBigInt(cacheKArg.ptr), 64);
+			buf.writeBigUInt64LE(toPtrBigInt(cacheVArg.ptr), 72);
 			const handle = open(ctx, ffi.ptr(buf), err.ptr);
 			if (isNullPointer(handle)) {
 				const message =
