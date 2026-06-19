@@ -71,6 +71,10 @@ class TalkModePlugin : Plugin() {
     private var lastHeardAtMs: Long? = null
     private var silenceJob: Job? = null
     private val silenceWindowMs = 700L
+    // The recognizer's own onResults AND our silence monitor can both finalize
+    // the same utterance; dedup so a turn is emitted (and sent) exactly once.
+    private var lastEmittedFinal = ""
+    private var lastEmittedFinalAtMs = 0L
 
     // TTS
     private var systemTts: TextToSpeech? = null
@@ -479,6 +483,19 @@ class TalkModePlugin : Plugin() {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+            // On-device recognizer (no network round-trip; works offline).
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            // Keep the session patient during quiet so the mic doesn't audibly
+            // re-arm every ~2s of silence (the "on/off" churn). Our 700ms silence
+            // monitor still finalizes a real turn snappily; these only stop the
+            // platform recognizer from bailing out (NO_MATCH) when nobody is
+            // talking yet. End-of-turn after speech is ~800ms.
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)
+            putExtra(
+                RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
+                800L,
+            )
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 6000L)
             sttLanguage?.let { putExtra(RecognizerIntent.EXTRA_LANGUAGE, it) }
         }
 
@@ -532,13 +549,14 @@ class TalkModePlugin : Plugin() {
         val elapsed = SystemClock.elapsedRealtime() - lastHeard
         if (elapsed < silenceWindowMs) return
 
-        // Finalize: emit a final transcript event
-        notifyListeners("transcript", JSObject().apply {
-            put("transcript", transcript)
-            put("isFinal", true)
-        })
+        // Finalize this turn (deduped against the recognizer's own onResults),
+        // then restart the recognizer so the next utterance is a CLEAN session —
+        // Android SpeechRecognizer accumulates within a session, so without the
+        // restart the next turn's partials would prepend the words we just sent.
         lastTranscript = ""
         lastHeardAtMs = null
+        emitFinalOnce(transcript)
+        scheduleRestart()
     }
 
     private fun handleTranscript(transcript: String, isFinal: Boolean) {
@@ -556,14 +574,38 @@ class TalkModePlugin : Plugin() {
 
         if (!isListening) return
 
-        if (transcript.isNotEmpty()) {
+        if (isFinal) {
+            // A real end-of-turn from the recognizer: emit once and clear the
+            // pending buffer so the silence monitor doesn't re-finalize the same
+            // words (the double-send bug).
+            lastTranscript = ""
+            lastHeardAtMs = null
+            emitFinalOnce(transcript)
+        } else {
             lastTranscript = transcript
             lastHeardAtMs = SystemClock.elapsedRealtime()
+            notifyListeners("transcript", JSObject().apply {
+                put("transcript", transcript)
+                put("isFinal", false)
+            })
         }
+    }
 
+    /**
+     * Emit a FINAL transcript exactly once. Both the recognizer's `onResults`
+     * and the silence monitor can finalize the same utterance; collapse them so
+     * the turn is sent a single time (a repeated final within 2s is dropped).
+     */
+    private fun emitFinalOnce(transcript: String) {
+        val text = transcript.trim()
+        if (text.isEmpty()) return
+        val now = SystemClock.elapsedRealtime()
+        if (text == lastEmittedFinal && now - lastEmittedFinalAtMs < 2000L) return
+        lastEmittedFinal = text
+        lastEmittedFinalAtMs = now
         notifyListeners("transcript", JSObject().apply {
-            put("transcript", transcript)
-            put("isFinal", isFinal)
+            put("transcript", text)
+            put("isFinal", true)
         })
     }
 
@@ -636,6 +678,11 @@ class TalkModePlugin : Plugin() {
         // Ensure the communication-mode session + audio focus are active even
         // for a standalone speak() that wasn't preceded by start().
         configureVoiceAudioSession()
+        // Re-assert loudspeaker routing right before playback. configureVoice…
+        // only routes on the FIRST activation; if the session was already up (the
+        // STT path opened it) the speaker route may have drifted, leaving TTS on
+        // the earpiece. Re-route here so replies are audible out the speaker.
+        audioManager?.let { routeVoiceOutput(it) }
 
         try {
             val canUseLocalInference = useLocalInferenceTts && !forceSystemTts

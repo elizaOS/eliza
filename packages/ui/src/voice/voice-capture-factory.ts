@@ -260,13 +260,20 @@ export function createVoiceCapture(
     );
     const errorHandle = await talkMode.addListener(
       "error",
-      (event: TalkModeErrorEvent) => {
-        setState(
-          "error",
-          new Error(
-            `Speech recognition error: ${event.message ?? event.code ?? "unknown"}`,
-          ),
-        );
+      (event: TalkModeErrorEvent & { recoverable?: boolean }) => {
+        // The native recognizer self-heals from recoverable errors (it re-arms
+        // continuously) — only a FATAL error (e.g. permission denied) ends the
+        // session. Tearing the capture down on a recoverable error would drop
+        // `recording` to false and make the shell's re-listen loop fire a second
+        // `talkMode.start()` over the still-live session (ERROR_CLIENT churn).
+        if (event.recoverable === false) {
+          setState(
+            "error",
+            new Error(
+              `Speech recognition error: ${event.message ?? event.code ?? "unknown"}`,
+            ),
+          );
+        }
       },
     );
     talkModeHandles = [transcriptHandle, errorHandle];

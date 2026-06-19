@@ -222,6 +222,30 @@ describe("createVoiceCapture", () => {
     expect(talkMode.stop).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the talkmode session alive on a RECOVERABLE error (no teardown)", async () => {
+    isNativePlatformMock.mockReturnValue(true);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    const onStateChange = vi.fn();
+
+    const capture = createVoiceCapture({
+      onTranscript: vi.fn(),
+      onStateChange,
+    });
+    await capture.start();
+    onStateChange.mockClear();
+
+    // A recoverable native error (the recognizer self-heals + re-arms) must NOT
+    // flip the capture to "error" — that would make the shell re-listen loop
+    // double-start a live session.
+    talkMode.emit("error", { code: "recognition_error", recoverable: true });
+    expect(onStateChange).not.toHaveBeenCalledWith("error", expect.anything());
+
+    // A FATAL error (e.g. permission denied) does end the session.
+    talkMode.emit("error", { code: "recognition_error", recoverable: false });
+    expect(onStateChange).toHaveBeenCalledWith("error", expect.any(Error));
+  });
+
   it("converse stop does NOT submit a partial when finalizeOnStop is false", async () => {
     isNativePlatformMock.mockReturnValue(true);
     const talkMode = makeFakeTalkMode();
