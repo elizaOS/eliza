@@ -120,7 +120,7 @@ export function isRenderTelemetryEnabled(): boolean {
 
 export function currentRoute(): string | undefined {
   if (typeof window === "undefined") return undefined;
-  return `${window.location.pathname}${window.location.search}`;
+  return window.location.pathname;
 }
 
 function captureRenderStack(): string | undefined {
@@ -193,11 +193,11 @@ export function useRenderGuard(name: string): void {
   const currentName = useRef(name);
   const lastSeverity = useRef<RenderTelemetrySeverity | null>(null);
 
-  previousRenderStack.current = renderStack.current;
-  renderStack.current = captureRenderStack();
-
   useEffect(() => {
     if (!isRenderTelemetryEnabled()) return;
+
+    previousRenderStack.current = renderStack.current;
+    renderStack.current = captureRenderStack();
 
     if (currentName.current !== name) {
       currentName.current = name;

@@ -217,6 +217,9 @@ export function useShellController(): ShellController {
       createdAt: message.timestamp,
       failureKind: message.failureKind,
       ...(message.reasoning ? { reasoning: message.reasoning } : {}),
+      ...(message.attachments?.length
+        ? { attachments: message.attachments }
+        : {}),
     }));
   }, [conversationMessages]);
 

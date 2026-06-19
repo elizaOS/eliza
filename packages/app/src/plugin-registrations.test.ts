@@ -15,7 +15,7 @@ const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-polymarket-app",
   "@elizaos/plugin-waifu-imagegen-app",
   "@elizaos/plugin-waifu-swap-app",
-  "@elizaos/plugin-wallet-ui",
+  "@elizaos/plugin-wallet-ui/register",
   "@elizaos/app-model-tester",
   "@elizaos/plugin-vector-browser/register",
   "@elizaos/plugin-contacts/register",

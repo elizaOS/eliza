@@ -2,10 +2,6 @@ import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import type { OverlayApp } from "@elizaos/ui/components/apps/overlay-app-api";
 import { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
 import { createElement } from "react";
-import {
-  ModelTesterAppView,
-  ModelTesterTuiView,
-} from "./ModelTesterAppView.js";
 
 export const MODEL_TESTER_APP_NAME = "@elizaos/app-model-tester";
 
@@ -34,21 +30,22 @@ function translate(key: string, opts?: Record<string, unknown>): string {
   return typeof opts?.defaultValue === "string" ? opts.defaultValue : key;
 }
 
-function ModelTesterShellPage() {
-  return createElement(ModelTesterAppView, {
-    exitToApps,
-    uiTheme: "dark",
-    t: translate,
-  });
-}
-
 registerAppShellPage({
   id: "model-tester",
   pluginId: MODEL_TESTER_APP_NAME,
   label: "Model Tester",
   icon: "TestTube2",
   path: "/model-tester",
-  Component: ModelTesterShellPage,
+  loader: () =>
+    import("./ModelTesterAppView.js").then((module) => ({
+      default: function ModelTesterShellPage() {
+        return createElement(module.ModelTesterAppView, {
+          exitToApps,
+          uiTheme: "dark",
+          t: translate,
+        });
+      },
+    })),
 });
 
 registerAppShellPage({
@@ -57,7 +54,10 @@ registerAppShellPage({
   label: "Model Tester TUI",
   icon: "Terminal",
   path: "/model-tester/tui",
-  Component: ModelTesterTuiView,
+  loader: () =>
+    import("./ModelTesterAppView.js").then((module) => ({
+      default: module.ModelTesterTuiView,
+    })),
 });
 
 // In a terminal host (the Node agent, no DOM), register the unified spatial

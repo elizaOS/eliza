@@ -25,6 +25,7 @@ import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
   applyStreamingTextModification,
+  filterRenderableConversationMessages,
   formatSearchBullet,
   type LoadConversationMessagesResult,
   mergeStreamingText,
@@ -740,10 +741,32 @@ export function useChatSend(deps: UseChatSendDeps) {
       const userMsgId = `temp-${now}`;
       const assistantMsgId = `temp-resp-${now}`;
 
+      // Echo uploaded images on the optimistic user bubble immediately, from the
+      // base64 the client already holds. The post-turn history reload replaces
+      // this with the server's persisted served-URL attachment.
+      const optimisticAttachments = imagesToSend?.length
+        ? imagesToSend.map((img, i) => ({
+            id: `${userMsgId}-img-${i}`,
+            url: `data:${img.mimeType};base64,${img.data}`,
+            contentType: "image" as const,
+            ...(img.name ? { title: img.name } : {}),
+            mimeType: img.mimeType,
+            source: "client_chat",
+          }))
+        : undefined;
+
       setCompanionMessageCutoffTs(now);
       setConversationMessages((prev: ConversationMessage[]) => [
         ...prev,
-        { id: userMsgId, role: "user", text, timestamp: now },
+        {
+          id: userMsgId,
+          role: "user",
+          text,
+          timestamp: now,
+          ...(optimisticAttachments
+            ? { attachments: optimisticAttachments }
+            : {}),
+        },
         { id: assistantMsgId, role: "assistant", text: "", timestamp: now },
       ]);
       setChatFirstTokenReceived(false);
@@ -1462,18 +1485,4 @@ export function useChatSend(deps: UseChatSendDeps) {
     handleChatEdit,
     handleChatClear,
   };
-}
-
-// ── File-local helper (needed by runQueuedChatSend) ──────────────────
-
-function shouldKeepConversationMessage(message: ConversationMessage): boolean {
-  if (message.role !== "assistant") return true;
-  if (message.text.trim().length > 0) return true;
-  return Boolean(message.blocks?.length);
-}
-
-function filterRenderableConversationMessages(
-  messages: ConversationMessage[],
-): ConversationMessage[] {
-  return messages.filter((message) => shouldKeepConversationMessage(message));
 }

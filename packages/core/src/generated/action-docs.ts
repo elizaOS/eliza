@@ -5177,122 +5177,77 @@ export const allActionsSpec = {
 		{
 			name: "INBOX",
 			description:
-				"Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram, WhatsApp, Slack, X and similar non-SMS channels (Android SMS is handled by plugin-messages).",
+				"Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed. Subactions: list, search, summarize.",
 			parameters: [
 				{
 					name: "action",
-					description:
-						"Canonical inbox sub-operation. Mirrors op for planner compatibility.",
+					description: "Inbox op: list | search | summarize.",
 					required: false,
 					schema: {
 						type: "string",
+						enum: ["list", "search", "summarize"],
+					},
+					descriptionCompressed: "Inbox op: list | search | summarize.",
+				},
+				{
+					name: "platforms",
+					description:
+						"Optional platform filter: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default all.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
 					},
 					descriptionCompressed:
-						"Canonical inbox sub-operation. Mirrors op for planner compatibility.",
+						"Optional platform filter: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default all.",
 				},
 				{
-					name: "op",
-					description: "Which inbox sub-operation to run.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Which inbox sub-operation to run.",
-				},
-				{
-					name: "threadId",
-					description:
-						"Target thread id (required for triage/reply/snooze/archive/approve).",
+					name: "since",
+					description: "receivedAt lower bound. ISO-8601.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Target thread id (required for triage/reply/snooze/archive/approve).",
+					descriptionCompressed: "receivedAt lower bound. ISO-8601.",
 				},
 				{
-					name: "channel",
-					description: "Channel the thread lives on.",
+					name: "limit",
+					description: "Limit per platform. Default 50.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Limit per platform. Default 50.",
+				},
+				{
+					name: "query",
+					description: "Required for search. Free-form query.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Channel the thread lives on.",
-				},
-				{
-					name: "decision",
-					description:
-						"Triage decision (reply_now/snooze/archive/ignore/needs_approval/follow_up).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Triage decision (reply_now/snooze/archive/ignore/needs_approval/follow_up).",
-				},
-				{
-					name: "rationale",
-					description:
-						"Why the agent chose this decision — surfaced in approval UI.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Why agent chose this decision - surfaced in approval UI.",
-				},
-				{
-					name: "body",
-					description: "Reply body (op=reply).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Reply body (op=reply).",
-				},
-				{
-					name: "wakeAt",
-					description:
-						"ISO timestamp the snoozed thread should re-surface (op=snooze).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"ISO timestamp the snoozed thread should re-surface (op=snooze).",
-				},
-				{
-					name: "reason",
-					description: "Free-text rationale (op=snooze/archive).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Free-text rationale (op=snooze/archive).",
+					descriptionCompressed: "Required for search. Free-form query.",
 				},
 			],
-			similes: ["TRIAGE_INBOX", "INBOX_REPLY", "INBOX_SNOOZE", "INBOX_ARCHIVE"],
+			descriptionCompressed:
+				"INBOX list|search|summarize gmail|slack|discord|telegram|signal|imessage|whatsapp",
 			exampleCalls: [
 				{
 					user: "Use INBOX with the provided parameters.",
 					actions: ["INBOX"],
 					params: {
 						INBOX: {
-							action: "example",
-							op: "example",
-							threadId: "example",
-							channel: "example",
-							decision: "example",
-							rationale: "example",
-							body: "example",
-							wakeAt: "example",
-							reason: "example",
+							action: "list",
+							platforms: "example",
+							since: "example",
+							limit: 1,
+							query: "example",
 						},
 					},
 				},
 			],
-			descriptionCompressed:
-				"Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram...",
 		},
 		{
 			name: "LINEAR",
@@ -6299,23 +6254,21 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_FINANCES",
 			description:
-				"Owner finances dashboard: sources, imports, spending, recurring charges, subscriptions. (Scaffold — implementation migrating from plugin-lifeops.)",
+				"Owner finances: sources, imports, spending, recurring charges, subscriptions.",
 			parameters: [
 				{
 					name: "action",
-					description:
-						"Owner finance op (passthrough until migration completes).",
+					description: "Owner finance op.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Owner finance op (passthrough until migration completes).",
+					descriptionCompressed: "Owner finance op.",
 				},
 			],
 			descriptionCompressed:
 				"owner finances dashboard|sources|csv|transactions|spending|recurring|subscription",
-			similes: ["FINANCES", "FINANCE", "TRANSACTIONS", "RECURRING"],
+			similes: ["FINANCES"],
 			exampleCalls: [
 				{
 					user: "Use OWNER_FINANCES with the provided parameters.",
@@ -6369,15 +6322,6 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Longer goal description (create/update).",
 				},
-				{
-					name: "horizon",
-					description: "Time horizon: quarter | year | life | etc.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Time horizon: quarter | year | life | etc.",
-				},
 			],
 			descriptionCompressed:
 				"owner goals: create|update|delete|review; long-horizon, drives routines",
@@ -6398,7 +6342,6 @@ export const allActionsSpec = {
 							id: "example",
 							title: "example",
 							description: "example",
-							horizon: "example",
 						},
 					},
 				},
@@ -7078,100 +7021,6 @@ export const allActionsSpec = {
 				"ANTHROPIC_PROXY_STATUS",
 				"CLAUDE_MAX_PROXY_STATUS",
 				"CHECK_PROXY",
-			],
-		},
-		{
-			name: "REMOTE_DESKTOP",
-			description:
-				"Remote-desktop sessions; owner connects to this machine from another device. ",
-			parameters: [
-				{
-					name: "action",
-					description: "start | status | end | list | revoke.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["start", "status", "end", "list", "revoke"],
-					},
-					examples: ["start", "list", "revoke"],
-					descriptionCompressed:
-						"remote-desktop action: start|status|end|list|revoke",
-				},
-				{
-					name: "sessionId",
-					description: "Session id. Required status|end|revoke.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["rs_abc123"],
-					descriptionCompressed: "session id (status|end|revoke)",
-				},
-				{
-					name: "confirmed",
-					description: "true required for start; security gate.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed: "true required for start (security)",
-				},
-				{
-					name: "pairingCode",
-					description:
-						"6-digit pairingCode for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
-					required: false,
-					schema: {
-						type: "string",
-						pattern: "^[0-9]{6}$",
-					},
-					examples: ["482193"],
-					descriptionCompressed:
-						"6-digit pairing code (start; skipped in local mode)",
-				},
-				{
-					name: "requesterIdentity",
-					description: "Requester id/name/device. Audit start.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "audit: requester id (start)",
-				},
-				{
-					name: "intent",
-					description: "Owner intent/reason. Audit.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "audit: owner reason",
-				},
-			],
-			descriptionCompressed:
-				"REMOTE_DESKTOP start|status|end|list|revoke; start confirmed:true; cloud pairingCode",
-			similes: [
-				"REMOTE_SESSION",
-				"VNC_SESSION",
-				"REMOTE_CONTROL",
-				"PHONE_REMOTE_ACCESS",
-				"CONNECT_FROM_PHONE",
-			],
-			exampleCalls: [
-				{
-					user: "Use REMOTE_DESKTOP with the provided parameters.",
-					actions: ["REMOTE_DESKTOP"],
-					params: {
-						REMOTE_DESKTOP: {
-							action: "start",
-							sessionId: "rs_abc123",
-							confirmed: false,
-							pairingCode: "482193",
-							requesterIdentity: "example",
-							intent: "example",
-						},
-					},
-				},
 			],
 		},
 		{

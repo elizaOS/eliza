@@ -110,7 +110,7 @@ async function main() {
     `CEREBRAS_API_KEY injected from pool: ${sel?.envPatch.CEREBRAS_API_KEY === cerebrasKey ? "YES" : "no"}`,
   );
   log(
-    `BUILT LIVE_PROOF.txt: ${built ? "YES — " + readFileSync(proofPath, "utf-8").trim() : "no"}`,
+    `BUILT LIVE_PROOF.txt: ${built ? `YES — ${readFileSync(proofPath, "utf-8").trim()}` : "no"}`,
   );
   const errs = events
     .filter((e) => e.event === "error")

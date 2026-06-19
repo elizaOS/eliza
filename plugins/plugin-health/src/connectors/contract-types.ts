@@ -91,6 +91,10 @@ export interface AnchorContribution {
   anchorKey: string;
   description: string;
   source: "plugin-health" | string;
+  describe?: { label: string; provider: string };
+  resolve?(
+    context: unknown,
+  ): { atIso: string } | null | Promise<{ atIso: string } | null>;
 }
 
 /**

@@ -36,10 +36,10 @@ import { AttachmentManager } from "./attachments";
 // Use stringToUuid() to convert them, not asUUID() which would throw an error.
 import type { ICompatRuntime } from "./compat";
 import { createDraftStreamController } from "./draft-stream";
-import { renderDiscordInteractions } from "./interactions";
 import { getDiscordSettings } from "./environment";
 import { buildDiscordWorldMetadata } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
+import { renderDiscordInteractions } from "./interactions";
 import {
 	appendCoalescedDiscordMetadata,
 	type DiscordMessageWithCoalescedMetadata,

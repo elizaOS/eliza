@@ -60,7 +60,19 @@ type PermissionId =
   | "website-blocking"
   | "notifications"
   | "full-disk"
-  | "automation";
+  | "automation"
+  | "speech-recognition"
+  | "photos"
+  | "phone"
+  | "messages"
+  | "wifi"
+  | "bluetooth"
+  | "app-blocking"
+  | "usage-access"
+  | "overlay"
+  | "write-settings"
+  | "local-network"
+  | "battery-optimization";
 const PERMISSION_IDS: readonly PermissionId[] = [
   "screen-recording",
   "accessibility",
@@ -78,6 +90,18 @@ const PERMISSION_IDS: readonly PermissionId[] = [
   "notifications",
   "full-disk",
   "automation",
+  "speech-recognition",
+  "photos",
+  "phone",
+  "messages",
+  "wifi",
+  "bluetooth",
+  "app-blocking",
+  "usage-access",
+  "overlay",
+  "write-settings",
+  "local-network",
+  "battery-optimization",
 ];
 type PermissionStateRecord = {
   id: PermissionId;

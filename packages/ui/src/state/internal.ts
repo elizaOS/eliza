@@ -7,6 +7,10 @@ export {
   resolveSetupPreviousStep,
 } from "../first-run/setup-steps";
 export {
+  filterRenderableConversationMessages,
+  shouldKeepConversationMessage,
+} from "./conversation-message-filter";
+export {
   asApiLikeError,
   computeStreamingDelta,
   formatSearchBullet,

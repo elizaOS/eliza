@@ -45,6 +45,7 @@ export type {
   WatcherTaskDefinition,
 } from "./task-definitions.js";
 
+import { HEALTH_DEFAULT_PACKS } from "@elizaos/plugin-health";
 import { DEFAULT_CONSOLIDATION_POLICIES } from "./consolidation-policies.js";
 import type { ConnectorRegistryContract } from "./contract-types.js";
 import {
@@ -115,8 +116,9 @@ import {
 /**
  * The canonical list of default packs in the order they are offered.
  *
- * `plugin-health` registers its own packs (`bedtime`, `wake-up`, `sleep-recap`)
- * through the same registry — they do not appear here.
+ * Health owns its packs (`bedtime`, `wake-up`, `sleep-recap`); PA includes
+ * them from plugin-health so first-run seeding sees the full owner schedule
+ * catalog even when no runtime DefaultPackRegistry is attached.
  */
 export const DEFAULT_PACKS: ReadonlyArray<DefaultPack> = [
   dailyRhythmPack,
@@ -126,6 +128,7 @@ export const DEFAULT_PACKS: ReadonlyArray<DefaultPack> = [
   inboxTriageStarterPack,
   habitStartersPack,
   executiveAssistantPack,
+  ...HEALTH_DEFAULT_PACKS,
 ];
 
 export function getAllDefaultPacks(): DefaultPack[] {

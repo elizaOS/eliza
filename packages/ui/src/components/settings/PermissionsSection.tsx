@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { PermissionId } from "../../api";
+import type { PermissionId, PermissionState } from "../../api";
 import {
   getMobileSignalsPlugin,
   type MobileSignalsPermissionStatus,
   type MobileSignalsSetupAction,
 } from "../../bridge/native-plugins";
 import { useBootConfig } from "../../config/boot-config-react.hooks";
-import { isDesktopPlatform, isNative, isWebPlatform } from "../../platform";
+import {
+  isDesktopPlatform,
+  isNative,
+  isWebPlatform,
+  platform as runtimePlatform,
+} from "../../platform";
+import {
+  createMobileSignalsPermissionsRegistry,
+  openMobilePermissionSettings,
+} from "../../platform/mobile-permissions-client";
 import { useApp } from "../../state";
 import { StreamingPermissionsSettingsView } from "../permissions/StreamingPermissions";
 import { CapabilityToggle, PermissionRow } from "./permission-controls";
@@ -93,12 +102,176 @@ function MobilePermissionsView() {
             "Streams camera, mic, and screen to your Eliza Cloud agent.",
         })}
       />
+      <MobileSystemPermissionsPanel />
       <MobileSignalsPermissionsPanel />
       {AppBlockerSettingsCard ? <AppBlockerSettingsCard mode="mobile" /> : null}
       {WebsiteBlockerSettingsCard ? (
         <WebsiteBlockerSettingsCard mode="mobile" />
       ) : null}
     </SettingsStack>
+  );
+}
+
+function mobileSettingsPlatform(): "ios" | "android" | "web" {
+  if (runtimePlatform === "ios" || runtimePlatform === "android") {
+    return runtimePlatform;
+  }
+  return "web";
+}
+
+function MobileSystemPermissionsPanel() {
+  const { t } = useApp();
+  const mobilePlatform = mobileSettingsPlatform();
+  const registry = useMemo(() => createMobileSignalsPermissionsRegistry(), []);
+  const permissionDefs = useMemo(
+    () =>
+      SYSTEM_PERMISSIONS.filter((def) =>
+        def.platforms.includes(mobilePlatform),
+      ),
+    [mobilePlatform],
+  );
+  const [states, setStates] = useState<
+    Partial<Record<PermissionId, PermissionState>>
+  >({});
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [busyId, setBusyId] = useState<PermissionId | null>(null);
+
+  const refresh = useCallback(
+    async (showSpinner = false) => {
+      if (showSpinner) setRefreshing(true);
+      try {
+        const entries = await Promise.all(
+          permissionDefs.map(async (def) => {
+            try {
+              return [def.id, await registry.check(def.id)] as const;
+            } catch {
+              return [def.id, registry.get(def.id)] as const;
+            }
+          }),
+        );
+        setStates(Object.fromEntries(entries));
+      } finally {
+        if (showSpinner) setRefreshing(false);
+      }
+    },
+    [permissionDefs, registry],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      try {
+        const entries = await Promise.all(
+          permissionDefs.map(async (def) => {
+            try {
+              return [def.id, await registry.check(def.id)] as const;
+            } catch {
+              return [def.id, registry.get(def.id)] as const;
+            }
+          }),
+        );
+        if (!cancelled) setStates(Object.fromEntries(entries));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [permissionDefs, registry]);
+
+  const requestPermission = useCallback(
+    async (id: PermissionId) => {
+      setBusyId(id);
+      try {
+        await registry.request(id, {
+          reason: "Enable this permission from Settings.",
+          feature: { app: "settings", action: `permissions.${id}` },
+        });
+        await refresh();
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [refresh, registry],
+  );
+
+  const openSettings = useCallback(
+    async (id: PermissionId) => {
+      setBusyId(id);
+      try {
+        await openMobilePermissionSettings(id);
+        await refresh();
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [refresh],
+  );
+
+  if (permissionDefs.length === 0) return null;
+
+  if (loading) {
+    return (
+      <p className="py-4 text-center text-xs text-muted">
+        {t("permissionssection.LoadingPermissions", {
+          defaultValue: "Loading permissions...",
+        })}
+      </p>
+    );
+  }
+
+  return (
+    <SettingsGroup
+      title={t("permissionssection.SystemPermissions", {
+        defaultValue: "System Permissions",
+      })}
+      description={t("permissionssection.MobileSystemPermissionsDescription", {
+        defaultValue:
+          "Review device permissions used by mobile features, then grant or manage each one in the right OS flow.",
+      })}
+      action={
+        <SettingsActionButton
+          agentId="perm-mobile-system-refresh"
+          agentLabel="Refresh mobile system permissions"
+          agentGroup="permissions"
+          agentStatus={refreshing ? "loading" : undefined}
+          variant="outline"
+          size="sm"
+          className="h-9 rounded-sm px-3 text-xs font-semibold"
+          onClick={() => void refresh(true)}
+          disabled={refreshing}
+        >
+          {refreshing
+            ? t("common.refreshing", { defaultValue: "Refreshing..." })
+            : t("common.refresh", { defaultValue: "Refresh" })}
+        </SettingsActionButton>
+      }
+      footer={t("permissionssection.MobilePermissionGrantNote", {
+        defaultValue:
+          "If a permission was denied, open Settings and enable it for Eliza, then return here and refresh.",
+      })}
+    >
+      {permissionDefs.map((def) => {
+        const state = states[def.id] ?? registry.get(def.id);
+        return (
+          <PermissionRow
+            key={def.id}
+            def={def}
+            status={state.status}
+            reason={busyId === def.id ? "Updating..." : state.reason}
+            platform={mobilePlatform}
+            canRequest={state.canRequest}
+            onRequest={() => void requestPermission(def.id)}
+            onOpenSettings={() => void openSettings(def.id)}
+            isShell={false}
+            shellEnabled
+          />
+        );
+      })}
+    </SettingsGroup>
   );
 }
 

@@ -528,6 +528,16 @@ function byPriorityThenAge(
   return aLast - bLast; // older first
 }
 
+function _byLeastUsedThenPriority(
+  a: LinkedAccountConfig,
+  b: LinkedAccountConfig,
+): number {
+  const aPct = a.usage?.sessionPct ?? 0;
+  const bPct = b.usage?.sessionPct ?? 0;
+  if (aPct !== bPct) return aPct - bPct;
+  return byPriorityThenAge(a, b);
+}
+
 // Default deps wired against account storage plus a pool-owned metadata file.
 
 interface PoolMetaFields {

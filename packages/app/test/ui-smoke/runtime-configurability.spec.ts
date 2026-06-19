@@ -12,8 +12,11 @@ import {
 // This spec injects the host signals a desktop/device shell sets before React
 // boots — an API base (flips `cloudOnly` → false) and the Electrobun window
 // marker (flips `canSelectLocalRuntime` → true) — so the full runtime matrix
-// renders: Cloud, Local, Remote. It then drives each branch to prove every
-// runtime is reachable and configurable, not just displayed.
+// renders: Cloud, Local, Remote. It then drives each branch (including the
+// Local → inference sub-choice) to prove every runtime is reachable and
+// configurable, not just displayed. The single first-run surface is
+// CompactOnboarding (StartupScreen → CompactOnboarding); the older "detailed"
+// first-run shell was removed.
 
 async function fulfillJson(
   route: Route,
@@ -63,19 +66,10 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
   });
 }
 
-async function expectFirstRunSurface(page: Page) {
-  const surface = page
-    .getByTestId("first-run-shell")
-    .or(page.getByTestId("onboarding-toast"));
-  await expect(surface).toBeVisible({ timeout: 20_000 });
-  return surface;
-}
-
-async function hasDetailedFirstRunShell(page: Page): Promise<boolean> {
-  return page
-    .getByTestId("first-run-shell")
-    .isVisible({ timeout: 500 })
-    .catch(() => false);
+async function expectOnboarding(page: Page) {
+  const toast = page.getByTestId("onboarding-toast");
+  await expect(toast).toBeVisible({ timeout: 20_000 });
+  return toast;
 }
 
 test("onboarding exposes local, cloud, and remote runtimes and each is configurable", async ({
@@ -89,60 +83,45 @@ test("onboarding exposes local, cloud, and remote runtimes and each is configura
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const shell = await expectFirstRunSurface(page);
+  const toast = await expectOnboarding(page);
+  await expect(page.getByText("How should Eliza run?")).toBeVisible({
+    timeout: 15_000,
+  });
 
-  if (!(await hasDetailedFirstRunShell(page))) {
-    const toast = page.getByTestId("onboarding-toast");
-    await expect(toast).toBeVisible();
-    await expect(page.getByText("Let's get you started")).toBeVisible();
-    // All three runtimes are offered as option cards on the compact surface.
-    await expect(page.getByTestId("onboarding-option-cloud")).toBeVisible();
-    await expect(page.getByTestId("onboarding-option-remote")).toBeVisible();
-    await expect(page.getByTestId("onboarding-option-local")).toBeVisible();
-    await expect(toast).toBeVisible();
-    await expectNoRenderTelemetryErrors(
-      page,
-      "compact runtime configurability",
-    );
-    return;
-  }
-
-  // All three runtimes must be offered out of the box on a full-capability host.
-  const cloud = page.getByTestId("first-run-runtime-cloud");
-  const local = page.getByTestId("first-run-runtime-local");
-  const remote = page.getByTestId("first-run-runtime-remote");
+  // All three runtimes are offered as option cards on a full-capability host.
+  const cloud = page.getByTestId("onboarding-option-cloud");
+  const local = page.getByTestId("onboarding-option-local");
+  const remote = page.getByTestId("onboarding-option-remote");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
-  await expect(local).toBeVisible({ timeout: 15_000 });
-  await expect(remote).toBeVisible({ timeout: 15_000 });
+  await expect(local).toBeVisible();
+  await expect(remote).toBeVisible();
 
-  // Local is configurable: selecting it reveals the inference sub-choice, and
-  // both "all local" and "route inference through cloud" must be selectable.
+  // Local is configurable: selecting it advances to the inference sub-choice,
+  // where both "Cloud inference" (recommended) and "On-device inference" are
+  // offered. Back returns to the runtime cards without committing.
   await local.click();
-  const allLocal = page.getByTestId("first-run-local-all-local");
-  const cloudInference = page.getByTestId("first-run-local-cloud-inference");
-  await expect(allLocal).toBeVisible({ timeout: 10_000 });
-  await expect(cloudInference).toBeVisible();
-  await cloudInference.check({ force: true });
-  await expect(cloudInference).toBeChecked();
-  await allLocal.check({ force: true });
-  await expect(allLocal).toBeChecked();
-
-  // Cloud is configurable: re-selecting it is the recommended resting choice
-  // and collapses the local sub-choice.
-  await cloud.click();
-  await expect(allLocal).toHaveCount(0);
-
-  // Remote is configurable: selecting it advances to the endpoint + token form
-  // so another device can point at this machine.
-  await remote.click();
-  const back = page.getByRole("button", { name: /runtime/i });
-  await expect(back).toBeVisible({ timeout: 10_000 });
-  // Returning to the runtime step keeps the selector intact (no dead end).
-  await back.click();
+  const inferenceCloud = page.getByTestId("onboarding-inference-cloud");
+  const inferenceLocal = page.getByTestId("onboarding-inference-local");
+  await expect(inferenceCloud).toBeVisible({ timeout: 10_000 });
+  await expect(inferenceLocal).toBeVisible();
+  await expect(page.getByText("Where should it think?")).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
   await expect(cloud).toBeVisible({ timeout: 10_000 });
 
+  // Remote is configurable: selecting it advances to the endpoint + token form
+  // so another device can point at this machine. Back returns to the cards.
+  await remote.click();
+  const remoteConnect = page.getByTestId("onboarding-remote-connect");
+  await expect(remoteConnect).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#onboarding-remote-address")).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(cloud).toBeVisible({ timeout: 10_000 });
+
+  // Cloud is the recommended resting choice and is always reachable/enabled.
+  await expect(cloud).toBeEnabled({ timeout: 10_000 });
+
   await expectNoRenderTelemetryErrors(page, "runtime configurability");
-  await expect(shell).toBeVisible();
+  await expect(toast).toBeVisible();
 });
 
 test("onboarding survives browser back and forward while runtime choices churn", async ({
@@ -154,58 +133,26 @@ test("onboarding survives browser back and forward while runtime choices churn",
   await injectFullCapabilityHost(page);
   await seedAppStorage(page, { "eliza:first-run-complete": "" });
 
+  // runtimeTarget=remote opens the onboarding directly on the remote connect
+  // form (the controller seeds step="remote" for that target).
   await page.goto("/?runtime=first-run&runtimeTarget=remote", {
     waitUntil: "domcontentloaded",
   });
-  const shell = await expectFirstRunSurface(page);
-  if (!(await hasDetailedFirstRunShell(page))) {
-    // runtimeTarget=remote opens the compact surface directly on the remote
-    // connect form (the controller seeds step="remote" for that target).
-    await expect(
-      page.getByPlaceholder("https://agent.example.com"),
-    ).toBeVisible();
-    await page.goto("/?runtime=first-run&runtimeTarget=local", {
-      waitUntil: "domcontentloaded",
-    });
-    await expectFirstRunSurface(page);
-    await page.goBack({ waitUntil: "domcontentloaded" });
-    await expectFirstRunSurface(page);
-    await page.goForward({ waitUntil: "domcontentloaded" });
-    await expectFirstRunSurface(page);
-    await expectNoRenderTelemetryErrors(
-      page,
-      "compact runtime browser history",
-    );
-    return;
-  }
-  await expect(page.getByRole("button", { name: /runtime/i })).toBeVisible({
-    timeout: 10_000,
+  await expectOnboarding(page);
+  await expect(page.getByPlaceholder("https://agent.example.com")).toBeVisible({
+    timeout: 15_000,
   });
 
+  // Churn the runtime target via the URL + browser history; the onboarding
+  // surface must survive every transition without crashing or freezing.
   await page.goto("/?runtime=first-run&runtimeTarget=local", {
     waitUntil: "domcontentloaded",
   });
-  await expect(shell).toBeVisible({ timeout: 20_000 });
-  const allLocal = page.getByTestId("first-run-local-all-local");
-  await expect(allLocal).toBeVisible({ timeout: 10_000 });
-
+  await expectOnboarding(page);
   await page.goBack({ waitUntil: "domcontentloaded" });
-  await expect(shell).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("button", { name: /runtime/i })).toBeVisible({
-    timeout: 10_000,
-  });
-
+  await expectOnboarding(page);
   await page.goForward({ waitUntil: "domcontentloaded" });
-  await expect(shell).toBeVisible({ timeout: 20_000 });
-  await expect(allLocal).toBeVisible({ timeout: 10_000 });
-  await page.goBack({ waitUntil: "domcontentloaded" });
-  await expect(shell).toBeVisible({ timeout: 20_000 });
-
-  await page.getByRole("button", { name: /runtime/i }).click();
-  const cloud = page.getByTestId("first-run-runtime-cloud");
-  await expect(cloud).toBeVisible({ timeout: 10_000 });
-  await cloud.click();
-  await expect(allLocal).toHaveCount(0);
+  await expectOnboarding(page);
 
   await expectNoRenderTelemetryErrors(page, "runtime browser history");
 });

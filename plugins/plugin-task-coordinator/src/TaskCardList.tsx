@@ -221,7 +221,7 @@ export function TaskSearchInput({
 }) {
   return (
     <div
-      className={`relative flex h-9 items-center rounded-full bg-surface/60 transition-colors focus-within:bg-surface ${className ?? "flex-1"}`}
+      className={`relative flex h-9 items-center rounded-full border border-border/50 bg-surface/60 transition-colors focus-within:border-accent/50 focus-within:bg-surface ${className ?? "flex-1"}`}
     >
       <Search
         className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted"
@@ -275,6 +275,7 @@ export function TaskCard({
   onOpen: (id: string) => void;
   t: Translate;
 }) {
+  const visual = statusVisual(status);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `task-card-${id}`,
     role: "list-item",
@@ -288,9 +289,13 @@ export function TaskCard({
       type="button"
       onClick={() => onOpen(id)}
       data-testid="task-card"
-      className="group flex w-full items-start gap-3 rounded-2xl p-3 text-left transition-colors hover:bg-bg-hover/40"
+      className="group relative flex w-full items-start gap-3 overflow-hidden rounded-2xl bg-bg-accent/20 p-3 text-left transition-colors hover:bg-bg-hover/50"
       {...agentProps}
     >
+      <span
+        className={`absolute inset-y-0 left-0 w-1 ${visual.dot}`}
+        aria-hidden
+      />
       <TaskStatusMedallion status={status} />
       <span className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="flex items-center gap-2">
@@ -365,12 +370,13 @@ export function TaskCountChip({
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-2xs ${toneClass}`}
     >
       <span className="font-semibold tabular-nums">{value}</span>
-      <span className="opacity-70">{label}</span>
+      <span className="uppercase tracking-[0.08em] opacity-70">{label}</span>
     </span>
   );
 }
 
-/** Quiet borderless empty state shown when there are no tasks. */
+/** Quiet empty state: one glyph + a short title, lots of open space. The longer
+ * hint stays for screen readers only — on screen, the icon carries the meaning. */
 export function TaskEmptyState({
   title,
   hint,
@@ -382,12 +388,16 @@ export function TaskEmptyState({
 }) {
   return (
     <div
-      className="flex flex-col items-center gap-3 px-6 py-12 text-center"
+      className="flex flex-col items-center gap-3 py-16 text-center"
       data-testid="task-empty-state"
     >
-      <CircleDashed className="h-8 w-8 text-muted" aria-hidden />
-      <p className="text-sm font-semibold text-txt-strong">{title}</p>
-      <p className="max-w-xs text-xs text-muted">{hint}</p>
+      <CircleDashed
+        className="h-10 w-10 text-accent/40"
+        strokeWidth={1.5}
+        aria-hidden
+      />
+      <p className="text-sm font-medium text-muted">{title}</p>
+      <p className="sr-only">{hint}</p>
       {action ? <div>{action}</div> : null}
     </div>
   );
@@ -416,7 +426,7 @@ export function BackChip({
       type="button"
       onClick={onClick}
       data-testid={testId}
-      className="inline-flex items-center gap-1.5 rounded-full bg-bg-accent/40 px-3 py-1 text-xs font-medium text-muted transition-colors hover:bg-bg-hover/50 hover:text-txt"
+      className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-bg-accent/40 px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:text-txt"
       {...agentProps}
     >
       <span aria-hidden>←</span>

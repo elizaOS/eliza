@@ -1,8 +1,12 @@
 import {
+  FileText,
+  Film,
   Home,
+  Loader2,
   Maximize2,
   Mic,
   Minimize2,
+  Music,
   RotateCcw,
   SendHorizontal,
   Settings as SettingsIcon,
@@ -24,6 +28,7 @@ import {
   parseSlashDraft,
   runSlashExecution,
   type SlashExecution,
+  splitLeadingSlashCommand,
 } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
@@ -35,9 +40,12 @@ import { cn } from "../../lib/utils";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
+  CHAT_UPLOAD_ACCEPT,
+  chatUploadKind,
   filesToImageAttachments,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
+import { MessageAttachments } from "../chat/MessageAttachments";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import type { ShellMessage } from "./shell-state";
@@ -486,6 +494,24 @@ function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
 const COPY_HOLD_MS = 420;
 const COPY_MOVE_CANCEL_PX = 10;
 
+/**
+ * Render a user turn's text, bolding a leading slash command so a sent
+ * `/command` reads as a command in the transcript (mirroring the composer's
+ * inline autocomplete). Plain prose renders unchanged.
+ */
+function ThreadLineText({ content }: { content: string }): React.ReactNode {
+  const slash = splitLeadingSlashCommand(content);
+  if (!slash) return content;
+  return (
+    <>
+      <span className="font-bold" data-testid="slash-command-token">
+        {slash.command}
+      </span>
+      {slash.rest}
+    </>
+  );
+}
+
 const ThreadLine = React.memo(function ThreadLine({
   message,
   floating,
@@ -644,14 +670,21 @@ const ThreadLine = React.memo(function ThreadLine({
               : "bg-white/10 text-white/90",
         )}
       >
-        {isAssistant && !message.content.trim() ? (
+        {isAssistant &&
+        !message.content.trim() &&
+        !message.attachments?.length ? (
           // The in-flight assistant turn (kept by visibleMessages only while
           // responding): breathe the dots INSIDE the bubble so they're anchored
           // where the streamed text fills in — then the text replaces them.
           <TypingDotsInner />
+        ) : isUser ? (
+          <ThreadLineText content={message.content} />
         ) : (
           message.content
         )}
+        {message.attachments?.length ? (
+          <MessageAttachments attachments={message.attachments} />
+        ) : null}
         {isAssistant && message.reasoning?.trim() ? (
           <ThinkingBlock reasoning={message.reasoning} />
         ) : null}
@@ -707,6 +740,7 @@ export function ContinuousChatOverlay({
     currentTab,
     clearConversation,
     stop,
+    modelStatus,
   } = controller;
 
   // Copy an assistant answer (press-and-hold on its bubble). Stable identity so
@@ -1859,6 +1893,40 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
 
+      {/* Local model download/load status. Picking on-device inference drops the
+          user straight into chat (the download runs in the background), so this
+          non-blocking strip is the only place they see why a first reply is
+          slow. Send is NOT gated — the server holds the turn until the model is
+          ready — but the wait is now explained rather than silent. */}
+      {modelStatus.kind === "downloading" || modelStatus.kind === "loading" ? (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="overlay-model-download-status"
+          className="pointer-events-none relative mb-2 flex w-full justify-center"
+        >
+          <span
+            className={cn(
+              "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-medium text-white/85 backdrop-blur-sm",
+              FLOAT_SHADOW,
+            )}
+          >
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-[#FF5800]" />
+            {modelStatus.kind === "downloading" ? (
+              <span>
+                Downloading {modelStatus.modelName ?? "local model"}
+                {typeof modelStatus.percent === "number"
+                  ? ` — ${Math.round(modelStatus.percent)}%`
+                  : "…"}
+              </span>
+            ) : (
+              <span>Loading {modelStatus.modelName ?? "local model"}…</span>
+            )}
+          </span>
+        </div>
+      ) : null}
+
       {/* Three tailored prompt suggestions — a keyboard-style strip shown in the
           resting (closed) state when nothing is typed. Tapping one sends it
           immediately, which also pulls the chat sheet up. `order: -1` floats the
@@ -2193,29 +2261,57 @@ export function ContinuousChatOverlay({
               <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
                 {hasImages ? (
                   <div className="flex flex-wrap gap-2">
-                    {pendingImages.map((img, i) => (
-                      <div
-                        key={`${img.name}-${img.mimeType}-${img.data.length}`}
-                        className="group relative h-14 w-14 shrink-0"
-                      >
-                        <img
-                          src={`data:${img.mimeType};base64,${img.data}`}
-                          alt={img.name}
-                          className="h-14 w-14 rounded-lg border border-white/20 object-cover"
-                        />
+                    {pendingImages.map((img, i) => {
+                      const kind = chatUploadKind(img.mimeType);
+                      const removeButton = (
                         <button
                           type="button"
                           aria-label={`remove ${img.name}`}
                           onClick={() => removeImage(i)}
-                          // Small visual disc on a 56px thumbnail, but a 44px-class
-                          // hit zone via the invisible `before` overlay so it's
-                          // thumb-tappable without crowding the image.
+                          // Small visual disc, but a 44px-class hit zone via the
+                          // invisible `before` overlay so it's thumb-tappable
+                          // without crowding the tile.
                           className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90"
                         >
                           ×
                         </button>
-                      </div>
-                    ))}
+                      );
+                      const tileKey = `${img.name}-${img.mimeType}-${img.data.length}`;
+                      if (kind === "image") {
+                        return (
+                          <div
+                            key={tileKey}
+                            className="group relative h-14 w-14 shrink-0"
+                          >
+                            <img
+                              src={`data:${img.mimeType};base64,${img.data}`}
+                              alt={img.name}
+                              className="h-14 w-14 rounded-lg border border-white/20 object-cover"
+                            />
+                            {removeButton}
+                          </div>
+                        );
+                      }
+                      const KindIcon =
+                        kind === "audio"
+                          ? Music
+                          : kind === "video"
+                            ? Film
+                            : FileText;
+                      return (
+                        <div
+                          key={tileKey}
+                          className="group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-2.5 text-white/90"
+                          title={img.name}
+                        >
+                          <KindIcon className="h-5 w-5 shrink-0 text-white/70" />
+                          <span className="min-w-0 truncate text-[11px] leading-tight">
+                            {img.name}
+                          </span>
+                          {removeButton}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : null}
                 {imageError ? (
@@ -2231,7 +2327,7 @@ export function ContinuousChatOverlay({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={CHAT_UPLOAD_ACCEPT}
               multiple
               className="hidden"
               onChange={(e) => {
@@ -2300,6 +2396,14 @@ export function ContinuousChatOverlay({
                   expand();
                 }}
                 onBlur={() => setComposerFocused(false)}
+                onPaste={(e) => {
+                  // Paste images/files straight into the composer (cmd/ctrl+V).
+                  const files = Array.from(e.clipboardData?.files ?? []);
+                  if (files.length > 0) {
+                    e.preventDefault();
+                    addImageFiles(files);
+                  }
+                }}
                 onKeyDown={(e) => {
                   // The slash menu intercepts navigation/commit keys when open.
                   if (slashOpen) {

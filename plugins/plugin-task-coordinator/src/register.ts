@@ -1,7 +1,4 @@
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { OrchestratorTuiView } from "./CodingAgentTasksPanel";
-import { OrchestratorWorkbench } from "./OrchestratorWorkbench";
-import { OdysseusShell } from "./odysseus/OdysseusShell";
 
 registerAppShellPage({
   id: "orchestrator",
@@ -12,7 +9,10 @@ registerAppShellPage({
   order: 70,
   group: "developer",
   fullBleed: true,
-  Component: OrchestratorWorkbench,
+  loader: () =>
+    import("./OrchestratorWorkbench").then((module) => ({
+      default: module.OrchestratorWorkbench,
+    })),
 });
 
 // odysseus 1:1 port — rendered at /odysseus while iterated; folds into
@@ -26,7 +26,10 @@ registerAppShellPage({
   order: 69,
   group: "developer",
   fullBleed: true,
-  Component: OdysseusShell,
+  loader: () =>
+    import("./odysseus/OdysseusShell").then((module) => ({
+      default: module.OdysseusShell,
+    })),
 });
 
 registerAppShellPage({
@@ -37,7 +40,10 @@ registerAppShellPage({
   path: "/orchestrator/tui",
   order: 71,
   group: "developer",
-  Component: OrchestratorTuiView,
+  loader: () =>
+    import("./CodingAgentTasksPanel").then((module) => ({
+      default: module.OrchestratorTuiView,
+    })),
 });
 
 // In a terminal host (the Node agent, no DOM), register the unified

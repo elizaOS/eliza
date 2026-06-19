@@ -199,8 +199,9 @@ export interface ScheduledTaskDispatchRecord {
 }
 
 export interface ScheduledTaskDispatcher {
-  // biome-ignore lint/suspicious/noConfusingVoidType: void marks "dispatched, produced no DispatchResult" — part of the contract (TestNoopScheduledTaskDispatcher returns void).
-  dispatch(record: ScheduledTaskDispatchRecord): Promise<DispatchResult | void>;
+  dispatch(
+    record: ScheduledTaskDispatchRecord,
+  ): Promise<DispatchResult | undefined>;
 }
 
 /**
@@ -1078,8 +1079,7 @@ export function createScheduledTaskRunner(
       });
     }
 
-    // biome-ignore lint/suspicious/noConfusingVoidType: mirrors the dispatcher's DispatchResult | void return.
-    let dispatchResult: DispatchResult | void | undefined;
+    let dispatchResult: DispatchResult | undefined | undefined;
     try {
       dispatchResult = await dispatcher.dispatch({
         taskId: claimed.taskId,

@@ -93,6 +93,9 @@
       "@elizaos/capacitor-calendar": [
         "../native-plugins/calendar/src/index.ts"
       ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
+      ],
       "@elizaos/capacitor-mobile-signals": [
         "../native-plugins/mobile-signals/src/index.ts"
       ],

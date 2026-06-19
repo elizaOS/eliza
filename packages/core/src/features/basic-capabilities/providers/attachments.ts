@@ -55,6 +55,23 @@ function mergeConversationAttachments(
 	);
 }
 
+/**
+ * Render an attachment URL for the prompt without dumping raw bytes into
+ * context. Inline `data:` URLs (e.g. a TTS audio clip stored as
+ * `data:audio/wav;base64,…`) are replaced with a compact descriptor — the
+ * agent still knows the media exists and can pull it via `ATTACHMENT
+ * action=read`, but a multi-KB base64 blob never reaches the model. Remote
+ * URLs are passed through, defensively truncated if pathologically long.
+ */
+function formatAttachmentUrlForPrompt(url: string | undefined): string {
+	if (!url) return "(none)";
+	if (url.startsWith("data:")) {
+		const mime = /^data:([^;,]+)/.exec(url)?.[1] ?? "binary";
+		return `[inline ${mime} data, ${url.length} chars]`;
+	}
+	return url.length > 512 ? `${url.slice(0, 509)}…` : url;
+}
+
 function contentString(message: Memory, key: string): string {
 	const value = (message.content as Record<string, unknown> | undefined)?.[key];
 	return typeof value === "string" ? value : "";
@@ -152,7 +169,7 @@ export const attachmentsProvider: Provider = {
 							(attachment) =>
 								`ID: ${attachment.id}
     Name: ${attachment.title}
-    URL: ${attachment.url}
+    URL: ${formatAttachmentUrlForPrompt(attachment.url)}
     Type: ${attachment.source}
     Content Type: ${attachment.contentType ?? "unknown"}
     Stored Content: ${

@@ -23,6 +23,7 @@ import {
   TaskEmptyState,
   TaskListHeader,
   TaskMetaChip,
+  TaskSearchInput,
   TaskStatusMedallion,
 } from "./TaskCardList";
 
@@ -248,8 +249,8 @@ function ThreadDetailContent({
       </div>
 
       {detail.acceptanceCriteria && detail.acceptanceCriteria.length > 0 ? (
-        <div className="space-y-1.5">
-          <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
+        <div>
+          <div className="mb-1 text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
             {t("codingagenttaskspanel.acceptance", {
               defaultValue: "Acceptance",
             })}
@@ -435,8 +436,11 @@ function ThreadDetailContent({
               const text = stripAnsi(entry.content);
               if (!text) return null;
               return (
-                <div key={entry.id}>
-                  <div className="mb-1 text-2xs text-muted">
+                <div
+                  key={entry.id}
+                  className="rounded border border-border/40 bg-bg-hover/40 p-2"
+                >
+                  <div className="mb-1 text-2xs uppercase tracking-[0.08em] text-muted">
                     {entry.direction === "stdin"
                       ? t("codingagenttaskspanel.prompt", {
                           defaultValue: "prompt",
@@ -556,7 +560,7 @@ function ThreadDetailPane({
         onClick={onBack}
         testId="task-detail-back"
       />
-      <div className="flex items-start gap-3 px-1">
+      <div className="flex items-start gap-3 rounded-2xl bg-bg-accent/20 p-3">
         <TaskStatusMedallion status={thread.status} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-txt-strong">
@@ -813,7 +817,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         data-testid="task-coordinator-panel"
       >
         {detailError ? (
-          <div className="rounded-md bg-danger/10 px-2 py-1.5 text-xs text-danger">
+          <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
             {t("codingagenttaskspanel.loadTaskDetailFailed", {
               defaultValue: "Failed to load task detail: {{error}}",
               error: detailError,
@@ -821,7 +825,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
           </div>
         ) : null}
         {mutationError ? (
-          <div className="rounded-md bg-danger/10 px-2 py-1.5 text-xs text-danger">
+          <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
             {mutationError}
           </div>
         ) : null}
@@ -859,44 +863,36 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
             ) : null}
           </>
         }
-        action={
-          <button
-            ref={archivedRef}
-            type="button"
-            onClick={() => setShowArchived((value) => !value)}
-            aria-pressed={showArchived}
-            aria-label={showArchivedLabel}
-            title={showArchivedLabel}
-            data-testid="task-show-archived"
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-              showArchived
-                ? "bg-accent-subtle text-accent"
-                : "text-muted hover:bg-bg-hover/50 hover:text-txt"
-            }`}
-            {...archivedAgentProps}
-          >
-            <Archive className="h-4 w-4" />
-          </button>
-        }
       />
 
-      {/* Search is chat-driven: this input stays machine-addressable (agents
-          fill it to filter) but is visually hidden — there is no per-view
-          search box. The archived toggle is the only visible view-scoped
-          control, collapsed to a quiet icon. */}
-      <input
-        ref={searchRef}
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        placeholder={searchLabel}
-        aria-label={searchLabel}
-        tabIndex={-1}
-        className="sr-only"
-        {...searchAgentProps}
-      />
+      <div className="flex items-center gap-2">
+        <TaskSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder={searchLabel}
+          inputRef={searchRef}
+          agentProps={searchAgentProps}
+        />
+        <button
+          ref={archivedRef}
+          type="button"
+          onClick={() => setShowArchived((value) => !value)}
+          aria-pressed={showArchived}
+          data-testid="task-show-archived"
+          className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
+            showArchived
+              ? "border-accent/40 bg-accent-subtle text-accent"
+              : "border-border/50 bg-bg-accent/30 text-muted hover:text-txt"
+          }`}
+          {...archivedAgentProps}
+        >
+          <Archive className="h-3.5 w-3.5" />
+          {showArchivedLabel}
+        </button>
+      </div>
 
       {loadError ? (
-        <div className="rounded-md bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {t("codingagenttaskspanel.loadThreadsFailed", {
             defaultValue: "Failed to load task threads: {{error}}",
             error: loadError,
@@ -904,7 +900,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         </div>
       ) : null}
       {mutationError ? (
-        <div className="rounded-md bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {mutationError}
         </div>
       ) : null}
@@ -940,7 +936,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
           })}
           hint={t("codingagenttaskspanel.empty.hint", {
             defaultValue:
-              "Ask me to start a coding task and it will appear here.",
+              "Coding agents you dispatch will appear here with their sessions, decisions, and live console output.",
           })}
         />
       )}

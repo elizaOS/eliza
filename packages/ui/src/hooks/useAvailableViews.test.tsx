@@ -331,4 +331,33 @@ describe("useAvailableViews", () => {
     });
     expect(fetchWithCsrf).toHaveBeenCalledTimes(9);
   });
+
+  it("pauses background polling while hidden and refreshes when visible again", async () => {
+    vi.useFakeTimers();
+    fetchWithCsrf.mockResolvedValue(response(200, { views: [] }));
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+
+    const { unmount } = renderHook(() => useAvailableViews());
+    await flushHookEffects();
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await flushHookEffects();
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(3);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flushHookEffects();
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(6);
+
+    unmount();
+  });
 });

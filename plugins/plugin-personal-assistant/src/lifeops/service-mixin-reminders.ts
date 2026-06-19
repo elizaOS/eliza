@@ -11,6 +11,7 @@ import {
   ModelType,
   parseJsonModelRecord,
   runWithTrajectoryContext,
+  ServiceType,
 } from "@elizaos/core";
 import {
   getSelfControlStatus,
@@ -988,6 +989,29 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         subjectType: args.subjectType,
         scheduledFor: args.scheduledFor,
         dueAt: args.dueAt,
+      });
+      // Also push onto the unified notification rail so the reminder lands in
+      // the notification center and reaches desktop/mobile (focus-gated) — not
+      // just the in-app assistant stream. groupKey collapses repeat nudges for
+      // the same occurrence.
+      const notifier = this.runtime.getService(ServiceType.NOTIFICATION) as {
+        notify?: (input: Record<string, unknown>) => Promise<unknown>;
+      } | null;
+      void notifier?.notify?.({
+        title: "Reminder",
+        body: args.text,
+        category: "reminder",
+        priority: "normal",
+        source: "lifeops",
+        deepLink: "/chat",
+        groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
+        data: {
+          ownerType: args.ownerType,
+          ownerId: args.ownerId,
+          subjectType: args.subjectType,
+          scheduledFor: args.scheduledFor,
+          dueAt: args.dueAt,
+        },
       });
     }
 

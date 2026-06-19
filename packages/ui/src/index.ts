@@ -44,6 +44,7 @@ export * from "./app-shell-registry";
 export { registerAppShellPage } from "./app-shell-registry";
 export * from "./backgrounds/index";
 export * from "./bridge/index";
+export * from "./cache-telemetry";
 export {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,

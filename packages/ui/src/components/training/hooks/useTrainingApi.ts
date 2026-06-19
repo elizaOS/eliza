@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import type {
   CreateJobRequest,
   InferenceEndpoint,
@@ -38,7 +39,6 @@ export function useTrainingJobs(pollIntervalMs: number = 10000) {
     error: null,
   });
   const mountedRef = useRef(true);
-  const pollTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -58,14 +58,11 @@ export function useTrainingJobs(pollIntervalMs: number = 10000) {
   useEffect(() => {
     mountedRef.current = true;
     fetchJobs();
-    pollTimerRef.current = setInterval(fetchJobs, pollIntervalMs);
     return () => {
       mountedRef.current = false;
-      if (pollTimerRef.current !== undefined) {
-        clearInterval(pollTimerRef.current);
-      }
     };
-  }, [fetchJobs, pollIntervalMs]);
+  }, [fetchJobs]);
+  useIntervalWhenDocumentVisible(fetchJobs, pollIntervalMs, pollIntervalMs > 0);
 
   return { ...state, refetch: fetchJobs };
 }
@@ -80,7 +77,6 @@ export function useTrainingJobDetail(
     error: null,
   });
   const mountedRef = useRef(true);
-  const pollTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -103,14 +99,15 @@ export function useTrainingJobDetail(
   useEffect(() => {
     mountedRef.current = true;
     fetchDetail();
-    pollTimerRef.current = setInterval(fetchDetail, pollIntervalMs);
     return () => {
       mountedRef.current = false;
-      if (pollTimerRef.current !== undefined) {
-        clearInterval(pollTimerRef.current);
-      }
     };
-  }, [fetchDetail, pollIntervalMs]);
+  }, [fetchDetail]);
+  useIntervalWhenDocumentVisible(
+    fetchDetail,
+    pollIntervalMs,
+    pollIntervalMs > 0,
+  );
 
   return { ...state, refetch: fetchDetail };
 }
@@ -157,7 +154,6 @@ export function useInferenceEndpoints(pollIntervalMs: number = 30000) {
     error: null,
   });
   const mountedRef = useRef(true);
-  const pollTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const fetchEndpoints = useCallback(async () => {
     try {
@@ -179,14 +175,15 @@ export function useInferenceEndpoints(pollIntervalMs: number = 30000) {
   useEffect(() => {
     mountedRef.current = true;
     fetchEndpoints();
-    pollTimerRef.current = setInterval(fetchEndpoints, pollIntervalMs);
     return () => {
       mountedRef.current = false;
-      if (pollTimerRef.current !== undefined) {
-        clearInterval(pollTimerRef.current);
-      }
     };
-  }, [fetchEndpoints, pollIntervalMs]);
+  }, [fetchEndpoints]);
+  useIntervalWhenDocumentVisible(
+    fetchEndpoints,
+    pollIntervalMs,
+    pollIntervalMs > 0,
+  );
 
   return { ...state, refetch: fetchEndpoints };
 }
@@ -202,7 +199,6 @@ export function useInferenceStats(
     error: null,
   });
   const mountedRef = useRef(true);
-  const pollTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -228,14 +224,11 @@ export function useInferenceStats(
   useEffect(() => {
     mountedRef.current = true;
     fetchStats();
-    pollTimerRef.current = setInterval(fetchStats, pollIntervalMs);
     return () => {
       mountedRef.current = false;
-      if (pollTimerRef.current !== undefined) {
-        clearInterval(pollTimerRef.current);
-      }
     };
-  }, [fetchStats, pollIntervalMs]);
+  }, [fetchStats]);
+  useIntervalWhenDocumentVisible(fetchStats, pollIntervalMs, pollIntervalMs > 0);
 
   return state;
 }
@@ -373,7 +366,6 @@ export function useTrainingBudget(
     error: null,
   });
   const mountedRef = useRef(true);
-  const pollTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const fetchBudget = useCallback(async () => {
     try {
@@ -395,14 +387,15 @@ export function useTrainingBudget(
   useEffect(() => {
     mountedRef.current = true;
     fetchBudget();
-    pollTimerRef.current = setInterval(fetchBudget, pollIntervalMs);
     return () => {
       mountedRef.current = false;
-      if (pollTimerRef.current !== undefined) {
-        clearInterval(pollTimerRef.current);
-      }
     };
-  }, [fetchBudget, pollIntervalMs]);
+  }, [fetchBudget]);
+  useIntervalWhenDocumentVisible(
+    fetchBudget,
+    pollIntervalMs,
+    pollIntervalMs > 0,
+  );
 
   return { ...state, refetch: fetchBudget };
 }

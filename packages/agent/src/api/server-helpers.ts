@@ -45,6 +45,7 @@ import {
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
 import { extractCompatTextContent } from "./compat-utils.ts";
+import { persistMediaBytes } from "./media-store.ts";
 import { isBlockedObjectKey } from "./server-helpers-config.ts";
 import type {
   ChatAttachmentWithData,
@@ -445,7 +446,8 @@ export function cloneWithoutBlockedObjectKeys<T>(value: T): T {
 // ---------------------------------------------------------------------------
 
 const MAX_CHAT_IMAGES = 4;
-const MAX_IMAGE_DATA_BYTES = 5 * 1_048_576;
+const MAX_IMAGE_DATA_BYTES = 5 * 1_048_576; // 5 MB for images
+const MAX_MEDIA_DATA_BYTES = 15 * 1_048_576; // 15 MB for audio/video/pdf
 const MAX_IMAGE_NAME_LENGTH = 255;
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 const ALLOWED_IMAGE_MIME_TYPES = new Set([
@@ -454,34 +456,70 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
   "image/gif",
   "image/webp",
 ]);
+const ALLOWED_CHAT_MEDIA_MIME_TYPES = new Set([
+  ...ALLOWED_IMAGE_MIME_TYPES,
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
+  "audio/ogg",
+  "audio/webm",
+  "audio/mp4",
+  "audio/aac",
+  "audio/flac",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/ogg",
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "text/markdown",
+]);
 
 export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =
-  "Please describe the attached image.";
+  "Please review the attached file.";
 
-/** Returns an error message string, or null if valid. Exported for unit tests. */
+/** Map an upload MIME type to its canonical attachment content type. */
+function contentTypeForUploadMime(mimeType: string): ContentType {
+  const mime = mimeType.toLowerCase();
+  if (mime.startsWith("image/")) return ContentType.IMAGE;
+  if (mime.startsWith("audio/")) return ContentType.AUDIO;
+  if (mime.startsWith("video/")) return ContentType.VIDEO;
+  return ContentType.DOCUMENT;
+}
+
+/**
+ * Validate uploaded chat attachments (images, audio, video, PDFs, text docs).
+ * Returns an error message string, or null if valid. Exported for unit tests.
+ */
 export function validateChatImages(images: unknown): string | null {
   if (!Array.isArray(images) || images.length === 0) return null;
   if (images.length > MAX_CHAT_IMAGES)
-    return `Too many images (max ${MAX_CHAT_IMAGES})`;
+    return `Too many attachments (max ${MAX_CHAT_IMAGES})`;
   for (const img of images) {
-    if (!img || typeof img !== "object") return "Each image must be an object";
+    if (!img || typeof img !== "object")
+      return "Each attachment must be an object";
     const { data, mimeType, name } = img as Record<string, unknown>;
     if (typeof data !== "string" || !data)
-      return "Each image must have a non-empty data string";
+      return "Each attachment must have a non-empty data string";
     if (data.startsWith("data:"))
-      return "Image data must be raw base64, not a data URL";
-    if (data.length > MAX_IMAGE_DATA_BYTES)
-      return `Image too large (max ${MAX_IMAGE_DATA_BYTES / 1_048_576} MB per image)`;
-    if (!BASE64_RE.test(data))
-      return "Image data contains invalid base64 characters";
+      return "Attachment data must be raw base64, not a data URL";
     if (typeof mimeType !== "string" || !mimeType)
-      return "Each image must have a mimeType string";
-    if (!ALLOWED_IMAGE_MIME_TYPES.has(mimeType.toLowerCase()))
-      return `Unsupported image type: ${mimeType}`;
+      return "Each attachment must have a mimeType string";
+    if (!ALLOWED_CHAT_MEDIA_MIME_TYPES.has(mimeType.toLowerCase()))
+      return `Unsupported attachment type: ${mimeType}`;
+    const isImage = mimeType.toLowerCase().startsWith("image/");
+    const maxBytes = isImage ? MAX_IMAGE_DATA_BYTES : MAX_MEDIA_DATA_BYTES;
+    if (data.length > maxBytes)
+      return `Attachment too large (max ${maxBytes / 1_048_576} MB)`;
+    if (!BASE64_RE.test(data))
+      return "Attachment data contains invalid base64 characters";
     if (typeof name !== "string" || !name)
-      return "Each image must have a name string";
+      return "Each attachment must have a name string";
     if (name.length > MAX_IMAGE_NAME_LENGTH)
-      return `Image name too long (max ${MAX_IMAGE_NAME_LENGTH} characters)`;
+      return `Attachment name too long (max ${MAX_IMAGE_NAME_LENGTH} characters)`;
   }
   return null;
 }
@@ -511,15 +549,34 @@ export function buildChatAttachments(
 } {
   if (!images?.length)
     return { attachments: undefined, compactAttachments: undefined };
-  const attachments: ChatAttachmentWithData[] = images.map((img, i) => ({
-    id: `img-${i}`,
-    url: `attachment:img-${i}`,
-    title: img.name,
-    source: "client_chat",
-    contentType: ContentType.IMAGE,
-    _data: img.data,
-    _mimeType: img.mimeType,
-  }));
+  const attachments: ChatAttachmentWithData[] = images.map((img, i) => {
+    // Persist the uploaded bytes to the content-addressed media store so the
+    // attachment carries a durable served URL (renderable from chat history),
+    // not a throwaway `attachment:img-N` placeholder. `_data` is retained for
+    // the in-memory vision/description pass so it needs no re-fetch.
+    let url = `attachment:img-${i}`;
+    try {
+      url = persistMediaBytes(
+        Buffer.from(img.data, "base64"),
+        img.mimeType,
+      ).url;
+    } catch (err) {
+      logger.warn(
+        `[buildChatAttachments] failed to persist uploaded image: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    return {
+      id: `img-${i}`,
+      url,
+      title: img.name,
+      source: "client_chat",
+      contentType: contentTypeForUploadMime(img.mimeType),
+      _data: img.data,
+      _mimeType: img.mimeType,
+    };
+  });
   const compactAttachments: Media[] = attachments.map(
     ({ _data: _d, _mimeType: _m, ...rest }) => rest,
   );

@@ -1,6 +1,11 @@
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 
 type NativePlugin = Record<string, unknown>;
+type CapacitorPermissionState =
+  | "prompt"
+  | "prompt-with-rationale"
+  | "granted"
+  | "denied";
 
 /** Window may have Capacitor injected at runtime (Electron/native shells). */
 interface WindowWithCapacitor extends Window {
@@ -337,6 +342,10 @@ export interface AppBlockerPluginLike extends NativePlugin {
   getStatus(): Promise<AppBlockerStatus>;
 }
 
+export interface PhonePermissionStatus {
+  phone: CapacitorPermissionState;
+}
+
 export interface PhonePluginLike extends NativePlugin {
   getStatus(): Promise<{
     hasTelecom: boolean;
@@ -355,6 +364,8 @@ export interface PhonePluginLike extends NativePlugin {
     transcript: string;
     summary?: string;
   }): Promise<{ updatedAt: number }>;
+  checkPermissions?: () => Promise<PhonePermissionStatus>;
+  requestPermissions?: () => Promise<PhonePermissionStatus>;
 }
 
 export type CallLogType =
@@ -399,6 +410,10 @@ export interface ImportedContactSummary extends ContactSummary {
   sourceName: string;
 }
 
+export interface ContactsPermissionStatus {
+  contacts: CapacitorPermissionState;
+}
+
 export interface ContactsPluginLike extends NativePlugin {
   listContacts(options?: {
     query?: string;
@@ -414,6 +429,8 @@ export interface ContactsPluginLike extends NativePlugin {
   importVCard(options: { vcardText: string }): Promise<{
     imported: ImportedContactSummary[];
   }>;
+  checkPermissions?: () => Promise<ContactsPermissionStatus>;
+  requestPermissions?: () => Promise<ContactsPermissionStatus>;
 }
 
 export interface SmsMessageSummary {
@@ -431,12 +448,18 @@ export interface SendSmsResult {
   messageUri: string;
 }
 
+export interface MessagesPermissionStatus {
+  sms: CapacitorPermissionState;
+}
+
 export interface MessagesPluginLike extends NativePlugin {
   sendSms(options: { address: string; body: string }): Promise<SendSmsResult>;
   listMessages(options?: {
     limit?: number;
     threadId?: string;
   }): Promise<{ messages: SmsMessageSummary[] }>;
+  checkPermissions?: () => Promise<MessagesPermissionStatus>;
+  requestPermissions?: () => Promise<MessagesPermissionStatus>;
 }
 
 export interface AndroidRoleStatus {
@@ -463,6 +486,13 @@ export interface SystemPluginLike extends NativePlugin {
   }): Promise<AndroidRoleRequestResult>;
   openSettings(): Promise<void>;
   openNetworkSettings(): Promise<void>;
+  getDeviceSettings?: () => Promise<{
+    brightness: number;
+    brightnessMode: "manual" | "automatic" | "unknown";
+    canWriteSettings: boolean;
+    volumes: unknown[];
+  }>;
+  openWriteSettings?: () => Promise<void>;
 }
 
 export interface MobileSignalsPluginLike extends NativePlugin {
@@ -502,6 +532,37 @@ export interface AppleCalendarPluginLike extends NativePlugin {
 export interface TalkModePermissionStatus {
   microphone?: "granted" | "denied" | "prompt";
   speechRecognition?: "granted" | "denied" | "prompt" | "not_supported";
+}
+
+export interface CameraPermissionStatus {
+  camera: "granted" | "denied" | "prompt";
+  microphone: "granted" | "denied" | "prompt";
+  photos: "granted" | "denied" | "prompt" | "limited";
+}
+
+export interface CameraPluginLike extends NativePlugin {
+  checkPermissions?: () => Promise<CameraPermissionStatus>;
+  requestPermissions?: () => Promise<CameraPermissionStatus>;
+}
+
+export interface LocationPermissionStatus {
+  location: "granted" | "denied" | "prompt";
+  background?: "granted" | "denied" | "prompt";
+}
+
+export interface LocationPluginLike extends NativePlugin {
+  checkPermissions?: () => Promise<LocationPermissionStatus>;
+  requestPermissions?: () => Promise<LocationPermissionStatus>;
+}
+
+export interface ScreenCapturePermissionStatus {
+  screenCapture: "granted" | "denied" | "prompt" | "not_supported";
+  microphone: "granted" | "denied" | "prompt";
+}
+
+export interface ScreenCapturePluginLike extends NativePlugin {
+  checkPermissions?: () => Promise<ScreenCapturePermissionStatus>;
+  requestPermissions?: () => Promise<ScreenCapturePermissionStatus>;
 }
 
 export interface WebsiteBlockerPermissionResult {
@@ -701,17 +762,17 @@ export function getAppBlockerPlugin(): AppBlockerPluginLike {
     {}) as AppBlockerPluginLike;
 }
 
-export function getCameraPlugin(): GenericNativePlugin {
+export function getCameraPlugin(): CameraPluginLike {
   const plugins = getCapacitorPlugins();
-  return (plugins.AppCamera ?? plugins.Camera ?? {}) as GenericNativePlugin;
+  return (plugins.AppCamera ?? plugins.Camera ?? {}) as CameraPluginLike;
 }
 
-export function getLocationPlugin(): GenericNativePlugin {
-  return getNativePlugin<GenericNativePlugin>("Location");
+export function getLocationPlugin(): LocationPluginLike {
+  return getNativePlugin<LocationPluginLike>("Location");
 }
 
-export function getScreenCapturePlugin(): GenericNativePlugin {
-  return getNativePlugin<GenericNativePlugin>("ScreenCapture");
+export function getScreenCapturePlugin(): ScreenCapturePluginLike {
+  return getNativePlugin<ScreenCapturePluginLike>("ScreenCapture");
 }
 
 export function getCanvasPlugin(): GenericNativePlugin {

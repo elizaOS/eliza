@@ -104,6 +104,51 @@ declare module "@elizaos/plugin-companion" {
   export * from "@elizaos/app-companion";
 }
 
+declare module "@elizaos/plugin-companion/components/companion/companion-app" {
+  export function registerCompanionApp(): void;
+}
+
+declare module "@elizaos/plugin-companion/components/companion/companion-scene-status-context" {
+  import type { CompanionSceneStatus } from "@elizaos/ui/config";
+
+  export function useCompanionSceneStatus(): CompanionSceneStatus;
+}
+
+declare module "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice" {
+  import type {
+    CompanionInferenceNotice,
+    ResolveCompanionInferenceNoticeArgs,
+  } from "@elizaos/ui/config";
+
+  export function resolveCompanionInferenceNotice(
+    args: ResolveCompanionInferenceNoticeArgs,
+  ): CompanionInferenceNotice | null;
+}
+
+declare module "@elizaos/plugin-companion/components/companion/CompanionShell" {
+  import type { CompanionShellComponentProps } from "@elizaos/ui/config";
+  import type { ComponentType } from "react";
+
+  export const CompanionShell: ComponentType<CompanionShellComponentProps>;
+}
+
+declare module "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay" {
+  import type { ComponentType } from "react";
+
+  export const GlobalEmoteOverlay: ComponentType<Record<string, never>>;
+}
+
+declare module "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton" {
+  import type { CompanionInferenceNotice } from "@elizaos/ui/config";
+  import type { ComponentType } from "react";
+
+  export const InferenceCloudAlertButton: ComponentType<{
+    notice: CompanionInferenceNotice;
+    onClick: () => void;
+    onPointerDown?: (...args: unknown[]) => unknown;
+  }>;
+}
+
 declare module "@elizaos/plugin-personal-assistant" {
   export const AppBlockerSettingsCard: ComponentType<AppBlockerSettingsCardProps>;
   export const WebsiteBlockerSettingsCard: ComponentType<WebsiteBlockerSettingsCardProps>;

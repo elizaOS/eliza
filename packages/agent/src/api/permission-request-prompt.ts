@@ -34,7 +34,9 @@ Required fields:
   - permission: one of accessibility | screen-recording | reminders |
     calendar | health | screentime | contacts | notes | microphone |
     camera | location | shell | website-blocking | notifications |
-    full-disk | automation
+    full-disk | automation | speech-recognition | photos | phone |
+    messages | wifi | bluetooth | app-blocking | usage-access |
+    overlay | write-settings | local-network | battery-optimization
   - reason: short, user-facing, names the actual thing they asked for
     (e.g. "Add 'pick up groceries' to your Apple Reminders.")
   - feature: dotted "<app>.<area>.<action>" identifier

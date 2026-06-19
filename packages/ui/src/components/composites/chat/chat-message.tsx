@@ -9,6 +9,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 import { cn } from "../../../lib/utils";
@@ -46,7 +47,60 @@ export interface ChatMessageProps {
   onEdit?: (messageId: string, text: string) => Promise<boolean> | boolean;
   onSpeak?: (messageId: string, text: string) => void;
   replyTarget?: ChatMessageData | null;
+  renderContent?: (message: ChatMessageData) => React.ReactNode;
   userMessagesOnRight?: boolean;
+}
+
+const HOVER_MEDIA_QUERY = "(hover: hover) and (pointer: fine)";
+const hoverSupportListeners = new Set<() => void>();
+let hoverMediaQuery: MediaQueryList | null = null;
+let hoverMediaQueryUnsubscribe: (() => void) | null = null;
+
+function getHoverMediaQuery(): MediaQueryList | null {
+  if (hoverMediaQuery) return hoverMediaQuery;
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return null;
+  }
+  hoverMediaQuery = window.matchMedia(HOVER_MEDIA_QUERY);
+  return hoverMediaQuery;
+}
+
+function readSupportsHover(): boolean {
+  return getHoverMediaQuery()?.matches ?? true;
+}
+
+function subscribeSupportsHover(listener: () => void): () => void {
+  hoverSupportListeners.add(listener);
+  const mediaQuery = getHoverMediaQuery();
+  if (mediaQuery && hoverSupportListeners.size === 1) {
+    const notify = () => {
+      for (const current of hoverSupportListeners) current();
+    };
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", notify);
+      hoverMediaQueryUnsubscribe = () =>
+        mediaQuery.removeEventListener("change", notify);
+    } else {
+      mediaQuery.addListener(notify);
+      hoverMediaQueryUnsubscribe = () => mediaQuery.removeListener(notify);
+    }
+  }
+
+  return () => {
+    hoverSupportListeners.delete(listener);
+    if (hoverSupportListeners.size === 0) {
+      hoverMediaQueryUnsubscribe?.();
+      hoverMediaQueryUnsubscribe = null;
+    }
+  };
+}
+
+function useSupportsHover(): boolean {
+  return useSyncExternalStore(
+    subscribeSupportsHover,
+    readSupportsHover,
+    () => true,
+  );
 }
 
 function getChatMessageAnchorId(messageId: string): string {
@@ -186,6 +240,7 @@ function arePropsEqual(
       prev.onEdit === next.onEdit &&
       prev.onSpeak === next.onSpeak &&
       prev.replyTarget?.id === next.replyTarget?.id &&
+      prev.renderContent === next.renderContent &&
       prev.userMessagesOnRight === next.userMessagesOnRight &&
       prev.children === next.children
     );
@@ -220,6 +275,7 @@ function arePropsEqual(
     prev.onEdit === next.onEdit &&
     prev.onSpeak === next.onSpeak &&
     prev.replyTarget?.id === next.replyTarget?.id &&
+    prev.renderContent === next.renderContent &&
     prev.userMessagesOnRight === next.userMessagesOnRight &&
     prev.children === next.children
   );
@@ -237,16 +293,13 @@ export const ChatMessage = memo(function ChatMessage({
   onEdit,
   onDelete,
   replyTarget = null,
+  renderContent,
   userMessagesOnRight = true,
 }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showActions, setShowActions] = useState(false);
-  const [supportsHover, setSupportsHover] = useState(() =>
-    typeof window !== "undefined" && typeof window.matchMedia === "function"
-      ? window.matchMedia("(hover: hover) and (pointer: fine)").matches
-      : true,
-  );
+  const supportsHover = useSupportsHover();
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState(message.text);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -375,41 +428,16 @@ export const ChatMessage = memo(function ChatMessage({
   );
 
   useEffect(() => {
-    if (!isEditing) {
-      setDraftText(message.text);
-      return;
-    }
+    if (!isEditing) return;
     const textarea = editTextareaRef.current;
     if (!textarea) return;
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-  }, [isEditing, message.text]);
+  }, [isEditing]);
 
   useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      return;
-    }
-
-    const mediaQuery = window.matchMedia("(hover: hover) and (pointer: fine)");
-    const syncSupportsHover = () => {
-      setSupportsHover(mediaQuery.matches);
-      if (mediaQuery.matches) {
-        setShowActions(false);
-      }
-    };
-    syncSupportsHover();
-
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", syncSupportsHover);
-      return () => mediaQuery.removeEventListener("change", syncSupportsHover);
-    }
-
-    mediaQuery.addListener(syncSupportsHover);
-    return () => mediaQuery.removeListener(syncSupportsHover);
-  }, []);
+    if (supportsHover && showActions) setShowActions(false);
+  }, [showActions, supportsHover]);
 
   useEffect(() => {
     if (supportsHover || !showActions || typeof document === "undefined") {
@@ -590,7 +618,7 @@ export const ChatMessage = memo(function ChatMessage({
               </div>
             </div>
           ) : (
-            (children ?? message.text)
+            (renderContent?.(message) ?? children ?? message.text)
           )}
 
           {!isUser && message.interrupted ? (

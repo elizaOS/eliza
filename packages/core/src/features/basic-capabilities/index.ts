@@ -112,7 +112,7 @@ import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
 import { noneAction } from "./actions/none.ts";
 import { replyAction } from "./actions/reply.ts";
-import { attachmentImageAnalysisEvaluator } from "./evaluators/attachment-image-analysis.ts";
+import { describeImageCached } from "../../media/index.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";
@@ -167,12 +167,6 @@ export {
 // ============================================================================
 // Structured JSON response interfaces.
 // ============================================================================
-
-interface ImageDescriptionJson {
-	description?: string;
-	title?: string;
-	text?: string;
-}
 
 interface PostCreationJson {
 	post?: string;
@@ -304,84 +298,35 @@ export async function processAttachments(
 				imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 			}
 
-			let response: string | object | undefined;
-			try {
-				const resolvedImageDescriptionPrompt = resolveOptimizedPromptForRuntime(
-					runtime,
-					"media_description",
-					imageDescriptionTemplate,
-				);
-				response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-					prompt: resolvedImageDescriptionPrompt,
-					imageUrl,
-				});
-			} catch (err) {
-				runtime.logger.error(
-					{
-						src: "basic-capabilities",
-						agentId: runtime.agentId,
-						error: err instanceof Error ? err.message : String(err),
-					},
-					"Error generating image description",
-				);
-				// Continue with original attachment on error
-				processedAttachments.push(processedAttachment);
-				continue;
-			}
-
-			if (typeof response === "string") {
-				const parsedJson = parseJSONObjectFromText(
-					response,
-				) as ImageDescriptionJson | null;
-
-				if (parsedJson && (parsedJson.description || parsedJson.text)) {
-					processedAttachment.description = parsedJson.description ?? "";
-					processedAttachment.title = parsedJson.title ?? "Image";
-					processedAttachment.text =
-						parsedJson.text ?? parsedJson.description ?? "";
-
-					runtime.logger.debug(
-						{
-							src: "basic-capabilities",
-							agentId: runtime.agentId,
-							descriptionPreview:
-								processedAttachment.description.substring(0, 100) || undefined,
-						},
-						"Generated description",
-					);
-				} else {
-					runtime.logger.warn(
-						{ src: "basic-capabilities", agentId: runtime.agentId },
-						"Failed to parse JSON response for image description",
-					);
-				}
-			} else if (
-				response &&
-				typeof response === "object" &&
-				"description" in response
-			) {
-				// Handle object responses for backwards compatibility
-				const responseObj = response as {
-					description?: string;
-					title?: string;
-				};
-				processedAttachment.description = responseObj.description;
-				processedAttachment.title = responseObj.title || "Image";
-				processedAttachment.text = responseObj.description;
-
+			const resolvedImageDescriptionPrompt = resolveOptimizedPromptForRuntime(
+				runtime,
+				"media_description",
+				imageDescriptionTemplate,
+			);
+			// Route through the shared content-addressed cache so identical bytes
+			// reuse one description across all describe paths.
+			const described = await describeImageCached(
+				runtime,
+				imageUrl,
+				resolvedImageDescriptionPrompt,
+			);
+			if (described) {
+				processedAttachment.description = described.description;
+				processedAttachment.title = described.title || "Image";
+				processedAttachment.text = described.text;
 				runtime.logger.debug(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
 						descriptionPreview:
-							processedAttachment.description?.substring(0, 100) || undefined,
+							described.description.substring(0, 100) || undefined,
 					},
 					"Generated description",
 				);
 			} else {
 				runtime.logger.warn(
 					{ src: "basic-capabilities", agentId: runtime.agentId },
-					"Unexpected response format for image description",
+					"Image description unavailable",
 				);
 			}
 		} else if (
@@ -1295,21 +1240,19 @@ export const basicActions = [
 /**
  * Basic evaluators - inbound auto-capture side-effects.
  *
- * - `attachmentImageAnalysisEvaluator` runs when the inbound message has image
- *   attachments; it analyzes each via IMAGE_DESCRIPTION and writes the result
- *   into the `image_analyses` memory table.
  * - `linkExtractionEvaluator` runs when the inbound message text contains an
  *   http(s) URL; it extracts each URL, optionally fetches a title + body
  *   summary via TEXT_SMALL, and writes the result into the `links` memory
  *   table.
  *
- * Both are transparent — they never modify the response or consume a planner
- * slot. They wrap their own model calls in try/catch and log on failure.
+ * (Inbound image attachments are described during message processing via the
+ * shared image-description cache — `MessageService.processAttachments` — so no
+ * separate evaluator re-runs the vision model post-response.)
+ *
+ * Transparent — never modifies the response or consumes a planner slot. Wraps
+ * its own model calls in try/catch and logs on failure.
  */
-export const basicEvaluators: RegisteredEvaluator[] = [
-	attachmentImageAnalysisEvaluator,
-	linkExtractionEvaluator,
-];
+export const basicEvaluators: RegisteredEvaluator[] = [linkExtractionEvaluator];
 
 /**
  * Basic services - essential infrastructure services

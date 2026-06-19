@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -39,6 +39,10 @@ const HERO_CONTENT_TYPES: Record<string, string> = {
 };
 
 const DEFAULT_VIEW_TYPE: ViewType = "gui";
+
+const AGENT_PACKAGE_DIR = resolveNearestPackageDirSync(
+  path.dirname(fileURLToPath(import.meta.url)),
+);
 
 function normalizeViewType(viewType: ViewDeclaration["viewType"]): ViewType {
   return viewType ?? DEFAULT_VIEW_TYPE;
@@ -136,6 +140,17 @@ async function fileExists(absolutePath: string): Promise<boolean> {
   }
 }
 
+function resolveNearestPackageDirSync(startDir: string): string | undefined {
+  let dir = startDir;
+  for (let depth = 0; depth < 10; depth += 1) {
+    if (existsSync(path.join(dir, "package.json"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return undefined;
+}
+
 /**
  * Resolve the absolute on-disk path for a view bundle.
  * Returns `null` when the entry has no `bundlePath` or no `pluginDir`.
@@ -162,6 +177,13 @@ export function getHeroDiskPath(entry: HeroLookup): string | null {
   const packageRoot = `${path.resolve(entry.pluginDir)}${path.sep}`;
   if (!resolved.startsWith(packageRoot)) return null;
   return resolved;
+}
+
+function hasDeclaredHeroOnDiskSync(entry: HeroLookup): boolean {
+  const declaredPath = getHeroDiskPath(entry);
+  if (!declaredPath) return false;
+  const ext = path.extname(declaredPath).toLowerCase();
+  return Boolean(HERO_CONTENT_TYPES[ext] && existsSync(declaredPath));
 }
 
 /**
@@ -321,15 +343,22 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
     }
     const platform: AgentPlatform =
       (view.platforms?.[0] as AgentPlatform | undefined) ?? "web";
+    const pluginDir = AGENT_PACKAGE_DIR;
+    const hasHeroImage = pluginDir
+      ? hasDeclaredHeroOnDiskSync({
+          pluginDir,
+          heroImagePath: view.heroImagePath,
+        })
+      : false;
     const entry: ViewRegistryEntry = {
       ...view,
       viewType,
       pluginName,
-      pluginDir: undefined,
+      pluginDir,
       bundleUrl: undefined,
       bundleUrlVersioned: undefined,
       heroImageUrl: `/api/views/${encodeURIComponent(view.id)}/hero`,
-      hasHeroImage: false,
+      hasHeroImage,
       available: true,
       loadedAt,
       platform,

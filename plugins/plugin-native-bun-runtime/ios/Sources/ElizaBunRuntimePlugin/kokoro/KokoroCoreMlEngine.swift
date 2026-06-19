@@ -100,7 +100,7 @@ final class KokoroCoreMlEngine {
             throw AudioModelError.inferenceFailed(operation: "kokoro-coreml", reason: "model returned empty audio")
         }
         var samples = [Float](repeating: 0, count: validSamples)
-        if output.audio.dataType == .float16 {
+        if #available(iOS 16.0, *), output.audio.dataType == .float16 {
             let ptr = output.audio.dataPointer.bindMemory(to: Float16.self, capacity: validSamples)
             for index in 0..<validSamples { samples[index] = Float(ptr[index]) }
         } else {

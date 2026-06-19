@@ -45,14 +45,20 @@ function makeController(
       { id: "b", role: "user", content: "   ", createdAt: 2 },
     ],
     canSend: true,
+    responding: false,
     recording: false,
     transcript: "",
+    // Required ShellController surface the overlay reads unconditionally — the
+    // real controller always supplies these, so the mock must too.
+    modelStatus: { kind: "ready" },
     send: vi.fn(),
+    stop: vi.fn(),
     toggleRecording: vi.fn(),
     handsFree: false,
     toggleHandsFree: vi.fn(),
     setDictationSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
+    clearConversation: vi.fn(),
     ...overrides,
   } as unknown as ShellController;
 }
@@ -73,15 +79,16 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.queryByLabelText("talk")).toBeNull();
   });
 
-  it("shows a disabled, no-op send control while a reply is pending (canSend false)", () => {
+  it("shows a disabled, no-op send control when the agent can't accept input (canSend false)", () => {
     const controller = makeController({ canSend: false });
     render(<ContinuousChatOverlay controller={controller} />);
     fireEvent.change(screen.getByLabelText("message"), {
       target: { value: "hello" },
     });
-    // The control still swaps to send, but is labelled + guarded as waiting.
-    const send = screen.getByLabelText("send (waiting for reply)");
-    expect(send).toBeTruthy();
+    // The control still swaps to send, but is labelled + guarded as unavailable
+    // (aria-disabled keeps it focusable/announceable; the click is a no-op).
+    const send = screen.getByLabelText("send (agent stopped)");
+    expect(send.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(send);
     expect(controller.send).not.toHaveBeenCalled();
   });
@@ -213,12 +220,13 @@ describe("ContinuousChatOverlay", () => {
   it("anchors typing dots as an assistant-aligned transcript row", () => {
     render(
       <ContinuousChatOverlay
-        controller={makeController({ phase: "responding" })}
+        controller={makeController({ phase: "responding", responding: true })}
       />,
     );
-    const typing = screen.getByTestId("typing-dots");
-    expect(typing.className).toContain("w-full");
-    expect(typing.className).toContain("justify-start");
+    // The dots sit inside a left-aligned, full-width assistant row.
+    const row = screen.getByTestId("typing-dots").closest(".w-full");
+    expect(row?.className).toContain("w-full");
+    expect(row?.className).toContain("justify-start");
   });
 
   it("closes the sheet on Escape", () => {
@@ -477,6 +485,7 @@ describe("ContinuousChatOverlay", () => {
       <ContinuousChatOverlay
         controller={makeController({
           phase: "responding",
+          responding: true,
           stop,
         } as unknown as Partial<ShellController>)}
       />,
@@ -493,7 +502,7 @@ describe("ContinuousChatOverlay", () => {
   it("reverts the trailing control to send the moment a draft exists mid-stream", () => {
     render(
       <ContinuousChatOverlay
-        controller={makeController({ phase: "responding" })}
+        controller={makeController({ phase: "responding", responding: true })}
       />,
     );
     expect(screen.getByTestId("chat-composer-stop")).toBeTruthy();
@@ -600,8 +609,10 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
     expect(sheet.getAttribute("data-detent")).toBe("pill");
     expect(screen.getByTestId("chat-pill")).toBeTruthy();
-    // The input is fully gone in pill mode.
-    expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
+    // In pill mode the composer is hidden away: kept mounted for the
+    // pill→input morph but made inert (opacity 0 + `inert`) so it's unreachable
+    // behind the pill capsule.
+    expect(screen.getByTestId("chat-content").hasAttribute("inert")).toBe(true);
   });
 
   it("recovers from the pill back to the input on tap", () => {
@@ -625,11 +636,13 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
     const pill = screen.getByTestId("chat-pill");
-    // A quick upward flick on the pill brings the input back.
+    // A quick upward flick on the pill opens straight into the chat (the thread
+    // has history), recovering the composer — a flick reaches the chat rather
+    // than stopping at the bare input (that's the tap path; see the test above).
     fireEvent.pointerDown(pill, { clientY: 400, pointerId: 1 });
     fireEvent.pointerMove(pill, { clientY: 360, pointerId: 1 });
     fireEvent.pointerUp(pill, { clientY: 360, pointerId: 1 });
-    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
   });
 });

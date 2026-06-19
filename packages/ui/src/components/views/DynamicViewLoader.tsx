@@ -48,6 +48,11 @@ import {
   type ViewAgentRegistry,
 } from "../../agent-surface";
 import { client } from "../../api/index.ts";
+import {
+  emitModuleCacheTelemetry,
+  type ModuleCacheTelemetryEvent,
+} from "../../cache-telemetry";
+import { APP_PAUSE_EVENT } from "../../events";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
@@ -85,9 +90,187 @@ interface ViewBundleModule {
   cleanup?: () => void | Promise<void>;
 }
 
-// Module cache lives outside React so it persists across re-renders and
-// component unmounts.
-const bundleModuleCache = new Map<string, Promise<ViewBundleModule>>();
+interface ViewBundleCacheEntry {
+  key: string;
+  promise: Promise<ViewBundleModule>;
+  module: ViewBundleModule | null;
+  refCount: number;
+  lastUsedAt: number;
+  cleanupScheduled: boolean;
+  retentionTimer: ReturnType<typeof setTimeout> | null;
+}
+type EvictReason = NonNullable<ModuleCacheTelemetryEvent["reason"]>;
+
+// Browser ESM modules cannot be forcibly unloaded once imported, but the shell
+// can stop retaining the resolved module object and call the view's exported
+// cleanup hook. Keep a tiny LRU of recently used views so quick tab switches are
+// instant, then drop idle/heavy views automatically.
+const bundleModuleCache = new Map<string, ViewBundleCacheEntry>();
+const DEFAULT_BUNDLE_CACHE_TTL_MS = 5 * 60_000;
+const LOW_MEMORY_BUNDLE_CACHE_TTL_MS = 60_000;
+const DEFAULT_BUNDLE_CACHE_MAX_ENTRIES = 6;
+const LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES = 2;
+
+let bundleCacheLifecycleInstalled = false;
+
+function bundleCacheStats(): {
+  activeCount: number;
+  idleCount: number;
+  cacheSize: number;
+} {
+  let activeCount = 0;
+  let idleCount = 0;
+  for (const entry of bundleModuleCache.values()) {
+    if (entry.refCount > 0) {
+      activeCount += 1;
+    } else {
+      idleCount += 1;
+    }
+  }
+  return { activeCount, idleCount, cacheSize: bundleModuleCache.size };
+}
+
+function emitBundleTelemetry(
+  action: ModuleCacheTelemetryEvent["action"],
+  patch: { key?: string; reason?: EvictReason } = {},
+): void {
+  emitModuleCacheTelemetry({
+    source: "dynamic-view",
+    action,
+    ...patch,
+    ...bundleCacheStats(),
+  });
+}
+
+function resolveDeviceMemoryGb(): number | null {
+  if (typeof navigator === "undefined") return null;
+  const value = (navigator as { deviceMemory?: unknown }).deviceMemory;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getBundleCacheMaxEntries(): number {
+  const memoryGb = resolveDeviceMemoryGb();
+  if (memoryGb !== null && memoryGb <= 4) {
+    return LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES;
+  }
+  return DEFAULT_BUNDLE_CACHE_MAX_ENTRIES;
+}
+
+function getBundleCacheTtlMs(): number {
+  const memoryGb = resolveDeviceMemoryGb();
+  if (memoryGb !== null && memoryGb <= 4) return LOW_MEMORY_BUNDLE_CACHE_TTL_MS;
+  return DEFAULT_BUNDLE_CACHE_TTL_MS;
+}
+
+function scheduleIdleWork(work: () => void): void {
+  if (typeof window === "undefined") {
+    work();
+    return;
+  }
+  const w = window as Window & {
+    requestIdleCallback?: (
+      cb: () => void,
+      options?: { timeout?: number },
+    ) => number;
+  };
+  if (typeof w.requestIdleCallback === "function") {
+    w.requestIdleCallback(work, { timeout: 2_000 });
+    return;
+  }
+  window.setTimeout(work, 250);
+}
+
+function runBundleCleanup(cleanup: ViewBundleModule["cleanup"]): void {
+  if (!cleanup) return;
+  void Promise.resolve()
+    .then(() => cleanup())
+    .catch(() => {
+      // View cleanup must never crash the host shell.
+    });
+}
+
+function cleanupBundleEntry(
+  entry: ViewBundleCacheEntry,
+  reason: EvictReason,
+): void {
+  if (entry.refCount > 0) return;
+  if (entry.cleanupScheduled) return;
+  entry.cleanupScheduled = true;
+  if (bundleModuleCache.get(entry.key) === entry) {
+    bundleModuleCache.delete(entry.key);
+  }
+  if (entry.retentionTimer) {
+    clearTimeout(entry.retentionTimer);
+    entry.retentionTimer = null;
+  }
+  const cleanup = entry.module?.cleanup;
+  entry.module = null;
+  emitBundleTelemetry("evict", { key: entry.key, reason });
+  runBundleCleanup(cleanup);
+  if (cleanup) emitBundleTelemetry("cleanup", { key: entry.key, reason });
+}
+
+function armBundleEntryRetentionTimer(entry: ViewBundleCacheEntry): void {
+  if (typeof window === "undefined") return;
+  if (entry.retentionTimer) {
+    clearTimeout(entry.retentionTimer);
+  }
+  entry.retentionTimer = setTimeout(() => {
+    entry.retentionTimer = null;
+    scheduleIdleWork(() => pruneBundleModuleCache());
+  }, getBundleCacheTtlMs() + 50);
+}
+
+function pruneBundleModuleCache(
+  options: { force?: boolean; reason?: EvictReason } = {},
+): void {
+  const now = Date.now();
+  const ttlMs = options.force ? 0 : getBundleCacheTtlMs();
+  const reason = options.reason ?? (options.force ? "memorypressure" : "ttl");
+  const idleEntries = [...bundleModuleCache.values()]
+    .filter((entry) => entry.refCount === 0)
+    .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+
+  for (const entry of idleEntries) {
+    if (options.force || now - entry.lastUsedAt >= ttlMs) {
+      cleanupBundleEntry(entry, reason);
+    }
+  }
+
+  const maxEntries = options.force ? 0 : getBundleCacheMaxEntries();
+  let retained = [...bundleModuleCache.values()].filter(
+    (entry) => entry.refCount === 0,
+  );
+  retained = retained.sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+  while (bundleModuleCache.size > maxEntries && retained.length > 0) {
+    const entry = retained.shift();
+    if (!entry) break;
+    cleanupBundleEntry(entry, options.reason ?? "lru");
+  }
+}
+
+function installBundleCacheLifecycle(): void {
+  if (bundleCacheLifecycleInstalled || typeof window === "undefined") return;
+  bundleCacheLifecycleInstalled = true;
+  const pruneOnPressure = () => {
+    scheduleIdleWork(() =>
+      pruneBundleModuleCache({ force: true, reason: "memorypressure" }),
+    );
+  };
+  window.addEventListener("memorypressure", pruneOnPressure);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      scheduleIdleWork(() =>
+        pruneBundleModuleCache({ reason: "visibility-hidden" }),
+      );
+    }
+  });
+  document.addEventListener(APP_PAUSE_EVENT, () => {
+    scheduleIdleWork(() =>
+      pruneBundleModuleCache({ force: true, reason: "app-pause" }),
+    );
+  });
+}
 
 function isReactComponentExport(
   value: unknown,
@@ -292,14 +475,18 @@ function buildHostExternalBundleUrl(bundleUrl: string): string | null {
   return rewrittenUrl.href;
 }
 
-function loadBundleModule(
+function ensureBundleModuleEntry(
   bundleUrl: string,
   componentExport: string,
-): Promise<ViewBundleModule> {
+): ViewBundleCacheEntry {
   const cacheKey = `${bundleUrl}::${componentExport}`;
   const cached = bundleModuleCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    cached.lastUsedAt = Date.now();
+    return cached;
+  }
 
+  let entry: ViewBundleCacheEntry;
   const promise = importViewBundle(bundleUrl).then(
     (mod: Record<string, unknown>) => {
       const exported = mod[componentExport] ?? mod.default;
@@ -314,16 +501,98 @@ function loadBundleModule(
           : undefined;
       const cleanup =
         typeof mod.cleanup === "function" ? mod.cleanup : undefined;
-      return {
+      const module = {
         component: exported as ComponentType<Record<string, unknown>>,
         interact,
         cleanup: cleanup as ViewBundleModule["cleanup"],
       };
+      entry.module = module;
+      entry.lastUsedAt = Date.now();
+      emitBundleTelemetry("load", { key: cacheKey });
+      if (
+        entry.cleanupScheduled ||
+        (bundleModuleCache.get(cacheKey) !== entry && entry.refCount === 0)
+      ) {
+        const cleanup = entry.module.cleanup;
+        entry.module = null;
+        runBundleCleanup(cleanup);
+        if (cleanup) emitBundleTelemetry("cleanup", { key: cacheKey });
+        return module;
+      }
+      if (entry.refCount === 0) {
+        armBundleEntryRetentionTimer(entry);
+        scheduleIdleWork(() => pruneBundleModuleCache());
+      }
+      return module;
+    },
+    (error) => {
+      if (bundleModuleCache.get(cacheKey) === entry) {
+        bundleModuleCache.delete(cacheKey);
+      }
+      emitBundleTelemetry("load-error", { key: cacheKey });
+      throw error;
     },
   );
 
-  bundleModuleCache.set(cacheKey, promise);
-  return promise;
+  entry = {
+    key: cacheKey,
+    promise,
+    module: null,
+    refCount: 0,
+    lastUsedAt: Date.now(),
+    cleanupScheduled: false,
+    retentionTimer: null,
+  };
+  bundleModuleCache.set(cacheKey, entry);
+  return entry;
+}
+
+function acquireBundleModule(
+  bundleUrl: string,
+  componentExport: string,
+): {
+  cacheKey: string;
+  promise: Promise<ViewBundleModule>;
+  release: () => void;
+} {
+  installBundleCacheLifecycle();
+  const entry = ensureBundleModuleEntry(bundleUrl, componentExport);
+  entry.refCount += 1;
+  entry.lastUsedAt = Date.now();
+  if (entry.retentionTimer) {
+    clearTimeout(entry.retentionTimer);
+    entry.retentionTimer = null;
+  }
+
+  let released = false;
+  return {
+    cacheKey: entry.key,
+    promise: entry.promise,
+    release: () => {
+      if (released) return;
+      released = true;
+      entry.refCount = Math.max(0, entry.refCount - 1);
+      entry.lastUsedAt = Date.now();
+      emitBundleTelemetry("release", { key: entry.key });
+      if (entry.refCount === 0) {
+        if (bundleModuleCache.get(entry.key) === entry) {
+          armBundleEntryRetentionTimer(entry);
+          scheduleIdleWork(() => pruneBundleModuleCache());
+        } else {
+          cleanupBundleEntry(entry, "invalidate");
+        }
+      }
+    },
+  };
+}
+
+function invalidateBundleModule(cacheKey: string): void {
+  const entry = bundleModuleCache.get(cacheKey);
+  if (!entry) return;
+  bundleModuleCache.delete(cacheKey);
+  if (entry.refCount === 0) {
+    cleanupBundleEntry(entry, "invalidate");
+  }
 }
 
 const STANDARD_CAPABILITIES = new Set([
@@ -580,7 +849,7 @@ async function handleStandardCapability(
     }
 
     case "refresh":
-      bundleModuleCache.delete(cacheKey);
+      invalidateBundleModule(cacheKey);
       setReloadKey((k) => k + 1);
       return { refreshed: true };
 
@@ -867,21 +1136,14 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     if (!dynamicLoadingAllowed) return;
 
     let cancelled = false;
-    let loadedBundle: ViewBundleModule | null = null;
+    const lease = acquireBundleModule(bundleUrl, componentExport);
 
     setBundle(null);
     setLoadError(null);
-    void loadBundleModule(bundleUrl, componentExport)
+    void lease.promise
       .then((nextBundle) => {
-        loadedBundle = nextBundle;
         if (!cancelled) {
           setBundle(nextBundle);
-          return;
-        }
-        if (nextBundle.cleanup) {
-          void Promise.resolve()
-            .then(() => nextBundle.cleanup?.())
-            .catch(() => {});
         }
       })
       .catch((err) => {
@@ -896,14 +1158,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
 
     return () => {
       cancelled = true;
-      const cleanup = loadedBundle?.cleanup;
-      if (cleanup) {
-        void Promise.resolve()
-          .then(() => cleanup())
-          .catch(() => {
-            // View cleanup must never crash the shell.
-          });
-      }
+      lease.release();
     };
   }, [bundleUrl, componentExport, dynamicLoadingAllowed, reloadKey]);
 
@@ -971,7 +1226,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           const etag = res.headers.get("etag");
           if (lastEtagRef.current !== null && etag !== lastEtagRef.current) {
             // Bundle changed on disk — evict cache and trigger re-import.
-            bundleModuleCache.delete(cacheKey);
+            invalidateBundleModule(cacheKey);
             setReloadKey((k) => k + 1);
           }
           lastEtagRef.current = etag;
@@ -990,7 +1245,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // ErrorBoundary key below, remounting it with cleared state — so a view that
   // crashed at render is genuinely retried, not stuck behind a latched boundary.
   const recoverView = useCallback(() => {
-    bundleModuleCache.delete(`${bundleUrl}::${componentExport}`);
+    invalidateBundleModule(`${bundleUrl}::${componentExport}`);
     setLoadError(null);
     setReloadKey((k) => k + 1);
   }, [bundleUrl, componentExport]);

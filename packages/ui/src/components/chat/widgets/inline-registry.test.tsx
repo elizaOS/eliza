@@ -72,7 +72,7 @@ describe("inline-widget registry", () => {
     expect(matches).toHaveLength(1);
     expect(matches[0]?.data).toMatchObject({ pct: 42 });
 
-    render(def?.render(matches[0]?.data, noopCtx, "k"));
+    render(<>{def?.render(matches[0]?.data, noopCtx, "k")}</>);
     const node = screen.getByTestId("gauge");
     expect(node.getAttribute("data-pct")).toBe("42");
     expect(node.textContent).toBe("42%");

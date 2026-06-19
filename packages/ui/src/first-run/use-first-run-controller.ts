@@ -268,6 +268,7 @@ export function useFirstRunController(): FirstRunController {
     showActionBanner,
     setTab,
     setState,
+    switchAgentProfile,
     uiLanguage,
   } = useApp();
   const initialRuntimeTarget = React.useMemo(readFirstRunRuntimeTarget, []);
@@ -456,19 +457,35 @@ export function useFirstRunController(): FirstRunController {
 
   const finishLocal = React.useCallback(
     async (sourceDraft: FirstRunProfileDraft) => {
-      // Local + cloud-inference (hybrid) routes inference through Eliza Cloud,
-      // so connect the cloud account first; the user starts again once linked.
+      syncIdentity(sourceDraft);
+      setError(null);
+      // Local + cloud-inference (hybrid) routes inference through Eliza Cloud, so
+      // connect the cloud account first. Mirror finishCloud: once the in-app
+      // Steward sign-in resolves and the connection is confirmed, fall through
+      // and start the local agent in the same run (no second tap). If login is
+      // still pending (legacy browser handoff), stop here — the sign-in link is
+      // surfaced and the user re-triggers once signed in.
       if (firstRunNeedsCloudConnect(sourceDraft, elizaCloudConnected)) {
-        syncIdentity(sourceDraft);
-        setError(null);
         setState("firstRunRuntimeTarget", "elizacloud-hybrid");
         setState("firstRunProvider", "elizacloud");
         const authWindow = preOpenWindow();
         await handleCloudLogin(authWindow);
-        return;
+        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        let cloudConnectedForFinish = isCloudStatusAuthenticated(
+          Boolean(cloudStatus?.connected),
+          cloudStatus?.reason,
+        );
+        if (!cloudConnectedForFinish && getCloudAuthToken(client)) {
+          cloudConnectedForFinish = true;
+        }
+        if (!cloudConnectedForFinish) {
+          return;
+        }
       }
-      syncIdentity(sourceDraft);
-      setError(null);
+      const serverTarget = firstRunRuntimeTarget(
+        sourceDraft.runtime,
+        sourceDraft.localInference,
+      );
       setBusyText("Starting local agent");
       const apiBase = resolveFirstRunLocalAgentApiBase();
       client.setBaseUrl(apiBase);
@@ -504,8 +521,8 @@ export function useFirstRunController(): FirstRunController {
         });
         addAgentProfile({ kind: "remote", label: "Local agent", apiBase });
       }
-      persistMobileRuntimeModeForServerTarget("local");
-      setState("firstRunRuntimeTarget", "local");
+      persistMobileRuntimeModeForServerTarget(serverTarget);
+      setState("firstRunRuntimeTarget", serverTarget);
       setBusyText("Saving first-run profile");
       await submitFirstRun(sourceDraft, "local");
       if (firstRunDownloadsLocalModel(sourceDraft.localInference)) {
@@ -536,7 +553,30 @@ export function useFirstRunController(): FirstRunController {
       client.setToken(accessToken || null);
       const auth = await client.getAuthStatus();
       if (auth.required && !accessToken) {
-        throw new Error("This remote agent requires an access token.");
+        // The remote needs auth and the user supplied no pre-shared token. If
+        // the host has device pairing enabled, hand off to the pairing flow
+        // instead of dead-ending: persist the remote as the active profile and
+        // switch to it, which drives the startup poll into PairingView (where
+        // the user enters the short code printed on the host — see
+        // startup-phase-poll BACKEND_AUTH_REQUIRED → pairing-required). Only a
+        // pairing-DISABLED remote genuinely needs a connection key typed here.
+        if (auth.pairingEnabled) {
+          const profile = addAgentProfile({
+            kind: "remote",
+            label: apiBase,
+            apiBase,
+          });
+          persistMobileRuntimeModeForServerTarget("remote");
+          setState("firstRunRuntimeTarget", "remote");
+          setState("firstRunRemoteApiBase", apiBase);
+          clearPersistedFirstRunState();
+          setBusyText(null);
+          switchAgentProfile(profile.id);
+          return;
+        }
+        throw new Error(
+          "This remote agent requires an access token. Enter the host's connection key, or enable pairing on the host.",
+        );
       }
       await client.getFirstRunStatus();
       savePersistedActiveServer({
@@ -563,7 +603,13 @@ export function useFirstRunController(): FirstRunController {
       setBusyText(null);
       completeFirstRun("chat", { launchCompanionOverlay: true });
     },
-    [completeFirstRun, setState, submitFirstRun, syncIdentity],
+    [
+      completeFirstRun,
+      setState,
+      submitFirstRun,
+      switchAgentProfile,
+      syncIdentity,
+    ],
   );
 
   const finishCloud = React.useCallback(

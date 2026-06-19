@@ -15,6 +15,7 @@ import { drizzle as drizzlePGlite, type PgliteDatabase } from "drizzle-orm/pglit
 import type { ExtractTablesWithRelations } from "drizzle-orm/relations";
 import { Pool as PgPool, type PoolConfig } from "pg";
 import { getCloudAwareEnv, getCloudBinding } from "../lib/runtime/cloud-bindings";
+import { logger } from "../lib/utils/logger";
 import { applyDatabaseUrlFallback } from "./database-url";
 import { disableLocalPreparedStatements } from "./local-pg-query";
 import * as schema from "./schemas";
@@ -210,6 +211,16 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
     options.connectionTimeoutMillis = 30_000;
   }
   const pool = new PgPool(options);
+  // node-pg emits 'error' on an IDLE pooled client that the server/proxy drops
+  // (Railway/Hyperdrive recycling a connection, or the PGlite socket bridge
+  // closing one mid-suite). Without a listener, that 'error' is unhandled and
+  // crashes the whole worker request/process. Swallow+log it: the pool evicts
+  // the dead client and the next query transparently opens a fresh one.
+  pool.on("error", (err) => {
+    logger.warn("[db] idle pg client error (evicted, will reconnect)", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
   if (isLocalTcp) {
     disableLocalPreparedStatements(pool, { simpleQueryMode: inWorkerRuntime });
   }

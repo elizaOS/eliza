@@ -134,6 +134,11 @@ interface ExecuteOptions {
    * short-circuit re-runs (e.g. minute-bucketed schedule fires).
    */
   idempotencyKey?: string;
+  /**
+   * When false, failed manual/debug runs are returned as persisted error
+   * executions instead of being thrown away as route-level exceptions.
+   */
+  throwOnError?: boolean;
 }
 
 interface IncomingConnection {
@@ -1790,7 +1795,8 @@ export class EmbeddedWorkflowService extends Service {
       entry.workflow,
       options.mode ?? 'manual',
       options.triggerData,
-      options.idempotencyKey
+      options.idempotencyKey,
+      options.throwOnError ?? true
     );
   }
 
@@ -2264,7 +2270,8 @@ export class EmbeddedWorkflowService extends Service {
     workflowData: WorkflowDefinition,
     mode: WorkflowExecuteMode,
     triggerData?: Record<string, unknown>,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    throwOnError = true
   ): Promise<WorkflowExecution> {
     const executionId = randomUUID();
     const startedAt = new Date();
@@ -2308,6 +2315,9 @@ export class EmbeddedWorkflowService extends Service {
         },
       };
       await this.saveExecution(execution, idempotencyKey);
+      if (!throwOnError) {
+        return cloneJson(execution);
+      }
       throw error;
     }
   }

@@ -236,6 +236,7 @@ import "./client-cloud";
 import "./client-computeruse";
 import "./client-imessage";
 import "./client-local-inference";
+import "./client-notifications";
 import "./client-voice-models";
 import "./client-workflow";
 import "./client-skills";

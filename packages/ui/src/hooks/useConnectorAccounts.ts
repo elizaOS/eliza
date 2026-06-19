@@ -15,6 +15,7 @@ import type {
   ConnectorAccountsListResponse,
   ConnectorAccountUpdateInput,
 } from "../api/client-agent";
+import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
 
 export const DEFAULT_CONNECTOR_ACCOUNT_ID = "default";
 
@@ -365,13 +366,11 @@ export function useConnectorAccounts(
     };
   }, [refresh]);
 
-  useEffect(() => {
-    if (pollMs <= 0 || !canFetch) return;
-    const id = setInterval(() => {
-      void refresh();
-    }, pollMs);
-    return () => clearInterval(id);
-  }, [canFetch, pollMs, refresh]);
+  useIntervalWhenDocumentVisible(
+    () => void refresh(),
+    pollMs,
+    pollMs > 0 && canFetch,
+  );
 
   useEffect(() => {
     if (accounts.length === 0) return;

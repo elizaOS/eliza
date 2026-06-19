@@ -34,6 +34,12 @@ const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "https://www.elizacloud.ai",
   "https://staging.elizacloud.ai",
   "https://dev.elizacloud.ai",
+  // The Eliza agent app (its own Pages project / subdomain — see
+  // packages/app/wrangler.toml). First-party: shares the `.elizacloud.ai`
+  // Steward cookie zone, so its credentialed API calls must be reflected with
+  // `Access-Control-Allow-Credentials`.
+  "https://app.elizacloud.ai",
+  "https://app-staging.elizacloud.ai",
   "https://elizaos.ai",
   "https://www.elizaos.ai",
   "https://os.elizacloud.ai",

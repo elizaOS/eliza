@@ -4,8 +4,8 @@
 // component). Mounts the real component with a mocked patched ElizaClient
 // (@elizaos/app-core `client`) so the internal useHyperliquidState hook drives
 // the four read endpoints, then asserts populated DATA (market rows, counts,
-// status-tile labels, banners), the background poll refetch, the back control,
-// and the loading + read-blocked + error branches.
+// status-tile labels, banners) and exercises every interactive control
+// (refresh, back) plus the loading + read-blocked + error branches.
 
 import type { OverlayAppContext } from "@elizaos/app-core";
 import {
@@ -344,34 +344,25 @@ describe("HyperliquidAppView (standard/XR)", () => {
     expect(notice.textContent).toBe("network down");
   });
 
-  it("re-invokes the read methods on the background poll interval", async () => {
-    // The manual Refresh button is gone (chat-forward redesign); freshness comes
-    // from the hook's quiet poll. Advance fake timers past one poll interval and
-    // assert the reads run again without any user interaction.
-    vi.useFakeTimers();
-    try {
-      mockReads();
-      render(React.createElement(HyperliquidAppView, ctx()));
+  it("re-invokes the read methods when the refresh button is clicked", async () => {
+    mockReads();
+    render(React.createElement(HyperliquidAppView, ctx()));
+    await screen.findByText("ETH");
 
-      await vi.waitFor(() => {
-        expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
-        expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(1);
-      });
+    expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
+    expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(1);
 
-      await vi.advanceTimersByTimeAsync(15000);
+    fireEvent.click(screen.getByLabelText("Refresh"));
 
-      await vi.waitFor(() => {
-        expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(2);
-      });
-      expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(2);
-      expect(hyperliquidClient.hyperliquidPositions).toHaveBeenCalledTimes(2);
-      expect(hyperliquidClient.hyperliquidOrders).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
+    await waitFor(() => {
+      expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(2);
+    });
+    expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(2);
+    expect(hyperliquidClient.hyperliquidPositions).toHaveBeenCalledTimes(2);
+    expect(hyperliquidClient.hyperliquidOrders).toHaveBeenCalledTimes(2);
   });
 
-  it("shows the loading spinner while status is pending", async () => {
+  it("shows the loading spinner and disables refresh while status is pending", async () => {
     // Status promise never resolves -> loading stays true, markets stays null.
     let _resolve: ((s: HyperliquidStatusResponse) => void) | undefined;
     hyperliquidClient.hyperliquidStatus.mockReturnValue(
@@ -383,6 +374,9 @@ describe("HyperliquidAppView (standard/XR)", () => {
 
     expect(await screen.findByTestId("spinner")).toBeTruthy();
     expect(screen.getByText("Loading Hyperliquid state")).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Refresh") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("calls exitToApps when the back button is clicked", async () => {

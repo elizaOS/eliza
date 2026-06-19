@@ -10,6 +10,7 @@ import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import {
   AgentEventService,
   logger,
+  NotificationService,
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import type { CommandDefinition } from "@elizaos/plugin-commands";
@@ -18,6 +19,7 @@ import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
 import { logsAction } from "../actions/logs.ts";
 import { memoryAction } from "../actions/memories.ts";
+import { notifyAction } from "../actions/notify.ts";
 import { pageDelegateAction } from "../actions/page-action-groups.ts";
 import { pluginAction } from "../actions/plugin.ts";
 import { runtimeAction } from "../actions/runtime.ts";
@@ -51,6 +53,7 @@ import {
 } from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
+import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 
@@ -116,6 +119,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     services: [
       AgentEventService as ServiceClass,
+      NotificationService as ServiceClass,
+      NotificationPushService as ServiceClass,
       ElizaCharacterPersistenceService as ServiceClass,
       AgentMediaGenerationService as ServiceClass,
       PermissionRegistry as ServiceClass,
@@ -216,6 +221,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...promoteSubactionsToActions(runtimeAction),
       ...promoteSubactionsToActions(databaseAction),
       compactConversationAction,
+      notifyAction,
       ...promoteSubactionsToActions(memoryAction),
       // SCHEDULE_FOLLOW_UP is now the `followup` op on contactAction.
       // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK live as ops on the TASKS

@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type * as React from "react";
+import type { SlashCommandCatalogItem } from "../../chat/slash-menu";
+import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellController } from "./useShellController";
 
@@ -50,6 +52,13 @@ function makeController(
     muted: false,
     toggleMute: () => {},
     transcript: "",
+    // Newer controller surface the overlay reads in effects — without these the
+    // overlay throws on mount (e.g. `setDictationSink is not a function`).
+    handsFree: false,
+    toggleHandsFree: () => {},
+    setDictationSink: () => {},
+    setComposerHasDraft: () => {},
+    clearConversation: () => {},
     ...overrides,
   } as unknown as ShellController;
 }
@@ -110,4 +119,105 @@ export const Responding: Story = {
 /** Booting — "connecting…" placeholder, mic disabled. */
 export const Booting: Story = {
   args: { controller: makeController({ phase: "booting", canSend: false }) },
+};
+
+// ── Slash commands ──────────────────────────────────────────────────────────
+// A representative catalog so the inline autocomplete + bold-in-transcript can
+// be exercised live (and screenshotted via capture-slash-commands.mjs). Mirrors
+// the shape served from GET /api/commands.
+const SLASH_COMMANDS: SlashCommandCatalogItem[] = [
+  {
+    key: "settings",
+    nativeName: "settings",
+    description: "Open settings",
+    textAliases: ["/settings", "/preferences"],
+    scope: "both",
+    acceptsArgs: true,
+    args: [
+      {
+        name: "section",
+        description: "Section to open",
+        choices: ["model", "voice", "connectors"],
+      },
+    ],
+    requiresAuth: false,
+    requiresElevated: false,
+    target: { kind: "navigate", tab: "settings", path: "/settings" },
+  },
+  {
+    key: "orchestrator",
+    nativeName: "orchestrator",
+    description: "Open the agent workbench",
+    textAliases: ["/orchestrator", "/workbench"],
+    scope: "both",
+    acceptsArgs: false,
+    args: [],
+    requiresAuth: false,
+    requiresElevated: false,
+    target: { kind: "navigate", viewId: "orchestrator", path: "/orchestrator" },
+  },
+  {
+    key: "clear",
+    nativeName: "clear",
+    description: "Clear the conversation",
+    textAliases: ["/clear", "/cls"],
+    scope: "text",
+    acceptsArgs: false,
+    args: [],
+    requiresAuth: false,
+    requiresElevated: false,
+    target: { kind: "client", clientAction: "clear-chat" },
+  },
+  {
+    key: "help",
+    nativeName: "help",
+    description: "Show what I can do",
+    textAliases: ["/help"],
+    scope: "both",
+    acceptsArgs: false,
+    args: [],
+    requiresAuth: false,
+    requiresElevated: false,
+    target: { kind: "agent" },
+  },
+];
+
+const SLASH_CONTROLLER: SlashCommandController = {
+  commands: SLASH_COMMANDS,
+  loading: false,
+  resolveChoices: () => [],
+  resolveSection: (t: string) =>
+    ({ model: "ai-model", voice: "voice", connectors: "connectors" })[t],
+  navigateTab: () => {},
+  navigateSettings: () => {},
+  navigateView: () => {},
+  clearChat: () => {},
+  openCommandPalette: () => {},
+};
+
+/**
+ * Inline slash-command autocomplete. Type `/` in the composer to see the helper
+ * menu with clickable suggestions; the prior user turn (`/help me out`) shows
+ * the leading `/help` token rendered bold in the transcript.
+ */
+export const SlashCommands: Story = {
+  args: {
+    controller: makeController({
+      messages: [
+        {
+          id: "s1",
+          role: "assistant",
+          content: "Try a slash command — type / to see what I can do.",
+          createdAt: NOW - 20000,
+        },
+        {
+          id: "s2",
+          role: "user",
+          content: "/help me out",
+          createdAt: NOW - 10000,
+        },
+      ],
+    }),
+    slash: SLASH_CONTROLLER,
+  },
 };

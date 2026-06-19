@@ -243,10 +243,9 @@ export const ChatTranscript = memo(function ChatTranscript({
             onEdit={onEdit}
             onSpeak={onSpeak}
             replyTarget={replyTarget}
+            renderContent={renderMessageContent}
             userMessagesOnRight={userMessagesOnRight}
-          >
-            {renderTranscriptMessageContent(message, renderMessageContent)}
-          </ChatMessage>
+          />
         );
       })}
       {typingIndicator}

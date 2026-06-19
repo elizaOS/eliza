@@ -9,7 +9,7 @@ import {
 } from "./first-run-config";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
 
-export type FirstRunStep = "runtime" | "remote";
+export type FirstRunStep = "runtime" | "inference" | "remote";
 export type FirstRunRuntime = "local" | "cloud" | "remote";
 
 /**
@@ -22,6 +22,7 @@ export type FirstRunLocalInference = "all-local" | "cloud-inference";
 
 export const FIRST_RUN_STEPS: readonly FirstRunStep[] = [
   "runtime",
+  "inference",
   "remote",
 ] as const;
 
@@ -91,7 +92,7 @@ export function normalizeFirstRunName(value: string): string {
 }
 
 function isFirstRunStep(value: unknown): value is FirstRunStep {
-  return value === "runtime" || value === "remote";
+  return value === "runtime" || value === "inference" || value === "remote";
 }
 
 function isFirstRunRuntime(value: unknown): value is FirstRunRuntime {
@@ -171,16 +172,22 @@ export function clearPersistedFirstRunState(): void {
   }
 }
 
+/**
+ * Forward navigation in the (branching, not linear) first-run flow. The only
+ * automatic next step is the Local runtime's inference sub-choice
+ * (runtime → inference). Remote is a sibling branch entered explicitly from the
+ * runtime screen, and both sub-steps are terminal, so they have no next step.
+ */
 export function nextFirstRunStep(step: FirstRunStep): FirstRunStep | null {
-  const index = FIRST_RUN_STEPS.indexOf(step);
-  if (index < 0) return "runtime";
-  return FIRST_RUN_STEPS[index + 1] ?? null;
+  return step === "runtime" ? "inference" : null;
 }
 
+/**
+ * Back navigation: the `inference` and `remote` sub-steps both branch off the
+ * `runtime` choice, so "back" from either returns to the runtime screen.
+ */
 export function previousFirstRunStep(step: FirstRunStep): FirstRunStep | null {
-  const index = FIRST_RUN_STEPS.indexOf(step);
-  if (index <= 0) return null;
-  return FIRST_RUN_STEPS[index - 1] ?? null;
+  return step === "runtime" ? null : "runtime";
 }
 
 export function firstRunRuntimeTarget(
@@ -295,19 +302,42 @@ export function applyFirstRunVoiceTranscript(args: {
         action: hasFinishCommand(command) ? "finish" : "none",
       };
     }
-    if (/\b(?:local|this computer|this device|bundled)\b/.test(command)) {
+    if (
+      /\b(?:local|this computer|this device|bundled|offline)\b/.test(command)
+    ) {
       draft.runtime = "local";
-      return {
-        step: "runtime",
-        draft,
-        action: hasFinishCommand(command) ? "finish" : "none",
-      };
+      // Local needs an inference sub-choice; advance to it rather than finishing.
+      return { step: "inference", draft, action: "none" };
     }
     return {
       step: "runtime",
       draft,
       action: hasFinishCommand(command) ? "finish" : "none",
     };
+  }
+
+  if (args.step === "inference") {
+    const wantsLocal =
+      /\b(?:local|on device|on-device|this device|this computer|offline|device|phone)\b/.test(
+        command,
+      );
+    const wantsCloud =
+      /\b(?:cloud|elizacloud|eliza cloud|recommended|online)\b/.test(command);
+    if (wantsLocal && !wantsCloud) {
+      draft.localInference = "all-local";
+      return { step: "inference", draft, action: "finish" };
+    }
+    if (wantsCloud) {
+      draft.localInference = "cloud-inference";
+      return { step: "inference", draft, action: "finish" };
+    }
+    // A bare "start/continue" with no inference keyword takes the recommended
+    // default (cloud inference); anything else stays put for clarification.
+    if (hasFinishCommand(command)) {
+      draft.localInference = "cloud-inference";
+      return { step: "inference", draft, action: "finish" };
+    }
+    return { step: "inference", draft, action: "none" };
   }
 
   const tokenMatch = spoken.match(/^(?:token|access token|use token)\s+(.+)$/i);

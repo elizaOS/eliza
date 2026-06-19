@@ -26,6 +26,7 @@ let openAIClient: {
 } | null = null;
 let cerebrasClient: ReturnType<typeof createOpenAI> | null = null;
 let bitRouterClient: ReturnType<typeof createOpenAI> | null = null;
+let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let anthropicClient: ReturnType<typeof createAnthropic> | null = null;
 let vercelAIGatewayClient: GatewayProvider | null = null;
 
@@ -112,6 +113,18 @@ function getBitRouterBaseURL(): string {
   return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
 }
 
+function getOpenRouterApiKey(): string | null {
+  return getProviderKey("OPENROUTER_API_KEY");
+}
+
+function getOpenRouterBaseURL(): string {
+  const baseUrl = (getProviderKey("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1").replace(
+    /\/+$/,
+    "",
+  );
+  return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+}
+
 function getVercelAIGatewayApiKey(): string | null {
   return getProviderKey("AI_GATEWAY_API_KEY") ?? getProviderKey("AIGATEWAY_API_KEY");
 }
@@ -134,6 +147,36 @@ function getBitRouterClient() {
   }
 
   return bitRouterClient;
+}
+
+function getOpenRouterClient() {
+  if (!openRouterClient) {
+    const apiKey = getOpenRouterApiKey();
+    if (!apiKey) {
+      throw new Error("OPENROUTER_API_KEY environment variable is required");
+    }
+
+    openRouterClient = createOpenAI({
+      apiKey,
+      baseURL: getOpenRouterBaseURL(),
+      headers: {
+        "HTTP-Referer": "https://eliza.cloud",
+        "X-Title": "Eliza Cloud",
+      },
+    });
+  }
+
+  return openRouterClient;
+}
+
+/**
+ * OpenRouter shares BitRouter's catalog id format (`x-ai/…`, `anthropic/…`) and
+ * `:nitro` / `:floor` routing-suffix convention, so the same translation
+ * applies. Used both as the BYOK fallback behind BitRouter and as the catch-all
+ * router when BitRouter is not configured.
+ */
+function getOpenRouterLanguageModel(model: string) {
+  return getOpenRouterClient().chat(toBitRouterModelId(model));
 }
 
 function getAnthropicClient() {
@@ -301,6 +344,57 @@ function getBitRouterLanguageModel(model: string) {
   return wrapLanguageModel({ model: primaryModel, middleware });
 }
 
+/**
+ * Wraps a primary language model so that, on a retryable upstream error, the
+ * request is retried against OpenRouter (BYOK). This is the "OpenRouter is our
+ * backup if the primary router fails" path: the primary (BitRouter today) runs
+ * its own internal failover first; only if it still returns a retryable error
+ * (402/429/5xx) do we fall over to OpenRouter. A no-op when OPENROUTER_API_KEY
+ * is unset, so healthy paths and OpenRouter-less deployments are unchanged.
+ */
+function withOpenRouterFallback(primaryModel: ReturnType<typeof getBitRouterLanguageModel>, model: string) {
+  if (!getOpenRouterApiKey()) {
+    return primaryModel;
+  }
+
+  const fallbackModel = getOpenRouterLanguageModel(model);
+  const middleware: LanguageModelMiddleware = {
+    specificationVersion: "v3",
+    wrapGenerate: async ({ doGenerate, params }) => {
+      try {
+        return await doGenerate();
+      } catch (error) {
+        if (!isRetryableAiSdkError(error)) {
+          throw error;
+        }
+        logger.warn(
+          "[OpenRouter] Primary router failed for %s (%d); falling back to OpenRouter",
+          model,
+          aiSdkErrorStatus(error),
+        );
+        return await fallbackModel.doGenerate(params);
+      }
+    },
+    wrapStream: async ({ doStream, params }) => {
+      try {
+        return await doStream();
+      } catch (error) {
+        if (!isRetryableAiSdkError(error)) {
+          throw error;
+        }
+        logger.warn(
+          "[OpenRouter] Primary router stream failed for %s (%d); falling back to OpenRouter",
+          model,
+          aiSdkErrorStatus(error),
+        );
+        return await fallbackModel.doStream(params);
+      }
+    },
+  };
+
+  return wrapLanguageModel({ model: primaryModel, middleware });
+}
+
 function requiresBitRouterRouting(model: string): boolean {
   const bitRouterModel = toBitRouterModelId(model);
   return (
@@ -324,7 +418,11 @@ function normalizeAnthropicModelId(model: string): string {
  * when present; Vercel AI Gateway is the local/dev fallback.
  */
 export function hasGatewayProviderConfigured(): boolean {
-  return getBitRouterApiKey() !== null || getVercelAIGatewayApiKey() !== null;
+  return (
+    getBitRouterApiKey() !== null ||
+    getOpenRouterApiKey() !== null ||
+    getVercelAIGatewayApiKey() !== null
+  );
 }
 
 export function hasLanguageModelProviderConfigured(model: string): boolean {
@@ -341,7 +439,7 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
   }
 
   if (requiresBitRouterRouting(model)) {
-    return false;
+    return Boolean(getOpenRouterApiKey());
   }
 
   if (isCerebrasNativeModel(model)) {
@@ -353,14 +451,14 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
   }
 
   if (isOpenAINativeModel(model)) {
-    return Boolean(getProviderKey("OPENAI_API_KEY"));
+    return Boolean(getProviderKey("OPENAI_API_KEY")) || Boolean(getOpenRouterApiKey());
   }
 
   if (isAnthropicNativeModel(model)) {
-    return Boolean(getProviderKey("ANTHROPIC_API_KEY"));
+    return Boolean(getProviderKey("ANTHROPIC_API_KEY")) || Boolean(getOpenRouterApiKey());
   }
 
-  return false;
+  return Boolean(getOpenRouterApiKey());
 }
 
 export function hasTextEmbeddingProviderConfigured(): boolean {
@@ -388,11 +486,16 @@ export function getLanguageModel(model: string) {
   }
 
   if (getBitRouterApiKey()) {
-    return getBitRouterLanguageModel(model);
+    return withOpenRouterFallback(getBitRouterLanguageModel(model), model);
   }
 
   if (requiresBitRouterRouting(model)) {
-    throw new Error("BITROUTER_API_KEY environment variable is required for this model");
+    // BitRouter not configured: OpenRouter serves the same catalog and the
+    // same `:nitro`/`:floor` suffixes natively, so it's the BYOK substitute.
+    if (getOpenRouterApiKey()) {
+      return getOpenRouterLanguageModel(model);
+    }
+    throw new Error("BITROUTER_API_KEY or OPENROUTER_API_KEY is required for this model");
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -408,6 +511,11 @@ export function getLanguageModel(model: string) {
 
   if (isAnthropicNativeModel(model) && getProviderKey("ANTHROPIC_API_KEY")) {
     return getAnthropicClient().languageModel(normalizeAnthropicModelId(model));
+  }
+
+  // Universal BYOK catch-all: OpenRouter serves any remaining catalog model.
+  if (getOpenRouterApiKey()) {
+    return getOpenRouterLanguageModel(model);
   }
 
   throw new Error("AI language model provider is not configured");
@@ -452,7 +560,7 @@ export function hasGroqLanguageModelProviderConfigured(): boolean {
 
 export function resolveAiProviderSource(
   model: string,
-): "groq" | "vast" | "bitrouter" | "gateway" | "cerebras" | "openai" | "anthropic" | null {
+): "groq" | "vast" | "bitrouter" | "openrouter" | "gateway" | "cerebras" | "openai" | "anthropic" | null {
   if (isGroqNativeModel(model)) {
     return getProviderKey("GROQ_API_KEY") ? "groq" : null;
   }
@@ -467,12 +575,15 @@ export function resolveAiProviderSource(
     return "cerebras";
   }
 
+  // BitRouter is the primary when configured; OpenRouter is its fallback, but a
+  // fallback is the exceptional path, so steady-state attribution stays
+  // "bitrouter" (cost math is model-id-driven either way).
   if (getBitRouterApiKey()) {
     return "bitrouter";
   }
 
   if (requiresBitRouterRouting(model)) {
-    return null;
+    return getOpenRouterApiKey() ? "openrouter" : null;
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -485,6 +596,10 @@ export function resolveAiProviderSource(
 
   if (isAnthropicNativeModel(model) && getProviderKey("ANTHROPIC_API_KEY")) {
     return "anthropic";
+  }
+
+  if (getOpenRouterApiKey()) {
+    return "openrouter";
   }
 
   return null;
@@ -511,6 +626,7 @@ export function resolveEmbeddingProviderSource(): "bitrouter" | "gateway" | "ope
 export function hasAnyAiProviderConfigured(): boolean {
   return Boolean(
     getBitRouterApiKey() ||
+      getOpenRouterApiKey() ||
       getVercelAIGatewayApiKey() ||
       getProviderKey("CEREBRAS_API_KEY") ||
       getProviderKey("OPENAI_API_KEY") ||
@@ -523,6 +639,7 @@ export function hasAnyAiProviderConfigured(): boolean {
 export function getAiProviderConfigurationStatus() {
   return {
     bitrouter: Boolean(getBitRouterApiKey()),
+    openrouter: Boolean(getOpenRouterApiKey()),
     gateway: Boolean(getVercelAIGatewayApiKey()),
     cerebras: Boolean(getProviderKey("CEREBRAS_API_KEY")),
     openai: Boolean(getProviderKey("OPENAI_API_KEY")),

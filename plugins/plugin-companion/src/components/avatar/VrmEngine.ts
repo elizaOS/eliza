@@ -1426,19 +1426,16 @@ export class VrmEngine {
     return this.initialized && this.renderer !== null;
   }
   dispose(): void {
+    this.loadingAborted = true;
+    this.stopLoop();
     this.mathEnvironment?.dispose();
     this.mathEnvironment = null;
     this.overlayManager?.dispose();
     this.overlayManager = null;
-    this.loadingAborted = true;
     this.initialized = false;
     this.settleReady();
     this.releaseKnownWebGpuWarningFilter?.();
     this.releaseKnownWebGpuWarningFilter = null;
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-    }
     if (this.vrm?.scene.parent) {
       this.vrm.scene.parent.remove(this.vrm.scene);
       VRMUtils.deepDispose(this.vrm.scene);

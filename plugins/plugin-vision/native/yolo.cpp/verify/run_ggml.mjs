@@ -65,7 +65,9 @@ const rc = lib.symbols.yolo_run(
   ptr(outAnch),
 );
 const dt = performance.now() - t0;
-console.error(`yolo_run rc=${rc} channels=${outChan[0]} anchors=${outAnch[0]} (${dt.toFixed(0)}ms)`);
+console.error(
+  `yolo_run rc=${rc} channels=${outChan[0]} anchors=${outAnch[0]} (${dt.toFixed(0)}ms)`,
+);
 if (rc !== 0) {
   lib.symbols.yolo_free(ctx);
   process.exit(1);

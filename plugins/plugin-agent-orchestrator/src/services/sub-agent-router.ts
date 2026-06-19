@@ -8,7 +8,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { Service } from "@elizaos/core";
+import { Service, ServiceType } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import {
   dispatchParentAgentDirective,
@@ -828,6 +828,30 @@ export class SubAgentRouter extends Service {
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
     }
+    if (event === "task_complete") {
+      const preview = (deliverable ?? text).trim().slice(0, 200);
+      void getNotifier(this.runtime)
+        ?.notify({
+          title: `${origin.label || "Agent task"} finished`,
+          ...(preview ? { body: preview } : {}),
+          category: "agent",
+          priority: "normal",
+          source: "orchestrator",
+          deepLink: "/orchestrator",
+          groupKey: `orchestrator:${sessionId}`,
+          data: {
+            sessionId,
+            label: origin.label,
+            ...(origin.source ? { originSource: origin.source } : {}),
+          },
+        })
+        .catch((err: unknown) => {
+          this.log("debug", "notification emit failed", {
+            sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    }
     const routingKind = routingKindForEvent(event, data, capExceeded);
     const targets = swarmTargetsForRouting(origin, routingKind);
     await Promise.all(
@@ -1333,6 +1357,28 @@ Do not report done until every referenced URL in the final page resolves without
       );
     }
   }
+}
+
+interface NotificationEmitter {
+  notify: (input: {
+    title: string;
+    body?: string;
+    category?: string;
+    priority?: string;
+    source?: string;
+    deepLink?: string;
+    groupKey?: string;
+    data?: Record<string, unknown>;
+  }) => Promise<unknown>;
+}
+
+function getNotifier(runtime: {
+  getService: (t: string) => unknown;
+}): NotificationEmitter | null {
+  const svc = runtime.getService(
+    ServiceType.NOTIFICATION,
+  ) as NotificationEmitter | null;
+  return svc && typeof svc.notify === "function" ? svc : null;
 }
 
 function shouldInject(event: SessionEventName): boolean {

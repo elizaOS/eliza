@@ -8,6 +8,15 @@ const DEFAULT_PLATFORM_REDIRECT_ORIGINS = [
   "https://eliza.ai",
   "https://www.eliza.ai",
   "https://eliza.app",
+  // First-party Eliza Cloud web surfaces. The console (lander + dashboard)
+  // lives at the apex; the agent app lives on its own subdomain. Both are valid
+  // OAuth-callback redirect targets so login initiated on either surface can
+  // bounce back to it. (The apex is also covered by NEXT_PUBLIC_APP_URL, but
+  // listing all four keeps redirects valid regardless of the worker env.)
+  "https://elizacloud.ai",
+  "https://staging.elizacloud.ai",
+  "https://app.elizacloud.ai",
+  "https://app-staging.elizacloud.ai",
 ];
 
 /**

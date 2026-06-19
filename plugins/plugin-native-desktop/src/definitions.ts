@@ -164,7 +164,19 @@ export type DesktopPermissionId =
   | "website-blocking"
   | "notifications"
   | "full-disk"
-  | "automation";
+  | "automation"
+  | "speech-recognition"
+  | "photos"
+  | "phone"
+  | "messages"
+  | "wifi"
+  | "bluetooth"
+  | "app-blocking"
+  | "usage-access"
+  | "overlay"
+  | "write-settings"
+  | "local-network"
+  | "battery-optimization";
 
 export type DesktopPermissionStatus =
   | "granted"

@@ -67,6 +67,7 @@ export interface OverlayApp {
    */
   readonly loader?: () => Promise<{
     default: ComponentType<OverlayAppContext>;
+    cleanup?: () => void | Promise<void>;
   }>;
   /**
    * Called immediately before the component mounts.

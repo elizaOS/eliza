@@ -10,12 +10,18 @@ const params =
     : new URLSearchParams();
 
 export function useFirstRunController() {
-  const [step, setStep] = React.useState<"runtime" | "remote">(
-    params.get("step") === "remote" ? "remote" : "runtime",
+  const stepParam = params.get("step");
+  const [step, setStep] = React.useState<"runtime" | "inference" | "remote">(
+    stepParam === "remote"
+      ? "remote"
+      : stepParam === "inference"
+        ? "inference"
+        : "runtime",
   );
   const [draft, setDraft] = React.useState({
     agentName: "Eliza",
-    runtime: params.get("runtime") ?? "cloud",
+    runtime:
+      params.get("runtime") ?? (stepParam === "inference" ? "local" : "cloud"),
     localInference: params.get("localinference") ?? "all-local",
     remoteApiBase: params.get("step") === "remote" ? "https://agent.example.com" : "",
     remoteToken: "",
@@ -47,7 +53,7 @@ export function useFirstRunController() {
       ? "Open this link to log in: https://cloud.elizaos.ai/signin?token=demo"
       : null,
     primaryLabel: "Continue",
-    canBack: step === "remote",
+    canBack: step !== "runtime",
     voice: {
       supported: true,
       listening: false,

@@ -102,4 +102,47 @@ describe("toWriteRequest", () => {
     expect(req.connections).toBeDefined();
     expect(req.settings).toEqual({});
   });
+
+  it("preserves node credentials and execution behavior settings", () => {
+    const parsed = parseWorkflowJson(
+      JSON.stringify({
+        name: "Metadata workflow",
+        nodes: [
+          {
+            id: "http",
+            name: "HTTP Request",
+            type: "workflows-nodes-base.httpRequest",
+            typeVersion: 4.2,
+            position: [120, 80],
+            parameters: { url: "https://example.com" },
+            credentials: {
+              httpHeaderAuth: { id: "cred-1", name: "API token" },
+            },
+            disabled: true,
+            continueOnFail: true,
+            executeOnce: true,
+            alwaysOutputData: true,
+            retryOnFail: true,
+            maxTries: 3,
+            waitBetweenTries: 750,
+            onError: "continueErrorOutput",
+          },
+        ],
+        connections: {},
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+
+    const node = toWriteRequest(parsed).nodes[0];
+    expect(node.credentials?.httpHeaderAuth.id).toBe("cred-1");
+    expect(node.disabled).toBe(true);
+    expect(node.continueOnFail).toBe(true);
+    expect(node.executeOnce).toBe(true);
+    expect(node.alwaysOutputData).toBe(true);
+    expect(node.retryOnFail).toBe(true);
+    expect(node.maxTries).toBe(3);
+    expect(node.waitBetweenTries).toBe(750);
+    expect(node.onError).toBe("continueErrorOutput");
+  });
 });

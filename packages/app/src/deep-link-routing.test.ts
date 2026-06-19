@@ -73,6 +73,40 @@ describe("assistant launch deep-link routing", () => {
     expect(params(hashRoute ?? "").get("lifeops.section")).toBeNull();
   });
 
+  it("routes iOS App Intent smart replies through chat with source metadata", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "chat/smart-reply",
+      new URLSearchParams(
+        "text=Can%20you%20send%20me%20the%20deck%3F&source=ios-app-intents",
+      ),
+      { generateLaunchId: () => "launch-smart-reply" },
+    );
+
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("ios-app-intents");
+    expect(params(hashRoute ?? "").get("action")).toBe("smart-reply");
+    expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
+      "launch-smart-reply",
+    );
+  });
+
+  it("routes Android Share Sheet smart replies through chat with source metadata", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "chat",
+      new URLSearchParams(
+        "text=Could%20you%20review%20this%3F&source=android-share-sheet&action=smart-reply",
+      ),
+      { generateLaunchId: () => "launch-android-share" },
+    );
+
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("android-share-sheet");
+    expect(params(hashRoute ?? "").get("action")).toBe("smart-reply");
+    expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
+      "launch-android-share",
+    );
+  });
+
   it("routes Android feature-open inventory to voice chat", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
       "feature/open",
@@ -87,6 +121,22 @@ describe("assistant launch deep-link routing", () => {
     expect(params(hashRoute ?? "").get("voice")).toBe("1");
     expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
       "launch-voice",
+    );
+  });
+
+  it("routes Android widget daily brief links into LifeOps overview", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "lifeops/daily-brief",
+      new URLSearchParams("source=android-widget&action=lifeops.daily-brief"),
+      { generateLaunchId: () => "launch-android-widget" },
+    );
+
+    expect(hashRoute?.startsWith("#lifeops?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("android-widget");
+    expect(params(hashRoute ?? "").get("action")).toBe("lifeops.daily-brief");
+    expect(params(hashRoute ?? "").get("lifeops.section")).toBe("overview");
+    expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
+      "launch-android-widget",
     );
   });
 
@@ -134,6 +184,8 @@ describe("assistant launch deep-link routing", () => {
       "ask",
       "assistant",
       "chat/ask",
+      "smart-reply",
+      "chat/smart-reply",
       "chat",
       "voice",
       "chat/voice",
@@ -195,6 +247,8 @@ describe("assistant launch deep-link routing", () => {
             "ask",
             "assistant",
             "chat/ask",
+            "smart-reply",
+            "chat/smart-reply",
             "chat",
             "voice",
             "chat/voice",

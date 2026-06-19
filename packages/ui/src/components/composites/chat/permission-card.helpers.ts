@@ -26,6 +26,18 @@ export const PERMISSION_LABELS: Record<PermissionId, string> = {
   notifications: "Notifications",
   "full-disk": "Full Disk Access",
   automation: "Automation",
+  "speech-recognition": "Speech Recognition",
+  photos: "Photos",
+  phone: "Phone",
+  messages: "Messages",
+  wifi: "Wi-Fi Scans",
+  bluetooth: "Bluetooth",
+  "app-blocking": "App Blocking",
+  "usage-access": "Usage Access",
+  overlay: "Draw Over Apps",
+  "write-settings": "Write Settings",
+  "local-network": "Local Network",
+  "battery-optimization": "Battery Optimization",
 };
 
 export function getPermissionLabel(id: PermissionId): string {
