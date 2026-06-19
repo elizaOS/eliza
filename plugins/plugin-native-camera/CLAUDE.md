@@ -52,6 +52,7 @@ plugins/plugin-native-camera/
     index.ts          — Registers the Capacitor plugin; exports `Camera` and all types
     definitions.ts    — All TypeScript interfaces (CameraPlugin, CameraDevice, PhotoResult, VideoResult, CameraSettings, ...)
     web.ts            — CameraWeb: MediaDevices API implementation for browser runtime
+    web.test.ts       — Vitest unit tests for the CameraWeb implementation
   ios/
     Sources/CameraPlugin/
       CameraPlugin.swift   — AVFoundation-based native iOS implementation
@@ -61,6 +62,7 @@ plugins/plugin-native-camera/
     src/main/AndroidManifest.xml
   ElizaosCapacitorCamera.podspec  — CocoaPods spec for iOS distribution
   rollup.config.mjs               — Bundles dist/plugin.js (IIFE) and dist/plugin.cjs.js
+  vitest.config.ts                — Vitest configuration for unit tests
   tsconfig.json
 ```
 
@@ -72,6 +74,7 @@ Only scripts defined in `package.json`:
 bun run --cwd plugins/plugin-native-camera build   # clean + tsc + rollup bundle
 bun run --cwd plugins/plugin-native-camera clean   # remove dist/
 bun run --cwd plugins/plugin-native-camera watch   # tsc --watch
+bun run --cwd plugins/plugin-native-camera test    # run vitest unit tests
 ```
 
 `prepublishOnly` runs `build` automatically before `npm publish`.
