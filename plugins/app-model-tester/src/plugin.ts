@@ -80,6 +80,7 @@ export const modelTesterPlugin: Plugin = {
     {
       id: "model-tester",
       label: "Model Tester",
+      developerOnly: true,
       description:
         "End-to-end probes for Eliza-1 text, voice, audio, and vision models",
       icon: "TestTube2",
