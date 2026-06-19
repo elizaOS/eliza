@@ -65,6 +65,14 @@ import {
   registerAospLlamaLoader,
   resolveLibllamaPath,
 } from "./aosp-llama-adapter.js";
+import {
+  type AospFfiPointerHelpers,
+  type AospFusedLlmSymbols,
+  type AospFusedStreamingLlmBinding,
+  type AospLlmStreamConfig,
+  createAospStreamingLlmBinding,
+  streamGenerate,
+} from "./aosp-llama-streaming.js";
 
 const SERVICE_NAME = "localInferenceLoader";
 const PROVIDER = "eliza-aosp-llama";
@@ -2156,6 +2164,13 @@ type BunFfiModule = {
   FFIType: Record<string, number>;
   ptr: (value: ArrayBufferView) => bigint | number;
   read?: { ptr?: (value: ArrayBufferView, offset?: number) => bigint | number };
+  /** Wrap a raw native pointer as an ArrayBuffer view (used to read the
+   *  malloc'd `int*` token buffer out of `eliza_inference_tokenize`). */
+  toArrayBuffer?: (
+    ptr: bigint | number,
+    byteOffset?: number,
+    byteLength?: number,
+  ) => ArrayBuffer;
   CString?: new (ptr: bigint | number) => { toString(): string };
   JSCallback?: new (
     fn: (...args: never[]) => unknown,
@@ -2539,6 +2554,429 @@ export function makeAospTranscriptionHandler(
   };
 }
 
+/* -------------------------------------------------------------------- */
+/* Fused libelizainference text loader (bun:ffi, no JNI).                */
+/*                                                                       */
+/* On AOSP + the normal Android APK the bun agent already dlopens        */
+/* libelizainference.so for fused TTS/ASR. This loader binds the         */
+/* streaming-LLM + tokenize/embed symbols on the SAME library so TEXT    */
+/* generation runs through the fused, MTP/KV-quant-optimized path        */
+/* instead of the separate libllama.so adapter — gated on the ABI-v9     */
+/* probes. When the fused lib is absent or too old the gate refuses and  */
+/* the caller falls back to the libllama `AospLlamaAdapter`.             */
+/* -------------------------------------------------------------------- */
+
+const ELIZA_POOLING_MEAN = 1;
+
+/** Map an `AospLoadModelArgs` KV-cache type onto the fused config string. */
+function fusedCacheTypeName(
+  value: AospLoadModelArgs["cacheTypeK"] | undefined,
+): string | null {
+  return value && value.length > 0 ? value : null;
+}
+
+/**
+ * Build the bun:ffi pointer helpers the streaming binding needs from a
+ * loaded `BunFfiModule` + its symbol table (for `eliza_inference_free_string`).
+ */
+function makeFusedFfiHelpers(
+  ffi: BunFfiModule,
+  symbols: Record<string, (...args: unknown[]) => unknown>,
+): AospFfiPointerHelpers {
+  return {
+    ptr: (view: ArrayBufferView) => {
+      const p = ffi.ptr(view);
+      return typeof p === "bigint" ? p : BigInt(p);
+    },
+    takeError: (buf: Buffer) => {
+      const raw = readFfiPointer(ffi, buf, 0);
+      if (!raw || raw === 0n) return null;
+      let text: string | null = null;
+      try {
+        text = ffi.CString ? new ffi.CString(raw).toString() : null;
+      } catch {
+        text = null;
+      }
+      try {
+        symbols.eliza_inference_free_string?.(raw);
+      } catch {}
+      return text;
+    },
+    cString,
+  };
+}
+
+interface AospFusedTextLoaderState {
+  ffi: BunFfiModule;
+  symbols: Record<string, (...args: unknown[]) => unknown>;
+  helpers: AospFfiPointerHelpers;
+  close: () => void;
+  ctx: bigint;
+  binding: AospFusedStreamingLlmBinding;
+  bundleRoot: string;
+  modelPath: string;
+  gpuLayers?: number;
+  draftModelPath: string | null;
+}
+
+/**
+ * Tokenize `text` against the fused context via `eliza_inference_tokenize`,
+ * copying the malloc'd `int*` buffer into a JS-owned `Int32Array` and freeing
+ * the native allocation. Mirrors the desktop binding's `tokenize`.
+ */
+function tokenizeFused(
+  state: AospFusedTextLoaderState,
+  text: string,
+): Int32Array {
+  const { ffi, symbols, helpers } = state;
+  const tokenize = symbols.eliza_inference_tokenize;
+  const freeTokens = symbols.eliza_inference_free_tokens;
+  if (typeof tokenize !== "function" || typeof freeTokens !== "function") {
+    throw new Error(
+      "[aosp-local-inference] fused tokenize unavailable (eliza_inference_tokenize not exported)",
+    );
+  }
+  const textBuf = cString(text);
+  // text_len excludes the trailing NUL.
+  const textLen = Math.max(0, textBuf.length - 1);
+  const outTokensPtr = new BigUint64Array(1);
+  const outN = new BigUint64Array(1);
+  const err = Buffer.alloc(8);
+  const rc = tokenize(
+    state.ctx,
+    helpers.ptr(textBuf),
+    BigInt(textLen),
+    // add_special=1, parse_special=1 — render ChatML control tokens as real
+    // control tokens (the prompt is already ChatML-formatted upstream).
+    1,
+    1,
+    helpers.ptr(outTokensPtr),
+    helpers.ptr(outN),
+    helpers.ptr(err),
+  ) as number;
+  if (rc !== 0) {
+    throw new Error(
+      helpers.takeError(err) ??
+        `[aosp-local-inference] fused tokenize rc=${rc}`,
+    );
+  }
+  const n = Number(outN[0] ?? 0n);
+  const tokensRaw = outTokensPtr[0] ?? 0n;
+  if (n === 0) {
+    if (tokensRaw !== 0n) freeTokens(tokensRaw);
+    return new Int32Array(0);
+  }
+  try {
+    if (typeof ffi.toArrayBuffer !== "function") {
+      throw new Error(
+        "[aosp-local-inference] bun:ffi toArrayBuffer unavailable; cannot read fused tokens",
+      );
+    }
+    const view = ffi.toArrayBuffer(tokensRaw, 0, n * 4);
+    return new Int32Array(new Uint8Array(view).slice(0, n * 4).buffer);
+  } finally {
+    freeTokens(tokensRaw);
+  }
+}
+
+/** Embed `input` via the fused `eliza_inference_embed`. */
+function embedFused(
+  state: AospFusedTextLoaderState,
+  input: string,
+): { embedding: number[]; tokens: number } {
+  const { symbols, helpers } = state;
+  const embed = symbols.eliza_inference_embed;
+  if (typeof embed !== "function") {
+    throw new Error(
+      "[aosp-local-inference] fused embed unavailable (eliza_inference_embed not exported)",
+    );
+  }
+  const textBuf = cString(input);
+  const textLen = Math.max(0, textBuf.length - 1);
+  const cap = 4096;
+  const outEmbedding = new Float32Array(cap);
+  const outDim = new Int32Array(1);
+  const err = Buffer.alloc(8);
+  const rc = embed(
+    state.ctx,
+    helpers.ptr(textBuf),
+    BigInt(textLen),
+    ELIZA_POOLING_MEAN,
+    helpers.ptr(outEmbedding),
+    BigInt(cap),
+    helpers.ptr(outDim),
+    helpers.ptr(err),
+  ) as number;
+  if (rc !== 0) {
+    throw new Error(
+      helpers.takeError(err) ?? `[aosp-local-inference] fused embed rc=${rc}`,
+    );
+  }
+  const dim = outDim[0] ?? 0;
+  if (dim <= 0 || dim > cap) {
+    throw new Error(
+      `[aosp-local-inference] fused embed returned out-of-range n_embd=${dim}`,
+    );
+  }
+  return { embedding: Array.from(outEmbedding.subarray(0, dim)), tokens: 0 };
+}
+
+/**
+ * The libelizainference symbol table the fused text loader binds. Mirrors the
+ * desktop binding's dlopen defs (ABI v9). `T.usize ?? T.ptr` is used for raw
+ * pointer handles handed back into C.
+ */
+function dlopenFusedTextLib(ffi: BunFfiModule, libPath: string) {
+  const T = ffi.FFIType;
+  const usize = T.usize ?? T.ptr;
+  return ffi.dlopen(libPath, {
+    eliza_inference_create: { args: [T.ptr, T.ptr], returns: T.ptr },
+    eliza_inference_destroy: { args: [T.ptr], returns: T.void },
+    eliza_inference_mmap_acquire: {
+      args: [T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_free_string: { args: [usize], returns: T.void },
+    eliza_inference_free_tokens: { args: [usize], returns: T.void },
+    eliza_inference_llm_stream_supported: { args: [], returns: T.i32 },
+    eliza_inference_llm_mtp_supported: { args: [], returns: T.i32 },
+    eliza_inference_llm_kv_quant_supported: { args: [], returns: T.i32 },
+    eliza_inference_llm_stream_open: {
+      args: [T.ptr, T.ptr, T.ptr],
+      returns: T.ptr,
+    },
+    eliza_inference_llm_stream_prefill: {
+      args: [usize, T.ptr, usize, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_llm_stream_next: {
+      args: [usize, T.ptr, usize, T.ptr, T.ptr, usize, T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_llm_stream_cancel: { args: [usize], returns: T.i32 },
+    eliza_inference_llm_stream_close: { args: [usize], returns: T.void },
+    eliza_inference_tokenize: {
+      args: [T.ptr, T.ptr, usize, T.i32, T.i32, T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_embed: {
+      args: [T.ptr, T.ptr, usize, T.i32, T.ptr, usize, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+  });
+}
+
+/**
+ * Build the fused libelizainference text loader for a resolved chat bundle,
+ * or return `null` when the fused lib is absent / too old (no streaming-LLM,
+ * MTP, or KV-quant support — the ABI-v9 gate). On `null` the caller keeps the
+ * libllama `AospLlamaAdapter`.
+ *
+ * The returned loader satisfies the same `AospLoader` shape the bootstrap
+ * already drives (`loadModel` / `generate` / `embed` / …), so the existing
+ * lifecycle + handler wiring is reused unchanged. `loadModel` creates the
+ * `EliInferenceContext` (the text GGUF is loaded lazily on the first
+ * `llm_stream_open`); `generate` tokenizes the ChatML prompt and runs the
+ * streaming open→prefill→next→close loop.
+ */
+export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> {
+  const libPath = resolveElizaInferenceLibPath();
+  if (!existsSync(libPath)) {
+    writeAospLlamaDebugLog("bootstrap:fusedText:libMissing", { libPath });
+    return null;
+  }
+  let bundleRoot: string;
+  try {
+    bundleRoot = resolveAssignedChatBundleRoot();
+  } catch {
+    // No chat bundle resolvable yet — let the libllama adapter handle the
+    // model-resolution + auto-download path; the fused loader needs a real
+    // bundle root to create the context.
+    return null;
+  }
+
+  const ffi = await loadAospVoiceFfi();
+  const lib = dlopenFusedTextLib(ffi, libPath);
+  const symbols = lib.symbols;
+  const helpers = makeFusedFfiHelpers(ffi, symbols);
+
+  // Probe support against the LIBRARY (no context needed) before creating one.
+  const streamProbe = symbols.eliza_inference_llm_stream_supported;
+  const mtpProbe = symbols.eliza_inference_llm_mtp_supported;
+  const kvProbe = symbols.eliza_inference_llm_kv_quant_supported;
+  const libSupportsFusedText =
+    typeof streamProbe === "function" &&
+    streamProbe() === 1 &&
+    typeof mtpProbe === "function" &&
+    mtpProbe() === 1 &&
+    typeof kvProbe === "function" &&
+    kvProbe() === 1;
+  if (!libSupportsFusedText) {
+    writeAospLlamaDebugLog("bootstrap:fusedText:unsupported", {
+      libPath,
+      stream: typeof streamProbe === "function" ? streamProbe() : null,
+      mtp: typeof mtpProbe === "function" ? mtpProbe() : null,
+      kvQuant: typeof kvProbe === "function" ? kvProbe() : null,
+    });
+    try {
+      lib.close();
+    } catch {}
+    logger.info(
+      "[aosp-local-inference] fused libelizainference present but lacks streaming-LLM/MTP/KV-quant (ABI <v9); using libllama text adapter",
+    );
+    return null;
+  }
+
+  let state: AospFusedTextLoaderState | null = null;
+
+  const destroyState = (): void => {
+    if (!state) return;
+    try {
+      state.symbols.eliza_inference_destroy?.(state.ctx);
+    } catch {}
+    state = null;
+  };
+
+  const loader: AospLoader = {
+    currentModelPath: () => state?.modelPath ?? null,
+
+    async loadModel(args: AospLoadModelArgs): Promise<void> {
+      // One EliInferenceContext per bundle: the C side resolves text vs
+      // embedding regions per call (`llm_stream_*` vs `embed`), so chat and
+      // embedding loads SHARE the context — we never destroy + recreate when
+      // the lifecycle swaps roles (that would evict the hot text model). The
+      // context is created lazily on the first load.
+      if (!state) {
+        const errCreate = Buffer.alloc(8);
+        const ctx = symbols.eliza_inference_create(
+          ffi.ptr(cString(bundleRoot)),
+          ffi.ptr(errCreate),
+        ) as bigint;
+        if (isFfiNullPointer(ctx)) {
+          throw new Error(
+            `[aosp-local-inference] fused create failed: ${readFfiStringAndFree(ffi, symbols, errCreate)}`,
+          );
+        }
+        state = {
+          ffi,
+          symbols,
+          helpers,
+          close: lib.close,
+          ctx,
+          binding: createAospStreamingLlmBinding({
+            ctx,
+            symbols: symbols as unknown as AospFusedLlmSymbols,
+            helpers,
+          }),
+          bundleRoot,
+          modelPath: args.modelPath,
+          draftModelPath: null,
+        };
+      }
+
+      // Only chat-shaped loads carry text-generation tuning (MTP drafter, a
+      // fork KV-quant cache type, or offloaded GPU layers). Embedding loads
+      // (gpuLayers 0 + f16 KV, no drafter) must not clobber the streaming
+      // config, so detect + skip them.
+      const kvCacheTypes = {
+        cacheTypeK: fusedCacheTypeName(args.cacheTypeK ?? args.kvCacheType?.k),
+        cacheTypeV: fusedCacheTypeName(args.cacheTypeV ?? args.kvCacheType?.v),
+      };
+      const draftModelPath = args.draftModelPath ?? null;
+      const isChatShaped =
+        draftModelPath !== null ||
+        (typeof args.gpuLayers === "number" && args.gpuLayers > 0) ||
+        (kvCacheTypes.cacheTypeK !== null &&
+          kvCacheTypes.cacheTypeK !== "f16") ||
+        (kvCacheTypes.cacheTypeV !== null && kvCacheTypes.cacheTypeV !== "f16");
+      if (!isChatShaped && state.modelPath !== args.modelPath) {
+        // Embedding (or otherwise untuned) load against the shared context —
+        // no streaming-config rebuild needed.
+        return;
+      }
+
+      state.modelPath = args.modelPath;
+      state.draftModelPath = draftModelPath;
+      if (typeof args.gpuLayers === "number") {
+        state.gpuLayers = args.gpuLayers;
+      }
+      state.binding = createAospStreamingLlmBinding({
+        ctx: state.ctx,
+        symbols: symbols as unknown as AospFusedLlmSymbols,
+        helpers,
+        ...(typeof args.gpuLayers === "number"
+          ? { gpuLayers: args.gpuLayers }
+          : {}),
+        kvCacheTypes,
+      });
+      writeAospLlamaDebugLog("bootstrap:fusedText:loaded", {
+        model: path.basename(args.modelPath),
+        gpuLayers: args.gpuLayers ?? null,
+        cacheTypeK: kvCacheTypes.cacheTypeK,
+        cacheTypeV: kvCacheTypes.cacheTypeV,
+        draftModelPath,
+      });
+      logger.info(
+        `[aosp-local-inference] fused libelizainference text backend ready (model=${path.basename(args.modelPath)}, mtpDrafter=${draftModelPath ? path.basename(draftModelPath) : "none"})`,
+      );
+    },
+
+    async unloadModel(): Promise<void> {
+      destroyState();
+    },
+
+    async generate(args): Promise<string> {
+      const active = state;
+      if (!active) {
+        throw new Error(
+          "[aosp-local-inference] fused text generate called before loadModel",
+        );
+      }
+      if (args.signal?.aborted) {
+        throw new Error("[aosp-local-inference] fused text generate aborted");
+      }
+      const promptTokens = tokenizeFused(active, args.prompt);
+      const config: AospLlmStreamConfig = {
+        maxTokens: args.maxTokens ?? 512,
+        temperature: args.temperature ?? 0.7,
+        topP: 0.9,
+        topK: 40,
+        repeatPenalty: 1.1,
+        slotId: -1,
+        promptCacheKey: null,
+        // MTP drafter path drives speculative decode; null = target-only.
+        draftMin: active.draftModelPath ? 1 : 0,
+        draftMax: active.draftModelPath ? 16 : 0,
+        mtpDrafterPath: active.draftModelPath,
+        disableThinking: false,
+      };
+      const result = await streamGenerate(active.binding, {
+        ctx: active.ctx,
+        config,
+        promptTokens,
+        ...(args.signal ? { signal: args.signal } : {}),
+        ...(args.onTextChunk ? { onTextChunk: args.onTextChunk } : {}),
+      });
+      return result.text;
+    },
+
+    async embed(args): Promise<{ embedding: number[]; tokens: number }> {
+      const active = state;
+      if (!active) {
+        throw new Error(
+          "[aosp-local-inference] fused embed called before loadModel",
+        );
+      }
+      return embedFused(active, args.input);
+    },
+  };
+
+  logger.info(
+    "[aosp-local-inference] fused libelizainference text loader selected (ABI v9 streaming-LLM + MTP + KV-quant)",
+  );
+  return loader;
+}
+
 /**
  * Register the AOSP llama.cpp FFI loader and matching ModelType handlers
  * on the runtime.
@@ -2605,9 +3043,30 @@ export async function ensureAospLocalInferenceHandlers(
     );
     return false;
   }
-  routeActivationLoader = loader;
+  // Prefer the fused libelizainference text path (ABI-v9 streaming-LLM + MTP
+  // + KV-quant) when the bundled lib advertises it. The fused loader runs on
+  // the SAME libelizainference handle the bun agent already uses for voice,
+  // so text + TTS + ASR share one native library. When the fused lib is
+  // absent or too old (`tryBuildAospFusedTextLoader` returns null), keep the
+  // separate libllama `AospLlamaAdapter` captured above as the text backend.
+  // (Normal Android uses this same bootstrap, so it is covered too.)
+  let fusedTextLoader: AospLoader | null = null;
+  try {
+    fusedTextLoader = await tryBuildAospFusedTextLoader();
+  } catch (err) {
+    logger.warn(
+      "[aosp-local-inference] fused text loader probe failed; using libllama text adapter: " +
+        (err instanceof Error ? err.message : String(err)),
+    );
+    fusedTextLoader = null;
+  }
+  const textLoader: AospLoader = fusedTextLoader ?? loader;
+  const textBackendLabel = fusedTextLoader
+    ? "fused-libelizainference"
+    : "libllama";
+  routeActivationLoader = textLoader;
 
-  const lifecycle = makeLoaderLifecycle(loader);
+  const lifecycle = makeLoaderLifecycle(textLoader);
   // TEXT_EMBEDDING is wired unconditionally now that the adapter resets
   // the llama.cpp embeddings flag on both decode paths (chat + embed) —
   // the previous `ELIZA_AOSP_EMBEDDING=1` opt-in existed only because
@@ -2638,7 +3097,10 @@ export async function ensureAospLocalInferenceHandlers(
     );
   }
   const baseOmnivoiceTextToSpeechHandler =
-    makeAospFusedOmnivoiceTextToSpeechHandler(loader, lifecycle.markEvicted);
+    makeAospFusedOmnivoiceTextToSpeechHandler(
+      textLoader,
+      lifecycle.markEvicted,
+    );
   let foregroundOmnivoiceTextToSpeechUsed = false;
   const textToSpeechHandler = makeAospTextToSpeechHandler({
     omnivoice: baseOmnivoiceTextToSpeechHandler,
@@ -2649,12 +3111,12 @@ export async function ensureAospLocalInferenceHandlers(
   for (const modelType of slots) {
     const handler =
       modelType === ModelType.TEXT_EMBEDDING
-        ? makeEmbeddingHandler(loader, lifecycle)
+        ? makeEmbeddingHandler(textLoader, lifecycle)
         : modelType === ModelType.TEXT_TO_SPEECH
           ? textToSpeechHandler
           : modelType === ModelType.TRANSCRIPTION
-            ? makeAospTranscriptionHandler(loader, lifecycle.markEvicted)
-            : makeGenerateHandler(loader, lifecycle);
+            ? makeAospTranscriptionHandler(textLoader, lifecycle.markEvicted)
+            : makeGenerateHandler(textLoader, lifecycle);
     runtimeWithRegistration.registerModel(
       modelType,
       handler,
@@ -2676,7 +3138,7 @@ export async function ensureAospLocalInferenceHandlers(
   for (const modelType of fallbackSlots) {
     runtimeWithRegistration.registerModel(
       modelType,
-      makeCloudFallbackHandler(loader, lifecycle, modelType),
+      makeCloudFallbackHandler(textLoader, lifecycle, modelType),
       `${PROVIDER}-cloud-fallback`,
       CLOUD_FALLBACK_PRIORITY,
     );
@@ -2703,10 +3165,10 @@ export async function ensureAospLocalInferenceHandlers(
     asrAssetsPresent ? " / TRANSCRIPTION" : ""
   }`;
   console.log(
-    `[aosp-local-inference] registered ${PROVIDER} handlers for ${registeredList} (priority ${LOCAL_INFERENCE_PRIORITY})`,
+    `[aosp-local-inference] registered ${PROVIDER} handlers for ${registeredList} (priority ${LOCAL_INFERENCE_PRIORITY}, text backend ${textBackendLabel})`,
   );
   logger.info(
-    `[aosp-local-inference] Registered ${PROVIDER} handlers for ${registeredList} at priority ${LOCAL_INFERENCE_PRIORITY}`,
+    `[aosp-local-inference] Registered ${PROVIDER} handlers for ${registeredList} at priority ${LOCAL_INFERENCE_PRIORITY} (text backend ${textBackendLabel})`,
   );
   registeredRuntimes.add(runtime);
   return true;

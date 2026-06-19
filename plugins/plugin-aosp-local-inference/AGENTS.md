@@ -29,11 +29,12 @@ plugins/plugin-aosp-local-inference/
   src/
     index.ts                        Barrel — re-exports everything; bundle-safety sink prevents tree-shake collapse
     aosp-llama-adapter.ts           bun:ffi loader: dlopen libllama.so + shim, AospLlamaAdapter class, loader registration
-    aosp-llama-streaming.ts         Streaming-LLM FFI bindings for libelizainference.so streaming symbols
-    aosp-local-inference-bootstrap.ts  Model-handler registrar: TEXT_* handlers, OmniVoice/fused-TTS, ASR, cloud-fallback, pre-warm
+    aosp-llama-streaming.ts         Streaming-LLM FFI binding over a libelizainference.so handle (createAospStreamingLlmBinding, streamGenerate, fusedAospTextSupported gate, config marshaller)
+    aosp-local-inference-bootstrap.ts  Model-handler registrar: fused-libelizainference TEXT loader (tryBuildAospFusedTextLoader), TEXT_* handlers, OmniVoice/fused-TTS, ASR, cloud-fallback, pre-warm
     aosp-debug-log.ts               Append-only line-delimited debug log to $ELIZA_STATE_DIR/aosp-llama-debug.log (gated by ELIZA_AOSP_LLAMA_DEBUG_LOG)
   __tests__/
     aosp-abi-riscv64.test.ts        ABI path resolution tests for riscv64
+    aosp-fused-text-binding.test.ts Fused text binding + ABI-v9 gate (fusedAospTextSupported) + config-struct marshalling tests
     aosp-kokoro-tts-handler.test.ts TTS handler unit tests
     aosp-llama-streaming.test.ts    Streaming binding tests
     aosp-local-inference-bootstrap.test.ts  Bootstrap function unit tests
@@ -116,6 +117,7 @@ All env vars are read at call time (no module-load side effects).
 - **Struct-by-value workaround.** `bun:ffi` cannot pass llama.cpp structs by value. `libeliza-llama-shim.so` wraps every struct-by-value entry point with a pointer-style equivalent. The shim's `*_params_default()` functions return `malloc`'d pointers; callers must free them with the matching `*_params_free()`. The adapter always does this in `try/finally`.
 - **ABI dirs.** Native `.so` files are expected at `cwd/{abi}/libllama.so` etc., where `{abi}` is `arm64-v8a`, `x86_64`, or `riscv64`. `ElizaAgentService.java` sets `LD_LIBRARY_PATH` to this dir before spawning bun.
 - **libllama.so fork.** The bundled `libllama.so` is built from the `apothic/llama.cpp-1bit-turboquant` fork (tag `main-b8198-b2b5273`) extended with `elizaOS/llama.cpp @ v0.1.0-eliza`. It adds KV-cache quant types TBQ3_0=43, TBQ4_0=44, QJL1_256=46, Q4_POLAR=47. Stock llama.cpp `.so` files will not expose these types.
+- **Fused-vs-libllama text gate.** At boot `tryBuildAospFusedTextLoader()` dlopens `libelizainference.so` (the SAME lib the bun agent already uses for fused TTS/ASR) and probes the ABI-v9 capabilities. Text routes through the fused streaming-LLM path (`eliza_inference_llm_stream_*`, one shared `EliInferenceContext` per bundle, native MTP + KV-quant) ONLY when all three probes pass (`fusedAospTextSupported` = `llmStreamSupported && llmMtpSupported && llmKvQuantSupported`). On a missing / pre-v9 lib the loader returns null and the separate libllama `AospLlamaAdapter` stays the text backend. The selected backend is logged at registration (`text backend fused-libelizainference|libllama`). Chat + embedding loads share one fused context (the C side resolves region per call), so the loader never destroys + recreates the context on a role swap.
 - **Model discovery.** At boot, `ensureAospLocalInferenceHandlers` resolves bundled model paths from (in priority order): `local-inference/assignments.json` → `local-inference/registry.json`, then `local-inference/models/manifest.json`, then a glob fallback scan of `$ELIZA_STATE_DIR/local-inference/models/`. If no model is found and `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD` is not set, it auto-downloads from `elizaos/eliza-1` on HuggingFace.
 - **Cloud fallback.** For `TEXT_SMALL` and `TEXT_LARGE`, a secondary handler is registered at priority `-1` as `eliza-aosp-llama-cloud-fallback`. When the local FFI handler fails with a classified recoverable error (`local-unavailable`, `local-overloaded`, `local-error`), this wrapper locates the next-highest registered handler (a cloud provider) and forwards the request. `AbortError` and unclassified errors propagate directly.
 - **Root AGENTS.md** covers all global conventions (logger-only, ESM, architecture rules, naming). This file covers only what is specific to this package.
