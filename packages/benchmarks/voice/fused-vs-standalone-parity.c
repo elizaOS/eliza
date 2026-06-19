@@ -113,6 +113,11 @@ typedef int (*fn_dia_open)(const char *, void **);
 typedef int (*fn_dia_segment)(void *, const float *, size_t, int8_t *, size_t *);
 typedef int (*fn_dia_close)(void *);
 
+typedef int (*fn_vad_open)(const char *, void **);
+typedef int (*fn_vad_process)(void *, const float *, size_t, float *);
+typedef int (*fn_vad_reset)(void *);
+typedef int (*fn_vad_close)(void *);
+
 /* ---- fused ABI fn pointer types ------------------------------------ */
 
 typedef void *(*fn_eli_create)(const char *, char **);
@@ -135,6 +140,12 @@ typedef int (*fn_eli_dia_segment)(void *, const float *, size_t, int8_t *, size_
 typedef void (*fn_eli_dia_close)(void *);
 typedef int (*fn_eli_dia_sup)(void);
 
+typedef void *(*fn_eli_vad_open)(void *, int, char **);
+typedef int (*fn_eli_vad_process)(void *, const float *, size_t, float *, char **);
+typedef int (*fn_eli_vad_reset)(void *, char **);
+typedef void (*fn_eli_vad_close)(void *);
+typedef int (*fn_eli_vad_sup)(void);
+
 #define SYM(handle, T, name) ((T)dlsym(handle, name))
 #define REQ(ptr, name) do { if (!(ptr)) { fprintf(stderr, "missing symbol: %s (%s)\n", name, dlerror()); return 3; } } while (0)
 
@@ -146,24 +157,28 @@ static double cosine(const float *a, const float *b, int n) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 9) {
+    if (argc < 11) {
         fprintf(stderr,
-            "usage: %s <fused.so> <wakeword.so> <voice_classifier.so> <bundle_dir> "
-            "<wav> <wespeaker.gguf> <pyannote.gguf> <wake_head>\n", argv[0]);
+            "usage: %s <fused.so> <wakeword.so> <voice_classifier.so> <silero_vad.so> "
+            "<bundle_dir> <wav> <wespeaker.gguf> <pyannote.gguf> <silero.gguf> <wake_head>\n",
+            argv[0]);
         return 2;
     }
     const char *fused_path = argv[1];
     const char *ww_path    = argv[2];
     const char *vc_path    = argv[3];
-    const char *bundle_dir = argv[4];
-    const char *wav_path   = argv[5];
-    const char *spk_gguf   = argv[6];
-    const char *dia_gguf   = argv[7];
-    const char *wake_head  = argv[8];
+    const char *vad_path   = argv[4];
+    const char *bundle_dir = argv[5];
+    const char *wav_path   = argv[6];
+    const char *spk_gguf   = argv[7];
+    const char *dia_gguf   = argv[8];
+    const char *vad_gguf   = argv[9];
+    const char *wake_head  = argv[10];
 
     /* The fused side resolves the wake GGUFs from <bundle>/wake/<head>.*.gguf,
-     * speaker from <bundle>/speaker/*.gguf, diariz from <bundle>/diariz/*.gguf.
-     * The standalone side gets the explicit GGUF paths. */
+     * speaker from <bundle>/speaker/*.gguf, diariz from <bundle>/diariz/*.gguf,
+     * VAD from <bundle>/vad/*.gguf. The standalone side gets explicit GGUF
+     * paths. */
     char ww_mel[2048], ww_emb[2048], ww_cls[2048];
     snprintf(ww_mel, sizeof ww_mel, "%s/wake/%s.melspec.gguf", bundle_dir, wake_head);
     snprintf(ww_emb, sizeof ww_emb, "%s/wake/%s.embedding.gguf", bundle_dir, wake_head);
@@ -175,6 +190,8 @@ int main(int argc, char **argv) {
     if (!libww) { fprintf(stderr, "dlopen wakeword: %s\n", dlerror()); return 3; }
     void *libvc = dlopen(vc_path, RTLD_NOW | RTLD_LOCAL);
     if (!libvc) { fprintf(stderr, "dlopen voice_classifier: %s\n", dlerror()); return 3; }
+    void *libvad = dlopen(vad_path, RTLD_NOW | RTLD_LOCAL);
+    if (!libvad) { fprintf(stderr, "dlopen silero_vad: %s\n", dlerror()); return 3; }
 
     fn_eli_abi eli_abi = SYM(fused, fn_eli_abi, "eliza_inference_abi_version");
     REQ(eli_abi, "eliza_inference_abi_version");
@@ -351,6 +368,77 @@ int main(int argc, char **argv) {
             else printf("[wakeword] reset OK\n");
         }
         if (wh) w_close(wh);
+        if (eh) e_close(eh);
+    }
+
+    /* ================= VAD ================= */
+    {
+        fn_vad_open    v_open    = SYM(libvad, fn_vad_open,    "silero_vad_open");
+        fn_vad_process v_process = SYM(libvad, fn_vad_process, "silero_vad_process");
+        fn_vad_reset   v_reset   = SYM(libvad, fn_vad_reset,   "silero_vad_reset_state");
+        fn_vad_close   v_close   = SYM(libvad, fn_vad_close,   "silero_vad_close");
+        REQ(v_open, "silero_vad_open"); REQ(v_process, "silero_vad_process");
+        REQ(v_reset, "silero_vad_reset_state"); REQ(v_close, "silero_vad_close");
+
+        fn_eli_vad_sup     e_sup     = SYM(fused, fn_eli_vad_sup,     "eliza_inference_vad_supported");
+        fn_eli_vad_open    e_open    = SYM(fused, fn_eli_vad_open,    "eliza_inference_vad_open");
+        fn_eli_vad_process e_process = SYM(fused, fn_eli_vad_process, "eliza_inference_vad_process");
+        fn_eli_vad_reset   e_reset   = SYM(fused, fn_eli_vad_reset,   "eliza_inference_vad_reset");
+        fn_eli_vad_close   e_close   = SYM(fused, fn_eli_vad_close,   "eliza_inference_vad_close");
+        REQ(e_sup, "..._vad_supported"); REQ(e_open, "..._vad_open");
+        REQ(e_process, "..._vad_process"); REQ(e_reset, "..._vad_reset"); REQ(e_close, "..._vad_close");
+        printf("[vad] fused supported() = %d\n", e_sup());
+
+        const size_t WIN = 512; /* 32 ms @ 16 kHz — the Silero v5 native window */
+        size_t n_windows = n_pcm / WIN;
+
+        void *vh = NULL;
+        int rc = v_open(vad_gguf, &vh);
+        if (rc != 0 || !vh) { fprintf(stderr, "[vad] standalone open rc=%d\n", rc); failures++; }
+
+        char *e_err = NULL;
+        void *eh = e_open(ctx, 16000, &e_err);
+        if (!eh) { fprintf(stderr, "[vad] fused open: %s\n", e_err ? e_err : "?"); failures++; }
+
+        if (vh && eh) {
+            double max_abs = 0;
+            float peak_std = 0, peak_fused = 0;
+            int gt05_std = 0, gt05_fused = 0;
+            int gt05_mismatch = 0;
+            for (size_t w = 0; w < n_windows; ++w) {
+                const float *win = pcm + w * WIN;
+                float p_std = 0, p_fused = 0;
+                int r1 = v_process(vh, win, WIN, &p_std);
+                int r2 = e_process(eh, win, WIN, &p_fused, &e_err);
+                if (r1 != 0) { fprintf(stderr, "[vad] standalone process rc=%d (win %zu)\n", r1, w); failures++; break; }
+                if (r2 < 0) { fprintf(stderr, "[vad] fused process rc=%d: %s (win %zu)\n", r2, e_err ? e_err : "?", w); failures++; break; }
+                double d = fabs((double)p_std - p_fused);
+                if (d > max_abs) max_abs = d;
+                if (p_std > peak_std) peak_std = p_std;
+                if (p_fused > peak_fused) peak_fused = p_fused;
+                int s = p_std > 0.5f, f = p_fused > 0.5f;
+                gt05_std += s; gt05_fused += f;
+                if (s != f) gt05_mismatch++;
+            }
+            printf("[vad] windows=%zu peak: standalone=%.6f fused=%.6f ; "
+                   ">0.5 count: standalone=%d fused=%d ; >0.5 mismatch=%d ; max|Δ| = %.3e\n",
+                   n_windows, peak_std, peak_fused, gt05_std, gt05_fused, gt05_mismatch, max_abs);
+            if (max_abs >= 1e-3) {
+                fprintf(stderr, "[vad] FAIL: max per-window |Δ| %.3e >= 1e-3\n", max_abs);
+                failures++;
+            } else if (gt05_std != gt05_fused || gt05_mismatch != 0) {
+                fprintf(stderr, "[vad] FAIL: >0.5 window counts differ (std=%d fused=%d mismatch=%d)\n",
+                        gt05_std, gt05_fused, gt05_mismatch);
+                failures++;
+            } else {
+                printf("[vad] PASS (max|Δ| < 1e-3, identical >0.5 window count = %d)\n", gt05_std);
+            }
+
+            /* Reset smoke: fused reset must succeed (in-place LSTM clear). */
+            if (e_reset(eh, &e_err) != 0) { fprintf(stderr, "[vad] reset rc!=0: %s\n", e_err ? e_err : "?"); failures++; }
+            else printf("[vad] reset OK\n");
+        }
+        if (vh) v_close(vh);
         if (eh) e_close(eh);
     }
 

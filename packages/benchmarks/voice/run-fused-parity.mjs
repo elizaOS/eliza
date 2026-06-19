@@ -11,8 +11,10 @@
  *   FUSED_SO        path to libelizainference.so
  *   WAKEWORD_SO     path to libwakeword.so      (standalone reference)
  *   VOICE_CLASS_SO  path to libvoice_classifier.so (standalone reference)
+ *   SILERO_VAD_SO   path to libsilero_vad.so    (standalone reference)
  *   WESPEAKER_GGUF  path to wespeaker-resnet34-lm.gguf
  *   PYANNOTE_GGUF   path to pyannote-segmentation-3.0.gguf
+ *   SILERO_GGUF     path to silero-vad-v5.gguf
  *   WAKE_DIR        dir holding hey-eliza.{melspec,embedding,classifier}.gguf
  *   WAKE_HEAD       wake-word head name (default hey-eliza)
  *   FREEMAN_WAV     real-speech wav (22050 Hz mono → resampled to 16 k)
@@ -45,6 +47,10 @@ const VOICE_CLASS_SO = firstExisting([
   process.env.VOICE_CLASS_SO,
   path.join(repoRoot, "packages/native/plugins/voice-classifier-cpp/build/libvoice_classifier.so"),
 ]);
+const SILERO_VAD_SO = firstExisting([
+  process.env.SILERO_VAD_SO,
+  path.join(repoRoot, "packages/native/plugins/silero-vad-cpp/build/libsilero_vad.so"),
+]);
 const WESPEAKER_GGUF = firstExisting([
   process.env.WESPEAKER_GGUF,
   "/tmp/voice-models/wespeaker-resnet34-lm.gguf",
@@ -52,6 +58,10 @@ const WESPEAKER_GGUF = firstExisting([
 const PYANNOTE_GGUF = firstExisting([
   process.env.PYANNOTE_GGUF,
   "/tmp/voice-models/pyannote-segmentation-3.0.gguf",
+]);
+const SILERO_GGUF = firstExisting([
+  process.env.SILERO_GGUF,
+  "/tmp/voice-models/silero-vad-v5.gguf",
 ]);
 const WAKE_DIR = firstExisting([process.env.WAKE_DIR, "/tmp/wakeword/gguf_norescale"]);
 const WAKE_HEAD = process.env.WAKE_HEAD || "hey-eliza";
@@ -62,7 +72,8 @@ const FREEMAN_WAV = firstExisting([
 
 const missing = [];
 for (const [k, v] of Object.entries({
-  FUSED_SO, WAKEWORD_SO, VOICE_CLASS_SO, WESPEAKER_GGUF, PYANNOTE_GGUF, WAKE_DIR, FREEMAN_WAV,
+  FUSED_SO, WAKEWORD_SO, VOICE_CLASS_SO, SILERO_VAD_SO,
+  WESPEAKER_GGUF, PYANNOTE_GGUF, SILERO_GGUF, WAKE_DIR, FREEMAN_WAV,
 })) {
   if (!v) missing.push(k);
 }
@@ -73,7 +84,7 @@ if (missing.length) {
 
 /* Stage a bundle dir for the fused resolver. */
 const bundle = fs.mkdtempSync(path.join(os.tmpdir(), "fused-parity-bundle-"));
-for (const sub of ["wake", "speaker", "diariz"]) {
+for (const sub of ["wake", "speaker", "diariz", "vad"]) {
   fs.mkdirSync(path.join(bundle, sub), { recursive: true });
 }
 for (const kind of ["melspec", "embedding", "classifier"]) {
@@ -84,6 +95,7 @@ for (const kind of ["melspec", "embedding", "classifier"]) {
 }
 fs.symlinkSync(WESPEAKER_GGUF, path.join(bundle, "speaker", path.basename(WESPEAKER_GGUF)));
 fs.symlinkSync(PYANNOTE_GGUF, path.join(bundle, "diariz", path.basename(PYANNOTE_GGUF)));
+fs.symlinkSync(SILERO_GGUF, path.join(bundle, "vad", path.basename(SILERO_GGUF)));
 
 /* Compile the harness. */
 const src = path.join(here, "fused-vs-standalone-parity.c");
@@ -99,11 +111,15 @@ if (compile.status !== 0) {
 console.log(`[parity] bundle=${bundle}`);
 console.log(`[parity] fused=${FUSED_SO}`);
 console.log(`[parity] standalone ww=${WAKEWORD_SO}`);
-console.log(`[parity] standalone vc=${VOICE_CLASS_SO}\n`);
+console.log(`[parity] standalone vc=${VOICE_CLASS_SO}`);
+console.log(`[parity] standalone vad=${SILERO_VAD_SO}\n`);
 
 const run = spawnSync(
   bin,
-  [FUSED_SO, WAKEWORD_SO, VOICE_CLASS_SO, bundle, FREEMAN_WAV, WESPEAKER_GGUF, PYANNOTE_GGUF, WAKE_HEAD],
+  [
+    FUSED_SO, WAKEWORD_SO, VOICE_CLASS_SO, SILERO_VAD_SO,
+    bundle, FREEMAN_WAV, WESPEAKER_GGUF, PYANNOTE_GGUF, SILERO_GGUF, WAKE_HEAD,
+  ],
   { stdio: "inherit" },
 );
 
