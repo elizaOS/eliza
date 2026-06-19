@@ -82,6 +82,7 @@ const SYSTEM_PROMPT = [
   `Available views: ${VIEW_IDS.filter((v) => v !== "none").join(", ")}.`,
   "If the message asks to open/show/go to a view, or the situation clearly calls for one, respond with action VIEWS and the best matching view id.",
   "If it's small talk, a general question, or no view clearly helps, respond with action REPLY and view \"none\".",
+  'Respond ONLY as compact JSON: {"action": "VIEWS" or "REPLY", "view": "<one listed view id or none>"}.',
 ].join("\n");
 
 const PLANNER_SCHEMA = {
@@ -99,22 +100,37 @@ const MODEL_LABEL = process.env.MODEL_LABEL ?? "local";
 const MODEL_NAME = process.env.MODEL_NAME ?? "eliza-1";
 const MODEL_KEY = process.env.MODEL_KEY ?? "sk-no-key";
 
-async function callModel(prompt: string): Promise<{ action: string; view: string; raw: string }> {
-  const res = await fetch(`${MODEL_URL}/chat/completions`, {
+async function postChat(prompt: string, structured: boolean): Promise<Response> {
+  const body: Record<string, unknown> = {
+    model: MODEL_NAME,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0,
+    max_tokens: 60,
+    chat_template_kwargs: { enable_thinking: false },
+  };
+  if (structured) {
+    body.response_format = {
+      type: "json_schema",
+      json_schema: { name: "planner", schema: PLANNER_SCHEMA, strict: true },
+    };
+  }
+  return fetch(`${MODEL_URL}/chat/completions`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${MODEL_KEY}` },
-    body: JSON.stringify({
-      model: MODEL_NAME,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0,
-      max_tokens: 60,
-      chat_template_kwargs: { enable_thinking: false },
-      response_format: { type: "json_schema", json_schema: { name: "planner", schema: PLANNER_SCHEMA, strict: true } },
-    }),
+    body: JSON.stringify(body),
   });
+}
+
+async function callModel(prompt: string): Promise<{ action: string; view: string; raw: string }> {
+  let res = await postChat(prompt, true);
+  // Some providers reject json_schema response_format — retry unconstrained and
+  // rely on the system-prompt JSON instruction + loose extraction.
+  if (!res.ok && (res.status === 400 || res.status === 422)) {
+    res = await postChat(prompt, false);
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content ?? "";
