@@ -331,6 +331,13 @@ bucket_name = "eliza-cloud-blob-staging"
 binding = "HYPERDRIVE"
 id = "ef65eb94c74144a3a3848ad1945571fb"
 
+# KV is the Worker's cache backend (CacheClient). Workers can't reliably open raw
+# TCP to an external Redis (Railway's public proxy hangs under load), so the Worker
+# caches auth/api-key/model-catalog in KV instead of Redis.
+[[env.staging.kv_namespaces]]
+binding = "CACHE_KV"
+id = "f7e24faaff734e7c8cd8e12b093c3571"
+
 [env.production]
 name = "eliza-cloud-api-prod"
 workers_dev = false
@@ -431,3 +438,10 @@ bucket_name = "eliza-cloud-blob"
 [[env.production.hyperdrive]]
 binding = "HYPERDRIVE"
 id = "9f59e4ec65f048f7b87e29e7b9c5d728"
+
+# KV is the Worker's cache backend (CacheClient). Workers can't reliably open raw
+# TCP to an external Redis (Railway's public proxy hangs under load), so the Worker
+# caches auth/api-key/model-catalog in KV instead of Redis.
+[[env.production.kv_namespaces]]
+binding = "CACHE_KV"
+id = "1dafabf1293d4b6b97f61c5cc22d6fec"

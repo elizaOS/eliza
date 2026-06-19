@@ -6,6 +6,7 @@
  */
 
 import type { Context } from "hono";
+import type { KvNamespaceLike } from "../lib/cache/adapters/kv-cache-adapter";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
 
 export interface Bindings {
@@ -16,6 +17,14 @@ export interface Bindings {
   // ---- Cloudflare R2 ----
   /** Object storage for voice samples, avatars, and other binary blobs. */
   BLOB: RuntimeR2Bucket;
+
+  // ---- Cloudflare KV (Worker cache backend) ----
+  /**
+   * The Worker's cache store. KV is the only Worker-reachable cache backend
+   * (raw TCP to an external Redis is unreliable from Workers), so CacheClient
+   * prefers it when bound. Read via getCloudBinding("CACHE_KV").
+   */
+  CACHE_KV?: KvNamespaceLike;
 
   // ---- Cloudflare Registrar/DNS ----
   CLOUDFLARE_ACCOUNT_ID?: string;

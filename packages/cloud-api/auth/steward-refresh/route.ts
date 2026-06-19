@@ -362,7 +362,7 @@ app.post("/", async (c) => {
     sameSite: "Lax",
     path: "/",
     ...(domain ? { domain } : {}),
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
   });
 
   logRefresh("ok");

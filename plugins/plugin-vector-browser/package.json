@@ -75,6 +75,7 @@
     "test": "vitest run --config ./vitest.config.ts"
   },
   "files": [
+    "assets",
     "dist"
   ],
   "devDependencies": {

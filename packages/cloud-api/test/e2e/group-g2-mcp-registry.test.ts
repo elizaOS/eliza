@@ -119,7 +119,7 @@ describe("Group G2 — user MCP registry CRUD", () => {
     const mcp = await createMcp({ creatorSharePercentage: 70 });
     expect(mcp.status).toBe("draft");
     expect(mcp.creator_share_percentage).toBe("70.00");
-    expect(mcp.platform_share_percentage).toBe("30");
+    expect(mcp.platform_share_percentage).toBe("30.00");
     expect(mcp.tools).toHaveLength(1);
   });
 
@@ -197,8 +197,8 @@ describe("Group G2 — user MCP registry CRUD", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { mcp?: McpDto };
     expect(body.mcp?.name).toBe("Renamed MCP");
-    expect(body.mcp?.creator_share_percentage).toBe("90");
-    expect(body.mcp?.platform_share_percentage).toBe("10");
+    expect(body.mcp?.creator_share_percentage).toBe("90.00");
+    expect(body.mcp?.platform_share_percentage).toBe("10.00");
   });
 
   test("publish -> moves the MCP to live and into the public catalog", async () => {
