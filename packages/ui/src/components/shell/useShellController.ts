@@ -10,6 +10,7 @@ import {
 } from "../../state/persistence";
 import { deriveAgentReady } from "../../state/types";
 import { TurnAggregator } from "../../voice/end-of-turn";
+import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import {
   createVoiceCapture,
   type VoiceCaptureBackend,
@@ -201,6 +202,21 @@ export function useShellController(): ShellController {
     }));
   }, [conversationMessages]);
 
+  // The agent's most recent reply, for the always-on shouldRespond echo guard
+  // (suppress a voice turn that's just the agent's own TTS heard back). A ref so
+  // the per-capture commit closure reads the live value.
+  const latestAgentReply = React.useMemo<{ text: string; at: number }>(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const m = messages[i];
+      if (m.role === "assistant" && m.content.trim()) {
+        return { text: m.content, at: m.createdAt };
+      }
+    }
+    return { text: "", at: 0 };
+  }, [messages]);
+  const latestAgentReplyRef = React.useRef(latestAgentReply);
+  latestAgentReplyRef.current = latestAgentReply;
+
   const send = React.useCallback(
     (
       text: string,
@@ -265,6 +281,20 @@ export function useShellController(): ShellController {
           ? null
           : new TurnAggregator({
               onCommit: (turn) => {
+                // Always-on shouldRespond: don't reply to the agent's own TTS
+                // echoed back through the mic, or to pure thinking-noise.
+                const reply = latestAgentReplyRef.current;
+                const replyAgeMs = reply.at
+                  ? Math.max(0, Date.now() - reply.at)
+                  : Number.POSITIVE_INFINITY;
+                if (
+                  !shouldRespondToVoiceTurn(turn, {
+                    recentAgentReply: reply.text,
+                    replyAgeMs,
+                  })
+                ) {
+                  return;
+                }
                 send(turn, {
                   channelType: "VOICE_DM",
                   metadata: { voiceSource: lastBackend },

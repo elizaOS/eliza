@@ -238,6 +238,19 @@ describe("useShellController — voice capture routing", () => {
     });
   });
 
+  it("does NOT respond to pure thinking-noise in always-on (shouldRespond gate)", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    // Pure disfluency the open mic picked up → suppressed, not sent.
+    act(() => fireFinalTranscript("um uh"));
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+    // A genuine request still goes through.
+    act(() => fireFinalTranscript("what time is it?"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+  });
+
   it("hands-free loop re-opens the mic after a turn ends", async () => {
     const { result } = renderHook(() => useShellController());
     await act(async () => {

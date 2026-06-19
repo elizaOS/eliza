@@ -137,22 +137,22 @@ describe("TurnAggregator", () => {
 // occasionally garbage. None of it may throw, hang, or commit a malformed turn.
 describe("end-of-turn — adversarial / fuzz", () => {
   // Deterministic LCG so the fuzz corpus is reproducible (no Math.random).
-  function* lcg(seed: number) {
+  function makeRng(seed: number): () => number {
     let s = seed >>> 0;
-    while (true) {
+    return () => {
       s = (1103515245 * s + 12345) >>> 0;
-      yield s;
-    }
+      return s;
+    };
   }
 
   it("scoreEndOfTurn never throws and stays in [0,1] for random byte soup", () => {
-    const rng = lcg(0xc0ffee);
+    const rng = makeRng(0xc0ffee);
     const alphabet = "abcdefghijklmnopqrstuvwxyz ?!.,'-0123456789\n\téç你好🙂—";
     for (let i = 0; i < 2000; i += 1) {
-      const len = rng.next().value % 80;
+      const len = rng() % 80;
       let s = "";
       for (let j = 0; j < len; j += 1) {
-        s += alphabet[rng.next().value % alphabet.length];
+        s += alphabet[rng() % alphabet.length];
       }
       const score = scoreEndOfTurn(s);
       expect(Number.isFinite(score)).toBe(true);
@@ -206,22 +206,24 @@ describe("end-of-turn — adversarial / fuzz", () => {
   });
 
   it("a turn that NEVER completes is committed by the safety timer, not dropped", () => {
-    let committed: string | null = null;
-    let pendingCb: (() => void) | null = null;
+    const state: { committed: string | null; cb: (() => void) | null } = {
+      committed: null,
+      cb: null,
+    };
     const agg = new TurnAggregator({
       onCommit: (t) => {
-        committed = t;
+        state.committed = t;
       },
       setTimer: (cb) => {
-        pendingCb = cb;
+        state.cb = cb;
         return 1 as unknown as ReturnType<typeof setTimeout>;
       },
       clearTimer: () => {},
     });
     agg.addFinal("um so basically i was like and then and");
-    expect(committed).toBeNull();
-    pendingCb?.(); // max-hold elapses
-    expect(committed).toBe("um so basically i was like and then and");
+    expect(state.committed).toBeNull();
+    state.cb?.(); // max-hold elapses
+    expect(state.committed).toBe("um so basically i was like and then and");
   });
 
   it("interleaved finals (two speakers heard by one recognizer) still segment coherently", () => {
