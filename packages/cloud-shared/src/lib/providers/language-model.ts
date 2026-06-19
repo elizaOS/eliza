@@ -194,8 +194,11 @@ function normalizeCerebrasModelId(model: string): string {
   if (id.startsWith("cerebras/")) id = id.slice("cerebras/".length);
   else if (id.startsWith("cerebras:")) id = id.slice("cerebras:".length);
   else if (id.startsWith("openai/")) id = id.slice("openai/".length);
+  // Collapse paid throughput variants (:nitro / :floor / …) to the bare Cerebras
+  // id for cerebras-direct, but PRESERVE :free so the free tier keeps its free
+  // upstream (BitRouter/OpenRouter) instead of billing the paid Cerebras key.
   const variantAt = id.indexOf(":");
-  if (variantAt > 0) id = id.slice(0, variantAt);
+  if (variantAt > 0 && id.slice(variantAt + 1) !== "free") id = id.slice(0, variantAt);
   return id;
 }
 
