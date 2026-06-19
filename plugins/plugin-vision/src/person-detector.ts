@@ -4,8 +4,8 @@
 //   - Default to a class-filtered YOLOv8n run ("person"-only). This is fast,
 //     accurate, and reuses a single model file for both general object
 //     detection and person detection.
-//   - When the upstream agent needs pose data (keypoints), the existing
-//     MoveNet implementation in `vision-models.ts` takes over.
+//   - Pose data (keypoints) is not produced here; a ggml pose backend is
+//     pending, and the service falls back to heuristic person detection.
 //
 // Returning `PersonInfo` rather than a generic detection makes this a drop-in
 // replacement for the heuristic person detection in `service.ts`.

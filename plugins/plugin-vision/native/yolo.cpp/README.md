@@ -1,33 +1,64 @@
-# yolo.cpp — ggml port of YOLOv8
+# yolo.cpp — ggml YOLOv8n object detector
 
-C++ forward pass for YOLOv8 detection models built on
-[ggml](https://github.com/ggml-org/ggml). Letterbox preprocessing, anchor-free
-output decode, and NMS stay in TypeScript (see
-`plugins/plugin-vision/src/yolo-detector.ts`); this library runs only the CNN.
+A self-contained C++ forward pass for **YOLOv8n** built directly on
+[ggml](https://github.com/ggml-org/ggml). The CNN (backbone `Conv`/`C2f`/`SPPF`
+→ PAN-FPN neck → decoupled head) runs in ggml; letterbox preprocessing, the
+final box decode and NMS stay in TypeScript (`src/yolo-detector.ts`). The DFL
+distribution decode, anchor/stride decode, and class sigmoid run in C++ here.
 
-## Status
+ggml is linked **statically**, so the build artifact `build/libyolo.<ext>` is a
+single self-contained shared library with no external `ggml.dll`/`.so`
+dependency — `bun:ffi` loads it directly.
 
-**Phase 2 (current):** FFI surface scaffolded; conversion script authored.
-Native lib + GGUF weights not yet built. The TS binding throws a clear error
-until both are present.
+## Status: working & verified
 
-## Build (when implemented)
+`src/yolo.cpp` produces detections that match the upstream Ultralytics PyTorch
+model to within fp32 rounding (box max |Δ| ≈ 0.001 px, class scores exact). See
+`verify/` for the numerical check against a PyTorch reference.
+
+## Build
+
+Requires CMake ≥ 3.20 and a C/C++ toolchain (MSVC Build Tools on Windows,
+clang/gcc elsewhere). From the plugin root:
 
 ```bash
-cd plugins/plugin-vision/native/yolo.cpp
-cmake -B build -S . -DYOLO_WITH_METAL=ON   # macOS arm64
-cmake --build build --config Release
+bun run build:native              # → native/yolo.cpp/build/libyolo.{dll,dylib,so}
+# or directly:
+bun native/yolo.cpp/build.mjs            # CPU
+bun native/yolo.cpp/build.mjs --metal    # macOS GPU
+bun native/yolo.cpp/build.mjs --cuda     # NVIDIA GPU
 ```
 
-## Convert weights (when implemented)
+## Convert weights → GGUF
+
+Ultralytics ships under AGPL-3.0; we ship **no weights**. Convert them locally
+(BatchNorm is folded into each conv at convert time):
 
 ```bash
-python scripts/convert.py --variant yolov8n --out vision/yolov8n.gguf
+pip install ultralytics gguf numpy torch
+bun run build:weights             # → ~/.eliza/models/vision/yolov8n.gguf
+# or directly:
+python native/yolo.cpp/scripts/convert.py --variant yolov8n
+```
+
+The runtime resolves the GGUF at `$ELIZA_STATE_DIR/models/vision/yolov8n.gguf`
+(default `~/.eliza/...`); override with `ELIZA_YOLO_GGUF`. Override the library
+path with `ELIZA_YOLO_LIB` and the CPU thread count with `ELIZA_YOLO_THREADS`
+(defaults to ≈ physical cores).
+
+## Verify (numerical parity with PyTorch)
+
+```bash
+python native/yolo.cpp/verify/make_ref.py        # input.bin + ultralytics ref.bin
+bun    native/yolo.cpp/verify/run_ggml.mjs build/libyolo.dll <gguf>   # → out.bin
+python native/yolo.cpp/verify/compare.py         # asserts PASS
+
+# full TS path (FFI → parseYoloV8 → NMS) on a real image:
+bun native/yolo.cpp/verify/run_ts.mjs
 ```
 
 ## License
 
-The runtime in this directory is a clean-room implementation. Ultralytics
-YOLOv8 weights are AGPL-3.0; this repo does not bundle them. End users fetch
-weights at runtime or via the model-publish workflow that already exists for
-the llama.cpp text/vision tiers.
+The runtime in this directory is a clean-room implementation built on ggml. It
+contains no Ultralytics code. YOLOv8 weights are AGPL-3.0 and are **not** bundled
+— end users convert them locally via the script above.

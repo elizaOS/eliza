@@ -941,7 +941,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const proxyEnv = buildStewardProxyEnv();
 
     // Propagate the orchestrator's KMS configuration into the container so
-    // field-level encryption (per-agent Neon DB) uses the same backend + root
+    // field-level encryption (per-agent DB) uses the same backend + root
     // key on both ends. Without this the container's resolveKmsBackend() falls
     // through to the `steward` default and crashes at boot when no steward
     // config is present:

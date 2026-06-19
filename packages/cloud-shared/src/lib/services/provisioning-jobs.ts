@@ -6,7 +6,7 @@
  * return 202 immediately. A cron-based processor picks up pending jobs.
  *
  * Supported job types:
- * - agent_provision: Provision an Agent sandbox (Neon DB + Docker container)
+ * - agent_provision: Provision an Agent sandbox (managed DB + Docker container)
  *
  * Future:
  * - wallet_provision: Server wallet provisioning
@@ -743,7 +743,7 @@ export class ProvisioningJobService {
       userId: params.userId,
       webhookUrl: params.webhookUrl,
       maxAttempts: 3,
-      // Neon DB (5-15s) + Docker pull/run (10-30s) + health check (up to 60s)
+      // DB assignment + Docker pull/run (10-30s) + health check (up to 60s)
       estimatedDurationMs: 90_000,
       logName: "agent_provision",
       validateSandbox: expected

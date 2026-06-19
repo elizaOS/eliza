@@ -42,8 +42,8 @@ import {
   VisionMode,
   VisionServiceType,
 } from "./types";
-import { VisionModels } from "./vision-models";
 import { VisionWorkerManager } from "./vision-worker-manager";
+import { YOLODetector } from "./yolo-detector";
 
 const execAsync = promisify(exec);
 
@@ -129,7 +129,8 @@ export class VisionService extends Service {
   private screenProcessingInterval: NodeJS.Timeout | null = null;
   private isProcessing = false;
   private isProcessingScreen = false;
-  private visionModels: VisionModels;
+  private objectDetector: YOLODetector | null = null;
+  private hasObjectDetection = false;
   private faceRecognition: FaceRecognition;
   private entityTracker: EntityTracker;
   private audioCapture: AudioCaptureService | null = null;
@@ -171,9 +172,6 @@ export class VisionService extends Service {
 
     // Load configuration from runtime settings
     this.visionConfig = this.parseConfig(runtime);
-
-    // Initialize vision models
-    this.visionModels = new VisionModels();
 
     // Initialize face recognition
     this.faceRecognition = new FaceRecognition();
@@ -305,36 +303,33 @@ export class VisionService extends Service {
 
   private async initialize(): Promise<void> {
     try {
-      // Initialize vision models if enabled
-      const useEnhancedModels =
-        this.visionConfig.enableObjectDetection ||
-        this.visionConfig.enablePoseDetection;
-
-      if (useEnhancedModels) {
+      // Initialize the ggml YOLOv8 object detector when object detection is
+      // enabled. There is no pose backend yet — pose detection falls through
+      // to the heuristic path (detectPeopleFromMotion).
+      if (this.visionConfig.enableObjectDetection) {
         try {
-          // Try to initialize TensorFlow models first
-          await this.visionModels.initialize({
-            enableObjectDetection:
-              this.visionConfig.enableObjectDetection || false,
-            enablePoseDetection: this.visionConfig.enablePoseDetection || false,
-          });
+          this.objectDetector = new YOLODetector();
+          await this.objectDetector.initialize();
+          this.hasObjectDetection = true;
           logger.info(
-            "[VisionService] Using TensorFlow.js models for advanced detection",
+            "[VisionService] ggml YOLOv8 object detector initialized",
           );
-        } catch (_tfError) {
+        } catch (yoloError) {
+          // Native lib / GGUF not built yet — leave object detection off so
+          // the motion/heuristic + VLM fallback still runs. Never fake it.
+          this.objectDetector = null;
+          this.hasObjectDetection = false;
           logger.warn(
-            "[VisionService] TensorFlow.js not available, falling back to enhanced heuristics",
-          );
-          // Fall back to enhanced heuristics
-          await this.visionModels.initialize({
-            enableObjectDetection:
-              this.visionConfig.enableObjectDetection || false,
-            enablePoseDetection: this.visionConfig.enablePoseDetection || false,
-          });
-          logger.info(
-            "[VisionService] Using enhanced heuristics for detection",
+            "[VisionService] ggml YOLOv8 detector unavailable, object detection disabled (using motion/heuristic + VLM fallback):",
+            yoloError instanceof Error ? yoloError.message : yoloError,
           );
         }
+      }
+
+      if (this.visionConfig.enablePoseDetection) {
+        logger.warn(
+          "[VisionService] ggml pose detection is not yet available; falling back to heuristic person detection",
+        );
       }
 
       // Initialize screen vision if enabled
@@ -778,32 +773,30 @@ export class VisionService extends Service {
           `[VisionService] TF updating: ${timeSinceTfUpdate}ms since last update, ${changePercentage.toFixed(1)}% change`,
         );
 
-        // Use advanced computer vision if enabled
-        if (this.visionConfig.enableObjectDetection) {
-          if (this.visionModels.hasObjectDetection()) {
-            detectedObjects = await this.visionModels.detectObjects(
-              frame.data,
-              frame.width,
-              frame.height,
-            );
+        // Object detection via the ggml YOLOv8 detector. The detector
+        // consumes an encoded image buffer (it reads metadata via sharp), so
+        // we reuse the JPEG already produced above for the VLM path.
+        if (this.visionConfig.enableObjectDetection && this.objectDetector) {
+          try {
+            detectedObjects = await this.objectDetector.detect(jpegBuffer);
             logger.debug(
-              `[VisionService] VisionModels detected ${detectedObjects.length} objects`,
+              `[VisionService] YOLOv8 detected ${detectedObjects.length} objects`,
             );
+          } catch (detectError) {
+            logger.warn(
+              "[VisionService] YOLOv8 object detection failed, falling back to motion-based:",
+              detectError instanceof Error ? detectError.message : detectError,
+            );
+            detectedObjects = await this.detectMotionObjects(frame);
           }
         }
 
-        if (this.visionConfig.enablePoseDetection) {
-          if (this.visionModels.hasPoseDetection()) {
-            const poses = await this.visionModels.detectPoses(
-              frame.data,
-              frame.width,
-              frame.height,
-            );
-            people = poses;
-            logger.debug(
-              `[VisionService] VisionModels detected ${people.length} people with poses`,
-            );
-          }
+        // No ggml pose backend yet — when pose detection is requested, fall
+        // through to the heuristic person detector (motion-derived candidates
+        // → coarse pose/facing). Keeps the PersonInfo shape intact.
+        if (this.visionConfig.enablePoseDetection && people.length === 0) {
+          const motionObjects = await this.detectMotionObjects(frame);
+          people = await this.detectPeopleFromMotion(frame, motionObjects);
         }
 
         // If no people detected via pose but objects detected, check for person objects
@@ -948,7 +941,7 @@ export class VisionService extends Service {
           `  Updates: ${shouldUpdateVlm ? "VLM" : ""}${shouldUpdateVlm && shouldUpdateTf ? " + " : ""}${shouldUpdateTf ? "TF" : ""}`,
         );
         logger.info(
-          `  Detection Mode: ${this.visionConfig.enableObjectDetection ? "Advanced CV" : "Motion-based"}`,
+          `  Detection Mode: ${this.hasObjectDetection ? "ggml YOLOv8" : "Motion-based"}`,
         );
 
         if (detectedObjects.length > 0) {
@@ -1661,8 +1654,10 @@ export class VisionService extends Service {
       this.streamingAudioCapture = null;
     }
 
-    if (this.visionModels) {
-      await this.visionModels.dispose();
+    if (this.objectDetector) {
+      await this.objectDetector.dispose();
+      this.objectDetector = null;
+      this.hasObjectDetection = false;
     }
 
     if (this.workerManager) {
