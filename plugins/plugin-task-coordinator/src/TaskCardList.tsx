@@ -289,11 +289,11 @@ export function TaskCard({
       type="button"
       onClick={() => onOpen(id)}
       data-testid="task-card"
-      className="group relative flex w-full items-start gap-3 overflow-hidden rounded-2xl border border-border/50 bg-bg-accent/30 p-3 text-left transition-colors hover:border-accent/40 hover:bg-bg-hover/40"
+      className="group relative flex w-full items-start gap-3 overflow-hidden rounded-2xl bg-bg-accent/20 p-3 text-left transition-colors hover:bg-bg-hover/50"
       {...agentProps}
     >
       <span
-        className={`absolute inset-y-0 left-0 w-1 ${visual.dot} opacity-70`}
+        className={`absolute inset-y-0 left-0 w-1 ${visual.dot}`}
         aria-hidden
       />
       <TaskStatusMedallion status={status} />
@@ -375,7 +375,8 @@ export function TaskCountChip({
   );
 }
 
-/** Compact visual empty state shown when there are no tasks. */
+/** Quiet empty state: one glyph + a short title, lots of open space. The longer
+ * hint stays for screen readers only — on screen, the icon carries the meaning. */
 export function TaskEmptyState({
   title,
   hint,
@@ -387,49 +388,17 @@ export function TaskEmptyState({
 }) {
   return (
     <div
-      className="grid gap-3 rounded-2xl border border-border/45 bg-bg-accent/20 p-3"
+      className="flex flex-col items-center gap-3 py-16 text-center"
       data-testid="task-empty-state"
     >
+      <CircleDashed
+        className="h-10 w-10 text-accent/40"
+        strokeWidth={1.5}
+        aria-hidden
+      />
+      <p className="text-sm font-medium text-muted">{title}</p>
       <p className="sr-only">{hint}</p>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <CircleDashed className="h-4 w-4 text-accent" aria-hidden />
-          <p className="truncate text-sm font-semibold text-txt-strong">
-            {title}
-          </p>
-        </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <EmptyStateTile icon={CircleDashed} label="0 tasks" tone="accent" />
-        <EmptyStateTile icon={UserRound} label="Agents idle" tone="neutral" />
-        <EmptyStateTile icon={GitBranch} label="Timeline idle" tone="neutral" />
-      </div>
-    </div>
-  );
-}
-
-function EmptyStateTile({
-  icon: Icon,
-  label,
-  tone,
-}: {
-  icon: LucideIcon;
-  label: string;
-  tone: "accent" | "neutral";
-}) {
-  return (
-    <div className="flex h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/75 px-3">
-      <span
-        className={`grid h-9 w-9 place-items-center rounded-lg border ${
-          tone === "accent"
-            ? "border-accent/35 bg-accent-subtle text-accent"
-            : "border-border/45 bg-bg-accent/35 text-muted"
-        }`}
-      >
-        <Icon className="h-4 w-4" aria-hidden />
-      </span>
-      <span className="text-sm font-semibold text-txt">{label}</span>
+      {action ? <div>{action}</div> : null}
     </div>
   );
 }
