@@ -158,7 +158,7 @@ function Metric({
         ? "bg-amber-400"
         : tone === "danger"
           ? "bg-rose-400"
-          : "bg-sky-400";
+          : "bg-muted";
   return (
     <div className="grid grid-cols-[4px_1fr_auto] items-center gap-3 rounded-xl border border-border/35 bg-bg/65 px-3 py-2">
       <span className={`h-9 rounded-full ${rail}`} />

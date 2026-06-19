@@ -10,7 +10,7 @@ import type {
 } from "./polymarket-contracts";
 import { usePolymarketState } from "./usePolymarketState";
 
-const ACCENT = "var(--accent, #ff5800)";
+const ACCENT = "var(--accent, #ff8a24)";
 const TXT = "var(--txt, #111)";
 const MUTED = "var(--muted, rgba(0,0,0,0.58))";
 const BORDER = "var(--border, rgba(0,0,0,0.12))";
@@ -300,7 +300,7 @@ function DisconnectedState({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "var(--accent-subtle, rgba(255,88,0,0.14))",
+          background: "var(--accent-subtle, rgba(255,138,36,0.14))",
           border: `1px solid ${BORDER}`,
         }}
       >
@@ -402,9 +402,9 @@ function OutcomeChip({
         gap: 6,
         padding: "5px 10px",
         borderRadius: 99,
-        border: `1px solid ${lead ? "var(--accent-subtle, rgba(255,88,0,0.3))" : BORDER}`,
+        border: `1px solid ${lead ? "var(--accent-subtle, rgba(255,138,36,0.3))" : BORDER}`,
         background: lead
-          ? "var(--accent-subtle, rgba(255,88,0,0.14))"
+          ? "var(--accent-subtle, rgba(255,138,36,0.14))"
           : SURFACE,
         fontSize: 12.5,
         fontWeight: 600,
@@ -473,7 +473,7 @@ function MarketCard({
         borderRadius: 16,
         border: `1px solid ${active ? ACCENT : BORDER}`,
         background: active
-          ? "var(--accent-subtle, rgba(255,88,0,0.08))"
+          ? "var(--accent-subtle, rgba(255,138,36,0.08))"
           : "var(--card, #fff)",
         cursor: "pointer",
         font: "inherit",

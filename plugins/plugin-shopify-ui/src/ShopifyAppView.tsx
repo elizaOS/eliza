@@ -34,7 +34,7 @@ import { loadShopifyTuiState } from "./ShopifyAppView.helpers";
 import { StoreOverviewCard } from "./StoreOverviewCard";
 import { useShopifyDashboard } from "./useShopifyDashboard";
 
-const SH_ACCENT = "var(--accent, #ff5800)";
+const SH_ACCENT = "var(--accent, #ff8a24)";
 const SH_TXT = "var(--txt, #111)";
 const SH_MUTED = "var(--muted, rgba(0,0,0,0.58))";
 const SH_BORDER = "var(--border, rgba(0,0,0,0.12))";
@@ -72,7 +72,7 @@ function SetupField({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "var(--accent-subtle, rgba(255,88,0,0.14))",
+          background: "var(--accent-subtle, rgba(255,138,36,0.14))",
           color: SH_ACCENT,
         }}
       >
@@ -130,7 +130,7 @@ function ShopifySetupCard() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "var(--accent-subtle, rgba(255,88,0,0.14))",
+            background: "var(--accent-subtle, rgba(255,138,36,0.14))",
             border: `1px solid ${SH_BORDER}`,
           }}
         >
@@ -490,7 +490,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                 : SH_BORDER,
               background: connected
                 ? "var(--ok-subtle, rgba(34,197,94,0.1))"
-                : "var(--accent-subtle, rgba(255,88,0,0.14))",
+                : "var(--accent-subtle, rgba(255,138,36,0.14))",
               color: connected ? SH_OK : SH_ACCENT,
             }}
           >

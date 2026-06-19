@@ -62,7 +62,7 @@ const RecommendationDetails: React.FC<RecommendationDetailsProps> = ({
 							key={rec.id}
 							className="overflow-hidden shadow-lg bg-card hover:shadow-primary/20 transition-shadow duration-200 border-border/30"
 						>
-							<CardHeader className="pb-2 pt-4 px-4 bg-slate-50 dark:bg-slate-800/50 border-b border-border/20">
+							<CardHeader className="pb-2 pt-4 px-4 bg-muted/40 border-b border-border/20">
 								<div className="flex justify-between items-start">
 									<div className="flex-grow">
 										<CardTitle className="text-base font-semibold text-primary flex items-center">
@@ -230,7 +230,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({ data }) => {
 							className={cn(
 								"border-b border-border/20 hover:bg-muted/30 transition-colors",
 								expandedUser === entry.userId.toString() &&
-									"bg-primary/5 dark:bg-primary/10",
+									"bg-primary/5",
 							)}
 						>
 							<TableCell className="font-bold text-2xl text-center text-primary/80 py-4">

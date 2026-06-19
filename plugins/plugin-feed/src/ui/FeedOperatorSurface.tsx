@@ -30,8 +30,7 @@ import {
   WaitingForSession,
 } from "./game-surface-shell";
 
-const FEED_HERO = "/api/views/feed/hero";
-const FEED_ACCENT = "#ff8a00";
+const FEED_ACCENT = "#ff8a24";
 import {
   extractAgentSummary,
   extractChatMessages,
@@ -333,7 +332,6 @@ export function FeedOperatorSurface({
       <div data-testid="feed-operator-ready">
         <GameSurfaceShell>
           <GameSurfaceHero
-            heroUrl={FEED_HERO}
             title="Feed"
             statusLabel="Market dashboard ready"
             statusState="pending"
@@ -389,7 +387,6 @@ export function FeedOperatorSurface({
     >
       <GameSurfaceShell>
         <GameSurfaceHero
-          heroUrl={FEED_HERO}
           title={surfaceTitle}
           statusLabel={`${run.status} · ${run.health.state}`}
           statusState={run.health.state === "healthy" ? "ready" : "pending"}
