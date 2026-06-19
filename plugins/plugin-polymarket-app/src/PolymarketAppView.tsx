@@ -12,11 +12,12 @@ import type {
 import { usePolymarketState } from "./usePolymarketState";
 
 const ACCENT = "var(--accent, #ff8a24)";
+const ACCENT_LIGHT = "#ffb066";
+const ACCENT_SUBTLE = "var(--accent-subtle, rgba(255,138,36,0.12))";
 const TXT = "var(--txt, #111)";
 const MUTED = "var(--muted, rgba(0,0,0,0.58))";
 const BORDER = "var(--border, rgba(0,0,0,0.12))";
 const SURFACE = "var(--surface, rgba(0,0,0,0.04))";
-const OK = "var(--ok, #22c55e)";
 
 function priceToPercent(price: string | null): number | null {
   if (price == null) return null;
@@ -176,7 +177,7 @@ function PolymarketGlyph({ size = 28 }: { size?: number }) {
       <defs>
         <linearGradient id="pmYes" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor={ACCENT} />
-          <stop offset="100%" stopColor={OK} />
+          <stop offset="100%" stopColor={ACCENT_LIGHT} />
         </linearGradient>
       </defs>
       <circle
@@ -205,10 +206,8 @@ function StateDot({ ready }: { ready: boolean }) {
         width: 8,
         height: 8,
         borderRadius: 99,
-        background: ready ? OK : MUTED,
-        boxShadow: ready
-          ? `0 0 0 3px var(--ok-subtle, rgba(34,197,94,0.12))`
-          : "none",
+        background: ready ? ACCENT : MUTED,
+        boxShadow: ready ? `0 0 0 3px ${ACCENT_SUBTLE}` : "none",
         flexShrink: 0,
       }}
     />
@@ -233,8 +232,8 @@ function CapabilityChip({
         gap: 7,
         padding: "7px 12px",
         borderRadius: 99,
-        border: `1px solid ${ready ? "var(--ok-subtle, rgba(34,197,94,0.4))" : BORDER}`,
-        background: ready ? "var(--ok-subtle, rgba(34,197,94,0.1))" : SURFACE,
+        border: `1px solid ${BORDER}`,
+        background: SURFACE,
         fontSize: 13,
         fontWeight: 600,
         color: TXT,
@@ -326,18 +325,18 @@ function DisconnectedState({
         >
           {error ? "Markets unavailable" : "No markets loaded"}
         </h2>
-        <p
-          style={{
-            margin: "8px 0 0",
-            fontSize: 14,
-            color: MUTED,
-            lineHeight: 1.5,
-          }}
-        >
-          {error
-            ? "Couldn't reach Polymarket right now. Public market data is fetched live — try again in a moment."
-            : "Live prediction markets will appear here. Trading requires wallet credentials."}
-        </p>
+        {error ? (
+          <p
+            style={{
+              margin: "8px 0 0",
+              fontSize: 14,
+              color: MUTED,
+              lineHeight: 1.5,
+            }}
+          >
+            Couldn't reach Polymarket right now. Try again in a moment.
+          </p>
+        ) : null}
       </div>
       <div
         style={{
@@ -565,15 +564,7 @@ function MarketDetail({
   onBack: () => void;
 }) {
   return (
-    <section
-      style={{
-        minWidth: 0,
-        borderRadius: 16,
-        border: `1px solid ${BORDER}`,
-        background: "var(--card, #fff)",
-        padding: 20,
-      }}
-    >
+    <section style={{ minWidth: 0 }}>
       <button
         type="button"
         onClick={onBack}
@@ -632,7 +623,9 @@ function MarketDetail({
         </h2>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+      <div
+        style={{ display: "flex", gap: 24, marginTop: 18, flexWrap: "wrap" }}
+      >
         <Metric label="Volume" value={shortNumber(market.volume) ?? "—"} />
         <Metric
           label="Liquidity"
@@ -648,21 +641,13 @@ function MarketDetail({
         />
       </div>
 
-      <div
-        style={{
-          marginTop: 18,
-          borderRadius: 12,
-          border: `1px solid ${BORDER}`,
-          overflow: "hidden",
-        }}
-      >
+      <div style={{ marginTop: 24 }}>
         <div
           style={{
-            padding: "11px 14px",
-            borderBottom: `1px solid ${BORDER}`,
-            fontSize: 13,
+            paddingBottom: 4,
+            fontSize: 12,
             fontWeight: 600,
-            color: TXT,
+            color: MUTED,
           }}
         >
           Outcomes
@@ -673,8 +658,8 @@ function MarketDetail({
             <div
               key={outcome.name}
               style={{
-                padding: "11px 14px",
-                borderTop: i === 0 ? "none" : `1px solid ${BORDER}`,
+                padding: "11px 0",
+                borderTop: `1px solid ${BORDER}`,
                 display: "flex",
                 flexDirection: "column",
                 gap: 6,
@@ -757,8 +742,8 @@ function PolymarketTuiMarketRow({
         gap: 10,
         width: "100%",
         border: "none",
-        borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
-        background: active ? "rgba(125,211,252,0.08)" : "transparent",
+        borderTop: index === 0 ? "none" : "1px solid rgba(148,163,184,0.18)",
+        background: active ? "rgba(255,138,36,0.1)" : "transparent",
         color: "inherit",
         padding: "9px 0",
         textAlign: "left",
@@ -770,7 +755,7 @@ function PolymarketTuiMarketRow({
         {String(index + 1).padStart(2, "0")}
       </span>
       <span style={{ color: "#e2e8f0", overflow: "hidden" }}>{label}</span>
-      <span style={{ color: market.active ? "#a7f3d0" : "#94a3b8" }}>
+      <span style={{ color: market.active ? "#ff8a24" : "#94a3b8" }}>
         {market.active ? "active" : "closed"}
       </span>
       <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
@@ -782,16 +767,7 @@ function PolymarketTuiMarketRow({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      style={{
-        flex: "1 1 90px",
-        minWidth: 90,
-        borderRadius: 12,
-        border: `1px solid ${BORDER}`,
-        background: SURFACE,
-        padding: "10px 12px",
-      }}
-    >
+    <div style={{ flex: "1 1 90px", minWidth: 90 }}>
       <div style={{ fontSize: 11.5, color: MUTED }}>{label}</div>
       <div
         style={{
@@ -879,7 +855,7 @@ export function PolymarketTuiView() {
         padding: 20,
       }}
     >
-      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+      <div style={{ color: "#ff8a24", marginBottom: 4 }}>
         elizaos://polymarket --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
@@ -896,7 +872,7 @@ export function PolymarketTuiView() {
         <section
           aria-label="Polymarket markets"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid rgba(148,163,184,0.25)",
             borderRadius: 6,
             padding: 16,
             minHeight: 420,
@@ -919,8 +895,8 @@ export function PolymarketTuiView() {
               disabled={loading}
               style={{
                 background: "transparent",
-                color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
+                color: "#ff8a24",
+                border: "1px solid rgba(255,138,36,0.45)",
                 borderRadius: 4,
                 padding: "4px 8px",
                 cursor: loading ? "not-allowed" : "pointer",
@@ -945,7 +921,7 @@ export function PolymarketTuiView() {
         <section
           aria-label="Polymarket market details"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid rgba(148,163,184,0.25)",
             borderRadius: 6,
             padding: 16,
             minHeight: 420,
@@ -964,14 +940,14 @@ export function PolymarketTuiView() {
               <div style={{ color: "#94a3b8", marginBottom: 12 }}>
                 {selectedMarket.category ?? selectedMarket.id}
               </div>
-              <div style={{ color: "#a7f3d0", marginBottom: 8 }}>outcomes</div>
+              <div style={{ color: "#ff8a24", marginBottom: 8 }}>outcomes</div>
               {selectedMarket.outcomes.map((outcome) => (
                 <div
                   key={outcome.name}
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
-                    borderTop: "1px solid rgba(125,211,252,0.14)",
+                    borderTop: "1px solid rgba(148,163,184,0.14)",
                     padding: "7px 0",
                   }}
                 >
@@ -981,7 +957,7 @@ export function PolymarketTuiView() {
                   </span>
                 </div>
               ))}
-              <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>
+              <div style={{ color: "#ff8a24", margin: "18px 0 8px" }}>
                 orderbook tokens
               </div>
               {selectedMarket.clobTokenIds.length ? (
