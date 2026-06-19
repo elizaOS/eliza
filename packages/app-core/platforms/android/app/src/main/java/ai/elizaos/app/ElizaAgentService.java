@@ -1393,6 +1393,7 @@ public class ElizaAgentService extends Service {
             File abiLibllama = new File(abiDir, "libllama.so");
             File abiLlamaShim = new File(abiDir, "libeliza-llama-shim.so");
             File abiSpeculativeShim = new File(abiDir, "libeliza-llama-speculative-shim.so");
+            File abiGgmlVulkan = new File(abiDir, "libggml-vulkan.so");
             boolean nativeLlamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
             boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
             if (nativeLlamaBundled && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
@@ -1401,6 +1402,19 @@ public class ElizaAgentService extends Service {
                     + "/libllama.so + shim present; enabling native bun:ffi inference (ELIZA_LOCAL_LLAMA=1)");
             }
             if (nativeLlamaBundled) {
+                // When the Vulkan ggml backend (libggml-vulkan.so) is bundled —
+                // i.e. the arm64 GPU build — offload the model to the GPU. The
+                // aosp-llama-adapter pins n_gpu_layers=0 by default, so without
+                // this a Vulkan-capable libllama still runs entirely on CPU. CPU-
+                // only builds (riscv64, or arm64 without the Vulkan backend) ship
+                // no libggml-vulkan.so, so they correctly stay on CPU.
+                if (abiGgmlVulkan.isFile()
+                        && !env.containsKey("ELIZA_AOSP_LLAMA_USE_GPU")
+                        && !env.containsKey("ELIZA_LLAMA_N_GPU_LAYERS")) {
+                    agentEnv.put("ELIZA_AOSP_LLAMA_USE_GPU", "true");
+                    Log.i(TAG, "agent/" + abiDir.getName()
+                        + "/libggml-vulkan.so present; offloading inference to GPU (ELIZA_AOSP_LLAMA_USE_GPU=true)");
+                }
                 if (!env.containsKey("ELIZA_MOBILE_LOCAL_DIRECT_REPLY")) {
                     agentEnv.put("ELIZA_MOBILE_LOCAL_DIRECT_REPLY", "1");
                 }
