@@ -1,6 +1,9 @@
 name: Cloud CF Deploy
 
-# Cloudflare deployment for the eliza-cloud SPA + Workers API.
+# Cloudflare deployment for the eliza-cloud app (Eliza web app) + Workers API.
+# As of the Topology-A cutover, the eliza-cloud Pages project serves the hosted
+# web Eliza app (packages/app) at the elizacloud.ai apex — it replaced the old
+# packages/cloud-frontend SPA. The project name, domain, and env carry over.
 # - push to develop  -> staging   (api-staging.elizacloud.ai + Pages preview "develop")
 # - push to main     -> production (api.elizacloud.ai + Pages production)
 # - pull_request     -> preview    (Pages preview branch backed by staging API)
@@ -24,6 +27,8 @@ on:
       - "packages/cloud-shared/**"
       - "packages/cloud-services/**"
       - "packages/cloud-sdk/**"
+      - "packages/app/**"
+      - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   pull_request:
     branches: [main, develop]
@@ -33,6 +38,8 @@ on:
       - "packages/cloud-shared/**"
       - "packages/cloud-services/**"
       - "packages/cloud-sdk/**"
+      - "packages/app/**"
+      - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   workflow_dispatch:
     inputs:
@@ -189,7 +196,7 @@ jobs:
   # Frontend (Cloudflare Pages)
   # ---------------------------------------------------------------------------
   deploy-frontend:
-    name: Deploy Frontend (Pages)
+    name: Deploy App (Pages)
     runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -212,11 +219,12 @@ jobs:
       - name: Build linked elizaOS core workspace
         run: bun run build:core
 
-      - name: Verify Frontend
-        run: bun run --cwd packages/cloud-frontend typecheck
-
-      - name: Build
-        run: bun run --cwd packages/cloud-frontend build
+      # Topology A cutover: the hosted-web Eliza app (packages/app) replaces
+      # cloud-frontend as the eliza-cloud Pages deploy at the elizacloud.ai apex.
+      # The vite build is the gate (it resolves @elizaos/* to source); typecheck
+      # is enforced by the separate verify workflow, not here.
+      - name: Build app
+        run: bun run --cwd packages/app build:web
         env:
           # Pages preview/staging/prod all share the same API host today;
           # override per-env if that changes.
@@ -274,7 +282,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true'
-        working-directory: packages/cloud-frontend
+        working-directory: packages/app
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
