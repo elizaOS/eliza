@@ -25635,9 +25635,45 @@
     );
   }
 
+  // packages/ui/src/components/chat/ThinkingBlock.tsx
+  var import_react30 = __toESM(require_react(), 1);
+  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+  function ThinkingBlock({
+    reasoning
+  }) {
+    const [open, setOpen] = (0, import_react30.useState)(false);
+    const trimmed = reasoning.trim();
+    if (!trimmed) {
+      return null;
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+        "button",
+        {
+          type: "button",
+          onClick: () => setOpen((prev) => !prev),
+          "aria-expanded": open,
+          className: "flex w-full items-center gap-1.5 bg-accent/10 px-3 py-1 text-xs font-bold text-accent uppercase tracking-wider transition-colors hover:bg-accent/20",
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              "span",
+              {
+                "aria-hidden": "true",
+                className: `inline-block transition-transform ${open ? "rotate-90" : ""}`,
+                children: "\u203A"
+              }
+            ),
+            "Thinking"
+          ]
+        }
+      ),
+      open ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("pre", { className: "px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-muted m-0 overflow-x-auto", children: trimmed }) : null
+    ] });
+  }
+
   // packages/ui/src/components/shell/SlashCommandMenu.tsx
   var React5 = __toESM(require_react(), 1);
-  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
   var FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
   function useSlashMenu(draft, controller) {
     const parsed = React5.useMemo(() => parseSlashDraft(draft), [draft]);
@@ -25762,7 +25798,7 @@
     const listboxId = "slash-command-listbox";
     if (!state.open) {
       if (loading) {
-        return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
           "div",
           {
             className: cn(
@@ -25780,7 +25816,7 @@
     return (
       // The combobox input (in the composer) owns aria-activedescendant + focus;
       // this listbox is a non-focusable popup the input points to via aria-controls.
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
         "div",
         {
           id: listboxId,
@@ -25794,7 +25830,7 @@
             "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           ),
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
               "div",
               {
                 className: cn(
@@ -25804,7 +25840,7 @@
                 children: state.headerLabel
               }
             ),
-            state.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+            state.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
               "button",
               {
                 type: "button",
@@ -25823,7 +25859,7 @@
                   index === state.activeIndex ? "bg-white/15" : "hover:bg-white/8"
                 ),
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                     "span",
                     {
                       className: cn(
@@ -25833,7 +25869,7 @@
                       children: item.primary
                     }
                   ),
-                  item.secondary ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                  item.secondary ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                     "span",
                     {
                       className: cn(
@@ -25842,8 +25878,8 @@
                       ),
                       children: item.secondary
                     }
-                  ) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "flex-1" }),
-                  item.isCommand && item.hasArgs ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                  ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "flex-1" }),
+                  item.isCommand && item.hasArgs ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                     "span",
                     {
                       "aria-hidden": "true",
@@ -25933,7 +25969,8 @@
       onPointerDown,
       onPointerMove,
       onPointerUp: finish,
-      onPointerCancel: finish
+      onPointerCancel: finish,
+      onLostPointerCapture: finish
     };
   }
 
@@ -25947,7 +25984,7 @@
   }
 
   // packages/ui/src/components/shell/ContinuousChatOverlay.tsx
-  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
   var EMPTY_SLASH_CONTROLLER = {
     commands: [],
     loading: false,
@@ -26000,7 +26037,7 @@
   var STOP_GLYPH = "M12 12H24V24H12Z";
   var SPEAKER_MUTED_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
   function Glyph({ d }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
   }
   function SoftButton({
     glyph,
@@ -26014,7 +26051,7 @@
     active,
     testId
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       "button",
       {
         type: "button",
@@ -26034,7 +26071,7 @@
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
           disabled && "opacity-40"
         ),
-        children: Icon2 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Icon2, { className: "h-[22px] w-[22px]", "aria-hidden": true }) : glyph ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: glyph }) : null
+        children: Icon2 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Icon2, { className: "h-[22px] w-[22px]", "aria-hidden": true }) : glyph ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Glyph, { d: glyph }) : null
       }
     );
   }
@@ -26045,7 +26082,7 @@
     active,
     testId
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       "button",
       {
         type: "button",
@@ -26058,7 +26095,7 @@
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Icon2, { className: "h-[18px] w-[18px]", "aria-hidden": true })
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Icon2, { className: "h-[18px] w-[18px]", "aria-hidden": true })
       }
     );
   }
@@ -26071,7 +26108,7 @@
     opacity,
     pilled
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       motion.button,
       {
         style: { opacity, pointerEvents: pilled ? "none" : "auto" },
@@ -26113,7 +26150,7 @@
           "before:absolute before:-inset-x-6 before:-top-16 before:bottom-0 before:content-['']",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
           "span",
           {
             "aria-hidden": "true",
@@ -26132,7 +26169,7 @@
     onOpen,
     glow
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       "button",
       {
         type: "button",
@@ -26152,7 +26189,7 @@
           "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-16 pb-1.5 pt-10 active:cursor-grabbing",
           "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
           "span",
           {
             "aria-hidden": "true",
@@ -26168,14 +26205,14 @@
     );
   }
   function TypingDotsInner() {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       "span",
       {
         className: "flex gap-1.5 py-1",
         "data-testid": "typing-dots",
         role: "status",
         "aria-label": "assistant is responding",
-        children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
           "span",
           {
             className: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
@@ -26187,7 +26224,7 @@
     );
   }
   function TypingDots({ reduce }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       motion.div,
       {
         className: "mb-2.5 flex w-full justify-start",
@@ -26195,14 +26232,14 @@
         animate: { opacity: 1 },
         exit: { opacity: 0 },
         transition: { duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE },
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
           "div",
           {
             className: cn(
               "rounded-2xl rounded-bl-md border border-white/10 bg-black/45 px-3.5 py-2 text-white/90",
               FLOAT_SHADOW2
             ),
-            children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDotsInner, {})
+            children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(TypingDotsInner, {})
           }
         )
       }
@@ -26265,7 +26302,7 @@
       onPointerCancel: clearHold
     } : null;
     if (isAssistant && message.failureKind === "no_provider") {
-      return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
         motion.div,
         {
           "data-testid": "thread-line",
@@ -26279,7 +26316,7 @@
             "flex w-full justify-start",
             floating ? "mb-1.5" : "mb-2.5"
           ),
-          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
             "div",
             {
               className: cn(
@@ -26287,9 +26324,9 @@
                 FLOAT_SHADOW2
               ),
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "mb-1 text-[14px] font-medium", children: "Connect a provider to chat" }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]", children: message.content }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "mb-1 text-[14px] font-medium", children: "Connect a provider to chat" }),
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]", children: message.content }),
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                   "button",
                   {
                     type: "button",
@@ -26305,7 +26342,7 @@
         }
       );
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       motion.div,
       {
         "data-testid": "thread-line",
@@ -26319,7 +26356,7 @@
           floating ? "mb-1.5" : "mb-2.5",
           isUser ? "justify-end" : "justify-start"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
           "div",
           {
             ...copyHandlers ?? {},
@@ -26346,9 +26383,10 @@
                 // The in-flight assistant turn (kept by visibleMessages only while
                 // responding): breathe the dots INSIDE the bubble so they're anchored
                 // where the streamed text fills in — then the text replaces them.
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDotsInner, {})
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(TypingDotsInner, {})
               ) : message.content,
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+              isAssistant && message.reasoning?.trim() ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(ThinkingBlock, { reasoning: message.reasoning }) : null,
+              /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                 motion.span,
                 {
                   "data-testid": "thread-line-copied",
@@ -26414,6 +26452,7 @@
     const [composerFocused, setComposerFocused] = React7.useState(false);
     const threadHeight = useMotionValue(0);
     const openProgress = useMotionValue(pilled ? 0 : 1);
+    const settleDragRef = React7.useRef(null);
     const draggingRef = React7.useRef(false);
     const pttRef = React7.useRef({ kind: "idle" });
     const [pttHolding, setPttHolding] = React7.useState(false);
@@ -26609,14 +26648,18 @@
           );
         }
       };
-      sync();
+      const syncAndSettle = () => {
+        sync();
+        settleDragRef.current?.();
+      };
+      syncAndSettle();
       const vv = window.visualViewport;
-      window.addEventListener("resize", sync);
-      vv?.addEventListener("resize", sync);
+      window.addEventListener("resize", syncAndSettle);
+      vv?.addEventListener("resize", syncAndSettle);
       vv?.addEventListener("scroll", sync);
       return () => {
-        window.removeEventListener("resize", sync);
-        vv?.removeEventListener("resize", sync);
+        window.removeEventListener("resize", syncAndSettle);
+        vv?.removeEventListener("resize", syncAndSettle);
         vv?.removeEventListener("scroll", sync);
       };
     }, [readViewport]);
@@ -26696,6 +26739,7 @@
         animate(openProgress, open, OPEN_SPRING);
       }
     }, [threadHeight, openProgress, baseH, pilled, reduce]);
+    settleDragRef.current = settleDrag;
     React7.useEffect(() => {
       if (draggingRef.current) return;
       const open = pilled ? 0 : 1;
@@ -26986,7 +27030,7 @@
         }
       }
     });
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
       "div",
       {
         ref: overlayRef,
@@ -27008,7 +27052,7 @@
         "data-testid": "continuous-chat-overlay",
         "data-open": sheetOpen ? "true" : void 0,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
             motion.div,
             {
               "aria-hidden": "true",
@@ -27022,7 +27066,7 @@
               }
             }
           ),
-          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
             "div",
             {
               role: "status",
@@ -27034,17 +27078,17 @@
               ),
               children: [
                 transcript,
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
               ]
             }
           ) : null,
-          needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
             "div",
             {
               role: "status",
               "aria-live": "polite",
               className: "pointer-events-none relative mb-2 flex w-full justify-center",
-              children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+              children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                 "button",
                 {
                   type: "button",
@@ -27057,14 +27101,14 @@
                     FLOAT_SHADOW2
                   ),
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
-                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Tap to enable sound" })
+                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
+                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { children: "Tap to enable sound" })
                   ]
                 }
               )
             }
           ) : null,
-          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
             motion.fieldset,
             {
               "aria-label": "Suggested prompts",
@@ -27073,7 +27117,7 @@
               ),
               style: { order: -1, opacity: suggestionsOpacity },
               "data-testid": "chat-suggestions",
-              children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+              children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                 "button",
                 {
                   type: "button",
@@ -27093,7 +27137,7 @@
               ))
             }
           ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
             "div",
             {
               className: cn(
@@ -27101,7 +27145,7 @@
                 fullBleed ? "max-w-none" : "max-w-3xl"
               ),
               children: [
-                !fullBleed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                !fullBleed ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                   SheetGrabber,
                   {
                     open: sheetOpen,
@@ -27117,7 +27161,7 @@
                     pilled
                   }
                 ) : null,
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                   motion.fieldset,
                   {
                     ref: panelRef,
@@ -27149,7 +27193,7 @@
                       "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0"
                     ),
                     children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                         motion.div,
                         {
                           "aria-hidden": "true",
@@ -27174,7 +27218,7 @@
                           }
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                         motion.div,
                         {
                           "data-testid": "chat-content",
@@ -27186,14 +27230,14 @@
                             borderRadius: fullBleed ? 0 : panelRadius
                           },
                           children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                               "div",
                               {
                                 "aria-hidden": "true",
                                 className: "pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                               motion.div,
                               {
                                 "aria-hidden": "true",
@@ -27203,7 +27247,7 @@
                                 transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                               motion.div,
                               {
                                 "aria-hidden": "true",
@@ -27213,7 +27257,7 @@
                                 transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                               }
                             ),
-                            !pilled ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                            !pilled ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                               motion.div,
                               {
                                 inert: !headerVisible || void 0,
@@ -27233,8 +27277,8 @@
                                   fullBleed && "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]"
                                 ),
                                 children: [
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       HeaderButton,
                                       {
                                         icon: maximized ? Minimize2 : Maximize2,
@@ -27244,7 +27288,7 @@
                                         testId: "chat-full-maximize"
                                       }
                                     ),
-                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       HeaderButton,
                                       {
                                         icon: RotateCcw,
@@ -27254,8 +27298,8 @@
                                       }
                                     )
                                   ] }),
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-                                    currentTab !== "chat" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+                                    currentTab !== "chat" ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       HeaderButton,
                                       {
                                         icon: House,
@@ -27264,7 +27308,7 @@
                                         testId: "chat-full-home"
                                       }
                                     ) : null,
-                                    currentTab !== "settings" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    currentTab !== "settings" ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       HeaderButton,
                                       {
                                         icon: Settings,
@@ -27277,7 +27321,7 @@
                                 ]
                               }
                             ) : null,
-                            hasThread ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                            hasThread ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                               motion.div,
                               {
                                 "data-testid": "chat-thread",
@@ -27289,7 +27333,7 @@
                                   sheetOpen && "[mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)]"
                                 ),
                                 style: { flexBasis: threadFlexBasis },
-                                children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                   "div",
                                   {
                                     id: "continuous-thread",
@@ -27306,8 +27350,8 @@
                                       }
                                     },
                                     className: "relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden",
-                                    children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
-                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
+                                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                         ThreadLine,
                                         {
                                           message: m2,
@@ -27318,20 +27362,20 @@
                                         },
                                         m2.id
                                       )) }),
-                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: responding && !(visibleMessages.at(-1)?.role === "assistant" && !visibleMessages.at(-1)?.content.trim()) ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDots, { reduce }) : null }),
-                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { ref: endRef })
+                                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(AnimatePresence, { children: responding && !(visibleMessages.at(-1)?.role === "assistant" && !visibleMessages.at(-1)?.content.trim()) ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(TypingDots, { reduce }) : null }),
+                                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { ref: endRef })
                                     ] })
                                   }
                                 )
                               }
                             ) : null,
-                            hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
-                              hasImages ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                            hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
+                              hasImages ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                                 "div",
                                 {
                                   className: "group relative h-14 w-14 shrink-0",
                                   children: [
-                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       "img",
                                       {
                                         src: `data:${img.mimeType};base64,${img.data}`,
@@ -27339,7 +27383,7 @@
                                         className: "h-14 w-14 rounded-lg border border-white/20 object-cover"
                                       }
                                     ),
-                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       "button",
                                       {
                                         type: "button",
@@ -27353,7 +27397,7 @@
                                 },
                                 `${img.name}-${img.mimeType}-${img.data.length}`
                               )) }) : null,
-                              imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              imageError ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                 "p",
                                 {
                                   role: "alert",
@@ -27362,7 +27406,7 @@
                                 }
                               ) : null
                             ] }) : null,
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                               "input",
                               {
                                 ref: fileInputRef,
@@ -27376,7 +27420,7 @@
                                 }
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                            /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                               "div",
                               {
                                 className: cn(
@@ -27395,7 +27439,7 @@
                                   paddingBottom: "calc(0.5rem + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))"
                                 } : void 0,
                                 children: [
-                                  slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                     SlashCommandMenu,
                                     {
                                       state: slashMenu,
@@ -27403,7 +27447,7 @@
                                       onPick: pickSlashItem
                                     }
                                   ) : null,
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                     SoftButton,
                                     {
                                       glyph: PLUS_GLYPH,
@@ -27413,7 +27457,7 @@
                                       testId: "chat-composer-attach"
                                     }
                                   ),
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                     "textarea",
                                     {
                                       ref: inputRef,
@@ -27480,11 +27524,11 @@
                                       className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                                     }
                                   ),
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
                                     agentName,
                                     " is waking up \u2014 you can type now; your message sends and the reply arrives in a moment."
                                   ] }),
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                     SoftButton,
                                     {
                                       icon: SendHorizontal,
@@ -27497,7 +27541,7 @@
                                   ) : !recording && responding ? (
                                     // While a reply is streaming and nothing is typed, the mic becomes a
                                     // stop control so the user can interrupt a runaway generation.
-                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       SoftButton,
                                       {
                                         glyph: STOP_GLYPH,
@@ -27506,7 +27550,7 @@
                                         testId: "chat-composer-stop"
                                       }
                                     )
-                                  ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  ) : /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                     SoftButton,
                                     {
                                       icon: Mic,
@@ -27525,7 +27569,7 @@
                           ]
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                         motion.div,
                         {
                           className: "absolute inset-x-0 bottom-0 z-30 flex justify-center",
@@ -27533,7 +27577,7 @@
                             opacity: pillOpacity,
                             pointerEvents: pilled ? "auto" : "none"
                           },
-                          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                          children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                             PillHandle,
                             {
                               binding: pullBinding,
@@ -27555,7 +27599,7 @@
   }
 
   // packages/ui/src/components/shell/__e2e__/chat-sheet-fixture.tsx
-  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
   var nextId = 100;
   var uid = () => `m${nextId++}`;
   var SEED = [
@@ -27764,7 +27808,7 @@
         setPhase("summoned");
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
       "div",
       {
         "data-testid": "fake-view",
@@ -27779,15 +27823,15 @@
           overflow: "hidden"
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
             "div",
             {
               "data-testid": "view-content",
               style: { padding: "48px 28px", maxWidth: 720 },
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h1", { style: { fontSize: 30, fontWeight: 600, margin: 0 }, children: "Workspace" }),
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { style: { opacity: 0.7, marginTop: 12, lineHeight: 1.6 }, children: "This is the live view behind the floating chat. Clicking here must NOT close the chat \u2014 the sheet only closes on a pull-down or Escape." }),
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 20 }, children: ["Files", "Tasks", "Notes", "Settings"].map((t) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h1", { style: { fontSize: 30, fontWeight: 600, margin: 0 }, children: "Workspace" }),
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { style: { opacity: 0.7, marginTop: 12, lineHeight: 1.6 }, children: "This is the live view behind the floating chat. Clicking here must NOT close the chat \u2014 the sheet only closes on a pull-down or Escape." }),
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 20 }, children: ["Files", "Tasks", "Notes", "Settings"].map((t) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                   "span",
                   {
                     style: {
@@ -27804,13 +27848,13 @@
               ]
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(ContinuousChatOverlay, { controller })
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(ContinuousChatOverlay, { controller })
         ]
       }
     );
   }
   var root = document.getElementById("root");
-  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Harness, {}));
+  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 

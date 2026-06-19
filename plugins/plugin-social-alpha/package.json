@@ -19,7 +19,8 @@
 		}
 	},
 	"files": [
-		"dist"
+	  "assets",
+	  "dist"
 	],
 	"scripts": {
 		"build": "bun run build:js && bun run build:views && bun run build:types",

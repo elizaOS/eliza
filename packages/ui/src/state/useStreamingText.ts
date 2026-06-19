@@ -59,6 +59,8 @@ export type StreamingTextModification =
       fullText: string;
       /** Optional server-flagged failure class to stamp alongside the text. */
       failureKind?: ChatFailureKind;
+      /** Optional agent reasoning/thought to stamp on the completed turn. */
+      reasoning?: string;
     }
   | {
       messageId: string;
@@ -96,12 +98,17 @@ function computeNextMessage(
     case "complete": {
       const sameText = message.text === mod.fullText;
       const sameFailure = message.failureKind === mod.failureKind;
-      if (sameText && sameFailure) return null;
+      const sameReasoning =
+        mod.reasoning === undefined || message.reasoning === mod.reasoning;
+      if (sameText && sameFailure && sameReasoning) return null;
       const next: ConversationMessage = { ...message, text: mod.fullText };
       if (mod.failureKind) {
         next.failureKind = mod.failureKind;
       } else if (message.failureKind !== undefined) {
         delete next.failureKind;
+      }
+      if (mod.reasoning) {
+        next.reasoning = mod.reasoning;
       }
       return next;
     }

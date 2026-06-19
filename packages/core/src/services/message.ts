@@ -1596,7 +1596,19 @@ type VoiceTurnSignalMetadata = {
 function getVoiceTurnSignalMetadata(
 	message: Pick<Memory, "content">,
 ): VoiceTurnSignalMetadata | null {
-	const value = message.content?.voiceTurnSignal;
+	const content = message.content;
+	// The in-process voice path writes `content.voiceTurnSignal` at top level,
+	// but chat clients nest custom fields under `content.metadata` — that's where
+	// the conversation route persists a request's `metadata` object (see
+	// buildUserMessages in agent/api/server-helpers). Read both so the gate sees
+	// the ambient signal regardless of which entry point produced the turn.
+	const nested =
+		content?.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata)
+			? (content.metadata as Record<string, unknown>).voiceTurnSignal
+			: undefined;
+	const value = content?.voiceTurnSignal ?? nested;
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		return null;
 	}

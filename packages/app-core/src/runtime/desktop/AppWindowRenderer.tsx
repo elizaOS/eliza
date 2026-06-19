@@ -52,7 +52,6 @@ import { SkillsView } from "@elizaos/ui/components/pages/SkillsView";
 import { TasksPageView } from "@elizaos/ui/components/pages/TasksPageView";
 import { TrajectoriesView } from "@elizaos/ui/components/pages/TrajectoriesView";
 import { FineTuningView } from "@elizaos/ui/components/training/injected";
-import { useBootConfig } from "@elizaos/ui/config/boot-config-react.hooks";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openExternalUrl } from "@elizaos/ui/utils";
 import {
@@ -137,27 +136,9 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
       return <TasksPageView />;
     case "chat":
       return <ChatView />;
-    case "lifeops":
-      // LifeOps is provided via the boot config injection so it can stay in
-      // its own package. Handled separately by the lifeops branch below.
-      return null;
     default:
       return null;
   }
-}
-
-function LifeOpsAppWindowView(): JSX.Element {
-  const { lifeOpsPageView: LifeOpsPageView } = useBootConfig();
-  if (!LifeOpsPageView) {
-    return (
-      <AppWindowError message="LifeOps is not registered in this build." />
-    );
-  }
-  return (
-    <AppWindowSuspense>
-      <LifeOpsPageView />
-    </AppWindowSuspense>
-  );
 }
 
 function AppWindowError({ message }: { message: string }): JSX.Element {
@@ -485,13 +466,6 @@ export function AppWindowRenderer({
     return resolveInternalToolTabFromSlug(slug);
   }, [slug]);
 
-  if (internalTab === "lifeops") {
-    return (
-      <AppWindowFrame>
-        <LifeOpsAppWindowView />
-      </AppWindowFrame>
-    );
-  }
 
   if (internalTab) {
     const view = renderInternalToolTab(internalTab);

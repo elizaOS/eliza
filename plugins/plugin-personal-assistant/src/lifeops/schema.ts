@@ -221,6 +221,10 @@ export const lifeGoalLinks = appLifeopsPgSchema.table(
   ],
 );
 
+// NOTE: the reminder tables (life_reminder_plans / life_reminder_attempts /
+// life_escalation_states) were carved out to @elizaos/plugin-reminders
+// (`app_reminders`). These app_lifeops defs remain only as the non-destructive
+// migration SOURCE — PA's repository now reads/writes the app_reminders copies.
 export const lifeReminderPlans = appLifeopsPgSchema.table(
   "life_reminder_plans",
   {
@@ -534,6 +538,10 @@ export const lifeWebsiteAccessGrants = appLifeopsPgSchema.table(
   ],
 );
 
+// NOTE: the calendar tables (life_calendar_events / life_calendar_sync_states)
+// were carved out to @elizaos/plugin-calendar (`app_calendar`). These
+// app_lifeops defs remain only as the non-destructive migration SOURCE — PA's
+// repository now reads/writes the app_calendar copies.
 export const lifeCalendarEvents = appLifeopsPgSchema.table(
   "life_calendar_events",
   {

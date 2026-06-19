@@ -78,6 +78,7 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
+    "assets",
     "dist"
   ],
   "devDependencies": {

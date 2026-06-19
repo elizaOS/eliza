@@ -24,36 +24,36 @@ import {
   getAnchorRegistry,
   registerAnchorRegistry,
   registerAppLifeOpsAnchors,
-} from "../registries/anchor-registry.js";
+} from "@elizaos/plugin-scheduling";
 import { LifeOpsRepository } from "../repository.js";
 import { getSendPolicyRegistry } from "../send-policy/index.js";
 import { getActivitySignalBus } from "../signals/bus.js";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
-} from "./completion-check-registry.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createConsolidationRegistry,
   registerFallbackAnchors,
-} from "./consolidation-policy.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createEscalationLadderRegistry,
   registerDefaultEscalationLadders,
-} from "./escalation.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createTaskGateRegistry,
   registerBuiltInGates,
-} from "./gate-registry.js";
+} from "@elizaos/plugin-scheduling";
 import type {
   ScheduledTaskDispatcher,
   ScheduledTaskDispatchRecord,
-} from "./runner.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
-} from "./runner.js";
-import type { ScheduledTaskLogStore } from "./state-log.js";
+} from "@elizaos/plugin-scheduling";
+import type { ScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
@@ -63,7 +63,7 @@ import type {
   ScheduledTaskLogEntry,
   SubjectStoreView,
   TaskExecutionProfile,
-} from "./types.js";
+} from "@elizaos/plugin-scheduling";
 
 interface RepositoryBackedStores {
   store: ScheduledTaskStore;

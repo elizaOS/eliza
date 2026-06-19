@@ -31,4 +31,3 @@ export * from "./index.node";
 // TODO(migrate: ...) pointers.
 export * from "./owner-state/index.js";
 export * from "./registries/index.js";
-export * from "./scheduled-task/index.js";

@@ -19,6 +19,7 @@ import { calendarPlugin } from "@elizaos/plugin-calendar";
 import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { financesPlugin } from "@elizaos/plugin-finances";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google";
+import { remindersPlugin } from "@elizaos/plugin-reminders";
 import { inboxPlugin } from "@elizaos/plugin-inbox";
 import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
@@ -576,6 +577,24 @@ export async function ensureLifeOpsFinancesPluginRegistered(
 }
 
 /**
+ * Register `@elizaos/plugin-reminders` if it is not already in the runtime. The
+ * reminder tables (life_reminder_plans / life_reminder_attempts /
+ * life_escalation_states) moved out of LifeOps into the reminders plugin's
+ * `app_reminders` schema; PA's reminder repository methods read/write those
+ * tables via raw SQL, so the reminders plugin (which owns the schema + the
+ * non-destructive data copy) MUST be loaded whenever PA is. Hard dependency,
+ * static import.
+ */
+export async function ensureLifeOpsRemindersPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some((plugin) => plugin.name === remindersPlugin.name)) {
+    return;
+  }
+  await runtime.registerPlugin(remindersPlugin);
+}
+
+/**
  * Register `@elizaos/plugin-inbox` if it is not already in the runtime. The
  * inbox triage domain (the INBOX action, the inboxTriage provider, and the
  * InboxService/InboxRepository back-end over the `app_lifeops` triage tables)
@@ -750,49 +769,9 @@ const rawPersonalAssistantPlugin: Plugin = {
   ],
   responseHandlerEvaluators: [ownerProfileExtractionEvaluator],
   responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
-  views: [
-    {
-      id: "lifeops",
-      label: "LifeOps",
-      description:
-        "Personal assistant workspace for briefs, approvals, schedule repair, and owner operations.",
-      icon: "Sparkles",
-      path: "/lifeops",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "LifeOpsPageView",
-      tags: ["lifeops", "personal-assistant", "approvals"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "lifeops",
-      label: "LifeOps XR",
-      description:
-        "XR personal assistant workspace for briefs, approvals, schedule repair, and owner operations.",
-      icon: "Sparkles",
-      path: "/lifeops",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "LifeOpsPageView",
-      tags: ["lifeops", "personal-assistant", "approvals", "xr"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "lifeops",
-      label: "LifeOps TUI",
-      description:
-        "Terminal personal assistant workspace for briefs, approvals, schedule repair, and owner operations.",
-      icon: "Sparkles",
-      path: "/lifeops/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "LifeOpsTuiView",
-      tags: ["lifeops", "personal-assistant", "approvals", "terminal"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-  ],
+  // No views — the LifeOps overview surface was removed (owner: "no need for an
+  // overview"). Domain views live in the per-domain plugins; the personal
+  // assistant is the chat itself (PERSONAL_ASSISTANT action).
   events: {
     // Fold recognized voice turns into the entity/relationship graph via
     // the merge engine, then round-trip the binding to the voice-profile
@@ -816,6 +795,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
     await ensureLifeOpsFinancesPluginRegistered(runtime);
+    await ensureLifeOpsRemindersPluginRegistered(runtime);
     await ensureLifeOpsInboxPluginRegistered(runtime);
     await ensureLifeOpsRemoteDesktopPluginRegistered(runtime);
 

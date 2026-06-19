@@ -105,6 +105,79 @@ class AgentPlugin : Plugin() {
         }.start()
     }
 
+    /**
+     * Streaming variant of [request]. Where [request] buffers the whole loopback
+     * response, this pushes it incrementally: the service reads the response
+     * stream and hands us per-fragment JSON envelopes, which we forward to the
+     * WebView as `agentStream*` Capacitor events tagged with a per-request
+     * `streamId`. Resolves immediately with the `streamId`; events follow.
+     */
+    @PluginMethod
+    fun requestStream(call: PluginCall) {
+        val path = call.getString("path")?.trim()
+        if (path == null || !isSafeLocalPath(path)) {
+            call.reject("Agent.requestStream requires a local path that starts with /")
+            return
+        }
+        val method = (call.getString("method") ?: "GET").trim().uppercase(Locale.US)
+        if (!method.matches(Regex("^[A-Z]{1,16}$"))) {
+            call.reject("Unsupported HTTP method")
+            return
+        }
+        val timeoutMs = (call.getInt("timeoutMs") ?: DEFAULT_REQUEST_TIMEOUT_MS)
+            .coerceIn(1_000, MAX_REQUEST_TIMEOUT_MS)
+        val body = call.getString("body")
+        val headers = call.getObject("headers") ?: JSObject()
+        val streamId = java.util.UUID.randomUUID().toString()
+
+        val requestJson = JSONObject().apply {
+            put("method", method)
+            put("path", path)
+            put("headers", JSONObject(headers.toString()))
+            put("body", body ?: JSONObject.NULL)
+            put("timeoutMs", timeoutMs)
+        }.toString()
+
+        val onEvent = java.util.function.Consumer<String> { eventJson ->
+            try {
+                val event = JSONObject(eventJson)
+                when (event.optString("type")) {
+                    "response" -> notifyListeners("agentStreamResponse", JSObject().apply {
+                        put("streamId", streamId)
+                        put("status", event.optInt("status"))
+                        put("statusText", event.optString("statusText"))
+                        put("headers", event.optJSONObject("headers") ?: JSONObject())
+                    })
+                    "chunk" -> notifyListeners("agentStreamChunk", JSObject().apply {
+                        put("streamId", streamId)
+                        put("dataBase64", event.optString("dataBase64"))
+                    })
+                    "complete" -> notifyListeners("agentStreamComplete", JSObject().apply {
+                        put("streamId", streamId)
+                        if (event.has("error")) put("error", event.optString("error"))
+                    })
+                }
+            } catch (_: Exception) {
+                // A malformed envelope shouldn't kill the stream; drop it.
+            }
+        }
+
+        // Resolve before the work starts so the WebView can attach listeners for
+        // this streamId; the service emits on the background thread below.
+        call.resolve(JSObject().apply { put("streamId", streamId) })
+
+        Thread {
+            try {
+                invokeAgentServiceRequestStream(requestJson, onEvent)
+            } catch (error: Exception) {
+                notifyListeners("agentStreamComplete", JSObject().apply {
+                    put("streamId", streamId)
+                    put("error", error.message ?: "Local agent stream failed")
+                })
+            }
+        }.start()
+    }
+
     private fun agentStatus(state: String, error: String?): JSObject {
         return JSObject().apply {
             put("state", state)
@@ -179,6 +252,19 @@ class AgentPlugin : Plugin() {
         val method = serviceClass.getMethod("requestLocalAgent", String::class.java)
         return method.invoke(null, requestJson) as? String
             ?: throw IllegalStateException("ElizaAgentService.requestLocalAgent returned null")
+    }
+
+    private fun invokeAgentServiceRequestStream(
+        requestJson: String,
+        onEvent: java.util.function.Consumer<String>,
+    ) {
+        val serviceClass = Class.forName(resolveAgentServiceClassName())
+        val method = serviceClass.getMethod(
+            "requestLocalAgentStream",
+            String::class.java,
+            java.util.function.Consumer::class.java,
+        )
+        method.invoke(null, requestJson, onEvent)
     }
 
     private fun isSafeLocalPath(path: String): Boolean {

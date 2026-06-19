@@ -86,6 +86,10 @@ import {
 	VoiceAttributionPipeline,
 } from "./speaker/attribution-pipeline";
 import {
+	type Diarizer,
+	PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+} from "./speaker/diarizer";
+import {
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";
@@ -1069,8 +1073,45 @@ export class EngineVoiceBridge {
 					await resolvedEncoder?.dispose();
 				},
 			};
+			// Lazy diarizer: only wired when its GGUF is present. The diarizer is
+			// optional — a single-speaker turn collapses to one segment without it
+			// (attribution-pipeline's localSpeakerId=0 fallback). When present, it
+			// splits a multi-speaker turn so the encoder embeds the primary
+			// speaker's span only. Mirrors the lazy encoder; the FFI binding
+			// resolves on first diarizeWindow().
+			const diarizerGgufPath = `${opts.bundleRoot}/voice/diarizer/pyannote-segmentation-3.0.gguf`;
+			let lazyDiarizer: Diarizer | undefined;
+			if (existsSync(diarizerGgufPath)) {
+				let resolvedDiarizer:
+					| import("./speaker/diarizer").PyannoteDiarizer
+					| null = null;
+				let diarizerLoadError: Error | null = null;
+				lazyDiarizer = {
+					modelId: PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+					sampleRate: 16_000,
+					async diarizeWindow(pcm: Float32Array) {
+						if (diarizerLoadError) throw diarizerLoadError;
+						if (!resolvedDiarizer) {
+							try {
+								const { PyannoteDiarizer } = await import("./speaker/diarizer");
+								resolvedDiarizer =
+									await PyannoteDiarizer.load(diarizerGgufPath);
+							} catch (err) {
+								diarizerLoadError =
+									err instanceof Error ? err : new Error(String(err));
+								throw diarizerLoadError;
+							}
+						}
+						return resolvedDiarizer.diarizeWindow(pcm);
+					},
+					async dispose(): Promise<void> {
+						await resolvedDiarizer?.dispose();
+					},
+				};
+			}
 			attributionPipeline = new VoiceAttributionPipeline({
 				encoder: lazyEncoder,
+				...(lazyDiarizer ? { diarizer: lazyDiarizer } : {}),
 				profileStore: opts.profileStore,
 			});
 		}

@@ -159,9 +159,10 @@ export const FIRST_RUN_PERMISSION_LABELS: Record<SystemPermissionId, string> = {
   location: "Location",
 };
 
+import type { ActionBanner } from "./action-banner";
 import type { ActionNotice } from "./action-notice";
 
-export type { ActionNotice };
+export type { ActionBanner, ActionNotice };
 
 export type LifecycleAction = "start" | "stop" | "restart" | "reset";
 
@@ -362,6 +363,9 @@ export interface AppState {
 
   // System warnings
   systemWarnings: string[];
+
+  // Top-of-shell action banner (a single CTA-carrying banner at a time)
+  actionBanner: ActionBanner | null;
 
   // Pairing
   pairingEnabled: boolean;
@@ -782,6 +786,8 @@ export interface AppActions {
   retryBackendConnection: () => void;
   restartBackend: () => Promise<void>;
   dismissSystemWarning: (message: string) => void;
+  showActionBanner: (banner: ActionBanner) => void;
+  dismissActionBanner: () => void;
 
   // Chat
   handleChatSend: (

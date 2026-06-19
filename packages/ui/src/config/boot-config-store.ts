@@ -252,8 +252,6 @@ export interface AppBootConfig {
   ptyConsoleDrawer?: ComponentType<PtyConsoleDrawerProps>;
   /** Fine-tuning view provided by the host app. */
   fineTuningView?: ComponentType<FineTuningViewProps>;
-  /** LifeOps page implementation provided by the host app. */
-  lifeOpsPageView?: ComponentType<Record<string, never>>;
   /** LifeOps browser setup panel provided by the host app. */
   lifeOpsBrowserSetupPanel?: ComponentType<Record<string, never>>;
   /** App blocker settings card provided by the host app. */

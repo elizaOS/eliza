@@ -9,7 +9,7 @@ import crypto from "crypto";
 import { mcpUsageRepository, type UserMcp, userMcpsRepository } from "../../db/repositories";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
-import { assertSafeOutboundUrl } from "../security/outbound-url";
+import { assertSafeOutboundUrlSync } from "../security/outbound-url";
 import { logger } from "../utils/logger";
 import { containersService } from "./containers";
 import { creditsService } from "./credits";
@@ -141,7 +141,10 @@ class UserMcpsService {
     }
 
     if (params.endpointType === "external" && params.externalEndpoint) {
-      await assertSafeOutboundUrl(params.externalEndpoint);
+      // Synchronous-only guard at registration (no DNS): a momentarily
+      // unresolvable host must not 500 a write. Full DNS-based SSRF enforcement
+      // runs at fetch time in mcp/proxy/[mcpId] via assertSafeOutboundUrl.
+      assertSafeOutboundUrlSync(params.externalEndpoint);
     }
 
     // Check slug uniqueness
@@ -322,7 +325,8 @@ class UserMcpsService {
       throw new Error("External MCP must have an endpoint URL");
     }
     if (mcp.endpoint_type === "external" && mcp.external_endpoint) {
-      await assertSafeOutboundUrl(mcp.external_endpoint);
+      // Synchronous-only guard (no DNS) — see create(). DNS SSRF runs at fetch.
+      assertSafeOutboundUrlSync(mcp.external_endpoint);
     }
 
     const updated = await userMcpsRepository.updateStatus(id, "live");
