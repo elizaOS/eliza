@@ -2240,10 +2240,7 @@ export class ProvisioningJobService {
         const r = queue.shift();
         if (!r) break;
         try {
-          const outcome = await elizaSandboxService.recoverDisconnected(
-            r.id,
-            r.organization_id,
-          );
+          const outcome = await elizaSandboxService.recoverDisconnected(r.id, r.organization_id);
           if (outcome === "recovered") {
             recovered += 1;
             continue;

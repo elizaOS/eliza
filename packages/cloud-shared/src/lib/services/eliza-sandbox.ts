@@ -632,20 +632,14 @@ export class ElizaSandboxService {
     orgId: string,
     input: { agentName?: string; agentConfig?: Record<string, unknown> },
   ): Promise<AgentSandbox | undefined> {
-    const rec = await agentSandboxesRepository.findByIdAndOrgForWrite(
-      agentId,
-      orgId,
-    );
+    const rec = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
     if (!rec) return undefined;
 
-    const updates: { agent_name?: string; agent_config?: Record<string, unknown> } =
-      {};
+    const updates: { agent_name?: string; agent_config?: Record<string, unknown> } = {};
     if (input.agentName !== undefined) updates.agent_name = input.agentName;
     if (input.agentConfig !== undefined) {
       const existing =
-        rec.agent_config &&
-        typeof rec.agent_config === "object" &&
-        !Array.isArray(rec.agent_config)
+        rec.agent_config && typeof rec.agent_config === "object" && !Array.isArray(rec.agent_config)
           ? (rec.agent_config as Record<string, unknown>)
           : {};
       updates.agent_config = { ...existing, ...input.agentConfig };
@@ -3349,8 +3343,11 @@ export class ElizaSandboxService {
    * cycle calls this to self-heal a transient drop: re-probe the bridge and, if
    * the container answers, flip it straight back to `running` (the agent-router
    * only routes `running`, so this also restores its subdomain). If it stays
-   * unreachable the caller re-provisions it. The status guard makes this safe to
-   * run concurrently with the heartbeat cycle.
+   * unreachable the caller re-provisions it. The guarded compare-and-set write
+   * (not a blind update-by-id) makes this safe to run concurrently with the
+   * heartbeat cycle AND with shutdown/delete/provision: the read -> probe -> write
+   * window spans seconds, so we only flip a row that is STILL `disconnected` at
+   * write time.
    */
   async recoverDisconnected(
     agentId: string,
@@ -3360,10 +3357,12 @@ export class ElizaSandboxService {
     if (!rec || rec.status !== "disconnected") return "gone";
     const reachable = await this.probeBridgeHealth(rec);
     if (!reachable) return "unreachable";
-    await agentSandboxesRepository.update(rec.id, {
-      status: "running",
-      last_heartbeat_at: new Date(),
-    });
+    // Guarded CAS: the row can move to deletion_pending / stopped (which nulls
+    // bridge_url) / provisioning during the multi-second probe. Only flip it if
+    // it is STILL disconnected with a live bridge — otherwise we'd resurrect a
+    // being-deleted agent or wedge a stopped one at `running` with a dead bridge.
+    const restored = await agentSandboxesRepository.markReconnectedFromDisconnected(rec.id);
+    if (!restored) return "gone";
     logger.info("[agent-sandbox] Recovered disconnected agent back to running", {
       agentId,
     });

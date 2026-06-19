@@ -27,6 +27,7 @@
  *   2  configuration/connection error
  */
 
+import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import pg from "pg";
 
 const { Client } = pg;
@@ -132,7 +133,12 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const client = new Client({ connectionString });
+  const { url: clientUrl, ssl: clientSsl } =
+    enforceTlsForRemote(connectionString);
+  const client = new Client({
+    connectionString: clientUrl,
+    ...(clientSsl ? { ssl: clientSsl } : {}),
+  });
   try {
     await client.connect();
   } catch (err) {

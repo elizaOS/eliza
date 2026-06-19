@@ -26,26 +26,21 @@ function recoverable(id: string, orgId: string, bridge: string | null) {
 
 describe("processDisconnectedRecovery", () => {
   test("reachable → recovered (no re-provision); unreachable → re-provision; gone → skipped", async () => {
-    const listSpy = spyOn(
-      agentSandboxesRepository,
-      "listRecoverable",
-    ).mockResolvedValue([
+    const listSpy = spyOn(agentSandboxesRepository, "listRecoverable").mockResolvedValue([
       recoverable("a1", "o1", "http://10.0.0.1:2138"),
       recoverable("a2", "o1", "http://10.0.0.2:2138"),
       recoverable("a3", "o2", "http://10.0.0.3:2138"),
     ]);
-    const recoverSpy = spyOn(
-      elizaSandboxService,
-      "recoverDisconnected",
-    ).mockImplementation(async (id: string) => {
-      if (id === "a1") return "recovered";
-      if (id === "a2") return "unreachable";
-      return "gone";
-    });
-    const enqueueSpy = spyOn(
-      provisioningJobService,
-      "enqueueAgentProvisionOnce",
-    ).mockResolvedValue({ created: true, job: { id: "job-1" } } as never);
+    const recoverSpy = spyOn(elizaSandboxService, "recoverDisconnected").mockImplementation(
+      async (id: string) => {
+        if (id === "a1") return "recovered";
+        if (id === "a2") return "unreachable";
+        return "gone";
+      },
+    );
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentProvisionOnce").mockResolvedValue(
+      { created: true, job: { id: "job-1" } } as never,
+    );
 
     try {
       const res = await provisioningJobService.processDisconnectedRecovery(5);
@@ -69,14 +64,10 @@ describe("processDisconnectedRecovery", () => {
   });
 
   test("empty list → no work, no enqueue", async () => {
-    const listSpy = spyOn(
-      agentSandboxesRepository,
-      "listRecoverable",
-    ).mockResolvedValue([]);
-    const enqueueSpy = spyOn(
-      provisioningJobService,
-      "enqueueAgentProvisionOnce",
-    ).mockResolvedValue({ created: true, job: { id: "job-1" } } as never);
+    const listSpy = spyOn(agentSandboxesRepository, "listRecoverable").mockResolvedValue([]);
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentProvisionOnce").mockResolvedValue(
+      { created: true, job: { id: "job-1" } } as never,
+    );
     try {
       const res = await provisioningJobService.processDisconnectedRecovery();
       expect(res).toEqual({ total: 0, recovered: 0, reprovisioned: 0, failed: 0 });
@@ -88,20 +79,16 @@ describe("processDisconnectedRecovery", () => {
   });
 
   test("a throw on one agent is counted failed; the rest still process", async () => {
-    const listSpy = spyOn(
-      agentSandboxesRepository,
-      "listRecoverable",
-    ).mockResolvedValue([
+    const listSpy = spyOn(agentSandboxesRepository, "listRecoverable").mockResolvedValue([
       recoverable("a1", "o1", "http://10.0.0.1:2138"),
       recoverable("a2", "o1", "http://10.0.0.2:2138"),
     ]);
-    const recoverSpy = spyOn(
-      elizaSandboxService,
-      "recoverDisconnected",
-    ).mockImplementation(async (id: string) => {
-      if (id === "a1") throw new Error("probe blew up");
-      return "recovered";
-    });
+    const recoverSpy = spyOn(elizaSandboxService, "recoverDisconnected").mockImplementation(
+      async (id: string) => {
+        if (id === "a1") throw new Error("probe blew up");
+        return "recovered";
+      },
+    );
     try {
       // concurrency 1 → deterministic order (a1 then a2)
       const res = await provisioningJobService.processDisconnectedRecovery(1);

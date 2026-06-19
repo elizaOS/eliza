@@ -125,8 +125,7 @@ mock.module("../../db/repositories", () => ({
       if (options.search) {
         const q = options.search.toLowerCase();
         rows = rows.filter(
-          (r) =>
-            r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q),
+          (r) => r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q),
         );
       }
       const offset = options.offset ?? 0;
@@ -138,10 +137,7 @@ mock.module("../../db/repositories", () => ({
       store.set(row.id, row);
       return row;
     },
-    async update(
-      id: string,
-      data: Partial<UserMcp>,
-    ): Promise<UserMcp | null> {
+    async update(id: string, data: Partial<UserMcp>): Promise<UserMcp | null> {
       const existing = store.get(id);
       if (!existing) return null;
       const updated = { ...existing, ...data, updated_at: nowDate() } as UserMcp;
@@ -240,9 +236,7 @@ beforeEach(() => {
 
 describe("userMcpsService.create", () => {
   test("creates a draft MCP with the supplied fields and computed shares", async () => {
-    const mcp = await userMcpsService.create(
-      baseCreateParams({ creatorSharePercentage: 70 }),
-    );
+    const mcp = await userMcpsService.create(baseCreateParams({ creatorSharePercentage: 70 }));
 
     expect(mcp.id).toBeTruthy();
     expect(mcp.name).toBe("Weather Pro");
@@ -257,16 +251,12 @@ describe("userMcpsService.create", () => {
 
   test("rejects a duplicate slug within the same organization", async () => {
     await userMcpsService.create(baseCreateParams());
-    await expect(userMcpsService.create(baseCreateParams())).rejects.toThrow(
-      /already exists/,
-    );
+    await expect(userMcpsService.create(baseCreateParams())).rejects.toThrow(/already exists/);
   });
 
   test("allows the same slug in a different organization", async () => {
     await userMcpsService.create(baseCreateParams());
-    const other = await userMcpsService.create(
-      baseCreateParams({ organizationId: OTHER_ORG }),
-    );
+    const other = await userMcpsService.create(baseCreateParams({ organizationId: OTHER_ORG }));
     expect(other.organization_id).toBe(OTHER_ORG);
   });
 });
@@ -295,9 +285,7 @@ describe("userMcpsService.listByOrganization", () => {
   test("lists only the organization's own MCPs", async () => {
     await userMcpsService.create(baseCreateParams({ slug: "a" }));
     await userMcpsService.create(baseCreateParams({ slug: "b" }));
-    await userMcpsService.create(
-      baseCreateParams({ slug: "c", organizationId: OTHER_ORG }),
-    );
+    await userMcpsService.create(baseCreateParams({ slug: "c", organizationId: OTHER_ORG }));
 
     const own = await userMcpsService.listByOrganization(ORG);
     expect(own).toHaveLength(2);
@@ -373,9 +361,9 @@ describe("userMcpsService.update", () => {
   });
 
   test("throws for a missing MCP", async () => {
-    await expect(
-      userMcpsService.update("missing", ORG, { name: "x" }),
-    ).rejects.toThrow(/not found/);
+    await expect(userMcpsService.update("missing", ORG, { name: "x" })).rejects.toThrow(
+      /not found/,
+    );
   });
 });
 
@@ -393,25 +381,17 @@ describe("userMcpsService.publish", () => {
 
   test("rejects publishing an MCP with no tools", async () => {
     const created = await userMcpsService.create(baseCreateParams({ tools: [] }));
-    await expect(userMcpsService.publish(created.id, ORG)).rejects.toThrow(
-      /at least one tool/,
-    );
+    await expect(userMcpsService.publish(created.id, ORG)).rejects.toThrow(/at least one tool/);
   });
 
   test("rejects publishing an external MCP without an endpoint", async () => {
-    const created = await userMcpsService.create(
-      baseCreateParams({ externalEndpoint: undefined }),
-    );
-    await expect(userMcpsService.publish(created.id, ORG)).rejects.toThrow(
-      /endpoint/,
-    );
+    const created = await userMcpsService.create(baseCreateParams({ externalEndpoint: undefined }));
+    await expect(userMcpsService.publish(created.id, ORG)).rejects.toThrow(/endpoint/);
   });
 
   test("rejects publishing from a different organization", async () => {
     const created = await userMcpsService.create(baseCreateParams());
-    await expect(userMcpsService.publish(created.id, OTHER_ORG)).rejects.toThrow(
-      /Unauthorized/,
-    );
+    await expect(userMcpsService.publish(created.id, OTHER_ORG)).rejects.toThrow(/Unauthorized/);
   });
 });
 
@@ -440,9 +420,7 @@ describe("userMcpsService.delete", () => {
 
   test("rejects deletion from a different organization", async () => {
     const created = await userMcpsService.create(baseCreateParams());
-    await expect(userMcpsService.delete(created.id, OTHER_ORG)).rejects.toThrow(
-      /Unauthorized/,
-    );
+    await expect(userMcpsService.delete(created.id, OTHER_ORG)).rejects.toThrow(/Unauthorized/);
     expect(await userMcpsService.getById(created.id)).not.toBeNull();
   });
 

@@ -25,7 +25,7 @@ src/
     schemas/               ~97 table schemas (apps, agents, billing, containers, ...)
     repositories/          ~66 CQRS repositories (readers/writers split)
     migrations/            generated SQL — never hand-edit applied migrations
-    client.ts              DB client; worker-neon-http.ts for Worker runtime
+    client.ts              DB client (Worker routes through the Hyperdrive binding)
     crypto/  utils/
     index.ts
   lib/                     @elizaos/cloud-shared/lib — SERVER-ONLY services + use-cases
