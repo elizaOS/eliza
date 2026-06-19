@@ -7,8 +7,9 @@
  *   GET {base}/api/lifeops/inbox?limit=&channels=
  *
  * It renders one of four distinct states (loading, error, empty, populated) and
- * instruments its refresh + channel-filter controls through the agent surface so
- * the floating chat can drive them.
+ * instruments its channel-filter controls through the agent surface so the
+ * floating chat can drive them. There is no manual refresh button: the view
+ * keeps itself fresh with a quiet background poll (search lives in the chat).
  *
  * The default fetcher builds its URL from `client.getBaseUrl()`; tests inject
  * the fetcher seam so they stay offline. The wire payload is a flat list of
@@ -22,7 +23,6 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -92,6 +92,9 @@ const defaultFetchers: InboxFetchers = {
   fetchInbox: getInbox,
 };
 
+/** Background poll cadence — keeps the list fresh without a manual refresh. */
+const INBOX_POLL_MS = 20_000;
+
 export interface InboxViewProps {
   /** Owner display name. Reserved for host wiring; not currently rendered. */
   ownerName?: string;
@@ -148,7 +151,7 @@ function formatTime(value: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Styling — dark theme, CSS vars, orange accent only.
+// Styling — light surface, CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "inbox-view-styles";
@@ -171,7 +174,7 @@ const INBOX_VIEW_CSS = `
 }
 .inbox-view-btn-primary {
   background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #0a0a0a);
+  color: var(--primary-foreground, #1a1206);
   border: 1px solid var(--primary, #ff8a24);
 }
 .inbox-view-btn-primary:hover {
@@ -179,12 +182,12 @@ const INBOX_VIEW_CSS = `
   border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
 }
 .inbox-view-btn-neutral {
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(255, 255, 255, 0.7));
+  color: var(--foreground, #0a1420);
+  border: 1px solid var(--border, rgba(10, 20, 32, 0.12));
 }
 .inbox-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a1420) 8%, transparent);
 }
 .inbox-view-btn:disabled {
   opacity: 0.5;
@@ -201,16 +204,16 @@ const INBOX_VIEW_CSS = `
   font-family: inherit;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(255, 255, 255, 0.7));
+  color: var(--foreground, #0a1420);
+  border: 1px solid var(--border, rgba(10, 20, 32, 0.12));
 }
 .inbox-view-chip:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a1420) 8%, transparent);
 }
 .inbox-view-chip[aria-pressed="true"] {
   background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #0a0a0a);
+  color: var(--primary-foreground, #1a1206);
   border-color: var(--primary, #ff8a24);
 }
 .inbox-view-chip[aria-pressed="true"]:hover {
@@ -238,8 +241,8 @@ const containerStyle: CSSProperties = {
   height: "100%",
   boxSizing: "border-box",
   overflowY: "auto",
-  background: "var(--background, #0a0a0a)",
-  color: "var(--foreground, #f5f5f5)",
+  background: "var(--background, #eef8ff)",
+  color: "var(--foreground, #0a1420)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -260,11 +263,17 @@ const headerRowStyle: CSSProperties = {
 const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
 const h2Style: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600 };
 
-const cardStyle: CSSProperties = {
-  padding: 16,
-  borderRadius: 8,
-  border: "1px solid var(--border, rgba(255,255,255,0.08))",
-  background: "var(--surface, rgba(255,255,255,0.02))",
+// A channel group is a flat block: its label plus a borderless row list. No
+// card edge — groups separate by section whitespace, not a card border.
+const groupStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+};
+
+// Empty / error / loading panel — borderless block: padding + content only.
+const panelStyle: CSSProperties = {
+  padding: "16px 0",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -296,9 +305,13 @@ const rowStyle: CSSProperties = {
   alignItems: "baseline",
   gap: 12,
   padding: "10px 0",
-  borderBottom: "1px solid var(--border, rgba(255,255,255,0.06))",
+  borderBottom: "1px solid var(--border, rgba(10, 20, 32, 0.08))",
   fontSize: 14,
 };
+
+// Last row in a group drops the divider so groups separate by whitespace, not
+// a trailing hairline.
+const lastRowStyle: CSSProperties = { ...rowStyle, borderBottom: "none" };
 
 const rowMainStyle: CSSProperties = {
   display: "flex",
@@ -326,36 +339,6 @@ const metaStyle: CSSProperties = {
 // ---------------------------------------------------------------------------
 // Agent-instrumented controls (hooks cannot run inside .map()).
 // ---------------------------------------------------------------------------
-
-function RefreshButton({
-  onActivate,
-  disabled,
-}: {
-  onActivate: () => void;
-  disabled: boolean;
-}): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "inbox-refresh",
-    role: "button",
-    label: "Refresh inbox",
-    group: "inbox-toolbar",
-    description: "Reload the cross-channel triage queue",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="inbox-view-btn inbox-view-btn-neutral"
-      onClick={onActivate}
-      disabled={disabled}
-      aria-label="Refresh"
-      {...agentProps}
-    >
-      <RefreshCw size={16} aria-hidden />
-    </button>
-  );
-}
 
 function ChannelChip({
   channel,
@@ -395,18 +378,11 @@ function ChannelChip({
   );
 }
 
-function InboxHeader({
-  refetch,
-  busy,
-}: {
-  refetch: () => void;
-  busy: boolean;
-}): ReactNode {
+function InboxHeader(): ReactNode {
   return (
     <header style={sectionStyle}>
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Inbox</h1>
-        <RefreshButton onActivate={refetch} disabled={busy} />
       </div>
     </header>
   );
@@ -445,10 +421,16 @@ const unreadDotStyle: CSSProperties = {
   marginRight: 6,
 };
 
-function ItemRow({ item }: { item: InboxItem }): ReactNode {
+function ItemRow({
+  item,
+  isLast,
+}: {
+  item: InboxItem;
+  isLast: boolean;
+}): ReactNode {
   const title = item.subject ?? item.sender;
   return (
-    <li style={rowStyle}>
+    <li style={isLast ? lastRowStyle : rowStyle}>
       <span style={rowMainStyle}>
         <span style={senderStyle}>
           {item.unread ? (
@@ -463,9 +445,8 @@ function ItemRow({ item }: { item: InboxItem }): ReactNode {
           {item.preview ? ` — ${item.preview}` : ""}
         </span>
       </span>
-      <span style={metaStyle}>
-        {INBOX_CHANNEL_LABELS[item.channel]} · {formatTime(item.receivedAt)}
-      </span>
+      {/* Channel is already the group heading, so the row meta is just time. */}
+      <span style={metaStyle}>{formatTime(item.receivedAt)}</span>
     </li>
   );
 }
@@ -478,7 +459,7 @@ function ChannelGroup({
   items: InboxItem[];
 }): ReactNode {
   return (
-    <div style={cardStyle} data-testid={`inbox-group-${channel}`}>
+    <div style={groupStyle} data-testid={`inbox-group-${channel}`}>
       <h2 style={h2Style}>
         {INBOX_CHANNEL_LABELS[channel]}{" "}
         <span style={dimStyle}>({items.length})</span>
@@ -487,8 +468,12 @@ function ChannelGroup({
         style={listStyle}
         aria-label={`${INBOX_CHANNEL_LABELS[channel]} items`}
       >
-        {items.map((item) => (
-          <ItemRow key={item.id} item={item} />
+        {items.map((item, index) => (
+          <ItemRow
+            key={item.id}
+            item={item}
+            isLast={index === items.length - 1}
+          />
         ))}
       </ul>
     </div>
@@ -528,9 +513,12 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
 
-  const load = useCallback((channels: InboxChannel[]) => {
+  // `background` skips the loading-state flash so the 20s poll refreshes the
+  // already-rendered list in place; user-driven loads (mount, channel toggle,
+  // retry) show the spinner.
+  const load = useCallback((channels: InboxChannel[], background = false) => {
     let cancelled = false;
-    setState({ kind: "loading" });
+    if (!background) setState({ kind: "loading" });
     fetchersRef.current
       .fetchInbox(channels)
       .then((wire) => {
@@ -564,9 +552,20 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
     [activeChannels],
   );
 
-  useEffect(() => load(activeList), [load, activeList]);
+  // Initial load + a quiet background poll keep the view fresh without a manual
+  // refresh button (search and reload both live in the chat). The poll calls the
+  // same load fn against the current channel selection; it's cleared on unmount
+  // and re-armed whenever the selection changes.
+  useEffect(() => {
+    const cancelLoad = load(activeList);
+    const timer = setInterval(() => load(activeList, true), INBOX_POLL_MS);
+    return () => {
+      cancelLoad();
+      clearInterval(timer);
+    };
+  }, [load, activeList]);
 
-  const refetch = useCallback(() => load(activeList), [load, activeList]);
+  const retry = useCallback(() => load(activeList), [load, activeList]);
 
   const toggleChannel = useCallback((channel: InboxChannel) => {
     setActiveChannels((prev) => {
@@ -580,9 +579,9 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="inbox-loading">
-        <InboxHeader refetch={refetch} busy={true} />
+        <InboxHeader />
         <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
-        <div style={{ ...cardStyle, ...dimStyle }}>Loading inbox…</div>
+        <div style={{ ...panelStyle, ...dimStyle }}>Loading inbox…</div>
       </div>
     );
   }
@@ -590,16 +589,16 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="inbox-error">
-        <InboxHeader refetch={refetch} busy={false} />
+        <InboxHeader />
         <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
-        <div style={cardStyle}>
+        <div style={panelStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load inbox</div>
           <div style={dimStyle}>{state.message}</div>
           <div>
             <button
               type="button"
               className="inbox-view-btn inbox-view-btn-primary"
-              onClick={refetch}
+              onClick={retry}
               aria-label="Retry loading inbox"
             >
               Retry
@@ -625,9 +624,9 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
     const noChannels = connected.length === 0 && activeChannels.size === 0;
     return (
       <div style={containerStyle} data-testid="inbox-empty">
-        <InboxHeader refetch={refetch} busy={false} />
+        <InboxHeader />
         <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
-        <div style={cardStyle}>
+        <div style={panelStyle}>
           {noChannels ? (
             <>
               <div style={{ fontWeight: 600 }}>No channels connected</div>
@@ -664,7 +663,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
 
   return (
     <div style={containerStyle} data-testid="inbox-populated">
-      <InboxHeader refetch={refetch} busy={false} />
+      <InboxHeader />
       <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
       <section style={sectionStyle} aria-label="Triage queue">
         {groups.map((group) => (

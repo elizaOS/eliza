@@ -15,7 +15,7 @@ A PostgreSQL database has been provisioned for this app. Use Drizzle ORM to inte
 
 1. **Install dependencies**:
 \`\`\`bash
-run_command("npm install drizzle-orm @neondatabase/serverless && npm install -D drizzle-kit")
+run_command("npm install drizzle-orm pg && npm install -D drizzle-kit @types/pg")
 \`\`\`
 
 2. **Create \`drizzle.config.ts\`** in the project root:
@@ -56,12 +56,12 @@ export const items = pgTable('items', {
 
 4. **Create \`db/index.ts\`** for the database client:
 \`\`\`typescript
-import { drizzle } from 'drizzle-orm/neon-http';
-import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
 import * as schema from './schema';
 
-const sql = neon(process.env.DATABASE_URL!);
-export const db = drizzle(sql, { schema });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
+export const db = drizzle(pool, { schema });
 \`\`\`
 
 5. **Push schema to database** using run_command:

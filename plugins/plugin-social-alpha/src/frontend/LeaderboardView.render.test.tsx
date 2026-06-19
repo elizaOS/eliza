@@ -105,6 +105,7 @@ vi.mock("lucide-react", () => {
 		React.createElement("svg", { "data-icon": name, ...props });
 	return {
 		Wallet: icon("wallet"),
+		UsersRound: icon("users-round"),
 		Bot: icon("bot"),
 		Sparkles: icon("sparkles"),
 		TrendingUp: icon("trending-up"),
@@ -234,23 +235,26 @@ describe("SocialAlphaView wallet gate + leaderboard states", () => {
 
 		// Shell chrome appears once walletReady flips true.
 		await screen.findByText("Alpha Leaderboard");
-		expect(screen.getByText("Top Callers")).toBeTruthy();
 
 		// Wait for the async fetch effect to populate the table (row data present).
 		await screen.findByText("satoshi");
+		// Quiet leader summary line (one muted line, no banner).
+		expect(screen.getByText(/Top Callers · leading: satoshi/)).toBeTruthy();
 
 		// Header columns of the table.
 		expect(screen.getByText("Rank")).toBeTruthy();
 		expect(screen.getByText("Username")).toBeTruthy();
 		expect(screen.getByText("Trust Score")).toBeTruthy();
 		expect(screen.getByText("Actions")).toBeTruthy();
-		const greenCell = screen.getByText("92.50");
-		expect(greenCell.className).toContain("text-green-500"); // > 50 tier
+		// Positive trust renders neutral (no decorative green); a top-rank dot cues state.
+		const topCell = screen.getByText("92.50").closest("td") as HTMLElement;
+		expect(topCell.className).toContain("text-foreground");
 
 		// Row 2: username absent -> userId.substring(0,12) + "..." fallback.
 		expect(screen.getByText("deadbeefdead...")).toBeTruthy();
-		const redCell = screen.getByText("-73.20");
-		expect(redCell.className).toContain("text-red-500"); // < -50 tier
+		// Negative trust is the one red signal.
+		const redCell = screen.getByText("-73.20").closest("td") as HTMLElement;
+		expect(redCell.className).toContain("text-red-500");
 
 		// Both rank values render.
 		expect(screen.getByText("1")).toBeTruthy();
@@ -394,9 +398,9 @@ describe("LeaderboardTable RecommendationDetails branches", () => {
 		// priceAtRecommendation formatted with $ and 2-6 fraction digits.
 		expect(screen.getByText(/\$2\.345678/)).toBeTruthy();
 
-		// Metrics: profit % (green for positive sign), avoided loss %, scam badge, notes.
+		// Metrics: profit % (neutral for positive sign), avoided loss %, scam badge, notes.
 		const profit = screen.getByText("42.5%");
-		expect(profit.className).toContain("text-green-500");
+		expect(profit.className).toContain("text-foreground");
 		expect(screen.getByText("30.0%")).toBeTruthy();
 		expect(screen.getByText(/Flagged:/)).toBeTruthy();
 		expect(screen.getByText(/Notes: Hit ATH/)).toBeTruthy();
@@ -483,14 +487,14 @@ describe("LeaderboardTable RecommendationDetails branches", () => {
 	});
 });
 
-describe("LeaderboardTable trust-score color tiers", () => {
-	function cellFor(score: number): HTMLElement {
+describe("LeaderboardTable trust-score signal", () => {
+	function cellFor(score: number, rank = 5): HTMLElement {
 		cleanup();
 		render(
 			<LeaderboardTable
 				data={[
 					{
-						rank: 1,
+						rank,
 						userId: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" as never,
 						username: "tier",
 						trustScore: score,
@@ -499,14 +503,17 @@ describe("LeaderboardTable trust-score color tiers", () => {
 				]}
 			/>,
 		);
-		return screen.getByText(score.toFixed(2));
+		return screen.getByText(score.toFixed(2)).closest("td") as HTMLElement;
 	}
 
-	it("maps each numeric range to the documented color class", () => {
-		expect(cellFor(80).className).toContain("text-green-500"); // > 50
-		expect(cellFor(20).className).toContain("text-green-600/80"); // > 5
-		expect(cellFor(0).className).toContain("text-foreground/70"); // neutral
-		expect(cellFor(-20).className).toContain("text-red-600/80"); // < -5
-		expect(cellFor(-80).className).toContain("text-red-500"); // < -50
+	it("uses neutral text for non-negative scores and red only for negative", () => {
+		// No green ramp: positive/neutral scores all read neutral.
+		expect(cellFor(80).className).toContain("text-foreground");
+		expect(cellFor(80).className).not.toContain("text-green");
+		expect(cellFor(20).className).toContain("text-foreground");
+		expect(cellFor(0).className).toContain("text-foreground");
+		// Negative is the single red signal.
+		expect(cellFor(-20).className).toContain("text-red-500");
+		expect(cellFor(-80).className).toContain("text-red-500");
 	});
 });

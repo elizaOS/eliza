@@ -440,3 +440,22 @@ diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/
              System.loadLibrary(libraryName);
              Log.i(TAG, "Successfully loaded llama-cpp native library: " + libraryName);
          } catch (UnsatisfiedLinkError e) {
+@@ -332,7 +359,17 @@
+                 Log.i(TAG, "Native logging disabled");
+             }
+             callback.onResult(LlamaResult.success(null));
+-        } catch (Exception e) {
++        } catch (Throwable e) {
++            // Catch Throwable, not just Exception: when the native library is a
++            // symbol-less stub (the skipForkLlamaLib / ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB
++            // dev build ships a JNI-symbol-free libllama-cpp-arm64.so), the JNI
++            // binding for toggleNativeLogNative fails with UnsatisfiedLinkError,
++            // which is an Error rather than an Exception. Left uncaught it escapes
++            // this @PluginMethod, is rewrapped by Capacitor's Bridge as a
++            // RuntimeException on the UI thread, and force-finishes MainActivity
++            // ("Eliza keeps stopping"). A missing optional native-log toggle must
++            // degrade gracefully instead, so we reject the call and keep booting.
++            Log.w(TAG, "Native log toggle unavailable (stub/missing native lib): " + e);
+             callback.onResult(LlamaResult.failure(new LlamaError("Failed to toggle native log: " + e.getMessage())));
+         }
+     }

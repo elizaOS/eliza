@@ -46,6 +46,14 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       load: () => import("@elizaos/plugin-polymarket-app"),
     },
     {
+      key: "@elizaos/plugin-waifu-imagegen-app",
+      load: () => import("@elizaos/plugin-waifu-imagegen-app"),
+    },
+    {
+      key: "@elizaos/plugin-waifu-swap-app",
+      load: () => import("@elizaos/plugin-waifu-swap-app"),
+    },
+    {
       key: "@elizaos/plugin-wallet-ui",
       load: () => import("@elizaos/plugin-wallet-ui"),
     },

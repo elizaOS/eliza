@@ -27,7 +27,6 @@
     "@elizaos/security": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@fal-ai/server-proxy": "^1.2.1",
-    "@neondatabase/serverless": "^1.1.0",
     "@upstash/redis": "^1.37.0",
     "ai": "^6.0.170",
     "drizzle-orm": "^0.45.1",

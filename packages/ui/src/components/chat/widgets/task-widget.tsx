@@ -35,6 +35,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api/client";
 import type { CodingAgentTaskThreadDetail } from "../../../api/client-types-cloud";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { findTaskRegions, type TaskRegion } from "../message-task-parser";
+import { registerInlineWidget } from "./inline-registry";
 
 /**
  * Poll cadence, deliberately matched to the workbench's `POLL_INTERVAL_MS`.
@@ -262,4 +264,22 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
       </span>
     </button>
   );
+}
+
+/**
+ * Register the `[TASK:<threadId>]…[/TASK]` inline widget into the chat-reply
+ * registry. NOT auto-invoked — the orchestrator plugin (plugin-task-coordinator)
+ * calls this at boot, so the task widget only renders in chat when the
+ * orchestrator UI is loaded. This is the canonical example of a plugin owning an
+ * inline widget: `MessageContent` knows nothing about tasks.
+ */
+export function registerTaskWidget(): void {
+  registerInlineWidget<TaskRegion>({
+    kind: "task",
+    parse: (text) => findTaskRegions(text).map((m) => ({ ...m, data: m })),
+    keyFor: (m) => `task:${m.threadId}`,
+    render: (m, _ctx, key) => (
+      <TaskWidget key={key} threadId={m.threadId} fallbackTitle={m.title} />
+    ),
+  });
 }

@@ -177,42 +177,29 @@ describe("MessagesAppView — opening a thread shows message bubbles", () => {
   });
 });
 
-describe("MessagesAppView — refresh control", () => {
-  it("re-invokes listMessages and getStatus and disables while loading", async () => {
-    mockBridge();
-    render(React.createElement(MessagesAppView, overlayContext()));
+describe("MessagesAppView — background polling keeps threads fresh", () => {
+  it("re-invokes listMessages and getStatus on the poll interval", async () => {
+    vi.useFakeTimers();
+    try {
+      mockBridge();
+      render(React.createElement(MessagesAppView, overlayContext()));
 
-    await screen.findByTestId("messages-thread-thread-a");
-    expect(bridge.listMessages).toHaveBeenCalledTimes(1);
-    expect(bridge.getStatus).toHaveBeenCalledTimes(1);
+      // Initial mount load.
+      await vi.waitFor(() =>
+        expect(bridge.listMessages).toHaveBeenCalledTimes(1),
+      );
+      expect(bridge.getStatus).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByTestId("messages-refresh"));
-
-    await waitFor(() => expect(bridge.listMessages).toHaveBeenCalledTimes(2));
-    expect(bridge.getStatus).toHaveBeenCalledTimes(2);
-    expect(bridge.listMessages).toHaveBeenLastCalledWith({ limit: 200 });
-  });
-
-  it("disables the refresh button while a load is in flight", async () => {
-    // Defer the first load so we can observe the disabled state.
-    let release!: () => void;
-    const pending = new Promise<{ messages: typeof sampleMessages }>(
-      (resolve) => {
-        release = () => resolve({ messages: sampleMessages });
-      },
-    );
-    bridge.listMessages.mockReturnValueOnce(pending);
-    bridge.getStatus.mockResolvedValue(statusWith(false));
-
-    render(React.createElement(MessagesAppView, overlayContext()));
-
-    const refreshButton = screen.getByTestId(
-      "messages-refresh",
-    ) as HTMLButtonElement;
-    expect(refreshButton.disabled).toBe(true);
-
-    release();
-    await waitFor(() => expect(refreshButton.disabled).toBe(false));
+      // Advance past the 20s poll interval -> one quiet refetch.
+      await vi.advanceTimersByTimeAsync(20000);
+      await vi.waitFor(() =>
+        expect(bridge.listMessages).toHaveBeenCalledTimes(2),
+      );
+      expect(bridge.getStatus).toHaveBeenCalledTimes(2);
+      expect(bridge.listMessages).toHaveBeenLastCalledWith({ limit: 200 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

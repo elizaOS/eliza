@@ -108,21 +108,9 @@ const smokeViewDeclarations = [
     "HyperliquidTuiView",
     "tui",
   ],
-  [
-    "lifeops",
-    "LifeOps",
-    "plugin-personal-assistant",
-    "/lifeops",
-    "LifeOpsPageView",
-  ],
-  [
-    "lifeops",
-    "LifeOps TUI",
-    "plugin-personal-assistant",
-    "/lifeops/tui",
-    "LifeOpsTuiView",
-    "tui",
-  ],
+  // NOTE: the LifeOps overview view was removed (PA no longer registers a
+  // `lifeops` view). Its stub entries are deleted so the smoke launcher matches
+  // production. The decomposed per-domain views below are the real surfaces.
   // Decomposed personal-assistant domain views — registered so their dynamic
   // bundles load in keyless ui-smoke and the decomposed-interactions spec can
   // drive them (closing INTERACTION_DEBT in view-interaction-coverage.test.ts).
@@ -4725,6 +4713,41 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/lifeops/inbox") {
     sendJson(req, res, 200, emptyLifeOpsInbox);
+    return;
+  }
+
+  // Decomposed domain-view read routes — return 200-empty so the views render
+  // their EMPTY state (not the catch-all 501 error state) in the visual smoke.
+  if (req.method === "GET" && url.pathname === "/api/lifeops/goals") {
+    sendJson(req, res, 200, { goals: [] });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/lifeops/relationships") {
+    sendJson(req, res, 200, { relationships: [], entities: [] });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/lifeops/money/dashboard") {
+    sendJson(req, res, 200, {
+      balanceUsd: 0,
+      sources: [],
+      recentTransactions: [],
+      recurringCharges: [],
+      spendByCategory: [],
+    });
+    return;
+  }
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/api/lifeops/money/sources" ||
+      url.pathname === "/api/lifeops/money/transactions" ||
+      url.pathname === "/api/lifeops/money/recurring")
+  ) {
+    const key = url.pathname.endsWith("sources")
+      ? "sources"
+      : url.pathname.endsWith("transactions")
+        ? "transactions"
+        : "recurringCharges";
+    sendJson(req, res, 200, { [key]: [] });
     return;
   }
 

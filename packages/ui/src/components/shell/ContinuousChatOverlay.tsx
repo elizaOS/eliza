@@ -1708,26 +1708,24 @@ export function ContinuousChatOverlay({
     onSettleFree: (direction) => {
       draggingRef.current = false;
       if (pilled) {
-        // From the pill: lerp-to-nearest. A slow drag that crossed at least the
-        // halfway open (openProgress ≥ 0.5) commits to opening; a shorter pull
-        // springs back to the capsule. An opening drag flows straight into the
-        // chat — half, or full if the same pull already pushed the thread past
-        // the half mark — so pill → input → chat is one continuous motion.
+        // From the pill: a slow drag under the halfway-open mark (openProgress
+        // < 0.5) springs back to the capsule; past it we commit to LEAVING the
+        // pill — but we must NOT force the half detent. A short pull only forms
+        // the input bar (threadHeight stays ~0 until the drag exceeds
+        // PILL_OPEN_DISTANCE), so clear `pilled` and FALL THROUGH to the shared
+        // detent magnetism below: a release near the input (threadHeight within
+        // SHEET_DETENT_MAGNET of 0) settles at the INPUT state, and only a pull
+        // that actually reached up into the thread opens to half/full. This is
+        // what makes pill → input → chat one continuum instead of skipping the
+        // input state straight to half on a short slow pull.
         const opened = direction === "up" && openProgress.get() >= 0.5;
         if (!opened) {
           settleDrag(); // springs openProgress → 0 (pilled still true) + thread → 0
           return;
         }
         setPilled(false);
-        if (hasThread) {
-          focusThreadRef.current = true;
-          goToDetent(threadHeight.get() >= halfH ? "full" : "half");
-        } else if (reduce) {
-          threadHeight.set(0);
-        } else {
-          animate(threadHeight, 0, SHEET_SPRING);
-        }
-        return;
+        if (hasThread) focusThreadRef.current = true;
+        // fall through to the magnetism ↓ (threadHeight decides input vs half/full)
       }
       // From the collapsed input, a downward drag has nothing to "size" below
       // it — collapse straight to the pill (matches the flick-down path).

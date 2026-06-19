@@ -80,33 +80,6 @@ export class NeonClient {
   }
 
   /**
-   * Get connection URI for an existing project.
-   *
-   * @param projectId Neon project ID
-   * @returns Connection URI
-   */
-  async getConnectionUri(projectId: string): Promise<string> {
-    const response = await this.fetchWithRetry(`/projects/${projectId}/connection_uri`, {
-      method: "GET",
-    });
-
-    const data = (await response.json()) as { uri: string };
-    return data.uri;
-  }
-
-  /**
-   * Check if the API is accessible and credentials are valid.
-   */
-  async healthCheck(): Promise<boolean> {
-    try {
-      await this.fetchWithRetry("/projects?limit=1", { method: "GET" });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * Fetch with exponential backoff retry logic.
    */
   private async fetchWithRetry(

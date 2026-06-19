@@ -8,13 +8,9 @@ import {
   type FeedPredictionMarket,
   type FeedWallet,
   formatDetailTimestamp,
-  SurfaceBadge,
   SurfaceCard,
   SurfaceSection,
   selectLatestRunForApp,
-  toneForHealthState,
-  toneForStatusText,
-  toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core/ui-compat";
 import { Button, TerminalPluginView } from "@elizaos/ui";
@@ -123,7 +119,7 @@ function FeedSuggestedPromptButton({
       type="button"
       variant="outline"
       size="sm"
-      className="min-h-10 rounded-xl px-3 shadow-sm"
+      className="min-h-10 rounded-xl px-3"
       onClick={() => onSelect(prompt)}
       disabled={disabled}
       {...agentProps}
@@ -324,16 +320,16 @@ export function FeedOperatorSurface({
   if (!run) {
     const chips: StatChip[] = [
       { icon: "◉", label: "Agent", value: "Session pending", state: "pending" },
-      { icon: "◒", label: "Portfolio", value: "PnL · positions", state: "idle" },
-      { icon: "▲", label: "Markets", value: "Prices · trades", state: "idle" },
-      { icon: "◇", label: "Wallet", value: "Awaiting link", state: "idle" },
+      { icon: "◒", label: "Portfolio", value: "—", state: "idle" },
+      { icon: "▲", label: "Markets", value: "—", state: "idle" },
+      { icon: "◇", label: "Wallet", value: "—", state: "idle" },
     ];
     return (
       <div data-testid="feed-operator-ready">
         <GameSurfaceShell>
           <GameSurfaceHero
             title="Feed"
-            statusLabel="Market dashboard ready"
+            statusLabel="No session yet"
             statusState="pending"
             cta={<HeroCta label="Spawn agent" accent={FEED_ACCENT} disabled />}
           />
@@ -400,17 +396,22 @@ export function FeedOperatorSurface({
         />
         <GameSurfaceStrip chips={liveChips} />
         <GameSurfaceZone>
-          <div className="flex flex-wrap items-center gap-2">
-            <SurfaceBadge tone={toneForStatusText(run.status)}>
-              {run.status}
-            </SurfaceBadge>
-            <SurfaceBadge tone={toneForViewerAttachment(run.viewerAttachment)}>
-              {run.viewerAttachment}
-            </SurfaceBadge>
-            <SurfaceBadge tone={toneForHealthState(run.health.state)}>
-              {run.health.state}
-            </SurfaceBadge>
-            <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
+          <div className="flex flex-wrap items-center gap-2 text-xs-tight text-muted">
+            <span className="inline-flex items-center gap-2">
+              <span
+                aria-hidden
+                className="size-2 rounded-full"
+                style={{
+                  background:
+                    run.health.state === "healthy"
+                      ? FEED_ACCENT
+                      : "#ef4444",
+                }}
+              />
+              <span className="text-txt">{run.status}</span>
+              <span>{run.viewerAttachment}</span>
+            </span>
+            <span className="ml-auto">
               {matchingRuns.length} active run
               {matchingRuns.length === 1 ? "" : "s"}
             </span>
@@ -525,14 +526,9 @@ export function FeedOperatorSurface({
           </div>
           <div className="space-y-2">
             {recentChatMessages.map((message) => (
-              <div
-                key={message.id}
-                className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2"
-              >
+              <div key={message.id} className="px-1 py-1">
                 <div className="flex items-center gap-2 text-2xs text-muted">
-                  <span className="uppercase">
-                    {message.senderName ?? message.senderId}
-                  </span>
+                  <span>{message.senderName ?? message.senderId}</span>
                   <span className="ml-auto">
                     {formatDetailTimestamp(message.createdAt)}
                   </span>
@@ -543,7 +539,7 @@ export function FeedOperatorSurface({
               </div>
             ))}
             {recentChatMessages.length === 0 ? (
-              <div className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2 text-xs-tight italic text-muted">
+              <div className="px-1 py-1 text-xs-tight italic text-muted">
                 No relay yet.
               </div>
             ) : null}
@@ -594,7 +590,7 @@ export function FeedOperatorSurface({
               type="button"
               variant="outline"
               size="sm"
-              className="min-h-10 rounded-xl px-3 shadow-sm"
+              className="min-h-10 rounded-xl px-3"
               aria-current={autonomyActive}
               onClick={() => void handleToggleAgent()}
               {...toggleAgentButton.agentProps}
@@ -606,13 +602,13 @@ export function FeedOperatorSurface({
       ) : null}
 
           {statusMessage ? (
-            <div className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs-tight leading-5 text-muted-strong">
+            <div className="bg-card/70 px-1 py-2 text-xs-tight leading-5 text-muted-strong">
               {statusMessage}
             </div>
           ) : null}
-          <div className="text-2xs uppercase tracking-[0.18em] text-muted">
-            {loading ? "Refreshing..." : "Ready"}
-          </div>
+          {loading ? (
+            <div className="text-2xs text-muted">Refreshing…</div>
+          ) : null}
         </GameSurfaceZone>
       </GameSurfaceShell>
     </div>

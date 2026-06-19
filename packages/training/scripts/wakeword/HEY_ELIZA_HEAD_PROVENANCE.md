@@ -146,6 +146,47 @@ bun verify_ffi.ts .../build/libwakeword.so gguf/hey-eliza.{melspec,embedding,cla
    binary is in the bundles, the flag stays (the bundle still carries the
    renamed `hey_jarvis` placeholder).
 
+## Publish runbook (concrete — ready once HF creds + gates are green)
+
+The `--no-mel-rescale` head was re-verified through the **product runtime
+resolver** (`resolveWakeWordStandalonePaths` → `OpenWakeWordGgmlModel` in
+`plugins/plugin-local-inference/src/services/voice/wake-word.ts`, the exact
+path the app loads), not just the training harness: staged at
+`<state-dir>/local-inference/wake/`, it loaded and fired at **100% true-accept**
+on held-out positives (it reliably detects "hey eliza"). Operating-point note:
+false-accept is threshold/negative-set dependent — the rigorous 250+250 eval
+(two independent harnesses) put it at ~3.6%; a naive peak-over-clip spot-check
+on a hard-negative subset reads higher, so **pin the operating point + reconfirm
+FA at scale before publish.**
+
+Production GGUF artifacts (from `train_eliza1_wakeword_head.py --no-mel-rescale`
+→ `wakeword_to_gguf.py`):
+
+| file | size (bytes) | sha256 |
+|---|---|---|
+| `hey-eliza.melspec.gguf`    | 543584 | `98bd2d5e3cc09e416626cd1a6a758cb92bb8096766d25ecf57d4c99927db682d` |
+| `hey-eliza.embedding.gguf`  | 659904 | `9cfcb0d9f1939c68cc9e63f5ac9e0f09b8e8568ee1085dbb50e7391e874a1dc5` |
+| `hey-eliza.classifier.gguf` | 315456 | `4502c92664b18d598753114f09925921ddd065d72871607c3a842fa70510a350` |
+
+(The classifier sha is head-specific; melspec/embedding are the frozen
+openWakeWord front-end and are stable across heads.)
+
+Publish is **gated** — per `packages/training/CLAUDE.md` §6, app-facing bundles
+reach `elizaos/eliza-1` ONLY through `scripts/publish/` (`publish_all_eliza1.sh`
+/ the per-tier publisher), which runs the hardware-verification + eval gates and
+regenerates the manifest. Do NOT raw-`hf upload` these (bypasses the gate).
+Steps, once HF write creds to `elizaos/eliza-1` are available:
+1. Stage the three GGUFs into each tier bundle's `wake/` via the publish flow.
+2. Add a `wakeword` catalog entry (version bump) in
+   `packages/shared/src/local-inference/voice-models.ts` with the filenames +
+   the sha256s above + the published `hfRevision` (replacing the
+   `hey-eliza-int8.onnx` / placeholder `openwakeword.gguf` entries).
+3. Remove `hey-eliza` from `OPENWAKEWORD_PLACEHOLDER_HEADS`.
+
+Until the binary is published, the placeholder flag stays (the bundle still
+carries the renamed `hey_jarvis` placeholder) — flipping it earlier would claim
+a head that isn't downloadable.
+
 ## License
 
 The trained head inherits the TTS license of the positives. piper voices are

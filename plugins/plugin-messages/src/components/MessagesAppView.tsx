@@ -10,11 +10,8 @@ import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import {
   ArrowLeft,
   ChevronLeft,
-  Inbox,
   MessageSquareText,
   Plus,
-  Radio,
-  RefreshCw,
   Send,
   ShieldCheck,
 } from "lucide-react";
@@ -80,7 +77,7 @@ function StatChip({
   label,
   accent = false,
 }: {
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
   accent?: boolean;
 }) {
@@ -92,12 +89,14 @@ function StatChip({
         color: accent ? "var(--accent)" : "var(--muted)",
       }}
     >
-      <span
-        aria-hidden
-        className="flex h-3.5 w-3.5 items-center justify-center"
-      >
-        {icon}
-      </span>
+      {icon ? (
+        <span
+          aria-hidden
+          className="flex h-3.5 w-3.5 items-center justify-center"
+        >
+          {icon}
+        </span>
+      ) : null}
       {label}
     </span>
   );
@@ -237,8 +236,8 @@ function TuiThreadButton({
         gridTemplateColumns: "4ch minmax(8ch, 1fr) 6ch",
         gap: 10,
         border: "none",
-        borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
-        background: selected ? "rgba(125,211,252,0.12)" : "transparent",
+        borderTop: index === 0 ? "none" : "1px solid rgba(148,163,184,0.16)",
+        background: selected ? "rgba(255,138,36,0.12)" : "transparent",
         color: "#cbd5e1",
         padding: "8px 0",
         cursor: "pointer",
@@ -252,7 +251,7 @@ function TuiThreadButton({
       <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
         {thread.address}
       </span>
-      <span style={{ color: thread.unreadCount ? "#fca5a5" : "#64748b" }}>
+      <span style={{ color: thread.unreadCount ? "#ff8a24" : "#64748b" }}>
         {thread.unreadCount ? `${thread.unreadCount} new` : "read"}
       </span>
       <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
@@ -303,8 +302,13 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
     }
   }, []);
 
+  // Load on mount, then quietly poll so newly received SMS surface without a
+  // manual control. The bridge has no push channel, so a 20s interval keeps the
+  // thread list fresh; it is cleared on unmount.
   useEffect(() => {
     void refresh();
+    const interval = setInterval(() => void refresh(), 20000);
+    return () => clearInterval(interval);
   }, [refresh]);
 
   // Seed the composer from a cross-view handoff (e.g. a Contacts "Message"
@@ -334,7 +338,6 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
     (total, thread) => total + thread.unreadCount,
     0,
   );
-  const latestThread = threads[0] ?? null;
   const canSend =
     composeAddress.trim().length > 0 &&
     composeBody.trim().length > 0 &&
@@ -412,13 +415,6 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
     description: showComposer
       ? "Return from the composer to the thread list"
       : "Leave Messages and return to the apps grid",
-  });
-  const refreshAgent = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: t("actions.refresh", { defaultValue: "Refresh" }),
-    group: "messages-header",
-    description: "Reload SMS threads and system status",
   });
   const newMessage = useAgentElement<HTMLButtonElement>({
     id: "action-new-message",
@@ -503,19 +499,6 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button
-            ref={refreshAgent.ref}
-            {...refreshAgent.agentProps}
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 rounded-lg text-muted hover:text-txt"
-            onClick={() => void refresh()}
-            disabled={loading}
-            aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
-            data-testid="messages-refresh"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
           <Button
             ref={newMessage.ref}
             {...newMessage.agentProps}
@@ -614,22 +597,9 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
               </p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 <StatChip
-                  icon={<MessageSquareText className="h-3.5 w-3.5" />}
                   label={t("messages.threadCount", {
                     defaultValue: "0 threads",
                   })}
-                />
-                <StatChip
-                  icon={<Radio className="h-3.5 w-3.5" />}
-                  label={
-                    ownsSmsRole
-                      ? t("messages.smsReady", {
-                          defaultValue: "Default SMS app",
-                        })
-                      : t("messages.smsBridge", {
-                          defaultValue: "Android SMS bridge",
-                        })
-                  }
                 />
               </div>
               <button
@@ -655,42 +625,18 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
             </div>
           ) : (
             <div className="chat-native-scrollbar min-h-0 flex-1 overflow-y-auto pb-32">
-              <div className="flex items-center gap-3 px-4 py-4">
-                <span
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
-                  style={{ background: "var(--accent-subtle)" }}
-                >
-                  <MessageSquareText
-                    className="h-5 w-5"
-                    style={{ color: "var(--accent)" }}
-                  />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-base font-semibold text-txt">
-                    {t("messages.title", { defaultValue: "Messages" })}
-                  </h2>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    <StatChip
-                      icon={<MessageSquareText className="h-3.5 w-3.5" />}
-                      label={t("messages.threadCountN", {
-                        defaultValue: `${threads.length} threads`,
-                      })}
-                      accent
-                    />
-                    <StatChip
-                      icon={<Inbox className="h-3.5 w-3.5" />}
-                      label={t("messages.unreadCountN", {
-                        defaultValue: `${unreadTotal} unread`,
-                      })}
-                    />
-                    {latestThread ? (
-                      <StatChip
-                        icon={<Radio className="h-3.5 w-3.5" />}
-                        label={formatTime(latestThread.lastMessage.date)}
-                      />
-                    ) : null}
-                  </div>
-                </div>
+              <div className="flex flex-wrap items-center gap-1.5 px-4 py-3">
+                <StatChip
+                  label={t("messages.threadCountN", {
+                    defaultValue: `${threads.length} threads`,
+                  })}
+                />
+                <StatChip
+                  label={t("messages.unreadCountN", {
+                    defaultValue: `${unreadTotal} unread`,
+                  })}
+                  accent={unreadTotal > 0}
+                />
               </div>
               <div>
                 {threads.map((thread) => (
@@ -715,7 +661,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
               <div className="shrink-0 border-b border-border/24 px-4 py-3">
                 <label
                   htmlFor="messages-compose-address"
-                  className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted"
+                  className="text-xs text-muted"
                 >
                   {t("messages.to", { defaultValue: "To" })}
                 </label>
@@ -1001,7 +947,7 @@ export function MessagesTuiView() {
         padding: 20,
       }}
     >
-      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+      <div style={{ color: "#ff8a24", marginBottom: 4 }}>
         elizaos://messages --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
@@ -1018,7 +964,7 @@ export function MessagesTuiView() {
         <section
           aria-label="SMS threads"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid rgba(148,163,184,0.22)",
             borderRadius: 6,
             padding: 16,
             minHeight: 360,
@@ -1041,8 +987,8 @@ export function MessagesTuiView() {
               disabled={loading}
               style={{
                 background: "transparent",
-                color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
+                color: "#94a3b8",
+                border: "1px solid rgba(148,163,184,0.35)",
                 borderRadius: 4,
                 padding: "4px 8px",
                 cursor: loading ? "not-allowed" : "pointer",
@@ -1071,7 +1017,7 @@ export function MessagesTuiView() {
         <section
           aria-label="SMS compose"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid rgba(148,163,184,0.22)",
             borderRadius: 6,
             padding: 16,
             minHeight: 360,
@@ -1093,8 +1039,8 @@ export function MessagesTuiView() {
               onClick={() => void requestSmsRole()}
               style={{
                 background: "transparent",
-                color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
+                color: "#ff8a24",
+                border: "1px solid rgba(255,138,36,0.45)",
                 borderRadius: 4,
                 padding: "6px 10px",
                 cursor: "pointer",
@@ -1124,7 +1070,7 @@ export function MessagesTuiView() {
               boxSizing: "border-box",
               background: "#0f172a",
               color: "#e2e8f0",
-              border: "1px solid rgba(125,211,252,0.3)",
+              border: "1px solid rgba(148,163,184,0.25)",
               borderRadius: 4,
               padding: 8,
               fontFamily: "inherit",
@@ -1152,7 +1098,7 @@ export function MessagesTuiView() {
               resize: "vertical",
               background: "#0f172a",
               color: "#e2e8f0",
-              border: "1px solid rgba(125,211,252,0.3)",
+              border: "1px solid rgba(148,163,184,0.25)",
               borderRadius: 4,
               padding: 8,
               fontFamily: "inherit",
@@ -1168,8 +1114,8 @@ export function MessagesTuiView() {
             disabled={!composeAddress.trim() || !composeBody.trim() || sending}
             style={{
               background: "transparent",
-              color: "#7dd3fc",
-              border: "1px solid rgba(125,211,252,0.45)",
+              color: "#ff8a24",
+              border: "1px solid rgba(255,138,36,0.45)",
               borderRadius: 4,
               padding: "6px 10px",
               cursor:
@@ -1184,7 +1130,7 @@ export function MessagesTuiView() {
 
           {selectedThread && (
             <div style={{ marginTop: 18 }}>
-              <div style={{ color: "#a7f3d0", marginBottom: 8 }}>messages</div>
+              <div style={{ color: "#94a3b8", marginBottom: 8 }}>messages</div>
               {selectedThread.messages.slice(-8).map((message) => (
                 <div key={message.id} style={{ padding: "4px 0" }}>
                   <span style={{ color: "#64748b" }}>

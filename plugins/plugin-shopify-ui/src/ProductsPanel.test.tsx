@@ -32,10 +32,32 @@ vi.mock("@elizaos/ui", () => ({
     React.createElement("div", {}, children),
   DialogTitle: ({ children }: { children: React.ReactNode }) =>
     React.createElement("h2", {}, children),
+  // The product search box moved to the floating chat; the panel renders a
+  // query-aware hint. Render the active/resting copy so tests can assert it.
+  ChatSearchHint: ({ noun, query }: { noun: string; query?: string }) =>
+    React.createElement(
+      "p",
+      { "data-testid": "chat-search-hint" },
+      query?.trim()
+        ? `Showing ${noun} for “${query.trim()}”`
+        : `Search ${noun} by typing in the chat.`,
+    ),
 }));
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+}));
+
+// Capture the registered chat binding so the search-moved-to-chat behaviour can
+// be exercised without an in-view input.
+let lastChatBinding: {
+  placeholder?: string;
+  onQuery?: (q: string) => void;
+} | null = null;
+vi.mock("@elizaos/ui/state/view-chat-binding", () => ({
+  useRegisterViewChatBinding: (binding: typeof lastChatBinding) => {
+    lastChatBinding = binding;
+  },
 }));
 
 import { ProductsPanel } from "./ProductsPanel";
@@ -76,6 +98,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+  lastChatBinding = null;
 });
 
 describe("ProductsPanel", () => {
@@ -111,7 +134,7 @@ describe("ProductsPanel", () => {
     expect(screen.getByLabelText("Draft")).toBeTruthy();
   });
 
-  it("resets to page 1 and forwards the query when searching", () => {
+  it("registers a chat-search binding that forwards the query and resets to page 1", () => {
     const onSearchChange = vi.fn();
     const onPageChange = vi.fn();
     render(
@@ -126,10 +149,33 @@ describe("ProductsPanel", () => {
         onPageChange,
       }),
     );
-    const input = screen.getByPlaceholderText("Search products…");
-    fireEvent.change(input, { target: { value: "Sticker" } });
+    // No in-view search box — the floating chat is the panel's search bar.
+    expect(screen.queryByPlaceholderText("Search products…")).toBeNull();
+    expect(
+      screen.getByText("Search products by typing in the chat."),
+    ).toBeTruthy();
+
+    // Drive the binding the chat composer would feed us.
+    expect(lastChatBinding?.placeholder).toBe("Search products by name…");
+    lastChatBinding?.onQuery?.("Sticker");
     expect(onSearchChange).toHaveBeenCalledWith("Sticker");
     expect(onPageChange).toHaveBeenCalledWith(1);
+  });
+
+  it("confirms the active query in the chat-search hint", () => {
+    render(
+      React.createElement(ProductsPanel, {
+        products: [activeProduct],
+        total: 1,
+        page: 1,
+        loading: false,
+        error: null,
+        search: "Sticker",
+        onSearchChange: vi.fn(),
+        onPageChange: vi.fn(),
+      }),
+    );
+    expect(screen.getByText("Showing products for “Sticker”")).toBeTruthy();
   });
 
   it("renders the pagination label + buttons and respects disabled bounds", () => {

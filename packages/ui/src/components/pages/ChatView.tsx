@@ -11,7 +11,6 @@ import {
 } from "react";
 import { type CodingAgentSession, client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
-import { fetchWithCsrf } from "../../api/csrf-client";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
@@ -260,51 +259,6 @@ export function ChatView({
       focusTerminalSession(problemSession.sessionId);
     }
   }, [ptySessions, activeTerminalSessionId, focusTerminalSession]);
-
-  // ── Coding agent preflight ──────────────────────────────────────
-  // Only fire once the agent runtime is confirmed running so we don't hit the
-  // orchestrator/ACP routes during the brief post-boot window when services are
-  // still completing their async init (they return 503 until ready, and the
-  // browser logs those as red console errors even when the JS .catch swallows them).
-  const agentRunning = agentStatus?.state === "running";
-  const [codingAgentsAvailable, setCodingAgentsAvailable] = useState(false);
-  useEffect(() => {
-    if (!agentRunning) return;
-    const controller = new AbortController();
-    fetchWithCsrf("/api/coding-agents/preflight", { signal: controller.signal })
-      .then((r) => r.json())
-      .then((data: unknown) => {
-        if (Array.isArray(data)) {
-          setCodingAgentsAvailable(
-            data.some(
-              (item) =>
-                typeof item === "object" &&
-                item !== null &&
-                (item as { installed?: unknown }).installed === true,
-            ),
-          );
-          return;
-        }
-        const status = data as { installed?: unknown[]; available?: boolean };
-        setCodingAgentsAvailable(
-          (Array.isArray(status.installed) && status.installed.length > 0) ||
-            status.available === true,
-        );
-      })
-      .catch(() => {
-        /* preflight unavailable or aborted — hide code button */
-      });
-    return () => controller.abort();
-  }, [agentRunning]);
-
-  const handleCreateTask = useCallback(
-    (description: string, agentType: string) => {
-      void sendChatText(description, {
-        metadata: { intent: "create_task", agentType },
-      });
-    },
-    [sendChatText],
-  );
 
   // ── Derived composer state ──────────────────────────────────────
   const isAgentStarting =
@@ -767,8 +721,6 @@ export function ChatView({
         onToggleAgentVoice={() =>
           setState("chatAgentVoiceMuted", !agentVoiceMuted)
         }
-        codingAgentsAvailable={codingAgentsAvailable}
-        onCreateTask={handleCreateTask}
       />
     </ChatComposerShell>
   ) : (
@@ -826,8 +778,6 @@ export function ChatView({
         onToggleAgentVoice={() =>
           setState("chatAgentVoiceMuted", !agentVoiceMuted)
         }
-        codingAgentsAvailable={codingAgentsAvailable}
-        onCreateTask={handleCreateTask}
       />
     </ChatComposerShell>
   );

@@ -75,11 +75,32 @@ describe("assistant text helpers", () => {
     );
   });
 
-  it("does NOT unwrap a reply object carrying unrelated data (preserve content)", () => {
+  it("does NOT unwrap a reply object carrying unrelated data or a non-primitive reply", () => {
     expect(
       extractAssistantReplyText('{"reply":"hi","userData":{"id":1}}'),
     ).toBeNull();
-    expect(extractAssistantReplyText('{"reply":42}')).toBeNull();
+    // an object/array reply is not user-facing text → leave it alone
+    expect(extractAssistantReplyText('{"reply":{"x":1}}')).toBeNull();
+    expect(extractAssistantReplyText('{"reply":[1,2]}')).toBeNull();
+  });
+
+  it("unwraps a primitive (number/boolean) reply the model emitted as text", () => {
+    expect(extractAssistantReplyText('{"reply":42}')).toBe("42");
+    expect(extractAssistantReplyText('{"reply":true}')).toBe("true");
+    expect(extractAssistantReplyText('{"reply":7,"action":"NONE"}')).toBe("7");
+  });
+
+  it("unwraps the `response` wrapper key too (the key drifts reply/response)", () => {
+    expect(extractAssistantReplyText('{"response":"54"}')).toBe("54");
+    expect(extractAssistantReplyText('{"response":42}')).toBe("42");
+    expect(extractAssistantReplyText('{"response":"hi","action":"NONE"}')).toBe(
+      "hi",
+    );
+    // still rejects a non-primitive value or an unknown-key payload
+    expect(extractAssistantReplyText('{"response":{"x":1}}')).toBeNull();
+    expect(
+      extractAssistantReplyText('{"response":"hi","userData":{"id":1}}'),
+    ).toBeNull();
   });
 
   it("does not rewrite ordinary chat text that merely contains the word reply", () => {

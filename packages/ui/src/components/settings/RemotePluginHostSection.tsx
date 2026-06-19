@@ -3,14 +3,7 @@
  * logs, and uninstall Electrobun remote plugins via the typed desktop bridge.
  */
 
-import {
-  ExternalLink,
-  FolderOpen,
-  Play,
-  RefreshCw,
-  Square,
-  Trash2,
-} from "lucide-react";
+import { ExternalLink, FolderOpen, Play, Square, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import {
@@ -62,7 +55,7 @@ const STATE_TONE: Record<RemotePluginViewState, string> = {
 function StateBadge({ state }: { state: RemotePluginViewState }) {
   return (
     <span
-      className={`inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${STATE_TONE[state]}`}
+      className={`inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium ${STATE_TONE[state]}`}
     >
       {state}
     </span>
@@ -205,7 +198,7 @@ function RemotePluginRow({
               {remotePlugin.id}
             </span>
             <span className="text-xs text-muted">v{remotePlugin.version}</span>
-            <span className="rounded-sm bg-bg/40 px-1.5 py-0.5 text-xs uppercase tracking-wide text-muted">
+            <span className="rounded-sm bg-bg/40 px-1.5 py-0.5 text-xs text-muted">
               {remotePlugin.mode}
             </span>
             <StateBadge state={state} />
@@ -486,15 +479,6 @@ export function RemotePluginHostSection() {
       status: busy || sourceDir.trim().length === 0 ? "inactive" : "active",
       onActivate: () => void handleInstall(),
     });
-  const { ref: refreshRef, agentProps: refreshAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "remote-plugin-refresh",
-      role: "button",
-      label: t("remotepluginhost.refresh", { defaultValue: "Refresh" }),
-      group: "remote-plugins",
-      onActivate: () => void refresh(),
-    });
-
   return (
     <SettingsStack>
       <SettingsGroup
@@ -613,19 +597,6 @@ export function RemotePluginHostSection() {
           count: remotePlugins.length,
           defaultValue: "Installed ({{count}})",
         })}
-        action={
-          <Button
-            ref={refreshRef}
-            size="sm"
-            variant="ghost"
-            onClick={() => void refresh()}
-            disabled={busy}
-            {...refreshAgentProps}
-          >
-            <RefreshCw className="mr-1 h-3 w-3" />{" "}
-            {t("remotepluginhost.refresh", { defaultValue: "Refresh" })}
-          </Button>
-        }
       >
         {remotePlugins.length === 0 ? (
           <p className="rounded-lg border border-border bg-card px-4 py-3 text-xs text-muted">

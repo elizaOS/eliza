@@ -64,6 +64,8 @@ export function useHyperliquidState(): HyperliquidState {
 
   useEffect(() => {
     void refresh();
+    const interval = setInterval(() => void refresh(), 15000);
+    return () => clearInterval(interval);
   }, [refresh]);
 
   return {

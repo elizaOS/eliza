@@ -1,12 +1,6 @@
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-	EmptyState,
-} from "@elizaos/ui/components";
+import { EmptyState } from "@elizaos/ui/components";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
-import { Wallet } from "lucide-react";
+import { UsersRound, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { LeaderboardEntry } from "../types";
 import { LeaderboardTable } from "./LeaderboardTable";
@@ -80,45 +74,47 @@ export function SocialAlphaView() {
 		);
 	}
 
+	const leader = leaderboardData?.[0];
+
 	return (
-		<div className="flex min-h-full flex-col gap-4 bg-background pt-4 pb-24 text-foreground">
+		<div className="flex min-h-full flex-col bg-background pt-4 pb-24 text-foreground">
 			<div className="container mx-auto flex-grow px-4">
-				<header className="py-6">
-					<h1 className="font-semibold text-xl text-foreground tracking-tight">
+				<header className="flex items-center gap-2 py-6">
+					<UsersRound className="h-5 w-5 text-muted-foreground" />
+					<h1 className="font-semibold text-foreground text-xl tracking-tight">
 						Alpha Leaderboard
 					</h1>
 				</header>
 
-				<main className="flex flex-col gap-8">
-					<Card className="border-border/40">
-						<CardHeader className="border-border/30 border-b">
-							<CardTitle className="text-center text-2xl">
-								Top Callers
-							</CardTitle>
-						</CardHeader>
-						<CardContent className="pt-6">
-							{!leaderboardData && !error && (
-								<div className="flex w-full justify-center py-12">
-									<Spinner />
-								</div>
-							)}
-							{error && (
-								<div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-center text-red-500">
-									<p className="font-semibold">Error Fetching Leaderboard:</p>
-									<p className="text-sm">{error}</p>
-								</div>
-							)}
-							{leaderboardData && leaderboardData.length > 0 && (
-								<LeaderboardTable data={leaderboardData} />
-							)}
-							{leaderboardData && leaderboardData.length === 0 && !error && (
-								<p className="py-10 text-center text-lg text-muted-foreground">
-									No leaderboard data available yet. Be the first to make a
-									recommendation!
-								</p>
-							)}
-						</CardContent>
-					</Card>
+				<main className="flex flex-col">
+					{leader?.username && (
+						<p className="pb-3 text-muted-foreground text-sm">
+							Top Callers · leading: {leader.username} (
+							{leader.trustScore.toFixed(2)})
+						</p>
+					)}
+					<div className="border-border/30 border-t pt-2">
+						{!leaderboardData && !error && (
+							<div className="flex w-full justify-center py-12">
+								<Spinner />
+							</div>
+						)}
+						{error && (
+							<div className="py-6 text-center text-red-500">
+								<p className="font-semibold">Error Fetching Leaderboard:</p>
+								<p className="text-sm">{error}</p>
+							</div>
+						)}
+						{leaderboardData && leaderboardData.length > 0 && (
+							<LeaderboardTable data={leaderboardData} />
+						)}
+						{leaderboardData && leaderboardData.length === 0 && !error && (
+							<p className="py-10 text-center text-lg text-muted-foreground">
+								No leaderboard data available yet. Be the first to make a
+								recommendation!
+							</p>
+						)}
+					</div>
 				</main>
 			</div>
 		</div>

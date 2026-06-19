@@ -173,6 +173,21 @@ export default {
       return healthResponse(env);
     }
 
+    // OpenAI-compat prefix rewrite. Dedicated agents whose cloud base/embedding
+    // URL got stamped as the bare host (`https://api.elizacloud.ai`) hit
+    // `/v1/embeddings` / `/embeddings` (and would for `/chat/completions`),
+    // which 404 because the canonical routes live under `/api/v1/*`. Accept the
+    // OpenAI-style prefixes by rewriting to `/api/v1/*` so embeddings + inference
+    // work regardless of the agent's baked base URL. Cloud routes are all under
+    // `/api/`, so `/v1/*` and bare `/embeddings`/`/chat/completions` are
+    // otherwise-unused (404) and safe to remap.
+    const p = url.pathname;
+    if (p.startsWith("/v1/") || p === "/embeddings" || p === "/chat/completions") {
+      const rewrittenUrl = new URL(url);
+      rewrittenUrl.pathname = p.startsWith("/v1/") ? `/api${p}` : `/api/v1${p}`;
+      return (await getApp()).fetch(new Request(rewrittenUrl, request), env, ctx);
+    }
+
     return (await getApp()).fetch(request, env, ctx);
   },
 

@@ -175,6 +175,10 @@ const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 		re: /\b(my companion|the companion|companion view|my avatar)\b/i,
 		viewId: "companion",
 	},
+	{
+		re: /\b(my (settings|preferences)|(change|update|edit|open|go to|show|take me to) (my |the |app )?(settings|preferences|configuration)|app settings|settings (page|screen|menu)|configure (the )?app)\b/i,
+		viewId: "settings",
+	},
 	// --- Multilingual deterministic rules ---
 	// Milady is local-first; a small/local model may not reliably route a
 	// non-English navigation request, so the deterministic safety net handles the

@@ -1,8 +1,4 @@
-/**
- * TradingProfileCard — displays P&L summary stats and per-token breakdown.
- *
- * Renders P&L only when Vincent provides analytics.
- */
+/** TradingProfileCard — P&L summary stats and per-token breakdown. */
 
 import { BadgeDollarSign, Repeat2, Target, TrendingUp } from "lucide-react";
 import type { ComponentType } from "react";
@@ -22,20 +18,18 @@ interface StatTileProps {
 function StatTile({ label, value, tone = "muted", icon: Icon }: StatTileProps) {
   const toneClass =
     tone === "ok"
-      ? "border-ok/25 bg-ok/10 text-ok"
+      ? "text-ok"
       : tone === "accent"
-        ? "border-accent/25 bg-accent/10 text-accent"
-        : "border-border/20 bg-card/45 text-muted";
+        ? "text-accent"
+        : "text-muted";
 
   return (
-    <div className={`rounded-xl border px-3 py-3 ${toneClass}`}>
-      <Icon className="h-4 w-4" />
+    <div className="px-1 py-1">
+      <Icon className={`h-4 w-4 ${toneClass}`} />
       <div className="mt-2 text-sm font-semibold tabular-nums text-txt">
         {value}
       </div>
-      <div className="mt-0.5 text-2xs font-semibold uppercase text-muted">
-        {label}
-      </div>
+      <div className="mt-0.5 text-2xs font-semibold text-muted">{label}</div>
     </div>
   );
 }
@@ -49,7 +43,7 @@ export function TradingProfileCard({
 }: TradingProfileCardProps) {
   if (!tradingProfile) {
     return (
-      <div className="rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <div className="rounded-2xl border border-border/18 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <TrendingUp className="h-4 w-4 text-muted/50" />
           <span
@@ -65,7 +59,7 @@ export function TradingProfileCard({
     tradingProfile;
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <div className="space-y-3 rounded-2xl border border-border/18 px-4 py-4">
       {/* Header */}
       <div className="flex items-center gap-2">
         <TrendingUp className="h-4 w-4 text-accent" />

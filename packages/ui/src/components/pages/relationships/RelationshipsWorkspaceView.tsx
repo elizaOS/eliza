@@ -1,4 +1,4 @@
-import { Filter, Network, RefreshCw, Sparkles, UserRound } from "lucide-react";
+import { Filter, Network, Sparkles, UserRound } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -19,7 +19,6 @@ import { useApp } from "../../../state/useApp";
 import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
 import { ChatSearchHint } from "../../composites/chat-search-hint";
 import { PagePanel } from "../../composites/page-panel";
-import { Button } from "../../ui/button";
 import { RelationshipsGraphPanel } from "../RelationshipsGraphPanel";
 import { RelationshipsActivityFeed } from "./RelationshipsActivityFeed";
 import { RelationshipsCandidateMergesPanel } from "./RelationshipsCandidateMergesPanel";
@@ -198,76 +197,46 @@ export function RelationshipsWorkspaceView({
     getValue: () => platform,
     onFill: (value) => setPlatform(value),
   });
-  const refreshAgent = useAgentElement<HTMLButtonElement>({
-    id: "relationships-refresh",
-    role: "button",
-    label: t("relationships.refresh", {
-      defaultValue: "Refresh relationships",
-    }),
-    group: "relationships-toolbar",
-    status: graphLoading ? "loading" : "idle",
-    onActivate: refreshGraph,
-  });
-
   const toolbar = (
-    <PagePanel variant="surface" className="px-3 py-3">
-      <div className="flex flex-col gap-3">
-        <ChatSearchHint noun="people" query={search} />
-        <div
-          className={
-            embedded
-              ? "grid min-w-0 gap-2 md:grid-cols-[minmax(12rem,14rem)_auto]"
-              : "flex min-w-0 flex-col gap-2 sm:flex-row sm:justify-end"
-          }
-        >
-          <div className="relative min-w-0">
-            <label className="sr-only" htmlFor="relationships-platform">
-              {t("relationships.platformFilter", {
-                defaultValue: "Platform filter",
-              })}
-            </label>
-            <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            <select
-              ref={platformAgent.ref}
-              id="relationships-platform"
-              value={platform}
-              onChange={(event) => setPlatform(event.target.value)}
-              aria-label={t("relationships.platformFilter", {
-                defaultValue: "Platform filter",
-              })}
-              className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition focus:border-accent/55"
-              {...platformAgent.agentProps}
-            >
-              <option value="all">
-                {t("relationships.platformAll", { defaultValue: "All" })}
-              </option>
-              {platforms.map((entry) => (
-                <option key={entry} value={entry}>
-                  {entry}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <Button
-            ref={refreshAgent.ref}
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-9 w-9 shrink-0 rounded-sm p-0"
-            onClick={refreshGraph}
-            aria-label={t("relationships.refresh", {
-              defaultValue: "Refresh relationships",
+    <div className="flex flex-col gap-3">
+      <ChatSearchHint noun="people" query={search} />
+      <div
+        className={
+          embedded
+            ? "grid min-w-0 gap-2 md:grid-cols-[minmax(12rem,14rem)_auto]"
+            : "flex min-w-0 flex-col gap-2 sm:flex-row sm:justify-end"
+        }
+      >
+        <div className="relative min-w-0">
+          <label className="sr-only" htmlFor="relationships-platform">
+            {t("relationships.platformFilter", {
+              defaultValue: "Platform filter",
             })}
-            {...refreshAgent.agentProps}
+          </label>
+          <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <select
+            ref={platformAgent.ref}
+            id="relationships-platform"
+            value={platform}
+            onChange={(event) => setPlatform(event.target.value)}
+            aria-label={t("relationships.platformFilter", {
+              defaultValue: "Platform filter",
+            })}
+            className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition focus:border-accent/55"
+            {...platformAgent.agentProps}
           >
-            <RefreshCw
-              className={`h-4 w-4 ${graphLoading ? "animate-spin" : ""}`}
-            />
-          </Button>
+            <option value="all">
+              {t("relationships.platformAll", { defaultValue: "All" })}
+            </option>
+            {platforms.map((entry) => (
+              <option key={entry} value={entry}>
+                {entry}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
-    </PagePanel>
+    </div>
   );
 
   const content = (
@@ -313,34 +282,28 @@ export function RelationshipsWorkspaceView({
                     defaultValue: "No relationships yet",
                   })}
             </h2>
-            <div className="mt-5 grid gap-2 sm:grid-cols-3">
+            <div className="mt-5 flex items-start justify-center gap-8">
               {[
                 {
                   labelKey: "relationships.statPeople",
                   defaultLabel: "People",
                   icon: UserRound,
-                  tone: "text-info",
                 },
                 {
                   labelKey: "relationships.statFacts",
                   defaultLabel: "Facts",
                   icon: Sparkles,
-                  tone: "text-warning",
                 },
                 {
                   labelKey: "relationships.statGraph",
                   defaultLabel: "Graph",
                   icon: Network,
-                  tone: "text-accent",
                 },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
-                  <div
-                    key={item.labelKey}
-                    className="rounded-sm border border-border/24 bg-bg/45 px-3 py-3"
-                  >
-                    <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
+                  <div key={item.labelKey} className="text-center">
+                    <Icon className="mx-auto h-4 w-4 text-muted" />
                     <div className="mt-2 text-xs font-semibold text-muted">
                       {t(item.labelKey, { defaultValue: item.defaultLabel })}
                     </div>

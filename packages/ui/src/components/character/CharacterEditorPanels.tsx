@@ -157,7 +157,7 @@ export function CharacterIdentityPanel({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+        <span className="text-xs font-medium text-muted">
           {t("charactereditor.AboutMe", { defaultValue: "About Me" })}
         </span>
         <Textarea
@@ -397,7 +397,7 @@ export function CharacterStylePanel({
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          <span className="text-xs font-medium text-muted">
             {t("charactereditor.StyleRulesHeader", {
               defaultValue: "Style Rules",
             })}
@@ -796,17 +796,11 @@ export function CharacterExamplesPanel({
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
-            <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+            <span className="text-xs font-medium text-muted">
               {t("charactereditor.ChatExamples", {
                 defaultValue: "Chat Examples",
               })}
             </span>
-            <p className="mt-1 text-xs text-muted">
-              {t("charactereditor.ChatExamplesHelp", {
-                defaultValue:
-                  "Example conversations grouped by channel and speaker.",
-              })}
-            </p>
           </div>
           <span className="rounded-sm border border-border/40 px-2 py-1 text-xs text-muted">
             {normalizedMessageExamples.length}{" "}
@@ -908,7 +902,7 @@ export function CharacterExamplesPanel({
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
-            <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+            <span className="text-xs font-medium text-muted">
               {t("charactereditor.PostExamples", {
                 defaultValue: "Post Examples",
               })}

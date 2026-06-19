@@ -2431,6 +2431,10 @@ async function main(): Promise<void> {
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();
+    // Expose window.__diarizationPump so the WebView→agent PCM pump (live
+    // on-device speaker diarization) can be driven + read on-device via CDP.
+    const { installDiarizationPumpHarness } = await import("@elizaos/ui/voice");
+    installDiarizationPumpHarness();
   }
   mountReactApp();
   await initializePlatform();

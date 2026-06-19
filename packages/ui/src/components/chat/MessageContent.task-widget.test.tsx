@@ -45,6 +45,9 @@ vi.mock("../../api/client", () => ({
 }));
 
 import { MessageContent } from "./MessageContent";
+// The task widget is owned by the orchestrator plugin, not auto-registered in
+// ui — register it here so MessageContent's generic dispatch can render it.
+import { registerTaskWidget } from "./widgets/task-widget";
 
 const THREAD_ID = "0123abcd-1234-5678-9abc-deadbeefcafe";
 
@@ -140,6 +143,7 @@ describe("MessageContent → TaskWidget integration", () => {
   });
 
   beforeEach(() => {
+    registerTaskWidget();
     getTaskMock.mockReset();
     clientMock.getCodingAgentTaskThread.mockImplementation(getTaskMock);
   });

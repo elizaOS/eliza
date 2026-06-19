@@ -1,8 +1,8 @@
 /**
  * Real-browser screenshot pass for the /chat ambient background — no app server.
  * Bundles chat-ambient-fixture.tsx with esbuild, loads it in headless chromium,
- * and captures the gentle pulse at each phase (orange base → blue → black →
- * white) by sampling the 32s CSS animation. Also verifies a reduced-motion load
+ * and captures the gentle warm pulse at each phase (warm-white rim ↔ brand-orange
+ * rim) by sampling the 30s CSS animation. Also verifies a reduced-motion load
  * holds a still orange field.
  *
  * Run: bun run --cwd packages/ui test:chat-ambient-e2e
@@ -63,15 +63,13 @@ try {
     "ambient background mounts",
   );
 
-  // 32s loop: 0%=blue, 25%(8s)=black, 50%(16s)=orange, 75%(24s)=white. Sample
-  // each phase by waiting real time between captures.
-  await snap(p, "phase-blue"); // ~t=0.4s, near the blue keyframe
-  await p.waitForTimeout(7700);
-  await snap(p, "phase-black"); // ~t=8s
-  await p.waitForTimeout(8000);
-  await snap(p, "phase-orange"); // ~t=16s (overlay clear, orange base)
-  await p.waitForTimeout(8000);
-  await snap(p, "phase-white"); // ~t=24s
+  // 30s loop: warm-white rim peaks at 0%/100%, brand-orange rim peaks at 50%
+  // (15s). Sample each phase by waiting real time between captures.
+  await snap(p, "phase-white-rim"); // ~t=0.4s, warm-white rim peak
+  await p.waitForTimeout(7600);
+  await snap(p, "phase-mid"); // ~t=8s, crossfade
+  await p.waitForTimeout(7000);
+  await snap(p, "phase-orange-rim"); // ~t=15s, brand-orange rim peak
   await p.close();
 
   // Reduced motion: a still orange field (no pulse).

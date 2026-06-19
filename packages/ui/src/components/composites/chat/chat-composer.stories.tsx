@@ -61,7 +61,6 @@ const meta = {
     agentVoiceEnabled: { control: "boolean" },
     showAgentVoiceToggle: { control: "boolean" },
     hideAttachButton: { control: "boolean" },
-    codingAgentsAvailable: { control: "boolean" },
     placeholder: { control: "text" },
   },
   args: {
@@ -75,7 +74,6 @@ const meta = {
     agentVoiceEnabled: false,
     showAgentVoiceToggle: true,
     hideAttachButton: false,
-    codingAgentsAvailable: false,
     voice: idleVoice,
     t: translate,
     textareaRef: { current: null },

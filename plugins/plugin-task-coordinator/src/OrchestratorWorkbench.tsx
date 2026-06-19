@@ -53,12 +53,10 @@ import {
   GitFork,
   Layers,
   type LucideIcon,
-  MessageSquare,
   OctagonX,
   PanelRightOpen,
   Pause,
   Play,
-  Plus,
   RotateCcw,
   Trash2,
   UserPlus,
@@ -572,10 +570,6 @@ function renderCost(
 
 /** A vertical hairline divider between header summary segments (the token kit
  * has no Separator export, so this is a thin local primitive). */
-function HeaderDivider() {
-  return <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />;
-}
-
 /** One labeled count in the header summary — a baseline-aligned number + tiny
  * uppercase label, no pill/border (replaces the old cryptic icon chips). */
 function HeaderStat({
@@ -599,6 +593,8 @@ function HeaderStat({
   );
 }
 
+/** A borderless inspector section: a small uppercase label over its content,
+ * separated from its neighbours by whitespace alone — no card, no border. */
 function InspectorSection({
   title,
   action,
@@ -609,9 +605,9 @@ function InspectorSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-border/50 bg-bg-accent/20 p-2.5">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+    <section className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
           {title}
         </h3>
         {action}
@@ -625,7 +621,6 @@ function WorkbenchHeader({
   status,
   busy,
   isMobile,
-  onNewTask,
   onPauseAll,
   onResumeAll,
   t,
@@ -634,7 +629,6 @@ function WorkbenchHeader({
   status: CodingAgentOrchestratorStatus | null;
   busy: boolean;
   isMobile: boolean;
-  onNewTask: () => void;
   onPauseAll: () => void;
   onResumeAll: () => void;
   t: Translate;
@@ -652,48 +646,36 @@ function WorkbenchHeader({
   // counts — reads "12 tasks · 1 active · 3 done", not a six-pill debug strip.
   const summary = (
     <div
-      className="flex min-w-0 items-center gap-2.5 overflow-x-auto"
+      className="flex min-w-0 items-center gap-4 overflow-x-auto"
       style={isMobile ? undefined : { flex: "1 1 0%" }}
     >
       <HeaderStat value={String(status?.taskCount ?? 0)} label="tasks" />
       {status?.activeTaskCount ? (
-        <>
-          <HeaderDivider />
-          <HeaderStat
-            value={String(status.activeTaskCount)}
-            label="active"
-            toneClass="text-ok"
-          />
-        </>
+        <HeaderStat
+          value={String(status.activeTaskCount)}
+          label="active"
+          toneClass="text-ok"
+        />
       ) : null}
       {status?.blockedTaskCount ? (
-        <>
-          <HeaderDivider />
-          <HeaderStat
-            value={String(status.blockedTaskCount)}
-            label="blocked"
-            toneClass="text-warn"
-          />
-        </>
+        <HeaderStat
+          value={String(status.blockedTaskCount)}
+          label="blocked"
+          toneClass="text-warn"
+        />
       ) : null}
       {status?.validatingTaskCount ? (
-        <>
-          <HeaderDivider />
-          <HeaderStat
-            value={String(status.validatingTaskCount)}
-            label="validating"
-            toneClass="text-accent"
-          />
-        </>
+        <HeaderStat
+          value={String(status.validatingTaskCount)}
+          label="validating"
+          toneClass="text-accent"
+        />
       ) : null}
       {status?.activeSessionCount ? (
-        <>
-          <HeaderDivider />
-          <HeaderStat
-            value={`${status.activeSessionCount}/${status.sessionCount}`}
-            label="agents"
-          />
-        </>
+        <HeaderStat
+          value={`${status.activeSessionCount}/${status.sessionCount}`}
+          label="agents"
+        />
       ) : null}
     </div>
   );
@@ -717,9 +699,6 @@ function WorkbenchHeader({
   const resumeAllLabel = t("orchestrator.action.resumeAll", {
     defaultValue: "Resume all",
   });
-  const newTaskLabel = t("orchestrator.action.newTask", {
-    defaultValue: "New task",
-  });
   const { ref: pauseAllRef, agentProps: pauseAllAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "header-pause-all",
@@ -736,64 +715,50 @@ function WorkbenchHeader({
       group: "orchestrator-header",
       description: "Resume every paused orchestrator task",
     });
-  const { ref: newTaskRef, agentProps: newTaskAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "header-new-task",
-      role: "button",
-      label: newTaskLabel,
-      group: "orchestrator-header",
-      description: "Open the create-task dialog",
-    });
-  const actions = (
-    <div className="ml-auto flex shrink-0 items-center gap-1.5">
-      <Button
-        ref={pauseAllRef}
-        variant="ghost"
-        size="sm"
-        disabled={busy || !status?.activeTaskCount}
-        onClick={onPauseAll}
-        className="h-7 w-7 p-0"
-        aria-label={pauseAllLabel}
-        title={pauseAllLabel}
-        data-testid="orchestrator-pause-all"
-        {...pauseAllAgentProps}
-      >
-        <Pause className="h-3.5 w-3.5" />
-      </Button>
-      <Button
-        ref={resumeAllRef}
-        variant="ghost"
-        size="sm"
-        disabled={busy || !status?.pausedTaskCount}
-        onClick={onResumeAll}
-        className="h-7 w-7 p-0"
-        aria-label={resumeAllLabel}
-        title={resumeAllLabel}
-        data-testid="orchestrator-resume-all"
-        {...resumeAllAgentProps}
-      >
-        <Play className="h-3.5 w-3.5" />
-      </Button>
-      <Button
-        ref={newTaskRef}
-        size="sm"
-        disabled={busy}
-        onClick={onNewTask}
-        className="h-7 gap-1.5 px-2.5 text-xs-tight font-semibold"
-        aria-label={newTaskLabel}
-        title={newTaskLabel}
-        data-testid="orchestrator-new-task"
-        {...newTaskAgentProps}
-      >
-        <Plus className="h-3.5 w-3.5" />
-        {newTaskLabel}
-      </Button>
-    </div>
-  );
+  // Pause-all / resume-all only surface while there is something to act on, so a
+  // quiet orchestrator shows no controls at all — the dashboard is read-only
+  // until work is in flight. New tasks are started conversationally in chat.
+  const actions =
+    status?.activeTaskCount || status?.pausedTaskCount ? (
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        {status?.activeTaskCount ? (
+          <Button
+            ref={pauseAllRef}
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={onPauseAll}
+            className="h-7 w-7 p-0"
+            aria-label={pauseAllLabel}
+            title={pauseAllLabel}
+            data-testid="orchestrator-pause-all"
+            {...pauseAllAgentProps}
+          >
+            <Pause className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
+        {status?.pausedTaskCount ? (
+          <Button
+            ref={resumeAllRef}
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={onResumeAll}
+            className="h-7 w-7 p-0"
+            aria-label={resumeAllLabel}
+            title={resumeAllLabel}
+            data-testid="orchestrator-resume-all"
+            {...resumeAllAgentProps}
+          >
+            <Play className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
+      </div>
+    ) : null;
 
   if (isMobile) {
     return (
-      <header className="flex flex-col gap-2 border-b border-border/50 bg-bg px-4 py-2.5">
+      <header className="flex flex-col gap-2 bg-bg px-4 py-2.5">
         <div className="flex items-center gap-2">
           {title}
           {actions}
@@ -807,9 +772,8 @@ function WorkbenchHeader({
   }
 
   return (
-    <header className="flex items-center gap-3 border-b border-border/50 bg-bg px-4 py-2.5">
+    <header className="flex items-center gap-4 bg-bg px-4 py-2.5">
       {title}
-      <HeaderDivider />
       {summary}
       {usageReadout}
       {actions}
@@ -1370,237 +1334,6 @@ function FieldLabel({ children }: { children: ReactNode }) {
   );
 }
 
-function CreateTaskDialog({
-  busy,
-  onClose,
-  onSubmit,
-  t,
-}: {
-  busy: boolean;
-  onClose: () => void;
-  onSubmit: (input: {
-    title: string;
-    goal: string;
-    priority: TaskPriority;
-    acceptanceCriteria: string[];
-  }) => void;
-  t: Translate;
-}) {
-  const [title, setTitle] = useState("");
-  const [goal, setGoal] = useState("");
-  const [priority, setPriority] = useState<TaskPriority>("normal");
-  const [criteria, setCriteria] = useState("");
-  const canSubmit = title.trim() !== "" && goal.trim() !== "" && !busy;
-  const submit = () =>
-    onSubmit({
-      title: title.trim(),
-      goal: goal.trim(),
-      priority,
-      acceptanceCriteria: criteria
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line !== ""),
-    });
-  const closeLabel = t("orchestrator.action.close", { defaultValue: "Close" });
-  const cancelLabel = t("orchestrator.action.cancel", {
-    defaultValue: "Cancel",
-  });
-  const createLabel = t("orchestrator.action.createTask", {
-    defaultValue: "Create task",
-  });
-  const { ref: closeRef, agentProps: closeAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "create-task-close",
-      role: "button",
-      label: closeLabel,
-      group: "orchestrator-create-task",
-      description: "Close the create-task dialog",
-    });
-  const { ref: titleRef, agentProps: titleAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "create-task-title",
-      role: "text-input",
-      label: t("orchestrator.create.taskTitle", { defaultValue: "Title" }),
-      group: "orchestrator-create-task",
-      description: "Task title",
-      getValue: () => title,
-      onFill: (value) => setTitle(value),
-    });
-  const { ref: goalRef, agentProps: goalAgentProps } =
-    useAgentElement<HTMLTextAreaElement>({
-      id: "create-task-goal",
-      role: "textarea",
-      label: t("orchestrator.create.goal", { defaultValue: "Goal" }),
-      group: "orchestrator-create-task",
-      description: "Task goal inherited by sub-agents",
-      getValue: () => goal,
-      onFill: (value) => setGoal(value),
-    });
-  const { ref: priorityRef, agentProps: priorityAgentProps } =
-    useAgentElement<HTMLSelectElement>({
-      id: "create-task-priority",
-      role: "select",
-      label: t("orchestrator.create.priority", { defaultValue: "Priority" }),
-      group: "orchestrator-create-task",
-      description: "Task priority",
-      options: ["low", "normal", "high", "urgent"],
-      getValue: () => priority,
-      onFill: (value) => setPriority(paramPriority(value) ?? "normal"),
-    });
-  const { ref: criteriaRef, agentProps: criteriaAgentProps } =
-    useAgentElement<HTMLTextAreaElement>({
-      id: "create-task-acceptance",
-      role: "textarea",
-      label: t("orchestrator.create.acceptance", {
-        defaultValue: "Acceptance criteria (one per line)",
-      }),
-      group: "orchestrator-create-task",
-      description: "Acceptance criteria, one per line",
-      getValue: () => criteria,
-      onFill: (value) => setCriteria(value),
-    });
-  const { ref: cancelRef, agentProps: cancelAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "create-task-cancel",
-      role: "button",
-      label: cancelLabel,
-      group: "orchestrator-create-task",
-      description: "Cancel and close the create-task dialog",
-    });
-  const { ref: submitRef, agentProps: submitAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "create-task-submit",
-      role: "button",
-      label: createLabel,
-      group: "orchestrator-create-task",
-      description: "Create the task with the entered title and goal",
-      onActivate: () => {
-        if (canSubmit) submit();
-      },
-    });
-
-  return (
-    <div
-      className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 p-4"
-      data-testid="orchestrator-create-dialog"
-    >
-      <div className="flex max-h-full w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-xl border border-border/60 bg-bg p-4 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-txt">
-            {t("orchestrator.create.title", { defaultValue: "New task" })}
-          </h2>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-muted transition-colors hover:bg-bg-hover/60"
-            aria-label={closeLabel}
-            {...closeAgentProps}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <label>
-          <FieldLabel>
-            {t("orchestrator.create.taskTitle", { defaultValue: "Title" })}
-          </FieldLabel>
-          <input
-            ref={titleRef}
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            className={FIELD_CLASS}
-            placeholder={t("orchestrator.create.titlePlaceholder", {
-              defaultValue: "Short, action-oriented name",
-            })}
-            data-testid="orchestrator-create-title"
-            {...titleAgentProps}
-          />
-        </label>
-        <label>
-          <FieldLabel>
-            {t("orchestrator.create.goal", { defaultValue: "Goal" })}
-          </FieldLabel>
-          <textarea
-            ref={goalRef}
-            value={goal}
-            onChange={(event) => setGoal(event.target.value)}
-            rows={4}
-            className={`${FIELD_CLASS} resize-none`}
-            placeholder={t("orchestrator.create.goalPlaceholder", {
-              defaultValue:
-                "What must be true when this is done? Sub-agents inherit this goal.",
-            })}
-            data-testid="orchestrator-create-goal"
-            {...goalAgentProps}
-          />
-        </label>
-        <label>
-          <FieldLabel>
-            {t("orchestrator.create.priority", { defaultValue: "Priority" })}
-          </FieldLabel>
-          <select
-            ref={priorityRef}
-            value={priority}
-            onChange={(event) =>
-              setPriority(event.target.value as TaskPriority)
-            }
-            className={FIELD_CLASS}
-            data-testid="orchestrator-create-priority"
-            {...priorityAgentProps}
-          >
-            <option value="low">{labelPriority("low", t)}</option>
-            <option value="normal">{labelPriority("normal", t)}</option>
-            <option value="high">{labelPriority("high", t)}</option>
-            <option value="urgent">{labelPriority("urgent", t)}</option>
-          </select>
-        </label>
-        <label>
-          <FieldLabel>
-            {t("orchestrator.create.acceptance", {
-              defaultValue: "Acceptance criteria (one per line)",
-            })}
-          </FieldLabel>
-          <textarea
-            ref={criteriaRef}
-            value={criteria}
-            onChange={(event) => setCriteria(event.target.value)}
-            rows={3}
-            className={`${FIELD_CLASS} resize-none`}
-            placeholder={t("orchestrator.create.acceptancePlaceholder", {
-              defaultValue: "Tests pass\nNo type errors\nScreenshots verified",
-            })}
-            data-testid="orchestrator-create-acceptance"
-            {...criteriaAgentProps}
-          />
-        </label>
-        <div className="flex justify-end gap-2 pt-1">
-          <Button
-            ref={cancelRef}
-            variant="secondary"
-            size="sm"
-            onClick={onClose}
-            className="h-7 px-2.5 text-xs-tight"
-            {...cancelAgentProps}
-          >
-            {cancelLabel}
-          </Button>
-          <Button
-            ref={submitRef}
-            size="sm"
-            disabled={!canSubmit}
-            onClick={submit}
-            className="h-7 px-2.5 text-xs-tight"
-            data-testid="orchestrator-create-submit"
-            {...submitAgentProps}
-          >
-            {createLabel}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AddAgentForm({
   busy,
   onClose,
@@ -1853,7 +1586,7 @@ function ControlButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`flex items-center justify-center rounded-md border border-border/50 p-1.5 transition-colors disabled:opacity-50 ${
+      className={`flex items-center justify-center rounded-md p-1.5 transition-colors disabled:opacity-50 ${
         tone === "danger"
           ? "text-muted hover:bg-danger/10 hover:text-danger"
           : "text-muted hover:bg-bg-hover/60 hover:text-txt"
@@ -2008,7 +1741,7 @@ export function TaskInspector({
 
   return (
     <div
-      className={`shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-border/60 bg-bg p-2.5 ${className ?? "flex w-80"}`}
+      className={`shrink-0 flex-col gap-4 overflow-y-auto bg-bg p-3 ${className ?? "flex w-80"}`}
       style={style}
       data-testid="orchestrator-inspector"
     >
@@ -3107,7 +2840,10 @@ function OperatorDetailDrawer({
 
 function readInitialTaskId(): string | null {
   if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get("task");
+  // Accept both producers: `?task=` (copy-link) and `?taskId=` (the in-chat
+  // task widget). Either opens the workbench straight onto that task.
+  const params = new URLSearchParams(window.location.search);
+  return params.get("task") ?? params.get("taskId");
 }
 
 const MOBILE_QUERY = "(max-width: 767px)";
@@ -3298,7 +3034,6 @@ export function OrchestratorWorkbench() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showArchived, setShowArchived] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
   const [addAgentOpen, setAddAgentOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [detailDrawer, setDetailDrawer] =
@@ -3549,14 +3284,12 @@ export function OrchestratorWorkbench() {
   // always seeing the latest state (otherwise Esc-to-stop would trap an open
   // dialog, blocking the whole UI).
   const escStateRef = useRef({
-    createOpen,
     addAgentOpen,
     inspectorOpen,
     detailDrawer,
     stop: handleStopActive,
   });
   escStateRef.current = {
-    createOpen,
     addAgentOpen,
     inspectorOpen,
     detailDrawer,
@@ -3566,10 +3299,6 @@ export function OrchestratorWorkbench() {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       const s = escStateRef.current;
-      if (s.createOpen) {
-        setCreateOpen(false);
-        return;
-      }
       if (s.addAgentOpen) {
         setAddAgentOpen(false);
         return;
@@ -3587,22 +3316,6 @@ export function OrchestratorWorkbench() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
-
-  const handleCreate = useCallback(
-    (input: {
-      title: string;
-      goal: string;
-      priority: TaskPriority;
-      acceptanceCriteria: string[];
-    }) => {
-      void runMutation(async () => {
-        const created = await client.createOrchestratorTask(input);
-        setCreateOpen(false);
-        setSelectedId(created.id);
-      });
-    },
-    [runMutation],
-  );
 
   const handleCopyLink = useCallback(() => {
     const current = selectedIdRef.current;
@@ -3767,7 +3480,6 @@ export function OrchestratorWorkbench() {
         status={status}
         busy={mutating}
         isMobile={isMobile}
-        onNewTask={() => setCreateOpen(true)}
         onPauseAll={() => runMutation(() => client.pauseAllOrchestratorTasks())}
         onResumeAll={() =>
           runMutation(() => client.resumeAllOrchestratorTasks())
@@ -3777,10 +3489,9 @@ export function OrchestratorWorkbench() {
       />
 
       {backendAbsent ? (
-        <div className="border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/55">
+        <div className="px-4 py-1.5 text-2xs text-muted">
           {t("orchestrator.backendAbsent", {
-            defaultValue:
-              "The orchestrator runs on a cloud or desktop agent. Connect one to create and manage multi-agent tasks.",
+            defaultValue: "Connect a cloud or desktop agent to run tasks.",
           })}
         </div>
       ) : null}
@@ -3855,7 +3566,7 @@ export function OrchestratorWorkbench() {
                   })}
                   hint={t("orchestrator.empty.hint", {
                     defaultValue:
-                      "Dispatch a coding task and the orchestrator will spin up sub-agents, track their plans, and stream their work here.",
+                      "Ask me to start a coding task and it will appear here.",
                   })}
                 />
               )
@@ -3997,15 +3708,7 @@ export function OrchestratorWorkbench() {
                   </button>
                 </div>
               ) : null}
-              <div className="border-t border-border/50 bg-bg px-4 pb-24 pt-2">
-                <div className="flex items-center gap-2 text-2xs text-muted">
-                  <MessageSquare className="h-3.5 w-3.5 text-accent" />
-                  {t("orchestrator.overlayChatHint", {
-                    defaultValue:
-                      "Use the overlay chat for follow-up instructions.",
-                  })}
-                </div>
-              </div>
+              <div className="pb-24" />
             </>
           ) : (
             <>
@@ -4176,15 +3879,6 @@ export function OrchestratorWorkbench() {
           />
         ) : null}
       </div>
-
-      {createOpen ? (
-        <CreateTaskDialog
-          busy={mutating}
-          onClose={() => setCreateOpen(false)}
-          onSubmit={handleCreate}
-          t={t}
-        />
-      ) : null}
     </div>
   );
 }

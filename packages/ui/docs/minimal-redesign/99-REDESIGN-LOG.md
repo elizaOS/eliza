@@ -52,3 +52,14 @@ Verified: `ContactsTuiView`/`PhoneTuiView`/`MessagesTuiView` are still the regis
 
 ## Net status
 A comprehensive minimal/light pass is shipped + verified (builtin views via production-build e2e at both viewports; ~27 plugin views via the 63-test plugin e2e + typecheck). The single light look is enforced. Remaining items are larger architectural initiatives (LifeOps brief hub, comms 3-plugin merge) or risky-on-shared-branch (DatabaseView double-render) — documented above, deferred over forcing.
+
+## 2026-06-19 — full re-assessment + fix sweep (every view)
+Re-ran the loop end-to-end with a workflow-driven assessment of ALL 43 routed views (screenshot + source + UX, against the 10 design laws) → a per-view fix-plan, then 4 fix waves. Verdicts before: only `apps`/`camera` "good", 12 with hardcoded dark backgrounds, 101 high-severity issues.
+
+- **Tokens (canonical):** base.css + theme.css `--brand-orange` #ff5800 → **#ff8a24**; base.css `--brand-blue` #0b35f1 → **#1d91e8**. brand-gold.css memory-type cues: decorative indigo/purple/green/amber → blue(messages)+orange(memories)+neutral. Resolved a real base.css↔presets.ts inconsistency.
+- **Chat home (owner chose "keep warm, just de-black"):** removed the literal near-black rim layer + the decorative blue rim from ChatAmbientBackground (breathe is now warm-white ↔ #ff8a24); HomeScreen activity tones sky/amber → orange/red (green=ok kept); dropped the uppercase home-card eyebrow. The warm-orange home stays as the signature "brand moment"; every other view is light.
+- **Wave 1 (12 dark → light):** calendar, documents, focus, goals, inbox, phone, shopify, steward, todos, health, camera — #0a0a0a/#020617 → var(--background); off-brand accents → orange/red/neutral. Visually verified light + on-brand (goals/finances/calendar/wallet render light with orange accents).
+- **Wave 2a (15 plugin packages):** brand + de-slop (companion, contacts, finances, hyperliquid, messages, polymarket, relationships, vector-browser, vincent, social, feed, screenshare, wallet/inventory, tasks/task-coordinator, model-tester).
+- **Wave 2b (13 builtin views + shared page-panel chrome):** settings, plugins, database, memories, logs, relationships, runtime, skills, trajectories, automations, character, help, tutorial.
+
+Discipline notes: TUI/terminal variants left intentionally dark (terminal aesthetic); games + remote-desktop viewer out of scope; controls that `*.test.*` asserts (Refresh/search/filter chips) were RESTYLED on-brand, not deleted (deleting them needs the tests updated first — a follow-up). Verified: packages/ui typecheck 0 errors; every touched plugin typecheck/build:types clean; all 25 plugin view bundles rebuild. Stub view list de-stale'd (removed LifeOps).

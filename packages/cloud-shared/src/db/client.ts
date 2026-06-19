@@ -2,21 +2,18 @@
  * Database Client
  *
  * Environment Variables:
- * - DATABASE_URL: Primary database URL. Use a Neon URL for cloud, pglite:// for
+ * - DATABASE_URL: Primary database URL. Use a Railway (or any) Postgres URL for cloud, pglite:// for
  *   embedded local dev, or a vanilla postgresql:// URL.
  *
  * @module db/client
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
-import { drizzle as drizzleNeon } from "drizzle-orm/neon-serverless";
 import type { NodePgDatabase, NodePgTransaction } from "drizzle-orm/node-postgres";
 import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
 import { drizzle as drizzlePGlite, type PgliteDatabase } from "drizzle-orm/pglite";
 import type { ExtractTablesWithRelations } from "drizzle-orm/relations";
 import { Pool as PgPool, type PoolConfig } from "pg";
-import ws from "ws";
 import { getCloudAwareEnv, getCloudBinding } from "../lib/runtime/cloud-bindings";
 import { applyDatabaseUrlFallback } from "./database-url";
 import { disableLocalPreparedStatements } from "./local-pg-query";
@@ -50,7 +47,7 @@ function getPrimaryDatabaseUrl(): string {
   const url = applyDatabaseUrlFallback(getCloudAwareEnv());
   if (!url) {
     throw new Error(
-      "DATABASE_URL is not set. Use a Neon URL for cloud, a `pglite://<dir>` URL for embedded local dev, or a vanilla `postgresql://` URL.",
+      "DATABASE_URL is not set. Use a Railway (or any) Postgres URL for cloud, a `pglite://<dir>` URL for embedded local dev, or a vanilla `postgresql://` URL.",
     );
   }
   return url;
@@ -59,13 +56,6 @@ function getPrimaryDatabaseUrl(): string {
 // ============================================================================
 // Database Connection Factory
 // ============================================================================
-
-/**
- * Checks if a database URL is for Neon serverless
- */
-function isNeonDatabase(url: string): boolean {
-  return url.includes("neon.tech") || url.includes("neon.database");
-}
 
 function isCloudflareWorkerRuntime(): boolean {
   return typeof globalThis !== "undefined" && "WebSocketPair" in globalThis;
@@ -237,17 +227,7 @@ function createConnection(url: string): Database {
     return createPGliteClient(parsePGliteDataDir(url));
   }
 
-  if (isNeonDatabase(url)) {
-    // WebSocket pool both on Workers and Node — neon-http does not implement
-    // `db.transaction(...)`, which breaks `writeTransaction` in db/helpers.ts.
-    if (typeof WebSocket === "undefined") {
-      neonConfig.webSocketConstructor = ws;
-    }
-    const pool = new NeonPool({ connectionString: url });
-    return registerDatabaseCloser(drizzleNeon(pool, { schema }) as Database, () => pool.end());
-  }
-
-  // Non-Neon remote Postgres (e.g. Railway): on workerd a direct node-pg TCP
+  // Remote Postgres (Railway): on workerd a direct node-pg TCP
   // connection terminates mid-query, so prefer a Cloudflare Hyperdrive binding
   // when present and let it proxy to the origin.
   const hyperdriveUrl = getCloudBinding<{ connectionString?: string }>(

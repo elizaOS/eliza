@@ -44,11 +44,9 @@ function CopyableAddress({
       : address;
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/30 bg-card/50 px-3 py-3">
+    <div className="flex items-center justify-between gap-3 px-1 py-1.5">
       <div className="flex min-w-0 items-center gap-2">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-accent/20 bg-accent/10 text-accent">
-          <Network className="h-4 w-4" />
-        </div>
+        <Network className="h-4 w-4 shrink-0 text-accent" />
         <div className="min-w-0">
           <div className="text-xs-tight font-semibold text-txt">{label}</div>
           <div className="mt-0.5 font-mono text-xs text-muted">
@@ -77,8 +75,8 @@ function CopyableAddress({
 
 function BalancePill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex min-w-[100px] flex-col items-start gap-0.5 rounded-lg border border-border/30 bg-card/60 px-3 py-2">
-      <span className="text-2xs font-semibold uppercase tracking-wider text-muted/70">
+    <div className="flex min-w-[88px] flex-col items-start gap-0.5 px-1 py-1">
+      <span className="text-2xs font-semibold tracking-wider text-muted/70">
         {label}
       </span>
       <span className="text-sm font-semibold tabular-nums text-txt">
@@ -185,7 +183,7 @@ export function WalletStatusCard({
     return (
       <div
         data-testid="vincent-wallet-status-card"
-        className="rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+        className="rounded-2xl border border-border/18 px-5 py-4"
       >
         <div className="flex items-center gap-2">
           <Wallet className="h-4 w-4 text-muted/50" />
@@ -198,7 +196,7 @@ export function WalletStatusCard({
   return (
     <div
       data-testid="vincent-wallet-status-card"
-      className="space-y-3 rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+      className="space-y-3 rounded-2xl border border-border/18 px-4 py-4"
     >
       {/* Header row */}
       <div className="flex items-center justify-between gap-3">
@@ -245,7 +243,7 @@ export function WalletStatusCard({
           ))}
           {hiddenBalanceCount > 0 ? (
             <div
-              className="flex min-w-[100px] items-center justify-center gap-2 rounded-lg border border-border/30 bg-card/60 px-3 py-2 text-muted"
+              className="flex min-w-[88px] items-center gap-2 px-1 py-1 text-muted"
               title={`${hiddenBalanceCount} more balances`}
             >
               <Layers3 className="h-4 w-4" />
@@ -257,9 +255,8 @@ export function WalletStatusCard({
         </div>
       )}
 
-      {/* No balances message */}
       {walletBalances && balancePills.length === 0 && (
-        <div className="flex items-center gap-2 rounded-xl border border-border/20 bg-card/45 px-3 py-2 text-xs text-muted">
+        <div className="flex items-center gap-2 px-1 py-1 text-xs text-muted">
           <span className="h-2 w-2 rounded-full bg-muted/50" />
           $0.01+
         </div>

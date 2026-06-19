@@ -76,13 +76,9 @@ function VectorMetric({
   tone: "accent" | "neutral";
 }) {
   return (
-    <div className="flex min-h-12 items-center gap-2 rounded-sm border border-border/35 bg-card/50 px-3">
+    <div className="flex min-h-12 items-center gap-2 px-1">
       <span
-        className={`grid h-7 w-7 shrink-0 place-items-center rounded-sm ${
-          tone === "accent"
-            ? "bg-accent/15 text-accent"
-            : "bg-bg-muted/50 text-muted"
-        }`}
+        className={`shrink-0 ${tone === "accent" ? "text-accent" : "text-muted"}`}
       >
         {icon}
       </span>
@@ -90,9 +86,7 @@ function VectorMetric({
         <span className="block truncate text-sm font-semibold text-txt">
           {value}
         </span>
-        <span className="block truncate text-[0.65rem] uppercase tracking-[0.08em] text-muted">
-          {label}
-        </span>
+        <span className="block truncate text-xs text-muted">{label}</span>
       </span>
     </div>
   );
@@ -135,10 +129,10 @@ function VectorGraph({
 
     // Background
     const style = getComputedStyle(document.documentElement);
-    const bgColor = style.getPropertyValue("--bg").trim() || "#111111";
+    const bgColor = style.getPropertyValue("--bg").trim() || "#eef8ff";
     const cardColor = style.getPropertyValue("--card").trim() || bgColor;
-    const borderColor = style.getPropertyValue("--border").trim() || "#333333";
-    const accentColor = style.getPropertyValue("--accent").trim() || "#6cf";
+    const borderColor = style.getPropertyValue("--border").trim() || "#e2e8f0";
+    const accentColor = style.getPropertyValue("--accent").trim() || "#ff8a24";
     const mutedColor = style.getPropertyValue("--muted").trim() || "#888888";
     const textColor =
       style.getPropertyValue("--text").trim() ||
@@ -331,7 +325,7 @@ function VectorGraph({
       </div>
       <canvas
         ref={canvasRef}
-        className="w-full border border-border cursor-crosshair"
+        className="w-full cursor-crosshair"
         style={{ height: 500 }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoveredIdx(null)}
@@ -383,16 +377,15 @@ export function VectorGraph3D({
     return projectTo3D(vecs);
   }, [withEmbeddings]);
 
-  // Color palette for types
+  // Per-type colors as an on-brand orange→neutral ramp (no decorative hues).
+  // First type is full brand orange; the rest step down through dimmed orange
+  // and neutral grays so categories stay distinguishable without going off-brand.
   const typeColors = useMemo(() => {
     const types = [...new Set(withEmbeddings.map((m) => m.type))];
-    const palette = [
-      0x6699ff, 0xf59e0b, 0x10b981, 0xef4444, 0x8b5cf6, 0xec4899, 0x06b6d4,
-      0x84cc16,
-    ];
+    const ramp = [0xff8a24, 0xc26a1d, 0x8a8a8a, 0x6b6b6b, 0x4f4f4f, 0x3a3a3a];
     const map: Record<string, number> = {};
     types.forEach((t, i) => {
-      map[t] = palette[i % palette.length];
+      map[t] = ramp[i % ramp.length];
     });
     return map;
   }, [withEmbeddings]);
@@ -418,7 +411,7 @@ export function VectorGraph3D({
       const bgColor =
         getComputedStyle(document.documentElement)
           .getPropertyValue("--bg")
-          .trim() || "#08080a";
+          .trim() || "#eef8ff";
       scene.background = new THREE.Color(bgColor);
       sceneRef.current = scene;
 
@@ -562,7 +555,7 @@ export function VectorGraph3D({
       for (let i = 0; i < points3D.length; i++) {
         const [x, y, z] = points3D[i];
         const mem = withEmbeddings[i];
-        const color = typeColors[mem.type] ?? 0x6699ff;
+        const color = typeColors[mem.type] ?? 0xff8a24;
         const material = new THREE.MeshBasicMaterial({
           color,
           transparent: true,
@@ -823,7 +816,7 @@ export function VectorGraph3D({
       </div>
       <div
         ref={containerRef}
-        className="w-full border border-border cursor-grab active:cursor-grabbing"
+        className="w-full cursor-grab active:cursor-grabbing"
         style={{ height: 550 }}
       />
       {/* Tooltip */}
@@ -1396,7 +1389,7 @@ export function VectorBrowserView({
           <Button
             ref={searchButton.ref}
             {...searchButton.agentProps}
-            variant="default"
+            variant="outline"
             size="sm"
             onClick={handleSearch}
           >
@@ -1459,13 +1452,13 @@ export function VectorBrowserView({
               type="button"
               key={mem.id || `${mem.content.slice(0, 30)}-${mem.createdAt}`}
               onClick={() => openDetail(mem)}
-              className={`flex w-full items-center gap-3 rounded-sm border px-3 py-2.5 text-left transition-colors ${
+              className={`flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-left transition-colors ${
                 isActive
-                  ? "border-accent/45 bg-accent/12"
-                  : "border-border/40 bg-card/40 hover:border-border/60 hover:bg-bg-hover"
+                  ? "bg-accent/12 text-txt"
+                  : "hover:bg-bg-hover"
               }`}
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg/50 text-xs font-semibold uppercase text-muted">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-bg-muted/55 text-xs font-semibold uppercase text-muted">
                 {mem.type && mem.type !== "undefined"
                   ? mem.type.slice(0, 1)
                   : "M"}

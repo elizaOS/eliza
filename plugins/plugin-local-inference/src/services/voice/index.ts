@@ -1,4 +1,18 @@
 export {
+	type AttributedTurn,
+	type AttributedTurnListener,
+	type AttributionPipelineLike,
+	AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
+	AudioFrameConsumer,
+	type AudioFrameConsumerConfig,
+	type AudioFrameConsumerDeps,
+	AudioFrameDecodeError,
+	type AudioFrameEvent,
+	decodeAudioFramePcm,
+	type RuntimeEventSink,
+	type VadSegmenter,
+} from "./audio-frame-consumer";
+export {
 	BargeInController,
 	type BargeInControllerConfig,
 	type BargeInListener,

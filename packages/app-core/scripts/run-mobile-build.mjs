@@ -1250,15 +1250,18 @@ function reconcilePluginManifestWithGradle(targetAssets) {
       .replace(/@/g, "")
       .replace(/\//g, "-");
   // When ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 the llama-cpp-capacitor CMake builds
-  // a no-op stub (`ELIZA_SKIP_MTP_ANDROID_LIB`). That stub *registers* fine but
-  // throws java.lang.UnsatisfiedLinkError on its first native call
-  // (LlamaCpp.toggleNativeLog during the WebView device-bridge init) — an
-  // UNCAUGHT exception that kills the whole app process (SIG 9), which tears
-  // down the on-device agent and any in-flight chat turn. Drop the stub from the
-  // manifest so it never registers: the device-bridge import then fails as a
-  // catchable "LlamaCpp plugin not implemented" JS error instead of a native
-  // crash. Agent-side local inference (ELIZA_LOCAL_LLAMA, libllama via bun:ffi)
-  // does NOT use this Capacitor plugin, so dropping the stub costs nothing.
+  // a no-op stub (`ELIZA_SKIP_MTP_ANDROID_LIB`). The stub registers and
+  // System.loadLibrary()s fine, but its JNI methods have no implementation, so a
+  // native call (LlamaCpp.toggleNativeLog during WebView device-bridge init)
+  // raises java.lang.UnsatisfiedLinkError. The call site is now defended — the
+  // patches/llama-cpp-capacitor@0.1.5.patch hardening makes LlamaCpp.toggleNativeLog
+  // catch Throwable and reject the Capacitor call instead of letting the Error
+  // escape to crash MainActivity — so registering the stub no longer kills the
+  // app. We still drop it from the manifest here because a stub Capacitor plugin
+  // is pure dead weight: agent-side local inference (ELIZA_LOCAL_LLAMA, libllama
+  // via bun:ffi) does NOT use this Capacitor plugin, so the device-bridge import
+  // failing as a catchable "LlamaCpp plugin not implemented" JS error costs
+  // nothing and keeps the JS↔native surface honest.
   const stubLlamaCpp =
     process.env.ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB === "1" ||
     process.env.elizaSkipForkLlamaLib === "true";

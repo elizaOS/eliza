@@ -236,9 +236,6 @@ function OrchestratorList({
       ) : null}
 
       <HStack gap={1} wrap>
-        <Button grow={1} agent="create" onPress={dispatch("create")}>
-          New task
-        </Button>
         <Button
           variant="outline"
           tone="default"
