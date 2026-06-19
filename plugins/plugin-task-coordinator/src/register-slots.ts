@@ -12,7 +12,7 @@
  * task-coordinator depend on app-core for hooks, types, and the client.
  */
 
-import { registerTaskCoordinatorSlots } from "@elizaos/ui";
+import { registerTaskCoordinatorSlots, registerTaskWidget } from "@elizaos/ui";
 import { CodingAgentControlChip } from "./CodingAgentControlChip.js";
 import { CodingAgentSettingsSection } from "./CodingAgentSettingsSection.js";
 import { CodingAgentTasksPanel } from "./CodingAgentTasksPanel.js";
@@ -24,3 +24,7 @@ registerTaskCoordinatorSlots({
   CodingAgentTasksPanel,
   PtyConsoleBase,
 });
+
+// The orchestrator owns the in-chat task widget: a reply's `[TASK:<id>]` marker
+// renders the live task card only when this plugin is loaded.
+registerTaskWidget();

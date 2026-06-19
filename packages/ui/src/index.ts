@@ -174,9 +174,18 @@ export * from "./components/apps/surfaces/registry";
 export * from "./components/apps/surfaces/types";
 export { resolveCharacterGreetingAnimation } from "./components/character/character-greeting";
 export {
+  getInlineWidget,
+  getInlineWidgets,
+  type InlineWidgetContext,
+  type InlineWidgetDefinition,
+  type InlineWidgetMatch,
+  registerInlineWidget,
+} from "./components/chat/widgets/inline-registry";
+export {
   EmptyWidgetState,
   WidgetSection,
 } from "./components/chat/widgets/shared";
+export { registerTaskWidget } from "./components/chat/widgets/task-widget";
 export type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
