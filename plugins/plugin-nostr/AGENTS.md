@@ -41,6 +41,7 @@ plugins/plugin-nostr/
       index.ts                Re-exports providers
     __tests__/
       accounts.test.ts        Unit tests for account resolution
+      service-hardening.test.ts  Unit tests for service hardening / edge cases
   auto-enable.ts              shouldEnable() hook read by the plugin auto-enable engine
 ```
 

@@ -48,6 +48,7 @@ plugins/plugin-google-chat/
     types.ts                       Core interfaces, enums, error classes, utility functions
     actions/index.ts               Empty module (messaging routes through MessageConnector)
     providers/index.ts             Empty module
+    accounts.test.ts               Vitest tests for account config resolution
     connector.test.ts              Vitest tests for connector behavior
   auto-enable.ts                   shouldEnable() — checked by plugin-auto-enable-engine at boot
   package.json

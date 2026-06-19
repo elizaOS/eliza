@@ -1130,6 +1130,9 @@ export function SettingsPanel({
 
   // Admin — real provider models for the per-user "Allowed models" list.
   const [models, setModels] = useState<ProviderModelRecord[]>([]);
+  const [localOnly, setLocalOnly] = useState<boolean>(() =>
+    readPref<boolean>("local-only-mode", false),
+  );
 
   // Services — collapsed/expanded state of the Local/API add sections.
   const [openLocal, setOpenLocal] = useState(false);
@@ -1229,6 +1232,14 @@ export function SettingsPanel({
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [rebinding, persistKeybinds]);
+
+  const persistLocalOnly = useCallback((next: boolean) => {
+    setLocalOnly(next);
+    writePref("local-only-mode", next);
+    window.dispatchEvent(
+      new CustomEvent("odysseus:local-only-mode-change", { detail: next }),
+    );
+  }, []);
 
   const persistVis = useCallback((next: Record<string, boolean>) => {
     setVis(next);
@@ -1574,6 +1585,32 @@ export function SettingsPanel({
                     <span className="od-settings-value">
                       {modelPlugins.length}
                     </span>
+                  </div>
+                </div>
+                <div className="od-settings-card">
+                  <CardTitle icon={ICON_WRENCH}>Inference Mode</CardTitle>
+                  <Sub>
+                    Force all model slots to use only local inference. Disables
+                    cloud fallback entirely — requests fail if a local model is
+                    not available for that slot.
+                  </Sub>
+                  <div className="od-vis-toggles">
+                    <button
+                      type="button"
+                      className="od-vis-row"
+                      aria-pressed={localOnly}
+                      onClick={() => persistLocalOnly(!localOnly)}
+                    >
+                      <span className="od-vis-label">Local only mode</span>
+                      <span
+                        className={`od-vis-switch${localOnly ? " on" : ""}`}
+                      />
+                    </button>
+                  </div>
+                  <div className="od-settings-hint" style={{ marginTop: 6 }}>
+                    Persisted to localStorage. To enforce this at the server
+                    level (survives restarts), set{" "}
+                    <code>ELIZA_LOCAL_ONLY=1</code> in your environment.
                   </div>
                 </div>
                 <div className="od-settings-note">
