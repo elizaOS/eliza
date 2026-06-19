@@ -19,8 +19,8 @@ import type {
   SensitiveRequestWithEvents,
 } from "../../db/repositories/sensitive-requests";
 import {
-  SensitiveRequestsService,
   type SensitiveRequestsRepositoryLike,
+  SensitiveRequestsService,
 } from "./sensitive-requests";
 
 const ORG_ID = "00000000-0000-4000-8000-000000000001";
@@ -179,9 +179,9 @@ describe("SensitiveRequestsService — token-actor paths", () => {
       { type: "user", userId: "user-1", organizationId: ORG_ID },
     );
 
-    await expect(
-      service.getPublicByToken(created.request.id, "sr_wrong-token"),
-    ).rejects.toThrow(/Invalid or expired sensitive request token/);
+    await expect(service.getPublicByToken(created.request.id, "sr_wrong-token")).rejects.toThrow(
+      /Invalid or expired sensitive request token/,
+    );
   });
 
   test("submit with a token and no actor succeeds when the link is not authenticated", async () => {
