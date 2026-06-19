@@ -149,8 +149,10 @@ function DetailList({
   children: ReactNode;
 }) {
   return (
-    <div className="border-t border-border/40 pt-2.5">
-      <div className="mb-2 text-sm font-medium text-muted-strong">{title}</div>
+    <div className="space-y-1.5">
+      <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
+        {title}
+      </div>
       {children}
     </div>
   );
@@ -223,7 +225,7 @@ function ThreadDetailContent({
   const pendingDecisions = (detail.pendingDecisions ?? []).slice(-4).reverse();
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-3 text-2xs text-muted">
         <span>
           {t("codingagenttaskspanel.sessionsCount", {
@@ -246,8 +248,8 @@ function ThreadDetailContent({
       </div>
 
       {detail.acceptanceCriteria && detail.acceptanceCriteria.length > 0 ? (
-        <div>
-          <div className="mb-1 text-sm font-medium text-muted-strong">
+        <div className="space-y-1.5">
+          <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
             {t("codingagenttaskspanel.acceptance", {
               defaultValue: "Acceptance",
             })}
@@ -811,7 +813,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         data-testid="task-coordinator-panel"
       >
         {detailError ? (
-          <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+          <div className="rounded-md bg-danger/10 px-2 py-1.5 text-xs text-danger">
             {t("codingagenttaskspanel.loadTaskDetailFailed", {
               defaultValue: "Failed to load task detail: {{error}}",
               error: detailError,
@@ -819,7 +821,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
           </div>
         ) : null}
         {mutationError ? (
-          <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+          <div className="rounded-md bg-danger/10 px-2 py-1.5 text-xs text-danger">
             {mutationError}
           </div>
         ) : null}
@@ -894,7 +896,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
       />
 
       {loadError ? (
-        <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="rounded-md bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {t("codingagenttaskspanel.loadThreadsFailed", {
             defaultValue: "Failed to load task threads: {{error}}",
             error: loadError,
@@ -902,7 +904,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         </div>
       ) : null}
       {mutationError ? (
-        <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="rounded-md bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {mutationError}
         </div>
       ) : null}
@@ -937,7 +939,8 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
             defaultValue: "No coding tasks yet",
           })}
           hint={t("codingagenttaskspanel.empty.hint", {
-            defaultValue: "Ask me to start a coding task and it will appear here.",
+            defaultValue:
+              "Ask me to start a coding task and it will appear here.",
           })}
         />
       )}
