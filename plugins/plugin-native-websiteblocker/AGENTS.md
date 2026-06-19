@@ -27,7 +27,8 @@ No elizaOS `Plugin` object. No actions, providers, evaluators, services, or rout
 
 ```
 src/
-  index.ts           Plugin registration via registerPlugin("ElizaWebsiteBlocker")
+  index.ts           Plugin registration via registerPlugin("ElizaWebsiteBlocker");
+                       re-exports all definitions and backend exports
   definitions.ts     All exported TS types: WebsiteBlockerPlugin interface, options, result unions
   web.ts             WebsiteBlockerWeb — browser impl; delegates to Eliza HTTP API
                        GET  /api/website-blocker          → getStatus
@@ -36,6 +37,10 @@ src/
                        GET  /api/permissions/website-blocking              → checkPermissions
                        POST /api/permissions/website-blocking/request      → requestPermissions
                        POST /api/permissions/website-blocking/open-settings → openSettings
+  backend.ts         NativeWebsiteBlockerBackend adapter — wraps the Capacitor plugin as the
+                       backend interface that @elizaos/plugin-blocker dispatches to; exports
+                       createNativeWebsiteBlockerBackend() factory and NativeWebsiteBlockerBackend
+                       interface
 
 android/src/main/java/ai/eliza/plugins/websiteblocker/
   WebsiteBlockerPlugin.kt      Capacitor @CapacitorPlugin("ElizaWebsiteBlocker"); all PluginMethods

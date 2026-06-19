@@ -48,6 +48,7 @@ plugins/plugin-native-system/
     index.ts          Entry point; calls registerPlugin("ElizaSystem") and re-exports definitions
     definitions.ts    All TypeScript types and the SystemPlugin interface
     web.ts            Web fallback (SystemWeb extends WebPlugin); returns fallback data or throws
+    web.test.ts       Vitest unit tests for the web fallback layer
   android/
     src/main/
       AndroidManifest.xml                        Declares MODIFY_AUDIO_SETTINGS + WRITE_SETTINGS
@@ -66,9 +67,8 @@ Only scripts from `package.json`:
 ```bash
 bun run --cwd plugins/plugin-native-system build          # clean + tsc + rollup
 bun run --cwd plugins/plugin-native-system clean          # remove dist/
+bun run --cwd plugins/plugin-native-system test           # vitest run (web layer unit tests)
 ```
-
-No test script is defined in this package.
 
 ## Config / Env Vars
 
@@ -104,4 +104,4 @@ Use `notifyListeners("eventName", data)` in the Kotlin plugin and `System.addLis
 - **WRITE_SETTINGS is a special permission** — it cannot be requested via `requestPermissions`; the user must be redirected to `openWriteSettings()`. Check `canWriteSettings` in the `DeviceSettingsStatus` response before calling `setScreenBrightness`.
 - **Role queries require Android 10+** — `getStatus()` returns an empty `roles` array on Android < 10 (it does not reject). `requestRole()` rejects on Android < 10.
 - **Build output** — `dist/esm/` is produced by `tsc`, then Rollup bundles it to `dist/plugin.js` (IIFE) and `dist/plugin.cjs.js` (CJS). The Android AAR is built separately by Gradle inside the host Capacitor project.
-- **No test suite** — there are no unit or integration tests in this package. Changes to the Android Kotlin code require manual device testing or Android emulator verification.
+- **Test suite** — `src/web.test.ts` contains Vitest unit tests for the web fallback layer. Run with `bun run --cwd plugins/plugin-native-system test`. Android Kotlin code still requires manual device testing or Android emulator verification.

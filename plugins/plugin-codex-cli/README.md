@@ -42,6 +42,7 @@ CODEX_BASE_URL=https://chatgpt.com/backend-api/codex # must target chatgpt.com o
 CODEX_MODEL=gpt-5.5
 CODEX_JITTER_MS_MAX=200
 CODEX_ORIGINATOR=codex_cli_rs
+CODEX_USER_AGENT=codex_cli_rs/0.124.0
 ```
 
 ## Usage

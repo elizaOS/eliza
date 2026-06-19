@@ -86,7 +86,7 @@ src/
 
 ## Commands
 
-Scripts from `package.json` (no test script is defined):
+Scripts from `package.json`:
 
 ```bash
 bun run --cwd plugins/plugin-clawville build       # build:js + build:views + build:types
@@ -94,6 +94,7 @@ bun run --cwd plugins/plugin-clawville build:js    # tsup (ESM)
 bun run --cwd plugins/plugin-clawville build:views # Vite views bundle (dist/views/bundle.js)
 bun run --cwd plugins/plugin-clawville build:types # tsc --noCheck declaration emit
 bun run --cwd plugins/plugin-clawville clean       # rm -rf dist
+bun run --cwd plugins/plugin-clawville test        # vitest run
 ```
 
 To test against a local ClawVille backend, set

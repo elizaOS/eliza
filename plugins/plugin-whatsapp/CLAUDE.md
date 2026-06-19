@@ -44,6 +44,7 @@ plugins/plugin-whatsapp/
     accounts.ts                Multi-account resolution: resolveWhatsAppAccount, listEnabledWhatsAppAccounts
     pairing-service.ts         WhatsAppPairingSession — Baileys QR pairing state machine
     normalize.ts               Phone/JID normalization utilities (normalizeE164, chunkWhatsAppText, etc.)
+    media.ts                   Media URL validation helpers (assertValidWhatsAppMediaLink)
     types.ts                   Raw transport types (NormalizedMessage, WhatsAppWebhookEvent, etc.)
     webhook-auth.ts            X-Hub-Signature-256 verification helper
     client.ts                  WhatsAppClient — Cloud API HTTP client
@@ -133,6 +134,6 @@ Configure multiple accounts under `character.settings.whatsapp.accounts.<id>` us
 - **Webhook security:** Cloud API webhook POSTs are rejected without a valid `X-Hub-Signature-256` (uses `WHATSAPP_APP_SECRET`). The GET verification route is public by design (Meta requires it).
 - **Bundle safety:** `src/index.ts` contains a large `__bundle_safety_*` array that force-binds re-exported names into the module init. Do not remove it — Bun's tree-shaker collapses re-exports into empty inits on mobile without it.
 - **External deps:** `@whiskeysockets/baileys` (Baileys WS), `qrcode` / `qrcode-terminal` (QR display), `pino` (Baileys logger). All are runtime deps. No native binaries.
-- **Text chunking:** Outbound text is split into chunks of ≤4096 chars by default (see `WHATSAPP_TEXT_CHUNK_LIMIT`). Groups can override `chunkMode` to `"newline"`.
+- **Text chunking:** Outbound text is split into chunks of ≤4096 chars by default (`WHATSAPP_TEXT_CHUNK_LIMIT` constant in `src/normalize.ts`). Groups can override `chunkMode` to `"newline"`.
 - **Pairing session limit:** Maximum 10 concurrent Baileys QR pairing sessions (`MAX_PAIRING_SESSIONS` in `setup-routes.ts`).
 - For repo-wide architecture rules, logger conventions, and ESM requirements see the root `AGENTS.md`.

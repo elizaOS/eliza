@@ -221,7 +221,7 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 
 ## Status
 
-`2.0.3-beta.0` — package. ACP subprocess sessions are the only task-agent spawn path. The native ACP client is the default (`ELIZA_ACP_TRANSPORT=native`).
+`2.0.3-beta.14` — package. ACP subprocess sessions are the only task-agent spawn path. The native ACP client is the default (`ELIZA_ACP_TRANSPORT=native`).
 
 ## Contributing
 

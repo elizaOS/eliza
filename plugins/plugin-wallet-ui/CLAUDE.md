@@ -32,12 +32,25 @@ src/
   register.ts              Side-effect entry: imports register-routes.ts
   register-routes.ts       Calls registerAppRoutePluginLoader, registerAppShellPage,
                            registerBuiltinWidgets — must run once at boot
+  register-terminal-view.tsx  Registers the TUI/terminal standalone view entry
   plugin.ts                walletAppPlugin Plugin descriptor (views, widgets, navTabs)
   InventoryView.tsx         Main full-page wallet view: balances, NFTs, trading profile,
-                           market overview, timeline. ~2800 lines; also exports
-                           InventoryTuiView (TUI surface) and interact (TUI input handler).
+                           market overview, timeline. ~2578 lines; also exports
+                           InventoryTuiView (TUI surface).
+  InventoryView.helpers.ts  Shared wallet data helpers (loadWalletTuiState,
+                           resolveWalletAddresses) used by InventoryView.tsx and
+                           InventoryView.interact.ts; kept separate for Fast-Refresh
+                           compatibility.
+  InventoryView.interact.ts  The `interact` TUI capability handler, split out of
+                           InventoryView.tsx so that file exports only React components
+                           and stays Fast-Refresh-compatible. Re-exported via
+                           wallet-view-bundle.ts.
   wallet-rpc.ts            Re-exports buildWalletRpcUpdateRequest /
                            resolveInitialWalletRpcSelections from @elizaos/shared
+  wallet-view-bundle.ts    View-bundle entry that re-exports components and `interact`
+                           for the standalone Vite bundle (dist/views/bundle.js).
+  components/
+    InventorySpatialView.tsx  Spatial/XR inventory view component.
   inventory/
     chainConfig.ts         CHAIN_CONFIGS registry (8 chains), all URL/address/gas
                            helpers: getChainConfig, getExplorerTokenUrl,
@@ -105,7 +118,8 @@ Two localStorage keys are used for user preferences (no config required):
 - `src/index.ts` and `src/ui.ts` both run the `register-routes.ts` side-effect at import time (`index.ts` re-exports `register.ts` + `ui.ts`). Importing either registers the shell page and widget. For component-only consumption without registration, import the specific component module directly (e.g. `./InventoryView.tsx`).
 - `register-routes.ts` must execute exactly once. Duplicate registrations cause duplicate shell pages.
 - The views bundle (`dist/views/bundle.js`) is built separately by `build:views` using Vite, not tsup. The tsup build only handles the plugin entry; both steps must run for a complete dist.
-- `InventoryView.tsx` is a single large file (~2800 lines). All wallet-page local types, formatters, and sub-components live there — do not split without verifying the Vite views bundle still resolves exports correctly.
+- `InventoryView.tsx` is a single large file (~2578 lines). All wallet-page local types, formatters, and sub-components live there — do not split without verifying the Vite views bundle still resolves exports correctly.
+- `InventoryView.interact.ts` is intentionally separate from `InventoryView.tsx` so the component file exports only React components and remains Fast-Refresh-compatible. The view bundle re-exports `interact` via `wallet-view-bundle.ts`.
 - `wallet-rpc.ts` is a pure re-export from `@elizaos/shared`. Do not add logic here.
 - Token logos are fetched from the TrustWallet/assets GitHub CDN. NFT images may be IPFS/Arweave URIs — always pass through `normalizeInventoryImageUrl` before rendering.
 - The `walletEnabled` flag from `useApp()` gates the sidebar widget. When `walletEnabled === false`, the widget renders `null`.

@@ -39,9 +39,15 @@ All routes are mounted under `/api/hyperliquid/`. Public market reads require no
 |---|---|---|
 | GET | `/api/hyperliquid/status` | Credential and readiness status |
 | GET | `/api/hyperliquid/markets` | All perpetual markets |
+| GET | `/api/hyperliquid/funding` | Current funding rates and asset contexts |
 | GET | `/api/hyperliquid/positions` | Account perp positions |
 | GET | `/api/hyperliquid/orders` | Open orders |
-| POST | `/api/hyperliquid/*` | All write routes — returns 501 (execution disabled) |
+| POST | `/api/hyperliquid/orders/open` | Disabled — returns 501 |
+| POST | `/api/hyperliquid/orders/close` | Disabled — returns 501 |
+| POST | `/api/hyperliquid/leverage` | Disabled — returns 501 |
+| POST | `/api/hyperliquid/margin` | Disabled — returns 501 |
+| POST | `/api/hyperliquid/bridge` | Disabled — returns 501 |
+| POST | `/api/hyperliquid/tpsl` | Disabled — returns 501 |
 
 ## Configuration
 
