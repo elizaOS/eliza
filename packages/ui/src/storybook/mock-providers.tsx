@@ -32,6 +32,9 @@ const baseMockApp: Partial<AppContextValue> = {
   companionHalfFramerateMode: "when_saving_power",
   dismissBackendDisconnectedBanner: noop,
   dismissSystemWarning: noop,
+  actionBanner: null,
+  showActionBanner: noop,
+  dismissActionBanner: noop,
   navigation: {
     scheduleAfterTabCommit: (fn: () => void) => {
       queueMicrotask(fn);

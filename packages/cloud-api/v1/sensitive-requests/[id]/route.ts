@@ -1,5 +1,16 @@
 /**
- * Authenticated sensitive request detail.
+ * Sensitive request detail.
+ *
+ * GET /api/v1/sensitive-requests/:id              Authed org-member view (full
+ *                                                 record + audit trail).
+ * GET /api/v1/sensitive-requests/:id?token=...    Public, token-gated view for
+ *                                                 the sessionless out-of-band
+ *                                                 recipient (redacted, no audit).
+ *
+ * The hosted request page is visited by a recipient who has no Cloud session;
+ * they prove access with the single-use token from the link. When a token is
+ * present we read the redacted public view; otherwise we require an authed
+ * org member.
  */
 
 import { Hono } from "hono";
@@ -33,11 +44,20 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id");
     if (!id)
       return c.json({ success: false, error: "Missing request id" }, 400);
 
+    const token = c.req.query("token");
+    if (token) {
+      const request = await sensitiveRequestsService.getPublicByToken(
+        id,
+        token,
+      );
+      return c.json({ success: true, request });
+    }
+
+    const user = await requireUserOrApiKeyWithOrg(c);
     const request = await sensitiveRequestsService.get(id, actorFromUser(user));
     return c.json({ success: true, request });
   } catch (error) {

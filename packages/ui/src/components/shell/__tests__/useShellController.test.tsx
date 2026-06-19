@@ -61,7 +61,12 @@ const WARMING_STATUS = { state: "starting", canRespond: false };
 const appMock = vi.hoisted(() => ({
   value: {
     startupCoordinator: { phase: "ready" },
-    conversationMessages: [],
+    conversationMessages: [] as Array<{
+      id: string;
+      role: string;
+      text: string;
+      timestamp: number;
+    }>,
     chatSending: false,
     sendChatText: vi.fn(),
     agentStatus: { state: "running", canRespond: true },
@@ -236,6 +241,53 @@ describe("useShellController — voice capture routing", () => {
     expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
       channelType: "VOICE_DM",
     });
+  });
+
+  it("does NOT respond to pure thinking-noise in always-on (shouldRespond gate)", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    // Pure disfluency the open mic picked up → suppressed, not sent.
+    act(() => fireFinalTranscript("um uh"));
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+    // A genuine request still goes through.
+    act(() => fireFinalTranscript("what time is it?"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+  });
+
+  it("HOLDS a slow-speaker mid-clause turn and sends only the completed turn (EOT)", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    // An utterance that trails off mid-clause is HELD, not sent.
+    act(() => fireFinalTranscript("schedule a meeting with"));
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+    // The speaker resumes after the pause → append → complete → send the FULL turn.
+    act(() => fireFinalTranscript("bob tomorrow"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
+      "schedule a meeting with bob tomorrow",
+    );
+  });
+
+  it("suppresses a voice turn that echoes the agent's recent reply (self-trigger)", async () => {
+    appMock.value.conversationMessages = [
+      {
+        id: "a1",
+        role: "assistant",
+        text: "it is sunny today",
+        timestamp: Date.now(),
+      },
+    ];
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    // The open mic hears the agent's own TTS played back → must not re-respond.
+    act(() => fireFinalTranscript("it is sunny today"));
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
   });
 
   it("hands-free loop re-opens the mic after a turn ends", async () => {

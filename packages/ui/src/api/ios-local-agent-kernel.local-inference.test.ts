@@ -38,9 +38,12 @@ type MockOptions = {
 };
 
 function eliza1MobileManifest(modelId = "eliza-1-2b"): Record<string, unknown> {
+  // Must match the catalog's ggufFile for the tier — the kernel's manifest
+  // validation requires files.text to contain model.ggufFile exactly. The 4B
+  // bundle ships the 128k GGUF (run at a 64k context on mobile via load args).
   const textPath =
     modelId === "eliza-1-4b"
-      ? "text/eliza-1-4b-64k.gguf"
+      ? "text/eliza-1-4b-128k.gguf"
       : "text/eliza-1-2b-128k.gguf";
   const drafterPath =
     modelId === "eliza-1-4b" ? "mtp/drafter-4b.gguf" : "mtp/drafter-2b.gguf";
@@ -226,9 +229,15 @@ async function loadKernel(options: MockOptions = {}): Promise<KernelModule> {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string | URL | Request) => {
-      const modelId = String(input).includes("eliza-1-4b")
-        ? "eliza-1-4b"
-        : "eliza-1-2b";
+      // The kernel builds a tier-agnostic manifest URL (eliza-1.manifest.json),
+      // so the only signal is an explicit 2B id in the URL. Everything else —
+      // including the recommended-default download — resolves to the 4B
+      // manifest, matching the shipped mobile default.
+      const url = String(input);
+      const modelId =
+        url.includes("eliza-1-2b") || url.includes("/2b/")
+          ? "eliza-1-2b"
+          : "eliza-1-4b";
       return Response.json(eliza1MobileManifest(modelId), {
         status: 200,
       });
@@ -310,19 +319,19 @@ describe("iOS local-agent local inference flow", () => {
 
     expect(reply.localInference).toMatchObject({
       status: "downloading",
-      modelId: "eliza-1-2b",
+      modelId: "eliza-1-4b",
     });
     expect(reply.text.toLowerCase()).toContain("downloading");
 
     await eventually(() => {
       const filenames = downloadModel.mock.calls.map((call) => call[1]);
-      expect(filenames).toContain("eliza-1-2b.manifest.json");
-      expect(filenames).toContain("eliza-1-2b-128k.gguf");
+      expect(filenames).toContain("eliza-1-4b.manifest.json");
+      expect(filenames).toContain("eliza-1-4b-128k.gguf");
       expect(mockState.hashFile).toHaveBeenCalledWith(
-        "/models/eliza-1-2b.manifest.json",
+        "/models/eliza-1-4b.manifest.json",
       );
       expect(mockState.hashFile).toHaveBeenCalledWith(
-        "/models/eliza-1-2b-128k.gguf",
+        "/models/eliza-1-4b-128k.gguf",
       );
     });
   }, 30_000);
@@ -347,7 +356,7 @@ describe("iOS local-agent local inference flow", () => {
     expect(greeting.text.toLowerCase()).toContain("downloading");
     expect(greeting.localInference).toMatchObject({
       status: "downloading",
-      modelId: "eliza-1-2b",
+      modelId: "eliza-1-4b",
     });
   });
 
@@ -362,13 +371,13 @@ describe("iOS local-agent local inference flow", () => {
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/downloads", {
-      modelId: "eliza-1-2b",
+      modelId: "eliza-1-4b",
     });
 
     await eventually(async () => {
       const response = await kernel.handleIosLocalAgentRequest(
         new Request(
-          "http://127.0.0.1:31337/api/local-inference/downloads/eliza-1-2b",
+          "http://127.0.0.1:31337/api/local-inference/downloads/eliza-1-4b",
         ),
       );
       const payload = (await response.json()) as {
@@ -404,7 +413,7 @@ describe("iOS local-agent local inference flow", () => {
 
     expect(reply.localInference).toMatchObject({
       status: "downloading",
-      modelId: "eliza-1-2b",
+      modelId: "eliza-1-4b",
     });
   });
 

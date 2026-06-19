@@ -50,13 +50,27 @@ src/
   plugin.ts                 Plugin object: actions, services, routes, views, dispose
   register.ts               Side-effect: imports hyperliquid-app (registers overlay app)
   register-routes.ts        Side-effect: calls registerAppRoutePluginLoader
+  register-terminal-view.tsx  Exports registerHyperliquidTerminalView / setHyperliquidTerminalSnapshot
   hyperliquid-app.ts        Overlay app definition + registerOverlayApp call
+  hyperliquid-app.test.ts   Tests for overlay app registration
+  hyperliquid-app-view-bundle.ts  View bundle entry helpers
   hyperliquid-contracts.ts  All shared types + string constants (HYPERLIQUID_API_BASE etc.)
   routes.ts                 handleHyperliquidRoute — actual HTTP logic + Hyperliquid Info API client
+  routes.contract.test.ts   Contract-level route tests
+  routes.real.test.ts       Real-API route integration tests
   client.ts                 Extends ElizaClient prototype with hyperliquidStatus/Markets/Positions/Orders
+  ui.ts                     Public re-export barrel (HyperliquidAppView, interact, useHyperliquidState, hyperliquidApp)
   useHyperliquidState.ts    React hook; calls all four read endpoints, manages loading/error state
+  useHyperliquidState.test.ts  Tests for the hook
   HyperliquidAppView.tsx    React UI components: HyperliquidAppView (standard + XR) and HyperliquidTuiView (TUI)
+  HyperliquidAppView.interact.ts  Interaction helpers for HyperliquidAppView
   HyperliquidTuiView.test.tsx  Unit test for TUI view
+  HyperliquidVisualCopy.test.ts  Visual copy tests
+  components/
+    HyperliquidSpatialView.tsx   Spatial/XR view component; exports HyperliquidSpatialView, HyperliquidSnapshot, HyperliquidStatusSnapshot
+    HyperliquidSpatialView.test.tsx  Tests for spatial view
+    contract.ts              Component contract definitions
+  __fixtures__/              Test fixtures
   actions/
     perpetual-market.ts     PERPETUAL_MARKET action + PerpetualMarketService + provider pattern
 __tests__/
@@ -111,5 +125,6 @@ The action (`PERPETUAL_MARKET`) calls the agent's local API via `resolveDesktopA
 - **Context gating:** `PERPETUAL_MARKET` only fires when `state` contains a `finance`, `crypto`, `trading`, or `payments` selected context, OR when the message contains recognized keywords in ~8 languages. Do not remove the keyword list without updating tests.
 - **`HyperliquidClient`** is created by patching `ElizaClient.prototype` at import time (`src/client.ts`). Import `"./client"` as a side effect before calling the extended methods.
 - **Overlay app registration** (`src/hyperliquid-app.ts`) happens as a side effect when `src/register.ts` is imported. The plugin entrypoint exports `src/register.ts` so this is automatic when the plugin loads.
+- **Terminal view registration** (`src/register-terminal-view.tsx`) must be called explicitly via `registerHyperliquidTerminalView()` to wire the TUI view into the terminal registry.
 - Upstream API: `https://api.hyperliquid.xyz/info` (POST, public). No API key required for market/position reads.
 - See root `AGENTS.md` for repo-wide architecture rules, logger conventions, ESM/naming standards, and git workflow.

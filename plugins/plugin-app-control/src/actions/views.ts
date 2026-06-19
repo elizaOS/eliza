@@ -38,6 +38,7 @@ import {
 	runViewsDelete,
 } from "./views-delete.js";
 import { runViewsEdit } from "./views-edit.js";
+import { isViewIconRequest, runViewsIcon } from "./views-icon.js";
 import { runViewsList } from "./views-list.js";
 import { runViewsSearch, scoreView } from "./views-search.js";
 import { resolveIntentView, runViewsShow } from "./views-show.js";
@@ -54,6 +55,7 @@ export type ViewsMode =
 	| "interact"
 	| "create"
 	| "edit"
+	| "icon"
 	| "delete"
 	| "remove"
 	| "pin"
@@ -73,6 +75,7 @@ const MODES: readonly ViewsMode[] = [
 	"interact",
 	"create",
 	"edit",
+	"icon",
 	"delete",
 	"remove",
 	"pin",
@@ -297,6 +300,21 @@ function inferMode(
 		readStringOption(options, "action") ?? readStringOption(options, "mode");
 	const trimmed = viewRequestText(text).trim();
 	const normalizedExplicit = explicit?.trim().toLowerCase().replace(/-/g, "_");
+	// An explicit request to (re)generate a view's icon/image wins over the
+	// generic edit/create/update verbs that share its phrasing — regenerating an
+	// icon is a direct asset write, not a coding-agent edit.
+	if (
+		isViewIconRequest(trimmed, options) &&
+		(!normalizedExplicit ||
+			normalizedExplicit === "icon" ||
+			normalizedExplicit === "edit" ||
+			normalizedExplicit === "create" ||
+			normalizedExplicit === "update" ||
+			normalizedExplicit === "modify" ||
+			normalizedExplicit === "change")
+	) {
+		return "icon";
+	}
 	if (
 		normalizedExplicit === "close" ||
 		normalizedExplicit === "close_view" ||
@@ -1801,6 +1819,11 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"MAKE_VIEW",
 			"EDIT_VIEW",
 			"UPDATE_VIEW",
+			"SET_VIEW_ICON",
+			"CHANGE_VIEW_ICON",
+			"GENERATE_VIEW_ICON",
+			"REGENERATE_VIEW_ICON",
+			"UPDATE_VIEW_IMAGE",
 			"DELETE_VIEW",
 			"REMOVE_VIEW",
 			"REMOVE_PLUGIN",
@@ -1820,9 +1843,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"events",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, and records, pin a view as a desktop tab, open a view in a separate window, request split/tiled layouts across multiple views, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), or delete/uninstall a view plugin.",
+			"Manage and navigate UI views. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, and records, pin a view as a desktop tab, open a view in a separate window, request split/tiled layouts across multiple views, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), regenerate a view's icon/hero image, or delete/uninstall a view plugin.",
 		descriptionCompressed:
-			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins",
+			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero",
 		routingHint:
 			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files/notes, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title.",
 		allowAdditionalParameters: true,
@@ -1832,7 +1855,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "action",
 				description:
-					"Operation: list | current | show | open | close | search | manager | broadcast | interact | pin | window | split | tile | create | edit | delete | remove, or a registered/generated view capability name to resolve through the view catalog.",
+					"Operation: list | current | show | open | close | search | manager | broadcast | interact | pin | window | split | tile | create | edit | icon | delete | remove, or a registered/generated view capability name to resolve through the view catalog.",
 				required: true,
 				schema: {
 					type: "string",
@@ -2057,6 +2080,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			if (
 				mode === "create" ||
 				mode === "edit" ||
+				mode === "icon" ||
 				mode === "delete" ||
 				mode === "remove"
 			) {
@@ -2370,6 +2394,18 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					case "edit": {
 						const views = await client.listViews();
 						return runViewsEdit({
+							runtime,
+							message,
+							options: actionOptions,
+							views,
+							callback,
+							repoRoot: getRepoRoot(),
+						});
+					}
+
+					case "icon": {
+						const views = await client.listViews();
+						return runViewsIcon({
 							runtime,
 							message,
 							options: actionOptions,

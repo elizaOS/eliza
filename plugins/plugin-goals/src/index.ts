@@ -10,22 +10,12 @@ export {
   GoalsRepository,
 } from "./db/goals-repository.ts";
 export {
-  type AlarmInsert,
-  type AlarmRow,
-  alarmsTable,
-  type CheckinInsert,
-  type CheckinRow,
-  checkinsTable,
-  type GoalInsert,
-  type GoalRow,
+  type GoalDefinitionRow,
+  type GoalLinkRow,
+  goalsDbSchema,
   goalsSchema,
-  goalsTable,
-  type ReminderInsert,
-  type ReminderRow,
-  type RoutineInsert,
-  type RoutineRow,
-  remindersTable,
-  routinesTable,
+  lifeGoalDefinitions,
+  lifeGoalLinks,
 } from "./db/schema.ts";
 export * from "./goal-grounding.ts";
 export {

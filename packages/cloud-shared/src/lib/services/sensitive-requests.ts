@@ -392,6 +392,23 @@ export class SensitiveRequestsService {
     });
   }
 
+  /**
+   * Read the redacted public view of a request from a single-use token link.
+   * Used by the sessionless out-of-band recipient (the hosted request page)
+   * to render the form before submitting. The token authenticates the read;
+   * the audit trail is intentionally omitted from the returned view (a token
+   * holder is not an organization member and must not see internal events).
+   */
+  async getPublicByToken(id: string, token: string): Promise<SensitiveRequestPublicView> {
+    const request = await this.expireIfNeeded(await this.loadOrThrow(id));
+    const tokenHash = await sha256Hex(token);
+    if (request.token_hash !== tokenHash) {
+      throw AuthenticationError("Invalid or expired sensitive request token");
+    }
+    await this.recordAudit(request, "request.viewed", undefined, undefined, true);
+    return this.toPublicView(request);
+  }
+
   async submit(params: SubmitSensitiveRequestParams): Promise<SensitiveRequestPrivateView> {
     const request = await this.expireIfNeeded(await this.loadOrThrow(params.id));
     if (request.status !== "pending") {

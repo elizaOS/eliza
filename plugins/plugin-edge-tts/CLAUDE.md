@@ -28,8 +28,6 @@ plugins/plugin-edge-tts/
     index.ts            Main implementation: plugin object, model handler, helpers
     index.node.ts       Node entry — re-exports src/index.ts
     index.browser.ts    Browser-unavailable entry — plugin shape + warning log
-    types/
-      node-edge-tts.d.ts  Hand-written type declarations for node-edge-tts package
   auto-enable.ts        Lightweight auto-enable check (env reads only, no full runtime import)
   index.ts              Barrel — re-exports src/index.ts
   index.node.ts         (root) re-exports src/index.node.ts
@@ -97,6 +95,6 @@ This plugin has a single responsibility (TTS model handler). The typical extensi
 - **Node-only.** The browser build (`src/index.browser.ts`) exports a browser-unavailable plugin shape and warning log. Do not add Node.js file system or WebSocket code to the browser entry point.
 - **Temp file I/O.** `node-edge-tts` writes audio to a temp file (via `mkdtempSync`); the plugin reads it back and cleans up in a `finally` block. If cleanup fails, the error is silently ignored to avoid masking the audio result.
 - **5000-character limit.** Enforced explicitly before calling the TTS service. The upstream service has its own practical limit near this value; errors above it are opaque network failures.
-- **Type declarations.** `node-edge-tts` ships no TypeScript types. The hand-written declarations in `src/types/node-edge-tts.d.ts` are the authoritative type source for this package.
+- **Type declarations.** `node-edge-tts` ships its own TypeScript declarations in its `dist/` folder (`edge-tts.d.ts`, `drm.d.ts`). No hand-written type declarations are needed for this package.
 - **`synthesizeEdgeSpeech`** passes `null` as the runtime to `getEdgeTTSSettings`, so it reads only from `process.env`. Do not call it inside an agent handler where a runtime is available — use `runtime.useModel(ModelType.TEXT_TO_SPEECH, ...)` instead.
 - **Triple build targets.** `build.ts` produces `dist/node/` (ESM), `dist/browser/` (ESM), and `dist/cjs/` (CJS) bundles. The `exports` map in `package.json` selects the right bundle per environment. Keep `index.node.ts` and `index.browser.ts` as thin re-exports; all synthesis logic lives in `src/index.ts` and the browser boundary lives in `src/index.browser.ts`.

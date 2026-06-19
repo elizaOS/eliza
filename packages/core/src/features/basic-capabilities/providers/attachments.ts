@@ -163,8 +163,10 @@ export const attachmentsProvider: Provider = {
 			// (working-memory/attachmentContext), so the read is satisfiable
 			// whenever an IMAGE_DESCRIPTION model is registered.
 			attachment.text ||
-			(attachment.contentType === ContentType.IMAGE &&
-				typeof runtime.getModel(ModelType.IMAGE_DESCRIPTION) === "function")
+			(
+				attachment.contentType === ContentType.IMAGE &&
+					typeof runtime.getModel(ModelType.IMAGE_DESCRIPTION) === "function"
+			)
 				? "available via ATTACHMENT action=read"
 				: "none"
 		}

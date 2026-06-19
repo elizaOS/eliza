@@ -78,9 +78,12 @@ const detent = (p) =>
 // OPEN_HALF_OR_OVER | MAXIMIZED) — the single source the overlay derives.
 const chatState = (p) =>
   p.getByTestId("chat-sheet").getAttribute("data-chat-state");
-// Header buttons (maximize/clear/home/settings) show only at half-or-over.
-const headerButtonCount = (p) =>
-  p.getByTestId("chat-sheet").locator('[data-testid^="chat-full-"]').count();
+// Header buttons (maximize/clear/home/settings) are always mounted (so they can
+// fade + lerp their space), so visibility is the LIVE-height `data-header-shown`
+// flag, not their presence in the DOM.
+const headerShown = async (p) =>
+  (await p.getByTestId("chat-sheet").getAttribute("data-header-shown")) ===
+  "true";
 // The history (thread) is the element whose height animates 0 → half → full;
 // the panel (chat-sheet) also holds the always-present input, so measure the
 // thread for detent heights.
@@ -485,27 +488,28 @@ try {
     await p.close();
   }
 
-  // speaking: assistant voice mute control appears
+  // speaking: the agent is delivering its reply aloud. Voice input is gated while
+  // a reply is in flight, so the trailing control is the STOP (interrupt) — NOT
+  // the mic — and no stray mute/speaker control pops in.
   {
     const p = await ctrl();
     attachConsole(p, sink);
     await p.goto(`${url}?speaking`);
-    await p.waitForSelector('[data-testid="chat-voice-mute"]');
+    await p.waitForSelector('[data-testid="chat-composer-stop"]');
     await p.waitForTimeout(500);
-    assert(await p.getByTestId("chat-voice-mute").isVisible(), "SPEAKING: voice-mute (speaker) button shown");
     assert(
-      (await p.getByTestId("chat-voice-mute").getAttribute("aria-label")) === "mute assistant voice",
-      "SPEAKING: voice-mute labelled 'mute assistant voice'",
+      (await p.getByTestId("chat-composer-mic").count()) === 0,
+      "SPEAKING: mic hidden while a reply is in flight (voice gated)",
+    );
+    assert(
+      await p.getByTestId("chat-composer-stop").isVisible(),
+      "SPEAKING: stop control shown to interrupt the spoken reply",
+    );
+    assert(
+      (await p.getByTestId("chat-voice-mute").count()) === 0,
+      "SPEAKING: no stray voice-mute button shown while the agent speaks",
     );
     await snap(p, "state-speaking");
-    // click it → muted
-    await p.getByTestId("chat-voice-mute").click();
-    await p.waitForTimeout(300);
-    assert(
-      (await p.getByTestId("chat-voice-mute").getAttribute("aria-label")) === "unmute assistant voice",
-      "SPEAKING→MUTE: clicking toggles to 'unmute assistant voice' (active)",
-    );
-    await snap(p, "state-muted");
     await p.close();
   }
 
@@ -1038,6 +1042,56 @@ try {
     await p.close();
   }
 
+  // ── PILL TAP morphs to input (regression): a real TAP (pointerdown+up, no
+  // move) routes through the gesture's onDrag(0) → onTap path, which previously
+  // left draggingRef set so openProgress stayed STUCK at 0 (a visible-but-inert
+  // pill, no input). A synthetic .click() missed it because data-detent flipped
+  // to "collapsed" while the morph never animated — so assert the actual content
+  // opacity reaches ~1 (the input is really formed), not just the detent label.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(500);
+    await gesture(p, -90, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "pill", "PILL-TAP: collapsed to pill first");
+    // Real tap: pointerdown then pointerup at the SAME spot (no move).
+    const pb = await p.getByTestId("chat-pill").boundingBox();
+    const tx = pb.x + pb.width / 2;
+    const ty = pb.y + pb.height / 2;
+    await p.evaluate(
+      ({ tx, ty }) => {
+        const el = document.querySelector('[data-testid="chat-pill"]');
+        const opts = {
+          pointerId: 1,
+          pointerType: "touch",
+          clientX: tx,
+          clientY: ty,
+          bubbles: true,
+        };
+        el.dispatchEvent(new PointerEvent("pointerdown", opts));
+        el.dispatchEvent(new PointerEvent("pointerup", opts));
+      },
+      { tx, ty },
+    );
+    await p.waitForTimeout(SETTLE);
+    const openedOpacity = await p
+      .getByTestId("chat-content")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+    assert(
+      openedOpacity > 0.9,
+      `PILL-TAP: tap animates pill → input, content fully formed (opacity ${openedOpacity})`,
+    );
+    assert(
+      (await detent(p)) === "collapsed",
+      "PILL-TAP: lands in the input (collapsed) state",
+    );
+    await snap(p, "state-pill-tap-opened");
+    await p.close();
+  }
+
   // reduced-motion still opens via flick
   {
     const p = await ctrl();
@@ -1164,7 +1218,7 @@ try {
 
     assert((await chatState(p)) === "INPUT", "STATES: rest is INPUT");
     assert(
-      (await headerButtonCount(p)) === 0,
+      !(await headerShown(p)),
       "STATES: INPUT shows no header buttons",
     );
     await snap(p, "state-INPUT");
@@ -1176,7 +1230,7 @@ try {
       `STATES: flick-up → OPEN_HALF_OR_OVER (got ${await chatState(p)})`,
     );
     assert(
-      (await headerButtonCount(p)) > 0,
+      await headerShown(p),
       "STATES: OPEN_HALF_OR_OVER shows header buttons",
     );
     await snap(p, "state-OPEN_HALF_OR_OVER");
@@ -1210,7 +1264,7 @@ try {
       `STATES: slow free-rest below half → OPEN_UNDER_HALF (got ${await chatState(p)})`,
     );
     assert(
-      (await headerButtonCount(p)) === 0,
+      !(await headerShown(p)),
       "STATES: OPEN_UNDER_HALF hides header buttons",
     );
     await snap(p, "state-OPEN_UNDER_HALF");
@@ -1259,6 +1313,21 @@ try {
       midOpacity > 0.05 && midOpacity < 0.95,
       `PILL-MORPH: content lerps in mid-drag (opacity ${midOpacity})`,
     );
+    // NEVER two pills: the grabber bar and the (identical) pill bar must not both
+    // be visible at any point in the morph. They crossfade through ~0 at the
+    // midpoint — read both live opacities and assert they're never both shown.
+    const grabO = await p
+      .getByTestId("chat-sheet-grabber")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+    const pillO = await p
+      .getByTestId("chat-pill")
+      .evaluate((el) =>
+        Number.parseFloat(getComputedStyle(el.parentElement).opacity),
+      );
+    assert(
+      !(grabO > 0.15 && pillO > 0.15),
+      `PILL-MORPH: never two handle bars at once (grabber ${grabO}, pill ${pillO})`,
+    );
     await snap(p, "transition-pill-to-input-mid-drag");
     await release(p, "mouse");
     await p.waitForTimeout(SETTLE);
@@ -1282,6 +1351,68 @@ try {
     await p.close();
   }
 
+  // ── ROTATION re-settles to a single CLEAN bar (flip-to-side): a viewport SIZE
+  // change must never leave the pill↔input morph stranded mid-crossfade. The
+  // crossfade math already prevents two bars at once, but a rotation that fires
+  // MID-DRAG (rotation often orphans the pointer → draggingRef stuck +
+  // openProgress frozen) would leave a half-formed bar and a stuck drag. Assert
+  // the morph snaps to a clean resting end (one bar at full opacity).
+  {
+    const barOpacities = async (pg) => {
+      const grabO = await pg
+        .getByTestId("chat-sheet-grabber")
+        .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+      const pillO = await pg
+        .getByTestId("chat-pill")
+        .evaluate((el) =>
+          Number.parseFloat(getComputedStyle(el.parentElement).opacity),
+        );
+      return { grabO, pillO, two: grabO > 0.15 && pillO > 0.15 };
+    };
+
+    // Rotate MID-MORPH with the pointer HELD — the orphaned-drag case. Flick to
+    // pill, start a slow pill drag and HOLD it mid-crossfade, then rotate WITHOUT
+    // releasing. The resize must force-settle: pill fully back, grabber gone.
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(500);
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "pill", "ROTATION: collapsed to pill first");
+    await gesture(p, 60, {
+      pointer: "mouse",
+      slow: true,
+      hold: true,
+      steps: 8,
+      target: "chat-pill",
+    });
+    const midContent = await p
+      .getByTestId("chat-content")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+    assert(
+      midContent > 0.05 && midContent < 0.95,
+      `ROTATION: held mid-crossfade before rotating (content ${midContent})`,
+    );
+    await p.setViewportSize({ width: 874, height: 402 }); // rotate to landscape
+    await p.waitForTimeout(SETTLE);
+    {
+      const b = await barOpacities(p);
+      assert(
+        !b.two,
+        `ROTATION: never two bars after rotating mid-morph (grab ${b.grabO}, pill ${b.pillO})`,
+      );
+      assert(
+        b.pillO > 0.85 && b.grabO < 0.15,
+        `ROTATION: morph re-settled to the single pill bar (grab ${b.grabO}, pill ${b.pillO})`,
+      );
+    }
+    await release(p, "mouse");
+    await snap(p, "rotation-mid-morph-resettled");
+    await p.close();
+  }
+
   // ── HEADER tracks the LIVE height (bug 1): dragging the panel below half must
   // HIDE the top buttons MID-DRAG, not keep them on a too-short panel. And the
   // MAXIMIZED enum can never disagree with the full-bleed layout.
@@ -1299,7 +1430,7 @@ try {
     await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     assert(
-      (await headerButtonCount(p)) > 0,
+      await headerShown(p),
       "HEADER-LIVE: header shown at full before the drag",
     );
     // Slow-drag DOWN well below half and HOLD (don't release) — the header must
@@ -1311,7 +1442,7 @@ try {
       steps: 10,
     });
     assert(
-      (await headerButtonCount(p)) === 0,
+      !(await headerShown(p)),
       "HEADER-LIVE: header is HIDDEN mid-drag once the panel renders below half",
     );
     await snap(p, "state-mid-drag-below-half-no-header");
@@ -1333,6 +1464,75 @@ try {
         `HEADER-LIVE: chat-state MAXIMIZED iff data-maximized (state=${cs}, maximized=${max})`,
       );
     }
+    await p.close();
+  }
+
+  // ── STREAMING (bug 2): the in-flight (empty) assistant turn breathes the dots
+  // ANCHORED inside its own bubble, not as a detached "..." sibling — so the
+  // streamed text fills in right there.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(`${url}?streaming`);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(500);
+    // Open the thread so the in-flight assistant bubble is on screen.
+    await gesture(p, 400, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    const dotsInBubble = await p
+      .locator(
+        '[data-testid="thread-line"][data-role="assistant"] [data-testid="typing-dots"]',
+      )
+      .count();
+    assert(
+      dotsInBubble >= 1,
+      `STREAMING: dots are anchored inside the in-flight assistant bubble (found ${dotsInBubble})`,
+    );
+    await snap(p, "state-streaming-dots-in-bubble");
+    await p.close();
+  }
+
+  // ── MULTI-SEND + voice gating (Phase A): while a reply is in flight the mic is
+  // gated; the trailing control is STOP with no draft, and SWAPS to an ENABLED
+  // "send another" the instant you type — sending queues another turn into the
+  // room (serialized multi-send) instead of being blocked until the reply lands.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(`${url}?streaming`);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(400);
+    // No draft while responding → STOP, and the mic is gated (not rendered).
+    assert(
+      await p.getByTestId("chat-composer-stop").isVisible(),
+      "MULTI-SEND: STOP shown while responding with no draft",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-mic").count()) === 0,
+      "MULTI-SEND: mic gated while responding",
+    );
+    // Type → the trailing control swaps to an ENABLED send (queue another turn).
+    const input = p.getByTestId("chat-composer-textarea");
+    await input.fill("queue another");
+    await p.waitForTimeout(150);
+    const action = p.getByTestId("chat-composer-action");
+    assert(
+      await action.isVisible(),
+      "MULTI-SEND: send shown while responding + draft",
+    );
+    assert(
+      (await action.getAttribute("aria-disabled")) !== "true",
+      "MULTI-SEND: send ENABLED while responding (send another)",
+    );
+    const before = await p.getByTestId("thread-line").count();
+    await action.click();
+    await p.waitForTimeout(200);
+    const after = await p.getByTestId("thread-line").count();
+    assert(
+      after > before,
+      `MULTI-SEND: sending while responding appends another message (${before} → ${after})`,
+    );
+    await snap(p, "state-multi-send-while-responding");
     await p.close();
   }
 } finally {

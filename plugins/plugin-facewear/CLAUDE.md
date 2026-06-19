@@ -60,6 +60,8 @@ Two registered view surfaces (`gui`/`tui`/`xr` variants):
 src/
   index.ts                    Plugin object + all exports
   register.ts                 Secondary entry for view-only imports
+  register-terminal-view.tsx  Terminal (TUI) view registration
+  ui-shims.ts                 UI compatibility shims
   status-format.ts            Shared status formatting utilities
   actions/
     facewear-connect.ts       FACEWEAR_CONNECT
@@ -71,6 +73,8 @@ src/
     view-actions.ts           XR_OPEN/CLOSE/SWITCH/LIST/RESIZE_VIEW (facewear* aliases)
     vision-query.ts           XR_QUERY_VISION (alias: facewearQueryVisionAction)
     xr-view-actions.ts        (additional XR view helpers)
+  components/
+    SmartglassesSpatialView.tsx   Spatial view component for smartglasses
   providers/
     facewear-context.ts       xrContext provider
     smartglasses-status.ts    smartglassesStatus provider
@@ -132,6 +136,7 @@ All settings are optional. The plugin reads them via `runtime.getSetting()` (fal
 | `FACEWEAR_AUTO_INIT` | `true` | Send G1 connection-ready init packets automatically |
 | `FACEWEAR_INIT_MODE` | `"lens-specific"` | G1 init mode: `lens-specific` \| `official` \| `android-f4` |
 | `XR_APP_URL` | local IP | Override the URL shown on the `/xr/connect` pairing page |
+| `XR_AGENT_URL` | (none) | Override the agent API URL injected into view-host and view-actions |
 
 `FACEWEAR_WS_PORT` is declared in `agentConfig.pluginParameters` (package.json) as the surfaced plugin parameter, but the runtime port is read from `XR_WS_PORT` — keep their defaults in sync.
 

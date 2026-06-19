@@ -35,11 +35,18 @@ export interface SettingsSectionDef {
   icon: LucideIcon;
   tone: SettingsSectionTone;
   hue: SettingsSectionHue;
-  group: SettingsSectionGroup;
   /** i18n key for the section header (defaults to {@link label}). */
   titleKey: string;
   /** English fallback for {@link titleKey}. */
   defaultTitle: string;
+  /**
+   * Top-level group. The three built-in groups are {@link SettingsSectionGroup}
+   * (`agent | system | security`); a host may also use a custom group id (e.g.
+   * `"cloud"`) registered via the extra-group registry so the Settings view can
+   * render it. Kept as a widened string so dynamic groups don't require editing
+   * the pinned meta list.
+   */
+  group: SettingsSectionGroup | (string & {});
   /** Sort priority within a group (lower first). Built-ins use list order. */
   order?: number;
   /** Padding override for the section body panel. */

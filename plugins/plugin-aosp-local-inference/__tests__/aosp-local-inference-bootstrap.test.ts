@@ -7,6 +7,7 @@ import {
   resolveAospGenerateTokenBudget,
 } from "../src/aosp-llama-adapter";
 import {
+  aospAsrAssetsPresent,
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
   disabledAospEmbeddingVector,
@@ -449,6 +450,53 @@ describe("readAssignedBundledModels", () => {
   });
 });
 
+describe("aospAsrAssetsPresent (TRANSCRIPTION registration gate)", () => {
+  function seedChatBundle(root: string): void {
+    const modelsDir = path.join(root, "local-inference", "models");
+    const textDir = path.join(modelsDir, "eliza-1-2b.bundle", "text");
+    mkdirSync(textDir, { recursive: true });
+    const chatModel = path.join(textDir, "eliza-1-2b-32k.gguf");
+    writeFileSync(chatModel, "chat");
+    writeFileSync(
+      path.join(root, "local-inference", "assignments.json"),
+      JSON.stringify({ version: 1, assignments: { TEXT_SMALL: "eliza-1-2b" } }),
+    );
+    writeFileSync(
+      path.join(root, "local-inference", "registry.json"),
+      JSON.stringify({
+        version: 1,
+        models: [
+          { id: "eliza-1-2b", path: chatModel, source: "eliza-download" },
+        ],
+      }),
+    );
+  }
+
+  it("returns true only when an asr/ dir sits next to the chat bundle", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-asr-present-"));
+    seedChatBundle(root);
+    expect(
+      withEnv({ ELIZA_STATE_DIR: root }, () => aospAsrAssetsPresent()),
+    ).toBe(false);
+    mkdirSync(
+      path.join(root, "local-inference", "models", "eliza-1-2b.bundle", "asr"),
+      {
+        recursive: true,
+      },
+    );
+    expect(
+      withEnv({ ELIZA_STATE_DIR: root }, () => aospAsrAssetsPresent()),
+    ).toBe(true);
+  });
+
+  it("returns false (never throws) when no chat bundle is installed", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-asr-nobundle-"));
+    expect(
+      withEnv({ ELIZA_STATE_DIR: root }, () => aospAsrAssetsPresent()),
+    ).toBe(false);
+  });
+});
+
 describe("resolveAospGenerateTokenBudget", () => {
   it("caps oversized caller budgets with the Android debug env cap", () => {
     expect(
@@ -632,7 +680,10 @@ describe("parseMemAvailableMb", () => {
   });
 
   it("tolerates a single-space layout and trailing fields", () => {
-    expect(parseMemAvailableMb("MemAvailable: 2048000 kB")).toBeCloseTo(2000, 3);
+    expect(parseMemAvailableMb("MemAvailable: 2048000 kB")).toBeCloseTo(
+      2000,
+      3,
+    );
   });
 
   it("returns null when MemAvailable is absent", () => {
@@ -652,7 +703,9 @@ describe("shouldEvictChatForAvailMb (memory-gated chat eviction)", () => {
   });
 
   it("EVICTS the chat model under genuine memory pressure (OOM protection)", () => {
-    expect(shouldEvictChatForAvailMb(VOICE_COLOAD_KEEP_AVAIL_MB - 1)).toBe(true);
+    expect(shouldEvictChatForAvailMb(VOICE_COLOAD_KEEP_AVAIL_MB - 1)).toBe(
+      true,
+    );
     expect(shouldEvictChatForAvailMb(1500)).toBe(true);
     expect(shouldEvictChatForAvailMb(0)).toBe(true);
   });

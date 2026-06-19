@@ -759,8 +759,8 @@ export function resolveOwnerFactStore(runtime: IAgentRuntime): OwnerFactStore {
  */
 export function ownerFactsToView(
   facts: OwnerFacts,
-): import("../scheduled-task/types.js").OwnerFactsView {
-  const view: import("../scheduled-task/types.js").OwnerFactsView = {};
+): import("@elizaos/plugin-scheduling").OwnerFactsView {
+  const view: import("@elizaos/plugin-scheduling").OwnerFactsView = {};
   if (facts.preferredName) view.preferredName = facts.preferredName.value;
   if (facts.timezone) view.timezone = facts.timezone.value;
   if (facts.locale) view.locale = facts.locale.value;

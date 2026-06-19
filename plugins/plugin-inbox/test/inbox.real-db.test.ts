@@ -4,11 +4,10 @@
  * Unlike `inbox-service.test.ts` / `inbox-repository.test.ts` (which fake
  * `runtime.adapter.db.execute`), this suite boots a REAL PGLite-backed
  * AgentRuntime via {@link createRealTestRuntime} and persists triage entries
- * into PA's `app_lifeops.life_inbox_triage_*` tables — the same tables the
- * inbox plugin reads in production (the "inbox pattern": PA owns the schema,
- * this plugin reaches it through the runtime DB handle). We materialize those
- * tables by registering the two pure-drizzle table definitions under PA's
- * plugin name so the SQL plugin's migration runner creates them on init.
+ * into the carved `app_inbox.life_inbox_triage_*` tables — the same tables the
+ * inbox plugin reads in production. We materialize those tables by registering
+ * the two pure-drizzle table definitions via a schema-only test plugin so the
+ * SQL plugin's migration runner creates them on init.
  *
  * The triage classifier calls `runtime.useModel(TEXT_SMALL)`; we register a
  * DETERMINISTIC fake model handler that returns rule-based classifier JSON, so
@@ -29,26 +28,24 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/test/helpers/real-runtime.ts";
-// Test-only: PA owns the app_lifeops inbox tables. We pull just the two pure
-// drizzle table definitions (PA's schema.ts imports only drizzle-orm) and let
-// the SQL plugin's migration runner materialize them under PA's plugin name —
-// the exact tables the inbox plugin reads in production. The inbox plugin
-// SOURCE never imports PA (verified by the boundary contract).
+// The inbox-triage tables were carved into this plugin's own `app_inbox`
+// schema; we register just the two triage table defs so the SQL plugin's
+// migration runner materializes them — the exact tables the inbox plugin reads
+// in production. No PA import is needed.
 import {
   lifeInboxTriageEntries,
   lifeInboxTriageExamples,
-} from "../../plugin-personal-assistant/src/lifeops/schema.ts";
+} from "../src/db/schema.ts";
 import { InboxService } from "../src/inbox/service.ts";
 import type { InboundMessage } from "../src/inbox/types.ts";
 
 /**
- * Schema-only test plugin registered under PA's name so `runtime.initialize()`
- * runs the SQL plugin's migration for exactly the two inbox triage tables in
- * the `app_lifeops` schema. Avoids importing PA's heavier service/repository
- * modules while still creating the real production tables.
+ * Schema-only test plugin so `runtime.initialize()` runs the SQL plugin's
+ * migration for the two carved `app_inbox` inbox triage tables, without pulling
+ * in the inbox plugin's heavier service/repository modules.
  */
 const inboxSchemaPlugin: Plugin = {
-  name: "@elizaos/plugin-personal-assistant",
+  name: "inbox-real-db-schema",
   description: "Test-only inbox triage table bootstrap.",
   schema: { lifeInboxTriageEntries, lifeInboxTriageExamples },
 };
@@ -130,7 +127,7 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     testResult = await createRealTestRuntime({
       characterName: "inbox-real-db-tests",
       // Registering the schema plugin makes runtime.initialize() create the
-      // app_lifeops.life_inbox_triage_* tables via the SQL plugin migration.
+      // app_inbox.life_inbox_triage_* tables via the SQL plugin migration.
       plugins: [inboxSchemaPlugin],
     });
     runtime = testResult.runtime;

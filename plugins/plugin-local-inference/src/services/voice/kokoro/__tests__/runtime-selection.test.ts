@@ -5,6 +5,28 @@ import {
 } from "../runtime-selection";
 
 describe("selectVoiceBackend", () => {
+	it("mobile: always picks Kokoro, ignoring mode and tier policy", () => {
+		const d = selectVoiceBackend({
+			mobile: true,
+			mode: "omnivoice",
+			kokoroAvailable: true,
+			omnivoiceAvailable: true,
+			tierVoiceBackends: ["omnivoice"],
+		});
+		expect(d.backend).toBe("kokoro");
+		expect(d.reason).toMatch(/mobile/);
+	});
+
+	it("mobile: throws when Kokoro artifacts are missing (no OmniVoice fallback)", () => {
+		expect(() =>
+			selectVoiceBackend({
+				mobile: true,
+				kokoroAvailable: false,
+				omnivoiceAvailable: true,
+			}),
+		).toThrow(/mobile/);
+	});
+
 	it("forces Kokoro when mode=kokoro and artifacts are present", () => {
 		const d = selectVoiceBackend({
 			mode: "kokoro",

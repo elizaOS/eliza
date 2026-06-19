@@ -6,6 +6,11 @@ import {
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
 } from "../first-run/mobile-runtime-mode";
+import {
+  createNativeStreamingResponse,
+  type NativeStreamingAgentPlugin,
+  supportsNativeStreaming,
+} from "./native-agent-stream";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 export interface NativeAgentRequestOptions {
@@ -37,6 +42,15 @@ type NativeAgentPlugin = {
   request?: (
     options: NativeAgentRequestOptions,
   ) => Promise<NativeAgentRequestResult>;
+  // Streaming bridge (newer native plugin). When present, SSE requests stream
+  // token-by-token instead of buffering the whole body. See native-agent-stream.
+  requestStream?: (
+    options: NativeAgentRequestOptions,
+  ) => Promise<{ streamId: string }>;
+  addListener?: (
+    eventName: string,
+    listener: (event: unknown) => void,
+  ) => Promise<{ remove: () => void | Promise<void> }>;
 };
 
 const agentPluginName = "Agent";
@@ -64,8 +78,28 @@ function toNativeAgentPlugin(
   const stop = plugin.stop?.bind(plugin);
   const getStatus = plugin.getStatus?.bind(plugin);
   const request = plugin.request?.bind(plugin);
+  const requestStream = plugin.requestStream?.bind(plugin);
+  const addListener = plugin.addListener?.bind(plugin);
   if (!start && !stop && !getStatus && !request) return null;
-  return { start, stop, getStatus, request };
+  return { start, stop, getStatus, request, requestStream, addListener };
+}
+
+/**
+ * An SSE / streaming request — the chat reply's token stream. Detected by the
+ * `Accept: text/event-stream` header or a `…/stream` path. These are the only
+ * requests routed through the streaming bridge; everything else stays buffered.
+ */
+function isStreamingRequest(
+  url: string,
+  headers: HeadersInit | undefined,
+): boolean {
+  const accept = new Headers(headers ?? {}).get("accept") ?? "";
+  if (accept.toLowerCase().includes("text/event-stream")) return true;
+  try {
+    return new URL(url, "http://localhost").pathname.endsWith("/stream");
+  } catch {
+    return url.includes("/stream");
+  }
 }
 
 function isNativeAndroid(): boolean {
@@ -279,6 +313,30 @@ export function createAndroidNativeAgentTransport(
         return createNativeAgentUnavailableResponse(
           "Android local-agent IPC only supports string request bodies",
         );
+      }
+
+      // SSE requests (the chat reply token stream) go through the streaming
+      // bridge so tokens reach the WebView incrementally instead of buffering
+      // the whole body. Falls through to the buffered `request` below if the
+      // native plugin has no streaming bridge or the stream fails to start.
+      if (
+        isStreamingRequest(url, init.headers) &&
+        supportsNativeStreaming(agent)
+      ) {
+        try {
+          return await createNativeStreamingResponse(
+            agent as NativeStreamingAgentPlugin,
+            {
+              method,
+              path: localAgentRequestPath(url),
+              headers: headersToRecord(init.headers),
+              body: methodAllowsBody(method) ? (body ?? null) : null,
+              timeoutMs: context?.timeoutMs,
+            },
+          );
+        } catch {
+          // Stream couldn't start — fall back to the buffered request path.
+        }
       }
 
       const result = await request({

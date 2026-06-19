@@ -46,6 +46,21 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Persist Turbo's *local* filesystem cache across runs using GitHub Actions
+    # cache (free, no third-party SaaS remote cache). Turbo caches typecheck /
+    # build / lint / format:check results keyed by task inputs, so unchanged
+    # packages are replayed from cache instead of rerun — which keeps the full
+    # 14-way typecheck off the runner (it was OOM/SIGTERM-killing the test job on
+    # cold runs). Cache failures are non-fatal; a miss just means no speedup.
+    - name: Restore Turbo cache (GitHub Actions)
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      with:
+        path: .turbo
+        key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+        restore-keys: |
+          turbo-${{ runner.os }}-${{ github.job }}-
+          turbo-${{ runner.os }}-
+
     - name: Setup Python
       if: ${{ inputs.setup-python == 'true' }}
       uses: actions/setup-python@v6

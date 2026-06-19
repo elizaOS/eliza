@@ -25635,9 +25635,45 @@
     );
   }
 
+  // packages/ui/src/components/chat/ThinkingBlock.tsx
+  var import_react30 = __toESM(require_react(), 1);
+  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+  function ThinkingBlock({
+    reasoning
+  }) {
+    const [open, setOpen] = (0, import_react30.useState)(false);
+    const trimmed = reasoning.trim();
+    if (!trimmed) {
+      return null;
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+        "button",
+        {
+          type: "button",
+          onClick: () => setOpen((prev) => !prev),
+          "aria-expanded": open,
+          className: "flex w-full items-center gap-1.5 bg-accent/10 px-3 py-1 text-xs font-bold text-accent uppercase tracking-wider transition-colors hover:bg-accent/20",
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              "span",
+              {
+                "aria-hidden": "true",
+                className: `inline-block transition-transform ${open ? "rotate-90" : ""}`,
+                children: "\u203A"
+              }
+            ),
+            "Thinking"
+          ]
+        }
+      ),
+      open ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("pre", { className: "px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-muted m-0 overflow-x-auto", children: trimmed }) : null
+    ] });
+  }
+
   // packages/ui/src/components/shell/SlashCommandMenu.tsx
   var React5 = __toESM(require_react(), 1);
-  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
   var FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
   function useSlashMenu(draft, controller) {
     const parsed = React5.useMemo(() => parseSlashDraft(draft), [draft]);
@@ -25762,7 +25798,7 @@
     const listboxId = "slash-command-listbox";
     if (!state.open) {
       if (loading) {
-        return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
           "div",
           {
             className: cn(
@@ -25780,7 +25816,7 @@
     return (
       // The combobox input (in the composer) owns aria-activedescendant + focus;
       // this listbox is a non-focusable popup the input points to via aria-controls.
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
         "div",
         {
           id: listboxId,
@@ -25794,7 +25830,7 @@
             "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           ),
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
               "div",
               {
                 className: cn(
@@ -25804,7 +25840,7 @@
                 children: state.headerLabel
               }
             ),
-            state.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+            state.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
               "button",
               {
                 type: "button",
@@ -25823,7 +25859,7 @@
                   index === state.activeIndex ? "bg-white/15" : "hover:bg-white/8"
                 ),
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                     "span",
                     {
                       className: cn(
@@ -25833,7 +25869,7 @@
                       children: item.primary
                     }
                   ),
-                  item.secondary ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                  item.secondary ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                     "span",
                     {
                       className: cn(
@@ -25842,8 +25878,8 @@
                       ),
                       children: item.secondary
                     }
-                  ) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "flex-1" }),
-                  item.isCommand && item.hasArgs ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                  ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "flex-1" }),
+                  item.isCommand && item.hasArgs ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                     "span",
                     {
                       "aria-hidden": "true",
@@ -25933,7 +25969,8 @@
       onPointerDown,
       onPointerMove,
       onPointerUp: finish,
-      onPointerCancel: finish
+      onPointerCancel: finish,
+      onLostPointerCapture: finish
     };
   }
 
@@ -25947,7 +25984,7 @@
   }
 
   // packages/ui/src/components/shell/ContinuousChatOverlay.tsx
-  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
   var EMPTY_SLASH_CONTROLLER = {
     commands: [],
     loading: false,
@@ -25998,10 +26035,9 @@
   }
   var PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
   var STOP_GLYPH = "M12 12H24V24H12Z";
-  var SPEAKER_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
   var SPEAKER_MUTED_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
   function Glyph({ d }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
   }
   function SoftButton({
     glyph,
@@ -26015,7 +26051,7 @@
     active,
     testId
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       "button",
       {
         type: "button",
@@ -26035,7 +26071,7 @@
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
           disabled && "opacity-40"
         ),
-        children: Icon2 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Icon2, { className: "h-[22px] w-[22px]", "aria-hidden": true }) : glyph ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: glyph }) : null
+        children: Icon2 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Icon2, { className: "h-[22px] w-[22px]", "aria-hidden": true }) : glyph ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Glyph, { d: glyph }) : null
       }
     );
   }
@@ -26046,7 +26082,7 @@
     active,
     testId
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       "button",
       {
         type: "button",
@@ -26059,7 +26095,7 @@
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Icon2, { className: "h-[18px] w-[18px]", "aria-hidden": true })
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Icon2, { className: "h-[18px] w-[18px]", "aria-hidden": true })
       }
     );
   }
@@ -26068,11 +26104,16 @@
     onOpen,
     onClose,
     binding,
-    glow
+    glow,
+    opacity,
+    pilled
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-      "button",
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+      motion.button,
       {
+        style: { opacity, pointerEvents: pilled ? "none" : "auto" },
+        tabIndex: pilled ? -1 : void 0,
+        "aria-hidden": pilled || void 0,
         type: "button",
         "aria-expanded": open,
         "aria-label": open ? "drag down to close chat" : "drag up to open chat",
@@ -26100,7 +26141,7 @@
           // zone reaches UP into the empty space above the panel (3× taller/wider
           // than the bar) so it's easy to grab without covering the edge buttons.
           // z-20 keeps it above the input row (z-10) so it always wins the drag.
-          "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-1 active:cursor-grabbing",
+          "absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-1 active:cursor-grabbing",
           // The hit zone reaches UP into the empty space above the panel (easy to
           // grab) and stops at the handle's own bottom — it never reaches the
           // vertically-centered textarea, so a tap on the composer lands natively
@@ -26109,7 +26150,7 @@
           "before:absolute before:-inset-x-6 before:-top-16 before:bottom-0 before:content-['']",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
           "span",
           {
             "aria-hidden": "true",
@@ -26128,7 +26169,7 @@
     onOpen,
     glow
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       "button",
       {
         type: "button",
@@ -26148,7 +26189,7 @@
           "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-16 pb-1.5 pt-10 active:cursor-grabbing",
           "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
           "span",
           {
             "aria-hidden": "true",
@@ -26163,33 +26204,42 @@
       }
     );
   }
-  function TypingDots({ reduce }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-      motion.div,
+  function TypingDotsInner() {
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+      "span",
       {
-        className: "mb-2.5 flex w-full justify-start",
+        className: "flex gap-1.5 py-1",
         "data-testid": "typing-dots",
         role: "status",
         "aria-label": "assistant is responding",
+        children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+          "span",
+          {
+            className: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
+            style: { animationDelay: `${i * 180}ms` }
+          },
+          i
+        ))
+      }
+    );
+  }
+  function TypingDots({ reduce }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+      motion.div,
+      {
+        className: "mb-2.5 flex w-full justify-start",
         initial: { opacity: 0 },
         animate: { opacity: 1 },
         exit: { opacity: 0 },
         transition: { duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE },
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
           "div",
           {
             className: cn(
               "rounded-2xl rounded-bl-md border border-white/10 bg-black/45 px-3.5 py-2 text-white/90",
               FLOAT_SHADOW2
             ),
-            children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "flex gap-1.5", children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-              "span",
-              {
-                className: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
-                style: { animationDelay: `${i * 180}ms` }
-              },
-              i
-            )) })
+            children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(TypingDotsInner, {})
           }
         )
       }
@@ -26252,7 +26302,7 @@
       onPointerCancel: clearHold
     } : null;
     if (isAssistant && message.failureKind === "no_provider") {
-      return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
         motion.div,
         {
           "data-testid": "thread-line",
@@ -26266,7 +26316,7 @@
             "flex w-full justify-start",
             floating ? "mb-1.5" : "mb-2.5"
           ),
-          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
             "div",
             {
               className: cn(
@@ -26274,9 +26324,9 @@
                 FLOAT_SHADOW2
               ),
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "mb-1 text-[14px] font-medium", children: "Connect a provider to chat" }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]", children: message.content }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "mb-1 text-[14px] font-medium", children: "Connect a provider to chat" }),
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]", children: message.content }),
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                   "button",
                   {
                     type: "button",
@@ -26292,7 +26342,7 @@
         }
       );
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       motion.div,
       {
         "data-testid": "thread-line",
@@ -26306,7 +26356,7 @@
           floating ? "mb-1.5" : "mb-2.5",
           isUser ? "justify-end" : "justify-start"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
           "div",
           {
             ...copyHandlers ?? {},
@@ -26329,8 +26379,14 @@
               ) : isUser ? "bg-white/20 text-white" : "bg-white/10 text-white/90"
             ),
             children: [
-              message.content,
-              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+              isAssistant && !message.content.trim() ? (
+                // The in-flight assistant turn (kept by visibleMessages only while
+                // responding): breathe the dots INSIDE the bubble so they're anchored
+                // where the streamed text fills in — then the text replaces them.
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(TypingDotsInner, {})
+              ) : message.content,
+              isAssistant && message.reasoning?.trim() ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(ThinkingBlock, { reasoning: message.reasoning }) : null,
+              /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                 motion.span,
                 {
                   "data-testid": "thread-line-copied",
@@ -26357,6 +26413,7 @@
     const {
       messages,
       phase,
+      responding,
       send,
       canSend,
       recording,
@@ -26367,9 +26424,6 @@
       setDictationSink,
       setComposerHasDraft,
       transcript,
-      speaking,
-      agentVoiceMuted,
-      toggleAgentVoiceMute,
       needsAudioUnlock,
       unlockAudio,
       openSettings,
@@ -26398,6 +26452,7 @@
     const [composerFocused, setComposerFocused] = React7.useState(false);
     const threadHeight = useMotionValue(0);
     const openProgress = useMotionValue(pilled ? 0 : 1);
+    const settleDragRef = React7.useRef(null);
     const draggingRef = React7.useRef(false);
     const pttRef = React7.useRef({ kind: "idle" });
     const [pttHolding, setPttHolding] = React7.useState(false);
@@ -26414,15 +26469,16 @@
     const threadRef = React7.useRef(null);
     const focusThreadRef = React7.useRef(false);
     const visibleMessages = React7.useMemo(
-      () => messages.filter((m2) => m2.content.trim()).slice(-MAX_RENDERED_MESSAGES),
-      [messages]
+      () => messages.filter(
+        (m2) => m2.content.trim() || m2.role === "assistant" && phase === "responding"
+      ).slice(-MAX_RENDERED_MESSAGES),
+      [messages, phase]
     );
     const lastId = visibleMessages.at(-1)?.id ?? null;
     const lastContent = visibleMessages.at(-1)?.content ?? "";
     const scrollPinnedIdRef = React7.useRef(lastId);
     const booting = phase === "booting";
     const listening = phase === "listening";
-    const responding = phase === "responding";
     const hasDraft = draft.trim().length > 0;
     const hasImages = pendingImages.length > 0;
     const suggestionsVisible = SHOW_PROMPT_SUGGESTIONS && !pilled && !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
@@ -26527,7 +26583,9 @@
     }, []);
     const beginPushToTalkPress = React7.useCallback(
       (event) => {
-        if (pttRef.current.kind !== "idle" || event.button !== 0 || hasDraft || recording)
+        if (pttRef.current.kind !== "idle" || event.button !== 0 || hasDraft || recording || // Voice input is gated while a reply is in flight; type + send to queue
+        // another turn instead. Re-enabled the instant the reply finishes.
+        responding)
           return;
         const { pointerId } = event;
         try {
@@ -26543,7 +26601,7 @@
         }, 200);
         pttRef.current = { kind: "pending", pointerId, timer };
       },
-      [hasDraft, recording, startRecording]
+      [hasDraft, recording, responding, startRecording]
     );
     const finishPushToTalkPress = React7.useCallback(
       (event, cancelled) => {
@@ -26566,8 +26624,9 @@
         suppressNextClickRef.current = false;
         return;
       }
+      if (responding && !handsFree) return;
       toggleHandsFree();
-    }, [toggleHandsFree]);
+    }, [responding, handsFree, toggleHandsFree]);
     const hasThread = visibleMessages.length > 0;
     const readViewport = React7.useCallback(() => {
       if (typeof window === "undefined") return { height: 800, keyboardInset: 0 };
@@ -26589,14 +26648,18 @@
           );
         }
       };
-      sync();
+      const syncAndSettle = () => {
+        sync();
+        settleDragRef.current?.();
+      };
+      syncAndSettle();
       const vv = window.visualViewport;
-      window.addEventListener("resize", sync);
-      vv?.addEventListener("resize", sync);
+      window.addEventListener("resize", syncAndSettle);
+      vv?.addEventListener("resize", syncAndSettle);
       vv?.addEventListener("scroll", sync);
       return () => {
-        window.removeEventListener("resize", sync);
-        vv?.removeEventListener("resize", sync);
+        window.removeEventListener("resize", syncAndSettle);
+        vv?.removeEventListener("resize", syncAndSettle);
         vv?.removeEventListener("scroll", sync);
       };
     }, [readViewport]);
@@ -26643,6 +26706,28 @@
     const pillOpacity = useTransform(openProgress, [0, 0.55], [1, 0], {
       clamp: true
     });
+    const grabberOpacity = useTransform(openProgress, [0.55, 0.95], [0, 1], {
+      clamp: true
+    });
+    const headerOpacity = useTransform(
+      threadHeight,
+      [halfH - 64, halfH],
+      [0, 1],
+      {
+        clamp: true
+      }
+    );
+    const headerMaxH = useTransform(threadHeight, [halfH - 64, halfH], [0, 100], {
+      clamp: true
+    });
+    const headerPadTop = useTransform(
+      threadHeight,
+      [halfH - 64, halfH],
+      [0, 10],
+      {
+        clamp: true
+      }
+    );
     const settleDrag = React7.useCallback(() => {
       draggingRef.current = false;
       const open = pilled ? 0 : 1;
@@ -26654,6 +26739,7 @@
         animate(openProgress, open, OPEN_SPRING);
       }
     }, [threadHeight, openProgress, baseH, pilled, reduce]);
+    settleDragRef.current = settleDrag;
     React7.useEffect(() => {
       if (draggingRef.current) return;
       const open = pilled ? 0 : 1;
@@ -26807,6 +26893,13 @@
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
     }, [draft]);
+    const openFromPill = React7.useCallback(() => {
+      draggingRef.current = false;
+      setPilled(false);
+      if (reduce) openProgress.set(1);
+      else animate(openProgress, 1, OPEN_SPRING);
+      detentHaptic();
+    }, [openProgress, reduce]);
     const onDragOffset = React7.useCallback(
       (offset) => {
         draggingRef.current = true;
@@ -26883,8 +26976,7 @@
       // from). A tap on the pill brings the input back.
       onTap: () => {
         if (pilled) {
-          setPilled(false);
-          detentHaptic();
+          openFromPill();
           return;
         }
         const composerFocused2 = typeof document !== "undefined" && document.activeElement === inputRef.current;
@@ -26938,7 +27030,7 @@
         }
       }
     });
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
       "div",
       {
         ref: overlayRef,
@@ -26960,7 +27052,7 @@
         "data-testid": "continuous-chat-overlay",
         "data-open": sheetOpen ? "true" : void 0,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
             motion.div,
             {
               "aria-hidden": "true",
@@ -26974,7 +27066,7 @@
               }
             }
           ),
-          recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
             "div",
             {
               role: "status",
@@ -26984,19 +27076,19 @@
                 "pointer-events-none relative mb-2 w-full max-w-3xl text-center text-sm italic text-white/85",
                 FLOAT_SHADOW2
               ),
-              children: transcript ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+              children: [
                 transcript,
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
-              ] }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "text-white/60", children: "Listening\u2026" })
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
+              ]
             }
           ) : null,
-          needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
             "div",
             {
               role: "status",
               "aria-live": "polite",
               className: "pointer-events-none relative mb-2 flex w-full justify-center",
-              children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+              children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                 "button",
                 {
                   type: "button",
@@ -27009,14 +27101,14 @@
                     FLOAT_SHADOW2
                   ),
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
-                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Tap to enable sound" })
+                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
+                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { children: "Tap to enable sound" })
                   ]
                 }
               )
             }
           ) : null,
-          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
             motion.fieldset,
             {
               "aria-label": "Suggested prompts",
@@ -27025,7 +27117,7 @@
               ),
               style: { order: -1, opacity: suggestionsOpacity },
               "data-testid": "chat-suggestions",
-              children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+              children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                 "button",
                 {
                   type: "button",
@@ -27045,7 +27137,7 @@
               ))
             }
           ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
             "div",
             {
               className: cn(
@@ -27053,7 +27145,7 @@
                 fullBleed ? "max-w-none" : "max-w-3xl"
               ),
               children: [
-                !pilled && !fullBleed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                !fullBleed ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                   SheetGrabber,
                   {
                     open: sheetOpen,
@@ -27064,10 +27156,12 @@
                     },
                     onClose: collapse,
                     binding: pullBinding,
-                    glow: listening || responding
+                    glow: listening || responding,
+                    opacity: grabberOpacity,
+                    pilled
                   }
                 ) : null,
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                   motion.fieldset,
                   {
                     ref: panelRef,
@@ -27078,6 +27172,7 @@
                     "data-maximized": fullBleed ? "true" : void 0,
                     "data-revealed": sheetOpen ? "true" : "false",
                     "data-chat-state": chatState,
+                    "data-header-shown": headerVisible ? "true" : "false",
                     style: {
                       maxHeight: panelMaxH,
                       // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
@@ -27098,15 +27193,24 @@
                       "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0"
                     ),
                     children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                         motion.div,
                         {
                           "aria-hidden": "true",
                           className: cn(
                             "pointer-events-none absolute inset-0 z-0",
-                            fullBleed ? "border-0" : "border border-white/[0.14]",
-                            "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
-                            fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
+                            fullBleed ? "border-0" : "border border-white/[0.16]",
+                            // Liquid glass: a near-clear tint that lets the backdrop show
+                            // through, BLURRED + over-saturated + brightness-knocked-down so
+                            // bright content (the orange ambient) stops white text from washing
+                            // out — instead of a heavy dark fill. blur(16px)+saturate+brightness
+                            // compose into ONE backdrop-filter pass (blur radius never animated,
+                            // so it stays cheap on the per-frame-resizing surface). The base
+                            // bg-black/45 is the legible fallback when backdrop-filter is
+                            // unavailable; the supports- rule thins it to glass once the filter
+                            // is doing the darkening.
+                            "bg-black/45 backdrop-blur-lg backdrop-saturate-[1.8] backdrop-brightness-[0.68] supports-[backdrop-filter]:bg-black/[0.12]",
+                            fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.26),inset_0_0_0_0.5px_rgba(255,255,255,0.08),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
                           ),
                           style: {
                             opacity: glassOpacity,
@@ -27114,7 +27218,7 @@
                           }
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                         motion.div,
                         {
                           "data-testid": "chat-content",
@@ -27125,15 +27229,15 @@
                             pointerEvents: pilled ? "none" : "auto",
                             borderRadius: fullBleed ? 0 : panelRadius
                           },
-                          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                          children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                               "div",
                               {
                                 "aria-hidden": "true",
                                 className: "pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                               motion.div,
                               {
                                 "aria-hidden": "true",
@@ -27143,7 +27247,7 @@
                                 transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                               motion.div,
                               {
                                 "aria-hidden": "true",
@@ -27153,19 +27257,28 @@
                                 transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                               }
                             ),
-                            headerVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-                              "div",
+                            !pilled ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+                              motion.div,
                               {
+                                inert: !headerVisible || void 0,
+                                style: {
+                                  opacity: headerOpacity,
+                                  maxHeight: headerMaxH,
+                                  // Collapsed → 0 top padding (no leaked margin above the
+                                  // composer); opens to ~10px as the header reveals. Full-bleed
+                                  // keeps its fixed safe-area inset (it's always fully revealed).
+                                  paddingTop: fullBleed ? void 0 : headerPadTop
+                                },
                                 className: cn(
-                                  "relative z-10 flex shrink-0 items-center justify-between gap-1.5 px-3",
+                                  "relative z-10 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
                                   // Maximized goes edge-to-edge under the status bar, so the
                                   // buttons must clear the safe-area inset (the clock/battery)
                                   // or they sit under it and become untappable.
-                                  fullBleed ? "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]" : "pt-2.5"
+                                  fullBleed && "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]"
                                 ),
                                 children: [
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       HeaderButton,
                                       {
                                         icon: maximized ? Minimize2 : Maximize2,
@@ -27175,7 +27288,7 @@
                                         testId: "chat-full-maximize"
                                       }
                                     ),
-                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       HeaderButton,
                                       {
                                         icon: RotateCcw,
@@ -27185,8 +27298,8 @@
                                       }
                                     )
                                   ] }),
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-                                    currentTab !== "chat" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+                                    currentTab !== "chat" ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       HeaderButton,
                                       {
                                         icon: House,
@@ -27195,7 +27308,7 @@
                                         testId: "chat-full-home"
                                       }
                                     ) : null,
-                                    currentTab !== "settings" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    currentTab !== "settings" ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       HeaderButton,
                                       {
                                         icon: Settings,
@@ -27208,7 +27321,7 @@
                                 ]
                               }
                             ) : null,
-                            hasThread ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                            hasThread ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                               motion.div,
                               {
                                 "data-testid": "chat-thread",
@@ -27220,7 +27333,7 @@
                                   sheetOpen && "[mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)]"
                                 ),
                                 style: { flexBasis: threadFlexBasis },
-                                children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                   "div",
                                   {
                                     id: "continuous-thread",
@@ -27237,8 +27350,8 @@
                                       }
                                     },
                                     className: "relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden",
-                                    children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
-                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
+                                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                         ThreadLine,
                                         {
                                           message: m2,
@@ -27249,20 +27362,20 @@
                                         },
                                         m2.id
                                       )) }),
-                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: responding ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDots, { reduce }) : null }),
-                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { ref: endRef })
+                                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(AnimatePresence, { children: responding && !(visibleMessages.at(-1)?.role === "assistant" && !visibleMessages.at(-1)?.content.trim()) ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(TypingDots, { reduce }) : null }),
+                                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { ref: endRef })
                                     ] })
                                   }
                                 )
                               }
                             ) : null,
-                            hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
-                              hasImages ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                            hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
+                              hasImages ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                                 "div",
                                 {
                                   className: "group relative h-14 w-14 shrink-0",
                                   children: [
-                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       "img",
                                       {
                                         src: `data:${img.mimeType};base64,${img.data}`,
@@ -27270,7 +27383,7 @@
                                         className: "h-14 w-14 rounded-lg border border-white/20 object-cover"
                                       }
                                     ),
-                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       "button",
                                       {
                                         type: "button",
@@ -27284,7 +27397,7 @@
                                 },
                                 `${img.name}-${img.mimeType}-${img.data.length}`
                               )) }) : null,
-                              imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              imageError ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                 "p",
                                 {
                                   role: "alert",
@@ -27293,7 +27406,7 @@
                                 }
                               ) : null
                             ] }) : null,
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                               "input",
                               {
                                 ref: fileInputRef,
@@ -27307,7 +27420,7 @@
                                 }
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                            /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                               "div",
                               {
                                 className: cn(
@@ -27326,7 +27439,7 @@
                                   paddingBottom: "calc(0.5rem + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))"
                                 } : void 0,
                                 children: [
-                                  slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                     SlashCommandMenu,
                                     {
                                       state: slashMenu,
@@ -27334,7 +27447,7 @@
                                       onPick: pickSlashItem
                                     }
                                   ) : null,
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                     SoftButton,
                                     {
                                       glyph: PLUS_GLYPH,
@@ -27344,7 +27457,7 @@
                                       testId: "chat-composer-attach"
                                     }
                                   ),
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                     "textarea",
                                     {
                                       ref: inputRef,
@@ -27411,25 +27524,15 @@
                                       className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                                     }
                                   ),
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
                                     agentName,
                                     " is waking up \u2014 you can type now; your message sends and the reply arrives in a moment."
                                   ] }),
-                                  speaking || agentVoiceMuted ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                    SoftButton,
-                                    {
-                                      glyph: agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH,
-                                      label: agentVoiceMuted ? "unmute assistant voice" : "mute assistant voice",
-                                      active: agentVoiceMuted,
-                                      onClick: toggleAgentVoiceMute,
-                                      testId: "chat-voice-mute"
-                                    }
-                                  ) : null,
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                     SoftButton,
                                     {
                                       icon: SendHorizontal,
-                                      label: canSend ? "send" : "send (waiting for reply)",
+                                      label: !canSend ? "send (agent stopped)" : responding ? "send another" : "send",
                                       disabled: !canSend,
                                       onPointerDown: (e) => e.preventDefault(),
                                       onClick: submit,
@@ -27438,7 +27541,7 @@
                                   ) : !recording && responding ? (
                                     // While a reply is streaming and nothing is typed, the mic becomes a
                                     // stop control so the user can interrupt a runaway generation.
-                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                       SoftButton,
                                       {
                                         glyph: STOP_GLYPH,
@@ -27447,7 +27550,7 @@
                                         testId: "chat-composer-stop"
                                       }
                                     )
-                                  ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  ) : /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                                     SoftButton,
                                     {
                                       icon: Mic,
@@ -27463,10 +27566,10 @@
                                 ]
                               }
                             )
-                          ] })
+                          ]
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                         motion.div,
                         {
                           className: "absolute inset-x-0 bottom-0 z-30 flex justify-center",
@@ -27474,11 +27577,11 @@
                             opacity: pillOpacity,
                             pointerEvents: pilled ? "auto" : "none"
                           },
-                          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                          children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                             PillHandle,
                             {
                               binding: pullBinding,
-                              onOpen: () => setPilled(false),
+                              onOpen: openFromPill,
                               glow: listening || responding
                             }
                           )
@@ -27496,7 +27599,7 @@
   }
 
   // packages/ui/src/components/shell/__e2e__/chat-sheet-fixture.tsx
-  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
   var nextId = 100;
   var uid = () => `m${nextId++}`;
   var SEED = [
@@ -27545,7 +27648,8 @@
   ];
   var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
   var startEmpty = params.has("empty");
-  var initialPhase = params.get("phase") ?? "summoned";
+  var streaming = params.has("streaming");
+  var initialPhase = params.get("phase") ?? (streaming ? "responding" : "summoned");
   var initialRecording = params.has("recording");
   var initialTranscript = params.get("transcript") ?? (initialRecording ? "tell me the plan for\u2026" : "");
   var initialSpeaking = params.has("speaking");
@@ -27564,7 +27668,10 @@
   ] : SEED;
   function Harness() {
     const [messages, setMessages] = React8.useState(
-      startEmpty ? [] : SEED_WITH_FAILURE
+      startEmpty ? [] : streaming ? [
+        ...SEED,
+        { id: "m-inflight", role: "assistant", content: "", createdAt: 13 }
+      ] : SEED_WITH_FAILURE
     );
     const [phase, setPhase] = React8.useState(initialPhase);
     const [recording, setRecording] = React8.useState(initialRecording);
@@ -27668,6 +27775,11 @@
     }, []);
     const controller = {
       phase,
+      // Raw in-flight predicate — mirrors the real controller's `chatSending ||
+      // speaking`. In the fixture, "responding" phase stands in for chatSending and
+      // `?speaking` for the spoken reply, so the trailing control + voice-gating
+      // behave exactly as they do in the app.
+      responding: phase === "responding" || initialSpeaking,
       messages,
       canSend: initialCanSend && phase !== "booting",
       recording,
@@ -27696,7 +27808,7 @@
         setPhase("summoned");
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
       "div",
       {
         "data-testid": "fake-view",
@@ -27711,15 +27823,15 @@
           overflow: "hidden"
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
             "div",
             {
               "data-testid": "view-content",
               style: { padding: "48px 28px", maxWidth: 720 },
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h1", { style: { fontSize: 30, fontWeight: 600, margin: 0 }, children: "Workspace" }),
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { style: { opacity: 0.7, marginTop: 12, lineHeight: 1.6 }, children: "This is the live view behind the floating chat. Clicking here must NOT close the chat \u2014 the sheet only closes on a pull-down or Escape." }),
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 20 }, children: ["Files", "Tasks", "Notes", "Settings"].map((t) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h1", { style: { fontSize: 30, fontWeight: 600, margin: 0 }, children: "Workspace" }),
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { style: { opacity: 0.7, marginTop: 12, lineHeight: 1.6 }, children: "This is the live view behind the floating chat. Clicking here must NOT close the chat \u2014 the sheet only closes on a pull-down or Escape." }),
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 20 }, children: ["Files", "Tasks", "Notes", "Settings"].map((t) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                   "span",
                   {
                     style: {
@@ -27736,13 +27848,13 @@
               ]
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(ContinuousChatOverlay, { controller })
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(ContinuousChatOverlay, { controller })
         ]
       }
     );
   }
   var root = document.getElementById("root");
-  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Harness, {}));
+  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 
