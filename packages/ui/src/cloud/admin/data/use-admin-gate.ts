@@ -91,7 +91,9 @@ export function useAdminGate(): UseAdminGateResult {
   const query = useQuery<AdminGateStatus>({
     queryKey: ["admin", "gate", "status", gate.userId],
     queryFn: async () => {
-      const res = await apiFetch("/api/v1/admin/moderation", { method: "HEAD" });
+      const res = await apiFetch("/api/v1/admin/moderation", {
+        method: "HEAD",
+      });
       return {
         isAdmin: res.headers.get("X-Is-Admin") === "true",
         role: adminRoleFromHeader(res.headers.get("X-Admin-Role")),

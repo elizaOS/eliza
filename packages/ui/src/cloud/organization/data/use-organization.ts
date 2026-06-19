@@ -17,12 +17,8 @@
  * - `DELETE /api/organizations/members/:userId`    remove member (owner/admin)
  */
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { api, ApiError } from "../../lib/api-client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError, api } from "../../lib/api-client";
 import type {
   InviteRole,
   OrgInviteDto,
