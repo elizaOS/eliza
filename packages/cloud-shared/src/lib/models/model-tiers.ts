@@ -381,9 +381,16 @@ export const ADDITIONAL_MODELS: AdditionalModel[] = [
   },
   // Z.AI (Zhipu)
   {
+    id: "glm-5.2",
+    name: "GLM-5.2",
+    description: "Z.AI (Zhipu) latest flagship",
+    modelId: "zai/glm-5.2",
+    provider: "zai",
+  },
+  {
     id: "glm-5.1",
     name: "GLM-5.1",
-    description: "Z.AI (Zhipu) latest flagship",
+    description: "Z.AI (Zhipu) previous flagship",
     modelId: "zai/glm-5.1",
     provider: "zai",
   },
