@@ -18,6 +18,12 @@ function brandName(): string {
   return getBootConfig().branding?.appName ?? "elizaOS";
 }
 
+// Host-overridable brand glyph (whitelabel seam); falls back to the elizaOS mark.
+function BrandMark(props: { className?: string }) {
+  const Mark = getBootConfig().brandMark ?? ElizaMark;
+  return <Mark {...props} />;
+}
+
 export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
   if (view.kind === "error") {
     return <StartupFailureView error={view.error} onRetry={onRetry} />;
@@ -71,7 +77,7 @@ function StartupLoading(props: { phase: string; status: string }) {
     >
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
-          <ElizaMark className="h-12 w-12" />
+          <BrandMark className="h-12 w-12" />
           <span className="text-4xl font-medium leading-none tracking-normal">
             {brandName()}
           </span>

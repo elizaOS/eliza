@@ -244,6 +244,13 @@ export interface AppBootConfig {
    * the built-in HomeScreen when absent.
    */
   homeScreen?: ComponentType<HomeScreenComponentProps>;
+  /**
+   * Brand mark (logo glyph) override provided by the host app. Rendered in the
+   * startup splash + first-run lockup beside the app name. When set, the shell
+   * renders this instead of the built-in ElizaMark (whitelabel seam so a fork
+   * shows its own logo, not the elizaOS mark). Receives an optional className.
+   */
+  brandMark?: ComponentType<{ className?: string }>;
   /** Companion shell implementation provided by the host app. */
   companionShell?: ComponentType<CompanionShellComponentProps>;
   /** Companion cloud/settings warning resolver provided by the host app. */

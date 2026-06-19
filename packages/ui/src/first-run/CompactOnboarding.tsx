@@ -24,6 +24,8 @@ export function CompactOnboarding(): React.ReactElement {
   // Brand wordmark from the active branding (whitelabel seam) — falls back to
   // the elizaOS name when no host branding is configured.
   const appName = getBootConfig().branding?.appName ?? "elizaOS";
+  // Host-overridable brand glyph (whitelabel seam); falls back to ElizaMark.
+  const BrandMark = getBootConfig().brandMark ?? ElizaMark;
 
   // Detect whether this component is running inside the onboarding overlay
   // shell (a separate transparent NSWindow). If so, closing the window after
@@ -121,7 +123,7 @@ export function CompactOnboarding(): React.ReactElement {
           <div className="flex w-full flex-col items-center gap-8 motion-safe:animate-[shell-overlay-in_220ms_ease-out]">
             {/* Brand lockup — matches the loading screen for visual continuity. */}
             <div className="flex items-center justify-center gap-3">
-              <ElizaMark className="h-11 w-11" />
+              <BrandMark className="h-11 w-11" />
               <span className="text-3xl font-medium leading-none tracking-normal">
                 {appName}
               </span>
