@@ -181,9 +181,22 @@ function isAnthropicNativeModel(model: string): boolean {
 }
 
 function normalizeCerebrasModelId(model: string): string {
-  if (model.startsWith("cerebras/")) return model.slice("cerebras/".length);
-  if (model.startsWith("cerebras:")) return model.slice("cerebras:".length);
-  return model;
+  // Strip provider/gateway namespace prefixes AND the OpenRouter routing-variant
+  // suffix (:nitro / :floor / :free / …). A dedicated agent's bundled plugin
+  // emits ids like "openai/gpt-oss-120b:nitro" / "openai/zai-glm-4.7:nitro" for
+  // what are really the bare Cerebras models gpt-oss-120b / zai-glm-4.7. Without
+  // this, isCerebrasNativeModel() misses them, so they skip cerebras-direct and
+  // fall through to BitRouter → the PUBLIC api.bitrouter.ai → OpenRouter, which
+  // 429s the :nitro variant (3 retries → 26-55s chats) or 500s "pricing
+  // unavailable" for the large model. Recognizing the underlying Cerebras id here
+  // routes them to cerebras-direct (the configured Cerebras key).
+  let id = model;
+  if (id.startsWith("cerebras/")) id = id.slice("cerebras/".length);
+  else if (id.startsWith("cerebras:")) id = id.slice("cerebras:".length);
+  else if (id.startsWith("openai/")) id = id.slice("openai/".length);
+  const variantAt = id.indexOf(":");
+  if (variantAt > 0) id = id.slice(0, variantAt);
+  return id;
 }
 
 function isCerebrasNativeModel(model: string): boolean {
@@ -191,6 +204,20 @@ function isCerebrasNativeModel(model: string): boolean {
   return (
     modelId === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL || modelId === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
   );
+}
+
+/**
+ * Canonicalize a requested model id for pricing AND routing. Dedicated agents
+ * emit decorated ids like "openai/gpt-oss-120b:nitro" / "openai/zai-glm-4.7:nitro"
+ * for what are really the bare Cerebras models. Collapse those to the bare
+ * Cerebras id at the route entry so the pricing lookup (which only carries the
+ * Cerebras row — "openai/zai-glm-4.7" is not an OpenRouter model → 500 "pricing
+ * unavailable") and the provider routing (cerebras-direct) agree. Non-Cerebras
+ * ids are returned unchanged so their normal BitRouter/gateway routing + pricing
+ * is untouched.
+ */
+export function canonicalizeCerebrasModelId(model: string): string {
+  return isCerebrasNativeModel(model) ? normalizeCerebrasModelId(model) : model;
 }
 
 function normalizeBitRouterLanguageModelId(model: string): string {
