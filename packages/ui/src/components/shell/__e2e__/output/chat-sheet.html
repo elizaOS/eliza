@@ -27132,9 +27132,18 @@
                           "aria-hidden": "true",
                           className: cn(
                             "pointer-events-none absolute inset-0 z-0",
-                            fullBleed ? "border-0" : "border border-white/[0.14]",
-                            "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
-                            fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
+                            fullBleed ? "border-0" : "border border-white/[0.16]",
+                            // Liquid glass: a near-clear tint that lets the backdrop show
+                            // through, BLURRED + over-saturated + brightness-knocked-down so
+                            // bright content (the orange ambient) stops white text from washing
+                            // out — instead of a heavy dark fill. blur(16px)+saturate+brightness
+                            // compose into ONE backdrop-filter pass (blur radius never animated,
+                            // so it stays cheap on the per-frame-resizing surface). The base
+                            // bg-black/45 is the legible fallback when backdrop-filter is
+                            // unavailable; the supports- rule thins it to glass once the filter
+                            // is doing the darkening.
+                            "bg-black/45 backdrop-blur-lg backdrop-saturate-[1.8] backdrop-brightness-[0.68] supports-[backdrop-filter]:bg-black/[0.12]",
+                            fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.26),inset_0_0_0_0.5px_rgba(255,255,255,0.08),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
                           ),
                           style: {
                             opacity: glassOpacity,
