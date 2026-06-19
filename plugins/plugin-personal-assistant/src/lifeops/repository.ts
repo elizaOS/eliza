@@ -2529,6 +2529,9 @@ export class LifeOpsRepository {
           "CREATE INDEX IF NOT EXISTS idx_life_connector_grants_account ON app_lifeops.life_connector_grants (agent_id, provider, connector_account_id)",
         ],
       },
+      // Calendar tables were carved to @elizaos/plugin-calendar (app_calendar);
+      // these repairs stay on app_lifeops to keep the migration SOURCE
+      // column-complete so CalendarMigrationService's row copy is shape-safe.
       {
         table: "app_lifeops.life_calendar_events",
         statements: [
@@ -4191,7 +4194,7 @@ export class LifeOpsRepository {
       });
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_calendar_events (
+      `INSERT INTO app_calendar.life_calendar_events (
         id, agent_id, provider, side, calendar_id, external_event_id, title,
         description, location, status, start_at, end_at, is_all_day,
         timezone, html_link, conference_link, organizer_json, attendees_json,
@@ -4234,8 +4237,8 @@ export class LifeOpsRepository {
         conference_link = excluded.conference_link,
         organizer_json = excluded.organizer_json,
         attendees_json = excluded.attendees_json,
-        connector_account_id = COALESCE(excluded.connector_account_id, app_lifeops.life_calendar_events.connector_account_id),
-        grant_id = COALESCE(excluded.grant_id, app_lifeops.life_calendar_events.grant_id),
+        connector_account_id = COALESCE(excluded.connector_account_id, app_calendar.life_calendar_events.connector_account_id),
+        grant_id = COALESCE(excluded.grant_id, app_calendar.life_calendar_events.grant_id),
         metadata_json = excluded.metadata_json,
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at`,
@@ -4254,7 +4257,7 @@ export class LifeOpsRepository {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_calendar_events
+      `DELETE FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${calendarClause}
@@ -4276,7 +4279,7 @@ export class LifeOpsRepository {
         : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_calendar_events
+      `DELETE FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${calendarClause}
@@ -4306,7 +4309,7 @@ export class LifeOpsRepository {
         : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_calendar_events
+      `DELETE FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           AND side = ${sqlQuote(side)}
@@ -4330,7 +4333,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_calendar_events
+         FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
@@ -4366,7 +4369,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_calendar_events
+         FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(args.agentId)}
           AND provider = ${sqlQuote(args.provider)}
           ${sideClause}
@@ -4383,7 +4386,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_calendar_sync_states (
+      `INSERT INTO app_calendar.life_calendar_sync_states (
         id, agent_id, provider, side, calendar_id, window_start_at,
         window_end_at, synced_at, updated_at
       ) VALUES (
@@ -4415,7 +4418,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_calendar_sync_states
+         FROM app_calendar.life_calendar_sync_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           AND calendar_id = ${sqlQuote(calendarId)}
@@ -4438,7 +4441,7 @@ export class LifeOpsRepository {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_calendar_sync_states
+      `DELETE FROM app_calendar.life_calendar_sync_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${calendarClause}
