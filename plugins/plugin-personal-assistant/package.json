@@ -79,6 +79,7 @@
     "@elizaos/plugin-health": "workspace:*",
     "@elizaos/plugin-inbox": "workspace:*",
     "@elizaos/plugin-phone": "workspace:*",
+    "@elizaos/plugin-reminders": "workspace:*",
     "@elizaos/plugin-remote-desktop": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",

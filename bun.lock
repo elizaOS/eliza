@@ -4834,7 +4834,9 @@
         "@elizaos/plugin-health": "workspace:*",
         "@elizaos/plugin-inbox": "workspace:*",
         "@elizaos/plugin-phone": "workspace:*",
+        "@elizaos/plugin-reminders": "workspace:*",
         "@elizaos/plugin-remote-desktop": "workspace:*",
+        "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-whatsapp": "workspace:*",
         "@elizaos/plugin-x": "workspace:*",
         "@elizaos/shared": "workspace:*",
@@ -4963,6 +4965,27 @@
         "@elizaos/plugin-sql": "workspace:*",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
+      },
+    },
+    "plugins/plugin-reminders": {
+      "name": "@elizaos/plugin-reminders",
+      "version": "2.0.3-beta.14",
+      "dependencies": {
+        "@elizaos/agent": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-scheduling": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/node": "^25.0.6",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "@elizaos/plugin-sql": "workspace:*",
       },
     },
     "plugins/plugin-remote-desktop": {
@@ -6797,6 +6820,8 @@
     "@elizaos/plugin-registry": ["@elizaos/plugin-registry@workspace:plugins/plugin-registry"],
 
     "@elizaos/plugin-relationships": ["@elizaos/plugin-relationships@workspace:plugins/plugin-relationships"],
+
+    "@elizaos/plugin-reminders": ["@elizaos/plugin-reminders@workspace:plugins/plugin-reminders"],
 
     "@elizaos/plugin-remote-desktop": ["@elizaos/plugin-remote-desktop@workspace:plugins/plugin-remote-desktop"],
 

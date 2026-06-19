@@ -221,6 +221,10 @@ export const lifeGoalLinks = appLifeopsPgSchema.table(
   ],
 );
 
+// NOTE: the reminder tables (life_reminder_plans / life_reminder_attempts /
+// life_escalation_states) were carved out to @elizaos/plugin-reminders
+// (`app_reminders`). These app_lifeops defs remain only as the non-destructive
+// migration SOURCE — PA's repository now reads/writes the app_reminders copies.
 export const lifeReminderPlans = appLifeopsPgSchema.table(
   "life_reminder_plans",
   {
