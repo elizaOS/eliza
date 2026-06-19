@@ -81,7 +81,7 @@ Two distinct data-plane node shapes share the `eliza-core-` prefix:
   (`eliza-core-<hex>`) minted by `generateNodeId()` when the autoscaler spins up
   extra capacity on demand.
 
-The old `milady-core-*` data-plane names are **retired** (migration 0132,
+The legacy data-plane core names are **retired** (migration 0132,
 `0132_legacy_milady_cores_disable.sql`, disabled them and cross-env cleanup
 removed the rows); they are not part of the live topology.
 

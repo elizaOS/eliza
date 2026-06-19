@@ -32,7 +32,7 @@ import trimesh
 
 os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
 
-ROOT = Path("/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone")
+ROOT = Path("/path/to/eliza/packages/chip/mechanical/e1-phone")
 OUT = ROOT / "out"
 REVIEW = ROOT / "review"
 ASM_GLB = OUT / "e1-phone-assembly.glb"

@@ -34,16 +34,16 @@ describe("deriveAppPublicUrl", () => {
   });
 
   test("does NOT inherit the agent sandbox domain — null when only the agent domain is set", () => {
-    // Regression: apps must never silently land on the agent/milady domain just
+    // Regression: apps must never silently land on the agent sandbox domain just
     // because they ran on a host that has ELIZA_CLOUD_AGENT_BASE_DOMAIN set.
     delete process.env[BASE];
-    process.env[FALLBACK] = "milady.ai";
+    process.env[FALLBACK] = "example.ai";
     expect(deriveAppPublicUrl(CID)).toBeNull();
   });
 
   test("uses the apps base domain (apps.elizacloud.ai) when set, ignoring the agent domain", () => {
     process.env[BASE] = "apps.elizacloud.ai";
-    process.env[FALLBACK] = "milady.ai";
+    process.env[FALLBACK] = "example.ai";
     expect(deriveAppPublicUrl(CID)).toEqual({
       hostname: "aabbccdd.apps.elizacloud.ai",
       url: "https://aabbccdd.apps.elizacloud.ai",

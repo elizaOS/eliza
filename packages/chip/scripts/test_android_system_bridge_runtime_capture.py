@@ -160,7 +160,7 @@ class SystemBridgeRuntimeCaptureTests(unittest.TestCase):
                 {
                     "/system/etc/permissions/foo.xml": (
                         "lrwxrwxrwx root root foo.xml -> "
-                        "/home/ubuntu/eliza-aosp/packages/os/android/vendor/milady/permissions/foo.xml"
+                        "/home/ubuntu/eliza-aosp/packages/os/android/vendor/eliza/permissions/foo.xml"
                     )
                 }
             )
@@ -175,7 +175,7 @@ class SystemBridgeRuntimeCaptureTests(unittest.TestCase):
         payload = {
             "product_out": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
             "tool": "/home/shaw/Android/Sdk/platform-tools/adb",
-            "repo": "/home/shaw/milady/eliza/packages/chip/docs/evidence/android/log.txt",
+            "repo": f"{capture.ROOT.parents[1].as_posix()}/packages/chip/docs/evidence/android/log.txt",
             "tmp": "/var/tmp/cvd/1000/1/home/cuttlefish/instances/cvd-1/logs/logcat",
         }
 

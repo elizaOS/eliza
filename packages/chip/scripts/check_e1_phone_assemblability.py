@@ -49,7 +49,7 @@ from OCP.GProp import GProp_GProps
 from OCP.STEPControl import STEPControl_Reader
 from OCP.TopoDS import TopoDS_Shape
 
-ROOT = Path("/home/shaw/milady/eliza/packages/chip")
+ROOT = Path("/path/to/eliza/packages/chip")
 OUT_DIR = ROOT / "mechanical/e1-phone/out"
 REVIEW_DIR = ROOT / "mechanical/e1-phone/review"
 MANIFEST = OUT_DIR / "assembly-manifest.json"

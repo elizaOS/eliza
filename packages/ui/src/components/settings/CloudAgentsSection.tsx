@@ -440,7 +440,7 @@ export function CloudAgentsSection() {
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Agent name (e.g. Milady)"
+            placeholder="Agent name (e.g. Eliza)"
             className="flex-1"
             disabled={creating}
           />

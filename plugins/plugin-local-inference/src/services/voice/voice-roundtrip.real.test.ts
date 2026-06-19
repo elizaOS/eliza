@@ -53,7 +53,7 @@ const omniDir = firstExisting([
 		os.homedir(),
 		".local",
 		"state",
-		"milady",
+		"eliza",
 		"local-inference",
 		"models",
 		"omnivoice",

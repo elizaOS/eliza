@@ -775,7 +775,7 @@ function smokeShopifyProducts(url: URL) {
   const products = [
     {
       id: "gid://shopify/Product/1001",
-      title: "Milady Hoodie",
+      title: "Example Hoodie",
       status: "ACTIVE",
       productType: "Apparel",
       vendor: "Eliza Smoke Store",
@@ -833,7 +833,7 @@ function smokeShopifyInventory() {
       {
         id: "gid://shopify/InventoryItem/3001",
         sku: "MLDY-HOODIE",
-        productTitle: "Milady Hoodie",
+        productTitle: "Example Hoodie",
         variantTitle: "Black / M",
         locationId: "gid://shopify/Location/1",
         locationName: "Main Warehouse",

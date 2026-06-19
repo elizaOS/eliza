@@ -10,7 +10,7 @@ fi
 
 models_dir="$whisper_pkg/lib/whisper.cpp/models"
 model_file="$models_dir/ggml-$model.bin"
-cache_dir="${MILADY_WHISPER_MODEL_CACHE_DIR:-}"
+cache_dir="${ELIZA_WHISPER_MODEL_CACHE_DIR:-}"
 cache_file=""
 
 if [ -n "$cache_dir" ]; then

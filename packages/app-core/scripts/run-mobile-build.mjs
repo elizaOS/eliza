@@ -78,8 +78,8 @@ import {
 // ── Paths ───────────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// When this elizaOS checkout is nested inside a consumer monorepo (e.g.
-// milady wraps it as `eliza/`), the repo-root walk resolves to the OUTER
+// When this elizaOS checkout is nested inside a consumer monorepo that
+// wraps it as `eliza/`, the repo-root walk resolves to the OUTER
 // repo and the build targets the consumer's app. Allow an explicit override
 // so the elizaOS app itself can be built standalone from the nested checkout.
 const repoRoot = process.env.ELIZA_MOBILE_REPO_ROOT?.trim()
@@ -95,9 +95,9 @@ const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
 // Android build target. By default this is the canonical elizaOS platform tree
 // (app-core/platforms/android), which the elizaOS app itself builds in. A
-// whitelabel consumer that embeds the elizaOS checkout (e.g. Milady) must NOT
+// whitelabel consumer that embeds the elizaOS checkout must NOT
 // build in that shared tree — the identity overlay rewrites it in place, so
-// after a Milady build the tree carries Milady's package and a subsequent
+// after a whitelabel build the tree carries the consumer's package and a subsequent
 // elizaOS build (or vice versa) is corrupted. Setting ELIZA_ANDROID_USE_APP_DIR=1
 // builds in the host app's own dir (appDir/android, like iOS already does),
 // treating app-core/platforms/android as a read-only template copied in by
@@ -2152,7 +2152,6 @@ function removeStaleAndroidJavaSourceRoots(
 ) {
   const candidates = [
     "ai.elizaos.app",
-    "ai.milady.milady",
     "com.elizaai.eliza",
     "com.elizaai.eliza",
     APP.appId,
@@ -2304,8 +2303,6 @@ export function patchAndroidAppActionsXmlResource(
     "elizaos",
     "ai.elizaos.app",
     "app.eliza",
-    "milady",
-    "ai.milady.milady",
     androidPackage,
   ].filter(Boolean);
   for (const scheme of escapedSchemes) {
@@ -2451,8 +2448,6 @@ export function validateAndroidAppActionsXmlResource(
     urlScheme === "eliza" ? null : "eliza://",
     urlScheme === "ai.elizaos.app" ? null : "ai.elizaos.app://",
     urlScheme === "app.eliza" ? null : "app.eliza://",
-    urlScheme === "milady" ? null : "milady://",
-    urlScheme === "ai.milady.milady" ? null : "ai.milady.milady://",
   ].filter(Boolean);
   for (const stale of staleLiterals) {
     if (xml.includes(stale)) {
@@ -2585,7 +2580,6 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
   const templateJava =
     [
       path.join(templateJavaRoot, "ai", "elizaos", "app"),
-      path.join(templateJavaRoot, "ai", "milady", "milady"),
       path.join(templateJavaRoot, "app", "eliza"),
     ].find((candidate) => fs.existsSync(candidate)) ??
     path.join(templateJavaRoot, "ai", "elizaos", "app");
@@ -2685,7 +2679,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       if (!fs.existsSync(src)) continue;
       let code = fs.readFileSync(src, "utf8");
       code = code.replace(
-        /^package\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza);/m,
+        /^package\s+(?:ai\.elizaos\.app|app\.eliza);/m,
         `package ${androidPackage};`,
       );
       code = code.replaceAll(
@@ -2696,7 +2690,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       // from either the legacy package or the default package so R/BuildConfig
       // resolve after the package overlay.
       code = code.replaceAll(
-        /\bimport\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza)\.(BuildConfig|R)\s*;/g,
+        /\bimport\s+(?:ai\.elizaos\.app|app\.eliza)\.(BuildConfig|R)\s*;/g,
         `import ${androidPackage}.$1;`,
       );
       code = code.replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`);
@@ -2716,7 +2710,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
         const legacyCode = fs
           .readFileSync(src, "utf8")
           .replaceAll(
-            /\bimport\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza)\.(BuildConfig|R)\s*;/g,
+            /\bimport\s+(?:ai\.elizaos\.app|app\.eliza)\.(BuildConfig|R)\s*;/g,
             `import ${androidPackage}.$1;`,
           );
         fs.writeFileSync(src, legacyCode, "utf8");
@@ -6106,16 +6100,6 @@ function stripAndroidForCloud() {
   );
   const javaRoots = [
     activeJavaRoot,
-    path.join(
-      androidDir,
-      "app",
-      "src",
-      "main",
-      "java",
-      "ai",
-      "milady",
-      "milady",
-    ),
     path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
   ];
   let removedJavaCount = 0;
@@ -6219,16 +6203,6 @@ function stripAndroidForSmsGateway() {
   );
   const javaRoots = [
     activeJavaRoot,
-    path.join(
-      androidDir,
-      "app",
-      "src",
-      "main",
-      "java",
-      "ai",
-      "milady",
-      "milady",
-    ),
     path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
   ];
   let removedJavaCount = 0;

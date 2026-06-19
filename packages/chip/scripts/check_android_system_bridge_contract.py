@@ -45,8 +45,8 @@ def read_android_gradle_identity() -> dict[str, str] | None:
 def infer_vendor_identity(package_name: str) -> dict[str, str]:
     defaults = {
         "appId": package_name,
-        "appName": "Milady" if package_name == "ai.milady.milady" else "Eliza",
-        "vendorDir": "milady" if package_name == "ai.milady.milady" else "eliza",
+        "appName": "Eliza",
+        "vendorDir": "eliza",
     }
     if not LOCAL_MANIFEST.is_file():
         return defaults
@@ -765,7 +765,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
             "system_bridge_runtime_permission_xml_probe_stale_identity",
             "system bridge runtime evidence includes permission XML probes for a stale launcher package identity",
             f"stale_paths={stale_permission_paths} expected_launcher_package={APP_PACKAGE}",
-            "Delete stale evidence and recapture from the current image; do not reuse probes from an older Eliza/Milady package identity.",
+            "Delete stale evidence and recapture from the current image; do not reuse probes from an older Eliza package identity.",
         )
         add_if(
             findings,

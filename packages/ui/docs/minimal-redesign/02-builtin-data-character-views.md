@@ -1,6 +1,6 @@
 # UX / Code / State Inventory — Built-in Data / Dev / Character / Content Views
 
-Repo: `/home/shaw/milady/eliza`. Views under `packages/ui/src/components/pages/` and `packages/ui/src/components/character/`. Routes from `packages/ui/src/navigation/index.ts` `TAB_PATHS` (lines 279–314).
+Repo: `/home/shaw/eliza`. Views under `packages/ui/src/components/pages/` and `packages/ui/src/components/character/`. Routes from `packages/ui/src/navigation/index.ts` `TAB_PATHS` (lines 279–314).
 
 Judged against the redesign direction: **minimalism** (cut text/borders/cards/badges/inputs/slop; icon+color+whitespace over text), **lighter feel** (single flat futuristic look, off heavy black; orange `#ff8a24` accent, blue `#1d91e8` info only, white/black/gray), **chat-first** (floating overlay is the primary interface; views are glanceable, voice-forward, view-dependent actions + proactive context + chat integration; exactly what they need, nothing more).
 

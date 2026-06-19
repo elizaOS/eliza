@@ -211,7 +211,7 @@ describe("v5 planner loop skeleton", () => {
 	});
 
 	it("forbids phantom in-flight investigative claims in messageToUser/REPLY (planner side)", () => {
-		// Live regression on 2026-05-26 in the milady deployment: user asked
+		// Live regression on 2026-05-26: user asked
 		// "look it up bitch" after the bot honestly declined a current-news
 		// question. Stage 1 routed simple=false + requiresTool=true with
 		// candidateActions=[WEB_SEARCH, SHELL]. The planner ran 4 SHELL curl

@@ -180,7 +180,7 @@ describe("HyperscapeOperatorSurface (GUI / XR)", () => {
     // Viewer = run.viewerAttachment "attached".
     expect(screen.getAllByText("attached").length).toBeGreaterThan(0);
     // Follow = session.followEntity.
-    expect(screen.getAllByText("milady-character").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("example-character").length).toBeGreaterThan(0);
     // Health = run.health.state.
     expect(screen.getAllByText("healthy").length).toBeGreaterThan(0);
     // Relay = canSendCommands → "Ready".
@@ -198,8 +198,8 @@ describe("HyperscapeOperatorSurface (GUI / XR)", () => {
     // Goal card reads session.goalLabel verbatim.
     expect(cardValue("Goal")).toBe("Explore the northern district");
     // Follow card value + characterId subtitle.
-    expect(cardValue("Follow")).toBe("milady-character");
-    expect(cardSubtitle("Follow")).toBe("milady-character");
+    expect(cardValue("Follow")).toBe("example-character");
+    expect(cardSubtitle("Follow")).toBe("example-character");
     // Relay card subtitle = sessionId.
     expect(cardValue("Relay")).toBe("Ready");
     expect(cardSubtitle("Relay")).toBe("hyper-agent-1");

@@ -1017,11 +1017,7 @@ function desktopRendererBuildEnv() {
     VITE_APP_VARIANT: variant,
     ELIZA_BUILD_VARIANT: buildVariant,
   };
-  if (
-    env.MILADY_SKIP_LOCAL_UPSTREAMS !== "1" &&
-    env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1"
-  ) {
-    env.MILADY_FORCE_LOCAL_UPSTREAMS = "1";
+  if (env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1") {
     env.ELIZA_FORCE_LOCAL_UPSTREAMS = "1";
   }
   return env;

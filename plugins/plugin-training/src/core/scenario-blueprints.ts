@@ -909,7 +909,7 @@ function dedupeBlueprints(
 // matching view. These blueprints generate the synthetic training data that
 // teaches the planner to treat view switching as a common, default response;
 // scorePlannerAction rewards picking VIEWS. Multilingual generationHints make
-// the optimizer cover es/fr/de/zh navigation too (Milady is local-first; small
+// the optimizer cover es/fr/de/zh navigation too (Eliza is local-first; small
 // models need the reinforcement).
 const viewSwitchingScenarios: ScenarioBlueprint[] = [
   {

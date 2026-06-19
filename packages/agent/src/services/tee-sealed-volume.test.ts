@@ -88,7 +88,7 @@ describe("TEE sealed state-volume key release", () => {
     const result = await unsealStateVolumeKey({
       keyReleaseClient: clientFor(evidenceWith({ ...TRUSTED_MEASUREMENTS })),
       policy: policy(),
-      context: "milady-state",
+      context: "example-state",
     });
     expect(result.decision.trusted).toBe(true);
     expect(result.keyMaterialHex).toMatch(/^[a-f0-9]{64}$/);

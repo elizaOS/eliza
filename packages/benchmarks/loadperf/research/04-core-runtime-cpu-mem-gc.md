@@ -539,12 +539,12 @@ console.log(`estToken on ~${output.length}-char prompt x${N}: ${(t1-t0).toFixed(
 **`/tmp/bench-catalog.mjs`** — `node --expose-gc --import tsx /tmp/bench-catalog.mjs`
 → buildCatalog+retrieve **511.6 us/msg**, build-only **348.8 us/msg**, retrieve-only **213.3 us/msg**
 (Findings 2-3). Imports use absolute paths to
-`/home/shaw/milady/eliza/packages/core/src/runtime/action-catalog.ts` and `…/action-retrieval.ts`.
+`/path/to/eliza/packages/core/src/runtime/action-catalog.ts` and `…/action-retrieval.ts`.
 
 ```js
 import { performance } from "node:perf_hooks";
-import { buildActionCatalog } from "/home/shaw/milady/eliza/packages/core/src/runtime/action-catalog.ts";
-import { retrieveActions } from "/home/shaw/milady/eliza/packages/core/src/runtime/action-retrieval.ts";
+import { buildActionCatalog } from "/path/to/eliza/packages/core/src/runtime/action-catalog.ts";
+import { retrieveActions } from "/path/to/eliza/packages/core/src/runtime/action-retrieval.ts";
 function mkAction(i){ return { name:`ACTION_${i}`, description:`This action performs operation number ${i} on the user request, handling files notes calendar tasks and reminders for the agent.`, similes:[`do_${i}`,`run_${i}`], examples:[[{name:"user",content:{text:`please do action ${i} for me now`}},{name:"agent",content:{text:`done ${i}`,actions:[`ACTION_${i}`]}}]], subActions:[] }; }
 const actions = Array.from({length:40},(_,i)=>mkAction(i));
 const N = 20000;

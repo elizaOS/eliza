@@ -29,7 +29,7 @@ python -m elizaos_voiceagentbench --mock --suite single --no-judge --output /tmp
 
 ```bash
 pip install -e ".[test]"
-PYTHONPATH=/home/shaw/milady/eliza/packages/benchmarks/voiceagentbench:/home/shaw/milady/eliza/packages/benchmarks/lifeops-bench \
+PYTHONPATH=/path/to/eliza/packages/benchmarks/voiceagentbench:/path/to/eliza/packages/benchmarks/lifeops-bench \
   pytest packages/benchmarks/voiceagentbench/tests -v
 ```
 

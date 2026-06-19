@@ -156,7 +156,7 @@ path for evaluation without a beefy local host.
 
 We **do not** implement the adapter in this pass. The integration mirrors the
 existing pattern in
-`/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/eliza-adapter/eliza_adapter/swe_bench.py`,
+`/path/to/eliza/packages/benchmarks/eliza-adapter/eliza_adapter/swe_bench.py`,
 which provides a `TEXT_LARGE` handler that the SWE-bench agent loop invokes
 per turn and routes through `ElizaClient`.
 

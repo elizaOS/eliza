@@ -12,7 +12,7 @@
  * regenerate the clip:
  *
  *   BUILD=plugins/plugin-local-inference/native/omnivoice.cpp/build
- *   MODELS=~/.local/state/milady/local-inference/models/omnivoice
+ *   MODELS=~/.local/state/eliza/local-inference/models/omnivoice
  *   echo "what time is it" | LD_LIBRARY_PATH=$BUILD $BUILD/omnivoice-tts \
  *     --model $MODELS/omnivoice-base-q4_k_m.gguf \
  *     --codec $MODELS/omnivoice-tokenizer-q4_k_m.gguf --format wav16 -o /tmp/o.wav

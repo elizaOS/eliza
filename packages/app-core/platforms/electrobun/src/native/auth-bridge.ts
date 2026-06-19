@@ -105,8 +105,7 @@ function resolveBrandAwareNamespace(envNamespace: string | undefined): string {
  * `~/.local/state/<namespace>`.
  */
 export function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
-  const explicit =
-    env.ELIZA_STATE_DIR?.trim() || env.MILADY_STATE_DIR?.trim() || "";
+  const explicit = env.ELIZA_STATE_DIR?.trim() || "";
   if (explicit)
     return path.resolve(explicit.replace(/^~(?=$|[\\/])/, os.homedir()));
   const namespace = resolveBrandAwareNamespace(env.ELIZA_NAMESPACE);

@@ -23,15 +23,14 @@ function withEnv(values, fn) {
   }
 }
 
-test("riscv64 Bun artifact path accepts the MILADY compatibility env alias", () => {
+test("riscv64 Bun artifact path resolves from the ELIZA_BUN_RISCV64_FILE env", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-riscv64-bun-"));
   try {
     const artifact = path.join(tmp, __testables.RISCV64_BUN_ARTIFACT_FILENAME);
     fs.writeFileSync(artifact, "fixture");
     const resolved = withEnv(
       {
-        ELIZA_BUN_RISCV64_FILE: null,
-        MILADY_BUN_RISCV64_FILE: artifact,
+        ELIZA_BUN_RISCV64_FILE: artifact,
       },
       () => __testables.riscv64BunFilePath(),
     );
@@ -41,12 +40,11 @@ test("riscv64 Bun artifact path accepts the MILADY compatibility env alias", () 
   }
 });
 
-test("riscv64 Bun artifact hash accepts the MILADY compatibility env alias", () => {
+test("riscv64 Bun artifact hash resolves from the ELIZA_BUN_RISCV64_SHA256 env", () => {
   const hash = "a".repeat(64);
   const resolved = withEnv(
     {
-      ELIZA_BUN_RISCV64_SHA256: null,
-      MILADY_BUN_RISCV64_SHA256: hash,
+      ELIZA_BUN_RISCV64_SHA256: hash,
     },
     () => __testables.riscv64BunSha256(),
   );
@@ -69,7 +67,6 @@ test("runtime provenance records repo-local riscv64 artifacts as relative paths"
   const source = withEnv(
     {
       ELIZA_BUN_RISCV64_FILE: artifact,
-      MILADY_BUN_RISCV64_FILE: null,
     },
     () => __testables.riscv64BunArtifactSource(),
   );
@@ -89,7 +86,6 @@ test("runtime provenance records external artifacts by basename only", () => {
   const source = withEnv(
     {
       ELIZA_BUN_RISCV64_FILE: artifact,
-      MILADY_BUN_RISCV64_FILE: null,
     },
     () => __testables.riscv64BunArtifactSource(),
   );

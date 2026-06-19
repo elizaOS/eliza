@@ -108,9 +108,7 @@ const EVICT_INTERVAL_MS = 30_000;
 let lastEvictAt = 0;
 
 function maxStoreBytes(): number {
-  const raw =
-    process.env.MILADY_MEDIA_STORE_MAX_BYTES ??
-    process.env.ELIZA_MEDIA_STORE_MAX_BYTES;
+  const raw = process.env.ELIZA_MEDIA_STORE_MAX_BYTES;
   const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0
     ? parsed
@@ -152,7 +150,7 @@ export function selectMediaToEvict(
  * Content is immutable + content-addressed, so an evicted file simply re-saves
  * if the same bytes are uploaded again. A message that references evicted media
  * renders a broken tile — the cap defaults to 2 GB so this only bites under
- * heavy use, and is tunable via `MILADY_MEDIA_STORE_MAX_BYTES`.
+ * heavy use, and is tunable via `ELIZA_MEDIA_STORE_MAX_BYTES`.
  */
 function maybeEvict(): void {
   const now = Date.now();

@@ -26,7 +26,7 @@ from scipy.ndimage import gaussian_filter1d
 sys.path.insert(0, os.path.dirname(__file__))
 import connections as C  # noqa: E402
 
-ROBOT = "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot"
+ROBOT = "/path/to/eliza/packages/robot"
 RINGS = os.path.join(ROBOT, "cad/asimov-feminine/param/source_fitted_parts")
 SRC = os.path.join(ROBOT, "assets/profiles/asimov-1/meshes")
 OUT = os.path.join(ROBOT, "cad/asimov-feminine/output/stl")

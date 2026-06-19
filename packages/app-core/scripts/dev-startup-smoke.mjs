@@ -4,7 +4,7 @@
 // budget. Exits non-zero if the budget is exceeded or the dev process dies.
 //
 // Runs on freshly-allocated ports and a throwaway state dir so it never
-// collides with a developer's running dev server or mutates ~/.milady.
+// collides with a developer's running dev server or mutates ~/.eliza.
 //
 // Env:
 //   ELIZA_DEV_STARTUP_BUDGET_MS  hard ceiling, default 60000 (the "1 minute" gate)
@@ -164,7 +164,6 @@ async function main() {
       ELIZA_UI_PORT: String(uiPort),
       ELIZA_PORT: String(uiPort),
       ELIZA_STATE_DIR: stateDir,
-      MILADY_STATE_DIR: stateDir,
       ELIZA_NAMESPACE: "eliza-dev-startup-smoke",
       ELIZA_DEV_NO_WATCH: "1",
       ELIZA_DEV_QUIET_LOGS: "1",

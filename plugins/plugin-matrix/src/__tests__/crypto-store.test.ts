@@ -131,11 +131,11 @@ beforeEach(async () => {
   await import("fake-indexeddb/auto");
   resetIndexedDb();
   stateRoot = mkdtempSync(join(tmpdir(), "matrix-crypto-test-"));
-  process.env.MILADY_STATE_DIR = stateRoot;
+  process.env.ELIZA_STATE_DIR = stateRoot;
 });
 
 afterEach(() => {
-  delete process.env.MILADY_STATE_DIR;
+  delete process.env.ELIZA_STATE_DIR;
   rmSync(stateRoot, { recursive: true, force: true });
   resetIndexedDb();
 });

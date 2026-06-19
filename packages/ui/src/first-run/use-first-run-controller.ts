@@ -699,7 +699,7 @@ export function useFirstRunController(): FirstRunController {
         uiLanguage,
       });
       const name =
-        typeof plan.payload.name === "string" ? plan.payload.name : "Milady";
+        typeof plan.payload.name === "string" ? plan.payload.name : "Eliza";
       const bio = Array.isArray(plan.payload.bio)
         ? plan.payload.bio.filter(
             (entry): entry is string => typeof entry === "string",

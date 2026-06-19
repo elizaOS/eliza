@@ -93,7 +93,7 @@
       },
       "GITPATHOLOGIST_CACHE_DIR": {
         "type": "string",
-        "description": "Override directory for cached pathology reports. Default <workspace>/.milady/gitpathology.",
+        "description": "Override directory for cached pathology reports. Default <workspace>/.eliza/gitpathology.",
         "required": false,
         "sensitive": false
       }

@@ -49,7 +49,7 @@ test.describe("domain acquisition lifecycle", () => {
 
     // 1. Search — returns priced candidates (stub: .com/.io/.dev).
     const search = await c<SearchResponse>("POST", "/api/v1/domains/search", {
-      query: "miladytest",
+      query: "exampletest",
       limit: 5,
     });
     expect(search.status, "domain search reachable + org-authed").toBe(200);

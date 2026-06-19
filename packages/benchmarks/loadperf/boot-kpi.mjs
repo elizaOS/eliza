@@ -33,16 +33,16 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import {
-  REPO_ROOT,
-  waitForReady,
-  recordResult,
-  loadBudgets,
-  sleep,
-  ms,
   join,
+  loadBudgets,
+  ms,
+  REPO_ROOT,
+  recordResult,
+  sleep,
+  waitForReady,
 } from "./lib.mjs";
 
 const NOW = new Date().toISOString();
@@ -55,7 +55,9 @@ const JSON_ONLY = process.argv.includes("--json");
 const DEFAULT_RUNS = 3;
 const RUNS_ARG = process.argv.find((a) => a.startsWith("--runs="));
 const RUNS_REQUESTED =
-  Number(RUNS_ARG?.split("=")[1]) || Number(process.env.LOADPERF_BOOT_RUNS) || DEFAULT_RUNS;
+  Number(RUNS_ARG?.split("=")[1]) ||
+  Number(process.env.LOADPERF_BOOT_RUNS) ||
+  DEFAULT_RUNS;
 const RUNS = ATTACH ? 1 : Math.max(1, Math.trunc(RUNS_REQUESTED));
 
 // A real agent cold boot is multiple seconds (blocking phase alone is ~2 s, and
@@ -64,11 +66,19 @@ const RUNS = ATTACH ? 1 : Math.max(1, Math.trunc(RUNS_REQUESTED));
 // early-liveness 200 that slipped past the readiness check — fail loudly.
 const READY_SANITY_FLOOR_MS = 3000;
 
-const API_PORT = Number(process.env.ELIZA_API_PORT ?? process.env.MILADY_API_PORT ?? 31337);
-const BASE_URL = (process.env.LOADPERF_BASE_URL ?? `http://127.0.0.1:${API_PORT}`).replace(/\/$/, "");
+const API_PORT = Number(process.env.ELIZA_API_PORT ?? 31337);
+const BASE_URL = (
+  process.env.LOADPERF_BASE_URL ?? `http://127.0.0.1:${API_PORT}`
+).replace(/\/$/, "");
 const BOOT_TIMEOUT_MS = Number(process.env.LOADPERF_BOOT_TIMEOUT_MS ?? 120_000);
 
-const DEV_SERVER = join("packages", "app-core", "src", "runtime", "dev-server.ts");
+const DEV_SERVER = join(
+  "packages",
+  "app-core",
+  "src",
+  "runtime",
+  "dev-server.ts",
+);
 // By DEFAULT measure the SHIPPED binary. The desktop/mobile app spawns the
 // pre-built `dist/entry.js start` via Bun (native/agent.ts), NOT the
 // tsx-transpiled dev-server — so the old default counted a ~2s on-the-fly tsx
@@ -113,12 +123,14 @@ function detectContention() {
       } catch {
         continue; // process exited between readdir and read
       }
-      if (comm === "node" || comm === "bun" || comm === "tsx") siblingProcs += 1;
+      if (comm === "node" || comm === "bun" || comm === "tsx")
+        siblingProcs += 1;
     }
   } catch {
     siblingProcs = -1; // /proc unavailable (non-Linux); leave the rest meaningful
   }
-  const heavy = loadAvg1 > cpuCount || (siblingProcs >= 0 && siblingProcs > cpuCount);
+  const heavy =
+    loadAvg1 > cpuCount || (siblingProcs >= 0 && siblingProcs > cpuCount);
   return { cpuCount, loadAvg1, siblingProcs, heavy };
 }
 
@@ -129,13 +141,20 @@ function checkBudgets(readyMs, peakRssBytes) {
     { name: "coldReadyMs", value: readyMs, budget: b.coldReadyMs, unit: "ms" },
   ];
   if (peakRssMb != null) {
-    checks.push({ name: "peakRssMb", value: peakRssMb, budget: b.peakRssMb, unit: "MB" });
+    checks.push({
+      name: "peakRssMb",
+      value: peakRssMb,
+      budget: b.peakRssMb,
+      unit: "MB",
+    });
   }
   return checks.map((c) => ({ ...c, pass: c.value <= c.budget }));
 }
 
 async function measureAttached() {
-  const { readyMs, health } = await waitForReady(BASE_URL, { timeoutMs: BOOT_TIMEOUT_MS });
+  const { readyMs, health } = await waitForReady(BASE_URL, {
+    timeoutMs: BOOT_TIMEOUT_MS,
+  });
   return { readyMs, peakRssBytes: null, health, mode: "attach" };
 }
 
@@ -151,7 +170,10 @@ async function measureSpawned() {
   // launcher's ELIZA_DEFER_APP_ROUTES=1 default so the readiness gate is
   // representative of the shipped boot.
   const [cmd, args] = USE_DEV
-    ? [process.execPath, ["--conditions=eliza-source", "--import", "tsx", DEV_SERVER]]
+    ? [
+        process.execPath,
+        ["--conditions=eliza-source", "--import", "tsx", DEV_SERVER],
+      ]
     : [BUN_BIN, ["run", PROD_ENTRY, "start"]];
   const child = spawn(cmd, args, {
     cwd: REPO_ROOT,
@@ -181,7 +203,11 @@ async function measureSpawned() {
 
   const exited = new Promise((_, reject) => {
     child.once("exit", (code, signal) => {
-      reject(new Error(`agent process exited early (code=${code} signal=${signal})\n${stderrTail}`));
+      reject(
+        new Error(
+          `agent process exited early (code=${code} signal=${signal})\n${stderrTail}`,
+        ),
+      );
     });
     child.once("error", (err) => reject(err));
   });
@@ -193,7 +219,8 @@ async function measureSpawned() {
     ]);
     // one last RSS sample at ready
     const rssAtReady = readRssBytes(child.pid);
-    if (rssAtReady != null && rssAtReady > peakRssBytes) peakRssBytes = rssAtReady;
+    if (rssAtReady != null && rssAtReady > peakRssBytes)
+      peakRssBytes = rssAtReady;
     return {
       readyMs: ready.readyMs,
       peakRssBytes: peakRssBytes || null,
@@ -259,7 +286,10 @@ async function main() {
     };
     const { file } = recordResult("boot", payload, NOW);
     if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
-    else console.error(`[boot-kpi] skipped: ${payload.error}\nrecorded -> ${file}`);
+    else
+      console.error(
+        `[boot-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
+      );
     process.exit(2);
   }
 
@@ -270,7 +300,10 @@ async function main() {
   const medianReadyMs = median(readyMsRuns);
   const peakRssBytes = rssRuns.length > 0 ? Math.max(...rssRuns) : null;
   const checks = checkBudgets(medianReadyMs, peakRssBytes);
-  const peakRssMb = peakRssBytes == null ? null : Number((peakRssBytes / (1024 * 1024)).toFixed(1));
+  const peakRssMb =
+    peakRssBytes == null
+      ? null
+      : Number((peakRssBytes / (1024 * 1024)).toFixed(1));
 
   // Honesty gates — these are PASS/FAIL conditions, not budget tunables. They
   // make a stale-server / early-liveness false positive fail the run loudly.
@@ -321,15 +354,23 @@ async function main() {
     console.log("\n=== Boot KPI ===");
     console.log(`mode:        ${mode}`);
     console.log(`base url:    ${BASE_URL}`);
-    console.log(`runs:        ${runs.length}${total !== runs.length ? ` (of ${total} requested)` : ""}`);
+    console.log(
+      `runs:        ${runs.length}${total !== runs.length ? ` (of ${total} requested)` : ""}`,
+    );
     if (runs.length > 1) {
-      console.log(`ready median:${ms(medianReadyMs)}  (p95 ${ms(s.readyMsP95)}, min ${ms(s.readyMsMin)}, max ${ms(s.readyMsMax)})`);
-      console.log(`ready runs:  ${readyMsRuns.map((v) => Math.round(v)).join(", ")} ms`);
+      console.log(
+        `ready median:${ms(medianReadyMs)}  (p95 ${ms(s.readyMsP95)}, min ${ms(s.readyMsMin)}, max ${ms(s.readyMsMax)})`,
+      );
+      console.log(
+        `ready runs:  ${readyMsRuns.map((v) => Math.round(v)).join(", ")} ms`,
+      );
     } else {
       console.log(`ready:       ${ms(medianReadyMs)}`);
     }
     console.log(`peak RSS:    ${peakRssMb == null ? "—" : `${peakRssMb} MB`}`);
-    console.log(`health.ready:${healthReady === true ? " true" : ` ${healthReady}`}`);
+    console.log(
+      `health.ready:${healthReady === true ? " true" : ` ${healthReady}`}`,
+    );
     console.log("\n-- budget checks --");
     for (const c of checks) {
       let v;
@@ -347,9 +388,13 @@ async function main() {
         v = ms(c.value);
         bud = ms(c.budget);
       }
-      console.log(`  ${c.pass ? "PASS" : "FAIL"}  ${c.name}: ${v} / budget ${bud}`);
+      console.log(
+        `  ${c.pass ? "PASS" : "FAIL"}  ${c.name}: ${v} / budget ${bud}`,
+      );
     }
-    console.log(`\nresult: ${result.pass ? "PASS" : "FAIL"}   recorded -> ${file}\n`);
+    console.log(
+      `\nresult: ${result.pass ? "PASS" : "FAIL"}   recorded -> ${file}\n`,
+    );
   }
 
   process.exit(result.pass ? 0 : 1);
