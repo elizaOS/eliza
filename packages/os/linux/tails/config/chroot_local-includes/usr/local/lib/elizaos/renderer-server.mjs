@@ -1,11 +1,11 @@
-#!/opt/milady/bin/bun
+#!/opt/elizaos/bin/bun
 
 import { extname, join, normalize, resolve } from "node:path";
 
 const host = "127.0.0.1";
 const port = Number.parseInt(process.env.ELIZAOS_RENDERER_PORT || "5174", 10);
 const rendererRoot = resolve(
-  process.env.ELIZAOS_RENDERER_ROOT || "/opt/milady/Resources/app/renderer",
+  process.env.ELIZAOS_RENDERER_ROOT || "/opt/elizaos/Resources/app/renderer",
 );
 const apiBase =
   process.env.ELIZA_DESKTOP_API_BASE ||

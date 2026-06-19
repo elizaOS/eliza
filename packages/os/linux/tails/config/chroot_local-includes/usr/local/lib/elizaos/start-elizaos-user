@@ -20,7 +20,7 @@ has_display_env() {
 
 for _ in $(seq 1 60); do
     if has_display_env; then
-        exec /usr/local/lib/run-with-env --env-file "${user_env_file}" -- /usr/local/bin/milady "$@"
+        exec /usr/local/lib/run-with-env --env-file "${user_env_file}" -- /usr/local/bin/elizaos "$@"
     fi
 
     if [ -S "${XDG_RUNTIME_DIR}/bus" ]; then

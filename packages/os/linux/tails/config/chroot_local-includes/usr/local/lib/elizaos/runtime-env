@@ -3,7 +3,7 @@
 set -eu
 
 run_env=/run/elizaos/runtime.env
-baked_runtime=/opt/milady
+baked_runtime=/opt/elizaos
 
 ELIZAOS_RUNTIME_TRUST=baked
 ELIZAOS_RUNTIME_STATUS=fallback
