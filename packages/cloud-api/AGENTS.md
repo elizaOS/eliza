@@ -14,6 +14,11 @@ src/
   bootstrap-app.ts         createApp(): builds the full Hono<AppEnv> stack — global
                            middleware (cors, secureHeaders, requestId, logger,
                            observability, auth), special-case routes, then mountRoutes().
+  dedicated-agent-proxy.ts Unified cloud-token auth + proxy for DEDICATED (container)
+                           agents reachable at <agentId>.elizacloud.ai/*. Validates the
+                           cloud session, confirms org ownership, then swaps the cloud
+                           token for the container's ELIZA_API_TOKEN before proxying
+                           over the tailnet. Imported lazily from index.ts.
   worker-polyfills.ts      MessagePort/MessageChannel/FinalizationRegistry shims for
                            `wrangler dev` (workerd) module init.
   _generate-router.mjs     Codegen: walks the package for route.ts/route.tsx leaves and
@@ -27,6 +32,7 @@ src/
   queue/                   stripe-event.ts, types.ts (Cloudflare Queue consumers).
   steward/embedded.ts      Embedded Steward (auth provider) handler, mounted at /steward*.
   lib/mcp/                 mcps-transport-gateway.ts (createMcpsTransportApp factory).
+  lib/apps-deploy-gate.ts  Gate logic for app deploy triggers; used by bootstrap-app.ts.
   stubs/                   Build-time stand-ins for node-only deps unavailable in workerd
                            (elizaos-core, ssh2, undici, plugin-sql, plugin-elevenlabs,
                            s3 adapter) — wired via wrangler.toml alias/define.
@@ -51,7 +57,7 @@ Path-alias note: `@/lib/*`, `@/db/*`, `@/types/*`, `@/billing/*` resolve into `.
 
 - `index.ts` default export `{ fetch, scheduled }` — the Worker contract Cloudflare invokes.
 - `bootstrap-app.ts` `createApp(): Hono<AppEnv>` — called by `index.ts`; the e2e harness boots through `src/index.ts`.
-- `src/_router.generated.ts` `mountRoutes(app)` — generated; mounts all 569 route apps.
+- `src/_router.generated.ts` `mountRoutes(app)` — generated; mounts all 580 route apps.
 - `AppEnv` / `Bindings` / `Variables` types come from `@/types/cloud-worker-env` (in cloud-shared) — `Bindings` enumerates every env var/binding the Worker reads.
 - Each `route.ts` default-exports a `new Hono<AppEnv>()` instance.
 

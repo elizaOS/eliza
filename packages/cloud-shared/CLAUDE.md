@@ -22,14 +22,14 @@ src/
     credit-markup.ts       calculateCreditMarkup, platform fee breakdown
     index.ts
   db/                      @elizaos/cloud-shared/db — Drizzle (Neon prod, PGlite local)
-    schemas/               ~97 table schemas (apps, agents, billing, containers, ...)
-    repositories/          ~66 CQRS repositories (readers/writers split)
+    schemas/               ~100 table schemas (apps, agents, billing, containers, ...)
+    repositories/          ~69 CQRS repositories (readers/writers split)
     migrations/            generated SQL — never hand-edit applied migrations
     client.ts              DB client; worker-neon-http.ts for Worker runtime
     crypto/  utils/
     index.ts
   lib/                     @elizaos/cloud-shared/lib — SERVER-ONLY services + use-cases
-    services/              ~207 service modules (containers, gateways, billing, ...)
+    services/              ~245 service modules (containers, gateways, billing, ...)
     auth.ts auth-anonymous.ts auth-errors.ts   session/API-key/wallet auth
     api/  middleware/  cors/  http/  session/   request-edge helpers
     stripe.ts  pricing.ts  promotion-pricing.ts
@@ -52,7 +52,7 @@ Subpath imports: `import { ... } from "@elizaos/cloud-shared/db"`, `".../billing
 - `src/index.ts` — namespaces: `billing`, `db`, `lib`, `types`.
 - `billing/index.ts` — `applyMarkup`, `applyMarkupCents`, `calculateCreditMarkup`, `calculateTwilioSmsBilling`, `roundUsd`, plus `DEFAULT_MARKUP_RATE`, `PLATFORM_MARKUP_MULTIPLIER`, `DEFAULT_PLATFORM_FEE_RATE`, and the `MarkupBreakdown` / `CreditMarkupBreakdown` types.
 - `db/index.ts` re-exports a few repositories (`userCharactersRepository`, `dockerNodesRepository`, `voiceImprintsRepository`); most schemas/repositories are imported by their own subpath, e.g. `@elizaos/cloud-shared/db/repositories/apps`.
-- `lib/index.ts` — `logger`, container/provisioning helpers (`WarmPoolManager`, `getHetznerContainersClient`, `provisioningJobService`, `elizaSandboxService`), `runWithCloudBindingsAsync`, envelope helpers (`envelope`, `errorEnvelope`).
+- `lib/index.ts` — `logger`, container/provisioning helpers (`WarmPoolManager`, `getHetznerContainersClient`, `getHetznerPoolContainerCreator`, `provisioningJobService`, `elizaSandboxService`, `dockerNodeManager`), `runWithCloudBindingsAsync`, envelope helpers (`envelope`, `errorEnvelope`).
 
 ## Commands
 
@@ -67,6 +67,7 @@ bun run --cwd packages/cloud-shared db:migrate:drizzle     # drizzle-kit migrate
 bun run --cwd packages/cloud-shared db:studio              # drizzle-kit studio
 bun run --cwd packages/cloud-shared db:check-migrations    # drizzle-kit check
 bun run --cwd packages/cloud-shared preflight:messaging-gateways
+bun run --cwd packages/cloud-shared generate:email-templates
 ```
 
 `build:linked-workspaces` defers to the repo-root `build:core`; there is no standalone build step here (consumers import `src/` directly).

@@ -23,6 +23,7 @@ packages/tui/
     editor-component.ts    EditorComponent interface (for custom editor implementations)
     constants.ts           All numeric/string constants (timeouts, sizes, limits)
     utils.ts               visibleWidth(), truncateToWidth(), wrapTextWithAnsi()
+    view-registry.ts       TerminalViewRegistry — process-global registry mapping string ids to Component instances for plugin-contributed terminal views
     core/
       types.ts             Component, Focusable, OverlayOptions, CURSOR_MARKER interfaces
       container.ts         Container — groups child components, delegates render/input
@@ -34,7 +35,7 @@ packages/tui/
       text.ts              Text — word-wrapped multi-line text with padding
       truncated-text.ts    TruncatedText — single-line status/header text
       markdown.ts          Markdown — renders markdown with syntax highlighting
-      markdown/            Markdown internals (inline-renderer, list-renderer, table-renderer)
+      markdown/            Markdown internals (inline-renderer, list-renderer, table-renderer, types)
       loader.ts            Loader — animated spinner
       cancellable-loader.ts CancellableLoader — Loader + Escape key AbortSignal
       select-list.ts       SelectList — keyboard-navigable selection list
@@ -92,7 +93,7 @@ Everything is re-exported from `src/index.ts`. Key symbols:
 
 ```bash
 bun run --cwd packages/tui build   # tsc compile to dist/
-bun run --cwd packages/tui dev     # tsc --watch
+bun run --cwd packages/tui dev     # tsgo watch (faster incremental compile)
 bun run --cwd packages/tui test    # vitest run test/
 bun run --cwd packages/tui clean   # rm -rf dist/
 ```
@@ -104,6 +105,8 @@ bun run --cwd packages/tui clean   # rm -rf dist/
 | `TUI_WRITE_LOG=<path>` | Capture raw ANSI stream written to stdout |
 | `TUI_HARDWARE_CURSOR=1` | Show real terminal cursor instead of fake cursor |
 | `TUI_CLEAR_ON_SHRINK=1` | Full clear when rendered content shrinks in height |
+| `TUI_DEBUG_REDRAW=1` | Log differential redraw operations to stderr |
+| `PI_TUI_DEBUG=1` | Enable low-level TUI debug logging |
 
 ## How to Extend
 
@@ -129,7 +132,7 @@ Use `setEditorKeybindings(manager)` at startup to remap `EditorAction` values to
 
 ## Conventions / Gotchas
 
-- **Every `render()` line must be ≤ `width`.** The TUI throws if a line is wider. Always call `truncateToWidth()` or `wrapTextWithAnsi()` before returning lines.
+- **Every `render()` line must be <= `width`.** The TUI throws if a line is wider. Always call `truncateToWidth()` or `wrapTextWithAnsi()` before returning lines.
 - **ANSI codes do not carry across lines.** The TUI appends `SGR reset` after each line. Reapply styles per line or use `wrapTextWithAnsi()` which preserves them.
 - **`VirtualTerminal` is test-only.** It wraps `@xterm/headless` and lives in `test/virtual-terminal.ts` — not exported from `dist/`.
 - **Image rendering is capability-gated.** `detectCapabilities()` inspects the terminal env vars; `getCapabilities()` caches that result. The `Image` component calls `getCapabilities()` automatically and falls back to text output when Kitty/iTerm2 is absent.

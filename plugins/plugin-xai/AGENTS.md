@@ -70,16 +70,16 @@ bun run --cwd plugins/plugin-xai clean        # rm -rf dist .turbo
 
 | Variable              | Required | Default                  | Description                              |
 | --------------------- | -------- | ------------------------ | ---------------------------------------- |
-| `XAI_API_KEY`         | yes*     | —                        | xAI API key. Checked first.              |
-| `GROK_API_KEY`        | yes*     | —                        | Alias accepted by auto-enable; code reads only `XAI_API_KEY` via `getConfig`. |
+| `XAI_API_KEY`         | yes*     | —                        | xAI API key. Checked first; falls back to `GROK_API_KEY`. |
+| `GROK_API_KEY`        | yes*     | —                        | Alias accepted by both auto-enable and `getConfig`; used if `XAI_API_KEY` is not set. |
 | `XAI_MODEL`           | no       | `grok-3`                 | Large text model. Also aliased as `XAI_LARGE_MODEL`. |
 | `XAI_SMALL_MODEL`     | no       | `grok-3-mini`            | Small text model.                        |
 | `XAI_EMBEDDING_MODEL` | no       | `grok-embedding`         | Embedding model.                         |
 | `XAI_BASE_URL`        | no       | `https://api.x.ai/v1`   | API base URL (useful for proxies).       |
 
-*At least one of `XAI_API_KEY` / `GROK_API_KEY` triggers auto-enable. The
-runtime model handlers require `XAI_API_KEY` specifically (see `getConfig` in
-`models/grok.ts`).
+*At least one of `XAI_API_KEY` / `GROK_API_KEY` is required. Both keys are
+accepted by `getConfig` in `models/grok.ts` (`XAI_API_KEY ?? GROK_API_KEY`),
+so either key is sufficient for model calls.
 
 Read via `runtime.getSetting(key)` — not `process.env` directly.
 
@@ -103,9 +103,9 @@ separate plugin rather than bloating this model-only plugin.
 
 ## Conventions / Gotchas
 
-- **`GROK_API_KEY` is auto-enable only.** `getConfig` in `models/grok.ts` only
-  reads `XAI_API_KEY`; if a user sets only `GROK_API_KEY` the plugin enables
-  but every model call throws. Document this to users.
+- **`XAI_API_KEY` and `GROK_API_KEY` are both accepted.** `getConfig` in
+  `models/grok.ts` reads `XAI_API_KEY ?? GROK_API_KEY`, so either key works for
+  model calls as well as auto-enable.
 - **Native vs. string return.** `generateText` returns `XaiNativeTextResult`
   when `messages`, `tools`, `toolChoice`, or `responseSchema` are passed. The
   handler's TypeScript signature says `Promise<string | TextStreamResult>` to

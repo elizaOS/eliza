@@ -12,11 +12,14 @@ This plugin lets an Eliza agent spawn and communicate with the Claude Code CLI a
 packages/plugin-sub-agent-claude-code/
   src/
     plugin.ts            Plugin descriptor export (entry for host-side)
+    plugin.test.ts       Unit tests for plugin.ts
     worker.ts            Worker entrypoint: calls bootstrap(plugin)
     sub-agent-service.ts ClaudeCodeSubAgentService — session lifecycle, spawn, RPC
+    sub-agent-service.test.ts Unit tests for sub-agent-service.ts
     sandbox.ts           OS sandboxing helpers (filterEnv, resolveSafeCwd, resolveSafeBinary, buildSandboxedCommand)
-    session-recorder.ts  Per-session transcript writer + pruneOldSessions (SOC2 O-8)
     sandbox.test.ts      Unit tests for sandbox.ts helpers
+    session-recorder.ts  Per-session transcript writer + pruneOldSessions (SOC2 O-8)
+    session-recorder.test.ts Unit tests for session-recorder.ts
   sandbox/
     macos.sb             macOS sandbox-exec profile (Seatbelt)
     linux-bwrap.sh       Linux bwrap wrapper script

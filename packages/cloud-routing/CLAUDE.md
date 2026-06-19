@@ -58,11 +58,10 @@ All exports are re-exported from `src/index.ts`:
 
 ```bash
 bun run --cwd packages/cloud-routing build       # tsc --noCheck + prepare-package-dist
+bun run --cwd packages/cloud-routing test        # vitest run src
 bun run --cwd packages/cloud-routing typecheck   # tsgo --noEmit
 bun run --cwd packages/cloud-routing lint        # biome check src
 ```
-
-There is no `test` script in this package. Tests in `src/resolve.test.ts` are consumed by the monorepo root test runner (vitest).
 
 ## Config / env vars
 
