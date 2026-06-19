@@ -1,0 +1,124 @@
+{
+	"name": "@elizaos/plugin-local-inference",
+	"version": "2.0.3-beta.14",
+	"description": "Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"eliza-source": {
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
+			},
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./runtime": {
+			"types": "./src/runtime/index.ts",
+			"eliza-source": {
+				"types": "./src/runtime/index.ts",
+				"import": "./src/runtime/index.ts",
+				"default": "./src/runtime/index.ts"
+			},
+			"import": "./dist/runtime/index.js",
+			"default": "./dist/runtime/index.js"
+		},
+		"./runtime/embedding-presets": {
+			"types": "./src/runtime/embedding-presets.ts",
+			"eliza-source": {
+				"types": "./src/runtime/embedding-presets.ts",
+				"import": "./src/runtime/embedding-presets.ts",
+				"default": "./src/runtime/embedding-presets.ts"
+			},
+			"import": "./dist/runtime/index.js",
+			"default": "./dist/runtime/index.js"
+		},
+		"./routes": {
+			"types": "./src/routes/index.ts",
+			"eliza-source": {
+				"types": "./src/routes/index.ts",
+				"import": "./src/routes/index.ts",
+				"default": "./src/routes/index.ts"
+			},
+			"import": "./dist/routes/index.js",
+			"default": "./dist/routes/index.js"
+		},
+		"./services": {
+			"types": "./src/services/index.ts",
+			"eliza-source": {
+				"types": "./src/services/index.ts",
+				"import": "./src/services/index.ts",
+				"default": "./src/services/index.ts"
+			},
+			"import": "./dist/services/index.js",
+			"default": "./dist/services/index.js"
+		},
+		"./*.css": "./dist/*.css",
+		"./*": {
+			"types": "./src/*.ts",
+			"eliza-source": {
+				"types": "./src/*.ts",
+				"import": "./src/*.ts",
+				"default": "./src/*.ts"
+			},
+			"import": "./dist/*.js",
+			"default": "./dist/*.js"
+		}
+	},
+	"files": [
+		"dist",
+		"src"
+	],
+	"scripts": {
+		"build": "bun run build.ts",
+		"dev": "bun run build.ts",
+		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run",
+		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
+		"clean": "rm -rf dist .turbo node_modules",
+		"lint": "bunx @biomejs/biome check --write --unsafe .",
+		"lint:check": "bunx @biomejs/biome check .",
+		"format": "bunx @biomejs/biome format --write .",
+		"format:check": "bunx @biomejs/biome format .",
+		"typecheck": "tsgo --noEmit",
+		"test:asr:real": "bun test src/services/voice/whisper-cpp-asr.real.test.ts",
+		"test:voice:roundtrip": "bun test src/services/voice/voice-roundtrip.real.test.ts",
+		"test:voice:real": "bun test src/services/voice/whisper-cpp-asr.real.test.ts src/services/voice/voice-roundtrip.real.test.ts"
+	},
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"@elizaos/plugin-capacitor-bridge": "workspace:*",
+		"@elizaos/plugin-computeruse": "workspace:*",
+		"@elizaos/plugin-aosp-local-inference": "workspace:*",
+		"@elizaos/shared": "workspace:*",
+		"phonemizer": "^1.2.1",
+		"ws": "^8.20.1"
+	},
+	"optionalDependencies": {
+		"node-llama-cpp": "3.18.1"
+	},
+	"peerDependencies": {
+		"@elizaos/core": "workspace:*",
+		"@elizaos/shared": "workspace:*"
+	},
+	"peerDependenciesMeta": {
+		"node-llama-cpp": {
+			"optional": true
+		}
+	},
+	"trustedDependencies": [
+		"node-llama-cpp"
+	],
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.14",
+		"@types/node": "24.12.2",
+		"@types/ws": "^8.18.1",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.4"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

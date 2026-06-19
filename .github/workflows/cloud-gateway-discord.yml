@@ -1,0 +1,99 @@
+name: Cloud Gateway Discord
+
+# CI for the gateway-discord service. The service is deployed to Railway
+# (see packages/cloud-services/gateway-discord/railway.toml); Railway auto-
+# deploys on push to the watched branch, so this workflow only runs tests
+# and a build sanity check.
+#
+# AWS EKS / Terraform / Helm deploy jobs were removed as part of the AWS
+# retirement (see packages/cloud-infra/cloud/AWS_RETIREMENT.md).
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/cloud-services/gateway-discord/**"
+      - "packages/cloud-shared/src/lib/services/gateway-discord/**"
+      - "packages/cloud-shared/src/lib/auth/jwks.ts"
+      - "packages/cloud-shared/src/lib/auth/jwt-internal.ts"
+      - "packages/cloud-shared/src/lib/auth/internal-api.ts"
+      - "packages/cloud-shared/scripts/messaging-gateway-preflight.mjs"
+      - "packages/cloud-api/v1/discord/**"
+      - "packages/cloud-api/internal/discord/**"
+      - "packages/cloud-api/internal/auth/**"
+      - "packages/cloud-api/.well-known/jwks.json/**"
+      - "packages/cloud-shared/src/db/**/discord-connections.ts"
+      - ".github/workflows/cloud-gateway-discord.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/cloud-services/gateway-discord/**"
+      - "packages/cloud-shared/src/lib/services/gateway-discord/**"
+      - "packages/cloud-shared/src/lib/auth/jwks.ts"
+      - "packages/cloud-shared/src/lib/auth/jwt-internal.ts"
+      - "packages/cloud-shared/src/lib/auth/internal-api.ts"
+      - "packages/cloud-shared/scripts/messaging-gateway-preflight.mjs"
+      - "packages/cloud-api/v1/discord/**"
+      - "packages/cloud-api/internal/discord/**"
+      - "packages/cloud-api/internal/auth/**"
+      - "packages/cloud-api/.well-known/jwks.json/**"
+      - "packages/cloud-shared/src/db/**/discord-connections.ts"
+      - ".github/workflows/cloud-gateway-discord.yml"
+
+concurrency:
+  group: cloud-gateway-discord-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: packages/cloud-shared
+
+env:
+  BUN_VERSION: "canary"
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install root dependencies
+        run: bun install --no-save && git diff --exit-code -- bun.lock
+
+      - name: Run messaging gateway preflight
+        run: bun run preflight:messaging-gateways
+
+      - name: Install service dependencies
+        working-directory: packages/cloud-services/gateway-discord
+        run: bun install --no-save && git diff --exit-code -- bun.lock
+
+      - name: Run service tests
+        working-directory: packages/cloud-services/gateway-discord
+        run: bun test tests/ --timeout 60000
+        env:
+          SKIP_SERVER_CHECK: "true"
+
+      - name: Run lib tests
+        run: bun test src/lib/services/gateway-discord/__tests__ --timeout 60000
+        env:
+          SKIP_SERVER_CHECK: "true"
+
+      - name: Run Discord API unit tests
+        run: |
+          if [ -f packages/tests/unit/discord-connections-api.test.ts ]; then
+            bun test packages/tests/unit/discord-connections-api.test.ts --timeout 60000
+          else
+            echo "packages/tests/unit/discord-connections-api.test.ts is not present; skipping legacy Discord API unit tests"
+          fi
+        env:
+          SKIP_SERVER_CHECK: "true"

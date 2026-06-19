@@ -1,0 +1,16 @@
+load_case,dead_load_kN,live_load_kN,dynamic_factor,total_design_load_kN,capacity_kN,safety_factor,pass_fail
+Single standard point - dead load only,2.5,0.0,1.0,2.5,9.81,3.92,PASS
+Single standard point - rated working load,0.5,9.31,1.2,11.77,29.43,2.5,PASS
+Single standard point - max service load,0.5,7.5,1.2,9.6,29.43,3.07,PASS
+Single hoist track point - dead load only,4.2,0.0,1.0,4.2,19.62,4.67,PASS
+Single hoist track point - rated working load,4.2,19.62,1.2,28.58,58.86,2.06,PASS
+Single hoist track point - max service with dynamic,4.2,15.0,1.2,22.2,58.86,2.65,PASS
+Adjacent pair standard points - shared load,1.2,4.5,1.2,6.84,29.43,4.3,PASS
+Four-point group loading - standard,2.0,8.0,1.1,11.0,29.43,2.68,MARGINAL
+Hoist track - two adjacent points shared,3.5,12.0,1.2,18.6,58.86,3.16,PASS
+Seismic combination - standard point,2.5,5.0,1.3,9.75,29.43,3.02,PASS
+Seismic combination - hoist track point,4.2,15.0,1.3,24.96,58.86,2.36,MARGINAL
+Wind uplift combination - standard point,2.5,3.0,1.0,5.5,29.43,5.35,PASS
+Proof load test - standard point (1.25x),0.0,12.26,1.0,12.26,29.43,2.4,PASS
+Proof load test - hoist point (1.25x),0.0,24.53,1.0,24.53,58.86,2.4,PASS
+Eccentric load - single standard point,2.5,7.5,1.3,13.0,29.43,2.26,MARGINAL

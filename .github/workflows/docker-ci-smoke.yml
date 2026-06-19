@@ -1,0 +1,183 @@
+name: Docker CI Smoke
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: docker-ci-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-24.04
+    outputs:
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Determine affected Docker smoke surface
+        id: filter
+        shell: bash
+        env:
+          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/ci-path-gate.mjs \
+            --config docker \
+            --event "${{ github.event_name }}" \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --labels "$PR_LABELS" \
+            --output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+  docker-ci-smoke:
+    name: Build production Docker image (+ smoke boot)
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      BUN_VERSION: "canary"
+      DOCKER_IMAGE: elizaos/agent:docker-smoke
+      SMOKE_TIMEOUT_SEC: "420"
+      SMOKE_PORT: "32138"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache Bun install
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Free disk space for Docker smoke
+        run: |
+          df -h
+          # github-hosted-only disk cleanup; self-hosted runners (#8501) have no
+          # passwordless sudo and don't need it, so never fail the job on it.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af --volumes || true
+          df -h
+
+      - name: Run Docker CI smoke path
+        timeout-minutes: 45
+        # Run the smoke script in its own process group so a wedged docker
+        # child cannot outlive the wrapper timeout and keep the step active.
+        run: |
+          set -euo pipefail
+
+          stop_smoke() {
+            if [[ -n "${smoke_pid:-}" ]] && kill -0 "$smoke_pid" 2>/dev/null; then
+              kill -TERM "-$smoke_pid" 2>/dev/null || kill -TERM "$smoke_pid" 2>/dev/null || true
+              sleep 10
+              kill -KILL "-$smoke_pid" 2>/dev/null || kill -KILL "$smoke_pid" 2>/dev/null || true
+            fi
+          }
+
+          trap 'stop_smoke; exit 130' INT
+          trap 'stop_smoke; exit 143' TERM
+
+          mkdir -p .tmp/qa
+          smoke_log=".tmp/qa/docker-ci-smoke-step.log"
+          setsid bash packages/app-core/scripts/docker-ci-smoke.sh --tag gha-${{ github.run_id }} > >(tee "$smoke_log") 2> >(tee -a "$smoke_log" >&2) &
+          smoke_pid=$!
+          smoke_started_at=$SECONDS
+          last_heartbeat=$SECONDS
+          deadline=$((SECONDS + 40 * 60))
+
+          while kill -0 "$smoke_pid" 2>/dev/null; do
+            if (( SECONDS >= deadline )); then
+              echo "::error::Docker CI smoke path exceeded 40 minutes"
+              kill -TERM "-$smoke_pid" 2>/dev/null || kill -TERM "$smoke_pid" 2>/dev/null || true
+              sleep 15
+              kill -KILL "-$smoke_pid" 2>/dev/null || kill -KILL "$smoke_pid" 2>/dev/null || true
+              wait "$smoke_pid" || true
+              exit 124
+            fi
+            if (( SECONDS - last_heartbeat >= 60 )); then
+              last_heartbeat=$SECONDS
+              echo "[docker-ci-smoke] still running after $((SECONDS - smoke_started_at))s; log: $smoke_log"
+            fi
+            sleep 10
+          done
+
+          set +e
+          wait "$smoke_pid"
+          smoke_status=$?
+          set -e
+          if (( smoke_status != 0 )); then
+            echo "::group::Docker CI smoke step tail"
+            tail -n 240 "$smoke_log" || true
+            echo "::endgroup::"
+            echo "::error::Docker CI smoke failed with exit code ${smoke_status}; see the step tail and uploaded .tmp/qa artifacts."
+            exit "$smoke_status"
+          fi
+
+      # Inline log capture runs on failure (not cancelled).
+      - name: Dump container log + inspect (inline)
+        if: failure()
+        timeout-minutes: 2
+        run: |
+          echo "::group::Docker containers"
+          timeout 15 docker ps -a || echo "(docker ps timed out)"
+          echo "::endgroup::"
+          timeout 15 docker ps -a --format '{{.Names}}' > /tmp/eliza-docker-containers.txt || true
+          for C in $(grep '^eliza-docker-smoke-' /tmp/eliza-docker-containers.txt || true); do
+            echo "::group::docker logs $C"
+            timeout 30 docker logs "$C" 2>&1 || echo "(docker logs timed out)"
+            echo "::endgroup::"
+            echo "::group::docker inspect $C (state)"
+            timeout 15 docker inspect "$C" --format '{{json .State}}' 2>&1 | python3 -m json.tool || true
+            echo "::endgroup::"
+          done
+
+      - name: Upload container logs + inspect
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: docker-ci-smoke-artifacts-${{ github.run_id }}
+          path: |
+            .tmp/qa/docker-ci-smoke-*
+            /tmp/eliza-docker-*.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Summarize Docker smoke result
+        if: always()
+        run: |
+          echo "## Docker CI Smoke" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Production Dockerfile: \`packages/app-core/deploy/Dockerfile.ci\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Script: \`packages/app-core/scripts/docker-ci-smoke.sh\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger: \`${{ github.event_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ref: \`${{ github.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Smoke endpoints: \`/api/health\` then fallback \`/api/status\`" >> "$GITHUB_STEP_SUMMARY"

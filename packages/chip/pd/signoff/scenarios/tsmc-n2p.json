@@ -1,0 +1,12 @@
+{
+  "blocked": true,
+  "blocked_reason": "NDA advanced node: no Liberty/extraction may be checked in; scenario set is present but empty until foundry + commercial-EDA agreement (see procurement_gate in the corner manifest).",
+  "evidence_class": "procurement_blocked_no_corner_set",
+  "node_class": "tsmc_n2_class_gaa_nanosheet",
+  "node_id": "tsmc-n2p",
+  "pdk": "TSMC_N2P",
+  "scenario_count": 0,
+  "scenarios": [],
+  "schema": "eliza.pd_mmmc_scenario.v1",
+  "status": "blocked_until_foundry_agreement"
+}

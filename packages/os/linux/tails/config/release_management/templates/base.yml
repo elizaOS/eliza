@@ -1,0 +1,50 @@
+# Common rules
+# ============
+#
+#  - Version numbers must be double-quoted.
+#
+# the version you're preparing (see [[contribute/release_schedule#versioning]]),
+version: "FIXME"
+# the last released version:
+#  - if you're preparing a major release: its latest release
+#    candidate, if any; otherwise:
+#  - else: the current stable release of Tails
+previous_version: "FIXME"
+# the current stable release of Tails. This will be the same as
+# `previous_version` except when preparing a major release.
+previous_stable_version: "FIXME"
+# set to the version number of the next *major* Tails release; if
+# you're preparing a RC for a major release, use that major release;
+# otherwise, use whatever the next planned major release is
+# If you're preparing the hopefully-last version of the X.* series,
+# and you're tempted to set this to X+1.0, you can: you don't need to
+# special-case it.
+next_planned_major_version: "FIXME"
+# if you're preparing the RC for a major release, set this to the
+# version number of the second next *major* Tails release; e.g. if
+# preparing the RC for the 3.9 major release, then set this to 3.12
+# (3.9 is the next major release, 3.10 and 3.11 are bugfix releases,
+# 3.12 is a major release).
+second_next_planned_major_version: "FIXME"
+# set to the version number of the next scheduled *bugfix* Tails
+# release
+next_planned_bugfix_version: "FIXME"
+# use whichever is the next scheduled release among
+# `$NEXT_PLANNED_BUGFIX_VERSION` and `$NEXT_PLANNED_MAJOR_VERSION`
+next_planned_version: "FIXME"
+# set to the version number we'll give to the next emergency release
+# if we have to put one out
+next_potential_emergency_version: "FIXME"
+# if `$NEXT_PLANNED_BUGFIX_VERSION` is the next scheduled release, use
+# it; otherwise, use `$NEXT_POTENTIAL_EMERGENCY_VERSION`
+next_stable_changelog_version: "FIXME"
+# the date when you plan to publish this release, in the format
+# `YYYY-MM-DD`, double quoted; if preparing a non-final release,
+# use the release date for that _non-final_ release,
+# not for the corresponding final release.
+release_date: "FIXME"
+# set to 1 if preparing a major release or a release candidate for a
+# major release, to 0 otherwise
+major_release: FIXME
+# either 'alpha' (for RC:s) or 'stable' (for actual releases)
+dist: FIXME

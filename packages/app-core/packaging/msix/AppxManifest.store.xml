@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppxManifest.store.xml — AppContainer-sandboxed manifest for Microsoft Store distribution.
+
+  This is the store-build flavor (ELIZA_BUILD_VARIANT=store). It deliberately omits
+  runFullTrust and windows.fullTrustApplication so the app runs as a regular AppContainer
+  process. As a consequence, local-agent execution paths that rely on PATH-lookup, spawning
+  external CLIs (node, bun, codex, claude), or arbitrary filesystem access are NOT available
+  in the store build — the app is forced into Cloud hosting mode (sandbox-runtime gating).
+
+  For the desktop build that can run local agents (NSIS/MSI / direct download), see
+  AppxManifest.xml.
+
+  Identity Name / Publisher / Version MUST match AppxManifest.xml so both flavors are
+  recognized as the same product by users.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="ElizaOS.App"
+    Publisher="CN=elizaOS"
+    Version="0.0.0.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>elizaOS App</DisplayName>
+    <PublisherDisplayName>elizaOS</PublisherDisplayName>
+    <Logo>assets\StoreLogo.png</Logo>
+    <Description>Personal AI assistant — cute agents for the acceleration</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="ElizaOSApp"
+      Executable="launcher.exe">
+      <uap:VisualElements
+        DisplayName="elizaOS App"
+        Description="Personal AI assistant"
+        BackgroundColor="transparent"
+        Square150x150Logo="assets\Square150x150Logo.png"
+        Square44x44Logo="assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="assets\Wide310x150Logo.png" Square310x310Logo="assets\LargeTile.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="elizaos-app" />
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!--
+      AppContainer capability set. Intentionally minimal:
+        - internetClient: outbound HTTPS to Eliza Cloud and model providers.
+        - internetClientServer: the renderer talks to the bundled local API process
+          on a loopback port; loopback bind requires this capability.
+        - privateNetworkClientServer: NOT included by default. Add only if a future
+          feature needs to talk to a LAN device (e.g. local Ollama on another host).
+        - broadFileSystemAccess: NOT included. The app uses the file picker contract
+          for any file the user explicitly selects.
+        - runFullTrust: NOT included. This is the whole point of the store build —
+          stay inside the AppContainer sandbox.
+    -->
+    <Capability Name="internetClient" />
+    <Capability Name="internetClientServer" />
+  </Capabilities>
+</Package>

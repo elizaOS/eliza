@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Openphone Renode qemu-virt smoke evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target",
+    "model_kind",
+    "command",
+    "firmware",
+    "transcript",
+    "qemu_reference_transcript",
+    "expected_banner",
+    "observed_banner",
+    "renode_version",
+    "exit_code",
+    "generated_at_utc"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "target": {
+      "const": "eliza-e1"
+    },
+    "model_kind": {
+      "const": "qemu_virt_reference",
+      "description": "This is qemu-virt software-reference evidence, not e1-chip hardware ABI evidence."
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1
+    },
+    "firmware": {
+      "const": "build/qemu/e1_qemu_firmware.elf"
+    },
+    "transcript": {
+      "const": "build/renode/eliza_e1_uart.transcript"
+    },
+    "qemu_reference_transcript": {
+      "const": "build/reports/qemu_smoke.log",
+      "description": "QEMU qemu-virt transcript that the Renode smoke must match at the banner/firmware-contract level."
+    },
+    "expected_banner": {
+      "const": "eliza e1 qemu"
+    },
+    "observed_banner": {
+      "const": "eliza e1 qemu"
+    },
+    "renode_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exit_code": {
+      "const": 0
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -1,0 +1,32 @@
+type: postgresql
+mode: standalone
+version:
+  postgresql: "17"
+
+cluster:
+  instances: 1
+  storage:
+    size: 1Gi
+  enableSuperuserAccess: true
+  initdb:
+    database: app
+    owner: app
+    postInitApplicationSQL:
+      - "CREATE EXTENSION IF NOT EXISTS vector;"
+      - "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
+  monitoring:
+    enabled: false
+
+backups:
+  enabled: false
+
+poolers:
+  - name: rw
+    type: rw
+    instances: 1
+    poolMode: transaction
+    parameters:
+      max_client_conn: "100"
+      default_pool_size: "20"
+    monitoring:
+      enabled: false

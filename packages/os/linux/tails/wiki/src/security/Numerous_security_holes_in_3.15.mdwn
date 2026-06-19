@@ -1,0 +1,24 @@
+[[!meta date="Sat, 31 Aug 2019 23:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.15"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.15 are now fixed in Tails 3.16.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.16|news/version_3.16]] as soon as possible.
+
+
+ - Tor Browser: [[!mfsa 2019-27]]
+ - Thunderbird: [[!mfsa 2019-23]]
+ - Linux:
+   [[!cve CVE-2019-13272]], [[!cve CVE-2019-13233]], [[!cve CVE-2019-12817]],
+   [[!cve CVE-2019-12984]], [[!cve CVE-2019-1999]], [[!cve CVE-2018-20836]],
+   [[!cve CVE-2019-13631]], [[!cve CVE-2019-14283]], [[!cve CVE-2019-10638]],
+   [[!cve CVE-2019-14284]], [[!cve CVE-2019-10207]], [[!cve CVE-2019-13648]],
+   [[!cve CVE-2019-1125]]
+ - LibreOffice: [[!debsa2019 4483]], [[!debsa2019 4501]]
+ - Ghostscript: [[!debsa2019 4499]]
+ - Patch: [[!debsa2019 4489]]
+ - nghttp2: [[!debsa2019 4511]]

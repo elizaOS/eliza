@@ -1,0 +1,15 @@
+.terraform/
+*.tfstate
+*.tfstate.backup
+crash.log
+crash.*.log
+
+# .terraform.lock.hcl IS committed — it pins provider checksums per platform
+# so every operator + CI gets the exact same provider binaries. terraform init
+# refuses to update locked checksums without explicit -upgrade.
+
+# Live tfvars contain SSH public keys + zone IDs — keep them out of git.
+# Only `.tfvars.example` lives in the repo.
+*.tfvars
+!*.tfvars.example
+.envrc

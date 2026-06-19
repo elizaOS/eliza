@@ -1,0 +1,123 @@
+[[!meta date="Mon, 05 May 2013 13:45:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Call for testing: 0.18~rc1"]]
+
+<p>You can help Tails! The first (and hopefully only) release candidate for the
+upcoming version 0.18 is out. Please test it and see if all works for you.</p>
+
+[[!toc levels=1]]
+
+<h1>How to test Tails 0.18~rc1?</h1>
+
+<ol>
+  <li>
+    <p>
+      <strong>Keep in mind that this is a test image.</strong> We have made sure
+      that it is not broken in an obvious way, but it might still contain
+      undiscovered issues.
+    </p>
+  </li>
+  <li>
+    <p>Download the ISO image and its signature:</p>
+    <p>
+      <a class="download-file"
+         href=""
+      >Tails 0.18~rc1 ISO image</a>
+    </p>
+    <p>
+      <a class="download-signature"
+         href=""
+      >Tails 0.18~rc1 signature</a>
+    </p>
+  </li>
+  <li>
+    <p>
+      Verify the ISO image.
+    </p>
+  </li>
+  <li>
+    <p>
+      Have a look at the list of <a href="#known_issues">known issues
+      of this release</a> and the list of [[longstanding known
+      issues|support/known_issues]].
+    </p>
+  </li>
+  <li>
+    <p>
+      Test wildly!
+    </p>
+  </li>
+</ol>
+
+<p>If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you check that it is not a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].</p>
+
+<h1>What's new since 0.17.2?</h1>
+
+<ul>
+
+<li>New features</li>
+<ul>
+	<li><p>Support obfs3 bridges.</p></li>
+	<li><p>Automatically install a custom list of additional packages chosen
+	by the user at the beginning of every working session, and upgrade them
+	once a network connection is established (technology preview).</p></li>
+</ul>
+
+<li>Iceweasel</li>
+<ul>
+	<li><p>Update Torbrowser patches to current maint-2.4 branch (567682b).</p></li>
+	<li><p>Isolate DOM storage to first party URI, and enable DOM storage.</p></li>
+	<li><p>Isolate the image cache per url bar domain.</p></li>
+	<li><p>Torbutton 1.5.2, and various prefs hacks to fix breakage.</p></li>
+	<li><p>HTTPS Everywhere 3.2.</p></li>
+	<li><p>Update prefs to match the TBB's, fix bugs, and take advantage of the latest Torbrowser patches.</p></li>
+	<li><p>Make prefs organization closer to the TBB's.</p></li>
+	<li><p>Cleanup prefs.</p></li>
+	<li><p>Update unsafe browser prefs mangling accordingly.</p></li>
+</ul>
+
+<li>Bugfixes</li>
+<ul>
+	<li><p>Fixed swapped filenames of tails-{reboot,shutdown}.desktop.</p></li>
+	<li><p>Only add ClientTransportPlugin to torrc when bridge mode is enabled.</p></li>
+</ul>
+
+<li><p>Minor improvements</p></li>
+<ul>
+	<li><p>Set <code>kernel.dmesg_restrict=1</code>, and make <code>/proc/&lt;pid&gt;/</code> invisible and restricted for other users.</p></li>
+	<li><p>Install gnome-screenshot.</p></li>
+	<li><p>Don't disable IPv6 on all network interfaces anymore.</p></li>
+	<li><p>Add a "About Tails" launcher in the System menu.</p></li>
+	<li><p>Install GNOME accessibility themes.</p></li>
+	<li><p>Use <em>Getting started...</em> as the homepage for Tails documentation button.</p></li>
+	<li><p>Stop relying on the obsolete <code>/live/image</code> compatibility symlink.</p></li>
+	<li><p>Disable audio preview in Nautilus.</p></li>
+</ul>
+
+<li><p>Localization: many translation updates all over the place.</p></li>
+
+<li><p>Build process</p></li>
+<ul>
+<li><p>Make Vagrant's build-tails script support Jenkins too.</p></li>
+</ul>
+
+<li><p>Test suite</p></li>
+<ul>
+<li><p>Fix Unsafe Browser test broken by hidepid.</p></li>
+</ul>
+
+</ul>
+
+<h1><a id="known_issues"></a>Known issues in 0.18~rc1</h1>
+
+<ul>
+<li>A number of Iceweasel prefs are not applied. This can result in a more
+fingerprintable web browsing behaviour than usual.</li>
+<li>The Iceweasel web browser leaks some browser type information via
+JavaScript.</li>
+</ul>
+
+<p>All these issues should be fixed in Tails 0.18.</p>

@@ -1,0 +1,41 @@
+{
+  "boot_markers_reached": {
+    "kernel_version": true,
+    "live_uname_syscall": true,
+    "opensbi_banner": true,
+    "proc_cpuinfo_enumerated": true,
+    "run_init": true,
+    "userland_marker_ELIZA_USERLAND_OK": true
+  },
+  "claim_boundary": "FUNCTIONAL boot-to-userland proof of the E1 OS + firmware stack. Proves OpenSBI + Linux 6.12.90 + the builtin initramfs and freestanding /init reach userland end-to-end. Makes NO timing, cycle-count, IPC, or power claim. The substrate is QEMU (functional), NOT the CVA6 RTL. The cycle-accurate CVA6/Verilator path (the e1-pro little core) is proven to the OpenSBI banner + S-mode handoff + kernel early-init and is recorded separately (docs/evidence/cpu_ap/cva6-boot-substrate.json, build/reports/linux_boot_cva6.userland.json); it does not reach userland in a bounded Verilator window due to per-cycle speed, not a correctness gap.",
+  "claim_level": "functional",
+  "core": {
+    "isa_substrate": "rv64 (QEMU virt CPU; the kernel is built ARCH=riscv rv64gc)",
+    "isa_target": "rv64gc (cv64a6_imafdc_sv39 on the CVA6 RTL path)",
+    "role": "linux_bringup_application_hart (functional equivalent of the e1-pro little core)"
+  },
+  "generated_utc": "2026-05-22T19:56:30Z",
+  "kernel": {
+    "config": "tinyconfig + fw/linux-cva6-boot/minimal.config (earlycon retargeted to QEMU virt UART 0x10000000)",
+    "initramfs": "builtin (CONFIG_INITRAMFS_SOURCE = fw/linux-cva6-boot/build/initramfs.cpio); PID-1 = fw/linux-cva6-boot/init.c (freestanding, raw syscalls)",
+    "version": "6.12.90"
+  },
+  "opensbi": {
+    "provenance": "QEMU built-in fw_jump for the rv64gc virt machine (-bios default); the eliza-platform OpenSBI v1.8.1 fw_jump used on the CVA6 RTL path is built by fw/linux-cva6-boot/build_linux_boot_image.py",
+    "version": "OpenSBI v1.5.1"
+  },
+  "post_proof_note": "After printing all proof markers, PID-1 idles with a U-mode 'wfi' which traps (illegal instruction) and the kernel reports 'Attempted to kill init'; this is AFTER userland is proven and is benign for this boot-to-userland claim.",
+  "provenance": "simulator",
+  "reached_userland": true,
+  "recorded_at": "2026-05-22T19:56:30Z",
+  "reproduce": [
+    "source tools/env.sh",
+    "scripts/run_e1_linux_boot.sh"
+  ],
+  "schema": "eliza.cpu_linux_boot.v1",
+  "status": "pass",
+  "substrate": "qemu-system-riscv64 (virt machine, functional ISA simulator)",
+  "transcript": "docs/evidence/cpu_ap/e1-pro-linux-boot.transcript",
+  "transcript_bytes": 22016,
+  "transcript_sha256": "ca7069a83bc90e6ec37ce655d5e946e5b755ea26804586ca4a0d17878a08a841"
+}

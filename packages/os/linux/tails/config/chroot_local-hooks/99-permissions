@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -e
+
+echo "Setting correct file permissions"
+
+chmod 00440 /etc/sudoers.d/*
+
+# The debian-tor user must be able to write into `/etc/tor` in order
+# to allow SAVECONF over the control channel.
+chown -R debian-tor:debian-tor /etc/tor
+
+# Otherwise, such files may be copied to /home/amnesia, and in turn
+# to the persistent volume, with unsafe permissions. That's no big deal
+# in /home/amnesia (that is itself not world-readable), *but* the root
+# of the persistent volume has to be world-readable.
+chmod -R go= /etc/skel/
+chmod 0755 /etc/skel/

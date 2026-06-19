@@ -1,0 +1,54 @@
+#!/bin/bash
+
+set -e
+set -u
+
+. "$(dirname "$0")/utils.sh"
+
+APT_MIRROR_URL="http://deb.tails.boum.org/"
+DEFAULT_COMPONENTS="main contrib non-free"
+
+output_apt_binary_source() {
+	local suite="$1"
+	local components="${2:-$DEFAULT_COMPONENTS}"
+
+	echo "deb $APT_MIRROR_URL $suite $components"
+}
+
+output_overlay_apt_binary_sources() {
+	cd config/APT_overlays.d/
+	for suite in * ; do
+		# handle the case when no APT overlay is enabled
+		[[ -e "$suite" ]] || break
+
+		output_apt_binary_source "$suite"
+	done
+	cd ../../
+}
+
+### Sanity checks
+
+[ -d config/APT_overlays.d ] || fatal 'config/APT_overlays.d/ does not exist'
+[ -e config/base_branch  ]   || fatal 'config/base_branch does not exist'
+
+[ "$(wc -l < config/base_branch)" -eq 1 ] \
+    || fatal 'config/base_branch must contain exactly one line'
+
+if on_base_branch && ! [ "$(base_branch)" = "$(git_current_branch)" ] ; then
+	echo "base_branch: $(base_branch)" >&2
+	echo "current_branch: $(git_current_branch)" >&2
+	fatal "In a base branch, config/base_branch must match the current branch."
+fi
+
+### Main
+
+if version_was_released "$(version_in_changelog)"; then
+	if [ -n "$(ls config/APT_overlays.d)" ]; then
+		fatal 'config/APT_overlays.d/ must be empty while releasing'
+	fi
+	output_apt_binary_source "$(branch_name_to_suite "$(version_in_changelog)")"
+else
+	output_apt_binary_source "$(branch_name_to_suite "$(base_branch)")"
+	output_overlay_apt_binary_sources
+fi
+

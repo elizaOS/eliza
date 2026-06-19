@@ -1,0 +1,213 @@
+[[!meta title="Robin, April 2025"]]
+
+[[!img robin.jpg link="no" alt="Stop sign in front of a nuclear power plant"]]
+
+**Can you tell us about who you are and what you do?**
+
+I live in a small town in France where we have been fighting against a
+nuclear project for years.
+
+**How did you discover Tails and start using it?**
+
+I've been using Tails for about 5 years. I was involved in autonomous
+and anti-nuclear protests and someone told me about Tails. When I
+started being involved in this local struggle full-time, I started
+checking my activist email addresses only from Tails.
+
+My usage grew over time. Now, when I'm here, I
+start my computer on Tails more often than not. It's my default OS here.
+I have all my info.
+
+**In which situations do you decide to use Tails or not use Tails?**
+
+I make a fairly simple distinction: everything related to my activism.
+
+If it's an email address that I use for the struggle, I only check it
+from Tails. If I meet people through my activism, I give them one of
+these email addresses.
+
+If I'm doing things related to my personal life, for administrative
+purposes, or for entertainment, I use my encrypted Debian instead.
+
+It's a split that works pretty well, even though sometimes it gets
+tricky when friends and activists start to mix up. Even when I'm not
+involved in the struggle on a daily basis, I check my Tails every
+2&ndash;3 days.
+
+**How is Tails being used around you?**
+
+I have my personal computer here, but many people don't have one and
+only Tails USB sticks. It's really convenient for people who are nomads,
+who travel a lot, or who don't want to invest in a computer. We have
+collective computers with Tails that they can use.
+
+But, there are limitations, for example, that Tails uses Tor all the
+time and that the Unsafe Browser doesn't work very well. So, some people
+also have USB sticks with Debian Live to do administrative work. But,
+most people have a Tails USB stick instead of their own computer. That's
+where they have their files and check their emails.
+
+We suffered from a lot of repression. Now, it's a baseline practice to
+encrypt all your data. When we train people on how to encrypt their
+data, it's easier to teach them Tails than how to encrypt their
+computer, for example, because they would have to reset all their data
+and that takes much more time.
+
+Rather, when we start communicating with people and ask them to store
+everything encrypted, we give them a Tails USB stick. We ask them to
+only check these communications from Tails. It's easier from a training
+point of view.
+
+The problem with a theoretical training is that it's rarely put in
+practice. If you give people a USB stick, there is more chance.
+
+**Do you have concrete examples where using Tails was very important
+for you?**
+
+Because our collective computers can only be used with Tails, it brings
+peace of mind to the people who use them occasionally. It's easier to
+lend them shared computers. There are a lot of people passing by here.
+It also brings me peace of mind to know that people won't leave personal
+or compromising documents. They are amnesic. Even if we're raided by the
+police someday, we don't have to clean these computers regularly.
+
+Someone told me that, one time, the cops didn't even bother confiscating
+amnesic computers. They had already taken a lot of stuff, so they were
+not interested in the computers that had no data. At least, they didn't
+lose the computers.
+
+Sometimes, I lost USB sticks and I was cool because they were encrypted.
+
+**Are there other aspects in which Tails improved your security?**
+
+Because Tails is easy to share, even people with low technical abilities
+are able to use it. For the security of a group, what matters is the
+lowest security level within that group. Thanks to Tails being
+accessible, we are able to ensure that some communications never leave
+Tails or an encrypted Debian.
+
+**Which tools do you find the most useful in Tails?**
+
+I often work on brochures, so I often use *LibreOffice*, *Inkscape*, and
+*GIMP*.
+
+I use *BookletImposer*, but it's soon going to be removed from Tails
+because it's not maintained anymore. We use it to reformat brochures for
+printing. We all added *PDF Arranger* as additional software. I think
+that we already reported this issue to Tails.
+
+I use *KeePassXC* a lot, obviously.
+
+*Thunderbird*.
+
+I haven't used the sound and video editing tools much. When I have to do
+sound editing, I use my other computer, but I should try. I use
+*Shotcut* outside of Tails because someone recommended it to me.
+
+**What are the problems or limitations to your use of Tails?**
+
+The fact that we ask to only check certain email addresses from Tails or
+Tor sometimes creates communication problems in the collective. Some
+people who might be less involved stop checking their Tails after some
+time. We lost some contacts this way. Unless people have a recurring
+need, after some time it makes less sense for them to take the time to
+switch to Tails. Nobody can live entirely from Tails.
+
+I don't use the *Unsafe Browser* very often, because I'd rather start on
+my personal computer. But, I've heard that it's easier for people to use
+another computer, for example, a Debian Live with *Firefox* and a VPN,
+than to use the *Unsafe Browser* when they don't need to use Tor.
+
+I'm not even sure how the *Unsafe Browser* works. Does it have some kind
+of minimal VPN? Even when I do administrative work, I try to use a VPN
+that goes through France. If there is no protection at all in the
+*Unsafe Browser*, I wouldn't use it.
+
+The less-technical people that we train on Tails, often have 2 small
+issues: the fact that there is no Wi-Fi icon in the top-right corner at
+first and no shutdown icon in the top-right corner as well.
+
+**Which communication tools do you miss in Tails? For example, you
+invited me on *Mumble*, but it didn't work, so we ended up calling each
+other on *Signal*.**
+
+We usually manage to make *Mumble* work from Tails. It's one of the rare
+tools with which we can do voice calls from Tails and manage to write
+guides for. But, as you could see, it's a bit random. You have to find
+a *Mumble* server that works.
+
+Some people install *Signal* in Tails. It's really not easy. I've heard
+that it even makes Tails crash.
+
+We have a big problem with all voice calls. It's really hard to make
+them go through Tor. We do most of our voice calls from *Signal*, and so
+from smartphones. Smartphones are still an important tool for calls and
+real-time communications. It's a shitty situation because not everybody
+has a smartphone and smartphones are tracking us constantly.
+
+Within our group, we prefer using only Tails to communicate, but
+whenever we have to communicate with other people, at some point, we
+stop using Tor because almost no tool for voice calls works with Tor.
+
+**Which improvements or new features would you like to see in Tails?**
+
+Having *PDF Arranger* when *BookletImposer* isn't available anymore. It
+would be easier for everybody who prints brochures if it was included in
+Tails by default.
+
+A friend of mine uses XMPP quite a lot, so replacing *Pidgin* with
+something better. We tried *Dino* for some time. I have added *Gajim* to
+my Tails. These are always older versions, but that's Debian. No way
+around it.
+
+In our battle to limit the use of smartphones in our struggles, we need
+tools that allow us to do instant messaging and voice calls. Tools that
+work both on Tails and smartphones so we can organize better with people
+who use smartphones.
+
+I don't know anybody who uses *Pidgin*, for example. I'm not even sure
+whether it's still included...
+
+Also, you need to set up an admin password to use a scanner, but not a
+printer. It would be useful if we could use a scanner without an admin
+password. A lot of drivers for printers are already installed in Tails,
+but not that many drivers for scanners, and many models don't work with
+Tails. 
+
+**You mentioned installing new tools in Tails, how has the Additional
+Software feature worked for you?**
+
+Additional Software works well. They load in the background...
+
+With *Gajim*, if I want to explain to other people how to use it, I have
+to explain how to change *persistence.conf* to store the OMEMO keys.
+It's not enough to install *Gajim*. You also have to check what needs to
+persist. It's more work and it's not intuitive. And, every application
+is different, so that's complicated.
+
+I try not to install too much additional software. Could this slow down
+the USB stick? I never tested the limits or noticed any slowdown.
+
+I know that the people who install *Signal* often have problems, but
+that's because they install *Flatpak* and do advanced tricks. The guide
+to installing *Signal* is pretty complex.
+
+**Is there anything that you miss in the Persistent Storage?**
+
+I don't think so... It depends on the USB stick.
+
+Right now, I have a 32 GB USB stick. At some point, I had a lot of data
+in my Tails and tried to switch to a 128 GB stick. It got much slower,
+especially the time to get to the Welcome Screen and unlock. I'm not
+sure about how this relates to the size of the stick... Sometimes, it
+depends on the quality of the USB stick, but this one was not low-cost.
+
+So I went back to the 32 GB USB stick. Now I'm careful about not going
+beyond 32 GB. If I need more storage space, I rather use an encrypted
+USB stick on the side. I don't know if that's a real thing or a
+superstition.
+
+I should do more tests. In theory, the 128 GB USB stick was faster than
+the 32 GB.
+
+Otherwise, the Persistent Storage works fine for me.

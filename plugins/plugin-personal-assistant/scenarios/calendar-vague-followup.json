@@ -1,0 +1,50 @@
+{
+  "id": "calendar-vague-followup",
+  "title": "Calendar vague follow-up routing",
+  "domain": "calendar",
+  "rooms": [
+    {
+      "id": "main",
+      "source": "discord",
+      "title": "LifeOps Calendar Vague Follow-up"
+    }
+  ],
+  "turns": [
+    {
+      "name": "calendar flights this week",
+      "text": "do i have any flights this week?",
+      "plannerIncludesAll": ["calendar_action"],
+      "plannerExcludes": [
+        "create_task",
+        "spawn_agent",
+        "send_to_agent",
+        "list_agents"
+      ],
+      "responseExcludes": ["no active task agents", "spawned", "scratch/"]
+    },
+    {
+      "name": "calendar return flight",
+      "text": "when do i fly back from denver",
+      "plannerIncludesAll": ["calendar_action"],
+      "plannerExcludes": [
+        "create_task",
+        "spawn_agent",
+        "send_to_agent",
+        "list_agents"
+      ],
+      "responseExcludes": ["no active task agents", "spawned", "scratch/"]
+    },
+    {
+      "name": "calendar vague follow-up",
+      "text": "yeah, probably next week?",
+      "plannerIncludesAll": ["calendar_action"],
+      "plannerExcludes": [
+        "create_task",
+        "spawn_agent",
+        "send_to_agent",
+        "list_agents"
+      ],
+      "responseExcludes": ["no active task agents", "spawned", "scratch/"]
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+---
+title: Eliza-1
+description: "Open-weight Eliza models — Qwen-based, APOLLO-trained, multi-stage quantized."
+---
+
+**Eliza-1** is the model family Eliza agents run locally by default. Built on Qwen base models, fine-tuned for native tool-calling and agent loops, then put through a three-stage quantization pipeline for on-device inference.
+
+## Shipping sizes
+
+| Tier        | Model           | Base                  | Audience                          |
+| ----------- | --------------- | --------------------- | --------------------------------- |
+| Mobile      | `eliza-1-0_8b`  | Qwen3.5-0.8B-Base     | Phone / edge.                     |
+| Laptop      | `eliza-1-2b`    | Qwen3.5-2B-Base       | Laptop CPU + small GPU.           |
+| Workstation | `eliza-1-4b`    | Qwen3.5-4B-Base       | Single consumer GPU.              |
+| Workstation | `eliza-1-9b`    | Qwen3.5-9B            | Mid-range workstation GPU.        |
+| Cloud       | `eliza-1-27b`   | Qwen3.6-27B           | Server-class GPU.                 |
+
+All sizes are published under the [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) HuggingFace repo with per-tier bundles. Legacy Qwen3 dense bases (0.6B / 1.7B / 4B) were dropped 2026-05-12 — they're incompatible with the mtp speculative-decode path.
+
+## Optimizer
+
+**APOLLO is locked.** Memory-efficient, no alternatives ship.
+
+- 0.8B / 2B / 4B — `apollo_mini` (rank=1)
+- 9B / 27B — `apollo`
+
+## Quantization
+
+Three real, shipping methods. The post-SFT pipeline runs all three:
+
+| Method        | Target           | Technique                                                                 |
+| ------------- | ---------------- | ------------------------------------------------------------------------- |
+| **PolarQuant**| 4-bit weights    | Hadamard rotation ([arXiv:2603.29078](https://arxiv.org/abs/2603.29078)). fp16 norms in a sidecar safetensors file. |
+| **TurboQuant**| 4-bit V-cache    | Online KV-cache quantization ([arXiv:2504.19874](https://arxiv.org/abs/2504.19874)). Pure-PyTorch reference plus a Triton-fused fast path. |
+| **QJL**       | 1-bit K-cache    | JL-projected K-cache ([arXiv:2406.03482](https://arxiv.org/abs/2406.03482)). Vendored CUDA C++ extension. Available on 1.5B / 2B / 4B / 9B; V-side stays bf16 on Qwen3.5 pending upstream gated-q_proj patch. |
+
+GGUF variants (`q3_k_m`, `q4_k_m`, `q5_k_m`, `q6_k`, `q8_0`) are also produced for llama.cpp consumption.
+
+## Pipeline order
+
+`base_bench → APOLLO SFT → fine_tuned_bench → PolarQuant + TurboQuant + QJL → quantized_bench`
+
+Every stage emits a benchmark report so regressions land with evidence.
+
+## Loading in an agent
+
+Eliza-1 models load through the standard model-provider plugin surface (`@elizaos/plugin-llamacpp`, `@elizaos/plugin-ollama`, or direct FFI). Set the model id in your character's `settings.model`.
+
+## See also
+
+- [Model providers](/model-providers)
+- [Benchmarks](/tracks/training/benchmarks)
+- [Local models guide](/guides/local-models)

@@ -1,0 +1,109 @@
+---
+title: elizaOS Cloud Documentation
+description: Build, deploy, and scale intelligent AI agents with elizaOS Cloud.
+---
+
+The managed platform for building, deploying, and monetizing Eliza agents and
+apps. Use it when you want hosted auth, model routing, credits, app records,
+domains, and managed containers without operating the whole stack yourself.
+
+## Quick Start
+
+<CardGroup cols={2}>
+  <Card title="Visual Builder" icon="palette" href="/cloud/quickstart#using-the-dashboard">
+    Create agents with the no-code editor.
+  </Card>
+  <Card title="REST API" icon="bolt" href="/cloud/quickstart#using-the-api">
+    OpenAI-compatible endpoints.
+  </Card>
+  <Card title="CLI Deployment" icon="terminal" href="/cloud/quickstart#local-development">
+    Deploy from your local project.
+  </Card>
+  <Card title="MCP Protocol" icon="plug" href="/cloud/mcp">
+    Connect with external tools.
+  </Card>
+</CardGroup>
+
+## Platform Features
+
+<CardGroup cols={2}>
+  <Card title="Agent Runtime" icon="robot">
+    Managed runtime with auto-scaling, zero-downtime deployments, and built-in monitoring.
+  </Card>
+  <Card title="Chat Completions" icon="message">
+    OpenAI-compatible API with streaming, function calling, and structured outputs.
+  </Card>
+  <Card title="Model Gateway" icon="brain">
+    Route agent requests through configured text and embedding providers from one API interface.
+  </Card>
+  <Card title="Knowledge Base" icon="books">
+    Vector storage for RAG-powered agents with automatic embedding and retrieval.
+  </Card>
+  <Card title="MCP Integration" icon="link">
+    Connect to Model Context Protocol servers for tools and external data.
+  </Card>
+  <Card title="Containers" icon="box">
+    Deploy Docker images with managed health checks, logs, metrics, and billing.
+  </Card>
+</CardGroup>
+
+## Manage Cloud
+
+Operate your hosted agent runtime, connect the full Eliza app, and manage account access from the dashboard.
+
+<CardGroup cols={3}>
+  <Card title="Deploy Agents" icon="rocket" href="/cloud/agents">
+    Create, deploy, and monitor.
+  </Card>
+  <Card title="Connect Devices" icon="mobile" href="/cloud/apps">
+    Register apps, route chat, and configure domains.
+  </Card>
+  <Card title="Billing & Payments" icon="credit-card" href="/cloud/billing">
+    Credits, topups, earnings, and usage.
+  </Card>
+</CardGroup>
+
+## API Overview
+
+All API requests require authentication via API key:
+
+```bash
+curl https://elizacloud.ai/api/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "your-agent-id",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+<CardGroup cols={3}>
+  <Card title="REST API" href="/cloud/api" />
+  <Card title="A2A Protocol" href="/cloud/a2a" />
+  <Card title="MCP Protocol" href="/cloud/mcp" />
+</CardGroup>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="SDKs & Libraries" icon="cube" href="/cloud/sdks">
+    TypeScript, Python, and more.
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/cloud/errors">
+    Error codes and troubleshooting.
+  </Card>
+  <Card title="Rate Limits" icon="gauge" href="/cloud/rate-limits">
+    Usage quotas and limits.
+  </Card>
+  <Card title="Changelog" icon="clock-rotate-left" href="/cloud/changelog">
+    Latest updates and releases.
+  </Card>
+</CardGroup>
+
+## Need Help?
+
+Join our community for support, share feedback, or contribute to the project.
+
+- [Discord](https://discord.gg/elizaos)
+- [GitHub](https://github.com/elizaOS/eliza)
+- [Twitter](https://twitter.com/elizaOS)

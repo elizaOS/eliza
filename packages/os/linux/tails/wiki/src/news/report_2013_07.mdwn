@@ -1,0 +1,147 @@
+[[!meta date="Thu, 13 Aug 2013 09:09:39 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for July, 2013"]]
+
+[[!toc levels=1]]
+
+Tails summit
+============
+
+Five developers met for our annual summit. The summit was less dense
+than last year but still very productive. See the [[detailed
+report|news/summit_2013]].
+
+Releases
+========
+
+There was no release in July. Tails 0.20 is
+planned
+for the 9th of August.
+
+Metrics
+=======
+
+- 151 657 connections of Tails to the Tor network. This makes a boot
+  every 17.7 seconds on average. This is an approximation from the
+  requests made to the security announcements feed when Tails is
+  connected to Tor.
+
+- 77 non-empty bug reports were received through WhisperBack.
+
+Code
+====
+
+- We had two low-hanging fruits sessions, that were mostly used to
+  review and merge pending branches.
+
+- A lot of work has been done to migrate to Debian Wheezy:
+
+- A first build of Tails based on Debian Wheezy version was tested,
+  and many bugs [[!tails_ticket 6015 desc="were identified"]].
+
+- The work on AppArmor was
+  continued. An early upstream patch that aims to add support
+  for stacked filesystems [[!tails_ticket 6199 desc="was tested"]].
+
+- The included Linux kernel was
+  updated to 3.10-1.
+
+- A deprecation wrapper for Truecrypt was
+  written. Many thanks to Julien
+  Voisin for providing patches.
+
+- Dasher, a graphical predictive text input system, was
+  installed.
+
+- The Wikileaks IRC server address was
+  tentatively fixed. Many thanks to Julien
+  Voisin for providing patches. User interface issues have prevented us from
+  merging this branch yet.
+
+- Claws mail will
+  no more display a
+  dialog box when sending a message. Many thanks to matsa for
+  providing a patch.
+
+- Many
+  improvements to additional software have been merged.
+
+- A bunch of improvements to our test suite were proposed and
+  reviewed.
+
+Documentation and Website
+=========================
+
+- The [[Promote|contribute/how/promote]] page was
+  fully rewritten.
+
+- A new page [[Website|contribute/how/website]] on how to improve the
+  Tails website was
+  added to the contribute
+  section.
+
+- The page [[Translate|contribute/how/translate]] was
+  reworked in
+  depth to match our new translation workflow using either Git or
+  Transifex.
+
+- The [[Pidgin|doc/anonymous_internet/pidgin]] documentation was
+  was fully rewritten.
+
+- The [[homepage|index]] was
+  rephrased to mention Internet circumvention.
+
+- Our Tor enforcement policy was
+  clarified on the
+  [[About|about]] page.
+
+- The OpenPGP signature to verify the ISO images is now
+  served directly
+  by our website.
+
+- A prototype conversion of our test suite to use
+  native ruby + rjb instead of JRuby was pushed to Git.
+
+Localization and Internationalization
+=====================================
+
+- All Tails strings but the website are now translatable in Transifex.
+- i18nspector was uploaded to wheezy-backports.
+
+Infrastructure
+==============
+
+- Our todo list items were migrated to Redmine.
+
+- Blueprints were extracted from our old todo section into the new
+  Blueprint section to store our research and plans in a
+  static form outside of Redmine.
+
+- Criterion to flag a task as easy were
+  [[identified|contribute/working_together/criteria_for_starter_tasks]] as
+  a way to orientate better new contributors.
+
+- Our roadmap was updated and we defined our objectives for Tails 1.0,
+  1.1, 2.0, and 3.0:
+  
+  - Tails 1.0: feature parity with Incognito
+  - Tails 1.1: Tails based on Debian Wheezy
+  - Tails 2.0: Sustainability and maintainability
+  - Tails 3.0: Hardening and better security
+
+- We started working on making our infrastructure more reliable:
+  [[!tails_ticket 6185 desc="looking for a system"]] that could act as
+  a fail-over for our main server.
+
+Funding
+=======
+
+- A short-term funding with sponsor Bravo has been tentatively confirmed and
+  redefined, but not signed yet.
+
+- The contracts for the bounty program are still being signed. But some
+  work has already been done and tested on Seahorse Nautilus, AppArmor,
+  ikiwiki to Redmine, keyringer and libvirt.
+
+- We sent a concept note to answer sponsor Charlie's call
+  for proposals.

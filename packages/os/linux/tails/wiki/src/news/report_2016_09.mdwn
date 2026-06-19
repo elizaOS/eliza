@@ -1,0 +1,176 @@
+[[!meta title="Tails report for September, 2016"]]
+[[!meta date="Mon, 10 Oct 2016 14:25:28 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 2.6 was released on September 20|news/version_2.6]] (major release).
+  The release candidate was online on September 3rd. Thanks to everybody for testing!
+
+* Tails 2.7 is [[scheduled for November 8|contribute/calendar]].
+
+The following changes were introduced in Tails 2.6:
+
+  - We enabled [[!wikipedia address space layout randomization]] in the Linux
+    kernel (`kASLR`) to improve protection from buffer overflow attacks.
+
+  - We installed [[`rngd`|contribute/design/random#rngd]] to improve the
+    entropy of the random numbers generated on computers that have
+    a hardware random number generator.
+
+  - Install firmware for Intel SST sound cards (`firmware-intel-sound`), and Texas
+    Instruments Wi-Fi interfaces (`firmware-ti-connectivity`).
+
+  - Remove `non-free` APT repositories. We documented how to configure
+    additional APT repositories
+    using the persistent volume.
+
+  - Use a dedicated page as the homepage of *Tor Browser* so we can customize
+    it for our users (Although the content of the website is still the same!)
+
+  - Set up the trigger for RAM erasure on shutdown earlier in the boot
+    process. This should speed up shutdown and make RAM erasure more robust.
+
+  - Disable the automatic configuration of *Icedove* when using [[!wikipedia OAuth]].
+    This should fix the automatic configuration for GMail accounts. ([[!tails_ticket 11536]])
+
+  - Make the *Disable all networking* and *Tor bridge mode* options of *Tails
+    Greeter* more robust. ([[!tails_ticket 11593]])
+
+
+Code
+====
+
+Tor ControlPort filter improvements and OnionShare integration
+--------------------------------------------------------------
+
+These two things might seem unrelated but are mentioned together
+because the work on the latter required the former.
+
+Summary: users can expect *[OnionShare](https://onionshare.org/)*, a tool to share files from Tails
+over an onion service, in Tails 2.8 and perhaps
+the per-tab circuit view of *Tor Browser* will be enabled as well.
+
+Background: the ControlPort of Tor has a rather large attack surface
+in case of a compromise as it exposes sensitive information and
+allows reconfiguring Tor and possibly deanonymize you.
+However some applications require some access to
+the ControlPort to improve user experience,
+like showing which circuits are used for a tab in *Tor
+Browser* or for *OnionShare* to tell Tor to start the hidden
+service used to share files. In Tails we've
+been giving most users access to a filtered version of the Tor
+ControlPort, which only expose "safe" commands.
+
+This filter has been very simplistic until now, as it essentially
+only exposed the `SIGNAL NEWNYM` command, to make Tor use new
+circuits. Because of the complexity to support
+events (asynchronisity) and [[!tails_ticket 9365 desc="potential
+security concerns of exposing Tor's stream/circuit state"]] we
+for instance disabled the per-tab circuit view in Tor Browser,
+and were forced to run *Onion Circuits* as a separate user (than the
+normal `amnesia` user) with full access to the Tor ControlPort.
+Notably, it could not support *OnionShare*, and in fact had
+architectural-level limitations, for example not being able to handle
+multiple sessions at the same time.
+
+Now the filter
+solves all these problems, and more. Depending on
+the PID of the client (for example *OnionShare*) it will pick a filter
+defined (by us)
+specifically for that application. For instance,
+we can say that "this $user (e.g. `amnesia`) when running this
+$application (e.g. `/usr/bin/onionshare`) can only run these
+commands (`ADD_ONION` etc.) and listen to these
+events (e.g. `HS_DESC`, which is expected after a successful use
+of `ADD_ONION`)". This makes user-separation (which has UX
+issues, like loss of accessibility support, and adds to code complexity)
+an obsolete security
+measure, and to benefit from it clients have to do nothing.
+
+Note that there is at least one other project that
+already has implemented this functionality,
+Subgraph with its
+[roflcoptor](https://github.com/subgraph/roflcoptor), which we
+probably should have put our efforts at instead, but let's say
+that it is our long-term goal on this front. At least our users
+will be able to enjoy these features in Tails much sooner, which
+is great in itself.
+
+Documentation and website
+=========================
+
+- We published our roadmap for 2016-2017.
+
+- We designed a new donation page which proposes
+  tax-deductible donations in both euros, through Zwiebelfreunde and
+  dollars, through RiseupLabs.
+
+- We documented how we use the different fields of our
+  bugtracker.
+  This took a while, but led to several nice discussions on the mailing list
+  meanwhile and helped to make the process more clear.
+
+- We worked with *Monkeysign* on documenting it for Tails and for the new documentation
+  website of *Monkeysign* itself.
+
+- We made the overview pages of the
+  installation assistant more compact.
+
+Infrastructure
+==============
+
+* 404 ISO images were automatically built and tested by our continuous integration infrastructure.
+
+Funding
+=======
+
+  - We prepared a donation campaign that we will roll out in early
+    October.
+
+  - We submitted a proposal for
+    [NLnet](https://nlnet.nl/foundation/request/) to fund coding sprint
+    on porting Tails to Debian Stretch.
+
+  - We added a [[!tails_ticket 11726 desc="footer on the answers of our
+    help desk"]] to encourage the people that we are helping to
+    contribute to its cost.
+
+On-going discussions
+====================
+
+See the
+September 2016 online meeting minutes.
+
+Translation
+===========
+
+## All the website
+
+  - de: 55% (2874) strings translated, 5% strings fuzzy, 49% words translated
+  - fa: 45% (2338) strings translated, 7% strings fuzzy, 50% words translated
+  - fr: 78% (4070) strings translated, 3% strings fuzzy, 76% words translated
+  - it: 30% (1589) strings translated, 3% strings fuzzy, 27% words translated
+  - pt: 30% (1586) strings translated, 8% strings fuzzy, 28% words translated
+
+Total original words: 52401
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 84% (1571) strings translated, 8% strings fuzzy, 84% words translated
+  - fa: 39% (726) strings translated, 9% strings fuzzy, 40% words translated
+  - fr: 91% (1698) strings translated, 6% strings fuzzy, 91% words translated
+  - it: 81% (1522) strings translated, 9% strings fuzzy, 81% words translated
+  - pt: 50% (942) strings translated, 12% strings fuzzy, 51% words translated
+
+Total original words: 16935
+
+Metrics
+=======
+
+* Tails has been started more than 580651 times this month. This makes 19355 boots a day on average.
+* 12451 downloads of the OpenPGP signature of Tails ISO from our website.
+* 119 bug reports were received through WhisperBack.

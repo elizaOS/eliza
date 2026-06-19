@@ -1,0 +1,75 @@
+---
+title: Install elizaOS
+description: "Flashers, checksums, recovery, channels."
+---
+
+## Pick a target
+
+- **USB drive** — for elizaOS Live on existing x86_64 hardware. (v1 is USB-only; internal-disk install is deferred.)
+- **Phone / tablet** — for elizaOS Mobile on a supported AOSP device.
+- **Virtual machine** — for evaluation and CI smoke tests. Planned formats: QEMU/KVM `qcow2`, UTM or Apple Virtualization on Apple Silicon, and an OVA compatibility bundle once smoke coverage exists. VM bundles do **not** replace real USB-boot validation.
+
+## Verify the image
+
+Every release ships a signed manifest with SHA256 checksums and SBOMs. Always verify:
+
+```bash
+sha256sum -c elizaos-<channel>-<arch>.iso.sha256
+```
+
+The signing key is published alongside the release manifest. Refuse images that don't verify.
+
+## Flash
+
+### USB
+
+The repo includes a guarded developer writer in the live-USB variant. Production still requires a signed GUI/CLI flasher for macOS, Windows, and Linux. The production flasher will:
+
+- show only eligible removable drives
+- display device path, model, serial, capacity, partitions, and mounts
+- verify image checksum/signature before writing
+- require destructive confirmation with the exact target device
+- refuse internal/root disks
+- write, sync, verify, and save a non-secret local install log
+
+Destructive operation. The flasher requires explicit confirmation of the target device before writing.
+
+### AOSP
+
+The Android flasher will:
+
+- detect connected devices with ADB/fastboot
+- verify the connected product against the release manifest
+- guide bootloader unlock and flashing with destructive warnings
+- collect post-flash validation evidence
+
+## Channels
+
+| Channel             | Purpose                                              | Promotion bar                                                          |
+| ------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| `alpha` / nightly   | Internal and developer testing                       | Test-signed or unsigned, not for secrets                               |
+| `beta`              | Public candidate with known gaps                     | Signed artifacts, checksums, validation evidence                       |
+| `stable`            | Production release                                   | Signed release, SBOM, license bundle, update/rollback path, hardware evidence |
+| Enterprise          | Managed fleet release                                | Rings, policy pins, revocation, internal mirrors, audit evidence       |
+
+Switch channels by re-flashing with a different release artifact. There is no in-place channel switch.
+
+## Recovery
+
+Each release ships a recovery image alongside the install image. If a device fails to boot after an OTA, fastboot or USB-boot the recovery image and re-run the install.
+
+## Release manifests
+
+The OS release manifest lives at `packages/os/release/<date>/manifest.json`. The homepage's downloadable artifact list is generated from that manifest:
+
+```bash
+node packages/os/scripts/generate-os-homepage-data.mjs \
+  --manifest packages/os/release/<date>/manifest.json \
+  --output packages/os-homepage/src/generated/os-artifacts.ts
+```
+
+## See also
+
+- [Linux](/tracks/elizaos/linux)
+- [AOSP](/tracks/elizaos/aosp)
+- [Build and release](/build-and-release)

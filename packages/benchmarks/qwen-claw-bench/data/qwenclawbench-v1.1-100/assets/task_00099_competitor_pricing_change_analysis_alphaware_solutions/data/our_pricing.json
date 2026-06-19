@@ -1,0 +1,59 @@
+{
+  "company": "Our Company",
+  "pricing_version": "v4.2",
+  "last_updated": "2024-05-01",
+  "currency": "USD",
+  "billing": "monthly",
+  "annual_discount_pct": 20,
+  "plans": [
+    {
+      "name": "Starter",
+      "price": 49,
+      "seats": 5,
+      "includes_ai": false,
+      "features": [
+        "5 projects",
+        "Basic reporting",
+        "Email support",
+        "Standard integrations (50+)"
+      ],
+      "target_segment": "small teams"
+    },
+    {
+      "name": "Professional",
+      "price": 149,
+      "seats": 25,
+      "includes_ai": false,
+      "ai_addon_available": true,
+      "ai_addon_price": 39,
+      "features": [
+        "Unlimited projects",
+        "Advanced reporting & dashboards",
+        "Priority email & chat support",
+        "All integrations (200+)",
+        "Custom workflows",
+        "Team analytics"
+      ],
+      "target_segment": "growing teams"
+    },
+    {
+      "name": "Enterprise",
+      "price": 279,
+      "seats": 75,
+      "includes_ai": true,
+      "features": [
+        "Everything in Professional",
+        "AI-powered workflow automation",
+        "Predictive project analytics",
+        "Smart resource allocation",
+        "SSO & SAML",
+        "Dedicated account manager",
+        "Custom SLA",
+        "On-premise deployment option",
+        "Audit logs & compliance tools"
+      ],
+      "target_segment": "mid-market enterprises"
+    }
+  ],
+  "notes": "Enterprise plan includes full AI suite at no additional cost. This has been our key differentiator against AlphaWare and other competitors who lack native AI capabilities."
+}

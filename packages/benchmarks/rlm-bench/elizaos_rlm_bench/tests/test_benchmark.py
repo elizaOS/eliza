@@ -1,0 +1,492 @@
+"""Tests for RLM benchmark suite."""
+
+from __future__ import annotations
+
+import pytest
+
+from elizaos_rlm_bench.types import (
+    RLMBenchConfig,
+    RLMBenchTask,
+    RLMBenchType,
+    RLMStrategy,
+)
+from elizaos_rlm_bench.generator import (
+    RLMBenchGenerator,
+    count_tasks,
+    expand_tasks,
+    generate_random_value,
+    estimate_tokens,
+    validate_tasks,
+)
+from elizaos_rlm_bench.evaluator import (
+    RLMBenchEvaluator,
+    compute_exact_match,
+    compute_partial_match,
+    normalize_answer,
+)
+
+
+class TestTypes:
+    """Tests for benchmark types."""
+
+    def test_config_validation(self) -> None:
+        """Test config validates correctly."""
+        config = RLMBenchConfig(
+            context_lengths=[1000, 10000],
+            max_context_length=100000,
+        )
+        assert config.context_lengths == [1000, 10000]
+
+    def test_config_validation_fails_for_invalid_length(self) -> None:
+        """Test config rejects invalid context lengths."""
+        with pytest.raises(ValueError):
+            RLMBenchConfig(context_lengths=[-1])
+
+    def test_config_validation_fails_for_exceeding_max(self) -> None:
+        """Test config rejects lengths exceeding max."""
+        with pytest.raises(ValueError):
+            RLMBenchConfig(
+                context_lengths=[1000000],
+                max_context_length=100000,
+            )
+
+    def test_bench_type_enum(self) -> None:
+        """Test benchmark type enum values."""
+        assert RLMBenchType.S_NIAH.value == "s_niah"
+        assert RLMBenchType.OOLONG.value == "oolong"
+        assert RLMBenchType.OOLONG_PAIRS.value == "oolong_pairs"
+
+    def test_strategy_enum(self) -> None:
+        """Test strategy enum values."""
+        assert RLMStrategy.PEEK.value == "peek"
+        assert RLMStrategy.GREP.value == "grep"
+        assert RLMStrategy.CHUNK.value == "chunk"
+        assert RLMStrategy.STITCH.value == "stitch"
+
+
+class TestGenerator:
+    """Tests for task generator."""
+
+    def test_generate_random_value(self) -> None:
+        """Test random value generation."""
+        value = generate_random_value(8)
+        assert len(value) == 8
+        assert value.isalnum()
+
+    def test_estimate_tokens(self) -> None:
+        """Test token estimation."""
+        text = "Hello, world!"  # 13 chars
+        tokens = estimate_tokens(text)
+        assert tokens == 3  # 13 // 4
+
+    def test_generator_creates_s_niah_task(self) -> None:
+        """Test S-NIAH task generation."""
+        config = RLMBenchConfig(context_lengths=[1000])
+        generator = RLMBenchGenerator(config)
+
+        task = generator.generate_s_niah_task(1000, 0.5)
+
+        assert task.bench_type == RLMBenchType.S_NIAH
+        assert task.context_length_tokens > 0
+        assert task.question != ""
+        assert task.expected_answer != ""
+        assert task.needle != ""
+
+    def test_generator_creates_oolong_task(self) -> None:
+        """Test OOLONG task generation."""
+        config = RLMBenchConfig(context_lengths=[1000])
+        generator = RLMBenchGenerator(config)
+
+        task = generator.generate_oolong_task(1000)
+
+        assert task.bench_type == RLMBenchType.OOLONG
+        assert len(task.document_ids) == 1
+
+    def test_generator_creates_oolong_pairs_task(self) -> None:
+        """Test OOLONG-Pairs task generation."""
+        config = RLMBenchConfig(context_lengths=[1000])
+        generator = RLMBenchGenerator(config)
+
+        task = generator.generate_oolong_pairs_task(1000)
+
+        assert task.bench_type == RLMBenchType.OOLONG_PAIRS
+        assert len(task.document_ids) == 2
+        assert task.requires_comparison is True
+
+    def test_generator_all_tasks(self) -> None:
+        """Test generating all tasks."""
+        config = RLMBenchConfig(
+            context_lengths=[1000],
+            tasks_per_config=2,
+            run_s_niah=True,
+            run_s_niah_multi=False,
+            run_oolong=True,
+            run_oolong_pairs=False,
+        )
+        generator = RLMBenchGenerator(config)
+
+        tasks = generator.generate_all_tasks()
+
+        # S-NIAH: 5 positions * 2 tasks = 10
+        # OOLONG: 1 * 2 tasks = 2
+        assert len(tasks) == 12
+
+    def test_edge_scenario_expansion_adds_ten_per_base_task(self) -> None:
+        """Test generated tasks can be expanded with realistic edge variants."""
+        config = RLMBenchConfig(
+            context_lengths=[1000],
+            tasks_per_config=1,
+            run_s_niah=True,
+            run_s_niah_multi=False,
+            run_oolong=False,
+            run_oolong_pairs=False,
+        )
+        generator = RLMBenchGenerator(config)
+        base_tasks = generator.generate_all_tasks()
+
+        expanded = expand_tasks(base_tasks)
+
+        assert count_tasks(base_tasks, include_edge_scenarios=True) == {
+            "base": 5,
+            "edge": 50,
+            "edge_multiplier": 10,
+            "total": 55,
+        }
+        assert len(expanded) == 55
+        edge_tasks = [task for task in expanded if "__edge_" in task.id]
+        assert len(edge_tasks) == 50
+        assert edge_tasks[0].expected_answer == base_tasks[0].expected_answer
+        assert edge_tasks[0].metadata["base_task_id"] == base_tasks[0].id
+        assert edge_tasks[0].metadata["scenario_id"]
+        validate_tasks(base_tasks, include_edge_scenarios=True)
+
+    def test_generator_all_tasks_honors_edge_scenario_flag(self) -> None:
+        """Test config-level edge expansion is applied by the generator."""
+        config = RLMBenchConfig(
+            context_lengths=[1000],
+            tasks_per_config=1,
+            run_s_niah=True,
+            run_s_niah_multi=False,
+            run_oolong=False,
+            run_oolong_pairs=False,
+            include_edge_scenarios=True,
+        )
+        generator = RLMBenchGenerator(config)
+
+        tasks = generator.generate_all_tasks()
+
+        assert len(tasks) == 55
+        assert sum(1 for task in tasks if "__edge_" in task.id) == 50
+
+    def test_insert_needle_at_start(self) -> None:
+        """Test needle insertion at start."""
+        config = RLMBenchConfig(context_lengths=[1000])
+        generator = RLMBenchGenerator(config)
+
+        haystack = "Para 1.\n\nPara 2.\n\nPara 3."
+        needle = "SECRET"
+
+        result = generator.insert_needle(haystack, needle, 0.0)
+
+        assert result.startswith("SECRET")
+
+    def test_insert_needle_at_end(self) -> None:
+        """Test needle insertion at end."""
+        config = RLMBenchConfig(context_lengths=[1000])
+        generator = RLMBenchGenerator(config)
+
+        haystack = "Para 1.\n\nPara 2.\n\nPara 3."
+        needle = "SECRET"
+
+        result = generator.insert_needle(haystack, needle, 1.0)
+
+        assert result.endswith("SECRET")
+
+
+class TestEvaluator:
+    """Tests for result evaluator."""
+
+    def test_normalize_answer(self) -> None:
+        """Test answer normalization."""
+        assert normalize_answer("Hello, World!") == "hello world"
+        assert normalize_answer("  ABC  123  ") == "abc 123"
+
+    def test_exact_match(self) -> None:
+        """Test exact match detection."""
+        assert compute_exact_match("ABC123", "abc123") is True
+        assert compute_exact_match("ABC123", "ABC-123") is True
+        assert compute_exact_match("ABC", "XYZ") is False
+
+    def test_partial_match(self) -> None:
+        """Test partial match scoring."""
+        assert compute_partial_match("apple banana", "apple banana") == 1.0
+        assert compute_partial_match("apple", "apple banana") == 0.5
+        assert compute_partial_match("xyz", "apple banana") == 0.0
+
+    def test_partial_match_accepts_unlabeled_generated_codes(self) -> None:
+        """Oolong-pairs answers should pass when all IDs are present."""
+        expected = "Shared: AB12CD34, A: EF56GH78, B: IJ90KL12"
+        predicted = "The values are AB12CD34, EF56GH78, and IJ90KL12."
+
+        assert compute_partial_match(predicted, expected) == 1.0
+
+    def test_partial_match_penalizes_missing_generated_codes(self) -> None:
+        expected = "Shared: AB12CD34, A: EF56GH78, B: IJ90KL12"
+        predicted = "The shared value is AB12CD34 and A is EF56GH78."
+
+        assert compute_partial_match(predicted, expected) == pytest.approx(2 / 3)
+
+    def test_evaluator_correct_answer(self) -> None:
+        """Test evaluator marks correct answer."""
+        evaluator = RLMBenchEvaluator()
+
+        task = RLMBenchTask(
+            id="test-1",
+            bench_type=RLMBenchType.S_NIAH,
+            context="...",
+            context_length_tokens=1000,
+            context_length_chars=4000,
+            question="What is the code?",
+            expected_answer="ABC123",
+        )
+
+        result = evaluator.evaluate_result(
+            task=task,
+            predicted_answer="ABC123",
+        )
+
+        assert result.is_correct is True
+        assert result.exact_match is True
+
+    def test_evaluator_incorrect_answer(self) -> None:
+        """Test evaluator marks incorrect answer."""
+        evaluator = RLMBenchEvaluator()
+
+        task = RLMBenchTask(
+            id="test-1",
+            bench_type=RLMBenchType.S_NIAH,
+            context="...",
+            context_length_tokens=1000,
+            context_length_chars=4000,
+            question="What is the code?",
+            expected_answer="ABC123",
+        )
+
+        result = evaluator.evaluate_result(
+            task=task,
+            predicted_answer="XYZ789",
+        )
+
+        assert result.is_correct is False
+        assert result.exact_match is False
+
+    def test_evaluator_computes_metrics(self) -> None:
+        """Test evaluator computes aggregate metrics."""
+        evaluator = RLMBenchEvaluator()
+
+        from elizaos_rlm_bench.types import RLMBenchResult
+
+        results = [
+            RLMBenchResult(
+                task_id="1",
+                bench_type=RLMBenchType.S_NIAH,
+                context_length_tokens=1000,
+                predicted_answer="A",
+                expected_answer="A",
+                exact_match=True,
+                semantic_similarity=1.0,
+                is_correct=True,
+                iterations=1,
+                max_depth=0,
+                subcall_count=0,
+                strategies_used=["peek"],
+                input_tokens=1000,
+                output_tokens=10,
+                total_tokens=1010,
+                cost_usd=0.001,
+                latency_ms=100,
+                tokens_per_second=10100,
+            ),
+            RLMBenchResult(
+                task_id="2",
+                bench_type=RLMBenchType.S_NIAH,
+                context_length_tokens=1000,
+                predicted_answer="X",
+                expected_answer="B",
+                exact_match=False,
+                semantic_similarity=0.0,
+                is_correct=False,
+                iterations=1,
+                max_depth=0,
+                subcall_count=0,
+                strategies_used=["grep"],
+                input_tokens=1000,
+                output_tokens=10,
+                total_tokens=1010,
+                cost_usd=0.001,
+                latency_ms=100,
+                tokens_per_second=10100,
+            ),
+        ]
+
+        metrics = evaluator.compute_metrics(results)
+
+        assert metrics.total_tasks == 2
+        assert metrics.passed_tasks == 1
+        assert metrics.overall_accuracy == 0.5
+
+
+class TestRunner:
+    """Tests for benchmark runner."""
+
+    @pytest.mark.asyncio
+    async def test_runner_stub_mode(self) -> None:
+        """Test runner works in stub mode."""
+        from elizaos_rlm_bench.runner import RLMBenchRunner
+
+        config = RLMBenchConfig(
+            context_lengths=[1000],
+            tasks_per_config=1,
+            run_s_niah=True,
+            run_s_niah_multi=False,
+            run_oolong=False,
+            run_oolong_pairs=False,
+        )
+
+        runner = RLMBenchRunner(config)
+        results = await runner.run_all(mode="stub")
+
+        assert results.metrics.total_tasks > 0
+        assert len(results.results) > 0
+
+    @pytest.mark.asyncio
+    async def test_runner_stub_mode_with_edge_scenarios(self) -> None:
+        """Test runner includes edge-expanded tasks when configured."""
+        from elizaos_rlm_bench.runner import RLMBenchRunner
+
+        config = RLMBenchConfig(
+            context_lengths=[1000],
+            tasks_per_config=1,
+            run_s_niah=True,
+            run_s_niah_multi=False,
+            run_oolong=False,
+            run_oolong_pairs=False,
+            include_edge_scenarios=True,
+        )
+
+        runner = RLMBenchRunner(config)
+        results = await runner.run_all(mode="stub")
+
+        assert results.metrics.total_tasks == 55
+        assert len(results.results) == 55
+        assert results.metadata["total_tasks"] == 55
+
+    @pytest.mark.asyncio
+    async def test_runner_single_task(self) -> None:
+        """Test running a single task."""
+        from elizaos_rlm_bench.runner import RLMBenchRunner
+
+        config = RLMBenchConfig(context_lengths=[1000])
+        runner = RLMBenchRunner(config)
+
+        task = runner.generator.generate_s_niah_task(1000, 0.5)
+        result = await runner.run_task(task, mode="stub")
+
+        assert result.task_id == task.id
+        assert result.context_length_tokens == task.context_length_tokens
+
+    @pytest.mark.asyncio
+    async def test_runner_eliza_mode_requires_runtime(self) -> None:
+        """'eliza' mode is dispatched outside RLMBenchRunner — calling
+        run_task('eliza') directly must raise."""
+        from elizaos_rlm_bench.runner import RLMBenchRunner
+
+        config = RLMBenchConfig(context_lengths=[1000])
+        runner = RLMBenchRunner(config)
+
+        task = runner.generator.generate_s_niah_task(1000, 0.5)
+
+        with pytest.raises(RuntimeError, match="dispatched via the TS bridge"):
+            await runner.run_task(task, mode="eliza")
+
+    @pytest.mark.asyncio
+    async def test_runner_unknown_mode_raises(self) -> None:
+        """Test unknown mode raises ValueError."""
+        from elizaos_rlm_bench.runner import RLMBenchRunner
+
+        config = RLMBenchConfig(context_lengths=[1000])
+        runner = RLMBenchRunner(config)
+
+        task = runner.generator.generate_s_niah_task(1000, 0.5)
+
+        with pytest.raises(ValueError, match="Unknown mode"):
+            await runner.run_task(task, mode="nonexistent")
+
+    def test_eliza_mode_skips_server_for_delegate_harness(self, monkeypatch) -> None:
+        """Hermes/OpenClaw delegate transports should not spawn Eliza."""
+        import run_benchmark
+
+        monkeypatch.delenv("ELIZA_BENCH_URL", raising=False)
+        monkeypatch.delenv("ELIZA_BENCH_TOKEN", raising=False)
+        monkeypatch.setenv("BENCHMARK_HARNESS", "hermes")
+
+        assert run_benchmark.should_start_eliza_server() is False
+
+    def test_eliza_mode_forwards_model_env(self, monkeypatch) -> None:
+        import os
+        import run_benchmark
+
+        monkeypatch.delenv("BENCHMARK_MODEL_NAME", raising=False)
+        monkeypatch.delenv("OPENAI_LARGE_MODEL", raising=False)
+        config = RLMBenchConfig(root_model="openai/gpt-oss-120b")
+
+        run_benchmark.configure_bridge_model_env(config)
+
+        assert os.environ["BENCHMARK_MODEL_NAME"] == "openai/gpt-oss-120b"
+        assert os.environ["OPENAI_LARGE_MODEL"] == "openai/gpt-oss-120b"
+
+    def test_custom_cerebras_requires_api_key(self, monkeypatch) -> None:
+        import run_benchmark
+
+        monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+
+        with pytest.raises(RuntimeError, match="CEREBRAS_API_KEY"):
+            run_benchmark.build_custom_query_fn(RLMBenchConfig(), "cerebras")
+
+    def test_custom_non_cerebras_query_is_not_built(self) -> None:
+        import run_benchmark
+
+        assert run_benchmark.build_custom_query_fn(RLMBenchConfig(), "groq") is None
+
+
+class TestReporting:
+    """Tests for result reporting."""
+
+    def test_reporter_generates_summary(self) -> None:
+        """Test reporter generates summary string."""
+        from elizaos_rlm_bench.reporting import RLMBenchReporter
+        from elizaos_rlm_bench.types import (
+            RLMBenchConfig,
+            RLMBenchMetrics,
+            RLMBenchResults,
+        )
+
+        metrics = RLMBenchMetrics(
+            total_tasks=10,
+            passed_tasks=8,
+            failed_tasks=2,
+            overall_accuracy=0.8,
+            avg_semantic_similarity=0.85,
+        )
+
+        results = RLMBenchResults(
+            config=RLMBenchConfig(),
+            metrics=metrics,
+            results=[],
+        )
+
+        reporter = RLMBenchReporter(results)
+        summary = reporter.generate_summary_string()
+
+        assert "80" in summary  # Could be 80% or 80.0%
+        assert "8/10" in summary

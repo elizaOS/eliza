@@ -1,0 +1,6 @@
+Instance ID: instance_tutao__tutanota-03b1af1f6ab8431d125ad9ba381718b0de435968-v037de9051bafe4af9cd0a34e2957b8e67dc4d249
+Repository: tutao/tutanota
+Base Commit: 3aafc5f83c43bf08a5c149cd5badd339eee264a9
+Test Files: ["packages/tutanota-usagetests/test/Suite.ts", "test/tests/misc/UsageTestModelTest.ts"]
+FAIL_TO_PASS: ["test suite 3 | 6 assertions", "test suite 4 | 252 assertions"]
+PASS_TO_PASS: ["test suite 1 | 17 assertions", "test suite 2 | 873 assertions"]

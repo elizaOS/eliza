@@ -1,0 +1,318 @@
+/**
+ * WS10 golden path: screen-capture → OCR → grounding → click coordinate.
+ *
+ * This test validates PLUMBING, not pixels. Every model-bearing component
+ * (screen capture, OCR, VLM grounding) is replaced with a deterministic
+ * fixture provider that emits a fixed result for a known fixture. The assertion is
+ * that the orchestrated golden path produces a click coordinate inside
+ * the OCR-detected bbox.
+ *
+ * The bottom test (`via the live cascade`) wires the WS7 Brain/Cascade/
+ * Dispatch stack against an OCR-only Scene and a deterministic Brain fixture, then
+ * checks the same coordinate-inside-bbox property end-to-end. That's the
+ * integration anchor for WS10: once WS2 vision-arbiter is the source of
+ * the IMAGE_DESCRIPTION model and WS8 produces the OCR boxes, the same
+ * assertions remain the integration contract.
+ */
+
+import { describe, expect, it } from "vitest";
+import { OcrCoordinateGroundingActor } from "../../src/actor/actor.js";
+import { Brain } from "../../src/actor/brain.js";
+import { Cascade } from "../../src/actor/cascade.js";
+import type {
+  ComputerInterface,
+  DisplayPoint,
+} from "../../src/actor/computer-interface.js";
+import { dispatch } from "../../src/actor/dispatch.js";
+import type { DisplayCapture } from "../../src/platform/capture.js";
+import type { Scene } from "../../src/scene/scene-types.js";
+import type { DisplayDescriptor } from "../../src/types.js";
+
+/* --------------------------------------------------------------------- */
+/* Fixture contracts (these mirror the WS2/WS8 expected interfaces).      */
+/* --------------------------------------------------------------------- */
+
+interface BBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface OcrHit {
+  text: string;
+  bbox: BBox;
+  confidence: number;
+}
+
+interface CapturedScreen {
+  png: Buffer;
+  width: number;
+  height: number;
+}
+
+interface ClickGroundingRequest {
+  target: string;
+  screen: CapturedScreen;
+  ocr: OcrHit[];
+}
+
+interface ClickGroundingResult {
+  hit: OcrHit;
+  click: { x: number; y: number };
+  confidence: number;
+}
+
+/* --------------------------------------------------------------------- */
+/* Deterministic fixture providers                                        */
+/* --------------------------------------------------------------------- */
+
+// A 1-pixel PNG is enough to validate "this is a real PNG buffer". Real
+// fixture bytes (the 8-byte signature + IHDR + IDAT + IEND).
+const ONE_PX_PNG: Buffer = Buffer.from([
+  0x89,
+  0x50,
+  0x4e,
+  0x47,
+  0x0d,
+  0x0a,
+  0x1a,
+  0x0a, // PNG signature
+  0x00,
+  0x00,
+  0x00,
+  0x0d,
+  0x49,
+  0x48,
+  0x44,
+  0x52, // IHDR chunk
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x08,
+  0x06,
+  0x00,
+  0x00,
+  0x00,
+  0x1f,
+  0x15,
+  0xc4,
+  0x89,
+  0x00,
+  0x00,
+  0x00,
+  0x0d,
+  0x49,
+  0x44,
+  0x41,
+  0x54,
+  0x78,
+  0x9c,
+  0x62,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x05,
+  0x00,
+  0x01,
+  0x0d,
+  0x0a,
+  0x2d,
+  0xb4,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x49,
+  0x45,
+  0x4e,
+  0x44,
+  0xae,
+  0x42,
+  0x60,
+  0x82,
+]);
+
+function fixtureCaptureScreen(): CapturedScreen {
+  return { png: ONE_PX_PNG, width: 1920, height: 1080 };
+}
+
+function fixtureOcr(_screen: CapturedScreen): OcrHit[] {
+  // Two fixture hits: a "Save" button at (1700, 1000, 80, 32) and a
+  // "Cancel" button at (1600, 1000, 80, 32). The grounding fixture uses
+  // exact text match to pick the right hit.
+  return [
+    {
+      text: "Save",
+      bbox: { x: 1700, y: 1000, w: 80, h: 32 },
+      confidence: 0.97,
+    },
+    {
+      text: "Cancel",
+      bbox: { x: 1600, y: 1000, w: 80, h: 32 },
+      confidence: 0.95,
+    },
+  ];
+}
+
+function fixtureGround(req: ClickGroundingRequest): ClickGroundingResult {
+  const hit = req.ocr.find(
+    (h) => h.text.toLowerCase() === req.target.toLowerCase(),
+  );
+  if (!hit)
+    throw new Error(`fixture-ground: no OCR hit for target "${req.target}"`);
+  return {
+    hit,
+    click: {
+      x: Math.round(hit.bbox.x + hit.bbox.w / 2),
+      y: Math.round(hit.bbox.y + hit.bbox.h / 2),
+    },
+    confidence: hit.confidence,
+  };
+}
+
+/* --------------------------------------------------------------------- */
+/* Test                                                                   */
+/* --------------------------------------------------------------------- */
+
+describe("golden path: screen → OCR → click grounding", () => {
+  it("captures a PNG, OCRs it, and returns a click inside the matched bbox", () => {
+    const screen = fixtureCaptureScreen();
+    expect(screen.png[0]).toBe(0x89); // PNG signature byte 0
+    expect(screen.png[1]).toBe(0x50);
+    expect(screen.png[2]).toBe(0x4e);
+    expect(screen.png[3]).toBe(0x47);
+    expect(screen.width).toBeGreaterThan(0);
+    expect(screen.height).toBeGreaterThan(0);
+
+    const ocr = fixtureOcr(screen);
+    expect(ocr.length).toBeGreaterThan(0);
+    for (const h of ocr) {
+      expect(typeof h.text).toBe("string");
+      expect(h.bbox.w).toBeGreaterThan(0);
+      expect(h.bbox.h).toBeGreaterThan(0);
+    }
+
+    const grounded = fixtureGround({ target: "Save", screen, ocr });
+    expect(grounded.hit.text).toBe("Save");
+    // Click point lies strictly inside the bbox.
+    expect(grounded.click.x).toBeGreaterThanOrEqual(grounded.hit.bbox.x);
+    expect(grounded.click.x).toBeLessThanOrEqual(
+      grounded.hit.bbox.x + grounded.hit.bbox.w,
+    );
+    expect(grounded.click.y).toBeGreaterThanOrEqual(grounded.hit.bbox.y);
+    expect(grounded.click.y).toBeLessThanOrEqual(
+      grounded.hit.bbox.y + grounded.hit.bbox.h,
+    );
+    expect(grounded.confidence).toBeGreaterThan(0.5);
+  });
+
+  it("surfaces a deterministic failure when the target text is absent", () => {
+    const screen = fixtureCaptureScreen();
+    const ocr = fixtureOcr(screen);
+    expect(() =>
+      fixtureGround({ target: "DoesNotExist", screen, ocr }),
+    ).toThrow(/no OCR hit/);
+  });
+});
+
+/* --------------------------------------------------------------------- */
+/* WS7 cascade integration: same property, real Brain → Cascade →         */
+/* OcrCoordinateGroundingActor → dispatch.                                 */
+/* --------------------------------------------------------------------- */
+
+describe("golden path: via the live cascade (WS7 wired end-to-end)", () => {
+  it("Brain → Cascade → dispatch yields a click inside the OCR bbox", async () => {
+    const display: DisplayDescriptor = {
+      id: 0,
+      bounds: [0, 0, 1920, 1080],
+      scaleFactor: 1,
+      primary: true,
+      name: "fixture-display",
+    };
+    const scene: Scene = {
+      timestamp: 1,
+      displays: [display],
+      focused_window: null,
+      apps: [],
+      ocr: [
+        {
+          id: "t0-1",
+          text: "Save",
+          bbox: [1700, 1000, 80, 32],
+          conf: 0.97,
+          displayId: 0,
+        },
+        {
+          id: "t0-2",
+          text: "Cancel",
+          bbox: [1600, 1000, 80, 32],
+          conf: 0.95,
+          displayId: 0,
+        },
+      ],
+      ax: [],
+      vlm_scene: null,
+      vlm_elements: null,
+    };
+    const captures = new Map<number, DisplayCapture>([
+      [0, { display, frame: ONE_PX_PNG }],
+    ]);
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "save dialog visible",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: {
+            kind: "click",
+            ref: "t0-1",
+            rationale: "click the Save button",
+          },
+        }),
+    });
+    const cascade = new Cascade({
+      brain,
+      actor: new OcrCoordinateGroundingActor(() => scene),
+    });
+    const cascadeResult = await cascade.run({
+      scene,
+      goal: "click save",
+      captures,
+    });
+    expect(cascadeResult.proposed.kind).toBe("click");
+    expect(cascadeResult.proposed.displayId).toBe(0);
+    // The cascade resolves t0-1's center (1740, 1016).
+    expect(cascadeResult.proposed.x).toBe(1740);
+    expect(cascadeResult.proposed.y).toBe(1016);
+
+    // Now dispatch through a fixture interface and assert the click point
+    // lands inside the Save bbox.
+    let received: DisplayPoint | null = null;
+    const iface: Partial<ComputerInterface> = {
+      leftClick: async (p) => {
+        received = p;
+      },
+      getCursorPosition: () => ({ displayId: 0, x: 0, y: 0 }),
+    };
+    const dispatchResult = await dispatch(cascadeResult.proposed, {
+      interface: iface as ComputerInterface,
+      listDisplays: () => [display],
+    });
+    expect(dispatchResult.success).toBe(true);
+    expect(received).not.toBeNull();
+    const click = received as DisplayPoint | null;
+    expect(click).not.toBeNull();
+    const saveBox = scene.ocr[0]?.bbox;
+    expect(click?.x).toBeGreaterThanOrEqual(saveBox[0]);
+    expect(click?.x).toBeLessThanOrEqual(saveBox[0] + saveBox[2]);
+    expect(click?.y).toBeGreaterThanOrEqual(saveBox[1]);
+    expect(click?.y).toBeLessThanOrEqual(saveBox[1] + saveBox[3]);
+  });
+});

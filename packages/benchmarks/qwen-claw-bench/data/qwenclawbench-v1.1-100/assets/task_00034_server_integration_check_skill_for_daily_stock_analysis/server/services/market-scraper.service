@@ -1,0 +1,17 @@
+[Unit]
+Description=Market Sentiment Scraper
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=admin
+Group=docker
+WorkingDirectory=/home/admin/server/deploy
+ExecStart=/usr/bin/docker compose up market_scraper
+ExecStop=/usr/bin/docker compose stop market_scraper
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

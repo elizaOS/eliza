@@ -1,0 +1,31 @@
+{
+  "schema": "erobot-joint-sweep-v1",
+  "ok": true,
+  "articulated_body_distance": 3,
+  "home_pose": {
+    "ok": true,
+    "min_clearance_mm": null,
+    "worst_pair": null,
+    "interferences": []
+  },
+  "leg_operating_envelope": {
+    "ok": true,
+    "operating_fraction": 0.6,
+    "min_clearance_mm": null,
+    "interferences": []
+  },
+  "full_range_advisory": {
+    "samples": 216,
+    "min_nonadjacent_clearance_mm": -145.0,
+    "worst_event": {
+      "clearance_mm": -145.0,
+      "pair": [
+        "left_elbow",
+        "torso"
+      ],
+      "pose": "left_shoulder_roll_joint=-0.800"
+    },
+    "penetration_events": 98,
+    "note": "arm/torso and arm/leg overlap at extreme single-joint poses is expected for a humanoid and is enforced by controller limits, not geometry."
+  }
+}

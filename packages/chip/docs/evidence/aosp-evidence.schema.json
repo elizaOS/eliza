@@ -1,0 +1,111 @@
+{
+  "$id": "aosp-evidence.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
+  "generated_utc": "2026-05-20T10:12:30Z",
+  "properties": {
+    "android_boot_claim": {
+      "const": "blocked_until_all_required_evidence_passes"
+    },
+    "backward_compatible_aliases": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "blocked_until": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "claim_boundary": {
+      "const": "android_external_logs_only_not_boot_or_compatibility_evidence"
+    },
+    "compatibility_claim": {
+      "const": "none_without_full_external_compatibility_evidence"
+    },
+    "evidence": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "capture_command": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "claim": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "claim_boundary": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "external_artifacts": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "path": {
+            "pattern": "^docs/evidence/android/[^/]+\\.log$",
+            "type": "string"
+          },
+          "validation_command": {
+            "pattern": "scripts/check_software_bsp.py aosp --require-evidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "claim",
+          "capture_command",
+          "validation_command",
+          "external_artifacts"
+        ],
+        "type": "object"
+      },
+      "minItems": 6,
+      "type": "array"
+    },
+    "forbidden_claims_without_required_evidence": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "required_for_android_boot_claim": {
+      "items": {
+        "pattern": "^docs/evidence/android/[^/]+\\.log$",
+        "type": "string"
+      },
+      "minItems": 6,
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "strict_gate": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "claim_boundary",
+    "compatibility_claim",
+    "android_boot_claim",
+    "required_for_android_boot_claim",
+    "forbidden_claims_without_required_evidence",
+    "evidence",
+    "blocked_until"
+  ],
+  "title": "Eliza AOSP external evidence manifest",
+  "type": "object"
+}

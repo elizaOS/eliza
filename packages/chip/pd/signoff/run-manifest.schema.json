@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eliza.local/schemas/pd-signoff-run-manifest.schema.json",
+  "title": "PD signoff run manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "design",
+    "flow",
+    "pdk",
+    "std_cell_library",
+    "openlane_image",
+    "openlane_image_digest",
+    "volare_pdk_digest",
+    "klayout_digest",
+    "magic_digest",
+    "netgen_digest",
+    "openroad_digest",
+    "yosys_digest",
+    "abc_digest",
+    "antenna_deck_digest",
+    "started_at",
+    "completed_at",
+    "status",
+    "corners",
+    "inputs",
+    "outputs",
+    "checks",
+    "psm_ir_drop_report",
+    "pdn_topology"
+  ],
+  "properties": {
+    "run_id": { "type": "string", "minLength": 1 },
+    "design": { "const": "e1_chip_top" },
+    "flow": { "type": "string", "minLength": 1 },
+    "pdk": { "type": "string", "minLength": 1 },
+    "std_cell_library": { "type": "string", "minLength": 1 },
+    "openlane_image": { "type": "string", "minLength": 1 },
+    "openlane_image_digest": { "$ref": "#/$defs/sha256_digest" },
+    "volare_pdk_digest": { "$ref": "#/$defs/tool_digest" },
+    "volare_pdk_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "klayout_digest": { "$ref": "#/$defs/tool_digest" },
+    "klayout_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "magic_digest": { "$ref": "#/$defs/tool_digest" },
+    "magic_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "netgen_digest": { "$ref": "#/$defs/tool_digest" },
+    "netgen_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "openroad_digest": { "$ref": "#/$defs/tool_digest" },
+    "openroad_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "yosys_digest": { "$ref": "#/$defs/tool_digest" },
+    "yosys_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "abc_digest": { "$ref": "#/$defs/tool_digest" },
+    "abc_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "antenna_deck_digest": { "$ref": "#/$defs/tool_digest" },
+    "antenna_deck_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["complete"] },
+    "corners": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "liberty", "rc"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "liberty": { "type": "string", "minLength": 1 },
+          "rc": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        ]
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gds",
+        "def",
+        "gate_netlist",
+        "corner_manifest",
+        "sdc",
+        "spef",
+        "sdf",
+        "tool_versions"
+      ],
+      "properties": {
+        "gds": { "type": "string", "pattern": "\\.gds$" },
+        "def": { "type": "string", "pattern": "\\.def$" },
+        "gate_netlist": { "type": "string", "pattern": "\\.v$" },
+        "corner_manifest": { "type": "string", "pattern": "\\.ya?ml$" },
+        "sdc": { "type": "string", "pattern": "\\.sdc$" },
+        "spef": { "type": "string", "pattern": "\\.spef$" },
+        "sdf": { "type": "string", "pattern": "\\.sdf$" },
+        "tool_versions": { "type": "string", "pattern": "\\.txt$" }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "drc",
+        "lvs",
+        "antenna",
+        "sta",
+        "utilization",
+        "congestion",
+        "density_fill"
+      ],
+      "properties": {
+        "drc": { "$ref": "#/$defs/check" },
+        "lvs": { "$ref": "#/$defs/check" },
+        "antenna": { "$ref": "#/$defs/check" },
+        "sta": { "$ref": "#/$defs/check" },
+        "utilization": { "$ref": "#/$defs/check" },
+        "congestion": { "$ref": "#/$defs/check" },
+        "density_fill": { "$ref": "#/$defs/check" }
+      }
+    },
+    "psm_ir_drop_report": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Relative path inside the run directory to the OpenROAD PSM static IR-drop report (per-instance worst-drop and rail current). Required so the static IR-drop step is part of release-grade signoff evidence (see physical-power-thermal.md)."
+    },
+    "pdn_topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "vertical_layer",
+        "horizontal_layer",
+        "vpitch_um",
+        "hpitch_um",
+        "vwidth_um",
+        "hwidth_um",
+        "vspacing_um",
+        "hspacing_um",
+        "core_ring",
+        "report"
+      ],
+      "properties": {
+        "vertical_layer": { "type": "string", "minLength": 1 },
+        "horizontal_layer": { "type": "string", "minLength": 1 },
+        "vpitch_um": { "type": "number", "exclusiveMinimum": 0 },
+        "hpitch_um": { "type": "number", "exclusiveMinimum": 0 },
+        "vwidth_um": { "type": "number", "exclusiveMinimum": 0 },
+        "hwidth_um": { "type": "number", "exclusiveMinimum": 0 },
+        "vspacing_um": { "type": "number", "exclusiveMinimum": 0 },
+        "hspacing_um": { "type": "number", "exclusiveMinimum": 0 },
+        "core_ring": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "vwidth_um",
+            "hwidth_um",
+            "voffset_um",
+            "hoffset_um",
+            "vspacing_um",
+            "hspacing_um"
+          ],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "vwidth_um": { "type": "number", "minimum": 0 },
+            "hwidth_um": { "type": "number", "minimum": 0 },
+            "voffset_um": { "type": "number", "minimum": 0 },
+            "hoffset_um": { "type": "number", "minimum": 0 },
+            "vspacing_um": { "type": "number", "minimum": 0 },
+            "hspacing_um": { "type": "number", "minimum": 0 }
+          }
+        },
+        "report": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative path inside the run directory to the pdngen topology dump (text or JSON)."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "tool_digest": {
+      "oneOf": [
+        { "$ref": "#/$defs/sha256_digest" },
+        { "const": "unavailable" }
+      ]
+    },
+    "unavailable_reason": { "type": "string", "minLength": 1 },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "report"],
+      "properties": {
+        "status": { "enum": ["clean", "waived", "blocked"] },
+        "report": { "type": "string", "minLength": 1 },
+        "waiver": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,396 @@
+/**
+ * Container service env var resolution.
+ *
+ * Single source of truth for env vars consumed by the Hetzner-Docker
+ * container control plane. Reads the canonical `CONTAINERS_*` /
+ * `ELIZA_AGENT_*` names first and falls back to the legacy `AGENT_*`
+ * names so existing deployments keep working during the rebrand.
+ *
+ * Add new env reads here, not at call sites.
+ */
+
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+
+function normalizeEnvValue(value: string): string {
+  return value
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\\n$/g, "")
+    .trim();
+}
+
+function pick(...candidates: (string | undefined)[]): string | undefined {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const normalized = normalizeEnvValue(candidate);
+    if (normalized.length > 0) return normalized;
+  }
+  return undefined;
+}
+
+function parsePositiveIntList(value: string | undefined): number[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => Number.parseInt(item.trim(), 10))
+    .filter((item) => Number.isFinite(item) && item > 0);
+}
+
+export const containersEnv = {
+  /** Base64-encoded SSH private key for connecting to Docker nodes. */
+  sshKey(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_SSH_KEY, env.AGENT_SSH_KEY);
+  },
+
+  /** Filesystem path to the SSH private key (used when sshKey() is unset). */
+  sshKeyPath(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_SSH_KEY_PATH, env.AGENT_SSH_KEY_PATH);
+  },
+
+  /** SSH user for connecting to Docker nodes. Defaults to "root". */
+  sshUser(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER, env.ELIZA_SSH_USER) ?? "root";
+  },
+
+  /** Docker network name created on every node. Containers attach to this. */
+  dockerNetwork(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_DOCKER_NETWORK, env.AGENT_DOCKER_NETWORK) ?? "containers-isolated";
+  },
+
+  /** Username used for Docker registry pulls on container nodes. */
+  registryUsername(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(
+      env.CONTAINERS_REGISTRY_USERNAME,
+      env.ELIZA_APP_IMAGE_REGISTRY_USERNAME,
+      env.GHCR_USERNAME,
+      env.GITHUB_ACTOR,
+    );
+  },
+
+  /** Token used for Docker registry pulls on container nodes. */
+  registryToken(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(
+      env.CONTAINERS_REGISTRY_TOKEN,
+      env.ELIZA_APP_IMAGE_REGISTRY_TOKEN,
+      env.GHCR_TOKEN,
+      env.GITHUB_TOKEN,
+      env.GH_TOKEN,
+      env.CR_PAT,
+    );
+  },
+
+  /** Filesystem path to a Docker registry token for container node pulls. */
+  registryTokenFile(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_REGISTRY_TOKEN_FILE, env.ELIZA_APP_IMAGE_REGISTRY_TOKEN_FILE);
+  },
+
+  /**
+   * Default agent image when a caller asks for the canonical Eliza agent
+   * flavor without specifying a tag. Operators can pin a specific tag here
+   * without code changes.
+   */
+  defaultAgentImage(): string {
+    return this.defaultAgentImageOverride() ?? "ghcr.io/elizaos/eliza:stable";
+  },
+
+  /** Image used by coding-container requests that need the remote runner HTTP contract. */
+  codingRemoteRunnerImage(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(
+      env.ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE,
+      env.ELIZA_CODING_REMOTE_RUNNER_IMAGE,
+      env.CONTAINERS_CODING_REMOTE_RUNNER_IMAGE,
+    );
+  },
+
+  /**
+   * Allowlist of image refs/prefixes permitted for coding-container deploys.
+   *
+   * SECURITY: coding-containers let an authenticated org run an OUTSIDE
+   * image (e.g. `ghcr.io/dexploarer/bnancy:latest`). Without an allowlist any
+   * authed org could run an arbitrary image on our nodes. This is the gate.
+   *
+   * Format: comma-separated glob prefixes, e.g.
+   *   `ghcr.io/dexploarer/*,ghcr.io/elizaos/*,ghcr.io/waifufun/*`
+   * A trailing `*` matches any suffix (repo path, tag, digest). An entry with
+   * no `*` must match the image exactly. Matching is case-insensitive on the
+   * registry/repo and ignores surrounding whitespace.
+   *
+   * Returns the parsed, normalized list. Empty list = allowlist disabled
+   * (handled at the call site so an unset env doesn't silently open the gate;
+   * see `isCodingContainerImageAllowed`).
+   *
+   * NOTE: the default entries (ghcr.io/dexploarer/*, ghcr.io/elizaos/*,
+   * ghcr.io/waifufun/*) are first-party namespaces. Review these if GitHub org
+   * access changes for any of those organizations.
+   */
+  codingContainerImageAllowlist(): string[] {
+    const env = getCloudAwareEnv();
+    const raw = pick(
+      env.CODING_CONTAINER_IMAGE_ALLOWLIST,
+      env.ELIZA_CODING_CONTAINER_IMAGE_ALLOWLIST,
+      env.CONTAINERS_CODING_IMAGE_ALLOWLIST,
+    );
+    if (raw === undefined) {
+      // Secure-by-default starter set. Operators override via env.
+      return ["ghcr.io/dexploarer/*", "ghcr.io/elizaos/*", "ghcr.io/waifufun/*"];
+    }
+    return raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  },
+
+  /** Explicit operator-pinned agent image, without the hardcoded fallback. */
+  defaultAgentImageOverride(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(
+      env.ELIZA_AGENT_IMAGE,
+      env.CONTAINERS_DEFAULT_IMAGE,
+      env.AGENT_DOCKER_IMAGE,
+      env.ELIZA_DOCKER_IMAGE,
+    );
+  },
+
+  /**
+   * Platform for the canonical managed-agent image. The current production
+   * image is amd64-only, so autoscaled nodes must be x86 unless operators
+   * explicitly publish/configure a multi-arch image.
+   */
+  defaultAgentImagePlatform(): string | undefined {
+    const env = getCloudAwareEnv();
+    return (
+      pick(
+        env.ELIZA_AGENT_IMAGE_PLATFORM,
+        env.CONTAINERS_DEFAULT_IMAGE_PLATFORM,
+        env.AGENT_DOCKER_PLATFORM,
+        env.ELIZA_DOCKER_PLATFORM,
+      ) ?? "linux/amd64"
+    );
+  },
+
+  /**
+   * Seed-only fallback list of nodes used before any node is registered
+   * via `POST /api/v1/admin/docker-nodes`.
+   * Format: `nodeId:hostname:capacity,nodeId2:hostname2:capacity2`.
+   */
+  seedNodes(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_DOCKER_NODES, env.AGENT_DOCKER_NODES);
+  },
+
+  /** Application port baked into the canonical Eliza agent image. */
+  agentPort(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT) ?? "3000";
+  },
+
+  /** Bridge port the agent listens on inside the container (for agent-server bridge). */
+  agentBridgePort(): string {
+    const env = getCloudAwareEnv();
+    return (
+      pick(
+        env.ELIZA_AGENT_BRIDGE_PORT,
+        env.AGENT_BRIDGE_INTERNAL_PORT,
+        env.ELIZA_BRIDGE_INTERNAL_PORT,
+      ) ?? "31337"
+    );
+  },
+
+  /** Legacy "ELIZA_PORT" — kept as a transitional env var for the agent image. */
+  legacyContainerPort(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.AGENT_CONTAINER_PORT) ?? "2138";
+  },
+
+  /**
+   * Hetzner Cloud API token for elastic node provisioning. Optional.
+   * Canonical name is `HCLOUD_TOKEN` (matches the official Hetzner CLI +
+   * Terraform provider). The legacy aliases `HETZNER_CLOUD_TOKEN` and
+   * `HETZNER_CLOUD_API_KEY` were dropped — one source of truth avoids the
+   * silent divergence we hit during the multi-project migration (one
+   * variable swapped, the other still pointing at the old project, so the
+   * autoscaler spawned a worker in the wrong Hetzner project).
+   */
+  hetznerCloudToken(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(env.HCLOUD_TOKEN);
+  },
+
+  /**
+   * Cloud deployment environment (`staging`, `production`, `local`, …).
+   *
+   * Stamped onto provisioned Hetzner servers via the `environment` label so
+   * the orchestrator/scheduler can scope per-env operations from the API
+   * (`?label_selector=environment=staging`) and never act on a node from a
+   * different environment.
+   *
+   * Defaults to `"local"` to match the other env-prefixed callers
+   * (cache client, a2a task store, credit-events) — same fallback, same
+   * source of truth (the `ENVIRONMENT` env var).
+   */
+  environment(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.ENVIRONMENT) ?? "local";
+  },
+
+  /**
+   * Base domain for per-container public hostnames (e.g.
+   * `containers.elizacloud.ai`). When set, every new container gets
+   * `<short-id>.<base-domain>` written to `public_hostname` and is
+   * surfaced in the ingress map. Operators run a reverse proxy that
+   * resolves these to the corresponding node:port upstream.
+   */
+  publicBaseDomain(): string | undefined {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_PUBLIC_BASE_DOMAIN, env.ELIZA_CLOUD_AGENT_BASE_DOMAIN);
+  },
+
+  /**
+   * Apps-only base domain for per-app public hostnames. Reads
+   * `CONTAINERS_PUBLIC_BASE_DOMAIN` (set to e.g. `apps.elizacloud.ai` on the apps
+   * data plane by the apps-data-plane terraform) with NO fallback to the agent
+   * sandbox domain (`ELIZA_CLOUD_AGENT_BASE_DOMAIN`) — unlike
+   * {@link publicBaseDomain}. So an app never silently inherits the agent/milady
+   * domain; an unset value surfaces as "no URL" instead of a wrong-domain one.
+   */
+  appsPublicBaseDomain(): string | undefined {
+    return getCloudAwareEnv().CONTAINERS_PUBLIC_BASE_DOMAIN || undefined;
+  },
+
+  /**
+   * Caddy admin-API base URL the daemon uses to add/remove per-app ingress routes
+   * (e.g. `http://127.0.0.1:2019` over an SSH tunnel, or the app node's
+   * private-IP admin endpoint). Undefined = ingress not wired (routes are no-ops).
+   */
+  caddyAdminUrl(): string | undefined {
+    return getCloudAwareEnv().APPS_CADDY_ADMIN_URL || undefined;
+  },
+
+  /**
+   * Default Hetzner Cloud location for provisioning nodes and volumes
+   * (e.g. "fsn1", "nbg1", "hel1"). Hetzner volumes are location-bound, so
+   * the volume and the server it attaches to must share a location.
+   * Defaults to "fsn1" (Falkenstein, DE) to match the existing prod fleet
+   * — and because Hetzner deprecated cpx32 on "ash" (Ashburn) which made
+   * the previous default fail with "unsupported location for server type".
+   */
+  defaultHcloudLocation(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_HCLOUD_LOCATION, env.HCLOUD_LOCATION) ?? "fsn1";
+  },
+
+  /**
+   * Default Hetzner Cloud server type for elastic Docker nodes. Keep this on
+   * x86 because the managed agent image defaults to linux/amd64.
+   *
+   * Default is ccx33 (8 dedicated vCPU / 32 GB) so the out-of-the-box pair
+   * with the 8-agents/node default capacity gives ~4 GB/agent, well clear of
+   * an OOM. The prior cpx32 (8 GB) default paired with the same capacity put
+   * each agent on ~1 GB and was OOM-killed by the kernel under real load.
+   *
+   * ccx33 was picked over a same-sized shared type (e.g. cpx51) because the
+   * Hetzner API actually rejects `cpx51` server creation in fsn1/nbg1/hel1
+   * with `unsupported location for server type` even though /server_types
+   * lists those locations in its prices array. Dedicated vCPU is also a
+   * better fit for agent workloads (no noisy-neighbor throttling).
+   */
+  defaultHcloudServerType(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_HCLOUD_SERVER_TYPE, env.HCLOUD_SERVER_TYPE) ?? "ccx33";
+  },
+
+  defaultHcloudNetworkIds(): number[] {
+    const env = getCloudAwareEnv();
+    return parsePositiveIntList(pick(env.CONTAINERS_HCLOUD_NETWORK_IDS, env.HCLOUD_NETWORK_IDS));
+  },
+
+  /**
+   * Per-node agent capacity for newly autoscaled Hetzner Cloud nodes. The
+   * autoscaler stamps this onto a node's `capacity` at creation; the
+   * scheduler then refuses placement once `allocated_count >= capacity`.
+   *
+   * Env-overridable so ops can right-size for a smaller server type without
+   * a code change. Default: 8 — safe alongside the ccx33 default at
+   * ~32 GB / ~4 GB per agent. Lower it explicitly if you set a smaller
+   * server type (e.g. cpx41 16 GB → 4-5; cpx31 8 GB → 2-3) to avoid OOM.
+   *
+   * Clamped to [1, 64].
+   */
+  defaultAutoscaleNodeCapacity(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AUTOSCALE_NODE_CAPACITY);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 1 ? Math.min(64, Math.floor(parsed)) : 8;
+  },
+
+  /**
+   * Free slots that must remain across the pool before a new node is
+   * provisioned. Also acts as the drain preservation floor: a drain is
+   * refused if it would leave the pool below this number of free slots.
+   *
+   * Default: 2 — half a 4-slot node kept hot across the pool. Bump via env
+   * for fleets where the cold-start tail matters more than node cost.
+   * Clamped to [0, 64].
+   */
+  autoscaleMinFreeSlotsBuffer(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AUTOSCALE_MIN_FREE_SLOTS_BUFFER);
+    const parsed = raw !== undefined ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 2;
+  },
+
+  /**
+   * Emergency floor for hot agent starts; bypasses scale-up cooldown when
+   * pool availability drops below this. Clamped to [0, 64]. Default: 1.
+   */
+  autoscaleMinHotAvailableSlots(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS);
+    const parsed = raw !== undefined ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 1;
+  },
+
+  // ── Warm pool ───────────────────────────────────────────────────────────
+
+  /**
+   * Whether the agent warm pool is enabled. When false, claim flow always
+   * falls through to the cold-start async path; replenish/drain crons stay inactive.
+   * Default: false (opt-in).
+   */
+  warmPoolEnabled(): boolean {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.WARM_POOL_ENABLED);
+    return raw === "true" || raw === "1";
+  },
+
+  /**
+   * Maximum number of pool containers ever provisioned. The forecast may
+   * recommend more, but this is the hard ceiling on cost.
+   * Default: 10.
+   */
+  warmPoolMaxSize(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.WARM_POOL_MAX_SIZE);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 1 ? Math.min(50, Math.floor(parsed)) : 10;
+  },
+
+  /**
+   * Floor: the pool replenisher will keep at least this many containers
+   * ready when the pool is enabled. Default: 1.
+   */
+  warmPoolMinSize(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.WARM_POOL_MIN_SIZE);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 1;
+  },
+};

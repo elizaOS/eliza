@@ -1,0 +1,229 @@
+[[!meta title="Tails report for April, 2014"]]
+[[!meta date="Fri, 09 May 2014 10:52:48 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Releases
+========
+
+Tails 1.0 was released on April 29.
+
+Metrics
+=======
+
+- Tails has been started more than 292 595 times in April.
+  This make 9 753 boots a day in average.
+- 35 029 downloads of the OpenPGP signature of Tails ISO.
+- 105 reports were received through WhisperBack.
+
+Code
+====
+
+* Quite some work was put into adapting Tails to Debian 7 (Wheezy).
+  The result will be released on June 10, as Tails 1.1.
+  - Thanks to the amazing work done in Debian by Ulrike, we are
+    almost there when it comes to adding back support for
+    OpenPGP signature verification in Nautilus ([[!tails_ticket
+    6608]]).
+  - The Vagrant setup was
+    fixed to allow
+    building Tails/Wheezy images in RAM ([[!tails_ticket 7132]]).
+  - Synaptic was made to
+    start again on
+    Wheezy ([[!tails_ticket 7055]]).
+  - The Debian Mozilla team's repository used on the devel branch
+    was updated for Wheezy ([[!tails_ticket 7063]]).
+  - The latest version of the MAT
+    is now installed ([[!tails_ticket
+    5792]]).
+  - Initial progress
+    was made to
+    update the Windows camouflage.
+    [[!tails_ticket 6342]]
+* The APT suite being used when building from the stable branch
+  was corrected ([[!tails_ticket 7022]]).
+* The new logo
+  was
+  integrated in the *About Tails* dialog ([[!tails_ticket 7096]]).
+* Some Vagrant compatibility issues
+  were fixed
+  ([[!tails_ticket 7134]]).
+* The blacklisting of directory authority keys that have been used
+  with versions of OpenSSL affected by Heartbleed
+  was backported into our Tor packages.
+* Our modified Tor Launcher
+  was updated to avoid
+  [[!tails_ticket 6934 desc="pretending that we ship a default set of bridges"]].
+* I2P was explicitly
+  told that it cannot receive inbound connections ([[!tails_ticket 7070]]).
+* An attempt at migrating our source tree to live-build 3.x
+  was made
+  ([[!tails_ticket 5691]]). It is still entirely unclear whether the
+  cost/benefit ratio is worth it, especially because live-build 4.x
+  has already gone quite further in terms of incompatibilities, and is
+  far from being ready for prime-time yet.
+* A patch to make the Greeter's help window resolution-aware was
+  proposed
+  ([[!tails_ticket 7009]]).
+* Another proposed patch aims at fixing the Tails Installer fonts size
+  on Wheezy ([[!tails_ticket 5673]]).
+
+Documentation and website
+=========================
+
+* The [[support/FAQ]] was published.
+* The logo that [[won|news/and_the_winner_is]] the
+  contest was integrated
+  in the website, and on the boot loader's splash screen
+  ([[!tails_ticket 7090]]).
+* Some initial steps were
+  walked
+  to modernize our website's markup and CSS, including moving to HTML5
+  and better responsiveness ([[!tails_ticket 7021]]).
+  Compatibility with older browsers is left to be tested before we can
+  apply these changes to the live website.
+* Many documentation pages were deeply reworked as part of [[!tails_ticket 5977]].
+* The [[homepage|index]] now
+  makes it clear that
+  Tails is based on Debian, Tor, and is Free software.
+* The MAC spoofing documentation
+  now explains
+  why we do not randomize the OUI part of MAC addresses.
+* The way to update our Tor Launcher is
+  now documented.
+* The I2P documentation
+  was slightly improved.
+* The CSS of the boxed titles was improved ([[!tails_ticket 6323]]).
+
+Translation
+===========
+
+* The German translation team has been making great progress, and we
+  are not considering dropping this language from our website anymore.
+* The French translation team got a new member.
+* The Italian translation team has been reviewing strings in
+  Transifex, and working on their internal workflow and processes.
+  There is hope that they start translating the website soon.
+* A list of glossaries used by translation teams [[!tails_ticket 6968
+  desc="is being compiled"]].
+
+Infrastructure
+==============
+
+* Quite a lot of progress was made to make our automated test suite
+  support Tails based on Debian Wheezy
+  ([[!tails_ticket
+  6559]]).
+* An automated test case
+  was written
+  to check write access to the boot device via udisks [[!tails_ticket
+  6275]].
+* Our Jenkins master configuration was migrated to
+  a published module.
+* We now install debomatic from wheezy-backports, for easier
+  maintenance and a more stable infrastructure.
+* Thanks to Alster's suggestion, the boum.org administrators could
+  add a few security-oriented HTTP
+  headers
+  to our website.
+* Jurre van Bergen has requested an audit by OpenITP's Peer Review
+  Board ([[!tails_ticket 6889]]).
+* For ethical reasons, we have renamed our *Broken Window* Redmine
+  category to *Hole in the Roof*.
+
+On-going discussions
+====================
+
+* Improving our
+  website
+  in various ways.
+* Making it easy to backup and restore a persistent
+  volume
+  ([[!tails_ticket 5301]]).
+* Jacob Appelbaum expressed interest in getting a grsec-patched Linux
+  kernel
+  into Tails. Of course, this requires doing the same in Debian, which
+  is not a trivial mission.
+* Installing gimp-ufraw?
+* Installing tcplay?
+* Tracking Jessie-related tickets
+
+Funding
+=======
+
+- We are still the process of getting the contracts signed both for
+  a grant we were awarded by OpenITP at the end of 2013, and for the
+  Access Innovation Prize.
+
+- We have been talking with Mozilla and Tor about supporting the Tails
+  summit and hackfest, scheduled for July.
+
+- Our proposal to the Knight Foundation News Challenge was not
+  selected among the finalists. If you know why, please share your
+  insight with us :)
+
+- The [crowdfunding campaign](https://pressfreedomfoundation.org/) by
+  the Freedom of the Press Foundation has made great progress. It is
+  still time to donate.
+
+Outreach
+========
+
+* A [[call for testing|news/test_UEFI]] for the upcoming UEFI support
+  was published.
+
+Press and testimonials
+======================
+
+Dozens of press articles about Tails were written in April,
+most notably:
+
+* In TAILS: Snowden's favorite anonymous, secure OS goes
+  1.0, Cory
+  Doctorow writes "Effectively, this is the ParanoidLinux I fictionalized in my
+  novel Little Brother."
+* [Tails reaches 1.0](https://lwn.net/SubscriberLink/596765/380d4e75b17ea491/) by Nathan
+  Willis in Linux Weekly News.
+* [Anonymous OS reportedly used by Snowden reaches version 1.0](http://www.cnet.com/news/anonymous-os-reportedly-favored-by-nsa-whistle-blower-edward-snowden-reaches-version-1-0/)
+  by Steven Musil in CNET.
+* 2014-04-29: [This is the most secure computer you’ll ever
+  own](http://www.theverge.com/2014/4/29/5664884/this-is-the-most-secure-computer-you-ll-ever-own)
+  by Russell Brandom, in The Verge.
+* 2014-04-23: Amaelle Guiton mentions Tails in the article [Chiffrer le Net pour
+  retrouver notre vie privée en ligne: une bonne solution qui pose des
+  problèmes](http://www.slate.fr/monde/86275/cyberespace-cypherspace-crypter-chiffrement-internet)
+  in Slate (in French).
+* 2014-04-17: Bruce Schneier writes "Nice article on the Tails
+  stateless operating system. I use it." [in a blog
+  post](https://www.schneier.com/blog/archives/2014/04/tails.html).
+* 2014-04-14: In the [press
+  conference](http://www.democracynow.org/blog/2014/4/11/video_glenn_greenwald_laura_poitras_q)
+  she held after winning a Polk Award for her reporting on Edward Snowden and
+  the NSA, Laura Poitras said "We just published a blog about a tool that's
+  called Tails, which is a operating system that runs on either USB stick or SD
+  disc, that is a sort of all-in-one encryption tool that you can use for PGP
+  and encryption. And it's just really secure. [...] So, it's a really important
+  tool for journalists."
+* 2014-04-14: [Out in the Open: Inside the Operating System Edward
+  Snowden Used to Evade the NSA](http://www.wired.com/2014/04/tails/)
+  by Klint Finley, in Wired.
+* 2014-04-02: In [Help Support the Little-Known Privacy Tool That Has
+  Been Critical to Journalists Reporting on the
+  NSA](https://pressfreedomfoundation.org/blog/2014/04/help-support-little-known-privacy-tool-has-been-critical-journalists-reporting-nsa)
+  by Trevor Timm:
+  - Laura Poitras says: "I've been reluctant to go into details about
+    the different steps I took to communicate securely with Snowden to
+    avoid those methods being targeted. Now that Tails gives a green
+    light, I can say it has been an essential tool for reporting the
+    NSA story. It is an all-in-one secure digital communication system
+    (GPG email, OTR chat, Tor web browser, encrypted storage) that is
+    small enough to swallow. I'm very thankful to the Tails developers
+    for building this tool."
+  - Glenn Greenwald says: "Tails have been vital to my ability to work
+    securely on the NSA story. The more I've come to learn about
+    communications security, the more central Tails has become to
+    my approach."
+  - Barton Gellman says: "Privacy and encryption work, but it's too
+    easy to make a mistake that exposes you. Tails puts the essential
+    tools in one place, with a design that makes it hard to screw them
+    up. I could not have talked to Edward Snowden without this kind of
+    protection. I wish I'd had it years ago."

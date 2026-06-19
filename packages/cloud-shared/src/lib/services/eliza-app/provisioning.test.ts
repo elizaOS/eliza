@@ -1,0 +1,171 @@
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { containersEnv as actualContainersEnv } from "../../config/containers-env";
+// Captured before the mock.module override below so afterAll can restore the
+// real module. bun's mock.module is process-global and leaks across files; the
+// `../eliza-sandbox` stub here only defines `createAgent`, so without this
+// restore it strands later tests (e.g. shared-rest-adapter) whose
+// `elizaSandboxService.bridge` / `getSharedConversationHistory` vanish.
+import * as realElizaSandbox from "../eliza-sandbox";
+
+const listByOrganization = mock();
+const createAgent = mock();
+const enqueueAgentProvision = mock();
+const hasElizaAppInitialFreeCredits = mock();
+const addCredits = mock();
+
+// Spread the real containersEnv so this process-global mock.module only
+// overrides defaultAgentImage. bun's mock.module leaks across files in a
+// single test process; a partial object would make every other method
+// (appsPublicBaseDomain, defaultHcloudServerType, …) undefined for whichever
+// file happens to import after this one (order varies by platform → Windows).
+mock.module("../../config/containers-env", () => ({
+  containersEnv: {
+    ...actualContainersEnv,
+    defaultAgentImage: () => "ghcr.io/elizaos/eliza:stable",
+  },
+}));
+
+mock.module("../../../db/repositories/agent-sandboxes", () => ({
+  agentSandboxesRepository: {
+    listByOrganization,
+  },
+}));
+
+mock.module("../../../db/repositories/credit-transactions", () => ({
+  creditTransactionsRepository: {
+    hasElizaAppInitialFreeCredits,
+  },
+}));
+
+class InsufficientCreditsError extends Error {
+  constructor(
+    public readonly required: number,
+    public readonly available: number,
+    public readonly reason?: string,
+  ) {
+    super(
+      `Insufficient credits. Required: $${required.toFixed(4)}, Available: $${available.toFixed(4)}`,
+    );
+    this.name = "InsufficientCreditsError";
+  }
+}
+
+class CreditsService {}
+
+mock.module("../credits", () => ({
+  creditsService: {
+    addCredits,
+  },
+  CreditsService,
+  InsufficientCreditsError,
+  COST_BUFFER: 1.5,
+  MIN_RESERVATION: 0.000001,
+  EPSILON: 0.0000001,
+  DEFAULT_OUTPUT_TOKENS: 500,
+}));
+
+mock.module("../eliza-sandbox", () => ({
+  elizaSandboxService: {
+    createAgent,
+  },
+}));
+
+mock.module("../provisioning-jobs", () => ({
+  provisioningJobService: {
+    enqueueAgentProvision,
+  },
+}));
+
+// Restore the real eliza-sandbox so this file's process-global mock doesn't
+// strand later test files that use the full elizaSandboxService surface.
+afterAll(() => {
+  mock.module("../eliza-sandbox", () => realElizaSandbox);
+});
+
+const { ensureElizaAppProvisioning } = await import(
+  `./provisioning.ts?test=provisioning-${Date.now()}`
+);
+
+describe("ensureElizaAppProvisioning", () => {
+  beforeEach(() => {
+    listByOrganization.mockReset();
+    createAgent.mockReset();
+    enqueueAgentProvision.mockReset();
+    hasElizaAppInitialFreeCredits.mockReset();
+    addCredits.mockReset();
+  });
+
+  test("grants starter credits before provisioning a new Eliza App agent", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(false);
+    listByOrganization.mockResolvedValue([]);
+    addCredits.mockResolvedValue({
+      transaction: { id: "credit-tx-1" },
+      newBalance: 5,
+    });
+    createAgent.mockResolvedValue({
+      id: "agent-1",
+      status: "provisioning",
+      bridge_url: null,
+    });
+
+    const result = await ensureElizaAppProvisioning({
+      organizationId: "org-1",
+      userId: "user-1",
+    });
+
+    expect(hasElizaAppInitialFreeCredits).toHaveBeenCalledWith("org-1");
+    expect(addCredits).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      amount: 5,
+      description: "Eliza App - Welcome bonus",
+      metadata: {
+        type: "initial_free_credits",
+        source: "eliza-app-onboarding",
+        userId: "user-1",
+      },
+      stripePaymentIntentId: "eliza-app-initial-free-credits:org-1",
+    });
+    expect(createAgent).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentName: "Eliza",
+      dockerImage: "ghcr.io/elizaos/eliza:stable",
+    });
+    expect(enqueueAgentProvision).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      agentName: "Eliza",
+    });
+    expect(result).toMatchObject({
+      status: "provisioning",
+      agentId: "agent-1",
+      bridgeUrl: null,
+    });
+  });
+
+  test("does not grant duplicate starter credits when an existing transaction is present", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
+    listByOrganization.mockResolvedValue([
+      {
+        id: "agent-1",
+        status: "running",
+        bridge_url: "https://agent.example",
+      },
+    ]);
+
+    const result = await ensureElizaAppProvisioning({
+      organizationId: "org-1",
+      userId: "user-1",
+    });
+
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(createAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: "running",
+      agentId: "agent-1",
+      bridgeUrl: "https://agent.example",
+    });
+  });
+});

@@ -1,0 +1,71 @@
+# Demo perception config for ArUco-based external camera setup.
+#
+# Marker assignment (DICT_6X6_250, 2-inch markers):
+#   ID 0  — Robot Body       (attach to robot chest/back)
+#   ID 1  — Robot Head       (attach to robot forehead)
+#   ID 2  — Ground Origin    place at world (0, 0, 0)
+#   ID 3  — Ground +X        place at world (1, 0, 0) — 1 meter right of origin
+#   ID 4  — Ground +X +Y     place at world (1, 1, 0) — diagonal corner
+#   ID 5  — Ground +Y        place at world (0, 1, 0) — 1 meter forward of origin
+#   ID 6  — Object: Red Ball
+#   ID 7  — Object: Blue Cube
+#   ID 8  — Object: Green Cylinder
+#
+# Ground plane: 1m × 1m square. Adjust world_markers if your workspace is larger.
+# All Z values are 0 (markers are ON the floor).
+
+camera:
+  width: 640
+  height: 480
+  fps: 30
+  device: 0  # robot head camera
+
+detector:
+  face_confidence: 0.5
+  object_confidence: 0.5
+  skeleton_confidence: 0.3
+  depth_enabled: false  # disable for speed on first demo
+
+external_camera:
+  enabled: true
+  device: 1  # external USB camera (overhead or angled view)
+  width: 1280
+  height: 720
+  fps: 30
+  # Approximate intrinsics — calibrate with checkerboard for accuracy
+  fx: 800.0
+  fy: 800.0
+  cx: 640.0
+  cy: 360.0
+
+markers:
+  dictionary: DICT_6X6_250
+  marker_size_m: 0.0508  # 2 inches
+
+  # Ground-plane markers define the world coordinate frame.
+  # Place these flat on the floor with Z=0.
+  world_markers:
+    2: [0.0, 0.0, 0.0]   # origin
+    3: [1.0, 0.0, 0.0]   # +X (1 meter right)
+    4: [1.0, 1.0, 0.0]   # +X +Y (diagonal)
+    5: [0.0, 1.0, 0.0]   # +Y (1 meter forward)
+
+  # Robot body marker (for tracking robot world pose from external camera)
+  robot_marker_ids: [0]
+  robot_head_marker_id: 1
+
+  # Object markers — attach to objects the robot should interact with
+  object_markers:
+    6: red_ball
+    7: blue_cube
+    8: green_cylinder
+
+entity_slots:
+  num_slots: 8
+  slot_dim: 19
+  max_distance: 3.0   # smaller workspace than default 5m
+  max_velocity: 1.0
+  max_size: 0.5
+  recency_horizon: 3.0
+
+stale_timeout_sec: 3.0

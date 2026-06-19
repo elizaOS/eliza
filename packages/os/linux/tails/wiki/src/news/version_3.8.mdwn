@@ -1,0 +1,68 @@
+[[!meta date="Tue, 26 Jun 2018 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.8 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_3.7.1]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Upgrade *Enigmail* from 1.9.9 to
+  [2.0.7](https://enigmail.net/index.php/en/download/changelog#enig2.0.7) which
+  fixes some of the [EFAIL](https://efail.de/) attacks on OpenPGP.
+
+## Fixed problems
+
+- Fix importing OpenPGP keys from email attachments. ([[!tails_ticket 15610]])
+
+- Fix the translations of the homepage of the *Unsafe Browser*. ([[!tails_ticket 15461]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+After upgrading to Tails 3.8, you have to go through the
+*Enigmail Setup Wizard* again every time you
+restart Tails.
+
+Your OpenPGP keys and your per-recipient rules are preserved.
+
+To avoid going through the *Enigmail Setup Wizard*,
+you can execute the following command in a terminal
+before starting *Thunderbird*:
+
+<pre>echo 'pref("extensions.enigmail.configuredVersion", "2.0.7");' >> ~/.thunderbird/profile.default/preferences/0000tails.js</pre>
+
+[[!img enigmail-setup.png link="no" alt=""]]
+
+This bug will be fixed in the next version of Tails. ([[!tails_ticket 15693]])
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.8
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.6, 3.6.1, 3.6.2, 3.7, and 3.7.1.
+
+  If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.8.|install/download]]
+
+# What's coming up?
+
+Tails 3.9 is [[scheduled|contribute/calendar]] for September 5.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.8">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -1,0 +1,7 @@
+VERSION 5.8 ;
+DESIGN e1_toy_top ;
+DIEAREA ( 0 0 ) ( 1000000 1000000 ) ;
+COMPONENTS 1 ;
+  - npu_softmacro npu_softmacro + PLACED ( 240000 360000 ) N ;
+END COMPONENTS
+END DESIGN

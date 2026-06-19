@@ -1,0 +1,29 @@
+[Unit]
+Description=OpenClaw AI Gateway Service
+Documentation=https://docs.openclaw.ai
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=node
+Group=node
+WorkingDirectory=/root/openclaw
+ExecStart=/root/openclaw/bin/openclaw gateway start --config /root/openclaw/config/gateway.yaml
+ExecStop=/root/openclaw/bin/openclaw gateway stop
+ExecReload=/bin/kill -USR1 $MAINPID
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openclaw-gateway
+Environment=NODE_ENV=production
+Environment=OPENCLAW_HOME=/root/openclaw
+LimitNOFILE=65536
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,638 @@
+{
+  "version": "0.1",
+  "benchmarks": [
+    {
+      "name": "coremark",
+      "suite": "CoreMark",
+      "version": "upstream/local",
+      "command": ["coremark"],
+      "requires": ["coremark"],
+      "install": "Build EEMBC CoreMark for the target and place the real coremark executable on PATH, or run scripts/install_coremark_stream_tools.sh --coremark-src <upstream-coremark> --only coremark to install it into tools/bin.",
+      "input_dataset": "default",
+      "primary_metric": "CoreMark/MHz",
+      "units": "score_per_mhz",
+      "parser": "coremark_v1",
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
+      "required_metrics": ["coremark_per_mhz"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "coremark_binary"
+      ],
+      "timeout_seconds": 300
+    },
+    {
+      "name": "stream",
+      "suite": "STREAM",
+      "version": "upstream/local",
+      "command": ["stream_c.exe"],
+      "requires": ["stream_c.exe"],
+      "install": "Compile STREAM from source for the target compiler, keep the executable named stream_c.exe, and place it on PATH, or run scripts/install_coremark_stream_tools.sh --stream-src <upstream-stream> --only stream to install it into tools/bin.",
+      "input_dataset": "default arrays",
+      "primary_metric": "Triad bandwidth",
+      "units": "MB/s",
+      "parser": "stream_v5",
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
+      "required_metrics": ["triad_mb_per_s"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "stream_binary",
+        "memory_model"
+      ],
+      "timeout_seconds": 300
+    },
+    {
+      "name": "lmbench_bw_mem",
+      "suite": "lmbench",
+      "version": "upstream/local",
+      "command": ["bw_mem", "64M", "rd"],
+      "requires": ["bw_mem"],
+      "install": "Build lmbench for the target and place bw_mem on PATH. For local CLI wiring, scripts/install_benchmark_smoke_tools.sh --lmbench-bin-dir <lmbench-bin-dir> can link a real built executable into .venv/bin; repo-local smoke shims are rejected for strict release claims.",
+      "input_dataset": "64M read",
+      "primary_metric": "memory bandwidth",
+      "units": "MB/s",
+      "parser": "lmbench_bw_mem",
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
+      "required_metrics": ["bandwidth_mb_per_s"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "lmbench_binary",
+        "memory_model"
+      ],
+      "timeout_seconds": 300
+    },
+    {
+      "name": "lmbench_lat_mem_rd",
+      "suite": "lmbench",
+      "version": "upstream/local",
+      "command": ["lat_mem_rd", "64M", "128"],
+      "requires": ["lat_mem_rd"],
+      "install": "Build lmbench for the target and place lat_mem_rd on PATH. For local CLI wiring, scripts/install_benchmark_smoke_tools.sh --lmbench-bin-dir <lmbench-bin-dir> can link a real built executable into .venv/bin; repo-local smoke shims are rejected for strict release claims.",
+      "input_dataset": "64M stride sweep",
+      "primary_metric": "memory latency",
+      "units": "ns",
+      "parser": "lmbench_lat_mem_rd",
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
+      "required_metrics": ["max_latency_ns"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "lmbench_binary",
+        "memory_model"
+      ],
+      "timeout_seconds": 300
+    },
+    {
+      "name": "fio_seq_read",
+      "suite": "fio",
+      "version": "upstream/local",
+      "command": [
+        "fio",
+        "--output-format=json",
+        "benchmarks/configs/fio-seq-read.fio"
+      ],
+      "requires": ["fio"],
+      "required_files": ["benchmarks/configs/fio-seq-read.fio"],
+      "install": "Install fio from the target OS package manager or build it for the target and place fio on PATH.",
+      "input_dataset": "128MiB sequential read file",
+      "primary_metric": "read bandwidth",
+      "units": "KiB/s",
+      "parser": "fio_json_v3",
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
+      "required_metrics": ["read_bw_kib_s"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "fio_binary",
+        "storage_target"
+      ],
+      "timeout_seconds": 600
+    },
+    {
+      "name": "fio_rand_rw",
+      "suite": "fio",
+      "version": "upstream/local",
+      "command": [
+        "fio",
+        "--output-format=json",
+        "benchmarks/configs/fio-rand-rw.fio"
+      ],
+      "requires": ["fio"],
+      "required_files": ["benchmarks/configs/fio-rand-rw.fio"],
+      "install": "Install fio from the target OS package manager or build it for the target and place fio on PATH.",
+      "input_dataset": "128MiB 4KiB random read/write file",
+      "primary_metric": "IOPS",
+      "units": "iops",
+      "parser": "fio_json_v3",
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
+      "required_metrics": ["read_iops", "write_iops"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "fio_binary",
+        "storage_target"
+      ],
+      "timeout_seconds": 600
+    },
+    {
+      "name": "npu_arch_sim_open_2028",
+      "suite": "Eliza deterministic NPU architecture simulator",
+      "version": "local/open-scale-v1",
+      "command": [
+        "python3",
+        "benchmarks/sim/run_npu_scale_sim.py",
+        "--config",
+        "open_2028_first_50tops"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "deterministic GEMM/conv/attention sweep",
+      "primary_metric": "modeled dense INT8 TOPS",
+      "units": "TOPS",
+      "parser": "eliza_npu_scale_sim_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "min_observed_tops",
+        "max_observed_tops",
+        "min_utilization_percent",
+        "total_descriptors_required",
+        "max_descriptor_queue_passes",
+        "total_dma_beats",
+        "process_corner_count",
+        "worst_process_corner_min_observed_tops"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "name": "npu_arch_sim_sota_2028",
+      "suite": "Eliza deterministic NPU architecture simulator",
+      "version": "local/sota-scale-v1",
+      "command": [
+        "python3",
+        "benchmarks/sim/run_npu_scale_sim.py",
+        "--config",
+        "open_2028_sota_160tops"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "deterministic GEMM/conv/attention sweep",
+      "primary_metric": "modeled dense INT8 TOPS",
+      "units": "TOPS",
+      "parser": "eliza_npu_scale_sim_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "min_observed_tops",
+        "max_observed_tops",
+        "min_utilization_percent",
+        "total_descriptors_required",
+        "max_descriptor_queue_passes",
+        "total_dma_beats",
+        "process_corner_count",
+        "worst_process_corner_min_observed_tops"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "name": "e1x_wafer_mesh_defect_sim",
+      "suite": "Eliza E1X wafer-mesh architecture simulator",
+      "version": "local/e1x-wafer-mesh-v1",
+      "command": [
+        "python3",
+        "scripts/generate_e1x_wafer_mesh_evidence.py"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "deterministic core/link defect map plus mesh GEMM/stencil/sparse-attention workloads",
+      "primary_metric": "modeled E1X minimum observed INT8 TOPS after repair",
+      "units": "TOPS",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "benchmark_success_allowed"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "name": "e1x_scaled_8gb_model_load_sim",
+      "suite": "Eliza E1X scaled SRAM and model-load simulator",
+      "version": "local/e1x-scaled-8gb-model-load-v1",
+      "command": [
+        "python3",
+        "scripts/generate_e1x_scaled_model_evidence.py"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "13B 4-bit static graph over normal and high-failure deterministic wafer defect maps",
+      "primary_metric": "resident quantized model execution under high-failure repair",
+      "units": "pass",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "local_sram_mib",
+        "model_total_required_mib",
+        "model_loaded_under_normal_defects",
+        "model_loaded_under_high_failure",
+        "high_failure_repaired_logical_mesh",
+        "model_run_successful",
+        "high_failure_prefill_ms",
+        "high_failure_decode_tokens_per_second",
+        "high_failure_output_checksum",
+        "high_failure_repair_manifest_remaps",
+        "high_failure_repair_manifest_sampled_routes",
+        "high_failure_repair_rom_words",
+        "high_failure_model_shard_sample_checksum",
+        "high_failure_execution_trace_total_cycles",
+        "benchmark_success_allowed"
+      ],
+      "timeout_seconds": 120
+    },
+    {
+      "name": "e1x3d_wafer_stack_defect_sim",
+      "suite": "Eliza E1X3D 3D-stacked wafer-mesh architecture simulator",
+      "version": "local/e1x3d-wafer-stack-v1",
+      "command": [
+        "python3",
+        "scripts/generate_e1x3d_wafer_stack_evidence.py"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "deterministic 3D core/in-plane-link/Z-link defect map over a stacked logic-tier mesh",
+      "primary_metric": "modeled E1X3D 3D-mesh repair feasibility and thermal/yield gates",
+      "units": "pass",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "benchmark_success_allowed"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "name": "e1x3d_scaled_model_load_sim",
+      "suite": "Eliza E1X3D scaled stacked SRAM and model-load simulator",
+      "version": "local/e1x3d-scaled-16gb-model-load-v1",
+      "command": [
+        "python3",
+        "scripts/generate_e1x3d_scaled_model_evidence.py"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "13B 4-bit static graph over normal, high-failure, and dead-tier-region 3D wafer defect maps",
+      "primary_metric": "resident quantized model load and run under 3D high-failure repair with thermal/yield gates",
+      "units": "pass",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "local_sram_mib",
+        "model_loaded_under_normal_defects",
+        "model_loaded_under_high_failure",
+        "model_loaded_under_dead_tier",
+        "high_failure_repaired_logical_mesh",
+        "model_run_successful",
+        "thermal_peak_junction_c",
+        "stack_bond_yield",
+        "dead_tier_z_paths_checked",
+        "benchmark_success_allowed"
+      ],
+      "timeout_seconds": 240
+    },
+    {
+      "name": "tflite_cpu",
+      "suite": "TensorFlow Lite benchmark_model",
+      "version": "upstream/local",
+      "command": [
+        "benchmark_model",
+        "--graph=benchmarks/models/mobile_smoke.tflite",
+        "--num_threads=1",
+        "--use_nnapi=false"
+      ],
+      "requires": ["benchmark_model"],
+      "model_artifacts": [
+        {
+          "path": "benchmarks/models/mobile_smoke.tflite",
+          "sha256": "6bb01f97e01d782b139eecf32fecada42c08a8edc8d2148da4dcf63b22dd972a",
+          "placeholder_allowed": false,
+          "min_size_bytes": 6144,
+          "sha256_pin_note": "Architecture is conv+relu+fc+softmax; pinned from deterministic generation on TF 2.21.0 + tf-keras 2.21.0 (Python 3.12.11, macOS arm64).",
+          "blocker_id": "TFLITE_SMOKE_MODEL_MISSING",
+          "pipeline_visible": true,
+          "release_blocking": true,
+          "resolution": "Run benchmarks/models/generate_mobile_smoke_tflite.py in an environment with TensorFlow installed, or supply a redistributable TFLite model and pin sha256.",
+          "generator": {
+            "command": [
+              "python3",
+              "benchmarks/models/generate_mobile_smoke_tflite.py",
+              "--out",
+              "benchmarks/models/mobile_smoke.tflite"
+            ],
+            "network": "none",
+            "deterministic": true
+          }
+        }
+      ],
+      "install": "Build TensorFlow Lite benchmark_model for the target and generate or supply a non-proprietary smoke .tflite model at benchmarks/models/mobile_smoke.tflite.",
+      "input_dataset": "mobile_smoke.tflite synthetic input",
+      "primary_metric": "inference latency",
+      "units": "us",
+      "parser": "tflite_benchmark_model",
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
+      "required_metrics": ["avg_latency_us"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "tflite_benchmark_model",
+        "tflite_model"
+      ],
+      "timeout_seconds": 600
+    },
+    {
+      "name": "e1_npu_mlperf_inference_modeled",
+      "suite": "MLPerf Inference modeled subset",
+      "version": "local/modeled-v1",
+      "command": [
+        "python3",
+        "benchmarks/mlperf/run_mlperf_inference.py",
+        "--query-count",
+        "64"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "deterministic tiny INT8 MLP synthetic dataset",
+      "primary_metric": "SingleStream p90 query latency",
+      "units": "ns",
+      "parser": "eliza_mlperf_inference_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "min_top1_accuracy",
+        "single_stream_p90_latency_ns",
+        "offline_throughput_samples_per_second",
+        "energy_joules_per_inference",
+        "npu_macs_total",
+        "npu_commands_total"
+      ],
+      "metric_gates": [
+        { "metric": "min_top1_accuracy", "op": "==", "value": 1.0 }
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "name": "tflite_e1_npu",
+      "suite": "TensorFlow Lite benchmark_model",
+      "version": "upstream/local",
+      "command": [
+        "benchmark_model",
+        "--graph=benchmarks/models/mobile_smoke.tflite",
+        "--use_nnapi=true",
+        "--nnapi_accelerator_name=e1-npu"
+      ],
+      "requires": ["benchmark_model"],
+      "capability_artifacts": [
+        {
+          "path": "benchmarks/capabilities/e1_npu_nnapi.proof.json",
+          "blocker_id": "E1_NPU_NNAPI_ACCELERATOR_MISSING",
+          "blocked_reason": "missing_e1_npu_nnapi_accelerator",
+          "pipeline_visible": true,
+          "release_blocking": true,
+          "resolution": "Run scripts/android/capture_e1_npu_nnapi_evidence.sh on an Android/Linux target exposing a real e1-npu NNAPI accelerator or delegate. Set E1_NPU_WRITE_PROOF_JSON=1 plus measured E1_NPU_MACS_PER_INFERENCE, E1_NPU_CYCLES, E1_NPU_HZ, E1_NPU_DMA_BYTES_READ, E1_NPU_DMA_BYTES_WRITTEN, E1_NPU_NNAPI_DELEGATED_NODE_COUNT, E1_NPU_NNAPI_TOTAL_NODE_COUNT, E1_NPU_CPU_FALLBACK_PERCENT=0, E1_NPU_UNSUPPORTED_OP_COUNT=0, E1_NPU_DATAFLOW_NAME, E1_NPU_GENERATED_BY, and E1_NPU_TARGET so the hardware validation job creates the proof JSON and transcripts together, not by hand.",
+          "proof": {
+            "schema": "eliza.e1_npu_nnapi_capability.v1",
+            "accelerator_name": "e1-npu",
+            "max_cpu_fallback_percent": 0,
+            "max_unsupported_op_count": 0,
+            "required_json_fields": [
+              "capability.claim_level",
+              "capability.precision",
+              "dataflow.name",
+              "dma.path",
+              "dma.bytes_read",
+              "dma.bytes_written",
+              "dma.trace_bytes",
+              "measurements.macs_per_inference",
+              "measurements.npu_cycles",
+              "measurements.npu_hz",
+              "measurements.observed_tops",
+              "measurements.tops_formula",
+              "capture.commands.adb_devices",
+              "capture.commands.nnapi_accelerator_query",
+              "capture.commands.benchmark_model_nnapi",
+              "capture.commands.dma_trace"
+            ],
+            "required_model_artifacts": [
+              "benchmarks/models/mobile_smoke.tflite"
+            ],
+            "required_files": [
+              "adb_devices",
+              "nnapi_accelerator_query",
+              "benchmark_model_nnapi",
+              "dma_trace"
+            ],
+            "required_transcript_markers": {
+              "adb_devices": ["device"],
+              "nnapi_accelerator_query": ["e1-npu"],
+              "benchmark_model_nnapi": [
+                "--use_nnapi=true",
+                "--nnapi_accelerator_name=e1-npu",
+                "NNAPI"
+              ],
+              "dma_trace": ["e1-npu", "DMA", "bytes_read", "bytes_written"]
+            }
+          }
+        }
+      ],
+      "model_artifacts": [
+        {
+          "path": "benchmarks/models/mobile_smoke.tflite",
+          "sha256": "6bb01f97e01d782b139eecf32fecada42c08a8edc8d2148da4dcf63b22dd972a",
+          "placeholder_allowed": false,
+          "min_size_bytes": 6144,
+          "sha256_pin_note": "Architecture is conv+relu+fc+softmax; pinned from deterministic generation on TF 2.21.0 + tf-keras 2.21.0 (Python 3.12.11, macOS arm64).",
+          "blocker_id": "TFLITE_SMOKE_MODEL_MISSING",
+          "pipeline_visible": true,
+          "release_blocking": true,
+          "resolution": "Run benchmarks/models/generate_mobile_smoke_tflite.py in an environment with TensorFlow installed, or supply a redistributable TFLite model and pin sha256.",
+          "generator": {
+            "command": [
+              "python3",
+              "benchmarks/models/generate_mobile_smoke_tflite.py",
+              "--out",
+              "benchmarks/models/mobile_smoke.tflite"
+            ],
+            "network": "none",
+            "deterministic": true
+          }
+        }
+      ],
+      "install": "Build TensorFlow Lite benchmark_model with NNAPI support and generate or supply a non-proprietary smoke .tflite model at benchmarks/models/mobile_smoke.tflite.",
+      "input_dataset": "mobile_smoke.tflite synthetic input",
+      "primary_metric": "inference latency",
+      "units": "us",
+      "parser": "tflite_benchmark_model",
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
+      "required_metrics": [
+        "avg_latency_us",
+        "unsupported_op_count",
+        "cpu_fallback_percent"
+      ],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "tflite_benchmark_model",
+        "tflite_model",
+        "nnapi_driver"
+      ],
+      "metric_gates": [
+        { "metric": "unsupported_op_count", "op": "==", "value": 0 },
+        { "metric": "cpu_fallback_percent", "op": "<=", "value": 0 }
+      ],
+      "timeout_seconds": 600
+    },
+    {
+      "name": "simulator_arch_metrics",
+      "suite": "Eliza simulator metrics",
+      "version": "v1",
+      "command": ["cat", "benchmarks/results/simulator-arch-metrics.json"],
+      "requires": ["cat"],
+      "required_files": ["benchmarks/results/simulator-arch-metrics.json"],
+      "install": "Run make benchmark-cpu-ap-sim-metrics for deterministic 14A CPU/AP architecture metrics, or make benchmark-sim-metrics after qemu-check for liveness-only metrics. This is simulator-only evidence and must not contain phone-comparable wall-clock scores.",
+      "input_dataset": "simulator metrics JSON",
+      "primary_metric": "target_cycles",
+      "units": "cycles",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "estimated_package_power_w",
+        "estimated_die_temp_c",
+        "instructions_per_joule",
+        "process_corner_count",
+        "worst_process_corner_ipc",
+        "worst_process_corner_frequency_hz",
+        "worst_process_corner_power_w",
+        "worst_process_corner_die_temp_c"
+      ],
+      "timeout_seconds": 600
+    },
+    {
+      "name": "cpu_arch_sim_sota_2028",
+      "suite": "Eliza simulator metrics",
+      "version": "v1/sota-2core",
+      "command": ["cat", "benchmarks/results/simulator-arch-metrics-sota.json"],
+      "requires": ["cat"],
+      "required_files": ["benchmarks/results/simulator-arch-metrics-sota.json"],
+      "install": "Run make benchmark-cpu-ap-sota-sim-metrics for the deterministic 14A SOTA two-core CPU/AP architecture model. This is simulator-only evidence and must not contain phone-comparable wall-clock scores.",
+      "input_dataset": "simulator metrics JSON",
+      "primary_metric": "target_cycles",
+      "units": "cycles",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "estimated_package_power_w",
+        "estimated_die_temp_c",
+        "instructions_per_joule",
+        "process_corner_count",
+        "worst_process_corner_ipc",
+        "worst_process_corner_frequency_hz",
+        "worst_process_corner_power_w",
+        "worst_process_corner_die_temp_c"
+      ],
+      "timeout_seconds": 600
+    },
+    {
+      "name": "simulator_energy_metrics_timeloop",
+      "suite": "Eliza simulator energy",
+      "version": "v1/timeloop",
+      "command": [
+        "python3",
+        "benchmarks/sim/run_npu_timeloop.py",
+        "--config",
+        "min-real-v1"
+      ],
+      "requires": ["timeloop-mapper", "accelergy"],
+      "install": "Install timeloop-mapper and accelergy on PATH (tools/bin acceptable). This entry produces modeled joules-per-inference only; never measured silicon energy.",
+      "input_dataset": "e1_npu_timeloop_arch.yaml",
+      "primary_metric": "energy_joules_per_inference",
+      "units": "joules_per_inference",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "energy_joules_per_inference"
+      ],
+      "timeout_seconds": 1800
+    }
+  ]
+}

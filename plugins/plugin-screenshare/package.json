@@ -1,0 +1,94 @@
+{
+  "name": "@elizaos/plugin-screenshare",
+  "version": "2.0.3-beta.14",
+  "type": "module",
+  "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
+  "main": "./dist/index.js",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-computeruse": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "lucide-react": "^1.0.0"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-dom": "*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "elizaos": {
+    "kind": "app",
+    "app": {
+      "displayName": "Screen Share",
+      "category": "utility",
+      "heroImage": "assets/hero.svg",
+      "launchType": "connect",
+      "launchUrl": "/api/apps/screenshare/viewer",
+      "capabilities": [
+        "screen-stream",
+        "mouse-control",
+        "keyboard-control",
+        "remote-support"
+      ],
+      "runtimePlugin": "@elizaos/plugin-screenshare",
+      "bridgeExport": "./dist/index.js",
+      "viewer": {
+        "url": "/api/apps/screenshare/viewer",
+        "sandbox": "allow-scripts allow-same-origin allow-forms allow-pointer-lock"
+      },
+      "session": {
+        "mode": "spectate-and-steer",
+        "features": [
+          "commands",
+          "telemetry",
+          "suggestions"
+        ]
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "bun run build:js && bun run build:views && bun run build:types",
+    "clean": "rm -rf dist",
+    "test": "vitest run --config vitest.config.ts",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.5.1",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.5"
+  }
+}

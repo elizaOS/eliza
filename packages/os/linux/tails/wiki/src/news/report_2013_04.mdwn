@@ -1,0 +1,150 @@
+[[!meta date="Tue, 07 May 2013 12:26:39 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for April, 2013"]]
+
+[[!toc levels=1]]
+
+Releases
+========
+
+Tails 0.17.2 [[was released|news/version_0.17.2]] on April 9th.
+
+Metrics
+=======
+
+  - 121 183 connections of Tails to the Tor network. This makes a boot
+    every 21 seconds on average (this is an approximation from the
+    requests made to the security announcements feed when Tails is
+    connected to Tor).
+
+  - 71 bug reports were received through WhisperBack.
+
+  - 984 comments were posted on the forum, with 76 signed by Tails.
+    This means there has been much more activity on the forum, and that
+    we are having a hard time coping with it, but also that anonymous
+    contributors are providing more and more good answers without our
+    help.
+
+Code
+====
+
+- We had a highly successful "low-hanging fruits"
+  week:
+  at least 16 tickets were touched, and at least five persons attended
+  one session or more.
+
+- The persistence feature to remember installed packages
+  (has
+  matured a lot) and should be ready for Tails 0.18.
+
+- Support for Obfs3 bridges (has been added).
+
+- Torbutton 1.5.x
+  can now be included in Tails. We also reorganized and cleaned
+  our iceweasel prefs to look a bit more like the ones from TBB.
+
+- GNOME accessibility themes
+  were installed to provide
+  high contrast and large print themes.
+
+- The "About GNOME" menu entry
+  has been customized to provide
+  information about the running version of Tails.
+
+- A
+  branch is ready to disable wireless devices other than
+  Wi-Fi, Bluetooth, WWAN, and WiMAX by default.
+
+- Some initial work
+  was done to not start the
+  browser automatically anymore.
+
+- The audio preview when having the mouse pointer on an audio file in
+  Nautilus
+  has been disabled.
+
+- The support for non-obfsproxy proxy
+  has been fixed.
+
+- IPv6 is not disabled
+  anymore. It turns out that the IPv6 leaks we wanted to fix actually
+  don't exist.
+
+- GNOME screenshot
+  has been installed.
+
+Documentation and Website
+=========================
+
+- "Getting started..." is now the homepage for the Tails documentation
+  accessible from the desktop.
+
+- The content of the /bugs section of the website was moved to /todo.
+
+- A bug concerning *MD5 Reborned Hasher* has been documented.
+
+- The instructions for manual installation on
+  Mac have been brought
+  back online and the instructions for Linux and Windows have been
+  improved.
+
+- The introduction of the [[bug reporting
+  instructions|/doc/first_steps/whisperback]] have been improved.
+
+Translation
+===========
+
+- A solution was proposed to distribute [[translation
+  workflows|/contribute/how/translate]] in either Git or Transifex.
+
+- Tails USB installer: update translations for Arabic, German, Greek, Spanish,
+  Farsi, Finnish, Italian, Latvian, Dutch, Polish, and Chinese.
+
+- WhisperBack: update translations for Arabic, German, Greek, Spanish,
+  Euskera, Finnish, Italian, Korean, Latvian, Dutch, Polish, Portuguese,
+  Russian, Swedish, Chinese  Spanish, Korean, Polish, and Russian. New
+  translations: Swedish.
+
+On-going discussions
+====================
+
+- Debian derivatives &
+  DebConf13,
+  about what we can propose for [DebConf13](http://debconf13.debconf.org/)
+
+- secure and simple network time
+  (hack),
+  about tlsdate, a possible segmentation fault and its future in Tails
+
+- Discussion on
+  minitube,
+  about replacing minitube with smtube
+
+- GNOME proxy settings,
+  again,
+  about dropping all GNOME proxy settings
+
+Infrastructure
+==============
+
+- Tails 0.17.2 was the first release assisted with automated tests!
+  * Cucumber is used to describe the tests to perform.
+  * 82 tests have been written so far
+
+- Huge progress was
+  made
+  on our automatic building infrastructure, based on Jenkins.
+
+Funding
+=======
+
+- The grant application we did with
+  OpenITP
+  (Sponsor Echo) was rejected. But our proposal made it to their
+  finalist set.
+
+- We started to work on another grant application for more long-term
+  funding with sponsor Foxtrot.
+
+- The list of bounties that are going to be funded through the Tor
+  project program is closed. It will be made public soon.

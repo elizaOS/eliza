@@ -1,0 +1,122 @@
+{
+  "id": "zalouser",
+  "name": "Zalouser",
+  "description": "Zalo personal-account connector for one-to-one messaging workflows.",
+  "npmName": "@elizaos/plugin-zalouser",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "connector",
+    "messaging",
+    "zalo",
+    "personal-account",
+    "social",
+    "social-chat",
+    "zalouser"
+  ],
+  "config": {
+    "ZALOUSER_IMEI": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Imei",
+      "help": "Device IMEI identifier",
+      "advanced": false
+    },
+    "ZALOUSER_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "ZALOUSER_PROFILES": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Profiles",
+      "help": "Profile configuration",
+      "advanced": false
+    },
+    "ZALOUSER_DM_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Dm Policy",
+      "help": "DM policy (e.g. allow, deny, allowlist)",
+      "advanced": false
+    },
+    "ZALOUSER_USER_AGENT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "User Agent",
+      "help": "User agent string",
+      "advanced": false
+    },
+    "ZALOUSER_COOKIE_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Cookie Path",
+      "help": "Directory/file path",
+      "advanced": false
+    },
+    "ZALOUSER_GROUP_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Group Policy",
+      "help": "Group message policy (e.g. allow, deny)",
+      "advanced": false
+    },
+    "ZALOUSER_LISTEN_TIMEOUT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Listen Timeout",
+      "help": "Timeout value",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "ZALOUSER_ALLOWED_THREADS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Allowed Threads",
+      "help": "Comma-separated allowed channel/room list",
+      "advanced": false
+    },
+    "ZALOUSER_DEFAULT_PROFILE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Default Profile",
+      "help": "Profile configuration",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Circle",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#zalo-user-personal"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

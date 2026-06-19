@@ -1,0 +1,128 @@
+#!/bin/sh
+
+set -eu
+
+run_env=/run/elizaos/runtime.env
+baked_runtime=/opt/milady
+
+ELIZAOS_RUNTIME_TRUST=baked
+ELIZAOS_RUNTIME_STATUS=fallback
+ELIZAOS_RUNTIME_REASON=default
+ELIZAOS_UPDATE_CHANNEL=stable
+ELIZAOS_RUNTIME_DIR="${baked_runtime}"
+ELIZAOS_RUNTIME_ROOT="${baked_runtime}"
+ELIZAOS_RUNTIME_BIN_DIR="${baked_runtime}/bin"
+ELIZAOS_BUN="${baked_runtime}/bin/bun"
+ELIZAOS_LAUNCHER="${baked_runtime}/bin/launcher"
+ELIZAOS_AGENT_ENTRY="${baked_runtime}/Resources/app/eliza-dist/entry.js"
+ELIZAOS_NODE_PATH="${baked_runtime}/Resources/app/eliza-dist/node_modules"
+ELIZAOS_MODEL_CATALOG=
+ELIZAOS_UPDATE_MANIFEST=
+ELIZAOS_UPDATE_SEQUENCE=0
+ELIZAOS_UPDATE_MANIFEST_SHA256=
+
+is_group_or_world_writable() {
+    mode="${1}"
+    other="${mode#"${mode%?}"}"
+    group="${mode%?}"
+    group="${group#"${group%?}"}"
+    case "${group}${other}" in
+        *2*|*3*|*6*|*7*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_safe_env_file() {
+    [ -f "${run_env}" ] || return 1
+    [ "$(stat -c '%u' "${run_env}" 2>/dev/null || printf x)" = "0" ] || return 1
+    mode="$(stat -c '%a' "${run_env}" 2>/dev/null || printf 777)"
+    if is_group_or_world_writable "${mode}"; then
+        return 1
+    fi
+    return 0
+}
+
+runtime_env_value() {
+    case "$1" in
+        ELIZAOS_RUNTIME_TRUST) printf '%s' "${ELIZAOS_RUNTIME_TRUST}" ;;
+        ELIZAOS_RUNTIME_STATUS) printf '%s' "${ELIZAOS_RUNTIME_STATUS}" ;;
+        ELIZAOS_RUNTIME_REASON) printf '%s' "${ELIZAOS_RUNTIME_REASON}" ;;
+        ELIZAOS_UPDATE_CHANNEL) printf '%s' "${ELIZAOS_UPDATE_CHANNEL}" ;;
+        ELIZAOS_RUNTIME_DIR) printf '%s' "${ELIZAOS_RUNTIME_DIR}" ;;
+        ELIZAOS_RUNTIME_ROOT) printf '%s' "${ELIZAOS_RUNTIME_ROOT}" ;;
+        ELIZAOS_RUNTIME_BIN_DIR) printf '%s' "${ELIZAOS_RUNTIME_BIN_DIR}" ;;
+        ELIZAOS_BUN) printf '%s' "${ELIZAOS_BUN}" ;;
+        ELIZAOS_LAUNCHER) printf '%s' "${ELIZAOS_LAUNCHER}" ;;
+        ELIZAOS_AGENT_ENTRY) printf '%s' "${ELIZAOS_AGENT_ENTRY}" ;;
+        ELIZAOS_NODE_PATH) printf '%s' "${ELIZAOS_NODE_PATH}" ;;
+        ELIZAOS_MODEL_CATALOG) printf '%s' "${ELIZAOS_MODEL_CATALOG}" ;;
+        ELIZAOS_UPDATE_MANIFEST) printf '%s' "${ELIZAOS_UPDATE_MANIFEST}" ;;
+        ELIZAOS_UPDATE_SEQUENCE) printf '%s' "${ELIZAOS_UPDATE_SEQUENCE}" ;;
+        ELIZAOS_UPDATE_MANIFEST_SHA256) printf '%s' "${ELIZAOS_UPDATE_MANIFEST_SHA256}" ;;
+        *) return 1 ;;
+    esac
+}
+
+if is_safe_env_file; then
+    # shellcheck disable=SC1090
+    . "${run_env}"
+fi
+
+export ELIZAOS_RUNTIME_TRUST
+export ELIZAOS_RUNTIME_STATUS
+export ELIZAOS_RUNTIME_REASON
+export ELIZAOS_UPDATE_CHANNEL
+export ELIZAOS_RUNTIME_DIR
+export ELIZAOS_RUNTIME_ROOT
+export ELIZAOS_RUNTIME_BIN_DIR
+export ELIZAOS_BUN
+export ELIZAOS_LAUNCHER
+export ELIZAOS_AGENT_ENTRY
+export ELIZAOS_NODE_PATH
+export ELIZAOS_MODEL_CATALOG
+export ELIZAOS_UPDATE_MANIFEST
+export ELIZAOS_UPDATE_SEQUENCE
+export ELIZAOS_UPDATE_MANIFEST_SHA256
+
+print_env() {
+    for name in \
+        ELIZAOS_RUNTIME_TRUST \
+        ELIZAOS_RUNTIME_STATUS \
+        ELIZAOS_RUNTIME_REASON \
+        ELIZAOS_UPDATE_CHANNEL \
+        ELIZAOS_RUNTIME_DIR \
+        ELIZAOS_RUNTIME_ROOT \
+        ELIZAOS_RUNTIME_BIN_DIR \
+        ELIZAOS_BUN \
+        ELIZAOS_LAUNCHER \
+        ELIZAOS_AGENT_ENTRY \
+        ELIZAOS_NODE_PATH \
+        ELIZAOS_MODEL_CATALOG \
+        ELIZAOS_UPDATE_MANIFEST \
+        ELIZAOS_UPDATE_SEQUENCE \
+        ELIZAOS_UPDATE_MANIFEST_SHA256
+    do
+        value="$(runtime_env_value "${name}")"
+        printf '%s=%s\n' "${name}" "$(printf '%s' "${value}" | sed "s/'/'\\\\''/g; s/^/'/; s/$/'/")"
+    done
+}
+
+case "${1:-}" in
+    "")
+        ;;
+    print)
+        print_env
+        ;;
+    exec)
+        shift
+        exec "$@"
+        ;;
+    *)
+        echo "usage: $0 [print|exec COMMAND...]" >&2
+        exit 64
+        ;;
+esac

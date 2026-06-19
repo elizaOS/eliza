@@ -1,0 +1,29 @@
+#!/bin/sh -e
+
+PREREQS=""
+
+prereqs() { echo "$PREREQS"; }
+
+case "$1" in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+copy_exec /sbin/sgdisk /sbin
+copy_exec /sbin/parted /sbin
+copy_exec /sbin/partprobe /sbin
+copy_exec /usr/sbin/fatresize /sbin
+copy_exec /usr/bin/mlabel /sbin
+copy_exec /sbin/fsck.fat /sbin
+
+# Needed by mlabel that uses iconv_open
+copy_exec /usr/lib/x86_64-linux-gnu/gconv/IBM850.so
+copy_file "regular file" /usr/lib/x86_64-linux-gnu/gconv/gconv-modules
+copy_file "regular file" /usr/lib/x86_64-linux-gnu/gconv/gconv-modules.d/gconv-modules-extra.conf
+
+# Needed by partprobe
+copy_exec /usr/sbin/dmidecode /sbin

@@ -1,0 +1,6 @@
++incdir+/home/shaw/milady/eliza/packages/chip/external/cva6/cva6/core/include/
++incdir+/home/shaw/milady/eliza/packages/chip/external/cva6/cva6/vendor/pulp-platform/common_cells/include/
++incdir+/home/shaw/milady/eliza/packages/chip/external/cva6/cva6/vendor/pulp-platform/common_cells/src/
++incdir+/home/shaw/milady/eliza/packages/chip/external/cva6/cva6/vendor/pulp-platform/axi/include/
++incdir+/home/shaw/milady/eliza/packages/chip/external/cva6/cva6/common/local/util/
++incdir+/home/shaw/milady/eliza/packages/chip/external/cva6/cva6/core/cache_subsystem/hpdcache/rtl/include

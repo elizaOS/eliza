@@ -1,0 +1,509 @@
+{
+  "registry": {
+    "@1claw/plugin-elizaos": {
+      "git": {
+        "repo": "1clawAI/1claw-elizaos-plugin",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@1claw/plugin-elizaos",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw — vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
+      "homepage": "https://github.com/1clawAI/1claw-elizaos-plugin",
+      "topics": [
+        "security",
+        "secrets",
+        "vault",
+        "signing",
+        "multi-chain"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@agentradar/eliza-plugin": {
+      "git": {
+        "repo": "Bichev/agentradar-integrations",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@agentradar/eliza-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "AgentRadar trust for elizaOS — a VERIFY_AGENT action and trust provider that check a wallet/agent's on-chain trust score (ERC-8004 reputation + scam database + static analysis) before your agent interacts with or pays it.",
+      "homepage": "https://github.com/Bichev/agentradar-integrations/tree/main/eliza-plugin-agentradar",
+      "topics": [
+        "trust",
+        "verification",
+        "x402",
+        "erc-8004",
+        "security",
+        "agent-economy",
+        "reputation"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "eliza-plugin-agentradar"
+    },
+    "@human.tech/plugin-waap": {
+      "git": {
+        "repo": "holonym-foundation/eliza-plugin-waap",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@human.tech/plugin-waap",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.3"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "WaaP wallet plugin for ElizaOS — 2-of-2 MPC signing for EVM and Sui, with native 2FA and server-enforced spending policies; the agent never holds private keys.",
+      "homepage": "https://github.com/holonym-foundation/eliza-plugin-waap",
+      "topics": [
+        "wallet",
+        "mpc",
+        "2pc",
+        "evm",
+        "sui",
+        "2fa"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@thecolony/elizaos-plugin": {
+      "git": {
+        "repo": "TheColonyCC/elizaos-plugin",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@thecolony/elizaos-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.34.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "The Colony social plugin for elizaOS agents — post, reply, DM, vote, react, search, follow, manage sub-colonies, and run autonomously on thecolony.cc, the AI-agent-only social network.",
+      "homepage": "https://thecolony.cc",
+      "topics": [
+        "thecolony",
+        "colony",
+        "social",
+        "social-network",
+        "agent-economy",
+        "autonomous-agents"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@usenami/plugin-funding": {
+      "git": {
+        "repo": "namixai/plugin-funding",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@usenami/plugin-funding",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Multi-venue perpetual funding-rate data & cross-exchange funding-arbitrage for elizaOS agents — across 20+ exchanges incl. Hyperliquid HIP-3 sub-DEXes. Free FUNDING_SCREENER; paid FUNDING_ARB + FUNDING_SPREAD settle per-call over x402 (auto-pay in USDC on Base).",
+      "homepage": "https://usenami.io",
+      "topics": [
+        "funding-rate",
+        "perpetuals",
+        "arbitrage",
+        "funding-arbitrage",
+        "x402",
+        "market-data",
+        "trading",
+        "hyperliquid"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@usenami/plugin-signer": {
+      "git": {
+        "repo": "namixai/plugin-signer",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@usenami/plugin-signer",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Keyless CEX/DEX perp order signing for elizaOS agents — HMAC/EIP-712 signatures are computed inside an AWS Nitro Enclave, so the venue API key never enters the agent process. Covers 6 venues: Binance, OKX, Asterdex, KuCoin, Bybit, Hyperliquid.",
+      "homepage": "https://usenami.io/signer",
+      "topics": [
+        "trading",
+        "perpetuals",
+        "cex",
+        "dex",
+        "signing",
+        "security",
+        "nitro-enclave"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "blackwall-eliza-guardrail": {
+      "git": {
+        "repo": "bluetieroperations-create/blackwall-eliza-guardrail",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "blackwall-eliza-guardrail",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "BLACK_WALL pre-action risk guardrail for elizaOS agents - wraps every action handler with a forecast() check so STOP-rated actions abort before they run; gateCall() adds per-call gating for multi-step handlers. Observe mode by default (zero behavior change).",
+      "homepage": "https://github.com/bluetieroperations-create/blackwall-eliza-guardrail",
+      "topics": [
+        "security",
+        "guardrails",
+        "ai-safety",
+        "risk-gate",
+        "onchain-safety"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "elizaos-plugin-coinrailz": {
+      "git": {
+        "repo": "tdnupe3/elizaos-plugin-coinrailz",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-coinrailz",
+        "v0": null,
+        "v1": null,
+        "v2": "2.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Agent Treasury + Payments: non-custodial USDC yield on Solana (Kamino, ~3.4% APY) and Base (ERC-4626 routing via Aave/Compound/Morpho), plus 65 live x402 pay-per-call services for inference, IoT data, satellite imagery, and execution.",
+      "homepage": "https://coinrailz.com",
+      "topics": [
+        "payments",
+        "x402",
+        "usdc",
+        "yield",
+        "treasury",
+        "solana",
+        "base",
+        "defi",
+        "micropayments",
+        "iot",
+        "satellite"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "elizaos-plugin-echo": {
+      "git": {
+        "repo": "elizaOS/eliza",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-echo",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Reference third-party elizaOS plugin: an ECHO action that repeats a message back.",
+      "homepage": "https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo",
+      "topics": [
+        "example",
+        "utility",
+        "reference"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "packages/examples/plugin-echo"
+    },
+    "elizaos-plugin-neynar-search": {
+      "git": {
+        "repo": "xavier-arosemena/elizaos-plugin-neynar-search",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-neynar-search",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Farcaster engagement discovery, like, reply, and follow/unfollow actions via Neynar REST API for ElizaOS agents",
+      "homepage": null,
+      "topics": [
+        "farcaster",
+        "neynar",
+        "social",
+        "discovery"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "elizaos-plugin-reddit-search": {
+      "git": {
+        "repo": "xavier-arosemena/elizaos-plugin-reddit-search",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-reddit-search",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElizaOS plugin for Reddit integration — search, engage, and manage Reddit interactions autonomously",
+      "homepage": null,
+      "topics": [
+        "reddit",
+        "social",
+        "discovery"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    }
+  }
+}

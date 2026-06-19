@@ -1,0 +1,78 @@
+---
+title: "Connect Discord"
+sidebarTitle: "Discord"
+description: "Create a Discord bot and connect it to Eliza."
+---
+
+## You need
+
+- a Discord account
+- permission to add bots to the target server
+- a working Eliza backend
+
+## 1. Create the Discord application
+
+1. Open [Discord Developer Portal](https://discord.com/developers/applications).
+2. Click `New Application`.
+3. Copy the `Application ID`.
+4. Open the `Bot` tab.
+5. Create or reset the bot token and copy it.
+
+<Warning>
+Treat the bot token like a password.
+</Warning>
+
+## 2. Enable Message Content Intent
+
+In the `Bot` tab, turn on `Message Content Intent`.
+
+## 3. Invite the bot
+
+1. Open `OAuth2` -> `URL Generator`.
+2. Select `bot` and `applications.commands`.
+3. Give it at least:
+   - `Send Messages`
+   - `Read Messages / View Channels`
+   - `Use Slash Commands`
+4. Open the generated URL and add the bot to your server.
+
+## 4. Connect it in Eliza
+
+1. Open the connectors section.
+2. Pick `Discord`.
+3. Paste the bot token.
+4. Paste the application ID.
+5. Optionally restrict it to specific channels.
+6. Save.
+
+## 5. Test it
+
+Mention the bot in a server channel:
+
+```text
+@YourBot hey, are you there?
+```
+
+## Recommended defaults
+
+- turn on `only respond to mentions` in busy servers
+- keep `ignore bot messages` on
+- start with a small channel allowlist
+
+## If it fails
+
+### Bot stays offline
+
+The token is usually wrong.
+
+### Bot is online but silent
+
+Usually Message Content Intent is off or the bot lacks channel permissions.
+
+### Bot replies in the wrong places
+
+Tighten the channel allowlist.
+
+## Next
+
+[Connect Telegram](/user/connect-telegram)

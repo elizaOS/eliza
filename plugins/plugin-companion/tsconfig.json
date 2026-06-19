@@ -1,0 +1,116 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "typeRoots": [
+      "./node_modules/@types",
+      "../../node_modules/@types",
+      "../../../node_modules/@types",
+      "../../../node_modules/.bun/node_modules/@types",
+      "../../../node_modules",
+      "../../../node_modules/.bun/node_modules",
+      "../../packages/ui/node_modules/@types"
+    ],
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "paths": {
+      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
+      "@elizaos/plugin-personal-assistant": [
+        "../plugin-personal-assistant/src/index.ts"
+      ],
+      "@elizaos/plugin-steward-app": ["../plugin-steward-app/src/index.ts"],
+      "@elizaos/plugin-wallet-ui": ["../plugin-wallet-ui/src/index.ts"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/agent": ["../../packages/agent/dist/index.d.ts"],
+      "@elizaos/agent/*": [
+        "../../packages/agent/src/*.d.ts",
+        "../../packages/agent/src/*.ts"
+      ],
+      "@elizaos/plugin-registry": ["../plugin-registry/src/index.d.ts"],
+      "@elizaos/plugin-registry/*": [
+        "../plugin-registry/src/*.d.ts",
+        "../plugin-registry/src/*.ts"
+      ],
+      "@elizaos/plugin-elizacloud": [
+        "../plugin-elizacloud/src/index.node.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../plugin-elizacloud/src/*.d.ts",
+        "../plugin-elizacloud/src/*.ts"
+      ],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/agent-surface": [
+        "../../packages/ui/dist/agent-surface/index.d.ts"
+      ],
+      "@elizaos/ui/components": [
+        "../../packages/ui/dist/components/index.d.ts"
+      ],
+      "@elizaos/ui/i18n": ["../../packages/ui/dist/i18n/index.d.ts"],
+      "@elizaos/ui/state": ["../../packages/ui/dist/state/index.d.ts"],
+      "@elizaos/ui/utils": ["../../packages/ui/dist/utils/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
+      "@elizaos/ui/api/client-types-cloud": [
+        "../../packages/ui/dist/api/client-types-cloud.d.ts"
+      ],
+      "@elizaos/plugin-companion": ["./src/index.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/agent/services/app-session-gate": [
+        "../../packages/agent/src/services/app-session-gate.d.ts"
+      ],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/capacitor-appblocker": [
+        "../../plugins/plugin-native-appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-contacts": [
+        "../../plugins/plugin-native-contacts/src/index.ts"
+      ],
+      "@elizaos/capacitor-messages": [
+        "../../plugins/plugin-native-messages/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../../plugins/plugin-native-mobile-signals/src/index.ts"
+      ],
+      "@elizaos/capacitor-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/capacitor-system": [
+        "../../plugins/plugin-native-system/src/index.ts"
+      ],
+      "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
+      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": [
+        "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
+      ],
+      "react/jsx-dev-runtime": [
+        "../../packages/app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": [
+        "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
+      ],
+      "lucide-react": ["./node_modules/lucide-react"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "three/webgpu": [
+        "../../packages/ui/node_modules/@types/three/build/three.webgpu.d.ts"
+      ],
+      "three/tsl": [
+        "../../packages/ui/node_modules/@types/three/build/three.tsl.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts",
+    "../../packages/app-core/src/ambient-modules.d.ts"
+  ],
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+}

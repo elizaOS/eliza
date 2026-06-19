@@ -1,0 +1,129 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:08+0000\n"
+"PO-Revision-Date: 2026-04-01 06:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Printing and scanning\"]]\n"
+msgstr "[[!meta title=\"Imprimer et scanner\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Printing"
+msgstr "Imprimer"
+
+#. type: Plain text
+msgid ""
+"To configure a printer or manage your printing jobs, choose **Apps&nbsp;▸ "
+"System Tools&nbsp;▸ Settings&nbsp;▸ Printers**."
+msgstr ""
+"Pour configurer une imprimante ou gérer vos impressions, choisissez "
+"**Applications&nbsp;▸ Outils système&nbsp;▸ Paramètres;▸ Imprimantes**."
+
+#. type: Plain text
+msgid ""
+"To check the compatibility of your printer with Linux and Tails, consult the "
+"[OpenPrinting database](https://openprinting.github.io/printers/) of the "
+"Linux Foundation."
+msgstr ""
+"Pour vérifier la compatibilité de votre imprimante avec Linux et Tails, "
+"consultez la [base de données OpenPrinting](https://openprinting.github.io/"
+"printers/) de la Linux Foundation."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"tip\">\n"
+"<p>To reuse the configuration of your printers across different working\n"
+"sessions, turn on the [[Printers|persistent_storage/configure#printers]]\n"
+"feature of the Persistent Storage.</p>\n"
+"</div>\n"
+msgstr ""
+"<div class=\"tip\">\n"
+"<p>Pour réutiliser la configuration de vos imprimantes entre plusieurs sessions\n"
+"de travail, activez la fonctionnalité [[Imprimantes|persistent_storage/configure#printers]]\n"
+"dans le stockage persistant.</p>\n"
+"</div>\n"
+
+#. type: Plain text
+msgid "Printing PDFs"
+msgstr "Imprimer des PDF"
+
+#. type: Plain text
+msgid ""
+"Before printing PDFs, you can use [*BookletImposer*](https://"
+"kjo.herbesfolles.org/bookletimposer/) to:"
+msgstr ""
+"Avant d'imprimer des PDF, vous pouvez utiliser [*BookletImposer*](https://"
+"kjo.herbesfolles.org/bookletimposer/) pour :"
+
+#. type: Bullet: '* '
+msgid ""
+"Reduce the number of pages in a PDF by putting several pages on every sheet."
+msgstr ""
+"Réduire le nombre de pages d'un PDF en mettant plusieurs pages sur chaque "
+"feuille."
+
+#. type: Bullet: '* '
+msgid "Produce a PDF booklet that can be folded after printing."
+msgstr "Produire une brochure en PDF qui peut être pliée après l'impression."
+
+#. type: Title =
+#, no-wrap
+msgid "Scanning"
+msgstr "Scanner"
+
+#. type: Plain text
+msgid ""
+"Tails includes the [*Document Scanner*](https://apps.gnome.org//"
+"SimpleScan/)  utility to scan documents and photos."
+msgstr ""
+"Tails inclut le [*Numériseur de documents*](https://apps.gnome.org/fr/"
+"SimpleScan/), un outil pour scanner à la fois des documents et des photos."
+
+#. type: Plain text
+msgid ""
+"To open *Document Scanner*, choose **Apps&nbsp;▸ Utilities&nbsp;▸ Document "
+"Scanner**."
+msgstr ""
+"Pour ouvrir le *Numériseur de documents*, choisir **Applications&nbsp;▸ "
+"Utilitaires&nbsp;▸ Numériseur de documents**."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "To start *Simple Scan* choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Graphics**&nbsp;▸\n"
+#~ "  **Simple Scan**</span>.\n"
+#~ msgstr ""
+#~ "Pour lancer *Simple Scan* choisir\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Graphisme**&nbsp;▸\n"
+#~ "  **Outil de numérisation Simple Scan**</span>.\n"
+
+#~ msgid ""
+#~ "The [CUPS printing system](http://cups.org), which includes drivers for "
+#~ "several common printers allows printing, while you can scan with [Simple "
+#~ "scan](https://launchpad.net/simple-scan)"
+#~ msgstr ""
+#~ "Le [système d'impression CUPS](http://cups.org), qui contient les pilotes "
+#~ "de la plupart des imprimantes permet d'imprimer, par ailleurs vous pouvez "
+#~ "scanner avec [Simple scan](https://launchpad.net/simple-scan)"

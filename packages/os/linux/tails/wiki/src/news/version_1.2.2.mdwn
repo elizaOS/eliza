@@ -1,0 +1,83 @@
+[[!meta date="Fri, 16 Dec 2014 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.2.2 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.2.2, is out.
+
+This release is an emergency release that changes the root certificate
+which is used to verify automatic upgrades.
+
+On January 3rd, the SSL certificate of our website hosting provider,
+boum.org, will expire. The new certificate will be issued by a different
+certificate authority. This certificate authority is verified by the
+automatic upgrade mechanism of Tails.
+
+As a consequence, versions
+previous to 1.2.2 won't be able to do the next automatic upgrade to
+version 1.2.3 and will receive an error message from *Tails Upgrader*
+when starting Tails after January 3rd.
+
+On top of that, a [[!tails_ticket 8449 desc="bug in *Tails Upgrader*"]]
+prevents us from providing an automatic upgrade from version 1.2.1 to
+1.2.2.
+
+So all users should either:
+
+  - Do a [[manual
+upgrade|doc/upgrade#manual]] to version 1.2.2 before January
+3rd. (recommended)
+  - Remember to do a manual upgrade to version 1.2.3 on January 14th.
+
+[[!toc levels=1]]
+
+# Changes
+
+  * Minor improvements
+
+    - Change the SSL certificate authority expected by Tails Upgrader
+      when checking for new Tails versions on https://tails.boum.org/.
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+The same issues as in 1.2.1 apply to this release:
+
+* It is [[hard to exchange files with the I2P Browser|support/known_issues#i2p_browser]].
+
+* [[Longstanding|support/known_issues]] known issues.
+
+# For users of persistent GnuPG keyrings and configuration
+
+If you have enabled the **GnuPG keyrings and configuration**
+persistence feature and have *upgraded* a Tails
+USB stick or SD card installation to Tails 1.2.1 or 1.2.2, then please follow
+these steps to benefit from the updated GnuPG configuration:
+
+1. Boot Tails with
+   [[an administration password|doc/first_steps/welcome_screen/administration_password]] set.
+
+1. Run this command in a
+   *Root Terminal*:
+
+    cp /etc/skel/.gnupg/gpg.conf /home/amnesia/.gnupg/gpg.conf
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+January 14.
+
+
+Do you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

@@ -1,0 +1,14 @@
+#!/bin/sh
+
+set -e
+set -u
+set -x
+
+# Update the image tails:gitlab-triage-stable is based on
+podman image pull debian:stable
+
+# Build our own container image
+podman build --tag tails:gitlab-triage-stable "$(dirname "$0")/.."
+
+# Remove dangling container images
+podman image prune --force

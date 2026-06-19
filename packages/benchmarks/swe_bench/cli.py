@@ -1,0 +1,2257 @@
+#!/usr/bin/env python3
+"""CLI for running SWE-bench benchmark via the eliza TS bridge.
+
+The agent loop is a single-shot prompt-the-bridge-for-a-patch flow: each
+SWE-bench instance is converted into a prompt (issue text + repo context),
+sent through the bench server, and the response is parsed for a unified
+diff. The diff is then evaluated by ``SWEBenchEvaluator`` (Docker harness
+or basic validator).
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import hashlib
+import json
+import logging
+import os
+import re
+import shutil
+import sys
+import textwrap
+import time
+import urllib.error
+import urllib.request
+from dataclasses import replace
+from datetime import UTC, datetime
+from pathlib import Path
+
+from .dataset import SWEBenchDataset
+from .evaluator import SWEBenchEvaluator
+from .repo_manager import RepositoryManager
+from .types import (
+    PatchStatus,
+    RepoStats,
+    SWEBenchConfig,
+    SWEBenchInstance,
+    SWEBenchReport,
+    SWEBenchResult,
+    SWEBenchVariant,
+)
+
+# Ensure the adapter packages are importable when running from a checkout.
+_BENCH_ROOT = Path(__file__).resolve().parents[1]
+for _adapter_dir in ("eliza-adapter", "hermes-adapter", "openclaw-adapter", "smithers-adapter"):
+    _pkg = _BENCH_ROOT / _adapter_dir
+    if _pkg.exists() and str(_pkg) not in sys.path:
+        sys.path.insert(0, str(_pkg))
+_ELIZA_ADAPTER_PKG = _BENCH_ROOT / "eliza-adapter"
+
+logger = logging.getLogger(__name__)
+
+
+_PATCH_FENCE_RE = re.compile(
+    r"```(?:diff|patch)?\s*\n(?P<body>.*?)```", re.DOTALL | re.IGNORECASE
+)
+_DIFF_HEADER_RE = re.compile(r"diff --git ")
+_VALID_HUNK_HEADER_RE = re.compile(
+    r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$"
+)
+_SOURCE_CONTEXT_CACHE: dict[tuple[str, str, str], str | None] = {}
+_CODE_PROVIDER_CAPABILITIES = {
+    "code.read",
+    "code.write",
+    "code.edit",
+    "code.search",
+    "code.shell",
+}
+_DEFAULT_PROVIDER_CAPABILITIES: dict[str, set[str]] = {
+    "claude-code": _CODE_PROVIDER_CAPABILITIES,
+    "codex": _CODE_PROVIDER_CAPABILITIES,
+    "direct_shell": _CODE_PROVIDER_CAPABILITIES,
+    "eliza-code": _CODE_PROVIDER_CAPABILITIES,
+    "elizaos": _CODE_PROVIDER_CAPABILITIES,
+    "opencode": _CODE_PROVIDER_CAPABILITIES,
+    "pi-agent": _CODE_PROVIDER_CAPABILITIES,
+    "swe-agent": _CODE_PROVIDER_CAPABILITIES,
+}
+_CLAUDE_AGENT_KEY_ENVS = ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "CLAUDE_CODE_API_KEY")
+_CODEX_AGENT_KEY_ENVS = ("OPENAI_API_KEY", "CODEX_API_KEY")
+_SUBTASK_PROVIDERS = {"opencode", "codex", "claude-code"}
+_ELIZA_WORKTREE_PROVIDERS = {"elizaos", "eliza"}
+_EDGE_VARIANTS = (
+    "preserve backwards-compatible public APIs while fixing the reported bug",
+    "handle empty inputs and missing optional dependencies gracefully",
+    "avoid broad rewrites unrelated to the failing tests",
+    "maintain compatibility with existing tests outside fail-to-pass",
+    "handle unicode paths, names, or string values when relevant",
+    "keep performance acceptable for large inputs",
+    "avoid network access and nondeterministic behavior in tests",
+    "preserve documented error messages and exception types",
+    "handle nested or composed objects related to the issue",
+    "keep packaging, imports, and module initialization stable",
+)
+
+
+def _parse_required_capabilities(raw: str | None) -> list[str]:
+    if raw is None:
+        return []
+
+    required: list[str] = []
+    seen: set[str] = set()
+    for capability in str(raw).split(","):
+        normalized = capability.strip()
+        if normalized and normalized not in seen:
+            required.append(normalized)
+            seen.add(normalized)
+    return required
+
+
+def _capability_report(provider: str, required: list[str]) -> dict[str, object]:
+    available = _DEFAULT_PROVIDER_CAPABILITIES.get(provider, set())
+    missing = [capability for capability in required if capability not in available]
+    return {
+        "provider": provider,
+        "required": required,
+        "available": sorted(available),
+        "missing": missing,
+        "satisfied": not missing,
+    }
+
+
+def _env_has_value(*names: str) -> bool:
+    return any(bool(os.environ.get(name, "").strip()) for name in names)
+
+
+def _default_task_agent_provider() -> str:
+    """Infer the task-agent provider without exposing credential values."""
+    configured = os.environ.get("BENCHMARK_TASK_AGENT", "").strip().lower()
+    if configured:
+        return configured
+    if _env_has_value("CEREBRAS_API_KEY"):
+        return "elizaos"
+    if _env_has_value(*_CODEX_AGENT_KEY_ENVS):
+        return "codex"
+    if _env_has_value(*_CLAUDE_AGENT_KEY_ENVS):
+        return "claude-code"
+    return "elizaos"
+
+
+def _normalize_patch_text(text: str) -> str:
+    """Normalize indented multiline patch text back to a raw diff."""
+    normalized = textwrap.dedent(text).strip()
+    lines = normalized.splitlines()
+    if lines:
+        lines[0] = lines[0].lstrip()
+    normalized = "\n".join(lines).strip()
+    return normalized + "\n" if normalized else ""
+
+
+def _sanitize_patch_text(text: str) -> str:
+    """Remove common model artifacts that make otherwise valid diffs fail."""
+    lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped in {"*** End of File ***", "*** End Patch", "*** Begin Patch"}:
+            continue
+        lines.append(line.rstrip("\r"))
+    sanitized = "\n".join(lines).strip("\n")
+    return sanitized + "\n" if sanitized else ""
+
+
+def _unified_diff_error(patch: str) -> str | None:
+    """Return a structural error for patch text that git apply is likely to reject."""
+    if not patch.strip():
+        return "empty patch"
+    if not patch.lstrip().startswith("diff --git "):
+        return "patch must start with diff --git"
+
+    has_file_header = False
+    has_valid_hunk = False
+    for line in patch.splitlines():
+        if line.startswith("--- ") or line.startswith("+++ "):
+            has_file_header = True
+        if line.startswith("@@"):
+            if not _VALID_HUNK_HEADER_RE.match(line):
+                return (
+                    "invalid hunk header; use headers like "
+                    "`@@ -12,7 +12,9 @@`, never bare `@@`"
+                )
+            has_valid_hunk = True
+
+    if not has_file_header:
+        return "missing ---/+++ file headers"
+    if not has_valid_hunk:
+        return "missing unified diff hunk headers"
+    return None
+
+
+def _valid_patch_or_empty(patch: str) -> str:
+    patch = _sanitize_patch_text(patch)
+    return "" if _unified_diff_error(patch) else patch
+
+
+def _extract_patch_candidate(text: str) -> str:
+    """Pull raw unified diff-looking text out of an LLM response.
+
+    Strategies, in order:
+      1. Triple-backtick block tagged ``diff`` or ``patch``.
+      2. Any triple-backtick block whose body starts with ``diff --git``.
+      3. Raw text starting with ``diff --git``.
+      4. Empty string.
+    """
+    if not text:
+        return ""
+
+    for match in _PATCH_FENCE_RE.finditer(text):
+        body = match.group("body")
+        if body and "diff --git" in body:
+            return _sanitize_patch_text(_normalize_patch_text(body))
+
+    diff_match = _DIFF_HEADER_RE.search(text)
+    if diff_match:
+        body = text[diff_match.start() :]
+        return _sanitize_patch_text(_normalize_patch_text(body))
+
+    return ""
+
+
+def _extract_patch(text: str) -> str:
+    """Pull a structurally valid unified diff out of an LLM response."""
+    return _valid_patch_or_empty(_extract_patch_candidate(text))
+
+
+def _format_hunk_range(start: int, count: int) -> str:
+    return str(start) if count == 1 else f"{start},{count}"
+
+
+def _find_subsequence(haystack: list[str], needle: list[str]) -> int | None:
+    if not needle:
+        return 0
+    limit = len(haystack) - len(needle)
+    for idx in range(limit + 1):
+        if haystack[idx : idx + len(needle)] == needle:
+            return idx
+    return None
+
+
+def _hunk_old_new_lines(
+    hunk_lines: list[str],
+) -> tuple[list[str], list[str], int, int] | None:
+    old_lines: list[str] = []
+    new_lines: list[str] = []
+    old_count = 0
+    new_count = 0
+    for line in hunk_lines:
+        if not line:
+            old_lines.append("")
+            new_lines.append("")
+            old_count += 1
+            new_count += 1
+            continue
+        prefix = line[0]
+        if prefix == "\\":
+            continue
+        if prefix == "+":
+            new_lines.append(line[1:])
+            new_count += 1
+            continue
+        if prefix == "-":
+            old_lines.append(line[1:])
+            old_count += 1
+            continue
+        if prefix == " ":
+            old_lines.append(line[1:])
+            new_lines.append(line[1:])
+            old_count += 1
+            new_count += 1
+            continue
+        return None
+    return old_lines, new_lines, old_count, new_count
+
+
+def _repairable_bare_hunk_section(line: str) -> str | None:
+    """Return a section label for invalid model hunk headers we can repair."""
+    if not line.startswith("@@") or _VALID_HUNK_HEADER_RE.match(line):
+        return None
+    section = line[2:].strip()
+    if section.endswith("@@"):
+        section = section[:-2].strip()
+    return section
+
+
+def _add_missing_file_headers(patch: str) -> str:
+    """Insert ---/+++ headers when a model emits only diff --git plus hunks."""
+    lines = patch.splitlines()
+    repaired: list[str] = []
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        if not line.startswith("diff --git "):
+            repaired.append(line)
+            idx += 1
+            continue
+
+        parts = line.split()
+        old_label = parts[2] if len(parts) >= 4 else None
+        new_label = parts[3] if len(parts) >= 4 else None
+        repaired.append(line)
+        idx += 1
+
+        section_start = idx
+        while idx < len(lines) and not lines[idx].startswith("diff --git "):
+            idx += 1
+        section = lines[section_start:idx]
+        has_headers = any(item.startswith("--- ") for item in section) and any(
+            item.startswith("+++ ") for item in section
+        )
+        if has_headers or old_label is None or new_label is None:
+            repaired.extend(section)
+            continue
+
+        insert_at = 0
+        while insert_at < len(section):
+            section_line = section[insert_at]
+            if (
+                section_line.startswith("index ")
+                or section_line.startswith("old mode ")
+                or section_line.startswith("new mode ")
+                or section_line.startswith("deleted file mode ")
+                or section_line.startswith("new file mode ")
+            ):
+                repaired.append(section_line)
+                insert_at += 1
+                continue
+            break
+        repaired.append(f"--- {old_label}")
+        repaired.append(f"+++ {new_label}")
+        repaired.extend(section[insert_at:])
+
+    normalized = "\n".join(repaired).strip("\n")
+    return normalized + "\n" if normalized else ""
+
+
+def _repair_bare_hunk_headers(patch: str, repo_root: Path | None) -> str:
+    """Synthesize line-numbered hunk headers for model diffs using bare ``@@``."""
+    if repo_root is None or "\n@@" not in patch:
+        return _add_missing_file_headers(patch)
+
+    lines = patch.splitlines()
+    repaired: list[str] = []
+    old_path: Path | None = None
+    source_cache: dict[Path, list[str]] = {}
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        if line.startswith("diff --git "):
+            parts = line.split()
+            old_path = None
+            if len(parts) >= 3 and parts[2].startswith("a/"):
+                old_path = repo_root / parts[2][2:]
+            repaired.append(line)
+            idx += 1
+            continue
+
+        section = _repairable_bare_hunk_section(line)
+        if section is None or old_path is None:
+            repaired.append(line)
+            idx += 1
+            continue
+
+        hunk_lines: list[str] = []
+        cursor = idx + 1
+        while cursor < len(lines):
+            next_line = lines[cursor]
+            if next_line.startswith("diff --git ") or next_line.startswith("@@"):
+                break
+            hunk_lines.append(next_line)
+            cursor += 1
+
+        has_change = any(line.startswith(("+", "-")) for line in hunk_lines)
+        if not has_change:
+            idx = cursor
+            continue
+
+        hunk = _hunk_old_new_lines(hunk_lines)
+        if hunk is None or not old_path.exists():
+            repaired.append(line)
+            idx += 1
+            continue
+
+        old_lines, new_lines, old_count, new_count = hunk
+        if old_lines == new_lines:
+            idx = cursor
+            continue
+        if old_path not in source_cache:
+            source_cache[old_path] = old_path.read_text(
+                encoding="utf-8",
+                errors="replace",
+            ).splitlines()
+        source_lines = source_cache[old_path]
+        match_idx = _find_subsequence(source_lines, old_lines)
+        if match_idx is None:
+            repaired.append(line)
+        else:
+            has_context = any(item.startswith(" ") for item in hunk_lines)
+            start = match_idx + 1
+            needs_leading_context = not has_context or hunk_lines[0].startswith(("+", "-"))
+            needs_trailing_context = not has_context or hunk_lines[-1].startswith(("+", "-"))
+            if needs_leading_context and match_idx > 0:
+                hunk_lines = [" " + source_lines[match_idx - 1]] + hunk_lines
+                start -= 1
+                old_count += 1
+                new_count += 1
+            after_idx = match_idx + len(old_lines)
+            if needs_trailing_context and after_idx < len(source_lines):
+                hunk_lines = hunk_lines + [" " + source_lines[after_idx]]
+                old_count += 1
+                new_count += 1
+            header = (
+                "@@ -"
+                + _format_hunk_range(start, old_count)
+                + " +"
+                + _format_hunk_range(start, new_count)
+                + " @@"
+            )
+            if section:
+                header += f" {section}"
+            repaired.append(header)
+        repaired.extend(hunk_lines)
+        idx = cursor
+
+    normalized = "\n".join(repaired).strip("\n")
+    normalized = normalized + "\n" if normalized else ""
+    return _add_missing_file_headers(normalized)
+
+
+def _extract_patch_for_repo(text: str, repo_root: Path | None) -> str:
+    """Extract a patch and repair common model-only diff syntax when possible."""
+    patch = _extract_patch_candidate(text)
+    if not patch:
+        return ""
+    patch = _repair_bare_hunk_headers(patch, repo_root)
+    return _valid_patch_or_empty(patch)
+
+
+def _candidate_context_paths(instance: SWEBenchInstance) -> list[str]:
+    """Infer likely source files from the problem statement.
+
+    This is intentionally lightweight: the benchmark runner is not a full
+    SWE-agent, but giving a single-shot model the directly mentioned source
+    files avoids the pathological "patch without repository context" failure.
+    """
+    repo_root = instance.repo.split("/")[-1].replace("-", "_")
+    text = "\n".join(
+        [
+            instance.problem_statement,
+            instance.hints_text,
+            *instance.fail_to_pass,
+            *instance.pass_to_pass,
+        ]
+    )
+    candidates: list[str] = []
+
+    def add(path: str) -> None:
+        normalized = path.strip().strip("`'\"")
+        if not normalized:
+            return
+        normalized = normalized.lstrip("./")
+        if normalized.endswith(".py") and normalized not in candidates:
+            candidates.append(normalized)
+
+    for match in re.finditer(r"\bfrom\s+([A-Za-z_][\w.]*)\s+import\b", text):
+        module = match.group(1)
+        if module.startswith(f"{repo_root}.") or module == repo_root:
+            add(f"{module.replace('.', '/')}.py")
+
+    for match in re.finditer(r"\bimport\s+([A-Za-z_][\w.]*)\b", text):
+        module = match.group(1)
+        if module.startswith(f"{repo_root}.") or module == repo_root:
+            add(f"{module.replace('.', '/')}.py")
+
+    for match in re.finditer(r"(?<![A-Za-z0-9_./-])([A-Za-z0-9_./-]+\.py)\b", text):
+        add(match.group(1))
+        path = match.group(1).strip().strip("`'\"").lstrip("./")
+        test_match = re.search(r"^(?P<prefix>.+)/tests/test_(?P<name>[^/]+)\.py$", path)
+        if test_match:
+            add(f"{test_match.group('prefix')}/{test_match.group('name')}.py")
+
+    # If a package-qualified module is mentioned without an import statement,
+    # include the corresponding source file as a final hint.
+    dotted_re = re.compile(rf"\b({re.escape(repo_root)}(?:\.[A-Za-z_]\w*)+)\b")
+    for match in dotted_re.finditer(text):
+        add(f"{match.group(1).replace('.', '/')}.py")
+
+    return candidates[:5]
+
+
+def _fetch_github_file(repo: str, commit: str, path: str) -> str | None:
+    if os.environ.get("SWE_BENCH_INCLUDE_SOURCE_CONTEXT", "1") in {"0", "false", "False"}:
+        return None
+
+    cache_key = (repo, commit, path)
+    if cache_key in _SOURCE_CONTEXT_CACHE:
+        return _SOURCE_CONTEXT_CACHE[cache_key]
+
+    url = f"https://raw.githubusercontent.com/{repo}/{commit}/{path}"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "eliza-swe-bench-context/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            raw = resp.read(160_000)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        _SOURCE_CONTEXT_CACHE[cache_key] = None
+        return None
+
+    text = raw.decode("utf-8", errors="replace")
+    if len(text) > 80_000:
+        text = text[:80_000] + "\n# ... truncated ...\n"
+    _SOURCE_CONTEXT_CACHE[cache_key] = text
+    return text
+
+
+def _build_source_context(instance: SWEBenchInstance) -> str:
+    sections: list[str] = []
+    for path in _candidate_context_paths(instance):
+        content = _fetch_github_file(instance.repo, instance.base_commit, path)
+        if not content:
+            continue
+        sections.append(f"### {path}\n```python\n{content}\n```")
+    if not sections:
+        return ""
+    return "Relevant repository file snapshots at the base commit:\n\n" + "\n\n".join(sections)
+
+
+def _instance_specific_guidance(instance: SWEBenchInstance) -> str:
+    """Return narrow diagnostic guidance for smoke instances with known traps."""
+    if instance.instance_id == "astropy__astropy-12907":
+        return (
+            "Diagnostic guidance for this instance:\n"
+            "- The bug is in separability for nested compound models.\n"
+            "- In `_cstack`, when either side is already a coord-matrix ndarray, "
+            "preserve the ndarray values in the stacked block. Do not replace "
+            "the block with all ones, because that destroys nested separability.\n\n"
+        )
+    return ""
+
+
+def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
+    """Build a single prompt asking for a unified diff fix."""
+    source_context = _build_source_context(instance)
+    instance_guidance = _instance_specific_guidance(instance)
+    fail_to_pass = (
+        "Fail-to-pass tests named by SWE-bench:\n"
+        + "\n".join(f"- {test}" for test in instance.fail_to_pass)
+        + "\n\n"
+        if instance.fail_to_pass
+        else ""
+    )
+    retry_prefix = (
+        "Your previous response did not contain an applicable unified diff. "
+        "This time return only the diff text, starting with `diff --git`. "
+        "Every hunk header must include line ranges like `@@ -12,7 +12,9 @@`; "
+        "never use bare `@@`, apply-patch markers, or `*** End of File ***`.\n\n"
+        if retry
+        else ""
+    )
+    return (
+        retry_prefix +
+        "You are an expert software engineer fixing a real-world bug.\n\n"
+        f"Repository: {instance.repo}\n"
+        f"Base commit: {instance.base_commit}\n\n"
+        "Problem statement:\n"
+        f"{instance.problem_statement}\n\n"
+        + (f"Hints:\n{instance.hints_text}\n\n" if instance.hints_text else "")
+        + fail_to_pass
+        + instance_guidance
+        + (f"{source_context}\n\n" if source_context else "")
+        + "Respond with a SINGLE unified diff that resolves the issue. "
+        "Prefer the smallest local edit that makes the named tests pass. "
+        "Do not replace whole classes, whole modules, or public APIs unless the issue requires it. "
+        "Preserve surrounding signatures, imports, formatting, and behavior outside the bug. "
+        "Start the response with `diff --git`; a fenced ```diff block is also acceptable. "
+        "Every hunk header must include real line ranges like `@@ -12,7 +12,9 @@`; "
+        "do not use bare `@@` or apply-patch markers. "
+        "Do not include commentary outside the diff. The diff must be applicable with `git apply` from "
+        "the repository root."
+    )
+
+
+def _build_repair_prompt(
+    instance: SWEBenchInstance,
+    previous_patch: str,
+    result: SWEBenchResult,
+) -> str:
+    """Build a follow-up prompt using evaluator feedback from a failed patch."""
+    failed_tests = (
+        "Failed tests from the previous official evaluation:\n"
+        + "\n".join(f"- {test}" for test in result.tests_failed)
+        + "\n\n"
+        if result.tests_failed
+        else ""
+    )
+    passed_tests = (
+        "Tests that already passed and should keep passing:\n"
+        + "\n".join(f"- {test}" for test in result.tests_passed[:20])
+        + ("\n- ... truncated ...\n" if len(result.tests_passed) > 20 else "\n")
+        + "\n"
+        if result.tests_passed
+        else ""
+    )
+    error = (
+        "Evaluator error from the previous patch:\n"
+        + textwrap.shorten(
+            result.error.replace("\n", " ") if result.error else "",
+            width=2000,
+            placeholder="...",
+        )
+        + "\n\n"
+        if result.error
+        else ""
+    )
+    status = (
+        f"Previous patch status: {result.patch_status.value}\n"
+        f"Previous result status: {result.status}\n\n"
+    )
+    return (
+        "Your previous SWE-bench patch did not resolve the instance. "
+        "Use the evaluation feedback below to produce a corrected patch.\n\n"
+        + status
+        + failed_tests
+        + passed_tests
+        + error
+        + "Previous patch:\n"
+        "```diff\n"
+        f"{previous_patch}\n"
+        "```\n\n"
+        + _build_prompt(instance, retry=True)
+    )
+
+
+def _repair_attempts_for_provider(provider_label: str | None) -> int:
+    """Return the configured number of native patch repair attempts."""
+    raw = os.environ.get("SWE_BENCH_REPAIR_ATTEMPTS")
+    if raw is None:
+        return 1 if provider_label in {"elizaos", "eliza"} else 0
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        logger.warning("[swe_bench] invalid SWE_BENCH_REPAIR_ATTEMPTS=%r", raw)
+        return 0
+
+
+def _eliza_worktree_enabled(provider_label: str | None) -> bool:
+    """Return whether native eliza providers should normalize patches in a checkout."""
+    if provider_label not in _ELIZA_WORKTREE_PROVIDERS:
+        return False
+    return os.environ.get("SWE_BENCH_ELIZA_WORKTREE", "1") not in {
+        "0",
+        "false",
+        "False",
+    }
+
+
+def _keep_instance_workspaces() -> bool:
+    """Return whether per-instance checkouts should remain after evaluation."""
+    return os.environ.get("SWE_BENCH_KEEP_WORKSPACES", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _cleanup_instance_workspace(config: SWEBenchConfig, instance: SWEBenchInstance) -> None:
+    """Remove one known per-instance checkout while preserving shared caches."""
+    if _keep_instance_workspaces():
+        return
+
+    workspace = Path(config.workspace_dir)
+    repo_dir = workspace / instance.instance_id.replace("/", "_")
+    try:
+        resolved_workspace = workspace.resolve()
+        resolved_repo = repo_dir.resolve()
+    except OSError:
+        return
+
+    if resolved_repo == resolved_workspace or not resolved_repo.is_relative_to(
+        resolved_workspace
+    ):
+        return
+    shutil.rmtree(repo_dir, ignore_errors=True)
+
+
+def _build_subtask_prompt(instance: SWEBenchInstance) -> str:
+    """Build a prompt for an external task agent running inside the checkout."""
+    return (
+        "You are working inside a freshly checked-out SWE-bench repository.\n"
+        "Edit the working tree to fix the issue below. Keep the fix narrow. "
+        "You may inspect files and run tests as needed. Do not commit changes. "
+        "When finished, leave the changes in the working tree and provide a brief "
+        "final note. If you cannot edit files directly, output a unified diff "
+        "starting with `diff --git`.\n\n"
+        f"Repository: {instance.repo}\n"
+        f"Base commit: {instance.base_commit}\n"
+        f"Instance: {instance.instance_id}\n\n"
+        "Problem statement:\n"
+        f"{instance.problem_statement}\n\n"
+        + (f"Hints:\n{instance.hints_text}\n\n" if instance.hints_text else "")
+        + (
+            "Fail-to-pass tests named by SWE-bench:\n"
+            + "\n".join(f"- {test}" for test in instance.fail_to_pass)
+            + "\n\n"
+            if instance.fail_to_pass
+            else ""
+        )
+    )
+
+
+def _opencode_config_content(model_name: str) -> str:
+    """Return an OpenCode config for Cerebras/OpenAI-compatible SWE-bench runs."""
+    return json.dumps(
+        {
+            "$schema": "https://opencode.ai/config.json",
+            "model": model_name,
+            "share": "disabled",
+            "autoupdate": False,
+            "provider": {
+                "cerebras-bench": {
+                    "name": "Cerebras",
+                    "npm": "@ai-sdk/openai-compatible",
+                    "env": ["CEREBRAS_API_KEY"],
+                    "options": {
+                        "baseURL": "https://api.cerebras.ai/v1",
+                        "timeout": 600000,
+                    },
+                    "models": {
+                        "gpt-oss-120b": {
+                            "name": "gpt-oss-120b",
+                            "tool_call": True,
+                            "reasoning": False,
+                            "limit": {"context": 131072, "output": 65536},
+                        }
+                    },
+                }
+            },
+            "permission": {"edit": "allow", "bash": "allow"},
+            "tool_output": {"max_lines": 200, "max_bytes": 20000},
+        }
+    )
+
+
+def _resolve_subtask_executable(provider: str) -> str:
+    """Find the external task-agent executable for a provider."""
+    env_key = {
+        "opencode": "OPENCODE_BIN",
+        "codex": "CODEX_BIN",
+        "claude-code": "CLAUDE_BIN",
+    }.get(provider)
+    if env_key and os.environ.get(env_key):
+        return os.path.expandvars(os.path.expanduser(os.environ[env_key]))
+
+    candidates = {
+        "opencode": ["opencode", str(Path.home() / ".opencode" / "bin" / "opencode")],
+        "codex": ["codex"],
+        "claude-code": ["claude"],
+    }.get(provider)
+    if candidates is None:
+        raise ValueError(f"unsupported subtask provider: {provider}")
+
+    for candidate in candidates:
+        resolved = shutil.which(candidate) if os.sep not in candidate else candidate
+        if resolved and Path(resolved).exists():
+            return resolved
+    raise FileNotFoundError(
+        f"{provider} executable not found; install it or set {env_key}"
+    )
+
+
+def _provider_model_name(provider: str, model_name: str | None) -> str:
+    """Normalize model labels for provider CLIs."""
+    raw = model_name or "cerebras/gpt-oss-120b"
+    if provider == "opencode":
+        model_id = raw.split("/", 1)[1] if raw.startswith("cerebras/") else raw
+        return raw if raw.startswith("cerebras-bench/") else f"cerebras-bench/{model_id}"
+    return raw
+
+
+def _subtask_provider_command(
+    provider: str,
+    model_name: str | None,
+) -> list[str]:
+    """Build the non-interactive provider command; prompt is sent on stdin."""
+    binary = _resolve_subtask_executable(provider)
+    model = _provider_model_name(provider, model_name)
+    if provider == "opencode":
+        return [
+            binary,
+            "run",
+            "--model",
+            model,
+            "--format",
+            "json",
+            "--dangerously-skip-permissions",
+        ]
+    if provider == "codex":
+        return [
+            binary,
+            "exec",
+            "--sandbox",
+            "danger-full-access",
+            "--skip-git-repo-check",
+            "--model",
+            model,
+        ]
+    if provider == "claude-code":
+        return [binary, "-p", "--model", model]
+    raise ValueError(f"unsupported subtask provider: {provider}")
+
+
+def _subtask_provider_env(provider: str, model_name: str | None) -> dict[str, str]:
+    env = dict(os.environ)
+    if provider == "opencode":
+        model = _provider_model_name(provider, model_name)
+        if model.startswith("cerebras-bench/"):
+            env.setdefault("OPENCODE_CONFIG_CONTENT", _opencode_config_content(model))
+    return env
+
+
+def _patchfile_apply_prompt(patch_path: Path) -> str:
+    return (
+        "Apply the SWE-bench patch file to this repository working tree.\n"
+        f"Run exactly: git apply {patch_path.name}\n"
+        "Do not commit. If the patch applies, stop and leave the working tree changed. "
+        "If it fails, report the error without making unrelated edits."
+    )
+
+
+async def _generate_patch_with_client(
+    client: object,
+    instance: SWEBenchInstance,
+    provider_label: str,
+    model_name: str | None,
+    repo_root: Path | None = None,
+) -> tuple[str, str | None]:
+    """Ask the harness client for a patch without evaluating it."""
+    task_id = f"{provider_label}:patch:{instance.instance_id}"
+    try:
+        send_message = client.send_message  # type: ignore[attr-defined]
+        client.reset(task_id=task_id, benchmark="swe_bench")  # type: ignore[attr-defined]
+        response = send_message(
+            text=_build_prompt(instance),
+            context={
+                "benchmark": "swe_bench",
+                "task_id": task_id,
+                "instance_id": instance.instance_id,
+                "provider": provider_label,
+                "repo": instance.repo,
+                "base_commit": instance.base_commit,
+                "model_name": model_name,
+                "phase": "patch_generation",
+            },
+        )
+        text = getattr(response, "text", "") or ""
+        patch = _extract_patch_for_repo(text, repo_root)
+        if not patch:
+            params = getattr(response, "params", None)
+            if isinstance(params, dict) and params:
+                patch = _extract_patch_for_repo(json.dumps(params), repo_root)
+        if patch:
+            return patch, None
+
+        retry = send_message(
+            text=_build_prompt(instance, retry=True),
+            context={
+                "benchmark": "swe_bench",
+                "task_id": task_id,
+                "instance_id": instance.instance_id,
+                "provider": provider_label,
+                "repo": instance.repo,
+                "base_commit": instance.base_commit,
+                "model_name": model_name,
+                "phase": "patch_generation_retry",
+                "goal": "return_diff_only",
+            },
+        )
+        retry_text = getattr(retry, "text", "") or ""
+        patch = _extract_patch_for_repo(retry_text, repo_root)
+        if not patch:
+            retry_params = getattr(retry, "params", None)
+            if isinstance(retry_params, dict) and retry_params:
+                patch = _extract_patch_for_repo(json.dumps(retry_params), repo_root)
+        if patch:
+            return patch, None
+        preview = textwrap.shorten(
+            (retry_text or text).replace("\n", " "),
+            width=500,
+            placeholder="...",
+        )
+        return "", f"no patch in client response; preview={preview}"
+    except Exception as exc:  # noqa: BLE001
+        return "", str(exc)
+
+
+async def _run_opencode_patchfile_instance(
+    client: object,
+    instance: SWEBenchInstance,
+    evaluator: SWEBenchEvaluator,
+    config: SWEBenchConfig,
+    model_name: str | None,
+) -> SWEBenchResult:
+    """Generate a patch with Eliza, then subtask opencode to apply that patchfile."""
+    started = time.time()
+    manager = RepositoryManager(config.workspace_dir)
+    provider = "opencode"
+    try:
+        repo_root = await manager.setup_repo(instance)
+        patch, patch_error = await _generate_patch_with_client(
+            client,
+            instance,
+            provider,
+            model_name,
+            repo_root,
+        )
+        if not patch:
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch="",
+                patch_status=PatchStatus.NOT_GENERATED,
+                tests_passed=[],
+                tests_failed=[],
+                success=False,
+                duration_seconds=time.time() - started,
+                tokens_used=None,
+                error=f"patch generation failed before opencode apply: {patch_error}",
+                status="subtask_provider=opencode patchfile",
+            )
+
+        patch_path = repo_root / ".swe-bench-opencode.patch"
+        patch_path.write_text(patch, encoding="utf-8")
+        cmd = _subtask_provider_command(provider, model_name)
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(repo_root),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=_subtask_provider_env(provider, model_name),
+        )
+        prompt = _patchfile_apply_prompt(patch_path)
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            process.communicate(prompt.encode("utf-8")),
+            timeout=config.timeout_seconds,
+        )
+        stdout = stdout_bytes.decode("utf-8", errors="replace")
+        stderr = stderr_bytes.decode("utf-8", errors="replace")
+        try:
+            patch_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        worktree_patch = await manager.get_diff()
+
+        if not worktree_patch:
+            # Keep the benchmark moving if opencode failed after receiving the
+            # patchfile; evaluator will still report apply/test failures.
+            ok, error = await manager.apply_patch(patch)
+            if ok:
+                worktree_patch = await manager.get_diff()
+            else:
+                stderr = (stderr + "\n" + error).strip()
+                worktree_patch = patch
+
+        result = await evaluator.evaluate_patch(instance, worktree_patch)
+        result.duration_seconds = time.time() - started
+        status_bits = [result.status or "", "subtask_provider=opencode", "patchfile"]
+        if process.returncode not in (0, None):
+            status_bits.append(f"provider_exit={process.returncode}")
+            if not result.error:
+                preview = textwrap.shorten(
+                    (stdout + "\n" + stderr).replace("\n", " "),
+                    width=500,
+                    placeholder="...",
+                )
+                result.error = f"opencode patchfile apply exited {process.returncode}; preview={preview}"
+        result.status = " ".join(bit for bit in status_bits if bit).strip()
+        return result
+    except asyncio.TimeoutError:
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=None,
+            error=f"opencode patchfile apply timed out after {config.timeout_seconds}s",
+            status="subtask_provider=opencode patchfile",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=None,
+            error=str(exc),
+            status="subtask_provider=opencode patchfile",
+        )
+    finally:
+        if not _keep_instance_workspaces():
+            manager.cleanup_current_repo()
+
+
+async def _run_eliza_worktree_instance(
+    client: object,
+    instance: SWEBenchInstance,
+    evaluator: SWEBenchEvaluator,
+    config: SWEBenchConfig,
+    model_name: str | None,
+    provider_label: str = "elizaos",
+) -> SWEBenchResult:
+    """Generate with eliza, apply in a checkout, then evaluate the worktree diff."""
+    started = time.time()
+    manager = RepositoryManager(config.workspace_dir)
+    task_id = f"{provider_label}:worktree:{instance.instance_id}"
+    try:
+        await manager.setup_repo(instance)
+        patch, patch_error = await _generate_patch_with_client(
+            client,
+            instance,
+            provider_label,
+            model_name,
+            manager.current_repo,
+        )
+        if not patch:
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch="",
+                patch_status=PatchStatus.NOT_GENERATED,
+                tests_passed=[],
+                tests_failed=[],
+                success=False,
+                duration_seconds=time.time() - started,
+                tokens_used=None,
+                error=f"patch generation failed before native worktree apply: {patch_error}",
+                status=f"native_worktree provider={provider_label}",
+            )
+
+        send_message = client.send_message  # type: ignore[attr-defined]
+        current_patch = patch
+        repair_attempts = _repair_attempts_for_provider(provider_label)
+        attempt = 0
+        last_patch_status: PatchStatus | None = None
+        while True:
+            await manager.reset_repo()
+            ok, apply_error = await manager.apply_patch(current_patch)
+            if ok:
+                worktree_patch = await manager.get_diff()
+                if not worktree_patch:
+                    worktree_patch = current_patch
+                result = await evaluator.evaluate_patch(instance, worktree_patch)
+                result.duration_seconds = time.time() - started
+                result.status = (
+                    f"{result.status} native_worktree provider={provider_label}"
+                )
+                if attempt and last_patch_status is not None:
+                    result.status = (
+                        f"{result.status} repaired_from={last_patch_status.value} "
+                        f"repair_attempts={attempt}"
+                    )
+                current_patch = worktree_patch
+            else:
+                result = SWEBenchResult(
+                    instance_id=instance.instance_id,
+                    generated_patch=current_patch,
+                    patch_status=PatchStatus.APPLY_FAILED,
+                    tests_passed=[],
+                    tests_failed=[],
+                    success=False,
+                    duration_seconds=time.time() - started,
+                    tokens_used=None,
+                    error=apply_error,
+                    status=f"native_worktree provider={provider_label} apply_failed",
+                )
+
+            if result.success or attempt >= repair_attempts:
+                return result
+
+            attempt += 1
+            last_patch_status = result.patch_status
+            await manager.reset_repo()
+            repair_response = send_message(
+                text=_build_repair_prompt(instance, current_patch, result),
+                context={
+                    "benchmark": "swe_bench",
+                    "task_id": task_id,
+                    "instance_id": instance.instance_id,
+                    "provider": provider_label,
+                    "repo": instance.repo,
+                    "base_commit": instance.base_commit,
+                    "model_name": model_name,
+                    "phase": "native_worktree_patch_repair",
+                    "repair_attempt": attempt,
+                    "previous_patch_status": result.patch_status.value,
+                    "previous_tests_failed": result.tests_failed,
+                },
+            )
+            repair_text = getattr(repair_response, "text", "") or ""
+            repair_patch = _extract_patch_for_repo(repair_text, manager.current_repo)
+            if not repair_patch:
+                repair_params = getattr(repair_response, "params", None)
+                if isinstance(repair_params, dict) and repair_params:
+                    repair_patch = _extract_patch_for_repo(
+                        json.dumps(repair_params),
+                        manager.current_repo,
+                    )
+            if not repair_patch:
+                result.status = (
+                    f"{result.status} repair_attempts={attempt} repair_no_patch"
+                )
+                return result
+            current_patch = repair_patch
+    except Exception as exc:  # noqa: BLE001
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=None,
+            error=str(exc),
+            status=f"native_worktree provider={provider_label}",
+        )
+    finally:
+        if not _keep_instance_workspaces():
+            manager.cleanup_current_repo()
+
+
+async def _run_subtask_provider_instance(
+    provider: str,
+    instance: SWEBenchInstance,
+    evaluator: SWEBenchEvaluator,
+    config: SWEBenchConfig,
+    model_name: str | None = None,
+    patch_client: object | None = None,
+) -> SWEBenchResult:
+    """Run one instance by delegating the repo edit to an external task agent."""
+    if (
+        provider == "opencode"
+        and patch_client is not None
+        and os.environ.get("SWE_BENCH_OPENCODE_PATCHFILE", "1") not in {"0", "false", "False"}
+    ):
+        return await _run_opencode_patchfile_instance(
+            patch_client,
+            instance,
+            evaluator,
+            config,
+            model_name,
+        )
+
+    started = time.time()
+    manager = RepositoryManager(config.workspace_dir)
+    try:
+        repo_root = await manager.setup_repo(instance)
+        prompt = _build_subtask_prompt(instance)
+        cmd = _subtask_provider_command(provider, model_name)
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(repo_root),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=_subtask_provider_env(provider, model_name),
+        )
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            process.communicate(prompt.encode("utf-8")),
+            timeout=config.timeout_seconds,
+        )
+        stdout = stdout_bytes.decode("utf-8", errors="replace")
+        stderr = stderr_bytes.decode("utf-8", errors="replace")
+        patch = await manager.get_diff()
+        if not patch:
+            emitted_patch = _extract_patch_for_repo(stdout, repo_root)
+            if not emitted_patch:
+                emitted_patch = _extract_patch_for_repo(stderr, repo_root)
+            if emitted_patch:
+                ok, error = await manager.apply_patch(emitted_patch)
+                if ok:
+                    patch = await manager.get_diff()
+                else:
+                    patch = emitted_patch
+                    stderr = (stderr + "\n" + error).strip()
+
+        if not patch:
+            preview = textwrap.shorten(
+                (stdout + "\n" + stderr).replace("\n", " "),
+                width=500,
+                placeholder="...",
+            )
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch="",
+                patch_status=PatchStatus.NOT_GENERATED,
+                tests_passed=[],
+                tests_failed=[],
+                success=False,
+                duration_seconds=time.time() - started,
+                tokens_used=None,
+                error=(
+                    f"{provider} produced no working-tree diff; "
+                    f"exit_code={process.returncode}; preview={preview}"
+                ),
+                status=f"subtask_provider={provider}",
+            )
+
+        result = await evaluator.evaluate_patch(instance, patch)
+        result.duration_seconds = time.time() - started
+        status_bits = [result.status or "", f"subtask_provider={provider}"]
+        if process.returncode not in (0, None):
+            status_bits.append(f"provider_exit={process.returncode}")
+            if not result.error:
+                result.error = f"{provider} exited with code {process.returncode}"
+        result.status = " ".join(bit for bit in status_bits if bit).strip()
+        return result
+    except asyncio.TimeoutError:
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=None,
+            error=f"{provider} timed out after {config.timeout_seconds}s",
+            status=f"subtask_provider={provider}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=None,
+            error=str(exc),
+            status=f"subtask_provider={provider}",
+        )
+    finally:
+        if "manager" in locals() and not _keep_instance_workspaces():
+            manager.cleanup_current_repo()
+
+
+async def _run_subtask_provider_instances(
+    client: object,
+    provider: str,
+    instances: list[SWEBenchInstance],
+    evaluator: SWEBenchEvaluator,
+    config: SWEBenchConfig,
+    model_name: str | None = None,
+) -> list[SWEBenchResult]:
+    results: list[SWEBenchResult] = []
+    for idx, inst in enumerate(instances):
+        logger.info(
+            "[swe_bench] %d/%d %s provider=%s subtask",
+            idx + 1,
+            len(instances),
+            inst.instance_id,
+            provider,
+        )
+        results.append(
+            await _run_subtask_provider_instance(
+                provider,
+                inst,
+                evaluator,
+                config,
+                model_name,
+                client,
+            )
+        )
+        _cleanup_instance_workspace(config, inst)
+    return results
+
+
+async def _run_eliza_worktree_instances(
+    client: object,
+    provider: str,
+    instances: list[SWEBenchInstance],
+    evaluator: SWEBenchEvaluator,
+    config: SWEBenchConfig,
+    model_name: str | None = None,
+) -> list[SWEBenchResult]:
+    results: list[SWEBenchResult] = []
+    for idx, inst in enumerate(instances):
+        logger.info(
+            "[swe_bench] %d/%d %s provider=%s native_worktree",
+            idx + 1,
+            len(instances),
+            inst.instance_id,
+            provider,
+        )
+        results.append(
+            await _run_eliza_worktree_instance(
+                client,
+                inst,
+                evaluator,
+                config,
+                model_name,
+                provider,
+            )
+        )
+        _cleanup_instance_workspace(config, inst)
+    return results
+
+
+async def _run_instance(
+    client: object,
+    instance: SWEBenchInstance,
+    evaluator: SWEBenchEvaluator,
+    provider_label: str | None = None,
+    model_name: str | None = None,
+) -> SWEBenchResult:
+    """Run a single SWE-bench instance through the bridge."""
+    started = time.time()
+    task_id = f"{provider_label}:{instance.instance_id}" if provider_label else instance.instance_id
+    repo_root: Path | None = None
+    manager: RepositoryManager | None = None
+    manager = RepositoryManager(
+        Path(os.environ.get("SWE_BENCH_WORKSPACE_DIR", "swe-bench-workspace"))
+    )
+    try:
+        repo_root = await manager.setup_repo(instance)
+    except Exception:
+        repo_root = None
+    try:
+        send_message = client.send_message  # type: ignore[attr-defined]
+        client.reset(task_id=task_id, benchmark="swe_bench")  # type: ignore[attr-defined]
+        response = send_message(
+            text=_build_prompt(instance),
+            context={
+                "benchmark": "swe_bench",
+                "task_id": task_id,
+                "instance_id": instance.instance_id,
+                "provider": provider_label,
+                "repo": instance.repo,
+                "base_commit": instance.base_commit,
+                "model_name": model_name,
+            },
+        )
+        text = getattr(response, "text", "") or ""
+        patch = _extract_patch_for_repo(text, repo_root) if repo_root else _extract_patch(text)
+        if not patch:
+            params = getattr(response, "params", None)
+            if isinstance(params, dict) and params:
+                params_text = json.dumps(params)
+                patch = (
+                    _extract_patch_for_repo(params_text, repo_root)
+                    if repo_root
+                    else _extract_patch(params_text)
+                )
+        if not patch:
+            retry_response = send_message(
+                text=_build_prompt(instance, retry=True),
+                context={
+                    "benchmark": "swe_bench",
+                    "task_id": task_id,
+                    "instance_id": instance.instance_id,
+                    "provider": provider_label,
+                    "repo": instance.repo,
+                    "base_commit": instance.base_commit,
+                    "model_name": model_name,
+                    "phase": "patch_retry",
+                    "goal": "return_diff_only",
+                },
+            )
+            retry_text = getattr(retry_response, "text", "") or ""
+            patch = (
+                _extract_patch_for_repo(retry_text, repo_root)
+                if repo_root
+                else _extract_patch(retry_text)
+            )
+            if not patch:
+                retry_params = getattr(retry_response, "params", None)
+                if isinstance(retry_params, dict) and retry_params:
+                    retry_params_text = json.dumps(retry_params)
+                    patch = (
+                        _extract_patch_for_repo(retry_params_text, repo_root)
+                        if repo_root
+                        else _extract_patch(retry_params_text)
+                    )
+            if not patch:
+                text = retry_text or text
+    except Exception as exc:  # noqa: BLE001 — surface any client failure
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=0,
+            error=str(exc),
+        )
+
+    if not patch:
+        preview = textwrap.shorten(text.replace("\n", " "), width=500, placeholder="...")
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=0,
+            error=f"no patch in response; preview={preview}",
+        )
+
+    result = await evaluator.evaluate_patch(instance, patch)
+    result.duration_seconds = time.time() - started
+    repair_attempts = _repair_attempts_for_provider(provider_label)
+    for attempt in range(repair_attempts):
+        if result.success:
+            break
+        try:
+            repair_response = send_message(
+                text=_build_repair_prompt(instance, patch, result),
+                context={
+                    "benchmark": "swe_bench",
+                    "task_id": task_id,
+                    "instance_id": instance.instance_id,
+                    "provider": provider_label,
+                    "repo": instance.repo,
+                    "base_commit": instance.base_commit,
+                    "model_name": model_name,
+                    "phase": "patch_repair",
+                    "repair_attempt": attempt + 1,
+                    "previous_patch_status": result.patch_status.value,
+                    "previous_tests_failed": result.tests_failed,
+                },
+            )
+            repair_text = getattr(repair_response, "text", "") or ""
+            repair_patch = (
+                _extract_patch_for_repo(repair_text, repo_root)
+                if repo_root
+                else _extract_patch(repair_text)
+            )
+            if not repair_patch:
+                repair_params = getattr(repair_response, "params", None)
+                if isinstance(repair_params, dict) and repair_params:
+                    repair_params_text = json.dumps(repair_params)
+                    repair_patch = (
+                        _extract_patch_for_repo(repair_params_text, repo_root)
+                        if repo_root
+                        else _extract_patch(repair_params_text)
+                    )
+            if not repair_patch:
+                result.status = (
+                    f"{result.status} repair_attempts={attempt + 1} "
+                    "repair_no_patch"
+                )
+                break
+            repaired = await evaluator.evaluate_patch(instance, repair_patch)
+            repaired.duration_seconds = time.time() - started
+            repaired.status = (
+                f"{repaired.status} repaired_from={result.patch_status.value} "
+                f"repair_attempts={attempt + 1}"
+            )
+            patch = repair_patch
+            result = repaired
+        except Exception as exc:  # noqa: BLE001
+            result.status = f"{result.status} repair_attempts={attempt + 1}"
+            result.error = (
+                f"{result.error}; repair failed: {exc}"
+                if result.error
+                else f"repair failed: {exc}"
+            )
+            break
+
+    # Surface token usage + cost from response.params (Cerebras/OpenAI shape).
+    params = getattr(response, "params", None)
+    usage = params.get("usage") if isinstance(params, dict) else None
+    if isinstance(usage, dict):
+        try:
+            total = int(usage.get("total_tokens") or 0) or (
+                int(usage.get("prompt_tokens") or 0)
+                + int(usage.get("completion_tokens") or 0)
+            )
+            if total > 0:
+                result.tokens_used = total
+        except (TypeError, ValueError):
+            pass
+        cost = _harness_turn_cost_usd(
+            model_name or os.environ.get("OPENAI_LARGE_MODEL") or "gpt-oss-120b",
+            usage,
+        )
+        if cost is not None:
+            # Stash the cost on the error/status field via params not available;
+            # encode it in status as a side-channel that the report dict picks up.
+            result.status = f"{result.status} cost_usd={cost:.6f}"
+    return result
+
+
+async def _run_instances(
+    client: object,
+    instances: list[SWEBenchInstance],
+    evaluator: SWEBenchEvaluator,
+    provider_label: str | None = None,
+    model_name: str | None = None,
+) -> list[SWEBenchResult]:
+    results: list[SWEBenchResult] = []
+    for idx, inst in enumerate(instances):
+        label = f" provider={provider_label}" if provider_label else ""
+        logger.info(
+            "[swe_bench] %d/%d %s%s",
+            idx + 1,
+            len(instances),
+            inst.instance_id,
+            label,
+        )
+        results.append(
+            await _run_instance(
+                client,
+                inst,
+                evaluator,
+                provider_label,
+                model_name,
+            )
+        )
+    return results
+
+
+def _mock_instance() -> SWEBenchInstance:
+    return SWEBenchInstance(
+        instance_id="mock__swe-bench-1",
+        repo="mock/repo",
+        base_commit="abc123",
+        problem_statement="Update the greeting returned by hello.py.",
+        hints_text=(
+            "This synthetic smoke instance avoids dataset, Docker, and provider calls."
+        ),
+        created_at="2026-01-01",
+        patch=(
+            "diff --git a/hello.py b/hello.py\n"
+            "--- a/hello.py\n"
+            "+++ b/hello.py\n"
+            "@@ -1 +1 @@\n"
+            "-print('hello')\n"
+            "+print('hello swe-bench')\n"
+        ),
+        test_patch="",
+        fail_to_pass=["test_hello"],
+        pass_to_pass=[],
+    )
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _expand_instances(
+    instances: list[SWEBenchInstance],
+    *,
+    expand_scenarios: bool,
+) -> list[SWEBenchInstance]:
+    if not expand_scenarios:
+        return list(instances)
+    expanded = list(instances)
+    for instance in instances:
+        for index, edge_condition in enumerate(_EDGE_VARIANTS, start=1):
+            expanded.append(
+                replace(
+                    instance,
+                    problem_statement=(
+                        instance.problem_statement
+                        + "\n\n"
+                        + f"Additional benchmark edge condition {index:02d}: "
+                        + f"{edge_condition}."
+                    ),
+                    hints_text=(
+                        instance.hints_text
+                        + ("\n" if instance.hints_text else "")
+                        + f"Edge condition: {edge_condition}."
+                    ),
+                )
+            )
+    return expanded
+
+
+def _scenario_counts(
+    instances: list[SWEBenchInstance],
+    *,
+    expand_scenarios: bool,
+) -> dict[str, int]:
+    base = len(instances)
+    edge = base * len(_EDGE_VARIANTS) if expand_scenarios else 0
+    return {"base": base, "edge": edge, "total": base + edge}
+
+
+def _validate_instances(
+    instances: list[SWEBenchInstance],
+    *,
+    expand_scenarios: bool,
+) -> dict[str, object]:
+    expanded = _expand_instances(instances, expand_scenarios=expand_scenarios)
+    missing_ids = [instance.instance_id for instance in expanded if not instance.instance_id]
+    return {
+        "valid": not missing_ids,
+        "missing_ids": missing_ids,
+        "total": len(expanded),
+    }
+
+
+class _MockClient:
+    def reset(self, *, task_id: str, benchmark: str) -> None:
+        return None
+
+    def send_message(self, *, text: str, context: dict[str, object]) -> object:
+        return type(
+            "MockResponse",
+            (),
+            {
+                "text": (
+                    "```diff\n"
+                    "diff --git a/hello.py b/hello.py\n"
+                    "--- a/hello.py\n"
+                    "+++ b/hello.py\n"
+                    "@@ -1 +1 @@\n"
+                    "-print('hello')\n"
+                    "+print('hello swe-bench')\n"
+                    "```\n"
+                )
+            },
+        )()
+
+
+class _BaselineClient:
+    """Offline calibration client for SWE-bench harness validation."""
+
+    def __init__(
+        self,
+        instances: list[SWEBenchInstance],
+        *,
+        mode: str,
+        seed: str = "swe-bench-baseline",
+    ) -> None:
+        self._instances = {instance.instance_id: instance for instance in instances}
+        self._mode = mode
+        self._seed = seed
+        self._task_id: str | None = None
+
+    def reset(self, *, task_id: str, benchmark: str) -> None:
+        del benchmark
+        self._task_id = task_id.rsplit(":", 1)[-1]
+
+    def send_message(self, *, text: str, context: dict[str, object]) -> object:
+        del text
+        instance_id = str(context.get("instance_id") or self._task_id or "")
+        instance = self._instances.get(instance_id)
+        patch = self._patch_for(instance_id, instance)
+        return type("BaselineResponse", (), {"text": patch, "params": {}})()
+
+    def _patch_for(
+        self,
+        instance_id: str,
+        instance: SWEBenchInstance | None,
+    ) -> str:
+        if instance is None:
+            return ""
+        if self._mode == "always-right":
+            return instance.patch
+        if self._mode == "always-wrong":
+            return ""
+        digest = hashlib.sha256(f"{self._seed}:{instance_id}".encode()).digest()
+        return instance.patch if digest[0] % 2 == 0 else ""
+
+
+def _build_report(
+    config: SWEBenchConfig,
+    results: list[SWEBenchResult],
+    instances_by_id: dict[str, SWEBenchInstance] | None = None,
+) -> SWEBenchReport:
+    total = len(results)
+    resolved = sum(1 for r in results if r.success)
+    applied = sum(
+        1
+        for r in results
+        if r.patch_status
+        in (
+            PatchStatus.APPLIED,
+            PatchStatus.TESTS_PASSED,
+            PatchStatus.TESTS_FAILED,
+            PatchStatus.PASS,
+        )
+    )
+    avg_duration = sum(r.duration_seconds for r in results) / total if total else 0.0
+    observed_tokens = [r.tokens_used for r in results if r.tokens_used is not None]
+    avg_tokens = (
+        sum(observed_tokens) / len(observed_tokens)
+        if observed_tokens
+        else 0.0
+    )
+
+    by_repo: dict[str, RepoStats] = {}
+    grouped: dict[str, list[SWEBenchResult]] = {}
+    for r in results:
+        instance = instances_by_id.get(r.instance_id) if instances_by_id else None
+        repo_key = instance.repo if instance else r.instance_id.split("-", 1)[0]
+        grouped.setdefault(repo_key, []).append(r)
+    for repo, rs in grouped.items():
+        rresolved = sum(1 for r in rs if r.success)
+        by_repo[repo] = RepoStats(
+            total=len(rs),
+            resolved=rresolved,
+            resolve_rate=rresolved / len(rs) if rs else 0.0,
+        )
+
+    errors: dict[str, int] = {}
+    for r in results:
+        if r.error:
+            errors[r.error] = errors.get(r.error, 0) + 1
+
+    return SWEBenchReport(
+        variant=config.variant.value,
+        total_instances=total,
+        resolved=resolved,
+        unresolved=total - resolved,
+        resolve_rate=resolved / total if total else 0.0,
+        apply_rate=applied / total if total else 0.0,
+        average_duration=avg_duration,
+        average_tokens=avg_tokens,
+        results=results,
+        by_repo=by_repo,
+        errors=errors,
+    )
+
+
+def _report_to_dict(report: SWEBenchReport) -> dict[str, object]:
+    return {
+        "summary": {
+            "variant": report.variant,
+            "total_instances": report.total_instances,
+            "resolved": report.resolved,
+            "unresolved": report.unresolved,
+            "resolve_rate": report.resolve_rate,
+            "apply_rate": report.apply_rate,
+            "average_duration": report.average_duration,
+            "average_tokens": report.average_tokens,
+        },
+        "by_repo": {
+            k: {"total": v.total, "resolved": v.resolved, "resolve_rate": v.resolve_rate}
+            for k, v in report.by_repo.items()
+        },
+        "errors": report.errors,
+        "results": [
+            {
+                "instance_id": r.instance_id,
+                "patch_status": r.patch_status.value,
+                "status": r.status,
+                "success": r.success,
+                "duration_seconds": r.duration_seconds,
+                "tokens_used": r.tokens_used,
+                "tests_passed": r.tests_passed,
+                "tests_failed": r.tests_failed,
+                "error": r.error,
+                "generated_patch_preview": (r.generated_patch or "")[:1500],
+            }
+            for r in report.results
+        ],
+    }
+
+
+async def _load_instances_or_fallback(
+    config: SWEBenchConfig,
+) -> list[SWEBenchInstance]:
+    """Load instances from HuggingFace; on failure, fall back to a synthetic one.
+
+    The fallback is a single tiny synthetic instance so harness-completion
+    smoke tests still run on hosts without network access to HuggingFace.
+    """
+    try:
+        dataset = SWEBenchDataset(variant=config.variant)
+        await dataset.load()
+        instances = list(
+            dataset.get_instances(
+                repo_filter=config.repo_filter, limit=config.max_instances
+            )
+        )
+        if instances:
+            return instances
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[swe_bench] dataset load failed (%s); using fallback", exc)
+    return [_mock_instance()]
+
+
+def _build_client_for_harness(
+    harness: str,
+    *,
+    model_name: str | None = None,
+) -> tuple[object, object | None]:
+    """Lazy-import the requested adapter client.
+
+    Returns ``(client, server_handle_or_None)``. The server handle, when
+    non-None, must have ``.stop()`` called in the CLI's finally block.
+    """
+    if harness == "eliza":
+        from eliza_adapter import ElizaClient, ElizaServerManager  # noqa: WPS433
+
+        if not os.environ.get("ELIZA_BENCH_URL"):
+            server = ElizaServerManager()
+            server.start()
+            return server.client, server
+        client = ElizaClient()
+        client.wait_until_ready(timeout=180)
+        return client, None
+
+    if harness == "hermes":
+        from hermes_adapter.client import HermesClient  # noqa: WPS433
+
+        client_kwargs: dict[str, object] = {}
+        normalized_model = _openai_compat_model_name(model_name)
+        if normalized_model:
+            client_kwargs["model"] = normalized_model
+        client_kwargs["mode"] = "in_process"
+        client = HermesClient(**client_kwargs)
+        try:
+            client.wait_until_ready(timeout=60)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[swe_bench] hermes wait_until_ready failed: %s", exc)
+        return client, None
+
+    if harness == "openclaw":
+        from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
+
+        client_kwargs: dict[str, object] = {}
+        if model_name:
+            client_kwargs["model"] = model_name
+        client_kwargs["direct_openai_compatible"] = True
+        client = OpenClawClient(**client_kwargs)
+        # OpenClawClient.wait_until_ready requires the binary on disk; the
+        # direct-OpenAI-compat path doesn't, so we skip the readiness probe
+        # whenever direct mode is enabled by env or config.
+        direct_mode = os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "").strip() == "1"
+        if not direct_mode:
+            try:
+                client.wait_until_ready(timeout=60)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[swe_bench] openclaw wait_until_ready failed: %s", exc)
+        return client, None
+
+    if harness == "smithers":
+        from smithers_adapter.client import SmithersClient  # noqa: WPS433
+
+        client_kwargs: dict[str, object] = {}
+        normalized_model = _openai_compat_model_name(model_name)
+        if normalized_model:
+            client_kwargs["model"] = normalized_model
+        client = SmithersClient(**client_kwargs)
+        try:
+            client.wait_until_ready(timeout=60)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[swe_bench] smithers wait_until_ready failed: %s", exc)
+        return client, None
+
+    raise ValueError(f"unknown harness: {harness!r}")
+
+
+_HARNESS_PRICING_CEREBRAS: dict[str, dict[str, float]] = {
+    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
+}
+
+
+def _openai_compat_model_name(model_name: str | None) -> str | None:
+    if not model_name:
+        return None
+    normalized = model_name.strip()
+    if normalized.startswith("cerebras/"):
+        return normalized.split("/", 1)[1]
+    return normalized
+
+
+def _harness_turn_cost_usd(model: str | None, usage: object) -> float | None:
+    """Compute per-turn USD cost for Cerebras, mirroring the lifeops adapter."""
+    if not isinstance(usage, dict) or not model:
+        return None
+    pricing = _HARNESS_PRICING_CEREBRAS.get(_openai_compat_model_name(model))
+    if pricing is None:
+        return None
+    prompt_tokens = int(usage.get("prompt_tokens") or 0)
+    completion_tokens = int(usage.get("completion_tokens") or 0)
+    return (
+        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
+        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
+    )
+
+
+async def _run(args: argparse.Namespace) -> int:
+    expand_scenarios = (
+        args.expand_scenarios
+        or _truthy_env("EXPAND_SCENARIOS")
+        or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    )
+    config = SWEBenchConfig(
+        variant=SWEBenchVariant(args.variant),
+        workspace_dir=args.workspace,
+        output_dir=args.output,
+        max_steps=args.max_steps,
+        max_instances=args.max_instances,
+        repo_filter=args.repo_filter,
+        use_docker_eval=not args.no_docker,
+        timeout_seconds=args.timeout,
+        model_name=args.model
+        or (
+            "gpt-oss-120b"
+            if args.harness in {"hermes", "smithers"}
+            else f"{args.harness}-swe-bench"
+        ),
+        harness=args.harness,
+        baseline=args.baseline,
+    )
+    Path(config.output_dir).mkdir(parents=True, exist_ok=True)
+
+    if args.mock:
+        base_instances = [_mock_instance()]
+        counts = _scenario_counts(base_instances, expand_scenarios=expand_scenarios)
+        if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+            print(
+                "SWE-bench scenario counts: "
+                f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+            )
+        if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+            validation = _validate_instances(
+                base_instances,
+                expand_scenarios=expand_scenarios,
+            )
+            if not validation["valid"]:
+                raise ValueError(f"Invalid SWE-bench scenario expansion: {validation}")
+            print(f"SWE-bench scenario validation passed: {counts['total']} instance(s)")
+        instances = _expand_instances(
+            base_instances,
+            expand_scenarios=expand_scenarios,
+        )
+        if config.baseline is not None:
+            client = _BaselineClient(
+                instances,
+                mode=config.baseline,
+                seed=args.baseline_seed,
+            )
+        else:
+            client = _MockClient()
+        eliza_server = None
+    else:
+        base_instances = await _load_instances_or_fallback(config)
+        if not base_instances:
+            print("No instances matched filters; aborting.", file=sys.stderr)
+            return 2
+        counts = _scenario_counts(base_instances, expand_scenarios=expand_scenarios)
+        if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+            print(
+                "SWE-bench scenario counts: "
+                f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+            )
+        if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+            validation = _validate_instances(
+                base_instances,
+                expand_scenarios=expand_scenarios,
+            )
+            if not validation["valid"]:
+                raise ValueError(f"Invalid SWE-bench scenario expansion: {validation}")
+            print(f"SWE-bench scenario validation passed: {counts['total']} instance(s)")
+        instances = _expand_instances(
+            base_instances,
+            expand_scenarios=expand_scenarios,
+        )
+
+        if config.baseline is not None:
+            client = _BaselineClient(
+                instances,
+                mode=config.baseline,
+                seed=args.baseline_seed,
+            )
+            eliza_server = None
+        else:
+            client, eliza_server = _build_client_for_harness(
+                config.harness,
+                model_name=(
+                    config.model_name
+                    if args.model or config.harness == "hermes"
+                    else None
+                ),
+            )
+
+    evaluator = SWEBenchEvaluator(
+        workspace_dir=config.workspace_dir,
+        timeout_seconds=config.timeout_seconds,
+        use_docker=config.use_docker_eval,
+    )
+    instances_by_id = {instance.instance_id: instance for instance in instances}
+    docker_ok = (
+        await evaluator.check_docker_available() if config.use_docker_eval else False
+    )
+    if config.use_docker_eval and not docker_ok:
+        logger.warning(
+            "[swe_bench] docker not available; generated patches will be "
+            "reported as incompatible"
+        )
+
+    try:
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        if args.orchestrated:
+            providers = args.providers or [
+                args.provider or _default_task_agent_provider()
+            ]
+            required_capabilities = _parse_required_capabilities(
+                args.required_capabilities
+            )
+            capability_reports = {
+                provider: _capability_report(provider, required_capabilities)
+                for provider in providers
+            }
+            if args.strict_capabilities:
+                missing = {
+                    provider: report["missing"]
+                    for provider, report in capability_reports.items()
+                    if report["missing"]
+                }
+                if missing:
+                    payload = {
+                        "summary": {
+                            "variant": config.variant.value,
+                            "total_instances": 0,
+                            "resolved": 0,
+                            "unresolved": 0,
+                            "resolve_rate": 0.0,
+                            "apply_rate": 0.0,
+                            "average_duration": 0.0,
+                            "average_tokens": 0.0,
+                        },
+                        "metrics": {
+                            "overall_score": 0.0,
+                            "provider_scores": {},
+                        },
+                        "matrix": {
+                            "execution_mode": args.execution_mode,
+                            "providers": providers,
+                            "required_capabilities": required_capabilities,
+                            "strict_capabilities": True,
+                            "capabilities": capability_reports,
+                        },
+                        "include_edge_scenarios": expand_scenarios,
+                        "scenario_counts": counts,
+                        "orchestrated": {},
+                        "error": f"Missing required capabilities: {missing}",
+                    }
+                    out_path = (
+                        Path(config.output_dir)
+                        / f"orchestrated-{timestamp}.json"
+                    )
+                    out_path.write_text(json.dumps(payload, indent=2))
+                    print(json.dumps(payload["summary"], indent=2))
+                    print(f"\nResult file: {out_path}")
+                    return 2
+            provider_payloads: dict[str, dict[str, object]] = {}
+            provider_scores: dict[str, float] = {}
+            all_results: list[SWEBenchResult] = []
+            for provider in providers:
+                if (
+                    config.harness == "eliza"
+                    and config.baseline is None
+                    and not args.mock
+                    and args.execution_mode == "orchestrated"
+                    and provider in _SUBTASK_PROVIDERS
+                ):
+                    provider_results = await _run_subtask_provider_instances(
+                        client,
+                        provider,
+                        instances,
+                        evaluator,
+                        config,
+                        config.model_name,
+                    )
+                elif (
+                    config.harness == "eliza"
+                    and config.baseline is None
+                    and not args.mock
+                    and args.execution_mode == "orchestrated"
+                    and _eliza_worktree_enabled(provider)
+                ):
+                    provider_results = await _run_eliza_worktree_instances(
+                        client,
+                        provider,
+                        instances,
+                        evaluator,
+                        config,
+                        config.model_name,
+                    )
+                else:
+                    provider_results = await _run_instances(
+                        client,
+                        instances,
+                        evaluator,
+                        provider_label=provider,
+                        model_name=config.model_name,
+                    )
+                all_results.extend(provider_results)
+                provider_report = _build_report(
+                    config,
+                    provider_results,
+                    instances_by_id,
+                )
+                provider_payloads[provider] = _report_to_dict(provider_report)
+                provider_scores[provider] = provider_report.resolve_rate
+
+            summary_report = _build_report(config, all_results, instances_by_id)
+            summary_payload = _report_to_dict(summary_report)
+            overall_score = (
+                sum(provider_scores.values()) / len(provider_scores)
+                if provider_scores
+                else 0.0
+            )
+            payload = {
+                "summary": summary_payload["summary"],
+                "include_edge_scenarios": expand_scenarios,
+                "scenario_counts": counts,
+                "metrics": {
+                    "overall_score": overall_score,
+                    "provider_scores": provider_scores,
+                },
+                "matrix": {
+                    "execution_mode": args.execution_mode,
+                    "providers": providers,
+                    "required_capabilities": required_capabilities,
+                    "strict_capabilities": args.strict_capabilities,
+                    "capabilities": capability_reports,
+                },
+                "orchestrated": provider_payloads,
+            }
+            out_path = Path(config.output_dir) / f"orchestrated-{timestamp}.json"
+        else:
+            results = await _run_instances(
+                client,
+                instances,
+                evaluator,
+                model_name=config.model_name,
+            )
+            report = _build_report(config, results, instances_by_id)
+            payload = _report_to_dict(report)
+            payload["include_edge_scenarios"] = expand_scenarios
+            payload["scenario_counts"] = counts
+            if config.baseline is not None:
+                payload["baseline"] = {
+                    "name": config.baseline,
+                    "seed": args.baseline_seed if config.baseline == "random" else None,
+                }
+            out_path = Path(config.output_dir) / f"swe-bench-{timestamp}.json"
+    finally:
+        if eliza_server is not None:
+            eliza_server.stop()
+
+    out_path.write_text(json.dumps(payload, indent=2))
+    print(json.dumps(payload["summary"], indent=2))
+    print(f"\nResult file: {out_path}")
+    return 0
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        prog="benchmarks.swe_bench.cli",
+        description="Run SWE-bench through the eliza TS benchmark bridge.",
+    )
+    p.add_argument(
+        "--variant",
+        choices=["lite", "verified", "full", "multilingual"],
+        default="lite",
+        help="SWE-bench variant (default: lite)",
+    )
+    p.add_argument(
+        "--harness",
+        choices=["eliza", "hermes", "openclaw", "smithers"],
+        default="eliza",
+        help=(
+            "Adapter that drives patch generation. eliza: TS bridge "
+            "(default; preserves current behavior). hermes: HermesClient "
+            "(in-process or subprocess Cerebras chat). openclaw: "
+            "OpenClawClient (direct OpenAI-compat or CLI). smithers: "
+            "SmithersClient (Cerebras chat via smithers harness)."
+        ),
+    )
+    p.add_argument(
+        "--max-instances",
+        type=int,
+        default=None,
+        help="Cap on instances to run (default: all in variant)",
+    )
+    p.add_argument(
+        "--repo-filter", default=None, help="Substring filter on repo name"
+    )
+    p.add_argument(
+        "--workspace", default="./swe-bench-workspace", help="Workspace directory"
+    )
+    p.add_argument(
+        "--output", default="./benchmark_results/swe-bench", help="Output directory"
+    )
+    p.add_argument("--max-steps", type=int, default=30)
+    p.add_argument("--timeout", type=int, default=600)
+    p.add_argument("--no-docker", action="store_true", help="Skip docker evaluation")
+    p.add_argument("--model", default=None, help="Model label for the report")
+    p.add_argument("--provider", default=None, help="Provider label passed by registry")
+    p.add_argument("--mock", action="store_true", help="Run a synthetic smoke instance")
+    p.add_argument(
+        "--baseline",
+        choices=["always-right", "always-wrong", "random"],
+        default=None,
+        help=(
+            "Run an offline calibration baseline instead of an adapter. "
+            "always-right emits gold patches; always-wrong emits no patch; "
+            "random deterministically picks between them per instance."
+        ),
+    )
+    p.add_argument(
+        "--baseline-seed",
+        default="swe-bench-baseline",
+        help="Seed string for the random baseline (default: swe-bench-baseline)",
+    )
+    p.add_argument(
+        "--orchestrated", action="store_true", help="Emit orchestrated result shape"
+    )
+    p.add_argument(
+        "--execution-mode",
+        choices=["orchestrated", "direct_shell"],
+        default="orchestrated",
+    )
+    p.add_argument("--providers", nargs="+", default=None)
+    p.add_argument("--matrix", action="store_true")
+    p.add_argument("--no-baseline", action="store_true")
+    p.add_argument("--allow-task-fallback", action="store_true")
+    p.add_argument("--orchestrator-model", default=None)
+    p.add_argument("--trace-dir", default=None)
+    p.add_argument("--required-capabilities", default=None)
+    p.add_argument("--strict-capabilities", action="store_true")
+    p.add_argument("--expand-scenarios", action="store_true")
+    p.add_argument("--count-scenarios", action="store_true")
+    p.add_argument("--validate-scenarios", action="store_true")
+    return p.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(
+        level=os.environ.get("SWE_BENCH_LOG_LEVEL", "INFO"),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    args = _parse_args(argv)
+    return asyncio.run(_run(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

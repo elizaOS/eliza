@@ -1,0 +1,66 @@
+# L-kokoro-distill — Kokoro full fine-tune on 95 min OmniVoice-sam distilled corpus.
+#
+# Corpus: packages/training/data/voice/sam-distill/ (1090 clips, 95.06 min)
+#   - 826 clips / 60 min synthesized by G3 (sam mel-fit ref_s teacher)
+#   - 264 clips / 35 min synthesized by L-kokoro-distill extension
+#   - Teacher: Kokoro KPipeline conditioned on /tmp/kokoro-f2/melfit-5/af_samantha.bin
+#     (NOT af_bella). All clips are 24 kHz mono PCM16 LUFS-normalized.
+#
+# This is the brief's L-kokoro-distill path: distill the OmniVoice "sam" frozen
+# preset into Kokoro by fine-tuning on synthesized audio that already carries
+# sam-leaning timbre.
+#
+# Per repo policy: APOLLO-Mini optimizer only — never AdamW/Muon.
+
+extends: base.yaml
+
+voice_name: af_sam
+voice_display_name: Sam (AI Voices, US English) — L-distill Full FT
+voice_lang: a
+voice_tags:
+  - female
+  - sam
+  - eliza-1-voice
+  - ai-voices-derived
+  - research-only
+  - full-finetune
+  - omnivoice-distill-teacher
+
+# Inputs — finetune_kokoro_full.py reads --run-dir from CLI (the YAML
+# `dataset_path` / `run_dir` keys here are documentation only).
+dataset_path: packages/training/data/voice/sam-distill
+run_dir: /tmp/kokoro-runs/sam-distilled-v1
+
+# Hyperparameters — large-corpus full FT.
+mode: full
+optimizer: apollo_mini
+learning_rate: 5.0e-5
+max_steps: 3000
+eval_every: 200
+checkpoint_every: 200
+log_every: 25
+warmup_steps: 200
+val_fraction: 0.10
+batch_size: 1
+grad_accum: 4
+
+# Per brief: lighter anchor than F-kokoro's 0.001 since the corpus is 27x
+# larger; mid-weight that should pull less toward af_bella.
+anchor_weight: 0.05
+
+# Early stopping per brief: stop when SpkSim + UTMOS improve over baseline
+# for 3 consecutive evals.
+early_stop_patience: 3
+keep_top_k: 3
+
+# Mel reconstruction only — no MFA durations / F0 ground truth on synth audio.
+mel_loss_weight: 1.0
+duration_loss_weight: 0.0
+f0_loss_weight: 0.0
+
+# Eval gates (per brief L3).
+gates:
+  utmos_min: 3.8
+  wer_max: 0.08
+  speaker_similarity_min: 0.55
+  rtf_min: 5.0

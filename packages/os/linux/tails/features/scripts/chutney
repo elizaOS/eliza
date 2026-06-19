@@ -1,0 +1,18 @@
+#!/bin/bash
+
+set -eu
+
+GIT_DIR=$(git rev-parse --show-toplevel)
+CHUTNEY_DIR="${GIT_DIR}/submodules/chutney"
+CHUTNEY_SCRIPT="${CHUTNEY_DIR}/chutney"
+
+cd "${CHUTNEY_DIR}"
+
+if [ -n "${RESTRICT_CHUTNEY_MEMORY:-}" ]; then
+  systemd-run --scope \
+  --property=MemoryHigh="${CHUTNEY_MEMORY_HIGH:-4G}" \
+  --property=MemoryMax="${CHUTNEY_MEMORY_MAX:-6G}" \
+  "${CHUTNEY_SCRIPT}" "$@"
+else
+  "${CHUTNEY_SCRIPT}" "$@"
+fi

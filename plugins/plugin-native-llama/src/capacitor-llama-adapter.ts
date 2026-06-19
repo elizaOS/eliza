@@ -1,0 +1,1158 @@
+import type { PluginListenerHandle } from "@capacitor/core";
+import type {
+  NativeCompletionParams,
+  NativeCompletionResult,
+  NativeContextParams,
+  NativeEmbeddingParams,
+  NativeEmbeddingResult,
+  NativeLlamaContext,
+} from "llama-cpp-capacitor";
+import type {
+  EmbedOptions,
+  EmbedResult,
+  GenerateOptions,
+  GenerateResult,
+  GenerateStreamOptions,
+  GenerationEvent,
+  HardwareInfo,
+  LlamaAdapter,
+  LoadOptions,
+  SamplerStage,
+  SetSpecTypeArgs,
+} from "./definitions";
+
+// Dynamically imported so the adapter can be bundled into a desktop build
+// without pulling in native-only module resolution noise.
+type NativeGenerateParams = Partial<Omit<NativeCompletionParams, "prompt">>;
+type NativeCompletionProbability = NonNullable<
+  NativeCompletionResult["completion_probabilities"]
+>[number];
+
+type TokenEventPayload = {
+  token?: string;
+  completion_probabilities?: NativeCompletionProbability[];
+  tokenResult?: {
+    token?: string;
+    completion_probabilities?: NativeCompletionProbability[];
+  };
+};
+
+interface LlamaCppPluginLike {
+  initContext: (options: {
+    contextId: number;
+    params: NativeContextParams;
+  }) => Promise<NativeLlamaContext>;
+  releaseContext: (options: { contextId: number }) => Promise<void>;
+  releaseAllContexts: () => Promise<void>;
+  getHardwareInfo?: () => Promise<Partial<HardwareInfo>>;
+  completion?: (options: {
+    contextId: number;
+    params: NativeCompletionParams;
+  }) => Promise<NativeCompletionResult>;
+  generateText?: (options: {
+    contextId: number;
+    prompt: string;
+    params?: NativeGenerateParams;
+  }) => Promise<NativeCompletionResult>;
+  stopCompletion: (options: { contextId: number }) => Promise<void>;
+  /**
+   * Optional - older builds of llama-cpp-capacitor (<= 0.1.4) shipped
+   * without `embedding`. We feature-detect at call-time so the adapter
+   * still loads on those builds and just throws on `embed()` rather than
+   * failing during plugin probe.
+   */
+  embedding?: (options: {
+    contextId: number;
+    text: string;
+    params: NativeEmbeddingParams;
+  }) => Promise<NativeEmbeddingResult>;
+  /**
+   * Optional - used to count input tokens for the `tokens` field of
+   * EmbedResult. Same feature-detect rationale as embedding.
+   */
+  tokenize?: (options: {
+    contextId: number;
+    text: string;
+    imagePaths?: Array<string>;
+  }) => Promise<{ tokens: number[] }>;
+  /**
+   * Optional - exposed only by the buun-llama-cpp fork. Stock builds
+   * lack this method and the adapter feature-detects + warn-no-ops.
+   */
+  setCacheType?: (options: {
+    cacheTypeK: string;
+    cacheTypeV: string;
+  }) => Promise<void>;
+  /**
+   * Optional - exposed only by the buun-llama-cpp fork (MTP spec
+   * decode bridge).
+   */
+  setSpecType?: (options: {
+    target: string;
+    drafter: string;
+    specType: string;
+    draftMin: number;
+    draftMax: number;
+  }) => Promise<void>;
+  /**
+   * Optional - returns the list of fork-specific kernel symbols
+   * compiled into the loaded native library (or an empty array on
+   * stock builds). Backed by a `kernels.json` resource read from
+   * the .so's APK assets at first call.
+   */
+  getNativeKernels?: () => Promise<{ kernels: string[]; variant?: string }>;
+  /**
+   * Apply the loaded GGUF's chat template (Jinja, from gguf metadata) to
+   * the given conversation. Backed by llama.cpp's
+   * `llama_chat_apply_template`. Returns the rendered prompt string ready
+   * for `completion()` / `generateText()`. Returns null when the model
+   * has no chat template baked in.
+   */
+  getFormattedChat?: (options: {
+    contextId: number;
+    messages: string;
+    chatTemplate?: string | null;
+    params?: { jinja?: boolean };
+  }) => Promise<{ prompt: string | null }>;
+  addListener: (
+    event: string,
+    listener: (data: TokenEventPayload) => void,
+  ) => Promise<PluginListenerHandle | undefined>;
+}
+
+// completion(contextId=X) must run against the model that was initContext'd
+// with X — every adapter instance owns its own monotonically-allocated id so
+// the chat LLM and the embedding model never collide on the same native
+// context.
+let nextContextId = 1;
+const DEFAULT_MAX_TOKENS = 256;
+
+/**
+ * Mobile-side parallel slot count. Mirrors `DEFAULT_CACHE_PARALLEL` in
+ * `cache-bridge.ts`; on devices with constrained KV memory we keep a small
+ * fixed pool so distinct cacheKey values still get prefix reuse without
+ * blowing memory.
+ */
+const MOBILE_PARALLEL = 4;
+
+/** FNV-1a 32-bit, deterministic across platforms — matches the agent side. */
+function deriveCacheSlotId(key: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return Math.abs(hash | 0) % MOBILE_PARALLEL;
+}
+const MOBILE_MAX_TOKENS_CAP = 256;
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isLlamaCppPluginLike(value: unknown): value is LlamaCppPluginLike {
+  return (
+    isObject(value) &&
+    typeof value.initContext === "function" &&
+    typeof value.releaseContext === "function" &&
+    typeof value.releaseAllContexts === "function" &&
+    (typeof value.completion === "function" ||
+      typeof value.generateText === "function") &&
+    typeof value.stopCompletion === "function" &&
+    typeof value.addListener === "function"
+  );
+}
+
+function resolveLlamaCppPlugin(mod: unknown): LlamaCppPluginLike | null {
+  if (!isObject(mod)) return null;
+  if (isLlamaCppPluginLike(mod.LlamaCpp)) return mod.LlamaCpp;
+  if (isLlamaCppPluginLike(mod.default)) return mod.default;
+  if (isObject(mod.default) && isLlamaCppPluginLike(mod.default.LlamaCpp)) {
+    return mod.default.LlamaCpp;
+  }
+  return null;
+}
+
+function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
+  return {
+    initContext: (options) => plugin.initContext(options),
+    releaseContext: (options) => plugin.releaseContext(options),
+    releaseAllContexts: () => plugin.releaseAllContexts(),
+    getHardwareInfo:
+      typeof plugin.getHardwareInfo === "function"
+        ? () => plugin.getHardwareInfo?.() as Promise<Partial<HardwareInfo>>
+        : undefined,
+    completion:
+      typeof plugin.completion === "function"
+        ? (options) =>
+            plugin.completion?.(options) as Promise<NativeCompletionResult>
+        : undefined,
+    generateText:
+      typeof plugin.generateText === "function"
+        ? (options) =>
+            plugin.generateText?.(options) as Promise<NativeCompletionResult>
+        : undefined,
+    stopCompletion: (options) => plugin.stopCompletion(options),
+    embedding:
+      typeof plugin.embedding === "function"
+        ? (options) =>
+            plugin.embedding?.(options) as Promise<NativeEmbeddingResult>
+        : undefined,
+    tokenize:
+      typeof plugin.tokenize === "function"
+        ? (options) =>
+            plugin.tokenize?.(options) as Promise<{ tokens: number[] }>
+        : undefined,
+    setCacheType:
+      typeof plugin.setCacheType === "function"
+        ? (options) => plugin.setCacheType?.(options) as Promise<void>
+        : undefined,
+    setSpecType:
+      typeof plugin.setSpecType === "function"
+        ? (options) => plugin.setSpecType?.(options) as Promise<void>
+        : undefined,
+    getNativeKernels:
+      typeof plugin.getNativeKernels === "function"
+        ? () =>
+            plugin.getNativeKernels?.() as Promise<{
+              kernels: string[];
+              variant?: string;
+            }>
+        : undefined,
+    addListener: (event, listener) => plugin.addListener(event, listener),
+  };
+}
+
+function isCapacitorNative(): boolean {
+  const cap = (globalThis as Record<string, unknown>).Capacitor as
+    | { isNativePlatform?: () => boolean; getPlatform?: () => string }
+    | undefined;
+  return Boolean(cap?.isNativePlatform?.());
+}
+
+function detectPlatform(): "ios" | "android" | "web" {
+  const cap = (globalThis as Record<string, unknown>).Capacitor as
+    | { getPlatform?: () => string }
+    | undefined;
+  const platform = cap?.getPlatform?.();
+  if (platform === "ios") return "ios";
+  if (platform === "android") return "android";
+  return "web";
+}
+
+function resolveMobileMaxTokens(requested?: number): number {
+  if (!Number.isFinite(requested) || requested == null || requested <= 0) {
+    return DEFAULT_MAX_TOKENS;
+  }
+  return Math.min(Math.floor(requested), MOBILE_MAX_TOKENS_CAP);
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return value;
+}
+
+function booleanFromUnknown(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function stringFromUnknown(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function fallbackHardwareInfo(
+  platform = detectPlatform(),
+  reason = "native hardware probe unavailable",
+): HardwareInfo {
+  const nav = (
+    globalThis as {
+      navigator?: { hardwareConcurrency?: number; deviceMemory?: number };
+    }
+  ).navigator;
+  const totalRamGb = numberFromUnknown(nav?.deviceMemory) ?? 0;
+  const gpu =
+    platform === "ios"
+      ? ({ backend: "metal", available: true } as const)
+      : null;
+  return {
+    platform,
+    deviceModel: platform,
+    totalRamGb,
+    availableRamGb: null,
+    cpuCores: nav?.hardwareConcurrency ?? 0,
+    gpu,
+    gpuSupported: platform === "ios",
+    mtpSupported: false,
+    mtpReason: reason,
+    source: "adapter-fallback",
+    nativeKernels: [],
+    forkVariant: null,
+  };
+}
+
+function defaultNativeGpuEnabled(platform = detectPlatform()): boolean {
+  // iOS builds use the Metal-capable native path by default. Android's current
+  // Capacitor wrapper is CPU-only unless a forked Vulkan bridge explicitly opts
+  // in, so the safe production default is CPU.
+  return platform === "ios";
+}
+
+function resolveNativeGpuEnabled(useGpu?: boolean): boolean {
+  return typeof useGpu === "boolean" ? useGpu : defaultNativeGpuEnabled();
+}
+
+function normalizeForkVariant(
+  value: unknown,
+): "buun-llama-cpp" | "stock-llama-cpp" | null | undefined {
+  if (value === "buun-llama-cpp" || value === "stock-llama-cpp") return value;
+  if (value === null) return null;
+  return undefined;
+}
+
+function stringArrayFromUnknown(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string" && entry.length > 0) out.push(entry);
+  }
+  return out;
+}
+
+function normalizeHardwareInfo(
+  value: Partial<HardwareInfo> | null | undefined,
+  platform = detectPlatform(),
+): HardwareInfo {
+  const fallback = fallbackHardwareInfo(platform);
+  if (!value) return fallback;
+  const totalRamGb = numberFromUnknown(value.totalRamGb) ?? fallback.totalRamGb;
+  const availableRamGb =
+    value.availableRamGb === null
+      ? null
+      : (numberFromUnknown(value.availableRamGb) ?? fallback.availableRamGb);
+  const gpu =
+    value.gpu && isObject(value.gpu)
+      ? {
+          backend:
+            value.gpu.backend === "metal" ||
+            value.gpu.backend === "vulkan" ||
+            value.gpu.backend === "gpu-delegate"
+              ? value.gpu.backend
+              : (fallback.gpu?.backend ?? "gpu-delegate"),
+          available: Boolean(value.gpu.available),
+        }
+      : fallback.gpu;
+  return {
+    platform:
+      value.platform === "ios" ||
+      value.platform === "android" ||
+      value.platform === "web"
+        ? value.platform
+        : platform,
+    deviceModel: stringFromUnknown(value.deviceModel) ?? fallback.deviceModel,
+    ...(stringFromUnknown(value.machineId)
+      ? { machineId: stringFromUnknown(value.machineId) }
+      : {}),
+    ...(stringFromUnknown(value.osVersion)
+      ? { osVersion: stringFromUnknown(value.osVersion) }
+      : {}),
+    ...(typeof value.isSimulator === "boolean"
+      ? { isSimulator: value.isSimulator }
+      : {}),
+    totalRamGb,
+    availableRamGb,
+    ...(numberFromUnknown(value.freeStorageGb) !== null
+      ? { freeStorageGb: numberFromUnknown(value.freeStorageGb) }
+      : {}),
+    cpuCores: numberFromUnknown(value.cpuCores) ?? fallback.cpuCores,
+    gpu,
+    gpuSupported:
+      booleanFromUnknown(value.gpuSupported) ?? fallback.gpuSupported,
+    ...(typeof value.lowPowerMode === "boolean"
+      ? { lowPowerMode: value.lowPowerMode }
+      : {}),
+    ...(value.thermalState === "nominal" ||
+    value.thermalState === "fair" ||
+    value.thermalState === "serious" ||
+    value.thermalState === "critical" ||
+    value.thermalState === "unknown"
+      ? { thermalState: value.thermalState }
+      : {}),
+    mtpSupported: Boolean(value.mtpSupported),
+    mtpReason:
+      stringFromUnknown(value.mtpReason) ??
+      (value.mtpSupported
+        ? undefined
+        : "native plugin did not report MTP support"),
+    source: value.source === "native" ? "native" : "adapter-fallback",
+    nativeKernels: stringArrayFromUnknown(value.nativeKernels) ?? [],
+    forkVariant: normalizeForkVariant(value.forkVariant) ?? null,
+  };
+}
+
+export class CapacitorLlamaAdapter implements LlamaAdapter {
+  private plugin: LlamaCppPluginLike | null = null;
+  /** Cached loader promise so concurrent `load()` calls don't race to register duplicate listeners. */
+  private pluginLoadPromise: Promise<LlamaCppPluginLike> | null = null;
+  private loadedPath: string | null = null;
+  /**
+   * Native context id this adapter owns. Allocated lazily on first `load()`
+   * from the process-wide `nextContextId` counter so distinct adapter
+   * instances never share a context — see the module-level invariant comment.
+   */
+  private contextId: number | null = null;
+  private tokenIndex = 0;
+  private tokenListeners = new Set<(token: string, index: number) => void>();
+  private pluginListenerHandle: PluginListenerHandle | null = null;
+  /**
+   * Latest native completion stats captured by `generateStream`. Read by
+   * the `generate()` wrapper to populate `GenerateResult` without
+   * re-issuing the native call. Cleared at the start of every
+   * `generateStream` invocation.
+   */
+  private lastCompletionStats: {
+    text: string;
+    promptTokens: number;
+    outputTokens: number;
+    durationMs: number;
+  } | null = null;
+
+  private requireContextId(): number {
+    if (this.contextId === null) {
+      throw new Error("No model loaded. Call load() first.");
+    }
+    return this.contextId;
+  }
+
+  private async loadPlugin(): Promise<LlamaCppPluginLike> {
+    if (this.plugin) return this.plugin;
+    if (this.pluginLoadPromise) return this.pluginLoadPromise;
+    this.pluginLoadPromise = (async () => {
+      const nativePlugin = resolveLlamaCppPlugin(
+        await import("llama-cpp-capacitor"),
+      );
+      if (!nativePlugin) {
+        throw new Error(
+          "llama-cpp-capacitor did not expose the native LlamaCpp methods",
+        );
+      }
+      const plugin = toPlainLlamaCppPlugin(nativePlugin);
+      const tokenListenerHandle = await plugin.addListener(
+        "@LlamaCpp_onToken",
+        (data) => {
+          const token = data.tokenResult?.token ?? data.token;
+          if (!token) return;
+          this.tokenIndex += 1;
+          for (const listener of this.tokenListeners) {
+            try {
+              listener(token, this.tokenIndex);
+            } catch {
+              this.tokenListeners.delete(listener);
+            }
+          }
+        },
+      );
+      this.pluginListenerHandle = tokenListenerHandle ?? null;
+      this.plugin = plugin;
+      return plugin;
+    })();
+    try {
+      return await this.pluginLoadPromise;
+    } catch (err) {
+      this.pluginLoadPromise = null;
+      throw err;
+    }
+  }
+
+  async getHardwareInfo(): Promise<HardwareInfo> {
+    const platform = detectPlatform();
+    if (!isCapacitorNative()) return fallbackHardwareInfo(platform);
+    try {
+      const plugin = await this.loadPlugin();
+      const baseInfo = normalizeHardwareInfo(
+        await plugin.getHardwareInfo?.(),
+        platform,
+      );
+      // Probe fork-specific kernels through the optional bridge method.
+      // Stock builds and older fork builds without the bridge fall back
+      // to the empty list + "stock-llama-cpp" variant marker.
+      let nativeKernels = baseInfo.nativeKernels ?? [];
+      let forkVariant: HardwareInfo["forkVariant"] =
+        baseInfo.forkVariant ?? "stock-llama-cpp";
+      if (typeof plugin.getNativeKernels === "function") {
+        try {
+          const probe = await plugin.getNativeKernels();
+          const kernels = stringArrayFromUnknown(probe?.kernels);
+          if (kernels) nativeKernels = kernels;
+          const variant = normalizeForkVariant(probe?.variant);
+          if (variant !== undefined) forkVariant = variant;
+          else if (nativeKernels.length > 0) forkVariant = "buun-llama-cpp";
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.debug("[capacitor-llama] getNativeKernels probe failed", {
+            error: message,
+          });
+        }
+      }
+      return {
+        ...baseInfo,
+        nativeKernels,
+        forkVariant,
+      };
+    } catch (error) {
+      return fallbackHardwareInfo(
+        platform,
+        error instanceof Error ? error.message : "native hardware probe failed",
+      );
+    }
+  }
+
+  async setCacheType(typeK: string, typeV: string): Promise<void> {
+    if (!isCapacitorNative()) {
+      console.warn(
+        "[capacitor-llama] setCacheType called on non-native platform; ignoring",
+      );
+      return;
+    }
+    const plugin = await this.loadPlugin();
+    if (typeof plugin.setCacheType !== "function") {
+      console.warn(
+        "[capacitor-llama] underlying plugin does not expose setCacheType (likely stock build); cache types must be passed via load() params instead",
+      );
+      return;
+    }
+    await plugin.setCacheType({ cacheTypeK: typeK, cacheTypeV: typeV });
+  }
+
+  async setSpecType(args: SetSpecTypeArgs): Promise<void> {
+    if (!isCapacitorNative()) {
+      console.warn(
+        "[capacitor-llama] setSpecType called on non-native platform; ignoring",
+      );
+      return;
+    }
+    const plugin = await this.loadPlugin();
+    if (typeof plugin.setSpecType !== "function") {
+      console.warn(
+        "[capacitor-llama] underlying plugin does not expose setSpecType (likely stock build); pass draft_model + draft_min/max via load() instead",
+      );
+      return;
+    }
+    await plugin.setSpecType({
+      target: args.target,
+      drafter: args.drafter,
+      specType: args.specType,
+      draftMin: args.draftMin,
+      draftMax: args.draftMax,
+    });
+  }
+
+  async isLoaded(): Promise<{ loaded: boolean; modelPath: string | null }> {
+    return {
+      loaded: this.loadedPath !== null,
+      modelPath: this.loadedPath,
+    };
+  }
+
+  currentModelPath(): string | null {
+    return this.loadedPath;
+  }
+
+  async load(options: LoadOptions): Promise<void> {
+    if (!isCapacitorNative()) {
+      throw new Error(
+        "capacitor-llama is only available on iOS and Android builds",
+      );
+    }
+    const plugin = await this.loadPlugin();
+
+    // Release this adapter's own prior context (if any) before reusing the
+    // context id for a new model. We do NOT call `releaseAllContexts` here
+    // — that would destroy contexts owned by sibling adapter instances
+    // (e.g. tear down the embedding model when the chat model reloads).
+    if (this.contextId !== null && this.loadedPath !== null) {
+      try {
+        await plugin.releaseContext({ contextId: this.contextId });
+      } catch {
+        // The native side may have already cleared this context; safe to
+        // proceed to reinit on the same id.
+      }
+    }
+    this.loadedPath = null;
+
+    if (this.contextId === null) {
+      this.contextId = nextContextId++;
+    }
+
+    const speculativeSamples = options.mobileSpeculative
+      ? Math.min(options.speculativeSamples ?? options.draftMax ?? 3, 4)
+      : (options.speculativeSamples ?? 3);
+    const nativeGpuEnabled = resolveNativeGpuEnabled(options.useGpu);
+    const params: NativeContextParams & Record<string, unknown> = {
+      model: options.modelPath,
+      n_ctx: options.contextSize ?? 4096,
+      n_gpu_layers: nativeGpuEnabled ? 99 : 0,
+      n_threads: options.maxThreads ?? 0,
+      use_mmap: true,
+      flash_attn: nativeGpuEnabled,
+      embedding: looksLikeEmbeddingModelPath(options.modelPath),
+      n_batch: options.mobileSpeculative ? 128 : 512,
+      n_ubatch: options.mobileSpeculative ? 64 : 512,
+      ...(options.draftModelPath
+        ? {
+            draft_model: options.draftModelPath,
+            speculative_samples: speculativeSamples,
+            mobile_speculative: options.mobileSpeculative ?? true,
+          }
+        : {}),
+      ...(options.draftContextSize
+        ? { n_ctx_draft: options.draftContextSize }
+        : {}),
+      ...(options.draftMin ? { draft_min: options.draftMin } : {}),
+      ...(options.draftMax ? { draft_max: options.draftMax } : {}),
+      ...(options.cacheTypeK ? { cache_type_k: options.cacheTypeK } : {}),
+      ...(options.cacheTypeV ? { cache_type_v: options.cacheTypeV } : {}),
+      ...(options.disableThinking ? { reasoning: false } : {}),
+    };
+
+    await plugin.initContext({
+      contextId: this.contextId,
+      params,
+    });
+
+    // Fork builds expose a separate `setSpecType` bridge that configures
+    // the MTP drafter after the main context is up. Stock builds lack
+    // the method and the setter warns and skips it. We auto-call here so
+    // callers only need to pass `draftModelPath` once via load() — the
+    // adapter then handles both the params-bag path (stock fallback) and
+    // the explicit setSpecType path (fork build) in one shot.
+    if (options.draftModelPath && typeof plugin.setSpecType === "function") {
+      try {
+        await plugin.setSpecType({
+          target: options.modelPath,
+          drafter: options.draftModelPath,
+          specType: "mtp",
+          draftMin: options.draftMin ?? 1,
+          draftMax: options.draftMax ?? 3,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          "[capacitor-llama] setSpecType failed; spec decode disabled",
+          { error: message },
+        );
+      }
+    }
+
+    // Same pattern for cache_type_k/v: fork builds may surface a separate
+    // setCacheType bridge; stock builds rely on the params bag only.
+    if (
+      (options.cacheTypeK || options.cacheTypeV) &&
+      typeof plugin.setCacheType === "function"
+    ) {
+      try {
+        await plugin.setCacheType({
+          cacheTypeK: options.cacheTypeK ?? "f16",
+          cacheTypeV: options.cacheTypeV ?? "f16",
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          "[capacitor-llama] setCacheType failed; cache types may be unchanged",
+          { error: message },
+        );
+      }
+    }
+
+    this.loadedPath = options.modelPath;
+  }
+
+  async unload(): Promise<void> {
+    if (!this.plugin || !this.loadedPath || this.contextId === null) return;
+    try {
+      await this.plugin.releaseContext({ contextId: this.contextId });
+    } catch {
+      // Fall back to a targeted release-all only when the per-context
+      // release fails; this used to be the always-path but it now risks
+      // tearing down sibling adapter instances and is reserved for the
+      // pathological case where the native side has lost track of our id.
+      await this.plugin.releaseAllContexts();
+    }
+    this.loadedPath = null;
+  }
+
+  /**
+   * Build the params object for the native completion call. Shared between
+   * the legacy `generate()` path and the new `generateStream()` path so the
+   * cache-key + stop-sequence wiring lives in one place.
+   */
+  private buildNativeParams(options: GenerateOptions): NativeGenerateParams {
+    const params: NativeGenerateParams = {
+      n_predict: resolveMobileMaxTokens(options.maxTokens),
+      temperature: options.temperature ?? 0.7,
+      top_p: options.topP ?? 0.9,
+    };
+    if (options.stopSequences && options.stopSequences.length > 0) {
+      params.stop = options.stopSequences;
+    }
+    if (options.stream) {
+      params.emit_partial_completion = true;
+    }
+    // Cache key threading: surface the slot id derived from
+    // ProviderCachePlan.promptCacheKey to the native side. Stock
+    // llama-cpp-capacitor builds ignore the field; the patched fork build
+    // reads it via setCacheType / completion params and pins KV slots.
+    if (options.cacheKey) {
+      const slotId = deriveCacheSlotId(options.cacheKey);
+      (
+        params as NativeGenerateParams & {
+          cache_prompt?: boolean;
+          slot_id?: number;
+        }
+      ).cache_prompt = true;
+      (
+        params as NativeGenerateParams & {
+          cache_prompt?: boolean;
+          slot_id?: number;
+        }
+      ).slot_id = slotId;
+    }
+    return params;
+  }
+
+  /**
+   * Invoke the native completion (or generateText) entry point with a
+   * pre-built params bag. Returns the raw native result; callers map this
+   * to `GenerateResult` or to a `done` event.
+   */
+  private async runNativeCompletion(
+    options: GenerateOptions,
+    params: NativeGenerateParams,
+  ): Promise<NativeCompletionResult> {
+    const plugin = this.plugin;
+    if (!plugin) {
+      throw new Error("No model loaded. Call load() first.");
+    }
+    const contextId = this.requireContextId();
+    const result =
+      typeof plugin.completion === "function"
+        ? await plugin.completion({
+            contextId,
+            params: {
+              prompt: options.prompt,
+              emit_partial_completion: Boolean(params.emit_partial_completion),
+              ...params,
+            },
+          })
+        : await plugin.generateText?.({
+            contextId,
+            prompt: options.prompt,
+            params,
+          });
+    if (!result) {
+      throw new Error(
+        "llama-cpp-capacitor did not expose completion() or generateText()",
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Native bridges currently don't honour per-generation sampler-stage
+   * injection — the Swift / Kotlin side needs separate wiring. Until that
+   * lands we log once per stage and otherwise pass through. The stages
+   * remain in the options object so downstream observers (telemetry,
+   * tests) can still see them.
+   */
+  private logUnwiredSamplerStages(stages: SamplerStage[] | undefined): void {
+    if (!stages || stages.length === 0) return;
+    for (const stage of stages) {
+      console.debug(
+        `[capacitor-llama] sampler stage "${stage.kind}" received but not yet wired in native bridge`,
+      );
+    }
+  }
+
+  async generate(options: GenerateOptions): Promise<GenerateResult> {
+    // Wrapper over `generateStream` so the cache-key, stop-sequence, and
+    // native-call wiring lives in exactly one place. Drains the stream
+    // into the legacy `GenerateResult` shape; per-token events surface to
+    // any `onToken` listener via the native event bridge (unchanged).
+    let text = "";
+    let promptTokens = 0;
+    let outputTokens = 0;
+    let durationMs = 0;
+    let lastError: string | null = null;
+    for await (const event of this.generateStream(options)) {
+      if (event.kind === "token") {
+        text += event.text;
+      } else if (event.kind === "telemetry") {
+        // Native bridge currently emits no telemetry events; ignored here
+        // because the final `done` event carries the authoritative totals.
+      } else if (event.kind === "error") {
+        lastError = event.message;
+      } else if (event.kind === "done") {
+        // The done payload's authoritative fields come from the
+        // closed-over scope below — set when the native call returns.
+      }
+    }
+    if (lastError) throw new Error(lastError);
+    // Re-read native counters from the cached completion result. We stored
+    // them on `this.lastCompletionStats` inside the stream's lifecycle.
+    const stats = this.lastCompletionStats;
+    if (stats) {
+      promptTokens = stats.promptTokens;
+      outputTokens = stats.outputTokens;
+      durationMs = stats.durationMs;
+      if (stats.text) {
+        // The native call's authoritative text. Use it instead of the
+        // token-event-assembled string so callers see exactly what the
+        // bridge produced (some bridges only emit tokens, others emit
+        // partial+final; assembled text isn't always equal).
+        text = stats.text;
+      }
+    }
+    return {
+      text,
+      promptTokens,
+      outputTokens,
+      durationMs,
+    };
+  }
+
+  /**
+   * Streaming generation. Subscribes to the native token event bridge,
+   * starts the completion call, and yields typed `GenerationEvent`s as
+   * tokens arrive. The stream ends with exactly one `done` event (or one
+   * terminal `error`) once the native call resolves.
+   *
+   * Sampler-stage injection (`samplerStages`) and the per-generation
+   * spec-decode toggle (`specDecode`) are accepted but currently pass
+   * through unchanged on the JS side — the Swift / Kotlin bridge wiring is tracked
+   * separately. They flow through as part of the options bag so the
+   * native side can pick them up without an interface change.
+   */
+  async *generateStream(
+    options: GenerateStreamOptions,
+  ): AsyncIterable<GenerationEvent> {
+    if (!this.plugin || !this.loadedPath) {
+      throw new Error("No model loaded. Call load() first.");
+    }
+    this.tokenIndex = 0;
+    this.lastCompletionStats = null;
+    this.logUnwiredSamplerStages(options.samplerStages);
+
+    const queue: GenerationEvent[] = [];
+    let waiter: (() => void) | null = null;
+    const wake = (): void => {
+      if (waiter) {
+        const w = waiter;
+        waiter = null;
+        w();
+      }
+    };
+    const push = (event: GenerationEvent): void => {
+      queue.push(event);
+      wake();
+    };
+
+    // Subscribe to per-token events. The native bridge fires
+    // `@LlamaCpp_onToken`; our existing class-level listener forwards into
+    // every `onToken(listener)` consumer. We register one more listener
+    // here, scoped to this stream, that converts strings into `token`
+    // events.
+    const unsubscribe = this.onToken((tokenText, index) => {
+      push({ kind: "token", text: tokenText, index });
+    });
+
+    const params = this.buildNativeParams({
+      ...options,
+      // generateStream implies streaming — force on so the bridge emits
+      // partial completions even when the caller didn't set `stream: true`
+      // on the legacy options bag.
+      stream: true,
+    });
+
+    const started = Date.now();
+    let completionPromise: Promise<NativeCompletionResult>;
+    try {
+      completionPromise = this.runNativeCompletion(options, params);
+    } catch (err) {
+      unsubscribe();
+      const message = err instanceof Error ? err.message : String(err);
+      yield { kind: "error", message, recoverable: false };
+      yield { kind: "done", finishReason: "error" };
+      return;
+    }
+
+    // Wrapped in an object so TS's control-flow analysis doesn't widen the
+    // closed-over assignments back to `null`/`never` when we read them
+    // after the loop. (Plain `let` with `null` init narrows badly after
+    // an async assignment.)
+    const completionState: {
+      result: NativeCompletionResult | null;
+      error: { message: string } | null;
+      done: boolean;
+    } = { result: null, error: null, done: false };
+    completionPromise
+      .then((result) => {
+        completionState.result = result;
+      })
+      .catch((err: unknown) => {
+        completionState.error =
+          err instanceof Error ? err : { message: String(err) };
+      })
+      .finally(() => {
+        completionState.done = true;
+        wake();
+      });
+
+    try {
+      while (true) {
+        if (queue.length > 0) {
+          yield queue.shift()!;
+          continue;
+        }
+        if (completionState.done) break;
+        await new Promise<void>((resolve) => {
+          waiter = resolve;
+        });
+      }
+    } finally {
+      unsubscribe();
+    }
+
+    if (completionState.error) {
+      yield {
+        kind: "error",
+        message: completionState.error.message,
+        recoverable: false,
+      };
+      yield { kind: "done", finishReason: "error" };
+      return;
+    }
+
+    if (completionState.result) {
+      const r = completionState.result;
+      const duration =
+        r.timings?.predicted_ms != null
+          ? Math.round(r.timings.predicted_ms)
+          : Date.now() - started;
+      this.lastCompletionStats = {
+        text: r.text,
+        promptTokens: r.tokens_evaluated,
+        outputTokens: r.tokens_predicted,
+        durationMs: duration,
+      };
+      // Reason heuristic: native fork doesn't expose a finish-reason
+      // enum yet. "stop" is the dominant case; "length" when we hit the
+      // requested n_predict ceiling exactly. Tool/cancel/error are
+      // emitted by the explicit paths above and aren't reachable here.
+      const requested = resolveMobileMaxTokens(options.maxTokens);
+      const finishReason: "stop" | "length" =
+        r.tokens_predicted >= requested ? "length" : "stop";
+      yield { kind: "done", finishReason };
+      return;
+    }
+
+    // Native call resolved with no payload and no error — defensive
+    // terminal event so the consumer's `for await` always ends cleanly.
+    yield { kind: "done", finishReason: "stop" };
+  }
+
+  async setDrafter(drafterPath: string | null): Promise<void> {
+    // The native bridge has no live-swap entry point yet; the drafter is
+    // bound at `load()` time via `LoadOptions.draftModelPath`. Log so the
+    // call-site is observable, and leave the loaded context unchanged.
+    console.warn(
+      `[capacitor-llama] setDrafter(${drafterPath ?? "null"}) not yet supported by native bridge; pass draftModelPath to load() instead`,
+    );
+  }
+
+  async trimMemory(level: "minor" | "major"): Promise<void> {
+    // No native hook yet — log so the runtime's pressure plumbing can see
+    // the adapter received the signal. Major pressure also clears the
+    // token-listener bookkeeping to drop any orphaned callbacks.
+    if (level === "major") {
+      this.tokenListeners.clear();
+    }
+    console.debug(`[capacitor-llama] trimMemory(${level}) — bridge hook unavailable`);
+  }
+
+  async cancelGenerate(): Promise<void> {
+    if (!this.plugin || this.contextId === null) return;
+    await this.plugin.stopCompletion({ contextId: this.contextId });
+  }
+
+  /**
+   * Round-trip to the loaded GGUF's native chat template via
+   * `LlamaCpp.getFormattedChat`. The plugin's Java side serializes
+   * `messages` as a JSON string and invokes
+   * `cap_format_chat()` → `llama_chat_apply_template()`. Returns the
+   * rendered prompt (or null when the GGUF has no template metadata).
+   */
+  async formatChat(
+    messages: { role: string; content: string }[],
+  ): Promise<string | null> {
+    if (!this.plugin || !this.loadedPath) {
+      throw new Error("No model loaded. Call load() first.");
+    }
+    if (typeof this.plugin.getFormattedChat !== "function") {
+      return null;
+    }
+    const result = await this.plugin.getFormattedChat({
+      contextId: this.requireContextId(),
+      messages: JSON.stringify(messages),
+      params: { jinja: true },
+    });
+    return result.prompt ?? null;
+  }
+
+  async embed(options: EmbedOptions): Promise<EmbedResult> {
+    if (!this.plugin || !this.loadedPath) {
+      throw new Error("No model loaded. Call load() first.");
+    }
+    if (typeof this.plugin.embedding !== "function") {
+      throw new Error(
+        "llama-cpp-capacitor does not expose embedding() on this build; upgrade or use a cloud embedding provider",
+      );
+    }
+    const params: NativeEmbeddingParams = {
+      embd_normalize: options.embdNormalize ?? 0,
+    };
+    const contextId = this.requireContextId();
+    const result = await this.plugin.embedding({
+      contextId,
+      text: options.input,
+      params,
+    });
+    let tokenCount = 0;
+    if (typeof this.plugin.tokenize === "function") {
+      try {
+        const tokenized = await this.plugin.tokenize({
+          contextId,
+          text: options.input,
+        });
+        tokenCount = tokenized.tokens.length;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.debug("[capacitor-llama] tokenize fallback", {
+          error: message,
+        });
+        tokenCount = 0;
+      }
+    }
+    return { embedding: result.embedding, tokens: tokenCount };
+  }
+
+  onToken(listener: (token: string, index: number) => void): () => void {
+    this.tokenListeners.add(listener);
+    return () => {
+      this.tokenListeners.delete(listener);
+    };
+  }
+
+  async dispose(): Promise<void> {
+    this.tokenListeners.clear();
+    if (this.pluginListenerHandle) {
+      await this.pluginListenerHandle.remove();
+      this.pluginListenerHandle = null;
+    }
+    await this.unload();
+    this.plugin = null;
+    this.pluginLoadPromise = null;
+  }
+}
+
+/**
+ * Default singleton kept for back-compat with device-bridge-client and
+ * hardware-probe callers that don't distinguish chat vs embedding roles.
+ * The runtime's `localInferenceLoader` service uses per-role instances
+ * instead — see `registerCapacitorLlamaLoader`.
+ */
+export const capacitorLlama: LlamaAdapter = new CapacitorLlamaAdapter();
+
+/**
+ * Lightweight heuristic for routing a `loadModel(modelPath)` call to either
+ * the chat adapter or the embedding adapter. Embedding GGUFs the runtime
+ * ships or that users typically install for `TEXT_EMBEDDING` carry one of
+ * these markers in the filename. Anything else is assumed to be a
+ * generative chat model.
+ */
+function looksLikeEmbeddingModelPath(modelPath: string): boolean {
+  const lowered = modelPath.toLowerCase();
+  return (
+    lowered.includes("bge-") ||
+    lowered.includes("bge_") ||
+    lowered.includes("nomic-embed") ||
+    lowered.includes("all-minilm") ||
+    lowered.includes("gte-") ||
+    lowered.includes("e5-") ||
+    lowered.includes("/embedding/") ||
+    lowered.endsWith("embedding.gguf")
+  );
+}
+
+export function registerCapacitorLlamaLoader(runtime: {
+  registerService?: (name: string, impl: unknown) => unknown;
+}): void {
+  if (typeof runtime.registerService !== "function") return;
+
+  // Two distinct adapter instances so the chat LLM and embedding model
+  // each allocate their own native context id. This is the fix for
+  // elizaOS/eliza#7681 — the previous single-adapter design routed every
+  // operation through CONTEXT_ID=1, and a `completion(contextId=1)` call
+  // would resolve to whichever model registered against id 1 last
+  // (typically the bge-small embedding model on Android), emitting
+  // `[unused{N}]` / `[PAD]` reserved tokens.
+  const chatAdapter = new CapacitorLlamaAdapter();
+  const embeddingAdapter = new CapacitorLlamaAdapter();
+
+  function adapterFor(modelPath: string): CapacitorLlamaAdapter {
+    return looksLikeEmbeddingModelPath(modelPath)
+      ? embeddingAdapter
+      : chatAdapter;
+  }
+
+  runtime.registerService("localInferenceLoader", {
+    async loadModel(args: LoadOptions): Promise<void> {
+      await adapterFor(args.modelPath).load(args);
+    },
+    async unloadModel(): Promise<void> {
+      // Each adapter manages its own context lifecycle inside
+      // `load()` (releasing the prior context before reinitializing on the
+      // same id). Tearing down both adapters here would defeat the
+      // per-instance routing — `ensureAssignedModelLoaded` calls
+      // `unloadModel()` before every `loadModel()` on the assumption of
+      // single-model behaviour, and we must not let that unconditionally
+      // kill the embedding adapter when only the chat model is swapping.
+    },
+    currentModelPath(): string | null {
+      // The chat path is the primary "active" model from the runtime's
+      // perspective; embedding is treated as a sidecar.
+      return (
+        chatAdapter.currentModelPath() ?? embeddingAdapter.currentModelPath()
+      );
+    },
+    async generate(args: {
+      prompt: string;
+      stopSequences?: string[];
+      maxTokens?: number;
+      temperature?: number;
+    }): Promise<string> {
+      const result = await chatAdapter.generate({
+        prompt: args.prompt,
+        stopSequences: args.stopSequences,
+        maxTokens: args.maxTokens,
+        temperature: args.temperature,
+      });
+      return result.text;
+    },
+    async embed(args: {
+      input: string;
+    }): Promise<{ embedding: number[]; tokens: number }> {
+      return embeddingAdapter.embed({ input: args.input });
+    },
+  });
+}

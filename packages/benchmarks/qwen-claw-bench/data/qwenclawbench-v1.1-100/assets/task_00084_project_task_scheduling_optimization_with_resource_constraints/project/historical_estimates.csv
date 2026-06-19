@@ -1,0 +1,7 @@
+task_id,duration_hours,confidence
+A,180,0.92
+B,120,0.88
+C,240,0.85
+D,120,0.90
+E,60,0.95
+F,180,0.82

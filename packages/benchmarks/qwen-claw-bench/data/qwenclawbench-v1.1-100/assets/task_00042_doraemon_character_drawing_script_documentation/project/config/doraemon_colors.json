@@ -1,0 +1,18 @@
+{
+  "palette_name": "Doraemon Drawing Project Colors",
+  "version": "2.1",
+  "last_updated": "2024-05-18",
+  "author": "Character Design Team",
+  "colors": {
+    "body_blue": "#2196F3",
+    "face_white": "#FFFFFF",
+    "nose_red": "#E53935",
+    "collar_red": "#C62828",
+    "bell_yellow": "#FFC107",
+    "outline_black": "#212121",
+    "whisker_black": "#424242",
+    "eye_white": "#FAFAFA",
+    "mouth_red": "#D32F2F"
+  },
+  "notes": "Updated palette with Material Design-inspired blues. Part of the Q2 2024 visual refresh. Accent colors adjusted for better digital display contrast."
+}

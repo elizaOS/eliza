@@ -1,0 +1,22 @@
+id: pda_governance_001
+level: 0
+name: Governance PDA
+description: 'Level 0 foundational test: Governance PDA'
+category: pda
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_pda_governance_001
+  type: query
+  parameters:
+    program: GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw
+    seeds:
+    - realm
+    - voter
+  timeout_ms: 10000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

@@ -1,0 +1,40 @@
+---
+title: RTL & Verification
+description: "SystemVerilog source, cocotb tests, formal properties."
+---
+
+## Source
+
+`packages/chip/rtl/` holds the SystemVerilog source: SoC top, CPU/AP stubs, NPU, DMA, display, interconnect, interrupt controller, memory blocks.
+
+## Tests
+
+`packages/chip/verify/` holds cocotb tests and formal property files. The repo treats verification as evidence: every block has a documented gate, and the gate emits an artifact on each run.
+
+## Running
+
+From the chip package:
+
+```bash
+make tools          # show local tool availability
+make smoke          # locally-runnable low-cost gates
+make cocotb         # cocotb regression
+make formal         # formal properties
+make synth          # synthesis check
+```
+
+Some checks report `BLOCKED` when an external EDA, simulator, or BSP dependency is absent. That's expected on a minimal laptop; the blocker is captured as evidence rather than hidden.
+
+## Docker
+
+```bash
+docker build -t eliza-soc-tools .
+docker run --rm -it -v "$PWD:/work" -w /work eliza-soc-tools make smoke
+```
+
+Use Docker when host package versions are inconvenient or when you need a clean Linux-like environment from macOS.
+
+## See also
+
+- [Architecture](/tracks/chip/architecture)
+- [Simulation & FPGA](/tracks/chip/simulation)

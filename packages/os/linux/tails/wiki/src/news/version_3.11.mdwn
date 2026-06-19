@@ -1,0 +1,88 @@
+[[!meta date="Tue, 11 Dec 2018 12:34:56 +0000"]]
+[[!meta title="Tails 3.11 is out"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_3.10.1]].
+
+You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Add a confirm dialog between downloading and applying an automatic
+  upgrade to control better when the network is disabled and prevent
+  partially applied upgrades. ([[!tails_ticket 14754]] and
+  [[!tails_ticket 15282]])
+
+  [[!img version_3.11/upgrade.png link="no"]]
+
+- When running from a virtual machine, warn about the trustworthiness of
+  the operating system even when running from a free virtualization
+  software. ([[!tails_ticket 16195]])
+
+  [[!img version_3.11/virtualization-warning.png link="no"]]
+
+- Disable *Autocrypt* in *Thunderbird* to prevent sending unencrypted
+  emails by mistake. ([[!tails_ticket 15923]])
+
+- Update *Linux* to 4.18.20.
+
+- Update *Tor Browser* to 8.0.4.
+
+- Update *Thunderbird* to [60.3.0](https://www.thunderbird.net/en-US/thunderbird/60.3.0/releasenotes/).
+
+## Fixed problems
+
+- Fix the opening of *Thunderbird* in non-English languages. ([[!tails_ticket 16113]])
+
+- Reduce the logging level of Tor when using bridges. ([[!tails_ticket 15743]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+- Tails fails to start and displays a black screen with some Intel
+  graphics cards.
+
+  To fix this issue, add `nomodeset` to the [[startup
+  options|doc/advanced_topics/boot_options]].
+
+  If this workaround doesn't work, add `nomodeset xorg-driver=vesa` to
+  the [[startup options|doc/advanced_topics/boot_options]].
+
+  If this workaround doesn't work, please report to
+  <tails-support-private@boum.org>:
+
+  - The brand and model of your computer.
+  - The workaround that you tried and that failed.
+  - If possible, the output of the `lspci -n` command executed
+    on another Linux system, such as an older Tails.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.11
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.9 and 3.10.1 to 3.11.
+
+  If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.11.|install/download]]
+
+# What's coming up?
+
+Tails 3.12 is [[scheduled|contribute/calendar]] for January 29.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.11">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

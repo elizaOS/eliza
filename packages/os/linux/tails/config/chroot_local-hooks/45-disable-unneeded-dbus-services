@@ -1,0 +1,22 @@
+#!/bin/sh
+
+set -e
+
+echo "Disabling unneeded D-Bus services"
+
+SERVICES_DIR=/usr/share/dbus-1/services
+
+[ -d "${SERVICES_DIR}" ] || exit 11
+
+sed -i'' 's,^Exec=.*$,Exec=/bin/false,' \
+    "${SERVICES_DIR}"/org.gnome.evolution.dataserver.*.service \
+    "${SERVICES_DIR}"/org.gnome.Shell.CalendarServer.service
+
+for service in \
+   "${SERVICES_DIR}"/org.freedesktop.Telepathy.AccountManager.service \
+   "${SERVICES_DIR}"/org.freedesktop.Telepathy.MissionControl5.service ; do
+   if [ -f "$service" ]; then
+       echo "$service is back: consider disabling it" >&2
+       exit 1
+   fi
+done

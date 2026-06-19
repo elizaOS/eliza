@@ -1,0 +1,36 @@
+schema: eliza.ai_eda.regression_seed_manifest.v1
+updated: 2026-05-20
+scope: >
+  Deterministic seed scenarios for dry-run AI/EDA IOMMU coverage triage. These
+  reference existing regression intent, not generated tests.
+seeds:
+  - id: seed_iommu_bare_mode
+    source: verify/cocotb/iommu/test_riscv_iommu.py::bare_mode_passes_traffic_with_no_fault
+    status: EXISTING_TEST_REFERENCE
+    covers:
+      - iommu_bare_mode_passthrough
+  - id: seed_iommu_unknown_devid
+    source: verify/cocotb/iommu/test_riscv_iommu.py::translate_mode_blocks_unknown_devid_with_fault
+    status: EXISTING_TEST_REFERENCE
+    covers:
+      - iommu_unknown_devid_fault
+  - id: seed_iommu_known_devid
+    source: verify/cocotb/iommu/test_riscv_iommu.py::translate_mode_allows_known_devid
+    status: EXISTING_TEST_REFERENCE
+    covers:
+      - iommu_authorized_devid_path
+  - id: seed_iommu_pasid_context
+    source: verify/cocotb/iommu/test_riscv_iommu.py::pasid_context_switch_across_two_streams
+    status: EXISTING_TEST_REFERENCE
+    covers:
+      - iommu_pasid_revoke_reauthorize
+  - id: seed_iommu_capabilities
+    source: verify/cocotb/iommu/test_riscv_iommu.py::ats_translation_capability_advertised
+    status: EXISTING_TEST_REFERENCE
+    covers:
+      - iommu_ats_pri_capability_probe
+  - id: seed_iommu_translation_request
+    source: verify/cocotb/iommu/test_riscv_iommu.py::translation_request_interface_round_trip
+    status: EXISTING_TEST_REFERENCE
+    covers:
+      - iommu_translation_request_mmio

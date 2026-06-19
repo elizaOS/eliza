@@ -1,0 +1,287 @@
+{
+	"name": "@elizaos/app-core",
+	"version": "2.0.3-beta.14",
+	"description": "Shared application core for elizaOS white-label agent apps.",
+	"type": "module",
+	"license": "MIT",
+	"homepage": "https://github.com/elizaOS/eliza",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/elizaOS/eliza.git",
+		"directory": "packages/app-core"
+	},
+	"keywords": [
+		"elizaos",
+		"app-core",
+		"react",
+		"white-label",
+		"agent-framework"
+	],
+	"main": "./dist/index.js",
+	"files": [
+		"dist"
+	],
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"scripts": {
+		"clean": "rm -rf dist",
+		"prepublishOnly": "bun run build:dist",
+		"build": "bun run build:dist",
+		"typecheck": "tsgo --noEmit -p tsconfig.json",
+		"test": "node ../scripts/run-vitest.mjs run --config vitest.config.ts",
+		"test:auth": "node ../scripts/run-vitest.mjs run --config vitest.config.ts --no-file-parallelism src/api/auth src/api/auth-bootstrap-routes src/services/auth-store src/cli/program/register.auth",
+		"test:local-provisioning": "node scripts/run-node-tsx.mjs scripts/check-real-local-provisioning.ts",
+		"test:local-chat": "node scripts/run-node-tsx.mjs scripts/check-real-local-chat.ts",
+		"test:local-reset": "node scripts/run-node-tsx.mjs scripts/check-real-local-reset.ts",
+		"lint": "bunx @biomejs/biome check src",
+		"lint:fix": "bunx @biomejs/biome check --write src",
+		"format": "bunx @biomejs/biome format src",
+		"format:fix": "bunx @biomejs/biome format --write src",
+		"build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../scripts/copy-package-assets.mjs packages/app-core src/styles src/registry/entries scripts platforms packaging patches test/scripts test/helpers && node ../scripts/prepare-package-dist.mjs packages/app-core && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/app-core",
+		"pack:dry-run": "cd dist && npm pack --dry-run",
+		"benchmark:server": "node --import tsx src/benchmark/server.ts",
+		"voice:interactive": "bun ./scripts/voice-interactive.mjs",
+		"voice:duet": "bun ./scripts/voice-duet.mjs",
+		"build:flatpak": "node ./scripts/build-flatpak.mjs",
+		"build:flatpak:store": "ELIZA_BUILD_VARIANT=store node ./scripts/build-flatpak.mjs",
+		"build:flatpak:direct": "ELIZA_BUILD_VARIANT=direct node ./scripts/build-flatpak.mjs",
+		"audit:apple-store-sandbox": "node ./scripts/audit-apple-store-sandbox.mjs && node ./scripts/lib/apple-entitlement-audit.mjs",
+		"entitlements:audit": "node ./scripts/lib/apple-entitlement-audit.mjs",
+		"test:apple-entitlements": "node ../scripts/run-vitest.mjs run --config vitest.config.ts scripts/lib/apple-entitlement-audit.test.mjs",
+		"codesign:mas": "node ./scripts/codesign-mas.mjs",
+		"codesign:mas:dry-run": "node ./scripts/codesign-mas.mjs --dry-run",
+		"sms-gateway:audit": "node ./scripts/check-sms-gateway-completion-audit.mjs",
+		"sms-gateway:doctor": "node ./scripts/install-android-sms-gateway.mjs --doctor",
+		"sms-gateway:build:android": "node ./scripts/run-mobile-build.mjs android-sms-gateway",
+		"sms-gateway:continue": "node ./scripts/continue-sms-gateway-work.mjs",
+		"sms-gateway:deploy:cloud-prod": "node ./scripts/deploy-cloud-api-production-gateway.mjs",
+		"sms-gateway:homepage": "node ./scripts/check-homepage-public-readiness.mjs",
+		"sms-gateway:homepage:dns": "node ./scripts/sync-homepage-porkbun-dns.mjs",
+		"sms-gateway:install": "node ./scripts/install-android-sms-gateway.mjs --wait-device 300 --grant-role --clear-logcat --watch-logs 60",
+		"sms-gateway:maintain:cloud-prod": "node ./scripts/maintain-cloud-api-production-gateway.mjs",
+		"sms-gateway:pair": "node ./scripts/install-android-sms-gateway.mjs --pair auto --wait-pair 300 --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60",
+		"sms-gateway:readiness": "node ./scripts/check-sms-gateway-readiness.mjs",
+		"sms-gateway:status": "node ./scripts/sms-gateway-status.mjs",
+		"sms-gateway:test:software": "node ./scripts/test-sms-gateway-software.mjs",
+		"sms-gateway:validate:bluebubbles": "node ./scripts/validate-bluebubbles-outbound.mjs",
+		"sms-gateway:verify:cloud-onboarding": "node ./scripts/verify-cloud-sms-onboarding-flow.mjs",
+		"sms-gateway:verify:bluebubbles": "node ./scripts/verify-bluebubbles-gateway-e2e.mjs",
+		"sms-gateway:verify:cloud-prod": "node ./scripts/verify-cloud-api-production-deploy.mjs",
+		"sms-gateway:verify": "node ./scripts/verify-android-sms-gateway-e2e.mjs",
+		"sms-gateway:watch": "node ./scripts/watch-sms-gateway-readiness.mjs",
+		"sms-gateway:watch:pair": "node ./scripts/watch-sms-gateway-readiness.mjs --timeout 300 --interval 5 --run-install",
+		"test:app-real-e2e": "node ../scripts/run-vitest.mjs run --config vitest.app-real-e2e.config.ts"
+	},
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./entry": {
+			"types": "./dist/entry.d.ts",
+			"import": "./dist/entry.js",
+			"default": "./dist/entry.js"
+		},
+		"./agent-bridge": {
+			"types": "./dist/agent-bridge.d.ts",
+			"import": "./dist/agent-bridge.js",
+			"default": "./dist/agent-bridge.js"
+		},
+		"./api/automation-node-contributors": {
+			"types": "./dist/api/automation-node-contributors.d.ts",
+			"import": "./dist/api/automation-node-contributors.js",
+			"default": "./dist/api/automation-node-contributors.js"
+		},
+		"./api/auth": {
+			"types": "./dist/api/auth.d.ts",
+			"import": "./dist/api/auth.js",
+			"default": "./dist/api/auth.js"
+		},
+		"./api/cloud-pair-route": {
+			"types": "./dist/api/cloud-pair-route.d.ts",
+			"import": "./dist/api/cloud-pair-route.js",
+			"default": "./dist/api/cloud-pair-route.js"
+		},
+		"./api/compat-route-shared": {
+			"types": "./dist/api/compat-route-shared.d.ts",
+			"import": "./dist/api/compat-route-shared.js",
+			"default": "./dist/api/compat-route-shared.js"
+		},
+		"./api/ios-local-agent-transport": {
+			"types": "./dist/api/ios-local-agent-transport.d.ts",
+			"import": "./dist/api/ios-local-agent-transport.js",
+			"default": "./dist/api/ios-local-agent-transport.js"
+		},
+		"./api/response": {
+			"types": "./dist/api/response.d.ts",
+			"import": "./dist/api/response.js",
+			"default": "./dist/api/response.js"
+		},
+		"./first-run/first-run-config": {
+			"types": "./dist/first-run/first-run-config.d.ts",
+			"import": "./dist/first-run/first-run-config.js",
+			"default": "./dist/first-run/first-run-config.js"
+		},
+		"./registry": {
+			"types": "./dist/registry/index.d.ts",
+			"import": "./dist/registry/index.js",
+			"default": "./dist/registry/index.js"
+		},
+		"./services/vault-mirror": {
+			"types": "./dist/services/vault-mirror.d.ts",
+			"import": "./dist/services/vault-mirror.js",
+			"default": "./dist/services/vault-mirror.js"
+		},
+		"./security/agent-vault-id": {
+			"types": "./dist/security/agent-vault-id.d.ts",
+			"import": "./dist/security/agent-vault-id.js",
+			"default": "./dist/security/agent-vault-id.js"
+		},
+		"./security/platform-secure-store": {
+			"types": "./dist/security/platform-secure-store.d.ts",
+			"import": "./dist/security/platform-secure-store.js",
+			"default": "./dist/security/platform-secure-store.js"
+		},
+		"./security/platform-secure-store-node": {
+			"types": "./dist/security/platform-secure-store-node.d.ts",
+			"import": "./dist/security/platform-secure-store-node.js",
+			"default": "./dist/security/platform-secure-store-node.js"
+		},
+		"./services/steward-credentials": {
+			"types": "./dist/services/steward-credentials.d.ts",
+			"import": "./dist/services/steward-credentials.js",
+			"default": "./dist/services/steward-credentials.js"
+		},
+		"./services/steward-sidecar/helpers": {
+			"types": "./dist/services/steward-sidecar/helpers.d.ts",
+			"import": "./dist/services/steward-sidecar/helpers.js",
+			"default": "./dist/services/steward-sidecar/helpers.js"
+		},
+		"./services/task-host-capabilities": {
+			"types": "./dist/services/task-host-capabilities.d.ts",
+			"import": "./dist/services/task-host-capabilities.js",
+			"default": "./dist/services/task-host-capabilities.js"
+		},
+		"./services/app-updates/update-policy": {
+			"types": "./dist/services/app-updates/update-policy.d.ts",
+			"import": "./dist/services/app-updates/update-policy.js",
+			"default": "./dist/services/app-updates/update-policy.js"
+		},
+		"./platform/native-plugin-entrypoints": {
+			"types": "./dist/platform/native-plugin-entrypoints.d.ts",
+			"import": "./dist/platform/native-plugin-entrypoints.js",
+			"default": "./dist/platform/native-plugin-entrypoints.js"
+		},
+		"./platform/ios-runtime-backends": {
+			"types": "./dist/platform/ios-runtime-backends.d.ts",
+			"import": "./dist/platform/ios-runtime-backends.js",
+			"default": "./dist/platform/ios-runtime-backends.js"
+		},
+		"./platform/empty-node-module": {
+			"types": "./dist/platform/empty-node-module.d.ts",
+			"import": "./dist/platform/empty-node-module.js",
+			"default": "./dist/platform/empty-node-module.js"
+		},
+		"./platform/native-library-policy": {
+			"types": "./dist/platform/native-library-policy.d.ts",
+			"import": "./dist/platform/native-library-policy.js",
+			"default": "./dist/platform/native-library-policy.js"
+		},
+		"./ui-compat": {
+			"types": "./dist/ui-compat.d.ts",
+			"import": "./dist/ui-compat.js",
+			"default": "./dist/ui-compat.js"
+		}
+	},
+	"peerDependencies": {
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"three": "^0.184.0"
+	},
+	"optionalDependencies": {
+		"@elizaos/capacitor-appblocker": "workspace:*",
+		"@elizaos/capacitor-bun-runtime": "workspace:*",
+		"@elizaos/capacitor-camera": "workspace:*",
+		"@elizaos/capacitor-canvas": "workspace:*",
+		"@elizaos/capacitor-contacts": "workspace:*",
+		"@elizaos/capacitor-gateway": "workspace:*",
+		"@elizaos/capacitor-location": "workspace:*",
+		"@elizaos/capacitor-messages": "workspace:*",
+		"@elizaos/capacitor-mobile-agent-bridge": "workspace:*",
+		"@elizaos/capacitor-mobile-signals": "workspace:*",
+		"@elizaos/capacitor-phone": "workspace:*",
+		"@elizaos/capacitor-screencapture": "workspace:*",
+		"@elizaos/capacitor-swabble": "workspace:*",
+		"@elizaos/capacitor-system": "workspace:*",
+		"@elizaos/capacitor-talkmode": "workspace:*",
+		"@elizaos/capacitor-websiteblocker": "workspace:*",
+		"sharp": "^0.34.5"
+	},
+	"dependencies": {
+		"@capacitor-community/sqlite": "^7.0.0",
+		"@capacitor/background-runner": "^3.0.0",
+		"@capacitor/barcode-scanner": "^3.0.0",
+		"@capacitor/core": "8.4.0",
+		"@capacitor/haptics": "8.0.2",
+		"@capacitor/keyboard": "8.0.3",
+		"@capacitor/preferences": "^8.0.1",
+		"@capacitor/push-notifications": "^8.0.0",
+		"@clack/prompts": "^1.0.0",
+		"@elizaos/core": "workspace:*",
+		"@elizaos/plugin-anthropic": "workspace:*",
+		"@elizaos/plugin-browser": "workspace:*",
+		"@elizaos/plugin-edge-tts": "workspace:*",
+		"@elizaos/plugin-elizacloud": "workspace:*",
+		"@elizaos/plugin-groq": "workspace:*",
+		"@elizaos/plugin-health": "workspace:*",
+		"@elizaos/plugin-local-inference": "workspace:*",
+		"@elizaos/plugin-openai": "workspace:*",
+		"@elizaos/plugin-registry": "workspace:*",
+		"@elizaos/plugin-sql": "workspace:*",
+		"@elizaos/plugin-wechat": "workspace:*",
+		"@elizaos/plugin-workflow": "workspace:*",
+		"@elizaos/shared": "workspace:*",
+		"@elizaos/skills": "workspace:*",
+		"@elizaos/ui": "workspace:*",
+		"@elizaos/vault": "workspace:*",
+		"@node-rs/argon2": "^2.0.2",
+		"@upstash/redis": "^1.37.0",
+		"chalk": "^5.3.0",
+		"commander": "^15.0.0",
+		"dotenv": "^17.2.3",
+		"drizzle-orm": "0.45.2",
+		"ethers": "^6.16.0",
+		"jose": "^6.2.2",
+		"json5": "^2.2.3",
+		"telegraf": "^4.16.3",
+		"undici": "8.5.0",
+		"ws": "^8.19.0",
+		"zod": "^4.4.3"
+	},
+	"publishConfig": {
+		"access": "public",
+		"directory": "dist"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.59.1",
+		"@types/react": "^19.0.0",
+		"@types/react-dom": "^19.0.0",
+		"@types/ws": "^8.18.1",
+		"bun-types": "^1.3.12",
+		"playwright": "^1.59.1",
+		"playwright-core": "^1.58.2",
+		"react-test-renderer": "^19.2.4",
+		"sharp": "^0.34.5",
+		"tailwindcss": "^4.3.1",
+		"tsx": "^4.21.0",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.8",
+		"vitest": "^4.0.18",
+		"yaml": "^2.8.4"
+	},
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts"
+}

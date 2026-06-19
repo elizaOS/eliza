@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_711",
+    "from": "zhoujl@dingxin-soft.com",
+    "to": "sales@company.com",
+    "subject": "关于下季度合作计划",
+    "date": "2026-02-10T14:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "您好，上次讨论的Q2合作计划还需要进一步细化，方便时请联系我。——周经理"
+  },
+  {
+    "message_id": "msg_712",
+    "from": "zhanghua@sunlight-media.com",
+    "to": "sales@company.com",
+    "subject": "合作升级意向",
+    "date": "2026-02-05T10:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "你好，我们考虑将现有的标准版升级到企业版，希望了解具体的功能差异和价格方案。请尽快安排沟通。——张华"
+  }
+]

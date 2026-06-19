@@ -1,0 +1,81 @@
+name: App Real E2E (browser-driven)
+
+# Gated, NON-blocking lane for the browser-driven REAL app e2e suite that lived
+# in no workflow until now (it was dark): test/app/*.{real,live}.e2e.test.ts —
+#   - qa-checklist.real.e2e.test.ts        (onboarding + VRM + doc upload + chat +
+#                                            settings pages + voice + char switch)
+#   - first-run-companion.live.e2e.test.ts (real onboarding wizard)
+#   - memory-relationships.real.e2e.test.ts(real /memories + /relationships views)
+#   - streaming-visible-text.live.e2e.test.ts (real SSE token streaming)
+#
+# These drive a real renderer (puppeteer/playwright) against a real app-core
+# runtime + a real model provider. Each self-skips (describeIf / CAN_RUN) unless
+# ELIZA_LIVE_TEST=1 AND a provider is resolvable, so a key-less run is a clean
+# no-op rather than a failure. The default vitest config EXCLUDES these files and
+# only scans src/, so they need the dedicated vitest.app-real-e2e.config.ts +
+# the test:app-real-e2e script (added alongside this workflow).
+#
+# Runs nightly + on-demand; never on pull_request.
+
+on:
+  schedule:
+    # 09:00 UTC daily — after app-live-e2e (07:00) and voice-live-e2e (08:30).
+    - cron: "0 9 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: app-real-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  NODE_VERSION: "24"
+  BUN_VERSION: "canary"
+  ELIZA_LIVE_TEST: "1"
+  # Provider keys (the suite picks the first resolvable via selectLiveProvider();
+  # absent secrets => the suite self-skips, never fails).
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+  GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+  ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+
+jobs:
+  app-real-e2e:
+    name: Browser-driven real app e2e (nightly)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install browser drivers (the suite imports puppeteer-core/playwright-core)
+        run: |
+          set -euo pipefail
+          bun add --cwd packages/app-core puppeteer-core playwright-core
+          bunx playwright install --with-deps chromium
+
+      - name: Run browser-driven real app e2e
+        run: bun run --cwd packages/app-core test:app-real-e2e

@@ -1,0 +1,615 @@
+{
+  "run": "pd/openlane/runs/RUN_2026-05-18_05-41-42",
+  "netlist": "pd/openlane/runs/RUN_2026-05-18_05-41-42/final/nl/e1_chip_top.nl.v",
+  "synthesis_json": "pd/openlane/runs/RUN_2026-05-18_05-41-42/06-yosys-synthesis/e1_chip_top.nl.v.json",
+  "threshold": 100,
+  "routed_large_net_warnings": [
+    {
+      "net": "net489",
+      "router_pins": 106,
+      "parsed_pins": 106,
+      "loads": 105,
+      "drivers": 1,
+      "ports": [["RESET_B", 53], ["DIODE", 50], ["A", 2], ["X", 1]],
+      "classification": "reset_distribution",
+      "note": "Large routed reset branch. Likely driven by rst_n_sync through OpenROAD-inserted max-cap buffers."
+    }
+  ],
+  "synthesis_high_fanout": [
+    {
+      "net": "rst_n_sync",
+      "aliases": [],
+      "load_pins": 4232,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:28.11-28.21",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$222428.S",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$222431.S",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$222434.S",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$222437.S",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$222440.S",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$222443.S"
+      ],
+      "classification": "reset_distribution",
+      "note": "Large routed reset branch. Likely driven by rst_n_sync through OpenROAD-inserted max-cap buffers."
+    },
+    {
+      "net": "CLK_IN",
+      "aliases": [],
+      "load_pins": 4223,
+      "driver_pins": 0,
+      "source": "/work/rtl/top/e1_chip_top.sv:4.24-4.30",
+      "sample_sinks": [
+        "$auto$ff.cc:266:slice$26675.CLK",
+        "$auto$ff.cc:266:slice$26676.CLK",
+        "$auto$ff.cc:266:slice$26720.CLK",
+        "$auto$ff.cc:266:slice$26721.CLK",
+        "$auto$ff.cc:266:slice$26722.CLK",
+        "$auto$ff.cc:266:slice$26723.CLK"
+      ],
+      "classification": "clock_distribution",
+      "note": "Clock-tree distribution; should be handled by CTS, not by data-net fanout fixes."
+    },
+    {
+      "net": "$abc$197552$new_n11271",
+      "aliases": [],
+      "load_pins": 162,
+      "driver_pins": 1,
+      "source": "",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200370.C",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205421.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205481.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205512.B1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205520.B",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205537.A2"
+      ],
+      "classification": "synthesis_generated_logic",
+      "note": "ABC-generated combinational net. Use synthesis JSON source context and downstream cell names to localize."
+    },
+    {
+      "net": "$abc$197552$new_n11007",
+      "aliases": [],
+      "load_pins": 142,
+      "driver_pins": 1,
+      "source": "",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200101.B",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200149.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200355.A",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$203595.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$203596.A",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$203604.B2"
+      ],
+      "classification": "synthesis_generated_logic",
+      "note": "ABC-generated combinational net. Use synthesis JSON source context and downstream cell names to localize."
+    },
+    {
+      "net": "$abc$197552$new_n16330",
+      "aliases": [],
+      "load_pins": 137,
+      "driver_pins": 1,
+      "source": "",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205424.B1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205482.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205510.B1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205544.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$206884.B1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$206893.B1"
+      ],
+      "classification": "synthesis_generated_logic",
+      "note": "ABC-generated combinational net. Use synthesis JSON source context and downstream cell names to localize."
+    },
+    {
+      "net": "$abc$197552$new_n11274",
+      "aliases": [],
+      "load_pins": 135,
+      "driver_pins": 1,
+      "source": "",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200370.D",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205421.B1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205488.B1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205510.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205516.B",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205519.B"
+      ],
+      "classification": "synthesis_generated_logic",
+      "note": "ABC-generated combinational net. Use synthesis JSON source context and downstream cell names to localize."
+    },
+    {
+      "net": "$abc$197552$new_n10708",
+      "aliases": [],
+      "load_pins": 131,
+      "driver_pins": 1,
+      "source": "",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200371.A",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205426.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205469.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205509.B1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205532.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$206883.B1"
+      ],
+      "classification": "synthesis_generated_logic",
+      "note": "ABC-generated combinational net. Use synthesis JSON source context and downstream cell names to localize."
+    },
+    {
+      "net": "$abc$197552$new_n10556",
+      "aliases": [],
+      "load_pins": 129,
+      "driver_pins": 1,
+      "source": "",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205491.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205509.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$205526.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$206883.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$206895.A2",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$206902.A2"
+      ],
+      "classification": "synthesis_generated_logic",
+      "note": "ABC-generated combinational net. Use synthesis JSON source context and downstream cell names to localize."
+    },
+    {
+      "net": "$abc$197552$new_n14998",
+      "aliases": [],
+      "load_pins": 114,
+      "driver_pins": 1,
+      "source": "",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204104.C1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204165.A",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204190.A",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204194.A",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204200.A",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204203.A"
+      ],
+      "classification": "synthesis_generated_logic",
+      "note": "ABC-generated combinational net. Use synthesis JSON source context and downstream cell names to localize."
+    },
+    {
+      "net": "$abc$197552$new_n15016",
+      "aliases": [],
+      "load_pins": 107,
+      "driver_pins": 1,
+      "source": "",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204129.B",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204131.B",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204176.B1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204178.S",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204181.A",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204185.A"
+      ],
+      "classification": "synthesis_generated_logic",
+      "note": "ABC-generated combinational net. Use synthesis JSON source context and downstream cell names to localize."
+    },
+    {
+      "net": "mmio_wdata[2]",
+      "aliases": [],
+      "load_pins": 105,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200590.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202070.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202174.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202277.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202380.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202482.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[3]",
+      "aliases": [],
+      "load_pins": 104,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200713.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202073.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202177.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202280.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202383.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202485.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "$abc$197552$new_n11060",
+      "aliases": [],
+      "load_pins": 103,
+      "driver_pins": 1,
+      "source": "",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200153.B",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$204071.B1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$221674.S",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$221675.S",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$221676.S",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$221677.S"
+      ],
+      "classification": "synthesis_generated_logic",
+      "note": "ABC-generated combinational net. Use synthesis JSON source context and downstream cell names to localize."
+    },
+    {
+      "net": "mmio_wdata[8]",
+      "aliases": [],
+      "load_pins": 103,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201296.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202088.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202192.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202295.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202398.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202500.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[9]",
+      "aliases": [],
+      "load_pins": 103,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201342.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202091.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202195.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202298.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202401.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202503.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[17]",
+      "aliases": [],
+      "load_pins": 103,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201635.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202115.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202219.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202322.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202425.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202527.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[16]",
+      "aliases": [],
+      "load_pins": 102,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$197565.A",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201604.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202112.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202216.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202319.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202422.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[4]",
+      "aliases": [],
+      "load_pins": 102,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200836.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202076.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202180.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202283.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202386.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202488.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[5]",
+      "aliases": [],
+      "load_pins": 102,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$200971.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202079.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202183.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202286.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202389.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202491.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[18]",
+      "aliases": [],
+      "load_pins": 102,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201663.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202118.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202222.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202325.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202428.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202530.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[6]",
+      "aliases": [],
+      "load_pins": 101,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201112.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202082.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202186.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202289.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202392.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202494.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[7]",
+      "aliases": [],
+      "load_pins": 101,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201250.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202085.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202189.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202292.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202395.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202497.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[10]",
+      "aliases": [],
+      "load_pins": 101,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201385.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202094.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202198.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202301.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202404.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202506.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[11]",
+      "aliases": [],
+      "load_pins": 101,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201427.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202097.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202201.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202304.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202407.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202509.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[12]",
+      "aliases": [],
+      "load_pins": 101,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201469.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202100.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202204.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202307.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202410.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202512.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[13]",
+      "aliases": [],
+      "load_pins": 101,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201503.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202103.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202207.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202310.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202413.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202515.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[19]",
+      "aliases": [],
+      "load_pins": 101,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201689.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202121.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202225.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202328.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202431.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202533.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[20]",
+      "aliases": [],
+      "load_pins": 101,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201723.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202124.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202228.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202331.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202434.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202536.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[21]",
+      "aliases": [],
+      "load_pins": 101,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201752.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202127.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202231.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202334.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202437.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202539.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[14]",
+      "aliases": [],
+      "load_pins": 100,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201541.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202106.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202210.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202313.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202416.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202518.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[15]",
+      "aliases": [],
+      "load_pins": 100,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201571.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202109.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202213.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202316.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202419.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202521.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[26]",
+      "aliases": [],
+      "load_pins": 100,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201909.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202142.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202246.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202349.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202452.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202554.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[27]",
+      "aliases": [],
+      "load_pins": 100,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201938.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202145.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202249.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202352.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202455.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202557.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[28]",
+      "aliases": [],
+      "load_pins": 100,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$201972.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202148.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202252.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202355.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202458.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202560.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    },
+    {
+      "net": "mmio_wdata[29]",
+      "aliases": [],
+      "load_pins": 100,
+      "driver_pins": 1,
+      "source": "/work/rtl/top/e1_chip_top.sv:32.18-32.28",
+      "sample_sinks": [
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202006.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202151.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202255.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202358.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202461.A1",
+        "$abc$197552$auto$blifparse.cc:396:parse_blif$202563.A1"
+      ],
+      "classification": "mmio_write_data_fanout",
+      "note": "Debug/MMIO write-data bit fans into many register write enables or mux terms."
+    }
+  ]
+}

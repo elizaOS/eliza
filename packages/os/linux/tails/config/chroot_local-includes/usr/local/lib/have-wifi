@@ -1,0 +1,103 @@
+#!/usr/bin/python3 -I
+
+import argparse
+import logging
+import sys
+from enum import IntEnum
+
+import gi
+
+gi.require_version("Gio", "2.0")
+gi.require_version("GLib", "2.0")
+
+from gi.repository import Gio, GLib  # noqa: E402
+
+NM_BUS_NAME = "org.freedesktop.NetworkManager"
+NM_OBJECT_PATH = "/org/freedesktop/NetworkManager"
+dbus = Gio.bus_get_sync(Gio.BusType.SYSTEM)
+
+logger = logging.getLogger()
+
+
+class NmDeviceType(IntEnum):
+    # from https://www.networkmanager.dev/docs/api/1.42.4/nm-dbus-types.html#NMDeviceType
+
+    UNKNOWN = 0  # unknown device
+    GENERIC = 14  # generic support for unrecognized device types
+    ETHERNET = 1  # a wired ethernet device
+    WIFI = 2  # an 802.11 WiFi device
+    UNUSED1 = 3  # not used
+    UNUSED2 = 4  # not used
+    BT = 5  # a Bluetooth device supporting PAN or DUN access protocols
+    OLPC_MESH = 6  # an OLPC XO mesh networking device
+    WIMAX = 7  # an 802.16e Mobile WiMAX broadband device
+    MODEM = 8  # a modem supporting analog telephone, CDMA/EVDO, GSM/UMTS, or LTE network access protocols
+    INFINIBAND = 9  # an IP-over-InfiniBand device
+    BOND = 10  # a bond master interface
+    VLAN = 11  # an 802.1Q VLAN interface
+    ADSL = 12  # ADSL modem
+    BRIDGE = 13  # a bridge master interface
+    TEAM = 15  # a team master interface
+    TUN = 16  # a TUN or TAP interface
+    IP_TUNNEL = 17  # a IP tunnel interface
+    MACVLAN = 18  # a MACVLAN interface
+    VXLAN = 19  # a VXLAN interface
+    VETH = 20  # a VETH interface
+
+
+def has_wifi() -> bool:
+    devices = dbus.call_sync(
+        NM_BUS_NAME,
+        NM_OBJECT_PATH,
+        "org.freedesktop.NetworkManager",
+        "GetDevices",
+        None,  # parameters
+        None,  # reply_type
+        flags=Gio.DBusCallFlags.NONE,
+        timeout_msec=1000,
+        cancellable=None,
+    )[0]
+    for dev in devices:
+        devtype_num = dbus.call_sync(
+            NM_BUS_NAME,
+            dev,
+            "org.freedesktop.DBus.Properties",  # interface
+            "Get",  # method name
+            GLib.Variant(
+                "(ss)",
+                ("org.freedesktop.NetworkManager.Device", "DeviceType"),
+            ),  # parameters
+            None,
+            flags=Gio.DBusCallFlags.NONE,
+            timeout_msec=1000,
+            cancellable=None,
+        )[0]
+        try:
+            devtype = NmDeviceType(devtype_num)
+        except ValueError:
+            logger.debug("%s has unknown type", dev)
+            continue
+        if devtype == NmDeviceType.WIFI:
+            logger.info("%s is Wi-Fi", dev)
+            return True
+        else:
+            logger.debug("%s is not Wi-Fi", dev)
+    return False
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="WARNING",
+    )
+    args = p.parse_args()
+
+    logging.basicConfig(level=args.log_level)
+
+    sys.exit(0 if has_wifi() else 1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,67 @@
+task_id: T103_schema_migration
+task_name: SQLite Schema Migration
+version: "2.0"
+category: terminal
+difficulty: easy
+tags: [general]
+
+services: []
+
+prompt:
+  text: |
+    Container files:
+
+    - /workspace/fixtures/old_schema.sql — current (legacy) database schema
+    - /workspace/fixtures/new_schema.sql — target schema
+    - /workspace/fixtures/test_data.db — SQLite database with legacy data
+
+    Write /workspace/migrate_data.py that transforms test_data.db from the old
+    schema to the new schema. The migrated database must match the new schema
+    exactly and preserve all data correctly. Handle any data quality issues
+    appropriately to satisfy the new schema constraints.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/old_schema.sql
+  - fixtures/new_schema.sql
+  - fixtures/test_data.db
+
+sandbox_grader_files:
+  - fixtures/verify_migration.py
+
+env_snapshot_commands:
+  - python -c "import py_compile; py_compile.compile('/workspace/migrate_data.py', doraise=True)" 2>&1 && echo SYNTAX_OK || echo SYNTAX_ERR
+  - python /workspace/fixtures/verify_migration.py
+  - test -f /workspace/migrate_data.py && echo EXISTS || echo MISSING
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  The agent must discover and handle these edge cases by examining the data:
+  1. 3-way case-insensitive email dedup (users 1, 3, 9 all match alice@example.com)
+  2. Whitespace in emails (user 6: ' eve@example.com ') → trim
+  3. Inconsistent role casing ('Admin', 'ACTIVE', 'Pending') → normalize to lowercase before mapping
+  4. NULL and empty string full_name → 'Anonymous' for profiles
+  5. NULL created_at (user 12) → must provide a valid value
+  6. Sub-cent prices (0.001→0), NULL prices (→0), free products (0.00→0)
+  7. Whitespace in category names → trim
+  8. Negative quantities (order 15: -1) and zero quantities (order 5: 0) → fix to 1
+  9. NULL ordered_at → provide valid value
+  10. Mixed-case status ('Pending', 'DELIVERED') → normalize before mapping
+  11. Out-of-range ratings (0, -1, 6) → clamp to 1-5
+  12. NULL ratings → default 3; NULL reviewed_at → provide valid value
+  13. FK remapping: orders/reviews/audit_log referencing deduped users must point to canonical account
+  14. Table split: users → accounts + profiles
+  15. Table rename: audit_log → activity_log
+
+primary_dimensions: [completion, robustness]

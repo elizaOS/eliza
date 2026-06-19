@@ -1,0 +1,163 @@
+{
+  "claim_boundary": "CAD seal-stack review for ingress paths; not IP certification or lab evidence.",
+  "status": "cad_ingress_path_review_ready",
+  "target": "IP54 design intent only",
+  "path_count": 8,
+  "paths": [
+    {
+      "id": "display_glass_perimeter",
+      "opening": "screen_cover_glass_to_orange_body",
+      "seal_stack": [
+        "screen_adhesive_top",
+        "screen_adhesive_bottom",
+        "screen_adhesive_left",
+        "screen_adhesive_right"
+      ],
+      "strategy": "continuous die-cut display adhesive forms primary splash/dust barrier",
+      "cad_pass": true,
+      "lab_closure": "display bond peel, splash exposure, and post-drop screen-lift inspection"
+    },
+    {
+      "id": "bottom_speaker_grille",
+      "opening": "five molded bottom speaker slots",
+      "seal_stack": [
+        "bottom_speaker_dust_mesh",
+        "bottom_speaker_acoustic_chamber"
+      ],
+      "strategy": "hydrophobic dust mesh bonded behind grille with molded rear chamber isolated from USB load saddle",
+      "cad_pass": true,
+      "lab_closure": "speaker sweep before/after dust and splash, mesh adhesive visual inspection"
+    },
+    {
+      "id": "bottom_microphone_ports",
+      "opening": "dual bottom MEMS acoustic ports",
+      "seal_stack": [
+        "bottom_microphone_mesh_1",
+        "bottom_microphone_mesh_2"
+      ],
+      "strategy": "individual hydrophobic meshes sit behind each molded microphone port",
+      "cad_pass": true,
+      "lab_closure": "microphone sensitivity/noise floor before and after dust/splash exposure"
+    },
+    {
+      "id": "top_microphone_port",
+      "opening": "top MEMS acoustic port",
+      "seal_stack": [
+        "top_microphone_mesh"
+      ],
+      "strategy": "hydrophobic mesh behind the top port to keep the second microphone from being an unprotected ingress path",
+      "cad_pass": true,
+      "lab_closure": "top microphone sensitivity/noise floor before and after dust/splash exposure"
+    },
+    {
+      "id": "handset_earpiece_slot",
+      "opening": "under-glass handset acoustic slot",
+      "seal_stack": [
+        "earpiece_gasket",
+        "handset_acoustic_mesh"
+      ],
+      "strategy": "compressed earpiece gasket and hydrophobic mesh behind handset slot",
+      "cad_pass": true,
+      "lab_closure": "receiver SPL/leak check plus splash exposure at earpiece slot"
+    },
+    {
+      "id": "usb_c_bottom_aperture",
+      "opening": "USB-C shell aperture",
+      "seal_stack": [
+        "usb_c_external_aperture",
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right",
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf",
+        "orange_usb_reinforcement_saddle"
+      ],
+      "strategy": "open USB-C connector is managed by a four-sided elastomer receptacle seat, molded drip break, internal drain shelf, and load saddle",
+      "cad_pass": true,
+      "lab_closure": "USB insertion/rub, side splash, water-retention visual inspection, and gasket compression-set check"
+    },
+    {
+      "id": "rear_camera_window",
+      "opening": "rear camera cover glass",
+      "seal_stack": [
+        "rear_camera_cover_glass",
+        "rear_camera_lens_window",
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_cover_adhesive_bottom",
+        "rear_camera_cover_adhesive_left",
+        "rear_camera_cover_adhesive_right",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom"
+      ],
+      "strategy": "rear cover glass is bonded with a four-sided black PSA gasket plus internal baffles to limit dust and flare",
+      "cad_pass": true,
+      "lab_closure": "camera dust inspection, focus/MTF check, flare check, and cover-glass adhesive peel review"
+    },
+    {
+      "id": "side_button_rails",
+      "opening": "power and volume button rail gaps",
+      "seal_stack": [
+        "power_button_cap",
+        "power_button_elastomer_gasket",
+        "power_button_labyrinth_upper_rail",
+        "power_button_labyrinth_lower_rail",
+        "volume_button_cap",
+        "volume_button_elastomer_gasket",
+        "volume_button_labyrinth_upper_rail",
+        "volume_button_labyrinth_lower_rail"
+      ],
+      "strategy": "external orange caps actuate through silicone gaskets backed by molded labyrinth rails on each side-key opening",
+      "cad_pass": true,
+      "lab_closure": "button force/travel after dust exposure, side-splash inspection, and gasket compression set check"
+    }
+  ],
+  "acoustic_mesh_overhang_cases": [
+    {
+      "id": "bottom_speaker_mesh_overhang",
+      "opening": "bottom_speaker_grille_slots",
+      "seal": "bottom_speaker_dust_mesh",
+      "minimum_overhang_mm": 0.4,
+      "required_overhang_mm": 0.25,
+      "pass": true
+    },
+    {
+      "id": "bottom_microphone_mesh_1_overhang",
+      "opening": "bottom_microphone_port_1",
+      "seal": "bottom_microphone_mesh_1",
+      "minimum_overhang_mm": 0.25,
+      "required_overhang_mm": 0.15,
+      "pass": true
+    },
+    {
+      "id": "bottom_microphone_mesh_2_overhang",
+      "opening": "bottom_microphone_port_2",
+      "seal": "bottom_microphone_mesh_2",
+      "minimum_overhang_mm": 0.25,
+      "required_overhang_mm": 0.15,
+      "pass": true
+    },
+    {
+      "id": "top_microphone_mesh_overhang",
+      "opening": "top_microphone_port",
+      "seal": "top_microphone_mesh",
+      "minimum_overhang_mm": 0.25,
+      "required_overhang_mm": 0.15,
+      "pass": true
+    },
+    {
+      "id": "handset_mesh_overhang",
+      "opening": "handset_acoustic_slot",
+      "seal": "handset_acoustic_mesh",
+      "minimum_overhang_mm": 0.75,
+      "required_overhang_mm": 0.25,
+      "pass": true
+    }
+  ],
+  "open_product_decisions": [
+    "USB-C gasket/drip geometry is modeled, but an IP claim still needs supplier connector detail and splash/retention evidence.",
+    "Side-button gasket/labyrinth geometry is modeled, but needs supplier material, compression-set, and splash-test evidence.",
+    "IP54 is design intent only until dust and splash lab rows are populated."
+  ],
+  "release_rule": "Every modeled ingress path must have a CAD seal stack, mesh overhang where acoustic ports are open, and measured dust/splash results before environmental release."
+}

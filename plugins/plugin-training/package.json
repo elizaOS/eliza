@@ -1,0 +1,106 @@
+{
+  "name": "@elizaos/plugin-training",
+  "version": "2.0.3-beta.14",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./setup-routes": {
+      "types": "./dist/setup-routes.d.ts",
+      "eliza-source": {
+        "types": "./src/setup-routes.ts",
+        "import": "./src/setup-routes.ts",
+        "default": "./src/setup-routes.ts"
+      },
+      "import": "./dist/setup-routes.js",
+      "default": "./dist/setup-routes.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "train": "bun run src/cli/train.ts",
+    "collect": "bun run src/core/cli.ts run-collection",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/scenario-runner": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-dom": "*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Fine Tuning",
+      "category": "tool",
+      "launchType": "internal-tab",
+      "icon": "BrainCircuit",
+      "heroImage": "assets/hero.png",
+      "capabilities": [
+        "training",
+        "fine-tuning",
+        "trajectories",
+        "datasets",
+        "models",
+        "evals",
+        "benchmarks",
+        "analysis",
+        "data-collection"
+      ],
+      "uiExtension": {
+        "detailPanelId": "plugin-dash-fine-tuning"
+      },
+      "developerOnly": true,
+      "visibleInAppStore": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "dotenv": "^17.2.3",
+    "jsdom": "^29.0.0",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17",
+    "vite": "^8.0.0"
+  }
+}

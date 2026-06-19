@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=elizaOS
+GenericName=elizaOS Application Launcher
+Comment=The elizaOS home surface — launcher and chat overlay
+Exec=systemctl --user start elizaos-launcher.service
+Icon=elizaos
+Terminal=false
+Categories=System;
+X-GNOME-Autostart-enabled=true
+OnlyShowIn=GNOME;

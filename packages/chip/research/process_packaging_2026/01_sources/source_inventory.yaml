@@ -1,0 +1,552 @@
+schema: eliza.process_packaging_2026.source_inventory.v1
+captured_date: "2026-05-19"
+scope:
+  - 14A-class and sub-2 nm logic device architecture (nanosheet, GAA, forksheet, CFET, 2D)
+  - frontside vs backside power delivery (PowerVia, Super Power Rail, BSPDN, BPR)
+  - High-NA EUV lithography and pitch scaling at A14/A10
+  - DTCO and STCO including cell-height reduction and contact-over-active-gate
+  - BEOL materials and air-gap interconnect at advanced nodes
+  - 2 nm-class SRAM density and Vmin
+  - advanced packaging: CoWoS, InFO, SoIC, Foveros, EMIB, X-Cube, hybrid bonding
+  - UCIe / BoW / OpenHBI / AIB chiplet interconnect
+  - mobile chiplet evidence
+  - thermal modeling for mobile (vapor chambers, AOSP thermal HAL)
+  - reliability physics at GAA / sub-2 nm (BTI, HCI, TDDB, EM, soft error, self-heating)
+claim_boundary: >
+  Sources below are public papers, vendor pages, standards, foundry briefs, and
+  IEEE / IRDS technology-plan chapters. They do not prove an E1 PDK, library, or signoff
+  status. All process and packaging claims for E1 remain blocked behind the
+  required_evidence entries in docs/spec-db/process-14a-effects.yaml.
+source_policy:
+  preferred:
+    - IEEE / IRDS 2024 technology-plan chapters
+    - ISSCC, IEDM, VLSI Symposium technical papers (peer reviewed)
+    - foundry technical pages (TSMC, Intel Foundry, Samsung Foundry, Rapidus)
+    - imec public research summaries
+    - ASML technical and investor pages
+    - JEDEC and IPC standards
+  used_with_skepticism:
+    - vendor marketing material
+    - investor presentation slides
+    - industry analyst projections (cost, yield)
+
+irds_technology_plan_2024:
+  - id: irds_2024_more_moore
+    title: "IRDS 2024 -- More Moore"
+    url: "https://irds.ieee.org/editions/2024/more-moore"
+    source_type: technology_plan
+    captured_points:
+      - "GAA nanosheet expected at logic node N2 / 20 angstrom class in 2025--2026"
+      - "CFET (complementary FET) projected to follow nanosheet circa 2030"
+      - "Backside power delivery anticipated alongside the first generation of 2 nm-class logic"
+      - "Contacted poly pitch (CPP) target ~45 nm and metal pitch (MMP) ~20 nm region for A14-class"
+      - "DTCO / STCO declared a primary scaling driver in addition to lithographic pitch"
+  - id: irds_2024_lithography
+    title: "IRDS 2024 -- Lithography"
+    url: "https://irds.ieee.org/editions/2024/lithography"
+    source_type: technology_plan
+    captured_points:
+      - "High-NA EUV (0.55 NA) tools targeted for high-volume 14A-class production"
+      - "Hyper-NA research path (NA > 0.55) explored for A10 and beyond"
+      - "Stochastic defectivity, mask 3D effects, and resist thinness flagged as risks"
+  - id: irds_2024_beol
+    title: "IRDS 2024 -- Interconnect / BEOL"
+    url: "https://irds.ieee.org/editions/2024/interconnect"
+    source_type: technology_plan
+    captured_points:
+      - "Cobalt, ruthenium, and molybdenum candidate metals for advanced BEOL"
+      - "Air-gap and low-k dielectric integration for capacitance reduction"
+      - "Via resistance becomes a dominant interconnect bottleneck at sub-20 nm pitch"
+      - "Semi-damascene flows under investigation for tight-pitch layers"
+  - id: irds_2024_reliability
+    title: "IRDS 2024 -- More Moore / Reliability section"
+    url: "https://irds.ieee.org/editions/2024/more-moore"
+    source_type: technology_plan
+    captured_points:
+      - "BTI shift increases at GAA/nanosheet due to higher gate field and confined channel"
+      - "Self-heating in stacked nanosheets degrades performance and aging"
+      - "TDDB and HCI margins narrow as Vdd is pinned near 0.7 V"
+  - id: irds_2024_packaging
+    title: "IRDS 2024 -- Packaging Integration"
+    url: "https://irds.ieee.org/editions/2024/packaging-integration"
+    source_type: technology_plan
+    captured_points:
+      - "Hybrid-bonding pitch trajectory toward sub-1 um anticipated by 2028"
+      - "3D logic-on-logic and logic-on-memory integration projected as mainstream"
+      - "Thermal density in 3D stacks identified as primary scaling limiter"
+
+foundry_public_pages:
+  - id: tsmc_n2_overview
+    title: "TSMC N2 Technology"
+    url: "https://www.tsmc.com/english/dedicatedFoundry/technology/logic/l_2nm"
+    source_type: vendor_page
+    captured_points:
+      - "N2 introduces nanosheet (GAAFET) transistors"
+      - "Risk production schedule announced for 2025, high-volume production 2026"
+      - "NanoFlex offered for cell-height / nanosheet-width flexibility"
+      - "Backside power delivery (Super Power Rail) targeted at N2P variant, not base N2"
+  - id: tsmc_a16_announcement
+    title: "TSMC A16 Technology Announcement"
+    url: "https://pr.tsmc.com/english/news/3128"
+    source_type: vendor_press
+    captured_points:
+      - "A16 combines nanosheet transistors with Super Power Rail backside PDN"
+      - "Targeted production start announced for 2026 / second half"
+      - "Improvement claims vs N2P: ~8--10% speed at iso-Vdd or ~15--20% power at iso-frequency, 1.07--1.10x density"
+      - "Marketed for HPC; mobile adoption follows separately"
+  - id: tsmc_a14_plan
+    title: "TSMC A14 / 1.4 nm class process-plan coverage"
+    url: "https://www.tsmc.com/english"
+    source_type: vendor_page
+    captured_points:
+      - "A14 is the 1.4 nm-class node referenced in TSMC's long-range process plan"
+      - "Targets 2027--2028 ramp depending on segment"
+      - "Expected to retain nanosheet generation 2 with extended Super Power Rail and refined NanoFlex options"
+  - id: intel_foundry_18a
+    title: "Intel 18A Process"
+    url: "https://www.intel.com/content/www/us/en/foundry/process/18a.html"
+    source_type: vendor_page
+    captured_points:
+      - "First Intel node with RibbonFET (GAA) and PowerVia backside PDN"
+      - "Targets production 2025"
+      - "PowerVia decouples power routing from signal routing, reportedly improving cell utilization and reducing IR drop"
+  - id: intel_foundry_14a
+    title: "Intel 14A Process"
+    url: "https://www.intel.com/content/www/us/en/foundry/process/14a.html"
+    source_type: vendor_page
+    captured_points:
+      - "RibbonFET 2 with PowerDirect backside power delivery"
+      - "Turbo Cells for higher-speed paths"
+      - "Marketed perf/W and density improvement vs 18A"
+      - "Targets ramp in the 2027--2028 window"
+  - id: intel_foundry_ai_hpc_brief
+    title: "Intel Foundry: Accelerating AI and HPC with Advanced Technologies"
+    url: "https://www.intel.com/content/www/us/en/foundry/library/ai-hpc.html"
+    source_type: vendor_brief
+    captured_points:
+      - "18A, 18A-P, 18A-PT, 14A node family"
+      - "EMIB-T and Foveros Direct for AI/HPC scale"
+      - "Optical I/O and silicon photonics integration plan"
+  - id: samsung_foundry_sf2
+    title: "Samsung Foundry SF2 / 2 nm-class"
+    url: "https://semiconductor.samsung.com/foundry/process-technology/"
+    source_type: vendor_page
+    captured_points:
+      - "SF2 GAA second-generation MBCFET (multi-bridge channel FET)"
+      - "BSPDN variant planned at SF2Z / follow-on node"
+      - "Mobile and HPC variants offered"
+  - id: samsung_bspdn_iedm2023
+    title: "Samsung BSPDN paper, IEDM 2023"
+    url: "https://www.semiconductor-digest.com/samsung-iedm-2023-bspdn/"
+    source_type: conference_paper_summary
+    captured_points:
+      - "Samsung demonstrated BSPDN integration on a SRAM testchip in 2 nm-class"
+      - "Backside metal stack with nano-TSV-like contacts to source/drain pads"
+      - "Reported routing congestion relief and IR-drop improvement on memory periphery"
+  - id: rapidus_2nm
+    title: "Rapidus 2 nm Foundry Plan"
+    url: "https://www.rapidus.inc/en/"
+    source_type: vendor_page
+    captured_points:
+      - "Rapidus + IBM partnership to deliver 2 nm GAA in Japan"
+      - "Single-wafer production model for shorter cycle time"
+      - "Targeted pilot 2027 -- production 2027/2028"
+
+lithography:
+  - id: asml_high_na_exe5000
+    title: "ASML High-NA EUV TWINSCAN EXE:5000"
+    url: "https://www.asml.com/en/products/euv-lithography-systems/twinscan-exe-5000"
+    source_type: vendor_page
+    captured_points:
+      - "0.55 NA optics versus 0.33 NA for previous-generation EUV"
+      - "Anamorphic optics 4x/8x magnification, half-field exposure"
+      - "Targeting sub-10 nm half-pitch single-exposure printing"
+  - id: asml_high_na_exe5200
+    title: "ASML High-NA EUV TWINSCAN EXE:5200"
+    url: "https://www.asml.com/en/products/euv-lithography-systems/twinscan-exe-5200"
+    source_type: vendor_page
+    captured_points:
+      - "HVM-targeted High-NA tool with higher throughput than EXE:5000"
+      - "Shipping window 2025--2026 to leading foundries"
+  - id: imec_high_na_status
+    title: "imec High-NA EUV pilot status (ITF 2024)"
+    url: "https://www.imec-int.com/en/articles/high-na-euv-imec-itf-2024"
+    source_type: research_summary
+    captured_points:
+      - "First imec High-NA exposures demonstrate sub-30 nm pitch contact arrays"
+      - "Resist thickness < 30 nm to mitigate aspect-ratio collapse"
+      - "Stochastic-defect rate remains primary HVM risk"
+
+device_architecture:
+  - id: imec_cfet_2023
+    title: "imec CFET prototype, IEDM 2023"
+    url: "https://www.imec-int.com/en/articles/imec-cfet-iedm-2023"
+    source_type: conference_paper_summary
+    captured_points:
+      - "Demonstrated stacked nFET-on-pFET (CFET) device on 300 mm"
+      - "Stacked-channel architecture targets ~30--50% area reduction vs nanosheet"
+      - "Self-aligned channel placement remains key process challenge"
+  - id: imec_forksheet
+    title: "imec forksheet device demonstration"
+    url: "https://www.imec-int.com/en/articles/forksheet-transistor"
+    source_type: research_summary
+    captured_points:
+      - "Forksheet inserts dielectric wall between n and p sheets, halving n-p spacing"
+      - "Bridges nanosheet and CFET as an intermediate area scaler"
+  - id: tsmc_nanoflex
+    title: "TSMC NanoFlex / N2 cell flexibility"
+    url: "https://www.tsmc.com/english/dedicatedFoundry/technology/logic/l_2nm"
+    source_type: vendor_page
+    captured_points:
+      - "Per-cell selection of nanosheet width and Vth"
+      - "Enables tall-cell high-performance vs short-cell high-density without separate masks"
+  - id: samsung_finflex
+    title: "Samsung FinFLEX / SF3"
+    url: "https://semiconductor.samsung.com/foundry/process-technology/3nm/"
+    source_type: vendor_page
+    captured_points:
+      - "FinFLEX allowed per-cell fin count selection at SF3 (FinFET-era technique)"
+      - "Conceptual predecessor for nanosheet-width flexibility at SF2"
+  - id: 2d_material_mosfet_iedm
+    title: "2D-material MOSFETs (MoS2 / WSe2) at IEDM"
+    url: "https://www.imec-int.com/en/articles/2d-channel-transistors"
+    source_type: research_summary
+    captured_points:
+      - "Wafer-scale MoS2 transistor demonstrations at imec / TSMC research consortium"
+      - "Sub-1 nm body thickness mitigates short-channel effects"
+      - "Contact resistance remains the dominant performance bottleneck"
+
+backside_power_delivery:
+  - id: imec_backside_pdn_dtco
+    title: "imec backside power delivery DTCO study"
+    url: "https://www.imec-int.com/en/articles/backside-power-delivery-options-dtco-study"
+    source_type: research_summary
+    captured_points:
+      - "Buried power rail (BPR) and nano-TSV variants compared"
+      - "Reported up to ~30% routing congestion relief on frontside metal"
+      - "IR drop reduction of >50% on dense logic for BSPDN configurations"
+      - "Thermal asymmetry must be modeled because heat flux now travels through interconnect side"
+  - id: intel_powervia_vlsi2023
+    title: "Intel PowerVia (VLSI Symposium 2023)"
+    url: "https://www.intel.com/content/www/us/en/newsroom/news/intel-powervia.html"
+    source_type: vendor_brief
+    captured_points:
+      - "PowerVia inserted under fin/sheet via deep TSV-like contacts"
+      - "Reported ~5--10% cell utilization gain and ~30 mV droop improvement on test designs"
+      - "Cell library co-designed around backside-only power"
+  - id: tsmc_super_power_rail
+    title: "TSMC Super Power Rail (SPR)"
+    url: "https://pr.tsmc.com/english/news/3128"
+    source_type: vendor_press
+    captured_points:
+      - "Backside metal stack with bottom-side power contacts"
+      - "First deployment at A16; carried into A14 with refinements"
+
+dtco_stco_cell:
+  - id: synopsys_dtco_overview
+    title: "Synopsys DTCO at sub-2 nm"
+    url: "https://www.synopsys.com/glossary/what-is-dtco.html"
+    source_type: vendor_technical_blog
+    captured_points:
+      - "Standard-cell height moving from ~5T to ~4.5T and toward 4T at A14"
+      - "Contact-over-active-gate (COAG) used to reclaim cell area"
+      - "DTCO must consider PDN and signal-routing congestion jointly"
+  - id: cadence_stco_overview
+    title: "Cadence STCO / system-technology co-optimization"
+    url: "https://community.cadence.com/cadence_blogs_8/b/breakfast-bytes/posts/stco"
+    source_type: vendor_technical_blog
+    captured_points:
+      - "STCO extends DTCO to package and SoC partitioning decisions"
+      - "Co-design across PHY, package, board, thermal stack"
+
+beol_interconnect:
+  - id: imec_ruthenium_molybdenum
+    title: "imec ruthenium / molybdenum BEOL studies"
+    url: "https://www.imec-int.com/en/articles/ruthenium-molybdenum-interconnect"
+    source_type: research_summary
+    captured_points:
+      - "Cu-barrier scaling reaches resistivity inflection at sub-15 nm wire width"
+      - "Mo / Ru without liner shows better effective resistivity at narrow lines"
+      - "Air-gap dielectric integration reduces line-to-line capacitance ~15--25%"
+  - id: applied_materials_semi_damascene
+    title: "Applied Materials semi-damascene flow"
+    url: "https://www.appliedmaterials.com/us/en/blog/blog-posts.html"
+    source_type: vendor_technical_blog
+    captured_points:
+      - "Subtractive Mo and Ru integration replaces damascene at tight pitch"
+      - "Air-gap formation simplified relative to damascene flow"
+
+sram_scaling:
+  - id: tsmc_2nm_sram_iedm2023
+    title: "TSMC 2 nm SRAM macro, IEDM 2023"
+    url: "https://ieeexplore.ieee.org/document/10413758"
+    source_type: conference_paper
+    captured_points:
+      - "Demonstrated GAA-based 2 nm SRAM bitcell with high yield on test array"
+      - "Bitcell area roughly 0.0210--0.0220 um^2 reported, ~5% reduction vs N3"
+      - "Vmin and read-stability margins improved using assist circuits and NanoFlex variants"
+  - id: samsung_2nm_sram_isscc2024
+    title: "Samsung 2 nm SRAM dense macro, ISSCC 2024"
+    url: "https://ieeexplore.ieee.org/document/10454417"
+    source_type: conference_paper
+    captured_points:
+      - "Reported 4 Mb high-density SRAM on 2 nm GAA"
+      - "Improved retention and reduced Vmin variability vs SF3"
+  - id: ibm_2nm_announcement
+    title: "IBM 2 nm GAA test chip"
+    url: "https://research.ibm.com/blog/2-nm-chip"
+    source_type: vendor_press
+    captured_points:
+      - "Test chip with 50 billion transistors on a fingernail-sized die"
+      - "Reference for nanosheet stack architecture used by Rapidus / IBM partnership"
+  - id: gain_cell_sram_jssc2023
+    title: "Gain-cell SRAM for AI accelerators, JSSC 2023"
+    url: "https://ieeexplore.ieee.org/document/10168521"
+    source_type: journal_paper
+    captured_points:
+      - "2T / 3T gain-cell macro for AI scratchpad use"
+      - "Sub-1 V operation and reduced area vs 6T at the cost of refresh"
+
+advanced_packaging:
+  - id: tsmc_cowos
+    title: "TSMC CoWoS family (CoWoS-S/R/L)"
+    url: "https://3dfabric.tsmc.com/english/dedicatedFoundry/technology/cowos.htm"
+    source_type: vendor_page
+    captured_points:
+      - "CoWoS-S: silicon interposer, used in NVIDIA H100/B200, AMD MI300 family"
+      - "CoWoS-R: RDL-based interposer for lower cost"
+      - "CoWoS-L: LSI-bridge interposer mixing silicon bridges + RDL for >2 reticle area"
+      - "Maximum interposer area extending to ~3.3x reticle by 2026 vendor plan"
+  - id: tsmc_info
+    title: "TSMC InFO family (InFO_oS, InFO_LSI, InFO-R)"
+    url: "https://3dfabric.tsmc.com/english/dedicatedFoundry/technology/info.htm"
+    source_type: vendor_page
+    captured_points:
+      - "InFO_oS: integrated fan-out on substrate, used in Apple M-series"
+      - "InFO_LSI: local-silicon-interconnect bridges for chiplet-to-chiplet links"
+      - "InFO-R: RDL fan-out package with finer-pitch RDL"
+  - id: tsmc_soic
+    title: "TSMC SoIC (SoIC-X)"
+    url: "https://3dfabric.tsmc.com/english/dedicatedFoundry/technology/SoIC.htm"
+    source_type: vendor_page
+    captured_points:
+      - "Direct copper-to-copper hybrid bonding, 9 um pitch SoIC-P, scaling toward 3--4 um"
+      - "Logic-on-logic and logic-on-SRAM 3D stacks (e.g. AMD V-Cache)"
+      - "Used for stacked-SRAM cache on TSMC N5/N4 platforms; N3 variants under qualification"
+  - id: tsmc_sow
+    title: "TSMC System on Wafer (SoW)"
+    url: "https://3dfabric.tsmc.com/english/dedicatedFoundry/technology/sow.htm"
+    source_type: vendor_page
+    captured_points:
+      - "Reticle-stitched wafer-scale integration for AI / HPC"
+      - "Targets multi-reticle-class single-package compute (Cerebras-like topology)"
+  - id: intel_foveros
+    title: "Intel Foveros 3D packaging"
+    url: "https://www.intel.com/content/www/us/en/foundry/library/foveros-3d-packaging.html"
+    source_type: vendor_page
+    captured_points:
+      - "Foveros uses face-to-face microbump or hybrid-bonded die stacking"
+      - "Foveros Direct adopts copper hybrid bonding at sub-10 um pitch"
+      - "Used in Meteor Lake / Lunar Lake / Arrow Lake client SoCs"
+  - id: intel_emib
+    title: "Intel EMIB / EMIB-T"
+    url: "https://www.intel.com/content/www/us/en/foundry/library/emib-advanced-packaging.html"
+    source_type: vendor_page
+    captured_points:
+      - "Embedded multi-die interconnect bridge in organic substrate"
+      - "EMIB-T adds TSV for power delivery + signal routing through bridge"
+  - id: samsung_xcube
+    title: "Samsung X-Cube 3D IC"
+    url: "https://semiconductor.samsung.com/foundry/advanced-package/"
+    source_type: vendor_page
+    captured_points:
+      - "Hybrid-bonded 3D stack platform (X-Cube) with sub-10 um pitch"
+      - "Targets HPC/AI and HBM stacking integration"
+  - id: samsung_icube
+    title: "Samsung I-Cube interposer packaging"
+    url: "https://semiconductor.samsung.com/foundry/advanced-package/"
+    source_type: vendor_page
+    captured_points:
+      - "I-Cube-S: silicon interposer (HBM + logic)"
+      - "I-Cube-E: embedded interposer with bridges for higher economy"
+  - id: ase_vipack
+    title: "ASE VIPack advanced packaging"
+    url: "https://ase.aseglobal.com/eng/services/2_5d_3d/advanced_packaging"
+    source_type: vendor_page
+    captured_points:
+      - "OSAT-side answer to foundry packaging: FOEB, bridge, 3D stacking"
+      - "Targets mid-range AI accelerators and chiplet platforms"
+  - id: amkor_swift
+    title: "Amkor SWIFT / S-SWIFT advanced packaging"
+    url: "https://www.amkor.com/services/advanced-packaging"
+    source_type: vendor_page
+    captured_points:
+      - "Bridge-based and silicon-less RDL packaging for AI / HPC clients"
+
+hybrid_bonding:
+  - id: sony_hybrid_bonding_ieice
+    title: "Sony hybrid bonding for stacked image sensors / DBI evolution"
+    url: "https://www.sony-semicon.com/en/technology/imager.html"
+    source_type: vendor_page
+    captured_points:
+      - "Wafer-to-wafer copper hybrid bonding at sub-1 um pitch in image sensors"
+      - "Reference for sub-1 um logic-on-logic hybrid bonding feasibility"
+  - id: imec_hybrid_bond_pitch
+    title: "imec hybrid bonding pitch plan"
+    url: "https://www.imec-int.com/en/articles/hybrid-bonding"
+    source_type: research_summary
+    captured_points:
+      - "Wafer-to-wafer pitch trajectory: 1 um (today) -> 700 nm -> 400 nm by ~2028"
+      - "Die-to-wafer pitch trajectory: 5--9 um (today) -> sub-3 um in pilot lines"
+      - "Yield, alignment, and overlay are the dominant scaling limits"
+
+chiplet_interconnect_standards:
+  - id: ucie_1_1_spec
+    title: "UCIe 1.1 Specification"
+    url: "https://www.uciexpress.org/specifications"
+    source_type: standards_body
+    captured_points:
+      - "Standard package + advanced package modes"
+      - "Up to ~32 GT/s per lane (1.1) and planned higher-rate revisions"
+      - "Sideband, link initialization, and protocol stack defined"
+  - id: ucie_2_0_announcement
+    title: "UCIe 2.0 announcement"
+    url: "https://www.uciexpress.org/post/ucie-consortium-releases-ucie-2-0-specification"
+    source_type: standards_body
+    captured_points:
+      - "Adds 3D packaging hooks and broader manageability features"
+      - "Extends signaling rates and reliability features"
+  - id: openhbi_oif
+    title: "OpenHBI / Open HBM Interface (OIF)"
+    url: "https://www.oiforum.com/technical-work/hot-topics/openhbi/"
+    source_type: standards_body
+    captured_points:
+      - "Open chiplet interface aligned to HBM-style memory channels"
+      - "Targets bandwidth-dense memory chiplets"
+  - id: bow_ocp_chiplet
+    title: "BoW (Bunch of Wires), OCP ODSA"
+    url: "https://www.opencompute.org/projects/odsa"
+    source_type: standards_body
+    captured_points:
+      - "Royalty-free chiplet PHY targeting organic-substrate packages"
+      - "Lower-cost alternative to UCIe Advanced for mid-range chiplet products"
+  - id: aib_2_0
+    title: "AIB 2.0 (Advanced Interface Bus)"
+    url: "https://www.intel.com/content/www/us/en/foundry/aib-open-source-chiplet-interconnect.html"
+    source_type: vendor_open_spec
+    captured_points:
+      - "Intel-originated chiplet interconnect, open-sourced via CHIPS Alliance"
+      - "Foundation for early EMIB-class chiplet products"
+
+mobile_chiplet_evidence:
+  - id: intel_lunar_lake
+    title: "Intel Lunar Lake / Core Ultra 200V"
+    url: "https://www.intel.com/content/www/us/en/products/details/processors/core-ultra/edge.html"
+    source_type: vendor_page
+    captured_points:
+      - "Compute tile on TSMC N3B + platform controller tile, Foveros packaging"
+      - "Memory-on-package LPDDR5X for power and bandwidth"
+      - "Mobile chiplet evidence in a high-volume client SoC"
+  - id: snapdragon_x_elite
+    title: "Qualcomm Snapdragon X Elite / X Plus"
+    url: "https://www.qualcomm.com/products/mobile-computing/snapdragon-x-series"
+    source_type: vendor_page
+    captured_points:
+      - "Monolithic die on TSMC N4P; 12 Oryon cores + Hexagon NPU + Adreno GPU"
+      - "Demonstrates that monolithic stays competitive at N4P for laptops -- chiplet adoption gated by economics"
+  - id: apple_m_ultra_fusion
+    title: "Apple UltraFusion interconnect"
+    url: "https://www.apple.com/newsroom/2022/03/apple-unleashes-m1-ultra-the-worlds-most-powerful-chip-for-a-personal-computer/"
+    source_type: vendor_press
+    captured_points:
+      - "Silicon interposer linking two M-series Max dies (InFO_LSI-class)"
+      - "2.5 TB/s die-to-die bandwidth"
+      - "Mobile-derived chiplet evidence in high-end desktop SoC"
+
+thermal_mobile:
+  - id: aosp_thermal_hal
+    title: "Android Open Source Project Thermal HAL"
+    url: "https://source.android.com/docs/core/power/thermal"
+    source_type: standards_doc
+    captured_points:
+      - "Thermal HAL v2 defines mitigation throttling levels, skin temperature reporting"
+      - "Thermal zones, cooling devices, and emergency shutdown thresholds standardized"
+  - id: aosp_thermal_mitigation
+    title: "Android Thermal Mitigation"
+    url: "https://source.android.com/docs/core/power/thermal-mitigation"
+    source_type: standards_doc
+    captured_points:
+      - "Reference throttling pipeline (PID + table) for CPU, GPU, charging, modem"
+      - "Vendor thermal HAL contract for skin-temperature reporting"
+  - id: vapor_chamber_phone_review
+    title: "Vapor chamber thermal modeling for smartphones (IEEE THERMINIC 2023)"
+    url: "https://ieeexplore.ieee.org/document/10324389"
+    source_type: conference_paper
+    captured_points:
+      - "Phone vapor chambers absorb 4--8 W transient burst before saturation"
+      - "Steady-state phone TDP envelopes 4--6 W for sustained AI workloads"
+      - "Skin-temperature limit typically 43--45 C per IEC 60950-1 / IEC 62368-1"
+
+reliability_2nm:
+  - id: bti_nanosheet_ted2023
+    title: "BTI in GAA nanosheet, IEEE TED 2023"
+    url: "https://ieeexplore.ieee.org/document/10256711"
+    source_type: journal_paper
+    captured_points:
+      - "Stacked sheets experience enhanced positive-bias temperature instability vs FinFET"
+      - "Higher gate-field due to omnidirectional gate increases trap occupancy"
+      - "Aging-aware Vth shift estimates updated for nanosheet"
+  - id: self_heating_nanosheet_edl2024
+    title: "Self-heating of stacked nanosheet, IEEE EDL 2024"
+    url: "https://ieeexplore.ieee.org/document/10403210"
+    source_type: journal_paper
+    captured_points:
+      - "Confined channel + dielectric wrap reduces lateral heat conduction"
+      - "Thermal resistance ~2x FinFET per device"
+      - "Sustained current degrades faster under continuous AI workload than under bursty workload"
+  - id: em_advanced_beol_tdmr2024
+    title: "Electromigration at Mo/Ru BEOL, IEEE TDMR 2024"
+    url: "https://ieeexplore.ieee.org/document/10498871"
+    source_type: journal_paper
+    captured_points:
+      - "Mo and Ru without liner show better EM than Cu at narrow wires"
+      - "EM activation energies shift; current density limits revised at A14-class"
+  - id: soft_error_advanced_node_iolts2024
+    title: "Soft-error / FIT trends at 2 nm GAA"
+    url: "https://ieeexplore.ieee.org/document/10567852"
+    source_type: conference_paper
+    captured_points:
+      - "Per-bit FIT for SRAM tends to fall with scaling but per-chip FIT grows due to bit count"
+      - "Sequential / latch FIT becomes the dominant component at sub-2 nm"
+      - "ECC, parity, redundancy, and TMR more important at advanced nodes"
+  - id: rowhammer_class_disturbance
+    title: "RowHammer/RowPress disturbance trends"
+    url: "https://www.usenix.org/conference/usenixsecurity24/presentation/luo"
+    source_type: conference_paper
+    captured_points:
+      - "RowHammer-class disturbances persist in scaled DRAM; relevance for LPDDR5X/LPDDR6"
+      - "Hardware countermeasures (RFM, PRAC) standardized in JEDEC DDR5 / LPDDR5X"
+      - "Not directly a 2nm logic concern, but relevant to package memory choice"
+
+standards_packaging:
+  - id: jedec_jc11_packaging
+    title: "JEDEC JC-11 Mechanical Standards (BGA/CSP/PoP)"
+    url: "https://www.jedec.org/committees/jc-11"
+    source_type: standards_body
+    captured_points:
+      - "Ball-grid array, chip-scale package, PoP mechanical standards"
+      - "Reflow profiles, warpage, board-level reliability spec references"
+  - id: ipc_2226_hdi
+    title: "IPC-2226 / HDI design standards"
+    url: "https://www.ipc.org/TOC/IPC-2226.pdf"
+    source_type: standards_body
+    captured_points:
+      - "High-density interconnect board-design rules"
+      - "Reference for substrate / board co-design at advanced packaging"
+  - id: jedec_lpddr5x_lpddr6
+    title: "JEDEC LPDDR5X and LPDDR6 family"
+    url: "https://www.jedec.org/standards-documents/docs/jesd209-5b"
+    source_type: standards_body
+    captured_points:
+      - "LPDDR5X standardized through JESD209-5; data rates up to 8533 MT/s"
+      - "LPDDR6 in development with PAM4 and tighter timing budgets"

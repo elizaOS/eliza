@@ -1,0 +1,32 @@
+{
+  "kind": "keystone",
+  "provider": "eliza-e1-rot",
+  "hardwareVendor": "elizaos-e1",
+  "platformVersion": "e1-rot-rom-v0+lc-v0",
+  "securityVersion": 5,
+  "measurements": {
+    "boot": "sha256:69b7a159da9f1314e40a591e0706b616ef4774b32b16eace492ae5b373e449e4",
+    "monitor": "sha256:67e6fd72f73da7001f06eda0f52708e53b1c14f1fb2941f6065719dfa46b3774",
+    "os": "sha256:279013303ecb3bdcef072f30a5544d8f13811daecc619c94163e046ece8c599a",
+    "agent": "sha256:d2fa9470b1d595d492fa1f1ff94652091d40bc3009716e02f13d979ad003f545",
+    "policy": "sha256:3af3af94a405c441435d2de10d7ca7522d6854dcff386c8c0d526edbb1441549",
+    "device": "sha256:d5298dd4a147d7220daab32a4946a32e1c7478e0817b5dc06b9fc9963b708499",
+    "npuFirmware": "sha256:835848b6b6cda0107cd2ca2e525b1644693fc3ba81ca5894a9a068f873b90cd2"
+  },
+  "freshness": {
+    "nonce": "csrng:9c6984928c43ace4723cb67e7bb26643f50e57d250e07b76d7d3e75b3ebfdabe:bc7",
+    "timestamp": "2026-05-21T00:00:00.000Z",
+    "verifier": "eliza-e1-rot-attestation"
+  },
+  "claims": {
+    "secureBoot": true,
+    "debugDisabled": true,
+    "productionLifecycle": true,
+    "ioProtected": true,
+    "npuProtected": true,
+    "monitorMeasured": true
+  },
+  "quote": "e1-rot-dice-alias-quote-ref",
+  "certificatePem": "-----BEGIN CERTIFICATE-----\nREFERENCE-E1-ROT-DICE-ALIAS-CERT-CHAIN-PRE-SILICON-FIXTURE\n-----END CERTIFICATE-----\n",
+  "reportData": "sha256:ccb9a937878eab5beb03aca3f69edc38990d78b08a0b2312b8b22917741f7697"
+}

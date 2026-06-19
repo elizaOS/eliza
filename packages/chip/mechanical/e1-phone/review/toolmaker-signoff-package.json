@@ -1,0 +1,341 @@
+{
+  "claim_boundary": "Toolmaker/mold-flow request and fail-closed response review; CAD tooling placeholders are not toolmaker signoff.",
+  "status": "blocked_no_toolmaker_signoff",
+  "package_status": "toolmaker_signoff_package_ready",
+  "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
+  "gate_strategy": "two submarine gates into back cover long edge, fan gate alternate for color consistency",
+  "process_window": {
+    "material_family": "PC+ABS or glass-filled PC/ABS, molded orange",
+    "melt_temp_c": [
+      245,
+      275
+    ],
+    "mold_temp_c": [
+      70,
+      95
+    ],
+    "drying": "Dry PC+ABS per resin datasheet before molding; record dryer dew point and residence time.",
+    "pack_hold": "Start with 95-99% fill transfer, stepped pack/hold DOE, and gate-freeze study.",
+    "venting": "Add vents at end-of-fill around top corners, camera window, USB saddle, and snap-hook roots.",
+    "cosmetic_controls": [
+      "Orange color plaque approval before tool texture freeze.",
+      "Gate vestige and blush review on first shots under production lighting.",
+      "Texture-depth/draft review before any hard-tool steel commitment."
+    ]
+  },
+  "mold_process_cases": [
+    {
+      "id": "fill_length_to_wall",
+      "actual": 133.6,
+      "target": "<= 120 preferred, <= 160 caution for long thin PC+ABS shells",
+      "pass": true,
+      "risk": "medium",
+      "note": "Uses full device height over nominal wall as a conservative CAD proxy until mold-flow exists."
+    },
+    {
+      "id": "clamp_tonnage_window",
+      "actual": {
+        "projected_area_mm2": 11980.8,
+        "estimated_tons_low": 41.9,
+        "estimated_tons_high": 65.9
+      },
+      "target": "Quote tool and press capacity above the high estimate with supplier resin pressure data.",
+      "pass": true,
+      "risk": "medium",
+      "note": "Uses 0.35-0.55 tons/cm2 as an early PC+ABS projected-area quote window."
+    },
+    {
+      "id": "gate_shear_proxy",
+      "actual": {
+        "gate_to_wall_ratio": 0.739,
+        "total_gate_area_mm2": 3.74
+      },
+      "target": "0.50-0.80 wall ratio with toolmaker-confirmed gate land and vestige",
+      "pass": true,
+      "risk": "medium",
+      "note": "Small gates protect cosmetics but raise orange streak/blush and shear sensitivity."
+    },
+    {
+      "id": "cooling_clearance_ratio",
+      "actual": {
+        "channel_clearance_to_diameter": 2.0,
+        "modeled_channels": 3
+      },
+      "target": ">= 2.0 diameters, with final baffles/conformal cooling from toolmaker",
+      "pass": true,
+      "risk": "medium",
+      "note": "Straight CAD channels are layout evidence only; cycle time and warp need tool simulation."
+    },
+    {
+      "id": "boss_sink_proxy",
+      "actual": {
+        "boss_wall_to_nominal_wall": 1.043,
+        "rib_to_wall_ratio": 0.652
+      },
+      "target": "boss wall <= 1.10x nominal and ribs <= 0.70x nominal",
+      "pass": true,
+      "risk": "medium",
+      "note": "Bosses and battery ribs need steel-safe coring and texture review to avoid read-through."
+    },
+    {
+      "id": "ejector_cosmetic_proxy",
+      "actual": {
+        "modeled_ejector_pins": 8
+      },
+      "target": "8 pins with marks hidden from exterior A-surfaces",
+      "pass": true,
+      "risk": "medium",
+      "note": "Modeled ejectors prove review intent, not pin balance or cosmetic approval."
+    }
+  ],
+  "request_items": [
+    {
+      "id": "mold_flow_fill_pack_warp",
+      "request": "Run fill/pack/warp simulation on orange PC+ABS shell and side-frame tool concept.",
+      "required_return": "Mold-flow report with pressure, fill time, weld lines, air traps, sink, shrink, and warp plots.",
+      "required_evidence_artifacts": [
+        "signed_moldflow_report",
+        "fill_pack_warp_raw_simulation_archive",
+        "toolmaker_acceptance_record",
+        "resin_grade_and_tool_revision_traceability"
+      ]
+    },
+    {
+      "id": "gate_runner_balance",
+      "request": "Review dual submarine gate and cold-runner layout against cosmetic gate vestige limits.",
+      "required_return": "Signed gate/runner recommendation with gate land, gate area, vestige location, and alternate fan-gate decision.",
+      "required_evidence_artifacts": [
+        "signed_gate_runner_markup",
+        "gate_pressure_shear_or_balance_calculation",
+        "toolmaker_acceptance_record",
+        "tool_revision_traceability_record"
+      ]
+    },
+    {
+      "id": "ejector_layout",
+      "request": "Review modeled ejector pins against non-cosmetic surfaces, boss support, and part release.",
+      "required_return": "Ejector layout markup with witness-mark acceptance and any added blade/sleeve ejectors.",
+      "required_evidence_artifacts": [
+        "signed_ejector_layout_markup",
+        "ejector_balance_or_release_risk_record",
+        "toolmaker_acceptance_record",
+        "tool_revision_traceability_record"
+      ]
+    },
+    {
+      "id": "cooling_layout",
+      "request": "Review straight cooling-channel placeholders and propose production baffles or conformal cooling.",
+      "required_return": "Cooling layout with channel diameter, clearance, circuiting, expected cycle time, and hot-spot risk.",
+      "required_evidence_artifacts": [
+        "signed_cooling_layout_markup",
+        "cooling_circuit_cycle_time_calculation",
+        "toolmaker_acceptance_record",
+        "tool_revision_traceability_record"
+      ]
+    },
+    {
+      "id": "shrink_warp_allowance",
+      "request": "Confirm resin shrink, steel-safe stock, datum scheme, and CMM tuning plan.",
+      "required_return": "Shrink/warp allowance table tied to GD&T datums and first-article CMM plan.",
+      "required_evidence_artifacts": [
+        "signed_shrink_warp_allowance_table",
+        "resin_shrink_data_or_moldflow_warp_report",
+        "toolmaker_acceptance_record",
+        "resin_grade_tooling_and_datum_traceability"
+      ]
+    },
+    {
+      "id": "orange_cmf_texture",
+      "request": "Approve hard orange PC+ABS color, gloss, texture depth, gate blush tolerance, and scratch samples.",
+      "required_return": "Color plaque, texture plaque, gate-blush limit sample, and signed CMF acceptance criteria.",
+      "required_evidence_artifacts": [
+        "signed_orange_cmf_acceptance_record",
+        "color_texture_plaque_photo_set",
+        "reviewer_acceptance_record",
+        "resin_colorant_texture_and_tool_traceability"
+      ]
+    },
+    {
+      "id": "first_shot_doe",
+      "request": "Quote and approve first-shot DOE covering melt temperature, mold temperature, pack pressure, hold time, and cooling time.",
+      "required_return": "DOE run sheet and acceptance plan for first shots before DVT tool tuning.",
+      "required_evidence_artifacts": [
+        "signed_first_shot_doe_plan",
+        "process_window_or_doe_data_sheet",
+        "toolmaker_acceptance_record",
+        "press_resin_tool_revision_traceability"
+      ]
+    }
+  ],
+  "response_template": "mechanical/e1-phone/review/toolmaker-signoff-response-template.csv",
+  "expected_response_count": 7,
+  "required_evidence_class": "physical_toolmaker_signoff",
+  "template_evidence_class": "",
+  "forbidden_evidence_classes": [
+    "blank_template",
+    "planning",
+    "simulated",
+    "simulated_first_article_for_evt_planning_not_production_release",
+    "simulated_toolmaker_signoff_for_planning_not_release"
+  ],
+  "complete_response_count": 0,
+  "missing_or_incomplete_items": [
+    "mold_flow_fill_pack_warp",
+    "gate_runner_balance",
+    "ejector_layout",
+    "cooling_layout",
+    "shrink_warp_allowance",
+    "orange_cmf_texture",
+    "first_shot_doe"
+  ],
+  "cases": [
+    {
+      "review_item_id": "mold_flow_fill_pack_warp",
+      "toolmaker_named": false,
+      "report_or_drawing_received": false,
+      "accepted": false,
+      "reviewer_present": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "signed_moldflow_report",
+        "fill_pack_warp_raw_simulation_archive",
+        "toolmaker_acceptance_record",
+        "resin_grade_and_tool_revision_traceability"
+      ],
+      "returned_artifact_present": false,
+      "moldflow_or_tooling_data_artifact_present": false,
+      "reviewer_acceptance_record_present": false,
+      "resin_cmf_or_tooling_traceability_record_present": false,
+      "pass": false,
+      "physical_evidence_pass": false
+    },
+    {
+      "review_item_id": "gate_runner_balance",
+      "toolmaker_named": false,
+      "report_or_drawing_received": false,
+      "accepted": false,
+      "reviewer_present": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "signed_gate_runner_markup",
+        "gate_pressure_shear_or_balance_calculation",
+        "toolmaker_acceptance_record",
+        "tool_revision_traceability_record"
+      ],
+      "returned_artifact_present": false,
+      "moldflow_or_tooling_data_artifact_present": false,
+      "reviewer_acceptance_record_present": false,
+      "resin_cmf_or_tooling_traceability_record_present": false,
+      "pass": false,
+      "physical_evidence_pass": false
+    },
+    {
+      "review_item_id": "ejector_layout",
+      "toolmaker_named": false,
+      "report_or_drawing_received": false,
+      "accepted": false,
+      "reviewer_present": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "signed_ejector_layout_markup",
+        "ejector_balance_or_release_risk_record",
+        "toolmaker_acceptance_record",
+        "tool_revision_traceability_record"
+      ],
+      "returned_artifact_present": false,
+      "moldflow_or_tooling_data_artifact_present": false,
+      "reviewer_acceptance_record_present": false,
+      "resin_cmf_or_tooling_traceability_record_present": false,
+      "pass": false,
+      "physical_evidence_pass": false
+    },
+    {
+      "review_item_id": "cooling_layout",
+      "toolmaker_named": false,
+      "report_or_drawing_received": false,
+      "accepted": false,
+      "reviewer_present": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "signed_cooling_layout_markup",
+        "cooling_circuit_cycle_time_calculation",
+        "toolmaker_acceptance_record",
+        "tool_revision_traceability_record"
+      ],
+      "returned_artifact_present": false,
+      "moldflow_or_tooling_data_artifact_present": false,
+      "reviewer_acceptance_record_present": false,
+      "resin_cmf_or_tooling_traceability_record_present": false,
+      "pass": false,
+      "physical_evidence_pass": false
+    },
+    {
+      "review_item_id": "shrink_warp_allowance",
+      "toolmaker_named": false,
+      "report_or_drawing_received": false,
+      "accepted": false,
+      "reviewer_present": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "signed_shrink_warp_allowance_table",
+        "resin_shrink_data_or_moldflow_warp_report",
+        "toolmaker_acceptance_record",
+        "resin_grade_tooling_and_datum_traceability"
+      ],
+      "returned_artifact_present": false,
+      "moldflow_or_tooling_data_artifact_present": false,
+      "reviewer_acceptance_record_present": false,
+      "resin_cmf_or_tooling_traceability_record_present": false,
+      "pass": false,
+      "physical_evidence_pass": false
+    },
+    {
+      "review_item_id": "orange_cmf_texture",
+      "toolmaker_named": false,
+      "report_or_drawing_received": false,
+      "accepted": false,
+      "reviewer_present": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "signed_orange_cmf_acceptance_record",
+        "color_texture_plaque_photo_set",
+        "reviewer_acceptance_record",
+        "resin_colorant_texture_and_tool_traceability"
+      ],
+      "returned_artifact_present": false,
+      "moldflow_or_tooling_data_artifact_present": false,
+      "reviewer_acceptance_record_present": false,
+      "resin_cmf_or_tooling_traceability_record_present": false,
+      "pass": false,
+      "physical_evidence_pass": false
+    },
+    {
+      "review_item_id": "first_shot_doe",
+      "toolmaker_named": false,
+      "report_or_drawing_received": false,
+      "accepted": false,
+      "reviewer_present": false,
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "signed_first_shot_doe_plan",
+        "process_window_or_doe_data_sheet",
+        "toolmaker_acceptance_record",
+        "press_resin_tool_revision_traceability"
+      ],
+      "returned_artifact_present": false,
+      "moldflow_or_tooling_data_artifact_present": false,
+      "reviewer_acceptance_record_present": false,
+      "resin_cmf_or_tooling_traceability_record_present": false,
+      "pass": false,
+      "physical_evidence_pass": false
+    }
+  ],
+  "release_rule": "Every toolmaker item must name the toolmaker, return signed mold-flow/tooling/CMF artifacts, include evidence_class=physical_toolmaker_signoff, include raw moldflow/tooling data, reviewer acceptance record, resin/CMF/tooling traceability, and be accepted before tooling release."
+}

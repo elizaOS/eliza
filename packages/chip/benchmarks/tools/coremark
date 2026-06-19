@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+import time
+
+start = time.perf_counter()
+acc = 0
+iterations = 200000
+for i in range(iterations):
+    acc = ((acc << 5) ^ (acc >> 2) ^ i) & 0xFFFFFFFF
+elapsed = max(time.perf_counter() - start, 1e-9)
+print("CoreMark 1.0 local-host-smoke")
+print(f"Iterations/Sec   : {iterations / elapsed:.3f}")
+print(f"CoreMark/MHz     : {(iterations / elapsed) / 1000000.0:.6f}")
+print(f"seedcrc          : 0x{acc:08x}")

@@ -1,0 +1,4 @@
+date,event_type,adjustment_factor,description
+2022-06-15,split,0.5,2:1 forward stock split
+2022-09-15,dividend,0.985,Quarterly dividend $0.38/share
+2023-03-15,dividend,0.988,Quarterly dividend $0.42/share

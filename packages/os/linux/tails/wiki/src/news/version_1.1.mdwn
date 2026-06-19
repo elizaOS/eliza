@@ -1,0 +1,146 @@
+[[!meta date="Tue, 22 Jul 2014 21:45:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.1 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.1, is out.
+
+All users must [[upgrade|doc/upgrade]] as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_1.0.1]].
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+  * Rebase on Debian Wheezy
+    - Upgrade literally thousands of packages.
+    - Migrate to GNOME3 fallback mode.
+    - Install LibreOffice instead of OpenOffice.
+
+  * Major new features
+    - UEFI boot support, which should make Tails boot on modern
+      hardware and Mac computers.
+    - Replace the Windows XP camouflage with a Windows 8 camouflage.
+    - Bring back VirtualBox guest modules, installed from Wheezy
+      backports. Full functionality is only available when using the
+      32-bit kernel.
+
+  * Security fixes
+    - Fix write access to boot medium via udisks ([[!tails_ticket 6172]]).
+    - Upgrade the web browser to 24.7.0esr-0+tails1~bpo70+1
+      (Firefox 24.7.0esr + Iceweasel patches + Torbrowser patches).
+    - Upgrade to Linux 3.14.12-1 (fixes CVE-2014-4699).
+    - Make persistent file permissions safer ([[!tails_ticket 7443]]).
+
+  * Bugfixes
+    - Fix quick search in Tails Greeter's Other languages window
+      (Closes: [[!tails_ticket 5387]])
+
+  * Minor improvements
+    - Don't install Gobby 0.4 anymore. Gobby 0.5 has been available in
+      Debian since Squeeze, now is a good time to drop the obsolete
+      0.4 implementation.
+    - Require a bit less free memory before checking for upgrades with
+      Tails Upgrader. The general goal is to avoid displaying "Not
+      enough memory available to check for upgrades" too often due to
+      over-cautious memory requirements checked in the wrapper.
+    - Whisperback now sanitizes attached logs better with respect to
+      DMI data, IPv6 addresses, and serial numbers ([[!tails_ticket
+      6797]], [[!tails_ticket 6798]], [[!tails_ticket 6804]]).
+    - Install the BookletImposer PDF imposition toolkit.
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+* Users of persistence must log in at least once with persistence
+  enabled read-write after upgrading to 1.1 to see their settings
+  updated.
+
+* Upgrading from ISO, from Tails 1.1~rc1, Tails 1.0.1 or earlier, is
+  a bit more complicated than usual. Either follow <a
+  href="#from_iso">the instructions to upgrade from ISO</a>. Or,
+  burn a DVD, start Tails from it, and use "Clone and Upgrade".
+
+* The automatic upgrade from Tails 1.1~rc1 is a bit more complicated
+  than usual. Either follow <a href="#automatic">the instructions to
+  apply the automatic upgrade</a>. Or, do a full upgrade.
+
+* A persistent volume created with Tails 1.1~beta1 cannot be used with
+  Tails 1.1 or later. Worse, trying this may freeze Tails Greeter.
+
+* Tails 1.1 does not start in some virtualization environments, such
+  as QEMU 0.11.1 and VirtualBox 4.2. This can be corrected by
+  upgrading to QEMU 1.0 or VirtualBox 4.3, or newer
+  ([[!tails_ticket 7232]]).
+
+* The web browser's JavaScript performance may be severely degraded
+  ([[!tails_ticket 7127]]). Please let us know if you are experiencing
+  this to a level where it is problematic.
+
+* [[Longstanding|support/known_issues]] known issues.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+September 2.
+
+
+Do you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!
+
+<a id="from_iso"></a>
+
+# How to upgrade from ISO?
+
+These steps allow you to upgrade a device installed with
+*Tails Installer* from Tails 1.0.1, Tails
+1.1~beta1 or earlier, to Tails 1.1.
+
+1. Start Tails from another DVD, USB stick, or SD card, than the
+   device that you want to upgrade.
+
+2. [[Set an administration
+   password|doc/first_steps/welcome_screen/administration_password]].
+
+3. Run this command in a *Root Terminal*
+   to install the latest version of *Tails Installer*:
+
+       echo "deb http://deb.tails.boum.org/ 1.1 main" \
+           > /etc/apt/sources.list.d/tails-upgrade.list && \
+           apt-get update && \
+           apt-get install liveusb-creator
+
+4. Follow the [[usual instructions to upgrade from
+   ISO|doc/upgrade#from_iso]], except the first step.
+
+<a id="automatic"></a>
+
+# How to automatically upgrade from Tails 1.1~rc1?
+
+These steps allow you to automatically upgrade a device installed with
+*Tails Installer* from Tails 1.1~rc1 to
+Tails 1.1.
+
+1. Start Tails 1.1~rc1 from the device you want to upgrade.
+
+2. [[Set an administration
+   password|doc/first_steps/welcome_screen/administration_password]].
+
+3. Run this command in a *Terminal* to
+   apply the automatic upgrade:
+
+       echo 'TAILS_CHANNEL="stable-fixed"' | sudo tee --append /etc/os-release && \
+         cd / && tails-upgrade-frontend-wrapper

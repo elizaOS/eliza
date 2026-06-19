@@ -1,0 +1,39 @@
+schema: eliza.ai_eda.coverage_bins.v1
+updated: 2026-05-20
+source_ids:
+  - llm4dv
+  - cvdp
+dut: e1_linux_soc_contract
+scope: >
+  Dry-run coverage targets for future AI-assisted cocotb stimulus proposals
+  against interrupt-controller, future CLINT, and reset-domain edges.
+  Candidate tests are not evidence until accepted into source and passing the
+  named cocotb gates.
+required_followup_gates:
+  - make cocotb-contract
+bins:
+  - id: plic_enable_claim_complete
+    description: Enable external interrupt sources, claim, complete, and observe deassertion.
+    required_observation: claim returns an enabled pending source and the context IRQ clears after completion and line drop
+    existing_reference:
+      - verify/cocotb/test_plic_claim_threshold.py::plic_claim_returns_highest_priority
+  - id: plic_multiple_pending_priority_order
+    description: Multiple enabled pending interrupt sources must claim in priority order.
+    required_observation: claim returns the highest-priority enabled pending source first, then the next, until all are serviced
+    existing_reference:
+      - verify/cocotb/test_plic_claim_threshold.py::plic_claim_returns_highest_priority
+  - id: reset_clears_interrupt_state
+    description: Reset must clear interrupt enable, pending state, and external IRQ output.
+    required_observation: enable, pending, and cpu_external_irq return to documented reset values
+    existing_reference:
+      - verify/cocotb/test_reset_domain_cleanup.py::reset_clears_intc_state
+  - id: reset_clears_bus_handshakes
+    description: Reset must clear stale AXI-Lite response handshakes before new traffic.
+    required_observation: cpu_bvalid and cpu_rvalid remain low after reset settles
+    existing_reference:
+      - verify/cocotb/test_reset_domain_cleanup.py::reset_clears_handshake_signals
+  - id: clint_future_timer_irq_contract
+    description: Future CLINT timer interrupt contract must elaborate even while skipped.
+    required_observation: fail-closed skipped contract remains discoverable until CLINT lands in the SoC contract
+    existing_reference:
+      - verify/cocotb/test_clint_timer_irq.py::clint_timer_irq_fires_when_mtime_ge_mtimecmp

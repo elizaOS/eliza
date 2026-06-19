@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Privileged-permission whitelist for ai.elizaos.system.bridge.
+
+  Lists every signature|privileged permission the SystemBridge APK declares
+  in its AndroidManifest. Without an entry here, PackageManager refuses to
+  grant the permission even though the app is installed in /system/priv-app/,
+  and `adb logcat` will show "Privileged permission ... not in
+  privapp-permissions whitelist" at boot.
+
+  SystemBridge.kt uses these to drive privileged system controls:
+    REBOOT / DEVICE_POWER  -> PowerManager.reboot / goToSleep / shutdown
+    WRITE_SECURE_SETTINGS  -> Settings.Global.AIRPLANE_MODE_ON toggle
+
+  Read by PackageManager from /system/etc/permissions/.
+  Soong module: see ../permissions/Android.bp (`prebuilt_etc`,
+    sub_dir: "permissions").
+-->
+<permissions>
+    <privapp-permissions package="ai.elizaos.system.bridge">
+        <permission name="android.permission.REBOOT" />
+        <permission name="android.permission.DEVICE_POWER" />
+        <permission name="android.permission.WRITE_SECURE_SETTINGS" />
+    </privapp-permissions>
+</permissions>

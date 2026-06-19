@@ -1,0 +1,32 @@
+---
+title: Cloud Domains
+description: "Bind custom domains to apps and containers."
+---
+
+Cloud lets you bind custom domains to deployed apps and containers. Cloud terminates TLS, routes traffic, and handles certificate renewal.
+
+## Add a domain
+
+1. Add the domain in the dashboard or via `POST /api/v1/apps/{id}/domains`.
+2. Cloud returns the DNS records you need to set (`CNAME` or `A`, plus a verification `TXT`).
+3. Set the records at your DNS provider.
+4. Verify the domain with `POST /api/v1/apps/{id}/domains/verify`.
+5. Check propagation with `POST /api/v1/apps/{id}/domains/status`.
+
+## Bind to an app or container
+
+Each verified domain can route to one app or container target. Updates take effect within seconds.
+
+## Subdomains
+
+Wildcard certificates are supported; subdomain routing per-app uses a route table on the domain.
+
+## Source
+
+- Routes: `packages/cloud-api/v1/apps/[id]/domains/`
+- Dashboard: `packages/cloud-frontend/src/dashboard/domains/`
+
+## See also
+
+- [Apps](/tracks/cloud/apps)
+- [Containers](/tracks/cloud/containers)

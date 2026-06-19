@@ -1,0 +1,7 @@
+#!/bin/sh
+
+set -e
+
+echo "Configure PAM to use SHA512 to hash passwords"
+
+sed -i --regexp-extended 's/^(password\s.*\spam_unix\.so\s+(.+\s+)*)yescrypt(\s.*)?/\1 sha512 \3/' /etc/pam.d/common-password

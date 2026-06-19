@@ -1,0 +1,159 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-10-10 15:10+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Reducing risks when using untrusted computers\"]]"
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Using untrusted computers"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"[[!inline pages=\"doc/about/warning/computer.inline\" raw=\"yes\" "
+"sort=\"age\"]] [[!toc levels=2]]"
+msgstr ""
+
+#. type: Content of: <h2>
+msgid "Install Tails from a computer that you trust"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"Tails protects you from viruses and malware on your usual operating system. "
+"This is because Tails runs independently from other operating systems."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"But your Tails might be corrupted if you install from a compromised "
+"operating system. To reduce that risk:"
+msgstr ""
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Always install Tails from a trusted operating system.  For example, download "
+"Tails on a computer without viruses or clone Tails from a trusted friend."
+msgstr ""
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Do not plug in your Tails USB stick while another operating system is "
+"running on the computer."
+msgstr ""
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Use your Tails USB stick only to run Tails. Do not use your Tails USB stick "
+"to transfer files to or from another operating system."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"If you worry that your Tails might be corrupted, do a [[manual upgrade|"
+"upgrade]] from a trusted operating system."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"We don't know of any virus able to infect a Tails installation, but one "
+"could be created in the future."
+msgstr ""
+
+#. type: Content of: <h2>
+msgid "No operating system can protect against hardware alterations"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"The computer might be compromised if its physical components have been "
+"altered.  For example, if a keylogger has been physically installed on the "
+"computer, your passwords, personal information, and other data typed on the "
+"keyboard could be stored and accessed by someone else, even if you are using "
+"Tails."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"Try to keep your computer in a safe location. Hardware alterations are more "
+"likely on public computers, in Internet cafés or libraries, and on desktop "
+"computers, where a device is easier to hide."
+msgstr ""
+
+#. type: Content of: <p>
+msgid "If you worry that a computer might be modified:"
+msgstr ""
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Use a [[password manager|doc/encryption_and_privacy/manage_passwords]] to "
+"paste saved passwords. This way, you don't have to type passwords that might "
+"be visible to people or cameras near you."
+msgstr ""
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Use the [[screen keyboard|doc/first_steps/accessibility#keyboard]], if you "
+"are using a public computer or worry that the computer might have a "
+"keylogger."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"Keyloggers are easy to buy and hide on desktop computers but not on laptops. "
+"For an example, see <a href=\"https://www.youtube.com/watch?"
+"v=6JJo8qCYE8M\">KeeLog: KeyGrabber forensic keylogger getting started</a>."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"Other hardware alterations are much more complicated and expensive to "
+"install. For an example, see <a href=\"https://arstechnica.com/tech-"
+"policy/2014/05/photos-of-an-nsa-upgrade-factory-show-cisco-router-getting-"
+"implant/\">Ars Technica: Photos of an NSA “upgrade” factory show Cisco "
+"router getting implant</a>."
+msgstr ""
+
+#. type: Content of: <h2>
+msgid "No operating system can protect against BIOS and firmware attacks"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"Firmware includes the BIOS or UEFI and other software stored in electronic "
+"chips on the computer.  All operating systems, including Tails, depend on "
+"firmware to start and run, so no operating system can protect against a "
+"firmware attack. In the same way that a car depends on the quality of the "
+"road it is driving on, operating systems depend on their firmware."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"Keeping your computer in a safe location can protect against some firmware "
+"attacks, but some other firmware attacks can be performed remotely."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"Firmware attacks have been demonstrated, but are complicated and expensive "
+"to perform. We don't know of any actual use against Tails users. For an "
+"example, see <a href=https://www.youtube.com/watch?v=sNYsfUNegEA>LegbaCore: "
+"Stealing GPG keys/emails in Tails via remote firmware infection</a>."
+msgstr ""

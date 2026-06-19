@@ -1,0 +1,104 @@
+cmake_minimum_required(VERSION 3.16)
+project(face_cpp C)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+include_directories(include src)
+
+# Current runtime: real BlazeFace + face-embed forward graphs (pure-C
+# scalar reference today; ggml dispatch can swap in behind the same C
+# ABI). The model entries (face_detect_open /
+# face_embed_open / forward + post-process) live in face_model.c. The
+# model-independent helpers (anchors, alignment, distance) are shared
+# by the runtime and their unit tests.
+#
+# Architecture portability: every TU below is plain scalar C with no
+# x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
+# aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
+# When SIMD or ggml-dispatch TUs are added, mirror the qjl-cpu
+# pattern: separate per-arch TUs (avx2/neon/rvv), each compiled only
+# for its own arch via a CMAKE_SYSTEM_PROCESSOR conditional.
+set(FACE_SRCS
+    src/face_model.c
+    src/face_blazeface.c
+    src/face_embed.c
+    src/face_kernels.c
+    src/face_image.c
+    src/face_gguf.c
+    src/face_nms.c
+    src/face_anchor_decode.c
+    src/face_align.c
+    src/face_distance.c
+)
+
+# Build a static library AND a shared library so the TS bindings in
+# plugins/plugin-vision can `dlopen` the .so / .dylib at runtime.
+add_library(face STATIC ${FACE_SRCS})
+target_include_directories(face PUBLIC include)
+target_compile_options(face PRIVATE -O3 -Wall -Wextra -Wno-unused-parameter)
+
+add_library(face_shared SHARED ${FACE_SRCS})
+target_include_directories(face_shared PUBLIC include)
+set_target_properties(face_shared PROPERTIES
+    OUTPUT_NAME face
+    POSITION_INDEPENDENT_CODE ON)
+target_compile_options(face_shared PRIVATE -O3 -Wall -Wextra -Wno-unused-parameter)
+
+# libm needed for sigmoidf/expf/sqrtf/floorf in the helpers.
+find_library(M_LIB m)
+if(M_LIB)
+    target_link_libraries(face PUBLIC ${M_LIB})
+    target_link_libraries(face_shared PUBLIC ${M_LIB})
+endif()
+
+enable_testing()
+
+add_executable(face_abi_smoke test/face_abi_smoke.c)
+target_link_libraries(face_abi_smoke PRIVATE face)
+target_compile_options(face_abi_smoke PRIVATE -O2 -Wall -Wextra)
+add_test(NAME face_abi_smoke COMMAND face_abi_smoke)
+
+add_executable(face_anchor_test test/face_anchor_test.c)
+target_link_libraries(face_anchor_test PRIVATE face)
+target_compile_options(face_anchor_test PRIVATE -O2 -Wall -Wextra)
+add_test(NAME face_anchor_test COMMAND face_anchor_test)
+
+add_executable(face_align_test test/face_align_test.c)
+target_link_libraries(face_align_test PRIVATE face)
+target_compile_options(face_align_test PRIVATE -O2 -Wall -Wextra)
+add_test(NAME face_align_test COMMAND face_align_test)
+
+add_executable(face_distance_test test/face_distance_test.c)
+target_link_libraries(face_distance_test PRIVATE face)
+target_compile_options(face_distance_test PRIVATE -O2 -Wall -Wextra)
+add_test(NAME face_distance_test COMMAND face_distance_test)
+
+add_executable(face_runtime_test test/face_runtime_test.c)
+target_link_libraries(face_runtime_test PRIVATE face)
+target_include_directories(face_runtime_test PRIVATE test src)
+target_compile_options(face_runtime_test PRIVATE -O2 -Wall -Wextra -Wno-unused-parameter)
+add_test(NAME face_runtime_test COMMAND face_runtime_test)
+
+add_executable(face_embed_runtime_test test/face_embed_runtime_test.c)
+target_link_libraries(face_embed_runtime_test PRIVATE face)
+target_include_directories(face_embed_runtime_test PRIVATE test src)
+target_compile_options(face_embed_runtime_test PRIVATE -O2 -Wall -Wextra -Wno-unused-parameter)
+add_test(NAME face_embed_runtime_test COMMAND face_embed_runtime_test)
+
+# Optional Python-driven parity test against MediaPipe / hollance/BlazeFace-PyTorch.
+# Skips itself when torch / Pillow / the reference checkpoint are unavailable so it
+# never blocks the C-only build but always runs in the dev environment.
+find_program(PYTHON3_EXECUTABLE python3)
+if(PYTHON3_EXECUTABLE)
+    add_test(
+        NAME face_parity_test
+        COMMAND ${PYTHON3_EXECUTABLE} -u
+                ${CMAKE_CURRENT_SOURCE_DIR}/test/face_parity_test.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+endif()

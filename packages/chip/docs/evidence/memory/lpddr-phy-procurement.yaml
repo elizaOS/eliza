@@ -1,0 +1,153 @@
+blocker_reason: 'No open LPDDR5X or LPDDR6 PHY exists at the data rates required for
+  phone-class bandwidth. LiteDRAM (the only open contender) tops out at LPDDR4. Self-designing
+  a 14.4 Gbps PHY with DFE/FFE/CTLE is multi-year, multi-tens-of-millions, and not
+  a credible 2028 schedule.
+
+  '
+claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
+claim_rules:
+- LPDDR5X/LPDDR6 capability claims fail closed until vendor PHY is licensed and integrated.
+- The DFI 5.0 north interface in rtl/memory/dram_ctrl/e1_dram_ctrl.sv is the only
+  acceptable controller boundary.
+- Bandwidth claims based on the behavioural AXI4 DRAM model are simulator-only and
+  never satisfy the phone-class gate.
+- Procurement decisions on the PHY must be recorded in the corresponding evidence
+  artifact; verbal commitments do not unblock.
+context: 'The LPDDR5X-10667 and LPDDR6-14400 PHY is closed third-party IP. The Eliza
+  phone-class SoC requires a vendor-licensed PHY at the DFI 5.0 south interface of
+  rtl/memory/dram_ctrl/e1_dram_ctrl.sv. This file is the fail-closed procurement gate;
+  until a vendor-PHY contract is signed and the IP is integrated, every LPDDR5X/LPDDR6
+  capability claim stays blocked.
+
+  '
+evidence_artifact_schemas:
+  docs/evidence/memory/lpddr_phy_ate_pattern_record.json: eliza.memory.lpddr_phy_ate_pattern.v1
+  docs/evidence/memory/lpddr_phy_bring_up_board_record.json: eliza.memory.lpddr_phy_bring_up_board.v1
+  docs/evidence/memory/lpddr_phy_contract_record.json: eliza.memory.lpddr_phy_contract.v1
+  docs/evidence/memory/lpddr_phy_pdk_alignment_record.json: eliza.memory.lpddr_phy_pdk_alignment.v1
+evidence_artifacts:
+  required:
+  - docs/evidence/memory/lpddr_phy_contract_record.json
+  - docs/evidence/memory/lpddr_phy_pdk_alignment_record.json
+  - docs/evidence/memory/lpddr_phy_bring_up_board_record.json
+  - docs/evidence/memory/lpddr_phy_ate_pattern_record.json
+generated_utc: '2026-05-20T10:12:30Z'
+ip_license_blockers:
+- description: No PHY licensing contract is signed.
+  id: vendor_contract_signed
+  status: blocked
+- description: Process node selection (N3 vs N3P vs N2 vs 14A) is not finalised; PHY
+    availability is process-dependent.
+  id: pdk_alignment
+  status: blocked
+- description: No DRAM bring-up board exists with the package routing required to
+    validate PHY timing.
+  id: bring_up_board
+  status: blocked
+- description: Vendor ATE pattern sets for production test are not licensed.
+  id: ate_pattern_set
+  status: blocked
+schema: eliza.lpddr_phy_procurement_gate.v1
+sku_split_requirement:
+  ai_sku:
+    bits_per_channel: 24
+    bus_width_bits: 96
+    capacity_gib_skus:
+    - 24
+    channels: 4
+    expected_phy: Synopsys or Cadence 14.4 Gbps LPDDR6 tier
+    name: phone-ai
+    peak_bandwidth_gbps: 172.8
+    standard: LPDDR6-14400
+    sustained_target_gbps_min: 140
+  baseline_sku:
+    bits_per_channel: 16
+    bus_width_bits: 64
+    capacity_gib_skus:
+    - 12
+    - 16
+    channels: 4
+    expected_phy: Synopsys, Cadence, or Rambus 10.67 Gbps tier
+    name: phone-baseline
+    peak_bandwidth_gbps: 85.3
+    standard: LPDDR5X-10667
+    sustained_target_gbps_min: 70
+status: BLOCKED_closed_ip_required
+unblock_requires:
+- A signed vendor contract for the PHY at the selected data rate.
+- PDK alignment between the chosen PHY and the chosen process node.
+- A DRAM bring-up board with package routing budgeted for the PHY.
+- ATE pattern sets licensed for production test.
+- First-silicon training transcripts (read leveling, gate training, vref, ZQ cal)
+  attached as evidence.
+vendor_shortlist:
+- dfi_revision: '5.0'
+  foundries:
+  - TSMC N3
+  - TSMC N3P
+  - TSMC N2
+  - Samsung 3 nm GAA
+  - Intel 18A
+  integration_window_quarters: 4
+  ip_name: DesignWare DDR LPDDR6/5X/5 PHY IP
+  license_class: per_project_with_royalty
+  license_cost_estimate_usd: 4_000_000 - 8_000_000
+  max_data_rate_gbps: 14.4
+  notes: 'Mature LPDDR5X/4X PHY shipping in flagship mobile parts; LPDDR6 14.4 Gbps
+    tier announced 2025 with DFE/FFE/CTLE. Bundled secure controller offered.
+
+    '
+  royalty_per_die_estimate_usd: 0.40 - 1.20
+  url: https://www.synopsys.com/designware-ip/interface-ip/ddr/lpddr65x5-phy.html
+  vendor: Synopsys
+- dfi_revision: '5.0'
+  foundries:
+  - TSMC N3
+  - TSMC N3P
+  - TSMC N2
+  integration_window_quarters: 4
+  ip_name: LPDDR6/5X Combo Memory IP
+  license_class: per_project_with_royalty
+  license_cost_estimate_usd: 4_500_000 - 9_000_000
+  max_data_rate_gbps: 14.4
+  notes: 'Industry-first 14.4 Gbps LPDDR6 tape-out announced July 2025. DFI 5.0 controller
+    bundled; integrates with Cadence Tensilica/ Helium platforms.
+
+    '
+  royalty_per_die_estimate_usd: 0.50 - 1.30
+  url: https://www.cadence.com/en_US/home/company/newsroom/press-releases/pr/2025/cadence-introduces-industry-first-lpddr65x-144gbps-memory-ip-to.html
+  vendor: Cadence
+- dfi_revision: '5.0'
+  foundries:
+  - TSMC N5
+  - TSMC N3
+  - Samsung 4 nm
+  integration_window_quarters: 5
+  ip_name: LPDDR5X PHY 10.67 Gbps
+  license_class: per_project_with_royalty
+  license_cost_estimate_usd: 3_000_000 - 6_500_000
+  max_data_rate_gbps: 10.67
+  notes: 'LPDDR5X-only today; LPDDR6 roadmap not public. Strong for the baseline SKU
+    but does not cover the AI SKU bandwidth target.
+
+    '
+  royalty_per_die_estimate_usd: 0.30 - 0.90
+  url: https://www.rambus.com/interfaces/lpddr5x/
+  vendor: Rambus
+- dfi_revision: '5.0'
+  foundries:
+  - TSMC N3
+  - TSMC N3P
+  - TSMC N2
+  integration_window_quarters: 3
+  ip_name: TSMC bundled LPDDR5X/6 PHY (PDK-aligned)
+  license_class: bundled_with_PDK
+  license_cost_estimate_usd: bundled
+  max_data_rate_gbps: 14.4
+  notes: 'TSMC offers PDK-aligned PHYs when the design is taped out at TSMC. Lowest
+    integration risk if the foundry choice is fixed.
+
+    '
+  royalty_per_die_estimate_usd: bundled
+  url: https://www.tsmc.com/english/dedicatedFoundry/technology/3nm
+  vendor: Foundry-bundled

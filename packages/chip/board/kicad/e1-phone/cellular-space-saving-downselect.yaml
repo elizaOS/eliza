@@ -1,0 +1,127 @@
+schema: eliza.e1_phone_cellular_space_saving_downselect.v1
+status: blocked_space_saving_lte_alternates_need_supplier_packs_and_performance_decision
+date: '2026-05-21'
+claim_boundary: >
+  Public-source downselect for smaller cellular modules that could preserve the selected 5.5 inch display,
+  78.0 x 153.6 mm device envelope, 64 x 132 mm board bbox, and 64 x 87 mm battery window. This is not a
+  substitute approval, not a routed placement, not a firmware plan, not carrier approval, not SAR evidence, and
+  not enclosure release.
+source_artifacts:
+  - package/cellular/quectel-5g-redcap.yaml
+  - board/kicad/e1-phone/cellular-top-island-repack-feasibility.yaml
+  - board/kicad/e1-phone/radio-module-envelope-orderability-gate.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/procurement-readiness.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+upstream_status:
+  cellular_package: sourcing_shortlist_no_bonded_pins_no_fabricated_board
+  cellular_top_island_repack_feasibility: blocked_selected_lga_overfills_current_top_island_without_repack_or_module_change
+  radio_module_envelope_orderability_gate: blocked_cellular_region_too_small_and_supplier_design_packs_missing
+  placement_interface_matrix: concept_constraints_not_routed_pcb
+  procurement_readiness: blocked_preliminary_bom_not_avl_or_purchase_order
+  supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
+decision_context:
+  current_primary: Quectel_RG255C_LGA_5G_RedCap
+  current_primary_envelope_mm: {width: 29.0, height: 32.0, thickness: 2.4}
+  current_primary_area_mm2: 928.0
+  current_primary_top_island_overage_mm2: 131.0
+  old_placeholder_region_mm: {x: 3.0, y: 3.0, width: 14.0, height: 14.0}
+  old_placeholder_area_mm2: 196.0
+  top_island_area_mm2: 1856.0
+  current_top_region_total_mm2: 1255.0
+  decision: keep_redcap_as_performance_reference_but_open_space_saving_lte_cat1_bis_branch
+space_saving_candidates:
+  - id: quectel_eg915q_na_or_eg915u_class
+    vendor: Quectel
+    class: LTE_Cat_1_bis
+    source_url: https://www.quectel.com/lte-iot-modules/
+    public_envelope_mm: {width: 23.6, height: 19.9, thickness: 2.4}
+    area_mm2: 469.64
+    area_savings_vs_rg255c_mm2: 458.36
+    percent_area_savings_vs_rg255c: 49.4
+    top_island_total_if_replacing_placeholder_mm2: 1528.64
+    top_island_remaining_before_rf_keepouts_mm2: 327.36
+    fits_current_14x14_placeholder: false
+    fits_repacked_24x20_region_outline_only: true
+    phone_layout_status: promising_if_lte_cat1_bis_performance_is_accepted_and_supplier_pack_is_received
+  - id: quectel_eg916q_gl
+    vendor: Quectel
+    class: LTE_Cat_1_bis
+    source_url: https://www.quectel.com/product/lte-cat-1-bis-eg916q-gl/
+    public_envelope_mm: {width: 26.5, height: 22.5, thickness: 2.4}
+    area_mm2: 596.25
+    area_savings_vs_rg255c_mm2: 331.75
+    percent_area_savings_vs_rg255c: 35.7
+    top_island_total_if_replacing_placeholder_mm2: 1655.25
+    top_island_remaining_before_rf_keepouts_mm2: 200.75
+    fits_current_14x14_placeholder: false
+    fits_repacked_24x20_region_outline_only: false
+    phone_layout_status: possible_global_lte_candidate_but_needs_larger_repacked_region_than_eg915_class
+  - id: fibocom_mc665
+    vendor: Fibocom
+    class: LTE_Cat_1_bis
+    source_url: https://www.fibocom.com/en/SeriesProduct/info_itemid_133.html
+    public_envelope_mm: {width: 20.2, height: 22.2, thickness: 2.4}
+    area_mm2: 448.44
+    area_savings_vs_rg255c_mm2: 479.56
+    percent_area_savings_vs_rg255c: 51.7
+    top_island_total_if_replacing_placeholder_mm2: 1507.44
+    top_island_remaining_before_rf_keepouts_mm2: 348.56
+    fits_current_14x14_placeholder: false
+    fits_repacked_24x20_region_outline_only: false
+    phone_layout_status: strong_size_candidate_pending_second_vendor_support_pack_and_region_review
+  - id: simcom_a7680c_china_only_size_reference
+    vendor: SIMCom
+    class: LTE_Cat_1
+    source_url: https://www.simcom.com/news_view-159.html
+    public_envelope_mm: {width: 17.6, height: 15.7, thickness: 2.1}
+    area_mm2: 276.32
+    area_savings_vs_rg255c_mm2: 651.68
+    percent_area_savings_vs_rg255c: 70.2
+    top_island_total_if_replacing_placeholder_mm2: 1335.32
+    top_island_remaining_before_rf_keepouts_mm2: 520.68
+    fits_current_14x14_placeholder: false
+    fits_repacked_24x20_region_outline_only: true
+    phone_layout_status: size_reference_or_china_sku_only_not_default_global_phone_module
+downselect_policy:
+  primary_space_saving_branch: quectel_eg915q_na_or_eg915u_class
+  rationale:
+    - preserves Quectel supplier path while cutting public module area by about half versus RG255C LGA
+    - fits a plausible 24 x 20 mm repacked outline, unlike the current 14 x 14 mm placeholder
+    - keeps the 64 x 87 mm battery cavity and selected 5.5 inch display envelope intact at concept level
+  accepted_tradeoffs_before_supplier_review:
+    - LTE Cat 1 bis throughput instead of 5G RedCap
+    - carrier and region SKU review must restart
+    - host interface, antenna, firmware, Android RIL, factory RF, and SAR evidence must be recaptured
+  not_allowed:
+    - claim current U_CELL is ready
+    - use M.2 cellular in the phone enclosure
+    - approve any alternate without supplier design pack and samples
+rfq_updates_required:
+  - ask Quectel for EG915Q/EG915U and EG916Q-GL orderable MPNs, region SKUs, lifecycle, band matrix, reference
+    layout, land pattern, STEP, firmware, and carrier scope
+  - ask Fibocom for MC665 orderable MPNs, region support, hardware design pack, STEP, firmware, and certification
+    scope
+  - keep SIMCom A7680C as a China-market size reference unless a region-appropriate orderable SKU is confirmed
+  - require supplier antenna review for whichever smaller module is selected
+cross_checks:
+  candidates_match_cellular_package_alternates: true
+  all_candidates_smaller_than_rg255c_area: true
+  no_candidate_fits_current_14x14_placeholder: true
+  at_least_two_candidates_fit_under_current_top_island_area_pressure: true
+  downselect_preserves_screen_and_battery_geometry_at_concept_level: true
+  tradeoff_from_5g_redcap_to_lte_cat1_bis_is_explicit: true
+release_blockers:
+  - no smaller cellular module has an approved supplier response pack, sample, land pattern, STEP, firmware pack, or antenna review
+  - LTE Cat 1 bis branch reduces cellular performance versus the current 5G RedCap reference
+  - current U_CELL 14 x 14 mm region still fits none of the shortlisted modules
+  - carrier/PTCRB/GCF/SAR scope must be restarted for any selected alternate
+forbidden_claims:
+  - cellular_alternate_selected
+  - cellular_region_ready
+  - cellular_ready
+  - carrier_ready
+  - rf_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

@@ -1,0 +1,87 @@
+{
+  "_source": "Google Calendar API v3 events.list (calendar.events.list) documented response shapes — https://developers.google.com/calendar/api/v3/reference/events/list. The googleapis Node SDK returns the wire body under `response.data`; `data.items[]` are calendar_v3.Schema$Event objects. Field names + shapes match the real wire: `summary` (title), `start`/`end` as {dateTime, timeZone} (timed) or {date} (all-day, exclusive end), `htmlLink`, `hangoutLink`, `conferenceData.entryPoints[].uri`, `attendees[].{email,displayName,responseStatus,self,organizer,optional}`, `organizer.{email,displayName,self}`, `iCalUID`, `recurringEventId`, `created`, `updated`. Captured via GET https://www.googleapis.com/calendar/v3/calendars/{calendarId}/events?singleEvents=true&orderBy=startTime.",
+  "_why": "Replayed through GoogleCalendarClient.listEvents (which runs the genuine mapEvent normalizer in @elizaos/plugin-google) and then through lifeOpsCalendarEventFromGoogle so the full raw events.list wire -> GoogleCalendarEvent -> LifeOpsCalendarEvent chain is validated against the real Google Calendar shape, with no network (the GoogleApiClientFactory is faked). google-calendar-connector.real.test.ts re-fetches the live API with a token to detect drift from this recording.",
+  "_captured": "2026-06-17",
+  "calendarId": "owner@example.com",
+  "eventsList": {
+    "data": {
+      "kind": "calendar#events",
+      "summary": "owner@example.com",
+      "timeZone": "America/New_York",
+      "accessRole": "owner",
+      "items": [
+        {
+          "kind": "calendar#event",
+          "id": "evt_abc123",
+          "status": "confirmed",
+          "htmlLink": "https://www.google.com/calendar/event?eid=evt_abc123",
+          "created": "2026-06-10T09:00:00.000Z",
+          "updated": "2026-06-15T12:00:00.000Z",
+          "summary": "Design sync",
+          "description": "Weekly design review",
+          "location": "Room 4B",
+          "iCalUID": "evt_abc123@google.com",
+          "creator": { "email": "owner@example.com", "self": true },
+          "organizer": {
+            "email": "owner@example.com",
+            "displayName": "Owner Person",
+            "self": true
+          },
+          "start": {
+            "dateTime": "2026-06-17T11:00:00-04:00",
+            "timeZone": "America/New_York"
+          },
+          "end": {
+            "dateTime": "2026-06-17T12:00:00-04:00",
+            "timeZone": "America/New_York"
+          },
+          "hangoutLink": "https://meet.google.com/abc-defg-hij",
+          "conferenceData": {
+            "conferenceId": "abc-defg-hij",
+            "entryPoints": [
+              {
+                "entryPointType": "video",
+                "uri": "https://meet.google.com/abc-defg-hij",
+                "label": "meet.google.com/abc-defg-hij"
+              }
+            ]
+          },
+          "attendees": [
+            {
+              "email": "owner@example.com",
+              "displayName": "Owner Person",
+              "organizer": true,
+              "self": true,
+              "responseStatus": "accepted"
+            },
+            {
+              "email": "guest@elsewhere.com",
+              "displayName": "Guest",
+              "responseStatus": "needsAction"
+            }
+          ],
+          "reminders": { "useDefault": true }
+        },
+        {
+          "kind": "calendar#event",
+          "id": "evt_holiday",
+          "status": "confirmed",
+          "htmlLink": "https://www.google.com/calendar/event?eid=evt_holiday",
+          "created": "2026-01-02T00:00:00.000Z",
+          "updated": "2026-05-01T00:00:00.000Z",
+          "summary": "Company holiday",
+          "iCalUID": "evt_holiday@google.com",
+          "organizer": { "email": "owner@example.com", "self": true },
+          "start": { "date": "2026-07-04" },
+          "end": { "date": "2026-07-05" },
+          "transparency": "transparent"
+        },
+        {
+          "kind": "calendar#event",
+          "id": "evt_min",
+          "status": "cancelled"
+        }
+      ]
+    }
+  }
+}

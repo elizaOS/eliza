@@ -1,0 +1,145 @@
+[[!meta title="Araceli, June 2022"]]
+
+**Can you tell us a bit about who you are and what you do?**
+
+I'm a sociologist, teacher, and part of a hacklab in Mexico.
+
+I moved far away from the collective now, but I still participate
+remotely with communications and workshops.
+
+I use Linux since the 2010's. My background is in social science and not
+computers, so I had to learn how to use the terminal, maintain my
+system, etc.
+
+As a sociologist, I do qualitative data analysis. I've been trained to
+work with proprietary software, but then I learned how to use only Free
+Software, like RQDA.
+
+I got into Free Software through friends who had a server project many
+years ago. We used Knoppix to troubleshoot my broken computer. That made
+me realize that Linux was not so hard to learn. I started using Mint,
+Ubuntu, and then settled on Debian.
+
+I had to learn everything from scratch. My Linux friends were very
+patient. I kept a double boot on my system for some time to be able to
+do some of my media work as a journalist on Windows and Adobe. I could
+finally get rid of Windows now and fall back on online services or
+virtual machines when I can't do some of my work on Linux.
+
+**How did you discover Tails?**
+
+I was searching and uploading information on WikiLeaks and Méxicoleaks
+and got a Tails USB stick from a workshop at the hacklab.
+
+I was working on very sensitive topics like migration, human
+trafficking, and drug trafficking, and didn't want all my research to be
+linked back to me.
+
+Then, reading Snowden's book, I understood better the capacity of Tails,
+how he used it in the NSA leaks, and how our communications are tracked.
+
+I'm not using Tails as much now.
+
+For some reason, some months ago, my Tails got outdated and I couldn't
+use it anymore. When starting, Tails would get stuck on the first screen
+and I couldn't open any application. I had to update and fix some
+permissions as admin but I didn't know how.  I guess that I could have
+downloaded and installed it again but I didn't have the time and didn't
+find anybody who could help me so much.
+
+**What do you like about Tails?**
+
+- The possibility of anonymity and security
+
+  Mexico is terrible in terms of human rights, but security is taken too
+  lightly. People don't feel the need to protect their personal data or
+  anonymity. Researchers are very ingenious and think that they can work
+  carelessly because they are not faced with all this violence directly.
+
+  But it became clear to me by working on the field.
+
+  For example, one day, the family members of a researcher in our group
+  received fake kidnapping and extortion messages after we lost her from
+  sight. It turned out to be fake, but we wondered how these people got
+  to learn our phone numbers and where we were.
+
+  It's super important for us and our family to keep safe, and protect
+  our data and our phones.
+
+  Sometimes when working on the field, we borrow computers and there you
+  really need Tails. There's nothing else!
+
+- Tails is a toolkit for human-rights defenders or journalists
+
+  I really think that these tools are needed by these collectives.
+  Journalists, researchers, and anthropologists face direct consequences
+  for researching topics that others don't want to be brought to light.
+
+- That you can use Tor without installing it or modifying your browser
+
+  Even if it's pretty easy, it sometimes turns out more complicated.
+  With Tails everything is set up already.
+
+- That there is no metadata attached to what you do
+
+  You can do this on Linux as well, but it requires more configuration.
+  Even if you are not very technical, Tails doesn't leave you exposed
+  even if you do mistakes.
+
+**What are the things that you didn't like about Tails?**
+
+- This problem I had with upgrades
+
+  Maybe it's because I didn't know how to solve it...
+
+- A problem I had while creating a bootable drive myself
+
+  I needed somebody's help. Last time I tried, I followed a tutorial but
+  it didn't work. My last resort would be to try again or give up.
+
+  Maybe there could be some kind of tester for the bootable drives, to
+  know whether there's any mistake.
+
+**What do you think is the biggest problem to Tails being adopted by
+more journalists and researchers?**
+
+It's related to a lack of information. People would attend if there were
+more workshops, but they are a bit scared about the technology, a kind
+of prejudice. They think that Linux is complicated and only for
+technical people.
+
+And they are right in some ways. I wouldn't have made it without the
+help of all my friends. It's about learning new logic and new tools.
+
+Also, a lot of professions that would benefit from Tails are in bed with
+proprietary software, Adobe, data analysis software, etc. In social
+sciences, nobody knows about the alternatives even when they are better
+and easier to use. Again, it really feels like prejudice to me.
+
+People are a bit reluctant to attend workshops in our hacklab. The space
+is kind of stigmatized. It would work better to go meet them at the
+university, for example. Or have an online course that people could
+follow asynchronously.
+
+It's hard to get journalists on board because they are always in a rush.
+Freelancers are more prone to take care of their security because they
+are on their own and more aware of the risks. When you work for a
+newsroom, they are supposedly responsible for your security, even though
+it's not the case at all in Mexico.
+
+The same happens in academia. If you get into trouble during your
+research, it's your problem. Universities only react after the worse
+happened with a communiqué or an obituary when nothing more can be done.
+
+Once I attended a forum on security in academia and people were very
+interested. But the level was extremely basic: building physical
+security protocols. Digital security was not treated at all. People need
+something much more basic than a Tails workshop. They need to understand
+why anonymity is important, what happens when you browse the Internet,
+how search engines work, etc.
+
+**What if these people didn't have to restart the computer to use
+Tails?**
+
+It would make it easier to use Tails on computers that have their boot
+configuration locked down.

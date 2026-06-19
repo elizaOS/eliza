@@ -1,0 +1,217 @@
+{
+  "schema": "eliza.e1_phone.clearance_agent_review.v1",
+  "date": "2026-05-28",
+  "agent_lane": "mechanical_clearance_boolean_screen_back_camera_review",
+  "claim_boundary": "Local concept-envelope CAD review only. This is not physical clearance release and does not substitute for supplier BREP, production routed-board STEP, DRC/ERC, or first-article inspection.",
+  "overall_local_verdict": "local_concept_cad_clearance_pass_release_blocked",
+  "release_credit": false,
+  "artifacts_reviewed": [
+    {
+      "path": "packages/chip/mechanical/e1-phone/review/full-cad-boolean-interference.json",
+      "sha256": "addc8a6ae32c80a868e5a8f7ed7432942f15b51add8f938697ba43f621705aed"
+    },
+    {
+      "path": "packages/chip/mechanical/e1-phone/review/assembly-verification.json",
+      "sha256": "3c6e6f95ec1402627d979bcf5dc9578654cd24c7c3765d65b55ce56e0fd71792"
+    },
+    {
+      "path": "packages/chip/mechanical/e1-phone/review/routed-board-clearance.json",
+      "sha256": "50e99f927073f1cbfc9c195525c71e910caba409f9c0b249575a58d1bffbee1e"
+    },
+    {
+      "path": "packages/chip/mechanical/e1-phone/review/camera-back-and-missing-details.json",
+      "sha256": "d8eca1e758afce611582ba4d2fc4835d4bed2b4b97e2aa73fbff24ab1495c4ec"
+    },
+    {
+      "path": "packages/chip/mechanical/e1-phone/review/display-results-review.json",
+      "sha256": "2d19f0a6256b08fc4c7ee1df167f66c85fb4728eeae14f73ec597fe224297497"
+    },
+    {
+      "path": "packages/chip/mechanical/e1-phone/review/full_front_iso.png",
+      "sha256": "550979f235c8a538d355ffc034e42264b680dcc6415b7e6593d43899cf3e5f04"
+    },
+    {
+      "path": "packages/chip/mechanical/e1-phone/review/full_back_iso.png",
+      "sha256": "04c6cd3ff9f826a87459b74c728dbbb5d3ed45554c87980a155a76c377646519"
+    },
+    {
+      "path": "packages/chip/mechanical/e1-phone/review/rear_feature_detail.png",
+      "sha256": "016c682e52eefe46d85185caadf3d9906a8c422ac299322e9f10aa66271bdc05"
+    }
+  ],
+  "commands_run": [
+    {
+      "command": "python3 packages/chip/scripts/check_e1_phone_boolean_interference.py",
+      "exit_code": 0,
+      "result": "PASS: 258 parts loaded, 33153 total pairs, 989 BRep-evaluated pairs, 0 unintentional clashes, 11/11 scopes passing"
+    },
+    {
+      "command": "python3 packages/chip/scripts/check_e1_phone_assemblability.py",
+      "exit_code": 0,
+      "result": "assemblable=True, steps=20, trapped=0, fastener_pass=True, fpc_pass=True"
+    },
+    {
+      "command": "python3 packages/chip/scripts/check_e1_phone_enclosure_mechanical_content.py",
+      "exit_code": 2,
+      "result": "BLOCKED: missing_release_evidence=5, supplier_families_blocked=6, physical_interfaces_blocked=8, routed_step_files=0, clearance_results_complete=0/12, failed_clearance_cases=12"
+    },
+    {
+      "command": "python3 packages/chip/scripts/check_e1_phone_board_package.py",
+      "exit_code": 2,
+      "result": "BLOCKED structurally consistent: fabrication release remains blocked"
+    }
+  ],
+  "boolean_summary": {
+    "evidence_class": "concept_envelope_brep_boolean_interference_result",
+    "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+    "parts_loaded": 258,
+    "parts_missing": [],
+    "pair_count_total": 33153,
+    "pair_count_brep_evaluated": 989,
+    "unintentional_clash_count": 0,
+    "scope_results_passing": "11/11",
+    "overall_status": "pass"
+  },
+  "screen_cover_review": {
+    "source": "full-cad-boolean-interference.json.screen_cover_glass_collision_check",
+    "status": "pass",
+    "collision_pairs_checked": 9,
+    "pairs": [
+      {"parts": ["screen_cover_glass", "orange_side_frame"], "min_gap_mm": 0.05, "interference_volume_mm3": 0.0},
+      {"parts": ["screen_cover_glass", "display_lcm"], "min_gap_mm": 0.18, "interference_volume_mm3": 0.0},
+      {"parts": ["screen_cover_glass", "screen_adhesive_top"], "min_gap_mm": 0.06, "interference_volume_mm3": 0.0},
+      {"parts": ["screen_cover_glass", "front_camera_module"], "min_gap_mm": 2.6, "interference_volume_mm3": 0.0},
+      {"parts": ["screen_cover_glass", "front_camera_under_glass"], "min_gap_mm": 0.04, "interference_volume_mm3": 0.0},
+      {"parts": ["screen_cover_glass", "front_camera_black_mask_window"], "min_gap_mm": 0.04, "interference_volume_mm3": 0.0},
+      {"parts": ["screen_cover_glass", "earpiece_receiver"], "min_gap_mm": 2.95, "interference_volume_mm3": 0.0},
+      {"parts": ["screen_cover_glass", "handset_acoustic_slot"], "min_gap_mm": 0.15, "interference_volume_mm3": 0.0},
+      {"parts": ["screen_cover_glass", "handset_acoustic_mesh"], "min_gap_mm": 0.05, "interference_volume_mm3": 0.0}
+    ],
+    "screen_stack_scope": {
+      "case": "screen_stack_to_orange_rails",
+      "status": "pass",
+      "min_gap_mm": 6.33,
+      "interference_count": 0,
+      "interference_volume_mm3": 0.0
+    },
+    "display_physical_release_status": "blocked_no_display_results"
+  },
+  "rear_camera_back_review": {
+    "source": "full-cad-boolean-interference.json.rear_camera_back_shell_hole_check",
+    "status": "pass",
+    "aperture_bbox_mm": [15.7, 52.5, -5.955, 26.3, 63.1, -5.875],
+    "cover_glass_bbox_mm": [16.4, 53.2, -5.9, 25.6, 62.4, -5.35],
+    "aperture_clears_cover_glass_xy": true,
+    "pairs": [
+      {"parts": ["orange_back_shell", "rear_camera_cover_glass"], "min_gap_mm": 0.7, "interference_volume_mm3": 0.0},
+      {"parts": ["orange_back_shell", "rear_camera_lens_window"], "min_gap_mm": 1.9, "interference_volume_mm3": 0.0},
+      {"parts": ["orange_back_shell", "rear_camera_module"], "min_gap_mm": 0.5, "interference_volume_mm3": 0.0}
+    ],
+    "optical_sightline": {
+      "status": "pass",
+      "aperture_bbox_mm": [15.7, 52.5, -5.955, 26.3, 63.1, -5.875],
+      "sight_tunnel_bbox_mm": [17.45, 54.25, -5.9, 24.55, 61.35, -4.3],
+      "aperture_contains_tunnel_xy": true,
+      "transparent_stack_overlaps_tunnel": true,
+      "orange_shell_min_gap_mm": 1.75,
+      "orange_shell_interference_volume_mm3": 0.0
+    },
+    "flush_back": {
+      "status": "pass",
+      "back_outer_plane_z_mm": -5.9,
+      "max_solid_protrusion_mm": 0.0,
+      "rear_camera_module_burial_clearance_mm": 0.4,
+      "rear_flash_led_burial_clearance_mm": 0.15
+    },
+    "visual_review": {
+      "rear_feature_detail_png": "apertures visible for rear camera and flash",
+      "full_back_iso_png": "not sufficient as aperture evidence because the camera detail is not visibly resolved in that overview angle"
+    }
+  },
+  "usb_review": {
+    "source": "full-cad-boolean-interference.json.scope_results[usb_c_port_saddle_aperture_and_gaskets]",
+    "status": "pass",
+    "static_pairs_checked": 36,
+    "static_min_gap_mm": 0.0,
+    "static_interference_count": 0,
+    "static_interference_volume_mm3": 0.0,
+    "notable_static_pairs": [
+      {"parts": ["usb_c_receptacle", "usb_c_external_aperture"], "min_gap_mm": 0.105, "interference_volume_mm3": 0.0},
+      {"parts": ["usb_c_receptacle", "usb_c_perimeter_gasket_bottom"], "min_gap_mm": 0.17, "interference_volume_mm3": 0.0},
+      {"parts": ["usb_c_receptacle", "usb_c_perimeter_gasket_top"], "min_gap_mm": 0.47, "interference_volume_mm3": 0.0},
+      {"parts": ["usb_c_receptacle", "usb_c_internal_drain_shelf"], "min_gap_mm": 0.435, "interference_volume_mm3": 0.0}
+    ],
+    "insertion_sweep": {
+      "part": "usb_c_receptacle",
+      "axis": "-Y",
+      "max_mm": 8.0,
+      "step_mm": 1.0,
+      "worst_rigid_interference_volume_mm3": 0.0,
+      "worst_min_gap_mm": 0.0,
+      "intentional_compressible_contact_at_travel_0_mm3": 7.1073,
+      "min_gap_after_1mm_travel_mm": 0.4,
+      "min_gap_at_8mm_travel_mm": 0.5554
+    }
+  },
+  "battery_pcb_fpc_review": {
+    "source": "full-cad-boolean-interference.json.scope_results[battery_pouch_pcb_flex_haptic]",
+    "status": "pass",
+    "scope_min_gap_mm": 0.01,
+    "scope_interference_count": 0,
+    "scope_interference_volume_mm3": 0.0,
+    "notable_pairs": [
+      {"parts": ["battery_pouch", "main_pcb"], "min_gap_mm": 0.0, "interference_volume_mm3": 4454.4, "intentional_contact": true},
+      {"parts": ["battery_pouch", "split_interconnect_side_flex"], "min_gap_mm": 1.3, "interference_volume_mm3": 0.0},
+      {"parts": ["battery_pouch", "haptic_lra"], "min_gap_mm": 0.5, "interference_volume_mm3": 0.0},
+      {"parts": ["main_pcb", "haptic_lra"], "min_gap_mm": 0.5, "interference_volume_mm3": 0.0},
+      {"parts": ["split_interconnect_side_flex", "haptic_lra"], "min_gap_mm": 0.01, "interference_volume_mm3": 0.0}
+    ],
+    "assemblability_fpc": [
+      {"route": "display FPC", "min_clearance_mm": 0.11, "unpinched": true},
+      {"route": "battery/PMIC interconnect (side service loop)", "min_clearance_mm": 0.56, "unpinched": true},
+      {"route": "split top flex tail", "min_clearance_mm": 0.25, "unpinched": true},
+      {"route": "split bottom flex tail", "min_clearance_mm": 0.25, "unpinched": true}
+    ]
+  },
+  "side_buttons_review": {
+    "source": "full-cad-boolean-interference.json.scope_results[side_buttons_switches_gaskets_labyrinth]",
+    "status": "pass",
+    "static_pairs_checked": 36,
+    "static_interference_count": 0,
+    "static_interference_volume_mm3": 0.0,
+    "button_separation_gap_mm": 77.1,
+    "labyrinth_gaps_mm": {
+      "power_button_to_upper_rail": 0.2704,
+      "power_button_to_lower_rail": 0.2704,
+      "power_button_to_side_frame": 0.4
+    },
+    "travel_sweep": [
+      {
+        "part": "power_button_cap",
+        "axis": "-X",
+        "max_mm": 0.35,
+        "worst_rigid_interference_volume_mm3": 0.0,
+        "intentional_compressible_contact_max_mm3": 5.28,
+        "status": "pass"
+      },
+      {
+        "part": "volume_button_cap",
+        "axis": "+X",
+        "max_mm": 0.35,
+        "worst_rigid_interference_volume_mm3": 0.0,
+        "intentional_compressible_contact_max_mm3": 9.24,
+        "status": "pass"
+      }
+    ]
+  },
+  "remaining_blockers": [
+    "No production routed-board STEP release file is present: routed-board-clearance.json production_step_files is empty.",
+    "Routed-board clearance result matrix has 0/12 complete physical clearance results; all 12 result cases are fail-closed.",
+    "KiCad/routed board release remains blocked by absent DRC/ERC/reviewer release evidence.",
+    "Supplier BREP/approved component STEP models are not available for release; local envelopes and surrogate STEP lanes are non-release.",
+    "Display physical result review is blocked_no_display_results; 7 expected physical display measurements are blank.",
+    "Camera/back CAD checks pass locally, but physical camera module supplier model and first-article fit evidence are still required.",
+    "Overview image full_back_iso.png is not adequate visual proof of the rear aperture; use rear_feature_detail.png plus BRep evidence until regenerated with a camera-aperture close-up."
+  ],
+  "local_bugs_found_or_patched": []
+}

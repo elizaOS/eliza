@@ -1,0 +1,42 @@
+menuconfig ELIZA_E1_BSP
+	tristate "Eliza e1 SoC BSP drivers"
+	depends on OF
+	help
+	  Out-of-tree style BSP drivers for the Eliza e1 platform
+	  contract (sw/platform/e1_platform_contract.json). Drop this
+	  directory into an external Linux tree under drivers/misc/eliza-e1/
+	  and source this Kconfig from drivers/misc/Kconfig.
+
+if ELIZA_E1_BSP
+
+config ELIZA_E1_NPU
+	tristate "Eliza e1 NPU character driver"
+	help
+	  Creates /dev/e1-npu and exposes the NPU register window through
+	  read(), ioctl() (submit OP_A/OP_B/OPCODE), and mmap() of the 4 KiB
+	  MMIO region. Bound to compatible "eliza,e1-npu".
+
+config ELIZA_E1_DMA
+	tristate "Eliza e1 DMA platform driver"
+	help
+	  Binds compatible "eliza,e1-dma" and exports a multi-line
+	  platform-contract sysfs node plus live readback of BYTES_DONE and
+	  ERROR_COUNT.
+
+config ELIZA_E1_DISPLAY
+	tristate "Eliza e1 display (simple-framebuffer compatible)"
+	help
+	  Programs FB_BASE / MODE / FORMAT / ENABLE from device tree and
+	  leaves scan-out for userspace via a sibling simple-framebuffer
+	  node. Bound to compatible "eliza,e1-display".
+
+config ELIZA_E1_GPIO
+	tristate "Eliza e1 GPIO (gpio-mmio backed)"
+	depends on GPIOLIB
+	select GPIO_GENERIC
+	help
+	  Wraps the GPIO_OUT register inside the peripheral-control window as
+	  a 32-line gpio-mmio gpiochip. Bound to compatible
+	  "eliza,e1-gpio".
+
+endif # ELIZA_E1_BSP

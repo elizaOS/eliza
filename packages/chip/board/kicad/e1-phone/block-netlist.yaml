@@ -1,0 +1,212 @@
+schema: eliza.e1_phone_block_netlist.v1
+status: logical_block_netlist_not_kicad_schematic
+date: 2026-05-20
+claim_boundary: >
+  This is a logical block netlist for schematic capture and layout planning.
+  It is not a KiCad schematic, routed board netlist, ERC result, or fabrication
+  evidence.
+
+voltage_domains:
+  - {name: VBAT, nominal_v: 3.85, source: battery_pack, always_present_when_battery_installed: true}
+  - {name: VBUS, nominal_v: 5_to_12_evt0, source: USB_C_PD_source}
+  - {name: SYS, nominal_v: 3.6_to_4.4, source: charger_power_path}
+  - {name: AON_1V8, nominal_v: 1.8, source: PMIC_AON_LDO}
+  - {name: AP_0V8, nominal_v: 0.8, source: PMIC_buck}
+  - {name: AP_1V1, nominal_v: 1.1, source: PMIC_buck}
+  - {name: IO_1V8, nominal_v: 1.8, source: PMIC_LDO}
+  - {name: RF_VBAT, nominal_v: 3.3_to_4.4, source: battery_power_path_or_dedicated_buck}
+  - {name: CAM_AVDD_2V8, nominal_v: 2.8, source: PMIC_LDO}
+  - {name: CAM_DVDD_1V2, nominal_v: 1.2, source: PMIC_LDO_or_module_regulator}
+  - {name: DISP_AVDD_5V5, nominal_v: 5.5, source: display_bias_boost}
+  - {name: DISP_AVEE_N5V5, nominal_v: -5.5, source: display_bias_inverter}
+  - {name: VDD_AUDIO_3V3, nominal_v: 3.3, source: PMIC_LDO7}
+  - {name: VDD_AMP_3V3, nominal_v: 3.3, source: PMIC_LDO_audio}
+
+blocks:
+  - id: J_USB_C
+    kind: connector
+    package_binding: package/usb-c/e1-phone-usb-c-port.yaml
+    nets:
+      power: [VBUS, GND, SHIELD_GND]
+      high_speed: [USB_DP, USB_DN]
+      control: [USB_CC1, USB_CC2]
+      esd_required: [VBUS, USB_DP, USB_DN, USB_CC1, USB_CC2]
+
+  - id: U_USB_PD
+    kind: usb_pd_controller
+    package_binding: package/usb-pd/tps65987.yaml
+    nets:
+      power: [VIN_3V3, GND]
+      control: [USB_CC1, USB_CC2, USBPD_I2C_SCL, USBPD_I2C_SDA, USBPD_IRQ_N, USBPD_RESET]
+      power_path: [VBUS]
+
+  - id: U_CHARGER
+    kind: charger_power_path
+    package_binding: package/charger/max77860.yaml
+    nets:
+      power: [VBUS, VBAT, SYS, GND]
+      control: [CHG_I2C_SCL, CHG_I2C_SDA, CHG_IRQ_N, CHG_CE_N, CHG_OTG_EN, BAT_NTC, BAT_ID]
+      thermistor: [CHG_TS]
+
+  - id: J_BATTERY
+    kind: battery_pack_connector
+    package_binding: package/battery/e1-phone-17p3wh-pack.yaml
+    nets:
+      power: [VBAT, GND]
+      sense: [BAT_NTC, BAT_ID]
+
+  - id: U_PMIC
+    kind: pmic
+    package_binding: package/pmic/da9063.yaml
+    nets:
+      power_inputs: [SYS, VBAT, GND]
+      power_outputs: [AON_1V8, AP_0V8, AP_1V1, IO_1V8, RF_VBAT, CAM_AVDD_2V8, CAM_DVDD_1V2, VDD_AUDIO_3V3, VDD_AMP_3V3]
+      control: [PMIC_I2C_SCL, PMIC_I2C_SDA, PMIC_IRQ_N, PMIC_RESET_N, PWR_KEY_N]
+
+  - id: U_SOC
+    kind: application_processor
+    package_binding: package/e1-demo-pinout.yaml
+    nets:
+      power: [AP_0V8, AP_1V1, IO_1V8, GND]
+      usb: [USB_DP, USB_DN]
+      memory: [LPDDR_CK_P, LPDDR_CK_N, LPDDR_CA0, LPDDR_CA1, LPDDR_CA2, LPDDR_CA3, LPDDR_DQ0, LPDDR_DQ1, LPDDR_DQ2, LPDDR_DQ3, LPDDR_DQS_P, LPDDR_DQS_N, LPDDR_RESET_N, LPDDR_ZQ]
+      storage: [UFS_REFCLK_P, UFS_REFCLK_N, UFS_TX_P, UFS_TX_N, UFS_RX_P, UFS_RX_N, UFS_RESET_N]
+      debug_boot: [JTAG_TCK, JTAG_TMS, JTAG_TDI, JTAG_TDO, JTAG_TRST_N, BOOT_MODE0, BOOT_MODE1, BOOT_MODE2, SOC_RESET_N]
+      display: [DSI_CLK_P, DSI_CLK_N, DSI_D0_P, DSI_D0_N, DSI_D1_P, DSI_D1_N, DSI_D2_P, DSI_D2_N, DSI_D3_P, DSI_D3_N, DISP_RESET_N, DISP_TE, DISP_BL_EN, DISP_BL_PWM]
+      camera: [CAM0_CSI_CLK_P, CAM0_CSI_CLK_N, CAM0_CSI_D0_P, CAM0_CSI_D0_N, CAM0_CSI_D1_P, CAM0_CSI_D1_N, CAM0_CSI_D2_P, CAM0_CSI_D2_N, CAM0_CSI_D3_P, CAM0_CSI_D3_N, CAM1_CSI_CLK_P, CAM1_CSI_CLK_N, CAM1_CSI_D0_P, CAM1_CSI_D0_N, CAM1_CSI_D1_P, CAM1_CSI_D1_N]
+      audio: [I2S_BCLK, I2S_LRCLK, I2S_DOUT, I2S_DIN, PDM_CLK, PDM_DAT, AUDIO_I2C_SCL, AUDIO_I2C_SDA, CODEC_INT, AMP_INT]
+      wireless: [WIFI_PCIE_TX_P, WIFI_PCIE_TX_N, WIFI_PCIE_RX_P, WIFI_PCIE_RX_N, BT_UART_TX, BT_UART_RX, BT_UART_CTS_N, BT_UART_RTS_N, CELL_USB2_DP, CELL_USB2_DN, CELL_PCIE_TX_P, CELL_PCIE_TX_N, CELL_PCIE_RX_P, CELL_PCIE_RX_N]
+      controls: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, WIFI_EN, BT_EN, CELL_RESET_N, CELL_W_DISABLE_N, USIM_DET, NFC_I2C_SCL, NFC_I2C_SDA, NFC_IRQ_N, NFC_EN, SENSOR_I2C_SCL, SENSOR_I2C_SDA, IMU_INT, ALS_PROX_INT, BARO_INT, MAG_INT]
+
+  - id: U_LPDDR_UFS
+    kind: memory_storage_populated_near_soc
+    package_binding: package/e1-demo-pinout.yaml
+    nets:
+      power: [AP_0V8, AP_1V1, IO_1V8, GND]
+      memory: [LPDDR_CK_P, LPDDR_CK_N, LPDDR_CA0, LPDDR_CA1, LPDDR_CA2, LPDDR_CA3, LPDDR_DQ0, LPDDR_DQ1, LPDDR_DQ2, LPDDR_DQ3, LPDDR_DQS_P, LPDDR_DQS_N, LPDDR_RESET_N, LPDDR_ZQ]
+      storage: [UFS_REFCLK_P, UFS_REFCLK_N, UFS_TX_P, UFS_TX_N, UFS_RX_P, UFS_RX_N, UFS_RESET_N]
+      debug_boot: [JTAG_TCK, JTAG_TMS, JTAG_TDI, JTAG_TDO, JTAG_TRST_N, BOOT_MODE0, BOOT_MODE1, BOOT_MODE2, SOC_RESET_N]
+
+  - id: J_DISPLAY_TOUCH
+    kind: display_touch_connector
+    package_binding: package/display/v0-dsi-720x1280.yaml
+    nets:
+      power: [IO_1V8, DISP_AVDD_5V5, DISP_AVEE_N5V5, GND]
+      high_speed: [DSI_CLK_P, DSI_CLK_N, DSI_D0_P, DSI_D0_N, DSI_D1_P, DSI_D1_N, DSI_D2_P, DSI_D2_N, DSI_D3_P, DSI_D3_N]
+      control: [DISP_RESET_N, DISP_TE, DISP_BL_EN, DISP_BL_PWM, TOUCH_I2C_SCL, TOUCH_I2C_SDA, TOUCH_IRQ_N, TOUCH_RESET_N]
+
+  - id: J_CAM0
+    kind: rear_camera_connector
+    package_binding: package/camera/oem-mipi-csi-modules.yaml
+    nets:
+      power: [CAM_AVDD_2V8, CAM_DVDD_1V2, IO_1V8, CAM_AFVDD_2V8, GND]
+      high_speed: [CAM0_CSI_CLK_P, CAM0_CSI_CLK_N, CAM0_CSI_D0_P, CAM0_CSI_D0_N, CAM0_CSI_D1_P, CAM0_CSI_D1_N, CAM0_CSI_D2_P, CAM0_CSI_D2_N, CAM0_CSI_D3_P, CAM0_CSI_D3_N]
+      control: [CAM0_MCLK, CAM0_RESET_N, CAM0_PWDN, CAM0_I2C_SCL, CAM0_I2C_SDA, CAM0_AF_I2C_SCL, CAM0_AF_I2C_SDA]
+
+  - id: J_CAM1
+    kind: front_camera_connector
+    package_binding: package/camera/oem-mipi-csi-modules.yaml
+    nets:
+      power: [CAM_AVDD_2V8, CAM_DVDD_1V2, IO_1V8, GND]
+      high_speed: [CAM1_CSI_CLK_P, CAM1_CSI_CLK_N, CAM1_CSI_D0_P, CAM1_CSI_D0_N, CAM1_CSI_D1_P, CAM1_CSI_D1_N]
+      control: [CAM1_MCLK, CAM1_RESET_N, CAM1_I2C_SCL, CAM1_I2C_SDA]
+
+  - id: U_CELL
+    kind: cellular_module
+    package_binding: package/cellular/quectel-5g-redcap.yaml
+    nets:
+      power: [RF_VBAT, IO_1V8, GND]
+      high_speed: [CELL_USB2_DP, CELL_USB2_DN, CELL_PCIE_TX_P, CELL_PCIE_TX_N, CELL_PCIE_RX_P, CELL_PCIE_RX_N]
+      control: [CELL_RESET_N, CELL_WAKE_AP, AP_WAKE_CELL, CELL_W_DISABLE_N, USIM_VCC, USIM_CLK, USIM_RST, USIM_IO, USIM_DET, ESIM_VCC, ESIM_CLK, ESIM_RST, ESIM_IO]
+      rf: [CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF]
+
+  - id: U_SIM_ESIM
+    kind: cellular_identity
+    package_binding: package/cellular/quectel-5g-redcap.yaml
+    nets:
+      power: [USIM_VCC, ESIM_VCC, IO_1V8, GND]
+      sim: [USIM_CLK, USIM_RST, USIM_IO, USIM_DET]
+      esim: [ESIM_CLK, ESIM_RST, ESIM_IO]
+
+  - id: U_NFC_SENSOR
+    kind: nfc_sensors
+    package_binding: package/e1-demo-pinout.yaml
+    nets:
+      power: [AON_1V8, IO_1V8, GND]
+      nfc: [NFC_I2C_SCL, NFC_I2C_SDA, NFC_IRQ_N, NFC_EN, NFC_RF_P, NFC_RF_N]
+      sensors: [SENSOR_I2C_SCL, SENSOR_I2C_SDA, IMU_INT, ALS_PROX_INT, BARO_INT, MAG_INT]
+
+  - id: U_WIFI_BT
+    kind: wifi_bluetooth_module
+    package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
+    nets:
+      power: [RF_VBAT, IO_1V8, GND]
+      high_speed: [WIFI_PCIE_TX_P, WIFI_PCIE_TX_N, WIFI_PCIE_RX_P, WIFI_PCIE_RX_N, WIFI_SDIO_CLK, WIFI_SDIO_CMD, WIFI_SDIO_D0, WIFI_SDIO_D1, WIFI_SDIO_D2, WIFI_SDIO_D3]
+      control: [WIFI_EN, BT_EN, WIFI_IRQ, WIFI_HOST_WAKE, BT_UART_TX, BT_UART_RX, BT_UART_CTS_N, BT_UART_RTS_N]
+      rf: [WIFI_BT_RF0, WIFI_BT_RF1]
+
+  - id: SW_SIDE_KEYS
+    kind: power_volume_buttons
+    package_binding: package/human-interface/side-buttons.yaml
+    nets:
+      power: [AON_1V8, GND]
+      control: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N]
+
+  - id: U_AUDIO_HAPTIC
+    kind: audio_haptic_subsystem
+    package_binding: package/audio/v0-codec.yaml
+    nets:
+      power: [IO_1V8, VDD_AUDIO_3V3, VDD_AMP_3V3, SYS, GND]
+      digital: [I2S_BCLK, I2S_LRCLK, I2S_DOUT, I2S_DIN, PDM_CLK, PDM_DAT, AUDIO_I2C_SCL, AUDIO_I2C_SDA, CODEC_INT, AMP_INT]
+      analog: [SPK_P, SPK_N, HAPTIC_OUT]
+
+  - id: J_TOP_BOTTOM_FLEX_TOP
+    kind: split_board_interconnect_top_mate
+    package_binding: package/interconnect/e1-phone-top-bottom-flex.yaml
+    nets:
+      usb_power: [USB_DP, USB_DN, USB_CC1, USB_CC2, VBUS, SHIELD_GND, GND]
+      bottom_power: [SYS, AON_1V8, IO_1V8, VDD_AUDIO_3V3, VDD_AMP_3V3, VBAT, RF_VBAT, GND]
+      audio_control: [I2S_BCLK, I2S_LRCLK, I2S_DOUT, I2S_DIN, PDM_CLK, PDM_DAT, AUDIO_I2C_SCL, AUDIO_I2C_SDA, CODEC_INT, AMP_INT]
+      haptic_test: [HAPTIC_OUT]
+
+  - id: J_TOP_BOTTOM_FLEX_BOTTOM
+    kind: split_board_interconnect_bottom_mate
+    package_binding: package/interconnect/e1-phone-top-bottom-flex.yaml
+    nets:
+      usb_power: [USB_DP, USB_DN, USB_CC1, USB_CC2, VBUS, SHIELD_GND, GND]
+      bottom_power: [SYS, AON_1V8, IO_1V8, VDD_AUDIO_3V3, VDD_AMP_3V3, VBAT, RF_VBAT, GND]
+      audio_control: [I2S_BCLK, I2S_LRCLK, I2S_DOUT, I2S_DIN, PDM_CLK, PDM_DAT, AUDIO_I2C_SCL, AUDIO_I2C_SDA, CODEC_INT, AMP_INT]
+      haptic_test: [HAPTIC_OUT]
+
+required_shared_nets:
+  high_speed:
+    - USB_DP
+    - USB_DN
+    - DSI_CLK_P
+    - DSI_D0_P
+    - CAM0_CSI_CLK_P
+    - CAM1_CSI_CLK_P
+    - CELL_USB2_DP
+    - WIFI_PCIE_TX_P
+    - UFS_TX_P
+    - LPDDR_CK_P
+  controls:
+    - PWR_KEY_N
+    - VOL_UP_N
+    - VOL_DOWN_N
+    - USB_CC1
+    - USB_CC2
+    - WIFI_EN
+    - BT_EN
+    - CELL_RESET_N
+    - USIM_DET
+    - NFC_I2C_SCL
+    - SENSOR_I2C_SCL
+  power:
+    - VBAT
+    - VBUS
+    - SYS
+    - AON_1V8
+    - IO_1V8
+    - RF_VBAT
+    - GND

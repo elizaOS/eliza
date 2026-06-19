@@ -1,0 +1,11 @@
+Codename: stable
+Components: main
+Architectures: amd64 arm64
+SignWith: default
+Description: elizaOS App stable release
+
+Codename: beta
+Components: main
+Architectures: amd64 arm64
+SignWith: default
+Description: elizaOS App beta release

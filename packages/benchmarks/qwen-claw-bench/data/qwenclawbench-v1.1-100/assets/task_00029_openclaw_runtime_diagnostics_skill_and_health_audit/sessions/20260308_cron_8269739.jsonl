@@ -1,0 +1,4 @@
+{"type": "session_start", "session_id": "cron_8269739", "model": "gpt-4o-2025-01-10", "created_at": "2026-03-08T22:20:48.329781", "user_id": "subagent-runner", "channel": "internal"}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-08T22:24:47.311683", "session_id": "cron_8269739", "seq": 1, "usage": {"prompt_tokens": 228, "completion_tokens": 3263, "total_tokens": 9285}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-08T22:26:33.921219", "session_id": "cron_8269739", "seq": 2, "usage": {"prompt_tokens": 7073, "completion_tokens": 56, "total_tokens": 10448}}
+{"type": "session_end", "session_id": "cron_8269739", "ended_at": "2026-03-08T22:26:43.921219", "total_messages": 2, "status": "completed"}

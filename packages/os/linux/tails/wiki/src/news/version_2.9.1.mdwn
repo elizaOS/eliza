@@ -1,0 +1,65 @@
+[[!meta date="Tue, 14 Dec 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.9.1 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_2.7.1]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+  - Upgrade *Tor* to 0.2.8.10.
+
+  - Upgrade *Tor Browser* to 6.0.8.
+
+  - Upgrade *Icedove* to [45.5.1](https://www.mozilla.org/en-US/thunderbird/45.1.1/releasenotes/).
+
+  - Upgrade *obfs4proxy* to 0.0.7.
+
+  - Switch to *DuckDuckGo* as the default search engine in *Tor Browser*.
+    The previous default search engine, *Disconnect.me*, has already been
+    redirecting to *Duck Duck Go* for some time.
+
+## Fixed problems
+
+  - Fix Tails not starting in *VirtualBox* by upgrading the *Guest Additions*
+    to version 5.1.8. ([[!tails_ticket 11965]])
+
+  - Document that [[**I/O APIC** is required to start Tails in
+    *VirtualBox*|support/known_issues#vb-apic]].
+
+  - Remove the error when starting *Videos* that appeared in Tails 2.7 by
+    fixing the *AppArmor* profile of *Totem*. ([[!tails_ticket 11984]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 2.9.1
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, an automatic upgrade is available from 2.7 and 2.7.1 to 2.9.1.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 2.9.1.|install/download]]
+
+# What's coming up?
+
+Tails 2.10 is [[scheduled|contribute/calendar]] for January 24.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=2.9.1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

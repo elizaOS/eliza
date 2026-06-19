@@ -1,0 +1,365 @@
+/**
+ * In-process FFI streaming backend adapter.
+ *
+ * Implements `LocalInferenceBackend` as the optimized in-process
+ * llama.cpp path used by Eliza-1 on desktop and mobile.
+ *
+ * What this class deliberately does NOT do:
+ *   - Own the FFI context. The runtime provider passed to this class owns
+ *     native load/unload and hands back the binding, context, and tokenizer.
+ *   - Decode image bytes or call mtmd directly. Vision requests are validated
+ *     here, then forwarded to runtimes that expose `describeImage`.
+ */
+
+import type {
+	BackendPlan,
+	GenerateArgs,
+	GenerateResult,
+	LocalGenerateWithUsageResult,
+	LocalInferenceBackend,
+} from "./backend";
+import type { FfiStreamingRunner } from "./ffi-streaming-runner";
+import type {
+	LlmCtxHandle,
+	LlmStreamingBinding,
+} from "./llm-streaming-binding";
+import { resolveGuidedDecodeForParams } from "./structured-output";
+
+/**
+ * Constructor-injected adapter that resolves the FFI binding, context, and
+ * tokenizer for a given load. Two responsibilities:
+ *
+ *   1. Decide whether the FFI path is viable on the current binding
+ *      (`supported()`). Mirrors `LlmStreamingBinding.llmStreamSupported()`
+ *      plus any higher-level constraints (e.g. dylib path exists, build
+ *      target matches the bundle's required kernels).
+ *   2. Lifecycle: `acquire(plan)` returns the FFI runner ready for
+ *      `generate()` against the requested model, plus a tokenizer that
+ *      matches that model's vocab. `release()` tears everything down.
+ *
+ * Production runtime implementations:
+ *   - libelizainference path → wraps `ElizaInferenceFfi` via
+ *     `wrapElizaInferenceFfi()` from `services/llm-streaming-binding.ts`.
+ *   - desktop libllama+shim path → mirrors the AOSP adapter pattern and is
+ *     provided by `desktop-ffi-backend-runtime.ts`.
+ */
+export interface FfiBackendRuntime {
+	supported(): boolean;
+	acquire(plan: BackendPlan): Promise<FfiBackendSession>;
+	release(): Promise<void>;
+	/**
+	 * Optional parallel-slot pool surface. When the runtime exposes a
+	 * ctx pool (the desktop libllama path does), `parallelSlots()`
+	 * reports the live count and `resizeParallel(N)` grows/shrinks it.
+	 * Runtimes without a pool report 1 and ignore resize requests.
+	 */
+	parallelSlots?(): number;
+	resizeParallel?(target: number): Promise<boolean>;
+}
+
+/**
+ * Result of `FfiBackendRuntime.acquire()` — a live FFI session bound to a
+ * specific loaded model.
+ */
+export interface FfiBackendSession {
+	readonly binding: LlmStreamingBinding;
+	readonly ctx: LlmCtxHandle;
+	readonly runner: FfiStreamingRunner;
+	/**
+	 * Tokenize a prompt string into model token ids using the loaded model's
+	 * tokenizer. The vocab MUST match the GGUF — mismatches produce gibberish
+	 * silently. The runtime is responsible for asserting this at acquire
+	 * time.
+	 */
+	readonly tokenize: (prompt: string) => Int32Array;
+	/**
+	 * Native MTP speculative-decoding policy from the catalog. `null`
+	 * disables speculative decoding for this session.
+	 */
+	readonly mtp: {
+		specType: "draft-mtp";
+		draftMin: number;
+		draftMax: number;
+		gpuLayers: number | "auto";
+	} | null;
+	/**
+	 * Absolute path to a *separate* MTP drafter GGUF resolved during load.
+	 * `null` means same-file MTP: the NextN head is embedded in the main
+	 * text GGUF and the native runner activates `--spec-type draft-mtp`
+	 * with no `-md`. Speculative decoding is governed by `mtp`, not by the
+	 * presence of this path.
+	 */
+	readonly draftModelPath: string | null;
+	/**
+	 * Multimodal projector (mmproj) GGUF path for vision describe. Resolved
+	 * from `plan.overrides.mmprojPath` at acquire time. `null` disables
+	 * vision — `describeImage` then throws an actionable error.
+	 */
+	readonly mmprojPath: string | null;
+}
+
+/**
+ * Adapter that satisfies `LocalInferenceBackend` by delegating to
+ * `FfiStreamingRunner`. The `id` is `"llama-cpp"` because this is the
+ * in-process variant of the optimized llama.cpp path.
+ */
+export class FfiStreamingBackend implements LocalInferenceBackend {
+	readonly id = "llama-cpp" as const;
+
+	private session: FfiBackendSession | null = null;
+	private loadedPath: string | null = null;
+
+	constructor(private readonly runtime: FfiBackendRuntime) {}
+
+	async available(): Promise<boolean> {
+		return this.runtime.supported();
+	}
+
+	hasLoadedModel(): boolean {
+		return this.session !== null;
+	}
+
+	currentModelPath(): string | null {
+		return this.loadedPath;
+	}
+
+	async load(plan: BackendPlan): Promise<void> {
+		if (this.session) await this.unload();
+		this.session = await this.runtime.acquire(plan);
+		this.loadedPath = plan.modelPath;
+	}
+
+	async unload(): Promise<void> {
+		// Await the native release BEFORE nulling our refs. If we null first and
+		// release() throws (a raw bun:ffi free can reject), this.session would be
+		// null while the runtime still holds a live session — the next load()
+		// would skip unload() and call acquire(), which throws on its live-session
+		// guard, wedging the backend until process restart. The finally guarantees
+		// our refs are cleared regardless so a failed release can't leave a stale
+		// "loaded" view either.
+		try {
+			await this.runtime.release();
+		} finally {
+			this.session = null;
+			this.loadedPath = null;
+		}
+	}
+
+	async generate(args: GenerateArgs): Promise<GenerateResult> {
+		const result = await this.generateWithUsage(args);
+		return result.text;
+	}
+
+	async generateWithUsage(
+		args: GenerateArgs & { slotId?: number },
+	): Promise<LocalGenerateWithUsageResult> {
+		if (!this.session) {
+			throw new Error(
+				"[ffi-streaming-backend] generate() called before load() — " +
+					"the FFI session has not been acquired.",
+			);
+		}
+		const { runner, tokenize, mtp, draftModelPath } = this.session;
+		// Force the structured-reply envelope: compile the GBNF from the
+		// caller's `responseSkeleton` / explicit `grammar` (precedence handled
+		// by `resolveGuidedDecodeForParams`, mirroring `engine.ts`'s
+		// `resolveBindingGrammarSource`). The native session installs it FIRST
+		// in the sampler chain so every sampled token is grammar-constrained.
+		const gbnfGrammar =
+			resolveGuidedDecodeForParams(args).grammar?.source ?? null;
+		const result = await runner.generateWithUsage({
+			promptTokens: tokenize(args.prompt),
+			slotId: args.slotId ?? -1,
+			cacheKey: args.cacheKey,
+			maxTokens: args.maxTokens ?? 2048,
+			temperature: args.temperature ?? 0.7,
+			topP: args.topP ?? 0.9,
+			topK: 40,
+			repeatPenalty: 1.1,
+			draftMin: mtp?.draftMin ?? 0,
+			draftMax: mtp?.draftMax ?? 0,
+			draftModelPath,
+			gbnfGrammar,
+			signal: args.signal,
+			onTextChunk: args.onTextChunk,
+			onVerifierEvent: args.onVerifierEvent,
+		});
+		return {
+			text: result.text,
+			slotId: result.slotId,
+			firstTokenMs: result.firstTokenMs,
+			usage: {
+				completion_tokens: result.accepted,
+			},
+			mtpStats: {
+				drafted: result.drafted,
+				accepted: result.accepted,
+				acceptanceRate:
+					result.drafted > 0 ? result.accepted / result.drafted : null,
+			},
+		};
+	}
+
+	// === Optional `LocalInferenceBackend` methods routed through the runner.
+
+	/**
+	 * Persist the active session's KV state to a per-conversation file.
+	 * v1 uses `llama_state_seq_save_file` against seq_id=0 — see
+	 * `desktop-llama-adapter.ts`'s `saveSlot`. The on-disk file path
+	 * mirrors `ffi-streaming-backend.ts`'s conversation-keyed slot layout
+	 * (`<cacheDir>/<conversationId>/<slotId>.kv`) so a switch between
+	 * FFI and subprocess can resume each other's slots — once both
+	 * paths agree on the file format.
+	 */
+	async persistConversationKv(
+		conversationId: string,
+		slotId: number,
+	): Promise<void> {
+		if (!this.session) return; // no active session to persist
+		const { binding } = this.session;
+		if (!binding.llmStreamSaveSlot) return; // adapter doesn't support save
+		const filename = slotFilename(conversationId, slotId);
+		// llmStreamSaveSlot is per-stream in the binding API; the desktop
+		// adapter currently saves the ctx-wide seq=0 state, so the stream
+		// handle is informational. We pass the runner's most recent
+		// stream id when available; 0n is the binding-level sentinel.
+		binding.llmStreamSaveSlot({ stream: 0n, filename });
+	}
+
+	/** Restore a previously persisted KV state. Mirror of `persistConversationKv`. */
+	async restoreConversationKv(
+		conversationId: string,
+		slotId: number,
+	): Promise<boolean> {
+		if (!this.session) return false;
+		const { binding } = this.session;
+		if (!binding.llmStreamRestoreSlot) return false;
+		const filename = slotFilename(conversationId, slotId);
+		binding.llmStreamRestoreSlot({ stream: 0n, filename });
+		return true;
+	}
+
+	/**
+	 * Pre-decode `promptPrefix` so the next `generate` against the same
+	 * `cacheKey` skips re-prefill. Returns `false` when the prefix is
+	 * empty or no session is loaded. The FFI runner serializes by
+	 * `cacheKey` internally via the `slotInFlight` map.
+	 */
+	async prewarmConversation(
+		promptPrefix: string,
+		opts: { slotId: number; cacheKey: string },
+	): Promise<boolean> {
+		if (!this.session || promptPrefix.length === 0) return false;
+		const { runner, tokenize, mtp, draftModelPath } = this.session;
+		await runner.generateWithUsage({
+			promptTokens: tokenize(promptPrefix),
+			slotId: opts.slotId,
+			cacheKey: opts.cacheKey,
+			maxTokens: 0, // prefill-only: feed prompt, generate nothing
+			temperature: 0,
+			topP: 1,
+			topK: 1,
+			repeatPenalty: 1,
+			draftMin: mtp?.draftMin ?? 0,
+			draftMax: mtp?.draftMax ?? 0,
+			draftModelPath,
+		});
+		return true;
+	}
+
+	/**
+	 * True when Eliza-1 native MTP is active for the loaded target model.
+	 * Covers both shapes: same-file MTP (NextN head embedded in the text
+	 * GGUF, `draftModelPath` null) and separate-drafter MTP.
+	 */
+	mtpEnabled(): boolean {
+		return Boolean(this.session?.mtp);
+	}
+
+	/**
+	 * Parallel-slot pool size. Routed to the runtime's ctx pool when one
+	 * exists; defaults to 1 otherwise.
+	 */
+	parallelSlots(): number {
+		return this.runtime.parallelSlots?.() ?? 1;
+	}
+
+	/**
+	 * Grow or shrink the runtime's ctx pool to `target` slots. Returns
+	 * false when the runtime has no pool surface (in which case parallel
+	 * resize is ignored — the conversation registry tolerates
+	 * fixed 1-slot operation).
+	 */
+	async resizeParallel(target: number): Promise<boolean> {
+		if (!this.runtime.resizeParallel) return false;
+		return this.runtime.resizeParallel(target);
+	}
+
+	/**
+	 * Vision describe via mmproj. Requires:
+	 *   - The shim built with `-DELIZA_ENABLE_VISION=1` (ELIZA_ENABLE_VISION=1
+	 *     at the build script env). When absent the runtime throws an
+	 *     actionable error.
+	 *   - `plan.overrides.mmprojPath` was passed at load time so the
+	 *     adapter knows which mmproj GGUF to feed clip.
+	 */
+	async describeImage(args: {
+		bytes: Uint8Array;
+		mimeType?: string;
+		prompt?: string;
+		maxTokens?: number;
+		temperature?: number;
+		signal?: AbortSignal;
+	}): Promise<{ text: string; projectorMs?: number; decodeMs?: number }> {
+		if (!this.session) {
+			throw new Error(
+				"[ffi-streaming-backend] describeImage before load — no session acquired",
+			);
+		}
+		if (!this.session.mmprojPath) {
+			throw new Error(
+				"[ffi-streaming-backend] describeImage: no mmproj GGUF loaded for this session. " +
+					"Pass `overrides.mmprojPath` in the BackendPlan when activating a vision-capable bundle.",
+			);
+		}
+		// The runtime adapter has visionSupported() + describeImage(args).
+		// We re-shape `bytes` → `imageBytes` and merge in the resolved
+		// mmprojPath; the rest of args pass through unchanged.
+		const runtime = this.runtime as unknown as {
+			describeImage?: (args: {
+				imageBytes: Uint8Array;
+				mmprojPath: string;
+				prompt?: string;
+				maxTokens?: number;
+				temperature?: number;
+				signal?: AbortSignal;
+			}) => Promise<{ text: string; projectorMs?: number; decodeMs?: number }>;
+		};
+		if (!runtime.describeImage) {
+			throw new Error(
+				"[ffi-streaming-backend] runtime lacks describeImage support",
+			);
+		}
+		return runtime.describeImage({
+			imageBytes: args.bytes,
+			mmprojPath: this.session.mmprojPath,
+			prompt: args.prompt,
+			maxTokens: args.maxTokens,
+			temperature: args.temperature,
+			signal: args.signal,
+		});
+	}
+
+	currentMmprojPath(): string | null {
+		return this.session?.mmprojPath ?? null;
+	}
+}
+
+/**
+ * Conversation-keyed slot file layout. Mirrors `cache-bridge.ts`'s
+ * `slotSavePath` so an `ELIZA_INFERENCE_BACKEND=http` opt-out can resume
+ * an FFI-saved conversation and vice-versa once the file formats align.
+ */
+function slotFilename(conversationId: string, slotId: number): string {
+	return `${conversationId}__slot${slotId}.kv`;
+}

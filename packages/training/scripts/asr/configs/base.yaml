@@ -1,0 +1,39 @@
+# Base config for Qwen3-ASR fine-tuning.
+# All corpus-specific configs extend this via `extends: base.yaml`.
+#
+# Model: Qwen/Qwen3-ASR-0.6B (default) or Qwen/Qwen3-ASR-1.7B.
+# Optimizer: APOLLO-Mini (repo policy — APOLLO-only, no AdamW fallback).
+# Mixed precision: bf16 on CUDA, fp32 on CPU/MPS.
+
+base_model: Qwen/Qwen3-ASR-0.6B
+sample_rate: 16000        # WhisperFeatureExtractor native rate
+mel_bins: 80              # 80-bin log-mel
+max_audio_seconds: 30.0
+min_audio_seconds: 0.5
+
+# Optimizer
+optimizer: apollo_mini
+learning_rate: 2.0e-5
+weight_decay: 0.01
+warmup_steps: 50
+gradient_clip: 1.0
+
+# Training schedule
+max_steps: 1000
+eval_every: 200
+checkpoint_every: 200
+log_every: 10
+batch_size: 1
+grad_accum: 8
+bf16: true
+val_fraction: 0.10
+early_stop_patience: 3
+
+# Loss weights (CTC primary; LM-head optional).
+ctc_loss_weight: 1.0
+lm_loss_weight: 0.0
+
+# Eval gates.
+gates:
+  wer_max: 0.15       # WER ≤ 15% on val clips
+  rtf_min: 2.0        # RTF ≥ 2× realtime

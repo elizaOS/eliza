@@ -1,0 +1,308 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2021-07-17 19:05+0000\n"
+"Last-Translator: Ed Medvedev <edward.medvedev@gmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr "[[!meta robots=\"noindex\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have installed Tails using either:"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>Rufus</i> from Windows|install/windows#rufus]]"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>GNOME Disks</i> from Linux|install/linux#install]]"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[the Linux command line|install/expert#install]]"
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer while leaving the USB stick plugged in."
+msgstr "Выключите компьютер, но оставьте флешку подключённой."
+
+#. type: Content of: <ol><li><p>
+msgid "Plug in the other Tails USB stick that you want to install from."
+msgstr ""
+"Подключите другую флешку Tails, с которой вы хотите выполнить установку."
+
+#. type: Content of: <ol><li><p>
+msgid "Plug in your Tails USB stick."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "Switch on the computer."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "Switch on the computer and immediately press-and-hold the <span "
+#| "class=\"keycap\">Option</span> key (<b>Alt</b> key) until a list of "
+#| "possible startup disks appears."
+msgid ""
+"Immediately press-and-hold the <b>Option</b> key (<b>⌥</b> or <b>Alt</b> "
+"key) when the startup sound is played."
+msgstr ""
+"Включите компьютер и немедленно нажмите (и удерживайте) клавишу <span "
+"class=\"keycap\">Option</span> (клавишу <b>Alt</b>), пока не увидите список "
+"вариантов загрузки."
+
+#. type: Content of: <ol><li><p>
+msgid "Hold the key pressed until a list of possible startup disks appears."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/mac_option_key.png link=\"no\" alt=\"'Option' "
+"or 'alt' key in the bottom left of Mac keyboard\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/mac_option_key.png link=\"no\" alt=\"Клавиша "
+"'Option' или 'alt' в левом нижнем углу клавиатуры Mac\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Choose the USB stick and press <b>Enter</b>. The USB stick appears as an "
+"external hard disk and might be labeled <b>EFI Boot</b> or <b>Windows</b> "
+"like in the following screenshot:"
+msgstr ""
+"Выберите флешку и нажмите <b>Enter</b>. Флешка выглядит в списке как внешний "
+"жёсткий диск и может называться <span class=\"guilabel\">EFI Boot</span> или "
+"<span class=\"guilabel\">Windows</span>, как на этом скриншоте:"
+
+#. type: Content of: <ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "[[!img install/inc/screenshots/mac_startup_usb.png link=\"no\" "
+#| "alt=\"Screen with the logo of an internal hard disk labeled 'Macintosh "
+#| "HD' and an external hard disk labelled 'Windows' (selected)\"]]"
+msgid ""
+"[[!img install/inc/screenshots/mac_startup_usb.png class=\"screenshot\" "
+"alt=\"Screen with the logo of an internal hard disk labeled 'Macintosh HD' "
+"and an external hard disk labelled 'Windows' (selected)\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/mac_startup_usb.png link=\"no\" alt=\"Экран с "
+"изображением внутреннего диска 'Macintosh HD' и внешнего жёсткого диска "
+"'Windows' (выбран)\"]]"
+
+#. type: Content of: <ol><li><div><p>
+msgid "If the USB stick does not appear in the list of startup disks:"
+msgstr "Если флешки нет в списке загрузочных дисков:"
+
+#. type: Content of: <ol><li><div>
+msgid ""
+"[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline\" "
+"raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline.ru\" "
+"raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"If your computer still does not display the Boot Loader, it might currently "
+"be impossible to start Tails on your computer."
+msgstr ""
+"Если на компьютере по-прежнему не виден список вариантов загрузки, возможно, "
+"на этом компьютере в принципе нельзя запустить Tails."
+
+#. type: Content of: <ol><li><p>
+msgid "If your Mac displays the following error:"
+msgstr "Ваш компьютер может показать следующую ошибку:"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Security settings do not allow this Mac to use an external startup disk."
+msgstr ""
+"Security settings do not allow this Mac to use an external startup disk."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Then you have to change the settings of the <em>Startup Security Utility</"
+"em> of your Mac to authorize starting from Tails."
+msgstr ""
+"Вам следует изменить настройки безопасности с помощью <em>Startup Security "
+"Utility</em>, чтобы можно было загрузить Tails."
+
+#. type: Content of: <ol><li><p>
+msgid "To open <em>Startup Security Utility</em>:"
+msgstr "Запускаем <em>Startup Security Utility</em>."
+
+#. type: Content of: <ol><li><ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "Turn on your Mac, then press and hold <strong>Command(⌘)+R</strong> "
+#| "immediately after you see the Apple logo. Your Mac starts up from <a "
+#| "href=\"https://support.apple.com/kb/HT201314\">macOS Recovery</a>."
+msgid ""
+"Turn on your Mac, then press and hold <strong>Command(⌘)+R</strong> "
+"immediately after you see the Apple logo. Your Mac starts up from <a "
+"href=\"https://support.apple.com/kb/HT201314\">macOS Recovery</a>."
+msgstr ""
+"Включите свой Mac и сразу после того, как увидите логотип яблока, нажмите и "
+"удерживайте клавиши <strong>Command(⌘)+R</strong>. Компьютер загрузится в <a "
+"href=\"https://support.apple.com/ru-ru/HT201314\">режиме восстановления "
+"macOS</a>."
+
+#. type: Content of: <ol><li><ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "When you see the macOS <em>Utilities</em> window, choose "
+#| "<strong>Utilities&nbsp;▸ Startup Security Utility</strong> from the menu "
+#| "bar."
+msgid ""
+"When you see the macOS <em>Utilities</em> window, choose "
+"<strong>Utilities&nbsp;▸ Startup Security Utility</strong> from the menu bar."
+msgstr ""
+"В окне <em>Утилиты macOS</em> выберите в меню <strong>Утилиты&nbsp;▸ Утилита "
+"безопасной загрузки</strong>."
+
+#. type: Content of: <ol><li><ol><li><p>
+msgid ""
+"When you are asked to authenticate, click <strong>Enter macOS Password</"
+"strong>, then choose an administrator account and enter its password."
+msgstr ""
+"Если видите требование об аутентификации, нажмите <strong>Ввести пароль для "
+"macOS</strong>, выберите учётную запись администратора и введите пароль к "
+"ней."
+
+#. type: Content of: <ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "[[!img install/inc/screenshots/startup-security-utility.png link=\"no\" "
+#| "alt=\"Startup Security Utility\"]]"
+msgid ""
+"[[!img install/inc/screenshots/startup-security-utility.png "
+"class=\"screenshot\" alt=\"Startup Security Utility\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/startup-security-utility.png link=\"no\" "
+"alt=\"Утилита безопасной загрузки\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid "In the <em>Startup Security Utility</em>:"
+msgstr "В <em>Утилите безопасной загрузки</em>:"
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"Choose <strong>No Security</strong> in the <strong>Secure Boot</strong> "
+"section."
+msgstr ""
+"в разделе <strong>Безопасная загрузка</strong> выберите <strong>Функции "
+"безопасности отключены</strong>;"
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"Choose <strong>Allow booting from external media</strong> in the "
+"<strong>External Boot</strong>."
+msgstr ""
+"в разделе <strong>Загрузка с внешнего носителя</strong> выберите "
+"<strong>Разрешить загрузку с внешних носителей</strong>."
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"To still protect your Mac from starting on untrusted external media, you can "
+"set a firmware password, available on macOS Mountain Lion or later. A "
+"firmware password prevents users who do not have the password from starting "
+"up from any media other than the designated startup disk."
+msgstr ""
+"Чтобы по-прежнему защитить ваш Mac от загрузки с сомнительных внешних "
+"носителей, можно установить пароль прошивки. Эта функция доступна в macOS "
+"версии Mountain Lion или более свежей. Тот, у кого нет пароля прошивки, "
+"сможет запустить систему только с жёсткого диска по умолчанию."
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"<strong>If you forget your firmware password you will require an in-person "
+"service appointment with an Apple Store or Apple Authorized Service Provider."
+"</strong>"
+msgstr ""
+"<strong>Если забудете пароль прошивки, вам придётся лично обращаться за "
+"помощью в магазин Apple Store или к авторизованному провайдеру услуг Apple.</"
+"strong>"
+
+#. type: Content of: <ol><li><p>
+msgid "Read more on Apple Support about:"
+msgstr "Техподдержка Apple предлагает дополнительную информацию."
+
+#. type: Content of: <ol><li><ul><li>
+msgid ""
+"<a href=\"https://support.apple.com/en-us/HT208198\">Startup Security "
+"Utility</a>"
+msgstr ""
+"<a href=\"https://support.apple.com/ru-ru/HT208198\">Утилита безопасной "
+"загрузки</a>"
+
+#. type: Content of: <ol><li><ul><li>
+msgid ""
+"<a href=\"https://support.apple.com/en-us/HT204455\">How to set a firmware "
+"password on your Mac</a>"
+msgstr ""
+"<a href=\"https://support.apple.com/ru-ru/HT204455\">Установка пароля "
+"прошивки на компьютере Mac</a>"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If the computer starts on Tails, the Boot Loader appears and Tails starts "
+"automatically after 4 seconds."
+msgstr ""
+"Если компьютер загружается с Tails, появится загрузчик, и Tails запустится "
+"автоматически через 4 секунды."
+
+#. type: Content of: <ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "[[!img install/inc/screenshots/grub.png link=\"no\" alt=\"Black screen "
+#| "('GNU GRUB') with Tails logo and 2 options: 'Tails' and 'Tails "
+#| "(Troubleshooting Mode)'.\"]]"
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black "
+"screen ('GNU GRUB') with Tails logo and 3 options: 'Tails' and 'Tails "
+"(Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/grub.png link=\"no\" alt=\"Чёрный экран ('GNU "
+"GRUB') с логотипом Tails и двумя опциями: 'Tails' и 'Tails (Troubleshooting "
+"Mode)'.\"]]"
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"The <b>Troubleshooting Mode</b> entry disables some features of the Linux "
+"kernel and might work better on some computers. You can try this option if "
+"you think you are experiencing hardware compatibility errors while starting "
+"Tails."
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"The <b>External Hard Disk</b> entry makes it possible to [[start from an "
+"external hard disk|doc/advanced_topics/external_hard_disk]] and some "
+"[[problematic USB sticks|support/known_issues#problematic-usb-stick]]."
+msgstr ""

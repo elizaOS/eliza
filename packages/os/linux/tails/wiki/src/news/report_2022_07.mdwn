@@ -1,0 +1,33 @@
+[[!meta title="Tails report for July 2022"]]
+[[!meta date="Tue, 16 Aug 2022 12:00:00 -0300"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Here are some highlights of what happened in July in Tails-land:
+
+- The Management and Fundraising Teams worked on the fundraising position job
+  description, which is now [[live in the website|/jobs/fundraising]].
+
+- The new Project Manager's introductory period is over and we're all very
+  happy with the immediate impacts of her work, which already results in better
+  planning, organizing and communicating inside the project (see the job
+  description above as an example). You rock, disoj! :)
+
+- The UX Team published a new footer in the website (that was in June,
+  actually, but it's worth mentioning!).
+
+Releases
+========
+
+[[Tails 5.2 was released on July 12|news/version_5.2]] with Thunderbird 91.11.0
+and Tor Browser 11.5 (based on an Extended Support Release of Firefox).
+
+[[Tails 5.3 was released on July 26|news/version_5.3]], based on Debian 11.4
+with Linux 5.10.127, and containing Tor Browser 11.5.1 with uBlock fixed and
+enabled once again (broken since 5.2).
+
+Metrics
+=======
+
+Tails has been started more than 766861 times this month. This makes 24737 boots a day on average.

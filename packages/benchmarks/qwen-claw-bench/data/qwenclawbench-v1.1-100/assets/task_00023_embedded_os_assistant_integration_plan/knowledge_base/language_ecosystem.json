@@ -1,0 +1,70 @@
+{
+  "_metadata": {
+    "description": "Programming language ecosystem comparison for embedded systems",
+    "last_updated": "2024-03-10",
+    "note": "All binary sizes in KB. All compile times measured on ARM Cortex-M4 target (STM32F407) with -Os optimization.",
+    "benchmark_project": "blinky + UART echo + basic RTOS task"
+  },
+  "languages": {
+    "C": {
+      "compile_time_seconds": 2.1,
+      "binary_size_kb": 12,
+      "runtime_overhead_percent": 0,
+      "memory_safety": false,
+      "community_packages_count": 450,
+      "embedded_adoption_percent": 72,
+      "toolchain_maturity": "excellent",
+      "debugging_support": "excellent",
+      "typical_standards": ["C99", "C11", "C17"],
+      "notable_frameworks": ["CMSIS", "HAL", "LL"]
+    },
+    "C++": {
+      "compile_time_seconds": 4.8,
+      "binary_size_kb": 28,
+      "runtime_overhead_percent": 3,
+      "memory_safety": false,
+      "community_packages_count": 320,
+      "embedded_adoption_percent": 18,
+      "toolchain_maturity": "excellent",
+      "debugging_support": "excellent",
+      "typical_standards": ["C++14", "C++17", "C++20"],
+      "notable_frameworks": ["Arduino", "Mbed", "modm"]
+    },
+    "Rust": {
+      "compile_time_seconds": 18.5,
+      "binary_size_kb": 45,
+      "runtime_overhead_percent": 2,
+      "memory_safety": true,
+      "community_packages_count": 890,
+      "embedded_adoption_percent": 4,
+      "toolchain_maturity": "good",
+      "debugging_support": "good",
+      "typical_standards": ["2021 edition"],
+      "notable_frameworks": ["embedded-hal", "RTIC", "Embassy"]
+    },
+    "MicroPython": {
+      "compile_time_seconds": 0,
+      "binary_size_kb": 80,
+      "runtime_overhead_percent": 85,
+      "memory_safety": true,
+      "community_packages_count": 2100,
+      "embedded_adoption_percent": 3,
+      "toolchain_maturity": "moderate",
+      "debugging_support": "limited",
+      "typical_standards": ["Python 3.4 subset"],
+      "notable_frameworks": ["micropython-lib"]
+    },
+    "Ada": {
+      "compile_time_seconds": 6.2,
+      "binary_size_kb": 35,
+      "runtime_overhead_percent": 5,
+      "memory_safety": true,
+      "community_packages_count": 85,
+      "embedded_adoption_percent": 2,
+      "toolchain_maturity": "good",
+      "debugging_support": "good",
+      "typical_standards": ["Ada 2012", "SPARK 2014"],
+      "notable_frameworks": ["Ada Drivers Library", "Ravenscar"]
+    }
+  }
+}

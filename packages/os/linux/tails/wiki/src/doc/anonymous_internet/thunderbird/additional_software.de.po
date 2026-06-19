@@ -1,0 +1,132 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-03 16:44+0000\n"
+"PO-Revision-Date: 2026-03-01 09:37+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Why is Tails installing Thunderbird as additional software?\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Since Tails 7.5 (February 2026), Tails tries to automatically install "
+"*Thunderbird* as [[additional software|persistent_storage/"
+"additional_software]] to improve its security."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"A new version of *Thunderbird* is released in Debian shortly after each "
+"Tails release, because both *Tails* and *Thunderbird* follow the [[release "
+"calendar of *Firefox*|https://whattrainisitnow.com/calendar/]]. As a "
+"consequence, until Tails 7.5 (February 2026), the version of *Thunderbird* "
+"in Tails was almost always outdated, with known security vulnerabilities."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"By installing *Thunderbird* as additional software, the latest version of "
+"*Thunderbird* is installed automatically from your Persistent Storage each "
+"time you start Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails also tries to install as additional software the language package that "
+"corresponds to the language of your first session with Tails 7.5 or later. "
+"To use *Thunderbird* in another language, see how to [[use *Thunderbird* in "
+"another language|thunderbird#language]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Thunderbird* will no longer be included by default in Tails 7.8 (May 2026)\n"
+"and later.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc startlevel=2]]\n"
+msgstr "[[!toc startlevel=2]]\n"
+
+#. type: Title ##
+#, no-wrap
+msgid "Successful migration"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If the **Thunderbird Migration** dialog below appears when you start "
+"*Thunderbird*, it means that Tails successfully installed *Thunderbird* as "
+"additional software."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img success.png class=\"screenshot\" alt=\"Thunderbird Migration: Tails installed Thunderbird as additional software to improve its security.\"]]\n"
+msgstr ""
+
+#. type: Title ##
+#, no-wrap
+msgid "Manual migration"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If the **Thunderbird Migration** notification below appears when you start "
+"Tails, it means that Tails failed to install *Thunderbird* as additional "
+"software because the [[Additional Software|persistent_storage/"
+"additional_software]] feature of your Persistent Storage is turned off."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Select **Install as Additional Software** next time you start Tails to turn "
+"on the Additional Software feature of your Persistent Storage and add "
+"*Thunderbird* to your list of additional software."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img manual.png class=\"screenshot\" alt=\"Thunderbird Migration: You should install Thunderbird as additional software.\"]]\n"
+msgstr ""
+
+#. type: Title ##
+#, no-wrap
+msgid "Failed migration"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If the **Thunderbird Migration** notification below appears when you start "
+"Tails, it means that Tails failed to install *Thunderbird* as additional "
+"software for unknown reasons."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Please [[report an error|first_steps/whisperback]] to help us troubleshoot "
+"your problem."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img failure.png class=\"screenshot\" alt=\"Thunderbird Migration: Tails failed to install Thunderbird as additional software.\"]]\n"
+msgstr ""

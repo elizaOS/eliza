@@ -1,0 +1,480 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 588f1339d..82a392654 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -248,6 +248,17 @@ if (LLAMA_BUILD_COMMON AND LLAMA_BUILD_TOOLS)
+     add_subdirectory(tools)
+ endif()
+ 
++if (LLAMA_BUILD_KOKORO)
++    if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/kokoro/CMakeLists.txt")
++        message(FATAL_ERROR
++            "LLAMA_BUILD_KOKORO=ON but tools/kokoro/CMakeLists.txt is missing. "
++            "Verify the fork contains the Kokoro subtree.")
++    endif()
++    if (NOT (LLAMA_BUILD_COMMON AND LLAMA_BUILD_TOOLS))
++        add_subdirectory(tools/kokoro)
++    endif()
++endif()
++
+ if (LLAMA_BUILD_OMNIVOICE)
+     if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/omnivoice/CMakeLists.txt")
+         message(FATAL_ERROR
+diff --git a/tools/CMakeLists.txt b/tools/CMakeLists.txt
+index 4f8887274..c99ee49e3 100644
+--- a/tools/CMakeLists.txt
++++ b/tools/CMakeLists.txt
+@@ -29,13 +29,6 @@ else()
+     add_subdirectory(parser)
+     add_subdirectory(tts)
+     add_subdirectory(mtmd)
+-    if (LLAMA_BUILD_OMNIVOICE)
+-        # The merged omnivoice subtree lives under tools/omnivoice/. The
+-        # top-level CMakeLists.txt has a parallel add_subdirectory hook for
+-        # the embed-as-library case (LLAMA_BUILD_TOOLS=OFF) ; this gate is
+-        # the one that fires for the normal standalone build.
+-        add_subdirectory(omnivoice)
+-    endif()
+     if (LLAMA_BUILD_KOKORO)
+         # Kokoro-82M (StyleTTS-2 + iSTFTNet) standalone TTS — J2 fork-side
+         # replacement for the ONNX runtime path. Produces kokoro_lib +
+@@ -43,6 +36,13 @@ else()
+         # `/v1/audio/speech` handler is mounted via server.cpp.
+         add_subdirectory(kokoro)
+     endif()
++    if (LLAMA_BUILD_OMNIVOICE)
++        # The merged omnivoice subtree lives under tools/omnivoice/. The
++        # top-level CMakeLists.txt has a parallel add_subdirectory hook for
++        # the embed-as-library case (LLAMA_BUILD_TOOLS=OFF) ; this gate is
++        # the one that fires for the normal standalone build.
++        add_subdirectory(omnivoice)
++    endif()
+     if (GGML_RPC)
+         add_subdirectory(rpc)
+     endif()
+diff --git a/tools/kokoro/CMakeLists.txt b/tools/kokoro/CMakeLists.txt
+index 7c4be7e4d..5e6fad3f5 100644
+--- a/tools/kokoro/CMakeLists.txt
++++ b/tools/kokoro/CMakeLists.txt
+@@ -44,11 +44,14 @@ if(TARGET ggml-cpu)
+ endif()
+ 
+ target_compile_features(kokoro_lib PUBLIC cxx_std_17)
++target_compile_definitions(kokoro_lib PUBLIC LLAMA_BUILD_KOKORO)
+ 
+-# Standalone CLI harness — required by J2 verification (tools/voice-kokoro/).
+-add_executable(kokoro-tts tools/kokoro-tts.cpp)
+-target_link_libraries(kokoro-tts PRIVATE kokoro_lib)
+-install(TARGETS kokoro-tts RUNTIME)
++option(KOKORO_BUILD_CLI "Build the standalone Kokoro CLI harness" ${LLAMA_BUILD_TOOLS})
++if(KOKORO_BUILD_CLI)
++    add_executable(kokoro-tts tools/kokoro-tts.cpp)
++    target_link_libraries(kokoro-tts PRIVATE kokoro_lib)
++    install(TARGETS kokoro-tts RUNTIME)
++endif()
+ 
+ # Server-mount handler: compiled into kokoro_lib only when the server target
+ # exists. The handler is guarded by `#ifdef LLAMA_BUILD_KOKORO` and pulls in
+@@ -56,7 +59,6 @@ install(TARGETS kokoro-tts RUNTIME)
+ # the vendored nlohmann/json.hpp from common's vendor directory.
+ if(LLAMA_BUILD_SERVER)
+     target_sources(kokoro_lib PRIVATE src/kokoro-server-mount.cpp)
+-    target_compile_definitions(kokoro_lib PUBLIC LLAMA_BUILD_KOKORO)
+     target_include_directories(kokoro_lib PRIVATE
+         ${CMAKE_CURRENT_SOURCE_DIR}/../server
+         ${CMAKE_CURRENT_SOURCE_DIR}/../../vendor)
+diff --git a/tools/kokoro/src/kokoro.cpp b/tools/kokoro/src/kokoro.cpp
+index 93c15594e..a6d7874ce 100644
+--- a/tools/kokoro/src/kokoro.cpp
++++ b/tools/kokoro/src/kokoro.cpp
+@@ -41,6 +41,7 @@
+ #include <atomic>
+ #include <cmath>
+ #include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <fstream>
+ #include <memory>
+@@ -536,7 +537,8 @@ kokoro_status kokoro_synthesize(
+         // Build a tiny graph: mag_phase_tensor → ggml_istft → pcm_tensor.
+         // mag_phase_tensor shape: ne[0]=n_frames (T), ne[1]=F, ne[2]=2.
+         bool used_native_op = false;
+-        {
++        const char * native_istft_env = std::getenv("ELIZA_KOKORO_NATIVE_ISTFT");
++        if (native_istft_env && std::strcmp(native_istft_env, "1") == 0) {
+             ggml_init_params ip = {
+                 /*.mem_size   =*/ 4 * 1024 * 1024,
+                 /*.mem_buffer =*/ nullptr,
+diff --git a/tools/omnivoice/CMakeLists.txt b/tools/omnivoice/CMakeLists.txt
+index 6e2da9826..bf1189986 100644
+--- a/tools/omnivoice/CMakeLists.txt
++++ b/tools/omnivoice/CMakeLists.txt
+@@ -149,9 +149,17 @@ endif()
+ # suffix on Linux to keep dlopen() happy on the runtime side). Default
+ # visibility is `default` (not hidden) because every `eliza_inference_*`
+ # entry the JS loader needs is reachable through dlsym.
+-add_library(elizainference SHARED
+-    ${OMNIVOICE_CORE_SOURCES}
+-    ${OMNIVOICE_FFI_SOURCES})
++option(ELIZA_OMNIVOICE_STATIC_FFI "Build libelizainference as a static library for iOS XCFramework packaging" OFF)
++if(ELIZA_OMNIVOICE_STATIC_FFI)
++    add_library(elizainference STATIC
++        ${OMNIVOICE_CORE_SOURCES}
++        ${OMNIVOICE_FFI_SOURCES})
++    target_compile_definitions(elizainference PUBLIC OMNIVOICE_STATIC)
++else()
++    add_library(elizainference SHARED
++        ${OMNIVOICE_CORE_SOURCES}
++        ${OMNIVOICE_FFI_SOURCES})
++endif()
+ target_compile_features(elizainference PUBLIC cxx_std_17)
+ target_compile_definitions(elizainference
+     PRIVATE OMNIVOICE_BUILD ${OMNIVOICE_COMPILE_DEFINITIONS})
+@@ -171,13 +179,19 @@ target_link_libraries(elizainference PUBLIC llama)
+ if(TARGET mtmd)
+     target_link_libraries(elizainference PUBLIC mtmd)
+ endif()
++if(TARGET kokoro_lib)
++    target_link_libraries(elizainference PUBLIC kokoro_lib)
++    target_include_directories(elizainference PRIVATE
++        ${CMAKE_CURRENT_SOURCE_DIR}/../kokoro/include)
++    target_compile_definitions(elizainference PRIVATE LLAMA_BUILD_KOKORO)
++endif()
+ set_target_properties(elizainference PROPERTIES
+     OUTPUT_NAME              elizainference
+     POSITION_INDEPENDENT_CODE ON)
+ # Apple re-exports llama symbols so the fused .dylib carries everything
+ # JS will dlopen() without a second handle. Mirrors the legacy fork-root
+ # graft block.
+-if(APPLE)
++if(APPLE AND NOT ELIZA_OMNIVOICE_STATIC_FFI)
+     target_link_options(elizainference PRIVATE
+         "LINKER:-reexport_library,$<TARGET_FILE:llama>")
+ endif()
+diff --git a/tools/omnivoice/src/eliza-inference-ffi.cpp b/tools/omnivoice/src/eliza-inference-ffi.cpp
+index 1c40c1e66..44cb145f4 100644
+--- a/tools/omnivoice/src/eliza-inference-ffi.cpp
++++ b/tools/omnivoice/src/eliza-inference-ffi.cpp
+@@ -14,6 +14,9 @@
+ // resolve `eliza_inference_*` symbols from this object.
+ 
+ #include "eliza-inference-ffi.h"
++#if defined(LLAMA_BUILD_KOKORO)
++#include "kokoro.h"
++#endif
+ #include "omnivoice.h"
+ #include "llama.h"
+ #include "mtmd.h"
+@@ -66,6 +69,14 @@ struct EliInferenceContext {
+     std::string bundle_dir;
+     std::string tts_model_path;
+     std::string codec_model_path;
++#if defined(LLAMA_BUILD_KOKORO)
++    std::string kokoro_model_path;
++    std::string kokoro_voice_path;
++    eliza_kokoro::kokoro_model_ptr kokoro_model;
++    eliza_kokoro::kokoro_voice_preset kokoro_voice;
++    bool kokoro_voice_loaded = false;
++    bool tts_uses_kokoro = false;
++#endif
+     std::string asr_model_path;
+     std::string asr_mmproj_path;
+     ov_context * ov = nullptr;
+@@ -339,17 +350,89 @@ static bool eliza_pick_voice_files(
+     std::vector<std::string> codec = eliza_find_ggufs(bundle_dir / "codec");
+     if (tts.empty()) tts = eliza_find_ggufs(bundle_dir / "voice");
+     if (tts.empty()) return false;
+-    tts_model = tts[0];
+-    if (!codec.empty()) {
+-        codec_model = codec[0];
+-    } else if (tts.size() > 1) {
+-        codec_model = tts[1];
+-    } else {
+-        codec_model = tts_model;
++
++    std::vector<std::string> tts_candidates;
++    std::vector<std::string> codec_candidates = codec;
++    for (const std::string & path : tts) {
++        const std::string lower = eliza_lower_ascii(std::filesystem::path(path).filename().string());
++        const bool is_omnivoice = lower.find("omnivoice") != std::string::npos;
++        const bool is_codec = lower.find("tokenizer") != std::string::npos || lower.find("codec") != std::string::npos;
++        const bool is_other_voice = lower.find("kokoro") != std::string::npos;
++        if (is_omnivoice && !is_codec && !is_other_voice) {
++            tts_candidates.push_back(path);
++        }
++        if (is_omnivoice && is_codec) {
++            codec_candidates.push_back(path);
++        }
+     }
++
++    if (tts_candidates.empty() || codec_candidates.empty()) {
++        return false;
++    }
++
++    tts_model = tts_candidates[0];
++    codec_model = codec_candidates[0];
+     return true;
+ }
+ 
++static bool eliza_path_is_file(const std::filesystem::path & path) {
++    std::error_code ec;
++    return std::filesystem::is_regular_file(path, ec);
++}
++
++static bool eliza_pick_kokoro_files(
++    const std::filesystem::path & bundle_dir,
++    std::string & model_path,
++    std::string & voice_path) {
++    const auto kokoro_dir = bundle_dir / "tts" / "kokoro";
++    const auto canonical_model = kokoro_dir / "kokoro-82m-v1_0-Q4_K_M.gguf";
++    if (eliza_path_is_file(canonical_model)) {
++        model_path = canonical_model.string();
++    } else {
++        std::vector<std::string> candidates = eliza_find_ggufs(kokoro_dir);
++        if (candidates.empty()) return false;
++        model_path = candidates[0];
++    }
++
++    const auto voices_dir = kokoro_dir / "voices";
++    const std::vector<std::filesystem::path> preferred = {
++        voices_dir / "af_bella.bin",
++        voices_dir / "af_sarah.bin",
++        voices_dir / "am_adam.bin",
++    };
++    for (const auto & candidate : preferred) {
++        if (eliza_path_is_file(candidate)) {
++            voice_path = candidate.string();
++            return true;
++        }
++    }
++
++    std::error_code ec;
++    if (!std::filesystem::is_directory(voices_dir, ec)) return false;
++    std::vector<std::string> voices;
++    for (const auto & entry : std::filesystem::directory_iterator(voices_dir, ec)) {
++        if (ec) break;
++        const auto path = entry.path();
++        if (path.extension() == ".bin") voices.push_back(path.string());
++    }
++    std::sort(voices.begin(), voices.end());
++    if (voices.empty()) return false;
++    voice_path = voices[0];
++    return true;
++}
++
++static bool eliza_tts_prefers_kokoro(const std::filesystem::path & bundle_dir) {
++    const char * raw = std::getenv("ELIZA_TTS_BACKEND");
++    if (raw && raw[0] != '\0') {
++        const std::string value = eliza_lower_ascii(raw);
++        if (value == "omnivoice" || value == "legacy-omnivoice") return false;
++        return value == "kokoro" || value == "mobile-kokoro";
++    }
++    std::string model_path;
++    std::string voice_path;
++    return eliza_pick_kokoro_files(bundle_dir, model_path, voice_path);
++}
++
+ static bool eliza_pick_asr_files(
+     const std::filesystem::path & bundle_dir,
+     std::string & asr_model,
+@@ -682,12 +765,61 @@ static void eliza_free_asr(EliInferenceContext * ctx) {
+     ctx->asr_sample_rate = 0;
+ }
+ 
++static int eliza_load_kokoro_tts(EliInferenceContext * ctx, char ** out_error) {
++#if defined(LLAMA_BUILD_KOKORO)
++    if (!ctx) {
++        eliza_set_error(out_error, "[libelizainference] load_kokoro_tts: ctx is NULL");
++        return ELIZA_ERR_INVALID_ARG;
++    }
++    if (ctx->kokoro_model) return ELIZA_OK;
++    if (ctx->kokoro_model_path.empty()) {
++        if (!eliza_pick_kokoro_files(std::filesystem::path(ctx->bundle_dir), ctx->kokoro_model_path, ctx->kokoro_voice_path)) {
++            eliza_set_error(out_error, std::string("[libelizainference] no Kokoro TTS assets found under ") + (std::filesystem::path(ctx->bundle_dir) / "tts" / "kokoro").string());
++            return ELIZA_ERR_BUNDLE_INVALID;
++        }
++    }
++
++    std::string err;
++    auto model = eliza_kokoro::kokoro_load_model(ctx->kokoro_model_path, err);
++    if (!model) {
++        eliza_set_error(out_error, "[libelizainference] kokoro_load_model failed: " + err + " model=" + ctx->kokoro_model_path);
++        return ELIZA_ERR_FFI_FAULT;
++    }
++    const eliza_kokoro::kokoro_hparams * hparams = eliza_kokoro::kokoro_get_hparams(model.get());
++    const int style_dim = hparams ? hparams->style_dim : 256;
++    eliza_kokoro::kokoro_voice_preset voice;
++    err.clear();
++    eliza_kokoro::kokoro_status voice_rc =
++        eliza_kokoro::kokoro_load_voice_preset(ctx->kokoro_voice_path, style_dim, voice, err);
++    if (voice_rc != eliza_kokoro::KOKORO_OK) {
++        eliza_set_error(out_error, std::string("[libelizainference] kokoro_load_voice_preset failed: ") +
++            eliza_kokoro::kokoro_status_str(voice_rc) + ": " + err + " voice=" + ctx->kokoro_voice_path);
++        return ELIZA_ERR_FFI_FAULT;
++    }
++    ctx->kokoro_model = std::move(model);
++    ctx->kokoro_voice = std::move(voice);
++    ctx->kokoro_voice_loaded = true;
++    ctx->tts_uses_kokoro = true;
++    return ELIZA_OK;
++#else
++    (void) ctx;
++    eliza_set_error(out_error, "[libelizainference] Kokoro TTS requested but this slice was built without LLAMA_BUILD_KOKORO");
++    return ELIZA_ERR_FFI_FAULT;
++#endif
++}
++
+ static int eliza_load_tts(EliInferenceContext * ctx, char ** out_error) {
+     if (!ctx) {
+         eliza_set_error(out_error, "[libelizainference] load_tts: ctx is NULL");
+         return ELIZA_ERR_INVALID_ARG;
+     }
+     std::lock_guard<std::mutex> lock(ctx->tts_mutex);
++#if defined(LLAMA_BUILD_KOKORO)
++    if (ctx->tts_uses_kokoro && ctx->kokoro_model) return ELIZA_OK;
++#endif
++    if (eliza_tts_prefers_kokoro(std::filesystem::path(ctx->bundle_dir))) {
++        return eliza_load_kokoro_tts(ctx, out_error);
++    }
+     if (ctx->ov) return ELIZA_OK;
+     if (ctx->tts_model_path.empty()) {
+         if (!eliza_pick_voice_files(std::filesystem::path(ctx->bundle_dir), ctx->tts_model_path, ctx->codec_model_path)) {
+@@ -705,6 +837,10 @@ static int eliza_load_tts(EliInferenceContext * ctx, char ** out_error) {
+     if (!ctx->ov) {
+         std::string msg = "[libelizainference] ov_init failed: ";
+         msg += ov_last_error();
++        msg += " tts_model=";
++        msg += ctx->tts_model_path;
++        msg += " codec_model=";
++        msg += ctx->codec_model_path;
+         eliza_set_error(out_error, msg);
+         return ELIZA_ERR_FFI_FAULT;
+     }
+@@ -844,6 +980,12 @@ void eliza_inference_destroy(EliInferenceContext * ctx) {
+         std::lock_guard<std::mutex> lock(ctx->tts_mutex);
+         ov_free(ctx->ov);
+         ctx->ov = nullptr;
++#if defined(LLAMA_BUILD_KOKORO)
++        ctx->kokoro_model.reset();
++        ctx->kokoro_voice = eliza_kokoro::kokoro_voice_preset();
++        ctx->kokoro_voice_loaded = false;
++        ctx->tts_uses_kokoro = false;
++#endif
+     }
+     {
+         std::lock_guard<std::mutex> lock(ctx->asr_mutex);
+@@ -891,6 +1033,12 @@ int eliza_inference_mmap_evict(
+             ov_free(ctx->ov);
+             ctx->ov = nullptr;
+         }
++#if defined(LLAMA_BUILD_KOKORO)
++        ctx->kokoro_model.reset();
++        ctx->kokoro_voice = eliza_kokoro::kokoro_voice_preset();
++        ctx->kokoro_voice_loaded = false;
++        ctx->tts_uses_kokoro = false;
++#endif
+     }
+     if (std::strcmp(region_name, "asr") == 0) {
+         std::lock_guard<std::mutex> lock(ctx->asr_mutex);
+@@ -917,6 +1065,31 @@ int eliza_inference_tts_synthesize(
+     }
+ 
+     std::lock_guard<std::mutex> lock(ctx->tts_mutex);
++#if defined(LLAMA_BUILD_KOKORO)
++    if (ctx->tts_uses_kokoro) {
++        if (!ctx->kokoro_model || !ctx->kokoro_voice_loaded) {
++            eliza_set_error(out_error, "[libelizainference] tts_synthesize: Kokoro region is not acquired; call mmap_acquire(\"tts\") after arming voice");
++            return ELIZA_ERR_INVALID_ARG;
++        }
++        std::string text_owned(text, text_len);
++        eliza_kokoro::kokoro_audio audio;
++        std::string err;
++        const eliza_kokoro::kokoro_status rc =
++            eliza_kokoro::kokoro_synthesize(ctx->kokoro_model.get(), ctx->kokoro_voice, text_owned, 1.0f, audio, err);
++        if (rc != eliza_kokoro::KOKORO_OK) {
++            eliza_set_error(out_error, std::string("[libelizainference] kokoro_synthesize failed: ") +
++                eliza_kokoro::kokoro_status_str(rc) + ": " + err);
++            return ELIZA_ERR_FFI_FAULT;
++        }
++        if (audio.samples.size() > max_samples) {
++            eliza_set_error(out_error, "[libelizainference] output buffer too small; required samples=" +
++                std::to_string(audio.samples.size()));
++            return ELIZA_ERR_INVALID_ARG;
++        }
++        std::memcpy(out_pcm, audio.samples.data(), audio.samples.size() * sizeof(float));
++        return (int) audio.samples.size();
++    }
++#endif
+     if (!ctx->ov) {
+         eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\"tts\") after arming voice");
+         return ELIZA_ERR_INVALID_ARG;
+diff --git a/tools/omnivoice/src/weight-ctx.h b/tools/omnivoice/src/weight-ctx.h
+index e43f57388..ec88229d6 100644
+--- a/tools/omnivoice/src/weight-ctx.h
++++ b/tools/omnivoice/src/weight-ctx.h
+@@ -11,10 +11,13 @@
+ //   wctx_alloc(&wctx, backend);
+ 
+ #include "ggml-backend.h"
++#include "ggml-alloc.h"
+ #include "ggml.h"
+ 
++#include <cerrno>
+ #include <cstddef>
+ #include <cstdio>
++#include <cstdlib>
+ #include <memory>
+ #include <vector>
+ 
+@@ -51,18 +54,51 @@ static void wctx_init(WeightCtx * wctx, int n_tensors) {
+ }
+ 
+ static bool wctx_alloc(WeightCtx * wctx, ggml_backend_t backend) {
++    ggml_backend_buffer_type_t buft = ggml_backend_get_default_buffer_type(backend);
++    const size_t estimate = ggml_backend_alloc_ctx_tensors_from_buft_size(wctx->ctx, buft);
++    const double estimate_mb = (double) estimate / (1024.0 * 1024.0);
++    const char * budget_env = getenv("ELIZA_TTS_MAX_BACKEND_ALLOC_MB");
++    double budget_mb = 0.0;
++    if (budget_env && budget_env[0] != '\0') {
++        char * end = NULL;
++        errno = 0;
++        const double parsed = strtod(budget_env, &end);
++        if (errno == 0 && end != budget_env && parsed > 0.0) {
++            budget_mb = parsed;
++        }
++    }
++    fprintf(stderr,
++            "[WeightCtx] alloc preflight buft=%s tensors=%zu estimate=%.1f MB budget=%.1f MB\n",
++            ggml_backend_buft_name(buft),
++            wctx->pending.size(),
++            estimate_mb,
++            budget_mb);
++    if (budget_mb > 0.0 && estimate_mb > budget_mb) {
++        fprintf(stderr,
++                "[WeightCtx] FATAL: backend allocation estimate %.1f MB exceeds budget %.1f MB\n",
++                estimate_mb,
++                budget_mb);
++        return false;
++    }
+     wctx->buffer = ggml_backend_alloc_ctx_tensors(wctx->ctx, backend);
+     if (!wctx->buffer) {
+         fprintf(stderr, "[WeightCtx] FATAL: failed to allocate backend buffer\n");
+         return false;
+     }
++    fprintf(stderr, "[WeightCtx] alloc buffer ok\n");
+     // Mark as weight buffer so ggml_backend_sched assigns ops to the correct
+     // backend based on weight location (avoids fallback through expansion).
+     ggml_backend_buffer_set_usage(wctx->buffer, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
+     size_t total = 0;
++    size_t index = 0;
+     for (auto & pc : wctx->pending) {
++        if (index == 0 || index % 32 == 0 || index + 1 == wctx->pending.size()) {
++            fprintf(stderr, "[WeightCtx] copy tensor %zu/%zu bytes=%zu\n", index + 1, wctx->pending.size(),
++                    pc.nbytes);
++        }
+         ggml_backend_tensor_set(pc.tensor, pc.src, pc.offset, pc.nbytes);
+         total += pc.nbytes;
++        index += 1;
+     }
+     fprintf(stderr, "[WeightCtx] Loaded %zu tensors, %.1f MB into backend\n", wctx->pending.size(),
+             (float) total / (1024 * 1024));

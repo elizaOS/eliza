@@ -1,0 +1,91 @@
+schema: eliza.e1_phone_supplier_rfq_transmittal_draft.v1
+status: draft_not_sent_not_supplier_evidence
+date: '2026-05-21'
+claim_boundary: Draft RFQ transmittal package only. These drafts are not sent RFQs, supplier responses, approved
+  quotes, samples, signed drawings, pinouts, footprints, STEP evidence, or authorization to route or fabricate the
+  PCB.
+draft:
+  draft_id: e1_phone_cellular_rfq_2026-05-21
+  function: cellular
+  status: draft_not_sent_not_supplier_evidence
+  primary_candidate: Quectel_RG255C_or_RM255C_5G_RedCap
+  package_binding: package/cellular/quectel-5g-redcap.yaml
+  source_basis:
+    - Quectel RG255C/RM255C vendor product pages
+    - Quectel EG915Q/EG915U and EG916Q-GL compact LTE Cat 1 bis public module pages
+    - Fibocom MC665 compact LTE Cat 1 bis public module page
+  verified_public_source_ids:
+    - cellular_primary_quectel_rg255c
+  selected_hardware_trace:
+    selection_source: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    selected_reference: Quectel_RG255C_or_RM255C_5G_RedCap_Sub_6
+    selected_phone_form_factor: RG255C_LGA
+    active_space_saving_rfq_branch: quectel_eg915q_na_or_eg915u_class
+    current_region_fits_selected_reference: false
+    rf_feed_count_required: 5
+    release_allowed_without_supplier_response_packs: false
+    route_release_dependency: U_CELL_route_release_remain_blocked_until_top_rf_island_repack_or_smaller_supplier_approved_module
+  recipient_candidates:
+    - supplier: Quectel
+      candidate: RG255C_series
+      url: https://www.quectel.com/product/5g-redcap-rg255c-series/
+      public_page_status: vendor_page_observed_2026_05_20
+    - supplier: Quectel
+      candidate: EG915Q_EG915U_or_EG916Q_GL_compact_LTE_Cat1bis
+      url: https://www.quectel.com/lte-iot-modules/
+      public_page_status: vendor_page_observed_2026_05_21
+    - supplier: Fibocom
+      candidate: MC665_compact_LTE_Cat1bis
+      url: https://www.fibocom.com/en/SeriesProduct/info_itemid_133.html
+      public_page_status: vendor_page_observed_2026_05_21
+  request:
+    quote_quantities:
+      - 10
+      - 100
+      - 1000
+    minimum_sample_lot: 5
+    response_due_date: '2026-06-04'
+    required_response_format: supplier_signed_pdf_or_native_cad_plus_machine_readable_summary
+    accepted_document_languages:
+      - english
+      - bilingual_supplier_original_plus_english
+    required_supplier_artifacts:
+      - selected region SKU band matrix and orderable MPN
+      - smaller LTE Cat 1 bis alternate orderable MPN, lifecycle, band matrix, and quote if RedCap cannot fit
+      - hardware design guide and reference layout revision
+      - module 2D drawing with package dimensions, shield height, datum, and keepouts
+      - module pinout, LGA pad map, signal-voltage table, and reserved-pin rules
+      - land pattern, paste mask, keepout, and shield height data
+      - STEP model with package body, shield, and maximum component height
+      - antenna feed and matching recommendations
+      - carrier/PTCRB/GCF/module grant documentation
+      - Linux/Android driver, firmware, and certification-use restrictions
+      - explicit throughput, power, firmware, and certification delta for any LTE Cat 1 bis alternate versus RG255C
+    board_dependency:
+      - U_CELL LGA or M.2 footprint selection
+      - compact LTE Cat 1 bis alternate fit against a repacked cellular region, not the stale 14 x 14 mm placeholder
+      - CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF matching and conducted access
+      - USIM/eSIM and USB2/PCIe interface choice
+  acceptance_gate_before_kicad_use:
+    orderable_mpn_received: false
+    signed_2d_drawing_received: false
+    pinout_or_pad_map_received: false
+    recommended_land_pattern_received: false
+    step_or_brep_model_received: false
+    sample_received_and_inspected: false
+    compliance_pack_received: false
+    pinout_symbol_footprint_reviews_complete: false
+  planned_archive_paths_after_send:
+    draft: board/kicad/e1-phone/sourcing-drafts/cellular/rfq-transmittal.yaml
+    release_archive: board/kicad/e1-phone/production/sourcing/cellular/rfq-transmittal.yaml
+    supplier_response_pack: board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml
+forbidden_claims:
+  - rfq_sent
+  - supplier_response_received
+  - supplier_approved
+  - pinouts_frozen
+  - footprints_frozen
+  - step_models_bound
+  - production_archive_complete
+  - routed_pcb_ready
+  - enclosure_ready

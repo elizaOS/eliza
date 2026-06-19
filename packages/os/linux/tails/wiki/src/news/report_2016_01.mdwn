@@ -1,0 +1,168 @@
+[[!meta title="Tails report for January, 2016"]]
+[[!meta date="Sun, 21 Feb 2016 16:00:16 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+January has been a busy month with two releases including Tails 2.0.
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 1.8.2 was released on January 10, 2016|news/version_1.8.2]] (minor release).
+
+* [[Tails 2.0 was released on January 26, 2016|news/version_2.0]] (major release).
+
+* The next release (2.2) is [[planned for March 08|contribute/calendar]].
+
+The following changes were introduced in Tails 2.0:
+
+- Tails now uses the *GNOME Shell* desktop
+  environment, in its *Classic* mode.
+  *GNOME Shell* provides a modern, simple, and
+  actively developed desktop environment. The *Classic*
+  mode keeps the traditional **Applications**,
+  **Places** menu, and windows list. Accessibility and
+  non-Latin input sources are also better integrated.
+
+- Update *Tor Browser* to 5.5 (based on Firefox 38.6.0 ESR):
+  - Add Japanese support.
+
+- Remove the Windows camouflage which is currently broken in GNOME Shell.
+  We started working on [[!tails_ticket 10830 desc="adding it back"]] but [[your
+  help is needed|news/windows_camouflage_jessie]]!
+
+- Change to `systemd` as init system and use it to:
+  - Sandbox many services using Linux namespaces and make them harder to exploit.
+  - Make the launching of Tor and the memory wipe on shutdown more robust.
+  - Sanitize our code base by replacing many custom scripts.
+
+- Update most firmware packages which might improve hardware compatibility.
+
+- Notify the user if Tails is running from a non-free virtualization software.
+
+- Remove *Claws Mail*, replaced by
+  *Icedove*, a
+  rebranded version of *Mozilla Thunderbird*.
+
+- HiDPI displays are better supported. ([[!tails_ticket 8659]])
+
+- Remove the option to open a download with an external application in Tor
+  Browser as this is usually impossible due to the AppArmor confinement.
+  ([[!tails_ticket 9285]])
+
+- Close *Vidalia* before restarting Tor.
+
+- Allow *Videos* to access the DVD drive.
+  ([[!tails_ticket 10455]], [[!tails_ticket 9990]])
+
+- Allow configuring printers without administration password.
+  ([[!tails_ticket 8443]])
+
+Code
+====
+
+- *Tails Installer* was made [available in Debian](https://tracker.debian.org/tails-installer).
+
+- Andrew Gallagher wrote a tool to clone and backup the persistent
+  volume. Testing is welcome!
+
+- Christian Medel is working on a replacement for the defunct Windows
+  Camouflage.
+
+Documentation and website
+=========================
+
+- All of our documentation was updated to Tails based on Jessie.
+
+User experience
+===============
+
+* Tails Installer is now available in Debian
+  and Ubuntu
+
+Infrastructure
+==============
+
+* Our test suite covers 208 scenarios, 17 more than in August. We focused on
+  making our test suite more robust.
+
+* The infrastructure to run our test suite on all the ISO images built
+  automatically from development branches has been deployed, but still needs
+  adjustments.
+
+* In January 757 ISO images were automatically built and tested by our
+  continuous integration infrastructure.
+
+* We have a prototype for a monitoring
+  system based on Icinga2,
+  for our services.
+
+Outreach
+========
+
+* A Tails install party took place in Toulouse, France to celebrate the Tails 2.0 release.
+
+Upcoming events
+---------------
+
+* We will participate at the [Internet Freedom Festival](https://internetfreedomfestival.org/)
+  in Valencia, Spain from 1st-6th March 2016.
+
+* We will be at the [Logan CIJ Symposium "Challenge Power"](http://logancij.com),
+  11-12th March 2016 in Berlin, Germany.
+
+* The Freedom of the Press Foundation will organize a Tails workshop
+  at the Whitney Museum of American Art in New York, USA on March 19.
+
+On-going discussions
+====================
+
+* sycamoreone started started working on a blueprint to find a suitable replacement for Pidgin in the future.
+
+* A discussion about persistent Tor state has been relaunched.
+
+Press and testimonials
+======================
+
+* 2016-01: Several articles cover the release of Tails 2.0:
+  - 2016-01-27: Tails 2.0: Das Anonymisierungs-OS im neuen Look by Fabian A. Scherschel in heise (in German).
+  - 2016-01-27: Edward Snowden's OS of choice gets a major update by Steve Dent in engadget.
+
+* 2016-01-12: Tails is listed as best distro for privacy in The Best
+  Linux Distros of 2016
+  by Swapnil Bhartiya in Linux.com.
+
+* 2016-01-07: [Tails - Soukromí pro každého - kdekoliv a kdykoliv](http://valeas.cz/it-blog/117-tails-soukromi-pro-kazdeho-kdekoliv-a-kdykoliv) by Václav in Valeas blog (in Czech).
+
+Translation
+===========
+
+Due to the Jessie release, a lot of our translated documentation is now outdated.
+
+All website PO files
+--------------------
+
+  - de: 28% (2236) strings translated, 2% strings fuzzy, 24% words translated
+  - fa: 60% (4855) strings translated, 3% strings fuzzy, 69% words translated
+  - fr: 41% (3301) strings translated, 3% strings fuzzy, 40% words translated
+  - pt: 21% (1669) strings translated, 4% strings fuzzy, 19% words translated
+
+Total original words: 86910
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+--------------------------------------
+
+  - de: 90% (1202) strings translated, 7% strings fuzzy, 88% words translated
+  - fa: 83% (1109) strings translated, 11% strings fuzzy, 76% words translated
+  - fr: 84% (1125) strings translated, 9% strings fuzzy, 79% words translated
+  - pt: 73% (982) strings translated, 16% strings fuzzy, 70% words translated
+
+Total original words: 14326
+
+Metrics
+=======
+
+* Tails has been started more than 571,109 times this month. This makes 18,423 boots a day on average.
+* 39,080 downloads of the OpenPGP signature of Tails ISO from our website.
+* 184 bug reports were received through WhisperBack.

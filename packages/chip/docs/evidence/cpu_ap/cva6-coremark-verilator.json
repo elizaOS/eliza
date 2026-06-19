@@ -1,0 +1,65 @@
+{
+  "benchmark": "coremark",
+  "claim_boundary": "CVA6 Verilator CoreMark RTL simulator benchmark evidence for the selected CPU core; scope excludes OS boot/runtime, launcher, agent, silicon power, and phone release claims.",
+  "claim_level": "L1_RTL_FULL_SOC",
+  "core": "cva6",
+  "core_role": "little_core_e1_pro",
+  "coremark_per_mhz_formula": "1 / (coremark_ticks_per_iteration / 1e6); two-point steady-state timed region only (mcycle), frequency-independent",
+  "coremark_run_rule_note": "A single-iteration CoreMark run is NOT a reportable score (CoreMark requires many iterations / a >=10 s timed region). A >=10 s silicon-equivalent timed region is infeasible cycle-accurately under Verilator (each iteration is ~462k mcycle ticks; N1=4 already costs ~4000109 RTL cycles \u2248 minutes of wall-clock). The steady-state coremark_per_mhz below is the honest substitute: it reports the per-iteration timed cost from a two-point regression, which is what CoreMark's many-iteration rule exists to isolate. The fixed-startup contamination removed by the slope is recorded in fixed_startup_ticks_in_timed_region.",
+  "cpi_scope": "whole program incl. startup/teardown at N1 (total_cycles / retired_instructions)",
+  "flow": "cva6 veri-testharness (verif/regress/coremark.sh build flags); model work-ver/Variane_testharness",
+  "generated_utc": "2026-05-30T23:52:11Z",
+  "isa": "rv64gc",
+  "mabi": "lp64d",
+  "measurement_method": "two-point startup elimination: ticks_per_iteration = (ticks(N1) - ticks(N0)) / (N1 - N0); coremark_per_mhz = 1 / (ticks_per_iteration / 1e6). The fixed bare-metal startup that sits inside CoreMark's timed region (init/memcpy before start_time) cancels in the slope, isolating the steady-state timed iteration region. Same scope as the Kunminghu evidence's two-point figure, so the head-to-head is apples-to-apples.",
+  "metrics": {
+    "coremark_banner_per_mhz": 2.16,
+    "coremark_iterations": 4,
+    "coremark_per_mhz": 2.161,
+    "coremark_per_mhz_scope": "timed_region (two-point startup-eliminated steady state)",
+    "coremark_per_mhz_whole_program_n1": 2.1608,
+    "coremark_ticks_per_iteration": 462759.0,
+    "coremark_timed_ticks": 1851125,
+    "cpi": 1.3969,
+    "fixed_startup_ticks_in_timed_region": 89.0,
+    "retired_instructions": 2863632,
+    "total_cycles": 4000109
+  },
+  "provenance": "simulator",
+  "published_reference": {
+    "cva6_coremark_per_mhz": 2.83,
+    "note": "OpenHW Group published CVA6 figure measured with its reference toolchain; the delta vs this measurement is a compiler/codegen difference (xpack gcc 15.2.0 -march=rv64gc), not a microarchitecture difference. Same RTL, same cv64a6_imafdc_sv39 config."
+  },
+  "raw_coremark_stdout_n0": "This emulator compiled with JTAG Remote Bitbang client. To enable, use +jtag_rbb_enable=1.\nListening on port 42655\n<repo>/packages/chip/build/cva6-verilator/coremark.cva6.rv64gc.iter1.elf *** SUCCESS *** (tohost = 0) after 1028746 cycles\n*** [rvf_tracer] INFO: Loading binary : <repo>/packages/chip/build/cva6-verilator/coremark.cva6.rv64gc.iter1.elf\n*** [rvf_tracer] INFO: tohost_addr: 0000000080001000\n2K performance run parameters for coremark.\nCoreMark Size    : 666\nTotal ticks      : 462848\nTotal time (secs): 0\nIterations       : 1\nCompiler version : GCC15.2.0\nCompiler flags   : -O3 -march=rv64gc -mabi=lp64d\nMemory location  : \nseedcrc          : 0xe9f5\n[0]crclist       : 0xe714\n[0]crcmatrix     : 0x1fd7\n[0]crcstate      : 0x8e3a\n[0]crcfinal      : 0xe714\nCorrect operation validated. See README.md for run and reporting rules.\nCoreMark/MHz 1.0 : 2.16 / GCC15.2.0 -O3 -march=rv64gc -mabi=lp64d / UNSPECIFIED() RATIOS:1\n*** [rvfi_tracer] INFO: Simulation terminated after    1028734 cycles!\n\nCPU time used: 50392.56 ms\nWall clock time passed: 50446.47 ms\n",
+  "raw_coremark_stdout_n1": "This emulator compiled with JTAG Remote Bitbang client. To enable, use +jtag_rbb_enable=1.\nListening on port 39319\n<repo>/packages/chip/build/cva6-verilator/coremark.cva6.rv64gc.iter4.elf *** SUCCESS *** (tohost = 0) after 4000121 cycles\n*** [rvf_tracer] INFO: Loading binary : <repo>/packages/chip/build/cva6-verilator/coremark.cva6.rv64gc.iter4.elf\n*** [rvf_tracer] INFO: tohost_addr: 0000000080001000\n2K performance run parameters for coremark.\nCoreMark Size    : 666\nTotal ticks      : 1851125\nTotal time (secs): 1\nIterations/Sec   : 4\nIterations       : 4\nCompiler version : GCC15.2.0\nCompiler flags   : -O3 -march=rv64gc -mabi=lp64d\nMemory location  : \nseedcrc          : 0xe9f5\n[0]crclist       : 0xe714\n[0]crcmatrix     : 0x1fd7\n[0]crcstate      : 0x8e3a\n[0]crcfinal      : 0x9f95\nCorrect operation validated. See README.md for run and reporting rules.\nCoreMark/MHz 1.0 : 2.16 / GCC15.2.0 -O3 -march=rv64gc -mabi=lp64d / UNSPECIFIED() RATIOS:1\n*** [rvfi_tracer] INFO: Simulation terminated after    4000109 cycles!\n\nCPU time used: 161265.77 ms\nWall clock time passed: 161562.88 ms\n",
+  "regression_points": {
+    "n0": {
+      "banner_per_mhz": 2.16,
+      "coremark_iterations": 1,
+      "coremark_timed_ticks": 462848,
+      "requested_iterations": 1,
+      "retired_instructions": 731555,
+      "total_cycles": 1028734
+    },
+    "n1": {
+      "banner_per_mhz": 2.16,
+      "coremark_iterations": 4,
+      "coremark_timed_ticks": 1851125,
+      "requested_iterations": 4,
+      "retired_instructions": 2863632,
+      "total_cycles": 4000109
+    }
+  },
+  "result_recorded_at": "2026-05-29T08:49:50Z",
+  "run_command": "E1_COREMARK_ITER_N0=1 E1_COREMARK_ITER_N1=4 E1_COREMARK_DUT=verilator scripts/run_coremark.sh",
+  "schema": "eliza.cpu_benchmark_measured.v1",
+  "status": "passed",
+  "target_config": "cv64a6_imafdc_sv39",
+  "tools": {
+    "coremark_defines": "-DITERATIONS=<N0|N1> -DPERFORMANCE_RUN -DSKIP_TIME_CHECK -DNOPRINT",
+    "gcc": "15.2.0 (xpack riscv-none-elf)",
+    "gcc_flags": "-O3 -g -march=rv64gc -mabi=lp64d -static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -fno-tree-loop-distribute-patterns -funroll-all-loops -ffunction-sections -fdata-sections -Wl,-gc-sections -falign-jumps=4 -falign-functions=16",
+    "spike": "<repo>/packages/chip/external/cva6/cva6/tools/spike (CVA6 pinned, libfesvr read_elf)",
+    "verilator": "Verilator 5.049 devel rev v5.048-46-g7c5069c7d (mod)"
+  }
+}

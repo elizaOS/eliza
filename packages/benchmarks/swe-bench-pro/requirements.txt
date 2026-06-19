@@ -1,0 +1,13 @@
+# Core dependencies for SWE-bench Pro evaluation
+pandas>=1.5.0
+tqdm>=4.64.0
+datasets>=2.14.0
+
+# Modal for cloud-based evaluation (optional if using local Docker)
+modal>=0.50.0
+
+# Docker SDK for local evaluation (optional if using Modal)
+docker>=6.0.0
+
+# HuggingFace Hub for dataset management
+huggingface_hub>=0.16.0

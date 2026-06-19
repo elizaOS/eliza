@@ -1,0 +1,284 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2015-10-14 19:35+0000\n"
+"Last-Translator: sprint5 <translation5@451f.org>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/start/fa/"
+">\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.4-dev\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Starting Tails\"]]\n"
+msgstr "[[!meta title=\"راه‌اندازی تیلز\"]]\n"
+
+#. type: Plain text
+msgid "To learn how to start Tails, refer to our installation instructions on:"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Starting Tails on PC|pc]]"
+msgstr "[[!meta title=\"راه‌اندازی تیلز\"]]\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Starting Tails on Mac|mac]]"
+msgstr "[[!meta title=\"راه‌اندازی تیلز\"]]\n"
+
+#~ msgid "[[!toc levels=2]]\n"
+#~ msgstr "[[!toc levels=2]]\n"
+
+#~ msgid ""
+#~ "Now that you have a Tails device, you can shutdown your computer and "
+#~ "start using Tails without altering your existing operating system."
+#~ msgstr ""
+#~ "اکنون که دستگاهی که روی آن تیلز نصب شده است دارید، می‌توانید رایانهٔ خود را "
+#~ "خاموش کنید و بدون تغییر در سیستم‌عامل فعلی، به استفاده از تیلز بپردازید."
+
+#~ msgid "If Tails starts successfully, the Tails boot menu appears:"
+#~ msgstr ""
+#~ "اگر تیلز با موفقیت راه‌اندازی شود، فهرست راه‌اندازی تیلز نمایش داده می‌شود:"
+
+#~ msgid "[[!img install/inc/screenshots/boot_loader_menu.png]]\n"
+#~ msgstr "[[!img install/inc/screenshots/boot_loader_menu.png]]\n"
+
+#~ msgid "If you are using a DVD\n"
+#~ msgstr "اگر از دی‌وی‌دی استفاده می‌کنید\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "Put the Tails DVD into the CD/DVD drive and restart the computer. You "
+#~| "should the Tails boot menu."
+#~ msgid ""
+#~ "Put the Tails DVD into the CD/DVD drive and restart the computer. You "
+#~ "should see the Tails boot menu."
+#~ msgstr ""
+#~ "دی‌وی‌دی تیلز را در درایو دی‌وی‌دی بگذارید و رایانهٔ خود را راه‌اندازی دوباره "
+#~ "کنید. باید فهرست راه‌اندازی با تیلز را ببینید."
+
+#~ msgid ""
+#~ "If you don't get this menu, you can consult the Ubuntu documentation "
+#~ "about [booting from the CD](https://help.ubuntu.com/community/BootFromCD) "
+#~ "for more information, especially the part on the [BIOS settings](https://"
+#~ "help.ubuntu.com/community/"
+#~ "BootFromCD#BIOS%20is%20not%20set%20to%20boot%20from%20CD%20or%20DVD%20drive)."
+#~ msgstr ""
+#~ "اگر این فهرست را نمی‌بینید، برای اطلاعات بیشتر می‌توانید از مستند اوبونتو "
+#~ "دربارهٔ [راه‌اندازی از طریق سی‌دی](https://help.ubuntu.com/community/"
+#~ "BootFromCD) استفاده کنید؛ به ویژه بخش [تنظیمات بایوس](https://help.ubuntu."
+#~ "com/community/"
+#~ "BootFromCD#BIOS%20is%20not%20set%20to%20boot%20from%20CD%20or%20DVD%20drive)."
+
+#~ msgid "If you are using a USB stick or SD card\n"
+#~ msgstr "اگر از کارت حافظه یا درایو یواس‌بی استفاده می‌کنید\n"
+
+#~ msgid ""
+#~ "According to your type of computer, read the instructions for either [[PC|"
+#~ "start#usb-pc]] or [[Mac|start_tails#usb-mac]]."
+#~ msgstr ""
+#~ "بر اساس نوع رایانه‌ای که از آن استفاده می‌کنید، یکی از دو دستورالعمل "
+#~ "[[ویندوز|start#usb-pc]] یا [[مک|start_tails#usb-mac]] را بخوانید."
+
+#~ msgid "<a id=\"usb-pc\"></a>\n"
+#~ msgstr "<a id=\"usb-pc\"></a>\n"
+
+#~ msgid "PC"
+#~ msgstr "دستگاه ویندوزی"
+
+#~ msgid ""
+#~ "Shutdown the computer, plug your device, and start the computer. You "
+#~ "should see the Tails boot menu."
+#~ msgstr ""
+#~ "رایانه را خاموش کنید، دستگاه (کارت حافظه، درایو یواس‌بی یا ...) را وصل و "
+#~ "رایانه را روشن کنید. باید بتوانید فهرست راه‌اندازی تیلز را ببینید."
+
+#~ msgid ""
+#~ "If your computer does not automatically do so, you might need to edit the "
+#~ "BIOS\n"
+#~ "settings. Restart your computer, and watch for a message telling you "
+#~ "which key\n"
+#~ "to press to enter the BIOS setup. It will usually be one of <span\n"
+#~ "class=\"keycap\">F1</span>, **F2**, <span\n"
+#~ "class=\"keycap\">Del</span>, **Esc** or\n"
+#~ "**F10**. Press this key while your computer is "
+#~ "booting to edit your BIOS settings.\n"
+#~ msgstr ""
+#~ "اگر رایانهٔ شما این کار را به صورت خودکار انجام نداد، ممکن است نیاز به "
+#~ "ویرایش\n"
+#~ "تنظیمات بایوس داشته باشید. رایانهٔ خود را راه‌اندازی دوباره کنید و منتظر "
+#~ "پیامی باشید که به شما اعلام می‌کند که\n"
+#~ "کدام دکمه شما را به بخش تنظیمات بایوس هدایت می‌کند؛ به صورت معمول یکی از "
+#~ "دکمه‌های <span\n"
+#~ "class=\"keycap\">F1</span>، **F2**، <span\n"
+#~ "class=\"keycap\">Del</span>، **Esc** یا\n"
+#~ "**F10**. آن دکمه را زمانی که رایانهٔ شما در حال "
+#~ "راه‌اندازی است بزنید تا به بخش ویرایش تنظیمات بایوس بروید.\n"
+
+#~ msgid ""
+#~ "If you have problems accessing the BIOS, try to read [pendrivelinux.com: "
+#~ "How to Access BIOS](http://www.pendrivelinux.com/how-to-access-bios/)."
+#~ msgstr ""
+#~ "اگر برای دسترسی به بایوس مشکل دارید، [pendrivelinux.com: چگونه به بایوس "
+#~ "دسترسی داشته باشیم](http://www.pendrivelinux.com/how-to-access-bios/) را "
+#~ "بخوانید."
+
+#~ msgid ""
+#~ "1. You need to edit the **Boot Order**. "
+#~ "Depending on your computer you should see an\n"
+#~ "entry for **removable drive** or <span "
+#~ "class=\"guilabel\">USB media</span>. Move this to the top of the list to\n"
+#~ "force the computer to attempt to start from your device before starting "
+#~ "from the\n"
+#~ "internal hard disk. Save your changes and continue.\n"
+#~ msgstr ""
+#~ "۱. باید**ترتیب راه‌اندازی** را ویرایش کنید. "
+#~ "بسته به نوع رایانه‌ای که دارید باید\n"
+#~ "به بخش **درایو جداشدنی** یا <span "
+#~ "class=\"guilabel\">یواس‌بی</span> نگاهی بیاندازید. باید آن را به بالای "
+#~ "فهرست منتقل کنید\n"
+#~ "تا رایانهٔ شما را مجیور به راه‌اندازی از طریق دستگاه (درایو یواس‌بی یا کارت "
+#~ "حافظه) پیش از استفاده از سخت‌دیسک داخلی کند.\n"
+#~ "تغییرات اعمال شده را دخیره کنید و به کار خود ادامه دهید.\n"
+
+#~ msgid ""
+#~ "   For more detailed instruction on how to boot from USB you can read "
+#~ "[About.com:\n"
+#~ "How To Boot your Computer from a Bootable USB\n"
+#~ "Device](http://pcsupport.about.com/od/tipstricks/ht/bootusbflash.htm).\n"
+#~ msgstr ""
+#~ "   برای جزئیات بیشتر دستورالعمل راه‌اندازی از طریق درایو یواس‌بی می‌توانید "
+#~ "[About.com:\n"
+#~ "چگونه رایانهٔ خود را را از طریق دستگاه یواس‌بی\n"
+#~ "راه‌اندازی کنید](http://pcsupport.about.com/od/tipstricks/ht/bootusbflash."
+#~ "htm) را مطالعه کنید.\n"
+
+#~ msgid ""
+#~ "   If changing the boot order is not enough, you can also try the\n"
+#~ "following BIOS configurations. Try restarting after each change, as\n"
+#~ "each one might solve your problem.\n"
+#~ msgstr ""
+#~ "   اگر عوض کردن ترتیبِ راه‌اندازی کافی نباشد، می‌توانید پیکربندی\n"
+#~ "بایوس را تغییر دهید. پس از اعمال هر تغییر رایانهٔ خود را راه‌اندازی دوباره "
+#~ "کنید\n"
+#~ "چرا که ممکن است یکی از تغییرها مشکل شما را حل کند.\n"
+
+#~ msgid "Disable Fast boot and Secure boot."
+#~ msgstr "غیر فعال کردن راه‌اندازی سریع و امن."
+
+#, fuzzy
+#~ msgid ""
+#~ "If the computer is configured to start with legacy BIOS, try to configure "
+#~ "it to start with UEFI. Else, if the computer is configured to start with "
+#~ "UEFI, try to configure it to start with legacy BIOS. Try any of the "
+#~ "following options if available:"
+#~ msgstr ""
+#~ "اگر رایانهٔ شما برای روشن شدن با حالت لگاسی بایوس پیکربندی شده است، آن را "
+#~ "برای روشن شدن در حالت UEFI پیکربندی کنید. در غیر این صورت، اگر رایانه "
+#~ "برای روشن شدن با UEFI پیکربندی شده است، آن را به حالت لگاسی بایوس تغییر "
+#~ "دهید. هر یک از حالت‌های زیر را در صورت وجود امتحان کنید:"
+
+#, fuzzy
+#~ msgid "Enable Legacy mode"
+#~ msgstr "فعال کردن حالت پشتیبانی از مدل‌های قدیمی"
+
+#, fuzzy
+#~ msgid "Enable CSM boot"
+#~ msgstr "فعال کردن راه‌اندازی CSM"
+
+#~ msgid "Disable UEFI"
+#~ msgstr "غیر فعال کردن UEFI"
+
+#~ msgid ""
+#~ "   You might have to undo these changes to start your usual operating\n"
+#~ "system again after your Tails session.\n"
+#~ msgstr ""
+#~ "   ممکن است برای راه‌اندازی سیستم‌عامل معمولی خود پس از کار با تیلز لازم "
+#~ "باشد \n"
+#~ "تغییرات اعمال‌شده را به حالت اول بازگردانید.\n"
+
+#~ msgid ""
+#~ "You can also try to upgrade your BIOS version. Your computer vendor "
+#~ "probably has instructions on how to do that on their website."
+#~ msgstr ""
+#~ "همچنین می‌توانید نسخهٔ بایوس خود را ارتقاء دهید. احتمالاً فروشندهٔ رایانهٔ شما "
+#~ "راهنمای انجام این کار را در تارنمای خود قرار داده است."
+
+#~ msgid "<a id=\"usb-mac\"></a>\n"
+#~ msgstr "<a id=\"usb-mac\"></a>\n"
+
+#~ msgid "Mac"
+#~ msgstr "مک"
+
+#~ msgid ""
+#~ "Shutdown the computer, plug your device, start the computer, and\n"
+#~ "immediately press-and-hold **Option** until a "
+#~ "boot menu\n"
+#~ "appears. In that boot menu, choose the entry that reads <span "
+#~ "class=\"guimenuitem\">Boot EFI</span> and\n"
+#~ "looks like a USB stick.\n"
+#~ msgstr ""
+#~ "رایانه را خاموش کنید، دستگاه را به آن وصل و رایانه را روشن کنید و\n"
+#~ "درست پس از آن دکمهٔ **Option** را بزنید و نگه "
+#~ "دارید تا فهرست راه‌اندازی ظاهر شود.\n"
+#~ "در این فهرست راه‌اندازی، گزینه‌ای که <span class=\"guimenuitem\">Boot EFI</"
+#~ "span> را می‌خواند و\n"
+#~ "شبیه یک یواس‌بی است را انتخاب کنید.\n"
+
+#~ msgid "Then you should see the Tails boot menu."
+#~ msgstr "حالا باید بتوانید فهرست راه‌اندازی تیلز را ببینید."
+
+#~ msgid ""
+#~ "If this does not work, then you might need to install [rEFInd](http://"
+#~ "sourceforge.net/projects/refind/)."
+#~ msgstr ""
+#~ "اگر این روش کار نکرد، ممکن است نیاز به نصب [rEFInd](http://sourceforge."
+#~ "net/projects/refind/) داشته باشید."
+
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#~ msgid ""
+#~ "Installing rEFInd replaces your original bootloader.<br/>\n"
+#~ "This could cause your Mac to not boot. It is recommended to create a full "
+#~ "backup and know how to\n"
+#~ "restore. See <a href=\"https://support.apple.com/kb/HT1427\">Apple's\n"
+#~ "instructions</a>.\n"
+#~ msgstr ""
+#~ "نصب کردن rEFInd موجب جایگزین شدن راه‌اندازنده می‌شود<br/>\n"
+#~ "این اتفاق می‌توانید موجب راه‌اندازی نشدن مک می‌شود. توصیه می‌شود که یک "
+#~ "پشتیبان کامل بگیرید و چگونگی بازیابی فایل پشتیبان را بدانید.\n"
+#~ "برای مطالعهٔ بیشتر <a href=\"https://support.apple.com/kb/"
+#~ "HT1427\">دستورالعمل اپل</a> را بخوانید.\n"
+
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"
+
+#~ msgid "Problems starting Tails?\n"
+#~ msgstr "مشکلی با راه‌اندازی تیلز دارید؟\n"
+
+#~ msgid ""
+#~ "Read our specific [[reporting guidelines when Tails does not start|doc/"
+#~ "first_steps/bug_reporting/tails_does_not_start]]."
+#~ msgstr ""
+#~ "[[راهنمای گزارش‌دهی ما در صورت تیلز راه‌اندازی نشدن تیلز|doc/first_steps/"
+#~ "bug_reporting/tails_does_not_start]] را بخوانید."
+
+#~ msgid "Using a virtualization software\n"
+#~ msgstr "استفاده از نرم‌افزار مجازی‌سازی\n"
+
+#~ msgid ""
+#~ "[[See the corresponding documentation.|advanced_topics/virtualization]]"
+#~ msgstr "[[مستندات مرتبط را ببینید.|advanced_topics/virtualization]]"

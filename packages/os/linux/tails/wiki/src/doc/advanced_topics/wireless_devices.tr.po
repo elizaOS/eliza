@@ -1,0 +1,178 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2024-11-02 13:27+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Enabling a wireless device\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "When Tails starts, Wi-Fi, WWAN, and WiMAX devices are enabled."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"But all other kinds of wireless devices such as Bluetooth, GPS and FM "
+"devices are disabled by default. If you want to use such a device, you need "
+"to enable it first."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If Wi-Fi is not working, see\n"
+"[[troubleshooting Wi-Fi that is not working|doc/anonymous_internet/no-wifi]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Enable a wireless device"
+msgstr ""
+
+#. type: Plain text
+msgid "This technique uses the command line."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Execute the following command to open a root console."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo -i</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"To find out the index of the wireless device that you want to enable, "
+"execute the following command:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root\">rfkill list</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   For example, the command could return the following:\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The device index is the number that appears at the beginning of the\n"
+"   three lines describing each device. In this example, the index of the Bluetooth\n"
+"   device is 1, while the index of the GPS device is 2. Yours are\n"
+"   probably different.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"To enable the wireless device, execute the following command. Replace <span "
+"class=\"command-placeholder\">index</span> with the index found at step 2:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root-template\">rfkill unblock <span class=\"command-placeholder\">index</span></p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Here is an example of the command to execute. Yours is probably\n"
+"   different:\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root-template\">rfkill unblock 2</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"To verify that the wireless device is enabled, execute the following command "
+"again:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   This output should be very similar to the one of step 2, but\n"
+"   the device enabled at step 3 should not be soft\n"
+"   blocked anymore.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+msgstr ""
+
+#, no-wrap
+#~ msgid "<!--\n"
+#~ msgstr "<!--\n"
+
+#, no-wrap
+#~ msgid "-->\n"
+#~ msgstr "-->\n"

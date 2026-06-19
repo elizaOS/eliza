@@ -1,0 +1,7 @@
+ticker,sector_name,full_name,inception_date,avg_daily_volume_mm,expense_ratio,split_history
+XLK,Information Technology,Technology Select Sector SPDR Fund,1998-12-16,12.5,0.1,2:1 split effective 2024-05-24
+XLF,Financial Services,Financial Select Sector SPDR Fund,1998-12-16,28.3,0.1,
+XLE,Energy,Energy Select Sector SPDR Fund,1998-12-16,15.7,0.1,
+XLV,Health Care,Health Care Select Sector SPDR Fund,1998-12-16,8.9,0.1,
+XLI,Industrial,Industrial Select Sector SPDR Fund,1998-12-16,10.2,0.1,
+XLY,Consumer Discretionary,Consumer Discretionary Select Sector SPDR Fund,1998-12-16,6.4,0.1,

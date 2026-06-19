@@ -1,0 +1,134 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2022-12-19 19:07+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Shutting down Tails\"]]\n"
+msgstr "[[!meta title=\"關閉 Tails\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+msgid "There are 2 ways of shutting down Tails."
+msgstr "有幾種方式可以關閉 Tails:"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"With both techniques, all the data stored in [[!wikipedia Random-access_memory\n"
+"desc=\"RAM\"]] is securely erased to protect you from [[cold boot\n"
+"attacks|doc/advanced_topics/cold_boot_attacks]].\n"
+msgstr ""
+"關閉時，儲存在 <span class=\"definition\">[[!wikipedia_zh \n"
+"Random-Access_Memory desc=\"RAM\"]]</span>的資料會被抹除， 以防備來自\n"
+"[[冷開機|doc/advanced_topics/cold_boot_attacks]] 攻擊。\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Shutdown from the system menu"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid "Click on the system menu in the upper right corner of the screen."
+msgstr "擊選畫面右上角的系統選單，然後選擇："
+
+#. type: Bullet: '* '
+#, fuzzy
+msgid ""
+"Choose [[!img lib/system-shutdown.png link=\"no\" class=\"symbolic\" "
+"alt=\"Power Off\"]] to shutdown the computer."
+msgstr ""
+"[[!img lib/system-shutdown.png link=\"no\" class=\"symbolic-22\" "
+"alt=\"Shutdown icon\"]] 關閉電腦或是"
+
+#. type: Bullet: '* '
+#, fuzzy
+msgid ""
+"Choose [[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" "
+"alt=\"Restart\"]] to restart the computer on Tails or on your regular "
+"operating system."
+msgstr ""
+"[[!img lib/view-refresh.png link=\"no\" class=\"symbolic-22\" alt=\"Restart "
+"icon\"]] 重啟電腦。"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!img desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img desktop/system.png link=\"no\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Emergency shutdown"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To trigger an emergency shutdown, unplug the USB stick or eject the DVD from "
+"which Tails is running. Doing so might be faster than shutting down from the "
+"system menu."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "  <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You risk breaking your Persistent Storage and losing data when you unplug\n"
+"your USB stick while Tails is running.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you use a Persistent Storage, only unplug your Tails USB stick in an\n"
+"emergency.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "</div>\n"
+msgstr "  </div>\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "  <p>If you cannot unlock the Persistent Storage anymore after\n"
+#~ "  physically removing the USB stick, try to do a [[file system check on\n"
+#~ "  the Persistent Storage|persistent_storage/check]]\n"
+#~ "  to fix it.</p>\n"
+#~ msgstr ""
+#~ "<p>在運用這個方式後，如果你無法啟用永久磁區\n"
+#~ "但應該可以利用 [[永久磁區上的檔案系統檢查|persistence/check_the_file_system]]\n"
+#~ "來恢復大部份的資料。</p>\n"
+
+#~ msgid ""
+#~ "<p>This method might in rare occasions break the file system of your "
+#~ "persistent\n"
+#~ "volume. <strong>Use this method only in case of emergency.</strong></p>\n"
+#~ msgstr ""
+#~ "<p>這個方式可能會破壞永久磁區\n"
+#~ "上的檔案系統<strong>只有在緊危狀況才用這個方式。</strong></p>\n"

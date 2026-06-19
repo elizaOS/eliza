@@ -1,0 +1,153 @@
+[[!meta date="Thu, 07 Mar 2013 11:12:49 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for February, 2013"]]
+
+[[!toc levels=1]]
+
+Releases
+========
+
+[[Tails 0.17|news/version_0.17]] was released on February 25th.
+
+Metrics
+=======
+
+  - 99 275 connections of Tails to the Tor network. This makes a boot
+    every 24 seconds on average (this number is an approximation from
+    the requests made to the security announcements feed. The later is
+    retrieved by Tails after being connected to Tor to eventually
+    encourage users to update.)
+
+  - 63 reports were received through WhisperBack.
+
+  - 924 comments were posted on the forum, with 161 signed by Tails.
+
+Code
+====
+
+  - Some progress has been done on a
+    persistence feature to
+    packages installed with APT.
+
+  - A workaround has been proposed to temper a
+    bug on APM handling
+    of some hard disks that could damage them. See [[!debbug
+    684241]].
+
+  - Two features that are known to be
+    flawed in Pidin, MXit
+    and Sametime, have been disabled. See CVE-2013-0273,
+    CVE-2013-0272 and CVE-2013-0271.
+
+  - Shutdown and reboot launchers have been added to the menu to
+    fix the
+    lack of a shutdown helper applet in camouflage mode.
+
+  - Some progress was made on
+    Tails based on Wheezy.
+
+  - The firmware loader for
+    Qualcomm Gobi USB chipsets was added to Tails 0.17.
+
+  - Some work has been done on getting the
+    Tails web browser (now based on
+    Iceweasel 17 ESR + Torbrowser patches) ready for Tails 0.17.
+
+  - I2P was updated to
+    0.9.4.
+
+  - We have tested Yama and AppArmor LSB
+    stacking on Linux 3.7.8, and now
+    plan to have Yama enabled by default in the Debian kernel.
+
+Documentation and Website
+=========================
+
+  - The documentation on administration password was improved to be
+    clearer
+    about opening a root terminal.
+
+  - A branch was started to
+    clean up the content of the forum.
+
+  - The /bugs and /todo sections of the website
+    will no longer be
+    shipped in the ISO images.
+
+  - A link to check.torproject.org was added to the [[new default
+    browser homepage|/news]], to reassure users landing on it.
+
+  - The documentation on MAC Changer
+    has been corrected
+    to mention the fact that MAC addresses are sometimes sent over the
+    Internet.
+
+  - Some more browser [[!tails_gitweb_commit
+    3e13999b6923ebfb3b25d7329ce0ce3d495ae63b desc="fingerprinting
+    issues" where documented]].
+
+  - Our income statement for 2012 was
+    published.
+
+  - The browser [[homepage|news]] was lightened a bit.
+
+  - The
+    design documentation for
+    set wireless devices state was written.
+
+
+On-going discussions
+====================
+
+  - We have been debating on a keyboard shortcut
+    overlap
+    between ALT+SHIFT+TAB that should change the window backward and
+    ALT+SHIFT which is the usual shortcut for switching between keyboard
+    layouts. That's particularly important for people switching between
+    Latin and non-Latin keyboards.
+
+  - There is now a dedicated mailing
+    list
+    of the Metadata Anonymization Toolkit (MAT).
+
+  - Runa's report on "Training Journalists in Istanbul" resulted in a
+    few discussion threads regarding, among others:
+
+    - Autostarting
+      Iceweasel
+    - The browser
+      homepage
+    - Having an applet that informs about the version number of Tails
+      and hiding the download button on the News
+      page
+    - Disabling all Pidgin accounts by
+      default
+
+Infrastructure
+==============
+
+Quite some work was done on a new dedicated server of ours, called
+lizard:
+
+- Various stuff that's customary for a virtualization host, like
+  a local APT proxy and a Puppet master, was setup.
+- Our APT repository was migrated to
+  lizard. Our primary
+  (private) rsync server,
+  too.
+- We now run a BitTorrent seed on lizard.
+- We now run another WhisperBack relay on lizard.
+- We now run [[!debpkg bitcoind]] on lizard.
+- Our Puppet modules are now hosted on lizard. Some are [[already
+  publicly available|contribute/git]], but there's a bit of boring
+  work left to publish the others.
+  We're happy to share with nice
+  people
+  the development and maintenance of most of the modules we use.
+- A VM was setup to run Jenkins, that should some day be an important
+  part of [[!tails_ticket 6090 desc="automated builds and tests"]].
+
+Funding
+=======
+
+We have been working on starting our bounties program.

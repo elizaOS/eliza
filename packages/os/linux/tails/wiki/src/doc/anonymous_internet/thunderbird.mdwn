@@ -1,0 +1,323 @@
+[[!meta title="Emailing and reading news with Thunderbird"]]
+
+Tails includes *Thunderbird* for:
+
+- Reading and writing emails
+
+- Reading [[!wikipedia RSS]] and [[!wikipedia Atom_(Web_standard) desc="Atom"]] feeds for news and blogs
+
+[[!toc levels=2]]
+
+To open *Thunderbird*, choose **Apps&nbsp;▸ Internet&nbsp;▸ Thunderbird**.
+
+<div class="tip">
+
+<p>To store your
+emails, feeds, and settings across different working sessions,
+turn on the [[Thunderbird Email Client|persistent_storage/configure#thunderbird]]
+feature of the Persistent Storage.</p>
+
+</div>
+
+<div class="note">
+
+<p><i>Thunderbird</i> will not be included by default anymore in Tails 7.8
+(May 2026) and later.</p>
+
+<p>If you have the [[Thunderbird Email
+Client|persistent_storage/configure#thunderbird]] feature of the Persistent
+Storage turned on, Tails automatically adds <i>Thunderbird</i> to your list of
+[[Additional Software|persistent_storage/additional_software]].</p>
+
+<p>[[Why is Tails installing <i>Thunderbird</i> as Additional Software?|thunderbird/additional_software]]</p>
+
+</div>
+
+For more documentation, visit the official [*Thunderbird*
+Support](https://support.mozilla.org/en-US/products/thunderbird) website.
+
+<div class="bug">
+
+<p>The <a href="https://support.mozilla.org/en-US/kb/instant-messaging-and-chat">chat
+features of <i>Thunderbird</i></a> don't work in Tails.</p>
+
+</div>
+
+<h1 id="account">Configuring an email account</h1>
+
+1. When opening *Thunderbird* for the first
+   time, an assistant appears to help you configure and access your email
+   account.
+
+1. Enter your name, email address, and password into the corresponding fields.
+
+1. Click **Continue**.
+
+1. The assistant tries to configure automatically the correct settings
+   to connect to your email provider based on your email address.
+
+   If the automatic configuration fails, consult your email provider
+   about how to configure your email account manually.
+
+1. If the automatic configuration succeeds, you might have to specify
+   which protocol to use to connect to your email provider, either
+   **IMAP** or **POP**.
+
+      - With **IMAP**,
+        *Thunderbird* constantly synchronizes
+        with the server and displays the emails and folders that are
+	currently stored on the server. IMAP is better suited if you access
+        your emails from different operating systems.
+
+      - With **POP**,
+        *Thunderbird* downloads the emails that
+        are in the inbox on the server and possibly deletes them from the
+	server. POP is better suited if you access your emails from Tails only
+        and store them in the Persistent Storage.
+
+   To know more, see also this [comparison between POP and
+   IMAP](https://help.riseup.net/en/email/clients/#choose-imap-or-pop) by
+   Riseup.
+
+<div class="tip" id="gmail">
+
+<h2>Gmail</h2>
+
+<p>You can use your Gmail account with <i>Thunderbird</i> in Tails.</p>
+
+<ol>
+  <li>
+    <p>Make sure that you have 2-Step Verification turned on in your Gmail account.</p>
+    <p>See <a href="https://support.google.com/accounts/answer/185839">Google Account Help: 2-Step Verification</a>.</p>
+  </li>
+  <li>
+    <p>Configure the new account as IMAP when <i>Thunderbird</i> asks you to
+    choose between POP and IMAP.</p>
+  </li>
+</ol>
+
+</div>
+
+<h1 id="news">Reading RSS and Atom news feeds</h1>
+
+On top of reading emails, you can read news feeds that use the RSS and Atom
+standards in *Thunderbird*.
+
+To create a feed account:
+
+1. Choose  **[[!img lib/open-menu.png link="no" class="symbolic" alt="Menu"]]&nbsp;▸
+   Account Settings** from the main window of *Thunderbird*.
+
+1. In the **Account Settings** tab, select the **New Account** button, and then
+   **Feed Account**.
+
+1. In the **Feed Account Wizard**, click **Next** and **Finish**.
+
+   A new feed account named **Blogs & News Feeds** appears in the sidebar.
+
+1. Click on the **Manage Subscriptions** button in the right pane.
+
+1. In the **Feed Subscriptions** dialog, enter the URL of the news feed that
+   you want to follow in the **Feed URL** field.
+
+   For example, to subscribe to the Tails news feed, enter the following URL.
+
+       https://tails.net/news/index.en.rss
+
+   Sites often have a feed icon <i class="fa fa-rss"></i> that points to their
+   RSS or Atom feed.
+
+   If a site has no feed icon, right-click on the home or news page of the site in *Tor Browser*
+   and select **View Page Source** in the shortcut menu. In the source of the
+   page look for a link of type *application/rss+xml* or
+   *application/atom+xml*. Not all sites have a news feed.
+
+   [[!wikipedia RSS]] and [[!wikipedia Atom (web standard) desc="Atom"]] are
+   similar standards and their differences don't really matter to readers.
+
+1. Click **Add**.
+
+   *Thunderbird* verifies and downloads the content of the feed.
+
+1. Close the **Feed Subscriptions** dialog and the **Account Settings** tab.
+
+1. A new feed account named **Blogs & News Feeds** appears in the sidebar of
+   the main window of *Thunderbird*.
+
+<h1 id="privacy">Enhanced privacy</h1>
+
+*Thunderbird* in Tails is configured
+for additional privacy and anonymity.
+
+For example, *Thunderbird* in Tails:
+
+- Removes information about the language of your session or spellchecker
+  from the headers of the emails that you send.
+
+- Removes information that could identify you as a Tails user from the
+  headers of your emails.
+
+- Only allows secure protocols and disables insecure protocols, like
+  SSLv3.
+
+- Disables tracking technologies, like cookies and JavaScript, when
+  viewing emails or feeds in HTML.
+
+These enhancements are inherited
+from the former
+[*TorBirdy*](https://gitlab.torproject.org/legacy/trac/-/wikis/torbirdy)
+extension.
+
+<div class="caution">
+
+<p>The email addresses that you write to are stored in your address book by
+default.</p>
+
+<p>To stop collecting outgoing email addresses automatically, open
+<b>Settings&nbsp;▸ Composition</b> and turn off the option <b>Automatically add
+outgoing email addresses to my collected addresses</b>.</p>
+
+</div>
+
+<h1 id="language">Using Thunderbird in another language</h1>
+
+To use *Thunderbird* in another language, you can
+install the <code>thunderbird-l10n-<span class="command-placeholder">lang</span></code>
+package using the [[Additional Software|persistent_storage/additional_software]]
+feature. Replace <span class="command-placeholder">lang</span> with the code
+for your language. For example, `vi` for Vietnamese.
+
+Tails already includes language packages for Arabic,
+German, Spanish, Farsi, French, Hindi, Bahasa Indonesia, Italian,
+Portuguese, Russian, Turkish, and Simplified Chinese.
+
+[List of available *Thunderbird* language packages](https://packages.debian.org/search?keywords=thunderbird-l10n&searchon=names&suite=stable&section=all)
+
+<h1 id="openpgp">OpenPGP encryption</h1>
+
+<div class="next">
+
+<p><i>GnuPG</i> and <i>[[Kleopatra|encryption_and_privacy/kleopatra]]</i>
+allow you to work with OpenPGP encrypted text and files. Consider using
+<i>Kleopatra</i> instead of <i>Thunderbird</i> if you want to exchange encrypted text and files, but
+not by email.</p>
+
+<p>The OpenPGP keys stored in <i>GnuPG</i> and <i>Kleopatra</i> are separate from the keys
+stored in <i>Thunderbird</i>.</p>
+
+</div>
+
+See also the official [OpenPGP in Thunderbird - HOWTO and
+FAQ](https://support.mozilla.org/kb/openpgp-thunderbird-howto-and-faq).
+
+<h2 id="primary-password">Setting up a Primary Password (recommended)</h2>
+
+In *Thunderbird*, OpenPGP private keys are not protected by a passphrase.
+That's why we recommend that you set up a Primary Password.
+
+With a Primary Password, your private key is encrypted in your
+*Thunderbird* profile and is only unlocked while *Thunderbird* is running.
+If your *Thunderbird* profile is stored in your Persistent Storage, then
+your private key is encrypted twice: once by *Thunderbird* in your
+profile and a second time by the encryption of the Persistent Storage.
+
+1. Choose **[[!img lib/open-menu.png alt="Menu" class="symbolic"
+   link="no"]]&nbsp;▸ Settings**.
+
+1. Choose **Privacy & Security**.
+
+1. In the **Passwords** section, select the option **Use a Primary
+   Password**.
+
+1. In the **Primary Password** dialog, enter your Primary Password
+   and click **OK**.
+
+<h2 id="import-private">Importing an existing private key</h2>
+
+*Thunderbird* uses a different keyring than *GnuPG*.
+
+If you already have an OpenPGP private key outside of *Thunderbird*, follow the
+instructions below to export it from *GnuPG* and import it into *Thunderbird*.
+
+<h3>Export your private key using <em>Kleopatra</em></h3>
+
+From the desktop:
+
+1. Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Kleopatra**.
+
+1. Select the private key that you want to migrate to *Thunderbird*.
+
+1. Choose **File&nbsp;▸ Backup Secret Keys…** and save this private key to your
+   *Home* folder.
+
+1. Close *Kleopatra*.
+
+<h3>Import your private key in <em>Thunderbird</em></h3>
+
+In *Thunderbird*:
+
+1. Choose **[[!img lib/open-menu.png alt="Menu" class="symbolic"
+   link="no"]]&nbsp;▸ Account Settings**.
+
+1. In the left pane, identify the account
+   that corresponds to the private key that you want to import and
+   choose **End-to-End Encryption**.
+
+1. In the right pane, click the **Add Key…** button.
+
+1. In the dialog that appears, select the option **Import an
+   existing OpenPGP Key** and **Continue**.
+
+1. Click the **Select File to Import…** button and choose
+   the private key that your exported from *Kleopatra*.
+
+1. In the next dialog, make sure that your private key is listed and
+   that the option **Treat this key as a Personal Key** is selected.
+
+1. Click **Continue**, enter the passphrase for your private key (if
+   any), and click **Continue** again.
+
+   Your private key should now be listed in the **End-to-End
+   Encryption** settings of your account.
+
+1. Select your private key to enable OpenPGP encryption for this
+   account.
+
+<h2 id="generate-private">Generating a new OpenPGP private key</h2>
+
+1. Choose **[[!img lib/open-menu.png alt="Menu" class="symbolic"
+   link="no"]]&nbsp;▸ Account Settings**.
+
+1. In the left pane, identify the account
+   for which you want to create a new OpenPGP private key and
+   choose **End-to-End Encryption**.
+
+1. In the right pane, click the **Add Key…** button.
+
+1. In the **Add a Personal OpenPGP Key** dialog, choose **Create a new
+   OpenPGP Key**.
+
+1. Review the settings in the next dialog, click the **Generate key** button,
+   and then click **Confirm**.
+
+   Your private key should now be listed in the **End-to-End
+   Encryption** settings of your account.
+
+<h2 id="encrypting">Encrypting an email</h2>
+
+To prevent you from sending unencrypted emails by mistake, *Thunderbird*
+in Tails is configured with the option **Enable encryption for new
+messages** turned on by default in the account settings.
+
+When composing an email:
+
+- If the **Encrypt** toggle button is on, *Thunderbird* will encrypt the
+  email before sending.
+
+  *Thunderbird* warns you if you miss the key of some of the recipients
+  or if you still have to accept some of their keys.
+
+  Choose **Security**&nbsp;▸ **Key Assistant** to see the keys of the
+  receipts and solve any issue.
+
+- To send an unencrypted email, turn off the **Encrypt** toggle button.

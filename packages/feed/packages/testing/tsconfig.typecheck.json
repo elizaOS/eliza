@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@feed/a2a": ["../a2a/dist/index.d.ts"],
+      "@feed/a2a/*": ["../a2a/dist/*"],
+      "@feed/agents": ["../agents/dist/index.d.ts"],
+      "@feed/agents/*": ["../agents/dist/*"],
+      "@feed/api": ["../api/dist/index.d.ts"],
+      "@feed/api/*": ["../api/dist/*"],
+      "@feed/core": ["../core/dist/markets/index.d.ts"],
+      "@feed/core/*": ["../core/dist/*"],
+      "@feed/db": ["../db/dist/index.d.ts"],
+      "@feed/db/*": ["../db/dist/*"],
+      "@feed/engine": ["../engine/dist/index.d.ts"],
+      "@feed/engine/*": ["../engine/dist/*"],
+      "@feed/mcp": ["../mcp/dist/index.d.ts"],
+      "@feed/mcp/*": ["../mcp/dist/*"],
+      "@feed/pack-default": ["../pack-default/dist/index.d.ts"],
+      "@feed/pack-default/*": ["../pack-default/dist/*"],
+      "@feed/shared": ["../shared/dist/index.d.ts"],
+      "@feed/shared/*": ["../shared/dist/*"],
+      "@feed/testing": ["./src/index.ts"],
+      "@feed/testing/*": ["./*"]
+    }
+  },
+  "include": ["src/**/*", "load-test/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

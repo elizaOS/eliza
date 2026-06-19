@@ -1,0 +1,1769 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-24 16:27-0600\n"
+"PO-Revision-Date: 2025-12-09 10:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Known issues with graphics cards\"]]\n"
+msgstr "[[!meta title=\"Problèmes connus avec des cartes graphiques\"]]\n"
+
+#. type: Bullet: '- '
+msgid ""
+"For other hardware compatibility issues, refer to our [[known issues|support/"
+"known_issues]]."
+msgstr ""
+"Pour d'autres problèmes de compatibilité matérielle, consultez notre [[liste "
+"des problèmes connus|support/known_issues]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"error-starting-gdm\">Error starting GDM</h1>\n"
+msgstr "<h1 id=\"error-starting-gdm\">Erreur de démarrage de GDM</h1>\n"
+
+#. type: Plain text
+msgid ""
+"This section applies if you see the following error message when starting "
+"Tails:"
+msgstr ""
+"Cette section s'applique si vous voyez le message suivant au démarrage de "
+"Tails :"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p class=\"code\">\n"
+"Error starting GDM with your graphics card: <span class=\"command-placeholder\">name of your graphics\n"
+"card [id] (rev number)</span>. Please take note of this error and visit\n"
+"https://tails.net/gdm for troubleshooting.\n"
+"</p>\n"
+msgstr ""
+"<p class=\"code\">\n"
+"Error starting GDM with your graphics card: <span class=\"command-placeholder\">nom de votre carte\n"
+"graphique [identifiant] (numéro de version)</span>. Please take note of this error and visit\n"
+"https://tails.net/gdm for troubleshooting.\n"
+"</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img error.png link=\"no\" alt=\"\"]]\n"
+msgstr "[[!img error.png link=\"no\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Identify the name, ID, and revision number (if any) of your graphics card."
+msgstr ""
+"Identifiez le nom, l'identifiant et le numéro de version (si il existe) de "
+"votre carte graphique."
+
+#. type: Plain text
+#, no-wrap
+msgid "   For example, if your error message starts with:\n"
+msgstr "   Par exemple, si votre message d'erreur commence par :\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"code\">Error starting GDM with your graphics card: NVIDIA Corporation [10de:0a6c] GT218M [NVS 3100M] (rev a2)</p>\n"
+msgstr "   <p class=\"code\">Error starting GDM with your graphics card: NVIDIA Corporation [10de:0a6c] GT218M [NVS 3100M] (rev a2)</p>\n"
+
+#. type: Bullet: '   - '
+msgid "The name is *NVIDIA Corporation GT218M [NVS 3100M]*."
+msgstr "Le nom est *NVIDIA Corporation GT218M [NVS 3100M]*."
+
+#. type: Bullet: '   - '
+msgid ""
+"The ID is *[10de:0a6c]*. The ID is unique to the model of your graphics "
+"card, it is not unique to your computer."
+msgstr ""
+"L'identifiant est *[10de:0a6c]*. L'identifiant est unique à votre modèle de "
+"carte graphique, il n'est pas unique à votre ordinateur."
+
+#. type: Bullet: '   - '
+msgid ""
+"The revision number is *a2*. Your graphics card might have no revision "
+"number."
+msgstr ""
+"Le numéro de version est *a2*. Votre carte graphique peut ne pas avoir de "
+"numéro de version."
+
+#. type: Bullet: '1. '
+msgid ""
+"Check if your graphics card is listed below. For example, you can search for "
+"its name or ID on this page."
+msgstr ""
+"Vérifiez si votre carte graphique est listée ci-dessous. Par exemple, vous "
+"pouvez chercher son nom ou son identifiant dans cette page."
+
+#. type: Bullet: '   - '
+msgid ""
+"If your graphics card is listed, check if a workaround is documented to make "
+"it work on Tails."
+msgstr ""
+"Si votre carte graphique est listée, vérifiez si un contournement est "
+"documenté pour la faire fonctionner dans Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     If the workaround doesn't work, we are sorry that Tails does not work well\n"
+"     on this computer. Our best hope is that a future update of Linux drivers will\n"
+"     solve the problem.\n"
+msgstr ""
+"     Si ce contournement ne fonctionne pas, l'équipe de Tails est désolée que cela ne fonctionne pas très\n"
+"     bien sur cet ordinateur. Notre plus grand espoir est que les futures mises à jour des pilotes Linux\n"
+"     permettrons de résoudre le problème.\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"If your graphics card is not listed, please [[contact our support team by "
+"email|support/talk]]."
+msgstr ""
+"Si votre carte graphique n'est pas listée, veuillez [[contacter notre équipe "
+"d'assistance par courrier électronique|support/talk]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "     Mention in your email:\n"
+msgstr "     Mentionnez dans votre message :\n"
+
+#. type: Bullet: '     * '
+msgid "The version of Tails that you are trying to start."
+msgstr "La version de Tails que vous essayez de démarrer."
+
+#. type: Bullet: '     * '
+msgid "The name, ID, and revision number (if any) of your graphics card."
+msgstr ""
+"Le nom, l'identifiant et le numéro de version (s'il existe) de votre carte "
+"graphique."
+
+#. type: Plain text
+#, no-wrap
+msgid "     <div class=\"tip\">\n"
+msgstr "     <div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <p>You can send us a photo of the error message as it appears on\n"
+"     your screen.</p>\n"
+msgstr ""
+"     <p>Vous pouvez nous envoyer une photographie du message d'erreur tel qu'il apparaît sur\n"
+"     votre écran.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     </div>\n"
+msgstr "     </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"If your problem gets fixed in a future version of Tails, please let us know "
+"so we can update this page."
+msgstr ""
+"Si votre problème est corrigé dans une future version de Tails, veuillez "
+"nous le faire savoir pour que nous puissions mettre à jour cette page."
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Name and ID in /usr/share/misc/pci.ids"
+msgstr "Nom et identifiant dans /usr/share/misc/pci.ids"
+
+#. type: Plain text
+msgid ""
+"The correspondence between the name and ID is established in /usr/share/misc/"
+"pci.ids."
+msgstr ""
+"La correspondance entre le nom et l'identifiant est établie dans /usr/share/"
+"misc/pci.ids."
+
+#. type: Plain text
+msgid "For example:"
+msgstr "Par exemple :"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"\t8086  Intel Corporation\n"
+"\t        0007  82379AB\n"
+"\t        [...]\n"
+"\t        0046  Core Processor Integrated Graphics Controller\n"
+msgstr ""
+"\t8086  Intel Corporation\n"
+"\t        0007  82379AB\n"
+"\t        [...]\n"
+"\t        0046  Core Processor Integrated Graphics Controller\n"
+
+#. type: Plain text
+msgid "Corresponds to:"
+msgstr "Correspond à :"
+
+#. type: Plain text
+#, no-wrap
+msgid "\tIntel Corporation Core Processor Integrated Graphics Controller [8086:0046]\n"
+msgstr "\tIntel Corporation Core Processor Integrated Graphics Controller [8086:0046]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Template for new section"
+msgstr "Modèle pour une nouvelle section"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"$ANCHOR\"></a>\n"
+msgstr "<a id=\"$ANCHOR\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "$FAMILY_NAME"
+msgstr "$FAMILY_NAME"
+
+#. type: Plain text
+msgid "$LT!-- Issues: #XXXXX #XXXXX --$GT"
+msgstr "$LT!-- Problèmes : #XXXXX #XXXXX --$GT"
+
+#. type: Title ###
+#, no-wrap
+msgid "Affected graphics cards"
+msgstr "Cartes graphiques concernées"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+"<tr><td>$VENDOR $DEVICE</td><td>[$VENDOR_ID:$PRODUCT_ID]</td><td>(rev $REVISION_NUMBER)</td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+"<tr><td>$VENDOR $DEVICE</td><td>[$VENDOR_ID:$PRODUCT_ID]</td><td>(rev $REVISION_NUMBER)</td></tr>\n"
+"</table>\n"
+
+#. type: Title ###
+#, no-wrap
+msgid "Workaround"
+msgstr "Contournement"
+
+#. type: Plain text
+msgid "$WORKAROUND_IF_ANY"
+msgstr "$WORKAROUND_IF_ANY"
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"radeon-hd\">AMD Radeon HD</h2>\n"
+msgstr "<h2 id=\"radeon-hd\">AMD Radeon HD</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Issues: #11095 #12482\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Problèmes : #11095 #12482\n"
+"-->\n"
+
+#. type: Plain text
+msgid "Any graphics cards in the Radeon HD family might be affected."
+msgstr ""
+"N'importe quelle carte graphique de la famille Radeon HD peut être concernée."
+
+#. type: Plain text
+msgid ""
+"If the computer has another, integrated graphics card, try configuring the "
+"computer to use that one instead of the AMD graphics card.  For example, "
+"using the following [[boot option|doc/advanced_topics/boot_options]]:"
+msgstr ""
+"Si l'ordinateur a une autre carte graphique, intégrée, essayez de configurer "
+"l'ordinateur pour qu'il l'utilise plutôt que la carte graphique AMD. Par "
+"exemple, en utilisant l'[[option de démarrage|doc/advanced_topics/"
+"boot_options]] suivante :"
+
+#. type: Bullet: '- '
+msgid "`modprobe.blacklist=amdgpu`"
+msgstr "`modprobe.blacklist=amdgpu`"
+
+#. type: Bullet: '- '
+msgid "`modprobe.blacklist=radeon`"
+msgstr "`modprobe.blacklist=radeon`"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"radeon-r9\">AMD Radeon R9</h2>\n"
+msgstr "<h2 id=\"radeon-r9\">AMD Radeon R9</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Issues: #12218 #11850\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Problèmes : #12218 #11850\n"
+"-->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+"<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Hawaii PRO [Radeon R9 290/390]</td><td>[1002:67b1]</td><td></td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+"<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Hawaii PRO [Radeon R9 290/390]</td><td>[1002:67b1]</td><td></td></tr>\n"
+"</table>\n"
+
+#. type: Plain text
+msgid ""
+"Adding `radeon.dpm=0` to the [[boot options|doc/advanced_topics/"
+"boot_options]] might fix the issue."
+msgstr ""
+"Ajouter `radeon.dpm=0` dans les [[options de démarrage|doc/advanced_topics/"
+"boot_options]] pourrait corriger le problème."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"amd-radeon-rx-400\">AMD Radeon RX 400 family</h2>\n"
+msgstr "<h2 id=\"amd-radeon-rx-400\">Famille AMD Radeon RX 400</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+"<tr><td>Radeon RX 480</td><td></td><td></td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+"<tr><td>Radeon RX 480</td><td></td><td></td></tr>\n"
+"</table>\n"
+
+#. type: Plain text
+msgid ""
+"Adding `amdgpu.dc=0` to the [[boot options|doc/advanced_topics/"
+"boot_options]] might fix the issue."
+msgstr ""
+"Ajouter `amdgpu.dc=0` dans les [[options de démarrage|doc/advanced_topics/"
+"boot_options]] pourrait corriger le problème."
+
+#. type: Title ###
+#, no-wrap
+msgid "Other possibly affected graphics cards"
+msgstr "Autres cartes graphiques potentiellement concernées"
+
+#. type: Plain text
+msgid ""
+"Other graphics cards in the [[!wikipedia Radeon_RX_400_series]] might be "
+"affected."
+msgstr ""
+"Les autres cartes graphiques dans la "
+"[[!wikipedia_fr Radeon_Rx_400 desc=\"série Radeon RX 400\"]] peuvent être "
+"concernées."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"amd-vega\">AMD Radeon RX Vega family</h2>\n"
+msgstr "<h2 id=\"amd-vega\">Famille AMD Radeon RX Vega</h2>\n"
+
+#. type: Plain text
+msgid ""
+"Graphics cards in the [[!wikipedia Radeon_RX_Vega_series]], as found in some "
+"AMD Ryzen processors, might be affected."
+msgstr ""
+"Les cartes graphiques dans la "
+"[[!wikipedia_fr Radeon_RX_Vega desc=\"série Radeon RX Vega\"]], que l'on "
+"trouve dans certains processeurs AMD Ryzen, peuvent être concernées."
+
+#. type: Plain text
+msgid ""
+"Try starting Tails using the following [[boot option|doc/advanced_topics/"
+"boot_options]]:"
+msgstr ""
+"Essayer de démarrer Tails en utilisant [[les options de démarrage suivantes|"
+"doc/advanced_topics/boot_options]] :"
+
+#. type: Plain text
+#, no-wrap
+msgid "    iommu=soft\n"
+msgstr "    iommu=soft\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"intel\">Intel</h2>\n"
+msgstr "<h2 id=\"intel\">Intel</h2>\n"
+
+#. type: Plain text
+msgid "Various Intel graphics card, including but not limited to:"
+msgstr "Diverses cartes graphiques Intel, incluant mais ne se limitant pas à :"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+"<tr><td>Intel Corporation TigerLake-LP GT2 [Iris Xe Graphics]</td><td>[8086:9a49]</td><td></td></tr>\n"
+"<tr><td>Intel Corporation JasperLake [UHD Graphics]</td><td>[8086:4e55]</td><td></td></tr>\n"
+"<tr><td>Intel Corporation Iris Plus Graphics G1 (Ice Lake)</td><td>[8086:8a56]</td><td></td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+"<tr><td>Intel Corporation TigerLake-LP GT2 [Iris Xe Graphics]</td><td>[8086:9a49]</td><td></td></tr>\n"
+"<tr><td>Intel Corporation JasperLake [UHD Graphics]</td><td>[8086:4e55]</td><td></td></tr>\n"
+"<tr><td>Intel Corporation Iris Plus Graphics G1 (Ice Lake)</td><td>[8086:8a56]</td><td></td></tr>\n"
+"</table>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "        i915.force_probe=MODEL\n"
+msgstr "        i915.force_probe=MODÈLE\n"
+
+#. type: Plain text
+msgid ""
+"… replacing *MODEL* with the 4 characters you see after `8086:` on the error "
+"message."
+msgstr ""
+"… remplacer *MODÈLE* par les 4 caractères que vous voyez après `8086:` dans "
+"le message d'erreur."
+
+#. type: Plain text
+msgid ""
+"For example, if you see an error about `8086:4c8a`, use this boot option: "
+"`i915.force_probe=4c8a`."
+msgstr ""
+"Par exemple, si vous voyez l'erreur parlant de `8086:4c8a`, utilisez cette "
+"option de démarrage : `i915.force_probe=4c8a`."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"intel-hdu\">Intel UHD Graphics 620 GPU</h2>\n"
+msgstr "<h2 id=\"intel-hdu\">Carte graphique Intel UHD Graphics 620</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2024-02-08\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2024-02-08\n"
+"-->\n"
+
+#. type: Plain text
+msgid "For example, in the Dell Latitude 7490."
+msgstr "Par exemple, dans le Dell Latitude 7490."
+
+#. type: Plain text
+msgid ""
+"Try adding the following [[boot option|doc/advanced_topics/boot_options]] "
+"when starting Tails:"
+msgstr ""
+"Essayez d'ajouter les [[options de démarrage|doc/advanced_topics/"
+"boot_options]] suivantes au démarrage de Tails :"
+
+#. type: Plain text
+#, no-wrap
+msgid "        i915.enable_psr=0\n"
+msgstr "        i915.enable_psr=0\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"multiple\">Multiple graphics cards</h2>\n"
+msgstr "<h2 id=\"multiple\">Multiples cartes graphiques</h2>\n"
+
+#. type: Plain text
+msgid "If the error message lists multiple graphics cards:"
+msgstr "Si le message d'erreur liste de multiples cartes graphiques :"
+
+#. type: Bullet: '* '
+msgid ""
+"If possible, plug in the monitor into the motherboard's Intel graphics card, "
+"as opposed to the external Nvidia or AMD/ATI graphics card."
+msgstr ""
+"Si possible, branchez le moniteur sur la carte graphique Intel de la carte "
+"mère, au lieu de la carte graphique externe Nvidia ou AMD/ATI."
+
+#. type: Bullet: '* '
+msgid ""
+"Explicitly select one of the two graphics adapters in the BIOS instead of "
+"letting the system choose one automatically. If this does not solve the "
+"problem, try selecting the other graphics adapter."
+msgstr ""
+"Sélectionnez explicitement une des deux cartes graphiques dans le BIOS au "
+"lieu de laisser le système en choisir une automatiquement. Si cela ne résout "
+"pas le problème, essayez en sélectionnant l'autre carte graphique."
+
+#. type: Bullet: '* '
+msgid ""
+"Try starting Tails using the following [[boot options|doc/advanced_topics/"
+"boot_options]].  You should try only one of these boot options per start "
+"attempt."
+msgstr ""
+"Essayez de démarrer Tails en utilisant ces [[options de démarrage|doc/"
+"advanced_topics/boot_options]]. Vous devriez essayer une seule de ces "
+"options par essai de démarrage."
+
+#. type: Bullet: '  - '
+msgid "`modprobe.blacklist=nouveau`"
+msgstr "`modprobe.blacklist=nouveau`"
+
+#. type: Bullet: '  - '
+msgid "`nouveau.modeset=0`"
+msgstr "`nouveau.modeset=0`"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"intel-bay-trail\">Intel HD Graphics (Bay Trail)</h2>\n"
+msgstr "<h2 id=\"intel-bay-trail\">Intel HD Graphics (Bay Trail)</h2>\n"
+
+#. type: Plain text
+msgid "For example, in the Acer Aspire e13."
+msgstr "Par exemple, dans le Acer Aspire e13."
+
+#. type: Plain text
+#, no-wrap
+msgid "    plymouth.enable=0 disablehooks=plymouth\n"
+msgstr "    plymouth.enable=0 disablehooks=plymouth\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"other-issues\">Other issues</h1>\n"
+msgstr "<h1 id=\"other-issues\">Autres problèmes</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"black-screen-switchable-graphics\">Black screen with switchable graphics computers</h2>\n"
+msgstr "<h2 id=\"black-screen-switchable-graphics\">Écran noir pour les ordinateurs avec cartes graphiques commutables</h2>\n"
+
+#. type: Plain text
+msgid ""
+"Some computers with switchable graphics (such as Optimus) fail to choose a "
+"video card and end up on a black screen. This has been reported for MacBook "
+"Pro 6,2, MacBook Pro 10,1 Retina, MacBook Pro 15-inch (early 2011) and might "
+"affect many others."
+msgstr ""
+"Certains ordinateurs avec cartes graphiques commutables (comme Optimus) "
+"échouent dans le choix de la carte vidéo et se bloquent sur un écran noir. "
+"Ceci a été constaté sur MacBook Pro 6.2, MacBook Pro 10.1 Retina, MacBook "
+"Pro 15 pouces (début 2011) et peut en affecter beaucoup d'autres."
+
+#. type: Plain text
+msgid "There are several possible workarounds for this issue:"
+msgstr "Il y a plusieurs possibilités pour contourner ce problème :"
+
+#. type: Bullet: '* '
+msgid ""
+"For the Mac computers, it is possible to use a third-party application, "
+"<http://gfx.io/>, to force integrated graphics only through macOS.  Then "
+"restart in that special mode that works with Tails."
+msgstr ""
+"Pour les ordinateurs Mac, il est possible d'utiliser une application tierce, "
+"<http://gfx.io/>, pour forcer la carte graphique intégrée uniquement avec "
+"macOS. Redémarrez dans ce mode spécial pour faire fonctionner Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"qemu\">Virtual machines with <i>virt-manager</i>, <i>libvirt</i>, and <i>QEMU</i></h2>\n"
+msgstr "<h2 id=\"qemu\">Machines virtuelles avec <i>virt-manager</i>, <i>libvirt</i> et <i>QEMU</i></h2>\n"
+
+#. type: Plain text
+msgid ""
+"See the [[dedicated troubleshooting documentation|doc/advanced_topics/"
+"virtualization/virt-manager#graphics-issues]] about graphics issues in Tails "
+"running inside a virtual machine with *virt-manager*."
+msgstr ""
+"Voir la "
+"[[documentation de dépannage dédiée|doc/advanced_topics/virtualization/virt-"
+"manager#graphics-issues]] "
+"à propos des problèmes graphiques lorsque Tails fonctionne dans une machine "
+"virtuelle "
+"avec *virt-manager*."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"vmware\">Virtual machines with <i>VMware</i></h2>\n"
+msgstr "<h2 id=\"vmware\">Machines virtuelles avec <i>VMware</i></h2>\n"
+
+#. type: Plain text
+msgid ""
+"To improve support of Tails running inside a virtual machine with *VMware*, "
+"install the `open-vm-tools-desktop` software package as [[Additional "
+"Software|doc/persistent_storage/additional_software]] in Tails."
+msgstr ""
+"Pour améliorer le support de Tails tournant à l'intérieur d'une machine "
+"virtuelle avec *VMware*, installer le paquet `open-vm-tools-desktop` comme "
+"[[logiciel supplémentaire|doc/persistent_storage/additional_software]] dans "
+"Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"boot-options\">Probing EDD error</h2>\n"
+msgstr "<h2 id=\"boot-options\">Erreur Probing EDD</h2>\n"
+
+#. type: Plain text
+msgid ""
+"Use these instructions if Tails failed to start and displayed the following "
+"error:"
+msgstr ""
+"Utilisez ces instructions si Tails n'a pas pu démarrer et affiche l'erreur "
+"suivante :"
+
+#. type: Plain text
+#, no-wrap
+msgid "        Probing EDD (edd=off to disable)...\n"
+msgstr "        Probing EDD (edd=off to disable)...\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Follow [[our guide for editing boot options|doc/advanced_topics/"
+"boot_options]]."
+msgstr ""
+"Suivez [[notre guide pour changer les options de démarrage|doc/"
+"advanced_topics/boot_options]]."
+
+#. type: Bullet: '1. '
+msgid ""
+"For the guide's \"Modify the boot options as needed\" step, type `edd=off` "
+"to add this option to the command line."
+msgstr ""
+"Pour l'étape \"Modifiez les options de démarrage selon les besoins\" du "
+"guide, tapez `edd=off` pour ajouter cette option à la ligne de commande."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"display-artifacts-intel\">Display artifact when starting Tails on Intel display</h2>\n"
+msgstr "<h2 id=\"display-artifacts-intel\">Affichage d'artefacts lors du démarrage de Tails sur des affichages Intel</h2>\n"
+
+#. type: Plain text
+msgid ""
+"If you see screen tearing and color artifact shift through display with an "
+"Intel graphics card, try this:"
+msgstr ""
+"Si vous voyez des déchirures de l'écran (screen tearing) et des artefacts de "
+"couleur à travers l'affichage avec une carte graphique Intel, essayer cela :"
+
+#. type: Bullet: '1. '
+msgid "Right-click on the desktop"
+msgstr "Clic-droit sur le bureau"
+
+#. type: Bullet: '2. '
+msgid "Click *Display Settings*"
+msgstr "Cliquer sur *Paramètres d'affichage*"
+
+#. type: Bullet: '3. '
+msgid ""
+"Change the refresh rate to a different value.<br /> For example, setting the "
+"refresh rate to 48 HZ fixed the problem on Tails 5.9 with this hardware: "
+"Gemini Lake N4100 (Intel Graphics 600)."
+msgstr ""
+"Changer la fréquence de rafraîchissement avec une valeur différente.<br /> "
+"Par exemple, régler la fréquence de rafraîchissement à 48 Hz corrige le "
+"problème sur un Tails 5.9 avec ce matériel : Gemini Lake N4100 (Intel "
+"Graphics 600)."
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Mars XTX [Radeon HD 8790M]</td><td>[1002:6606]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Mars XTX [Radeon HD 8790M]</td><td>[1002:6606]</td><td>(rev ff)</td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Turks XT [Radeon HD 6670/7670]</td><td>[1002:6758]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Seymour LP [Radeon HD 6430M]</td><td>[1002:6761]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Cedar [Radeon HD 5000/6000/7350/8350 Series]</td><td>[1002:68f9]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Broadway PRO [Mobility Radeon HD 5850]</td><td>[1002:68a1]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] RV730/M96 [Mobility Radeon HD 4650/5165]</td><td>[1002:9480]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] RV630/M76 [Mobility Radeon HD 2600 XT/2700]</td><td>[1002:9583]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Device</td><td>[1002:98e4]</td><td>(rev da)</td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Trinity [Radeon HD 7520G]</td><td>[1002:9990]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Beavercreek [Radeon HD 6550D]</td><td>[1002:9640]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, INC. [AMD/ATI] RX 6800</td><td>[1002:73bf]</td><td></td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Mars XTX [Radeon HD 8790M]</td><td>[1002:6606]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Mars XTX [Radeon HD 8790M]</td><td>[1002:6606]</td><td>(rev ff)</td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Turks XT [Radeon HD 6670/7670]</td><td>[1002:6758]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Seymour LP [Radeon HD 6430M]</td><td>[1002:6761]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Cedar [Radeon HD 5000/6000/7350/8350 Series]</td><td>[1002:68f9]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Broadway PRO [Mobility Radeon HD 5850]</td><td>[1002:68a1]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] RV730/M96 [Mobility Radeon HD 4650/5165]</td><td>[1002:9480]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] RV630/M76 [Mobility Radeon HD 2600 XT/2700]</td><td>[1002:9583]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Device</td><td>[1002:98e4]</td><td>(rev da)</td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Trinity [Radeon HD 7520G]</td><td>[1002:9990]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Beavercreek [Radeon HD 6550D]</td><td>[1002:9640]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, INC. [AMD/ATI] RX 6800</td><td>[1002:73bf]</td><td></td></tr>\n"
+#~ "</table>\n"
+
+#~ msgid "[[!wikipedia Radeon_HD_2000_series]]"
+#~ msgstr "[[!wikipedia Radeon_HD_2000_series]]"
+
+#~ msgid "[[!wikipedia Radeon_HD_3000_series]]"
+#~ msgstr "[[!wikipedia Radeon_HD_3000_series]]"
+
+#~ msgid "[[!wikipedia Radeon_HD_4000_series]]"
+#~ msgstr "[[!wikipedia Radeon_HD_4000_series]]"
+
+#~ msgid "[[!wikipedia Radeon_HD_5000_series]]"
+#~ msgstr "[[!wikipedia Radeon_HD_5000_series]]"
+
+#~ msgid "[[!wikipedia Radeon_HD_6000_series]]"
+#~ msgstr "[[!wikipedia Radeon_HD_6000_series]]"
+
+#~ msgid "[[!wikipedia Radeon_HD_7000_series]]"
+#~ msgstr "[[!wikipedia Radeon_HD_7000_series]]"
+
+#~ msgid "[[!wikipedia Radeon_HD_8000_series]]"
+#~ msgstr "[[!wikipedia Radeon_HD_8000_series]]"
+
+#, no-wrap
+#~ msgid "<h2 id=\"radeon-r5\">AMD Radeon R5</h2>\n"
+#~ msgstr "<h2 id=\"radeon-r5\">AMD Radeon R5</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Exo UL/ULT/ULP [Radeon R5 M320]</td><td></td><td></td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Exo UL/ULT/ULP [Radeon R5 M320]</td><td></td><td></td></tr>\n"
+#~ "</table>\n"
+
+#~ msgid ""
+#~ "To start Tails successfully, [[add the following boot option when "
+#~ "starting Tails|doc/advanced_topics/boot_options]]:"
+#~ msgstr ""
+#~ "Pour permettre à Tails de démarrer correctement, [[ajoutez les options "
+#~ "suivantes lors du démarrage de Tails|doc/advanced_topics/boot_options]] :"
+
+#, no-wrap
+#~ msgid "<h2 id=\"amd-renoir\">AMD Renoir family</h2>\n"
+#~ msgstr "<h2 id=\"amd-renoir\">Famille AMD Renoir</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>AMD/ATI Renoir</td><td>1002:1636</td><td></td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>AMD/ATI Renoir</td><td>1002:1636</td><td></td></tr>\n"
+#~ "</table>\n"
+
+#~ msgid ""
+#~ "We don't know any workaround so far. If you find one, please [[tell our "
+#~ "help desk about it|support/talk]]."
+#~ msgstr ""
+#~ "À ce jour nous ne connaissons pas de moyen de contournement. Si vous en "
+#~ "trouvez un, merci [[de le signaler à notre centre d'aide|support/talk]]."
+
+#~ msgid ""
+#~ "Graphics cards in the [[!wikipedia Ryzen desc=\"Renoir\"]] family, as "
+#~ "found in some AMD Threadripper and Ryzen processors, might be affected."
+#~ msgstr ""
+#~ "Les cartes graphiques dans la famille [[!wikipedia Ryzen "
+#~ "desc=\"Renoir\"]], que l'on trouve dans les processeurs AMD Threadripper "
+#~ "et Ryzen, peuvent être concernées."
+
+#, no-wrap
+#~ msgid "<h2 id=\"amd-radeon-rx-5000\">AMD Radeon RX 5000 family</h2>\n"
+#~ msgstr "<h2 id=\"amd-radeon-rx-5000\">Famille AMD Radeon RX 5000</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>AMD Radeon RX 5500 XT</td><td>1002:7340</td><td></td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>AMD Radeon RX 5500 XT</td><td>1002:7340</td><td></td></tr>\n"
+#~ "</table>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "Graphics cards in the [[!wikipedia Radeon_RX_5000_series desc=\"Radeon\n"
+#~ "RX 5000 series\"]] might be affected.\n"
+#~ msgstr ""
+#~ "Les cartes graphiques dans [[!wikipedia_fr Radeon_RX_5000_series desc=\"Famille Radeon\n"
+#~ "RX 5000\"]] peuvent être concernées.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Issue: #12219\n"
+#~ "Issue: #16224\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Problème : #12219\n"
+#~ "Problème : #16224\n"
+#~ "-->\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>Intel Corporation</td><td></td><td></td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>Intel Corporation</td><td></td><td></td></tr>\n"
+#~ "</table>\n"
+
+#~ msgid "Try starting in the *Troubleshooting Mode*."
+#~ msgstr "Essayez de démarrer dans le mode *Troubleshooting Mode*."
+
+#, no-wrap
+#~ msgid "<h2 id=\"intel-855gm\">Intel 855GM</h2>\n"
+#~ msgstr "<h2 id=\"intel-855gm\">Intel 855GM</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Issue: #11096, Debian #776911\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Problème : #11096, Debian #776911\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>Intel Corporation 82852/855GM Integrated Graphics Device</td><td>[8086:3582]</td><td>(rev 02)</td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>Intel Corporation 82852/855GM Integrated Graphics Device</td><td>[8086:3582]</td><td>(rev 02)</td></tr>\n"
+#~ "</table>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Issue: #18467\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Issue: #18467\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>Intel UHD 750</td><td>[8086:4c8a]</td><td></td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>Intel UHD 750</td><td>[8086:4c8a]</td><td></td></tr>\n"
+#~ "</table>\n"
+
+#, no-wrap
+#~ msgid "<h2 id=\"nvidia-tesla\">Nvidia NV50 family (Tesla)</h2>\n"
+#~ msgstr "<h2 id=\"nvidia-tesla\">Nvidia NV50 family (Tesla)</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Issue: #15491\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Problème : #15491\n"
+#~ "-->\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>NVIDIA Corporation MCP89 (GeForce 320M)</td><td>[10de:08a0]</td><td>a2</td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>NVIDIA Corporation MCP89 (GeForce 320M)</td><td>[10de:08a0]</td><td>a2</td></tr>\n"
+#~ "</table>\n"
+
+#~ msgid ""
+#~ "Other graphics cards in the [NV50 family (Tesla)](https://nouveau."
+#~ "freedesktop.org/CodeNames.html#NV50) might be affected:"
+#~ msgstr ""
+#~ "Autres cartes graphiques de la [famille NV50 (Tesla)](https://nouveau."
+#~ "freedesktop.org/CodeNames.html#NV50) pouvant être concernées :"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Update this table from time to time as the list of Nvidia cards might change.\n"
+#~ "Last updated: 2019-07-30\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Update this table from time to time as the list of Nvidia cards might change.\n"
+#~ "Last updated: 2019-07-30\n"
+#~ "-->\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "        <tr>\n"
+#~ "            <th><strong>Code name</strong>  </th>\n"
+#~ "            <th><strong>Official Name</strong> </th>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV50 (G80)  </td>\n"
+#~ "            <td>GeForce 8800 (GTS, GTX, Ultra)<br/>Quadro FX (4600 (SDI), 5600) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV84 (G84)  </td>\n"
+#~ "            <td>GeForce 8600 (GT, GTS, M GT, M GS), 8700M GT, GeForce 9500M GS, 9650M GS  <br/>Quadro FX (370, 570, 570M, 1600M, 1700), NVS 320M </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV86 (G86)  </td>\n"
+#~ "            <td>GeForce 8300 GS, 8400 (GS, M G, M GS, M GT), 8500 GT, GeForce 9300M G  <br/>Quadro FX 360M, NVS (130M, 135M, 140M, 290) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV92 (G92)  </td>\n"
+#~ "            <td>GeForce 8800 (GT, GS, GTS 512, M GTS, M GTX)  <br/> GeForce 9600 GSO, 9800 (GT, GTX, GTX+, GX2, M GT, M GTX)  <br/> GeForce GTS 150(M), GTS 160M, GTS 240, GTS 250, GTX (260M, 280M, 285M), GT (330, 340)  <br/> Quadro FX (2800M, 3600M, 3700, 3700M, 3800M, 4700 X2), VX 200 </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV94 (G94)  </td>\n"
+#~ "            <td>GeForce 9600 (GSO 512, GT, S), 9700M GTS, 9800M GTS, GeForce G 110M, GT 130(M), GT 140  <br/>Quadro FX (1800, 2700M) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV96 (G96)  </td>\n"
+#~ "            <td>GeForce 9400 GT, 9500 (GT, M G), 9600 (M GS, M GT), 9650M GT, 9700M GT  <br/> GeForce G 102M, GT 120  <br/> Quadro FX (380, 580, 770M, 1700M) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV98 (G98)  </td>\n"
+#~ "            <td>GeForce 8400 GS, GeForce 9200M GS, 9300 (GE, GS, M GS)<br/> GeForce G 100, G 105M <br/>Quadro FX (370 LP, 370M), NVS (150M, 160M, 295, 420, 450) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVA0 (GT200)  </td>\n"
+#~ "            <td>GeForce GTX (260, 275, 280, 285, 295)  <br/>Quadro CX, FX (3800, 4800, 5800) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVA3 (GT215)  </td>\n"
+#~ "            <td>GeForce GT (240, 320, 335M), GTS (250M, 260M, 350M, 360M) <br/>Quadro FX 1800M </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVA5 (GT216)  </td>\n"
+#~ "            <td>GeForce GT (220, 230M, 240M, 325M, 330M), 315  <br/>Quadro 400, FX 880M, NVS 5100M </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVA8 (GT218)  </td>\n"
+#~ "            <td>GeForce 8400 GS, ION 2, GeForce 205, 210, G 210M, 305M, 310(M), 405  <br/>Quadro FX (380 LP, 380M), NVS (300, 2100M, 3100M) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVAA (MCP77/MCP78)  </td>\n"
+#~ "            <td>GeForce 8100, 8200, 8300 mGPU / nForce 700a series, 8200M G </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVAC (MCP79/MCP7A)  </td>\n"
+#~ "            <td>ION, GeForce 9300, 9400 mGPU / nForce 700i series, 8200M G, 9100M, 9400M (G) </td>\n"
+#~ "        </tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "        <tr>\n"
+#~ "            <th><strong>Nom de code</strong>  </th>\n"
+#~ "            <th><strong>Nom officiel</strong> </th>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV50 (G80)  </td>\n"
+#~ "            <td>GeForce 8800 (GTS, GTX, Ultra)<br/>Quadro FX (4600 (SDI), 5600) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV84 (G84)  </td>\n"
+#~ "            <td>GeForce 8600 (GT, GTS, M GT, M GS), 8700M GT, GeForce 9500M GS, 9650M GS  <br/>Quadro FX (370, 570, 570M, 1600M, 1700), NVS 320M </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV86 (G86)  </td>\n"
+#~ "            <td>GeForce 8300 GS, 8400 (GS, M G, M GS, M GT), 8500 GT, GeForce 9300M G  <br/>Quadro FX 360M, NVS (130M, 135M, 140M, 290) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV92 (G92)  </td>\n"
+#~ "            <td>GeForce 8800 (GT, GS, GTS 512, M GTS, M GTX)  <br/> GeForce 9600 GSO, 9800 (GT, GTX, GTX+, GX2, M GT, M GTX)  <br/> GeForce GTS 150(M), GTS 160M, GTS 240, GTS 250, GTX (260M, 280M, 285M), GT (330, 340)  <br/> Quadro FX (2800M, 3600M, 3700, 3700M, 3800M, 4700 X2), VX 200 </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV94 (G94)  </td>\n"
+#~ "            <td>GeForce 9600 (GSO 512, GT, S), 9700M GTS, 9800M GTS, GeForce G 110M, GT 130(M), GT 140  <br/>Quadro FX (1800, 2700M) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV96 (G96)  </td>\n"
+#~ "            <td>GeForce 9400 GT, 9500 (GT, M G), 9600 (M GS, M GT), 9650M GT, 9700M GT  <br/> GeForce G 102M, GT 120  <br/> Quadro FX (380, 580, 770M, 1700M) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV98 (G98)  </td>\n"
+#~ "            <td>GeForce 8400 GS, GeForce 9200M GS, 9300 (GE, GS, M GS)<br/> GeForce G 100, G 105M <br/>Quadro FX (370 LP, 370M), NVS (150M, 160M, 295, 420, 450) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVA0 (GT200)  </td>\n"
+#~ "            <td>GeForce GTX (260, 275, 280, 285, 295)  <br/>Quadro CX, FX (3800, 4800, 5800) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVA3 (GT215)  </td>\n"
+#~ "            <td>GeForce GT (240, 320, 335M), GTS (250M, 260M, 350M, 360M) <br/>Quadro FX 1800M </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVA5 (GT216)  </td>\n"
+#~ "            <td>GeForce GT (220, 230M, 240M, 325M, 330M), 315  <br/>Quadro 400, FX 880M, NVS 5100M </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVA8 (GT218)  </td>\n"
+#~ "            <td>GeForce 8400 GS, ION 2, GeForce 205, 210, G 210M, 305M, 310(M), 405  <br/>Quadro FX (380 LP, 380M), NVS (300, 2100M, 3100M) </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVAA (MCP77/MCP78)  </td>\n"
+#~ "            <td>GeForce 8100, 8200, 8300 mGPU / nForce 700a series, 8200M G </td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NVAC (MCP79/MCP7A)  </td>\n"
+#~ "            <td>ION, GeForce 9300, 9400 mGPU / nForce 700i series, 8200M G, 9100M, 9400M (G) </td>\n"
+#~ "        </tr>\n"
+#~ "</table>\n"
+
+#, no-wrap
+#~ msgid "<h2 id=\"nvidia-kepler\">Nvidia NVE0 family (Kepler)</h2>\n"
+#~ msgstr "<h2 id=\"nvidia-kepler\">Nvidia NVE0 family (Kepler)</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GK107 (GeForce GTX 650)</td><td>[10de:0fc6]</td><td>a1</td></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GK208 (Geforce GT 710B)</td><td>[10de:128b]</td><td></td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GK107 (GeForce GTX 650)</td><td>[10de:0fc6]</td><td>a1</td></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GK208 (Geforce GT 710B)</td><td>[10de:128b]</td><td></td></tr>\n"
+#~ "</table>\n"
+
+#~ msgid ""
+#~ "Other graphics cards in the [NVE0 family (Kepler)](https://nouveau."
+#~ "freedesktop.org/CodeNames.html#NVE0) might be affected."
+#~ msgstr ""
+#~ "Les autres cartes graphiques de la [famille NVE0 (Kepler)](https://"
+#~ "nouveau.freedesktop.org/CodeNames.html#NVE0) peuvent être concernées."
+
+#~ msgid ""
+#~ "We don't know any workaround for these graphics cards yet.  Please let us "
+#~ "know if you find one."
+#~ msgstr ""
+#~ "Nous ne savons pas encore s'il y a des solutions de contournement pour "
+#~ "ces cartes graphiques.  Merci de nous le faire savoir si vous en trouvez "
+#~ "une."
+
+#, no-wrap
+#~ msgid "<h2 id=\"nvidia-maxwell\">Nvidia NV110 family (Maxwell)</h2>\n"
+#~ msgstr "<h2 id=\"nvidia-maxwell\">Famille Nvidia NV110 (Maxwell)</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Issue: #15116\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Problème : #15116\n"
+#~ "-->\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GM107 [GeForce GTX 750 Ti]</td><td>?</td><td>a2</td></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GM204 [GeForce GTX 970]</td><td>[10de:13c2]</td><td></td></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GM204M [GeForce GTX 970M]</td><td>[10de:13d8]</td><td></td></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GM204M [GeForce GTX 970M]</td><td>[10de:1618]</td><td></td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GM107 [GeForce GTX 750 Ti]</td><td>?</td><td>a2</td></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GM204 [GeForce GTX 970]</td><td>[10de:13c2]</td><td></td></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GM204M [GeForce GTX 970M]</td><td>[10de:13d8]</td><td></td></tr>\n"
+#~ "<tr><td>NVIDIA Corporation GM204M [GeForce GTX 970M]</td><td>[10de:1618]</td><td></td></tr>\n"
+#~ "</table>\n"
+
+#~ msgid "This problem has been fixed for some of these graphic cards."
+#~ msgstr "Ce problème a été corrigé pour plusieurs de ces cartes graphiques."
+
+#~ msgid ""
+#~ "Otherwise, try starting Tails using the following [[boot options|doc/"
+#~ "advanced_topics/boot_options]].  You should try only one of these boot "
+#~ "options per start attempt."
+#~ msgstr ""
+#~ "Sinon, essayez de démarrer Tails en utilisant ces [[options de démarrage|"
+#~ "doc/advanced_topics/boot_options]]. Vous devriez essayer une seule de ces "
+#~ "options par essai de démarrage."
+
+#~ msgid "`nouveau.noaccel=1`"
+#~ msgstr "`nouveau.noaccel=1`"
+
+#~ msgid ""
+#~ "Other graphics cards in the [NV110 family (Maxwell)](https://nouveau."
+#~ "freedesktop.org/CodeNames.html#NV110) might be affected:"
+#~ msgstr ""
+#~ "Autres cartes graphiques de la [famille NV110 (Maxwell)](https://nouveau."
+#~ "freedesktop.org/CodeNames.html#NV110) pouvant être concernées :"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "        <tr>\n"
+#~ "            <th><strong>Code name</strong>  </th>\n"
+#~ "            <th><strong>Official Name</strong> </th>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV117 (GM107)  </td>\n"
+#~ "            <td>GeForce GTX (745, 750, 840M, 845M, 850M, 860M, 950M, 960M) <br/>Quadro K620, K1200, K2200, M1000M, M1200M; GRID M30, M40</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV118 (GM108)  </td>\n"
+#~ "            <td>GeForce 830M, 840M, 930M, 940M[X]</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV120 (GM200)  </td>\n"
+#~ "            <td>GeForce GTX Titan X</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV124 (GM204)  </td>\n"
+#~ "            <td>GeForce GTX (980)</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV126 (GM206)  </td>\n"
+#~ "            <td>GeForce GTX (950, 960)</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV12B (GM20B)  </td>\n"
+#~ "            <td>Tegra X1</td>\n"
+#~ "        </tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "        <tr>\n"
+#~ "            <th><strong>Nom de code</strong>  </th>\n"
+#~ "            <th><strong>Nom officiel</strong> </th>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV117 (GM107)  </td>\n"
+#~ "            <td>GeForce GTX (745, 750, 840M, 845M, 850M, 860M, 950M, 960M) <br/>Quadro K620, K1200, K2200, M1000M, M1200M ; GRID M30, M40</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV118 (GM108)  </td>\n"
+#~ "            <td>GeForce 830M, 840M, 930M, 940M[X]</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV120 (GM200)  </td>\n"
+#~ "            <td>GeForce GTX Titan X</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV124 (GM204)  </td>\n"
+#~ "            <td>GeForce GTX (980)</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV126 (GM206)  </td>\n"
+#~ "            <td>GeForce GTX (950, 960)</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV12B (GM20B)  </td>\n"
+#~ "            <td>Tegra X1</td>\n"
+#~ "        </tr>\n"
+#~ "</table>\n"
+
+#, no-wrap
+#~ msgid "<h2 id=\"nvidia-pascal\">Nvidia NV130 family (Pascal)</h2>\n"
+#~ msgstr "<h2 id=\"nvidia-pascal\">Famille Nvidia NV130 (Pascal)</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>$VENDOR $DEVICE</td><td>[$VENDOR_ID:$PRODUCT_ID]</td><td>(rev $REVISION_NUMBER)</td></tr>\n"
+#~ "</table>\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>$VENDOR $DEVICE</td><td>[$VENDOR_ID:$PRODUCT_ID]</td><td>(rev $REVISION_NUMBER)</td></tr>\n"
+#~ "</table>\n"
+#~ "-->\n"
+
+#, no-wrap
+#~ msgid "Possibly affected graphics cards"
+#~ msgstr "Cartes graphiques potentiellement concernées"
+
+#~ msgid ""
+#~ "Graphics cards in the [NV130 family (Pascal)](https://nouveau.freedesktop."
+#~ "org/CodeNames.html#NV130) might be affected:"
+#~ msgstr ""
+#~ "Cartes graphiques de la [famille NV130 (Pascal)](https://nouveau."
+#~ "freedesktop.orgCodeNames.html#NV130) pouvant être concernées :"
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "        <tr>\n"
+#~ "            <th><strong>Code name</strong>  </th>\n"
+#~ "            <th><strong>Official Name</strong> </th>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV132 (GP102)  </td>\n"
+#~ "            <td>NVIDIA Titan (X, Xp), GeForce GTX 1080 Ti</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV134 (GP104)  </td>\n"
+#~ "            <td>GeForce GTX (1070, 1080)</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV136 (GP106)  </td>\n"
+#~ "            <td>GeForce GTX 1060</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV137 (GP107)  </td>\n"
+#~ "            <td>GeForce GTX (1050, 1050 Ti)</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV138 (GP108)  </td>\n"
+#~ "            <td>GeForce GT 1030</td>\n"
+#~ "        </tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "        <tr>\n"
+#~ "            <th><strong>Nom de code</strong>  </th>\n"
+#~ "            <th><strong>Nom officiel</strong> </th>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV132 (GP102)  </td>\n"
+#~ "            <td>NVIDIA Titan (X, Xp), GeForce GTX 1080 Ti</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV134 (GP104)  </td>\n"
+#~ "            <td>GeForce GTX (1070, 1080)</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV136 (GP106)  </td>\n"
+#~ "            <td>GeForce GTX 1060</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV137 (GP107)  </td>\n"
+#~ "            <td>GeForce GTX (1050, 1050 Ti)</td>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV138 (GP108)  </td>\n"
+#~ "            <td>GeForce GT 1030</td>\n"
+#~ "        </tr>\n"
+#~ "</table>\n"
+
+#~ msgid "`nouveau.noaccel=0`"
+#~ msgstr "`nouveau.noaccel=0`"
+
+#, no-wrap
+#~ msgid "<h2 id=\"nvidia-turing\">Nvidia NV160 family (Turing)</h2>\n"
+#~ msgstr "<h2 id=\"nvidia-turing\">Famille Nvidia NV160 (Turing)</h2>\n"
+
+#~ msgid ""
+#~ "As of 2020-03-19, much of these Nvidia graphics cards are [not supported]"
+#~ "(https://nouveau.freedesktop.org/wiki/FeatureMatrix/) by Tails yet."
+#~ msgstr ""
+#~ "Au 19/03/2020, beaucoup de ces cartes graphiques Nvidia ne sont [pas "
+#~ "encore supportées](https://nouveau.freedesktop.org/wiki/FeatureMatrix/) "
+#~ "par Tails."
+
+#, no-wrap
+#~ msgid ""
+#~ "<table>\n"
+#~ "        <tr>\n"
+#~ "            <th><strong>Code name</strong>  </th>\n"
+#~ "            <th><strong>Official Name</strong> </th>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV167 (TU117)</td>\n"
+#~ "            <td>GeForce GTX 1650</td>\n"
+#~ "            <td>GeForce RTX 2060 Mobile</td>\n"
+#~ "            <td>GeForce RTX 2070</td>\n"
+#~ "            <td>GeForce RTX 2070 Super</td>\n"
+#~ "            <td>GeForce RTX 2070m</td>\n"
+#~ "            <td>GeForce RTX 2080 Super</td>\n"
+#~ "        </tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "        <tr>\n"
+#~ "            <th><strong>Nom de code</strong>  </th>\n"
+#~ "            <th><strong>Nom officiel</strong> </th>\n"
+#~ "        </tr>\n"
+#~ "        <tr>\n"
+#~ "            <td>NV167 (TU117)</td>\n"
+#~ "            <td>GeForce GTX 1650</td>\n"
+#~ "            <td>GeForce RTX 2060 Mobile</td>\n"
+#~ "            <td>GeForce RTX 2070</td>\n"
+#~ "            <td>GeForce RTX 2070 Super</td>\n"
+#~ "            <td>GeForce RTX 2070m</td>\n"
+#~ "            <td>GeForce RTX 2080 Super</td>\n"
+#~ "        </tr>\n"
+#~ "</table>\n"
+
+#~ msgid ""
+#~ "Graphics cards in the [NV160 family (Turing)](https://nouveau.freedesktop."
+#~ "org/CodeNames.html#NV160) might be affected."
+#~ msgstr ""
+#~ "Les cartes graphiques de la [famille NV160 (Turing)](https://nouveau."
+#~ "freedesktop.org/CodeNames.html#NV160) pouvent être concernées."
+
+#, no-wrap
+#~ msgid "<h2 id=\"nvidia-ampere\">Nvidia RTX 30X0 family (Ampere)</h2>\n"
+#~ msgstr "<h2 id=\"nvidia-ampere\">Famille Nvidia RTX 30X0 (Ampere)</h2>\n"
+
+#~ msgid ""
+#~ "As of 2020-11-07, these Nvidia graphics cards are [not supported](https://"
+#~ "nouveau.freedesktop.org/wiki/FeatureMatrix/)  out of the box by Tails yet."
+#~ msgstr ""
+#~ "Au 07/11/2020, ces cartes graphiques Nvidia ne sont [pas encore "
+#~ "supportées directement](https://nouveau.freedesktop.org/wiki/"
+#~ "FeatureMatrix/) par Tails."
+
+#~ msgid ""
+#~ "Graphics cards in the [[!wikipedia GeForce_30_series desc=\"Ampere "
+#~ "family\"]] are affected."
+#~ msgstr ""
+#~ "Les cartes graphiques dans la [[!wikipedia GeForce_30_series "
+#~ "desc=\"famille Ampere\"]] sont concernées."
+
+#, no-wrap
+#~ msgid "<h2 id=\"sg-segfault\">Cannot start GNOME session with switchable graphics computers</h2>\n"
+#~ msgstr "<h2 id=\"sg-segfault\">La session GNOME ne peut pas démarrer sur les ordinateurs avec cartes graphiques commutables</h2>\n"
+
+#~ msgid ""
+#~ "On some computers with switchable graphics, Tails 2.10 and later fails to "
+#~ "start the GNOME session and keeps returning to the [[Welcome Screen|doc/"
+#~ "first_steps/welcome_screen]]."
+#~ msgstr ""
+#~ "Sur certains ordinateurs avec cartes graphiques commutables, Tails 2.10 "
+#~ "et suivants échouent à ouvrir une session GNOME et reviennent "
+#~ "systématiquement à l'[[Écran d'accueil|doc/first_steps/welcome_screen]]."
+
+#, no-wrap
+#~ msgid "<h2 id=\"intel-gm965\">Intel GM965/GL960</h2>\n"
+#~ msgstr "<h2 id=\"intel-gm965\">Intel GM965/GL960</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Issue: #12217, Linux #187001\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Problème : #12217, Linux #187001\n"
+#~ "-->\n"
+
+#~ msgid "The laptop crashes while running Tails."
+#~ msgstr "L'ordinateur portable plante lors de l'utilisation de Tails."
+
+#~ msgid ""
+#~ "Adding `video=SVIDEO-1:d` to the [[boot options|doc/advanced_topics/"
+#~ "boot_options]] fixes the issue."
+#~ msgstr ""
+#~ "Ajouter `video=SVIDEO-1:d` dans les [[options de démarrage|doc/"
+#~ "advanced_topics/boot_options]] corrige le problème."
+
+#~ msgid "`radeon.modeset=0`"
+#~ msgstr "`radeon.modeset=0`"
+
+#~ msgid "`xorg-driver=modesetting`"
+#~ msgstr "`xorg-driver=modesetting`"
+
+#~ msgid ""
+#~ "Adding `radeon.modeset=0 xorg-driver=modesetting` to the [[boot options|"
+#~ "doc/advanced_topics/boot_options]] fixes the issue."
+#~ msgstr ""
+#~ "Ajouter `radeon.modeset=0 xorg-driver=modesetting` aux [[options de "
+#~ "démarrage|doc/advanced_topics/boot_options]] corrige le problème."
+
+#~ msgid "`xorg-driver=intel`"
+#~ msgstr "`xorg-driver=intel`"
+
+#~ msgid "`nomodeset`"
+#~ msgstr "`nomodeset`"
+
+#~ msgid "`nomodeset xorg-driver=vesa`"
+#~ msgstr "`nomodeset xorg-driver=vesa`"
+
+#~ msgid "Expert Linux users can also do the following:"
+#~ msgstr "Les personnes expertes de Linux peuvent aussi :"
+
+#~ msgid ""
+#~ "Add the `i915.modeset=0 rootpw=pass` option in the [[Boot Loader|doc/"
+#~ "advanced_topics/boot_options]]."
+#~ msgstr ""
+#~ "Ajouter l'option `i915.modeset=0 rootpw=pass` dans le [[menu du chargeur "
+#~ "d’amorçage|doc/advanced_topics/boot_options]]."
+
+#~ msgid ""
+#~ "Create a file `/etc/X11/xorg.conf.d/switchable.conf` with the following "
+#~ "content:"
+#~ msgstr ""
+#~ "Créer un fichier `/etc/X11/xorg.conf.d/switchable.conf` avec le contenu "
+#~ "suivant :"
+
+#, no-wrap
+#~ msgid ""
+#~ "         Section \"Device\"\n"
+#~ "             Identifier \"Device0\"\n"
+#~ "             Driver \"nouveau\"\n"
+#~ "             BusID \"1:0:0\"\n"
+#~ "         EndSection\n"
+#~ msgstr ""
+#~ "         Section \"Device\"\n"
+#~ "             Identifier \"Device0\"\n"
+#~ "             Driver \"nouveau\"\n"
+#~ "             BusID \"1:0:0\"\n"
+#~ "         EndSection\n"
+
+#~ msgid "Restart X with the command:"
+#~ msgstr "Redémarrer X avec la commande :"
+
+#, no-wrap
+#~ msgid "         service gdm3 restart\n"
+#~ msgstr "         service gdm3 restart\n"
+
+#~ msgid ""
+#~ "After the GNOME session has started, change again the root password with "
+#~ "the command:"
+#~ msgstr ""
+#~ "Après le démarrage de la session GNOME, modifier à nouveau le mot de "
+#~ "passe root avec la commande :"
+
+#, no-wrap
+#~ msgid "         sudo passwd\n"
+#~ msgstr "         sudo passwd\n"
+
+#~ msgid ""
+#~ "For more details, see our issue on [[!tails_ticket 7505 desc=\"Video is "
+#~ "broken with switchable graphics\"]]."
+#~ msgstr ""
+#~ "Pour plus de détails, voir notre problème [[!tails_ticket 7505 "
+#~ "desc=\"Plus d'affichage avec les cartes graphiques commutables\"]]."
+
+#~ msgid ""
+#~ "Try adding to the [[boot options|doc/advanced_topics/boot_options]], one "
+#~ "after the other:"
+#~ msgstr ""
+#~ "Essayez d'ajouter les [[options de démarrage|doc/advanced_topics/"
+#~ "boot_options]], l'une après l'autre :"
+
+#~ msgid ""
+#~ "     If the workaround doesn't work, please [[report the problem to our\n"
+#~ "     help desk|support/talk]].\n"
+#~ msgstr ""
+#~ "     Si le contournement ne marche pas, veuillez [[signaler le problème à "
+#~ "notre\n"
+#~ "équipe d'assistance|support/talk]].\n"
+
+#~ msgid "The workaround that you tried and that failed."
+#~ msgstr "Le contournement que vous avez essayé et qui a échoué."
+
+#~ msgid "We need more test results from users: [[!tails_ticket 15116]]"
+#~ msgstr ""
+#~ "Nous avons besoin de plus de résultats de test : [[!tails_ticket 15116]]"
+
+#~ msgid "We need more test results from users: [[!tails_ticket 12482]]"
+#~ msgstr ""
+#~ "Nous avons besoin de plus de résultats de test : [[!tails_ticket 12482]]"
+
+#~ msgid "Error starting GDM"
+#~ msgstr "Erreur au démarrage de GDM"
+
+#~ msgid "AMD Radeon HD"
+#~ msgstr "AMD Radeon HD"
+
+#~ msgid "AMD Radeon R5"
+#~ msgstr "AMD Radeon R5"
+
+#~ msgid "AMD Radeon R9"
+#~ msgstr "AMD Radeon R9"
+
+#, fuzzy
+#~ msgid "AMD Radeon RX 400 family"
+#~ msgstr "AMD Radeon R9"
+
+#, fuzzy
+#~ msgid "<a id=\"amd-vega\"></a>\n"
+#~ msgstr "<a id=\"vmware\"></a>\n"
+
+#, fuzzy
+#~ msgid "AMD Renoir family"
+#~ msgstr "AMD Radeon R9"
+
+#~ msgid "Intel"
+#~ msgstr "Intel"
+
+#~ msgid "Intel 855GM"
+#~ msgstr "Intel 855GM"
+
+#~ msgid "<a id=\"nvidia-tesla\"></a>\n"
+#~ msgstr "<a id=\"nvidia-tesla\"></a>\n"
+
+#~ msgid "Nvidia NV50 family (Tesla)"
+#~ msgstr "Famille Nvidia NV50 (Tesla)"
+
+#, fuzzy
+#~ msgid "<a id=\"nvidia-kepler\"></a>\n"
+#~ msgstr "<a id=\"nvidia-tesla\"></a>\n"
+
+#~ msgid "<a id=\"nvidia-maxwell\"></a>\n"
+#~ msgstr "<a id=\"nvidia-maxwell\"></a>\n"
+
+#~ msgid "Nvidia NV110 family (Maxwell)"
+#~ msgstr "Famille Nvidia NV110 (Maxwell)"
+
+#~ msgid "<a id=\"nvidia-pascal\"></a>\n"
+#~ msgstr "<a id=\"nvidia-pascal\"></a>\n"
+
+#~ msgid "Nvidia NV130 family (Pascal)"
+#~ msgstr "Famille Nvidia NV130 (Pascal)"
+
+#~ msgid "<a id=\"nvidia-turing\"></a>\n"
+#~ msgstr "<a id=\"nvidia-turing\"></a>\n"
+
+#~ msgid "Other issues"
+#~ msgstr "Autres problèmes"
+
+#~ msgid "Black screen with switchable graphics computers"
+#~ msgstr "Écran noir avec des ordinateurs avec cartes graphiques commutables"
+
+#~ msgid "<a id=sg-segfault></a>\n"
+#~ msgstr "<a id=sg-segfault></a>\n"
+
+#~ msgid "Cannot start GNOME session with switchable graphics computers"
+#~ msgstr ""
+#~ "La session GNOME ne peut pas démarrer avec des ordinateurs avec cartes "
+#~ "graphiques commutables"
+
+#~ msgid "Intel GM965/GL960"
+#~ msgstr "Intel GM965/GL960"
+
+#~ msgid "<a id=\"qemu\"></a>\n"
+#~ msgstr "<a id=\"qemu\"></a>\n"
+
+#~ msgid "Virtual machines with *virt-manager*, *libvirt* and *QEMU*"
+#~ msgstr "Machines virtuelles avec *virt-manager*, *libvirt* et *QEMU*"
+
+#~ msgid "<a id=\"vmware\"></a>\n"
+#~ msgstr "<a id=\"vmware\"></a>\n"
+
+#~ msgid "Virtual machines with *VMware*"
+#~ msgstr "Machines virtuelles avec *VMware*"
+
+#~ msgid ""
+#~ "Try adding to the [[boot options|/doc/first_steps/"
+#~ "startup_options#boot_loader_menu]], one after the other:"
+#~ msgstr ""
+#~ "Essayez d'ajouter aux [[options de démarrage|doc/first_steps/"
+#~ "startup_options#boot_loader_menu]], une à la fois :"
+
+#~ msgid "Error starting GDM\n"
+#~ msgstr "Erreur au démarrage de GDM\n"
+
+#~ msgid "Name and ID in /usr/share/misc/pci.ids\n"
+#~ msgstr "Nom et identifiant dans /usr/share/misc/pci.ids\n"
+
+#~ msgid "Template for new section\n"
+#~ msgstr "Modèle pour une nouvelle section\n"
+
+#~ msgid "$FAMILY_NAME\n"
+#~ msgstr "$FAMILY_NAME\n"
+
+#~ msgid "AMD Radeon HD\n"
+#~ msgstr "AMD Radeon HD\n"
+
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Mars XTX [Radeon HD "
+#~ "8790M]</td><td>[1002:6606]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Mars XTX [Radeon HD "
+#~ "8790M]</td><td>[1002:6606]</td><td>(rev ff)</td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Seymour LP [Radeon HD "
+#~ "6430M]</td><td>[1002:6761]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Cedar [Radeon HD "
+#~ "5000/6000/7350/8350 Series]</td><td>[1002:68f9]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Broadway PRO [Mobility "
+#~ "Radeon HD 5850]</td><td>[1002:68a1]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] RV730/M96 [Mobility Radeon "
+#~ "HD 4650/5165]</td><td>[1002:9480]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Device</"
+#~ "td><td>[1002:98e4]</td><td>(rev da)</td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Trinity [Radeon HD 7520G]</"
+#~ "td><td>[1002:9990]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Beavercreek [Radeon HD "
+#~ "6550D]</td><td>[1002:9640]</td><td></td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Mars XTX [Radeon HD "
+#~ "8790M]</td><td>[1002:6606]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Mars XTX [Radeon HD "
+#~ "8790M]</td><td>[1002:6606]</td><td>(rev ff)</td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Seymour LP [Radeon HD "
+#~ "6430M]</td><td>[1002:6761]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Cedar [Radeon HD "
+#~ "5000/6000/7350/8350 Series]</td><td>[1002:68f9]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Broadway PRO [Mobility "
+#~ "Radeon HD 5850]</td><td>[1002:68a1]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] RV730/M96 [Mobility Radeon "
+#~ "HD 4650/5165]</td><td>[1002:9480]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Device</"
+#~ "td><td>[1002:98e4]</td><td>(rev da)</td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Trinity [Radeon HD 7520G]</"
+#~ "td><td>[1002:9990]</td><td></td></tr>\n"
+#~ "<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Beavercreek [Radeon HD "
+#~ "6550D]</td><td>[1002:9640]</td><td></td></tr>\n"
+#~ "</table>\n"
+
+#~ msgid "AMD Radeon R9\n"
+#~ msgstr "AMD Radeon R9\n"
+
+#~ msgid "Intel\n"
+#~ msgstr "Intel\n"
+
+#~ msgid "Intel 855GM\n"
+#~ msgstr "Intel 855GM\n"
+
+#~ msgid "Other issues\n"
+#~ msgstr "Autres problèmes\n"
+
+#~ msgid "Intel GM965/GL960\n"
+#~ msgstr "Intel GM965/GL960\n"
+
+#~ msgid "Virtual machines with *virt-manager*, *libvirt* and *QEMU*\n"
+#~ msgstr "Machines virtuelles avec *virt-manager*, *libvirt* et *QEMU*\n"
+
+#~ msgid "Virtual machines with *VMware*\n"
+#~ msgstr "Machines virtuelles avec *VMware*\n"
+
+#~ msgid ""
+#~ "Try adding `nomodeset` to the [[boot options|doc/first_steps/"
+#~ "startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "Essayez d'ajouter `nomodeset` aux [[options de démarrage|doc/first_steps/"
+#~ "startup_options#boot_loader_menu]]."
+
+#~ msgid ""
+#~ "Otherwise, try adding `nouveau.noaccel=1` or `nouveau.modeset=0` to the "
+#~ "[[boot options|doc/first_steps/startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "Dans le cas contraire, essayez d'ajouter `nouveau.noaccel=1` ou `nouveau."
+#~ "modeset=0` dans les [[options de démarrage|doc/first_steps/"
+#~ "startup_options#boot_loader_menu]]."
+
+#~ msgid ""
+#~ "Otherwise, try adding `nouveau.noaccel=0`, `nouveau.noaccel=1`, or "
+#~ "`nouveau.modeset=0` to the [[boot options|doc/first_steps/"
+#~ "startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "Dans le cas contraire, essayez d'ajouter `nouveau.noaccel=0`, `nouveau."
+#~ "noaccel=1` ou `nouveau.modeset=0` dans les [[options de démarrage|doc/"
+#~ "first_steps/startup_options#boot_loader_menu]]."
+
+#~ msgid ""
+#~ "Try adding `nouveau.noaccel=1` or `nouveau.modeset=0` to the [[boot "
+#~ "options|doc/first_steps/startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "Essayez d'ajouter `nouveau.noaccel=1` ou `nouveau.modeset=0` dans les "
+#~ "[[options de démarrage|doc/first_steps/startup_options#boot_loader_menu]]."
+
+#~ msgid ""
+#~ "Starting in *Troubleshooting Mode* works, as well as adding the `modprobe."
+#~ "blacklist=nouveau` to the [[boot options|doc/first_steps/"
+#~ "startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "Démarrer en mode **Troubleshooting Mode** marche, ainsi que le fait "
+#~ "d'ajouter `modprobe.blacklist=nouveau` dans les [[options de démarrage|"
+#~ "doc/first_steps/startup_options#boot_loader_menu]]."
+
+#~ msgid ""
+#~ "For some models, adding `radeon.modeset=0` to the [[boot options|/doc/"
+#~ "first_steps/startup_options/#boot_loader_menu]] fixes the issue."
+#~ msgstr ""
+#~ "Avec certains modèles, ajouter `radeon.modeset=0` dans les [[options de "
+#~ "démarrage|/doc/advanced_topics/boot_options]] corrige le problème."
+
+#~ msgid ""
+#~ "Nvidia Tesla\n"
+#~ "--------------\n"
+#~ msgstr ""
+#~ "Nvidia Tesla\n"
+#~ "--------------\n"
+
+#~ msgid ""
+#~ "<!--\n"
+#~ "<table>\n"
+#~ "<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+#~ "<tr><td>$VENDOR $DEVICE</td><td>[$VENDOR_ID:$PRODUCT_ID]</td><td>(rev "
+#~ "$REVISION_NUMBER)</td></tr>\n"
+#~ "</table>\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "<table>\n"
+#~ "<tr><th>Nom</th><th>Identifiant</th><th>Numéro de version</th></tr>\n"
+#~ "<tr><td>$VENDOR $DEVICE</td><td>[$VENDOR_ID:$PRODUCT_ID]</td><td>(rev "
+#~ "$REVISION_NUMBER)</td></tr>\n"
+#~ "</table>\n"
+#~ "-->\n"
+
+#, fuzzy
+#~ msgid "<a id=\"lockup\"></a>\n"
+#~ msgstr "<a id=\"qemu\"></a>\n"
+
+#~ msgid "<a id=\"sg-black-screen\"></a>\n"
+#~ msgstr "<a id=\"sg-black-screen\"></a>\n"

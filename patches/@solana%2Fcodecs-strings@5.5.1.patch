@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index f01e91a6f8614eb0d5102a9f96b1c0fe7bbd2099..7c79ee2ac70c5a01a7ab64a9de8cdc8f454414fb 100644
+--- a/package.json
++++ b/package.json
+@@ -61,7 +61,7 @@
+   },
+   "peerDependencies": {
+     "fastestsmallesttextencoderdecoder": "^1.0.22",
+-    "typescript": "^5.0.0"
++    "typescript": ">=5.0.0"
+   },
+   "peerDependenciesMeta": {
+     "fastestsmallesttextencoderdecoder": {

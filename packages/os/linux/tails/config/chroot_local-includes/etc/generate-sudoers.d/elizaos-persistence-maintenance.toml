@@ -1,0 +1,9 @@
+[[commands]]
+allowed_user = "amnesia"
+executable = "/usr/local/lib/elizaos/persistence-maintenance"
+args = ["enter"]
+
+[[commands]]
+allowed_user = "amnesia"
+executable = "/usr/local/lib/elizaos/persistence-maintenance"
+args = ["leave"]

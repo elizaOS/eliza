@@ -1,0 +1,181 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": false,
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "types": ["node", "bun", "react", "react-dom"],
+    "typeRoots": [
+      "./node_modules/@types",
+      "../app-core/node_modules/@types",
+      "../ui/node_modules/@types",
+      "../../node_modules/@types"
+    ],
+    "declaration": false,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "paths": {
+      "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/native-activity-tracker": [
+        "../../plugins/plugin-native-activity-tracker/src/index.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "../../plugins/plugin-native-appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../../plugins/plugin-native-mobile-signals/src/index.ts"
+      ],
+      "@elizaos/capacitor-wifi": [
+        "../../plugins/plugin-native-wifi/src/index.ts"
+      ],
+      "@elizaos/capacitor-contacts": [
+        "../../plugins/plugin-native-contacts/src/index.ts"
+      ],
+      "@elizaos/capacitor-*": ["../../plugins/plugin-native-*/src/index.ts"],
+      "@elizaos/capacitor-llama": [
+        "../../plugins/plugin-native-llama/src/index.ts"
+      ],
+      "@elizaos/capacitor-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/plugin-personal-assistant": [
+        "../../plugins/plugin-personal-assistant/src/index.ts"
+      ],
+      "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
+      "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
+      "@elizaos/plugin-elizamaker": [
+        "../../plugins/plugin-elizamaker/src/index.ts"
+      ],
+      "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-app-manager": [
+        "../../plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-registry": [
+        "../../plugins/plugin-registry/src/index.ts"
+      ],
+      "@elizaos/plugin-remote-manifest": [
+        "../plugin-remote-manifest/src/index.ts"
+      ],
+      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
+      "@elizaos/plugin-worker-runtime": [
+        "../plugin-worker-runtime/src/index.ts"
+      ],
+      "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-wifi": ["../../plugins/plugin-wifi/src/index.ts"],
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../app-core/src/*"],
+      "@elizaos/plugin-steward-app": [
+        "../../plugins/plugin-steward-app/src/index.ts"
+      ],
+      "@elizaos/plugin-shopify-ui": [
+        "../../plugins/plugin-shopify-ui/src/index.ts"
+      ],
+      "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
+      "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/tui": ["../tui/src/index.ts"],
+      "@elizaos/ui/api/client-types-cloud": [
+        "../ui/src/api/client-types-cloud.ts"
+      ],
+      "@elizaos/plugin-companion": [
+        "../../plugins/plugin-companion/src/index.ts"
+      ],
+      "@elizaos/app-knowledge": ["../../plugins/app-knowledge/src/index.ts"],
+      "@elizaos/plugin-training": [
+        "../../plugins/plugin-training/src/index.ts"
+      ],
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/plugin-contacts": [
+        "../../plugins/plugin-contacts/src/index.ts"
+      ],
+      "@elizaos/agent": ["./src/index.ts"],
+      "@elizaos/agent/*": ["./src/*"],
+      "@elizaos/cloud-sdk": ["../cloud-sdk/src/index.ts"],
+      "@elizaos/plugin-coding-tools": [
+        "../../plugins/plugin-coding-tools/src/index.ts"
+      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-computeruse": [
+        "../../plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-music": ["../../plugins/plugin-music/src/index.ts"],
+      "@elizaos/plugin-whatsapp": [
+        "../../plugins/plugin-whatsapp/src/index.ts"
+      ],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
+      "@elizaos/plugin-workflow": [
+        "../../plugins/plugin-workflow/src/index.ts"
+      ],
+      "@elizaos/agent/api": ["./src/api/index.ts"],
+      "@elizaos/agent/runtime": ["./src/runtime/index.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/local-inference": [
+        "../shared/src/local-inference/index.ts"
+      ],
+      "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/security": ["../security/src/index.ts"],
+      "@elizaos/security/*": ["../security/src/*"],
+      "@elizaos/vault": ["../vault/src/index.ts"],
+      "@elizaos/skills": ["../skills/src/index.ts"],
+      "react": ["../app-core/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": [
+        "../app-core/node_modules/@types/react/jsx-runtime.d.ts"
+      ],
+      "react/jsx-dev-runtime": [
+        "../app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": ["../app-core/node_modules/@types/react-dom/index.d.ts"],
+      "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
+      "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
+      ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/android/bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/android/bridge.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/ios/bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/ios/bridge.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap": [
+        "../../plugins/plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts"
+      ],
+      "@elizaos/plugin-discord-local": [
+        "../../plugins/plugin-discord-local/src/index.ts"
+      ],
+      "@elizaos/plugin-discord-local/*": [
+        "../../plugins/plugin-discord-local/src/*"
+      ],
+      "@elizaos/*": ["../../node_modules/@elizaos/*"],
+      "puppeteer-core": ["./node_modules/puppeteer-core"],
+      "drizzle-orm": ["../app-core/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../app-core/node_modules/drizzle-orm/*"]
+    }
+  },
+  "include": ["src"]
+}

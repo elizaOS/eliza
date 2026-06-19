@@ -1,0 +1,8 @@
+name = "${APP_NAME}-eliza-cloud-proxy"
+main = "worker.ts"
+compatibility_date = "2026-03-15"
+
+[vars]
+ELIZA_CLOUD_ORIGIN = "https://www.elizacloud.ai"
+CF_ALLOWED_ORIGINS = ""
+CF_PROXY_PATH_PREFIXES = ""

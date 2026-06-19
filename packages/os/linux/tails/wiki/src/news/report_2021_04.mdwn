@@ -1,0 +1,114 @@
+[[!meta title="Tails report for April, 2021"]]
+[[!meta date="Tue, 25 May 2021 07:21:15 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+Tails 4.18 was released on April 20.
+
+Tails 4.19 is scheduled for June 1.
+
+## Changes and updates
+
+* Removed "Synchronizing the system's clock" notification when connecting to Tor network
+
+* Removed Poedit
+
+Code
+====
+
+* [Make it possible to resume an automatic upgrade download](https://gitlab.tails.boum.org/tails/tails/-/issues/15875)
+
+* [Add download size and estimated time when downloading upgrades](https://gitlab.tails.boum.org/tails/tails/-/issues/6502)
+
+Documentation and website
+=========================
+
+* [Started improving our doc on MAT and metadata](https://gitlab.tails.boum.org/tails/tails/-/issues/8416)
+
+* [Documented how to using Dino in Tails](https://gitlab.tails.boum.org/tails/tails/-/issues/18235)
+
+* [Improved the error page when upgrades fail](https://gitlab.tails.boum.org/tails/tails/-/issues/18265)
+
+* [Ordered 2 Panda wireless adapters to debug recent user reports](https://gitlab.tails.boum.org/tails/tails/-/issues/17987)
+
+* [Tested the JavaScript verification in Firefox and Chrome beta](https://gitlab.tails.boum.org/tails/tails/-/issues/18283)
+
+* [Edited the template answers for Help Desk](https://gitlab.tails.boum.org/tails/tails/-/issues/18070)
+
+User experience
+===============
+
+Implemented parts of the [redesigned network connection configuration](https://gitlab.tails.boum.org/tails/blueprints/-/wikis/network_connection#ux-design)
+
+Highlights:
+
+* Users can opt for default bridges.
+* Users see progress status for Tor bootstrap even if they don't use bridges.
+* The Tor configuration interface is now accessible and compatible with Wayland.
+* We don't depend on Tor Launcher.
+
+Press and testimonials
+======================
+
+We notice the nomination of Tails in two different classes:
+
+* Privacy and Security Tools for 2021
+
+
+  From:[https://restoreprivacy.com/privacy-tools/](https://restoreprivacy.com/privacy-tools/)
+
+  > Tails is another privacy-focused operating system that can be run live on a USB  drive, CD, or SD card.
+
+* The End Of Student Privacy? Remote Proctoring's Invasiveness and Bias
+
+  From: [https://privacylab.yale.edu/](https://privacylab.yale.edu/)
+
+  > Education: Teaching privacy, security, and anonymity concepts through reading
+  > groups and hands-on workshops.
+  > Implementation: Hosting Tor relays/wireless access points and providing the
+  > TAILS operating system.
+
+Translations
+============
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 44% (934) strings translated, 23% strings fuzzy
+  - es: 90% (1909) strings translated, 4% strings fuzzy
+  - fa: 19% (417) strings translated, 15% strings fuzzy
+  - fr: 85% (1788) strings translated, 7% strings fuzzy
+  - it: 67% (1407) strings translated, 15% strings fuzzy
+  - pt: 39% (824) strings translated, 14% strings fuzzy
+
+
+## All the website
+
+  - de: 26% (1855) strings translated, 14% strings fuzzy
+  - es: 53% (3719) strings translated, 4% strings fuzzy
+  - fa: 19% (1377) strings translated, 12% strings fuzzy
+  - fr: 84% (5900) strings translated, 4% strings fuzzy
+  - it: 34% (2414) strings translated, 7% strings fuzzy
+  - pt: 18% (1278) strings translated, 9% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - ar: 7% (162) strings translated, 8% strings fuzzy
+  - ca: 7% (163) strings translated, 7% strings fuzzy
+  - id: 6% (133) strings translated, 4% strings fuzzy
+  - pl: 7% (165) strings translated, 6% strings fuzzy
+  - ru: 23% (502) strings translated, 6% strings fuzzy
+  - sr_Latn: 5% (109) strings translated, 4% strings fuzzy
+  - tr: 8% (174) strings translated, 6% strings fuzzy
+  - zh: 11% (234) strings translated, 7% strings fuzzy
+  - zh_TW: 22% (463) strings translated, 13% strings fuzzy
+
+
+Metrics
+=======
+
+* Tails has been started more than 742 093 times this month. This makes 24 736 boots a day on average.
+

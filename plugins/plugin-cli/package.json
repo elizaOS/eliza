@@ -1,0 +1,83 @@
+{
+  "name": "@elizaos/plugin-cli",
+  "version": "2.0.3-beta.14",
+  "description": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "strip-literal": "^3.1.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "cli",
+    "command-line",
+    "terminal"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "CLI_NAME": {
+        "type": "string",
+        "description": "CLI command name",
+        "required": false,
+        "sensitive": false
+      },
+      "CLI_VERSION": {
+        "type": "string",
+        "description": "CLI version string",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

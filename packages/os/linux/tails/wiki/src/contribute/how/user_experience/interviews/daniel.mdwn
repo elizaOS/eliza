@@ -1,0 +1,266 @@
+[[!meta title="Daniel, March 2021"]]
+
+[[!img daniel.jpg link="no" alt=""]]
+
+In 2021, the journalist [Daniel Moßbrucker](https://daniel-mossbrucker.de/)
+used Tails to investigate pedocriminal forums on the Darknet and took down
+13.5 terabytes of photos and videos of child abuse.
+
+Daniel and his team discovered that, despite the takedown of one of the biggest pedocriminal
+forum *BoysTown* by German authorities in April 2021, many of the content was
+still accessible online through regular file sharing websites on the clear web.
+
+> 13.5 terabytes is like watching a video, in HD quality, for 365 days, every
+> day, 24/7, of a child being abused. We, as journalists, collected and
+> reported this amount of data in one day. Less than an hour later, the file
+> sharing companies, who were stunned, deleted 28&#8239;000 links.
+
+They then reached out to the German authorities asking them why they don't seem
+to be doing the easy work of actually removing the content from the Internet
+and limit themselves to prosecute the criminals.
+
+- [Daniel's full documentary](https://www.youtube.com/watch?v=iItLpwkQMUQ)
+
+- [Netzpolitik: The internet forgets nothing, as long as it’s not supposed to
+  forget](https://netzpolitik.org/2022/depictions-of-child-abuse-the-internet-forgets-nothing-as-long-as-its-not-supposed-to-forget/)
+
+**Can you tell us a bit more about who you are and what you do?**
+
+I'm a freelance journalist in my thirties.
+
+I wouldn't call myself a technology expert. I'm able to code a little bit, but
+for sophisticated projects like these, I still need someone with a real
+information security background to ask them how do certain things, which tools
+to use, and to check and improve my 30 lines of script.
+
+I'm probably one of the few journalists in Germany that people think of when it
+comes to the so-called Darknet and Tor. As far as I know, I'm the only one
+doing trainings on Darknet research in Germany on a regular basis. If newsrooms
+have specific questions on the Darknet, I'm probably among the 2-3 people in
+Germany who are called because it's a quite specialized knowledge.
+
+I also give trainings for journalists in digital security and consult some
+human-rights organizations on their IT infrastructure, together with a
+professional IT admin.
+
+**How did you get into mixing up journalism and technology so much?**
+
+When I learned about Snowden, it was something for me. I remember exactly where
+I was when I received the first push notification on my phone. I really
+thought, what the fuck is going on!
+
+I felt the need to have a digital security training, but there was no such
+training in Germany. The Chaos Computer Club in Germany gave cryptoparties.
+They were nice and helpful, but I soon realized that they were organized by
+technologists missing the insights from working in a newsroom. People were
+discussing super secure things, but often these things aren't really going to
+work in practical journalism. So, I learned by myself, read a lot, started with
+PGP and all that stuff.
+
+I started offering training to journalism associations and newsrooms. In 2016,
+I joined the Internet Freedom Desk at Reporters Without Borders Germany.
+
+**How do you use Tails in your work and why it is important?**
+
+I don't work with Tails everyday, but only sometimes. I always try to think in
+terms of threat models. Sometimes I don't consider the threat as so important
+that I have to make some compromise in my usability.
+
+I use Tails whenever I have the impression that my online security is very
+important and I don't trust the *Tor Browser* on my regular computer anymore.
+It's the case for all my Darknet research. When I have to investigate something
+on the Darknet, I always use Tails, both for security and for practical
+reasons.
+
+For example, we are convinced that journalists are allowed to investigate child
+abuse on the Darknet, but actually it's a gray zone.  It's relatively clear
+that journalists are not allowed to do everything that the police does, and
+it's also relatively clear that journalists need to have the right to
+independently search for information, especially in such an important topic
+like the rights of children. However, nobody really knows what we are allowed
+to do exactly.
+
+For 20 years, journalists in Germany didn't really care about their right on
+that topic. In the law, there's a paragraph saying that police is allowed to do
+research about child abuse online but journalists are not explicitly
+mentioned. Our legal department, however, found a way how we can investigate in
+these forums under certain circumstances. One of these circumstances is that
+our work serves only work purposes and it's an absolutely secure infrastructure
+we're working with, so that our data cannot fall into the wrong hands. Well,
+Tails is the way to go for this.
+
+Apart from the research on child abuse, I also consult for newsrooms about
+cybercrime. For example, I was asked to investigate how a PayPal fraud was done
+in practice by a criminal group that was recently identified.
+
+In such cases, I always use Tails because I only have to flash the USB stick
+and I already have everything I need: *Tor Browser* but also *OnionShare*,
+which is super important for my professional life. It's a bridge between me and
+the newsroom to transfer the results. It's always hard to get less technical
+people to use encryption tools, but it works to send them a link that they can
+open from *Tor Browser*.
+
+For the research on child abuse, we used *wget* for most of our crawling and
+it's super useful to have it already installed.
+
+I also use the office pack a lot, especially the *Calculator*. My IT colleagues
+always laugh because they can of course calculate everything about the raw data
+from the command line, but for me as a journalist, it's much easier and faster
+for me to do everything in the *Calculator*.
+
+I really like this new tool to see how much CPU if used, the *System Monitor*.
+If I have a crawler or some script running on raw data, I can see how much CPU
+is being used and that's very helpful.
+
+**Do you have any interesting stories about the bright side of the Darknet?**
+
+In my journalistic work, when I report about the so-called darknet, I mostly
+focus on the bad side, the dark and criminal side. We see more of the criminal
+side because criminals would like to be seen, while the bright side is not that
+visible. The people who use it for their anonymity have no interested in
+telling the world about their super secret communication.
+
+For stories about the bright side, I would differentiate between democratic
+countries in Western Europe and other non-democratic countries.
+
+In Germany and other countries of "the West", my impression is that onion
+services are used only for anonymous dropboxes like *SecureDrop*. This is
+growing in Germany, especially because the Süddeutsche Zeitung is quite
+successful through Panama Papers, Paradise Papers, etc. These leaks motivate a
+lot of other media to do the same.
+
+In non-democratic countries, I would say that *OnionShare* is useful for exile
+media, for example from Syria. People who are refugees in safe states like
+Germany can get support from organizations like Reporters Without Borders to
+set up their infrastructure and their website. But they still have
+correspondents and reporters in the country. *OnionShare* was great for them,
+especially in war times.
+
+I also know activists travelling to conflict zones, who know that they will be
+checked at the border control. They cross the border only with their business
+smartphone and are trained by us on doing their work from Tails.
+
+2 years ago, I realized that this usage of *OnionShare* is now decreasing
+because of the desktop client of *Signal*. It basically fulfils all their needs
+and also work on mobile. For correspondents in the field, it's just one work
+step less to do. It's still secure because it's end-to-end encrypted and they
+are using *Signal* and a VPN anyway.  It's also easier, which means lowering
+the risk of doing mistakes.
+
+*OnionShare* might be extra secure and anonymous but I have to share the link
+with my communication partner anyway, preferably on an end-to-end encrypted
+channel and so do it on *Signal* already.
+
+**What are the things that you don't like or miss in Tails and we should
+improve?**
+
+### Kazaam
+
+What I always have to install is *Kazaam*, a tool to record my screen, because
+we're doing TV and pictures are more attractive if they move. I install it from
+the Additional Software packages. It always takes time, but it's not a big
+deal.
+
+### PGP
+
+I have to send certain things back to the newsrooms encrypted with PGP. It's
+easy for me to download PGP keys from public key servers, but I wouldn't import
+my private PGP key into Tails. I make another temporary PGP key pair, share the
+public key with my colleagues, and use it for that.
+
+I always install *Kleopatra* from the Additional Software Packages because I
+think that there's no other way of generating a PGP key and using it in a
+graphic interface to encrypt and decrypt text and files. I always integrate my
+keys produced elsewhere but I haven't been able to generate and use them there.
+Probably, it's a fault on my side. But honestly speaking, I found my workaround
+with Kleopatra and never again searched for another solution.
+
+(*I tell him that it's already possible to generate keys using the *Password &
+Keys *utility, encrypt text using the *OpenPGP Applet*, and encrypt files using
+the *Files* utility.*)
+
+I know that it's possible to use PGP in *Thunderbird*, but as far as I
+remember, I would have to set up an email and it's usually too much. I use PGP
+to encrypt files, not necessarily emails. It's super easy with Kleopatra, as we
+know the program already from outside Tails.
+
+To share files, the newsrooms usually give us a link to their *Nextcloud* or
+similar where we can upload files and we don't want to upload them in
+plaintext. So we use PGP. It's very practical because I can just upload them
+from the browser and encrypt the content with the public keys of the
+colleagues.
+
+I know that the main feature of Tails is that it gives me this security island,
+that I have strong borders and strong walls and that this protects me in a way.
+But then, we always need this little window to communicate with our colleagues
+in the newsroom.
+
+For me, once I did my research and I have my results and have to send it to the
+newsroom, I don't want to use a USB stick that I used for my research on my
+regular computer. If I spend 3 days researching child abuse in forums, I don't
+want a single second of this material on my computer. This "gate to exchange"
+with the newsroom is always a challenge.
+
+### VeraCrypt
+
+What is absolutely missing is that I can't create a *VeraCrypt* volume from
+Tails. I can open an existing one, but I have to create it somewhere else.
+
+My workflow at the moment is to set up an empty *VeraCrypt* volume on a
+non-Tails computer. Then I send this empty *VeraCrypt* volume to my Tails. Put
+the data in Tails. Lock it.
+
+We use *VeraCrypt* especially for the backup of our data. So while PGP is for
+the exchange of smaller files with others, *VeraCrypt* is useful to back up
+data.
+
+### Jitsi
+
+*Jitsi* or some kind of live communications tool would be great, not only
+because of usability, but also for journalistic work.
+
+It's a trend in documentaries to take our audience on a journey, be with us in
+our meetings and how we do our work. It would be much more interactive and open
+us some really important stylistic features, if I would have an option to make
+the meeting with my newsroom with my Tails computer and share my screen.
+
+(*I tell him that [Tor is working on
+this](https://gitlab.torproject.org/tpo/core/torspec/-/issues/73).*)
+
+### Signal
+
+I was wondering whether it's possible to start the Signal desktop client on
+Tails. I could share data, I could have a video call or an audio call. Somebody
+asked about this on Reddit and he was insulted by people saying "how stupid are
+you, people on Tails are doing everything to not connect any data with your
+identity". It sounded reasonable, so I never followed this path again. However,
+I assume that an integration of Signal would be a game-changer for Tails, and
+journalists would accept it much more.
+
+**What is the biggest hurdle to Tails being adopted more by journalists?**
+
+I think that you are already on the right path by making the setup easier and
+easier.
+
+I remember a training about 2 years ago, where there was one of the best known
+journalists in Germany, covering surveillance issues like the NSA scandal. I
+asked him what he was doing here and that he could have run the training
+himself. He answered that he had never been able to boot Tails.
+
+If people were very interested in using Tails and took the time to read your
+steps on the website, people would be able to flash the USB stick with Etcher,
+and boot it. This onboarding takes most of the time.
+
+The second thing, is that I always explain them that all the compromises that
+they have to make are not a bug but a feature. That they get something out of
+it. It's more complicated than Windows, but you now have one of the most secure
+operating systems. My experience is that people accept some burdens once they
+understand that it's for a good reason. 
+
+Moreover, we need people to do more sessions in journalistic conferences:
+*"Your start with Tails in 90 minutes"*. Maybe they won't need it every day,
+but at least they did it once and saw that it's easy.
+
+You need to really bring it to people and get in touch with them.
+Unfortunately, I don't think that a lot of people will do it when it's just
+there available on the Internet.

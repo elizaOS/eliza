@@ -1,0 +1,98 @@
+#!/usr/bin/python3 -I
+#
+# Copyright © 2008-2013  Red Hat, Inc. All rights reserved.
+# Copyright © 2012-2016  Tails Developers <foundations@tails.net>
+#
+# This copyrighted material is made available to anyone wishing to use, modify,
+# copy, or redistribute it subject to the terms and conditions of the GNU
+# General Public License v.2.  This program is distributed in the hope that it
+# will be useful, but WITHOUT ANY WARRANTY expressed or implied, including the
+# implied warranties of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See the GNU General Public License for more details.  You should have
+# received a copy of the GNU General Public License along with this program; if
+# not, write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth
+# Floor, Boston, MA 02110-1301, USA. Any Red Hat trademarks that are
+# incorporated in the source code or documentation are not subject to the GNU
+# General Public License and may only be used or replicated with the express
+# permission of Red Hat, Inc.
+#
+# Author(s): Luke Macken <lmacken@redhat.com>
+#            Tails Developers <foundations@tails.net>
+
+import os
+import sys
+
+from tails_installer import _
+
+
+def parse_args():
+    from optparse import OptionParser
+
+    parser = OptionParser()
+    parser.add_option(
+        "-f",
+        "--force",
+        dest="force",
+        action="store",
+        type="string",
+        help="Force the use of a given drive",
+        metavar="DRIVE",
+    )
+    parser.add_option(
+        "-s",
+        "--safe",
+        dest="safe",
+        action="store_true",
+        help='Use the "safe, slow and stupid" bootloader',
+    )
+    parser.add_option(
+        "-v",
+        "--verbose",
+        dest="verbose",
+        action="store_true",
+        default=os.getenv("DEBUG") or "debug" in open("/proc/cmdline").read().split(),
+        help="Output extra debugging messages",
+    )
+    parser.add_option(
+        "--clone",
+        dest="clone",
+        action="store_true",
+        help="Clone the currently running Live system",
+    )
+    parser.add_option(
+        "--backup",
+        dest="clone_persistent_storage_requested",
+        action="store_true",
+        default=False,
+        help="Backup the currently running Persistent Live system",
+    )
+    parser.add_option(
+        "-P",
+        "--partition",
+        dest="partition",
+        action="store_true",
+        default=False,
+        help="Partition the device",
+    )
+
+    argv = sys.argv[:]
+    return parser.parse_args(argv[1:])
+
+
+def main():
+    opts, args = parse_args()
+    import gi
+
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import Gtk
+    from tails_installer.gui import TailsInstallerWindow
+
+    try:
+        TailsInstallerWindow(opts=opts, args=sys.argv)
+        Gtk.main()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

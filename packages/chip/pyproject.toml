@@ -1,0 +1,58 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+  ".git",
+  ".venv",
+  "build",
+  "external",
+  "tools",
+  ".tools",
+  ".claude",
+]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "B",
+  "UP",
+  "SIM",
+]
+ignore = [
+  "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"verify/cocotb/*.py" = ["F821"]
+
+[tool.mypy]
+python_version = "3.11"
+files = [
+  "benchmarks",
+  "compiler",
+  "package",
+  "scripts",
+  "sw/check_bsp_scaffolds.py",
+  "verify",
+  "fw/boot-rom",
+]
+exclude = [
+  "^build/",
+  "^external/",
+  "^tools/",
+  "^\\.tools/",
+  "^\\.venv/",
+  "^\\.claude/",
+]
+ignore_missing_imports = true
+explicit_package_bases = true
+disable_error_code = [
+  "import-untyped",
+]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+pretty = true

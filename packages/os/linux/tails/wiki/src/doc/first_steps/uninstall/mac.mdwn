@@ -1,0 +1,126 @@
+[[!meta title="Uninstalling Tails using macOS"]]
+
+[[!inline pages="doc/first_steps/uninstall.intro" raw="yes" sort="age"]]
+
+1. Start on macOS.
+
+1. Make sure that the USB stick that you want to uninstall is unplugged.
+
+1. Start *Disk Utility*.
+
+   A list of all the storage devices on the computer appears in the left pane
+   of the window.
+
+1. Plug in the USB stick that you want to uninstall.
+
+   A new device appears in the list of storage devices. This new device
+   corresponds to the USB stick that you plugged in. Click on it.
+
+1. In the list of storage devices, verify that the device corresponds
+   to the USB stick that you want to uninstall, its brand, its size, etc.
+
+   <div class="caution">
+
+   <p>You might overwrite any hard disk on the computer.</p>
+
+   <p>If you are not sure about which device to choose, stop proceeding.</p>
+
+   </div>
+
+1. To reset the USB stick, select the **Erase** button in the top
+   middle.
+
+1. In the confirmation dialog, click on the **Erase**
+   button to confirm.
+
+1. In the **Erase** dialog, if you want the USB stick to also work on Windows
+   and Linux, specify:
+
+   - **Format**: **MS-DOS (FAT)**
+   - **Scheme**: **Master Boot Record**
+
+1. Click **Erase**.
+
+<div class="note">
+
+<p>If the erase process fails, try [[!toggle id="format"
+text="formatting the USB stick using the command line"]] first.</p>
+
+</div>
+
+[[!toggleable id="format" text="""
+<span class="hide">[[!toggle id="format" text=""]]</span>
+
+Formatting the USB stick using the command line
+-----------------------------------------------
+
+<!-- Note for translators: This section is very similar to /install/inc/steps/install_with_etcher.inline. -->
+
+1. Unplug the USB stick from the computer.
+
+1. Open the **Terminal** utility from **Applications&nbsp;▸ Utilities**.
+
+1. Execute the following command.
+
+   <p class="command">diskutil list</p>
+
+   It returns a list of the storage devices on the system. For example:
+
+       /dev/disk0
+        #:                     TYPE NAME         SIZE      IDENTIFIER
+        0:    GUID_partition_scheme             *500.1 GB  disk0
+        1:                      EFI              209.7 MB  disk0s1
+        2:                Apple_HFS MacDrive     250.0 GB  disk0s2
+        3:                      EFI              134.1 GB  disk0s3
+        4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4
+
+1. Plug in the USB stick that you want to uninstall.
+
+1. Execute again the same command.
+
+   <p class="command">diskutil list</p>
+
+   Your USB stick appears as a new device in the list. Check
+   that its size corresponds to the size of your USB stick.
+
+       /dev/disk0
+        #:                     TYPE NAME         SIZE      IDENTIFIER
+        0:    GUID_partition_scheme             *500.1 GB  disk0
+        1:                      EFI              209.7 MB  disk0s1
+        2:                Apple_HFS MacDrive     250.0 GB  disk0s2
+        3:                      EFI              134.1 GB  disk0s3
+        4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4
+
+       /dev/disk1
+        #:                     TYPE NAME         SIZE      IDENTIFIER
+        0:   FDisk_partition_scheme             *8.0 GB    disk1
+        1:                Apple_HFS Untitled 1   8.0 GB    disk1s1
+
+1. Take note of the device name of your USB stick.
+
+   In this example, the USB stick is 8.0 GB and its device name is <span class="command-placeholder">/dev/disk1</span>.
+   Yours might be different.
+
+   <div class="caution">
+
+   <p>You might overwrite any hard disk on the computer.</p>
+
+   <p>If you are not sure about the device, stop proceeding.</p>
+
+   </div>
+
+1. Execute the following command to safely eject the USB stick. Replace <span class="command-placeholder">device</span>
+   with the device name found in step 6.
+
+   <p class="command-template">diskutil unmountDisk <span class="command-placeholder">device</span></p>
+
+1. Execute the following command to format the USB stick. Replace <span class="command-placeholder">device</span>
+   with the device name found in step 6.
+
+   <p class="command-template">sudo fdisk -iy <span class="command-placeholder">device</span></p>
+
+1. You can try to uninstall the USB stick again using
+   *Disk Utility* from the beginning of this
+   page.
+
+"""]]

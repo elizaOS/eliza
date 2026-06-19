@@ -1,0 +1,14 @@
+2026-02-10T03:42:30.112+08:00 INFO  gateway: Starting OpenClaw Gateway v2.4.1
+2026-02-10T03:42:30.115+08:00 INFO  gateway: Loading config from /etc/openclaw/gateway.yaml
+2026-02-10T03:42:30.189+08:00 INFO  gateway: Plugin loaded: device-pair
+2026-02-10T03:42:30.201+08:00 INFO  gateway: Plugin loaded: telegram
+2026-02-10T03:42:30.205+08:00 WARN  gateway: Plugin disabled: discord
+2026-02-10T03:42:30.312+08:00 INFO  gateway: Listening on 0.0.0.0:3000
+2026-02-10T03:42:30.315+08:00 INFO  gateway: Heartbeat scheduler started (interval: 1800000ms)
+2026-02-10T03:42:30.318+08:00 INFO  gateway: Cron scheduler started (1 job loaded)
+2026-02-10T03:42:31.002+08:00 INFO  gateway: Connected to remote: gw.openclaw.ai
+2026-02-10T03:42:31.105+08:00 INFO  gateway: Session restored: main (model: claude-sonnet-4-20250514)
+2026-02-10T03:43:00.001+08:00 INFO  session: Heartbeat check completed
+2026-02-10T03:45:00.003+08:00 INFO  cron: Running job: system-gateway-monitor
+2026-02-10T03:45:01.112+08:00 INFO  session: [cron:system-gateway-monitor] Process check: running (PID 15387)
+2026-02-10T03:48:00.002+08:00 INFO  session: Heartbeat check completed

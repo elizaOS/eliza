@@ -1,0 +1,83 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-02 09:34+0000\n"
+"PO-Revision-Date: 2026-03-29 14:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Installing additional fonts\"]]\n"
+msgstr "[[!meta title=\"Installation de polices supplémentaires\"]]\n"
+
+#. type: Plain text
+msgid ""
+"You can install additional fonts in Tails to use in *LibreOffice*, "
+"*Inkscape*, or *GIMP*."
+msgstr ""
+"Vous pouvez installer des polices supplémentaires dans Tails pour "
+"*LibreOffice*, *Inkscape* ou *GIMP*."
+
+#. type: Plain text
+msgid "To do so:"
+msgstr "Pour ce faire :"
+
+#. type: Bullet: '1. '
+msgid ""
+"Turn on the [[Dotfiles|persistent_storage/configure#dotfiles]] feature of "
+"the Persistent Storage."
+msgstr ""
+"Activez la fonctionnalité [[Dotfiles|persistent_storage/configure#dotfiles]] "
+"du stockage persistant."
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files**."
+msgstr "Choisissez **Applications&nbsp;▸ Accessoires&nbsp;▸ Fichiers**."
+
+#. type: Bullet: '1. '
+msgid "Select the *Dotfiles* folder in the sidebar."
+msgstr "Sélectionnez le dossier *Dotfiles* dans la barre latérale."
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the [[!img lib/go-down.png alt=\"View Options\" class=\"symbolic\" "
+"link=\"no\"]] button in the title bar and select the option **Show Hidden "
+"Files**."
+msgstr ""
+"Cliquez sur le bouton [[!img lib/go-down.png alt=\"Options d'affichage\" "
+"class=\"symbolic\" link=\"no\"]] dans la barre de titre et sélectionnez "
+"l'option **Afficher les fichiers cachés**."
+
+#. type: Bullet: '1. '
+msgid ""
+"Create a folder named *.fonts* (notice the `.`) in this *Dotfiles* folder."
+msgstr ""
+"Créez un dossier *.fonts* (attention au `.`) dans ce dossier *Dotfiles*."
+
+#. type: Bullet: '1. '
+msgid "Store the fonts that you want to persist in this *.fonts* folder."
+msgstr ""
+"Enregistrez les polices que vous souhaitez conserver dans ce dossier "
+"*.fonts*."
+
+#. type: Plain text
+#, no-wrap
+msgid "   You can store TTF and ODT fonts.\n"
+msgstr "   Vous pouvez enregistrer des polices TTF et ODT.\n"
+
+#. type: Bullet: '1. '
+msgid "Restart Tails."
+msgstr "Redémarrez Tails."

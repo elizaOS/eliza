@@ -1,0 +1,137 @@
+name: Snap Build & Test
+
+on:
+  push:
+    paths:
+      - 'packages/app-core/packaging/snap/**'
+      - '.github/workflows/snap-build-test.yml'
+  pull_request:
+    paths:
+      - 'packages/app-core/packaging/snap/**'
+      - '.github/workflows/snap-build-test.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: snap-build-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  build-snap:
+    name: Build Snap (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            experimental: false
+          # Linux arm64 hosted runners are in public preview for public
+          # repositories (free, but queue-prone). Mark this matrix entry
+          # experimental so a flaky ARM run doesn't block amd64 PRs.
+          # Promote `experimental: false` once ARM is GA and stable.
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            experimental: true
+    continue-on-error: ${{ matrix.experimental }}
+
+    steps:
+      - name: Free disk space on runner
+        # Snapcraft multipass + bun install of every workspace dependency
+        # inside the sandbox consistently exhausts the default 14GB GHA
+        # runner disk, producing `System.IO.IOException: No space left on
+        # device` halfway through the build. Reclaim ~30GB up front by
+        # dropping unused toolchains.
+        run: |
+          set -euo pipefail
+          echo "=== before ==="
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          echo "=== after ==="
+          df -h /
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          # Skip submodules entirely. The snap build uses
+          # `bun install --ignore-scripts` (see snapcraft.yaml) and
+          # `SKIP_NATIVE_PLUGINS=1`, so it never reads from any of the
+          # repo's git submodules (plugin-local-inference/native/llama.cpp,
+          # plugin-local-inference/native/omnivoice.cpp, vendor/opencode).
+          # Fetching them only risks "not our ref" failures when upstream
+          # branches are force-pushed and the pinned SHA is no longer
+          # reachable on the remote. The runtime closure under plugins/*/src
+          # ships from the main repo tree and is unaffected.
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare snapcraft.yaml
+        run: |
+          mkdir -p snap
+          cp packages/app-core/packaging/snap/snapcraft.yaml snap/snapcraft.yaml
+
+          # Use package.json version
+          VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0-dev")
+          sed -i "s/^version: .*/version: '${VERSION}'/" snap/snapcraft.yaml
+          echo "Building snap version: $VERSION"
+
+      - name: Normalize runner root ownership for snapd
+        run: |
+          set -euo pipefail
+          ROOT_OWNER="$(stat -c '%u:%g' /)"
+          echo "Runner root owner: ${ROOT_OWNER}"
+          if [ "${ROOT_OWNER}" = "0:0" ]; then
+            echo "Root is already 0:0 — snapd canonicalization OK"
+            exit 0
+          fi
+          echo "Attempting to repair / ownership so snapd/systemd path canonicalization accepts this runner"
+          if sudo -n chown root:root / 2>/dev/null; then
+            echo "Chown succeeded; new owner: $(stat -c '%u:%g' /)"
+          else
+            echo "::warning::Unable to chown / to root:root (sudo unavailable or passwordless sudo disabled). snapd may fail downstream. Remediation: run this job on a standard ubuntu-latest / ubuntu-24.04 GitHub-hosted runner, or configure the container image so / is owned by 0:0."
+          fi
+
+      - name: Build snap
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79
+        id: snapcraft
+
+      - name: Verify snap contents
+        run: |
+          echo "=== Snap file ==="
+          ls -lh ${{ steps.snapcraft.outputs.snap }}
+
+          echo "=== Snap info ==="
+          snap info ${{ steps.snapcraft.outputs.snap }} 2>/dev/null || unsquashfs -l ${{ steps.snapcraft.outputs.snap }} | head -50
+
+      - name: Install and test snap
+        run: |
+          sudo snap install ${{ steps.snapcraft.outputs.snap }} --dangerous
+          echo "=== Installed snap ==="
+          snap list elizaos-app
+
+          echo "=== Version check ==="
+          elizaos-app --version || echo "Version check completed (exit $?)"
+
+          echo "=== Help check ==="
+          elizaos-app --help 2>&1 | head -20 || echo "Help check completed (exit $?)"
+
+      - name: Upload snap artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: snap-${{ matrix.arch }}
+          path: ${{ steps.snapcraft.outputs.snap }}
+          retention-days: 30

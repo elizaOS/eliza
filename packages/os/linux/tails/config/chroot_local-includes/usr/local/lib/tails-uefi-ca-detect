@@ -1,0 +1,91 @@
+#!/usr/bin/python3 -I
+"""
+Detects if action is needed to keep using Tails on current hardware.
+
+The output is guaranteed to be valid JSON, and will be an object with these fields:
+
+- action_needed: a boolean. always present.
+- os: a list of string.
+"""
+
+import enum
+import logging
+import json
+import os
+import subprocess
+import sys
+
+from tailslib.uefi_ca import Detection
+
+log = logging.getLogger("tails-uefi-ca-detect")
+
+
+class UefiState(enum.Enum):
+    SECURE_BOOT_DISABLED = 1
+    GOOD = 2
+    BAD = 3
+
+
+def detect_uefi_ca() -> UefiState:
+    try:
+        output = subprocess.check_output(
+            ["/usr/bin/mokutil", "--kek", "--short"],
+            text=True,
+        )
+    except subprocess.CalledProcessError:
+        log.exception("Error invoking mokutil")
+        return UefiState.SECURE_BOOT_DISABLED
+    else:
+        return parse_uefi_ca(output)
+
+
+def parse_uefi_ca(output: str) -> UefiState:
+    """
+    >>> parse_uefi_ca("\\n\\n").name
+    'SECURE_BOOT_DISABLED'
+    >>> old = "3590bfd89 Microsoft Corporation KEK CA 2011\\n"
+    >>> new = "xxxxxxxxx Microsoft Corporation KEK 2K CA 2023\\n"
+    >>> parse_uefi_ca(old).name
+    'BAD'
+    >>> parse_uefi_ca(old + new).name
+    'GOOD'
+    """
+    if not output.strip():
+        return UefiState.SECURE_BOOT_DISABLED
+    if "Microsoft Corporation KEK 2K CA 2023" in output:
+        return UefiState.GOOD
+    return UefiState.BAD
+
+
+def output(d: Detection):
+    json.dump(d.asdict(), sys.stdout)
+
+
+def no_action_needed() -> int:
+    d = Detection(action_needed=False)
+    output(d)
+    return 0
+
+
+def main() -> int:
+    if sys.argv[1:] == ["--doctest"]:
+        import doctest
+
+        ret = doctest.testmod(verbose=False)
+        print(sys.argv[0], "doctest:", ret)
+        return 1 if ret.failed else 0
+
+    if os.getuid() != 0:
+        print(f"{sys.argv[0]} must be run as root", file=sys.stderr)
+        sys.exit(1)
+
+    uefi_state = detect_uefi_ca()
+    if uefi_state != UefiState.BAD:
+        return no_action_needed()
+
+    output(Detection(action_needed=True))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,22 @@
+[options]
+mode cover
+depth 24
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+# Non-vacuity companion to e1_cache_coherence.sby. Proves the directory can
+# actually reach the writable (M, E) and two-way-shared states that the SWMR
+# assertions guard, so a passing BMC proof is not vacuously true over an idle
+# directory. The cover statements live in e1_coherence_dir_swmr_props.sv.
+plugin -i slang
+read_slang cache_pkg.sv e1_coherence_dir.sv e1_coherence_dir_swmr_props.sv e1_coherence_dir_formal.sv --top e1_coherence_dir_formal --keep-hierarchy
+prep -top e1_coherence_dir_formal -flatten
+
+[files]
+../../../rtl/cache/cache_pkg.sv
+../../../rtl/cache/coherence/e1_coherence_dir.sv
+e1_coherence_dir_swmr_props.sv
+e1_coherence_dir_formal.sv

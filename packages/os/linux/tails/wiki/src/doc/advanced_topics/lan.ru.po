@@ -1,0 +1,210 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2021-12-24 08:56+0000\n"
+"Last-Translator: Алексей Коломенцев <Themanwhosoldtheworld2021@gmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Accessing resources on the local network\"]]\n"
+msgstr "[[!meta title=\"Доступ к ресурсам в локальной сети\"]]\n"
+
+#. type: Plain text
+msgid ""
+"The term \"local network\" refers to the set of computers and devices that "
+"can be reached directly from your computer without going through the "
+"Internet."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "The term \"local network\" here refers to the set of computers and "
+#| "devices that can be reached directly from your computer without going "
+#| "through the Internet. For example, your home router, your network "
+#| "printer, or the intranet of your company are most likely on your local "
+#| "network, also called LAN for Local Area Network. In technical terms, this "
+#| "refers to the set of IP addresses defined in [RFC1918](https://"
+#| "tools.ietf.org/html/rfc1918)."
+msgid ""
+"For example, your home router, your network printer, or the intranet of your "
+"company are usually on your local network, also called LAN for Local Area "
+"Network. In technical terms, this refers to the set of IP addresses defined "
+"in [RFC1918](https://tools.ietf.org/html/rfc1918), like IP addresses that "
+"start with `192.168`."
+msgstr ""
+"Термин «локальная сеть» в данном случае подразумевает набор компьютеров и "
+"устройств, к которым можно получить доступ непосредственно с вашего "
+"компьютера (без выхода в Интернет). Примеры: ваш домашний роутер, сетевой "
+"принтер или интранет вашей компании. Все они, скорее всего, находятся в "
+"вашей локальной сети, иначе говоря LAN (Local Area Network). Технически "
+"локальная сеть — набор IP-адресов, определенных в [RFC1918] (https://"
+"tools.ietf.org/html/rfc1918)."
+
+#. type: Title =
+#, no-wrap
+msgid "Security considerations"
+msgstr "Требования безопасности"
+
+#. type: Plain text
+msgid ""
+"Accessing resources on the local network can be useful in the context of "
+"Tails, for example to exchange documents with someone on the same local "
+"network without going through the Internet."
+msgstr ""
+"Доступ к ресурсам в локальной сети может быть полезен и в Tails. Пример "
+"такой задачи — обмен документами с кем-то в той же локальной сети без "
+"использования Интернета."
+
+#. type: Plain text
+msgid ""
+"But an application that can connect to both resources on the Internet (going "
+"through Tor) and resources on the local network (without going through Tor) "
+"can deanonymize you."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "This page describes some of the security measures built in Tails to "
+#| "protect from such attacks and explains how to access some types of "
+#| "resources on the local network."
+msgid ""
+"This page describes some of the security measures built into Tails to "
+"protect from such attacks and explains how to access some types of resources "
+"on the local network."
+msgstr ""
+"На этой странице описаны некоторые настройки безопасности Tails для защиты "
+"от подобных атак. Вы также найдёте здесь рассказ о том, как получить доступ "
+"к некоторым типам ресурсов в локальной сети."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Connections made to the local network are not anonymous and do not go\n"
+"through Tor.</p>\n"
+msgstr ""
+"<p>Подключения к локальной сети не анонимны и не выполняются\n"
+"через Tor.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"browser\"></a>\n"
+msgstr "<a id=\"browser\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Browsing web pages on the local network"
+msgstr "Просмотр веб-страниц в локальной сети"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "It is impossible to access web pages on the local network using <span "
+#| "class=\"application\">Tor\n"
+#| "Browser</span>. This prevents websites on the Internet from deducing "
+#| "your\n"
+#| "location from the content of other web pages that might be specific to "
+#| "your local\n"
+#| "network.\n"
+msgid ""
+"It is impossible to access web pages on the local network using *Tor "
+"Browser*.  This prevents websites on the Internet from deanonymizing you "
+"using the content of other web pages that might be specific to your local "
+"network and reveal where you are."
+msgstr ""
+"Получить доступ к веб-страницам в локальной сети с помощью <span "
+"class=\"application\">Tor\n"
+"Browser</span> нельзя. Поэтому сайты в Интернете не могут определять ваше\n"
+"местоположение по содержимому других страниц (которое может быть характерным "
+"для вашей сети).\n"
+
+#. type: Plain text
+msgid ""
+"To access web pages on the local network, use the [[*Unsafe Browser*|"
+"anonymous_internet/unsafe_browser]] instead."
+msgstr ""
+"Для доступа к страницам в локальной сети используйте [[*Небезопасный "
+"браузер*|anonymous_internet/unsafe_browser]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"http\"></a>\n"
+msgstr "<a id=\"http\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Downloading files from web pages on the local network"
+msgstr "Скачивание файлов с веб-страниц в локальной сети"
+
+#. type: Plain text
+msgid ""
+"To download files from web pages on the local network, you can use the "
+"`curl` command instead. For example, to download a document available on the "
+"local network at *http://192.168.1.40/document.pdf* execute the following "
+"command:"
+msgstr ""
+"Для скачивания файлов с веб-страниц в локальной сети вы можете использовать "
+"команду `curl`. Например, чтобы скачать документ по адресу *http://"
+"192.168.1.40/document.pdf*, выполните следующую команду:"
+
+#. type: Plain text
+#, no-wrap
+msgid "    curl http://192.168.1.40/document.pdf\n"
+msgstr "    curl http://192.168.1.40/document.pdf\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "But an application that can connect to both resources on the\n"
+#~ "Internet (going through Tor) and resources on the local network (without going\n"
+#~ "through Tor) can break your anonymity. For example, if a website that\n"
+#~ "you visit anonymously using *Tor Browser* could also connect to other\n"
+#~ "web pages that are specific to your local network, then this information\n"
+#~ "could reveal where you are. This is why *Tor Browser* is prevented from\n"
+#~ "accessing the local network in Tails.\n"
+#~ msgstr ""
+#~ "Но приложение, которое может подключаться как к ресурсам в\n"
+#~ "Интернете (через Tor), так и к ресурсам в локальной сети (без \n"
+#~ "Tor), может навредить вашей анонимности. Например, если \n"
+#~ "сайт, который вы посещаете анонимно с помощью *Tor Browser*, также может подключаться к другим веб-страницам в вашей локальной сети, то злоумышленники могут определить ваше местоположение. Вот почему  *Tor Browser* защищён от\n"
+#~ "доступа к локальной сети в Tails.\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/chroot.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/chroot.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "Downloading files from an FTP server on the local network\n"
+#~ msgstr "Dateien von einem FTP-Server im lokalen Netzwerk herunterladen\n"
+
+#, fuzzy
+#~| msgid "    curl http://192.168.1.40/document.pdf\n"
+#~ msgid "       ftp://192.168.1.25/\n"
+#~ msgstr "    curl http://192.168.1.40/document.pdf\n"
+
+#~ msgid "<a id=\"ftp\"></a>\n"
+#~ msgstr "<a id=\"ftp\"></a>\n"

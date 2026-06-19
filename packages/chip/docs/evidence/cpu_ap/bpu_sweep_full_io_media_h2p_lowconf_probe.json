@@ -1,0 +1,608 @@
+{
+  "baseline_weighted_mpki": 40.207626,
+  "best_config": "h2p_lowconf_only",
+  "best_delta_vs_baseline": -0.73688,
+  "best_geometry_diff": {
+    "H2P_LOWCONF_ONLY": 1
+  },
+  "best_weighted_mpki": 39.470746,
+  "cbp5_reference_mpki": {
+    "sample_fp_trace": 0.5736,
+    "sample_int_trace": 5.1327
+  },
+  "claim_boundary": "behavioural BPU geometry sweep only; SPEC/AOSP/JetStream real-workload MPKI claims remain blocked until those trace sets are captured",
+  "generated_at_utc": "2026-05-24T05:14:40.496892+00:00",
+  "generated_utc": "2026-05-24T05:41:10Z",
+  "harness": "behavioural-bpu-model",
+  "ittage_evidence_counters": [
+    "ittage_hit",
+    "ittage_target_used",
+    "ittage_weak_yield_to_ftb",
+    "ittage_updates",
+    "ittage_allocations",
+    "ittage_weak_target_replacements",
+    "ittage_victim_replacements",
+    "ittage_provider_evictions",
+    "ittage_useful_aging"
+  ],
+  "max_branches_per_trace": 0,
+  "ranking": [
+    "h2p_lowconf_only",
+    "h2p_off",
+    "baseline"
+  ],
+  "results": {
+    "baseline": {
+      "ittage_counter_totals": {
+        "ittage_allocations": 2382,
+        "ittage_hit": 11557,
+        "ittage_provider_evictions": 0,
+        "ittage_target_used": 11536,
+        "ittage_updates": 22782,
+        "ittage_useful_aging": 0,
+        "ittage_victim_replacements": 0,
+        "ittage_weak_target_replacements": 0,
+        "ittage_weak_yield_to_ftb": 21
+      },
+      "per_trace": {
+        "audio_frames": {
+          "branches": 432230,
+          "instructions": 2890947,
+          "ittage_counters": {
+            "ittage_allocations": 334,
+            "ittage_hit": 1630,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1623,
+            "ittage_updates": 3735,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 115824,
+          "mpki": 40.06438,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "ittage_counters": {
+            "ittage_allocations": 342,
+            "ittage_hit": 1629,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1629,
+            "ittage_updates": 3738,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 94602,
+          "mpki": 30.132113,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 774042,
+          "instructions": 2599051,
+          "ittage_counters": {
+            "ittage_allocations": 355,
+            "ittage_hit": 3014,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 3007,
+            "ittage_updates": 5136,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 213434,
+          "mpki": 82.119974,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 461102,
+          "instructions": 2668630,
+          "ittage_counters": {
+            "ittage_allocations": 1012,
+            "ittage_hit": 3655,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 3648,
+            "ittage_updates": 6438,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 109415,
+          "mpki": 41.000438,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "ittage_counters": {
+            "ittage_allocations": 339,
+            "ittage_hit": 1629,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1629,
+            "ittage_updates": 3735,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 20394,
+          "mpki": 7.721224,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        }
+      },
+      "timing_counter_totals": {
+        "h2p_deferred_by_timing_model": 0,
+        "ittage_deferred_by_timing_model": 0,
+        "l2_ftb_deferred_by_timing_model": 0,
+        "l2_ftb_late_redirect": 0,
+        "local_dir_deferred_by_timing_model": 0,
+        "sc_deferred_by_timing_model": 0
+      },
+      "weighted_mpki": 40.207626
+    },
+    "h2p_lowconf_only": {
+      "ittage_counter_totals": {
+        "ittage_allocations": 2382,
+        "ittage_hit": 11557,
+        "ittage_provider_evictions": 0,
+        "ittage_target_used": 11536,
+        "ittage_updates": 22782,
+        "ittage_useful_aging": 0,
+        "ittage_victim_replacements": 0,
+        "ittage_weak_target_replacements": 0,
+        "ittage_weak_yield_to_ftb": 21
+      },
+      "per_trace": {
+        "audio_frames": {
+          "branches": 432230,
+          "instructions": 2890947,
+          "ittage_counters": {
+            "ittage_allocations": 334,
+            "ittage_hit": 1630,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1623,
+            "ittage_updates": 3735,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 114488,
+          "mpki": 39.602248,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "ittage_counters": {
+            "ittage_allocations": 342,
+            "ittage_hit": 1629,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1629,
+            "ittage_updates": 3738,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 94556,
+          "mpki": 30.117462,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 774042,
+          "instructions": 2599051,
+          "ittage_counters": {
+            "ittage_allocations": 355,
+            "ittage_hit": 3014,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 3007,
+            "ittage_updates": 5136,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 207144,
+          "mpki": 79.69986,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 461102,
+          "instructions": 2668630,
+          "ittage_counters": {
+            "ittage_allocations": 1012,
+            "ittage_hit": 3655,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 3648,
+            "ittage_updates": 6438,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 108149,
+          "mpki": 40.526038,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "ittage_counters": {
+            "ittage_allocations": 339,
+            "ittage_hit": 1629,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1629,
+            "ittage_updates": 3735,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 19567,
+          "mpki": 7.40812,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        }
+      },
+      "timing_counter_totals": {
+        "h2p_deferred_by_timing_model": 0,
+        "ittage_deferred_by_timing_model": 0,
+        "l2_ftb_deferred_by_timing_model": 0,
+        "l2_ftb_late_redirect": 0,
+        "local_dir_deferred_by_timing_model": 0,
+        "sc_deferred_by_timing_model": 0
+      },
+      "weighted_mpki": 39.470746
+    },
+    "h2p_off": {
+      "ittage_counter_totals": {
+        "ittage_allocations": 2382,
+        "ittage_hit": 11557,
+        "ittage_provider_evictions": 0,
+        "ittage_target_used": 11536,
+        "ittage_updates": 22782,
+        "ittage_useful_aging": 0,
+        "ittage_victim_replacements": 0,
+        "ittage_weak_target_replacements": 0,
+        "ittage_weak_yield_to_ftb": 21
+      },
+      "per_trace": {
+        "audio_frames": {
+          "branches": 432230,
+          "instructions": 2890947,
+          "ittage_counters": {
+            "ittage_allocations": 334,
+            "ittage_hit": 1630,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1623,
+            "ittage_updates": 3735,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 114811,
+          "mpki": 39.713976,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "ittage_counters": {
+            "ittage_allocations": 342,
+            "ittage_hit": 1629,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1629,
+            "ittage_updates": 3738,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 96668,
+          "mpki": 30.790165,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 774042,
+          "instructions": 2599051,
+          "ittage_counters": {
+            "ittage_allocations": 355,
+            "ittage_hit": 3014,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 3007,
+            "ittage_updates": 5136,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 207365,
+          "mpki": 79.784891,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 461102,
+          "instructions": 2668630,
+          "ittage_counters": {
+            "ittage_allocations": 1012,
+            "ittage_hit": 3655,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 3648,
+            "ittage_updates": 6438,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 111999,
+          "mpki": 41.968726,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "ittage_counters": {
+            "ittage_allocations": 339,
+            "ittage_hit": 1629,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1629,
+            "ittage_updates": 3735,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 19715,
+          "mpki": 7.464153,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        }
+      },
+      "timing_counter_totals": {
+        "h2p_deferred_by_timing_model": 0,
+        "ittage_deferred_by_timing_model": 0,
+        "l2_ftb_deferred_by_timing_model": 0,
+        "l2_ftb_late_redirect": 0,
+        "local_dir_deferred_by_timing_model": 0,
+        "sc_deferred_by_timing_model": 0
+      },
+      "weighted_mpki": 39.944382
+    }
+  },
+  "schema": "eliza.bpu_sweep.v1",
+  "status": "pass",
+  "timing_evidence_counters": [
+    "sc_deferred_by_timing_model",
+    "h2p_deferred_by_timing_model",
+    "local_dir_deferred_by_timing_model",
+    "ittage_deferred_by_timing_model",
+    "l2_ftb_deferred_by_timing_model",
+    "l2_ftb_late_redirect"
+  ],
+  "trace_filter": [
+    "audio_frames",
+    "file_tlv",
+    "http_parser",
+    "text_log",
+    "video_blocks"
+  ],
+  "trace_set": [
+    {
+      "branches": 774042,
+      "instructions": 2599051,
+      "name": "http_parser",
+      "weight": 1.5
+    },
+    {
+      "branches": 461102,
+      "instructions": 2668630,
+      "name": "text_log",
+      "weight": 1.5
+    },
+    {
+      "branches": 471277,
+      "instructions": 3139574,
+      "name": "file_tlv",
+      "weight": 1.5
+    },
+    {
+      "branches": 275928,
+      "instructions": 2641291,
+      "name": "video_blocks",
+      "weight": 1.5
+    },
+    {
+      "branches": 432230,
+      "instructions": 2890947,
+      "name": "audio_frames",
+      "weight": 1.5
+    }
+  ],
+  "weights": {
+    "agent_decode": 1.5,
+    "agent_loop": 2.0,
+    "audio_frames": 1.5,
+    "browser_layout_proxy": 1.25,
+    "build_compiler_proxy": 1.25,
+    "cbp5:sample_fp_trace": 1.0,
+    "cbp5:sample_int_trace": 1.0,
+    "compression_proxy": 1.25,
+    "crypto_packet_proxy": 1.0,
+    "database_btree_proxy": 1.25,
+    "file_tlv": 1.5,
+    "gc_runtime_proxy": 1.25,
+    "gpu_control_proxy": 1.5,
+    "gpu_irq_fence_scheduler_proxy": 1.35,
+    "gpu_memory_residency_proxy": 1.35,
+    "http_parser": 1.5,
+    "kernel_syscall_proxy": 1.25,
+    "mobile_ui_frame_scheduler_proxy": 1.25,
+    "nn_delegate_fallback_proxy": 1.2,
+    "synthetic:alias_thrash": 0.5,
+    "synthetic:allocator_gc_barrier": 0.75,
+    "synthetic:alternating": 0.35,
+    "synthetic:always_not_taken": 0.25,
+    "synthetic:always_taken": 0.25,
+    "synthetic:android_runtime_inline_cache": 0.85,
+    "synthetic:command_buffer_validation": 0.85,
+    "synthetic:control_indirect_pair": 0.75,
+    "synthetic:correlated_xor_branches": 0.75,
+    "synthetic:cross_asid_same_pc_alias": 0.75,
+    "synthetic:deep_recursion": 0.35,
+    "synthetic:dual_branch_fetch_block": 0.75,
+    "synthetic:epoll_rpc_dispatch": 0.85,
+    "synthetic:gpu_command_processor": 1.0,
+    "synthetic:gpu_driver_submit_phases": 0.85,
+    "synthetic:gpu_nested_reconvergence": 0.75,
+    "synthetic:gpu_occupancy_phase": 0.75,
+    "synthetic:gpu_tile_kernel": 1.0,
+    "synthetic:gpu_warp_divergence": 1.0,
+    "synthetic:gpu_wavefront_compaction": 0.85,
+    "synthetic:hash_probe_inline_cache": 0.75,
+    "synthetic:interpreter_dispatch_mixed": 0.75,
+    "synthetic:jit_dispatch_warmup": 0.75,
+    "synthetic:json_parser_state_machine": 0.75,
+    "synthetic:l2_ftb_target_pressure": 0.75,
+    "synthetic:loop_with_known_trip": 0.5,
+    "synthetic:mixed_workload": 0.75,
+    "synthetic:nested_imli_loop": 0.75,
+    "synthetic:phase_change_server": 0.75,
+    "synthetic:return_mismatch_exceptions": 0.35,
+    "synthetic:signal_exception_unwind": 0.5,
+    "synthetic:v8_indirect_dispatch": 0.5,
+    "synthetic:vtable_path_correlated": 0.75,
+    "synthetic:wasm_threaded_interpreter_tiering": 0.85,
+    "synthetic:work_stealing_queues": 0.85,
+    "synthetic:workload_class_phase_alias": 0.75,
+    "text_log": 1.5,
+    "video_blocks": 1.5,
+    "wasm_jit_osr_proxy": 1.2
+  },
+  "window_mode": "prefix"
+}

@@ -1,0 +1,220 @@
+== bmc ==
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Removing directory '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc/src/axi_lite_protocol.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/chip/rtl/interconnect/e1_axi_lite_interconnect.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc/src/e1_axi_lite_interconnect.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/chip/verify/formal/e1_axi_lite_interconnect_bind.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc/src/e1_axi_lite_interconnect_bind.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: smtbmc bitwuzla
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_bmc/src; yosys -ql ../model/design.log ../model/design.ys"
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \wr_fifo with list of registers. See e1_axi_lite_interconnect.sv:742
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \rd_fifo with list of registers. See e1_axi_lite_interconnect.sv:741
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \wr_wd with list of registers. See e1_axi_lite_interconnect.sv:739
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \rd_wd with list of registers. See e1_axi_lite_interconnect.sv:738
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \rd_dbg_laddr with list of registers. See e1_axi_lite_interconnect.sv:737
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \wr_ost with list of registers. See e1_axi_lite_interconnect.sv:736
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \wr_tail with list of registers. See e1_axi_lite_interconnect.sv:811, e1_axi_lite_interconnect.sv:735
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \wr_head with list of registers. See e1_axi_lite_interconnect.sv:861, e1_axi_lite_interconnect.sv:734
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \rd_ost with list of registers. See e1_axi_lite_interconnect.sv:733
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \rd_tail with list of registers. See e1_axi_lite_interconnect.sv:782, e1_axi_lite_interconnect.sv:732
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \rd_head with list of registers. See e1_axi_lite_interconnect.sv:849, e1_axi_lite_interconnect.sv:731
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \aw_pip_sel with list of registers. See e1_axi_lite_interconnect.sv:730
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \w_pip_strb with list of registers. See e1_axi_lite_interconnect.sv:729
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \w_pip_data with list of registers. See e1_axi_lite_interconnect.sv:728
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \aw_pip_addr with list of registers. See e1_axi_lite_interconnect.sv:727
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \aw_pip_vld with list of registers. See e1_axi_lite_interconnect.sv:726
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \ar_pip_sel with list of registers. See e1_axi_lite_interconnect.sv:725
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \ar_pip_addr with list of registers. See e1_axi_lite_interconnect.sv:724
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \ar_pip_vld with list of registers. See e1_axi_lite_interconnect.sv:723
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \w_held_strb with list of registers. See e1_axi_lite_interconnect.sv:722
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \w_held_data with list of registers. See e1_axi_lite_interconnect.sv:721
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \w_held_vld with list of registers. See e1_axi_lite_interconnect.sv:720
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \aw_held_addr with list of registers. See e1_axi_lite_interconnect.sv:719
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \aw_held_vld with list of registers. See e1_axi_lite_interconnect.sv:718
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mo_bresp with list of registers. See e1_axi_lite_interconnect.sv:671
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mo_bvalid with list of registers. See e1_axi_lite_interconnect.sv:670
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mo_rresp with list of registers. See e1_axi_lite_interconnect.sv:605
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mo_rdata with list of registers. See e1_axi_lite_interconnect.sv:604
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mo_rvalid with list of registers. See e1_axi_lite_interconnect.sv:603
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \aw_pip_drain with list of registers. See e1_axi_lite_interconnect.sv:590
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mo_arready with list of registers. See e1_axi_lite_interconnect.sv:516
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \ar_pip_drain with list of registers. See e1_axi_lite_interconnect.sv:510
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \wr_cand with list of registers. See e1_axi_lite_interconnect.sv:416
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \rd_cand with list of registers. See e1_axi_lite_interconnect.sv:415
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mo_wready with list of registers. See e1_axi_lite_interconnect.sv:403
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mo_awready with list of registers. See e1_axi_lite_interconnect.sv:402
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \wr_ost_full with list of registers. See e1_axi_lite_interconnect.sv:395
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \rd_ost_full with list of registers. See e1_axi_lite_interconnect.sv:394
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mi_rready with list of registers. See e1_axi_lite_interconnect.sv:291
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mi_araddr with list of registers. See e1_axi_lite_interconnect.sv:290
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mi_arvalid with list of registers. See e1_axi_lite_interconnect.sv:290
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mi_bready with list of registers. See e1_axi_lite_interconnect.sv:289
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mi_wstrb with list of registers. See e1_axi_lite_interconnect.sv:289
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mi_wdata with list of registers. See e1_axi_lite_interconnect.sv:288
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mi_wvalid with list of registers. See e1_axi_lite_interconnect.sv:288
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mi_awaddr with list of registers. See e1_axi_lite_interconnect.sv:287
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: Warning: Replacing memory \mi_awvalid with list of registers. See e1_axi_lite_interconnect.sv:287
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] base: finished (returncode=0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] prep: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_bmc/model; yosys -ql design_prep.log design_prep.ys"
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] prep: finished (returncode=0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] smt2: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_bmc/model; yosys -ql design_smt2.log design_smt2.ys"
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] smt2: finished (returncode=0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_bmc; yosys-smtbmc -s bitwuzla --presat --unroll --noprogress -t 24  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2"
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Solver: bitwuzla
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 0..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 0..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 1..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 1..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 2..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 2..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 3..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 3..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 4..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 4..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 5..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 5..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 6..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 6..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 7..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 7..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 8..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 8..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 9..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 9..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 10..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 10..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 11..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 11..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 12..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 12..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 13..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 13..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 14..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 14..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 15..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 15..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 16..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 16..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 17..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 17..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 18..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 18..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 19..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 19..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 20..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 20..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 21..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 21..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 22..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 22..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 23..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 23..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: ##   0:00:00  Status: passed
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: finished (returncode=0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] engine_0: Status returned by engine: pass
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] summary: engine_0 (smtbmc bitwuzla) returned pass
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] summary: engine_0 did not produce any traces
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] DONE (PASS, rc=0)
+== prove ==
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_bmc] Removing directory '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_interconnect.1014868_bmc'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Removing directory '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_interconnect.1014868_prove'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_interconnect.1014868_prove/src/axi_lite_protocol.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Copy '/home/shaw/milady/eliza/packages/chip/rtl/interconnect/e1_axi_lite_interconnect.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_interconnect.1014868_prove/src/e1_axi_lite_interconnect.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] Copy '/home/shaw/milady/eliza/packages/chip/verify/formal/e1_axi_lite_interconnect_bind.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_interconnect.1014868_prove/src/e1_axi_lite_interconnect_bind.sv'.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0: smtbmc bitwuzla
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_prove/src; yosys -ql ../model/design.log ../model/design.ys"
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \wr_fifo with list of registers. See e1_axi_lite_interconnect.sv:742
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \rd_fifo with list of registers. See e1_axi_lite_interconnect.sv:741
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \wr_wd with list of registers. See e1_axi_lite_interconnect.sv:739
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \rd_wd with list of registers. See e1_axi_lite_interconnect.sv:738
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \rd_dbg_laddr with list of registers. See e1_axi_lite_interconnect.sv:737
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \wr_ost with list of registers. See e1_axi_lite_interconnect.sv:736
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \wr_tail with list of registers. See e1_axi_lite_interconnect.sv:811, e1_axi_lite_interconnect.sv:735
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \wr_head with list of registers. See e1_axi_lite_interconnect.sv:861, e1_axi_lite_interconnect.sv:734
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \rd_ost with list of registers. See e1_axi_lite_interconnect.sv:733
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \rd_tail with list of registers. See e1_axi_lite_interconnect.sv:782, e1_axi_lite_interconnect.sv:732
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \rd_head with list of registers. See e1_axi_lite_interconnect.sv:849, e1_axi_lite_interconnect.sv:731
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \aw_pip_sel with list of registers. See e1_axi_lite_interconnect.sv:730
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \w_pip_strb with list of registers. See e1_axi_lite_interconnect.sv:729
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \w_pip_data with list of registers. See e1_axi_lite_interconnect.sv:728
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \aw_pip_addr with list of registers. See e1_axi_lite_interconnect.sv:727
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \aw_pip_vld with list of registers. See e1_axi_lite_interconnect.sv:726
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \ar_pip_sel with list of registers. See e1_axi_lite_interconnect.sv:725
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \ar_pip_addr with list of registers. See e1_axi_lite_interconnect.sv:724
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \ar_pip_vld with list of registers. See e1_axi_lite_interconnect.sv:723
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \w_held_strb with list of registers. See e1_axi_lite_interconnect.sv:722
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \w_held_data with list of registers. See e1_axi_lite_interconnect.sv:721
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \w_held_vld with list of registers. See e1_axi_lite_interconnect.sv:720
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \aw_held_addr with list of registers. See e1_axi_lite_interconnect.sv:719
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \aw_held_vld with list of registers. See e1_axi_lite_interconnect.sv:718
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mo_bresp with list of registers. See e1_axi_lite_interconnect.sv:671
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mo_bvalid with list of registers. See e1_axi_lite_interconnect.sv:670
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mo_rresp with list of registers. See e1_axi_lite_interconnect.sv:605
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mo_rdata with list of registers. See e1_axi_lite_interconnect.sv:604
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mo_rvalid with list of registers. See e1_axi_lite_interconnect.sv:603
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \aw_pip_drain with list of registers. See e1_axi_lite_interconnect.sv:590
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mo_arready with list of registers. See e1_axi_lite_interconnect.sv:516
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \ar_pip_drain with list of registers. See e1_axi_lite_interconnect.sv:510
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \wr_cand with list of registers. See e1_axi_lite_interconnect.sv:416
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \rd_cand with list of registers. See e1_axi_lite_interconnect.sv:415
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mo_wready with list of registers. See e1_axi_lite_interconnect.sv:403
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mo_awready with list of registers. See e1_axi_lite_interconnect.sv:402
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \wr_ost_full with list of registers. See e1_axi_lite_interconnect.sv:395
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \rd_ost_full with list of registers. See e1_axi_lite_interconnect.sv:394
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mi_rready with list of registers. See e1_axi_lite_interconnect.sv:291
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mi_araddr with list of registers. See e1_axi_lite_interconnect.sv:290
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mi_arvalid with list of registers. See e1_axi_lite_interconnect.sv:290
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mi_bready with list of registers. See e1_axi_lite_interconnect.sv:289
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mi_wstrb with list of registers. See e1_axi_lite_interconnect.sv:289
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mi_wdata with list of registers. See e1_axi_lite_interconnect.sv:288
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mi_wvalid with list of registers. See e1_axi_lite_interconnect.sv:288
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mi_awaddr with list of registers. See e1_axi_lite_interconnect.sv:287
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: Warning: Replacing memory \mi_awvalid with list of registers. See e1_axi_lite_interconnect.sv:287
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] base: finished (returncode=0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] prep: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_prove/model; yosys -ql design_prep.log design_prep.ys"
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] prep: finished (returncode=0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] smt2: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_prove/model; yosys -ql design_smt2.log design_smt2.ys"
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] smt2: finished (returncode=0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_prove; yosys-smtbmc -s bitwuzla --presat --unroll --noprogress -t 12  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2"
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.induction: starting process "cd build/formal/e1_axi_lite_interconnect.1014868_prove; yosys-smtbmc -s bitwuzla --presat --unroll -i --noprogress -t 12  --append 0 --dump-vcd engine_0/trace_induct.vcd --dump-yw engine_0/trace_induct.yw --dump-vlogtb engine_0/trace_induct_tb.v --dump-smtc engine_0/trace_induct.smtc model/design_smt2.smt2"
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Solver: bitwuzla
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 0..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 0..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 1..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 1..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 2..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 2..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 3..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 3..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.induction: ##   0:00:00  Solver: bitwuzla
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 4..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 4..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 5..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 5..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 6..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 6..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 7..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 7..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 8..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 8..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 9..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 9..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 10..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 10..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 11..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 11..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: ##   0:00:00  Status: passed
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.induction: ##   0:00:00  Trying induction in step 12..
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.induction: ##   0:00:00  Temporal induction successful.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.induction: ##   0:00:00  Status: passed
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: finished (returncode=0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.basecase: Status returned by engine for basecase: pass
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.induction: finished (returncode=0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] engine_0.induction: Status returned by engine for induction: pass
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] summary: engine_0 (smtbmc bitwuzla) returned pass for basecase
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] summary: engine_0 (smtbmc bitwuzla) returned pass for induction
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] summary: engine_0 did not produce any traces
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] summary: successful proof by k-induction.
+SBY 19:48:05 [build/formal/e1_axi_lite_interconnect.1014868_prove] DONE (PASS, rc=0)

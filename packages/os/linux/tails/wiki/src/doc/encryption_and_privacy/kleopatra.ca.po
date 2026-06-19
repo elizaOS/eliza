@@ -1,0 +1,308 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Encrypting text and files using GnuPG and Kleopatra\"]]\n"
+msgstr "[[!meta title=\"Encriptar text i fitxers amb GnuPG i Kleopatra\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!-- Not linking to the handbook because it's so bad: https://docs.kde.org/stable5/en/kleopatra/kleopatra/ -->\n"
+"<!-- Not more heading because of layout. -->\n"
+msgstr ""
+"<!-- Not linking to the handbook because it's so bad: https://docs.kde.org/stable5/en/kleopatra/kleopatra/ -->\n"
+"<!-- Not more heading because of layout. -->\n"
+
+#. type: Plain text
+msgid ""
+"[*Kleopatra*](https://apps.kde.org/kleopatra/) is a graphical interface to "
+"[*GnuPG*](https://www.gnupg.org/), a tool to encrypt and authenticate text "
+"and files using the OpenPGP standard."
+msgstr ""
+"[*Kleopatra*](https://apps.kde.org/ca/kleopatra/) és una interfície gràfica "
+"per a [*GnuPG*](https://www.gnupg.org/), una eina per encriptar i autenticar "
+"text i fitxers utilitzant l'estàndard OpenPGP."
+
+#. type: Plain text
+msgid "With *Kleopatra* you can:"
+msgstr "Amb *Kleopatra* podeu:"
+
+#. type: Bullet: '- '
+msgid "Create new OpenPGP keys for yourself"
+msgstr "Creeu noves claus OpenPGP per a vosaltres mateixos"
+
+#. type: Bullet: '- '
+msgid "Manage your OpenPGP private keys and the public keys of others"
+msgstr ""
+"Gestioneu les vostres claus privades d'OpenPGP i les claus públiques dels "
+"altres"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Encrypt text with a public key or a passphrase"
+msgid "Encrypt text with a public key or a passphrase"
+msgstr "- Encripteu text amb una clau pública o contrasenya"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Sign text with a private key"
+msgid "Sign text with a private key"
+msgstr "- Signeu text amb una clau privada"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Decrypt and verify text"
+msgid "Decrypt and verify text"
+msgstr "- Desencripteu i verifiqueu texts"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The [[<i>Thunderbird</i>|anonymous_internet/thunderbird]] email client\n"
+"allows you to work with OpenPGP encrypted emails. Consider using\n"
+"<i>Thunderbird</i> instead of <i>Kleopatra</i> if you want to exchange encrypted emails.</p>\n"
+msgstr ""
+"<p>El client de correu electrònic [[<i>Thunderbird</i>|anonymous_internet/thunderbird]]\n"
+"us permet treballar amb correus electrònics encriptats amb OpenPGP. Considereu l'ús del\n"
+"<i>Thunderbird</i> en comptes de <i>Kleopatra</i> si voleu intercanviar correus electrònics encriptats.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The OpenPGP keys stored in <i>Thunderbird</i> are separate from the keys\n"
+"stored in <i>GnuPG</i> and visible in <i>Kleopatra</i>.</p>\n"
+msgstr ""
+"<p>Les claus OpenPGP emmagatzemades al <i>Thunderbird</i> estan separades de les claus\n"
+"emmagatzemades al <i>GnuPG</i> i visibles a <i>Kleopatra</i>.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To store your GnuPG keys and configuration across different working sessions,\n"
+"you can turn on the [[GnuPG|persistent_storage/configure#gnupg]]\n"
+"feature of the Persistent Storage.</p>\n"
+msgstr ""
+"<p>Per emmagatzemar les vostres claus i configuració de GnuPG en diferents sessions de treball,\n"
+"podeu activar la funció [[GnuPG|persistent_storage/configure#gnupg]]\n"
+"de l'Emmagatzematge Persistent.</p>\n"
+
+#. type: Title #
+#, no-wrap
+msgid "Working with encrypted files"
+msgstr "Treballar amb fitxers encriptats"
+
+#. type: Plain text
+msgid "To encrypt a file:"
+msgstr "Per encriptar un fitxer:"
+
+#. type: Bullet: '1. '
+msgid "Choose **Sign/Encrypt** from the main window."
+msgstr "Trieu **Sign/Encrypt** a la finestra principal."
+
+#. type: Bullet: '1. '
+msgid "Select the file that you want to encrypt."
+msgstr "Seleccioneu el fitxer que voleu encriptar."
+
+#. type: Bullet: '1. '
+msgid "In the **Sign/Encrypt Files** dialog, either:"
+msgstr "Al diàleg **Signar/Encriptar fitxers**:"
+
+#. type: Bullet: '   - '
+msgid "Specify which OpenPGP keys you want to encrypt the file to."
+msgstr "Especifiqueu amb quines claus OpenPGP voleu encriptar el fitxer."
+
+#. type: Bullet: '   - '
+msgid "Choose **Encrypt with password**."
+msgstr "Trieu **Encriptar amb contrasenya**."
+
+#. type: Plain text
+msgid "To decrypt a file:"
+msgstr "Per desencriptar un fitxer:"
+
+#. type: Bullet: '1. '
+msgid "Choose **Decrypt/Verify** from the main window."
+msgstr "Trieu **Desencriptar/Verificar** a la finestra principal."
+
+#. type: Bullet: '1. '
+msgid "Select the file that you want to decrypt."
+msgstr "Seleccioneu el fitxer que voleu desencriptar."
+
+#. type: Title #
+#, no-wrap
+msgid "Working with encrypted text"
+msgstr "Treballar amb text encriptat"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>It is unsafe to write confidential text in a web browser since JavaScript\n"
+"attacks can access it from inside the browser. You should rather write and\n"
+"encrypt your text directly in the notepad of <i>Kleopatra</i> and only paste\n"
+"the encrypted text in your browser.</p>\n"
+msgstr ""
+"<p>No és segur escriure text confidencial en un navegador web, ja que els atacs de\n"
+"JavaScript hi poden accedir des de dins del navegador. Més aviat hauríeu d'escriure i\n"
+"encriptar el vostre text directament al bloc de notes de <i>Kleopatra</i> i només enganxa\n"
+"el text encriptat al vostre navegador.</p>\n"
+
+#. type: Plain text
+msgid "To encrypt text:"
+msgstr "Per encriptar el text:"
+
+#. type: Bullet: '1. '
+msgid "Choose **Notepad** from the main window."
+msgstr "Trieu **Bloc de notes** a la finestra principal."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Type your text in the **Notepad** tab in the bottom pane."
+msgid "Type your text in the left pane."
+msgstr ""
+"Escriviu el vostre text a la pestanya **Bloc de notes** del panell inferior."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "In the **Recipients** tab, either:"
+msgid "In the right pane, either:"
+msgstr "A la pestanya **Destinataris**:"
+
+#. type: Bullet: '   - '
+msgid "Specify which OpenPGP keys you want to encrypt the text to."
+msgstr "Especifiqueu amb quines claus OpenPGP voleu encriptar el text."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Click the **Encrypt Notepad** button."
+msgid "Select the **Encrypt Notepad** button."
+msgstr "Premeu el botó **Encripta el bloc de notes**."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   This button is labeled **Sign / Encrypt Notepad** if the **Sign as** option\n"
+#| "   is selected in the **Recipient** tab.\n"
+msgid ""
+"   This button is labeled **Sign / Encrypt Notepad** if you select the **Sign\n"
+"   as** option.\n"
+msgstr ""
+"   Aquest botó porta l'etiqueta **Signa/Encripta el bloc de notes** si l'opció **Signa com a**\n"
+"   està seleccionada a la pestanya **Destinatari**.\n"
+
+#. type: Plain text
+msgid "To decrypt text:"
+msgstr "Per desencriptar el text:"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Paste the encrypted text in the **Notepad** tab in the bottom pane."
+msgid "Paste the encrypted text in left pane."
+msgstr ""
+"Enganxeu el text encriptat a la pestanya **Bloc de notes** del panell "
+"inferior."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Click the **Encrypt Notepad** button."
+msgid "Select the **Decrypt / Verify Notepad** button."
+msgstr "Premeu el botó **Encripta el bloc de notes**."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>When using <i>Kleopatra</i> to encrypt emails, non-ASCII characters (for\n"
+"example non-Latin characters or characters with accents) might not display\n"
+"correctly to the recipients of the email.</p>\n"
+msgstr ""
+"<p>Quan utilitzeu <i>Kleopatra</i> per xifrar correus electrònics, és possible\n"
+"que els caràcters no ASCII (per exemple, caràcters no llatins o caràcters amb\n"
+"accents) no es mostrin correctament als destinataris del correu electrònic.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you often encrypt emails, we recommend you set up OpenPGP in\n"
+"[[<i>Thunderbird</i>|doc/anonymous_internet/thunderbird]] instead.</p>\n"
+msgstr ""
+"<p>Si encripteu sovint els correus electrònics, us recomanem que configureu OpenPGP al\n"
+"[[<i>Thunderbird</i>|doc/anonymous_internet/thunderbird]].</p>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"note\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p><i>Kleopatra</i> was added in Tails 5.0 (May 2022) to replace the <i>OpenPGP\n"
+#~ "Applet</i> and the <i>Passwords and Keys</i> utility, also known as\n"
+#~ "<i>Seahorse</i>.</p>\n"
+#~ msgstr ""
+#~ "<p><i>Kleopatra</i> es va afegir a Tails 5.0 (maig de 2022) per substituir l'<i>Applet\n"
+#~ "d'OpenPGP</i> i la utilitat <i>Contrasenyes i Claus</i>, també coneguda com\n"
+#~ "<i>Seahorse</i>.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p><i>Kleopatra</i> provides equivalent features in a single tool and is more\n"
+#~ "actively developed.</p>\n"
+#~ msgstr ""
+#~ "<p><i>Kleopatra</i> ofereix funcions equivalents en una única eina i es\n"
+#~ "desenvolupa de manera més activa.</p>\n"
+
+#~ msgid "Choose **Decrypt/Verify Notepad**."
+#~ msgstr "Trieu **Desencriptar/Verificar el bloc de notes**."
+
+#~ msgid ""
+#~ "- Create new OpenPGP keys for yourself - Manage your OpenPGP private keys "
+#~ "and the public keys of others - Encrypt and sign text with a public key - "
+#~ "Encrypt text with a passphrase - Decrypt and verify text"
+#~ msgstr ""
+#~ "- Crear noves claus OpenPGP per vosaltres mateixos\n"
+#~ "- Gestionar les vostres claus privades d'OpenPGP i les claus públiques "
+#~ "dels altres\n"
+#~ "- Encriptar i signar text amb una clau pública\n"
+#~ "- Encriptar text amb una contrasenya\n"
+#~ "- Desencriptar i verificar text"

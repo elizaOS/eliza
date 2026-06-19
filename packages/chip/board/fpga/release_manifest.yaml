@@ -1,0 +1,48 @@
+schema: eliza.fpga_release_manifest.v1
+target: e1_demo_fpga
+status: blocked
+release_class: fpga_bitstream
+next_commands:
+  target_preflight: python3 scripts/check_fpga_target.py
+  release_gate: python3 scripts/check_fpga_release.py --release
+  product_release_gate: python3 scripts/product_check.py --release
+  local_tool_versions: yosys -V && nextpnr-ecp5 --version && ecppack --version && openFPGALoader --version
+  local_synth: TOP=e1_chip_top make -C board/fpga synth
+  local_place_route: TOP=e1_chip_top make -C board/fpga pnr
+  local_pack: TOP=e1_chip_top make -C board/fpga pack
+  local_report: TOP=e1_chip_top make -C board/fpga report
+  local_program_sram: openFPGALoader -b ulx3s build/fpga/e1_demo/e1_chip_top.bit
+  hash_bitstream: shasum -a 256 build/fpga/e1_demo/e1_chip_top.bit
+required_evidence:
+  exact_board_revision:
+    status: missing
+    source: board/fpga/e1_demo_fpga.yaml:board.exact_revision
+    required_action: Record the exact board revision and cite the board source used for pin mapping.
+  final_pin_constraints:
+    status: missing
+    source: board/fpga/e1_demo_fpga.yaml:constraints.final_lpf
+    required_action: Replace the skeleton LPF with a final LPF containing LOCATE COMP assignments for every required physical signal.
+  nextpnr_timing:
+    status: missing
+    source: board/fpga/e1_demo_fpga.yaml:release_evidence.timing_report
+    required_action: Archive nextpnr timing output from the final board revision and final LPF.
+  ecppack_bitstream:
+    status: missing
+    source: board/fpga/e1_demo_fpga.yaml:release_evidence.bitstream_path
+    required_action: Archive the ecppack bitstream and record its SHA-256 digest.
+  tool_versions:
+    status: missing
+    source: board/fpga/e1_demo_fpga.yaml:release_evidence.archived_tool_versions
+    required_action: Archive yosys, nextpnr-ecp5, and ecppack versions used for the released bitstream.
+  programming_transcript:
+    status: missing
+    source: board/fpga/e1_demo_fpga.yaml:release_evidence.programming_transcript
+    required_action: Archive the openFPGALoader SRAM programming transcript for the exact bitstream and board revision.
+known_local_tool_status:
+  yosys: optional_for_release_preflight
+  nextpnr-ecp5: required_for_real_timing
+  ecppack: required_for_real_bitstream
+notes:
+  - Do not mark this manifest release_ready without real board revision, final LOCATE pins, timing output, bitstream hash, and tool versions.
+  - The scaffold LPF contains preliminary ULX3S-style package pin assignments for local experiments, but it is not a final LPF.
+  - openFPGALoader programming is SRAM-only unless a separate flash/update policy is reviewed and recorded.

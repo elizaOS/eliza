@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "declaration": false,
+    "outDir": "./dist",
+    "rootDir": "../../../../",
+    "paths": {
+      "@elizaos/plugin-inmemorydb": [
+        "./../../../../plugins/plugin-inmemorydb/dist/browser/index.d.ts"
+      ],
+      "@elizaos/plugin-localdb": [
+        "./../../../../plugins/plugin-localdb/index.browser.ts"
+      ]
+    },
+    "types": ["chrome", "node"]
+  },
+  "include": ["src/**/*", "../shared/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

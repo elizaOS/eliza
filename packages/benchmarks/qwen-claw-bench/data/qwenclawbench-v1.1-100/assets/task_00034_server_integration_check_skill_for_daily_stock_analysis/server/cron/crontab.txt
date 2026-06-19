@@ -1,0 +1,27 @@
+# Server Crontab - managed entries
+# Last updated: 2026-01-20 by admin
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+MAILTO=admin@example.com
+
+# === Active Cron Jobs ===
+
+# Postgres backup - daily at 3 AM
+0 3 * * * /home/admin/server/scripts/pg_backup.sh >> /home/admin/server/logs/pg_backup.log 2>&1
+
+# SSL certificate renewal check - twice daily
+0 0,12 * * * certbot renew --quiet --deploy-hook "docker restart nginx-proxy"
+
+# Market sentiment scraper - every 4 hours on weekdays
+0 */4 * * 1-5 docker exec market-scraper python src/scrape.py >> /home/admin/server/logs/market_scraper.log 2>&1
+
+# Log rotation cleanup - weekly Sunday 2 AM
+0 2 * * 0 find /home/admin/server/logs -name "*.log" -mtime +30 -delete
+
+# System health check - every 15 minutes
+*/15 * * * * /home/admin/server/scripts/health_check.sh >> /home/admin/server/logs/health.log 2>&1
+
+# === Planned but NOT yet added ===
+# daily_stock_analysis - weekdays at 10 PM UTC (6 AM CST next day)
+# 0 22 * * 1-5 docker exec daily-stock-analysis python src/main.py >> /home/admin/server/logs/stock_analysis.log 2>&1

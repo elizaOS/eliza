@@ -1,0 +1,156 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-17 20:53+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Shutting down Tails\"]]\n"
+msgstr "[[!meta title=\"Завершение работы Tails\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid "There are several ways of shutting down Tails:"
+msgid "There are 2 ways of shutting down Tails."
+msgstr "Есть несколько способов завершить работу Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "When you shut down Tails, all the data stored in [[!wikipedia\n"
+#| "Random-access_memory desc=\"RAM\"]] is erased\n"
+#| "to protect you from [[cold boot\n"
+#| "attacks|doc/advanced_topics/cold_boot_attacks]].\n"
+msgid ""
+"With both techniques, all the data stored in [[!wikipedia Random-access_memory\n"
+"desc=\"RAM\"]] is securely erased to protect you from [[cold boot\n"
+"attacks|doc/advanced_topics/cold_boot_attacks]].\n"
+msgstr "Когда вы завершаете работу Tails, все данные из [[!wikipedia_ru Запоминающее_устройство_с_произвольным_доступом desc=\"оперативной памяти\"]] стираются. Это помогает от [[атак с холодной загрузкой|doc/advanced_topics/cold_boot_attacks]].\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Shutdown from the system menu"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "By clicking on the system menu located in the upper right corner of the "
+#| "screen and choosing either:"
+msgid "Click on the system menu in the upper right corner of the screen."
+msgstr ""
+"Вы можете нажать на системное меню в правом верхнем углу экрана и выбрать:"
+
+#. type: Bullet: '* '
+#, fuzzy
+#| msgid ""
+#| "[[!img lib/system-shutdown.png link=\"no\" class=\"symbolic\" "
+#| "alt=\"Shutdown icon\"]] to shutdown the computer or"
+msgid ""
+"Choose [[!img lib/system-shutdown.png link=\"no\" class=\"symbolic\" "
+"alt=\"Power Off\"]] to shutdown the computer."
+msgstr ""
+"[[!img lib/system-shutdown.png link=\"no\" class=\"symbolic\" "
+"alt=\"Завершение работы Tails\"]] для выключения компьютера; или"
+
+#. type: Bullet: '* '
+#, fuzzy
+#| msgid ""
+#| "[[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" alt=\"Restart "
+#| "icon\"]] to restart the computer."
+msgid ""
+"Choose [[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" "
+"alt=\"Restart\"]] to restart the computer on Tails or on your regular "
+"operating system."
+msgstr ""
+"[[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" "
+"alt=\"Перезагрузка\"]] для перезагрузки компьютера."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  [[!img desktop/system-with-wifi-only.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+msgid "[[!img desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img desktop/system-with-wifi-only.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Emergency shutdown"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To trigger an emergency shutdown, unplug the USB stick or eject the DVD from "
+"which Tails is running. Doing so might be faster than shutting down from the "
+"system menu."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  <div class=\"caution\">\n"
+msgid "<div class=\"caution\">\n"
+msgstr "  <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You risk breaking your Persistent Storage and losing data when you unplug\n"
+"your USB stick while Tails is running.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you use a Persistent Storage, only unplug your Tails USB stick in an\n"
+"emergency.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  </div>\n"
+msgid "</div>\n"
+msgstr "  </div>\n"
+
+#~ msgid ""
+#~ "- By physically removing the USB stick or DVD that Tails is running from."
+#~ msgstr ""
+#~ "- Можно физически вынуть USB-флешку или DVD, с которого запущен Tails."
+
+#, no-wrap
+#~ msgid ""
+#~ "  <p>Only physically remove the USB stick in case of emergency as doing\n"
+#~ "  so can sometimes break the file system of the Persistent Storage.</p>\n"
+#~ msgstr "  <p>Физически выдёргивать флешку рекомендуется только в экстренной ситуации. Это действие может повредить файловую систему Постоянного хранилища.</p>\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  <p>If you cannot unlock the Persistent Storage anymore after\n"
+#~| "  physically removing the USB stick, try to do a [[file system check on\n"
+#~| "  the Persistent Storage|advanced_topics/persistence/check_file_system]]\n"
+#~| "  to fix it.</p>\n"
+#~ msgid ""
+#~ "  <p>If you cannot unlock the Persistent Storage anymore after\n"
+#~ "  physically removing the USB stick, try to do a [[file system check on\n"
+#~ "  the Persistent Storage|persistent_storage/check]]\n"
+#~ "  to fix it.</p>\n"
+#~ msgstr "  <p>Если после физического удаления флешки вы не можете разблокировать Постоянное хранилище, попробуйте сделать для Постоянного хранилища [[проверку файловой системы|advanced_topics/persistence/check_file_system]]. Это может исправить ошибку.</p>\n"

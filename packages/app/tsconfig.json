@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/plugin-elizamaker": [
+        "../../plugins/plugin-elizamaker/src/index.ts"
+      ],
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/plugin-companion": [
+        "../../plugins/plugin-companion/src/index.ts"
+      ],
+      "@elizaos/plugin-personal-assistant": [
+        "../../plugins/plugin-personal-assistant/src/index.ts"
+      ],
+      "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
+      "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
+      "@elizaos/plugin-vector-browser/register": [
+        "../../plugins/plugin-vector-browser/src/register.ts"
+      ],
+      "@elizaos/plugin-shopify-ui": [
+        "../../plugins/plugin-shopify-ui/src/index.ts"
+      ],
+      "@elizaos/plugin-steward-app": [
+        "../../plugins/plugin-steward-app/src/index.ts"
+      ],
+      "@elizaos/plugin-training": [
+        "../../plugins/plugin-training/src/index.ts"
+      ],
+      "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
+      "@elizaos/plugin-wallet-ui": [
+        "../../plugins/plugin-wallet-ui/src/index.ts"
+      ],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/runtime": [
+        "../../plugins/plugin-local-inference/src/runtime/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/routes": [
+        "../../plugins/plugin-local-inference/src/routes/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/services": [
+        "../../plugins/plugin-local-inference/src/services/index.ts"
+      ],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-computeruse": [
+        "../../plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-coding-tools": [
+        "../../plugins/plugin-coding-tools/src/index.ts"
+      ],
+      "@elizaos/plugin-whatsapp": [
+        "../../plugins/plugin-whatsapp/src/index.ts"
+      ],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/src/index.ts"
+      ],
+      "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/capacitor-agent": [
+        "../../plugins/plugin-native-agent/src/index.ts"
+      ],
+      "@elizaos/capacitor-desktop": [
+        "../../plugins/plugin-native-desktop/src/index.ts"
+      ],
+      "@elizaos/capacitor-llama": [
+        "../../plugins/plugin-native-llama/src/index.ts"
+      ],
+      "@elizaos/native-activity-tracker": [
+        "../native-plugins/activity-tracker/src/index.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "../native-plugins/appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../native-plugins/bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-calendar": [
+        "../native-plugins/calendar/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../native-plugins/mobile-signals/src/index.ts"
+      ],
+      "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
+      "react": ["../../node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
+      "react/jsx-dev-runtime": [
+        "../../node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
+      "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
+      "@elizaos/plugin-clawville": [
+        "../../plugins/plugin-clawville/src/index.ts"
+      ]
+    }
+  }
+}

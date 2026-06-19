@@ -1,0 +1,47 @@
+[[!meta date="Mon, 23 Mar 2015 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.3.1 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.3.1, is out.
+
+This is an emergency release, triggered by an unscheduled
+Firefox release meant to fix critical security issues.
+
+It fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.3]] and all users must
+[[upgrade|doc/upgrade]] as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+  - Tails has [[transitioned to a **new OpenPGP signing
+    key**|news/signing_key_transition]].
+
+  - **Tor Launcher** 0.2.7.2 improves usability of Internet
+    connections that are censored, filtered, or proxied.
+
+There are numerous other changes that may not be apparent in the daily
+operation of a typical user. Technical details of all the changes
+are listed in the Changelog.
+
+# Known issues
+
+See the current list of [[known issues|support/known_issues]].
+
+# Download or upgrade
+
+Go to the [[install]] page.
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+March 31.
+
+
+Do you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

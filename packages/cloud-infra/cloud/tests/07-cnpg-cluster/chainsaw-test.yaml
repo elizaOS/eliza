@@ -1,0 +1,74 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cnpg-cluster
+spec:
+  description: Verify CNPG PostgreSQL cluster, pooler, and extensions are operational
+  steps:
+    - name: Assert CNPG operator running
+      try:
+        - script:
+            timeout: 15s
+            content: |
+              READY=$(kubectl get pods -n cnpg-system --no-headers 2>/dev/null | grep -c "Running" || true)
+              [ "$READY" -ge 1 ] || { echo "FAIL: CNPG operator not running (pods=$READY)"; exit 1; }
+
+    - name: Assert Cluster ready
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              STATUS=$(kubectl get cluster pg-local-cluster -n eliza-agents -o jsonpath='{.status.phase}' 2>/dev/null)
+              echo "Cluster phase: $STATUS"
+              [ "$STATUS" = "Cluster in healthy state" ] || [ "$STATUS" = "Healthy" ] || { echo "FAIL: cluster phase=$STATUS"; exit 1; }
+
+    - name: Assert Pooler ready
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              READY=$(kubectl get pods -n eliza-agents -l cnpg.io/poolerName=pg-local-cluster-pooler-rw --no-headers 2>/dev/null | grep -c "Running" || true)
+              [ "$READY" -ge 1 ] || { echo "FAIL: Pooler not running (pods=$READY)"; exit 1; }
+
+    - name: Assert app secret exists
+      try:
+        - script:
+            timeout: 10s
+            content: |
+              kubectl get secret pg-local-cluster-app -n eliza-agents > /dev/null 2>&1 || { echo "FAIL: secret pg-local-cluster-app missing"; exit 1; }
+              URI=$(kubectl get secret pg-local-cluster-app -n eliza-agents -o jsonpath='{.data.uri}' | base64 -d)
+              echo "$URI" | grep -q "postgresql://" || { echo "FAIL: uri=$URI"; exit 1; }
+
+    - name: Assert PostgreSQL connectivity via pooler
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              URI=$(kubectl get secret pg-local-cluster-app -n eliza-agents -o jsonpath='{.data.uri}' | base64 -d)
+              RESULT=$(kubectl run cs-pg-connect-$RANDOM --rm -i --restart=Never -n eliza-agents \
+                --image=postgres:18-alpine --quiet -- \
+                psql "$URI" -t -c "SELECT 'cnpg-ok'" 2>/dev/null)
+              echo "$RESULT" | grep -q "cnpg-ok" || { echo "FAIL: connectivity test failed, got: $RESULT"; exit 1; }
+
+    - name: Assert extensions installed
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              URI=$(kubectl get secret pg-local-cluster-app -n eliza-agents -o jsonpath='{.data.uri}' | base64 -d)
+              EXTS=$(kubectl run cs-pg-exts-$RANDOM --rm -i --restart=Never -n eliza-agents \
+                --image=postgres:18-alpine --quiet -- \
+                psql "$URI" -t -c "SELECT extname FROM pg_extension ORDER BY extname" 2>/dev/null)
+              echo "$EXTS" | grep -q "vector" || { echo "FAIL: vector extension missing"; exit 1; }
+              echo "$EXTS" | grep -q "uuid-ossp" || { echo "FAIL: uuid-ossp extension missing"; exit 1; }
+
+    - name: Assert database name and owner
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              URI=$(kubectl get secret pg-local-cluster-app -n eliza-agents -o jsonpath='{.data.uri}' | base64 -d)
+              DB_INFO=$(kubectl run cs-pg-db-$RANDOM --rm -i --restart=Never -n eliza-agents \
+                --image=postgres:18-alpine --quiet -- \
+                psql "$URI" -t -c "SELECT current_database() || '/' || current_user" 2>/dev/null)
+              echo "$DB_INFO" | grep -q "app/app" || { echo "FAIL: expected app/app, got: $DB_INFO"; exit 1; }

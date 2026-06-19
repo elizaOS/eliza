@@ -1,0 +1,20 @@
+allowed_waveform_roots:
+- build/reports/waveforms/
+- build/ai_eda/waveform_debug/
+blocked_reason: No simulation waveform has been captured into an allowed root yet.
+  Run a cocotb or formal task that dumps a VCD/FST under build/reports/waveforms/
+  and register it here (path, format, sha256, source_test, rtl_sources[]) before any
+  waveform-debug read is permitted.
+claim_boundary: waveform_provenance_only_no_ai_root_cause_or_fix_claim
+description: Provenance ledger linking every recorded simulation waveform (VCD/FST)
+  to the test that produced it and to the SHA-256 of the RTL sources under test. No
+  waveform may be read by an automated debug agent (see docs/spec-db/e1-waveform-debug-policy.yaml)
+  unless it appears here with a matching RTL-source hash. This ledger is blocked-empty
+  until a cocotb/formal run dumps a waveform into one of the allowed roots; the gate
+  fails closed when the structure drifts or a recorded RTL-source hash no longer matches
+  the file.
+generated_utc: '2026-05-21T12:28:54Z'
+schema: eliza.waveform_provenance.v1
+status: blocked
+unblock_command: python3 scripts/check_waveform_debug_policy.py --provenance
+waveforms: []

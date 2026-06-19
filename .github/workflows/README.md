@@ -1,0 +1,246 @@
+# CI/CD Workflows
+
+This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0).
+
+## Workflow Overview
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yaml` | Push/PR to main | Main CI - tests, lint, build, zero-key deterministic E2E |
+| `test.yml` | Push/PR to main/develop, manual, schedule | Broader tests plus required zero-key deterministic E2E; live jobs are separate |
+| `scenario-pr.yml` | PR to main/develop, manual | Secret-free deterministic scenario/browser E2E gate |
+| `scenario-matrix.yml` | Develop/manual opt-in | Real-service scenario matrix; not a PR gate |
+| `pr.yaml` | PR opened/edited | PR title validation |
+| `release.yaml` | Push to main, Release | NPM beta/production package releases |
+| `claude.yml` | @claude mentions | Interactive Claude assistance |
+| `claude-code-review.yml` | PR opened | Automated code review |
+| `claude-security-review.yml` | PR opened | Security-focused review |
+| `codeql.yml` | Push/PR to main, Weekly | Static security analysis |
+| `docs-ci.yml` | PR (docs paths), Manual | Documentation quality checks |
+| `build-agent-image.yml` | Push develop/main, Release, Manual | Docker image builds (`:develop`, `:stable`, `:latest`, release tags) |
+| `tee-build-deploy.yml` | Push to main, Manual | TEE deployment to Phala Cloud |
+| `weekly-maintenance.yml` | Weekly, Manual | Dependency/security audits |
+| `jsdoc-automation.yml` | Manual | JSDoc generation |
+
+## Release Workflows
+
+### Alpha Tags
+
+Alpha version tags are tags only. They do not publish NPM packages, run packaging
+CI, or create GitHub Release entries.
+
+### NPM Beta/Production Packages (`release.yaml`)
+
+Publishes TypeScript/JavaScript packages to NPM.
+
+**Triggers:**
+
+- Push to `main` → Beta release (`@beta` tag)
+- GitHub Release created → Production release (`@latest` tag)
+
+**Packages:** All `@elizaos/*` packages in the monorepo
+
+## Test Workflows
+
+### Linux Runner Policy
+
+Linux CI jobs run on GitHub-hosted Ubuntu (`ubuntu-24.04` / `ubuntu-latest`).
+
+A prior change (#8501) moved trusted-event Linux jobs to a self-hosted
+`self-hosted, Linux, X64, hetzner-robot` pool, but that fleet went offline
+(20 of 22 runners down), leaving every migrated job queued indefinitely and
+gridlocking develop CI. The placement was reverted to GitHub-hosted so CI
+stays unblocked regardless of fleet health.
+
+Re-introduce the self-hosted pool only once it is reliably online: restore the
+conditional `runs-on` (GitHub-hosted for fork PRs, self-hosted otherwise) at
+that point, and keep the runner-agnostic step hardening (no `sudo`-only
+install/cleanup) so jobs run on either runner type.
+
+GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
+separate purpose-built fleet and are unaffected by this policy.
+
+### PR Path Gates
+
+PR workflows use `packages/scripts/ci-path-gate.mjs` to keep expensive lanes
+targeted. Each classifier job writes a GitHub step summary showing:
+
+- which files changed
+- which lanes will run
+- which path or label caused each lane to run
+
+Maintainers can force specific lanes with labels:
+
+| Label | Effect |
+|-------|--------|
+| `ci:full` | Run every path-gated lane in workflows that honor the shared gate |
+| `ci:e2e` / `ci:zero-key` | Run deterministic zero-key E2E lanes |
+| `ci:scenario` | Run `scenario-pr.yml` deterministic scenario/browser E2E |
+| `ci:server` | Run server tests |
+| `ci:client` | Run client tests |
+| `ci:plugins` | Run plugin tests |
+| `ci:cloud` | Run cloud live E2E where secrets are configured |
+| `ci:docker` | Run Docker CI smoke |
+| `ci:mobile` / `ci:ios` / `ci:android` | Run mobile smoke, or one mobile platform |
+| `ci:desktop` / `ci:windows` | Run desktop and Windows smoke lanes |
+| `ci:dev-smoke` | Run the `bun run dev` onboarding smoke |
+
+Push, scheduled, and manual runs keep their broader/default behavior; the path
+gate mainly keeps PR feedback fast and explainable.
+
+Why this exists:
+
+- OSS contributors should get useful feedback quickly without waiting on
+  unrelated mobile, Docker, desktop, Windows, or browser-heavy lanes.
+- Maintainers should be able to see why a lane ran or skipped from the job
+  summary, without reverse-engineering shell conditionals.
+- The quality gate should stay equivalent for affected code. Path gates decide
+  which surface is relevant; they do not replace the tests for that surface.
+- Push, scheduled, and manual runs remain broad because they protect branch
+  health, release readiness, and nightly confidence rather than one PR diff.
+
+Quality contract:
+
+- Any path-gated lane must be forced by `ci:full`.
+- Every expensive lane needs a matching force label so maintainers can request
+  coverage without pushing a no-op commit.
+- Workflow, shared setup, toolchain, lockfile, and classifier changes should run
+  the affected expensive lanes because they can change CI behavior even when
+  product code did not move.
+- The `Tests` workflow runs the classifier self-test before consuming classifier
+  outputs. That self-test covers representative path matches and label forcing
+  so a future edit cannot silently weaken the broadest PR test gate.
+- When splitting a long lane, keep the same substantive commands unless the PR
+  explicitly documents the safety reason for removing one.
+
+Long deterministic E2E gates are split into named parallel slices for unit/UI
+coverage, browser coverage, diagnostics, and scenario execution. The visible
+`Zero-Key Deterministic E2E` check is an aggregate status over those slices, so
+reviewers can see the failing surface without opening one giant serial log.
+
+Why the aggregate stays:
+
+- Branch protection and reviewer muscle memory can keep using one stable check.
+- The underlying slices can run in parallel and fail with precise names.
+- Manual review becomes easier because a browser failure, diagnostics failure,
+  or scenario-runner failure points at the relevant log immediately.
+
+Related CI docs:
+
+- `CHANGELOG.md` records workflow policy changes and the reason they happened.
+- `ROADMAP.md` tracks future CI performance work that should preserve gate
+  quality.
+
+### Main CI (`ci.yaml`)
+
+Runs on PRs and pushes to main:
+
+- TypeScript tests with coverage
+- Linting and formatting checks
+- Build verification
+- Interop TypeScript tests (`packages/interop`)
+- Zero-key deterministic E2E. This lane clears provider keys, sets `TEST_LANE=pr`,
+  `ELIZA_LIVE_TEST=0`, and `SCENARIO_USE_LLM_PROXY=1`, then runs the deterministic
+  scenario/browser coverage plus the scenario catalog coverage gate.
+
+### Live E2E
+
+PR E2E does not require `CEREBRAS_API_KEY`, `OPENAI_API_KEY`, or any other paid
+provider key. Live/provider-key coverage belongs to the dedicated live jobs and
+workflows (`cloud-live-e2e`, `provider-live-e2e`, `live-scenarios.yml`,
+`scenario-matrix.yml`) where missing-key behavior is documented per lane.
+
+## Code Review Workflows
+
+### Claude Code Review (`claude-code-review.yml`)
+
+Automated PR review using Claude. Checks for:
+
+- Security issues (hardcoded keys, SQL injection, XSS)
+- Test coverage
+- TypeScript types (no `any`)
+- Correct tooling (bun, vitest)
+
+### Claude Security Review (`claude-security-review.yml`)
+
+Dedicated security-focused review for code changes.
+
+### Claude Interactive (`claude.yml`)
+
+Responds to `@claude` mentions in issues and PRs.
+
+## Documentation Workflows
+
+### Docs CI (`docs-ci.yml`)
+
+Documentation quality workflow:
+
+- **Dead Link Checking:** Scans for broken internal/external links
+- **Quality Checks:** Double headers, missing frontmatter, heading hierarchy
+
+Automatically creates PRs with fixes when issues are found.
+
+### JSDoc Automation (`jsdoc-automation.yml`)
+
+Manual workflow for generating JSDoc documentation.
+
+## Manual Release Process
+
+### 1. Create a GitHub Release
+
+1. Go to Releases → Create new release
+2. Create a new tag: `v2.0.0` (follows semver)
+3. Add release notes
+4. Publish release
+
+### 2. Automated Publishing
+
+The release will trigger:
+
+- `release.yaml` → NPM packages
+
+### 3. Manual publishing
+
+Use `bunx lerna publish` from the repo root when automation is not sufficient (see `release.yaml`).
+
+## Setting Up Secrets
+
+### Required Secrets
+
+| Secret | Purpose | How to Get |
+|--------|---------|------------|
+| `NPM_TOKEN` | NPM publishing | [npmjs.com/settings/~/tokens](https://www.npmjs.com/settings/~/tokens) |
+| `ANTHROPIC_API_KEY` | Claude workflows | [console.anthropic.com](https://console.anthropic.com) |
+| `OPENAI_API_KEY` | Opt-in live/provider-key lanes | [platform.openai.com](https://platform.openai.com) |
+
+### Optional Secrets
+
+| Secret | Purpose |
+|--------|---------|
+| `TURBO_TOKEN` | Turborepo remote caching |
+| `PHALA_CLOUD_API_KEY` | TEE deployment |
+| `GH_PAT` | Cross-repo operations |
+
+## Package dependencies
+
+NPM packages are ordered by the monorepo graph; `release.yaml` / Lerna handle publish ordering for `@elizaos/*` packages.
+
+## Troubleshooting
+
+### CI Failures
+
+1. Check if tests pass locally: `bun run test`
+2. Check formatting: `bun run format:check`
+3. Check linting: `bun run lint`
+
+### Release Failures
+
+1. Verify secrets are configured
+2. Check workflow logs for specific errors
+3. For NPM: ensure package versions are unique
+
+### Claude Workflow Issues
+
+1. Verify `ANTHROPIC_API_KEY` is set
+2. Check rate limits on Anthropic API
+3. Review Claude's output in workflow logs

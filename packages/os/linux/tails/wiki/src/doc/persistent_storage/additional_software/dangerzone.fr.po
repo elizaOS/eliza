@@ -1,0 +1,566 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-23 23:59+0000\n"
+"PO-Revision-Date: 2026-04-25 09:18+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Converting dangerous documents to safe PDFs using Dangerzone\"]]\n"
+msgstr "[[!meta title=\"Convertir des documents dangereux en PDF sécurisés en utilisant Dangerzone\"]]\n"
+
+#. type: Plain text
+msgid ""
+"When you receive untrusted documents, for example, email attachments, "
+"*[Dangerzone](https://dangerzone.rocks/)* allows you to convert them into "
+"safe PDFs before opening."
+msgstr ""
+"Lorsque vous recevez des documents non fiables, par exemple des pièces "
+"jointes par courrier électronique, *[Dangerzone](https://dangerzone.rocks/)* "
+"vous permet de les convertir en PDF sécurisés avant de les ouvrir."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Dangerzone* is particularly useful for journalists who might receive dangerous\n"
+"documents from anonymous sources or download them from the Internet.\n"
+msgstr ""
+"*Dangerzone* est particulièrement utile pour les journalistes susceptibles de recevoir des documents\n"
+"dangereux de sources anonymes ou de les télécharger sur Internet.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p><i>Dangerzone</i> is created by <a href=\"https://freedom.press/\">Freedom of\n"
+"the Press Foundation</a>, a nonprofit that protects public-interest\n"
+"journalism. Edward Snowden and Laura Poitras are on its Board of Directors.</p>\n"
+msgstr ""
+"<p><i>Dangerzone</i> est créé par la <a href=\"https://freedom.press/\">Freedom of\n"
+"the Press Foundation</a>, une organisation à but non lucratif qui protège le journalisme\n"
+"d'intérêt public. Edward Snowden et Laura Poitras font partie de son conseil d'administration.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"You can install *Dangerzone* in Tails using the [[Additional Software|"
+"additional_software]] feature."
+msgstr ""
+"Vous pouvez installer *Dangerzone* dans Tails en utilisant la fonctionnalité "
+"[[Logiciels supplémentaires|additional_software]]."
+
+#. type: Plain text
+msgid ""
+"We are not including *Dangerzone* in Tails only because it would be too big "
+"(over 1 GB), but we highly recommend it."
+msgstr ""
+"Nous n'incluons pas *Dangerzone* dans Tails uniquement parce qu'il serait "
+"trop volumineux (plus de 1 Go), mais nous le recommandons vivement."
+
+#. type: Plain text
+msgid ""
+"Learn more about [how *Dangerzone* works](https://dangerzone.rocks/about/)."
+msgstr ""
+"En apprendre plus sur [comment fonctionne *Dangerzone*](https://"
+"dangerzone.rocks/about/) (en anglais)."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Supported formats"
+msgstr "Formats supportés"
+
+#. type: Plain text
+#, no-wrap
+msgid "*Dangerzone* works on many file formats, including:\n"
+msgstr "*Dangerzone* fonctionne avec de nombreux formats de fichiers, dont :\n"
+
+#. type: Bullet: '- '
+msgid "PDFs"
+msgstr "Les PDF"
+
+#. type: Bullet: '- '
+msgid "*Microsoft Office* documents, such as .docx, .xlsx, and .pptx"
+msgstr ""
+"Les documents *Microsoft Office*, par exemple les .docx, .xlsx, et les .pptx"
+
+#. type: Bullet: '- '
+msgid "*LibreOffice* documents, such as .odt and .ods"
+msgstr "Les documents *LibreOffice*, par exemple les .odt et les .ods"
+
+#. type: Bullet: '- '
+msgid "Images, such as .jpg, .gif, .svg, .tiff, and .png"
+msgstr "Les images, par exemple les .jpg, .gif, .svg, .tiff, et les .png"
+
+#. type: Bullet: '- '
+msgid "EPUB ebooks"
+msgstr "Les livres électroniques EPUB"
+
+#. type: Title =
+#, no-wrap
+msgid "Differences between *Dangerzone* and *Metadata Cleaner*"
+msgstr "Différences entre *Dangerzone* et *Nettoyeur de métadonnées*"
+
+#. type: Plain text
+msgid ""
+"Tails also includes [[*Metadata Cleaner*|doc/sensitive_documents/metadata]] "
+"to clean files, but the use cases for *Dangerzone* and *Metadata Cleaner* "
+"are very different."
+msgstr ""
+"Tails inclut également [[*Nettoyeur de métadonnées*|doc/sensitive_documents/"
+"metadata]] pour nettoyer des fichiers, mais les cas d'utilisation de "
+"*Dangerzone* et de *Nettoyeur de métadonnées* sont très différents."
+
+#. type: Plain text
+msgid "We recommend that you use:"
+msgstr "Nous vous recommandons d'utiliser :"
+
+#. type: Bullet: '- '
+msgid ""
+"*Metadata Cleaner* to [[remove metadata from your files|doc/"
+"sensitive_documents/metadata]] before you publish or share them."
+msgstr ""
+"*Nettoyeur de métadonnées* pour [[enlever les métadonnées de vos fichiers|"
+"doc/sensitive_documents/metadata]] avant de les publier ou de de les "
+"partager."
+
+#. type: Bullet: '- '
+msgid "*Dangerzone* to sanitize untrusted documents shared with you by others."
+msgstr ""
+"*Dangerzone* pour assainir des documents non fiables partagés avec vous par "
+"d'autres personnes."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><th></th><th class=\"w30\">*Dangerzone*</th><th class=\"w30\">*Metadata Cleaner*</th></tr>\n"
+"<tr><td>Safe to use on</td><td>Other people's files</td><td>Your files only</td></tr>\n"
+"<tr><td>Clean audio and video files</td><td class=\"cross\">No</td><td class=\"check\">Yes</td></tr>\n"
+"<tr><td>Remove malware and trackers</td><td class=\"check\">Yes</td><td class=\"cross\">No</td></tr>\n"
+"<tr><td>Remove visual metadata and fingerprints¹</td><td class=\"cross\">No</td><td class=\"cross\">No</td></tr>\n"
+"<tr><td>Allow selecting text in generated PDFs</td><td class=\"check\">Yes</td><td class=\"cross\">No</td></tr>\n"
+"<tr><td>Speed</td><td class=\"cross\">Slower</td><td class=\"check\">Faster</td></tr>\n"
+"<tr><td>Included in Tails by default</td><td class=\"cross\">No</td><td class=\"check\">Yes</td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><th></th><th class=\"w30\">*Dangerzone*</th><th class=\"w30\">*Nettoyeur de métadonnées*</th></tr>\n"
+"<tr><td>Utilisation sûre avec</td><td>Les fichiers d'autres personnes</td><td>Vos fichiers uniquement</td></tr>\n"
+"<tr><td>Nettoie les fichiers audio et vidéo</td><td class=\"cross\">Non</td><td class=\"check\">Oui</td></tr>\n"
+"<tr><td>Enlève les logiciels malveillants et les pisteurs</td><td class=\"check\">Oui</td><td class=\"cross\">Non</td></tr>\n"
+"<tr><td>Enlève les métadonnées visuelles et les empreintes¹</td><td class=\"cross\">Non</td><td class=\"cross\">Non</td></tr>\n"
+"<tr><td>Permet de sélectionner du texte dans les PDF générés</td><td class=\"check\">Oui</td><td class=\"cross\">Non</td></tr>\n"
+"<tr><td>Vitesse</td><td class=\"cross\">Plus lent</td><td class=\"check\">Plus rapide</td></tr>\n"
+"<tr><td>Inclut dans Tails par défaut</td><td class=\"cross\">Non</td><td class=\"check\">Oui</td></tr>\n"
+"</table>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"1. For example [[!wikipedia Machine Identification Code desc=\"printer tracking\n"
+"dots\"]], printing imperfections, or intentional misspellings\n"
+msgstr ""
+"1. Par exemple des [[!wikipedia_fr Code d'identification de machine desc=\"points de suivi\n"
+"d'imprimante\"]], des imperfections d'impression ou des erreurs d'orthographe intentionnelles\n"
+
+#. type: Title =
+#, no-wrap
+msgid "System requirements"
+msgstr "Configuration requise"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Dangerzone* requires a lot of memory in the computer and space in your\n"
+"Persistent Storage because it relies on [[!wikipedia Containerization\n"
+"(computing) desc=\"software containers\"]] to manipulate dangerous files\n"
+"securely.\n"
+msgstr ""
+"*Dangerzone* nécessite beaucoup de mémoire dans l'ordinateur et beaucoup d'espace sur votre\n"
+"stockage persistant car il repose sur des [[!wikipedia Containerization\n"
+"(computing) desc=\"conteneurs logiciels\"]] pour manipuler des fichiers dangereux\n"
+"de façon sécurisée.\n"
+
+#. type: Plain text
+msgid "To install *Dangerzone*, you need at least:"
+msgstr "Pour installer *Dangerzone*, vous avez besoin d'au moins :"
+
+#. type: Bullet: '- '
+msgid "8 GB of RAM"
+msgstr "8 Go de mémoire vive"
+
+#. type: Bullet: '- '
+msgid "12 GB available in the Persistent Storage"
+msgstr "12 Go disponibles dans le stockage persistant"
+
+#. type: Title =
+#, no-wrap
+msgid "Installing *Dangerzone*"
+msgstr "Installation de *Dangerzone*"
+
+#. type: Plain text
+msgid "To install *Dangerzone* as additional software in Tails, you have to:"
+msgstr ""
+"Pour installer *Dangerzone* comme logiciel supplémentaire dans Tails, vous "
+"devez :"
+
+#. type: Bullet: '1. '
+msgid "[[Configure the *Dangerzone* APT repository|dangerzone#configure]]"
+msgstr "[[Configurer le dépôt APT de *Dangerzone*|dangerzone#configure]]"
+
+#. type: Bullet: '1. '
+msgid "[[Install the *Dangerzone* package|dangerzone#install]]"
+msgstr "[[Installer le paquet *Dangerzone*|dangerzone#install]]"
+
+#. type: Bullet: '1. '
+msgid "[[Convert a test document|dangerzone#test]]"
+msgstr "[[Convertir un document de test|dangerzone#test]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"configure\">Configure the <i>Dangerzone</i> APT repository</h2>\n"
+msgstr "<h2 id=\"configure\">Configurer le dépôt APT de <i>Dangerzone</i></h2>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"Lors du démarrage de Tails, [[définissez un mot de passe d'administration|"
+"doc/first_steps/welcome_screen/administration_password]]."
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage** to open the "
+"Persistent Storage settings."
+msgstr ""
+"Choisissez **Applications&nbsp;▸ Tails&nbsp;▸ Stockage persistant** pour "
+"ouvrir les paramètres du stockage persistant."
+
+#. type: Bullet: '   1. '
+msgid "Create a Persistent Storage if you don't have one already."
+msgstr "Créez un stockage persistant si vous n'en avez pas déjà un."
+
+#. type: Bullet: '   1. '
+msgid "Make sure that the **Additional Software** feature is turned on."
+msgstr ""
+"Assurez-vous que la fonctionnalité **Logiciels supplémentaires** est activée."
+
+#. type: Bullet: '   1. '
+msgid "Close the Persistent Storage settings."
+msgstr "Fermez les paramètres du stockage persistant."
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**."
+msgstr "Choisissez **Applications&nbsp;▸ Outils système&nbsp;▸ Console**."
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following command to open the configuration of your Persistent "
+"Storage in the *Text Editor* with administration rights."
+msgstr ""
+"Exécutez la commande suivante pour ouvrir la configuration de votre stockage "
+"persistant dans l'*Éditeur de texte* avec les droits d'administration."
+
+#. type: Plain text
+#, no-wrap
+msgid "       gnome-text-editor admin:/live/persistence/TailsData_unlocked/persistence.conf\n"
+msgstr "       gnome-text-editor admin:/live/persistence/TailsData_unlocked/persistence.conf\n"
+
+#. type: Bullet: '   1. '
+msgid ""
+"Add the following line to store the configuration of third-party APT "
+"repositories in your Persistent Storage."
+msgstr ""
+"Ajoutez la ligne suivante pour enregistrer la configuration de dépôts APT "
+"tiers dans votre stockage persistant."
+
+#. type: Plain text
+#, no-wrap
+msgid "          /etc/apt/sources.list.d\tsource=apt/sources,link\n"
+msgstr "          /etc/apt/sources.list.d\tsource=apt/sources,link\n"
+
+#. type: Bullet: '   1. '
+msgid ""
+"Add the following line to store *Podman* containers in your Persistent "
+"Storage. [*Podman*](https://podman.io/) is the containerization technology "
+"used by *Dangerzone*."
+msgstr ""
+"Ajoutez la ligne suivante pour enregistrer les conteneurs *Podman* dans "
+"votre stockage persistant. [*Podman*](https://podman.io/) est la technologie "
+"de conteneurisation utilisée par *Dangerzone*."
+
+#. type: Plain text
+#, no-wrap
+msgid "          /home/amnesia/.local/share/containers\tsource=podman\n"
+msgstr "          /home/amnesia/.local/share/containers\tsource=podman\n"
+
+#. type: Bullet: '   1. '
+msgid "Save your changes and close the *Text Editor*."
+msgstr "Sauvegardez vos changements et fermez l'*Éditeur de texte*."
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following commands to configure the *Dangerzone* repository as "
+"additional APT repository."
+msgstr ""
+"Exécutez les commandes suivantes pour configurer le dépôt de *Dangerzone* "
+"comme un dépôt APT supplémentaire."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo mkdir /live/persistence/TailsData_unlocked/apt/sources</p>\n"
+msgstr "   <p class=\"command\">sudo mkdir /live/persistence/TailsData_unlocked/apt/sources</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo ln -s /usr/share/tails/apt/dangerzone.sources /live/persistence/TailsData_unlocked/apt/sources/</p>\n"
+msgstr "   <p class=\"command\">sudo ln -s /usr/share/tails/apt/dangerzone.sources /live/persistence/TailsData_unlocked/apt/sources/</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr "   <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>We include this sources file in Tails for convenience, but installing\n"
+"   <i>Dangerzone</i> relies on the APT repository hosted by <a\n"
+"   href=\"https://freedom.press/\">Freedom of the Press Foundation</a>.\n"
+"   As a consequence:</p>\n"
+msgstr ""
+"   <p>Par commodité nous incluons dans Tails le fichier des sources, mais l'installation de\n"
+"   <i>Dangerzone</i> dépend d'un dépôt APT hébergé par la<a\n"
+"   href=\"https://freedom.press/\">Freedom of the Press Foundation</a>.\n"
+"   Par conséquent :</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <ul>\n"
+"   <li>You need to trust the packages from this repository not to break the\n"
+"   security of your Tails.</li>\n"
+"   <li><i>Dangerzone</i> might stop working in Tails outside of the control of\n"
+"   the Tails team.</li>\n"
+"   </ul>\n"
+msgstr ""
+"   <ul>\n"
+"   <li>Vous devez faire confiance aux paquets de ce dépôt pour ne pas casser la\n"
+"   sécurité de votre Tails.</li>\n"
+"   <li><i>Dangerzone</i> pourrait arrêter de fonctionner dans Tails en dehors du contrôle de\n"
+"   l'équipe de Tails.</li>\n"
+"   </ul>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+msgid "Restart Tails."
+msgstr "Redémarrez Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"install\">Install the <i>Dangerzone</i> package</h2>\n"
+msgstr "<h2 id=\"install\">Installer le paquet <i>Dangerzone</i></h2>\n"
+
+#. type: Bullet: '1. '
+msgid "[[Connect to the Tor network.|doc/anonymous_internet/tor]]"
+msgstr "[[Connectez-vous au réseau Tor.|doc/anonymous_internet/tor]]"
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following commands to install the `dangerzone` package and its "
+"dependencies."
+msgstr ""
+"Exécutez les commandes suivantes pour installer le paquet `dangerzone` et "
+"ses dépendances."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo apt update</p>\n"
+msgstr "   <p class=\"command\">sudo apt update</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo apt install dangerzone fuse-overlayfs uidmap</p>\n"
+msgstr "   <p class=\"command\">sudo apt install dangerzone fuse-overlayfs uidmap</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"After the packages are installed, a notification appears to ask if you want "
+"to install `dangerzone`, `fuse-overlayfs`, and `uidmap` every time you start "
+"Tails in the future."
+msgstr ""
+"Une fois les paquets installés, une notification apparaît pour vous demander "
+"si vous voulez installer `dangerzone`, `fuse-overlayfs` et `uidmap` chaque "
+"fois que vous démarrerez Tails à l'avenir."
+
+#. type: Plain text
+#, no-wrap
+msgid "   Choose to **Install Every Time**.\n"
+msgstr "   Choisissez d'**Installer à chaque fois**.\n"
+
+#. type: Bullet: '1. '
+msgid "Close the *Console*."
+msgstr "Fermez la *Console*."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"test\">Convert a test document</h2>\n"
+msgstr "<h2 id=\"test\">Convertir un document de test</h2>\n"
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Office&nbsp;▸ Dangerzone** to open *Dangerzone*."
+msgstr ""
+"Choisissez **Applications&nbsp;▸ Bureautique&nbsp;▸ Dangerzone** pour ouvrir "
+"*Dangerzone*."
+
+#. type: Plain text
+#, no-wrap
+msgid "   When opened for the first time, *Dangerzone* installs its container.\n"
+msgstr "   Lors de sa première ouverture, *Dangerzone* installe son conteneur.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   This operation can take several minutes.\n"
+msgstr "   Cette opération peut prendre plusieurs minutes.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   After the setup finishes, *Dangerzone* opens.\n"
+msgstr "   Une fois la configuration terminée, *Dangerzone* s'ouvre.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   Click the button **Select suspicious documents**.\n"
+msgstr "   Cliquez sur le bouton **Select suspicious documents**.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img dangerzone.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img dangerzone.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Select a simple document to test the conversion process, like an empty "
+"*LibreOffice* document or an image."
+msgstr ""
+"Sélectionnez un document simple pour tester le processus de conversion, par "
+"exemple un document *LibreOffice* vide ou une image."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Converting this first document can also take several minutes. After this\n"
+"   first document, converting other documents will be faster.\n"
+msgstr ""
+"   La conversion de ce premier document peut également prendre plusieurs minutes. Après ce\n"
+"   premier document, la conversion des autres documents sera plus rapide.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug\">\n"
+msgstr "   <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If converting fails with the error <span class=\"code\">Unknown error code\n"
+"   '125'</span>, restart Tails and try again.</p>\n"
+msgstr ""
+"   <p>Si la conversion échoue avec l'erreur <span class=\"code\">Unknown error code\n"
+"   '125'</span>, redémarrez Tails et réessayez.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p><i>Dangerzone</i> needs a lot of available RAM when running for the first\n"
+"   time. Restarting Tails frees as much RAM as possible.</p>\n"
+msgstr ""
+"   <p><i>Dangerzone</i> a besoin d'une grande quantité de mémoire vive lorsqu'il fonctionne pour la première\n"
+"   fois. Le redémarrage de Tails libère autant de mémoire vive que possible.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p><i>Dangerzone</i> requires at least 8 GB of RAM to install.</p>\n"
+msgstr "   <p><i>Dangerzone</i> nécessite au moins 8 Go de RAM pour l'installation.</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"After the conversion finishes, the original document is moved to a new "
+"*unsafe* folder and the name of the safe document that has been created "
+"includes *safe*. For example:"
+msgstr ""
+"Une fois la conversion terminée, le document d'origine est déplacé vers un "
+"nouveau dossier *unsafe* et le nom du document sûr qui a été créé inclut "
+"*safe*. Par exemple :"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       ├── document-safe.odt\n"
+"       └── unsafe\n"
+"           └── document.odt\n"
+msgstr ""
+"       ├── document-safe.odt\n"
+"       └── unsafe\n"
+"           └── document.odt\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You can use several applications included in Tails to [[edit the safe\n"
+"PDF|sensitive_documents/pdf]] produced by <i>Dangerzone</i>.</p>\n"
+msgstr ""
+"<p>Vous pouvez utiliser plusieurs applications inclues dans Tails pour [[éditer des PDF\n"
+"sûrs|sensitive_documents/pdf]] générés par <i>Dangerzone</i>.</p>\n"
+
+#~ msgid ""
+#~ "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Root Console** to open a console "
+#~ "with administration rights."
+#~ msgstr ""
+#~ "Choisissez **Applications&nbsp;▸ Outils système&nbsp;▸ Console "
+#~ "d'administration** pour ouvrir une console avec les droits "
+#~ "d'administration."
+
+#~ msgid ""
+#~ "Choose **Applications&nbsp;▸ Utilities&nbsp;▸ Terminal** to open a "
+#~ "terminal without administration rights."
+#~ msgstr ""
+#~ "Choisissez **Applications&nbsp;▸ Utilitaires&nbsp;▸ Terminal** pour "
+#~ "ouvrir un terminal sans les droits d'administration."

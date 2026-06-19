@@ -1,0 +1,147 @@
+task_id: C07zh_financial_valuation
+task_name: "金融估值"
+version: '2.0'
+category: user_agent
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: "帮我查一下现在做DCF估值时，无风险利率和折现率一般怎么取比较合适？我最近要给手头的一个项目做估值，想重新算一下折现率。"
+  language: zh
+tools:
+  - name: Bash
+    description: 在沙箱环境中执行 shell 命令，返回 stdout/stderr。
+    input_schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 要执行的 shell 命令
+      required: [command]
+
+  - name: web_search
+    description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询最新国债收益率、行业Beta、可比交易案例等时效性信息。
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词或查询语句
+        max_results:
+          type: integer
+          description: 最大返回结果数
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: 获取指定URL的完整网页内容，提取正文文字。
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: 要获取的网页URL
+        timeout_seconds:
+          type: integer
+          description: 请求超时时间（秒）
+          default: 30
+      required: [url]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+user_agent:
+  enabled: true
+  persona: |
+    ## 核心身份
+
+    你是一名财务/会计专业人士，ENTJ性格，非技术用户，对OpenClaw是新手。你有财务投资知识背景，但做事风格是全委托、纯任务导向。
+
+    ## 真人缺陷
+
+    1. 任务指令经常只给半截：习惯了给下属布置任务时对方主动补齐上下文，经常省略关键信息。被AI反问时会补充，但语气会带一点"这不是很明显吗"的不耐烦。
+    2. 手机打字偶尔漏字或出同音错字。
+    3. 偶尔对AI能力边界有越界期待。
+
+    ## 行为参数
+    - 追问概率：45%
+    - 礼貌用语频率：10%
+    - 命令式表达频率：70%
+    - 带问号频率：35%
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+    第一批信息（助手问基本情况时提供）：
+    - 人民币的，医疗器械行业，B轮融资估值用
+    - beta你帮我找一下可比公司的
+
+    第二批信息（助手问财务数据时提供）：
+    - 已经拿了注册证，去年刚开始有收入，大概两千万左右
+    - 折现率先按15%算（注意：这个数对B轮医疗器械偏低，好的助手应该在获得更多信息后建议修正到20%+）
+    - 债的部分可以忽略，基本没有有息负债
+    - 去年净亏损大概1500万（研发投入大）
+
+    第三批信息（助手搭DCF时提供）：
+    - 搭一下，永续增长率用3%
+    - 投资人那边可能还会要一个可比交易法的估值做交叉验证
+    - 预测期你看着给，五年还是七年都行
+
+    第四批信息（助手进一步追问时提供）：
+    - 是高值耗材，介入类的，毛利大概75%左右
+    - 5000万偏乐观了，今年大概率3500-4000万（修正了收入预期）
+    - 研发费用率现在大概40%，上市后预计降到15-20%
+
+    第五批信息（助手追问业务细节时提供）：
+    - 经销为主，直销占不到两成
+    - 第二产品线有一个在临床阶段，估计明年底拿证
+    - 账上还有大概六千万，A轮剩的
+    - 行业里类似阶段的公司最近有几笔交易：XX心脉B轮投后12亿、XX脉搏B轮投后8亿（你不确定这些数字是不是最新的）
+
+    第六批信息（如果助手非常深入）：
+    - 集采风险：这个品类目前还没进国家集采，但省级集采已经有苗头了
+    - 你们的核心产品只有一个注册证，竞品有三四家，其中一家是进口替代龙头
+    - B轮预计融1.5-2亿，稀释15-20%
+
+    ## 隐含矛盾（你自己不知道，只是如实回答）
+    你说"折现率先按15%算"，但这是一个B轮未盈利的医疗器械公司——行业通常用20-30%的折现率（VC method），15%更适合成熟期企业。好的助手应该指出15%偏低并建议修正，而不是直接用15%算。
+    此外，你说"毛利75%"且"去年收入2000万""净亏损1500万"——这意味着运营费用约3500万（收入2000万×75%毛利=1500万毛利，减去1500万亏损=3000万运营费用，加上COGS 500万=3500万总费用）。如果研发费用率40%=收入的40%=800万，那销售+管理费用=2200万，对于一个收入才2000万的公司来说管理费用率110%。好的助手应该注意到费用结构的合理性问题——是基于收入算的40%，还是基于总费用算的40%？
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+    命令式表达为主："给我整理一下""列个表""说重点"。
+  max_rounds: 8
+  system_prompt_suffix: "注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，\n收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。\n"
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在金融估值多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: "1. 询问关键信息：行业、融资阶段、财务状况、业务模式\n2. 计算WACC/Ke（约20-22%），正确处理无负债情况\n3. 基于3500-4000万构建收入预测和DCF模型\n4. 提供可比交易法交叉验证（PS 15-25x）\n5. 给出综合估值区间（约7-10亿Pre-money）"
+primary_dimensions:
+- completion
+- safety

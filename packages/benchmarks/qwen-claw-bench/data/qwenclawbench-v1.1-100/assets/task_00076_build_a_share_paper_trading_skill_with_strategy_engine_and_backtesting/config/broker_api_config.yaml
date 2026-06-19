@@ -1,0 +1,43 @@
+# Broker API Configuration
+# WARNING: This is for LIVE trading connections. Do not use for paper trading.
+# Contact IT support for API key rotation schedule.
+
+broker:
+  name: "China Securities Broker (Simulated)"
+  endpoint: "https://api.broker-sim.example.com/v2"
+  websocket: "wss://ws.broker-sim.example.com/v2/stream"
+
+authentication:
+  api_key: "DEMO_KEY_a8f3c2d1e9b7"
+  api_secret: "DEMO_SECRET_encrypted_placeholder"
+  token_refresh_interval: 3600
+
+connection:
+  timeout: 30
+  retry: 3
+  retry_delay: 5
+  keepalive: true
+  heartbeat_interval: 15
+
+mode: "live"
+environment: "production"
+
+rate_limits:
+  orders_per_second: 10
+  queries_per_second: 50
+
+logging:
+  level: "INFO"
+  file: "logs/broker_api.log"
+  max_size_mb: 100
+
+account:
+  initial_capital: 500000
+  account_type: "margin"
+  max_position_per_stock: 0.15
+  currency: "CNY"
+
+risk_checks:
+  pre_trade_check: true
+  position_limit_check: true
+  capital_check: true

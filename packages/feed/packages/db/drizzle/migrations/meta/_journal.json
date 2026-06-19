@@ -1,0 +1,496 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1769126827000,
+      "tag": "0000_demonic_ego",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1769126827001,
+      "tag": "0000_stiff_starfox",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1769126827002,
+      "tag": "0001_perp_market_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1769126827003,
+      "tag": "0001_wonderful_omega_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1769126827004,
+      "tag": "0002_optimize_user_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1769214160000,
+      "tag": "0003_amusing_wrecking_crew",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1769126827005,
+      "tag": "0004_add_market_resolution_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1769126827006,
+      "tag": "0005_add_article_image_url",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1769214160001,
+      "tag": "0005_salty_the_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1769126827007,
+      "tag": "0006_abandoned_maginty",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1769126827008,
+      "tag": "0006_add_admin_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1769126827009,
+      "tag": "0006_add_reported_comment_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1769126827010,
+      "tag": "0007_add_admin_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1769126827011,
+      "tag": "0008_add_analytics_daily_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1769126827012,
+      "tag": "0009_add_admin_stats_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1769126827013,
+      "tag": "0010_add_admin_role_check_constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1769126827014,
+      "tag": "0011_add_feedback_metadata_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1769126827015,
+      "tag": "0012_add_tiered_group_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1769126827016,
+      "tag": "0013_add_tier_composite_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1769126827017,
+      "tag": "0014_add_tier_check_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1769126827018,
+      "tag": "0015_add_nft_gating_to_chats",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1769126827019,
+      "tag": "0015_fix_agent_points_transaction_decimal_balance",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1769126827020,
+      "tag": "0016_add_nft_revalidation_timestamp",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1769126827021,
+      "tag": "0016_add_procedural_narrative_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1769126827022,
+      "tag": "0016_add_username_lower_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1769126827023,
+      "tag": "0017_add_question_resolution_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1769126827024,
+      "tag": "0018_add_game_guide_completed",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1769126827025,
+      "tag": "0018_add_missing_group_member_unique_constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1769126827026,
+      "tag": "0019_add_message_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1769126827027,
+      "tag": "0020_add_npc_trade_market_id_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1769126827028,
+      "tag": "0020_add_user_agent_team_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1769126827029,
+      "tag": "0021_add_external_agent_revocation",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1769126827030,
+      "tag": "0022_add_world_facts_source_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1769214160002,
+      "tag": "0023_add_alpha_group_enhancements",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1769370690000,
+      "tag": "0024_add_team_group_unique_constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1769370690001,
+      "tag": "0025_simplify_team_chat_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1769561039000,
+      "tag": "0026_add_points_payment_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1769566560000,
+      "tag": "0027_add_system_metrics_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1770402442392,
+      "tag": "0039_unique_fantastic_four",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1770912000000,
+      "tag": "0040_add_offline_wallet_ready",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1770990012019,
+      "tag": "0041_add_message_reactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1771077600000,
+      "tag": "0042_add_message_reaction_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1771363144000,
+      "tag": "0043_add_notification_email_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1772615198560,
+      "tag": "0044_add_user_agent_price_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1772718287000,
+      "tag": "0045_add_sentry_webhook_inbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1773187500000,
+      "tag": "0045_add_message_reply_to",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1773187500001,
+      "tag": "0045_add_daily_topics",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1772899200000,
+      "tag": "0046_add_feed_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1773139200000,
+      "tag": "0046_add_sentry_incident_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1773225600000,
+      "tag": "0047_add_sentry_incident_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1773657600000,
+      "tag": "0048_add_agent_solana_registration",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1773849600000,
+      "tag": "0049_add_market_resolution_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1773853200000,
+      "tag": "0050_add_position_resolved_at_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1773940000000,
+      "tag": "0045_spicy_blindfold",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1773964815986,
+      "tag": "0055_add_achievement_query_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1773964900000,
+      "tag": "0056_add_query_audit_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1774000000000,
+      "tag": "0057_add_trading_fee_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1774050000000,
+      "tag": "0058_add_user_pnl_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1774100000000,
+      "tag": "0059_add_telegram_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1774150000000,
+      "tag": "0060_add_feed_pipeline_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1774200000000,
+      "tag": "0061_add_content_quality_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1774203600000,
+      "tag": "0062_add_perp_quote_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1775024872649,
+      "tag": "0062_certain_otto_octavius",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1775193828892,
+      "tag": "0063_shiny_sister_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1775227242485,
+      "tag": "0064_drop_onchain_market_legacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1775301356062,
+      "tag": "0065_luxuriant_onslaught",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1775431800000,
+      "tag": "0066_add_user_lifetime_pnl_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1775710454009,
+      "tag": "0067_add_steward_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1744262400000,
+      "tag": "0068_add_arc_event_coverage",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1744761600000,
+      "tag": "0069_drop_phase1_legacy_columns",
+      "breakpoints": true
+    }
+  ]
+}

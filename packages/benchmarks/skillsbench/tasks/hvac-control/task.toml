@@ -1,0 +1,22 @@
+version = "1.0"
+
+[metadata]
+author_name = "Jiachen Li"
+author_email = "jiachenli@utexas.edu"
+difficulty = "medium"
+category = "control-systems"
+tags = ["hvac", "control-theory", "system-identification", "pid", "python", "thermal-modeling"]
+
+[verifier]
+timeout_sec = 1800.0
+
+[agent]
+timeout_sec = 1800.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 2
+gpus = 0
+memory = "2G"
+storage = "5G"
+allow_internet = true

@@ -1,0 +1,128 @@
+// @vitest-environment jsdom
+
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchWithCsrf } from "../api/csrf-client";
+import {
+  isLocalAsrCaptureSupported,
+  startLocalAsrRecorder,
+} from "../voice/local-asr-capture";
+import { __voiceChatInternals, useVoiceChat } from "./useVoiceChat";
+
+vi.mock("../api/csrf-client", () => ({
+  fetchWithCsrf: vi.fn(),
+}));
+
+vi.mock("../voice/local-asr-capture", () => ({
+  isLocalAsrCaptureSupported: vi.fn(),
+  startLocalAsrRecorder: vi.fn(),
+}));
+
+const fetchWithCsrfMock = vi.mocked(fetchWithCsrf);
+const isLocalAsrCaptureSupportedMock = vi.mocked(isLocalAsrCaptureSupported);
+const startLocalAsrRecorderMock = vi.mocked(startLocalAsrRecorder);
+
+describe("useVoiceChat local ASR", () => {
+  beforeEach(() => {
+    isLocalAsrCaptureSupportedMock.mockReturnValue(true);
+    // Route by endpoint: the readiness gate (GET /status) must report ready so
+    // the local-inference recorder actually starts; the ASR POST returns the
+    // transcript. A single blanket mock would fail the readiness check.
+    fetchWithCsrfMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : String(input);
+      const body = url.includes("/api/asr/local-inference/status")
+        ? { ready: true }
+        : { text: "hello local voice" };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("records WAV audio and submits it to the local-inference ASR route", async () => {
+    const stop = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3, 4]));
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop,
+      cancel: vi.fn(),
+      analyser: null,
+    });
+    const onTranscript = vi.fn();
+    const onTranscriptPreview = vi.fn();
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript,
+        onTranscriptPreview,
+        voiceConfig: {
+          provider: "local-inference",
+          asr: { provider: "local-inference" },
+        },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startListening("push-to-talk");
+    });
+    await act(async () => {
+      await result.current.stopListening({ submit: true });
+    });
+
+    expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(fetchWithCsrfMock).toHaveBeenCalledWith(
+      "/api/asr/local-inference/status",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchWithCsrfMock).toHaveBeenCalledWith(
+      "/api/asr/local-inference",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }),
+        body: JSON.stringify({ audioBase64: "AQIDBA==" }),
+      }),
+    );
+    expect(onTranscriptPreview).toHaveBeenCalledWith(
+      "hello local voice",
+      expect.objectContaining({ isFinal: true }),
+    );
+    expect(onTranscript).toHaveBeenCalledWith(
+      "hello local voice",
+      expect.objectContaining({
+        isFinal: true,
+        turn: expect.objectContaining({ source: "local-inference" }),
+      }),
+    );
+  });
+
+  it("does not wait forever for a blocked AudioContext resume", async () => {
+    vi.useFakeTimers();
+    const context = {
+      state: "suspended",
+      resume: vi.fn(() => new Promise<void>(() => {})),
+    } as unknown as AudioContext;
+
+    const resumed = __voiceChatInternals.resumeAudioContextForPlayback(
+      context,
+      25,
+    );
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expect(resumed).resolves.toBe(false);
+    expect(context.resume).toHaveBeenCalledTimes(1);
+  });
+});

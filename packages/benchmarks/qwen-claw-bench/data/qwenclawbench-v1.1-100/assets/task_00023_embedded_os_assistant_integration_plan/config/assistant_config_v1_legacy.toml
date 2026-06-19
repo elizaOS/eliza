@@ -1,0 +1,57 @@
+# Embedded OS Assistant - Configuration v1
+# Created: 2023-06-10
+# Author: jchen@embeddedai.dev
+
+[model]
+name = "gpt-3.5-turbo-0613"
+provider = "openai"
+temperature = 0.7
+max_tokens = 2048
+context_window = 4096
+system_prompt_file = "data/prompt_templates.yaml"
+
+[tools]
+enabled = [
+    "code_interpreter",
+    "file_reader"
+]
+code_interpreter_timeout_seconds = 60
+
+[memory]
+type = "keyword_search"
+backend = "elasticsearch"
+embedding_model = "text-embedding-ada-002"
+embedding_dimensions = 1536
+chunk_size = 1024
+overlap = 128
+max_documents = 500
+persist_directory = "./es_index_data"
+collection_name = "embedded_os_knowledge"
+
+[retrieval]
+top_k = 20
+similarity_threshold = 0.3
+reranking_enabled = false
+hybrid_search = false
+
+[knowledge_sources]
+paths = [
+    "knowledge_base/rtos_comparison.csv",
+    "knowledge_base/build_systems.yaml",
+    "knowledge_base/arch_toolchains.json"
+]
+urls = [
+    "https://www.freertos.org/Documentation/"
+]
+refresh_interval_days = 90
+
+[logging]
+level = "DEBUG"
+file = "logs/assistant.log"
+max_size_mb = 100
+rotation = "weekly"
+
+[budget]
+monthly_api_limit_usd = 200
+alert_threshold_percent = 90
+cost_tracking_enabled = false

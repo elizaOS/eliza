@@ -1,0 +1,433 @@
+import { describe, expect, it } from "vitest";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
+import { searchMessagesAction } from "../../features/messaging/triage/actions/searchMessages";
+import { buildActionCatalog } from "../action-catalog";
+import { retrieveActions, tokenizeActionSearchText } from "../action-retrieval";
+
+const actions = [
+	{
+		name: "MUSIC",
+		description:
+			"Control music playback, songs, albums, playlists, and speakers.",
+		descriptionCompressed: "music playback",
+		similes: ["play music", "song controls"],
+		tags: ["audio"],
+		subActions: [
+			"PLAY_TRACK",
+			{
+				name: "PAUSE_MUSIC",
+				description: "Pause or stop current playback.",
+				tags: ["audio"],
+			},
+			"PLAY_TRACK",
+			"MISSING_CHILD",
+		],
+		cacheStable: true,
+		cacheScope: "agent",
+	},
+	{
+		name: "PLAY_TRACK",
+		description: "Play a requested song, album, artist, or playlist.",
+		similes: ["start a song"],
+		tags: ["music"],
+		parameters: { query: "song name" },
+	},
+	{
+		name: "CALENDAR",
+		description:
+			"Manage calendar events, meetings, schedules, dates, and reminders.",
+		similes: ["book a meeting", "schedule time"],
+		tags: ["productivity"],
+		subActions: ["CREATE_EVENT"],
+	},
+	{
+		name: "CREATE_EVENT",
+		description: "Create a calendar event for a date, time, or attendee.",
+		tags: ["calendar"],
+	},
+	{
+		name: "EMAIL",
+		description: "Read, draft, and send email messages to contacts.",
+		similes: ["send mail"],
+		tags: ["communication"],
+		subActions: ["SEND_EMAIL"],
+	},
+	{
+		name: "SEND_EMAIL",
+		description: "Send an email to a recipient with a subject and body.",
+		tags: ["email"],
+	},
+];
+
+describe("action catalogue and retrieval", () => {
+	it("builds a deterministic parent/child catalogue and reports non-fatal warnings", () => {
+		const catalog = buildActionCatalog(actions);
+
+		expect(catalog.parents.map((parent) => parent.name)).toEqual([
+			"CALENDAR",
+			"EMAIL",
+			"MUSIC",
+		]);
+		expect(catalog.parentByName.get("MUSIC")?.childNames).toEqual([
+			"PAUSE_MUSIC",
+			"PLAY_TRACK",
+		]);
+		expect(catalog.parentByName.get("MUSIC")?.cacheStable).toBe(true);
+		expect(catalog.parentByName.get("MUSIC")?.cacheScope).toBe("agent");
+		expect(catalog.warnings).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					code: "DUPLICATE_SUB_ACTION",
+					parentName: "MUSIC",
+					subActionName: "PLAY_TRACK",
+				}),
+				expect.objectContaining({
+					code: "MISSING_SUB_ACTION",
+					parentName: "MUSIC",
+					subActionName: "MISSING_CHILD",
+				}),
+			]),
+		);
+	});
+
+	it("groups promoted virtual subactions under their umbrella parent", () => {
+		const [parent, ...virtuals] = promoteSubactionsToActions({
+			name: "PAYMENT",
+			description:
+				"Create, deliver, verify, settle, await, and cancel payments.",
+			parameters: [
+				{
+					name: "action",
+					description: "Payment operation.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["create_request", "deliver_link", "settle"],
+					},
+				},
+			],
+			validate: async () => true,
+			handler: async () => ({ success: true }),
+		});
+		const catalog = buildActionCatalog([parent, ...virtuals]);
+
+		expect(catalog.parents.map((entry) => entry.name)).toEqual(["PAYMENT"]);
+		expect(catalog.parentByName.get("PAYMENT")?.childNames).toEqual([
+			"PAYMENT_CREATE_REQUEST",
+			"PAYMENT_DELIVER_LINK",
+			"PAYMENT_SETTLE",
+		]);
+
+		const response = retrieveActions({
+			catalog,
+			candidateActions: ["PAYMENT_SETTLE"],
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "PAYMENT",
+			matchedBy: expect.arrayContaining(["regex"]),
+		});
+	});
+
+	it("applies exact parent hints as a score floor", () => {
+		const catalog = buildActionCatalog(actions);
+		const response = retrieveActions({
+			catalog,
+			messageText: "do the thing",
+			parentActionHints: ["music"],
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "MUSIC",
+			score: 1,
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
+	it("matches candidate action namespaces and child names with regex scoring", () => {
+		const catalog = buildActionCatalog(actions);
+		const namespaceResponse = retrieveActions({
+			catalog,
+			candidateActions: ["calendar_*"],
+		});
+		const childResponse = retrieveActions({
+			catalog,
+			candidateActions: ["PLAY_TRACK"],
+		});
+
+		// NOTE: bun's `toMatchObject` with `expect.any(Number)` leaves residual
+		// matcher state that breaks the following `toBeGreaterThanOrEqual`. Use
+		// explicit name/matchedBy checks plus direct numeric comparisons.
+		expect(namespaceResponse.results[0].name).toBe("CALENDAR");
+		expect(namespaceResponse.results[0].matchedBy).toEqual(
+			expect.arrayContaining(["regex"]),
+		);
+		expect(typeof namespaceResponse.results[0].score).toBe("number");
+		expect(namespaceResponse.results[0].score).toBeGreaterThanOrEqual(0.8);
+		expect(childResponse.results[0].name).toBe("MUSIC");
+		expect(childResponse.results[0].matchedBy).toEqual(
+			expect.arrayContaining(["regex"]),
+		);
+		expect(typeof childResponse.results[0].score).toBe("number");
+		expect(childResponse.results[0].score).toBeGreaterThanOrEqual(0.8);
+	});
+
+	it("uses BM25 over message text plus candidate action terms", () => {
+		const catalog = buildActionCatalog(actions);
+		const response = retrieveActions({
+			catalog,
+			messageText: "book lunch with Ada on my calendar tomorrow",
+			candidateActions: ["create event"],
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "CALENDAR",
+			matchedBy: expect.arrayContaining(["bm25"]),
+		});
+		expect(response.results[0].score).toBeGreaterThanOrEqual(0.7);
+	});
+
+	it("uses external i18n keyword matches as a retrieval signal", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "CREATE_TASK",
+				description: "Create scheduled user work.",
+				contexts: ["tasks"],
+			},
+			{
+				name: "EMAIL",
+				description: "Read, draft, and send email messages to contacts.",
+				contexts: ["email"],
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "remind me to stretch every day",
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "CREATE_TASK",
+			matchedBy: expect.arrayContaining(["keyword"]),
+		});
+		expect(response.results[0].stageScores.keyword).toBeGreaterThan(0);
+	});
+
+	it("does not let prior standalone requests dominate current-turn action search", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+			{
+				name: "SHELL",
+				description: "Run local shell commands and inspect runtime logs.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "Can you tell me what elizaOS is?",
+			recentConversationText: [
+				"Code me an app showing how good gpt oss is",
+				"What is the price of bitcoin right now?",
+			],
+		});
+
+		expect(
+			response.results.find((result) => result.name === "TASKS"),
+		).toMatchObject({
+			score: 0,
+			matchedBy: [],
+		});
+	});
+
+	it("does not use recent conversation for short standalone turns", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+		]);
+
+		for (const messageText of ["what is elizaOS?", "thanks"]) {
+			const response = retrieveActions({
+				catalog,
+				messageText,
+				recentConversationText: "Code me an app showing how good gpt oss is",
+			});
+
+			expect(
+				response.results.find((result) => result.name === "TASKS"),
+			).toMatchObject({
+				score: 0,
+				matchedBy: [],
+			});
+		}
+	});
+
+	it("uses recent conversation for continuation-shaped current turns", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+			{
+				name: "SHELL",
+				description: "Run local shell commands and inspect runtime logs.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "Do that again",
+			recentConversationText: "Code me an app showing how good gpt oss is",
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "TASKS",
+			matchedBy: expect.arrayContaining(["bm25"]),
+		});
+	});
+
+	it("still uses recent conversation for continuation turns with candidate hints", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+			{
+				name: "MUSIC",
+				description: "Control music playback.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "Do that again",
+			candidateActions: ["play_music"],
+			recentConversationText: "Build a small app with a button",
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "TASKS",
+			matchedBy: expect.arrayContaining(["bm25"]),
+		});
+	});
+
+	it("maps SEARCH_MESSAGES candidate hints to MESSAGE even when recent context is searched", () => {
+		const catalog = buildActionCatalog([
+			searchMessagesAction,
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+			{
+				name: "SHELL",
+				description: "Run local shell commands and inspect files.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "Can you find that in the chat again?",
+			candidateActions: ["SEARCH_MESSAGES"],
+			recentConversationText:
+				"Build a small app and inspect the project files.",
+		});
+
+		expect(response.query.parentActionHints).toEqual(["MESSAGE"]);
+		expect(response.results[0]).toMatchObject({
+			name: "MESSAGE",
+			score: 1,
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+		expect(searchMessagesAction.similes).toContain("SEARCH_MESSAGES");
+		expect(searchMessagesAction.similes).toContain("MESSAGE_SEARCH");
+		expect(searchMessagesAction.similes).toContain("SEARCH_CHAT");
+		expect(searchMessagesAction.similes).toContain("FIND_MESSAGES");
+	});
+
+	it("maps all message-search simile hints to MESSAGE with recent context", () => {
+		const catalog = buildActionCatalog([
+			searchMessagesAction,
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+		]);
+
+		for (const candidateAction of [
+			"SEARCH_INBOX",
+			"SEARCH_EMAIL",
+			"CROSS_CHANNEL_SEARCH",
+		]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "Search there again",
+				candidateActions: [candidateAction],
+				recentConversationText: "Find email and chat history about launch",
+			});
+
+			expect(response.query.parentActionHints).toEqual(["MESSAGE"]);
+			expect(response.results[0]).toMatchObject({
+				name: "MESSAGE",
+				score: 1,
+				matchedBy: expect.arrayContaining(["exact"]),
+			});
+		}
+	});
+
+	it("does not retrieve actions from context match alone", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "MUSIC",
+				description: "Control music playback.",
+				contexts: ["music"],
+			},
+			{
+				name: "EMAIL",
+				description: "Read, draft, and send email.",
+				contexts: ["email"],
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "please play the new album",
+			candidateActions: ["play_music"],
+			selectedContexts: ["email"],
+		});
+		const email = response.results.find((result) => result.name === "EMAIL");
+
+		expect(email).toMatchObject({
+			score: 0,
+			matchedBy: [],
+		});
+	});
+
+	it("uses reciprocal rank fusion and optional embedding scores only when provided", () => {
+		const catalog = buildActionCatalog(actions);
+		const response = retrieveActions({
+			catalog,
+			messageText: "write to shaw with a subject line",
+			candidateActions: ["send_email"],
+			embedding: {
+				enabled: true,
+				scoresByParentName: {
+					EMAIL: 0.99,
+				},
+			},
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "EMAIL",
+			matchedBy: expect.arrayContaining(["regex", "bm25", "embedding"]),
+		});
+		expect(response.results[0].rrfScore).toBeGreaterThan(0);
+	});
+
+	it("tokenizes action-like names, camelCase, and prose consistently", () => {
+		expect(tokenizeActionSearchText("playMusic music_* send-email")).toEqual([
+			"play",
+			"music",
+			"music",
+			"send",
+			"email",
+		]);
+	});
+});

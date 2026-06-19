@@ -1,0 +1,21 @@
+- [[Running Tails in a virtual machine|advanced_topics/virtualization]]
+
+  * [[*GNOME Boxes*|advanced_topics/virtualization/boxes]]
+
+  * [[*virt-manager*|advanced_topics/virtualization/virt-manager]]
+
+- [[Modifying the boot options using the Boot Loader|advanced_topics/boot_options]]
+
+- [[Starting Tails from an external hard disk or problematic USB stick|advanced_topics/external_hard_disk]]
+
+- [[Accessing the internal hard disk|advanced_topics/internal_hard_disk]]
+
+- [[Protection against cold boot attacks|advanced_topics/cold_boot_attacks]]
+
+- [[Accessing resources on the local network|advanced_topics/lan]]
+
+- [[Enabling a wireless device|advanced_topics/wireless_devices]]
+
+- [[Chatting with *Dino* and OMEMO|advanced_topics/dino]]
+
+- [[Exchanging Monero with *Feather*|advanced_topics/feather]]

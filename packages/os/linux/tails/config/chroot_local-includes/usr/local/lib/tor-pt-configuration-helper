@@ -1,0 +1,32 @@
+#!/bin/sh
+
+set -e
+set -u
+
+# Import try_for()
+. /usr/local/lib/tails-shell-library/common.sh
+# Import tor_set_in_torrc()
+. /usr/local/lib/tails-shell-library/tor.sh
+
+ENABLE_SANDBOX="${1}"
+
+if [ "${ENABLE_SANDBOX}" != 0 ] && [ "${ENABLE_SANDBOX}" != 1 ]; then
+    echo "error: bad argument: ${ENABLE_SANDBOX}" >&2
+    exit 1
+fi
+
+if [ "$(/usr/local/lib/tor_variable get --type=conf Sandbox)" = "${ENABLE_SANDBOX}" ]; then
+    exit 0
+fi
+
+systemctl stop tor@default.service
+
+tor_set_in_torrc Sandbox "${ENABLE_SANDBOX}"
+sed -i '/^ClientTransportPlugin /d' /etc/tor/torrc
+if [ "${ENABLE_SANDBOX}" = 0 ]; then
+    tor_set_in_torrc \
+        ClientTransportPlugin \
+        'obfs2,obfs3,obfs4,webtunnel exec /usr/bin/obfs4proxy -enableLogging -logLevel DEBUG'
+fi
+
+systemctl start tor@default.service

@@ -1,0 +1,73 @@
+[[!meta date="Thu, 15 Dec 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="French journal Mediapart supports Tails, others should too"]]
+[[!tag announce]]
+
+We are very excited to announce that
+[Mediapart](https://www.mediapart.fr), an independent French investigative
+journal, has decided to support Tails financially every year.
+
+[[!img mediapart.png link="no"]]
+
+In the past years, Mediapart has played a central role in the revelation
+and investigation of several major French political scandals. As such
+they are well aware of the digital threats faced by their sources,
+their journalists, and their readers.
+
+Tails has gained recognition by being used by Edward Snowden and the
+journalists reporting on his NSA leaks in 2014. [According to Barton
+Gellman](https://pressfreedomfoundation.org/blog/2014/04/help-support-little-known-privacy-tool-has-been-critical-journalists-reporting-nsa):
+
+« *Privacy and encryption work, but it's too easy to make a mistake that
+exposes you. Tails puts the essential tools in one place, with a design
+that makes it hard to screw them up. I could not have talked to Edward
+Snowden without this kind of protection. I wish I'd had it years ago.* »
+
+Since then [[many journalists around the
+world|news/who_are_you_helping#journalists]] understood this approach
+and adopted Tails to make it easier to stay safe. As Jean-Marc Manach
+puts it:
+
+« *War reporters have to buy helmets, bullet-proof vests and rent
+armored cars; journalists using the Internet for their investigations
+are much luckier: to be as secured as war reporters, they only have to
+download Tails, burn it on a CD, install it on a SD card, and learn the
+basics of information and communication security, and it's free!* »
+
+In the same way that news organizations invest in physical security or
+proprietary software tools to do their work, news organizations should
+also invest in free software tools that, as security experts like Bruce
+Schneier
+have repeatedly stated, are going to be safe:
+
+« *I think most of the public domain privacy tools are going to be safe,
+yes. [...] I think that Tails is going to be safe. [...] You know, the
+NSA has a big lever when a tool is written closed-source by a for-profit
+corporation. There are levers they have that they don't have in the open
+source international, altruistic community. And these are generally
+written by crypto-paranoids, they're pretty well designed.* »
+
+As such, Tails has been the recommended secure platform
+for use with the [SecureDrop](https://securedrop.org/) and
+[GlobaLeaks](https://globaleaks.org/) whistle-blowing platforms.
+
+Talking about the challenges of the adoption of encryption by
+journalists, the Internet freedom expert [Christopher Soghoian said
+at #EncryptNews](https://www.youtube.com/watch?v=JktB6h-qnKA), a
+conference on digital security and journalism:
+
+« *News organizations need to also contribute to this community pool of
+tools. We need to have [reporters] contributing patches to PGP, OTR, and
+Tails. These organizations need to be funding $5.000 or $10.000 improvements
+to make these tools better. Because everyone is relying on these tools
+and none of the major organizations that are actually benefiting them
+are actually contributing to their development.* »
+
+Mediapart is the first news organization to officially endorse Tails
+and answer our call for donations. We hope they are not going to be the
+last.
+
+If your organization is also interested in becoming a regular donor,
+please contact us.
+
+[Donate](https://tails.net/donate/)

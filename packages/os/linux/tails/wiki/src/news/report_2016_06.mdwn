@@ -1,0 +1,140 @@
+[[!meta title="Tails report for June, 2016"]]
+[[!meta date="Mon, 11 Jul 2016 12:06:54 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 2.4 was released on June 7|news/version_2.4]] (major release).
+
+* Tails 2.5 is [[scheduled for August 2|contribute/calendar]].
+
+The following changes were introduced in Tails 2.4:
+
+- We enabled the automatic account configuration of *Icedove* which
+  discovers the correct parameters to connect to your email provider
+  based on your email address. We improved it to rely only on secure
+  protocol and we are working on sharing these improvements with Mozilla
+  so that users of *Thunderbird* outside Tails can benefit from them as well.
+
+- Remove the preconfigured `#tails` IRC channel. [[Join us on XMPP
+  instead!|support/chat]]
+
+- Always display minimize and maximize buttons in titlebars.
+  ([[!tails_ticket 11270]])
+
+- Remove *GNOME Tweak Tool* and *hledger*. You can add them back using
+  the *Additional software
+  packages*
+  persistence feature.
+
+- Use secure HKPS OpenPGP key server in *Enigmail*.
+
+- Harden our firewall by rejecting `RELATED` packets and restricting Tor
+  to only send `NEW` TCP `syn` packets. ([[!tails_ticket 11391]])
+
+- Harden our kernel by:
+  * Setting various security-related kernel options: `slab_nomerge slub_debug=FZ
+    mce=0 vsyscall=none`. ([[!tails_ticket 11143]])
+  * Removing the *.map* files of the kernel.
+    ([[!tails_ticket  10951]])
+
+- Update the *DRM* and *Mesa* graphical libraries. This should fix
+  recent problems with starting Tails on some hardware. ([[!tails_ticket 11303]])
+
+- Some printers that stopped working in Tails 2.0 should work again.
+  ([[!tails_ticket 10965]])
+
+- Enable Packetization Layer Path MTU Discovery for IPv4. This should
+  make the connections to `obfs4` Tor bridges more reliable. ([[!tails_ticket 9268]])
+
+- Remove our custom ciphers and MACs settings for SSH. This should fix
+  connectivity issues with other distributions such as OpenBSD.
+  ([[!tails_ticket 7315]])
+
+- Fix the translations of *Tails Upgrader*. ([[!tails_ticket 10221]])
+
+- Fix displaying the details of a circuit in *Onion Circuits* when using
+  Tor bridges. ([[!tails_ticket 11195]])
+
+Code
+====
+
+- segfault sent his
+  3rd and
+  4th
+  reports for his GSoC on *Tails Server*.
+
+- GoodCrypto sent more patches
+  to convert our custom bash scripts to Python.
+
+User experience
+===============
+
+We continued discussing:
+
+- How to get rid of the splash screen of *Tails Installer* and how to
+  propose the alternative between cloning and using an ISO image
+  in the interface.
+
+- How to allow editing the configuration of a service
+  in *Tails Server*.
+
+Infrastructure
+==============
+
+- Our test suite covers 208 scenarios, 1 more that in May.
+
+Funding
+=======
+
+* We got an
+  [award](https://blog.mozilla.org/blog/2016/06/22/mozilla-awards-385000-to-open-source-projects-as-part-of-moss-mission-partners-program/)
+  by Mozilla to
+  make Tails ISO images build reproducibly.
+
+* We apply for a small technology grant by the
+  ISC Project
+  for a translation platform for our website.
+
+Outreach
+========
+
+Upcoming events
+---------------
+
+* El Rancho Electrónico
+  organizes a series of Tails workshops on July 4, 11, and 18 in Ciudad
+  Monstruo, Mexico.
+
+Translation
+===========
+
+## All the website
+
+  - de: 54% (2856) strings translated, 2% strings fuzzy, 47% words translated
+  - fa: 47% (2477) strings translated, 7% strings fuzzy, 54% words translated
+  - fr: 71% (3715) strings translated, 3% strings fuzzy, 69% words translated
+  - it: 17% (899) strings translated, 2% strings fuzzy, 17% words translated
+  - pt: 31% (1644) strings translated, 6% strings fuzzy, 28% words translated
+
+Total original words: 53798
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 87% (1581) strings translated, 2% strings fuzzy, 86% words translated
+  - fa: 40% (729) strings translated, 9% strings fuzzy, 42% words translated
+  - fr: 84% (1527) strings translated, 4% strings fuzzy, 86% words translated
+  - it: 49% (885) strings translated, 6% strings fuzzy, 56% words translated
+  - pt: 55% (1000) strings translated, 9% strings fuzzy, 55% words translated
+
+Total original words: 16515
+
+Metrics
+=======
+
+* Tails has been started more than 554.690 times this month. This makes 18490 boots a day on average.
+* 8.174 downloads of the OpenPGP signature of Tails ISO from our website.
+* 131 bug reports were received through WhisperBack.

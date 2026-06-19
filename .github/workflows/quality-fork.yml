@@ -1,0 +1,154 @@
+name: Quality (Fork)
+
+# Fork-safe quality variant. Only runs on PRs from forked repositories
+# (or via manual dispatch) so secret-less forks still get lint, typecheck,
+# and a build smoke without inheriting any privileged secrets.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: quality-fork-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Run lint
+        run: bun run lint
+
+      - name: Run format check
+        run: bun run format:check
+
+  typecheck:
+    name: Type Check
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      # @elizaos/core's package.json points "main"/"types" at dist/ files
+      # that don't exist until the build runs. Plugins that resolve core
+      # via node_modules (rather than the root tsconfig path mapping) fail
+      # typecheck without this. turbo.json declares `typecheck` depends on
+      # `@elizaos/core#build`, but downstream packages with broken src
+      # references can fail before turbo schedules the core build, so we
+      # build it explicitly here.
+      - name: Build @elizaos/core dist
+        working-directory: packages/core
+        run: bun run build
+
+      - name: Run typecheck
+        run: bun run typecheck
+
+  build:
+    name: Build
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Build homepage
+        working-directory: packages/homepage
+        run: bun run build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install homepage browser
+        working-directory: packages/homepage
+        run: ../../node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Test homepage downloads
+        working-directory: packages/homepage
+        run: bun run test:e2e
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  elizaos-cli-global-smoke:
+    name: elizaos CLI global-install smoke (#8000)
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Lint bin exports (#8000 static guard)
+        run: bun run --cwd packages/elizaos lint:bin-exports
+
+      - name: Packaged smoke (global + local install, node + bun)
+        run: bun run --cwd packages/elizaos test:packaged

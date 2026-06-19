@@ -1,0 +1,144 @@
+{
+  "$defs": {
+    "evidence_item": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "at_least_one": {
+          "items": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "capture_command": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "claim_boundary": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "external_artifacts": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "forbidden_strings": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "min_bytes": {
+          "minimum": 80,
+          "type": "integer"
+        },
+        "path": {
+          "pattern": "^docs/evidence/(buildroot|linux|android)/[^/]+\\.(log|txt)$",
+          "type": "string"
+        },
+        "required_strings": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "validation_command": {
+          "pattern": "scripts/check_software_bsp.py .+ --require-evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "path",
+        "capture_command",
+        "validation_command",
+        "min_bytes",
+        "required_strings"
+      ],
+      "type": "object"
+    },
+    "target": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/evidence_item"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "evidence"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "software-bsp-evidence.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
+  "generated_utc": "2026-05-20T10:12:30Z",
+  "properties": {
+    "claim_boundary": {
+      "enum": [
+        "external_transcripts_only"
+      ],
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "targets": {
+      "additionalProperties": false,
+      "properties": {
+        "aosp": {
+          "$ref": "#/$defs/target"
+        },
+        "buildroot": {
+          "$ref": "#/$defs/target"
+        },
+        "linux": {
+          "$ref": "#/$defs/target"
+        },
+        "opensbi": {
+          "$ref": "#/$defs/target"
+        },
+        "u-boot": {
+          "$ref": "#/$defs/target"
+        }
+      },
+      "required": [
+        "buildroot",
+        "linux",
+        "opensbi",
+        "u-boot",
+        "aosp"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "claim_boundary",
+    "targets"
+  ],
+  "title": "Eliza software BSP evidence manifest",
+  "type": "object"
+}

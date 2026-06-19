@@ -1,0 +1,118 @@
+[[!meta title="Tails report for January, 2014"]]
+[[!meta date="Mon, 10 Feb 2014 17:08:03 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Releases
+========
+
+Tails 0.22.1 has been rescheduled to February 4 due to holidays at Mozilla.
+
+Metrics
+=======
+
+- Tails has been started more than 236 579 times in January.
+  This make 7 630 boots a day in average.
+- 16 640 downloads of the OpenPGP signature of Tails ISO.
+- 112 reports were received through WhisperBack.
+
+Code
+====
+
+New features:
+
+- The browser is
+  not open automatically anymore when starting Tails ([[!tails_ticket
+  5735]]).
+- The website was
+  better locked down except for the Blueprint section.
+- Seahorse nautilus
+  was installed in Tails
+  Wheezy.
+- A quick shutdown applet
+  has been written for
+  Tails Wheezy ([[!tails_ticket 5355]]).
+- Tails Upgrader menu launcher
+  was made translatable
+  ([[!tails_ticket 6489]]).
+
+Software updates:
+
+- Pidgin was updated to 2.10.8 which fixes lots of security issues
+  ([[!tails_ticket 6629]]).
+- A branch with Linux
+  3.13 was prepared.
+
+Bug and regression fixes:
+
+- The browser resolution not set to a multiple of 200x100 was
+  was
+  workarounded.
+- The additional software script
+  doesn't crash anymore if
+  persistence is not mounted.
+- The homepage was fixed when starting Tails in Spanish ([[!tails_ticket
+  6612]]).
+
+Documentation and website
+=========================
+
+- A new German team was created with Frithjof, Frau Suk, and Jens Kubieziel.
+- Spanish translations were disabled on the website because too few pages were
+  translated.
+- Our program of [[Easy tasks for new contributors|contribute/starter_tasks]] was
+  published.
+- Icons for the different roles on the Contribute section [[were
+  drafted|contribute]].
+
+Infrastructure
+==============
+
+Test suite
+----------
+
+- The test suite was
+  completed to validate [[!tails_ticket 5735]].
+- Our test suite has 82 scenarios.
+
+On-going discussions
+====================
+
+- Tails Mobile via USB or dual-boot
+- Updated plans for AppArmor support
+- Risks of enabled/disabled TCP timestamps?
+- Usecases for the Cookie Monster browser extension?
+- 2.0 milestone += supporting USB devices exposed as non-removable?
+- Tor Launcher extension
+- Tails logo
+- Link to the known issues on the download page?
+
+Funding
+=======
+
+- We sent our application to sponsor Lima.
+- We are still in the process of signing a contract with sponsor Echo.
+- We published our income statement for 2013.
+
+Outreach
+========
+
+- We are organizing the 2014 Tails developers summit.
+- A 3-days public Tails sprint will probably take place in Paris in
+  July. Many thanks to Stefano Zacchiroli for his help!
+
+Press and testimonials
+======================
+
+- 2014-01-14: On Linux.com, Carla Schroder picks
+  Tails
+  as the best Linux distribution for 2014 in the "Best Fighting the
+  Man Distro" category.
+- 2014-01-07: A RAT in the Registry: The Case for Martus on
+  TAILS
+  explains how Benetech have selected Tails to be the default
+  environment for their use of Martus while
+  defending Tibetan human rights defenders against targeted malware attacks.
+- 2014-01: "Tails: The Amnesiac Incognito Live System – Privacy for
+  Anyone Anywhere", by Russ McRee, in this month's issue of the
+  Information Systems Security Association
+  Journal.

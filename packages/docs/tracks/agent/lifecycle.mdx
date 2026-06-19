@@ -1,0 +1,40 @@
+---
+title: Agent Lifecycle
+description: "From boot to shutdown — what happens inside an Eliza agent."
+---
+
+## Boot
+
+1. `AgentRuntime` is constructed with a `Character` and an array of plugins.
+2. The runtime resolves plugins from npm (or workspace), loading each module.
+3. Each plugin's `init?(runtime)` is invoked. Plugins register their actions, providers, evaluators, services, models, and routes.
+4. Services start. Database adapters connect. Embeddings backfill if needed.
+5. `runtime.initialize()` resolves. The agent is live.
+
+## Message flow
+
+For every incoming message:
+
+1. **Connection ensure** — entity, room, and participants are upserted.
+2. **Memory write** — the message is persisted with embeddings.
+3. **Providers** — registered providers (`messages`, `facts`, `goals`, `enabled_skills`, etc.) produce context strings ordered by `position`.
+4. **Action selection** — the runtime asks the model which action(s) to run.
+5. **Action handler** — selected actions execute. They can call models, hit APIs, or stream callbacks back to the user.
+6. **Evaluators** — post-response evaluators run (fact extraction, reflection, etc.).
+
+## Shutdown
+
+`runtime.stop()` flushes pending writes, releases database connections, stops services, and unregisters connectors. Always await it on process exit.
+
+## Where this lives
+
+- `AgentRuntime` lifecycle: [`packages/core/src/runtime.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/runtime.ts)
+- Boot orchestration: [`packages/agent/src/runtime/eliza.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/agent/src/runtime/eliza.ts)
+- Action/provider/evaluator surface: [`packages/core/src/types/plugin.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/types/plugin.ts)
+
+## See also
+
+- [Runtime core](/runtime/core)
+- [Events](/runtime/events)
+- [Services](/runtime/services)
+- [Providers](/runtime/providers)

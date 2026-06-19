@@ -1,0 +1,47 @@
+# Text adventure
+
+AI-driven text adventure: the agent chooses actions in a small dungeon (LLM required).
+
+## Prerequisites
+
+From the **elizaOS repository root**:
+
+```bash
+bun install
+export OPENAI_API_KEY=your_key_here
+```
+
+## Run
+
+```bash
+cd packages/examples/text-adventure
+bun install
+
+# Quieter logs
+LOG_LEVEL=fatal bun run game.ts
+
+# Optional persistent DB
+PGLITE_DATA_DIR=./adventure-db LOG_LEVEL=fatal bun run game.ts
+```
+
+## Test
+
+```bash
+bun test
+```
+
+The test suite exercises the local dungeon engine with a deterministic no-LLM
+playthrough. Running the interactive or autonomous CLI still requires
+`OPENAI_API_KEY`.
+
+## Features
+
+- Multiple rooms, items, and enemies
+- Autonomous or guided play (see `game.ts` for flags)
+- Uses `ModelType.TEXT_SMALL` for action selection
+
+## Related examples
+
+- `packages/examples/chat/chat.ts` — CLI chat
+- `packages/examples/tic-tac-toe/game.ts` — no-LLM minimax demo
+- `packages/examples/game-of-life/game.ts` — no-LLM multi-agent simulation

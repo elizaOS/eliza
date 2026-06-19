@@ -1,0 +1,199 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails l10n\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2018-11-05 11:30+0000\n"
+"Last-Translator: Weblate Admin <admin@example.com>\n"
+"Language-Team: Tails Chinese translators <jxt@twngo.xyz>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.19.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Accessing resources on the local network\"]]\n"
+msgstr "[[!meta title=\"接取本地區域內的網路資源\"]]\n"
+
+#. type: Plain text
+msgid ""
+"The term \"local network\" refers to the set of computers and devices that "
+"can be reached directly from your computer without going through the "
+"Internet."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"For example, your home router, your network printer, or the intranet of your "
+"company are usually on your local network, also called LAN for Local Area "
+"Network. In technical terms, this refers to the set of IP addresses defined "
+"in [RFC1918](https://tools.ietf.org/html/rfc1918), like IP addresses that "
+"start with `192.168`."
+msgstr ""
+"\"本地網路\" 一辭指的是未透過互聯網，直接與你所用的電腦相互串接的一群電腦與設"
+"備。例如家用的路由器、網路列表機、公司的內聯網等等都可能是你的本地網路，它也"
+"稱之為 LAN ( Local Area Network)。技術上的用語，它指的是定義於 [RFC1918]"
+"(https://tools.ietf.org/html/rfc1918) 的一組 IP 地址。"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "Security considerations"
+msgstr "安全考量\n"
+
+#. type: Plain text
+msgid ""
+"Accessing resources on the local network can be useful in the context of "
+"Tails, for example to exchange documents with someone on the same local "
+"network without going through the Internet."
+msgstr ""
+"有些 Tails 的使用情況，可接取本地區域網路資源會很有用，例如和同網域內的某人交"
+"換文件而不必透過互聯網。"
+
+#. type: Plain text
+msgid ""
+"But an application that can connect to both resources on the Internet (going "
+"through Tor) and resources on the local network (without going through Tor) "
+"can deanonymize you."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"This page describes some of the security measures built into Tails to "
+"protect from such attacks and explains how to access some types of resources "
+"on the local network."
+msgstr ""
+"本頁說明了一些 Tails 內鍵的安全方法來防止在本地網路中的攻擊，以及如何在本地網"
+"路下接取某些類型的資源。"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Connections made to the local network are not anonymous and do not go\n"
+"through Tor.</p>\n"
+msgstr ""
+"<p>連上本地區域網域並不會匿名也沒有\n"
+"透過 Tor 網路。</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"browser\"></a>\n"
+msgstr "<a id=\"browser\"></a>\n"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "Browsing web pages on the local network"
+msgstr "在本地區域網路內瀏覽網頁\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"It is impossible to access web pages on the local network using *Tor "
+"Browser*.  This prevents websites on the Internet from deanonymizing you "
+"using the content of other web pages that might be specific to your local "
+"network and reveal where you are."
+msgstr ""
+"本地網路下無法使用<span class=\"application\">Tor\n"
+"瀏覽器來接取網頁</span>。這可防止來自互網路上的網站可以\n"
+"從本地網路的持定網頁內容來推測用戶所在的\n"
+"網路地址。\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To access web pages on the local network, use the [[*Unsafe Browser*|"
+"anonymous_internet/unsafe_browser]] instead."
+msgstr ""
+"改用[[<span class=\"application\">Unsafe\n"
+"Browser</span>|anonymous_internet/unsafe_browser]] 來讀取本地網路中的網頁。\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"http\"></a>\n"
+msgstr "<a id=\"http\"></a>\n"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "Downloading files from web pages on the local network"
+msgstr "透過網頁在本地網路中下載檔案\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To download files from web pages on the local network, you can use the "
+"`curl` command instead. For example, to download a document available on the "
+"local network at *http://192.168.1.40/document.pdf* execute the following "
+"command:"
+msgstr ""
+"在本地網路中要從網頁瀏覽器下戴檔案，可使用\n"
+"`curl` 指令取代，例如欲下載本地網路中\n"
+"某份文件*http://192.168.1.40/document.pdf*\n"
+"執行以下指令：\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    curl http://192.168.1.40/document.pdf\n"
+msgstr "    curl http://192.168.1.40/document.pdf\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "But an application that can connect to both resources on the\n"
+#~ "Internet (going through Tor) and resources on the local network (without going\n"
+#~ "through Tor) can break your anonymity. For example, if a website that\n"
+#~ "you visit anonymously using *Tor Browser* could also connect to other\n"
+#~ "web pages that are specific to your local network, then this information\n"
+#~ "could reveal where you are. This is why *Tor Browser* is prevented from\n"
+#~ "accessing the local network in Tails.\n"
+#~ msgstr ""
+#~ "但是當應用程式同時可以（透過 Tor）在網際網路上\n"
+#~ "以及本地網路中（不通過 Tor）接取資源時， \n"
+#~ "這可能會影響用戶的匿名性。例如使用 *Tor 瀏覽器* \n"
+#~ "匿名地訪問某個網站，也可能會連結到其它\n"
+#~ "本地網路中的特定網頁，而這些資訊\n"
+#~ "可能會揭露用戶的地址。因此 Tails 在接取本地網路時\n"
+#~ "不能使用*Tor 瀏覽器*。\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/chroot.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/chroot.inline.zh_TW\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "<a id=\"ftp\"></a>\n"
+#~ msgstr "<a id=\"ftp\"></a>\n"
+
+#~ msgid "Downloading files from an FTP server on the local network\n"
+#~ msgstr "透過 FTP 伺服器在本地網域中下載檔案\n"
+
+#~ msgid "       ftp://192.168.1.25/\n"
+#~ msgstr "       ftp://192.168.1.25/\n"
+
+#~ msgid "Open *Files*."
+#~ msgstr "打開 *Files*."
+
+#~ msgid "Click on **Other Locations** in the sidebar."
+#~ msgstr "點擊側欄中的 **Other Locations**。"
+
+#~ msgid ""
+#~ "Enter the address of the FTP server in the <span "
+#~ "class=\"guilabel\">Connect to Server</span> text box. For example:"
+#~ msgstr "在 **Connect to Server**欄位輸入 FTP 伺服器的地址，例如："
+
+#~ msgid "Click **Connect**."
+#~ msgstr "點擊 **Connect**。"

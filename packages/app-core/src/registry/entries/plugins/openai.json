@@ -1,0 +1,189 @@
+{
+  "id": "openai",
+  "name": "Openai",
+  "description": "Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
+  "npmName": "@elizaos/plugin-openai",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["ai-provider", "llm", "openai"],
+  "config": {
+    "OPENAI_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key used to authenticate requests to the OpenAI API.",
+      "advanced": false
+    },
+    "OPENAI_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://api.openai.com/v1",
+      "label": "Base Url",
+      "help": "Base URL for all OpenAI API requests.",
+      "advanced": false
+    },
+    "OPENAI_SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Small Model",
+      "help": "Identifier of the small language model to be used (overrides SMALL_MODEL).",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gpt-5-mini",
+      "label": "Model",
+      "help": "Fallback identifier for the small language model if OPENAI_SMALL_MODEL is not set.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "OPENAI_LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Large Model",
+      "help": "Identifier of the large language model to be used (overrides LARGE_MODEL).",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gpt-5.5",
+      "label": "Model",
+      "help": "Fallback identifier for the large language model if OPENAI_LARGE_MODEL is not set.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "OPENAI_EMBEDDING_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "text-embedding-3-small",
+      "label": "Embedding Model",
+      "help": "Identifier of the model to use for generating text embeddings.",
+      "placeholder": "e.g., text-embedding-3-small",
+      "advanced": false
+    },
+    "OPENAI_EMBEDDING_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Embedding Url",
+      "help": "Custom base URL for the OpenAI embeddings endpoint.",
+      "advanced": false
+    },
+    "OPENAI_EMBEDDING_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Embedding Api Key",
+      "help": "Custom API key for the OpenAI embeddings endpoint.",
+      "advanced": false
+    },
+    "OPENAI_EMBEDDING_DIMENSIONS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "1536",
+      "label": "Embedding Dimensions",
+      "help": "Number of dimensions for the returned embedding vectors.",
+      "advanced": false
+    },
+    "OPENAI_IMAGE_DESCRIPTION_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gpt-5-mini",
+      "label": "Image Description Model",
+      "help": "Identifier of the model used for describing images.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "default": "8192",
+      "label": "Image Description Max Tokens",
+      "help": "Maximum number of tokens allowed in the image-description model response.",
+      "advanced": false
+    },
+    "OPENAI_TTS_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gpt-5-mini-tts",
+      "label": "Tts Model",
+      "help": "Identifier of the model used for text-to-speech generation.",
+      "placeholder": "e.g., tts-1, eleven_multilingual_v2",
+      "advanced": false
+    },
+    "OPENAI_TTS_VOICE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "nova",
+      "label": "Tts Voice",
+      "help": "Voice profile to use for text-to-speech output.",
+      "advanced": false
+    },
+    "OPENAI_TTS_INSTRUCTIONS": {
+      "type": "textarea",
+      "required": false,
+      "sensitive": false,
+      "label": "Tts Instructions",
+      "help": "Optional instructions to control the style or behavior of the text-to-speech request.",
+      "advanced": false
+    },
+    "OPENAI_EXPERIMENTAL_TELEMETRY": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "False",
+      "label": "Experimental Telemetry",
+      "help": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
+      "advanced": true
+    },
+    "OPENAI_BROWSER_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Browser Base Url",
+      "help": "Browser-only proxy endpoint base URL for OpenAI requests (no secrets in the client).",
+      "advanced": false
+    },
+    "OPENAI_BROWSER_EMBEDDING_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Browser Embedding Url",
+      "help": "Browser-only proxy endpoint base URL for OpenAI embeddings.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "CircleDashed",
+    "group": "ai-provider",
+    "groupOrder": 0,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-openai#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-openai",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#openai"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "ai-provider"
+}

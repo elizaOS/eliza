@@ -1,0 +1,18 @@
+[[!meta robots="noindex"]]
+
+<div class="caution">
+
+<p>Most files contain metadata, which is information used to describe,
+identify, categorize, and sort files. For example:</p>
+
+<ul>
+<li>Cameras record data about when and where a picture was taken and what
+camera was used.</li>
+<li>Office documents automatically add author
+and company information to texts and spreadsheets.</li>
+</ul>
+
+<p>Use [[<i>Metadata Cleaner</i>|doc/sensitive_documents/metadata]] to clean
+metadata from your files before sharing them.</p>
+
+</div>

@@ -1,0 +1,84 @@
+schema: eliza.e1_phone_top_bottom_interconnect_binding.v1
+as_of: 2026-05-20
+status: planning_binding_no_connector_stack_selected
+claim_boundary: >
+  Planning binding for the top-logic/bottom-I/O island interconnect. No
+  connector, flex stackup, impedance coupon, bend radius, mating height, strain
+  relief, assembly process, or supplier quote is approved. Promotion requires
+  exact orderable parts, mating connector pairs, flex drawing, SI review, and
+  insertion/retention validation.
+
+primary_candidate:
+  family: Hirose_BM28
+  role: hybrid_power_signal_fpc_to_board_bridge
+  public_specs:
+    pitch_mm: 0.35
+    stacking_height_mm: 0.6
+    high_current_contacts_a: 5
+    signal_current_a: 0.3
+    high_speed_support: USB4_Gen2_20Gbps_class
+  source_url: https://www.hirose.com/product/series/BM28?lang=en
+  catalog_url: https://www.hirose.com/en/product/document?clcode=CL0673-5048-0-51&documentid=en_BM28_CAT&documenttype=Catalog&lang=en&productname=BM28B0.6-6DS%2F2-0.35V%2851%29&series=BM28
+  design_role: primary_for_EVT0_flex_bridge_if_pin_count_and_power_contacts_cover_budget
+
+alternates:
+  - family: Hirose_FH58
+    role: high_retention_fpc_connector_for_signal_flex
+    public_specs:
+      pitch_mm: 0.2_or_0.25
+      height_mm: 0.9
+      contact_style: top_and_bottom_contact_back_flip
+      high_speed_support: supported_by_series
+    source_url: https://www.hirose.com/product/series/FH58
+    catalog_url: https://www.hirose.com/en/product/document?clcode=CL0580-3828-0-00&documentid=en_FH58_FH58M_CAT&documenttype=Catalog&lang=en&productname=FH58S-25S-0.2SHW&series=FH58
+    design_role: alternate_if_power_is_split_to_dedicated_tabs_or_wires
+  - family: Molex_SlimStack_ACB6_Plus_or_equivalent
+    role: board_to_board_fallback_for_two_board_stack
+    public_specs:
+      pitch_mm: 0.35
+      mated_height_mm: 0.6
+      circuits: 10_to_60
+      power_nail_current_a: 5
+    source_url: https://www.molex.com/en-us/products/connectors/board-to-board-connectors/slimstack-connectors.html
+    datasheet_url: https://www.molex.com/content/dam/molex/molex-dot-com/en_us/pdf/datasheets/987651-2331.pdf
+    design_role: fallback_for_two_board_stack_if_z_height_and_serviceability_allow
+
+required_cross_island_buses:
+  - name: USB2_FROM_BOTTOM_PORT_TO_TOP_SOC_PD
+    nets: [USB_DP, USB_DN, USB_CC1, USB_CC2, VBUS, SHIELD_GND]
+    class: usb2_and_power
+    requirement: route_usb2_90ohm_and_keep_cc_esd_near_bottom_port
+  - name: POWER_FROM_TOP_CHARGER_TO_BOTTOM_IO
+    nets: [SYS, AON_1V8, IO_1V8, VDD_AUDIO_3V3, VDD_AMP_3V3, GND]
+    class: power_low_voltage
+    requirement: allocate_power_contacts_or_parallel_pins_with_return_interleave
+  - name: AUDIO_DIGITAL_TO_BOTTOM_CODEC_MICS
+    nets: [I2S_BCLK, I2S_LRCLK, I2S_DOUT, I2S_DIN, PDM_CLK, PDM_DAT, AUDIO_I2C_SCL, AUDIO_I2C_SDA, CODEC_INT, AMP_INT]
+    class: single_ended_audio_control
+    requirement: length_limit_and_keepaway_from_vbus_and_rf
+  - name: HAPTIC_AND_FACTORY_TEST
+    nets: [HAPTIC_OUT, VBUS, VBAT, SYS, AON_1V8, IO_1V8, RF_VBAT]
+    class: actuator_power_and_test_access
+    requirement: keep_haptic_return_and_test_access_defined_on_bottom_island
+
+flex_stackup_requirements:
+  target: 2_layer_or_4_layer_controlled_impedance_fpc
+  usb2_diff_impedance_ohm: 90
+  preferred_ground_strategy: adjacent_ground_and_return_pins_flanking_usb2_and_audio_clocks
+  bend_radius_min: supplier_defined_after_fpc_stack
+  strain_relief: enclosure_clamp_or_adhesive_under_battery_edge_required
+
+evidence_required_before_freeze:
+  - exact_connector_part_numbers_and_mating_pairs
+  - connector_land_patterns_and_step_models
+  - flex_length_bend_radius_stackup_and_stiffener_drawing
+  - USB2_and_audio_signal_integrity_review
+  - power_contact_current_temperature_rise_review
+  - assembly_sequence_and_rework_plan
+
+forbidden_claims:
+  - interconnect_ready
+  - rigid_flex_ready
+  - usb_si_closed
+  - flex_power_safe
+  - assembly_ready

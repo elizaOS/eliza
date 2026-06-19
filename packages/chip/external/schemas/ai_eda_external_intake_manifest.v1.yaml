@@ -1,0 +1,42 @@
+schema: eliza.ai_eda.external_intake_manifest_schema.v1
+name: ai_eda_external_intake_manifest.v1
+required_fields:
+  - schema
+  - asset_id
+  - kind
+  - source_url
+  - upstream_revision
+  - license
+  - intake
+  - local_payload
+  - claim_boundary
+allowed_kind:
+  - repo
+  - dataset
+  - model
+  - paper
+allowed_review_status:
+  - metadata_reviewed
+  - pending
+  - blocked
+required_revision_fields:
+  - type
+  - value
+required_license_fields:
+  - status
+  - evidence
+  - reviewed_at
+required_intake_fields:
+  - review_status
+  - allowed_use
+  - release_use_allowed
+  - deterministic_replay_required
+  - next_action
+required_local_payload_fields:
+  - downloaded
+  - payload_path
+  - checksum_status
+policy:
+  large_payloads_committed: forbidden
+  release_use_allowed: false
+  metadata_manifest_does_not_prove_training_ready: true

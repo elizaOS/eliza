@@ -1,0 +1,31 @@
+# PDF Tools MCP Server Configuration
+name: pdf_tools
+display_name: PDF Tools MCP Server
+description: PDF manipulation and processing tools
+
+execution:
+  command_type: uvx
+  package_name: "pdf-tools-mcp"
+
+parameters:
+  workspace_path:
+    required: false
+    default: "."
+    cli_arg: "--workspace_path"
+    description: "Workspace directory for PDF operations"
+
+  tempfile_dir:
+    required: false
+    default: "{workspace_path}/.pdf_tools_tempfiles"
+    cli_arg: "--tempfile_dir"
+    description: "Directory for temporary files created during PDF operations. If not specified, defaults to workspace_path/.pdf_tools_tempfiles"
+
+  env_vars:
+    required: false
+    description: "Optional dictionary of additional environment variables to set"
+
+workspace:
+  set_cwd: true
+  cwd_param: workspace_path
+  supports_placeholders: true
+  mkdir_if_needed: true

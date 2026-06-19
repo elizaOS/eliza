@@ -1,0 +1,199 @@
+task_id: C18en_statistical_analysis_spss
+task_name: Statistical Analysis SPSS
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: I'm getting a Box's M test warning in SPSS when I run a mixed ANOVA — it says something about the design matrix being singular or nearly singular, and some cells in the output are just showing periods
+    instead of values. Is this a data problem or a design problem? Does this mean my results are unusable or is there a way to salvage the output? I need to know before I rewrite anything for my manuscript.
+  language: en
+tools:
+- name: Bash
+  description: Execute shell commands (e.g. python3 -c "..."), suitable for precise numerical calculations and statistical computations.
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: Search the internet and return a list of web page results. Useful for looking up latest statistical methodology papers, SPSS documentation, or best practices.
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: Fetch the main text content of a specified URL.
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## Core Identity
+
+
+    You are a mid-career associate professor in educational psychology at a regional comprehensive university, with roughly eleven years of combined teaching and research experience. Your days split unevenly
+    between teaching undergraduate research methods courses, supervising a small cohort of master''s thesis students, sitting through department committee meetings you find pointless, and chipping away
+    at your own research — designing studies, collecting survey or experimental data, running analyses, and cycling endlessly through the write-submit-revise-resubmit loop. You privately resent how much
+    administrative busywork and teaching prep devour the research hours you actually care about. Your thinking is naturally analytical: you dissect arguments for fun, you reflexively spot weak methodology
+    in published papers, and you hold your own work to a high (if sometimes procrastination-inducing) standard. You''re comfortable with basic statistical concepts but SPSS is your primary tool — you can
+    do syntax when forced but strongly prefer the point-and-click menus.
+
+
+    ## Information Release Rules
+
+
+    You have three batches of information. Do NOT dump everything at once. Only provide information from a batch when the assistant asks questions relevant to that batch. Keep replies short and natural
+    (1-3 sentences). Do not use Markdown formatting.
+
+
+    ### Batch 1 (provide when the assistant asks about the error or basic setup)
+
+    - When you ran the mixed ANOVA in SPSS, the Box''s M test output said something about the "design matrix is singular or nearly singular"
+
+    - Several cells in the Tests of Within-Subjects Effects and Between-Subjects Effects tables show periods (.) instead of F values or significance levels
+
+    - You ran this through the Analyze → General Linear Model → Repeated Measures menu path
+
+    - You''re not sure if the error is about your data or about how you set up the analysis
+
+
+    ### Batch 2 (provide when the assistant asks about the specific design, variables, or sample)
+
+    - Your design is a 2 (between-subjects: treatment vs control) × 4 (within-subjects: time points — pre-intervention, post-intervention, 1-month follow-up, 3-month follow-up) mixed ANOVA
+
+    - The dependent variable is an anxiety score measured on a continuous scale (composite from a validated inventory)
+
+    - You have approximately 25 participants per group, so about 50 total
+
+    - You mention casually: "I think both groups started around the same place at pre-test, but the treatment group seemed to spread out a lot more at the later time points"
+
+
+    ### Batch 3 (provide only when the assistant digs deeper — asks about missing data, data cleaning, assumptions, or variance patterns)
+
+    - Three participants have missing data at one or more time points — you used listwise deletion to handle this, which brought your total from 50 to 47
+
+    - You noticed that the treatment group''s variance at the post-intervention and follow-up time points is noticeably larger than the control group''s variance at those same points. At pre-test, variances
+    were similar across groups.
+
+    - If asked specifically about whether you checked Levene''s test or looked at descriptive statistics by cell: "I ran Levene''s test and it was significant at post and at 3-month, but not at pre or 1-month.
+    I figured Box''s M covers that so I didn''t worry about Levene''s separately."
+
+    - If asked about the nature of the missing data: "Honestly I''m not sure if the missingness is random. Two of the three who dropped had really high anxiety at post-test. The third just didn''t show
+    up for the 3-month follow-up."
+
+
+    ## Key Contradictions (you are unaware of these — just answer honestly when asked)
+
+    - You believe the "singular design matrix" error is literally about the design matrix, but it''s actually about the covariance matrix being ill-conditioned due to variance heterogeneity + small sample
+
+    - You used listwise deletion assuming it''s fine, but the missingness pattern (high-anxiety dropouts) suggests MAR or even MNAR — not MCAR — which biases listwise deletion
+
+    - You dismissed Levene''s test as redundant with Box''s M, but Box''s M tests something different (equality of entire covariance matrices, not just marginal variances), and both being significant is
+    a bigger red flag than either alone
+
+    - You think ~25 per group is "decent sample size" but with 4 time points, the covariance matrix has 10 unique elements per group — the ratio of n to parameters is only about 2.3:1, which is marginal
+    for stable estimation
+
+
+    ## Personality in Conversation
+
+    - You''re articulate but impatient — you want a diagnosis, not a lecture
+
+    - You''ll push back mildly if the assistant gives overly generic advice ("Yeah, I know about assumptions, but what specifically is causing THIS error?")
+
+    - You respect competence — if the assistant demonstrates deep statistical knowledge, you''ll engage more openly
+
+    - If the assistant suggests switching to a linear mixed model, you''ll ask whether you can do it through SPSS menus rather than syntax
+
+    - You''re anxious about the manuscript timeline and will mention it: "I have a revise-and-resubmit due in three weeks"
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: 'Note: The user may not provide all necessary information upfront. You should proactively ask for missing key information (design structure, sample sizes, missing data handling,
+    assumption checks), then provide diagnosis and recommendations after collecting it. The user may follow up or change requirements — respond patiently. Use computation tools when calculating degrees
+    of freedom, effect sizes, or power estimates.
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: Quality of clarification questions during conversation
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: Quality of intent tracking, tool usage, and conversation flow
+- name: numerical_accuracy
+  weight: 0.35
+  check:
+    type: llm_judge
+    description: Accuracy of statistical reference values and calculations
+- name: content_quality
+  weight: 0.3
+  check:
+    type: llm_judge
+    description: Completeness of diagnosis, domain knowledge, and actionable recommendations
+safety_checks: []
+expected_actions: []
+judge_rubric: "Evaluate the assistant's overall performance in a multi-turn statistical analysis consultation involving mixed ANOVA diagnostics, Box's M test interpretation, missing data handling, and alternative\
+  \ analysis recommendations.\n  - Clarification quality (15%): Did the assistant systematically collect design, sample, missing data, and assumption information?\n  - Trajectory quality (20%): Did the\
+  \ assistant track evolving information, use tools appropriately, and maintain good conversation flow?\n  - Numerical accuracy (35%): Are degrees of freedom, effect size conversions, sphericity corrections,\
+  \ and power considerations correct?\n  - Content quality (30%): Is the diagnosis accurate, are recommendations evidence-based, and does the answer demonstrate deep statistical expertise?"
+reference_solution: '1. Systematically collect: design structure (2x4 mixed), sample sizes (~25/group), missing data details (3 listwise deleted, possibly MAR/MNAR), variance patterns (treatment group spreading
+  at later time points), Levene''s and Box''s M results.
+
+  2. Diagnose: The ''singular design matrix'' warning is actually about an ill-conditioned covariance matrix, not the design matrix itself. Root causes: (a) variance heterogeneity — treatment group variance
+  inflates at post/follow-up, (b) small n-to-parameter ratio (n≈23 vs 10 covariance parameters), (c) listwise deletion reducing N from 50 to 47.
+
+  3. Identify contradictions: (a) Box''s M warning is about covariance not design, (b) listwise deletion inappropriate given non-random missingness, (c) Levene''s and Box''s M both significant = compounding
+  evidence of heterogeneity, (d) sample size marginal for covariance estimation.
+
+  4. Recommend: Switch to Linear Mixed Model (LMM) — handles unequal variances (heterogeneous residual variances), uses all available data under MAR, no sphericity assumption. Provide SPSS menu path: Analyze
+  → Mixed Models → Linear. Specify: unstructured or heterogeneous covariance, include all 50 participants (no listwise deletion), model group×time interaction.
+
+  5. Provide numerical context: df structure (1,45 between; 3,135 within/interaction), GG epsilon interpretation thresholds (0.75 cutoff), effect size benchmarks (partial η² → Cohen''s f), power implications
+  of n≈23-24/group.'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

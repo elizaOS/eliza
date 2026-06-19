@@ -1,0 +1,123 @@
+{
+  "schema": "eliza.cpu_benchmark_manifest.v1",
+  "benchmark": "geekbench6-equivalent",
+  "status": "pinned_not_run",
+  "claim_boundary": "geekbench_6_results_are_BLOCKED_until_silicon_and_full_RVA23_software_stack_exist",
+  "rationale": "Geekbench 6 is proprietary (Primate Labs, EULA-restricted). We assemble an open functional equivalent using Phoronix Test Suite micro-workloads that map 1:1 to Geekbench 6 subscores. This gives a representative score without violating Primate Labs' redistribution terms.",
+  "geekbench_6_subscore_mapping": [
+    {
+      "geekbench_6_subscore": "File Compression",
+      "open_equivalent": "phoronix:compress-7zip + zstd 1.5.5 + xz 5.6",
+      "type": "integer_int64_throughput"
+    },
+    {
+      "geekbench_6_subscore": "Navigation",
+      "open_equivalent": "phoronix:graph-osrm or open-source pgr-dijkstra micro-bench",
+      "type": "integer_pointer_chasing"
+    },
+    {
+      "geekbench_6_subscore": "HTML5 Browser",
+      "open_equivalent": "phoronix:web-browser-headless (V8/JetStream2 subset)",
+      "type": "js_engine_mixed_workload"
+    },
+    {
+      "geekbench_6_subscore": "PDF Renderer",
+      "open_equivalent": "phoronix:pdfium-render or mupdf-render",
+      "type": "memory_intensive_float"
+    },
+    {
+      "geekbench_6_subscore": "Photo Library",
+      "open_equivalent": "phoronix:imagemagick + simd-libjxl bench",
+      "type": "image_int_simd"
+    },
+    {
+      "geekbench_6_subscore": "Clang",
+      "open_equivalent": "phoronix:build-llvm clang -O2 on a fixed source corpus",
+      "type": "branchy_compiler_workload"
+    },
+    {
+      "geekbench_6_subscore": "Text Processing",
+      "open_equivalent": "phoronix:python-startup + json5 + re2 bench",
+      "type": "string_int"
+    },
+    {
+      "geekbench_6_subscore": "Asset Compression",
+      "open_equivalent": "phoronix:zstd + brotli + lz4",
+      "type": "integer_simd_compression"
+    },
+    {
+      "geekbench_6_subscore": "Object Detection",
+      "open_equivalent": "phoronix:onnxruntime-mobilenet-v3 (CPU-only path)",
+      "type": "int8_inference_cpu_fallback"
+    },
+    {
+      "geekbench_6_subscore": "Background Blur",
+      "open_equivalent": "phoronix:opencv-blur or simd-blur micro-bench",
+      "type": "float_simd_image"
+    },
+    {
+      "geekbench_6_subscore": "Horizon Detection",
+      "open_equivalent": "phoronix:opencv-hough-lines",
+      "type": "float_simd_image"
+    },
+    {
+      "geekbench_6_subscore": "Object Remover",
+      "open_equivalent": "phoronix:gimp-inpaint or simd-inpaint",
+      "type": "float_simd_image"
+    },
+    {
+      "geekbench_6_subscore": "HDR",
+      "open_equivalent": "phoronix:libjxl + tonemap micro-bench",
+      "type": "float_simd_image_hdr"
+    },
+    {
+      "geekbench_6_subscore": "Photo Filter",
+      "open_equivalent": "phoronix:opencv-bilateral + cuda-only? cpu fallback",
+      "type": "float_simd_image"
+    },
+    {
+      "geekbench_6_subscore": "Ray Tracer",
+      "open_equivalent": "phoronix:embree (cpu) or smallpt",
+      "type": "float_simd_ray_tracing"
+    },
+    {
+      "geekbench_6_subscore": "Structure From Motion",
+      "open_equivalent": "phoronix:colmap-feature-extraction",
+      "type": "float_simd_image_3d"
+    }
+  ],
+  "expected_results": {
+    "e1_ultra_target_4.0_ghz": {
+      "geekbench_6_st_equivalent": 2800,
+      "geekbench_6_mt_equivalent_8_core": 8500,
+      "claim_status": "blocked_until_silicon_evidence_AND_full_stack"
+    },
+    "aspirational_a19_pro_parity": {
+      "geekbench_6_st_equivalent": 3895,
+      "claim_status": "explicitly_blocked_aspirational_only"
+    },
+    "reference_apple_a19_pro": {
+      "geekbench_6_st": 3895,
+      "geekbench_6_mt": 9988,
+      "source": "docs/spec-db/mobile-sota-2026.yaml"
+    },
+    "reference_qualcomm_oryon_gen_3": {
+      "geekbench_6_st": 3649,
+      "geekbench_6_mt": 11068,
+      "source": "docs/spec-db/mobile-sota-2026.yaml"
+    },
+    "reference_arm_c1_ultra": {
+      "geekbench_6_st": 3502,
+      "geekbench_6_mt": 10417,
+      "source": "docs/spec-db/mobile-sota-2026.yaml"
+    }
+  },
+  "license_constraint": "Phoronix Test Suite is GPLv3. Each sub-test inherits its upstream license; some are non-redistributable binaries (proprietary codecs). Track per-component license at run time and exclude non-free pieces from CI evidence.",
+  "result_artifact": "benchmarks/results/cpu/geekbench/result.json",
+  "run_command": "scripts/run_geekbench_equivalent.sh",
+  "fail_closed_until": [
+    "Phoronix Test Suite or equivalent open harness installed",
+    "Android RVA23 software stack with V8 / clang / opencv built for rv64gc",
+    "DUT silicon (Verilator and FireSim are too slow for these workloads at meaningful sample sizes)"
+  ]
+}

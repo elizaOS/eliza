@@ -1,0 +1,44 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-02-04 23:28+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta title=\"Tor users chat room\"]]"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"Join the [[Tor users chat room on IRC|https://support.torproject.org/get-in-"
+"touch/chat-with-us/]] to ask questions about Tails."
+msgstr ""
+
+#~ msgid "Our chatroom is an IRC one."
+#~ msgstr "Unser Chatraum ist im IRC."
+
+#~ msgid "Here are the needed technical details:"
+#~ msgstr "Hier sind die nötigen technischen Details:"
+
+#~ msgid "port: `6697`"
+#~ msgstr "Port: `6697`"
+
+#~ msgid ""
+#~ "If you are using Tails, you can enable the predefined profile\n"
+#~ "in Pidgin in the \"Accounts menu -> Manage Accounts\" section.\n"
+#~ msgstr ""
+#~ "Wenn Sie Tails verwenden, können Sie ein vordefiniertes Profil\n"
+#~ "in Pidgin unter \"Accounts menu -> Manage Accounts\" auswählen.\n"

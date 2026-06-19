@@ -1,0 +1,3 @@
+# Set SOURCE_DATE_EPOCH to the output of this command:
+# date --utc --date="$(dpkg-parsechangelog --show-field=Date)" '+%s'
+source_date_epoch: FIXME

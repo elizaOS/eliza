@@ -1,0 +1,41 @@
+{
+  "name": "@feed/a2a",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Feed A2A Protocol - Agent-to-Agent communication",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "require": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/a2a/package.json packages/a2a/tsconfig.json packages/a2a/src",
+    "typecheck": "cd ../.. && bun run tsc -p packages/api --emitDeclarationOnly --noCheck && bun run tsc -p packages/a2a --noEmit"
+  },
+  "dependencies": {
+    "@feed/api": "workspace:*",
+    "@feed/core": "workspace:*",
+    "@feed/engine": "workspace:*",
+    "@feed/shared": "workspace:*",
+    "uuid": "^11.1.0"
+  },
+  "peerDependencies": {
+    "@a2a-js/sdk": "^0.3.5",
+    "@feed/api": "workspace:*",
+    "@feed/db": "workspace:*",
+    "@feed/shared": "workspace:*",
+    "drizzle-orm": "^0.44.7",
+    "ethers": "^6.16.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/uuid": "^11.0.0",
+    "bun-types": "^1.3.2",
+    "typescript": "^5.9.3"
+  }
+}

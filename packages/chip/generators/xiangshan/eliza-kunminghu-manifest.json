@@ -1,0 +1,96 @@
+{
+  "schema": "eliza.bpu_ip_pin_manifest.v1",
+  "ip_role": "branch_prediction_unit",
+  "owner_agent": "bpu",
+  "status": "selected_pending_chipyard_or_standalone_integration",
+  "selected_for_2028_phone_class_big_core": false,
+  "claim_level": "topology_reference_only",
+  "rationale": "OpenXiangShan Kunminghu V2 is the canonical reference for the BPU topology selected in rtl/cpu/bpu/. The local implementation matches the upstream block diagram (decoupled BPU + FTQ + uFTB + FTB + TAGE-SC + ITTAGE + RAS + loop predictor) and is parameterised to meet or exceed the upstream entry counts. Phone-class MPKI claims remain blocked until SPEC2017 / AOSP / JetStream2 traces are ingested.",
+  "vendor": "OpenXiangShan",
+  "core_ip": {
+    "name": "XiangShan Kunminghu BPU",
+    "repo": "https://github.com/OpenXiangShan/XiangShan.git",
+    "license": "Mulan-PSL-v2",
+    "license_url": "https://license.coscl.org.cn/MulanPSL2/",
+    "license_compatibility_with_apache_2_0": "claimed_compatible_per_openatomicfoundation_advisory_legal_review_required",
+    "submodule_path": "external/xiangshan/XiangShan",
+    "pinned_release_tag": "kunminghu-v3",
+    "pinned_commit": "09d715b21d77a76354a8a088002f2191c37a4bc7",
+    "pinned_commit_resolution_command": "git -C external/xiangshan/XiangShan rev-parse kunminghu-v3",
+    "selected_modules_of_reference": [
+      "src/main/scala/xiangshan/frontend/UFTB.scala",
+      "src/main/scala/xiangshan/frontend/FTB.scala",
+      "src/main/scala/xiangshan/frontend/Tage.scala",
+      "src/main/scala/xiangshan/frontend/ITTage.scala",
+      "src/main/scala/xiangshan/frontend/SC.scala",
+      "src/main/scala/xiangshan/frontend/RAS.scala",
+      "src/main/scala/xiangshan/frontend/Ftq.scala",
+      "src/main/scala/xiangshan/frontend/LoopPredictor.scala",
+      "src/main/scala/xiangshan/Parameters.scala"
+    ]
+  },
+  "fork_policy": "no_fork_yet",
+  "fork_policy_reason": "Per docs/architecture-optimization/sota-2028/branch-predictors.md, our local SystemVerilog reimplementation matches the Kunminghu BPU topology and uses the same parameter floor. We track upstream by commit pin rather than forking; if a tapeout-quality variant requires divergent block geometry we will re-pin to a project-local fork.",
+  "local_implementation": {
+    "package": "rtl/cpu/bpu",
+    "top": "rtl/cpu/bpu/bpu_top.sv",
+    "language": "SystemVerilog 2017",
+    "topology_matches_xiangshan": true,
+    "modules": [
+      "bpu_pkg.sv",
+      "bpu_top.sv",
+      "bpu_csr.sv",
+      "bimodal.sv",
+      "tage_table.sv",
+      "tage.sv",
+      "ittage.sv",
+      "sc.sv",
+      "loop_predictor.sv",
+      "ftb.sv",
+      "uftb.sv",
+      "ras.sv",
+      "ftq.sv",
+      "ftq_to_l1i_shim.sv"
+    ],
+    "deviations": [
+      "Per-table TAGE useful-bit reset alternates LSB/MSB on a fixed cycle period (TAGE_USEFUL_RESET_PERIOD = 256K cycles) rather than the adaptive scheme in Kunminghu. Matches the Seznec CBP-5 baseline.",
+      "ITTAGE storage uses uniform ITTAGE_ENTRIES_MAX-sized arrays with index hashing modulo the per-table entry count. Synthesised area follows the largest table; KMH packs tables tightly.",
+      "Two-taken-per-cycle FTB read is parameterised (MAX_BR_PER_BLOCK = 2) but the prediction pipeline currently only emits one taken branch per cycle. Lifting to two taken requires a follow-up RTL workstream tracked under the claim_policy below.",
+      "FDIP-style L1I prefetch is wired through rtl/cpu/bpu/ftq_to_l1i_shim.sv to the cache agent's e1_ftq_to_l1i_pkg::ftq_prefetch_req_t interface. The shim is single-cycle combinational; real timing closure may add a register stage at the cluster boundary."
+    ]
+  },
+  "cross_domain_contracts": {
+    "pmu_to_zihpm": {
+      "owner_bpu": "rtl/cpu/bpu/bpu_pkg.sv (pmu_event_e, bpu_pmu_to_hpm())",
+      "consumer_csr": "rtl/cpu/csr/zihpm.sv (hpm_event_e)",
+      "remap_adapter": "rtl/cpu/csr/bpu_to_zihpm_remap.sv",
+      "checker": "scripts/check_pmu_event_alignment.py",
+      "evidence": "docs/evidence/cpu_ap/pmu-event-alignment.json",
+      "mapping_rule": "zihpm_id = pmu_id + 1"
+    },
+    "ftq_to_l1i": {
+      "owner_bpu": "rtl/cpu/bpu/ftq_to_l1i_shim.sv",
+      "consumer_cache": "rtl/cache/ftq_to_l1i_pkg.sv",
+      "channel": "single-cycle valid/ready + flush",
+      "request_type": "e1_ftq_to_l1i_pkg::ftq_prefetch_req_t",
+      "documented_in": "docs/arch/branch-prediction.md and rtl/cache/ftq_to_l1i_pkg.sv"
+    }
+  },
+  "required_evidence": [
+    "docs/evidence/cpu_ap/branch-prediction-params.json",
+    "docs/evidence/cpu_ap/pmu-event-alignment.json",
+    "build/reports/bpu/lint-status.yaml",
+    "build/reports/bpu/formal-status.yaml"
+  ],
+  "claim_policy": {
+    "branch_prediction_workstream_claim": "scaffold_only",
+    "open_topology_match_claim": true,
+    "two_taken_per_cycle_claim": false,
+    "fdip_claim": false,
+    "android_mpki_claim": false,
+    "spec2017_mpki_claim": false,
+    "geekbench6_mpki_claim": false,
+    "jetstream2_indirect_misp_claim": false,
+    "reason": "Open topology is wired in synthesisable SystemVerilog, verilator strict-lint clean across 14 modules, cocotb regression 94/94 target-module tests across 10 modules including the L1I frontend. Workload MPKI claims remain blocked until benchmarks/cpu/branch/ ingests SPEC, AOSP, and JS-engine traces."
+  }
+}

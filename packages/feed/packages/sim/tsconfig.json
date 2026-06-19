@@ -1,0 +1,33 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["bun-types"],
+    "baseUrl": ".",
+    "paths": {
+      "@feed/shared": ["../shared/src/index.ts"],
+      "@feed/shared/*": ["../shared/src/*"],
+      "@feed/db": ["../db/src/index.ts"],
+      "@feed/db/*": ["../db/src/*"],
+      "@feed/engine": ["../engine/src/index.ts"],
+      "@feed/engine/*": ["../engine/src/*"],
+      "@feed/sim": ["./core/index.ts"],
+      "@feed/sim/*": ["./core/*"]
+    }
+  },
+  "include": [
+    "core/**/*",
+    "cli/**/*",
+    "systems/**/*",
+    "tests/**/*",
+    "feed.config.ts"
+  ],
+  "exclude": ["node_modules", "dist"],
+  "references": [
+    { "path": "../shared" },
+    { "path": "../db" },
+    { "path": "../engine" }
+  ]
+}

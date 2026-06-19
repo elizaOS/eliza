@@ -1,0 +1,22 @@
+schema: eliza.ai_eda.zigzag_architecture.v1
+updated: 2026-05-19
+architecture:
+  name: e1_npu_current_scaffold
+  phase: current
+  claim_boundary: architecture_manifest_only_no_product_claim
+  operators:
+    - id: int8_matmul_scaffold
+      kind: matmul
+      data_type: int8
+      status: scaffolded
+    - id: descriptor_dma_path
+      kind: dma_descriptor_flow
+      data_type: bytes
+      status: scaffolded
+  memory:
+    local_scratch_bytes: unknown
+    source: docs/spec-db/e1-npu-runtime-contract.json
+  validation_gates:
+    - make npu-runtime-contract-check
+    - make npu-roadmap-check
+    - make synth

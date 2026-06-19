@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-cb0bec823a5003e8c96a094f685c470aa8cf90f4-v2d9a6c849c60ed19fd0858ce9e40b7cc8e097e59
+Repository: internetarchive/openlibrary
+Base Commit: 9a0af56cb6d4e56265d975ea416a22d443b37532
+Test Files: ["scripts/tests/test_partner_batch_imports.py"]
+FAIL_TO_PASS: ["scripts/tests/test_partner_batch_imports.py::TestBiblio::test_sample_csv_row"]
+PASS_TO_PASS: []

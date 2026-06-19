@@ -1,0 +1,17 @@
+[[!meta title="Slides"]]
+
+Generic presentation slides
+===========================
+
+- [[Tails-English.odp]]
+- [[Tails-Spanish.odp]]
+- [[Tails-Portuguese.odp]]
+
+Archive of past talks
+=====================
+
+See also the [onion-tex
+repository](https://gitlab.torproject.org/ahf/onion-tex/-/tree/main/src/pandoc),
+where you can find the slides for some newer Tails talks.
+
+[[!map pages="contribute/how/promote/slides/*"]]

@@ -1,0 +1,7 @@
+#!/bin/sh
+
+set -e
+
+echo "Enable various AppArmor profiles"
+
+rm /etc/apparmor.d/disable/usr.bin.thunderbird

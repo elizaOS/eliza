@@ -1,0 +1,96 @@
+# Platform Compatibility Matrix
+# Audio Player Core v2.0
+# Last reviewed: 2024-05-18
+
+[metadata]
+version = "2.0.0"
+last_updated = "2024-05-18"
+maintainer = "core-audio-team@example.com"
+
+[platforms.linux]
+backends = ["pulseaudio", "alsa", "pipewire"]
+default_backend = "pipewire"
+min_os_version = "Ubuntu 20.04 / Fedora 35 / Arch (rolling)"
+notes = "pipewire is preferred on modern distros; fallback to pulseaudio then alsa"
+
+[platforms.macos]
+backends = ["coreaudio"]
+default_backend = "coreaudio"
+min_os_version = "macOS 12.0 (Monterey)"
+notes = "CoreAudio is the only supported backend on macOS"
+
+[platforms.windows]
+backends = ["wasapi", "directsound"]
+default_backend = "wasapi"
+min_os_version = "Windows 10 1903+"
+notes = "WASAPI preferred for low-latency; DirectSound for legacy compatibility"
+
+[platforms.android]
+backends = ["oboe", "opensles"]
+default_backend = "oboe"
+min_os_version = "Android 8.0 (API 26)"
+notes = "Oboe preferred; OpenSL ES as fallback for older devices"
+
+[platforms.ios]
+backends = ["coreaudio"]
+default_backend = "coreaudio"
+min_os_version = "iOS 15.0"
+notes = "CoreAudio via AVAudioEngine; handle audio session interruptions"
+
+[dependencies]
+# Mapping of audio backends to their Rust crate dependencies
+
+[dependencies.cpal]
+version = "0.15"
+description = "Cross-platform audio I/O library"
+backends_supported = ["pulseaudio", "alsa", "pipewire", "coreaudio", "wasapi"]
+notes = "Primary audio output crate; v0.15+ required for pipewire support"
+
+[dependencies.rodio]
+version = "0.17"
+description = "High-level audio playback library built on cpal"
+backends_supported = ["pulseaudio", "alsa", "pipewire", "coreaudio", "wasapi", "directsound"]
+notes = "Used for audio decoding and mixing layer"
+
+[dependencies.oboe-rs]
+version = "0.6"
+description = "Rust bindings for Google's Oboe audio library"
+backends_supported = ["oboe", "opensles"]
+target = "android"
+notes = "Provides low-latency audio on Android"
+
+[dependencies.symphonia]
+version = "0.5"
+description = "Pure Rust audio decoding library"
+codecs_supported = ["mp3", "flac", "ogg", "wav", "aac"]
+notes = "Used for all codec decoding across platforms"
+
+[feature_matrix]
+# Feature support per platform
+[feature_matrix.gapless_playback]
+linux = true
+macos = true
+windows = true
+android = true
+ios = true
+
+[feature_matrix.hardware_volume_control]
+linux = true
+macos = true
+windows = true
+android = true
+ios = false  # iOS manages volume at system level
+
+[feature_matrix.background_playback]
+linux = true
+macos = true
+windows = true
+android = true  # Requires foreground service
+ios = true      # Requires audio background mode capability
+
+[feature_matrix.low_latency_mode]
+linux = true    # With pipewire or ALSA direct
+macos = true
+windows = true  # WASAPI exclusive mode
+android = true  # Oboe low-latency stream
+ios = true

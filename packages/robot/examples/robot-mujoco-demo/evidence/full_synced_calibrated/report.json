@@ -1,0 +1,68 @@
+{
+  "checkpoint": "/home/shaw/milady/eliza/packages/robot/checkpoints/text_conditioned_v2",
+  "calibration": "calibration/ainex_192_168_1_218_full.json",
+  "host": "192.168.1.218:9090",
+  "policy_hz": 8.0,
+  "episode_s": 4.0,
+  "calibrated_joints": [
+    "head_pan",
+    "head_tilt",
+    "l_ank_pitch",
+    "l_ank_roll",
+    "l_el_yaw",
+    "l_gripper",
+    "l_hip_pitch",
+    "l_hip_roll",
+    "l_hip_yaw",
+    "l_knee",
+    "l_sho_pitch",
+    "l_sho_roll",
+    "r_ank_pitch",
+    "r_ank_roll",
+    "r_el_pitch",
+    "r_gripper",
+    "r_hip_pitch",
+    "r_hip_roll",
+    "r_hip_yaw",
+    "r_knee",
+    "r_sho_pitch",
+    "r_sho_roll"
+  ],
+  "prompts": [
+    {
+      "prompt": "stand still",
+      "duration_s": 15.11,
+      "matched_task": "stand_up",
+      "similarity": 0.711,
+      "steps_completed": 32
+    },
+    {
+      "prompt": "wave hello",
+      "duration_s": 9.95,
+      "matched_task": "wave_right",
+      "similarity": 0.714,
+      "steps_completed": 32
+    },
+    {
+      "prompt": "turn left",
+      "duration_s": 9.27,
+      "matched_task": "turn_left",
+      "similarity": 0.826,
+      "steps_completed": 32
+    },
+    {
+      "prompt": "walk forward",
+      "duration_s": 9.23,
+      "matched_task": "walk_forward",
+      "similarity": 0.751,
+      "steps_completed": 32
+    }
+  ],
+  "divergence_samples": 4,
+  "divergence_mean_rms_mrad_all": 910.1689814489303,
+  "divergence_max_rms_mrad_all": 929.9134656318151,
+  "divergence_mean_rms_mrad_calibrated_joints_only": 941.0686361527771,
+  "divergence_max_rms_mrad_calibrated_joints_only": 962.1897562068566,
+  "divergence_mean_rms_mrad": 910.1689814489303,
+  "divergence_max_rms_mrad": 929.9134656318151
+}

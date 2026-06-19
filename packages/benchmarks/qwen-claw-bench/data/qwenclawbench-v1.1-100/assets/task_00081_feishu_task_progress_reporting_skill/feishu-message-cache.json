@@ -1,0 +1,60 @@
+{
+  "cache_version": 2,
+  "last_sync": "2026-02-10T13:50:00+08:00",
+  "messages": [
+    {
+      "message_id": "om_8a3f2e1b5c9d4a07",
+      "chat_id": "oc_d7e4f5a1b2c3d4e5",
+      "sender_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa04",
+      "sender_name": "Wang Jun",
+      "msg_type": "text",
+      "content": "Backend migration update: payment endpoints done, moving to notifications next",
+      "create_time": "2026-02-09T17:42:00+08:00"
+    },
+    {
+      "message_id": "om_1b4c7d8e2f5a3b06",
+      "chat_id": "oc_d7e4f5a1b2c3d4e5",
+      "sender_id": "ou_3b8c2d1e4f5a6b7c",
+      "sender_name": "Zhang Wei",
+      "msg_type": "text",
+      "content": "MQ setup should be done by tomorrow afternoon, then I can start on notification endpoints",
+      "create_time": "2026-02-09T17:50:00+08:00"
+    },
+    {
+      "message_id": "om_5e9f2a3b7c1d4e08",
+      "chat_id": "oc_a1b2c3d4e5f6a7b8",
+      "sender_id": "ou_7c1d4e5f2a3b8c09",
+      "sender_name": "Li Mei",
+      "msg_type": "text",
+      "content": "Home screen draft pushed to Figma, please review when you get a chance",
+      "create_time": "2026-02-08T14:15:00+08:00"
+    },
+    {
+      "message_id": "om_2c6a8d3e5f1b4a10",
+      "chat_id": "oc_d7e4f5a1b2c3d4e5",
+      "sender_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa04",
+      "sender_name": "Wang Jun",
+      "msg_type": "text",
+      "content": "Weekly sync moved to Thursday 2pm this week",
+      "create_time": "2026-02-07T09:30:00+08:00"
+    },
+    {
+      "message_id": "om_9f3a2b7c1d4e5f11",
+      "chat_id": "oc_d7e4f5a1b2c3d4e5",
+      "sender_id": "ou_3b8c2d1e4f5a6b7c",
+      "sender_name": "Zhang Wei",
+      "msg_type": "text",
+      "content": "Update on the MQ blocker: infra team hit a config issue with the RabbitMQ cluster, new ETA is Feb 13 instead of Feb 11. Notification endpoints can't start until then. Feb 14 deadline is going to be very tight.",
+      "create_time": "2026-02-10T09:15:00+08:00"
+    },
+    {
+      "message_id": "om_3d7e5f9a2b4c6d12",
+      "chat_id": "oc_d7e4f5a1b2c3d4e5",
+      "sender_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa04",
+      "sender_name": "Wang Jun",
+      "msg_type": "text",
+      "content": "Got it. From what I can see the three tasks seem about 70% done overall — can someone give me a full status update?",
+      "create_time": "2026-02-10T09:22:00+08:00"
+    }
+  ]
+}

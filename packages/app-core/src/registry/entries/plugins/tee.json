@@ -1,0 +1,53 @@
+{
+  "id": "tee",
+  "name": "Tee",
+  "description": "A plugin for secure key derivation and remote attestation within Trusted Execution Environments (TEE).",
+  "npmName": "@elizaos/plugin-tee",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["crypto", "tee"],
+  "config": {
+    "TEE_MODE": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "Mode",
+      "help": "Determines the Trusted Execution Environment operation mode (LOCAL, DOCKER, PRODUCTION) and is referenced in error handling to validate provided modes.",
+      "advanced": false
+    },
+    "TEE_VENDOR": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "PHALA",
+      "label": "Vendor",
+      "help": "Specifies which Trusted Execution Environment vendor to initialize (defaults to PHALA).",
+      "advanced": false
+    },
+    "WALLET_SECRET_SALT": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "default": "secret_salt",
+      "label": "Secret Salt",
+      "help": "Secret salt used to deterministically derive Solana and EVM keypairs inside the TEE.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "LockKeyhole",
+    "group": "feature-other",
+    "groupOrder": 12,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-tee#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-tee"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "other"
+}

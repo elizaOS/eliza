@@ -1,0 +1,90 @@
+:root {
+  /* --brand-blue retained as a legacy token but remapped to neutral so
+     stragglers that still reference it don't render blue. The Eliza Cloud
+     palette is black + white + orange accent only. */
+  --brand-blue: rgba(0, 0, 0, 0.6);
+  --brand-orange: #ff5800;
+  --brand-black: #000000;
+  --brand-white: #ffffff;
+  --sky-0: rgba(0, 0, 0, 0.8);
+  --sky-1: rgba(0, 0, 0, 0.6);
+  --sky-2: var(--brand-white);
+  --eliza-orange: var(--brand-orange);
+  --bg: var(--brand-white);
+  --bg-accent: rgba(0, 0, 0, 0.04);
+  --bg-elevated: rgba(255, 255, 255, 0.94);
+  --bg-hover: rgba(0, 0, 0, 0.06);
+  --bg-muted: rgba(0, 0, 0, 0.08);
+  --card: var(--brand-white);
+  --card-foreground: var(--brand-black);
+  --surface: rgba(0, 0, 0, 0.04);
+  --text: var(--brand-black);
+  --text-strong: var(--brand-black);
+  --txt: var(--text);
+  --muted: rgba(0, 0, 0, 0.58);
+  --muted-strong: rgba(0, 0, 0, 0.74);
+  --border: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.22);
+  --accent: var(--brand-orange);
+  --accent-rgb: 255, 88, 0;
+  --accent-foreground: var(--brand-white);
+  --accent-subtle: rgba(255, 88, 0, 0.14);
+  --destructive: var(--brand-orange);
+  --destructive-foreground: var(--brand-white);
+  --destructive-subtle: rgba(255, 88, 0, 0.12);
+  --status-success: #22c55e;
+  --status-success-bg: rgba(34, 197, 94, 0.12);
+  --status-danger: var(--brand-orange);
+  --status-danger-bg: rgba(255, 88, 0, 0.12);
+  --status-warning: var(--brand-orange);
+  --status-warning-bg: rgba(255, 88, 0, 0.14);
+  --status-info: rgba(0, 0, 0, 0.7);
+  --status-info-bg: rgba(0, 0, 0, 0.06);
+  /* `--info` (base.css) maps to brand-blue; neutralize it here too so any
+     `info` utility renders neutral, not blue. */
+  --info: rgba(0, 0, 0, 0.7);
+  --info-bg: rgba(0, 0, 0, 0.06);
+  --font-sans: "Poppins", Arial, system-ui, sans-serif;
+  --font-body: var(--font-sans);
+  --font-display: var(--font-body);
+  --font-chat: var(--font-body);
+  --mono: var(--font-sans);
+  color-scheme: light;
+}
+
+[data-theme="dark"],
+.dark {
+  --bg: var(--brand-black);
+  --bg-accent: var(--brand-black);
+  --bg-elevated: rgba(255, 255, 255, 0.04);
+  --bg-hover: rgba(255, 255, 255, 0.08);
+  --bg-muted: rgba(255, 255, 255, 0.06);
+  --card: rgba(0, 0, 0, 0.72);
+  --card-foreground: var(--brand-white);
+  --surface: rgba(255, 255, 255, 0.06);
+  --text: var(--brand-white);
+  --text-strong: var(--brand-white);
+  --txt: var(--text);
+  --muted: rgba(255, 255, 255, 0.58);
+  --muted-strong: rgba(255, 255, 255, 0.74);
+  --border: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.22);
+  --accent: var(--brand-orange);
+  --accent-rgb: 255, 88, 0;
+  --accent-foreground: var(--brand-white);
+  --accent-subtle: rgba(255, 88, 0, 0.14);
+  --destructive: var(--brand-orange);
+  --destructive-foreground: var(--brand-white);
+  --destructive-subtle: rgba(255, 88, 0, 0.12);
+  --status-success: #4ade80;
+  --status-success-bg: rgba(74, 222, 128, 0.16);
+  --status-danger: var(--brand-orange);
+  --status-danger-bg: rgba(255, 88, 0, 0.12);
+  --status-warning: var(--brand-orange);
+  --status-warning-bg: rgba(255, 88, 0, 0.12);
+  --status-info: rgba(255, 255, 255, 0.7);
+  --status-info-bg: rgba(255, 255, 255, 0.06);
+  --info: rgba(255, 255, 255, 0.7);
+  --info-bg: rgba(255, 255, 255, 0.06);
+  color-scheme: dark;
+}

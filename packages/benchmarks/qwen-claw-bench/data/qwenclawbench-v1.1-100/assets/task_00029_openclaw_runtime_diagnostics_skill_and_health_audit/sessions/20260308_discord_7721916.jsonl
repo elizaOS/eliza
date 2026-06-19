@@ -1,0 +1,34 @@
+{"type": "session_start", "session_id": "discord_7721916", "model": "claude-sonnet-4-20250514", "created_at": "2026-03-08T10:07:30.244450", "user_id": "system", "channel": "discord"}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-08T10:09:33.490544", "session_id": "discord_7721916", "seq": 1, "usage": {"prompt_tokens": 4179, "completion_tokens": 3884, "total_tokens": 9249}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-08T10:10:10.476601", "session_id": "discord_7721916", "seq": 2}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-08T10:13:43.169468", "session_id": "discord_7721916", "seq": 3}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-08T10:15:39.807496", "session_id": "discord_7721916", "seq": 4}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-08T10:20:31.494816", "session_id": "discord_7721916", "seq": 5}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-08T10:23:06.758719", "session_id": "discord_7721916", "seq": 6}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-08T10:25:54.819842", "session_id": "discord_7721916", "seq": 7, "usage": {"prompt_tokens": 1336, "completion_tokens": 667, "total_tokens": 8115}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-08T10:29:24.302062", "session_id": "discord_7721916", "seq": 8, "usage": {"prompt_tokens": 5853, "completion_tokens": 1974, "total_tokens": 10807}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-08T10:31:32.048743", "session_id": "discord_7721916", "seq": 9, "usage": {"prompt_tokens": 7710, "completion_tokens": 3940, "total_tokens": 10498}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-08T10:33:26.060345", "session_id": "discord_7721916", "seq": 10, "usage": {"prompt_tokens": 7758, "completion_tokens": 3790, "total_tokens": 1175}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-08T10:36:10.839272", "session_id": "discord_7721916", "seq": 11, "usage": {"prompt_tokens": 2286, "completion_tokens": 188, "total_tokens": 1978}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-03-08T10:38:17.663671", "session_id": "discord_7721916", "seq": 12, "usage": {"prompt_tokens": 350, "completion_tokens": 1958, "total_tokens": 11814}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-08T10:42:02.309213", "session_id": "discord_7721916", "seq": 13, "usage": {"prompt_tokens": 3720, "completion_tokens": 3893, "total_tokens": 5907}}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-08T10:45:03.201625", "session_id": "discord_7721916", "seq": 14}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-08T10:46:41.097440", "session_id": "discord_7721916", "seq": 15}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-08T10:47:25.718159", "session_id": "discord_7721916", "seq": 16, "usage": {"prompt_tokens": 2349, "completion_tokens": 385, "total_tokens": 2911}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-08T10:47:30.999261", "session_id": "discord_7721916", "seq": 17}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-08T10:52:28.692677", "session_id": "discord_7721916", "seq": 18, "usage": {"prompt_tokens": 5709, "completion_tokens": 3482, "total_tokens": 11650}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-08T10:54:56.163868", "session_id": "discord_7721916", "seq": 19}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-08T10:58:14.445835", "session_id": "discord_7721916", "seq": 20}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-08T10:59:35.004386", "session_id": "discord_7721916", "seq": 21, "usage": {"prompt_tokens": 523, "completion_tokens": 1301, "total_tokens": 5143}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-08T11:04:20.290729", "session_id": "discord_7721916", "seq": 22, "usage": {"prompt_tokens": 1658, "completion_tokens": 2815, "total_tokens": 695}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-08T11:04:45.592193", "session_id": "discord_7721916", "seq": 23, "usage": {"prompt_tokens": 1571, "completion_tokens": 329, "total_tokens": 432}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-08T11:06:37.581965", "session_id": "discord_7721916", "seq": 24}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-08T11:08:53.689304", "session_id": "discord_7721916", "seq": 25, "usage": {"prompt_tokens": 4873, "completion_tokens": 1962, "total_tokens": 11591}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-08T11:11:31.403272", "session_id": "discord_7721916", "seq": 26, "usage": {"prompt_tokens": 3828, "completion_tokens": 2987, "total_tokens": 6289}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-08T11:13:45.268392", "session_id": "discord_7721916", "seq": 27}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-08T11:15:45.694564", "session_id": "discord_7721916", "seq": 28}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-08T11:18:01.371659", "session_id": "discord_7721916", "seq": 29}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-08T11:21:20.991061", "session_id": "discord_7721916", "seq": 30}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-08T11:25:53.747692", "session_id": "discord_7721916", "seq": 31, "usage": {"prompt_tokens": 4651, "completion_tokens": 1592, "total_tokens": 5427}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-08T11:27:26.664105", "session_id": "discord_7721916", "seq": 32}
+{"type": "session_end", "session_id": "discord_7721916", "ended_at": "2026-03-08T11:27:36.664105", "total_messages": 32, "status": "timeout"}

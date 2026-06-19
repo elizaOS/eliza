@@ -1,0 +1,107 @@
+One serious security issue is that we don't know what software will
+attempt to contact the network and whether their proxy settings are
+set up to use the Tor SOCKS proxy correctly.
+This is solved by blocking all outbound Internet traffic except Tor,
+and explicitly configuring all applications to use one of
+these.
+
+- [[!tails_gitweb config/chroot_local-includes/etc/ferm/ferm.conf]]
+  (uses [ferm](http://ferm.foo-projects.org/) to build an `iptables`
+  ruleset)
+
+The default case is to block all outbound network traffic; let us now
+document all exceptions and some clarifications to this rule.
+
+#### Tor user
+
+Tor itself obviously has to connect to the Internet without going
+through the Tor network. This is achieved by special-casing
+connections originating from the `debian-tor` Unix user.
+
+#### `clearnet` user
+
+The `clearnet` user is used to run `tails-get-network-time`.
+
+It is granted full network access (but no loopback access).
+It most specifically needs to resolve hosts and to make an HTTP connection.
+
+#### Unsafe Browser
+
+The Unsafe Browser is run by the `amnesia` user, in the `clearnet` network namespace.
+This is not to be confused with the `clearnet` user.
+
+The clearnet network namespace has full network access (UDP and TCP) but no loopback access.
+
+#### Local Area Network (LAN)
+
+Tails short description talks of sending through Tor *outgoing
+connections to the Internet*. Indeed: traffic to the local LAN
+(RFC1918 addresses) is wide open as well as the loopback traffic
+obviously.
+
+LAN DNS queries are forbidden to protect against some attacks.
+
+#### Local services allowlist
+
+The Tails firewall uses a allowlist which only grants access to each
+local service to the users that actually need it. This blocks
+potential leaks due to misconfigurations or bugs, and deanonymization
+attacks by compromised processes.
+
+One exception is for the `amnesia` user, which is allowed to connect
+to any local TCP port apart for a blocklist, because some applications,
+such as *Audacity* or *OnionShare*, rely on the ability to connect
+to random local ports.
+
+For specifics, see the firewall
+configuration where this is well commented:
+[[!tails_gitweb config/chroot_local-includes/etc/ferm/ferm.conf]]
+
+#### Automapped addresses
+
+`AutomapHostsOnResolve` is enabled in Tor configuration, and
+a firewall rule transparently redirects to the Tor transparent proxy
+port the connections targeted at the `127.192.0.0/10` virtual mapped
+address space.
+
+Only the `amnesia` user is granted access to the Tor transparent proxy
+port, so in practice only this user can use this hostname-to-address
+mapping facility.
+
+- [[!tails_gitweb config/chroot_local-includes/etc/tor/torrc]]
+- [[!tails_gitweb config/chroot_local-includes/etc/ferm/ferm.conf]]
+
+#### IPv6
+
+Tails does not support connecting to the Tor network via IPv6 yet:
+[[!tails_ticket 20490]].
+
+Also see the Firewall section of [[the IPv6 design|design/ipv6]].
+
+#### UDP, ICMP and other non-TCP protocols
+
+Tor only supports TCP. Non-TCP traffic to the Internet, such as UDP
+datagrams and ICMP packets, is dropped.
+
+An unfortunate consequence of fully blocking ICMP is that [[!wikipedia
+Path MTU Discovery]] is broken. We workaround this problem by enabling
+[[!rfc 4821 desc="Packetization Layer Path MTU Discovery"]].
+For details, see:
+
+* [[!tails_gitweb_commit 1d1c83d]]
+* [[!tails_gitweb config/chroot_local-includes/etc/sysctl.d/pmtud.conf]]
+
+#### `RELATED` packets
+
+As a general rule, the Tails' firewall does not accept `RELATED`
+packets: accepting them enables quite a lot of code in the kernel that
+we don't need, so we prefer reducing the attack surface a bit by
+blocking them. See the "[Tails-dev] Reducing attack surface of kernel
+and tightening firewall/sysctls" thread for details.
+
+However, `RELATED` ICMP packets to the loopback interface are let
+through, in order to smooth user experience whenever a program's local
+network connection is blocked, and the TCP stack generates ICMP
+packets (e.g. with `TYPE=3 CODE=3`, i.e. the destination port is
+unreachable) to let the program know what is going on early, instead
+of letting it wait for a timeout.

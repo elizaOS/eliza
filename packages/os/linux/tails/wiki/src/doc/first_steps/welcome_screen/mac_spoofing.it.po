@@ -1,0 +1,472 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Team italiano\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-18 17:20+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"MAC address anonymization\"]]\n"
+msgstr "[[!meta title=\"Anonimizzazione dell' indirizzo MAC\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"what-is-mac-address\"></a>\n"
+msgstr "<a id=\"what-is-mac-address\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What is a MAC address?"
+msgstr "Che cosa è l'indirizzo MAC?"
+
+#. type: Plain text
+msgid ""
+"Every network interface — wired or Wi-Fi — has a [[!wikipedia MAC address]], "
+"which is a serial number assigned to each interface at the factory by the "
+"vendor. MAC addresses are used on the local network to identify the "
+"communications of each network interface."
+msgstr ""
+"Ogni interfaccia di rete - cablata o Wi-Fi - ha un [[!wikipedia_it indirizzo "
+"MAC]], che è un numero di serie assegnato a ogni interfaccia in fabbrica dal "
+"fornitore. Gli indirizzi MAC vengono utilizzati sulla rete locale per "
+"identificare le comunicazioni di ciascuna interfaccia di rete."
+
+#. type: Plain text
+msgid ""
+"While your IP address identifies where you are on the Internet, your MAC "
+"address identifies which device you are using on the local network. MAC "
+"addresses are only useful on the local network and are not sent over the "
+"Internet."
+msgstr ""
+"Mentre il tuo indirizzo IP identifica dove ti trovi su Internet, il tuo "
+"indirizzo MAC identifica quale dispositivo stai usando sulla rete locale. "
+"Gli indirizzi MAC sono utili solo sulla rete locale e non vengono inviati su "
+"Internet."
+
+#. type: Plain text
+msgid ""
+"Having such a unique identifier used on the local network can harm your "
+"privacy.  Here are two examples:"
+msgstr ""
+"Avere questo identificatore univoco sulla rete locale può essere dannoso per "
+"la tua privacy. Eccone due esempi:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"1. If you use your laptop to connect to several Wi-Fi networks, the\n"
+"same MAC address of your Wi-Fi interface is used on all those local networks. Someone\n"
+"observing those networks can recognize your MAC address and **track your\n"
+"geographical location**.\n"
+msgstr ""
+"1. Se utilizzi il tuo computer portatile per connetterti a diverse reti Wi-Fi, il\n"
+"medesimo indirizzo MAC della tua interfaccia Wi-Fi viene usato su tutte queste reti locali. Una persona\n"
+"che stia osservando queste reti può riconoscere il tuo indirizzo MAC e **seguire la tua\n"
+"posizione geografica**.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"1. Unless you choose to [[hide that you are connecting to the Tor\n"
+"network|anonymous_internet/tor]], someone who monitors your Internet\n"
+"connection can know that. In this case, your MAC address can **reveal that you are\n"
+"a Tor user**.\n"
+msgstr ""
+"1. A meno che non si scelga di [[nascondere che ci si sta connettendo alla rete Tor\n"
+"|anonymous_internet/tor]], qualcuno che stia monitorando la tua connessione Internet\n"
+"può saperlo. In questo caso, il tuo indirizzo MAC può **rivelare che tu sei\n"
+"un utente Tor**.\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What is MAC address anonymization?"
+msgstr "Cos'è l'anonimizzazione dell'indirizzo MAC?"
+
+#. type: Plain text
+msgid ""
+"When MAC address anonymization is enabled, Tails temporarily changes the MAC "
+"addresses of your network interfaces to random values for the time of your "
+"Tails session.  MAC address anonymization hides the serial number of your "
+"network interface, and so, to some extent, who you are, from the local "
+"network."
+msgstr ""
+"Quando l'anonimizzazione dell'indirizzo MAC è attiva, Tails può "
+"temporaneamente cambiare gli indirizzi MAC delle tue interfacce di rete in "
+"valori casuali durante una sessione di lavoro su Tails.  L'anonimizzazione "
+"dell'indirizzo MAC nasconde il numero seriale della tua interfaccia di rete "
+"e così, in un certo senso, la tua identità sulla rete locale."
+
+#. type: Plain text
+msgid ""
+"MAC address anonymization is enabled by default in Tails because it is "
+"usually beneficial. But in some situations it might also lead to "
+"connectivity problems or make your network activity look suspicious. This "
+"documentation explains whether to use MAC address anonymization or not, "
+"depending on your situation."
+msgstr ""
+"L'anonimizzazione dell'indirizzo MAC è attivato di default su Tails perché "
+"solitamente è vantaggioso. Ma in alcune situazioni potrebbe anche portare a "
+"problemi di connettività o far sembrare la tua attività di rete sospettosa. "
+"Questa documentazione spiega quando usare o meno l'anonimizzazione "
+"dell'indirizzo MAC, a seconda della tua situazione."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To learn how Tails implements MAC address anonymization, see our\n"
+"[[design documentation about MAC address anonymization|contribute/design/MAC_address]].</p>\n"
+msgstr ""
+"<p>Per sapere come Tails implementa l'anonimato dell'indirizzo MAC, vedi la nostra\n"
+"[[documentazione del progetto sull'anonimato dell'indirizzo MAC|contribute/design/MAC_address]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "When to keep MAC address anonymization enabled"
+msgstr "Quando tenere l'anonimizzazione dell'indirizzo MAC attivata"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"**MAC address anonymization is enabled by default for all network interfaces.** This is\n"
+"usually beneficial, even if you don't want to hide your geographical location.\n"
+msgstr ""
+"**L'anonimizzazione dell'indirizzo MAC è attivata di default su tutte le interfacce di rete.**\n"
+"Questo è generalmente vantaggioso, anche se non vuoi nascondere la tua posizione geografica.\n"
+
+#. type: Plain text
+msgid "Here are a few examples:"
+msgstr "Ecco qualche esempio:"
+
+#. type: Bullet: '* '
+msgid ""
+"**Using your own computer on an public network without registration**, for "
+"example a free Wi-Fi service in a restaurant where you don't need to "
+"register with your identity. In this case, MAC address anonymization hides "
+"the fact that your computer is connected to this network."
+msgstr ""
+"**Utilizzare il tuo computere in una rete pubblica senza registrazione**, "
+"per esempio un servizio Wi-Fi gratuito in un ristorante dove non hai bisogno "
+"di registrarti con la tua identità. In questo caso, l'anonimizzazione "
+"dell'indirizzo MAC nasconde il fatto che il tuo computer è connesso a quella "
+"rete."
+
+#. type: Bullet: '* '
+msgid ""
+"**Using your own computer on a network that you use frequently**, for "
+"example at a friend's place, at work, at university, etc. You already have a "
+"strong relationship with this place but MAC address anonymization hides the "
+"fact that your computer is connected to this network *at a particular time*. "
+"It also hides the fact that *you* are connecting to the Tor network on this "
+"network."
+msgstr ""
+"**Utilizzare il tuo computer in una rete che usi frequentemente**, per "
+"esempio a casa di un amico, al lavoro, all'università, ecc. Hai già una "
+"forte relazione con il posto, ma l'anonimizzazione dell'indirizzo MAC "
+"nasconde il fatto che il tuo computer è connesso in quella rete *in un "
+"preciso momento*. Nasconde anche il fatto che *tu* ti stai connettendo alla "
+"rete Tor in quella rete."
+
+#. type: Title =
+#, no-wrap
+msgid "When to disable MAC address anonymization"
+msgstr "Quando disattivare l'anonimizzazione dell'indirizzo MAC"
+
+#. type: Plain text
+msgid ""
+"In some situations MAC address anonymization is not useful but can instead "
+"be problematic. In such cases, you might want to disable MAC address "
+"anonymization as instructed below."
+msgstr ""
+"In alcune situazioni l'anonimizzazione dell'indirizzo MAC non è utile, ma "
+"può anzi essere problematico. In questi casi potresti voler disattivare "
+"l'anonimizzazione dell'indirizzo MAC come indicato qui sotto."
+
+#. type: Plain text
+msgid ""
+"Note that even if MAC address anonymization is disabled, your anonymity on "
+"the Internet is preserved:"
+msgstr ""
+"Ricorda che anche se l'anonimizzazione dell'indirizzo MAC è disattivata, il "
+"tuo anonimato in rete è preservato:"
+
+#. type: Bullet: '- '
+msgid ""
+"An adversary on the local network can only see encrypted connections to the "
+"Tor network."
+msgstr ""
+"Un avversario sulla rete locale può constatare solo che ci sono connessioni "
+"cifrate alla rete Tor."
+
+#. type: Bullet: '- '
+msgid ""
+"Your MAC address is not sent over the Internet to the websites that you are "
+"visiting."
+msgstr ""
+"Il tuo indirizzo MAC non viene inviato su Internet ai siti web che stai "
+"visitando."
+
+#. type: Plain text
+msgid ""
+"However, as [[discussed above|doc/first_steps/welcome_screen/"
+"mac_spoofing#what-is-mac-address]], disabling MAC address anonymization "
+"makes it possible for someone to track your geographical location. If this "
+"is problematic, consider using a different network interface, like a [[USB "
+"Wi-Fi adapter|doc/anonymous_internet/no-wifi#wifi-adapters]], or moving to "
+"another network."
+msgstr ""
+"Tuttavia, come [[trattato in precedenza|doc/first_steps/welcome_screen/"
+"mac_spoofing#what-is-mac-address]] disabilitare l'anonimizzazione "
+"dell'indirizzo MAC rende nuovamente possibile per qualcuno tracciare la tua "
+"posizione geografica. Se questo è problematico considera di utilizzare una "
+"diversa interfaccia di rete, come un [[adattatore USB Wi-Fi|doc/"
+"anonymous_internet/no-wifi#wifi-adapters]], o di cambiare rete."
+
+#. type: Bullet: '- '
+msgid ""
+"**Using a public computer**, for example in an Internet café or a library.  "
+"This computer is regularly used on this local network, and its MAC address "
+"is not associated with your identity. In this case, MAC address "
+"anonymization can make it impossible to connect. It can even **look "
+"suspicious** to the network administrators to see an unknown MAC address "
+"being used on that network."
+msgstr ""
+"**Utilizzo di un computer pubblico**, ad esempio in un Internet café o in "
+"una biblioteca.  Questo computer viene utilizzato regolarmente su questa "
+"rete locale e il suo indirizzo MAC non è associato alla tua identità. In "
+"questo caso, l'anonimato dell'indirizzo MAC può rendere impossibile la "
+"connessione. Per gli amministratori della rete può persino **sembrare "
+"sospetto** l'utilizzo di un indirizzo MAC sconosciuto su quella rete."
+
+#. type: Bullet: '- '
+msgid ""
+"On some network interfaces, **MAC address anonymization is impossible** due "
+"to limitations in the hardware or in Linux. Tails temporarily disables such "
+"network interfaces. You might disable MAC address anonymization to be able "
+"to use them."
+msgstr ""
+"Su alcune interfacce di rete, **l'anonimizzazione dell'indirizzo MAC è "
+"impossibile** a causa di limitazioni dell'hardware o di Linux. Tails "
+"disabilita temporaneamente queste interfacce di network. Puoi disabilitare "
+"l'anonimizzazione dell'indirizzo MAC per poterle usare."
+
+#. type: Bullet: '- '
+msgid ""
+"Some networks **only allow connections from a list of authorized MAC "
+"addresses**. In this case, MAC address anonymization makes it impossible to "
+"connect to such networks. If you were granted access to such network in the "
+"past, then MAC address anonymization might prevent you from connecting."
+msgstr ""
+"Alcuni network **permettono connessioni solo da una lista di indirizzi MAC "
+"autorizzati**. In questo caso, l'anonimizzazione dell'indirizzo MAC rende "
+"impossibile connettersi a questi network. Se hai avuto accesso a questi "
+"network in passato, l'anonimizzazione dell'indirizzo MAC può impedirti di "
+"connetterti."
+
+#. type: Bullet: '- '
+msgid ""
+"**Using your own computer at home**. Your identity and the MAC address of "
+"your computer are already associated to this local network, so MAC address "
+"anonymization is probably useless. But if access to your local network is "
+"restricted based on MAC addresses it might be impossible to connect with an "
+"anonymized MAC address."
+msgstr ""
+"**Utilizzare il tuo computer a casa**. La tua identità e l'indirizzo MAC del "
+"tuo computer sono già associate sulla tua rete locale, quindi "
+"l'anonimizzazione dell'indirizzo MAC è probabilmente inutile. Ma se "
+"l'accesso alla tua rete locale è ristretta in base all'indirizzo MAC "
+"potrebbe essere impossibile connettersi con un indirizzo MAC anonimo."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"disable\"></a>\n"
+msgstr "<a id=\"disable\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Disable MAC address anonymization"
+msgstr "Disattivare l'anonimizzazione dell'indirizzo MAC"
+
+#. type: Plain text
+msgid ""
+"You can disable MAC address anonymization from the [[Welcome Screen|"
+"welcome_screen]]:"
+msgstr ""
+"Puoi disattivare l'anonimizzazione dell'indirizzo MAC dalla [[Schermata di "
+"benvenuto|welcome_screen]]:"
+
+#. type: Bullet: '1. '
+msgid ""
+"When the Welcome Screen appears, click on the **[[!img lib/list-add.png "
+"alt=\"Add Additional Setting\" class=\"symbolic\" link=\"no\"]]** button."
+msgstr ""
+"Quando appare lo Schermo di Benvenuto, clicca sul bottone **[[!img lib/list-"
+"add.png alt=\"Add Additional Setting\" class=\"symbolic\" link=\"no\"]]** ."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img additional.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img additional.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '2. '
+msgid ""
+"Choose **MAC Address Anonymization** in the **Additional Settings** dialog."
+msgstr ""
+"Scegli **Anonimizzazione dell'indirizzo MAC** nel menù **Impostazioni "
+"aggiuntive**."
+
+#. type: Bullet: '3. '
+msgid "Select the **Don't anonymize MAC addresses** option."
+msgstr ""
+"Seleziona l'opzione <span class=\"guilabel\">Non anonimizzare l'indirizzo "
+"MAC</span>."
+
+#. type: Title =
+#, no-wrap
+msgid "Other considerations"
+msgstr "Altre considerazioni"
+
+#. type: Bullet: '- '
+msgid ""
+"Other means of surveillance can reveal your geographical location: video "
+"surveillance, mobile phone activity, credit card transactions, social "
+"interactions, etc."
+msgstr ""
+"Altri mezzi di sorveglianza possono rivelare la tua posizione geografica: "
+"videosorveglianza, attività del telefono cellulare, transazioni effettuate "
+"con carta di credito, interazioni sociali, ecc."
+
+#. type: Bullet: '- '
+msgid ""
+"While using Wi-Fi, anybody within range of your Wi-Fi interface can see your "
+"MAC address, even without being connected to the same Wi-Fi access point."
+msgstr ""
+"Mentre usi il Wi-Fi, chiunque si trovi entro il raggio della tua interfaccia "
+"Wi-Fi può vedere il tuo indirizzo MAC, anche senza essere connesso al "
+"medesimo access point Wi-Fi."
+
+#. type: Bullet: '- '
+msgid ""
+"When using mobile phone connectivity, such as 3G or GSM, the identifier of "
+"your SIM card (IMSI) and the serial number of your phone (IMEI) are always "
+"revealed to the mobile phone operator."
+msgstr ""
+"Quando usi la connettività da telefono cellulare, come il 3G o il GSM, "
+"l'identificatore della tua carta SIM (IMSI) e il numero di serie del tuo "
+"telefono (IMEI) vengono sempre inviati al gestore di telefonia mobile."
+
+#. type: Bullet: '- '
+msgid ""
+"Some [[!wikipedia captive portals]] might send your MAC address over the "
+"Internet to their authentication servers. This should not affect your "
+"decision regarding MAC address anonymization. If you decide to disable MAC "
+"address anonymization your computer can already be identified by your ISP."
+msgstr ""
+"Alcuni [[!wikipedia_it Captive_portal desc=\"captive portals\"]] possono "
+"inviare il tuo indirizzo MAC attraverso Internet ai loro server di "
+"autenticazione. Questo non dovrebbe influenzare la tua decisione riguardante "
+"l'anonimizzazione dell'indirizzo MAC. Se decidi di disabilitare "
+"l'anonimizzazione dell'indirizzo MAC il tuo computer può essere già stato "
+"identificato dal tuo ISP."
+
+#, fuzzy
+#~| msgid ""
+#~| "2. As explained in our documentation on [[network\n"
+#~| "fingerprint|about/fingerprint]], someone observing the traffic coming "
+#~| "out of\n"
+#~| "your computer on the local network can probably see that you are using "
+#~| "Tails. In\n"
+#~| "that case, your MAC address can **identify you as a Tails user**.\n"
+#~ msgid ""
+#~ "2. As explained in our documentation on [[network\n"
+#~ "fingerprint|anonymous_internet/tor/hide]], someone observing the traffic "
+#~ "coming out of\n"
+#~ "your computer on the local network can probably see that you are using "
+#~ "Tails. In\n"
+#~ "that case, your MAC address can **identify you as a Tails user**.\n"
+#~ msgstr ""
+#~ "2. Come spiegato nella nostra documentazione sulle [[network\n"
+#~ "fingerprint|about/fingerprint]], qualcuno che osserva il traffico in "
+#~ "uscita del\n"
+#~ " tuo computer sulla rete locale può probabilmente vedere che stai usando "
+#~ "Tails. In\n"
+#~ " questo caso, il tuo indirizzo MAC può **identificarti come un "
+#~ "utilizzatore di Tails**.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "In the **MAC address spoofing** section, deselect the **Spoof all MAC "
+#~| "addresses** option."
+#~ msgid ""
+#~ "When the **Additional Settings** dialog appears, click on **MAC Address "
+#~ "Spoofing**."
+#~ msgstr ""
+#~ "Nella sezione <span class=\"guilabel\">spoofing dell'indirizzo MAC</"
+#~ "span>, deseleziona l'opzione <span class=\"guilabel\">Effettua lo "
+#~ "spoofing di tutti gli indirizzi MAC</span>."
+
+#~ msgid ""
+#~ "<p>Macchanger is shipped in Tails but there is currently no documented "
+#~ "method of\n"
+#~ "using it.</p>\n"
+#~ msgstr ""
+#~ "<p>Macchanger est inclus dans Tails, mais son utilisation n'est pas "
+#~ "encore documentée.</p>\n"
+
+#~ msgid ""
+#~ "<p>[[!tails_todo macchanger desc=\"See the corresponding ticket.\"]]</p>\n"
+#~ msgstr ""
+#~ "<p>[[!tails_todo macchanger desc=\"Voir le ticket correspondant.\"]]</p>\n"
+
+#~ msgid ""
+#~ "First of all, you should know that all network cards, both wired and "
+#~ "wireless, have a unique identifier stored in them called their MAC "
+#~ "address. This address is actually used to address your computer on the "
+#~ "_local_ network. It will usually not go out on the Internet but some "
+#~ "public Wi-Fi connections transmit that MAC address to a central "
+#~ "authentication server, for example when logging into their service.  It "
+#~ "is never useful enabling this option if you are using a public computer – "
+#~ "only use this if you are using a computer that can be linked to you on a "
+#~ "public network."
+#~ msgstr ""
+#~ "Premièrement, vous devriez savoir que toute carte réseau, filaire ou sans-"
+#~ "fil, possède un identifiant unique, appelé adresse MAC. Cette adresse "
+#~ "sert à identifier votre ordinateur sur un réseau _local_. Elle ne "
+#~ "transite habituellement pas sur Internet mais quelques connexions Wi-Fi "
+#~ "publiques transmettent l'adresse MAC à un serveur central "
+#~ "d'authentification, par exemple quand vous vous identifiez à un de leur "
+#~ "service. Cela ne sert à rien d'utiliser cette option si vous utilisez un "
+#~ "ordinateur public - utilisez-là seulement si vous utilisez un ordinateur "
+#~ "qui peut être lié à vous sur un réseau public."
+
+#~ msgid ""
+#~ "The reason why this is not always enabled is that is might cause problems "
+#~ "on some networks, so if you experience network problems while it is "
+#~ "enabled you might want try disabling it."
+#~ msgstr ""
+#~ "La raison pour laquelle ce n'est pas toujours activé est que ça peut "
+#~ "poser des problèmes sur certains réseaux, donc si vous rencontrez des "
+#~ "problèmes lorsque que macchanger est activé, vous devriez le désactiver."

@@ -1,0 +1,92 @@
+[[!meta title="Tails report for October, 2016"]]
+[[!meta date="Fri, 15 Nov 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* Tails 2.7 is [[scheduled for November 15|contribute/calendar]].
+
+Code
+====
+
+* The branch for [OnionShare](https://onionshare.org) support was much
+  improved and is now ready for review ([[!tails_ticket 7870]]).
+  This required a complete rewrite of our Tor control port filter to
+  make it a lot more powerful… and in passing, flexible enough for
+  Whonix to adopt it.
+
+Infrastructure
+==============
+
+* Our test suite covers 213 scenarios, 4 more that at the end of September.
+
+* 575 ISO images were automatically built and tested by our continuous integration infrastructure.
+
+* We published a mechanism for the [[distribution and activation of the
+  revocation certificate of the Tails signing
+  key|doc/about/openpgp_keys/signing_key_revocation]]. It allows revoking
+  the Tails signing key even if very bad things happens to most of the
+  team while making it hard for isolated and malicious individuals to revoke
+  the signing key when not needed. We encourage experts to review this
+  mechanism and other projects to adopt similar practices.
+
+Funding
+=======
+
+- We launched a donation campaign to run until the end of 2016. We already
+  raised [56 bitcoins](https://blockchain.info/charts/balance?timespan=30days&showDataPoints=false&daysAverageString=1&show_header=true&scale=0&address=1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2)!
+
+- We published our financial report for 2015.
+
+- Our proposal for [NLnet](https://nlnet.nl/foundation/request/) on
+  porting Tails to Debian Stretch made it to the second round.
+
+Outreach
+========
+
+- DrWhax, intrigeri, and sajolida attended the OTF summit. It was a wonderful
+  opportunity to strengthen our relationships with the Internet freedom
+  community at large: other operating systems, usability experts,
+  translators, technical writers, funders, trainers, and Tails enthusiasts in
+  general, etc.
+
+On-going discussions
+====================
+
+* Improving memory erasure on shutdown
+* Tails control port filter proxy in Whonix?
+* A second meeting took place to improve random pool seeding
+  ([[!tails_ticket 7675]]); other meetings will follow.
+
+Translation
+===========
+
+## All the website
+
+  - de: 55% (2875) strings translated, 4% strings fuzzy, 49% words translated
+  - fa: 45% (2339) strings translated, 7% strings fuzzy, 50% words translated
+  - fr: 78% (4071) strings translated, 3% strings fuzzy, 76% words translated
+  - it: 30% (1590) strings translated, 3% strings fuzzy, 27% words translated
+  - pt: 30% (1586) strings translated, 8% strings fuzzy, 28% words translated
+
+Total original words: 52401
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 84% (1572) strings translated, 8% strings fuzzy, 84% words translated
+  - fa: 39% (727) strings translated, 9% strings fuzzy, 40% words translated
+  - fr: 91% (1699) strings translated, 6% strings fuzzy, 91% words translated
+  - it: 81% (1523) strings translated, 8% strings fuzzy, 81% words translated
+  - pt: 50% (942) strings translated, 12% strings fuzzy, 51% words translated
+
+Total original words: 16935
+
+Metrics
+=======
+
+* Tails has been started more than 593446 times this month. This makes 19782 boots a day on average.
+* 12205 downloads of the OpenPGP signature of Tails ISO from our website.
+* 99 bug reports were received through WhisperBack.

@@ -1,0 +1,16 @@
+--- a/etc/cups/cupsd.conf	2021-10-14 11:54:27.317900450 +0000
++++ b/etc/cups/cupsd.conf	2021-10-14 11:54:59.871759548 +0000
+@@ -15,9 +15,12 @@
+ ErrorPolicy retry-job
+ 
+ # Only listen for connections from the local machine.
+-Listen localhost:631
++Listen 127.0.0.1:631
+ Listen /run/cups/cups.sock
+ 
++# Update configuration files as soon as possible
++DirtyCleanInterval 0
++
+ # Show shared printers on the local network.
+ Browsing Yes
+ BrowseLocalProtocols dnssd

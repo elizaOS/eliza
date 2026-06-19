@@ -1,0 +1,106 @@
+[[!meta title="Releasing updates to the verification JavaScript"]]
+
+We run this release process before releasing a new version of Forge or a change
+in the [[verification JavaScript|install/inc/js/download.js]] that is used on
+our download pages.
+
+Updating Forge
+--------------
+
+Website: <https://github.com/digitalbazaar/forge/>
+
+Release feed: <https://github.com/digitalbazaar/forge/releases.atom>
+
+1. Check which version we are currently shipping:
+
+       git log wiki/src/install/inc/js/forge.min.js
+
+1. Check the upstream Changelog for new versions:
+
+   <https://github.com/digitalbazaar/forge/blob/master/CHANGELOG.md>
+
+1. Determine what version of forge you want to upgrade to, and set `FORGE_VERSION` to this version
+
+1. Download it from two different CDNs:
+
+       torsocks --isolate wget "https://cdn.jsdelivr.net/npm/node-forge@${FORGE_VERSION}/dist/forge.min.js" -O forge.min.js
+       torsocks --isolate wget "https://unpkg.com/node-forge@${FORGE_VERSION}/dist/forge.min.js" -O forge.min.js.1
+
+1. Check they are the same
+
+       diff forge.min.js{,.1} && rm forge.min.js.1
+
+1. Copy into our repo:
+
+       mv forge.min.js wiki/src/install/inc/js/forge.min.js
+
+1. Add copyright information:
+
+       sed -i "1s/^/\/*! Forge v$FORGE_VERSION | (c) Digital Bazaar, Inc. *\/\n/" wiki/src/install/inc/js/forge.min.js
+
+Which browsers to test
+----------------------
+
+Perform the following steps for each of:
+
+  - Tor Browser in the latest Tails, in a non-English locale of your choice:
+
+        LANG=pt_BR.UTF-8 tor-browser
+
+  - The version of Firefox available in Debian stable:
+
+        sudo apt install firefox-esr
+        firefox-esr
+
+  - The version of Chromium available in Debian stable:
+
+        sudo apt install chromium
+        chromium --no-sandbox
+
+Steps
+-----
+
+1. In Tails, configure a system proxy:
+
+   Settings → Network → Network proxy → Manual
+
+   Socks Host:	127.0.0.1	9050
+
+1. Check that verifying the USB image of the last Tails version works in all browsers.
+
+1. Check that verifying a truncated USB image fails in all browsers:
+
+       dd if=tails-amd64-3.14.img of=tails-amd64-3.14-truncated.img bs=1M count=100
+
+1. Check that verifying a rogue USB image fails in all browser:
+
+       sed 's/\x54\x61\x69\x6c\x73/\x46\x61\x69\x6c\x73/' tails-amd64-3.14.img > tails-amd64-3.14-rogue.img
+
+1. To detect backward incompatible changes,
+   if any changes were made to the HTML or CSS, verify that the new
+   download page works with the previous version of the
+   `wiki/src/install/inc/js/download.js`.
+
+   Otherwise, fix the incompatibility or rename the new JavaScript file
+   as `wiki/src/install/inc/js/download-2.js`.
+
+   See our discussion about [deploying backward incompatible
+   changes](https://gitlab.tails.boum.org/tails/tails/-/issues/16091#note_159623)
+   on GitLab.
+
+Checklist
+---------
+
+    - [ ] Tor Browser
+      - [ ] Good
+      - [ ] Truncated
+      - [ ] Rogue
+    - [ ] Firefox ESR
+      - [ ] Good
+      - [ ] Truncated
+      - [ ] Rogue
+    - [ ] Chromium
+      - [ ] Good
+      - [ ] Truncated
+      - [ ] Rogue
+    - [ ] Backward incompatibility

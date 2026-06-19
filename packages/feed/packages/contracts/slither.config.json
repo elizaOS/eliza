@@ -1,0 +1,14 @@
+{
+  "filter_paths": "dependencies,node_modules,out,test,script",
+  "solc_remaps": [
+    "forge-std/=dependencies/forge-std-1.9.7/src/",
+    "@openzeppelin/contracts/=dependencies/@openzeppelin-contracts-5.4.0/"
+  ],
+  "exclude_informational": false,
+  "exclude_low": false,
+  "exclude_medium": false,
+  "exclude_high": false,
+  "exclude_optimization": false,
+  "fail_on": "high",
+  "compile_force_framework": "foundry"
+}

@@ -1,0 +1,84 @@
+# @elizaos/prompts
+
+Shared prompt templates and action specs for elizaOS.
+
+## Overview
+
+This package is the single source of truth for prompt templates used by the runtime. Prompts are authored directly in `src/index.ts`.
+
+## Structure
+
+```
+packages/prompts/
+├── src/
+│   └── index.ts      # TypeScript prompt template exports
+├── specs/            # Merged action/provider specs (JSON) + generated plugins.generated.json
+└── scripts/          # Spec + docs generators
+    ├── generate-action-docs.js
+    ├── generate-plugin-action-spec.js
+    ├── prompt-compression.js
+    └── check-secrets.js
+```
+
+## Template Syntax
+
+Prompts use Handlebars-style variables:
+
+- `{{variableName}}` - simple variable substitution
+- `{{#each items}}...{{/each}}` - iteration
+- `{{#if condition}}...{{/if}}` - conditional
+
+Use camelCase for variables (`{{agentName}}`, `{{providers}}`, `{{recentMessages}}`).
+
+## Plugin-local `prompts/*.json` (under `plugins/**`)
+
+Some plugins keep **hand-edited** `actions.json` / `evaluators.json` / `providers.json` next to their source. Those files feed **per-plugin codegen** (for example `generated/specs/spec-helpers.ts` via each plugin’s own workflow). They are **not** inputs to `scripts/generate-plugin-action-spec.js`, which instead scans `plugins/**/*.ts` for `export const …: Action` blocks and writes `specs/actions/plugins.generated.json`.
+
+## Building
+
+```bash
+# Generate plugin action spec + action docs
+bun run build
+```
+
+## Usage
+
+Runtime code imports the templates through `@elizaos/core`, which re-exports them and provides `composePrompt` to fill the `{{...}}` placeholders:
+
+```typescript
+import { REPLY_TEMPLATE, composePrompt } from "@elizaos/core";
+
+const prompt = composePrompt({
+  state: { agentName: "Alice" },
+  template: REPLY_TEMPLATE,
+});
+```
+
+Import directly from `@elizaos/prompts` only inside this package's tooling and tests.
+
+## Adding New Prompts
+
+1. Add a `camelCaseTemplate` string export in `src/index.ts`.
+2. Add the paired `UPPER_SNAKE_CASE_TEMPLATE` export.
+
+## Template Guidelines
+
+1. **Start with a task description** — begin prompts with `# Task:` to state the objective.
+2. **Include providers placeholder** — use `{{providers}}` where provider context should be injected.
+3. **Use JSON output format** — standardize on JSON response format for consistent parsing.
+4. **Add clear instructions** — explicit instructions for the LLM.
+5. **End with output format** — always specify the expected output format.
+
+## Security & Privacy
+
+- **Do not embed real secrets** in prompt templates. Prompts are source-controlled.
+- **Avoid including PII** (emails, phone numbers, addresses, IDs) in templates or examples.
+- Prefer placeholders (e.g., `{{apiKey}}`, `{{userEmail}}`) and inject only the minimum needed at runtime.
+
+### Secret scan
+
+```bash
+bun run check:secrets
+```
+
+Scans `packages/prompts/src/**/*.ts`, plugin prompt TS modules (paths matching `prompts/**/*.ts`, `workflow-prompts/**/*.ts`, etc.), and a few explicit files — see `scripts/check-secrets.js`.

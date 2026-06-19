@@ -1,0 +1,281 @@
+---
+title: Quickstart
+description: Get started with elizaOS Cloud in 5 minutes. Log in, deploy your first agent, and chat with it in Eliza.
+---
+
+Get your first AI agent running in 5 minutes with elizaOS Cloud.
+
+<Info>
+  This guide assumes you have an elizaOS Cloud account. [Sign up here](https://elizacloud.ai/login) if
+  you haven't already.
+</Info>
+
+## Choose Your Path
+
+<CardGroup cols={3}>
+  <Card title="Dashboard Setup" icon="palette" href="#using-the-dashboard">
+    Log in and deploy your agent.
+  </Card>
+  <Card title="Eliza App Chat" icon="bolt" href="#chat-in-eliza">
+    Connect and test in the app.
+  </Card>
+  <Card title="API Integration" icon="terminal" href="#using-the-api">
+    Use API keys and REST APIs.
+  </Card>
+</CardGroup>
+
+## Using the Dashboard
+
+The fastest way to create and deploy an agent without writing code.
+
+<Steps>
+<Step title="Navigate to Agent Creator">
+
+Go to [Dashboard → Agent Creator](https://elizacloud.ai/dashboard/build) in the elizaOS Cloud dashboard.
+
+</Step>
+
+<Step title="Configure Your Agent">
+
+Fill in the basic details:
+
+```json
+{
+  "name": "My Assistant",
+  "description": "A helpful AI assistant"
+}
+```
+
+</Step>
+
+<Step title="Customize Personality">
+
+Add bio and style information to shape your agent's responses:
+
+- **Bio**: Background information and expertise
+- **Style**: Communication tone and formatting preferences
+- **Topics**: Areas of knowledge
+
+</Step>
+
+<Step title="Deploy & Test">
+
+Click "Deploy" to launch your agent runtime. Test it in the dashboard, then
+connect it to the full Eliza app for day-to-day chat.
+
+</Step>
+</Steps>
+
+## Chat in Eliza
+
+Use the Eliza app when you want the complete chat experience for your deployed
+agent.
+
+<Steps>
+<Step title="Open Apps">
+
+Go to [Dashboard → Apps](https://elizacloud.ai/dashboard/apps) and choose the app or device entry for
+your agent.
+
+</Step>
+
+<Step title="Connect Your Agent">
+
+Select the deployed agent runtime you want the app to use. Confirm the app has
+the correct API key or session access.
+
+</Step>
+
+<Step title="Start a Chat">
+
+Open Eliza, select your connected agent, and send a test message. The app chat
+uses the same hosted runtime you deployed from the dashboard.
+
+</Step>
+</Steps>
+
+## Using the API
+
+Integrate elizaOS Cloud directly into your applications.
+
+### Step 1: Get Your API Key
+
+Navigate to [Dashboard → API Keys](https://elizacloud.ai/dashboard/api-keys) and create a new key.
+
+```bash
+# Your API key will look like this:
+ELIZA_API_KEY=eliza_xxxxxxxxxxxxxxxxxxxx
+```
+
+### Step 2: Create an Agent
+
+<Tabs>
+  <Tab title="cURL">
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/app/agents" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Assistant",
+    "bio": "A helpful AI assistant"
+  }'
+```
+  </Tab>
+  <Tab title="JavaScript">
+```javascript
+const response = await fetch('https://elizacloud.ai/api/v1/app/agents', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    name: 'My Assistant',
+    bio: 'A helpful AI assistant',
+  }),
+});
+
+const agent = await response.json();
+console.log('Created agent:', agent.agent.id);
+```
+  </Tab>
+  <Tab title="Python">
+```python
+import requests
+
+response = requests.post(
+    'https://elizacloud.ai/api/v1/app/agents',
+    headers={
+        'Authorization': 'Bearer YOUR_API_KEY',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'name': 'My Assistant',
+        'bio': 'A helpful AI assistant',
+    },
+)
+
+agent = response.json()
+print(f'Created agent: {agent["agent"]["id"]}')
+```
+  </Tab>
+</Tabs>
+
+### Step 3: Send a Message
+
+<Tabs>
+  <Tab title="cURL">
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/chat/completions" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "YOUR_AGENT_ID",
+    "messages": [
+      {"role": "user", "content": "Hello! What can you help me with?"}
+    ]
+  }'
+```
+  </Tab>
+  <Tab title="JavaScript">
+```javascript
+const response = await fetch('https://elizacloud.ai/api/v1/chat/completions', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    model: 'YOUR_AGENT_ID',
+    messages: [
+      { role: 'user', content: 'Hello! What can you help me with?' }
+    ],
+  }),
+});
+
+const completion = await response.json();
+console.log(completion.choices[0].message.content);
+```
+  </Tab>
+  <Tab title="Python">
+```python
+response = requests.post(
+    'https://elizacloud.ai/api/v1/chat/completions',
+    headers={
+        'Authorization': 'Bearer YOUR_API_KEY',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'model': 'YOUR_AGENT_ID',
+        'messages': [
+            {'role': 'user', 'content': 'Hello! What can you help me with?'}
+        ],
+    },
+)
+
+completion = response.json()
+print(completion['choices'][0]['message']['content'])
+```
+  </Tab>
+</Tabs>
+
+## Local Development
+
+Create a local elizaOS project. Cloud deployment and hosted app registration use
+the dashboard, Cloud API, or SDK endpoints documented in the app and container
+sections.
+
+<Steps>
+<Step title="Install the CLI">
+
+```bash
+bun add -g elizaos@beta
+```
+
+</Step>
+
+<Step title="Create a Project">
+
+```bash
+elizaos create my-cloud-app --template project
+cd my-cloud-app
+```
+
+</Step>
+
+<Step title="Run Locally">
+
+```bash
+bun install
+bun run dev
+```
+
+</Step>
+</Steps>
+
+## Environment Variables
+
+Configure your local development environment:
+
+```bash
+# .env
+ELIZA_API_KEY=eliza_xxxxxxxxxxxxxxxxxxxx
+ELIZA_API_URL=https://elizacloud.ai/api/v1
+```
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="satellite-dish" href="/cloud/api/overview">
+    Explore all available endpoints.
+  </Card>
+  <Card title="Features" icon="robot" href="/cloud/agents">
+    Learn about platform capabilities.
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/cloud/containers">
+    Configure production deployments.
+  </Card>
+  <Card title="SDKs" icon="cube" href="/cloud/sdks">
+    Use official client libraries.
+  </Card>
+</CardGroup>

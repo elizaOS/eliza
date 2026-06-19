@@ -1,0 +1,24 @@
+[[!meta date="Mon, 11 Jun 2012 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.11"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect Tails 0.11.
+
+We **strongly** urge you to [[upgrade to Tails 0.12|news/version_0.12]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+  - Linux kernel ([[!debsa2012 2469]])
+  - pidgin-otr ([[!debsa2012 2476]])
+  - libgdata ([[!debsa2012 2482]])
+  - openssl ([[!debsa2012 2475]])
+  - iceweasel ([[!debsa2012 2488]])
+  - nss ([[!debsa2012 2490]])
+  - openoffice.org ([[!debsa2012 2487]], [[!debsa2012 2473]])
+  - sudo ([[!debsa2012 2478]])
+  - libxml2 ([[!debsa2012 2479]])
+  - bind9 ([[!debsa2012 2486]])

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Smartglasses">
+  <defs>
+    <linearGradient id="bg-smartglasses" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#281528"/>
+      <stop offset="1" stop-color="#190b16"/>
+    </linearGradient>
+    <radialGradient id="blobA-smartglasses" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#da2fda" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#da2fda" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blobB-smartglasses" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#c3287a" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#c3287a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vig-smartglasses" cx="0.5" cy="0.42" r="0.75">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="0.72" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
+    </radialGradient>
+    <linearGradient id="label-smartglasses" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.55"/>
+    </linearGradient>
+    <filter id="soft-smartglasses" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="46"/>
+    </filter>
+    <filter id="iglow-smartglasses" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#ed45ed" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bg-smartglasses)"/>
+
+  <g opacity="0.9">
+    <circle cx="232" cy="220" r="300" fill="url(#blobA-smartglasses)" filter="url(#soft-smartglasses)"/>
+    <circle cx="840" cy="800" r="340" fill="url(#blobB-smartglasses)" filter="url(#soft-smartglasses)"/>
+  </g>
+
+  <g stroke="#ead7ea" stroke-width="1.4" opacity="0.06">
+    <line x1="0" y1="256" x2="1024" y2="256"/>
+    <line x1="0" y1="512" x2="1024" y2="512"/>
+    <line x1="0" y1="768" x2="1024" y2="768"/>
+    <line x1="256" y1="0" x2="256" y2="1024"/>
+    <line x1="512" y1="0" x2="512" y2="1024"/>
+    <line x1="768" y1="0" x2="768" y2="1024"/>
+  </g>
+
+  <g opacity="0.5">
+    <path d="M120 470 A 400 400 0 0 1 904 470" fill="none" stroke="#ed45ed" stroke-width="3" opacity="0.35"/>
+  </g>
+
+  <g transform="translate(512 432)" filter="url(#iglow-smartglasses)"
+     color="#ead7ea" stroke="#ead7ea" stroke-width="20"
+     stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <circle cx="-86" cy="20" r="68"/>
+    <circle cx="86" cy="20" r="68"/>
+    <path d="M-18 20 Q0 -2 18 20"/>
+    <line x1="-154" y1="-12" x2="-180" y2="-44"/>
+    <line x1="154" y1="-12" x2="180" y2="-44"/>
+  </g>
+
+  <rect x="0" y="784" width="1024" height="240" fill="url(#label-smartglasses)"/>
+  <text x="512" y="892" text-anchor="middle"
+        font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="76" font-weight="600" letter-spacing="0.5"
+        fill="#ead7ea">Smartglasses</text>
+  <rect x="460" y="924" width="104" height="6" rx="3" fill="#ed45ed"/>
+
+  <rect width="1024" height="1024" fill="url(#vig-smartglasses)"/>
+</svg>

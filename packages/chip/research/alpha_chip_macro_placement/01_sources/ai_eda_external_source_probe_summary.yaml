@@ -1,0 +1,493 @@
+schema: eliza.ai_eda_external_source_probe_summary.v1
+updated: 2026-05-19
+source_report: build/ai_eda/external_source_probe/validation/source_probe_report.json
+claim_boundary: metadata_probe_summary_only_no_import_no_release_use
+policy:
+  imports_external_assets: false
+  downloads_model_weights: false
+  release_use_allowed: false
+  license_metadata_is_advisory_until_manual_review: true
+summary:
+  http_200: 23
+  http_403: 100
+  skipped: 5
+  github_assets_reached: 1
+  huggingface_assets_reached: 19
+metadata_probe_limitations:
+  - Latest validation probe reached HuggingFace metadata for many model and
+    dataset assets but still hit GitHub API HTTP_403 for most GitHub assets,
+    including model/corpus companion repos, DFT, memory/interconnect,
+    power/thermal, hardware-security, CDC/RDC orchestration,
+    software/BSP/firmware, RTL rewrite/equivalence, and board/package/FPGA
+    sources; keep release use blocked and rerun after rate-limit/auth
+    conditions improve.
+observed_license_hints:
+  - source_id: chipcraftx-rtlgen-7b
+    asset: huggingface_model
+    observed_license: cc-by-nc-4.0
+    release_use: blocked_noncommercial_license_until_review
+  - source_id: rtlmul
+    asset: huggingface_model
+    observed_license: mit
+    release_use: blocked_until_model_card_and_eval_review
+  - source_id: codev-sva
+    asset: huggingface_dataset
+    observed_license: apache-2.0
+    release_use: blocked_until_dataset_review
+  - source_id: openrtlset
+    asset: huggingface_dataset
+    observed_license: review_required
+    release_use: blocked_until_revision_license_manifest_and_contamination_review
+  - source_id: mg-verilog
+    asset: github_code_and_huggingface_dataset
+    observed_license: mit_reported_review_required
+    release_use: blocked_until_dataset_code_and_contamination_review
+  - source_id: metrex
+    asset: github_code_and_huggingface_dataset
+    observed_license: review_required
+    release_use: blocked_until_pdk_label_license_and_local_error_review
+  - source_id: circuitnet-3
+    asset: github_code_and_huggingface_dataset
+    observed_license: apache-2.0_reported_review_required
+    release_use: blocked_until_revision_label_technology_and_license_review
+  - source_id: veriforge-deepseek-coder
+    asset: huggingface_model
+    observed_license: apache-2.0_reported_review_required
+    release_use: blocked_until_model_card_base_model_and_eval_review
+  - source_id: llm-eda-opencores
+    asset: huggingface_dataset
+    observed_license: review_required
+    release_use: blocked_until_opencores_source_license_review
+  - source_id: hardware-verilogeval-v2-hf
+    asset: huggingface_dataset
+    observed_license: research_educational_terms_review_required
+    release_use: blocked_until_upstream_equivalence_and_terms_review
+  - source_id: llm4verilog-dataset
+    asset: huggingface_dataset
+    observed_license: review_required
+    release_use: blocked_until_generation_method_license_and_contamination_review
+  - source_id: circuitnet
+    asset: github_code_and_dataset
+    observed_license: BSD-3-Clause
+    release_use: blocked_until_dataset_terms_and_version_are_pinned
+  - source_id: symrtlo
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_code_model_and_equivalence_review
+  - source_id: rtlrewriter-bench
+    asset: github_code_and_dataset
+    observed_license: review_required
+    release_use: blocked_until_license_benchmark_and_equivalence_review
+  - source_id: formalrtl
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_open_source_assets_and_formal_spec_review
+  - source_id: rtl-timing-metamorphosis
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_benchmark_assets_and_timing_logic_review
+  - source_id: openabc-d
+    asset: github_code_and_dataset
+    observed_license: review_required
+    release_use: blocked_until_dataset_license_technology_and_label_review
+  - source_id: rocketppa
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_model_dataset_and_local_error_review
+  - source_id: zigzag
+    asset: github_code
+    observed_license: MIT
+    release_use: blocked_until_version_pinned_and_local_backend_added
+  - source_id: timeloop-accelergy
+    asset: github_code
+    observed_license: BSD-3-Clause
+    release_use: blocked_until_version_pinned_and_local_backend_added
+  - source_id: llm4dv
+    asset: github_code
+    observed_license: Apache-2.0
+    release_use: blocked_until_prompt_model_and_candidate_policy_review
+  - source_id: assertllm
+    asset: github_code
+    observed_license: null
+    release_use: blocked_license_missing_from_probe
+  - source_id: assertionforge
+    asset: github_code
+    observed_license: NOASSERTION
+    release_use: blocked_license_ambiguous_from_probe
+  - source_id: fault-dft
+    asset: github_code
+    observed_license: Apache-2.0
+    release_use: blocked_until_dft_flow_and_fault_coverage_gate_exist
+  - source_id: deepoheat
+    asset: github_code
+    observed_license: MIT
+    release_use: blocked_until_power_thermal_label_calibration
+  - source_id: hardware-trojan-ml
+    asset: github_code
+    observed_license: MIT
+    release_use: blocked_until_security_eval_contract_exists
+  - source_id: trojansaint
+    asset: github_code
+    observed_license: review_required
+    release_use: blocked_until_submodule_dataset_and_license_review
+  - source_id: gnn-mff
+    asset: github_code
+    observed_license: review_required
+    release_use: blocked_until_code_dataset_and_parser_review
+  - source_id: securerag-rtl
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_primary_assets_and_dataset_review
+  - source_id: trojanwhisper
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_prompt_model_and_dataset_review
+  - source_id: trojangym
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_dual_use_security_and_asset_review
+  - source_id: ghost-benchmarks
+    asset: github_code_and_dataset
+    observed_license: MIT
+    release_use: blocked_until_dataset_license_and_isolation_review
+  - source_id: accellera-cdc-rdc-standard
+    asset: standards_document
+    observed_license: standard_terms_review_required
+    release_use: blocked_until_standard_terms_and_local_tool_review
+  - source_id: formal-cdc-msi
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_methodology_and_formal_model_review
+  - source_id: questa-cdc-rdc-assist
+    asset: commercial_tool_capability
+    observed_license: commercial_tool_review_required
+    release_use: blocked_until_commercial_tool_and_license_review
+  - source_id: opencdc
+    asset: project_assets
+    observed_license: project_assets_review_required
+    release_use: blocked_until_public_code_license_and_parser_review
+  - source_id: mcp4eda
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_command_schema_license_and_log_review
+  - source_id: llm-firmware-validation
+    asset: github_code
+    observed_license: review_required
+    release_use: blocked_until_firmware_security_and_simulator_review
+  - source_id: eok-riscv-kernel-optimization
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_code_dataset_and_benchmark_review
+  - source_id: intrintrans-rvv
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_code_dataset_compiler_and_isa_review
+  - source_id: opensbi
+    asset: github_code
+    observed_license: review_required
+    release_use: blocked_until_revision_build_and_boot_evidence
+  - source_id: u-boot
+    asset: github_code
+    observed_license: review_required
+    release_use: blocked_until_revision_build_and_boot_evidence
+  - source_id: hlsfactory
+    asset: github_code
+    observed_license: AGPL-3.0
+    release_use: blocked_until_copyleft_and_toolchain_review
+  - source_id: hls-eval
+    asset: github_code
+    observed_license: null
+    release_use: blocked_license_missing_from_probe
+  - source_id: secda-dse
+    asset: github_code
+    observed_license: Apache-2.0
+    release_use: blocked_until_related_framework_and_dse_paper_review
+  - source_id: timingpredict
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_license_and_dataset_review
+  - source_id: e2eslack
+    asset: paper_only
+    observed_license: no_reference_implementation_found
+    release_use: blocked_until_code_or_asset_path_found
+  - source_id: timingllm
+    asset: paper_or_model_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_primary_assets_review
+  - source_id: fluxeda
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_primary_assets_review
+  - source_id: openroad-resizer
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_version_pinned_and_local_logs_reviewed
+  - source_id: align-analoglayout
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_analog_layout_flow_and_license_review
+  - source_id: autockt
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_spice_testbench_and_license_review
+  - source_id: analoggenie
+    asset: code_model_dataset
+    observed_license: mit_for_huggingface_assets_github_blocked_by_http_403
+    release_use: blocked_until_code_model_dataset_and_generated_spice_review
+  - source_id: masala-chai
+    asset: code_dataset
+    observed_license: huggingface_dataset_license_null_github_blocked_by_http_403
+    release_use: blocked_until_dataset_code_and_spice_validity_review
+  - source_id: archgym
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_architecture_dse_environment_and_license_review
+  - source_id: booksim2
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_noc_simulator_version_license_and_traffic_review
+  - source_id: ramulator2
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_dram_config_trace_and_version_review
+  - source_id: dramsim3
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_dram_config_thermal_and_version_review
+  - source_id: dramsys
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_systemc_dependency_and_extension_review
+  - source_id: gem5-aladdin
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_workload_model_and_version_review
+  - source_id: gem5-accesys
+    asset: paper_only
+    observed_license: no_checked_code_url_in_inventory
+    release_use: blocked_until_code_or_asset_path_found
+  - source_id: fault-dft
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_fault_toolchain_and_bundled_atpg_license_review
+  - source_id: deeptpi
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_testpoint_flow_license_and_version_review
+  - source_id: deft-atpg
+    asset: paper_only
+    observed_license: no_reference_implementation_found
+    release_use: blocked_until_code_or_asset_path_found
+  - source_id: lite-scan-instrumentation
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_scan_instrumentation_assets_review
+  - source_id: drl-atpg
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_primary_paper_code_or_asset_review
+  - source_id: atpg-toolkit
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_scope_license_and_fault_model_review
+  - source_id: nn-for-atpg
+    asset: dryad_artifact
+    observed_license: skipped_unsupported_metadata_api
+    release_use: blocked_until_dataset_code_and_license_review
+  - source_id: thermedge-iredge
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_thermal_ir_drop_assets_review
+  - source_id: waca-unet-ir-drop
+    asset: paper_or_code_assets
+    observed_license: paper_assets_review_required
+    release_use: blocked_until_ir_drop_code_or_asset_review
+  - source_id: ir-drop-predictor
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_version_license_and_label_review
+  - source_id: eda-irdrop-prediction
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_version_license_and_dataset_review
+  - source_id: openpdn
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_template_pdk_and_pdn_signoff_review
+  - source_id: aieda
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_code_dataset_and_feature_schema_review
+  - source_id: pcb-bench
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_benchmark_dataset_and_license_review
+  - source_id: neurpcb
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_code_dataset_model_and_kicad_review
+  - source_id: pcb-pr-app
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_version_license_and_kicad_parser_review
+  - source_id: freerouting
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_version_license_and_board_rule_review
+  - source_id: dreamplacefpga
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_version_license_device_and_timing_review
+  - source_id: rapidwright-dreamplacefpga
+    asset: github_code
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_version_license_vendor_and_device_review
+  - source_id: deeppcb-defect-dataset
+    asset: github_code_dataset
+    observed_license: blocked_by_latest_github_http_403
+    release_use: blocked_until_dataset_license_and_board_image_review
+  - source_id: ieee-upf-open-source
+    asset: ieee_open_source_examples
+    observed_license: pending_latest_probe
+    release_use: blocked_until_example_license_and_revision_review
+  - source_id: yosys-clockgate
+    asset: github_code
+    observed_license: pending_latest_probe
+    release_use: blocked_until_version_icg_scan_and_timing_review
+  - source_id: openroad-two-phase-clock
+    asset: github_code
+    observed_license: pending_latest_probe
+    release_use: blocked_until_version_clocking_equivalence_and_signoff_review
+high_priority_followups:
+  - source_id: chipcraftx-rtlgen-7b
+    action: Keep out of release workflows because observed license is noncommercial.
+  - source_id: rtlmul
+    action: Review model card and create held-out E1 PPA error analysis before any advisory use.
+  - source_id: zigzag
+    action: Pin a version and add an optional backend runner after E1 architecture YAML stabilizes.
+  - source_id: llm4dv
+    action: Use only for candidate cocotb ideas; acceptance remains local regression evidence.
+  - source_id: assertllm
+    action: Resolve license ambiguity before running or importing framework code.
+  - source_id: hlsfactory
+    action: Review AGPL obligations before importing code; use current lane for dry-run target capture only.
+  - source_id: hls-eval
+    action: Resolve missing repository license before using benchmark code or results.
+  - source_id: secda-dse
+    action: Treat SECDA as related framework code until the SECDA-DSE implementation path is reviewed.
+  - source_id: timingpredict
+    action: Use as timing-prediction schema prior only until code/dataset license and E1 held-out validation are reviewed.
+  - source_id: e2eslack
+    action: Track paper as SOTA slack-prediction reference; no code path was found in the current search.
+  - source_id: openroad-resizer
+    action: Treat local OpenROAD logs as evidence source; AI may suggest sweeps only after write-capable ECO gates exist.
+  - source_id: align-analoglayout
+    action: Do not import generated layout into E1 until PDK/rule hashes, DRC/LVS, extraction, and analog review gates exist.
+  - source_id: autockt
+    action: Keep as method reference until E1 has local SPICE specs, model provenance, and simulator sweeps.
+  - source_id: masala-chai
+    action: Review dataset and generated-SPICE validity before any analog LLM benchmark or fine-tuning use.
+  - source_id: archgym
+    action: Use only as a DSE framework reference until E1 exposes bounded memory/interconnect knobs and simulator labels.
+  - source_id: booksim2
+    action: Do not run NoC studies until E1 has topology, traffic-trace, and follow-up RTL/benchmark gates.
+  - source_id: ramulator2
+    action: Keep as a DRAM simulator candidate until LPDDR/DRAM configs, traces, and local memory evidence exist.
+  - source_id: gem5-accesys
+    action: Track paper-level accelerator interconnect SOTA; no release use until a reproducible code path is found and reviewed.
+  - source_id: fault-dft
+    action: Review Fault and any bundled ATPG engines before selecting an E1 DFT backend.
+  - source_id: deeptpi
+    action: Treat test-point recommendations as research only until E1 has a scan policy, DFT netlist flow, and before/after signoff gates.
+  - source_id: deft-atpg
+    action: Track differentiable ATPG as hard-to-detect-fault SOTA; no E1 use until a reproducible implementation exists.
+  - source_id: nn-for-atpg
+    action: Review Dryad artifact license and circuit compatibility before any ATPG benchmark import.
+  - source_id: openpdn
+    action: Treat generated PDN templates as blocked until E1 has current/congestion maps, PDNSim labels, and routing/signoff review.
+  - source_id: ir-drop-predictor
+    action: Use only as an IR-drop surrogate reference until local PDNSim/OpenROAD labels and held-out E1 validation exist.
+  - source_id: deepoheat
+    action: Keep thermal surrogate use blocked until E1 has calibrated power maps, package assumptions, and measured thermal traces.
+  - source_id: aieda
+    action: Review design-to-vector extraction before importing any feature pipeline or external dataset.
+  - source_id: trojansaint
+    action: Review GraphSAINT submodule, netlist parser, benchmark labels, and license before any E1 gate-level scanner use.
+  - source_id: gnn-mff
+    action: Review RTL parser coverage and dataset provenance before any AST/DFG security classifier use.
+  - source_id: securerag-rtl
+    action: Treat RAG output as cited triage only until E1 has a reviewed security rule corpus and disposition workflow.
+  - source_id: trojanwhisper
+    action: Block LLM Trojan classifications until prompts, models, datasets, and reviewer signoff are reproducible.
+  - source_id: trojangym
+    action: Keep Trojan-generation workflows isolated as adversarial benchmark research; never import generated Trojans into source.
+  - source_id: ghost-benchmarks
+    action: Treat generated Trojan RTL as isolated external test data only after license, threat-model, and corpus-boundary review.
+  - source_id: accellera-cdc-rdc-standard
+    action: Use as CDC/RDC intent-reference only; local signoff still requires RTL, SDC, report, waiver, and review evidence.
+  - source_id: formal-cdc-msi
+    action: Treat metastability-injection methodology as a formal target until E1 has explicit clock/reset-domain intent.
+  - source_id: questa-cdc-rdc-assist
+    action: Track commercial ML-assisted setup capability, but do not rely on closed suggestions for open-flow release evidence.
+  - source_id: opencdc
+    action: Keep as watchlist until public code, license, and SystemVerilog parser support are reviewable.
+  - source_id: mcp4eda
+    action: Review command schemas and logs before adopting any MCP-style write-capable EDA orchestration.
+  - source_id: llm-firmware-validation
+    action: Use QEMU/static-analysis/fuzzing loop as a method reference only; block generated firmware patches until E1 transcripts and review exist.
+  - source_id: eok-riscv-kernel-optimization
+    action: Treat generated RISC-V kernels as advisory experiments until correctness, compiler, simulator, and benchmark logs are captured.
+  - source_id: intrintrans-rvv
+    action: Block generated RVV intrinsic translations until E1 CPU ISA profile, compiler support, and correctness tests are pinned.
+  - source_id: opensbi
+    action: Pin revision and capture build plus boot handoff logs before using OpenSBI as E1 boot evidence.
+  - source_id: u-boot
+    action: Keep U-Boot board-port work blocked until OpenSBI/Linux direct boot evidence and device-tree handoff are stable.
+  - source_id: symrtlo
+    action: Keep RTL rewrite as target capture until E1 has before/after equivalence, simulation, synthesis, and review evidence.
+  - source_id: rtlrewriter-bench
+    action: Review benchmark license and equivalence setup before adapting any rewrite evaluation tasks to E1.
+  - source_id: formalrtl
+    action: Track verified RTL synthesis as method reference until source assets and E1 reference-model proofs are available.
+  - source_id: rtl-timing-metamorphosis
+    action: Treat timing-control and protocol-sensitive RTL as rewrite-forbidden until formal and cocotb regressions exist.
+  - source_id: openabc-d
+    action: Use as synthesis-ML dataset reference only after technology, label, and license compatibility are reviewed.
+  - source_id: rocketppa
+    action: Treat code-level PPA estimates as planning priors only until local E1 label error analysis is complete.
+  - source_id: pcbschemagen
+    action: Use as PCB schematic method context only; block generated schematics until package/pinout, KiCad, manufacturing, and human-review gates exist.
+  - source_id: pcb-bench
+    action: Treat benchmark scores as prompt/task context, not evidence of E1 board correctness.
+  - source_id: pcbagent
+    action: Track constrained PCB-placement method only; no E1 placement use until local KiCad and SI/PI/DFM gates are release-clean.
+  - source_id: neurpcb
+    action: Review code, training data, and KiCad parser scope before any local placement experiment.
+  - source_id: pcb-migrator
+    action: Defer migration workflows until E1 has a reviewed baseline board and before/after board evidence contract.
+  - source_id: pcb-pr-app
+    action: Review legacy KiCad parser support and license before selecting as an optional PCB placement/routing backend.
+  - source_id: freerouting
+    action: Use only as an autorouter candidate after board rules, logs, DRC/ERC, SI/PI, and DFM gates are defined.
+  - source_id: dreamplacefpga
+    action: Treat FPGA placement output as blocked until exact device, constraints, timing, bitstream, and bring-up evidence exist.
+  - source_id: rapidwright-dreamplacefpga
+    action: Track FPGA interchange flow as context; block use until vendor/device dependencies and E1 board target are pinned.
+  - source_id: deeppcb-defect-dataset
+    action: Use as AOI dataset context only; E1 inspection claims require board-specific images, labels, model logs, and manual disposition.
+  - source_id: ieee-1801-upf
+    action: Use as power-intent standard reference only; block generated UPF until E1 has power-state, supply-set, reset, firmware, and verification evidence.
+  - source_id: ieee-upf-open-source
+    action: Review example license and revision before adapting any syntax or examples into E1 power-intent artifacts.
+  - source_id: yosys-clockgate
+    action: Treat clockgate as a backend candidate only; generated gated clocks require equivalence, scan, CDC/RDC, STA, and power evidence.
+  - source_id: codmas-rtlopt
+    action: Track RTLOPT clock-gating triples as benchmark context; do not import or apply LLM clock-gating edits to E1 without local gates.
+  - source_id: prompting-for-power
+    action: Use prompt patterns as evaluation context only; generated low-power RTL remains blocked until functional, synthesis, and power evidence exists.
+  - source_id: poet-rtl-ppa
+    action: Treat power-first evolutionary RTL search as method reference until E1 has deterministic oracle tests and before/after power labels.
+  - source_id: rtl-ppa-sog
+    action: Use as pre-synthesis power/PPA feature reference only until E1 held-out synthesis and power-label error analysis exists.
+  - source_id: openroad-two-phase-clock
+    action: Keep two-phase/latch conversion research-only until E1 has clean baseline timing, CTS, equivalence, scan, and signoff evidence.

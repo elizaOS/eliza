@@ -1,0 +1,203 @@
+#!/usr/bin/python3 -I
+
+import gettext
+import logging
+import os
+import pwd
+import socket
+import subprocess
+import sys
+import time
+
+import gi
+from pam import pam
+from pydbus import SessionBus, SystemBus
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk, GLib  # NOQA: E402
+
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk  # NOQA: E402
+
+from tailslib.adminpassword import is_password_set  # NOQA: E402
+
+_ = gettext.gettext
+gettext.textdomain("tails")
+
+logging.basicConfig(level=logging.DEBUG)
+
+mainloop = GLib.MainLoop()
+
+
+def lock_screen():
+    # org.gnome.ScreenSaver.Lock() sometimes does not return, so we set a timeout of 5 seconds
+    try:
+        SessionBus().get("org.gnome.ScreenSaver").Lock(timeout=5)
+    except Exception as e:
+        logging.exception(e)
+    finally:
+        sys.exit()
+
+
+class PasswordDialog:
+    def on_cancel_clicked(self, button, data=None):
+        sys.exit(1)
+
+    def on_entry_changed(self, entry, data=None):
+        if not self.entry1.get_text() or not self.entry2.get_text():
+            self.ok_button.set_sensitive(False)
+        elif self.entry1.get_text() == self.entry2.get_text():
+            # Passwords match
+            self.ok_button.set_sensitive(True)
+            self.entry2.set_icon_from_icon_name(1, None)
+        else:
+            # Passwords don't match
+            self.ok_button.set_sensitive(False)
+            self.entry2.set_icon_from_stock(1, "gtk-dialog-warning")
+
+    def on_show_checkbox_toggled(self, checkbutton, data=None):
+        self.entry1.set_visibility(self.show_checkbox.get_active())
+        self.entry2.set_visibility(self.show_checkbox.get_active())
+
+    def on_ok_clicked(self, button, data=None):
+        pw1 = self.entry1.get_text()
+        pw2 = self.entry2.get_text()
+        if not pw1 == pw2:
+            return
+
+        self.pw = pw1.encode("utf8")
+
+        bus = SystemBus()
+        object_path = bus.get("org.freedesktop.Accounts").FindUserById(os.getuid())
+        user_object = bus.get("org.freedesktop.Accounts", object_path)
+        # lock the screen once the 'Changed' signal was received
+        user_object.Changed.connect(self.wait_until_password_set_and_lock_screen)
+
+        p = subprocess.Popen(
+            "/bin/passwd",
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        p.stdin.write(self.pw + b"\n")
+        p.stdin.write(self.pw)
+        p.stdin.flush()
+        out, err = p.communicate()
+        if p.returncode != 0:
+            print("passwd stdout: %s" % out)
+            print("passwd stderr: %s" % err)
+            raise RuntimeError("passwd returned %r" % p.returncode)
+
+        # We close the window here for the case that lock_screen does not return immediately,
+        # otherwise it would look like the app is unresponsive
+        self.window.close()
+
+    def on_key_pressed(self, widget, event):
+        if Gdk.keyval_name(event.keyval) == "Escape":
+            sys.exit(1)
+
+        if self.ok_button.get_sensitive() and Gdk.keyval_name(event.keyval) == "Return":
+            self.ok_button.clicked()
+
+    def wait_until_password_set_and_lock_screen(self):
+        # TODO: Remove this once this is fixed: https://gitlab.gnome.org/GNOME/gdm/-/issues/251
+        p = pam()
+        while not p.authenticate(pwd.getpwuid(os.getuid()).pw_name, self.pw):
+            logging.debug("PAM not updated yet...")
+            time.sleep(0.01)
+        # We close the window here for the case that lock_screen does not return immediately,
+        # otherwise it would look like the app is unresponsive
+        self.window.close()
+        GLib.idle_add(lock_screen)
+
+    def run(self):
+        self.window.show()
+
+    def __init__(self):
+        self.pw = None
+
+        self.ok_button = Gtk.Button(
+            label=_("Lock Screen"),
+            receives_default=True,
+            sensitive=False,
+            width_request=86,
+        )
+        self.ok_button.connect("clicked", self.on_ok_clicked)
+        self.ok_button.get_style_context().add_class("suggested-action")
+
+        cancel_button = Gtk.Button(label=_("Cancel"), width_request=86)
+        cancel_button.connect("clicked", self.on_cancel_clicked)
+
+        headerbar = Gtk.HeaderBar(
+            title=_("Screen Locker"),
+        )
+        headerbar.pack_start(cancel_button)
+        headerbar.pack_end(self.ok_button)
+
+        label_subtitle = Gtk.Label(
+            label=_("Set up a password to unlock the screen."),
+        )
+
+        self.entry1 = Gtk.Entry(can_focus=True, visibility=False, width_request=200)
+        self.entry1.connect("changed", self.on_entry_changed)
+
+        self.entry2 = Gtk.Entry(can_focus=True, visibility=False, width_request=200)
+        self.entry2.connect("changed", self.on_entry_changed)
+
+        self.show_checkbox = Gtk.CheckButton(label=_("Show Password"))
+        self.show_checkbox.connect("toggled", self.on_show_checkbox_toggled)
+
+        grid = Gtk.Grid(row_spacing=2, column_spacing=10)
+        grid.attach(Gtk.Label(label=_("Password"), xalign=1), 0, 0, 1, 1)
+        grid.attach(Gtk.Label(label=_("Confirm"), xalign=1), 0, 1, 1, 1)
+        grid.attach(self.entry1, 1, 0, 1, 1)
+        grid.attach(self.entry2, 1, 1, 1, 1)
+        grid.attach(self.show_checkbox, 1, 2, 1, 1)
+
+        content_box = Gtk.Box(Gtk.Orientation.HORIZONTAL)
+        content_box.pack_start(Gtk.Box(hexpand=True), False, False, 0)
+        content_box.pack_end(Gtk.Box(hexpand=True), False, False, 0)
+        content_box.add(grid)
+
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            margin_top=18,
+            margin_bottom=18,
+            margin_left=18,
+            margin_right=18,
+            spacing=18,
+        )
+        box.add(label_subtitle)
+        box.add(content_box)
+
+        self.window = Gtk.Window(
+            type_hint=Gdk.WindowTypeHint.DIALOG,
+        )
+        self.window.connect("key-press-event", self.on_key_pressed)
+        self.window.set_titlebar(headerbar)
+        self.window.add(box)
+        self.window.show_all()
+
+
+def get_lock():
+    # Source: https://stackoverflow.com/a/7758075
+    # Original author: https://stackoverflow.com/users/639295/aychedee
+    # Without holding a reference to our socket somewhere it gets garbage
+    # collected when the function exits
+    get_lock._lock_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)  # noqa: SLF001
+    get_lock._lock_socket.bind("\0" + "tails-screen-locker")  # noqa: SLF001
+
+
+def main():
+    get_lock()
+    if is_password_set():
+        lock_screen()
+        return
+
+    dialog = PasswordDialog()
+    GLib.idle_add(dialog.run)
+    mainloop.run()
+
+
+if __name__ == "__main__":
+    main()

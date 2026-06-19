@@ -1,0 +1,19 @@
+[[!meta date="Fri, 12 Feb 2016 19:05:28 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.0"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.0 are now fixed in Tails 2.0.1.
+
+We **strongly** encourage you to [[upgrade to Tails 2.0.1|news/version_2.0.1]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: [[!mfsa 2016-13]], [[!mfsa 2016-14]]
+* virtualbox: [[!debsa2016 3454]]
+* curl: [[!debsa2016 3455]]
+* openjdk-7: [[!debsa2016 3458]]
+* krb5: [[!debsa2016 3466]]
+* tiff: [[!debsa2016 3467]]

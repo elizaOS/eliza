@@ -1,0 +1,117 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2018-07-01 15:48+0000\n"
+"Last-Translator: emmapeel <emma.peel@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 2.10.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Deleting the Persistent Storage\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Start Tails from the USB stick on which you want to delete the Persistent "
+"Storage."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the Welcome Screen, keep the Persistent Storage locked."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Delete** in the right of the title bar."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!-- We should get rid of this warning once we have\n"
+"     #8436 (Wipe the LUKS header when deleting a persistent volume). -->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>This technique might not prevent a strong attacker from\n"
+"recovering files from an old Persistent Storage using advanced data\n"
+"recovery techniques, especially if\n"
+"the Persistent Storage had a weak passphrase.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>See the [[limitations of file deletion|doc/encryption_and_privacy/secure_deletion#spare]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#~ msgid ""
+#~ "This can be useful in order to delete all the files saved to the "
+#~ "persistent volume in a single operation. You can later create a new "
+#~ "persistent volume on the same USB stick without having to reinstall Tails."
+#~ msgstr ""
+#~ "Dies kann nützlich sein, um alle Dateien, die im beständigen "
+#~ "Speicherbereich gesichert sind, in einem einzelnen Vorgang zu löschen. "
+#~ "Sie können anschließend einen neuen beständigen Speicherbereich auf dem "
+#~ "gleichen USB-Stick erstellen, ohne dass es notwendig ist, Tails neu zu "
+#~ "installieren."
+
+#~ msgid "Securely delete the persistent volume\n"
+#~ msgstr "Den beständigen Speicherbereich sicher löschen\n"
+
+#~ msgid ""
+#~ "<ol>\n"
+#~ "<li>[[Format the USB stick and create a single encrypted partition|"
+#~ "encryption_and_privacy/encrypted_volumes]]\n"
+#~ "on the whole USB stick. This step deletes both Tails and the persistent "
+#~ "volume.</li>\n"
+#~ "<li>[[Securely clean all the available disk\n"
+#~ "space|encryption_and_privacy/secure_deletion#clean_disk_space]] on this "
+#~ "new encrypted\n"
+#~ "partition.</li>\n"
+#~ "<li>[[Reinstall Tails|install]] on the USB stick.</li>\n"
+#~ "<li>Start Tails from the USB stick and [[create a new persistent\n"
+#~ "volume|persistence/configure]].</li>\n"
+#~ "</ol>\n"
+#~ msgstr ""
+#~ "<ol>\n"
+#~ "<li>[[Formatieren Sie den USB-stick und erstellen Sie eine einzelne, "
+#~ "verschlüsselte Partition|encryption_and_privacy/encrypted_volumes]]\n"
+#~ "auf dem gesamten Medium. Dieser Schritt löscht sowohl Tails als auch den "
+#~ "beständigen Speicherbereich.</li>\n"
+#~ "<li>[[Löschen Sie den gesamten verfügbaren Speicherplatz sicher|"
+#~ "encryption_and_privacy/secure_deletion#clean_disk_space]] auf dieser "
+#~ "neuen, verschlüsselten\n"
+#~ "Partition.</li>\n"
+#~ "<li>[[Installieren Sie Tails erneut|install]] auf diesem USB-Stick.</li>\n"
+#~ "<li>Starten Sie Tails von diesem USB-stick und [[erstellen Sie einen "
+#~ "neuen beständigen\n"
+#~ "Speicherbereich|persistence/configure]].</li>\n"
+#~ "</ol>\n"

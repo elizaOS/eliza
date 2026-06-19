@@ -1,0 +1,121 @@
+{
+  "software": {
+    "os": "macOS local host smoke only",
+    "kernel": "Darwin local host",
+    "firmware": "none-local-host",
+    "runtime": ".venv benchmark smoke wrappers",
+    "build_id": "local-host-smoke"
+  },
+  "clocks": {
+    "source": "host dynamic clocks not target calibrated",
+    "cpu_hz": 1,
+    "npu_hz": 1,
+    "memory_hz": 1,
+    "governor": "host-managed"
+  },
+  "memory": {
+    "type": "host-memory-not-target",
+    "capacity_bytes": 1,
+    "bandwidth_bytes_per_second": 1,
+    "channels": 1
+  },
+  "thermal": {
+    "ambient_c": 25,
+    "die_c": 25,
+    "cooling": "host default",
+    "throttle_state": "not-target-calibrated"
+  },
+  "power": {
+    "source": "host wall power not measured",
+    "watts": 1,
+    "measurement_method": "not target power evidence",
+    "sample_count": 1,
+    "averaging_window_seconds": 1
+  },
+  "calibration": {
+    "status": "blocked-no-calibrated-assets",
+    "source": "local-host-smoke dependency validation only",
+    "ground_truth_reference": "not target performance evidence",
+    "last_calibrated_utc": "blocked-local-host-smoke-is-not-target-calibration",
+    "assets": {
+      "clock_source": {
+        "status": "blocked",
+        "source": "blocked-local-host-dynamic-clock",
+        "sha256": "blocked-no-target-clock-evidence-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "coremark_binary": {
+        "status": "blocked",
+        "source": "blocked-local-host-coremark-wrapper",
+        "sha256": "blocked-no-target-coremark-binary-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "fio_binary": {
+        "status": "blocked",
+        "source": "blocked-local-host-fio",
+        "sha256": "blocked-no-target-fio-binary-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "lmbench_binary": {
+        "status": "blocked",
+        "source": "blocked-local-host-lmbench-wrapper",
+        "sha256": "blocked-no-target-lmbench-binary-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "memory_model": {
+        "status": "blocked",
+        "source": "blocked-local-host-memory",
+        "sha256": "blocked-no-target-memory-model-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "nnapi_driver": {
+        "status": "blocked",
+        "source": "blocked-no-target-nnapi-driver",
+        "sha256": "blocked-no-target-nnapi-driver-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "power_meter": {
+        "status": "blocked",
+        "source": "blocked-no-target-power-meter",
+        "sha256": "blocked-no-target-power-evidence-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "simulator_config": {
+        "status": "blocked",
+        "source": "blocked-local-host-simulator-config",
+        "sha256": "blocked-no-target-simulator-config-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "simulator_counter_export": {
+        "status": "blocked",
+        "source": "blocked-local-host-simulator-counter-export",
+        "sha256": "blocked-no-target-simulator-counter-export-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "storage_target": {
+        "status": "blocked",
+        "source": "blocked-local-host-storage-target",
+        "sha256": "blocked-no-target-storage-target-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "stream_binary": {
+        "status": "blocked",
+        "source": "blocked-local-host-stream-wrapper",
+        "sha256": "blocked-no-target-stream-binary-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "tflite_benchmark_model": {
+        "status": "blocked",
+        "source": "blocked-local-host-tflite-benchmark-model",
+        "sha256": "blocked-no-target-tflite-benchmark-model-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      },
+      "tflite_model": {
+        "status": "blocked",
+        "source": "blocked-local-host-tflite-model",
+        "sha256": "blocked-no-target-tflite-model-hash",
+        "evidence": "blocked-local-host-smoke-is-not-target-evidence"
+      }
+    }
+  }
+}

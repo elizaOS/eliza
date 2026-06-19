@@ -1,0 +1,117 @@
+task_id: T069_micron_capex_analysis
+task_name: Micron FY2025 CapEx Cash Flow Analysis
+version: "1.0"
+category: finance
+difficulty: easy
+tags: [general]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+prompt:
+  text: |
+    The semiconductor industry is typically capital-intensive. In its FY2025 earnings report, Micron management disclosed that to support HBM (High Bandwidth Memory) and future technology nodes, the company's capital expenditures for FY2025 reached a very high level and will rise further in FY2026.
+    Investors are concerned: Will high capital expenditures deplete the company's cash flow? Historically, memory chip manufacturers have often triggered subsequent price collapses and liquidity crunches due to excessive capacity expansion at the peak of a cycle. As a financial analyst, you are required to assess whether Micron's current cash flow generation capability is sufficient to sustain this capital expenditure cycle and determine whether its expansion strategy is rational.
+
+    Analysis Task: Based on Micron Technology's FY2025 (full year) Statement of Cash Flows data, please complete the following analyses:
+
+    1. Free Cash Flow (FCF) and Coverage Ratio Calculation: Using operating cash flow and net capital expenditures, calculate Adjusted Free Cash Flow for FY2025. Simultaneously, calculate the Capital Expenditure Coverage Ratio (i.e., the ratio of capital expenditures to Adjusted Free Cash Flow) to evaluate the company's ability to cover investment requirements solely through its internal cash generation.
+
+    2. FY2026 Breakeven Scenario Simulation: Assuming FY2026 capital expenditures reach $20 billion as indicated in guidance, and the company's Operating Cash Flow Margin (i.e., OCF/Revenue) remains at the FY2025 level of 47%, calculate the revenue level Micron must achieve in FY2026 to maintain non-negative Free Cash Flow (i.e., FCF >= 0).
+
+    3. Structural Analysis of Capital Expenditures: Contrasting with historical instances of blind expansion, analyze the structural characteristics of Micron's current round of capital expenditures. Specifically, incorporating information regarding the "10% reduction in NAND wafer capacity" and "investment in HBM back-end packaging equipment," demonstrate why management claims to have maintained "capacity discipline" despite the massive expenditures.
+  language: en
+
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+
+environment:
+  timeout_seconds: 1800
+  max_turns: 50
+
+scoring_components:
+  - name: financial_figures
+    weight: 0.50
+    check:
+      type: keywords_present
+      keywords: ["17.5", "13.8", "3.7"]
+  - name: analysis_metrics
+    weight: 0.50
+    check:
+      type: keywords_present
+      keywords: ["1.27", "42.6"]
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the Micron FY2025 CapEx analysis report against the following rubric:
+
+  POSITIVE SCORING ITEMS (total 100%):
+  1. [Weight 13%] FY2025 Operating Cash Flow of $17.5 billion — accurate data extraction
+  2. [Weight 13%] FY2025 Net Capital Expenditure of $13.8 billion — accurate data extraction
+  3. [Weight 10%] Calculated FY2025 Adjusted Free Cash Flow of $3.7 billion ($17.5B - $13.8B)
+  4. [Weight 10%] Capital Expenditure Coverage Ratio of 1.27 ($17.5B / $13.8B) — correct calculation
+  5. [Weight 10%] FY2026 breakeven revenue of approximately $42.6 billion ($20B / 0.47) — correct calculation
+  6. [Weight 9%] NAND capacity reduction of 10% — demonstrates capacity discipline
+  7. [Weight 9%] Equipment reallocation from NAND to DRAM production
+  8. [Weight 6%] Significant CapEx allocation to HBM back-end packaging equipment
+  9. [Weight 6%] New wafer fabrication plants in Idaho and New York
+  10. [Weight 7%] Analysis that new plant construction has long lead times, delaying capacity release until post-2027
+  11. [Weight 7%] Structural argument: CapEx is for technology migration and packaging, not raw wafer capacity expansion
+
+  NEGATIVE SCORING ITEMS (deduct when present):
+  12. [Deduct 6%] Excessive background information not relevant to the specific analysis tasks
+  13. [Deduct 4%] Missing currency units (USD) or inconsistent unit usage (millions vs billions mixing)
+  14. [Deduct 4%] Contradictory assumptions within the analysis
+  15. [Deduct 4%] Emotive or non-neutral language (e.g., "skyrocketing," "devastating")
+  16. [Deduct 4%] Incorrect mathematical calculations
+
+  Response should be structured around the three analysis tasks: FCF calculation, breakeven simulation, structural analysis.
+
+reference_solution: |
+  1. FCF: OCF $17.5B - CapEx $13.8B = FCF $3.7B. Coverage Ratio: $17.5B / $13.8B = 1.27x.
+  2. Breakeven: $20B / 47% = $42.6B revenue needed in FY2026 for FCF >= 0.
+  3. Structural: 10% NAND reduction + HBM packaging investment + new fabs (Idaho/NY) with post-2027 capacity = capacity discipline maintained.
+
+primary_dimensions: [completion, communication]

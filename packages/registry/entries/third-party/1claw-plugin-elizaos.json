@@ -1,0 +1,15 @@
+{
+  "package": "@1claw/plugin-elizaos",
+  "repository": "github:1clawAI/1claw-elizaos-plugin",
+  "kind": "plugin",
+  "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw \u2014 vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
+  "homepage": "https://github.com/1clawAI/1claw-elizaos-plugin",
+  "version": "0.1.0",
+  "tags": [
+    "security",
+    "secrets",
+    "vault",
+    "signing",
+    "multi-chain"
+  ]
+}

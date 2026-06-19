@@ -1,0 +1,126 @@
+#!/bin/bash
+
+set -eu
+
+usage() {
+    echo "Usage:"
+    echo "  Check the entire codebase:"
+    echo "   $0"
+    echo "  Check single file:"
+    echo "   $0 -f FILENAME"
+    echo "  Check Shell files changed since REF"
+    echo "   $0 -s REF"
+    echo "  Fix instead of checking"
+    echo "   $0 -w -s REF"
+    echo "Options:"
+    echo "   -x     run with set -x"
+}
+
+shfmtArgs=(--indent 4)
+
+check() {
+    if $fix; then
+        shfmt "${shfmtArgs[@]}" --write "$1"
+    fi
+    shfmt "${shfmtArgs[@]}" --diff "$1"
+}
+
+check_all() {
+    readarray -t shellFiles < <(git ls-files | ./bin/test-utils/is-file-type filter shell)
+    errors=0
+    for file in "${shellFiles[@]}"; do
+        if ! check "$file"; then
+            errors=1
+        fi
+    done
+    return $errors
+}
+
+fileToCheck=
+checkSince=
+trace=false
+fix=false
+while getopts ':f:s:xw' opt; do
+    case "$opt" in
+    f)
+        fileToCheck=$OPTARG
+        ;;
+    s)
+        checkSince=$OPTARG
+        ;;
+    w)
+        fix=true
+        ;;
+    x)
+        trace=true
+        ;;
+    *)
+        echo "Wrong option" >&2
+        usage
+        exit 2
+        ;;
+    esac
+done
+shift $((OPTIND - 1))
+if [ $# -ge 1 ]; then
+    echo "Trailing arguments unsupported" >&2
+    usage >&2
+    exit 2
+fi
+
+if $trace; then
+    set -x
+fi
+
+if [ -n "$fileToCheck" ] && [ -n "$checkSince" ]; then
+    echo "Wrong usage" >&2
+    usage >&2
+    exit 2
+fi
+
+if [ -z "$fileToCheck" ] && [ -z "$checkSince" ]; then
+    check_all
+    exit $?
+fi
+
+if [ -n "$fileToCheck" ]; then
+    check "$fileToCheck"
+    exit $?
+fi
+
+REF="$(git rev-parse "$checkSince")"
+
+changed_files=$(git diff --name-only "${REF}"...)
+uncommitted_files=$(git diff HEAD --name-only)
+untracked_files=$(git ls-files --others --exclude-standard)
+all_files="${changed_files}"$'\n'"${uncommitted_files}"$'\n'"${untracked_files}"
+
+# Remove the trailing newline (if any)
+all_files="${all_files%$'\n'}"
+
+files_to_check=()
+while IFS= read -r file; do
+    if [ -z "${file}" ] || [ ! -f "${file}" ]; then
+        continue
+    fi
+    if "$(dirname "$0")/is-file-type" check shell "${file}"; then
+        files_to_check+=("${file}")
+    fi
+done <<<"${all_files}"
+
+filesWithErrors=()
+for file in "${files_to_check[@]}"; do
+    if ! check "$file"; then
+        filesWithErrors+=("$file")
+    fi
+done
+
+if [ "${#filesWithErrors[@]}" = 0 ]; then
+    exit 0
+fi
+
+echo "${#filesWithErrors[@]} files have errors:"
+for file in "${filesWithErrors[@]}"; do
+    echo "ERROR: $file"
+done
+exit 1

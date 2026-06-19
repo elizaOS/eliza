@@ -1,0 +1,591 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2024-04-27 10:37+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: id\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Known issues with graphics cards\"]]\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For other hardware compatibility issues, refer to our [[known issues|support/"
+"known_issues]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"error-starting-gdm\">Error starting GDM</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This section applies if you see the following error message when starting "
+"Tails:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p class=\"code\">\n"
+"Error starting GDM with your graphics card: <span class=\"command-placeholder\">name of your graphics\n"
+"card [id] (rev number)</span>. Please take note of this error and visit\n"
+"https://tails.net/gdm for troubleshooting.\n"
+"</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img error.png link=\"no\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Identify the name, ID, and revision number (if any) of your graphics card."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   For example, if your error message starts with:\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"code\">Error starting GDM with your graphics card: NVIDIA Corporation [10de:0a6c] GT218M [NVS 3100M] (rev a2)</p>\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "The name is *NVIDIA Corporation GT218M [NVS 3100M]*."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"The ID is *[10de:0a6c]*. The ID is unique to the model of your graphics "
+"card, it is not unique to your computer."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"The revision number is *a2*. Your graphics card might have no revision "
+"number."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Check if your graphics card is listed below. For example, you can search for "
+"its name or ID on this page."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If your graphics card is listed, check if a workaround is documented to make "
+"it work on Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     If the workaround doesn't work, we are sorry that Tails does not work well\n"
+"     on this computer. Our best hope is that a future update of Linux drivers will\n"
+"     solve the problem.\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If your graphics card is not listed, please [[contact our support team by "
+"email|support/talk]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     Mention in your email:\n"
+msgstr ""
+
+#. type: Bullet: '     * '
+msgid "The version of Tails that you are trying to start."
+msgstr ""
+
+#. type: Bullet: '     * '
+msgid "The name, ID, and revision number (if any) of your graphics card."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     <div class=\"tip\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <p>You can send us a photo of the error message as it appears on\n"
+"     your screen.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     </div>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"If your problem gets fixed in a future version of Tails, please let us know "
+"so we can update this page."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Name and ID in /usr/share/misc/pci.ids"
+msgstr "Name and ID in /usr/share/misc/pci.ids"
+
+#. type: Plain text
+msgid ""
+"The correspondence between the name and ID is established in /usr/share/misc/"
+"pci.ids."
+msgstr ""
+"The correspondence between the name and ID is established in /usr/share/misc/"
+"pci.ids."
+
+#. type: Plain text
+msgid "For example:"
+msgstr "For example:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"\t8086  Intel Corporation\n"
+"\t        0007  82379AB\n"
+"\t        [...]\n"
+"\t        0046  Core Processor Integrated Graphics Controller\n"
+msgstr ""
+"\t8086  Intel Corporation\n"
+"\t        0007  82379AB\n"
+"\t        [...]\n"
+"\t        0046  Core Processor Integrated Graphics Controller\n"
+
+#. type: Plain text
+msgid "Corresponds to:"
+msgstr "Corresponds to:"
+
+#. type: Plain text
+#, no-wrap
+msgid "\tIntel Corporation Core Processor Integrated Graphics Controller [8086:0046]\n"
+msgstr "\tIntel Corporation Core Processor Integrated Graphics Controller [8086:0046]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Template for new section"
+msgstr "Template for new section"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"$ANCHOR\"></a>\n"
+msgstr "<a id=\"$ANCHOR\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "$FAMILY_NAME"
+msgstr "$FAMILY_NAME"
+
+#. type: Plain text
+msgid "$LT!-- Issues: #XXXXX #XXXXX --$GT"
+msgstr "$LT!-- Issues: #XXXXX #XXXXX --$GT"
+
+#. type: Title ###
+#, no-wrap
+msgid "Affected graphics cards"
+msgstr "Affected graphics cards"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+"<tr><td>$VENDOR $DEVICE</td><td>[$VENDOR_ID:$PRODUCT_ID]</td><td>(rev $REVISION_NUMBER)</td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+"<tr><td>$VENDOR $DEVICE</td><td>[$VENDOR_ID:$PRODUCT_ID]</td><td>(rev $REVISION_NUMBER)</td></tr>\n"
+"</table>\n"
+
+#. type: Title ###
+#, no-wrap
+msgid "Workaround"
+msgstr "Workaround"
+
+#. type: Plain text
+msgid "$WORKAROUND_IF_ANY"
+msgstr "$WORKAROUND_IF_ANY"
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"radeon-hd\">AMD Radeon HD</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Issues: #11095 #12482\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Any graphics cards in the Radeon HD family might be affected."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If the computer has another, integrated graphics card, try configuring the "
+"computer to use that one instead of the AMD graphics card.  For example, "
+"using the following [[boot option|doc/advanced_topics/boot_options]]:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "`modprobe.blacklist=amdgpu`"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "`modprobe.blacklist=radeon`"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"radeon-r9\">AMD Radeon R9</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Issues: #12218 #11850\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+"<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Hawaii PRO [Radeon R9 290/390]</td><td>[1002:67b1]</td><td></td></tr>\n"
+"</table>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Adding `radeon.dpm=0` to the [[boot options|doc/advanced_topics/"
+"boot_options]] might fix the issue."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"amd-radeon-rx-400\">AMD Radeon RX 400 family</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+"<tr><td>Radeon RX 480</td><td></td><td></td></tr>\n"
+"</table>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Adding `amdgpu.dc=0` to the [[boot options|doc/advanced_topics/"
+"boot_options]] might fix the issue."
+msgstr ""
+
+#. type: Title ###
+#, no-wrap
+msgid "Other possibly affected graphics cards"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Other graphics cards in the [[!wikipedia Radeon_RX_400_series]] might be "
+"affected."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"amd-vega\">AMD Radeon RX Vega family</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Graphics cards in the [[!wikipedia Radeon_RX_Vega_series]], as found in some "
+"AMD Ryzen processors, might be affected."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Try starting Tails using the following [[boot option|doc/advanced_topics/"
+"boot_options]]:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    iommu=soft\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"intel\">Intel</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Various Intel graphics card, including but not limited to:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>\n"
+"<tr><td>Intel Corporation TigerLake-LP GT2 [Iris Xe Graphics]</td><td>[8086:9a49]</td><td></td></tr>\n"
+"<tr><td>Intel Corporation JasperLake [UHD Graphics]</td><td>[8086:4e55]</td><td></td></tr>\n"
+"<tr><td>Intel Corporation Iris Plus Graphics G1 (Ice Lake)</td><td>[8086:8a56]</td><td></td></tr>\n"
+"</table>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "        i915.force_probe=MODEL\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"… replacing *MODEL* with the 4 characters you see after `8086:` on the error "
+"message."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"For example, if you see an error about `8086:4c8a`, use this boot option: "
+"`i915.force_probe=4c8a`."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"intel-hdu\">Intel UHD Graphics 620 GPU</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2024-02-08\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "For example, in the Dell Latitude 7490."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Try adding the following [[boot option|doc/advanced_topics/boot_options]] "
+"when starting Tails:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "        i915.enable_psr=0\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"multiple\">Multiple graphics cards</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "If the error message lists multiple graphics cards:"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"If possible, plug in the monitor into the motherboard's Intel graphics card, "
+"as opposed to the external Nvidia or AMD/ATI graphics card."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Explicitly select one of the two graphics adapters in the BIOS instead of "
+"letting the system choose one automatically. If this does not solve the "
+"problem, try selecting the other graphics adapter."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Try starting Tails using the following [[boot options|doc/advanced_topics/"
+"boot_options]].  You should try only one of these boot options per start "
+"attempt."
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "`modprobe.blacklist=nouveau`"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "`nouveau.modeset=0`"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"intel-bay-trail\">Intel HD Graphics (Bay Trail)</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "For example, in the Acer Aspire e13."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    plymouth.enable=0 disablehooks=plymouth\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"other-issues\">Other issues</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"black-screen-switchable-graphics\">Black screen with switchable graphics computers</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Some computers with switchable graphics (such as Optimus) fail to choose a "
+"video card and end up on a black screen. This has been reported for MacBook "
+"Pro 6,2, MacBook Pro 10,1 Retina, MacBook Pro 15-inch (early 2011) and might "
+"affect many others."
+msgstr ""
+
+#. type: Plain text
+msgid "There are several possible workarounds for this issue:"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"For the Mac computers, it is possible to use a third-party application, "
+"<http://gfx.io/>, to force integrated graphics only through macOS.  Then "
+"restart in that special mode that works with Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"qemu\">Virtual machines with <i>virt-manager</i>, <i>libvirt</i>, and <i>QEMU</i></h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"See the\n"
+"[[dedicated troubleshooting documentation|doc/advanced_topics/virtualization/virt-manager#graphics-issues]]\n"
+"about graphics issues in Tails running inside a virtual machine\n"
+"with *virt-manager*.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"vmware\">Virtual machines with <i>VMware</i></h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To improve support of Tails running inside a virtual machine with *VMware*, "
+"install the `open-vm-tools-desktop` software package as [[Additional "
+"Software|doc/persistent_storage/additional_software]] in Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"boot-options\">Probing EDD error</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Use these instructions if Tails failed to start and displayed the following "
+"error:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "        Probing EDD (edd=off to disable)...\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Follow [[our guide for editing boot options|doc/advanced_topics/"
+"boot_options]]."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"For the guide's \"Modify the boot options as needed\" step, type `edd=off` "
+"to add this option to the command line."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"display-artifacts-intel\">Display artifact when starting Tails on Intel display</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you see screen tearing and color artifact shift through display with an "
+"Intel graphics card, try this:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Right-click on the desktop"
+msgstr ""
+
+#. type: Bullet: '2. '
+msgid "Click *Display Settings*"
+msgstr ""
+
+#. type: Bullet: '3. '
+msgid ""
+"Change the refresh rate to a different value.<br /> For example, setting the "
+"refresh rate to 48 HZ fixed the problem on Tails 5.9 with this hardware: "
+"Gemini Lake N4100 (Intel Graphics 600)."
+msgstr ""
+
+#, fuzzy
+#~ msgid "<a id=\"amd-vega\"></a>\n"
+#~ msgstr "<a id=\"$ANCHOR\"></a>\n"

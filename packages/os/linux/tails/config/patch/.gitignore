@@ -1,0 +1,7 @@
+# Ignore everything in the packages and rw-includes directories ...
+/packages/*
+/rw-includes/*
+
+# ... except for the README.md files
+!/packages/README.md
+!/rw-includes/README.md

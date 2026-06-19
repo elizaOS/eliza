@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Eliza e1 SoC device tree for Renode / Verilator stages.
+ *
+ * The SoC node graph (CPU, DRAM, CLINT, PLIC, UART, DMA, NPU, display) comes
+ * from the generated platform base sw/platform/generated/e1-platform.dtsi,
+ * itself produced from sw/platform/e1_platform_contract.json. Only the
+ * Renode/Verilator variant identity, boot args, and serial alias live here.
+ *
+ * NOTE on QEMU virt:
+ *   When booting under `qemu-system-riscv64 -machine virt`, QEMU generates its
+ *   own DTB. We pass `-bios default` (OpenSBI) and `-kernel Image` with NO
+ *   `-dtb` override; the kernel uses QEMU's generated DTB. This file is
+ *   therefore unused under QEMU virt and is provided for the Renode and
+ *   Verilator follow-up stages to consume, which model OUR memory map (UART
+ *   at the e1-chip-variant base 0x10001000, not the QEMU-virt 0x10000000).
+ *
+ * Convert to DTB:
+ *   dtc -I dts -O dtb -i sw/platform/generated \
+ *       -o eliza-e1-qemu.dtb sw/linux/dts/eliza-e1-qemu.dts
+ *
+ * Then pass `-dtb build/dts/eliza-e1-qemu.dtb` to QEMU (Renode loads
+ * it via .resc; Verilator's bootrom places it at 0x82000000).
+ */
+
+/dts-v1/;
+
+/include/ "../../platform/generated/e1-platform.dtsi"
+
+/ {
+	compatible = "eliza,e1-soc", "riscv-virtio";
+	model = "Eliza e1 SoC (Renode/Verilator)";
+
+	chosen {
+		bootargs = "console=ttyS0 earlycon=sbi panic=10";
+		stdout-path = "serial0:115200n8";
+	};
+
+	aliases {
+		serial0 = &uart0;
+	};
+};

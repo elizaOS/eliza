@@ -1,0 +1,108 @@
+[[!meta date="Wed, 19 Mar 2014 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.23 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.23, is out.
+
+All users must upgrade as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_0.22.1]].
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Security fixes
+  - Upgrade the web browser to 24.4.0esr-0+tails1~bpo60+1 (Firefox
+    24.4.0esr + Iceweasel patches + Torbrowser patches).
+
+* Major new features
+  - [[Spoof the network interfaces' MAC address|doc/first_steps/welcome_screen/mac_spoofing]]
+    by default. It can be disabled in Tails Greeter.
+  - Rework the way to
+    [[configure how Tor connects to the network|doc/first_steps/welcome_screen#additional]]
+    by using bridges, proxies and restrictive firewalls. This option
+    can be set from Tails Greeter, and replaces the old
+    experimental "bridge mode" feature.
+
+* Bugfixes
+  - Additional software: do not crash when persistence is disabled.
+  - Upgrade Pidgin to 2.10.9, that fixes some regressions introduced
+    in the 2.10.8 security update.
+  - Wait for Tor to have fully bootstrapped, plus a bit more time,
+    before checking for upgrades and unfixed known security issues.
+  - Disable the Intel Management Engine Interface driver. We don't
+    need it in Tails, it might be dangerous, and it causes bugs on
+    various hardware such as systems that reboot when asked to shut
+    down.
+  - Add a launcher for the Tails documentation. This makes it
+    available in Windows Camouflage mode.
+  - Remove the obsolete wikileaks.de account from Pidgin.
+
+* Minor improvements
+  - Upgrade Tor to 0.2.4.21-1~d60.squeeze+1.
+  - Upgrade obfsproxy to 0.2.6-2~~squeeze+1.
+  - Upgrade I2P to 0.9.11-1deb6u1.
+  - Install 64-bit kernel instead of the 686-pae one. This is a
+    necessary first step towards UEFI boot support.
+  - Install Monkeysign (in a not-so-functional shape yet).
+  - Disable the autologin text consoles. This was one of the blockers
+    before a screen saver can be installed in a meaningful way.
+  - Don't localize the text consoles anymore: it is broken on Wheezy,
+    the intended users can as well use loadkeys, and we now do not
+    have to trust setupcon to be safe for being run as root by the
+    desktop user.
+  - Make it possible to manually start IBus.
+  - Reintroduce the possibility to switch identities in the Tor
+    Browser, using a filtering proxy in front of the Tor ControlPort
+    to avoid giving full control over Tor to the desktop user.
+  - Incremental upgrades improvements:
+    * Drop the Tails Upgrader launcher, to limit users' confusion.
+    * Lock down sudo credentials a bit.
+    * Hide debugging information.
+    * Include ~/.xsession-errors in WhisperBack bug reports.
+      This captures the Tails Upgrader errors and debugging information.
+    * Report more precisely why an incremental upgrade cannot be done.
+    * Various user interface and phrasing improvements.
+  - Don't install the Cookie Monster browser extension.
+  - Add a browser bookmark pointing to Tor's Stack Exchange.
+  - Remove the preconfigured #tor channel from the Pidgin: apparently,
+    too many Tails users go ask Tails questions there, without making
+    it clear that they are running Tails, hence creating a
+    user-support nightmare.
+  - Use (most of) Tor Browser's mozconfig.
+  - Rebase the browser on top of iceweasel 24.3.0esr-1, to get the
+    certificate authorities added by Debian back.
+  - Give access to the relevant documentation pages from Tails Greeter.
+  - Hide Tails Greeter's password mismatch warning when entry is changed.
+  - Persistent Volume Assistant:
+    * Take into account our installer is now called Tails Installer.
+    * Optimize window height.
+    * Display device paths in a more user-friendly way.
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+* [[Longstanding|support/known_issues]] known issues.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+April 29.
+
+
+Would you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

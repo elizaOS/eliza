@@ -1,0 +1,33 @@
+#!/bin/bash
+
+set -eu
+set -x
+
+git rm \
+    "${RELEASE_CHECKOUT:?}/wiki/src/torrents/files/tails-amd64-"*.{build-manifest,iso.sig,img.sig,packages}
+
+mkdir -p "${RELEASE_CHECKOUT:?}/wiki/src/torrents/files"
+
+cp "${ISO_PATH:?}.sig" \
+    "${IMG_PATH:?}.sig" \
+    "${ISOS:?}/tails-amd64-${VERSION:?}/tails-amd64-${VERSION:?}.build-manifest" \
+    "${ISOS:?}/tails-amd64-${VERSION:?}/tails-amd64-${VERSION:?}.packages" \
+    "${RELEASE_CHECKOUT:?}/wiki/src/torrents/files/"
+
+# shellcheck disable=SC2012
+LC_NUMERIC=C ls -l -h -L "${ISO_PATH:?}" |
+    cut -f 5 -d ' ' | sed -r 's/(.+)([MG])/\1 \2B/' \
+    >"${RELEASE_CHECKOUT:?}/wiki/src/inc/stable_amd64_iso_size.html"
+# shellcheck disable=SC2012
+LC_NUMERIC=C ls -l -h -L "${IMG_PATH:?}" |
+    cut -f 5 -d ' ' | sed -r 's/(.+)([MG])/\1 \2B/' \
+    >"${RELEASE_CHECKOUT:?}/wiki/src/inc/stable_amd64_img_size.html"
+
+gpg --check-trustdb
+LANG=C TZ=UTC \
+    gpg --no-options --keyid-format long \
+    --trusted-key "${TAILS_SIGNATURE_KEY_LONG_ID:?}" \
+    --verify "${IMG_PATH:?}.sig" "${IMG_PATH:?}" 2>&1 |
+    perl -pE 's/\[ultimate\]$/[full]/' |
+    sed 's/ /\&nbsp;/g;s/</\&lt;/;s/>/\&gt;/;s/$/<br\/>/g' \
+        >"${RELEASE_CHECKOUT:?}/wiki/src/inc/stable_amd64_img_gpg_signature_output.html"

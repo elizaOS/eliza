@@ -1,0 +1,25 @@
+[[!meta date="Tue, 14 May 2013 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.17.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.17.2.
+
+We **strongly** urge you to [[upgrade to Tails 0.18|news/version_0.18]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - Iceweasel
+   (
+   [MFSA 2013-41](https://www.mozilla.org/security/announce/2013/mfsa2013-41.html),
+   [MFSA 2013-42](https://www.mozilla.org/security/announce/2013/mfsa2013-42.html),
+   [MFSA 2013-43](https://www.mozilla.org/security/announce/2013/mfsa2013-43.html),
+   [MFSA 2013-46](https://www.mozilla.org/security/announce/2013/mfsa2013-46.html),
+   [MFSA 2013-47](https://www.mozilla.org/security/announce/2013/mfsa2013-47.html),
+   [MFSA 2013-48](https://www.mozilla.org/security/announce/2013/mfsa2013-48.html)
+   )
+ - Linux kernel ([[!debsa2013 2669]])
+ - curl ([[!debsa2013 2660]])

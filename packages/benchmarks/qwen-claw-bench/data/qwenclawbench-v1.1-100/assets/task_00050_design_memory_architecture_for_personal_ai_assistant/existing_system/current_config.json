@@ -1,0 +1,36 @@
+{
+  "system_name": "SimpleMemory v0.1",
+  "description": "Naive flat-file memory storage for personal AI assistant. All memories stored as plain text files in a single directory. No indexing, no metadata, no structure.",
+  "created": "2023-06-15",
+  "last_modified": "2024-01-10",
+  "config": {
+    "base_dir": "~/ai-assistant/memories/",
+    "file_format": "txt",
+    "naming_convention": "{date}_{session_id}.txt",
+    "max_file_size_kb": 512,
+    "index_type": "none",
+    "metadata_support": false,
+    "compression": false,
+    "retention_days": 365,
+    "search_method": "grep",
+    "backup_enabled": false
+  },
+  "known_limitations": [
+    "No structured metadata — cannot filter by topic, tag, or entity",
+    "Search is brute-force grep across all files — O(n) with file count",
+    "No distinction between working, episodic, and semantic memory",
+    "No cross-referencing between sessions",
+    "No distillation or summarization pipeline",
+    "Single flat directory becomes unwieldy past ~1000 files",
+    "No support for semantic/vector search",
+    "Plain text only — no embedded images, tables, or structured data"
+  ],
+  "current_stats": {
+    "total_files": 847,
+    "total_size_mb": 38.2,
+    "oldest_entry": "2023-06-15",
+    "newest_entry": "2024-01-14",
+    "avg_file_size_kb": 46.2,
+    "avg_search_time_sec": 4.7
+  }
+}

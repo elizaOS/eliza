@@ -1,0 +1,76 @@
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { events } from "./events";
+import { socialAlphaProvider } from "./providers/socialAlphaProvider";
+import { communityInvestorRoutes } from "./routes";
+import { CommunityInvestorService } from "./service";
+
+export { socialAlphaProvider } from "./providers/socialAlphaProvider";
+export * from "./types";
+
+/**
+ * Social Alpha Plugin for ElizaOS.
+ *
+ * Tracks token recommendations ("shills") and criticisms ("FUD") made by
+ * users in chat. Builds trust scores for each recommender based on whether
+ * following their calls would have been profitable — accounting for:
+ *
+ *   - Buy calls that mooned vs dumped
+ *   - Sell/FUD calls on tokens that were scams (good call) vs tokens that rallied (bad call)
+ *   - Conviction level, recency, and consistency
+ *
+ * Exposes a **Social Alpha Provider** that injects trust data (win rate,
+ * rank, P&L history) into the agent's context so it can weigh advice
+ * from different users.
+ */
+export const socialAlphaPlugin: Plugin = {
+	name: "@elizaos/plugin-social-alpha",
+	description:
+		"Tracks token shills and FUD, builds trust scores based on P&L outcomes, and provides a Social Alpha Provider with win rate, rank, and recommender analytics.",
+	config: {
+		BIRDEYE_API_KEY: "",
+		DEXSCREENER_API_KEY: "",
+		HELIUS_API_KEY: "",
+		PROCESS_TRADE_DECISION_INTERVAL_HOURS: "1",
+		METRIC_REFRESH_INTERVAL_HOURS: "24",
+		USER_TRADE_COOLDOWN_HOURS: "12",
+		SCAM_PENALTY: "-100",
+		SCAM_CORRECT_CALL_BONUS: "100",
+		MAX_RECOMMENDATIONS_IN_PROFILE: "50",
+	},
+	async init(_config: Record<string, string>, runtime?: IAgentRuntime) {
+		logger.info("[SocialAlpha] Plugin initializing...");
+		if (runtime) {
+			logger.info(`[SocialAlpha] Initialized for agent: ${runtime.agentId}`);
+		}
+	},
+	services: [CommunityInvestorService],
+	providers: [socialAlphaProvider],
+	routes: communityInvestorRoutes,
+	events: events as unknown as Plugin["events"],
+	views: [
+		{
+			id: "social-alpha",
+			label: "Social Alpha",
+			description:
+				"Trust leaderboard for token calls — win rate, rank, and P&L-backed recommender analytics. Requires an agent wallet.",
+			icon: "UsersRound",
+			path: "/social-alpha",
+			bundlePath: "dist/views/bundle.js",
+			componentExport: "SocialAlphaView",
+			tags: ["finance", "crypto", "social", "trust", "leaderboard"],
+			visibleInManager: true,
+			desktopTabEnabled: true,
+		},
+	],
+	tests: [],
+	async dispose(runtime) {
+		await runtime
+			.getService<CommunityInvestorService>(
+				CommunityInvestorService.serviceType,
+			)
+			?.stop();
+	},
+};
+
+export default socialAlphaPlugin;

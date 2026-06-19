@@ -1,0 +1,5 @@
+[Unit]
+Description=Desktop
+Requires=default.target
+After=default.target
+AllowIsolate=yes

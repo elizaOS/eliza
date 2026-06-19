@@ -1,0 +1,39 @@
+schema: eliza.si_pi_local_evidence.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+scope: local_gap_evidence_for_tapeout_blocker_triage
+source_artifacts:
+  - package/e1-demo-pinout.yaml
+  - docs/board/kicad/e1-demo/fab-notes.md
+  - docs/manufacturing/real-world-verification-gaps.yaml
+  - pd/openlane/runs/RUN_2026-05-19_05-01-02/final/metrics.json
+  - pd/openlane/runs/RUN_2026-05-19_05-01-02/signoff-run.yaml
+local_findings:
+  package_model:
+    status: missing_vendor_artifact
+    evidence_boundary: No IBIS, SPICE, S-parameter, or package parasitic model is present locally.
+  board_stackup:
+    status: missing_vendor_artifact
+    evidence_boundary: KiCad planning notes explicitly mark stackup, footprint, and package data as placeholder-only.
+  clock_reset_debug_gpio_si:
+    status: not_simulated
+    local_inputs_available:
+      - Package planning pinout exists.
+      - KiCad planning PCB exists.
+      - OpenLane routed digital metrics exist for local-only net length and DRV context.
+    missing_for_release:
+      - Vendor package electrical model.
+      - Released PCB stackup and impedance rules.
+      - Board-level simulation or review margins.
+  power_integrity:
+    status: local_requirements_defined_only
+    missing_for_release:
+      - Rail impedance target.
+      - Decoupling network impedance simulation.
+      - Return-current and plane-continuity review.
+      - Bench measurement from first article.
+release_blockers:
+  - Package electrical model is missing.
+  - Board stackup and impedance targets are not released.
+  - Board SI simulation or signoff review is not archived.
+  - Power-integrity impedance, decoupling, and return-path evidence is not archived.

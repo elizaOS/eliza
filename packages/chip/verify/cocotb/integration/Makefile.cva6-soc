@@ -1,0 +1,150 @@
+# Cocotb Makefile for the in-band CVA6 SoC boot test
+# (`test_cva6_boots_in_soc.py`).
+#
+# Invoked by `make cocotb-cva6-soc` at the repo root.  This Makefile
+# overlays the standalone CVA6 source set onto the integrated SoC build
+# so the wrapper inside `e1_soc_integrated.sv` (gated by
+# `+define+E1_CLUSTER_SLOT0_CVA6`) gets a real CVA6 v5.3.0 core, the
+# 64↔128 AXI4 width converter, fabric master[2], and e1_dram_ctrl.  All other SoC packages
+# (axi4_pkg, cache_pkg, ftq_to_l1i_pkg, lsu_to_l1d_pkg, bpu_pkg,
+# zihpm_pkg, power_pkg, e1_riscv_iommu_pkg) and the surrounding
+# integration sources (BPU, FTQ shim, IOMMU, CHI bridge, SLC, DRAM
+# controller, peripherals, …) are pulled in from the same path as the
+# default `Makefile` so the in-band test exercises the full top.
+#
+# Environment overrides:
+#   CVA6_REPO_DIR = absolute path to external/cva6/cva6 checkout (pinned
+#                   to v5.3.0 by external/cva6/pin-manifest.json).
+#   HPDCACHE_DIR  = $(CVA6_REPO_DIR)/core/cache_subsystem/hpdcache
+#   TARGET_CFG    = config-package prefix (default cv64a6_imafdc_sv39).
+
+TOPLEVEL_LANG ?= verilog
+SIM           ?= verilator
+
+PWD  := $(shell pwd)
+REPO := $(abspath ../../..)
+
+CVA6_REPO_DIR ?= $(REPO)/external/cva6/cva6
+HPDCACHE_DIR  ?= $(CVA6_REPO_DIR)/core/cache_subsystem/hpdcache
+TARGET_CFG    ?= cv64a6_imafdc_sv39
+
+# Mirror the Makefile.cva6 patch-apply gate so the V3Delayed btb/bht
+# workaround lands before Verilator compiles the CVA6 frontend sources.
+CVA6_VERILATOR_FULL_OK ?= 1
+export CVA6_VERILATOR_FULL_OK
+
+ifeq ($(CVA6_SKIP_LOCAL_PATCHES),)
+CVA6_PATCH_RC := $(shell $(REPO)/scripts/apply_cva6_patches.sh >&2 && echo OK || echo FAIL)
+ifneq ($(CVA6_PATCH_RC),OK)
+$(error scripts/apply_cva6_patches.sh failed — CVA6 sources cannot be Verilator-lowered without local patches)
+endif
+endif
+
+CVA6_FLIST_OUT  := $(PWD)/.cva6_flist.txt
+CVA6_INCDIR_OUT := $(PWD)/.cva6_incdir.txt
+
+CVA6_EXPAND_RC := $(shell \
+  CVA6_REPO_DIR=$(CVA6_REPO_DIR) \
+  HPDCACHE_DIR=$(HPDCACHE_DIR) \
+  TARGET_CFG=$(TARGET_CFG) \
+  python3 $(REPO)/scripts/expand_cva6_flist.py \
+    --flist $(CVA6_REPO_DIR)/core/Flist.cva6 \
+    --files-out $(CVA6_FLIST_OUT) \
+    --incdir-out $(CVA6_INCDIR_OUT) >&2 && echo OK || echo FAIL)
+
+ifneq ($(CVA6_EXPAND_RC),OK)
+$(error CVA6 flist expansion failed; check CVA6_REPO_DIR=$(CVA6_REPO_DIR))
+endif
+
+CVA6_INCDIRS := $(shell cat $(CVA6_INCDIR_OUT) | tr '\n' ' ')
+CVA6_FILES   := $(shell cat $(CVA6_FLIST_OUT))
+
+# Source order: e1 SoC packages and BPU/cache/cluster RTL first so the e1
+# `ras`, `ftb`, etc. modules win against the identically-named modules
+# inside CVA6's frontend (CVA6 ships its own `ras.sv` etc. as standalone
+# modules).  Verilator picks the first definition it sees, so listing the
+# e1 sources before the CVA6 flist resolves the name collision without
+# touching either source tree.  CVA6's internal RAS still elaborates
+# under its own elaboration path because it is instantiated by `cva6.sv`
+# under a hierarchical reference that does not depend on definition order
+# in the linker view — only the global lookup for the e1 BPU's
+# `ras u_ras` instantiation needs to land on the e1 module.
+#
+# After both module trees are loaded the leaf adapters + the integrated
+# top + the cocotb harness wire everything together.
+VERILOG_SOURCES := \
+	$(REPO)/rtl/top/e1_topology_pkg.sv \
+	$(REPO)/rtl/top/e1_soc_pkg.sv \
+	$(REPO)/rtl/interconnect/axi4/e1_axi4_pkg.sv \
+	$(REPO)/rtl/cache/cache_pkg.sv \
+	$(REPO)/rtl/cache/ftq_to_l1i_pkg.sv \
+	$(REPO)/rtl/cache/lsu_to_l1d_pkg.sv \
+	$(REPO)/rtl/cpu/bpu/bpu_pkg.sv \
+	$(REPO)/rtl/cpu/csr/zihpm.sv \
+	$(REPO)/rtl/power/power_pkg.sv \
+	$(REPO)/rtl/iommu/e1_riscv_iommu_pkg.sv \
+	$(REPO)/rtl/cpu/bpu/bimodal.sv \
+	$(REPO)/rtl/cpu/bpu/bpu_csr.sv \
+	$(REPO)/rtl/cpu/bpu/ftb.sv \
+	$(REPO)/rtl/cpu/bpu/ftq.sv \
+	$(REPO)/rtl/cpu/bpu/h2p_corrector.sv \
+	$(REPO)/rtl/cpu/bpu/ittage.sv \
+	$(REPO)/rtl/cpu/bpu/loop_predictor.sv \
+	$(REPO)/rtl/cpu/bpu/ras.sv \
+	$(REPO)/rtl/cpu/bpu/sc.sv \
+	$(REPO)/rtl/cpu/bpu/tage.sv \
+	$(REPO)/rtl/cpu/bpu/tage_table.sv \
+	$(REPO)/rtl/cpu/bpu/uftb.sv \
+	$(REPO)/rtl/cpu/bpu/bpu_top.sv \
+	$(REPO)/rtl/cpu/bpu/ftq_to_fetch_stream.sv \
+	$(REPO)/rtl/cpu/bpu/fetch_stream_to_l1i_demand.sv \
+	$(REPO)/rtl/cpu/bpu/ftq_to_l1i_shim.sv \
+	$(REPO)/rtl/cpu/csr/bpu_to_zihpm_remap.sv \
+	$(REPO)/rtl/cache/l1i/e1_l1i_cache.sv \
+	$(REPO)/rtl/cache/l1i/e1_l1i_dual_miss_to_l2.sv \
+	$(REPO)/rtl/cache/l2/e1_l2_cache.sv \
+	$(REPO)/rtl/cpu/cluster/e1_cluster_top.sv \
+	$(REPO)/rtl/interconnect/axi4/e1_axi4_interconnect.sv \
+	$(REPO)/rtl/interconnect/chi_bridge/e1_chi_to_axi4_bridge.sv \
+	$(REPO)/rtl/iommu/e1_riscv_iommu.sv \
+	$(REPO)/rtl/cache/slc/e1_slc.sv \
+	$(REPO)/rtl/memory/dram_ctrl/e1_axi4_dram_model.sv \
+	$(REPO)/rtl/memory/dram_ctrl/e1_dram_ctrl.sv \
+	$(REPO)/rtl/power/pmc_top.sv \
+	$(REPO)/rtl/memory/e1_weight_buffer_sram.sv \
+	$(REPO)/rtl/bootrom/e1_bootrom.sv \
+	$(REPO)/rtl/peripherals/e1_peripherals.sv \
+	$(REPO)/rtl/dma/e1_dma.sv \
+	$(REPO)/rtl/npu/e1_npu.sv \
+	$(REPO)/rtl/display/e1_display.sv \
+	$(REPO)/rtl/display/e1_display_scanout.sv \
+	$(REPO)/rtl/top/adapters/e1_slc_to_chi_line_shim.sv \
+	$(REPO)/rtl/top/adapters/e1_axi4_width_converter.sv \
+	$(REPO)/rtl/peripherals/e1_mmio_decode.sv \
+	$(REPO)/rtl/peripherals/e1_clint.sv \
+	$(REPO)/rtl/memory/e1_behavioral_dram.sv \
+	$(CVA6_FILES) \
+	$(REPO)/rtl/top/adapters/e1_cva6_to_e1axi4.sv \
+	$(REPO)/rtl/cpu/e1_cva6_wrapper.sv \
+	$(REPO)/rtl/top/e1_soc_integrated.sv \
+	$(PWD)/e1_soc_integrated_tb.sv
+
+TOPLEVEL ?= e1_soc_integrated_tb
+MODULE   ?= test_cva6_boots_in_soc
+PYTHON   ?= python3
+
+COMPILE_ARGS += +define+E1_HAVE_CVA6 +define+E1_CLUSTER_SLOT0_CVA6 +define+WT_DCACHE
+
+PLUSARGS += +E1_DRAM_PRELOAD_HEX=boot_rom.hex +E1_DRAM_FAST
+
+EXTRA_ARGS += $(CVA6_INCDIRS)
+EXTRA_ARGS += \
+	-Wno-fatal -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM \
+	-Wno-WIDTH -Wno-UNOPTFLAT -Wno-CASEINCOMPLETE -Wno-IMPLICITSTATIC \
+	-Wno-PINCONNECTEMPTY -Wno-SYNCASYNCNET -Wno-WIDTHEXPAND \
+	-Wno-WIDTHTRUNC -Wno-COMBDLY -Wno-ALWCOMBORDER -Wno-LATCH \
+	-Wno-VARHIDDEN -Wno-UNUSED -Wno-LITENDIAN -Wno-TIMESCALEMOD \
+	-Wno-MULTITOP -Wno-MODDUP -Wno-STMTDLY -Wno-CASEX -Wno-SELRANGE \
+	-Wno-UNSIGNED -Wno-SYMRSVDWORD
+
+include $(shell $(PYTHON) -m cocotb.config --makefiles)/Makefile.sim

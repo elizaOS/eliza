@@ -1,0 +1,74 @@
+task_id: M025_video_badminton_match_qa
+task_name: Video Badminton Match QA
+version: "1.0"
+category: video_qa
+difficulty: medium
+tags: [multimodal]
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    我错过了这场比赛，我的朋友一直在夸赞这场比赛。你能告诉我哪两支队伍在比赛吗？比赛的具体项目是什么？整个视频中计分板显示的比分是多少，是否发生了变化？视频中得分的队伍是哪一支队伍，请列出该队伍所有成员的名字。此外，给我详细介绍下视频中红色衣服的这支队伍，我想了解更多。
+  language: zh
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+sandbox_files:
+  - fixtures/video.mp4
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files: []
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Use ReadMedia to extract frames, identify teams, sport event,
+  scoreboard, scoring team members, and provide detailed info about red team.
+primary_dimensions:
+  - completion
+  - robustness

@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.env.local
+agent-identity.json
+*.log
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.DS_Store
+
+benchmark-results/
+trajectories/

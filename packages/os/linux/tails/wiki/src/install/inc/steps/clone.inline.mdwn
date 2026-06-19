@@ -1,0 +1,119 @@
+[[!meta robots="noindex"]]
+
+<h1 id="install" class="step pc-clone mac-clone">Install Tails by cloning</h1>
+<h1 id="upgrade" class="step upgrade">Upgrade your primary Tails by cloning</h1>
+
+<div class="step-image">
+[[!img install/inc/infography/clone-tails.png link="no" class="clone upgrade-tails upgrade-os" alt=""]]
+</div>
+
+<p class="upgrade">
+  In this step, you will upgrade your primary Tails from the
+  <span class="upgrade-clone">other</span>
+  <span class="upgrade-tails upgrade-os">intermediary</span>
+  Tails using
+  <i>Tails Cloner</i>.
+</p>
+
+1. Plug
+   <span class="pc-clone mac-clone">the new</span>
+   <span class="upgrade">your primary Tails</span>
+   USB stick <span class="upgrade">in addition to the
+     <span class="upgrade-clone">other</span>
+     <span class="upgrade-tails upgrade-os">intermediary</span>
+   Tails</span> into the computer.
+
+   <div class="caution pc-clone mac-clone">
+
+   <p>All the data on this USB stick will be lost.</p>
+
+   <p>Some data might still be recovered using advanced forensics tools.</p>
+
+   </div>
+
+1. Choose **Apps&nbsp;▸ Tails&nbsp;▸ Tails Cloner** to open *Tails Cloner*.
+
+   [[!img install/inc/screenshots/tails_cloner.png class="pc-clone mac-clone screenshot" alt="Tails Cloner: 'Clone the current Tails'"]]
+   [[!img install/inc/screenshots/tails_cloner_upgrade.png class="upgrade screenshot" alt="Tails Cloner: 'Clone the current Tails'"]]
+
+   <p class="clone upgrade-clone">If the other Tails has a Persistent Storage, another
+   option <b>Clone the current Persistent Storage</b> is available.</p>
+
+   <p class="clone upgrade-clone">[[!img install/inc/screenshots/tails_cloner_persistent_storage.png class="screenshot" alt="Option: **Clone the current Persistent Storage** below **Clone the current Tails**"]]</p>
+
+   <p class="clone upgrade-clone"></p>
+
+   <div class="clone upgrade-clone">
+
+   <p>If you select the option <b>Clone the current Persistent Storage</b>, the
+   Persistent Storage of the other Tails is also be copied.
+   <span class="upgrade-clone">The <b>Upgrade</b> button becomes unavailable
+   and you can only [[reinstall|install/clone]] and delete all data on the
+   target USB stick.</span></p>
+
+   <div class="bug upgrade-clone">
+
+   <p>In the future, we want to allow cloning the Persistent Storage when
+   upgrading as well, for example to make it quicker to update a [[backup Tails
+   USB stick|doc/persistent_storage/backup]]. ([[!tails_ticket 20362]])</p>
+
+   </div>
+
+   </div>
+
+1. Choose
+   <span class="pc-clone mac-clone">the new</span>
+   <span class="upgrade">your</span>
+   USB stick in the **Target USB stick** menu.
+
+1. To start the
+   <span class="pc-clone mac-clone">installation, click on the <b>Install</b> button.</span>
+   <span class="upgrade">upgrade, click on the <b>Upgrade</b> button.</span>
+
+   <div class="pc-clone mac-clone">
+
+   <p>Read the warning message in the confirmation dialog.</p>
+
+   <p>Click <b>Delete All Data and Install</b> to confirm.</p>
+
+   </div>
+
+1. The
+   <span class="pc-clone mac-clone">installation</span>
+   <span class="upgrade">upgrade</span>
+   takes a few minutes.
+
+   <div class="bug">
+   <p>The progress bar usually freezes for some time
+   while synchronizing data on disk.</p>
+   </div>
+
+1. After the
+   <span class="pc-clone mac-clone">installation</span>
+   <span class="upgrade">upgrade</span>
+   finishes, close <i>Tails Cloner</i>
+
+   [[!img install/inc/screenshots/installation_complete.png class="screenshot" alt=""]]
+
+<div class="upgrade">
+
+<div class="success">
+
+<video autoplay loop muted width="200" height="200" poster="https://tails.net/install/inc/success/start.png">
+  <source src="https://tails.net/install/inc/success/start.mp4" type="video/mp4" />
+</video>
+
+<div>
+  <p class="big">You made it!</p>
+
+  <p>You are done upgrading Tails. You can now restart on your primary Tails USB stick.</p>
+
+  <p>Congratulations on staying safe :)</p>
+
+  <p>Read the [[release notes|latest]] of Tails [[!inline pages="inc/stable_amd64_version" raw="yes" sort="age"]] to see what's new.</p>
+
+</div>
+
+</div>
+
+</div>

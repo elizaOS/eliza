@@ -1,0 +1,67 @@
+#!/bin/bash
+# elizaOS Linux — mkosi finalize step.
+#
+# Runs on the host after `mkosi build` produces the disk image. We:
+#   1. Run the live-build binary-stage hooks against the staged boot tree
+#      (currently grub branding / riscv64 grub kernel-path patch). These
+#      operate on the bootloader layout, not the rootfs, so they translate
+#      cleanly to the post-build image.
+#   2. Optionally wrap the GPT disk image into a hybrid ISO via xorriso to
+#      match the existing release artifact contract (set MKOSI_EMIT_ISO=1).
+#   3. Always emit a sha256 sidecar next to each produced artifact for
+#      release-manifest parity with the live-build path.
+set -euo pipefail
+
+OUT_DIR="${OUTPUTDIR:?mkosi did not set OUTPUTDIR}"
+IMAGE_ID="${IMAGE_ID:-elizaos-linux}"
+ARCH="${ARCHITECTURE:-unknown}"
+
+cd "$OUT_DIR"
+
+# Normalize mkosi's debian-arch names (x86-64) to the live-build / release
+# pipeline naming contract (amd64). Renames apply to every output of this
+# build (raw image, manifest, sha256 sidecars, ISO if emitted) so the
+# release/flasher tooling sees the expected name regardless of build path.
+if [ "$ARCH" = "x86-64" ]; then
+    shopt -s nullglob
+    for f in *x86-64*; do
+        mv "$f" "${f//x86-64/amd64}"
+    done
+    IMAGE_ID="${IMAGE_ID//x86-64/amd64}"
+fi
+
+# Sha256 sidecars (release/flasher contract).
+for artifact in "${IMAGE_ID}".raw "${IMAGE_ID}".raw.zst "${IMAGE_ID}".manifest; do
+    if [ -f "$artifact" ]; then
+        sha256sum "$artifact" >"${artifact}.sha256"
+    fi
+done
+
+# Optional ISO wrap. mkosi produces a bootable GPT disk image (Format=disk),
+# which is already dd-able to USB. xorriso wraps it into a hybrid ISO for the
+# legacy ISO release channel. Default off — opt in with MKOSI_EMIT_ISO=1.
+if [ "${MKOSI_EMIT_ISO:-0}" = "1" ]; then
+    raw="${IMAGE_ID}.raw"
+    iso="${IMAGE_ID}.iso"
+    if [ ! -f "$raw" ]; then
+        echo "[mkosi.finalize] MKOSI_EMIT_ISO=1 but $raw missing; skip ISO wrap" >&2
+    elif ! command -v xorriso >/dev/null 2>&1; then
+        echo "[mkosi.finalize] MKOSI_EMIT_ISO=1 but xorriso not installed; skip" >&2
+    else
+        echo "[mkosi.finalize] wrapping $raw -> $iso"
+        xorriso -as mkisofs \
+            -iso-level 3 \
+            -full-iso9660-filenames \
+            -volid "ELIZAOS-${ARCH^^}" \
+            -appid "elizaos-linux" \
+            -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
+            -partition_offset 16 \
+            -append_partition 2 0xef "$raw" \
+            -o "$iso" \
+            .
+        sha256sum "$iso" >"${iso}.sha256"
+    fi
+fi
+
+echo "[mkosi.finalize] outputs in $OUT_DIR:"
+ls -la "$OUT_DIR"

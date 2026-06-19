@@ -1,0 +1,161 @@
+[[!meta title="Call for testing: 4.5~rc1"]]
+[[!meta date="Fri, 27 Mar 2020 17:05:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+Tails 4.5, scheduled for April 7, will be the first version of Tails to
+support Secure Boot.
+
+You can help Tails by testing the release candidate for Tails 4.5 now.
+
+[[!toc levels=1]]
+
+# Secure Boot
+
+Tails 4.5~rc1 should start on computers in UEFI mode and with Secure
+Boot enabled.
+
+# Known issues
+
+If your Mac displays the following error:
+
+<pre>Security settings do not allow this Mac to use an external startup disk.</pre>
+
+<p>Then you have to change the change the settings of the <em>Startup
+Security Utility</em> of your Mac to authorize starting from Tails.</p>
+
+[[!toggle id="mac" text="Read our instructions on how to authorize
+starting from Tails on your Mac."]]
+
+[[!toggleable id="mac" text="""
+
+<p>To open <em>Startup Security Utility</em>:</p>
+
+<ol>
+
+  <!-- Section copied from https://support.apple.com/en-us/HT208198 -->
+
+  <li><p>Turn on your Mac, then press and hold <strong>Command(⌘)+R</strong>
+  immediately after you see the Apple logo. Your Mac starts up from
+  <a href="https://support.apple.com/kb/HT201314">macOS Recovery</a>.</p></li>
+
+  <li><p>When you see the macOS <em>Utilities</em> window, choose
+  <strong>Utilities&nbsp;▸ Startup Security Utility</strong> from the menu
+  bar.</p></li>
+
+  <li><p>When you are asked to authenticate, click <strong>Enter macOS
+  Password</strong>, then choose an administrator account and enter its
+  password.</p></li>
+
+</ol>
+
+<p>[[!img startup-security-utility.png link="no" alt="Startup Security Utility"]]</p>
+
+<p>In the <em>Startup Security Utility</em>:</p>
+
+<ul>
+
+  <li><p>Choose <strong>No Security</strong> in the <strong>Secure
+  Boot</strong> section.</p></li>
+
+  <li><p>Choose <strong>Allow booting from external media</strong> in the
+  <strong>External Boot</strong>.</p></li>
+
+</ul>
+
+<div class="tip">
+
+<p>To still protect your Mac from starting on untrusted external media, you
+can <a href="https://support.apple.com/en-us/HT204455">set a firmware password</a>, available on macOS Mountain Lion or later. A
+firmware password prevents users who do not have the password from starting
+up from any media other than the designated startup disk.</p>
+
+<p><strong>If you forget your firmware password it will require an in-person
+service appointment with an Apple Store or Apple Authorized Service
+Provider.</strong></p>
+
+</div>
+
+<p>Read more on Apple Support about:</p>
+
+<ul>
+
+  <li><a href="https://support.apple.com/en-us/HT208198">Startup Security Utility</a></li>
+  <li><a href="https://support.apple.com/en-us/HT208330">Secure Boot</a></li>
+  <li><a href="https://support.apple.com/en-us/HT204455">How to set a firmware password on your Mac</a></li>
+
+</ul>
+
+</li>
+
+"""]]
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# How to test Tails 4.5~rc1?
+
+Keep in mind that this is a test image. We tested that it is not broken in
+obvious ways, but it might still contain undiscovered issues.
+
+Please, report any new problem to <tails-testers@boum.org> (public mailing list).
+
+# Get Tails 4.5~rc1
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 4.2 or later to 4.5~rc1.
+
+  To do an automatic upgrade to Tails 4.5~rc1:
+
+  1. Start Tails 4.2 or later and
+     [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+  
+  1. Run this command in a *Terminal*:
+  
+         echo TAILS_CHANNEL=\"alpha\" | sudo tee -a /etc/os-release && \
+              tails-upgrade-frontend-wrapper
+  
+     Enter the administration password when asked for the "password
+     for amnesia".
+  
+  1. After the upgrade is applied, restart Tails and choose
+     **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+     to verify that you are running Tails 4.5~rc1.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To download 4.5~rc1
+
+### Direct download
+
+  - For USB sticks (USB image)
+    (OpenPGP signature)
+
+  - For DVDs and virtual machines (ISO image)
+    (OpenPGP signature)
+
+### BitTorrent download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - Install from Windows
+  - Install from macOS
+  - Install from Linux
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+# What's coming up?
+
+Tails 4.5 is [[scheduled|contribute/calendar]] for April 7.
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.5-rc1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

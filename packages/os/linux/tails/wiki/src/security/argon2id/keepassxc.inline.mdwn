@@ -1,0 +1,19 @@
+[[!tag security/fixed]]
+
+   1. Choose **Apps&nbsp;▸ Accessories&nbsp;▸ KeePassXC**.
+
+   1. Choose **Tools**&nbsp;▸ **Password Generator**.
+
+   1. Switch to the **Passphrase** tab.
+
+      A very strong passphrase of 7 random words is automatically generated.
+
+      <div class="caution">
+
+      <p>It is impossible to recover your passphrase if you forget it!</p>
+
+      <p>To help you remember your passphrase, you can write it on a piece of
+      paper, store it in your wallet for a few days, and destroy it once
+      you know it well.</p>
+
+      </div>

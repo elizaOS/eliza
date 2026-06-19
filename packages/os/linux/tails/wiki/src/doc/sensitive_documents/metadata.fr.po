@@ -1,0 +1,346 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-19 18:24+0000\n"
+"PO-Revision-Date: 2026-01-22 01:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Removing metadata from files\"]]\n"
+msgstr "[[!meta title=\"Supprimer des métadonnées des fichiers\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What is metadata?"
+msgstr "Qu'est-ce que les métadonnées ?"
+
+#. type: Plain text
+msgid ""
+"Metadata is \"data about data\" or \"information about information\" that is "
+"embedded in computer files, usually automatically. Metadata is used to "
+"describe, identify, categorize, and sort files."
+msgstr ""
+"Les métadonnées sont des « données sur les données » ou des « informations "
+"sur les informations » qui sont intégrées dans les fichiers informatiques, "
+"généralement de manière automatique. Les métadonnées sont utilisées pour "
+"décrire, identifier, catégoriser et trier les fichiers."
+
+#. type: Plain text
+msgid ""
+"However, metadata can also be used to deanonymize users and expose private "
+"information."
+msgstr ""
+"Cependant, les métadonnées peuvent également être utilisées pour "
+"désanonymiser les utilisateurs et exposer des informations privées."
+
+#. type: Plain text
+msgid "Examples of metadata include:"
+msgstr "Voici quelques exemples de métadonnées :"
+
+#. type: Bullet: '- '
+msgid "In images:"
+msgstr "Dans des images :"
+
+#. type: Bullet: '  * '
+msgid "The location where a photo was taken"
+msgstr "Le lieu où la photo a été prise"
+
+#. type: Bullet: '  * '
+msgid "The date and time a photo was taken"
+msgstr "La date et l'heure à laquelle la photo a été prise"
+
+#. type: Bullet: '  * '
+msgid "The model and serial number of the camera used to take a photo"
+msgstr ""
+"Le modèle et le numéro de série de l'appareil qui a été utilisé pour prendre "
+"la photo"
+
+#. type: Bullet: '- '
+msgid "In other documents:"
+msgstr "Dans d'autres documents :"
+
+#. type: Bullet: '  * '
+msgid "The author of the document"
+msgstr "La personne auteure du document"
+
+#. type: Bullet: '  * '
+msgid "Changes to the document"
+msgstr "Les changements dans le document"
+
+#. type: Plain text
+msgid ""
+"To learn more about how metadata can be used to identify and reveal personal "
+"information, see [Behind the Data: Investigating metadata](https://"
+"exposingtheinvisible.org/en/guides/behind-the-data-metadata-investigations/)."
+msgstr ""
+"Pour en apprendre plus sur comment les métadonnées peuvent être utilisées "
+"pour identifier et révéler des informations personnelles, voir [Behind the "
+"Data: Investigating metadata](https://exposingtheinvisible.org/en/guides/"
+"behind-the-data-metadata-investigations/) (en anglais)."
+
+#. type: Title =
+#, no-wrap
+msgid "Removing metadata using *Metadata Cleaner*"
+msgstr "Effacer des métadonnées avec *Nettoyeur de métadonnées*"
+
+#. type: Plain text
+msgid ""
+"Tails includes [*Metadata Cleaner*](https://gitlab.com/metadatacleaner/"
+"metadatacleaner)  so you can remove metadata from files before you publish "
+"or share them."
+msgstr ""
+"Tails inclus [*Nettoyeur de métadonnées*](https://gitlab.com/metadatacleaner/"
+"metadatacleaner) pour que vous puissiez nettoyer les métadonnées de vos "
+"fichiers avant de les publier ou de les partager."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If, instead of cleaning your own files, you want to sanitize untrusted\n"
+"documents shared with you by others, you can install\n"
+"[[<i>Dangerzone</i>|persistent_storage/additional_software/dangerzone]] as\n"
+"additional software.</p>\n"
+msgstr ""
+"<p>Si, au lieu de nettoyer vos propres fichiers, vous voulez désinfecter des documents\n"
+"non sûrs qui vous ont été partagés par d'autres, vous pouvez installer\n"
+"[[<i>Dangerzone</i>|persistent_storage/additional_software/dangerzone]] comme\n"
+"logiciel supplémentaire.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "*Metadata Cleaner* works on many file formats, including:\n"
+msgstr "*Nettoyeur de métadonnées* fonctionne sur de nombreux formats de fichiers, notamment :\n"
+
+#. type: Bullet: '- '
+msgid "Images, such as .jpg, .gif, .svg, .tiff, and .png"
+msgstr "Les images, par exemple les .jpg, .gif, .svg, .tiff, et les .png"
+
+#. type: Bullet: '- '
+msgid "*Microsoft Office* documents, such as .docx, .xlsx, and .pptx"
+msgstr ""
+"Les documents *Microsoft Office*, par exemple les .docx, .xlsx, et les .pptx"
+
+#. type: Bullet: '- '
+msgid "*LibreOffice* documents, such as .odt and .ods"
+msgstr "Les documents *LibreOffice*, par exemple les .odt et les .ods"
+
+#. type: Bullet: '- '
+msgid "Audio files, such as .mp3, .flac, and .ogg"
+msgstr "Les fichiers audio, par exemple les .mp3, .flac et les .ogg"
+
+#. type: Bullet: '- '
+msgid "Video files, such as .mp4 and .avi"
+msgstr "Les fichiers vidéos, par exemple les .mp4 et les .avi"
+
+#. type: Bullet: '- '
+msgid "Archive files, such as .zip and .tar"
+msgstr "Les fichiers d'archive, par exemple les .zip et les .tar"
+
+#. type: Bullet: '- '
+msgid "PDFs"
+msgstr "Les PDF"
+
+#. type: Plain text
+msgid ""
+"To open *Metadata Cleaner*, choose **Apps&nbsp;▸ Accessories&nbsp;▸ Metadata "
+"Cleaner**."
+msgstr ""
+"Pour ouvrir *Nettoyeur de métadonnées*, choisissez **Applications&nbsp;▸ "
+"Accessoires&nbsp;▸ Nettoyeur de métadonnées**."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>It is impossible to reliably find and remove all metadata in complex file\n"
+"formats. For example, <i>Microsoft Office</i> documents can contain embedded images,\n"
+"audio, and other files containing their own metadata that Tails cannot\n"
+"remove.</p>\n"
+msgstr ""
+"<p>Il est impossible de trouver et de supprimer de manière fiable toutes les métadonnées dans les formats de fichiers\n"
+"complexes. Par exemple, les documents <i>Microsoft Office</i> peuvent contenir des images intégrées,\n"
+"de l'audio et d'autres fichiers contenant leurs propres métadonnées que Tails ne peut pas\n"
+"supprimer.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You should remove metadata on any files before you embed them into another\n"
+"document.</p>\n"
+msgstr ""
+"<p>Vous devriez supprimer les métadonnées sur tous les fichiers avant de les intégrer dans un autre\n"
+"document.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Also, you should save files in simpler formats whenever possible.\n"
+"For example, instead of saving a text document as a .docx file,\n"
+"you can save the document as a plain .txt file.</p>\n"
+msgstr ""
+"<p>Vous devriez également enregistrer les fichiers dans des formats plus simple lorsque cela est possible.\n"
+"Par exemple, au lieu d'enregistrer un document texte au format .docx,\n"
+"vous pouvez l'enregistrer comme un simple fichier .txt.</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Removing metadata from the command line"
+msgstr "Effacer les métadonnées depuis la ligne de commande"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Metadata Cleaner* is a graphical interface for\n"
+"[*mat2*](https://0xacab.org/jvoisin/mat2).\n"
+msgstr ""
+"*Nettoyeur de métadonnées* est une interface graphique pour\n"
+"[*mat2*](https://0xacab.org/jvoisin/mat2).\n"
+
+#. type: Plain text
+msgid "You can also use *mat2* directly on the command line:"
+msgstr ""
+"Vous pouvez également utiliser *mat2* directement depuis la ligne de "
+"commande :"
+
+#. type: Bullet: '1. '
+msgid "Open a *Console*."
+msgstr "Ouvrez une *Console*."
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following command. Replace <span class=\"command-"
+"placeholder\">file.ext</span> with a path to the file that you want to clean."
+msgstr ""
+"Exécutez la commande suivante. Remplacez <span class=\"command-"
+"placeholder\">fichier.ext</span> avec le chemin vers le fichier que vous "
+"voulez nettoyer."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-template\">mat2 <span class=\"command-placeholder\">file.ext</span></p>\n"
+msgstr "   <p class=\"command-template\">mat2 <span class=\"command-placeholder\">fichier.ext</span></p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"After *mat2* finishes, a copy of your file without metadata is available as "
+"<span class=\"command-placeholder\">file.cleaned.ext</span>."
+msgstr ""
+"Lorsque *mat2* a terminé, une copie de votre fichier sans les métadonnées "
+"est disponible sous <span class=\"command-placeholder\">fichier.cleaned.ext</"
+"span>."
+
+#~ msgid "Execute the following command."
+#~ msgstr "Exécutez la commande suivante."
+
+#~ msgid "Open the *Files* browser."
+#~ msgstr "Ouvrir le navigateur de *Fichiers*."
+
+#~ msgid ""
+#~ "Navigate to the folder containing the files that you want to remove "
+#~ "metadata from."
+#~ msgstr ""
+#~ "Naviguez jusqu'au dossier contenant les fichiers dont vous voulez "
+#~ "supprimer les métadonnées."
+
+#~ msgid "Select the files that you want to remove metadata from."
+#~ msgstr ""
+#~ "Sélectionnez les fichiers dont vous voulez supprimer les métadonnées."
+
+#~ msgid ""
+#~ "Right-click (on Mac, click with two fingers) on the files and choose "
+#~ "**Remove metadata**."
+#~ msgstr ""
+#~ "Faites un clic-droit (sur Mac, cliquez avec deux doigts) sur les fichiers "
+#~ "et choisissez **Remove metadata** (« supprimer les métadonnées »)."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Both techniques rely on the <a\n"
+#~ "href=\"https://0xacab.org/jvoisin/mat2\">mat2</a> toolkit to remove\n"
+#~ "metadata, so they work on the same file formats and remove the same\n"
+#~ "metadata.</p>\n"
+#~ msgstr ""
+#~ "<p>Ces deux techniques reposent sur l'outil <a\n"
+#~ "href=\"https://0xacab.org/jvoisin/mat2\">mat2</a> pour effacer les\n"
+#~ "métadonnées, elles fonctionnent sur les mêmes formats de fichiers et effacent les mêmes\n"
+#~ "métadonnées.</p>\n"
+
+#~ msgid ""
+#~ "- Image files, such as .jpeg, .png, and .gif - *LibreOffice* files, such "
+#~ "as .odt and .ods - *Microsoft Office* documents, such as .docx, .xlsx, "
+#~ "and .pptx - Audio files, such as .mp3, .flac, and .ogg - Video files, "
+#~ "such as .mp4 and .avi - Archive files, such as .zip and .tar"
+#~ msgstr ""
+#~ "- Fichiers images, comme .jpeg, .png et .gif\n"
+#~ "- Fichiers *LibreOffice*, comme .odt et .ods\n"
+#~ "- Documents *Microsoft Office*, comme .docx, .xlsx et .pptx\n"
+#~ "- Fichiers audio, comme .mp3, .flac et .ogg\n"
+#~ "- Fichiers vidéos, comme .mp4 et .avi\n"
+#~ "- Fichiers archives, comme .zip et .tar"
+
+#, no-wrap
+#~ msgid ""
+#~ "Removing metadata from files\n"
+#~ "==========================\n"
+#~ msgstr ""
+#~ "Supprimer les métadonnées des fichiers\n"
+#~ "======================================\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "To use *mat2* to remove metadata from your\n"
+#~ "files:\n"
+#~ msgstr ""
+#~ "Pour utiliser *mat2* afin de supprimer les métadonnées de vos\n"
+#~ "fichiers :\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "- In image files:\n"
+#~ "  - the location where a photo was taken\n"
+#~ "  - the date and time a photo was taken\n"
+#~ "  - the model and serial number of the camera used to take a photo\n"
+#~ "- In text document files:\n"
+#~ "  - the author of the document\n"
+#~ "  - changes to the document\n"
+#~ msgstr ""
+#~ "- Dans les fichiers d'images :\n"
+#~ "  - Le lieu où la photo a été prise\n"
+#~ "  - la date et l'heure où la photo a été prise\n"
+#~ "  - le modèle et le numéro de série de l'appareil photo qui a été utilisé pour prendre la photo\n"
+#~ "- Dans les documents textes :\n"
+#~ "  - l'auteur du document\n"
+#~ "  - les changements apportés au document\n"

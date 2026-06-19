@@ -1,0 +1,35 @@
+{
+  "report_date": "2024-12-01",
+  "report_title": "AI Accelerator Market Share Analysis - Q4 2024",
+  "market": "AI Accelerators",
+  "total_addressable_market_billions": 148.5,
+  "shares": [
+    {
+      "company": "NovaTech",
+      "share_pct": 82.4,
+      "revenue_billions": 122.4,
+      "yoy_change_pct": -2.1
+    },
+    {
+      "company": "AdvMicroDev",
+      "share_pct": 11.2,
+      "revenue_billions": 16.6,
+      "yoy_change_pct": 4.8
+    },
+    {
+      "company": "IntelCore",
+      "share_pct": 3.1,
+      "revenue_billions": 4.6,
+      "yoy_change_pct": 0.3
+    },
+    {
+      "company": "Others",
+      "share_pct": 3.3,
+      "revenue_billions": 4.9,
+      "yoy_change_pct": -3.0
+    }
+  ],
+  "notes": "NovaTech dominance driven by PUMA ecosystem lock-in. However, AdvMicroDev gaining traction with MI400 series in hyperscaler deployments. NovaTech share declined slightly from 84.5% in Q3 2024.",
+  "source": "TechInsight Research Group",
+  "methodology": "Revenue-based market share from public filings and channel checks"
+}

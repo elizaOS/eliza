@@ -1,0 +1,71 @@
+[[!meta date="Thu, 16 Oct 2014 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.2 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.2, is out.
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.1.2]] and all users must
+[[upgrade|doc/upgrade]] as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+  * Major new features
+    - Install (most of) the Tor Browser, replacing our previous
+      Iceweasel-based browser. The version installed is from TBB 4.0
+      and is based on Firefox 31.2.0esr. This fixes the
+      POODLE vulnerability.
+    - Upgrade Tor to 0.2.5.8-rc.
+    - Confine several important applications with AppArmor.
+
+  * Bugfixes
+    - Install Linux 3.16-3 (version 3.16.5-1).
+
+  * Minor improvements
+    - Upgrade I2P to 0.9.15, and isolate I2P traffic from the Tor
+      Browser by adding a dedicated I2P Browser. Also, start I2P
+      automatically upon network connection, when the `i2p` boot
+      option is added.
+    - Make it clear that *TrueCrypt* will be removed in Tails 1.2.1
+      ([[!tails_ticket 7739]]), and document how to open *TrueCrypt*
+      volumes with `cryptsetup`.
+    - Enable VirtualBox guest additions by default ([[!tails_ticket
+      5730]]). In particular this enables VirtualBox's display
+      management service.
+    - Make the OTR status in Pidgin clearer thanks to the formatting
+      toolbar ([[!tails_ticket 7356]]).
+    - Upgrade syslinux to 6.03-pre20, which should fix UEFI boot on
+      some hardware.
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+* Tor Browser is translated in [[15
+  languages only|support/known_issues#browser_languages]].
+
+* [[Longstanding|support/known_issues]] known issues.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+November 25.
+
+
+Do you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

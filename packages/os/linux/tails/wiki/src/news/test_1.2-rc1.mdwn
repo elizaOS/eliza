@@ -1,0 +1,97 @@
+[[!meta title="Call for testing: 1.2~rc1"]]
+
+[[!meta date="Mon, 09 Oct 2014 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+You can help Tails! The first release candidate for the upcoming version 1.2 is
+out. Please test it and see if it works for you.
+
+[[!toc levels=1]]
+
+How to test Tails 1.2~rc1?
+==========================
+
+1. **Keep in mind that this is a test image.** We have made sure
+   that it is not broken in an obvious way, but it might still contain
+   undiscovered issues.
+
+1. Either try the <a href="#automatic_upgrade">automatic upgrade</a>, or
+   download the ISO image and its signature:
+
+   Tails 1.2~rc1 ISO image
+
+   Tails 1.2~rc1 signature
+
+1. Verify the ISO image.
+
+1. Have a look at the list of <a href="#known_issues">known issues of
+   this release</a> and the list of
+   [[longstanding known issues|support/known_issues]].
+
+1. Test wildly!
+
+If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+<div id="automatic_upgrade"></a>
+
+How to automatically upgrade from 1.1.2?
+========================================
+
+These steps allow you to automatically upgrade a device installed with
+*Tails Installer* from Tails 1.1.2 to Tails 1.2~rc1.
+
+1. Start Tails 1.1.2 from a USB stick or SD card, and
+   [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Run this command in a *Root Terminal*
+   to select the "alpha" upgrade channel
+   and start the upgrade:
+
+       echo TAILS_CHANNEL=\"alpha\" >> /etc/os-release && \
+            tails-upgrade-frontend-wrapper
+
+1. Once the upgrade has been installed, restart Tails and look at
+   **System&nbsp;▸ About Tails**
+   to confirm that the running system is Tails 1.2~rc1.
+
+What's new since 1.1.2?
+=======================
+
+Notable changes since Tails 1.1.2 include:
+
+  * Major new features
+    - Install (most of) the Tor Browser, replacing our previous
+      Iceweasel-based browser. The version installed is a development
+      build based on Firefox 31.1.1.
+    - Upgrade Tor to 0.2.5.8-rc.
+    - Confine several important applications with AppArmor.
+
+  * Bugfixes
+    - Install Linux 3.16-2 from Debian unstable.
+
+  * Minor improvements
+    - Upgrade I2P to 0.9.15, and isolate I2P traffic from the Tor
+      Browser by adding a dedicated I2P Browser. Also, start I2P
+      automatically upon network connection, when `i2p` is present on
+      the kernel command line.
+    - Make it clear that TrueCrypt will be removed in Tails 1.2.1
+      ([[!tails_ticket 7739]]).
+    - Enable VirtualBox guest additions by default ([[!tails_ticket
+      5730]]). In particular this enables VirtualBox's display
+      management service.
+    - Make the OTR status in Pidgin clearer thanks to the formatting
+      toolbar ([[!tails_ticket 7356]]).
+    - Upgrade syslinux to 6.03-pre20, which should fix UEFI boot on
+      some hardware.
+
+See the online
+Changelog for technical details.
+
+<a id="known_issues"></a>
+
+# Known issues in 1.2~rc1
+
+* [[Longstanding known issues|support/known_issues]]

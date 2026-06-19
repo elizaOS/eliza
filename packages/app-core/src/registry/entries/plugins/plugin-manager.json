@@ -1,0 +1,23 @@
+{
+  "id": "plugin-manager",
+  "name": "Plugin Manager",
+  "description": "Plugin discovery, install, eject, sync, registry search, and creation",
+  "npmName": "@elizaos/plugin-plugin-manager",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["plugins", "registry", "install", "create", "agents"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Package",
+    "group": "agents",
+    "groupOrder": 7,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "agents"
+}

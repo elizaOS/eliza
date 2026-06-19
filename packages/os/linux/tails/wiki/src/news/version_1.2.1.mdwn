@@ -1,0 +1,82 @@
+[[!meta date="Wed, 03 Dec 2014 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.2.1 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.2.1, is out.
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.2]] and all users must
+[[upgrade|doc/upgrade]] as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+  * Security fixes
+    - Upgrade Linux to 3.16.7-1.
+    - Install Tor Browser 4.0.2 (based on Firefox 31.3.0esr).
+
+  * Bugfixes
+    - Restore mouse scrolling in KVM/Spice ([[!tails_ticket 7426]]).
+    - Suppress excessive (and leaky!) Torbutton logging
+      ([[!tails_ticket 8160]]).
+    - Don't break the Unsafe and I2P Browsers after installing
+      incremental upgrades ([[!tails_ticket 8152]],
+      [[!tails_ticket 8158]]).
+    - External links in various applications should now open properly
+      in the Tor Browser ([[!tails_ticket 8153]],
+      [[!tails_ticket 8186]]).
+    - Fix clearsigning of text including non-ASCII characters in
+      gpgApplet ([[!tails_ticket 7968]]).
+
+  * Minor improvements
+    - Upgrade I2P to 0.9.17-1~deb7u+1.
+    - Make GnuPG configuration closer to the best practices
+      ([[!tails_ticket 7512]]).
+    - Remove TrueCrypt support and document how to open TrueCrypt
+      volumes using cryptsetup ([[!tails_ticket 5373]]).
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+* It is [[hard to exchange files with the I2P Browser|support/known_issues#i2p_browser]].
+
+* [[Longstanding|support/known_issues]] known issues.
+
+# For users of persistent GnuPG keyrings and configuration
+
+If you have enabled the **GnuPG keyrings and configuration**
+persistence feature and have *upgraded* a Tails
+USB stick or SD card installation to Tails 1.2.1, then please follow
+these steps to benefit from the updated GnuPG configuration:
+
+1. Boot Tails with
+   [[an administration password|doc/first_steps/welcome_screen/administration_password]] set.
+
+1. Run this command in a
+   *Root Terminal*:
+
+    cp /etc/skel/.gnupg/gpg.conf /home/amnesia/.gnupg/gpg.conf
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+January 14.
+
+
+Do you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

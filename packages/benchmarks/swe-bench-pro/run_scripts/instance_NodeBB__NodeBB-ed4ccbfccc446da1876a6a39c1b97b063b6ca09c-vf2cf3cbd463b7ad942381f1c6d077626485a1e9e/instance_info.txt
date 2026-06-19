@@ -1,0 +1,6 @@
+Instance ID: instance_NodeBB__NodeBB-ed4ccbfccc446da1876a6a39c1b97b063b6ca09c-vf2cf3cbd463b7ad942381f1c6d077626485a1e9e
+Repository: NodeBB/NodeBB
+Base Commit: 42a0924137dd6f48aad77f8457e0780d46158a16
+Test Files: ["test/activitypub.js"]
+FAIL_TO_PASS: ["test/activitypub.js | ActivityPub integration Helpers .resolveId() should return the resolved id when queried", "test/activitypub.js | ActivityPub integration Helpers .resolveId() should return null when the query fails", "test/activitypub.js | ActivityPub integration Helpers .resolveId() should return null when the resolved host does not match the queried host"]
+PASS_TO_PASS: []

@@ -1,0 +1,221 @@
+{
+  "claim_boundary": "Fail-closed review of thermal, RF, drop, and ingress lab results; blank rows are not environmental evidence.",
+  "status": "blocked_no_environmental_results",
+  "expected_measurement_count": 9,
+  "required_evidence_class": "physical_environmental_result",
+  "template_evidence_class": "",
+  "forbidden_evidence_classes": [
+    "blank_template",
+    "planning",
+    "simulated",
+    "simulated_environmental_result_for_planning_not_release",
+    "simulated_first_article_for_evt_planning_not_production_release"
+  ],
+  "observed_row_count": 9,
+  "complete_result_count": 0,
+  "missing_measurements": [],
+  "blank_or_incomplete_measurements": [
+    "max_skin_temp_video_call_c",
+    "soc_shield_can_peak_temp_c",
+    "cellular_desense_delta_db",
+    "wifi_bt_desense_delta_db",
+    "sar_prescan_w_per_kg_1g",
+    "drop_1m_functional_failures",
+    "drop_1m_crack_or_latch_release",
+    "ip54_dust_ingress_functional_failures",
+    "ip54_splash_ingress_functional_failures"
+  ],
+  "failed_measurements": [],
+  "cases": [
+    {
+      "measurement_id": "max_skin_temp_video_call_c",
+      "expected_measurement": true,
+      "domain": "thermal",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "skin_temperature_raw_log",
+        "thermal_chamber_or_probe_calibration_certificate",
+        "thermal_probe_placement_photo",
+        "enclosure_resin_and_unit_lot_records"
+      ],
+      "raw_data_artifact_present": false,
+      "fixture_calibration_certificate_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "soc_shield_can_peak_temp_c",
+      "expected_measurement": true,
+      "domain": "thermal",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "soc_shield_thermocouple_raw_log",
+        "thermocouple_calibration_certificate",
+        "soc_shield_probe_photo",
+        "pcb_and_shield_can_lot_records"
+      ],
+      "raw_data_artifact_present": false,
+      "fixture_calibration_certificate_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "cellular_desense_delta_db",
+      "expected_measurement": true,
+      "domain": "rf",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "cellular_desense_raw_chamber_csv",
+        "rf_chamber_calibration_certificate",
+        "antenna_test_setup_photo",
+        "radio_module_and_antenna_lot_records"
+      ],
+      "raw_data_artifact_present": false,
+      "fixture_calibration_certificate_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "wifi_bt_desense_delta_db",
+      "expected_measurement": true,
+      "domain": "rf",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "wifi_bt_desense_raw_chamber_csv",
+        "rf_chamber_calibration_certificate",
+        "wifi_bt_antenna_test_setup_photo",
+        "wifi_module_and_antenna_lot_records"
+      ],
+      "raw_data_artifact_present": false,
+      "fixture_calibration_certificate_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "sar_prescan_w_per_kg_1g",
+      "expected_measurement": true,
+      "domain": "rf",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "sar_prescan_raw_report",
+        "sar_system_calibration_certificate",
+        "sar_probe_position_photo",
+        "radio_module_antenna_and_enclosure_lot_records"
+      ],
+      "raw_data_artifact_present": false,
+      "fixture_calibration_certificate_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "drop_1m_functional_failures",
+      "expected_measurement": true,
+      "domain": "drop",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "drop_sequence_result_log",
+        "drop_fixture_calibration_certificate",
+        "post_drop_functional_test_log_or_video",
+        "evt_unit_lot_traceability_record"
+      ],
+      "raw_data_artifact_present": false,
+      "fixture_calibration_certificate_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "drop_1m_crack_or_latch_release",
+      "expected_measurement": true,
+      "domain": "drop",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "drop_visual_inspection_report",
+        "drop_fixture_calibration_certificate",
+        "post_drop_shell_screen_photo_set",
+        "enclosure_glass_and_adhesive_lot_records"
+      ],
+      "raw_data_artifact_present": false,
+      "fixture_calibration_certificate_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "ip54_dust_ingress_functional_failures",
+      "expected_measurement": true,
+      "domain": "ingress",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "dust_ingress_result_log",
+        "dust_chamber_calibration_certificate",
+        "post_dust_port_and_screen_inspection_photos",
+        "mesh_gasket_and_evt_unit_lot_records"
+      ],
+      "raw_data_artifact_present": false,
+      "fixture_calibration_certificate_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "ip54_splash_ingress_functional_failures",
+      "expected_measurement": true,
+      "domain": "ingress",
+      "evidence_class": "",
+      "evidence_class_allowed": false,
+      "required_evidence_artifacts": [
+        "splash_ingress_result_log",
+        "splash_fixture_calibration_certificate",
+        "post_splash_port_and_usb_inspection_photos",
+        "mesh_gasket_and_evt_unit_lot_records"
+      ],
+      "raw_data_artifact_present": false,
+      "fixture_calibration_certificate_present": false,
+      "photo_or_log_artifact_present": false,
+      "lot_traceability_record_present": false,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    }
+  ],
+  "release_rule": "Every thermal, RF, SAR pre-scan, drop, dust, and splash row must include sample, operator, numeric passing result, explicit pass, evidence_class=physical_environmental_result, raw chamber/test data, fixture calibration certificate, photo/log artifact, and unit/material/module lot traceability record."
+}

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface domain="tails">
+    <requires lib="gtk+" version="3.22"/>
+    <object class="GtkListBoxRow" id="volume_row">
+        <property name="activatable">False</property>
+        <property name="selectable">False</property>
+        <child>
+            <object class="GtkBox" id="volume_box">
+                <property name="margin">12</property>
+                <child>
+                    <object class="GtkLabel" id="volume_label">
+                        <property name="margin-right">16</property>
+                        <property name="ellipsize">PANGO_ELLIPSIZE_MIDDLE</property>
+                    </object>
+                </child>
+                <child>
+                    <object class="GtkLabel" id="row_padding_label">
+                    </object>
+                    <packing>
+                        <property name="expand">True</property>
+                        <property name="fill">True</property>
+                    </packing>
+                </child>
+                <child>
+                    <object class="GtkBox" id="volume_button_box">
+                        <child>
+                            <object class="GtkButton" id="open_button">
+                                <property name="no_show_all">True</property>
+                                <property name="label" translatable="yes">_Open</property>
+                                <property name="use_underline">True</property>
+                                <signal name="clicked" handler="on_open_button_clicked" swapped="no"/>
+                            </object>
+                        </child>
+                        <child>
+                            <object class="GtkButton" id="lock_button">
+                                <property name="no_show_all">True</property>
+                                <property name="has_tooltip">True</property>
+                                <property name="tooltip_text" translatable="yes">Lock this volume</property>
+                                <property name="relief">GTK_RELIEF_NONE</property>
+                                <signal name="clicked" handler="on_lock_button_clicked" swapped="no"/>
+                                <child>
+                                    <object class="GtkImage" id="lock_button_image">
+                                        <property name="visible">True</property>
+                                        <property name="icon_name">window-close-symbolic</property>
+                                    </object>
+                                </child>
+                            </object>
+                        </child>
+                        <child>
+                            <object class="GtkButton" id="unlock_button">
+                                <property name="no_show_all">True</property>
+                                <property name="label" translatable="yes">_Unlock</property>
+                                <property name="use_underline">True</property>
+                                <signal name="clicked" handler="on_unlock_button_clicked" swapped="no"/>
+                            </object>
+                        </child>
+                        <child>
+                            <object class="GtkButton" id="detach_button">
+                                <property name="no_show_all">True</property>
+                                <property name="has_tooltip">True</property>
+                                <property name="tooltip_text" translatable="yes">Detach this volume</property>
+                                <property name="relief">GTK_RELIEF_NONE</property>
+                                <signal name="clicked" handler="on_detach_button_clicked" swapped="no"/>
+                                <child>
+                                    <object class="GtkImage" id="detach_button_image">
+                                        <property name="visible">True</property>
+                                        <property name="icon_name">window-close-symbolic</property>
+                                    </object>
+                                </child>
+                            </object>
+                        </child>
+                    </object>
+                </child>
+            </object>
+        </child>
+    </object>
+</interface>

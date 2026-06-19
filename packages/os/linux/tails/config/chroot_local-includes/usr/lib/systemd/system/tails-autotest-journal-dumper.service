@@ -1,0 +1,14 @@
+[Unit]
+Description=Dumps the journal over a virtio channel for the automated test suite
+Documentation=https://tails.net/contribute/release_process/test/automated_tests/
+ConditionKernelCommandLine=autotest_never_use_this_option
+After=systemd-journald.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/tails-autotest-journal-dumper
+OOMScoreAdjust=-1000
+Restart=always
+
+[Install]
+WantedBy=basic.target

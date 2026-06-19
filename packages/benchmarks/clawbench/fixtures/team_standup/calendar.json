@@ -1,0 +1,42 @@
+[
+  {
+    "id": "evt_301",
+    "title": "Team Standup",
+    "start": "2026-02-06T09:00:00-08:00",
+    "end": "2026-02-06T09:30:00-08:00",
+    "location": "Zoom",
+    "notes": "Daily standup — this is what we're prepping for"
+  },
+  {
+    "id": "evt_302",
+    "title": "Sprint 13 ends",
+    "start": "2026-02-07T17:00:00-08:00",
+    "end": "2026-02-07T17:00:00-08:00",
+    "location": "",
+    "notes": "Sprint deadline — all items should be in review or done by EOD Friday"
+  },
+  {
+    "id": "evt_303",
+    "title": "Sprint Planning (Sprint 14)",
+    "start": "2026-02-06T10:00:00-08:00",
+    "end": "2026-02-06T11:00:00-08:00",
+    "location": "Conference Room B",
+    "notes": "Need to decide: auth migration carryover, dashboard features, or tech debt"
+  },
+  {
+    "id": "evt_304",
+    "title": "Architecture Review — Auth Migration",
+    "start": "2026-02-06T16:00:00-08:00",
+    "end": "2026-02-06T17:00:00-08:00",
+    "location": "Conference Room A",
+    "notes": "Critical — David (CTO) is running this. Redis decision needed. Conflicts with interview."
+  },
+  {
+    "id": "evt_305",
+    "title": "Sprint 13 Retro",
+    "start": "2026-02-07T15:00:00-08:00",
+    "end": "2026-02-07T16:00:00-08:00",
+    "location": "Zoom",
+    "notes": "What went well, what didn't, action items for Sprint 14"
+  }
+]

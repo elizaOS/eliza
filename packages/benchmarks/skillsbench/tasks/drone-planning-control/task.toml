@@ -1,0 +1,26 @@
+version = "1.0"
+
+[metadata]
+id = "drone-planning-control"
+name = "Drone Planning and Control Simulation"
+description = "Create drone simulation, attitude and position planning and control"
+author_name = "Chang Shi"
+author_email = "changshi@utexas.edu"
+difficulty = "medium"
+category = "robotics"
+tags = ["planning", "control", "robotics", "simulation", "dynamics"]
+
+[verifier]
+timeout_sec = 600.0
+
+[agent]
+timeout_sec = 1800.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+gpus = 0
+allow_internet = true
+mcp_servers = []

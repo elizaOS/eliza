@@ -1,0 +1,228 @@
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type React from "react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+type Providers = {
+  passkey?: boolean;
+  email?: boolean;
+  siwe?: boolean;
+  siws?: boolean;
+  google?: boolean;
+  discord?: boolean;
+  github?: boolean;
+  oauth?: string[];
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const mocks = vi.hoisted(() => ({
+  getProviders: vi.fn(),
+  refreshStewardSessionViaCookie: vi.fn(),
+  signInWithEmail: vi.fn(),
+  signInWithPasskey: vi.fn(),
+  walletButtonProps: [] as unknown[],
+}));
+
+vi.mock("@stwd/sdk", () => ({
+  StewardAuth: class StewardAuth {
+    getProviders = mocks.getProviders;
+    signInWithEmail = mocks.signInWithEmail;
+    signInWithPasskey = mocks.signInWithPasskey;
+    getSession() {
+      return null;
+    }
+    refreshSession() {
+      return Promise.resolve(null);
+    }
+  },
+}));
+
+vi.mock("@elizaos/ui", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+  Alert: ({ children }: { children: React.ReactNode }) => (
+    <div role="alert">{children}</div>
+  ),
+  AlertDescription: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DiscordIcon: ({ className }: { className?: string }) => (
+    <span className={className} aria-hidden="true" />
+  ),
+}));
+
+vi.mock("@elizaos/cloud-shared/lib/steward-url", () => ({
+  resolveBrowserStewardApiUrl: () => "https://steward.test",
+}));
+
+vi.mock("../../lib/steward-session", () => ({
+  syncStewardSessionCookie: vi.fn(),
+  consumeStewardCodeFromQuery: vi.fn(() => null),
+  consumeStewardTokensFromHash: vi.fn(() => null),
+  exchangeStewardCodeViaApi: vi.fn(),
+  refreshStewardSessionViaCookie: mocks.refreshStewardSessionViaCookie,
+}));
+
+vi.mock("./steward-wallet-providers", () => ({
+  StewardWalletProviders: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+}));
+
+vi.mock("./wallet-buttons", () => ({
+  WalletButtons: (props: unknown) => {
+    mocks.walletButtonProps.push(props);
+    return (
+      <div data-testid="wallet-buttons">
+        <button type="button">Ethereum</button>
+        <button type="button">Solana</button>
+      </div>
+    );
+  },
+}));
+
+import { I18nProvider } from "@/providers/I18nProvider";
+import StewardLoginSection from "./steward-login-section";
+
+function renderLogin(initialEntry = "/login") {
+  return render(
+    <I18nProvider initialLang="en">
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path="/login" element={<StewardLoginSection />} />
+          <Route
+            path="/dashboard/agents"
+            element={<div>Dashboard agents</div>}
+          />
+        </Routes>
+      </MemoryRouter>
+    </I18nProvider>,
+  );
+}
+
+beforeEach(() => {
+  // biome-ignore lint/suspicious/noDocumentCookie: jsdom auth-cookie setup.
+  document.cookie = "steward-authed=; Max-Age=0; Path=/";
+  window.localStorage.clear();
+  mocks.getProviders.mockReset();
+  mocks.refreshStewardSessionViaCookie.mockReset();
+  mocks.signInWithEmail.mockReset();
+  mocks.signInWithPasskey.mockReset();
+  mocks.walletButtonProps.length = 0;
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+describe("StewardLoginSection", () => {
+  test("falls back to default options when provider discovery fails", async () => {
+    mocks.getProviders.mockRejectedValue(new Error("provider endpoint down"));
+
+    renderLogin();
+
+    expect(await screen.findByPlaceholderText("you@example.com")).toBeVisible();
+    expect(screen.getByRole("button", { name: /passkey/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /magic link/i })).toBeVisible();
+    expect(
+      screen.getByText(/passkey sets up your account in seconds/i),
+    ).toBeVisible();
+    expect(screen.getByText(/provider endpoint down/i)).toBeVisible();
+  });
+
+  test("hides login options until provider discovery finishes", async () => {
+    const providers = deferred<Providers>();
+    mocks.getProviders.mockReturnValue(providers.promise);
+
+    renderLogin();
+
+    expect(
+      screen.getByLabelText(/loading sign-in options/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("you@example.com")).toBeNull();
+    expect(screen.queryByRole("button", { name: /passkey/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /magic link/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /google/i })).toBeNull();
+
+    providers.resolve({
+      passkey: true,
+      email: true,
+      siwe: true,
+      siws: true,
+      google: true,
+      discord: true,
+      github: true,
+      oauth: [],
+    });
+
+    expect(await screen.findByPlaceholderText("you@example.com")).toBeVisible();
+    expect(screen.getByRole("button", { name: /passkey/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /magic link/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /google/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /discord/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /github/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /^evm$/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /solana/i })).toBeVisible();
+    expect(screen.queryByTestId("wallet-buttons")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^evm$/i }));
+
+    expect(screen.getByTestId("wallet-buttons")).toBeVisible();
+    expect(mocks.walletButtonProps).toContainEqual(
+      expect.objectContaining({ autoStart: "ethereum" }),
+    );
+  });
+
+  test("hydrates a cookie-only Steward session before redirecting", async () => {
+    // biome-ignore lint/suspicious/noDocumentCookie: jsdom auth-cookie setup.
+    document.cookie = "steward-authed=1; Path=/";
+    mocks.getProviders.mockResolvedValue({
+      passkey: true,
+      email: true,
+      oauth: [],
+    });
+    mocks.refreshStewardSessionViaCookie.mockResolvedValue({
+      ok: true,
+      token: "header.payload.signature",
+    });
+
+    renderLogin("/login?returnTo=%2Fdashboard%2Fagents");
+
+    expect(await screen.findByText("Dashboard agents")).toBeVisible();
+    expect(window.localStorage.getItem("steward_session_token")).toBe(
+      "header.payload.signature",
+    );
+  });
+
+  test.each([
+    [
+      "invalid_link",
+      "We couldn't verify that sign-in link. Request a new one. If it keeps happening, contact support.",
+    ],
+    ["rate_limited", "Too many attempts. Wait a moment and try again."],
+    [
+      "mfa_required",
+      "Additional verification is required to finish signing in.",
+    ],
+  ])("shows Steward callback reason %s", async (reason, message) => {
+    mocks.getProviders.mockResolvedValue({
+      passkey: true,
+      email: true,
+      oauth: [],
+    });
+
+    renderLogin(`/login?error=email_auth_failed&reason=${reason}`);
+
+    expect(await screen.findByText(message)).toBeVisible();
+  });
+});

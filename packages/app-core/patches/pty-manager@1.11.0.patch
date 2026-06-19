@@ -1,0 +1,194 @@
+diff --git a/dist/index.js b/dist/index.js
+index 3b4521d74c1dbf3e4a98926a5447b345cf52fb82..f79477f4aac60903db1c42becbc62c713f47500c 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1734,14 +1734,17 @@ var PTYSession = class _PTYSession extends import_node_events2.EventEmitter {
+     if (!this.ptyProcess) return;
+     this.ptyProcess.onData((data) => {
+       this._lastActivityAt = /* @__PURE__ */ new Date();
+-      this.outputBuffer += data;
++      const sanitizedData = this.respondToCursorPositionRequests(data);
++      this.outputBuffer += sanitizedData;
+       if (this.outputBuffer.length > _PTYSession.MAX_OUTPUT_BUFFER) {
+         this.outputBuffer = this.outputBuffer.slice(
+           -_PTYSession.MAX_OUTPUT_BUFFER
+         );
+       }
+-      this.emit("output", data);
+-      if (!this._processScheduled) {
++      if (sanitizedData.length > 0) {
++        this.emit("output", sanitizedData);
++      }
++      if (sanitizedData.length > 0 && !this._processScheduled) {
+         this._processScheduled = true;
+         setImmediate(() => {
+           this._processScheduled = false;
+@@ -1759,9 +1762,29 @@ var PTYSession = class _PTYSession extends import_node_events2.EventEmitter {
+       this.emit("exit", exitCode);
+     });
+   }
++  respondToCursorPositionRequests(data) {
++    if (!this.ptyProcess || !data.includes("\x1B[6n")) {
++      return data;
++    }
++    let requestCount = 0;
++    const sanitizedData = data.replace(/\x1B\[6n/g, () => {
++      requestCount += 1;
++      return "";
++    });
++    for (let i = 0; i < requestCount; i += 1) {
++      this.ptyProcess.write("\x1B[1;1R");
++    }
++    if (requestCount > 0) {
++      this.logger.debug(
++        { sessionId: this.id, requestCount },
++        "Responded to cursor position request",
++      );
++    }
++    return sanitizedData;
++  }
++
+   /**
+-   * Process the accumulated output buffer.
+-   * Called via setImmediate() from the onData handler so that heavy regex
++   * Process the accumulated output buffer.   * Called via setImmediate() from the onData handler so that heavy regex
+    * work runs in its own event-loop tick, not inside node-pty's native callback.
+    */
+   processOutputBuffer() {
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 5a51b3d81fb090b08754b7be95808ed4da4156b2..3a5f9ac93618e482ef3f895f94e0dee56d26a2ac 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -1,9 +1,5 @@
+-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+-}) : x)(function(x) {
+-  if (typeof require !== "undefined") return require.apply(this, arguments);
+-  throw Error('Dynamic require of "' + x + '" is not supported');
+-});
++import { createRequire } from "module";
++const __require = createRequire(import.meta.url);
+ 
+ // src/adapters/adapter-factory.ts
+ import { createAdapter } from "adapter-types";
+@@ -681,8 +677,10 @@ function createPTYManager(options) {
+ 
+ // src/ensure-pty.ts
+ import { execSync } from "child_process";
++const __dirname = dirname(fileURLToPath(import.meta.url));
+ import { chmodSync, existsSync, readdirSync, statSync } from "fs";
+ import { dirname, join as join2, relative } from "path";
++import { fileURLToPath } from "url";
+ var TAG = "[pty-preflight]";
+ var platformArch = `${process.platform}-${process.arch}`;
+ var checked = false;
+@@ -1693,14 +1691,17 @@ var PTYSession = class _PTYSession extends EventEmitter2 {
+     if (!this.ptyProcess) return;
+     this.ptyProcess.onData((data) => {
+       this._lastActivityAt = /* @__PURE__ */ new Date();
+-      this.outputBuffer += data;
++      const sanitizedData = this.respondToCursorPositionRequests(data);
++      this.outputBuffer += sanitizedData;
+       if (this.outputBuffer.length > _PTYSession.MAX_OUTPUT_BUFFER) {
+         this.outputBuffer = this.outputBuffer.slice(
+           -_PTYSession.MAX_OUTPUT_BUFFER
+         );
+       }
+-      this.emit("output", data);
+-      if (!this._processScheduled) {
++      if (sanitizedData.length > 0) {
++        this.emit("output", sanitizedData);
++      }
++      if (sanitizedData.length > 0 && !this._processScheduled) {
+         this._processScheduled = true;
+         setImmediate(() => {
+           this._processScheduled = false;
+@@ -1718,9 +1719,29 @@ var PTYSession = class _PTYSession extends EventEmitter2 {
+       this.emit("exit", exitCode);
+     });
+   }
++  respondToCursorPositionRequests(data) {
++    if (!this.ptyProcess || !data.includes("\x1B[6n")) {
++      return data;
++    }
++    let requestCount = 0;
++    const sanitizedData = data.replace(/\x1B\[6n/g, () => {
++      requestCount += 1;
++      return "";
++    });
++    for (let i = 0; i < requestCount; i += 1) {
++      this.ptyProcess.write("\x1B[1;1R");
++    }
++    if (requestCount > 0) {
++      this.logger.debug(
++        { sessionId: this.id, requestCount },
++        "Responded to cursor position request",
++      );
++    }
++    return sanitizedData;
++  }
++
+   /**
+-   * Process the accumulated output buffer.
+-   * Called via setImmediate() from the onData handler so that heavy regex
++   * Process the accumulated output buffer.   * Called via setImmediate() from the onData handler so that heavy regex
+    * work runs in its own event-loop tick, not inside node-pty's native callback.
+    */
+   processOutputBuffer() {
+diff --git a/dist/pty-worker.js b/dist/pty-worker.js
+index 08d47643da79e543182e736e69232acb9412076c..3f8605e6b3e1b94ac0df999e56d3cb7ede93eced 100755
+--- a/dist/pty-worker.js
++++ b/dist/pty-worker.js
+@@ -1127,14 +1127,17 @@ var PTYSession = class _PTYSession extends import_node_events.EventEmitter {
+     if (!this.ptyProcess) return;
+     this.ptyProcess.onData((data) => {
+       this._lastActivityAt = /* @__PURE__ */ new Date();
+-      this.outputBuffer += data;
++      const sanitizedData = this.respondToCursorPositionRequests(data);
++      this.outputBuffer += sanitizedData;
+       if (this.outputBuffer.length > _PTYSession.MAX_OUTPUT_BUFFER) {
+         this.outputBuffer = this.outputBuffer.slice(
+           -_PTYSession.MAX_OUTPUT_BUFFER
+         );
+       }
+-      this.emit("output", data);
+-      if (!this._processScheduled) {
++      if (sanitizedData.length > 0) {
++        this.emit("output", sanitizedData);
++      }
++      if (sanitizedData.length > 0 && !this._processScheduled) {
+         this._processScheduled = true;
+         setImmediate(() => {
+           this._processScheduled = false;
+@@ -1152,9 +1155,29 @@ var PTYSession = class _PTYSession extends import_node_events.EventEmitter {
+       this.emit("exit", exitCode);
+     });
+   }
++  respondToCursorPositionRequests(data) {
++    if (!this.ptyProcess || !data.includes("\x1B[6n")) {
++      return data;
++    }
++    let requestCount = 0;
++    const sanitizedData = data.replace(/\x1B\[6n/g, () => {
++      requestCount += 1;
++      return "";
++    });
++    for (let i = 0; i < requestCount; i += 1) {
++      this.ptyProcess.write("\x1B[1;1R");
++    }
++    if (requestCount > 0) {
++      this.logger.debug(
++        { sessionId: this.id, requestCount },
++        "Responded to cursor position request",
++      );
++    }
++    return sanitizedData;
++  }
++
+   /**
+-   * Process the accumulated output buffer.
+-   * Called via setImmediate() from the onData handler so that heavy regex
++   * Process the accumulated output buffer.   * Called via setImmediate() from the onData handler so that heavy regex
+    * work runs in its own event-loop tick, not inside node-pty's native callback.
+    */
+   processOutputBuffer() {

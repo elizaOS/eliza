@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>Tails - <TMPL_VAR TITLE></title>
+<link href="<TMPL_VAR PAGEURL>"/>
+<link href="<TMPL_VAR FEEDURL>" rel="self" type="application/atom+xml"/>
+<author>
+<TMPL_IF AUTHOR>
+<name><TMPL_VAR AUTHOR></name>
+<TMPL_ELSE>
+<name><TMPL_VAR WIKINAME></name>
+</TMPL_IF>
+</author>
+<TMPL_IF COPYRIGHT>
+<rights type="html" xml:lang="en">
+<TMPL_IF LICENSE>
+	<TMPL_VAR LICENSE>
+	<TMPL_VAR COPYRIGHT ESCAPE=HTML>
+<TMPL_ELSE>
+	<TMPL_VAR COPYRIGHT ESCAPE=HTML>
+</TMPL_IF>
+</rights>
+<TMPL_ELSE>
+<TMPL_IF LICENSE>
+<rights type="html">
+	<TMPL_VAR LICENSE ESCAPE=HTML>
+</rights>
+</TMPL_IF>
+</TMPL_IF>
+<TMPL_IF GUID>
+<id><TMPL_VAR GUID></id>
+<TMPL_ELSE>
+<id><TMPL_VAR PAGEURL></id>
+</TMPL_IF>
+<subtitle type="html"><TMPL_VAR FEEDDESC ESCAPE=HTML></subtitle>
+<generator uri="http://ikiwiki.info/">ikiwiki</generator>
+<updated><TMPL_VAR FEEDDATE></updated>
+<TMPL_VAR CONTENT>
+</feed>

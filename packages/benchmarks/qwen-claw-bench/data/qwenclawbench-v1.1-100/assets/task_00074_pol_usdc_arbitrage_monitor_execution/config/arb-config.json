@@ -1,0 +1,28 @@
+{
+  "task_id": "a2ce4b5b-63bf-4235-a84d-5a66cf18532f",
+  "chain": "polygon",
+  "pair": "POL/USDC",
+  "wallet_label": "arb-executor-1",
+  "wallet_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18",
+  "rpc_endpoints": [
+    "https://polygon-rpc.com",
+    "https://rpc.ankr.com/polygon",
+    "https://polygon.llamarpc.com"
+  ],
+  "tokens": {
+    "POL": {
+      "address": "0x0000000000000000000000000000000000001010",
+      "decimals": 18
+    },
+    "USDC": {
+      "address": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+      "decimals": 6
+    }
+  },
+  "thresholds": {
+    "gas_gwei_max": 150,
+    "min_pol_balance": 5.0,
+    "min_usdc_balance": 100.0
+  },
+  "log_file": "data/transactions.log"
+}

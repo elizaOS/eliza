@@ -1,0 +1,3289 @@
+from __future__ import annotations
+
+import importlib.util
+import os
+import json
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+if __package__ == "orchestrator":
+    from registry import get_benchmark_registry
+else:
+    from benchmarks.registry import get_benchmark_registry
+
+from .scoring import RegistryScoreExtractor, generic_score_extractor
+from .types import AdapterDiscovery, BenchmarkAdapter, ExecutionContext, ScoreSummary
+
+
+def _sanitize(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip("-").lower() or "run"
+
+
+def _provider_model_name(provider: str, model: str) -> str:
+    provider_name = provider.strip().lower()
+    model_name = model.strip()
+    if provider_name == "cerebras" and model_name.startswith("openai/"):
+        return model_name.split("/", 1)[1]
+    return model_name
+
+
+def _scenario_flag_enabled(extra: dict[str, Any], *keys: str) -> bool:
+    return any(extra.get(key) is True for key in keys)
+
+
+def _append_scenario_control_flags(args: list[str], extra: dict[str, Any]) -> None:
+    if _scenario_flag_enabled(extra, "expand_scenarios", "include_edge_scenarios"):
+        args.append("--expand-scenarios")
+    if _scenario_flag_enabled(extra, "count_scenarios"):
+        args.append("--count-scenarios")
+    if _scenario_flag_enabled(extra, "validate_scenarios"):
+        args.append("--validate-scenarios")
+
+
+def _find_latest_by_patterns(root: Path, patterns: list[str]) -> Path | None:
+    matches: list[Path] = []
+    for pattern in patterns:
+        matches.extend([p for p in root.glob(pattern) if p.is_file()])
+    if not matches:
+        return None
+    return max(matches, key=lambda p: p.stat().st_mtime)
+
+
+def _find_latest_json(root: Path) -> Path | None:
+    return _find_latest_by_patterns(root, ["**/*.json"])
+
+
+def _json_score(path: Path) -> ScoreSummary:
+    return generic_score_extractor(path)
+
+
+IGNORED_BENCHMARK_DIRS = {
+    "__pycache__",
+    ".git",
+    ".pytest_cache",
+    "benchmark_results",
+    "claw-eval",
+    "claw_eval_matrix",
+    "clawbench_matrix",
+    "qwen_claw_bench_matrix",
+    "agentbench_matrix",
+    "swe_bench_pro_matrix",
+    # Legacy compatibility shim for benchmarks.mmau, not a separate benchmark.
+    "mmau",
+    "elizaos_mmau",
+    "eliza-adapter",
+    "app_eval",
+    # Documentation, load/perf tooling, and unnormalized legacy packages.
+    "docs",
+    "gaia",
+    "loadperf",
+    "voice",
+    # Legacy/partial shim with no source files in this checkout.
+    "eliza-format",
+    "hermes-adapter",
+    "openclaw-adapter",
+    "smithers-adapter",
+    "openclaw_benchmark",
+    "lib",
+    "nl2repo",
+    "orchestrator",
+    "qwen-claw-bench",
+    "qwen-web-bench",
+    # Python package shim for benchmarks.registry, not a benchmark adapter dir.
+    "registry",
+    "scripts",
+    "skillsbench",
+    "swe-bench-pro",
+    "swe-bench-multilingual",
+    "swe-bench-workspace",
+    "tests",
+    # Standalone dialogue runner; not wired into the normalized benchmark
+    # orchestrator contract yet.
+    "three-agent-dialogue",
+    "viewer",
+    # Standalone package; not yet wired as an orchestrator adapter.
+    "voice-emotion",
+    # Plugin validation tests/fixtures, not a normalized benchmark adapter.
+    "voice-speaker-validation",
+}
+
+
+# Harness compatibility lookup. The benchmark matrix is intentionally
+# tri-harness by default so `--all-harnesses` remains a full Eliza/Hermes/
+# OpenClaw comparison unless a future adapter adds a hard exclusion here.
+ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
+AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
+# Benchmarks for which a smithers-adapter per-benchmark factory exists. The
+# smithers harness is added to a benchmark's compatibility tuple only when it
+# appears here, so the runner never tries to import a missing smithers factory.
+SMITHERS_BENCHMARKS: frozenset[str] = frozenset(
+    {
+        "bfcl",
+        "action-calling",
+        "humaneval",
+        "gsm8k",
+        "mmlu",
+        "context_bench",
+        "abliteration-robustness",
+        "scambench",
+        "clawbench",
+        "agentbench",
+        "woobench",
+        "tau_bench",
+        "mint",
+        "realm",
+        "lifeops_bench",
+        "mt_bench",
+        "rlm_bench",
+        "mind2web",
+        "terminal_bench",
+        "swe_bench",
+        "swe_bench_orchestrated",
+        "webshop",
+        "loca_bench",
+        "osworld",
+    }
+)
+HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
+    "Hyperliquid live execution unavailable "
+    "(set HL_PRIVATE_KEY and run with --no-demo); harness not run"
+)
+TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON = (
+    "Terminal-Bench Docker execution unavailable "
+    "(start Docker Desktop/daemon so real Docker-backed tasks can run); "
+    "harness not run"
+)
+SWE_BENCH_DOCKER_UNAVAILABLE_REASON = (
+    "SWE-Bench Docker evaluation unavailable "
+    "(start Docker Desktop/daemon so official SWE-Bench tests can run); "
+    "harness not run"
+)
+OSWORLD_DOCKER_UNAVAILABLE_REASON = (
+    "OSWorld Docker desktop backend unavailable "
+    "(start Docker Desktop/daemon so the VM-backed tasks can run); "
+    "harness not run"
+)
+HERMES_SANDBOX_UNAVAILABLE_REASON = (
+    "Hermes sandbox execution unavailable "
+    "(set MODAL_TOKEN_ID/MODAL_TOKEN_SECRET or start a reachable Docker daemon); "
+    "harness not run"
+)
+VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON = (
+    "vision-language real multimodal runtime/input bundle unavailable or not "
+    "explicitly selected (set VISION_LANGUAGE_PROVIDER=local-eliza for the "
+    "local eliza-1 VLM); harness not run"
+)
+VISION_LANGUAGE_FIXED_RUNTIME_REASON = (
+    "vision-language currently runs the fixed eliza-1 VLM runtime only; "
+    "Hermes/OpenClaw VLM harnesses are outside this fixed-runtime path"
+)
+VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON = (
+    "vision-language Hermes/OpenClaw VLM runtime unavailable "
+    "(set VISION_LANGUAGE_MODEL plus provider credentials for a multimodal "
+    "OpenAI-compatible model); harness not run"
+)
+
+
+def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    base = _base_agent_compatibility_for(benchmark_id)
+    # Add the smithers harness only for benchmarks with a real factory, and
+    # only when the benchmark is runnable at all (base is non-empty).
+    if base and benchmark_id in SMITHERS_BENCHMARKS and "smithers" not in base:
+        return (*base, "smithers")
+    return base
+
+
+def _base_agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    if benchmark_id == "hyperliquid_bench":
+        return ALL_HARNESSES if _has_hyperliquid_live_backend() else ()
+    if benchmark_id == "terminal_bench":
+        return ALL_HARNESSES if _has_terminal_bench_docker_backend() else ()
+    if benchmark_id in {"swe_bench", "swe_bench_orchestrated"}:
+        return ALL_HARNESSES if _has_swe_bench_docker_backend() else ()
+    if benchmark_id == "osworld":
+        return ALL_HARNESSES if _has_osworld_docker_backend() else ()
+    if benchmark_id == "gauntlet":
+        return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
+    if benchmark_id in {
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_yc_bench",
+        "hermes_swe_env",
+    }:
+        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
+    if benchmark_id == "voicebench":
+        return ALL_HARNESSES if _has_voicebench_real_audio_assets() else ()
+    if benchmark_id == "voicebench_quality":
+        return ALL_HARNESSES if _has_voicebench_quality_real_inputs() else ()
+    if benchmark_id == "voiceagentbench":
+        return ALL_HARNESSES if _has_voiceagentbench_real_audio_dataset() else ()
+    if benchmark_id == "vision_language":
+        return _vision_language_compatible_harnesses()
+    return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
+
+
+_GAUNTLET_REAL_SURFPOOL_AVAILABLE: bool | None = None
+
+
+def _has_hyperliquid_live_backend() -> bool:
+    """Return true when Hyperliquid can run outside demo/smoke mode."""
+    # This is an environment-only probe. Do not cache it: tests and runbook
+    # scripts often validate the matrix, set HL_PRIVATE_KEY, then validate
+    # again in the same Python process.
+    return bool(os.environ.get("HL_PRIVATE_KEY"))
+
+
+def _surfpool_start_help(binary: str) -> str:
+    try:
+        completed = subprocess.run(
+            [binary, "start", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return f"{completed.stdout}\n{completed.stderr}"
+
+
+def _has_gauntlet_real_surfpool_backend() -> bool:
+    """Return true only when Surfpool can run Gauntlet's real mainnet-backed path."""
+    global _GAUNTLET_REAL_SURFPOOL_AVAILABLE
+    if _GAUNTLET_REAL_SURFPOOL_AVAILABLE is not None:
+        return _GAUNTLET_REAL_SURFPOOL_AVAILABLE
+    binary = shutil.which("surfpool")
+    if not binary:
+        _GAUNTLET_REAL_SURFPOOL_AVAILABLE = False
+        return False
+    help_text = _surfpool_start_help(binary)
+    has_remote_datasource = "--rpc-url" in help_text or "--network" in help_text
+    has_noninteractive_mode = "--no-tui" in help_text
+    _GAUNTLET_REAL_SURFPOOL_AVAILABLE = has_remote_datasource and has_noninteractive_mode
+    return _GAUNTLET_REAL_SURFPOOL_AVAILABLE
+
+
+_HERMES_SANDBOX_BACKEND_AVAILABLE: bool | None = None
+
+
+_TERMINAL_BENCH_DOCKER_AVAILABLE: bool | None = None
+
+
+def _has_terminal_bench_docker_backend() -> bool:
+    """Return true when Docker can answer quickly enough to run real tasks."""
+    global _TERMINAL_BENCH_DOCKER_AVAILABLE
+    if _TERMINAL_BENCH_DOCKER_AVAILABLE is not None:
+        return _TERMINAL_BENCH_DOCKER_AVAILABLE
+    _TERMINAL_BENCH_DOCKER_AVAILABLE = _docker_info_available()
+    return _TERMINAL_BENCH_DOCKER_AVAILABLE
+
+
+def _docker_info_available(*, attempts: int = 3, timeout_s: float = 20.0) -> bool:
+    if not shutil.which("docker"):
+        return False
+    for attempt in range(max(attempts, 1)):
+        try:
+            completed = subprocess.run(
+                ["docker", "info", "--format", "{{.ServerVersion}}"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout_s,
+                check=False,
+            )
+            if completed.returncode == 0:
+                return True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if attempt < attempts - 1:
+            time.sleep(0.25)
+    return False
+
+
+_SWE_BENCH_DOCKER_AVAILABLE: bool | None = None
+
+
+def _has_swe_bench_docker_backend() -> bool:
+    """Return true when Docker can run the official SWE-Bench evaluator."""
+    global _SWE_BENCH_DOCKER_AVAILABLE
+    if _SWE_BENCH_DOCKER_AVAILABLE is not None:
+        return _SWE_BENCH_DOCKER_AVAILABLE
+    _SWE_BENCH_DOCKER_AVAILABLE = _has_terminal_bench_docker_backend()
+    return _SWE_BENCH_DOCKER_AVAILABLE
+
+
+_OSWORLD_DOCKER_AVAILABLE: bool | None = None
+
+
+def _has_osworld_docker_backend() -> bool:
+    """Return true when Docker can run OSWorld's VM orchestration backend."""
+    global _OSWORLD_DOCKER_AVAILABLE
+    if _OSWORLD_DOCKER_AVAILABLE is not None:
+        return _OSWORLD_DOCKER_AVAILABLE
+    _OSWORLD_DOCKER_AVAILABLE = _docker_info_available(attempts=1, timeout_s=5.0)
+    return _OSWORLD_DOCKER_AVAILABLE
+
+
+def _has_hermes_sandbox_backend() -> bool:
+    global _HERMES_SANDBOX_BACKEND_AVAILABLE
+    if _HERMES_SANDBOX_BACKEND_AVAILABLE is not None:
+        return _HERMES_SANDBOX_BACKEND_AVAILABLE
+    if os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET"):
+        _HERMES_SANDBOX_BACKEND_AVAILABLE = True
+        return True
+    _HERMES_SANDBOX_BACKEND_AVAILABLE = _docker_info_available()
+    return _HERMES_SANDBOX_BACKEND_AVAILABLE
+
+
+_VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE: bool | None = None
+
+_ELIZA1_DEFAULT_BIN = "~/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli"
+_ELIZA1_DEFAULT_ASR_DIR = "~/.eliza/local-inference/models/eliza-1-2b.bundle/asr"
+
+
+def _eliza1_asr_assets_available() -> bool:
+    """True when the eliza-1 llama.cpp ASR binary + model + projector exist."""
+    cli = os.environ.get("ELIZA1_ASR_CLI", "").strip()
+    if cli:
+        binary = Path(cli).expanduser()
+    else:
+        bin_dir = os.environ.get("ELIZA1_LLAMA_BIN_DIR", "").strip()
+        binary = (
+            Path(bin_dir).expanduser() / "llama-mtmd-cli"
+            if bin_dir
+            else Path(_ELIZA1_DEFAULT_BIN).expanduser()
+        )
+    asr_dir = Path(os.environ.get("ELIZA1_ASR_DIR", _ELIZA1_DEFAULT_ASR_DIR)).expanduser()
+    model = os.environ.get("ELIZA1_ASR_MODEL", "").strip()
+    model_path = Path(model).expanduser() if model else asr_dir / "eliza-1-asr.gguf"
+    mmproj = os.environ.get("ELIZA1_ASR_MMPROJ", "").strip()
+    mmproj_path = Path(mmproj).expanduser() if mmproj else asr_dir / "eliza-1-asr-mmproj.gguf"
+    return binary.is_file() and model_path.is_file() and mmproj_path.is_file()
+
+
+def _say_binary_available() -> bool:
+    say_bin = os.environ.get("VOICEBENCH_SAY_BIN", "").strip()
+    if say_bin:
+        return Path(say_bin).expanduser().is_file()
+    return shutil.which("say") is not None or Path("/usr/bin/say").is_file()
+
+
+def _voiceagentbench_synthesize_enabled() -> bool:
+    return os.environ.get("VOICEAGENTBENCH_SYNTHESIZE_AUDIO", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _voicebench_synthesize_enabled() -> bool:
+    return os.environ.get("VOICEBENCH_SYNTHESIZE_AUDIO", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _has_voiceagentbench_real_audio_dataset() -> bool:
+    """Return true only when VoiceAgentBench can run as a real voice benchmark."""
+    global _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE
+    if _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE is not None:
+        return _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE
+
+    stt_provider = os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "").strip().lower()
+    if not stt_provider:
+        if _eliza1_asr_assets_available():
+            stt_provider = "eliza1"
+        elif os.environ.get("GROQ_API_KEY"):
+            stt_provider = "groq"
+        elif importlib.util.find_spec("faster_whisper") is not None:
+            stt_provider = "faster-whisper"
+        else:
+            stt_provider = "groq"
+    if stt_provider == "groq":
+        stt_ready = bool(os.environ.get("GROQ_API_KEY"))
+    elif stt_provider == "eliza-runtime":
+        stt_ready = bool(
+            (os.environ.get("ELIZA_API_BASE") or os.environ.get("ELIZA_BENCH_URL") or "").strip()
+        )
+    elif stt_provider in {"eliza1", "eliza-1", "eliza1-asr"}:
+        stt_ready = _eliza1_asr_assets_available()
+    elif stt_provider in {"faster-whisper", "local-whisper"}:
+        stt_ready = importlib.util.find_spec("faster_whisper") is not None
+    else:
+        stt_ready = False
+
+    data_path_raw = (
+        os.environ.get("VOICEAGENTBENCH_DATA_PATH")
+        or os.environ.get("VOICEAGENTBENCH_REAL_DATA_PATH")
+        or ""
+    ).strip()
+    if not stt_ready:
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = False
+        return False
+
+    # Local synthesis path: macOS `say` renders fixture prompts to real audio,
+    # so neither huggingface_hub nor a precomputed dataset is required.
+    if _voiceagentbench_synthesize_enabled() and _say_binary_available():
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = True
+        return True
+
+    if not data_path_raw:
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = importlib.util.find_spec("huggingface_hub") is not None
+        return _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE
+
+    path = Path(data_path_raw).expanduser()
+    if not path.is_file():
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = False
+        return False
+
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for raw in fh:
+                if not raw.strip():
+                    continue
+                row = json.loads(raw)
+                queries = row.get("queries") if isinstance(row, dict) else None
+                if not isinstance(queries, list):
+                    continue
+                for query in queries:
+                    if not isinstance(query, dict):
+                        continue
+                    audio_b64 = query.get("audio_b64")
+                    if isinstance(audio_b64, str) and audio_b64.strip():
+                        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = True
+                        return True
+    except Exception:
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = False
+        return False
+
+    _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = False
+    return False
+
+
+_VOICEBENCH_REAL_AUDIO_AVAILABLE: bool | None = None
+_VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE: bool | None = None
+
+
+def _voicebench_quality_stt_provider() -> str:
+    explicit = (
+        os.environ.get("VOICEBENCH_QUALITY_STT_PROVIDER")
+        or os.environ.get("VOICEBENCH_STT_PROVIDER")
+        or ""
+    ).strip().lower()
+    if explicit:
+        return explicit
+    if _eliza1_asr_assets_available():
+        return "eliza1"
+    if os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    if importlib.util.find_spec("faster_whisper") is not None:
+        return "faster-whisper"
+    return "groq"
+
+
+def _has_voicebench_quality_real_inputs() -> bool:
+    """Return true only when VoiceBench-quality can run real audio + STT."""
+    global _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE
+    if _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE is not None:
+        return _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE
+    stt_provider = _voicebench_quality_stt_provider()
+    if stt_provider == "groq":
+        ready = bool(os.environ.get("GROQ_API_KEY"))
+    elif stt_provider == "eliza-runtime":
+        ready = bool(
+            (os.environ.get("ELIZA_API_BASE") or os.environ.get("ELIZA_BENCH_URL") or "").strip()
+        )
+    elif stt_provider in {"eliza1", "eliza-1", "eliza1-asr"}:
+        ready = _eliza1_asr_assets_available()
+    elif stt_provider in {"faster-whisper", "local-whisper"}:
+        ready = importlib.util.find_spec("faster_whisper") is not None
+    else:
+        ready = False
+    if not ready:
+        _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = False
+        return False
+    # Local synthesis renders fixture prompts to audio via macOS `say`, so the
+    # heavy `datasets` HF dependency is only required for the remote dataset.
+    if _voicebench_synthesize_enabled() and _say_binary_available():
+        _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = True
+        return True
+    ready = ready and importlib.util.find_spec("datasets") is not None
+    _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = ready
+    return ready
+
+
+def _voicebench_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "voicebench"
+
+
+def _eliza_state_dir() -> Path:
+    explicit = os.environ.get("ELIZA_STATE_DIR") or os.environ.get("ELIZA_STATE_DIR")
+    if explicit:
+        return Path(explicit).expanduser()
+    namespace = os.environ.get("ELIZA_NAMESPACE") or "eliza"
+    return Path.home() / f".{namespace}"
+
+
+def _has_vision_language_bundle(tier: str = "eliza-1-9b") -> bool:
+    bundle = _eliza_state_dir() / "local-inference" / "models" / f"{tier}.bundle"
+    manifest = bundle / "eliza-1.manifest.json"
+    if not manifest.is_file():
+        return False
+    try:
+        manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(manifest_payload, dict):
+        return False
+    # Vision VQA runs through llama-mtmd-cli with the bundle's text gguf + vision
+    # projector. It does not require the MTP text-generation kernel, so the gate
+    # only checks for the artifacts vision actually consumes (text gguf + mmproj).
+    slug = tier.removeprefix("eliza-1-")
+    text_candidates = [
+        bundle / "text" / f"eliza-1-{slug}-64k.gguf",
+        bundle / "text" / f"eliza-1-{slug}-32k.gguf",
+        bundle / "text" / f"eliza-1-{slug}-128k.gguf",
+        bundle / "text" / f"eliza-1-{slug}-256k.gguf",
+        bundle / "text" / f"eliza-1-{slug}.gguf",
+    ]
+    vision = bundle / "vision" / f"mmproj-{slug}.gguf"
+    return vision.is_file() and any(path.is_file() for path in text_candidates)
+
+
+def _has_textvqa_real_inputs() -> bool:
+    data_dir = os.environ.get("TEXTVQA_DATA_DIR")
+    if not data_dir:
+        return True
+    root = Path(data_dir).expanduser()
+    return (root / "TextVQA_0.5.1_val.json").is_file() and (root / "train_images").is_dir()
+
+
+def _has_vision_language_real_inputs() -> bool:
+    tier = os.environ.get("VISION_LANGUAGE_TIER") or "eliza-1-9b"
+    provider = (os.environ.get("VISION_LANGUAGE_PROVIDER") or "").strip().lower()
+    local_enabled = os.environ.get("VISION_LANGUAGE_USE_LOCAL_ELIZA") == "1" or provider in {
+        "local-eliza",
+        "local_eliza",
+        "eliza-local",
+        "eliza_local",
+    }
+    return local_enabled and _has_vision_language_bundle(tier) and _has_textvqa_real_inputs()
+
+
+def _has_vision_language_harness_runtime() -> bool:
+    provider = (os.environ.get("VISION_LANGUAGE_PROVIDER") or "openai").strip().lower()
+    model = (os.environ.get("VISION_LANGUAGE_MODEL") or "").strip()
+    if not model:
+        return False
+    if provider in {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}:
+        return _has_vision_language_real_inputs()
+    if not _is_vision_language_multimodal_model(provider=provider, model=model):
+        return False
+    key_envs = {
+        "cerebras": ("CEREBRAS_API_KEY", "OPENAI_API_KEY"),
+        "openai": ("OPENAI_API_KEY",),
+        "openrouter": ("OPENROUTER_API_KEY", "OPENAI_API_KEY"),
+        "groq": ("GROQ_API_KEY", "OPENAI_API_KEY"),
+        "vllm": ("OPENAI_API_KEY",),
+    }.get(provider, ("OPENAI_API_KEY",))
+    return any(os.environ.get(name) for name in key_envs)
+
+
+def _is_vision_language_multimodal_model(*, provider: str, model: str) -> bool:
+    if os.environ.get("VISION_LANGUAGE_MULTIMODAL") == "1":
+        return True
+    provider_key = provider.strip().lower()
+    model_key = model.strip().lower()
+    if provider_key in {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}:
+        return model_key.startswith("eliza-1-")
+    if not model_key:
+        return False
+    if provider_key == "cerebras":
+        return False
+    multimodal_markers = (
+        "gpt-4o",
+        "gpt-4.1",
+        "o4-mini",
+        "qwen-vl",
+        "qwen2-vl",
+        "qwen2.5-vl",
+        "qwen3-vl",
+        "llava",
+        "pixtral",
+        "gemini",
+        "claude-3",
+        "claude-4",
+        "vision",
+        "vlm",
+    )
+    return any(marker in model_key for marker in multimodal_markers)
+
+
+def _vision_language_compatible_harnesses() -> tuple[str, ...]:
+    if not _has_textvqa_real_inputs():
+        return ()
+    harnesses: list[str] = []
+    if _has_vision_language_real_inputs():
+        harnesses.append("eliza")
+    if _has_vision_language_harness_runtime():
+        harnesses.extend(["hermes", "openclaw"])
+    return tuple(harnesses)
+
+
+def _voicebench_resolve_audio_path(raw_path: str, manifest_path: Path) -> Path:
+    direct = Path(raw_path).expanduser()
+    if not direct.is_absolute():
+        direct = manifest_path.parent / direct
+    if direct.is_file():
+        return direct
+    marker = "benchmarks/voicebench/"
+    marker_index = raw_path.find(marker)
+    if marker_index >= 0:
+        remapped = _voicebench_dir() / raw_path[marker_index + len(marker) :]
+        if remapped.is_file():
+            return remapped
+    return direct
+
+
+def _voicebench_manifest_has_audio(manifest_path: Path) -> bool:
+    try:
+        root = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    samples = root.get("samples") if isinstance(root, dict) else None
+    if not isinstance(samples, list) or not samples:
+        return False
+    for sample in samples:
+        if not isinstance(sample, dict):
+            return False
+        raw_path = sample.get("audioPath") or sample.get("audio_path")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            return False
+        if not _voicebench_resolve_audio_path(raw_path, manifest_path).is_file():
+            return False
+    return True
+
+
+def _has_voicebench_real_audio_assets() -> bool:
+    """Return true only when VoiceBench can run a publishable real voice profile."""
+    global _VOICEBENCH_REAL_AUDIO_AVAILABLE
+    if _VOICEBENCH_REAL_AUDIO_AVAILABLE is not None:
+        return _VOICEBENCH_REAL_AUDIO_AVAILABLE
+
+    profile = os.environ.get("VOICEBENCH_PROFILE", "").strip().lower()
+    if not profile:
+        if os.environ.get("CEREBRAS_API_KEY") and _eliza1_asr_assets_available():
+            profile = "local-eliza1"
+        elif os.environ.get("CEREBRAS_API_KEY"):
+            profile = "local-cerebras"
+        else:
+            profile = "groq"
+
+    if profile == "local-eliza1":
+        if not os.environ.get("CEREBRAS_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        if not _eliza1_asr_assets_available() or not _say_binary_available():
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+    elif profile == "local-cerebras":
+        if not os.environ.get("CEREBRAS_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        if importlib.util.find_spec("faster_whisper") is None:
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        say_bin = os.environ.get("VOICEBENCH_SAY_BIN", "").strip()
+        if say_bin:
+            if not Path(say_bin).expanduser().is_file():
+                _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+                return False
+        elif shutil.which("say") is None and not Path("/usr/bin/say").is_file():
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+    elif profile in {"groq", "elevenlabs"}:
+        if not os.environ.get("GROQ_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        if profile == "elevenlabs" and not os.environ.get("ELEVENLABS_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+    else:
+        _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+        return False
+
+    audio_path_raw = os.environ.get("VOICEBENCH_AUDIO_PATH", "").strip()
+    if audio_path_raw:
+        _VOICEBENCH_REAL_AUDIO_AVAILABLE = Path(audio_path_raw).expanduser().is_file()
+        return _VOICEBENCH_REAL_AUDIO_AVAILABLE
+
+    dataset_raw = (
+        os.environ.get("VOICEBENCH_DATASET")
+        or os.environ.get("VOICEBENCH_DATASET_PATH")
+        or ""
+    ).strip()
+    if dataset_raw:
+        manifest_path = Path(dataset_raw).expanduser()
+    elif profile == "local-eliza1":
+        # run.sh generates a dataset from VoiceAgentBench's `say`-synthesized
+        # audio, so only the say binary (already checked) is required.
+        _VOICEBENCH_REAL_AUDIO_AVAILABLE = True
+        return True
+    elif profile == "local-cerebras":
+        _VOICEBENCH_REAL_AUDIO_AVAILABLE = importlib.util.find_spec("huggingface_hub") is not None
+        return _VOICEBENCH_REAL_AUDIO_AVAILABLE
+    else:
+        manifest_name = "manifest-elevenlabs.json" if profile == "elevenlabs" else "manifest-groq.json"
+        manifest_path = _voicebench_dir() / "fixtures" / manifest_name
+
+    _VOICEBENCH_REAL_AUDIO_AVAILABLE = (
+        manifest_path.is_file() and _voicebench_manifest_has_audio(manifest_path)
+    )
+    return _VOICEBENCH_REAL_AUDIO_AVAILABLE
+
+
+def _is_benchmark_directory(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    name = path.name
+    if name.startswith("."):
+        return False
+    return name not in IGNORED_BENCHMARK_DIRS
+
+
+def _make_registry_adapter(
+    workspace_root: Path,
+    benchmarks_root: Path,
+    score_extractor_factory: RegistryScoreExtractor,
+    benchmark_id: str,
+    display_name: str,
+    description: str,
+    benchmark_dir: str,
+    cwd_rel: str,
+    build_command,
+    locate_result,
+    requirements_env: tuple[str, ...],
+    default_extra_config: dict[str, Any] | None,
+) -> BenchmarkAdapter:
+    def command_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+        model = type("ModelSpecShim", (), {"provider": ctx.request.provider, "model": ctx.request.model, "temperature": None})()
+        extra_config = dict(ctx.request.extra_config)
+        extra_config.setdefault("agent", ctx.request.agent)
+        extra_config.setdefault("harness", ctx.request.agent)
+        return list(build_command(ctx.output_root, model, extra_config))
+
+    def result_locator(ctx: ExecutionContext, adapter: BenchmarkAdapter, benchmark_output_root: Path) -> Path | None:
+        try:
+            path = locate_result(benchmark_output_root)
+            if path.exists():
+                return path
+        except Exception:
+            pass
+        return _find_latest_json(benchmark_output_root)
+
+    cwd_candidates = [
+        (workspace_root / cwd_rel).resolve(),
+        (benchmarks_root / cwd_rel).resolve(),
+        (benchmarks_root / benchmark_dir).resolve(),
+        workspace_root.resolve(),
+    ]
+    cwd_value = str(next((candidate for candidate in cwd_candidates if candidate.exists()), workspace_root.resolve()))
+    adapter_python_paths = [
+        str((benchmarks_root / "eliza-adapter").resolve()),
+        str((benchmarks_root / "hermes-adapter").resolve()),
+        str((benchmarks_root / "openclaw-adapter").resolve()),
+        str((benchmarks_root / "smithers-adapter").resolve()),
+    ]
+    lifeops_bench_path = benchmarks_root / "lifeops-bench"
+    if lifeops_bench_path.exists():
+        adapter_python_paths.append(str(lifeops_bench_path.resolve()))
+    if benchmark_id == "gauntlet":
+        adapter_python_paths.append(str((benchmarks_root / "gauntlet" / "src").resolve()))
+    if benchmark_id == "mmau":
+        adapter_python_paths.append(str((benchmarks_root / "mmau-audio").resolve()))
+
+    def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+        existing = ctx.env.get("PYTHONPATH", "")
+        pythonpath = (
+            os.pathsep.join([*adapter_python_paths, existing])
+            if existing
+            else os.pathsep.join(adapter_python_paths)
+        )
+        harness = str(
+            ctx.request.extra_config.get("agent")
+            or ctx.request.extra_config.get("harness")
+            or ctx.request.agent
+        ).strip().lower()
+        model_name = _provider_model_name(ctx.request.provider, ctx.request.model)
+        env = {
+            "PYTHONPATH": pythonpath,
+            "BENCHMARK_HARNESS": harness,
+            "ELIZA_BENCH_HARNESS": harness,
+            "BENCHMARK_MODEL_PROVIDER": ctx.request.provider.strip(),
+            "BENCHMARK_MODEL_NAME": model_name,
+            "MODEL_NAME": model_name,
+        }
+        for extra_key, env_key in (
+            ("openclaw_timeout_s", "OPENCLAW_TIMEOUT_S"),
+            ("hermes_timeout_s", "HERMES_TIMEOUT_S"),
+            ("eliza_bench_http_timeout_s", "ELIZA_BENCH_HTTP_TIMEOUT"),
+            ("hl_bench_command_timeout_s", "HL_BENCH_COMMAND_TIMEOUT_S"),
+        ):
+            value = ctx.request.extra_config.get(extra_key)
+            if isinstance(value, (int, float)) and value > 0:
+                env[env_key] = str(float(value))
+        if benchmark_id in {"bfcl", "clawbench", "terminal_bench", "tau_bench", "lifeops_bench"} and harness == "openclaw":
+            env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
+            env["OPENCLAW_USE_CLI"] = "0"
+        if benchmark_id in {
+            "terminal_bench",
+            "swe_bench",
+            "swe_bench_orchestrated",
+            "osworld",
+            "hermes_tblite",
+            "hermes_terminalbench_2",
+            "hermes_yc_bench",
+            "hermes_swe_env",
+        }:
+            desktop_socket = Path.home() / ".docker" / "run" / "docker.sock"
+            if desktop_socket.exists():
+                env.setdefault("DOCKER_HOST", f"unix://{desktop_socket}")
+        if benchmark_id == "hyperliquid_bench":
+            # Hyperliquid asks for strict JSON text plans. The generic
+            # benchmark action tool surface makes malformed-plan retries more
+            # likely and can stall the smoke when the model keeps tool-calling.
+            env["ELIZA_BENCH_FORCE_TOOL_CALL"] = "0"
+        return env
+
+    return BenchmarkAdapter(
+        id=benchmark_id,
+        directory=benchmark_dir,
+        description=f"{display_name}: {description}",
+        cwd=cwd_value,
+        command_builder=command_builder,
+        result_locator=result_locator,
+        score_extractor=score_extractor_factory.for_benchmark(benchmark_id),
+        required_env=tuple(requirements_env),
+        default_extra_config=dict(default_extra_config or {}),
+        env_builder=env_builder,
+        agent_compatibility=_agent_compatibility_for(benchmark_id),
+        result_patterns=("registry locate_result(output_dir)", "**/*.json fallback"),
+    )
+
+
+def _make_extra_adapter(
+    *,
+    adapter_id: str,
+    directory: str,
+    description: str,
+    cwd: str,
+    command_builder,
+    result_patterns: list[str],
+    required_env: tuple[str, ...] = (),
+    default_extra_config: dict[str, Any] | None = None,
+    env_builder=None,
+    score_extractor=_json_score,
+    capability_notes: str = "",
+    default_timeout_seconds: int = 3600,
+) -> BenchmarkAdapter:
+    def result_locator(ctx: ExecutionContext, adapter: BenchmarkAdapter, benchmark_output_root: Path) -> Path | None:
+        path = _find_latest_by_patterns(benchmark_output_root, result_patterns)
+        if path is not None:
+            return path
+        cwd_root = Path(adapter.cwd)
+        if cwd_root.exists():
+            path = _find_latest_by_patterns(cwd_root, result_patterns)
+            if path is not None:
+                return path
+        return _find_latest_json(benchmark_output_root)
+
+    return BenchmarkAdapter(
+        id=adapter_id,
+        directory=directory,
+        description=description,
+        cwd=cwd,
+        command_builder=command_builder,
+        result_locator=result_locator,
+        score_extractor=score_extractor,
+        required_env=required_env,
+        default_extra_config=dict(default_extra_config or {}),
+        env_builder=env_builder,
+        capability_notes=capability_notes,
+        default_timeout_seconds=default_timeout_seconds,
+        agent_compatibility=_agent_compatibility_for(adapter_id),
+        result_patterns=tuple(result_patterns),
+    )
+
+
+def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    args = [
+        sys.executable,
+        "-m",
+        "benchmarks.HyperliquidBench",
+        "--coverage",
+        "--output",
+        str(ctx.output_root),
+    ]
+    if ctx.request.model:
+        args.extend(["--model", ctx.request.model])
+    if "max_steps" in ctx.request.extra_config:
+        args.extend(["--max-steps", str(int(ctx.request.extra_config["max_steps"]))])
+    if "max_iterations" in ctx.request.extra_config:
+        args.extend(["--max-iterations", str(int(ctx.request.extra_config["max_iterations"]))])
+    _append_scenario_control_flags(args, ctx.request.extra_config)
+    return args
+
+
+def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    provider = ctx.request.provider.strip().lower()
+    # Route LLM-backed providers through the eliza TS bridge by default so
+    # the registered eliza agent + plugins are exercised. Callers can
+    # opt out via extra_config "use_direct_provider": True.
+    bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+    use_direct = bool(ctx.request.extra_config.get("use_direct_provider"))
+    if ctx.request.extra_config.get("mock") is True or provider == "mock":
+        effective_provider = "mock-passthrough"
+    else:
+        effective_provider = (
+            "eliza" if (provider in bridge_providers and not use_direct) else ctx.request.provider
+        )
+    args = [
+        sys.executable,
+        "scripts/run_benchmark.py",
+        "run",
+        "--provider",
+        effective_provider,
+        "--model",
+        ctx.request.model,
+        "--output",
+        str(ctx.output_root),
+    ]
+    mode = str(ctx.request.extra_config.get("mode", "")).strip().lower()
+    if mode in {"quick", "full"}:
+        args.append(f"--{mode}")
+    if "levels" in ctx.request.extra_config and isinstance(ctx.request.extra_config["levels"], list):
+        levels = [str(int(x)) for x in ctx.request.extra_config["levels"]]
+        if levels:
+            args.extend(["--levels", *levels])
+    if "ids" in ctx.request.extra_config and isinstance(ctx.request.extra_config["ids"], list):
+        ids = [str(x) for x in ctx.request.extra_config["ids"] if str(x)]
+        if ids:
+            args.extend(["--ids", *ids])
+    if "tags" in ctx.request.extra_config and isinstance(ctx.request.extra_config["tags"], list):
+        tags = [str(x) for x in ctx.request.extra_config["tags"] if str(x)]
+        if tags:
+            args.extend(["--tags", *tags])
+    if ctx.request.extra_config.get("basic_only"):
+        args.append("--basic-only")
+    if ctx.request.extra_config.get("full_only"):
+        args.append("--full-only")
+    return args
+
+
+def _command_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    args = ["bun", "run", "src/index.ts", "--output", str(ctx.output_root)]
+    agent = ctx.request.extra_config.get("agent")
+    provider_name = ctx.request.provider.strip().lower()
+    harness = ctx.request.agent.strip().lower()
+    if harness in {"eliza", "hermes", "openclaw"}:
+        args.extend(["--harness", harness])
+    elif (
+        agent == "eliza"
+        or ctx.request.extra_config.get("eliza") is True
+        or provider_name == "eliza"
+    ):
+        args.append("--eliza")
+    limit = ctx.request.extra_config.get("limit")
+    if isinstance(limit, int) and limit > 0:
+        args.extend(["--limit", str(limit)])
+    if ctx.request.extra_config.get("verbose") is True:
+        args.append("--verbose")
+    return args
+
+
+def _env_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    provider_name = ctx.request.provider.strip().lower()
+    model_name = _provider_model_name(ctx.request.provider, ctx.request.model)
+    env: dict[str, str] = {}
+    if provider_name in {"groq", "openai", "anthropic"}:
+        env["CONFIGBENCH_AGENT_PROVIDER"] = provider_name
+    elif provider_name in {"cerebras", "openrouter", "vllm"}:
+        env["CONFIGBENCH_AGENT_PROVIDER"] = "openai"
+    if provider_name == "groq" and model_name:
+        env["GROQ_SMALL_MODEL"] = model_name
+        env["GROQ_LARGE_MODEL"] = model_name
+    elif provider_name in {"openai", "cerebras", "openrouter", "vllm"} and model_name:
+        env["OPENAI_SMALL_MODEL"] = model_name
+        env["OPENAI_LARGE_MODEL"] = model_name
+    return env
+
+
+def _command_experience(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    provider = ctx.request.provider.strip().lower()
+    if ctx.request.extra_config.get("mock") is True or provider == "mock":
+        mode = "direct"
+    else:
+        mode = str(ctx.request.extra_config.get("mode", "eliza-agent"))
+    args = [
+        sys.executable,
+        "run_benchmark.py",
+        "--mode",
+        mode,
+    ]
+    if mode != "direct":
+        args.extend(["--provider", ctx.request.provider, "--model", ctx.request.model])
+    if "output_file" in ctx.request.extra_config:
+        args.extend(["--output", str(ctx.request.extra_config["output_file"])])
+    else:
+        args.extend(["--output", str(ctx.output_root / "experience-results.json")])
+    experiences = ctx.request.extra_config.get("experiences")
+    if isinstance(experiences, int) and experiences > 0:
+        args.extend(["--experiences", str(experiences)])
+    queries = ctx.request.extra_config.get("queries", ctx.request.extra_config.get("max_tasks"))
+    if isinstance(queries, int) and queries > 0:
+        args.extend(["--queries", str(queries)])
+    learning_cycles = ctx.request.extra_config.get(
+        "learning_cycles",
+        ctx.request.extra_config.get("max_tasks"),
+    )
+    if isinstance(learning_cycles, int) and learning_cycles > 0:
+        args.extend(["--learning-cycles", str(learning_cycles)])
+    if "seed" in ctx.request.extra_config:
+        args.extend(["--seed", str(int(ctx.request.extra_config["seed"]))])
+    return args
+
+
+def _command_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    mode = str(ctx.request.extra_config.get("mode", "bridge")).strip().lower()
+    if mode in {"app-cli", "legacy"}:
+        args = [
+            "bun",
+            "run",
+            "run-benchmarks.ts",
+            "--root",
+            str(ctx.workspace_root.parent.resolve()),
+        ]
+        task_type = ctx.request.extra_config.get("type")
+        if isinstance(task_type, str) and task_type.strip():
+            args.extend(["--type", task_type.strip()])
+        task_id = ctx.request.extra_config.get("task")
+        if isinstance(task_id, str) and task_id.strip():
+            args.extend(["--task", task_id.strip()])
+        timeout = ctx.request.extra_config.get("timeout_ms")
+        if isinstance(timeout, int) and timeout > 0:
+            args.extend(["--timeout", str(timeout)])
+        if ctx.request.extra_config.get("server") is True:
+            args.append("--server")
+        if ctx.request.extra_config.get("verbose") is True:
+            args.append("--verbose")
+        return args
+
+    args = [
+        sys.executable,
+        "-m",
+        "eliza_adapter.app_eval",
+        "--tasks-dir",
+        str((ctx.benchmarks_root / "app-eval" / "tasks").resolve()),
+        "--output",
+        str(ctx.output_root / "summary.json"),
+    ]
+    if ctx.request.extra_config.get("mock") is True or ctx.request.provider.strip().lower() == "mock":
+        args.append("--mock")
+    task_type = ctx.request.extra_config.get("type")
+    if isinstance(task_type, str) and task_type.strip():
+        args.extend(["--type", task_type.strip()])
+    task_id = ctx.request.extra_config.get("task")
+    if isinstance(task_id, str) and task_id.strip():
+        args.extend(["--task", task_id.strip()])
+    timeout = ctx.request.extra_config.get("timeout_ms")
+    if isinstance(timeout, int) and timeout > 0:
+        args.extend(["--timeout-ms", str(timeout)])
+    return args
+
+
+def _env_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    env = {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+        "ELIZA_APP_ROOT": str(ctx.workspace_root.parent.resolve()),
+        "ELIZA_HEADLESS": "1",
+        "LOG_LEVEL": "error",
+    }
+    model = _provider_model_name(ctx.request.provider, ctx.request.model)
+    provider = ctx.request.provider.strip().upper()
+    if model:
+        env.update({
+            "BENCHMARK_MODEL_NAME": model,
+            "MODEL_NAME": model,
+            "SMALL_MODEL": model,
+            "LARGE_MODEL": model,
+        })
+        if provider and provider != "MOCK":
+            env[f"{provider}_SMALL_MODEL"] = model
+            env[f"{provider}_LARGE_MODEL"] = model
+    return env
+
+
+def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    mode = str(ctx.request.extra_config.get("mode", "harness")).strip().lower()
+    flags = shlex.split(str(ctx.request.extra_config.get("flags", "")))
+    output_path = ctx.output_root / "framework-results.json"
+    if mode != "typescript":
+        scenarios = str(ctx.request.extra_config.get("scenarios", "single-message"))
+        iterations = int(ctx.request.extra_config.get("iterations", 1) or 1)
+        generated_limit = int(ctx.request.extra_config.get("generated_limit", 3) or 3)
+        return [
+            sys.executable,
+            "benchmarks/framework/scripts/harness_runner.py",
+            "--harness",
+            ctx.request.agent.strip().lower(),
+            "--provider",
+            ctx.request.provider,
+            "--model",
+            ctx.request.model,
+            "--scenarios",
+            scenarios,
+            "--iterations",
+            str(max(1, iterations)),
+            "--generated-limit",
+            str(max(1, generated_limit)),
+            "--output",
+            str(output_path),
+        ]
+    return [
+        "bun",
+        "run",
+        "benchmarks/framework/typescript/src/bench.ts",
+        f"--output={output_path}",
+        *flags,
+    ]
+
+
+def _command_rolodex(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    args = [
+        sys.executable,
+        "-m",
+        "benchmarks.rolodex.python_bench.run",
+        "--output",
+        str(ctx.output_root),
+    ]
+    if ctx.request.agent.lower() == "eliza":
+        args.append("--eliza")
+    return args
+
+
+def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    system_raw = ctx.request.extra_config.get("system")
+    if isinstance(system_raw, str) and system_raw.strip():
+        system = system_raw.strip()
+    elif ctx.request.provider.strip().lower() in {
+        "eliza",
+        "eliza-bridge",
+        "eliza-ts",
+        "cerebras",
+        "openai",
+        "groq",
+        "openrouter",
+        "vllm",
+    }:
+        # Route LLM-backed providers through the eliza TS bridge so the actual
+        # registered eliza agent + plugin-social-alpha is exercised, not the
+        # Python port in benchmark/systems/full_system.py.
+        system = "eliza-bridge"
+    else:
+        system = "baseline"
+    data_dir = str(ctx.request.extra_config.get("data_dir", "trenches-chat-dataset/data"))
+    output_dir = str(ctx.output_root)
+    args = [
+        sys.executable,
+        "-m",
+        "benchmark.harness",
+        "--data-dir",
+        data_dir,
+        "--system",
+        system,
+        "--model",
+        ctx.request.model,
+        "--output",
+        output_dir,
+    ]
+    suites = ctx.request.extra_config.get("suites")
+    if isinstance(suites, list):
+        for suite in suites:
+            args.extend(["--suite", str(suite)])
+    return args
+
+
+def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    handler = str(ctx.request.extra_config.get("handler", "oracle"))
+    provider_name = ctx.request.provider.strip().lower()
+    # Route LLM-backed providers through the eliza TS bridge handler when
+    # the caller didn't explicitly request a different handler.
+    bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+    if ctx.request.extra_config.get("mock") is True or provider_name == "mock":
+        handler = "oracle"
+    elif (
+        handler == "oracle"
+        and "handler" not in ctx.request.extra_config
+        and provider_name in bridge_providers
+    ):
+        handler = "eliza"
+    args = [
+        sys.executable,
+        "run_benchmark.py",
+        "--handler",
+        handler,
+        "--output",
+        str(ctx.output_root / "trust-results.json"),
+    ]
+    if handler in {"eliza", "llm"}:
+        args.extend(["--model-provider", ctx.request.provider, "--model", ctx.request.model])
+    categories = ctx.request.extra_config.get("categories")
+    if isinstance(categories, list) and categories:
+        args.extend(["--categories", *[str(item) for item in categories]])
+    difficulty = ctx.request.extra_config.get("difficulty")
+    if isinstance(difficulty, list) and difficulty:
+        args.extend(["--difficulty", *[str(item) for item in difficulty]])
+    tags = ctx.request.extra_config.get("tags")
+    if isinstance(tags, list) and tags:
+        args.extend(["--tags", *[str(item) for item in tags]])
+    threshold = ctx.request.extra_config.get("threshold")
+    if isinstance(threshold, (int, float)):
+        args.extend(["--threshold", str(float(threshold))])
+    return args
+
+
+def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    args = [
+        sys.executable,
+        "-m",
+        "elizaos_webshop",
+        "--output",
+        str(ctx.output_root),
+    ]
+    provider_lower = ctx.request.provider.strip().lower()
+    if ctx.request.extra_config.get("mock") is True or provider_lower == "mock":
+        args.append("--mock")
+    else:
+        args.append("--bridge")
+        if ctx.request.provider and provider_lower not in {"eliza", "eliza-bridge", "eliza-ts"}:
+            args.extend(["--model-provider", ctx.request.provider])
+        if ctx.request.model:
+            args.extend(["--model", ctx.request.model])
+
+    for extra_key, cli_key in (
+        ("max_tasks", "--max-tasks"),
+        ("max_turns", "--max-turns"),
+        ("trials", "--trials"),
+    ):
+        value = ctx.request.extra_config.get(extra_key)
+        if isinstance(value, int) and value > 0:
+            args.extend([cli_key, str(value)])
+
+    if bool(ctx.request.extra_config.get("hf", False)):
+        args.append("--hf")
+        split = ctx.request.extra_config.get("split")
+        if isinstance(split, str) and split.strip():
+            args.extend(["--split", split.strip()])
+    elif (
+        ctx.request.extra_config.get("sample") is True
+        or ctx.request.extra_config.get("use_sample_tasks") is True
+        or ctx.request.extra_config.get("mock") is True
+        or provider_lower == "mock"
+    ):
+        args.append("--sample")
+    profile = ctx.request.extra_config.get("profile")
+    if isinstance(profile, str) and profile.strip() in {"small", "full"}:
+        args.extend(["--profile", profile.strip()])
+
+    if bool(ctx.request.extra_config.get("trajectories", False)):
+        args.append("--trajectories")
+    if not bool(ctx.request.extra_config.get("trajectories", False)):
+        args.append("--no-trajectories")
+    temperature = ctx.request.extra_config.get("temperature")
+    if isinstance(temperature, (int, float)):
+        args.extend(["--temperature", str(float(temperature))])
+    _append_scenario_control_flags(args, ctx.request.extra_config)
+    return args
+
+
+def _env_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    env = {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+    }
+    harness = str(ctx.request.agent or "").strip().lower()
+    if harness == "eliza":
+        env["ELIZA_BENCH_SKIP_CORE_PLUGINS"] = "true"
+    return env
+
+
+def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    args = [
+        sys.executable,
+        "-m",
+        "benchmarks.woobench",
+        "--model",
+        ctx.request.model,
+        "--output",
+        str(ctx.output_root),
+    ]
+    provider_lower = ctx.request.provider.strip().lower()
+    agent_lower = ctx.request.agent.strip().lower()
+    payment_mode = ctx.request.extra_config.get("payment") is True or ctx.request.extra_config.get("payments") is True
+    if ctx.request.extra_config.get("mock") is True or provider_lower == "mock" or agent_lower == "dummy":
+        args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
+        args.extend(["--evaluator", "heuristic"])
+    elif agent_lower in {"eliza", "hermes", "openclaw"}:
+        args.extend(["--agent", agent_lower])
+        evaluator = ctx.request.extra_config.get("evaluator")
+        if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
+            args.extend(["--evaluator", evaluator])
+    else:
+        args.extend(["--agent", "eliza"])
+        evaluator = ctx.request.extra_config.get("evaluator")
+        if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
+            args.extend(["--evaluator", evaluator])
+
+    payment_mock_url = ctx.request.extra_config.get("payment_mock_url")
+    if isinstance(payment_mock_url, str) and payment_mock_url.strip():
+        args.extend(["--payment-mock-url", payment_mock_url.strip()])
+
+    explicit_scope = False
+    for extra_key, cli_key in (
+        ("scenario", "--scenario"),
+        ("system", "--system"),
+        ("persona", "--persona"),
+    ):
+        value = ctx.request.extra_config.get(extra_key)
+        if isinstance(value, str) and value.strip():
+            args.extend([cli_key, value.strip()])
+            explicit_scope = True
+
+    if not explicit_scope:
+        scenarios = ctx.request.extra_config.get("scenarios")
+        if isinstance(scenarios, list):
+            scenario_ids = [
+                str(item).strip()
+                for item in scenarios
+                if isinstance(item, str) and item.strip()
+            ]
+            if scenario_ids:
+                args.extend(["--scenarios", ",".join(scenario_ids)])
+        elif isinstance(scenarios, str) and scenarios.strip():
+            args.extend(["--scenarios", scenarios.strip()])
+
+    max_tasks = ctx.request.extra_config.get("max_tasks")
+    has_scope_filter = False
+    for key in ("scenarios", "scenario", "system", "persona"):
+        value = ctx.request.extra_config.get(key)
+        if isinstance(value, str) and value.strip():
+            has_scope_filter = True
+        elif isinstance(value, list) and any(
+            isinstance(item, str) and item.strip() for item in value
+        ):
+            has_scope_filter = True
+    if isinstance(max_tasks, int) and max_tasks == 1 and not has_scope_filter:
+        args.extend(["--scenario", "skeptic_tarot_01"])
+
+    concurrency = ctx.request.extra_config.get("concurrency")
+    if isinstance(concurrency, int) and concurrency > 0:
+        args.extend(["--concurrency", str(concurrency)])
+    random_seed = ctx.request.extra_config.get("random_seed", ctx.request.extra_config.get("seed"))
+    if isinstance(random_seed, int):
+        args.extend(["--random-seed", str(random_seed)])
+    _append_scenario_control_flags(args, ctx.request.extra_config)
+    return args
+
+
+def _env_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_paths = [
+        str((ctx.benchmarks_root / "eliza-adapter").resolve()),
+        str((ctx.benchmarks_root / "hermes-adapter").resolve()),
+        str((ctx.benchmarks_root / "openclaw-adapter").resolve()),
+        str((ctx.benchmarks_root / "smithers-adapter").resolve()),
+    ]
+    env = {
+        "PYTHONPATH": os.pathsep.join([*adapter_paths, existing]).rstrip(os.pathsep),
+    }
+    model = _provider_model_name(ctx.request.provider, ctx.request.model)
+    provider = ctx.request.provider.strip().upper()
+    if model:
+        env.update({
+            "BENCHMARK_MODEL_NAME": model,
+            "MODEL_NAME": model,
+            "SMALL_MODEL": model,
+            "LARGE_MODEL": model,
+        })
+        if provider and provider != "MOCK":
+            env[f"{provider}_SMALL_MODEL"] = model
+            env[f"{provider}_LARGE_MODEL"] = model
+    return env
+
+
+def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    env: dict[str, str] = {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+    }
+    model = _provider_model_name(ctx.request.provider, ctx.request.model)
+    provider = ctx.request.provider.strip().lower()
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
+    if harness:
+        env["BENCHMARK_HARNESS"] = harness
+        env["ELIZA_BENCH_HARNESS"] = harness
+    if model:
+        env["MODEL_NAME"] = model
+        env["BENCHMARK_MODEL_NAME"] = model
+    if provider:
+        env["MODEL_PROVIDER"] = provider
+        env["BENCHMARK_MODEL_PROVIDER"] = provider
+    http_timeout = ctx.request.extra_config.get("eliza_bench_http_timeout_s", 90)
+    if isinstance(http_timeout, (int, float)) and http_timeout > 0:
+        env["ELIZA_BENCH_HTTP_TIMEOUT"] = str(float(http_timeout))
+    command_timeout = ctx.request.extra_config.get("hl_bench_command_timeout_s", 60)
+    if isinstance(command_timeout, (int, float)) and command_timeout > 0:
+        env["HL_BENCH_COMMAND_TIMEOUT_S"] = str(float(command_timeout))
+    # Hyperliquid wants strict JSON text, not the generic required benchmark
+    # action surface.
+    env["ELIZA_BENCH_FORCE_TOOL_CALL"] = "0"
+    return env
+
+
+def _command_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    return [sys.executable, "-m", "benchmarks.evm.eliza_explorer"]
+
+
+def _env_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
+    env: dict[str, str] = {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+        "BENCHMARK_HARNESS": harness,
+        "ELIZA_BENCH_HARNESS": harness,
+    }
+    model = _provider_model_name(ctx.request.provider, ctx.request.model)
+    provider = ctx.request.provider.strip().lower()
+    model_name = model if "/" in model or not provider else f"{provider}/{model}"
+    env.update({
+        "BENCHMARK_MODEL_PROVIDER": provider,
+        "BENCHMARK_MODEL_NAME": model,
+        "MODEL_NAME": model_name,
+        "MAX_MESSAGES": str(int(ctx.request.extra_config.get("max_messages", 50))),
+        "METRICS_DIR": str(ctx.output_root / "metrics"),
+    })
+
+    passthrough = {
+        "chain": "CHAIN",
+        "environment_config": "ENVIRONMENT_CONFIG",
+        "rpc_url": "RPC_URL",
+        "chain_id": "CHAIN_ID",
+        "fork_url": "FORK_URL",
+        "agent_private_key": "AGENT_PRIVATE_KEY",
+        "code_file": "CODE_FILE",
+        "run_index": "RUN_INDEX",
+    }
+    for config_key, env_key in passthrough.items():
+        value = ctx.request.extra_config.get(config_key)
+        if value is not None and str(value).strip():
+            env[env_key] = str(value).strip()
+
+    if "use_external_node" in ctx.request.extra_config:
+        env["USE_EXTERNAL_NODE"] = (
+            "true" if bool(ctx.request.extra_config["use_external_node"]) else "false"
+        )
+    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
+        "include_edge_scenarios"
+    ) is True:
+        env["EXPAND_SCENARIOS"] = "true"
+
+    return env
+
+
+def _score_from_evm(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    raw = data.get("final_reward")
+    if not isinstance(raw, (int, float)):
+        raise ValueError("evm result is incomplete: missing numeric final_reward")
+    max_reward_raw = data.get("max_reward")
+    if isinstance(max_reward_raw, (int, float)):
+        max_reward = float(max_reward_raw)
+    else:
+        try:
+            from benchmarks.evm.skill_templates import (
+                get_total_expected_deterministic_reward,
+            )
+
+            max_reward = float(get_total_expected_deterministic_reward())
+        except Exception:
+            max_reward = float(raw) if float(raw) > 0 else 1.0
+    normalized_raw = data.get("normalized_score")
+    if isinstance(normalized_raw, (int, float)):
+        score = float(normalized_raw)
+    else:
+        score = float(raw) / max_reward if max_reward > 0 else 0.0
+    score = max(0.0, min(1.0, score))
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "normalized_score": score,
+            "final_reward": raw,
+            "max_reward": max_reward,
+            "raw_unit": "unique_selectors",
+            "final_contracts": data.get("final_contracts", 0),
+            "model": data.get("model", ""),
+            "run_id": data.get("run_id", ""),
+            "chain": data.get("chain", ""),
+        },
+    )
+
+
+def _command_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "benchmarks.solana.eliza_agent",
+        "--output-dir",
+        str(ctx.output_root),
+    ]
+
+
+def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_paths = [
+        str((ctx.benchmarks_root / "eliza-adapter").resolve()),
+        str((ctx.benchmarks_root / "hermes-adapter").resolve()),
+        str((ctx.benchmarks_root / "openclaw-adapter").resolve()),
+        str((ctx.benchmarks_root / "smithers-adapter").resolve()),
+    ]
+    harness = ctx.request.agent.strip().lower()
+    model_name = _provider_model_name(ctx.request.provider, ctx.request.model)
+    env: dict[str, str] = {
+        "PYTHONPATH": os.pathsep.join([*adapter_paths, existing]).rstrip(os.pathsep),
+        "BENCHMARK_HARNESS": harness,
+        "ELIZA_BENCH_HARNESS": harness,
+        "BENCHMARK_MODEL_PROVIDER": ctx.request.provider.strip(),
+        "BENCHMARK_MODEL_NAME": model_name,
+        "MODEL_NAME": model_name,
+        "OUTPUT_DIR": str(ctx.output_root),
+        "USE_EXTERNAL_SURFPOOL": "true"
+        if bool(ctx.request.extra_config.get("use_external_surfpool", False))
+        else "false",
+    }
+    max_messages = ctx.request.extra_config.get("max_messages")
+    if not isinstance(max_messages, int):
+        max_messages = ctx.request.extra_config.get("max_tasks")
+    if isinstance(max_messages, int) and max_messages > 0:
+        env["MAX_MESSAGES"] = str(max_messages)
+    environment_config = ctx.request.extra_config.get("environment_config")
+    if isinstance(environment_config, str) and environment_config.strip():
+        env["ENVIRONMENT_CONFIG"] = environment_config.strip()
+    else:
+        env["ENVIRONMENT_CONFIG"] = "voyager/environments/basic_env.json"
+    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
+        "include_edge_scenarios"
+    ) is True:
+        env["EXPAND_SCENARIOS"] = "true"
+    code_file = ctx.request.extra_config.get("code_file")
+    if isinstance(code_file, str) and code_file.strip():
+        env["CODE_FILE"] = code_file.strip()
+    return env
+
+
+def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    osworld_python = str(
+        ctx.request.extra_config.get("osworld_python")
+        or os.environ.get("OSWORLD_PYTHON")
+        or ""
+    ).strip()
+    if not osworld_python:
+        conda_python = Path("/opt/miniconda3/bin/python3")
+        osworld_python = str(conda_python) if conda_python.exists() else sys.executable
+    args = [
+        osworld_python,
+        "scripts/python/run_multienv_eliza.py",
+        "--result_dir",
+        str(ctx.output_root),
+        "--model",
+        ctx.request.model,
+    ]
+    provider_name = str(ctx.request.extra_config.get("provider_name", "docker")).strip()
+    args.extend(["--provider_name", provider_name])
+    observation_type = str(
+        ctx.request.extra_config.get("observation_type", "screenshot")
+    ).strip()
+    args.extend(["--observation_type", observation_type])
+
+    action_space = ctx.request.extra_config.get("action_space")
+    if isinstance(action_space, str) and action_space.strip():
+        args.extend(["--action_space", action_space.strip()])
+
+    max_steps = ctx.request.extra_config.get("max_steps")
+    if isinstance(max_steps, int) and max_steps > 0:
+        args.extend(["--max_steps", str(max_steps)])
+    else:
+        args.extend(["--max_steps", "3"])
+
+    max_tasks = ctx.request.extra_config.get("max_tasks")
+    if isinstance(max_tasks, int) and max_tasks > 0:
+        args.extend(["--max_tasks", str(max_tasks)])
+    else:
+        args.extend(["--max_tasks", "1"])
+
+    task_id = ctx.request.extra_config.get("task_id")
+    if isinstance(task_id, str) and task_id.strip():
+        args.extend(["--task_id", task_id.strip()])
+
+    domain = ctx.request.extra_config.get("domain")
+    if isinstance(domain, str) and domain.strip():
+        args.extend(["--domain", domain.strip()])
+
+    _append_scenario_control_flags(args, ctx.request.extra_config)
+
+    path_to_vm = ctx.request.extra_config.get("path_to_vm")
+    if isinstance(path_to_vm, str) and path_to_vm.strip():
+        args.extend(["--path_to_vm", path_to_vm.strip()])
+
+    region = ctx.request.extra_config.get("region")
+    if isinstance(region, str) and region.strip():
+        args.extend(["--region", region.strip()])
+
+    headless = ctx.request.extra_config.get("headless")
+    if headless is not False:
+        args.append("--headless")
+    dry_run = ctx.request.extra_config.get("dry_run")
+    if dry_run is True:
+        _validate_osworld_dry_run_label(ctx.request.extra_config)
+        args.append("--dry_run")
+    return args
+
+
+def _validate_osworld_dry_run_label(extra: dict[str, Any]) -> None:
+    agent_label = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+    mode_label = (
+        str(extra.get("run_mode") or extra.get("mode") or extra.get("suite") or "")
+        .strip()
+        .lower()
+    )
+    marked_smoke = extra.get("smoke") is True or mode_label in {
+        "smoke",
+        "dry_run",
+        "dry-run",
+        "smoke_dry_run",
+    }
+    if agent_label in {"eliza", "hermes", "openclaw", "smithers"} and not marked_smoke:
+        raise ValueError(
+            "osworld dry_run is smoke-only. Set smoke=true or run_mode=smoke "
+            "for smoke rows; omit dry_run for real VM benchmark rows."
+        )
+
+
+def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    capture_path_raw = str(ctx.request.extra_config.get("capture_path", "")).strip()
+    if not capture_path_raw:
+        raise ValueError(
+            "eliza_replay requires per_benchmark.eliza_replay.capture_path to be set",
+        )
+    capture_path = Path(capture_path_raw).expanduser().resolve()
+    if not capture_path.exists():
+        raise ValueError(
+            f"eliza_replay capture_path does not exist: {capture_path}",
+        )
+    capture_glob = str(
+        ctx.request.extra_config.get("capture_glob", "*.replay.json"),
+    ).strip()
+    return [
+        sys.executable,
+        "-m",
+        "eliza_adapter.replay_eval",
+        "--input",
+        str(capture_path),
+        "--glob",
+        capture_glob,
+        "--output",
+        str(ctx.output_root / "eliza-replay-results.json"),
+    ]
+
+
+def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    task = str(ctx.request.extra_config.get("task", "should_respond")).strip()
+    n_value = int(
+        ctx.request.extra_config.get("n", ctx.request.extra_config.get("limit", 1))
+    )
+    harness = (
+        ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+        or os.environ.get("BENCHMARK_HARNESS")
+        or "eliza"
+    )
+    if task in {"should_respond", "should-respond"}:
+        args = [
+            sys.executable,
+            "scripts/harness_runner.py",
+            "--harness",
+            str(harness).strip().lower(),
+            "--model",
+            ctx.request.model,
+            "--n",
+            str(max(1, n_value)),
+            "--out",
+            str(ctx.output_root / "eliza-1-results.json"),
+        ]
+        limit = ctx.request.extra_config.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
+        return args
+
+    mode = str(ctx.request.extra_config.get("mode", "cerebras")).strip()
+    args = [
+        "bun",
+        "run",
+        "src/index.ts",
+        "--task",
+        task or "should_respond",
+        "--mode",
+        mode or "cerebras",
+        "--n",
+        str(max(1, n_value)),
+        "--out",
+        str(ctx.output_root / "eliza-1-results.json"),
+        "--cerebras-model",
+        ctx.request.model,
+    ]
+    tier = ctx.request.extra_config.get("tier")
+    if isinstance(tier, str) and tier.strip():
+        args.extend(["--tier", tier.strip()])
+    return args
+
+
+def _score_from_eliza_1(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    raw_cases = data.get("cases")
+    if isinstance(raw_cases, list) and raw_cases:
+        case_dicts = [case for case in raw_cases if isinstance(case, dict)]
+        if case_dicts and all(case.get("error") for case in case_dicts):
+            raise ValueError("eliza_1: all cases failed with adapter errors")
+        if case_dicts and all(
+            not str(case.get("raw_output") or "").strip()
+            and case.get("tokens_generated") not in (None, 0)
+            for case in case_dicts
+        ):
+            raise ValueError(
+                "eliza_1: all cases produced empty outputs despite token usage"
+            )
+    summaries = data.get("summaries")
+    if not isinstance(summaries, list) or not summaries:
+        return ScoreSummary(
+            score=None,
+            unit="ratio",
+            higher_is_better=True,
+            metrics={
+                "summary_count": 0,
+                "case_count": len(data.get("cases", []))
+                if isinstance(data.get("cases"), list)
+                else 0,
+                "skipped": data.get("skipped")
+                if isinstance(data.get("skipped"), list)
+                else [],
+            },
+        )
+    label_rates: list[float] = []
+    parse_rates: list[float] = []
+    schema_rates: list[float] = []
+    case_count = 0
+    modes: set[str] = set()
+    tasks: set[str] = set()
+    for item in summaries:
+        if not isinstance(item, dict):
+            continue
+        label = item.get("label_match_rate")
+        parse = item.get("parse_success_rate")
+        schema = item.get("schema_valid_rate")
+        if isinstance(label, (int, float)) and not isinstance(label, bool):
+            label_rates.append(float(label))
+        if isinstance(parse, (int, float)) and not isinstance(parse, bool):
+            parse_rates.append(float(parse))
+        if isinstance(schema, (int, float)) and not isinstance(schema, bool):
+            schema_rates.append(float(schema))
+        raw_cases = item.get("cases")
+        if isinstance(raw_cases, int):
+            case_count += raw_cases
+        if isinstance(item.get("modeId"), str):
+            modes.add(str(item["modeId"]))
+        if isinstance(item.get("taskId"), str):
+            tasks.add(str(item["taskId"]))
+    score = (sum(label_rates) / len(label_rates)) if label_rates else None
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "label_match_rate": score,
+            "parse_success_rate": (sum(parse_rates) / len(parse_rates))
+            if parse_rates
+            else 0,
+            "schema_valid_rate": (sum(schema_rates) / len(schema_rates))
+            if schema_rates
+            else 0,
+            "summary_count": len(summaries),
+            "case_count": case_count,
+            "modes": sorted(modes),
+            "tasks": sorted(tasks),
+            "skipped": data.get("skipped")
+            if isinstance(data.get("skipped"), list)
+            else [],
+        },
+    )
+
+
+def _score_from_eliza_replay(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    raw = data.get("score")
+    score = float(raw) if isinstance(raw, (int, float)) else None
+    metrics = data.get("metrics")
+    normalized_metrics = metrics if isinstance(metrics, dict) else {}
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics=normalized_metrics,
+    )
+
+
+def _env_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    env: dict[str, str] = {"OSWORLD_DOCKER_RAM_CHECK": "N"}
+    vm_ready_timeout = ctx.request.extra_config.get("vm_ready_timeout_seconds")
+    if isinstance(vm_ready_timeout, int) and vm_ready_timeout > 0:
+        env["OSWORLD_VM_READY_TIMEOUT_SECONDS"] = str(vm_ready_timeout)
+    else:
+        env["OSWORLD_VM_READY_TIMEOUT_SECONDS"] = "3600"
+
+    docker_ram_size = ctx.request.extra_config.get("docker_ram_size")
+    if isinstance(docker_ram_size, str) and docker_ram_size.strip():
+        env["OSWORLD_DOCKER_RAM_SIZE"] = docker_ram_size.strip()
+    docker_cpu_cores = ctx.request.extra_config.get("docker_cpu_cores")
+    if isinstance(docker_cpu_cores, int) and docker_cpu_cores > 0:
+        env["OSWORLD_DOCKER_CPU_CORES"] = str(docker_cpu_cores)
+    docker_disk_size = ctx.request.extra_config.get("docker_disk_size")
+    if isinstance(docker_disk_size, str) and docker_disk_size.strip():
+        env["OSWORLD_DOCKER_DISK_SIZE"] = docker_disk_size.strip()
+    return env
+
+
+def _score_from_configbench(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    handlers = data.get("handlers", []) if isinstance(data, dict) else []
+    if not isinstance(handlers, list):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    target = None
+    for item in handlers:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("handlerName", "")).lower()
+        if "eliza" in name or "harness bridge" in name:
+            target = item
+            break
+    if target is None:
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    overall = target.get("overallScore")
+    score = float(overall) / 100.0 if isinstance(overall, (int, float)) else None
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overallScore": target.get("overallScore"),
+            "securityScore": target.get("securityScore"),
+            "capabilityScore": target.get("capabilityScore"),
+        },
+    )
+
+
+def _score_from_experience(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    agent = data.get("eliza_agent", {}) if isinstance(data, dict) else {}
+    if isinstance(data, dict) and not agent:
+        direct_values: list[float] = []
+        direct_metrics: dict[str, Any] = {}
+        retrieval = data.get("retrieval")
+        if isinstance(retrieval, dict):
+            for metric_name in ("mean_reciprocal_rank",):
+                raw = retrieval.get(metric_name)
+                if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                    direct_metrics[metric_name] = float(raw)
+                    direct_values.append(float(raw))
+        learning = data.get("learning_cycle")
+        if isinstance(learning, dict):
+            raw = learning.get("cycle_success_rate")
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                direct_metrics["cycle_success_rate"] = float(raw)
+                direct_values.append(float(raw))
+        hard_cases = data.get("hard_cases")
+        if isinstance(hard_cases, dict):
+            for metric_name in ("jaccard_rate", "semantic_rate"):
+                raw = hard_cases.get(metric_name)
+                if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                    direct_metrics[metric_name] = float(raw)
+                    direct_values.append(float(raw))
+        if direct_values:
+            return ScoreSummary(
+                score=sum(direct_values) / len(direct_values),
+                unit="ratio",
+                higher_is_better=True,
+                metrics=direct_metrics,
+            )
+    if not isinstance(agent, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+
+    values: list[float] = []
+    metrics: dict[str, Any] = {}
+    for key in (
+        "learning_success_rate",
+        "agent_recall_rate",
+        "agent_keyword_incorporation_rate",
+        "direct_recall_rate",
+    ):
+        raw = agent.get(key)
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            val = float(raw)
+            metrics[key] = val
+            values.append(val)
+
+    if not values:
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics=metrics)
+    return ScoreSummary(
+        score=sum(values) / len(values),
+        unit="ratio",
+        higher_is_better=True,
+        metrics=metrics,
+    )
+
+
+def _score_from_adhd(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    per = data.get("per_scenario", {}) if isinstance(data, dict) else {}
+    if not isinstance(per, dict) or not per:
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    vals: list[float] = []
+    for item in per.values():
+        if isinstance(item, dict):
+            raw = item.get("score")
+            if isinstance(raw, (int, float)):
+                vals.append(float(raw))
+    if not vals:
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    score = sum(vals) / len(vals)
+    return ScoreSummary(score=score, unit="ratio", higher_is_better=True, metrics={"mean_score": score, "num_cases": len(vals)})
+
+
+def _score_from_app_eval(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+
+    overall_raw = data.get("overall_score")
+    score = None
+    if isinstance(overall_raw, (int, float)):
+        # app-eval scores tasks on a 0..10 rubric; normalize for leaderboard
+        # parity while keeping the raw score in metrics.
+        score = max(0.0, min(float(overall_raw) / 10.0, 1.0))
+
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_score": overall_raw,
+            "total_tasks": data.get("total_tasks", 0),
+            "completed": data.get("completed", 0),
+            "failed": data.get("failed", 0),
+            "timed_out": data.get("timed_out", 0),
+            "avg_duration_ms": data.get("avg_duration_ms", 0),
+        },
+    )
+
+
+def _score_from_social_alpha(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    composite = data.get("COMPOSITE")
+    suite_scores: dict[str, float] = {}
+    for key, value in data.items():
+        if key == "COMPOSITE" or not isinstance(value, dict):
+            continue
+        suite_score = value.get("suite_score")
+        if isinstance(suite_score, (int, float)):
+            suite_scores[key] = float(suite_score)
+    score = None
+    if isinstance(composite, dict):
+        raw = composite.get("trust_marketplace_score")
+        if isinstance(raw, (int, float)):
+            score = float(raw) / 100.0
+    if score is None and suite_scores:
+        score = (sum(suite_scores.values()) / len(suite_scores)) / 100.0
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={"composite": composite, "suite_scores": suite_scores},
+    )
+
+
+def _score_from_trust(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    raw = data.get("overall_f1")
+    score = float(raw) if isinstance(raw, (int, float)) else None
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_f1": raw,
+            "false_positive_rate": data.get("false_positive_rate"),
+            "total_tests": data.get("total_tests"),
+            "handler_name": data.get("handler_name"),
+        },
+    )
+
+
+def _score_from_woobench(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    raw = data.get("overall_score")
+    score = float(raw) / 100.0 if isinstance(raw, (int, float)) else None
+    scenarios = data.get("scenarios", [])
+    scenario_rows = scenarios if isinstance(scenarios, list) else []
+    total_revenue_raw = data.get("total_revenue")
+    total_revenue = float(total_revenue_raw) if isinstance(total_revenue_raw, (int, float)) else 0.0
+    converted_count = sum(
+        1 for scenario in scenario_rows
+        if isinstance(scenario, dict) and scenario.get("payment_converted") is True
+    )
+    completed_count = sum(
+        1 for scenario in scenario_rows
+        if isinstance(scenario, dict) and scenario.get("agent_responsive") is True
+    )
+    total_instances = len(scenario_rows)
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_score": data.get("overall_score"),
+            "revenue_efficiency": data.get("revenue_efficiency"),
+            "revenue_score": data.get("revenue_score"),
+            "price_discipline_score": data.get("price_discipline_score"),
+            "conversion_efficiency_score": data.get("conversion_efficiency_score"),
+            "resilience_score": data.get("resilience_score"),
+            "failed_scenarios": data.get("failed_scenarios"),
+            "total_revenue": total_revenue,
+            "avg_revenue_per_scenario": (
+                total_revenue / total_instances if total_instances else 0.0
+            ),
+            "payment_converted_count": converted_count,
+            "completed_reading_count": completed_count,
+            "total_instances": total_instances,
+            "interrupted": data.get("interrupted") is True,
+        },
+    )
+
+
+def _score_from_framework(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    overall_score = data.get("overall_score") if isinstance(data, dict) else None
+    if isinstance(overall_score, (int, float)):
+        return ScoreSummary(
+            score=float(overall_score),
+            unit="ratio",
+            higher_is_better=True,
+            metrics={
+                "runtime": data.get("runtime"),
+                "scenario_count": len(data.get("scenarios", {}))
+                if isinstance(data.get("scenarios"), dict)
+                else 0,
+                "primary_score_note": "Normalized correctness/SLO score; throughput metrics are secondary diagnostics.",
+            },
+        )
+    scenarios = data.get("scenarios", {}) if isinstance(data, dict) else {}
+    if not isinstance(scenarios, dict) or not scenarios:
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+
+    total_messages = 0.0
+    total_time_ms = 0.0
+    latency_values: list[float] = []
+    for result in scenarios.values():
+        if not isinstance(result, dict):
+            continue
+        throughput = result.get("throughput", {})
+        if isinstance(throughput, dict):
+            messages = throughput.get("total_messages")
+            elapsed = throughput.get("total_time_ms")
+            if isinstance(messages, (int, float)) and isinstance(elapsed, (int, float)):
+                total_messages += float(messages)
+                total_time_ms += float(elapsed)
+        latency = result.get("latency", {})
+        avg_ms = latency.get("avg_ms") if isinstance(latency, dict) else None
+        if isinstance(avg_ms, (int, float)):
+            latency_values.append(float(avg_ms))
+
+    has_throughput_observation = total_messages >= 0 and total_time_ms > 0 and bool(scenarios)
+    if has_throughput_observation:
+        raw_throughput = (total_messages / total_time_ms) * 1000.0
+        # Treat 50 messages/sec as the smoke SLO. The raw throughput remains
+        # in metrics; the primary score must stay a bounded 0..1 ratio so
+        # calibration and cross-benchmark comparisons are meaningful.
+        score = max(0.0, min(1.0, raw_throughput / 50.0))
+        unit = "ratio"
+    elif latency_values:
+        mean_latency = sum(latency_values) / len(latency_values)
+        raw_throughput = 1000.0 / mean_latency if mean_latency > 0 else 0.0
+        score = max(0.0, min(1.0, raw_throughput / 50.0))
+        unit = "ratio"
+    else:
+        score = None
+        raw_throughput = None
+        unit = None
+
+    return ScoreSummary(
+        score=score,
+        unit=unit,
+        higher_is_better=True,
+        metrics={
+            "runtime": data.get("runtime"),
+            "scenario_count": len(scenarios),
+            "raw_throughput_per_second": raw_throughput,
+            "total_messages": total_messages,
+            "total_time_ms": total_time_ms,
+            "mean_latency_ms": sum(latency_values) / len(latency_values)
+            if latency_values
+            else None,
+            "primary_score_note": "Normalized smoke SLO score capped at 1.0; raw throughput is tracked separately.",
+        },
+    )
+
+
+def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
+    if harness == "hermes":
+        default_method = "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
+    elif harness == "openclaw":
+        default_method = (
+            "eliza_compactbench/openclaw_compactor.py:OpenClawNativeToolCompactor"
+        )
+    else:
+        default_method = "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
+    method = str(ctx.request.extra_config.get("method", default_method))
+    compactbench_root = Path(adapter.cwd)
+    python_executable = _compactbench_python_executable(compactbench_root)
+    args = [
+        python_executable,
+        "run_cerebras.py",
+        "--method",
+        method,
+        "--model",
+        ctx.request.model,
+        "--output",
+        str(ctx.output_root / "compactbench-results.jsonl"),
+        "--case-count",
+        str(int(ctx.request.extra_config.get("case_count", ctx.request.extra_config.get("max_tasks", 1)))),
+        "--drift-cycles",
+        str(int(ctx.request.extra_config.get("drift_cycles", 1))),
+    ]
+    suite = ctx.request.extra_config.get("suite")
+    if isinstance(suite, str) and suite.strip():
+        args.extend(["--suite", suite.strip()])
+    difficulty = ctx.request.extra_config.get("difficulty")
+    if isinstance(difficulty, str) and difficulty.strip():
+        args.extend(["--difficulty", difficulty.strip()])
+    benchmarks_dir = ctx.request.extra_config.get("benchmarks_dir")
+    if isinstance(benchmarks_dir, str) and benchmarks_dir.strip():
+        args.extend(["--benchmarks-dir", benchmarks_dir.strip()])
+    if ctx.request.extra_config.get("resume") is True:
+        args.append("--resume")
+    if ctx.request.extra_config.get("score") is True:
+        args.append("--score")
+    if ctx.request.extra_config.get("analyze_valid_hits", True) is not False:
+        args.append("--analyze-valid-hits")
+        args.extend(
+            [
+                "--valid-hit-output",
+                str(ctx.output_root / "compactbench-results.valid-hits.jsonl"),
+            ]
+        )
+    return args
+
+
+def _compactbench_python_executable(compactbench_root: Path) -> str:
+    candidates: list[str] = []
+    venv_python = compactbench_root / ".venv" / "bin" / "python"
+    if venv_python.exists():
+        candidates.append(str(venv_python))
+    candidates.append(sys.executable)
+    for binary in ("python3", "python"):
+        resolved = shutil.which(binary)
+        if resolved:
+            candidates.append(resolved)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if _python_can_import(candidate, "ruamel.yaml"):
+            return candidate
+    return candidates[0] if candidates else sys.executable
+
+
+def _python_can_import(python_executable: str, module: str) -> bool:
+    try:
+        completed = subprocess.run(
+            [
+                python_executable,
+                "-c",
+                f"import importlib; importlib.import_module({module!r})",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
+
+
+def _env_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    provider = ctx.request.provider.strip().lower()
+    env: dict[str, str] = {}
+    if provider:
+        env["HERMES_BENCH_PROVIDER"] = provider
+        env["OPENCLAW_BENCH_PROVIDER"] = provider
+    return env
+
+
+def _score_from_compactbench(path: Path) -> ScoreSummary:
+    import json
+
+    if path.name.endswith(".valid-hits.jsonl"):
+        valid_path = path
+    else:
+        valid_path = path.with_name(f"{path.stem}.valid-hits.jsonl")
+    if not valid_path.exists():
+        raise ValueError(
+            "compactbench repaired valid-hit analysis is required; "
+            "set analyze_valid_hits=true or run run_cerebras.py with "
+            "--analyze-valid-hits"
+        )
+    analysis_end: dict[str, Any] | None = None
+    for line in valid_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict) and item.get("event") == "analysis_end":
+            analysis_end = item
+    if analysis_end is None:
+        raise ValueError("compactbench valid-hit analysis missing analysis_end event")
+    raw = analysis_end.get("overall_score")
+    score = float(raw) if isinstance(raw, (int, float)) else None
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "scorer_name": "repaired_valid_hits",
+            "overall_score": raw,
+            "benchmark_quality_score": analysis_end.get(
+                "benchmark_quality_score"
+            ),
+            "raw_lexical_overall_score": analysis_end.get(
+                "raw_lexical_overall_score"
+            ),
+            "valid_false_negatives": analysis_end.get("valid_false_negatives"),
+            "semantic_false_positives": analysis_end.get(
+                "semantic_false_positives"
+            ),
+            "failures_remaining": analysis_end.get("failures_remaining"),
+            "repaired_expected_conflicts": analysis_end.get(
+                "repaired_expected_conflicts"
+            ),
+            "removed_invalid_items": analysis_end.get("removed_invalid_items"),
+            "judge_refusals": analysis_end.get("judge_refusals"),
+        },
+    )
+
+
+def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    args = [
+        sys.executable,
+        "-m",
+        "eliza_loca.run_cerebras",
+        "--model",
+        ctx.request.model,
+        "--output-dir",
+        str(ctx.output_root / "loca-output"),
+        "--max-workers",
+        str(int(ctx.request.extra_config.get("max_workers", 1))),
+        "--max-tool-uses",
+        str(int(ctx.request.extra_config.get("max_tool_uses", 10))),
+        "--max-tokens",
+        str(int(ctx.request.extra_config.get("max_tokens", 2048))),
+        "--timeout",
+        str(int(ctx.request.extra_config.get("timeout", 300))),
+        "--max-retries",
+        str(int(ctx.request.extra_config.get("max_retries", 1))),
+    ]
+    config = ctx.request.extra_config.get("config")
+    if isinstance(config, str) and config.strip():
+        args.extend(["--config", config.strip()])
+    else:
+        args.extend(["--config", "task-configs/debug.json"])
+    strategy = ctx.request.extra_config.get("strategy")
+    if isinstance(strategy, str) and strategy.strip():
+        args.extend(["--strategy", strategy.strip()])
+    max_steps = ctx.request.extra_config.get("max_steps", ctx.request.extra_config.get("max_tasks"))
+    if isinstance(max_steps, int) and max_steps > 0:
+        args.extend(["--max-steps", str(max_steps)])
+    for key, flag, caster in [
+        ("max_context_size", "--max-context-size", int),
+        ("reset_size", "--reset-size", int),
+        ("reset_ratio", "--reset-ratio", float),
+        ("memory_warning_threshold", "--memory-warning-threshold", float),
+        ("keep_thinking", "--keep-thinking", int),
+    ]:
+        if key in ctx.request.extra_config:
+            args.extend([flag, str(caster(ctx.request.extra_config[key]))])
+    context_summary = ctx.request.extra_config.get("context_summary")
+    if context_summary is True:
+        args.append("--context-summary")
+    if ctx.request.extra_config.get("context_awareness") is True:
+        args.append("--context-awareness")
+    reasoning_effort = ctx.request.extra_config.get("reasoning_effort")
+    if isinstance(reasoning_effort, str) and reasoning_effort.strip():
+        args.extend(["--reasoning-effort", reasoning_effort.strip()])
+    if ctx.request.extra_config.get("dry_run") is True:
+        args.append("--dry-run")
+        args.append("--allow-empty")
+    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
+        "include_edge_scenarios"
+    ) is True:
+        args.append("--expand-scenarios")
+    return args
+
+
+def _score_from_loca_bench(path: Path) -> ScoreSummary:
+    import json
+
+    def _external_telemetry_tokens(audit_path: Path) -> int:
+        total = 0
+        for candidate in (
+            audit_path.parent / "telemetry.jsonl",
+            audit_path.parent.parent / "telemetry.jsonl",
+        ):
+            if not candidate.exists():
+                continue
+            for line in candidate.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                for raw_tokens in (
+                    row.get("total_tokens"),
+                    (row.get("usage") or {}).get("totalTokens")
+                    if isinstance(row.get("usage"), dict)
+                    else None,
+                    (row.get("usage") or {}).get("total_tokens")
+                    if isinstance(row.get("usage"), dict)
+                    else None,
+                ):
+                    if isinstance(raw_tokens, (int, float)) and raw_tokens > 0:
+                        total += int(raw_tokens)
+                        break
+        return total
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    summary = data.get("summary") if isinstance(data, dict) else None
+    if not isinstance(summary, dict):
+        raise ValueError("loca-bench audit missing summary")
+    raw = summary.get("avg_accuracy")
+    trajectory_count = summary.get("trajectory_count")
+    aggregate_trajectory_count = summary.get("aggregate_trajectory_count")
+    metadata_total_tasks = summary.get("metadata_total_tasks")
+    failed_trajectory_count = summary.get("failed_trajectory_count")
+    score = float(raw) if isinstance(raw, (int, float)) else None
+    if score is None and raw is None:
+        all_observed_trajectories_failed = (
+            isinstance(failed_trajectory_count, int)
+            and isinstance(metadata_total_tasks, int)
+            and metadata_total_tasks > 0
+            and failed_trajectory_count == metadata_total_tasks
+        )
+        if all_observed_trajectories_failed:
+            score = 0.0
+    if score is None:
+        raise ValueError("loca-bench audit missing summary.avg_accuracy")
+    if summary.get("issue_count"):
+        raise ValueError(f"loca-bench audit has {summary.get('issue_count')} issue(s)")
+    has_trajectories = (
+        (isinstance(trajectory_count, int) and trajectory_count > 0)
+        or (
+            isinstance(aggregate_trajectory_count, int)
+            and aggregate_trajectory_count > 0
+        )
+    )
+    if not has_trajectories:
+        raise ValueError("loca-bench run has no captured trajectories")
+    summary_total_api_tokens = summary.get("total_api_tokens")
+    telemetry_total_tokens = (
+        _external_telemetry_tokens(path)
+        if summary_total_api_tokens in (None, 0)
+        else 0
+    )
+    effective_total_api_tokens = summary_total_api_tokens or telemetry_total_tokens
+    if effective_total_api_tokens in (None, 0) and (
+        isinstance(metadata_total_tasks, int) and metadata_total_tasks > 0
+    ):
+        raise ValueError("loca-bench run has tasks but no API token usage")
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "avg_accuracy": raw,
+            "aggregate_trajectory_count": aggregate_trajectory_count,
+            "issue_count": summary.get("issue_count"),
+            "metadata_total_tasks": metadata_total_tasks,
+            "total_api_tokens": effective_total_api_tokens,
+            "external_telemetry_tokens": telemetry_total_tokens,
+            "max_prompt_tokens": summary.get("max_prompt_tokens"),
+            "max_total_tokens": summary.get("max_total_tokens"),
+            "trajectory_count": trajectory_count,
+            "failed_trajectory_count": failed_trajectory_count,
+        },
+    )
+
+
+def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    del adapter
+    env: dict[str, str] = {}
+    max_context_size = ctx.request.extra_config.get("max_context_size")
+    if isinstance(max_context_size, int) and max_context_size > 0:
+        env["MAX_CONVERSATION_TOKENS"] = str(max_context_size)
+    timeout = ctx.request.extra_config.get("timeout")
+    if isinstance(timeout, int) and timeout > 10:
+        env["LOCA_HARNESS_TIMEOUT_S"] = str(max(5, min(timeout - 5, 240)))
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
+    if harness == "eliza" and ctx.request.extra_config.get("allow_stub_embedding") is True:
+        # Diagnostic-only opt-in. Release-evidence runs must use a real
+        # embedding handler from plugin-local-inference.
+        env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] = "1"
+    if harness == "openclaw":
+        openclaw_thinking = ctx.request.extra_config.get("openclaw_thinking")
+        if isinstance(openclaw_thinking, str) and openclaw_thinking.strip():
+            env["LOCA_OPENCLAW_THINKING"] = openclaw_thinking.strip()
+        else:
+            reasoning_effort = ctx.request.extra_config.get("reasoning_effort")
+            if isinstance(reasoning_effort, str) and reasoning_effort.strip():
+                env["LOCA_OPENCLAW_THINKING"] = reasoning_effort.strip()
+        # LOCA relies on native OpenAI chat/tool payloads. OpenClaw's CLI
+        # transport flattens those into text, so use the adapter's direct
+        # OpenAI-compatible path for this benchmark-specific bridge.
+        env["LOCA_OPENCLAW_MODE"] = "direct-openai-compatible"
+        env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
+        env["OPENCLAW_USE_CLI"] = "0"
+    return env
+
+
+def _command_interrupt_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    harness = ctx.request.agent.strip().lower()
+    mode = "harness" if harness in {"eliza", "hermes", "openclaw"} else "cerebras"
+    args = [
+        "bun",
+        "run",
+        "src/runner.ts",
+        f"--mode={mode}",
+        f"--model={ctx.request.model}",
+        f"--out={ctx.output_root}",
+    ]
+    scenario = ctx.request.extra_config.get("scenario")
+    if isinstance(scenario, str) and scenario.strip():
+        args.append(f"--scenario={scenario.strip()}")
+    elif int(ctx.request.extra_config.get("max_tasks", 0) or 0) == 1:
+        args.append("--scenario=A1-fragmented-email-draft")
+    if ctx.request.extra_config.get("judge") is True:
+        args.append("--judge")
+    return args
+
+
+def _score_from_interrupt_bench(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    final_score = data.get("finalScore")
+    aggregate = data.get("aggregate")
+    raw_score = final_score if isinstance(final_score, (int, float)) else aggregate
+    score = float(raw_score) / 100.0 if isinstance(raw_score, (int, float)) else None
+    scenarios = data.get("scenarios")
+    scenario_count = len(scenarios) if isinstance(scenarios, list) else 0
+    boundary_violations = 0
+    if isinstance(scenarios, list):
+        boundary_violations = sum(
+            1
+            for item in scenarios
+            if isinstance(item, dict) and item.get("boundaryViolated") is True
+        )
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "finalScore": final_score,
+            "aggregate": aggregate,
+            "judgeBonus": data.get("judgeBonus"),
+            "passTier": data.get("passTier"),
+            "scenario_count": scenario_count,
+            "boundary_violations": boundary_violations,
+            "mode": data.get("mode"),
+            "model": data.get("model"),
+        },
+    )
+
+
+def _command_personality_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    return [
+        "bun",
+        "run",
+        "src/runner.ts",
+        "--calibration",
+        "--calibration-dir",
+        "tests/calibration",
+        "--agent",
+        ctx.request.agent.strip().lower() or "eliza",
+        "--output",
+        str(ctx.output_root / "report.md"),
+        "--output-json",
+        str(ctx.output_root / "report.json"),
+    ]
+
+
+def _env_personality_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    enable_llm = ctx.request.extra_config.get("enable_llm_judge") is True
+    return {
+        "PERSONALITY_JUDGE_MODEL": ctx.request.model,
+        "PERSONALITY_JUDGE_ENABLE_LLM": "1" if enable_llm else "0",
+        "PERSONALITY_JUDGE_STRICT": "0",
+    }
+
+
+def _score_from_personality_bench(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    calibration = data.get("calibration")
+    totals = data.get("totals") if isinstance(data.get("totals"), dict) else {}
+    scenario_count = totals.get("scenarios", 0) if isinstance(totals, dict) else 0
+    passed = totals.get("pass", 0) if isinstance(totals, dict) else 0
+    if isinstance(scenario_count, (int, float)) and scenario_count:
+        score = float(passed) / float(scenario_count) if isinstance(passed, (int, float)) else None
+        metrics = dict(totals)
+        if isinstance(calibration, dict):
+            metrics.update(
+                {
+                    "calibration_score": calibration.get("score"),
+                    "agreementRate": calibration.get("agreementRate"),
+                    "falsePositiveRate": calibration.get("falsePositiveRate"),
+                    "reviewRate": calibration.get("reviewRate"),
+                    "mismatch_count": len(calibration.get("mismatches", []))
+                    if isinstance(calibration.get("mismatches"), list)
+                    else 0,
+                }
+            )
+        return ScoreSummary(
+            score=score,
+            unit="ratio",
+            higher_is_better=True,
+            metrics=metrics,
+        )
+    if isinstance(calibration, dict):
+        raw_score = calibration.get("score", calibration.get("agreementRate"))
+        score = float(raw_score) if isinstance(raw_score, (int, float)) else None
+        metrics = {
+            "total": calibration.get("total"),
+            "agreed": calibration.get("agreed"),
+            "disagreed": calibration.get("disagreed"),
+            "needsReview": calibration.get("needsReview"),
+            "falsePositive": calibration.get("falsePositive"),
+            "falseNegative": calibration.get("falseNegative"),
+            "agreementRate": calibration.get("agreementRate"),
+            "falsePositiveRate": calibration.get("falsePositiveRate"),
+            "reviewRate": calibration.get("reviewRate"),
+            "mismatch_count": len(calibration.get("mismatches", []))
+            if isinstance(calibration.get("mismatches"), list)
+            else 0,
+        }
+        return ScoreSummary(
+            score=score,
+            unit="ratio",
+            higher_is_better=True,
+            metrics=metrics,
+        )
+
+    return ScoreSummary(
+        score=None,
+        unit="ratio",
+        higher_is_better=True,
+        metrics=dict(totals) if isinstance(totals, dict) else {},
+    )
+
+
+def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
+    benchmarks_root = workspace_root / "benchmarks"
+    benchmark_dirs = sorted(
+        p.name
+        for p in benchmarks_root.iterdir()
+        if _is_benchmark_directory(p)
+    )
+
+    score_extractor_factory = RegistryScoreExtractor(workspace_root)
+    adapters: dict[str, BenchmarkAdapter] = {}
+
+    registry_entries = get_benchmark_registry(workspace_root)
+    registry_default_extra: dict[str, dict[str, Any]] = {
+        "agentbench": {
+            "elizaos": True,
+            "env": ["os"],
+            "max_tasks": 1,
+            "no_docker": True,
+        },
+        "action-calling": {
+            "max_examples": 2,
+            "max_new_tokens": 512,
+        },
+        "bfcl": {
+            "categories": ["multiple", "parallel"],
+            "max_per_category": 1,
+        },
+        "context_bench": {
+            "quick": True,
+            "context_lengths": [1024],
+            "positions": ["middle"],
+            "tasks_per_position": 1,
+        },
+        "rlm_bench": {
+            "mode": "eliza",
+            "tasks_per_config": 1,
+            "context_lengths": [1000],
+            "max_iterations": 3,
+            "max_depth": 2,
+            "no_oolong": True,
+        },
+        "mint": {
+            "agent": "eliza",
+            "categories": ["reasoning"],
+            "max_tasks": 1,
+            "max_turns": 3,
+            "timeout": 60,
+            "no_ablation": True,
+        },
+        "mind2web": {
+            "max_tasks": 1,
+        },
+        "configbench": {
+            "limit": 1,
+        },
+        "lifeops_bench": {
+            "suite": "smoke",
+            "limit": 2,
+            "concurrency": 1,
+            "seeds": 1,
+        },
+        "realm": {
+            "categories": ["P11"],
+            "max_tasks": 1,
+            "max_steps": 3,
+            "timeout": 60000,
+        },
+        "hyperliquid_bench": {
+            "max_steps": 1,
+            "max_iterations": 2,
+            "eliza_bench_http_timeout_s": 90,
+            "hl_bench_command_timeout_s": 60,
+            "no_demo": True,
+            "expand_scenarios": True,
+        },
+        "gsm8k": {
+            "limit": 2,
+            "max_tokens": 256,
+        },
+        "humaneval": {
+            "limit": 2,
+            "max_tokens": 256,
+            "timeout_s": 5,
+        },
+        "gauntlet": {
+            "max_scenarios": 3,
+            "clone_mainnet": True,
+        },
+        "mmlu": {
+            "limit": 2,
+            "max_tokens": 256,
+        },
+        "mt_bench": {
+            "limit": 1,
+            "max_tokens": 1024,
+            "temperature": 0.0,
+            "judge_max_tokens": 512,
+            "judge_provider": "cerebras",
+            "judge_model": "gpt-oss-120b",
+            "judge_api_key_env": "CEREBRAS_API_KEY",
+        },
+        "tau_bench": {
+            "agent_max_turns": 14,
+            "domain": "retail",
+            "max_tasks": 1,
+            "num_trials": 1,
+            "pass_k_values": [1],
+            "user_strategy": "grounded",
+        },
+        "terminal_bench": {
+            "max_tasks": 1,
+            "task_ids": ["hello-world"],
+            # Upstream run-tests.sh commonly bootstraps uv/pytest in-container.
+            # Keep real corpus grading publishable by allowing that setup path.
+            "network_mode": "bridge",
+            "timeout": 180,
+            "no_markdown": True,
+            "no_sessions": True,
+            "no_leaderboard": True,
+        },
+        "vending_bench": {
+            "max_tasks": 1,
+        },
+        "visualwebbench": {
+            "max_tasks": 1,
+            "task_types": "web_caption",
+            "hf": True,
+        },
+        "vision_language": {
+            "sub_benchmark": "textvqa",
+            "samples": 20,
+            "tier": "eliza-1-9b",
+            **(
+                {"model_provider": os.environ["VISION_LANGUAGE_PROVIDER"]}
+                if os.environ.get("VISION_LANGUAGE_PROVIDER")
+                else {}
+            ),
+            **(
+                {"model": os.environ["VISION_LANGUAGE_MODEL"]}
+                if os.environ.get("VISION_LANGUAGE_MODEL")
+                else {}
+            ),
+        },
+        "abliteration-robustness": {
+            "max_examples": 2,
+            "max_new_tokens": 128,
+        },
+        "social_alpha": {
+            "system": "eliza",
+        },
+        "swe_bench": {
+            "max_instances": 1,
+        },
+        "swe_bench_orchestrated": {
+            "max_instances": 1,
+            "execution_mode": "orchestrated",
+            "providers": ["claude-code", "swe-agent", "codex"],
+            "strict_capabilities": True,
+        },
+        "orchestrator_lifecycle": {
+            "max_scenarios": 12,
+            "strict": True,
+        },
+        "hermes_tblite": {
+            "max_tasks": 5,
+        },
+        "hermes_terminalbench_2": {
+            "max_tasks": 1,
+            "task_filter": "fix-git",
+        },
+        "hermes_yc_bench": {
+            "max_tasks": 3,
+        },
+        "hermes_swe_env": {
+            "max_tasks": 1,
+        },
+        "scambench": {
+            "max_examples": 2,
+            "max_new_tokens": 128,
+        },
+        "mmau": {
+            "limit": 2,
+            "no_traces": True,
+            "hf": True,
+        },
+        "voicebench_quality": {
+            "suite": "openbookqa",
+            "limit": 2,
+            "stt_provider": _voicebench_quality_stt_provider(),
+        },
+        "voiceagentbench": {
+            "suite": "single",
+            "limit": 2,
+            "seeds": 1,
+        },
+    }
+    registry_dir_map = {
+        "context_bench": "context-bench",
+        "terminal_bench": "terminal-bench",
+        "tau_bench": "tau-bench",
+        "vending_bench": "vending-bench",
+        "rlm_bench": "rlm-bench",
+        "swe_bench_orchestrated": "swe_bench",
+        "hyperliquid_bench": "HyperliquidBench",
+        "openclaw_bench": "openclaw-benchmark",
+        "lifeops_bench": "lifeops-bench",
+        "voicebench_quality": "voicebench-quality",
+        "vision_language": "vision-language",
+        "mmlu": "standard",
+        "humaneval": "standard",
+        "gsm8k": "standard",
+        "mt_bench": "standard",
+        "mmau": "mmau-audio",
+    }
+    hermes_env_benchmark_ids = {
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_yc_bench",
+        "hermes_swe_env",
+    }
+    hermes_adapter_dir_exists = (benchmarks_root / "hermes-adapter").is_dir()
+    for entry in registry_entries:
+        directory = registry_dir_map.get(entry.id, entry.id)
+        if entry.id in hermes_env_benchmark_ids:
+            # Hermes-native envs live under benchmarks/hermes-adapter (which is
+            # in IGNORED_BENCHMARK_DIRS because it's an adapter, not a benchmark
+            # tree). Bypass the dir-existence check and force-map to that path
+            # when the adapter checkout is present.
+            if not hermes_adapter_dir_exists:
+                continue
+            directory = "hermes-adapter"
+            adapters[entry.id] = _make_registry_adapter(
+                workspace_root=workspace_root,
+                benchmarks_root=benchmarks_root,
+                score_extractor_factory=score_extractor_factory,
+                benchmark_id=entry.id,
+                display_name=entry.display_name,
+                description=entry.description,
+                benchmark_dir=directory,
+                cwd_rel=entry.cwd_rel,
+                build_command=entry.build_command,
+                locate_result=entry.locate_result,
+                requirements_env=entry.requirements.env_vars,
+                default_extra_config=registry_default_extra.get(entry.id, {}),
+            )
+            continue
+        if directory not in benchmark_dirs:
+            if entry.id in {"osworld"} and "OSWorld" in benchmark_dirs:
+                directory = "OSWorld"
+            elif entry.id == "gauntlet" and "gauntlet" in benchmark_dirs:
+                directory = "gauntlet"
+            elif entry.id == "solana" and "solana" in benchmark_dirs:
+                directory = "solana"
+            elif entry.id == "agentbench" and "agentbench" in benchmark_dirs:
+                directory = "agentbench"
+            elif entry.id == "mind2web" and "mind2web" in benchmark_dirs:
+                directory = "mind2web"
+            elif entry.id == "swe_bench" and "swe_bench" in benchmark_dirs:
+                directory = "swe_bench"
+            elif entry.id == "swe_bench_orchestrated" and "swe_bench" in benchmark_dirs:
+                directory = "swe_bench"
+            elif entry.id == "mint" and "mint" in benchmark_dirs:
+                directory = "mint"
+            elif entry.id == "bfcl" and "bfcl" in benchmark_dirs:
+                directory = "bfcl"
+            elif entry.id == "realm" and "realm" in benchmark_dirs:
+                directory = "realm"
+            elif entry.id == "orchestrator_lifecycle" and "orchestrator_lifecycle" in benchmark_dirs:
+                directory = "orchestrator_lifecycle"
+            else:
+                continue
+        adapters[entry.id] = _make_registry_adapter(
+            workspace_root=workspace_root,
+            benchmarks_root=benchmarks_root,
+            score_extractor_factory=score_extractor_factory,
+            benchmark_id=entry.id,
+            display_name=entry.display_name,
+            description=entry.description,
+            benchmark_dir=directory,
+            cwd_rel=entry.cwd_rel,
+            build_command=entry.build_command,
+            locate_result=entry.locate_result,
+            requirements_env=() if entry.id == "mind2web" else entry.requirements.env_vars,
+            default_extra_config=registry_default_extra.get(entry.id, {}),
+        )
+
+    extras: list[BenchmarkAdapter] = [
+        _make_extra_adapter(
+            adapter_id="adhdbench",
+            directory="adhdbench",
+            description="ADHDBench attention/context scaling benchmark",
+            cwd=str((benchmarks_root / "adhdbench").resolve()),
+            command_builder=_command_adhdbench,
+            # Only match the summary file. The traces JSON is bigger
+            # and tends to be the last-written, so a generic `*.json`
+            # fallback was picking traces and the scorer returned None.
+            result_patterns=["adhdbench_summary_*.json"],
+            score_extractor=_score_from_adhd,
+            default_extra_config={"mode": "quick", "ids": ["L0-002"]},
+        ),
+        _make_extra_adapter(
+            adapter_id="configbench",
+            directory="configbench",
+            description="ConfigBench plugin configuration/security benchmark",
+            cwd=str((benchmarks_root / "configbench").resolve()),
+            command_builder=_command_configbench,
+            env_builder=_env_configbench,
+            result_patterns=["configbench-results-*.json", "results/configbench-results-*.json"],
+            score_extractor=_score_from_configbench,
+            default_extra_config={"limit": 1},
+            default_timeout_seconds=14400,
+        ),
+        _make_extra_adapter(
+            adapter_id="experience",
+            directory="experience",
+            description="Experience memory benchmark via Eliza agent mode",
+            cwd=str((benchmarks_root / "experience").resolve()),
+            command_builder=_command_experience,
+            env_builder=lambda ctx, adapter: {
+                "PYTHONPATH": os.pathsep.join(
+                    [
+                        str((ctx.benchmarks_root / "eliza-adapter").resolve()),
+                        ctx.env.get("PYTHONPATH", ""),
+                    ],
+                ).rstrip(os.pathsep),
+            },
+            result_patterns=["experience-results.json", "*.json"],
+            score_extractor=_score_from_experience,
+            default_extra_config={
+                "experiences": 25,
+                "queries": 2,
+                "learning_cycles": 1,
+                "seed": 1,
+            },
+        ),
+        _make_extra_adapter(
+            adapter_id="eliza_1",
+            directory="eliza-1",
+            description="eliza-1 structured-output quality and latency benchmark",
+            cwd=str((benchmarks_root / "eliza-1").resolve()),
+            command_builder=_command_eliza_1,
+            result_patterns=["eliza-1-results.json", "bench-results-*.json"],
+            score_extractor=_score_from_eliza_1,
+            default_extra_config={
+                "task": "should_respond",
+                "mode": "cerebras",
+                "n": 1,
+                "limit": 3,
+            },
+            default_timeout_seconds=1800,
+        ),
+        _make_extra_adapter(
+            adapter_id="app-eval",
+            directory="app-eval",
+            description="elizaOS app agent research/coding benchmark",
+            cwd=str((benchmarks_root / "app-eval").resolve()),
+            command_builder=_command_app_eval,
+            env_builder=_env_app_eval,
+            result_patterns=["results/latest/summary.json", "results/*/summary.json", "summary.json", "evaluation.json"],
+            score_extractor=_score_from_app_eval,
+            default_timeout_seconds=14400,
+            default_extra_config={"task": "research-001"},
+        ),
+        _make_extra_adapter(
+            adapter_id="framework",
+            directory="framework",
+            description="Eliza TypeScript framework benchmark suite",
+            cwd=str(workspace_root.resolve()),
+            command_builder=_command_framework,
+            result_patterns=["framework-results.json", "typescript-*.json", "results/*.json"],
+            score_extractor=_score_from_framework,
+            default_extra_config={
+                "mode": "harness",
+                "scenarios": "single-message",
+                "iterations": 1,
+            },
+        ),
+        _make_extra_adapter(
+            adapter_id="compactbench",
+            directory="compactbench",
+            description="CompactBench conversation-compaction benchmark",
+            cwd=str((benchmarks_root / "compactbench").resolve()),
+            command_builder=_command_compactbench,
+            env_builder=_env_compactbench,
+            result_patterns=["compactbench-results.jsonl", "*.jsonl"],
+            score_extractor=_score_from_compactbench,
+            default_extra_config={
+                "case_count": 1,
+                "drift_cycles": 1,
+            },
+            default_timeout_seconds=7200,
+        ),
+        _make_extra_adapter(
+            adapter_id="loca_bench",
+            directory="loca-bench",
+            description="LOCA long-context agent benchmark via elizaOS/Cerebras wrapper",
+            cwd=str((benchmarks_root / "loca-bench").resolve()),
+            command_builder=_command_loca_bench,
+            result_patterns=["loca-output/eliza_loca_audit.json", "**/eliza_loca_audit.json"],
+            score_extractor=_score_from_loca_bench,
+            env_builder=_env_loca_bench,
+            default_extra_config={
+                "max_steps": 36,
+                "max_tool_uses": 40,
+                "max_retries": 3,
+                "timeout": 900,
+                "context_summary": False,
+                "max_context_size": 32768,
+                "reset_size": 16384,
+            },
+            default_timeout_seconds=7200,
+        ),
+        _make_extra_adapter(
+            adapter_id="interrupt_bench",
+            directory="interrupt-bench",
+            description="InterruptBench response-handler interruption benchmark",
+            cwd=str((benchmarks_root / "interrupt-bench").resolve()),
+            command_builder=_command_interrupt_bench,
+            result_patterns=["report.json"],
+            score_extractor=_score_from_interrupt_bench,
+            default_timeout_seconds=7200,
+        ),
+        _make_extra_adapter(
+            adapter_id="personality_bench",
+            directory="personality-bench",
+            description="Personality-bench judge calibration suite",
+            cwd=str((benchmarks_root / "personality-bench").resolve()),
+            command_builder=_command_personality_bench,
+            env_builder=_env_personality_bench,
+            result_patterns=["report.json"],
+            score_extractor=_score_from_personality_bench,
+            default_timeout_seconds=600,
+        ),
+        _make_extra_adapter(
+            adapter_id="rolodex",
+            directory="rolodex",
+            description="Rolodex social identity benchmark",
+            cwd=str((benchmarks_root / "rolodex").resolve()),
+            command_builder=_command_rolodex,
+            result_patterns=["rolodex-results-*.json", "**/rolodex-results-*.json"],
+        ),
+        _make_extra_adapter(
+            adapter_id="social_alpha",
+            directory="social-alpha",
+            description="Social-alpha trust marketplace benchmark",
+            cwd=str((benchmarks_root / "social-alpha").resolve()),
+            command_builder=_command_social_alpha,
+            env_builder=lambda ctx, adapter: {
+                "PYTHONPATH": os.pathsep.join(
+                    [str((ctx.benchmarks_root / "eliza-adapter").resolve()), ctx.env.get("PYTHONPATH", "")]
+                ).rstrip(os.pathsep)
+            },
+            result_patterns=["benchmark_results_*.json"],
+            score_extractor=_score_from_social_alpha,
+            default_extra_config={"suites": ["detect"]},
+        ),
+        _make_extra_adapter(
+            adapter_id="trust",
+            directory="trust",
+            description="Trust/security benchmark",
+            cwd=str((benchmarks_root / "trust").resolve()),
+            command_builder=_command_trust,
+            env_builder=lambda ctx, adapter: {
+                "PYTHONPATH": os.pathsep.join(
+                    [str((ctx.benchmarks_root / "eliza-adapter").resolve()), ctx.env.get("PYTHONPATH", "")]
+                ).rstrip(os.pathsep)
+            },
+            result_patterns=["trust-results.json", "*.json"],
+            score_extractor=_score_from_trust,
+            default_extra_config={
+                "handler": "oracle",
+                "categories": ["prompt_injection"],
+                "difficulty": ["easy"],
+                "threshold": 0.0,
+            },
+        ),
+        _make_extra_adapter(
+            adapter_id="webshop",
+            directory="webshop",
+            description="WebShop benchmark with Eliza agent",
+            cwd=str((benchmarks_root / "webshop").resolve()),
+            command_builder=_command_webshop,
+            env_builder=_env_webshop,
+            result_patterns=["webshop-results.json"],
+            score_extractor=score_extractor_factory.for_benchmark("webshop"),
+            default_extra_config={
+                "max_tasks": 1,
+                "max_turns": 8,
+                "profile": "small",
+            },
+        ),
+        _make_extra_adapter(
+            adapter_id="woobench",
+            directory="woobench",
+            description="WooBench mystical reading benchmark",
+            cwd=str(workspace_root.resolve()),
+            command_builder=_command_woobench,
+            env_builder=_env_woobench,
+            result_patterns=["woobench_*.json"],
+            score_extractor=_score_from_woobench,
+            default_extra_config={
+                "scenarios": [
+                    "friend_supporter_tarot_01",
+                    "repeat_customer_tarot_01",
+                ],
+                "concurrency": 1,
+                "evaluator": "heuristic",
+                "random_seed": 1,
+            },
+        ),
+        _make_extra_adapter(
+            adapter_id="evm",
+            directory="evm",
+            description="EVM exploration benchmark",
+            cwd=str((benchmarks_root / "evm").resolve()),
+            command_builder=_command_evm,
+            env_builder=_env_evm,
+            result_patterns=["metrics/evm_*_metrics.json"],
+            score_extractor=_score_from_evm,
+            default_extra_config={"max_messages": 2, "expand_scenarios": True},
+        ),
+        _make_extra_adapter(
+            adapter_id="solana",
+            directory="solana",
+            description="Solana instruction discovery benchmark via Eliza agent",
+            cwd=str(workspace_root.resolve()),
+            command_builder=_command_solana,
+            env_builder=_env_solana,
+            result_patterns=[
+                "eliza_*_metrics.json",
+                "benchmarks/solana/solana-gym-env/metrics/eliza_*_metrics.json",
+                "packages/benchmarks/solana/solana-gym-env/metrics/eliza_*_metrics.json",
+            ],
+            score_extractor=score_extractor_factory.for_benchmark("solana"),
+            default_timeout_seconds=14400,
+            default_extra_config={
+                "environment_config": "voyager/environments/basic_env.json",
+                "max_messages": 2,
+            },
+        ),
+        _make_extra_adapter(
+            adapter_id="osworld",
+            directory="OSWorld",
+            description="OSWorld desktop benchmark via Eliza agent",
+            cwd=str((benchmarks_root / "OSWorld").resolve()),
+            command_builder=_command_osworld,
+            env_builder=_env_osworld,
+            result_patterns=["osworld-eliza-results-*.json"],
+            score_extractor=score_extractor_factory.for_benchmark("osworld"),
+            default_timeout_seconds=21600,
+            default_extra_config={
+                "docker_cpu_cores": 2,
+                "headless": True,
+                "max_steps": 1,
+                "max_tasks": 1,
+                "observation_type": "screenshot",
+                "vm_ready_timeout_seconds": 21600,
+            },
+        ),
+        _make_extra_adapter(
+            adapter_id="eliza_replay",
+            directory="eliza-adapter",
+            description="Replay benchmark over normalized Eliza ELIZA captures",
+            cwd=str((benchmarks_root / "eliza-adapter").resolve()),
+            command_builder=_command_eliza_replay,
+            result_patterns=["eliza-replay-results.json", "*.json"],
+            score_extractor=_score_from_eliza_replay,
+            default_timeout_seconds=300,
+            default_extra_config={
+                "capture_path": str((benchmarks_root / "eliza-adapter" / "fixtures" / "replay").resolve()),
+                "capture_glob": "*.replay.json",
+            },
+            capability_notes="Offline replay scoring; capture_path should point to normalized replay artifacts.",
+        ),
+    ]
+
+    for adapter in extras:
+        adapter_dir_exists = (benchmarks_root / adapter.directory).is_dir()
+        if adapter.directory in benchmark_dirs or (adapter.id == "eliza_replay" and adapter_dir_exists):
+            adapters[adapter.id] = adapter
+
+    return AdapterDiscovery(adapters=adapters, all_directories=tuple(benchmark_dirs))

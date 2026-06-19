@@ -1,0 +1,62 @@
+---
+title: Create a Plugin
+description: "Scaffold a new Eliza plugin package."
+---
+
+```bash
+npx elizaos create [name] --template plugin
+```
+
+## Flags
+
+| Flag                              | Purpose                                                  |
+| --------------------------------- | -------------------------------------------------------- |
+| `-t, --template plugin`           | Use the plugin template.                                 |
+| `-l, --language <lang>`           | TypeScript (default).                                    |
+| `-y, --yes`                       | Skip confirmation prompts.                               |
+| `--description <description>`     | Plugin description (written into package.json).          |
+| `--github-username <username>`    | GitHub owner (written into package.json repository).     |
+| `--repo-url <url>`                | Override the generated repository URL.                   |
+
+## What you get
+
+The `plugin` template scaffolds an elizaOS plugin starter:
+
+- `src/plugin.ts` — the `Plugin` export.
+- `src/actions/`, `src/providers/`, `src/services/` — starter implementations.
+- `src/__tests__/` — unit tests with a runtime fixture.
+- `e2e/` — end-to-end tests against a real agent.
+- `tsdown.config.ts` — bundler config producing `dist/`.
+- `package.json` — scoped under your namespace, ready for `npm publish`.
+
+## Next steps
+
+```bash
+cd <name>
+bun install
+bun run build
+bun run test
+```
+
+To iterate against a real agent, link the plugin into a project:
+
+```bash
+cd ../my-agent
+bun add link:../my-plugin
+```
+
+Add `'my-plugin'` to your character's `plugins` array.
+
+## Submit to the registry
+
+When you're ready to publish, `npm publish` ships the package. The public discovery path is npm metadata with the `elizaos` keyword. To inspect the registry metadata the CLI would generate:
+
+```bash
+elizaos plugins submit --dry-run
+```
+
+## See also
+
+- [Plugin track](/tracks/plugin/overview)
+- [Plugin anatomy](/tracks/plugin/anatomy)
+- [Publish](/tracks/plugin/publish)

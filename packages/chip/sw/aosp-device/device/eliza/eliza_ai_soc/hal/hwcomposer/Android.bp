@@ -1,0 +1,56 @@
+// hwcomposer v0 - framebuffer-only legacy module for eliza_ai_soc.
+//
+// Status: compatibility source. Exposes the legacy hwcomposer module shape so
+// android.hardware.graphics.composer@2.4-service can load it and present
+// a single primary display backed by /dev/graphics/fb0 (or the simple
+// framebuffer registered by CONFIG_FB_SIMPLE). It MUST NOT advertise GLES
+// composition, HW overlays, sideband streams, or Vulkan.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+cc_library_shared {
+    name: "hwcomposer.eliza_ai_soc",
+    relative_install_path: "hw",
+    vendor: true,
+
+    srcs: ["hwcomposer.cpp"],
+
+    header_libs: ["libhardware_headers"],
+
+    shared_libs: [
+        "libbase",
+        "libcutils",
+        "liblog",
+        "libsync",
+    ],
+
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wextra",
+        "-Wno-unused-parameter",
+        "-DLOG_TAG=\"hwc-eliza\"",
+    ],
+}
+
+// The binder service is the AOSP-provided composer@2.4-service renamed for
+// this device so the init script can target it explicitly.
+cc_binary {
+    name: "android.hardware.graphics.composer@2.4-service.eliza_ai_soc",
+    relative_install_path: "hw",
+    vendor: true,
+    init_rc: ["android.hardware.graphics.composer@2.4-service.eliza_ai_soc.rc"],
+    vintf_fragments: ["android.hardware.graphics.composer@2.4-service.eliza_ai_soc.xml"],
+
+    srcs: ["service.cpp"],
+
+    shared_libs: [
+        "libbase",
+        "libhidlbase",
+        "liblog",
+        "libutils",
+        "android.hardware.graphics.composer@2.4",
+    ],
+}

@@ -1,0 +1,34 @@
+{
+  "id": "experience",
+  "name": "Experience",
+  "description": "Built-in advanced capability for recording and recalling transferable agent learnings, surfaced in the Character Experience workspace alongside trajectory inspection tooling.",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["experience", "learning", "memory"],
+  "config": {
+    "AUTO_RECORD_THRESHOLD": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Record Threshold",
+      "help": "Minimum confidence required before the experience evaluator records a new learning.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Star",
+    "group": "storage",
+    "groupOrder": 10,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/elizaos"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "storage"
+}

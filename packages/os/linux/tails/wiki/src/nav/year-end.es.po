@@ -1,0 +1,82 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-19 07:55+0000\n"
+"PO-Revision-Date: 2024-04-24 15:37+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[!img lib/yec/globe-chain-burst.svg id=\"yec-illo\" class=\"my-auto\" "
+"alt=\"A wireframe globe breaking out of chains\"]]"
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid "Free the internet"
+msgstr "Libera el Internet"
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"Support tools that break the chains of censorship and surveillance. <span "
+"class=\"text-secondary fw-bold\">Donate to the Tor Project today.</span>"
+msgstr ""
+"Apoya herramientas que rompen las cadenas de la censura y la vigilancia. "
+"<span class=\"text-secondary fw-bold\">Dona hoy mismo al Proyecto Tor.</span>"
+
+#. type: Content of: <div><div><div>
+#, fuzzy
+#| msgid ""
+#| "<a class=\"btn btn-secondary px-3 py-13 mt-md-3 rounded-1 fs-tiny fw-bold "
+#| "w-100 w-md-auto\" href=\"https://www.torproject.org/donate/donate-2025-"
+#| "banner-ts\">Donate now"
+msgid ""
+"<a class=\"btn btn-secondary px-3 py-13 mt-md-3 rounded-1 fs-tiny fw-bold "
+"w-100 w-md-auto\" href=\"https://www.torproject.org/donate/donate-2025-"
+"banner-ts\">Donate now [[!img lib/yec/heart.svg link=\"no\" alt=\"\" "
+"class=\"align-text-bottom ms-2\"]]</a>"
+msgstr ""
+"<a class=\"btn btn-secondary px-3 py-13 mt-md-3 rounded-1 fs-tiny fw-bold "
+"w-100 w-md-auto\" href=\"https://www.torproject.org/donate/donate-2025-"
+"banner-ts\">Dona ahora"
+
+#. type: Content of: <div>
+msgid ""
+"<label tabindex=\"0\" id=\"banner-close-label\" for=\"banner-close-button\" "
+"class=\"cursor-pointer position-absolute\" data-controller=\"label\" data-"
+"action=\"keydown-&gt;label#keydown\"></label> <input type=\"checkbox\" "
+"id=\"banner-close-button\"></input>"
+msgstr ""
+
+#~ msgid "Through December 31, your gift will be matched, up to $250,000!"
+#~ msgstr ""
+#~ "¡Hasta el 31 de diciembre, tu donación será igualada, hasta $250.000!"
+
+#~ msgid "<a id=\"donate-banner\" href=\"https://tails.net/donate/\">"
+#~ msgstr ""
+#~ "<a id=\"donate-banner\" href=\"https://tails.net/donate/index.es.html\">"
+
+#~ msgid ""
+#~ "Everyday, thousands of vulnerable people use Tails to control their "
+#~ "digital lives."
+#~ msgstr ""
+#~ "Cada día, miles de personas vulnerables utilizan Tails para controlar su "
+#~ "vida digital."
+
+#~ msgid "<u>Donate now</u> to fight surveillance and censorship!"
+#~ msgstr "¡<u>Dona ahora</u> para combatir la vigilancia y la censura!"
+
+#~ msgid "</a>"
+#~ msgstr "</a>"

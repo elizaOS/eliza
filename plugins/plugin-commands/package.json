@@ -1,0 +1,116 @@
+{
+	"name": "@elizaos/plugin-commands",
+	"version": "2.0.3-beta.14",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"sideEffects": false,
+	"description": "Chat command system for Eliza agents (/help, /status, /reset, etc.)",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/elizaos/eliza.git"
+	},
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"types": "./dist/index.d.ts",
+			"eliza-source": {
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
+			},
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./*.css": "./dist/*.css",
+		"./*": {
+			"types": "./dist/*.d.ts",
+			"eliza-source": {
+				"types": "./src/*.ts",
+				"import": "./src/*.ts",
+				"default": "./src/*.ts"
+			},
+			"import": "./dist/*.js",
+			"default": "./dist/*.js"
+		}
+	},
+	"files": [
+		"dist",
+		"auto-enable.ts"
+	],
+	"elizaos": {
+		"plugin": {
+			"autoEnableModule": "./auto-enable.ts",
+			"capabilities": [
+				"chat-commands"
+			]
+		}
+	},
+	"dependencies": {
+		"@elizaos/core": "workspace:*"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.14",
+		"@types/bun": "^1.2.22",
+		"@types/node": "^24.5.2",
+		"typescript": "^6.0.3",
+		"vitest": "^4.0.18"
+	},
+	"scripts": {
+		"build": "bun run build.ts && tsc --emitDeclarationOnly",
+		"dev": "bun --hot build.ts",
+		"test": "vitest run",
+		"clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+		"format": "bunx @biomejs/biome format --write .",
+		"format:check": "bunx @biomejs/biome format .",
+		"lint": "bunx @biomejs/biome check --write --unsafe .",
+		"lint:check": "bunx @biomejs/biome check .",
+		"typecheck": "tsgo --noEmit"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"agentConfig": {
+		"pluginType": "elizaos:plugin:1.0.0",
+		"pluginParameters": {
+			"COMMANDS_CONFIG_ENABLED": {
+				"type": "boolean",
+				"description": "Enable /config command",
+				"required": false,
+				"default": "false",
+				"sensitive": false
+			},
+			"COMMANDS_DEBUG_ENABLED": {
+				"type": "boolean",
+				"description": "Enable /debug command",
+				"required": false,
+				"default": "false",
+				"sensitive": false
+			},
+			"COMMANDS_BASH_ENABLED": {
+				"type": "boolean",
+				"description": "Enable /bash command (elevated)",
+				"required": false,
+				"default": "false",
+				"sensitive": false
+			},
+			"COMMANDS_RESTART_ENABLED": {
+				"type": "boolean",
+				"description": "Enable /restart command",
+				"required": false,
+				"default": "true",
+				"sensitive": false
+			}
+		}
+	},
+	"eliza": {
+		"platforms": [
+			"node"
+		],
+		"runtime": "node",
+		"platformDetails": {
+			"node": "Default export (Node.js)"
+		}
+	}
+}

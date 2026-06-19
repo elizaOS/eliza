@@ -1,0 +1,30 @@
+id: swap_usdc_usdt
+level: 1
+name: USDC to USDT Swap
+description: 'Level 1 protocol interaction: USDC to USDT Swap'
+category: swap
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 10.0
+    tokens:
+      USDC: 1000
+      BONK: 10000000
+  pools:
+  - type: orca_whirlpool
+    token_a: USDC
+    token_b: USDT
+    liquidity: 1000000
+    price: 1.0
+tasks:
+- id: task_swap_usdc_usdt
+  type: swap
+  parameters:
+    from: USDC
+    to: USDT
+    amount: 10
+  timeout_ms: 30000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

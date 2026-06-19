@@ -1,0 +1,115 @@
+import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
+import { creditTransactionsRepository } from "../../../db/repositories/credit-transactions";
+import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
+import { containersEnv } from "../../config/containers-env";
+import { logger } from "../../utils/logger";
+import { creditsService } from "../credits";
+import { elizaSandboxService } from "../eliza-sandbox";
+import { provisioningJobService } from "../provisioning-jobs";
+
+const DEFAULT_AGENT_NAME = "Eliza";
+// Use the canonical managed-agent image so the daemon pulls from ghcr.io
+// (the source of truth), not Docker Hub where the image does not exist.
+// A bare name like "elizaos/eliza:latest" causes Docker to resolve against
+// docker.io, producing an "unauthorized" / "pull access denied" error.
+const DEFAULT_DOCKER_IMAGE = containersEnv.defaultAgentImage();
+const ELIZA_APP_INITIAL_CREDITS = 5.0;
+
+export interface ElizaAppProvisioningStatus {
+  status: string;
+  agentId: string | null;
+  bridgeUrl: string | null;
+  sandbox: AgentSandbox | null;
+}
+
+export function toElizaAppProvisioningStatus(
+  sandbox: Pick<AgentSandbox, "id" | "status" | "bridge_url"> | null | undefined,
+): ElizaAppProvisioningStatus {
+  if (!sandbox) {
+    return {
+      status: "none",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    };
+  }
+
+  return {
+    status: sandbox.status,
+    agentId: sandbox.id,
+    bridgeUrl: sandbox.status === "running" ? (sandbox.bridge_url ?? null) : null,
+    sandbox: sandbox as AgentSandbox,
+  };
+}
+
+export function publicElizaAppProvisioningPayload(status: ElizaAppProvisioningStatus) {
+  return {
+    status: status.status,
+    ...(status.agentId ? { agentId: status.agentId } : {}),
+    ...(status.bridgeUrl ? { bridgeUrl: status.bridgeUrl } : {}),
+  };
+}
+
+export async function getElizaAppProvisioningStatus(
+  organizationId: string,
+): Promise<ElizaAppProvisioningStatus> {
+  const sandboxes = await agentSandboxesRepository.listByOrganization(organizationId);
+  return toElizaAppProvisioningStatus(sandboxes[0]);
+}
+
+async function ensureElizaAppStarterCredits(params: {
+  organizationId: string;
+  userId: string;
+}): Promise<void> {
+  if (ELIZA_APP_INITIAL_CREDITS <= 0) return;
+
+  const hasStarterCredits = await creditTransactionsRepository.hasElizaAppInitialFreeCredits(
+    params.organizationId,
+  );
+  if (hasStarterCredits) return;
+
+  await creditsService.addCredits({
+    organizationId: params.organizationId,
+    amount: ELIZA_APP_INITIAL_CREDITS,
+    description: "Eliza App - Welcome bonus",
+    metadata: {
+      type: "initial_free_credits",
+      source: "eliza-app-onboarding",
+      userId: params.userId,
+    },
+    stripePaymentIntentId: `eliza-app-initial-free-credits:${params.organizationId}`,
+  });
+}
+
+export async function ensureElizaAppProvisioning(params: {
+  organizationId: string;
+  userId: string;
+}): Promise<ElizaAppProvisioningStatus> {
+  await ensureElizaAppStarterCredits(params);
+
+  const existing = await getElizaAppProvisioningStatus(params.organizationId);
+  if (existing.sandbox) {
+    return existing;
+  }
+
+  const sandbox = await elizaSandboxService.createAgent({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    agentName: DEFAULT_AGENT_NAME,
+    dockerImage: DEFAULT_DOCKER_IMAGE,
+  });
+
+  await provisioningJobService.enqueueAgentProvision({
+    agentId: sandbox.id,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    agentName: DEFAULT_AGENT_NAME,
+  });
+
+  logger.info("[eliza-app provisioning] Provisioning kicked off", {
+    agentId: sandbox.id,
+    orgId: params.organizationId,
+  });
+
+  return toElizaAppProvisioningStatus(sandbox);
+}

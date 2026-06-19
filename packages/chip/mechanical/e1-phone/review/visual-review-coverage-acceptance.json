@@ -1,0 +1,243 @@
+{
+  "claim_boundary": "Automated CAD visual review coverage acceptance; proves required render coverage, image nonblank checks, per-part top-view and exploded-context contact-sheet coverage, and recorded CAD visual decisions. It is not CMF lock or human industrial-design signoff.",
+  "status": "visual_review_coverage_acceptance_pass",
+  "automated_visual_coverage_ready": true,
+  "production_visual_signoff_ready": false,
+  "expected_view_count": 12,
+  "complete_view_count": 12,
+  "expected_visual_gate_count": 6,
+  "passing_visual_gate_count": 6,
+  "view_cases": [
+    {
+      "view": "full_front_iso.png",
+      "purpose": "front silhouette, orange side rail, black glass stack",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.05589
+    },
+    {
+      "view": "full_back_iso.png",
+      "purpose": "rear orange shell, camera window, and service features",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.05905
+    },
+    {
+      "view": "rear_feature_detail.png",
+      "purpose": "rear camera window, SIM edge, and service-label recess",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.11031
+    },
+    {
+      "view": "full_left_side.png",
+      "purpose": "left-side button protrusion and shell depth",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.03311
+    },
+    {
+      "view": "full_bottom_port.png",
+      "purpose": "USB-C, speaker grille, and microphone apertures",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.02453
+    },
+    {
+      "view": "full_top_down.png",
+      "purpose": "compact footprint, screen margin, buttons, and front features",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.11012
+    },
+    {
+      "view": "exploded_iso.png",
+      "purpose": "glass, display, shell, and component stack separation",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.07825
+    },
+    {
+      "view": "component_stack.png",
+      "purpose": "PCB, battery, camera, audio, haptic, and I/O placement",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.08534
+    },
+    {
+      "view": "component-review-audio.png",
+      "purpose": "speaker, earpiece, microphone, acoustic mesh, and port packaging",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.05649
+    },
+    {
+      "view": "component-review-io-buttons.png",
+      "purpose": "USB-C, side buttons, seals, and tactile actuation packaging",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.04622
+    },
+    {
+      "view": "component-review-optical.png",
+      "purpose": "front/rear cameras, flash, baffles, cover windows, and optical seals",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.05625
+    },
+    {
+      "view": "mold_tooling.png",
+      "purpose": "parting plane, runner, gate, ejector, and cooling placeholders",
+      "pass": true,
+      "size": [
+        1350,
+        1650
+      ],
+      "channel_spans": [
+        255,
+        255,
+        255
+      ],
+      "nonwhite_pixel_ratio": 0.04154
+    }
+  ],
+  "part_review_case": {
+    "part_count": 258,
+    "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
+    "contact_sheet_pass": true,
+    "exploded_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
+    "exploded_contact_sheet_pass": true,
+    "pass": true
+  },
+  "part_visual_coverage_case": {
+    "status": "part_visual_coverage_pass",
+    "expected_part_count": 258,
+    "covered_part_count": 258,
+    "missing_or_incomplete_part_count": 0,
+    "pass": true
+  },
+  "visual_gate_cases": [
+    {
+      "id": "black_glass_front_visible",
+      "pass": true
+    },
+    {
+      "id": "compact_screen_margin",
+      "pass": true
+    },
+    {
+      "id": "component_family_detail_views",
+      "pass": true
+    },
+    {
+      "id": "component_stack_visible",
+      "pass": true
+    },
+    {
+      "id": "expected_review_view_coverage",
+      "pass": true
+    },
+    {
+      "id": "hard_orange_shell_visible",
+      "pass": true
+    }
+  ],
+  "visual_decision_case": {
+    "status": "pass",
+    "automated_visual_status": "automated_visual_coverage_pass",
+    "manual_visual_signoff_status": "blocked_manual_visual_review_open",
+    "production_visual_signoff_ready": false,
+    "decision_count": 7,
+    "open_manual_review_count": 5,
+    "pass": true
+  },
+  "release_rule": "Every required full-object, detail, exploded, component, tooling, and per-part review artifact must be generated, pass pixel/contact-sheet checks, every CAD part must map to at least one generated review view plus the per-part top-view and exploded-context contact sheets, and the views must be covered by a recorded CAD visual/design decision before automated visual coverage is accepted. Production visual/CMF signoff remains blocked until manual review items are closed."
+}

@@ -1,0 +1,28 @@
+// Soong module for the elizaOS System Bridge privileged system app.
+//
+// The product makefile (vendor/eliza/eliza_common.mk) lists "ElizaSystemBridge"
+// in PRODUCT_PACKAGES; without this module `m` fails with "module not defined".
+//
+// certificate: "platform" + privileged: true install the APK into
+// /system/priv-app/ signed with the platform key, which is what makes the
+// signature-level controls in SystemBridge.kt (REBOOT, DEVICE_POWER,
+// WRITE_SECURE_SETTINGS) resolvable through
+// privapp-permissions-ai.elizaos.system.bridge.xml.
+android_app {
+    name: "ElizaSystemBridge",
+    srcs: ["src/main/java/**/*.kt"],
+    manifest: "src/main/AndroidManifest.xml",
+    sdk_version: "system_current",
+    certificate: "platform",
+    privileged: true,
+    static_libs: [
+        "androidx.core_core-ktx",
+        "androidx.webkit_webkit",
+    ],
+    optimize: {
+        enabled: false,
+    },
+    dex_preopt: {
+        enabled: false,
+    },
+}

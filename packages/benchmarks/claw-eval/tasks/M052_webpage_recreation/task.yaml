@@ -1,0 +1,49 @@
+task_id: M052_webpage_recreation
+task_name: Webpage Recreation from Image
+version: "1.0"
+category: webpage_generation
+difficulty: hard
+tags: [multimodal]
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/image.png
+
+    Please view the image and complete the following task:
+
+    Recreate this webpage in HTML based on the provided image, ensuring the layout, styling, and visual details closely match the original. Render the generated HTML as an image and save as /workspace/output.png.
+  language: en
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/image.png
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/output.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Read the image using sandbox_read_media, then write an HTML file that recreates the webpage.
+  Use Playwright (already installed) to render the HTML and take a screenshot saved as /workspace/output.png.
+  The page has: top nav bar (Claw Eval logo, Home/Tasks/Architecture/Blog links, GitHub button),
+  title "Task Browser" (black + blue), descriptive subtitle, General/Multimodal filter pills,
+  search input, and a 4-column grid of 16 task cards with task ID, title, language tag (ZH/EN),
+  category tag (communication/productivity/finance/knowledge), and description text.
+
+primary_dimensions:
+  - completion
+  - robustness

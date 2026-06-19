@@ -1,0 +1,15 @@
+# The systemd user and system instances don't share units. So, we have
+# the *system* htpdate.service create a file upon success -- and this
+# *user* unit file wait for that file to appear.
+
+[Unit]
+Description=Wait for htpdate to have succeeded
+ConditionUser=1000
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'until test -e /run/htpdate/success; do /bin/sleep 1; done'
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=desktop.target

@@ -1,0 +1,957 @@
+import path from "node:path";
+import type { Plugin } from "vite";
+
+/**
+ * Names of exported functions that carry their own `.native` sub-function
+ * (Node's `fs.realpath` / `fs.realpathSync`). graceful-fs / fs-extra read
+ * `fs.realpath.native` unconditionally at module-eval, so the browser stub
+ * must reproduce that shape.
+ */
+function exportNamesWithNative(
+  realModule: Record<string, unknown> | null,
+  exportNames: string[],
+): string[] {
+  if (!realModule) return [];
+  return exportNames.filter((name) => {
+    if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) return false;
+    const val = realModule[name];
+    return (
+      typeof val === "function" &&
+      typeof (val as { native?: unknown }).native === "function"
+    );
+  });
+}
+
+/**
+ * Generate a virtual ESM module that stubs all exports of a Node built-in.
+ * We `require()` the real module at Vite config time (Node process), read its
+ * export names, and emit matching no-op stubs so esbuild's static import
+ * analysis succeeds.  At runtime these stubs are never meaningfully called
+ * because the server-only code paths that use them are never executed in the
+ * browser.
+ */
+export function generateNodeBuiltinStub(
+  moduleId: string,
+  req: NodeRequire,
+): string {
+  const bareModule = moduleId.replace(/^node:/, "");
+  if (bareModule === "process" || bareModule === "process/browser") {
+    return [
+      "const fallbackProcess = {",
+      "  env: { NODE_ENV: 'development' },",
+      "  argv: [],",
+      "  execArgv: [],",
+      "  cwd: () => '/',",
+      "  platform: 'browser',",
+      "  version: 'v0.0.0',",
+      "  versions: {},",
+      "  nextTick: (cb, ...args) => Promise.resolve().then(() => cb(...args)),",
+      "  stdout: { write: () => {} },",
+      "  stderr: { write: () => {} },",
+      "  pid: 0,",
+      "  title: 'browser',",
+      "  browser: true,",
+      "  exit: () => {},",
+      "  on: function() { return this; },",
+      "  off: function() { return this; },",
+      "  once: function() { return this; },",
+      "  emit: () => false,",
+      "};",
+      "const processRef = globalThis.process && typeof globalThis.process === 'object' ? globalThis.process : fallbackProcess;",
+      "if (!Array.isArray(processRef.argv)) processRef.argv = [];",
+      "if (!Array.isArray(processRef.execArgv)) processRef.execArgv = [];",
+      "processRef.env ||= fallbackProcess.env;",
+      "processRef.cwd ||= fallbackProcess.cwd;",
+      "processRef.nextTick ||= fallbackProcess.nextTick;",
+      "processRef.stdout ||= fallbackProcess.stdout;",
+      "processRef.stderr ||= fallbackProcess.stderr;",
+      "processRef.on ||= fallbackProcess.on;",
+      "processRef.off ||= fallbackProcess.off;",
+      "processRef.once ||= fallbackProcess.once;",
+      "processRef.emit ||= fallbackProcess.emit;",
+      "globalThis.process = processRef;",
+      "export default processRef;",
+      "export const env = processRef.env;",
+      "export const argv = processRef.argv;",
+      "export const execArgv = processRef.execArgv;",
+      "export const cwd = processRef.cwd;",
+      "export const platform = processRef.platform || 'browser';",
+      "export const version = processRef.version || 'v0.0.0';",
+      "export const versions = processRef.versions || {};",
+      "export const nextTick = processRef.nextTick;",
+      "export const stdout = processRef.stdout;",
+      "export const stderr = processRef.stderr;",
+      "export const pid = processRef.pid || 0;",
+      "export const browser = processRef.browser !== false;",
+      "export const exit = processRef.exit;",
+      "export const on = processRef.on;",
+      "export const off = processRef.off;",
+      "export const once = processRef.once;",
+      "export const emit = processRef.emit;",
+    ].join("\n");
+  }
+  let realModule: Record<string, unknown> | null = null;
+  let exportNames: string[] = [];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    realModule = req(bareModule) as Record<string, unknown>;
+    exportNames = Object.keys(realModule).filter(
+      (k) => !k.startsWith("_") && k !== "default",
+    );
+  } catch {
+    // Module not available (e.g. dns/promises on some platforms)
+  }
+
+  // Functions on the real module that carry a `.native` sub-function
+  // (fs.realpath / fs.realpathSync). graceful-fs does
+  // `clone(require('fs'))` — clone() copies via Object.getOwnPropertyNames,
+  // so the proxy target must expose these as OWN enumerable properties or the
+  // clone drops them, leaving `fs.realpath` undefined and throwing
+  // `Cannot read properties of undefined (reading 'native')` at module-eval.
+  const nativeBearing = exportNamesWithNative(realModule, exportNames);
+  const baseLines = nativeBearing.map(
+    (name) =>
+      `base[${JSON.stringify(name)}] = (function ${name}() {}); base[${JSON.stringify(name)}].native = function native() {};`,
+  );
+  const lines = [
+    // noop: returns itself (for chained calls like createRequire(url)(id)),
+    // and is a valid class base (so `class X extends noop` works).
+    "function noop() { return noop; }",
+    "const asyncNoop = () => Promise.resolve();",
+    // The proxy target. Own properties survive Object.getOwnPropertyNames-based
+    // cloning (graceful-fs); unknown property reads still fall back to noop.
+    "const base = {};",
+    ...baseLines,
+    "const handler = { get(t, p) { if (p === 'prototype' || p === 'name' || p === 'length' || typeof p === 'symbol') return Reflect.get(t, p); if (p === '__esModule') return true; if (p === 'default') return t; const own = Reflect.get(t, p); return own !== undefined ? own : noop; }, has() { return true; }, ownKeys(t) { return Reflect.ownKeys(t); }, getOwnPropertyDescriptor(t, p) { return Reflect.getOwnPropertyDescriptor(t, p) ?? { configurable: true, enumerable: true, writable: true, value: noop }; } };",
+    "const stub = new Proxy(base, handler);",
+    "export default stub;",
+  ];
+
+  const reserved = new Set([
+    "default",
+    "arguments",
+    "eval",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "delete",
+    "do",
+    "else",
+    "export",
+    "extends",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "let",
+    "new",
+    "return",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+  ]);
+
+  for (const name of exportNames) {
+    if (reserved.has(name)) continue;
+    // Validate it's a valid JS identifier
+    if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) continue;
+
+    const val = realModule?.[name];
+    if (typeof val === "function") {
+      if (
+        /^[A-Z]/.test(name) &&
+        val.prototype &&
+        Object.getOwnPropertyNames(val.prototype).length > 1
+      ) {
+        lines.push(`export class ${name} { constructor() {} }`);
+      } else if (typeof (val as { native?: unknown }).native === "function") {
+        // Already materialized on `base` (with a `.native` sub-fn) above so the
+        // graceful-fs clone keeps it. Re-export the same object by name so the
+        // namespace and the default-export clone agree.
+        lines.push(
+          `const ${name} = base[${JSON.stringify(name)}]; export { ${name} };`,
+        );
+      } else {
+        lines.push(`export const ${name} = noop;`);
+      }
+    } else if (typeof val === "object" && val !== null) {
+      lines.push(`export const ${name} = new Proxy({}, handler);`);
+    } else if (typeof val === "string") {
+      lines.push(`export const ${name} = ${JSON.stringify(val)};`);
+    } else if (typeof val === "number" || typeof val === "boolean") {
+      lines.push(`export const ${name} = ${val};`);
+    } else {
+      lines.push(`export const ${name} = undefined;`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Dev-mode plugin that stubs native-only packages.  In production builds
+ * rollupOptions.external handles this, but the Vite dev server still tries
+ * to resolve + serve excluded deps.  This plugin intercepts the import at
+ * the resolveId stage and returns an empty virtual module so Vite never
+ * touches the real CJS files (which fail ESM named-export checks).
+ */
+export interface NativeModuleStubPluginOptions {
+  isCapacitorMobileBuild: boolean;
+  requireModule: NodeRequire;
+}
+
+export function nativeModuleStubPlugin(
+  options: NativeModuleStubPluginOptions,
+): Plugin {
+  const { isCapacitorMobileBuild, requireModule } = options;
+  const VIRTUAL_PREFIX = "\0native-stub:";
+  // Packages that only run on the server / desktop and must never be
+  // parsed by Vite's dev pipeline.
+  const nativePackages = new Set([
+    "node-llama-cpp",
+    "fs-extra",
+    "pty-state-capture",
+    "pty-console",
+    "electron",
+    "undici",
+    // Image native bindings — never load in the renderer; if a server-only
+    // import leaks into the client graph, stub instead of bundling sharp.js.
+    "sharp",
+    // Browser automation is server-only. If a mixed entrypoint leaks one of
+    // these packages into the renderer graph, stub it instead of letting Vite
+    // prebundle proxy-agent and other Node-only HTTP deps for the browser.
+    "puppeteer-core",
+    "@puppeteer/browsers",
+    // Server-only plugins statically imported from the @elizaos/agent runtime.
+    // Their exports maps nest browser/node conditional exports that Vite 6's
+    // commonjs--resolver cannot walk. Stubbing returns an empty Proxy virtual
+    // module so the browser bundle never tries to execute server-only code.
+    "@elizaos/plugin-local-inference",
+    "@elizaos/plugin-anthropic",
+    "@elizaos/plugin-pdf",
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-agent-skills",
+    "@elizaos/plugin-agent-orchestrator",
+    "@elizaos/plugin-signal",
+    "@elizaos/plugin-telegram",
+    "@elizaos/plugin-whatsapp",
+    // Node-only edge-tts backend. app-core's runtime/ensure-text-to-speech-handler.ts
+    // does `await import("@elizaos/plugin-edge-tts")`; the dist barrel pulls that
+    // module into the client graph where it must be stubbed (no browser TTS path).
+    "@elizaos/plugin-edge-tts",
+    // The cloud plugin's runtime surface (cloud secrets, TTS routes,
+    // ElevenLabs key resolver) is server-only. The app-core dist barrel
+    // re-exports symbols from it via api/server.js — stub the bare
+    // specifier so rollup's static named-import scan succeeds.
+    "@elizaos/plugin-elizacloud",
+    // Plugin registry owns server-side install/discovery HTTP handlers.
+    // app-core's browser reach-through re-exports api/server.ts, so the
+    // renderer must resolve the symbol surface without bundling the server
+    // registry package and its agent-only dependency graph.
+    "@elizaos/plugin-registry",
+    // Vault is server/native-only; browser reaches it through optional
+    // autofill paths and must not resolve the OS-keychain dependency graph.
+    "@elizaos/vault",
+    // Native argon2 bindings (server-side password hashing in
+    // app-core/api/auth/passwords.ts). Pulled into the browser graph
+    // through the dist-barrel re-export. The `*-wasm32-wasi` sibling is
+    // re-exported from argon2's own browser.js — also stub it so rollup
+    // doesn't try to resolve a wasm shim package we don't ship.
+    "@node-rs/argon2",
+    "@node-rs/argon2-wasm32-wasi",
+    "@protobufjs/inquire",
+    // Node-only ANSI colour helpers used by terminal/theme. The shared
+    // barrel re-exports terminal/theme so any browser consumer that
+    // imports from `@elizaos/shared` indirectly pulls chalk's bare ESM
+    // specifier into the output bundle.
+    "chalk",
+    "drizzle-orm",
+  ]);
+  if (!isCapacitorMobileBuild) {
+    // Mobile-only Capacitor llama.cpp runtime. Web/Electrobun builds stub it,
+    // but iOS/Android builds must ship its JS bridge so the native plugin can
+    // register through @capacitor/core.
+    nativePackages.add("llama-cpp-capacitor");
+  }
+  const nativeScopeRe = /^@node-llama-cpp\//;
+  // Capacitor native plugins — mobile-only, must never run in the browser.
+  // Stubbing prevents Rollup from failing when bun workspaces don't hoist them.
+  const capacitorNativeScopeRe = /^@capacitor\/(?!core)(.+)$/;
+
+  return {
+    name: "native-module-stub",
+    enforce: "pre",
+    resolveId(id) {
+      // Intercept ALL node: builtins before Vite externalizes them.
+      // The @elizaos/core node entry uses many Node APIs (crypto, fs, module,
+      // etc.) at the top level.  Rather than stubbing each one individually,
+      // we return a Proxy-based virtual module for any node: import.
+      if (id.startsWith("node:")) return VIRTUAL_PREFIX + id;
+      // Also catch bare imports of Node builtins that get resolved differently
+      const nodeBuiltins = new Set([
+        "module",
+        "crypto",
+        "fs",
+        "path",
+        "os",
+        "url",
+        "util",
+        "stream",
+        "http",
+        "https",
+        "net",
+        "tls",
+        "zlib",
+        "child_process",
+        "worker_threads",
+        "perf_hooks",
+        "async_hooks",
+        "dns",
+        "dgram",
+        "readline",
+        "tty",
+        "cluster",
+        "v8",
+        "vm",
+        "assert",
+        "buffer",
+        "constants",
+        "events",
+        "string_decoder",
+        "querystring",
+        "punycode",
+        "process",
+      ]);
+      if (nodeBuiltins.has(id) || nodeBuiltins.has(id.split("/")[0]))
+        return `${VIRTUAL_PREFIX}node:${id}`;
+      const bare = id.startsWith("@")
+        ? id.split("/").slice(0, 2).join("/")
+        : id.split("/")[0];
+      // Scoped: @node-llama-cpp/*
+      if (nativeScopeRe.test(id)) return VIRTUAL_PREFIX + id;
+      // Capacitor native plugins (@capacitor/* except @capacitor/core)
+      if (capacitorNativeScopeRe.test(id) && !isCapacitorMobileBuild) {
+        return VIRTUAL_PREFIX + id;
+      }
+      // sharp's optional platform packages (@img/sharp-wasm32, etc.)
+      if (
+        id.startsWith("@img/sharp") ||
+        id.replace(/\\/g, "/").includes("/@img/sharp")
+      )
+        return VIRTUAL_PREFIX + id;
+      // @napi-rs/keyring + optional platform packs (@napi-rs/keyring-darwin-arm64, …).
+      // Vite dependency optimization tries to parse .node binaries as UTF-8 and crashes.
+      if (
+        /^@napi-rs\/keyring/.test(id) ||
+        id.replace(/\\/g, "/").includes("/@napi-rs/keyring")
+      ) {
+        return `${VIRTUAL_PREFIX}@napi-rs/keyring`;
+      }
+      // Exact or sub-path match against native packages
+      if (nativePackages.has(bare)) return VIRTUAL_PREFIX + id;
+      return null;
+    },
+    load(id) {
+      if (!id.startsWith(VIRTUAL_PREFIX)) return null;
+
+      const strippedId = id.slice(VIRTUAL_PREFIX.length);
+      const modName = strippedId.split("/")[0];
+      // node-llama-cpp is the most import-heavy native module — its consumers
+      // use many named exports (LlamaLogLevel, getLlama, etc.).  Return a
+      // module whose default export is a Proxy that returns no-op stubs for
+      // any property access, AND re-export that proxy as every known name so
+      // static `import { X }` statements resolve without error.
+      if (modName === "node-llama-cpp") {
+        return [
+          "const handler = { get: (_, p) => (p === Symbol.toPrimitive ? () => 0 : typeof p === 'string' ? (() => {}) : undefined) };",
+          "const stub = new Proxy({}, handler);",
+          "export default stub;",
+          // Known named exports used by @elizaos/plugin-local-inference and
+          // other consumers — extend as needed:
+          "export const getLlama = () => Promise.resolve(stub);",
+          "export const LlamaLogLevel = Object.freeze({ error: 0, warn: 1, info: 2, debug: 3 });",
+          "export const Llama = stub;",
+          "export const LlamaModel = stub;",
+          "export const LlamaEmbeddingContext = stub;",
+          "export const LlamaContext = stub;",
+          "export const LlamaChatSession = stub;",
+          "export const LlamaGrammar = stub;",
+          "export const LlamaJsonSchemaGrammar = stub;",
+        ].join("\n");
+      }
+
+      // fs-extra: CJS module with default + named exports
+      if (modName === "fs-extra") {
+        return [
+          "const noop = () => {};",
+          "const stub = new Proxy({}, { get: () => noop });",
+          "export default stub;",
+          // Re-export common fs-extra named exports so static imports work:
+          ...[
+            "copy",
+            "copySync",
+            "move",
+            "moveSync",
+            "remove",
+            "removeSync",
+            "ensureDir",
+            "ensureDirSync",
+            "ensureFile",
+            "ensureFileSync",
+            "mkdirs",
+            "mkdirsSync",
+            "readJson",
+            "readJsonSync",
+            "writeJson",
+            "writeJsonSync",
+            "pathExists",
+            "pathExistsSync",
+            "outputFile",
+            "outputFileSync",
+            "outputJson",
+            "outputJsonSync",
+            "emptyDir",
+            "emptyDirSync",
+          ].map((n) => `export const ${n} = noop;`),
+        ].join("\n");
+      }
+
+      // events: CJS module, consumers use `import { EventEmitter } from "events"`
+      if (modName === "events") {
+        return [
+          "function EventEmitter() {}",
+          "EventEmitter.prototype.on = function() { return this; };",
+          "EventEmitter.prototype.off = function() { return this; };",
+          "EventEmitter.prototype.emit = function() { return false; };",
+          "EventEmitter.prototype.addListener = EventEmitter.prototype.on;",
+          "EventEmitter.prototype.removeListener = EventEmitter.prototype.off;",
+          "export { EventEmitter };",
+          "export default EventEmitter;",
+        ].join("\n");
+      }
+
+      // undici: Node HTTP client — re-export browser globals (fetch, WebSocket, etc.)
+      if (modName === "undici") {
+        return [
+          "export const fetch = globalThis.fetch;",
+          "export const Request = globalThis.Request;",
+          "export const Response = globalThis.Response;",
+          "export const Headers = globalThis.Headers;",
+          "export const FormData = globalThis.FormData;",
+          "export const WebSocket = globalThis.WebSocket;",
+          "export const EventSource = globalThis.EventSource || class {};",
+          "export const AbortController = globalThis.AbortController;",
+          "export const File = globalThis.File;",
+          "export const Blob = globalThis.Blob;",
+          "export class Agent {}",
+          "export class Pool {}",
+          "export class Client {}",
+          "export class Dispatcher {}",
+          "export const setGlobalDispatcher = () => {};",
+          "export const getGlobalDispatcher = () => ({});",
+          "export default { fetch, Request, Response, Headers, WebSocket };",
+        ].join("\n");
+      }
+
+      // async_hooks — AsyncLocalStorage must be a real constructor because
+      // @elizaos packages do `new AsyncLocalStorage()` at the
+      // top level. Uses function-constructor syntax (not class expressions)
+      // for maximum WebView compatibility. The renderChunk plugin
+      // (asyncLocalStoragePatchPlugin) also patches the final bundle output
+      // as a safety net for patterns inlined by Rollup.
+      if (modName === "node:async_hooks" || modName === "async_hooks") {
+        return [
+          "function AsyncLocalStorage() {} AsyncLocalStorage.prototype.getStore = function() { return undefined; }; AsyncLocalStorage.prototype.run = function(store, fn) { return fn.apply(void 0, [].slice.call(arguments, 2)); }; AsyncLocalStorage.prototype.enterWith = function() {}; AsyncLocalStorage.prototype.disable = function() {};",
+          "export { AsyncLocalStorage };",
+          "export function executionAsyncId() { return 0; }",
+          "export function triggerAsyncId() { return 0; }",
+          "export function executionAsyncResource() { return {}; }",
+          "function AsyncResource() {} AsyncResource.prototype.runInAsyncScope = function(fn) { return fn.apply(void 0, [].slice.call(arguments, 1)); }; AsyncResource.prototype.emitDestroy = function() { return this; }; AsyncResource.prototype.asyncId = function() { return 0; }; AsyncResource.prototype.triggerAsyncId = function() { return 0; };",
+          "export { AsyncResource };",
+          "export function createHook() { return { enable: function(){}, disable: function(){} }; }",
+          "export default { AsyncLocalStorage: AsyncLocalStorage, AsyncResource: AsyncResource, executionAsyncId: executionAsyncId, triggerAsyncId: triggerAsyncId, executionAsyncResource: executionAsyncResource, createHook: createHook };",
+        ].join("\n");
+      }
+
+      // node:* builtins — return a Proxy-based module that provides any
+      // named export as a no-op function.  This handles @elizaos/core's node
+      // entry which uses createRequire, randomUUID, fs, etc. at the top level.
+      if (modName.startsWith("node:")) {
+        // Dynamic: read the real Node module's export names at config time
+        // and generate matching no-op stubs so esbuild's static analysis passes.
+        return generateNodeBuiltinStub(
+          id.slice(VIRTUAL_PREFIX.length),
+          requireModule,
+        );
+      }
+
+      if (strippedId === "@napi-rs/keyring") {
+        return [
+          "// Stub: real binding is native-only (@elizaos/vault master key / OS keychain).",
+          "export class Entry {",
+          "  constructor(_service, _account) {}",
+          '  getPassword() { return ""; }',
+          "  setPassword() {",
+          "    throw new Error(",
+          '      "OS keychain is unavailable in the browser/renderer build."',
+          "    );",
+          "  }",
+          "}",
+        ].join("\n");
+      }
+
+      // libvips native / wasm bindings — only used server-side for LifeOps screen sampling
+      if (
+        strippedId === "sharp" ||
+        strippedId.startsWith("sharp/") ||
+        strippedId.startsWith("@img/sharp")
+      ) {
+        return [
+          "function mk() {",
+          "  const c = {",
+          "    rotate() { return c; },",
+          "    resize() { return c; },",
+          "    greyscale() { return c; },",
+          "    png() { return c; },",
+          "    jpeg() { return c; },",
+          "    async toBuffer() { return new Uint8Array(0); },",
+          "    async raw() { return { data: new Uint8Array(0), info: { width: 1, height: 1, channels: 1 } }; },",
+          "  };",
+          "  return c;",
+          "}",
+          "export default function sharp() { return mk(); }",
+        ].join("\n");
+      }
+
+      if (strippedId === "@elizaos/plugin-sql") {
+        return [
+          "const handler = { get: () => table, apply: () => table };",
+          "const table = new Proxy(function table() {}, handler);",
+          ...[
+            "agentTable",
+            "approvalRequestTable",
+            "authAuditEventTable",
+            "authBootstrapJtiSeenTable",
+            "authIdentityCreatedAtDefault",
+            "authIdentityTable",
+            "authOwnerBindingTable",
+            "authOwnerLoginTokenTable",
+            "authSessionTable",
+            "cacheTable",
+            "channelTable",
+            "channelParticipantsTable",
+            "componentTable",
+            "embeddingTable",
+            "entityTable",
+            "entityIdentityTable",
+            "entityMergeCandidateTable",
+            "factCandidateTable",
+            "logTable",
+            "longTermMemories",
+            "memoryTable",
+            "memoryAccessLogs",
+            "messageTable",
+            "messageServerTable",
+            "messageServerAgentsTable",
+            "pairingAllowlistTable",
+            "pairingRequestTable",
+            "participantTable",
+            "relationshipTable",
+            "roomTable",
+            "serverTable",
+            "sessionSummaries",
+            "taskTable",
+            "worldTable",
+          ].map((name) => `export const ${name} = table;`),
+          ...[
+            "and",
+            "asc",
+            "count",
+            "desc",
+            "eq",
+            "gt",
+            "gte",
+            "inArray",
+            "isNull",
+            "lt",
+            "lte",
+            "ne",
+            "or",
+            "sql",
+          ].map((name) => `export const ${name} = table;`),
+          "export const schema = table;",
+          "export default table;",
+        ].join("\n");
+      }
+
+      if (
+        strippedId === "@node-rs/argon2" ||
+        strippedId === "@node-rs/argon2-wasm32-wasi"
+      ) {
+        // Argon2 hashing is server-only; the renderer pulls in
+        // app-core's auth passwords module via the dist barrel re-export.
+        // The argon2 package's own browser.js re-exports from
+        // `@node-rs/argon2-wasm32-wasi`, so stub both with the same shape.
+        return [
+          "const serverOnly = () => { throw new Error('@node-rs/argon2 is server-only'); };",
+          "export const hash = async () => { serverOnly(); };",
+          "export const verify = async () => false;",
+          "export const Algorithm = Object.freeze({ Argon2d: 0, Argon2i: 1, Argon2id: 2 });",
+          "export const Version = Object.freeze({ V0x10: 0x10, V0x13: 0x13 });",
+          "export default { hash, verify, Algorithm, Version };",
+        ].join("\n");
+      }
+
+      if (strippedId === "@elizaos/vault") {
+        return [
+          "const asyncNull = async () => null;",
+          "const asyncFalse = async () => false;",
+          "const vault = {",
+          "  getSecret: asyncNull,",
+          "  setSecret: async () => undefined,",
+          "  deleteSecret: async () => undefined,",
+          "  listSecrets: async () => [],",
+          "};",
+          "export const createManager = () => ({ vault });",
+          "export const getAutofillAllowed = asyncFalse;",
+          "export const getSavedLogin = asyncNull;",
+          "export const listSavedLogins = async () => [];",
+          "export default { createManager, getAutofillAllowed, getSavedLogin, listSavedLogins };",
+        ].join("\n");
+      }
+
+      // @elizaos/plugin-local-inference sub-paths used by app-core sources.
+      // The plugin is server-only (Node llama.cpp bindings, fs paths, etc.) but
+      // app-core's `api/server.ts` and `runtime/eliza.ts` import named symbols
+      // from `/routes`, `/runtime`, and `/services` at module top level. The
+      // dist barrel pulls those imports into the renderer graph where Rollup
+      // needs a static export shape to satisfy the named-import scan.
+      if (
+        strippedId === "@elizaos/plugin-local-inference" ||
+        strippedId === "@elizaos/plugin-local-inference/routes" ||
+        strippedId === "@elizaos/plugin-local-inference/runtime" ||
+        strippedId === "@elizaos/plugin-local-inference/services"
+      ) {
+        return [
+          "const noop = () => undefined;",
+          "const asyncNoop = async () => undefined;",
+          "const proxy = new Proxy(noop, { get: () => proxy, apply: () => proxy });",
+          // Server-only constants
+          "export const DEFAULT_MODELS_DIR = '/.eliza/models';",
+          // Server-only functions used by app-core/runtime/eliza.ts
+          "export const detectEmbeddingPreset = noop;",
+          "export const embeddingGgufFilePresent = () => false;",
+          "export const ensureLocalInferenceHandler = asyncNoop;",
+          "export const ensureModel = asyncNoop;",
+          "export const findExistingEmbeddingModelForWarmupReuse = () => null;",
+          "export const isEmbeddingWarmupReuseDisabled = () => true;",
+          "export const shouldEnableMobileLocalInference = () => false;",
+          "export const shouldWarmupLocalEmbeddingModel = () => false;",
+          // Server-only routes used by app-core/api/server.ts
+          "export const handleLocalInferenceCompatRoutes = async () => false;",
+          "export const handleLocalInferenceTtsRoute = async () => false;",
+          // Server-only services used by app-core/api/dev-compat-routes.ts +
+          // phrase-chunked-tts.ts (a phrase chunker that runs in node but is
+          // imported as a type/class). Provide minimal class stubs.
+          "export const buildVoiceLatencyDevPayload = () => ({});",
+          "export const deviceBridge = proxy;",
+          "export const voiceLatencyTracer = proxy;",
+          "export class PhraseChunker {",
+          "  constructor() {}",
+          "  push() { return null; }",
+          "  flushPending() { return null; }",
+          "  flushIfTimeBudgetExceeded() { return null; }",
+          "  msUntilTimeBudget() { return Infinity; }",
+          "  reset() {}",
+          "}",
+          "export default proxy;",
+        ].join("\n");
+      }
+
+      // @elizaos/plugin-anthropic — server-only model provider. The dist barrel
+      // re-exports it; the renderer never instantiates the provider directly.
+      if (
+        strippedId === "@elizaos/plugin-anthropic" ||
+        strippedId.startsWith("@elizaos/plugin-anthropic/")
+      ) {
+        return [
+          "const noop = () => undefined;",
+          "const proxy = new Proxy(noop, { get: () => proxy, apply: () => proxy });",
+          "export default proxy;",
+        ].join("\n");
+      }
+
+      if (strippedId === "@elizaos/plugin-elizacloud") {
+        // Mirrors packages/app-core/src/platform/elizaos-plugin-elizacloud-browser-stub.ts.
+        // Every server-only export resolves to a noop in the renderer; the
+        // default export is a Proxy that swallows arbitrary property access
+        // so any future call sites do not break the static analysis pass.
+        return [
+          "const noop = () => undefined;",
+          "export const clearCloudSecrets = noop;",
+          "export const ensureCloudTtsApiKeyAlias = noop;",
+          "export const getCloudSecret = noop;",
+          "export const handleCloudTtsPreviewRoute = noop;",
+          "export const mirrorCompatHeaders = noop;",
+          "export const normalizeCloudSiteUrl = noop;",
+          "export const __resetCloudBaseUrlCache = noop;",
+          "export const resolveCloudTtsBaseUrl = noop;",
+          "export const resolveElevenLabsApiKeyForCloudMode = noop;",
+          "export const elizaOSCloudPlugin = { name: 'elizaOSCloud', description: 'browser stub' };",
+          "export const DEFAULT_CLOUD_CONFIG = { enabled: false };",
+          "export class CloudApiError extends Error {}",
+          "export class InsufficientCreditsError extends Error {}",
+          "export default new Proxy(noop, { get: () => noop, apply: () => undefined });",
+        ].join("\n");
+      }
+
+      if (strippedId === "@elizaos/plugin-registry") {
+        return [
+          "const noop = () => undefined;",
+          "const asyncFalse = async () => false;",
+          "const emptyPluginList = () => ({ plugins: [], categories: [], installed: [] });",
+          "export const buildPluginListResponse = emptyPluginList;",
+          "export const handlePluginRoutes = asyncFalse;",
+          "export const handlePluginsCompatRoutes = asyncFalse;",
+          "export const installAndRestart = noop;",
+          "export const installPlugin = noop;",
+          "export const listInstalledPlugins = () => [];",
+          "export const uninstallAndRestart = noop;",
+          "export const uninstallPlugin = noop;",
+          "export default new Proxy(noop, { get: () => noop, apply: () => undefined });",
+        ].join("\n");
+      }
+
+      if (strippedId === "@protobufjs/inquire") {
+        return [
+          "function inquire() { return null; }",
+          "export { inquire };",
+          "export default inquire;",
+        ].join("\n");
+      }
+
+      if (strippedId === "@elizaos/plugin-telegram") {
+        return [
+          "function serverOnly() { throw new Error('Telegram account auth is server-only'); }",
+          "export function defaultTelegramAccountDeviceModel() { return 'Eliza Desktop'; }",
+          "export function defaultTelegramAccountSystemVersion() { return 'browser'; }",
+          "export function loadTelegramAccountSessionString() { return serverOnly(); }",
+          "export class TelegramAccountAuthSession {",
+          "  constructor() { serverOnly(); }",
+          "}",
+          "export default { defaultTelegramAccountDeviceModel, defaultTelegramAccountSystemVersion, loadTelegramAccountSessionString, TelegramAccountAuthSession };",
+        ].join("\n");
+      }
+
+      // Capacitor native plugins — mobile-only, cloud builds stub them.
+      // Must export the exact named identifiers used in app-core sources.
+      if (capacitorNativeScopeRe.test(strippedId)) {
+        const capPkg = strippedId.split("/").slice(0, 2).join("/");
+        if (capPkg === "@capacitor/haptics") {
+          return [
+            "const noop = async () => {};const noopObj = new Proxy({}, { get: () => noop });",
+            "export const Haptics = noopObj;",
+            "export const ImpactStyle = Object.freeze({ Heavy: 'HEAVY', Medium: 'MEDIUM', Light: 'LIGHT' });",
+            "export const NotificationType = Object.freeze({ Success: 'SUCCESS', Warning: 'WARNING', Error: 'ERROR' });",
+            "export default noopObj;",
+          ].join("\n");
+        }
+        if (capPkg === "@capacitor/keyboard") {
+          return [
+            "const noop = () => {};const noopObj = new Proxy({}, { get: () => noop });",
+            "export const Keyboard = noopObj;",
+            "export default noopObj;",
+          ].join("\n");
+        }
+        if (capPkg === "@capacitor/preferences") {
+          return [
+            "const noop = () => Promise.resolve({ value: null });const noopObj = new Proxy({}, { get: () => noop });",
+            "export const Preferences = noopObj;",
+            "export default noopObj;",
+          ].join("\n");
+        }
+        if (capPkg === "@capacitor/background-runner") {
+          return [
+            "const asyncNoop = async () => {};",
+            "export const BackgroundRunner = {",
+            "  dispatchEvent: asyncNoop,",
+            "  addListener: async () => ({ remove: asyncNoop }),",
+            "  removeAllListeners: asyncNoop,",
+            "};",
+            "export default BackgroundRunner;",
+          ].join("\n");
+        }
+        if (capPkg === "@capacitor/push-notifications") {
+          return [
+            "const asyncNoop = async () => {};",
+            "const listenerHandle = { remove: asyncNoop };",
+            "export const PushNotifications = {",
+            "  requestPermissions: async () => ({ receive: 'denied' }),",
+            "  addListener: async () => listenerHandle,",
+            "  register: asyncNoop,",
+            "  removeAllListeners: asyncNoop,",
+            "};",
+            "export default PushNotifications;",
+          ].join("\n");
+        }
+        if (capPkg === "@capacitor/barcode-scanner") {
+          return [
+            "const scanBarcode = async (options) => {",
+            "  const root = typeof window !== 'undefined' ? window : globalThis;",
+            "  const hook = root.__elizaUiSmokeBarcodeScanner;",
+            "  if (hook && typeof hook.scanBarcode === 'function') {",
+            "    return hook.scanBarcode(options);",
+            "  }",
+            "  const raw = root.localStorage?.getItem('__elizaUiSmokeBarcodeScannerResult');",
+            "  if (raw) {",
+            "    return JSON.parse(raw);",
+            "  }",
+            "  return { ScanResult: '' };",
+            "};",
+            "export const CapacitorBarcodeScanner = { scanBarcode };",
+            "export const CapacitorBarcodeScannerTypeHint = Object.freeze({ QR_CODE: 'QR_CODE' });",
+            "export default CapacitorBarcodeScanner;",
+          ].join("\n");
+        }
+        // Generic Capacitor plugin stub
+        return [
+          "const noop = () => {};const stub = new Proxy({}, { get: () => noop });",
+          "export default stub;",
+        ].join("\n");
+      }
+
+      // chalk: ANSI helpers used only by terminal/theme.ts which the
+      // renderer pulls in via the @elizaos/shared barrel. The real
+      // chalk supports arbitrary chained accessors and call patterns
+      // (`chalk.red("x")`, `chalk.bold.hex("#fff")("text")`, etc.), so
+      // the stub must:
+      //   1. Be callable (return its argument unchanged when used as
+      //      a string transformer).
+      //   2. Return another callable proxy on every property access
+      //      so `chalk.bold.hex` chains keep working.
+      //   3. Expose a named `Chalk` class so destructuring imports
+      //      resolve at bundle time.
+      if (modName === "chalk") {
+        return [
+          // Recursive callable proxy: every `.foo` returns the same
+          // proxy, every call returns its first argument as-is.
+          "function makeChalkStub() {",
+          "  const callable = function (...args) {",
+          "    return args.length > 0 ? String(args[0]) : '';",
+          "  };",
+          "  const handler = {",
+          "    get(_, prop) {",
+          "      if (prop === Symbol.toPrimitive) return () => '';",
+          "      if (prop === 'level') return 0;",
+          "      if (prop === Symbol.iterator) return undefined;",
+          "      return proxy;",
+          "    },",
+          "    apply(_, __, args) {",
+          "      return args.length > 0 ? String(args[0]) : '';",
+          "    },",
+          "  };",
+          "  const proxy = new Proxy(callable, handler);",
+          "  return proxy;",
+          "}",
+          "const chalk = makeChalkStub();",
+          "export class Chalk { constructor() { return makeChalkStub(); } }",
+          "export const supportsColor = false;",
+          "export const chalkStderr = chalk;",
+          "export const supportsColorStderr = false;",
+          "export default chalk;",
+        ].join("\n");
+      }
+
+      // drizzle-orm and its sub-modules: Node-only ORM with many named
+      // exports (column builders like `boolean`, `integer`, `index`, `text`,
+      // `pgTable`, etc.). Return a Proxy that yields a no-op for any name so
+      // static `import { boolean } from "drizzle-orm/pg-core"` succeeds.
+      if (
+        modName === "drizzle-orm" ||
+        strippedId === "drizzle-orm" ||
+        strippedId.startsWith("drizzle-orm/")
+      ) {
+        return [
+          "const noop = () => {};",
+          "const stubProxy = new Proxy(noop, { get: () => stubProxy, apply: () => stubProxy });",
+          "export default stubProxy;",
+          // Re-export the proxy under every name a static `import { X }`
+          // statement might use. Rolldown wires the named import to this
+          // single binding, so a loose getter still resolves at build time.
+          "export { stubProxy as boolean, stubProxy as integer, stubProxy as bigint, stubProxy as text, stubProxy as varchar, stubProxy as char, stubProxy as serial, stubProxy as bigserial, stubProxy as smallint, stubProxy as smallserial, stubProxy as decimal, stubProxy as numeric, stubProxy as real, stubProxy as doublePrecision, stubProxy as date, stubProxy as time, stubProxy as timestamp, stubProxy as interval, stubProxy as uuid, stubProxy as json, stubProxy as jsonb, stubProxy as pgTable, stubProxy as pgEnum, stubProxy as pgSchema, stubProxy as pgView, stubProxy as pgMaterializedView, stubProxy as pgSequence, stubProxy as foreignKey, stubProxy as primaryKey, stubProxy as uniqueIndex, stubProxy as unique, stubProxy as index, stubProxy as check, stubProxy as customType, stubProxy as relations, stubProxy as one, stubProxy as many, stubProxy as eq, stubProxy as ne, stubProxy as gt, stubProxy as gte, stubProxy as lt, stubProxy as lte, stubProxy as and, stubProxy as or, stubProxy as not, stubProxy as inArray, stubProxy as notInArray, stubProxy as isNull, stubProxy as isNotNull, stubProxy as like, stubProxy as ilike, stubProxy as notLike, stubProxy as between, stubProxy as exists, stubProxy as notExists, stubProxy as sql, stubProxy as desc, stubProxy as asc, stubProxy as count, stubProxy as sum, stubProxy as avg, stubProxy as min, stubProxy as max, stubProxy as drizzle, stubProxy as getTableConfig, stubProxy as getTableName, stubProxy as is, stubProxy as alias, stubProxy as except, stubProxy as union, stubProxy as unionAll, stubProxy as intersect, stubProxy as raw, stubProxy as placeholder, stubProxy as param, stubProxy as Column, stubProxy as Table, stubProxy as TableAliasProxy };",
+        ].join("\n");
+      }
+
+      // Generic fallback for other native modules
+      return "export default {};\n";
+    },
+    // Patch @elizaos/core browser entry at transform time to add missing
+    // exports and fix browser-incompatible patterns.
+    transform(code, id) {
+      const isCoreDistFile =
+        id.endsWith("index.browser.js") || id.endsWith("index.node.js");
+      const normId = id.split(path.sep).join("/");
+      const isCorePackagePath =
+        normId.includes("/node_modules/@elizaos/core/") ||
+        normId.includes("packages/core/dist/");
+      if (!isCoreDistFile || !isCorePackagePath) return null;
+
+      // Fix AsyncLocalStorage: the browser entry has a try/catch that does
+      //   let {AsyncLocalStorage:$} = (() => {throw new Error(...)})()
+      // Rollup/esbuild may optimize the throw into (()=>({})) which makes
+      // AsyncLocalStorage undefined, causing "xte is not a constructor".
+      // Replace the broken IIFE pattern with a working stub class.
+      const patched = code.replace(
+        /\(\(\)\s*=>\s*\{\s*throw\s+new\s+Error\(\s*"Cannot require module "\s*\+\s*"node:async_hooks"\s*\)\s*;\s*\}\)\(\)/g,
+        "(function(){function A(){} A.prototype.getStore=function(){return undefined};A.prototype.run=function(s,fn){return fn.apply(void 0,[].slice.call(arguments,2))};A.prototype.enterWith=function(){};A.prototype.disable=function(){};return{AsyncLocalStorage:A}})()",
+      );
+      // Names that downstream plugins and the agent runtime
+      // import from @elizaos/core but that are missing from the browser entry.
+      const missingExports: Record<string, string> = {
+        resolveSecretKeyAlias: "function(k){return k}",
+        SECRET_KEY_ALIASES: "{}",
+        SetupStateMachine: "function(){}",
+        isSetupComplete: "function(){return false}",
+        AgentEventService: "function(){}",
+        AutonomyService: "function(){}",
+        createBasicCapabilitiesPlugin: "function(){return{name:'stub'}}",
+        resolveStateDir: "function(){return '/.eliza'}",
+        runPluginMigrations: "async function(){}",
+      };
+      // Check which are actually missing from the existing export block
+      const needed = Object.keys(missingExports).filter((n) => {
+        // Check if already exported (as named export or re-export alias)
+        const exportedAs = new RegExp(`\\b${n}\\b`);
+        // Search only in export{} blocks
+        const exportBlocks = patched.match(/export\s*\{[^}]+\}/g) || [];
+        return !exportBlocks.some((b) => exportedAs.test(b));
+      });
+      if (needed.length === 0 && patched === code) return null;
+      // Use unique prefixed names to avoid collisions with minified vars
+      const prefix = "__eliza_stub_";
+      const stubs = needed
+        .map((n) => `var ${prefix}${n} = ${missingExports[n]};`)
+        .join("\n");
+      const exports =
+        needed.length > 0
+          ? `export { ${needed.map((n) => `${prefix}${n} as ${n}`).join(", ")} };`
+          : "";
+      return { code: `${patched}\n${stubs}\n${exports}`, map: null };
+    },
+  };
+}

@@ -1,0 +1,192 @@
+[[!meta title="Tails report for September, 2017"]]
+[[!meta date="Wed, 18 Oct 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 3.2 was released on Tuesday 26|news/version_3.2]] (major release).
+
+* Tails 3.3 is [[scheduled for November 16|contribute/calendar]].
+
+The following changes were introduced in Tails 3.2:
+
+- We added support for PPPoE and dial-up Internet connections.
+
+- We installed [*BookletImposer*](http://kjo.herbesfolles.org/bookletimposer/)
+  to convert linear PDF documents into booklets, and vice-versa.
+
+- We added *GNOME Screen Keyboard* to replace *Florence*, the previous virtual
+  keyboard, which had many issues.
+
+- We now require an 8 GB USB stick to install Tails. 4 GB USB sticks that are
+  already installed can still be upgraded.
+
+- *Tails Installer* now detects when the target USB stick has Tails
+  installed already and automatically proposes to upgrade.
+  This made possible to remove the initial splash screen.
+
+- Disabled *Bluetooth* to protect against the [*BlueBorne*
+  attack](https://www.armis.com/blueborne/). [[!tails_ticket 14655]].
+
+- Now deny access to the D-Bus service of *Pidgin* to prevent other applications to
+  access and modify its configuration. [[!tails_ticket 14612]].
+
+- Fixed the import of secret OpenPGP keys in *Password and Keys*
+  [[!tails_ticket 12733]].
+
+Code
+====
+
+- We've continued to work on making Tails ISO images reproducible:
+  - We fixed all of the issues that were identified by our first build testers.
+  - So far, everyone who tried reproducing the Tails 3.2~rc1 ISO
+    image succeeded. We've received a couple non-reproducibility reports about
+    3.2, and they are all explained by a single, one-byte mistake in a
+    translation of the wiki we ship inside Tails (we'll add sanity checks
+    so we never release something with that type of mistake again).
+  - We published a blueprint which explains how we did it.
+
+- We are improving integration of the _Orca screen reader_ and the
+  _GNOME screen keyboard_ into Tails ([[!tails_ticket 14752]],
+  [[!tails_ticket 8260]]). A discussion about the screen reader's user
+  experience has been [[!tails_ticket 14713 desc="initiated"]] by
+  Pablo Natalino, and intrigeri [[!gnomebug 788369 desc="started"]]
+  a discussion upstream about the long-press delay for typing special
+  chars with it.
+
+- We have formalized how the AppArmor profile for _Thunderbird_ is
+  maintained in Debian and upstream. This clarifies where and how our
+  contributions should be submitted and at the end of the day this
+  should avoid the need to maintain a Tails-specific delta.
+
+- We are working on fixing _Seahorse_ buggy interfacing with
+  _pinentry-gtk2_ upstream ([[!gnomebug 787543]], [[!debbug 869416]]).
+  A workaround was applied in Tails 3.2 already but we try hard to
+  stick to our [[contribute/relationship_with_upstream]] statement.
+
+Documentation and website
+=========================
+
+- We updated our roadmap with our priorities for
+  the next years.
+
+- We greatly improved our [[instructions for building the Tails ISO
+  image|contribute/build/]] and created a new section about how to
+  [[verify that the Tails ISO image is
+  reproducible|contribute/build/reproducible/]].
+
+- We are documenting the process for Tails contributors to request
+  sponsorship when attending events on behalf of Tails, in order to
+  improve fairness and to streamline how the simplest cases are handled.
+  This documentation should land on our website by the end of the year.
+
+- We documented hardware limitations for Tails on [[Intel Atom Cherry
+  Trail tablets|support/known_issues#cherry-trail]].
+
+User experience
+===============
+
+- We designed a [[new download page|install/download]], to prepare for
+  the migration of our verification extension to *Web Extensions*. We
+  started drawing sketchy
+  wireframes,
+  then improved them incrementally after testing them on paper with
+  users, and finally implemented the resulting prototype in
+  HTML.
+
+- We benchmarked open source web applications to survey our user
+  base. The best candidate is
+  *LimeSurvey*
+  and we will do a test deployment in October as part of a user research
+  on the use of *VeraCrypt*.
+
+Hot topics on our help desk
+===========================
+
+1. [[!tails_ticket 14755 desc="Tails Installer treats drives differently depending on when they are plugged"]].
+
+1. [[!tails_ticket 14250 desc="Applications menu stops working some times"]].
+
+1. [[!tails_ticket 14754 desc="Keyboard and mouse do not work after upgrading to Tails 3.2"]].
+
+1. Many people had problems to use their Persistent Volume and had to reconfigure to access it.
+
+Infrastructure
+==============
+
+- We finished upgrading all our systems to Debian Stretch
+  ([[!tails_ticket 12160]]).
+- We upgraded our Redmine instance ([[!tails_ticket 11808]]).
+
+Funding
+=======
+
+- We sent a thank you email to everybody who donated in 2016.
+
+- We signed a new contract with OTF that will run from September 1,
+  2017 to August 31, 2018 and that covers mainly:
+  - [[!tails_ticket 14468 desc="VeraCrypt support in GNOME: make it easier to integrate Tails into workflows with other users and operating systems"]]
+  - Additional software: make it easier to tailor Tails to specific
+    needs for sensitive data manipulation ([[!tails_ticket 14568]],
+    [[!tails_ticket 5551]] and friends)
+
+- We worked on making our Sponsors page easier to translate
+  ([[!tails_ticket 12646]]).
+
+Outreach
+========
+
+Upcoming events
+---------------
+
+* Some of us will attend the
+  [Reproducible Builds summit](https://reproducible-builds.org/events/berlin2017/)
+  in Berlin (October 31 to November 2).
+
+* Many Tails people will be at the
+  [34th Chaos Communication Congress, aka. 34C3](https://www.ccc.de/en/updates/2017/34C3-in-leipzig)
+  in Leipzig (December 27 to December 30).
+
+On-going discussions
+====================
+
+- Tails reproducibility keeps being an important topic on our mailing list
+- We have been busy with a new download page
+
+Press and testimonials
+======================
+
+* The 5th version of the [Guide d'autodéfense numérique](https://guide.boum.org) was released. This book proposes ways to understand how the digital world functions, what solutions can we organise against certain types of attacks, and which tools can help do that.
+
+Translation
+===========
+
+## All the website
+
+  - de: 57% (2866) strings translated, 6% strings fuzzy, 51% words translated
+  - fa: 43% (2160) strings translated, 9% strings fuzzy, 46% words translated
+  - fr: 89% (4450) strings translated, 0% strings fuzzy, 87% words translated
+  - it: 31% (1548) strings translated, 4% strings fuzzy, 27% words translated
+  - pt: 26% (1330) strings translated, 8% strings fuzzy, 23% words translated
+
+Total original words: 53021
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 78% (1493) strings translated, 10% strings fuzzy, 79% words translated
+  - fa: 36% (693) strings translated, 9% strings fuzzy, 38% words translated
+  - fr: 99% (1875) strings translated, 0% strings fuzzy, 99% words translated
+  - it: 75% (1434) strings translated, 11% strings fuzzy, 76% words translated
+  - pt: 46% (888) strings translated, 14% strings fuzzy, 48% words translated
+
+Total original words: 17298
+
+Metrics
+=======
+
+* Tails has been started more than 652000 times this month. This makes 21700 boots a day on average.
+* 10292 downloads of the OpenPGP signature of Tails ISO from our website.
+* 92 bug reports were received through WhisperBack.

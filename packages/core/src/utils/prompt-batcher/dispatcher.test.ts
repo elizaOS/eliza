@@ -1,0 +1,59 @@
+import { describe, expect, test } from "vitest";
+import type { ResolvedSection } from "../../types/prompt-batcher";
+import type { IAgentRuntime } from "../../types/runtime";
+import { PromptDispatcher } from "./dispatcher";
+
+function makeResolvedSection(id: string, maxRetries: number): ResolvedSection {
+	return {
+		section: {
+			id,
+			frequency: "recurring",
+			preamble: `Preamble for ${id}`,
+			schema: [{ field: "value", required: true }],
+			maxRetries,
+		},
+		resolvedContext: `context for ${id}`,
+		contextCharCount: 20,
+		schemaFieldCount: 1,
+		estimatedTokens: 10,
+		priority: "background",
+		preferredModel: "small",
+		isolated: false,
+		affinityKey: "default",
+	};
+}
+
+describe("PromptDispatcher", () => {
+	test("passes section retry budget into structured model calls", async () => {
+		const seen: unknown[] = [];
+		const runtime = {
+			dynamicPromptExecFromState: async (args: unknown) => {
+				seen.push(args);
+				return {
+					first__value: "one",
+					second__value: "two",
+				};
+			},
+		} as unknown as IAgentRuntime;
+		const dispatcher = new PromptDispatcher({
+			packingDensity: 1,
+			maxTokensPerCall: 8_000,
+			maxParallelCalls: 1,
+			modelSeparation: 1,
+			maxSectionsPerCall: 8,
+		});
+
+		await dispatcher.dispatch(
+			[makeResolvedSection("first", 0), makeResolvedSection("second", 2)],
+			runtime,
+		);
+
+		expect(seen).toHaveLength(1);
+		expect(seen[0]).toMatchObject({
+			options: {
+				modelSize: "small",
+				maxRetries: 2,
+			},
+		});
+	});
+});

@@ -1,0 +1,74 @@
+{
+	"name": "@elizaos/plugin-app-control",
+	"version": "2.0.3-beta.14",
+	"description": "App control plugin for Eliza agents — launch, close, and list running apps via the local dashboard API.",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"eliza-source": {
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
+			},
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./*.css": "./dist/*.css",
+		"./*": {
+			"types": "./dist/*.d.ts",
+			"eliza-source": {
+				"types": "./src/*.ts",
+				"import": "./src/*.ts",
+				"default": "./src/*.ts"
+			},
+			"import": "./dist/*.js",
+			"default": "./dist/*.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --clean && tsc --declaration --emitDeclarationOnly --noEmit false -p tsconfig.json && node ../../packages/scripts/flatten-tsc-package-output.mjs plugins/plugin-app-control && bun run build:views",
+		"dev": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --watch",
+		"test": "vitest run",
+		"clean": "rm -rf dist .turbo",
+		"lint": "bunx @biomejs/biome check --write --unsafe .",
+		"lint:check": "bunx @biomejs/biome check .",
+		"format": "bunx @biomejs/biome format --write .",
+		"format:check": "bunx @biomejs/biome format .",
+		"typecheck": "tsgo --noEmit",
+		"build:views": "bunx --bun vite build --config vite.config.views.ts"
+	},
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"@elizaos/logger": "workspace:*",
+		"@elizaos/shared": "workspace:*",
+		"@elizaos/ui": "workspace:*",
+		"lucide-react": "^1.16.0",
+		"react": "^19.0.0"
+	},
+	"peerDependencies": {
+		"@elizaos/core": "workspace:*",
+		"puppeteer-core": "^24.39.1"
+	},
+	"peerDependenciesMeta": {
+		"puppeteer-core": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.14",
+		"@types/node": "24.12.2",
+		"tsup": "8.5.1",
+		"typescript": "^6.0.3",
+		"vitest": "4.1.9",
+		"vite": "^8.0.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

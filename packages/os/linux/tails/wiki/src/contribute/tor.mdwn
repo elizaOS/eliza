@@ -1,0 +1,82 @@
+This document is about how we upgrade packages built from the `tor`
+source package.
+
+[[!toc levels=2]]
+
+# Background
+
+We build Tails using snapshots of APT repositories.
+This document assumes a good
+understanding of this [[somewhat complex system|contribute/APT_repository]].
+
+We generally install packages built from the `tor` source package from
+<http://deb.torproject.org/torproject.org>:
+
+ - [[!tails_gitweb config/chroot_sources/torproject.chroot]]
+ - [[!tails_gitweb config/chroot_apt/preferences]]
+
+The corresponding archive in our APT snapshots setup is called `torproject`:
+[[!tails_gitweb config/APT_snapshots.d/torproject/serial]].
+
+# Process
+
+The Tails Team member wearing the Front Desk hat creates a tracking issue whenever
+a new stable version of `tor` is released.
+
+Once this new version is available in our APT snapshots, a Tails Team
+member (you!) gathers the data that will inform our decision, and prepares
+the upgrade:
+
+1. Set `TOR_VERSION` to the desired tor version, `TOR_WORK_ITEM` to the ID of
+   the GitLab work item about upgrading tor, and `TOR_BRANCH` accordingly:
+
+        TOR_VERSION=0.4.X.Y
+        TOR_WORK_ITEM=1234
+        TOR_BRANCH="${TOR_WORK_ITEM:?}-tor-${TOR_VERSION:?}"
+
+2. Checkout a branch on which CI will run all tests:
+
+        (
+        set -eu -o pipefail
+        git fetch origin && git checkout -b "${TOR_BRANCH:?}" origin/stable
+        echo -e "[test]\nforce_all_tests = true" \
+        > config/ci/per_branch/${TOR_BRANCH:?}.toml
+        git add "config/ci/per_branch/${TOR_BRANCH:?}.toml"
+        git commit -m "Set this branch to run all tests"
+        )
+
+3. Bump `config/APT_snapshots.d/torproject/serial` to a snapshot
+   that's recent enough to include the relevant new version of `tor`:
+
+        (
+        set -eu -o pipefail
+        auto/scripts/apt-snapshots-serials get-latest torproject \
+          | cut -d' ' -f2 \
+          > config/APT_snapshots.d/torproject/serial
+        git commit config/APT_snapshots.d/torproject/serial \
+           -m "Upgrade tor to ${TOR_VERSION:?}"
+        )
+
+4. Bump the expiration date for the snapshot of the `torproject` archive that
+   the branch is using:
+
+        ssh reprepro-time-based-snapshots@incoming.deb.tails.boum.org \
+        tails-bump-apt-snapshot-valid-until \
+           torproject \
+           "$(cat config/APT_snapshots.d/torproject/serial)" \
+           180
+
+5. Push this new branch to our CI, creating a draft merge request:
+
+        git push \
+           -o merge_request.create \
+           -o merge_request.draft \
+           --set-upstream \
+           origin "${TOR_BRANCH:?}"
+
+6. Compare the Jenkins build and test results to the ones for our
+   `stable` branch. What follows assumes that these CI results look good.
+   If they don't, more work is needed.
+
+7. Submit your branch for review via our [[usual
+   process|contribute/merge_policy#submit]].

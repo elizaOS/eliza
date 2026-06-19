@@ -1,0 +1,164 @@
+--- a/etc/apparmor.d/usr.bin.thunderbird
++++ b/etc/apparmor.d/usr.bin.thunderbird
+@@ -16,7 +16,6 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+   # TODO: finetune this for required accesses
+   #include <abstractions/dbus>
+   #include <abstractions/dbus-accessibility>
+-  #include <abstractions/dbus-session>
+   #include <abstractions/dconf>
+   #include <abstractions/dri-enumerate>
+   #include <abstractions/gnome>
+@@ -27,10 +26,18 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+   #include <abstractions/p11-kit>
+   #include <abstractions/private-files>
+   #include <abstractions/ssl_certs>
+-  #include <abstractions/ubuntu-browsers>
+   #include <abstractions/ubuntu-browsers.d/java>
+   #include <abstractions/ubuntu-helpers>
+ 
++  # Needed for sandboxing via unprivileged user namespaces
++  # to work and not to break OAuth2
++  userns,
++  capability sys_chroot,
++  capability sys_admin,
++  owner @{PROC}/@{pid}/setgroups rw,
++  owner @{PROC}/@{pid}/uid_map rw,
++  owner @{PROC}/@{pid}/gid_map rw,
++
+   # Backported from the mesa abstraction, available in AppArmor >2.13
+   # System files
+   /dev/dri/ r, # libGLX_mesa.so calls drmGetDevice2()
+@@ -52,7 +59,9 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+ 
+   # Allow opening attachments
+   # TODO: create and use abstractions for opening various file formats
+-  /{usr/local/,usr/,}bin/* Cx -> sanitized_helper,
++  /{usr/,}bin/{[^bdp],[bd][^a],[bd]a[^s],[bd]as[^h],p[^s]}* Cx -> sanitized_helper,
++  /usr/local/bin/{[^t],t[^o],to[^r],tor[^-],tor-[^b],tor-b[^r],tor-br[^o],tor-bro[^w],tor-brow[^s],tor-brows[^e],tor-browse[^r]}* Cx -> sanitized_helper,
++  /usr/local/bin/tor-browser Uxmr,
+   /usr/lib/libreoffice/program/soffice Cxr -> sanitized_helper,
+ 
+   # Allow opening links
+@@ -63,20 +72,11 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+   # (remove this after Debian 11 and Ubuntu 20.04)
+   /usr/lib/@{multiarch}/glib-[0-9]*/gio-launch-desktop ix,
+ 
+-  # For Xubuntu to launch the browser
+-  /usr/bin/exo-open ixr,
+-  /usr/lib/@{multiarch}/xfce4/exo-[1-9]/exo-helper-[1-9] ixr,
+-  /etc/xdg/xdg-xubuntu/xfce4/helpers.rc r,
+-  /etc/xdg/xfce4/helpers.rc r,
+-  owner @{HOME}/.config/xfce4/helpers.rc r,
+-
+   # for crash reports?
+   ptrace (read,trace) peer=@{profile_name},
+ 
+   /usr/lib/thunderbird/thunderbird{,-bin} ixr,
+-
+-  # Pulseaudio
+-  /usr/bin/pulseaudio Pixr,
++  /usr/lib/thunderbird/glxtest ix,
+ 
+   owner @{HOME}/.{cache,config}/dconf/user rw,
+   owner @{HOME}/.cache/thumbnails/** r,
+@@ -105,11 +105,11 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+   # for networking
+   network inet stream,
+   network inet6 stream,
+-  @{PROC}/[0-9]*/net/if_inet6 r,
+-  @{PROC}/[0-9]*/net/ipv6_route r,
+-  @{PROC}/[0-9]*/net/dev r,
+-  @{PROC}/[0-9]*/net/wireless r,
+-  @{PROC}/[0-9]*/net/arp r,
++  @{PROC}/@{pid}/net/if_inet6 r,
++  @{PROC}/@{pid}/net/ipv6_route r,
++  @{PROC}/@{pid}/net/dev r,
++  @{PROC}/@{pid}/net/wireless r,
++  @{PROC}/@{pid}/net/arp r,
+ 
+   # should maybe be in abstractions
+   /etc/ r,
+@@ -144,6 +144,7 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+   /etc/gre.d/* r,
+ 
+   # noisy
++  deny @{MOZ_LIBDIR}/vaapitest x,
+   deny @{MOZ_LIBDIR}/** w,
+   deny /usr/lib/thunderbird-addons/** w,
+   deny /usr/lib/xulrunner-addons/** w,
+@@ -153,6 +154,10 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+   deny /boot/vmlinuz* r,
+   deny /var/cache/fontconfig/ w,
+ 
++  # needed for GNOME Shell's on-screen keyboard
++  # Tails-specific: needed only because we disable the dbus-session abstraction
++  /etc/machine-id r,
++
+   # noisy file dialog:
+   #
+   # TODO: remove these rules when file dialogs becomes "trusted helpers" that can
+@@ -260,9 +265,11 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+   deny @{HOME}/#[0-9][0-9][0-9][0-9][0-9][0-9][0-9]{,[0-9]} m,
+   deny @{HOME}/.nv/.gl?????? mrw,
+ 
+-  owner @{PROC}/[0-9]*/mountinfo r,
+-  owner @{PROC}/[0-9]*/stat r,
+-  owner @{PROC}/[0-9]*/task/[0-9]*/stat r,
++  owner @{PROC}/@{pid}/cgroup r,
++  owner @{PROC}/@{pid}/mountinfo r,
++  owner @{PROC}/@{pid}/oom_score_adj rw,
++  owner @{PROC}/@{pid}/stat r,
++  owner @{PROC}/@{pid}/task/[0-9]*/stat r,
+   /sys/devices/pci[0-9]*/**/uevent r,
+   /sys/devices/pci*/**/config r,
+   /sys/devices/system/node/node[0-9]*/meminfo r,
+@@ -270,20 +277,19 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+   /etc/fstab r,
+ 
+   # Needed for the crash reporter
+-  owner @{PROC}/[0-9]*/environ r,
+-  owner @{PROC}/[0-9]*/auxv r,
+-  owner @{PROC}/[0-9]*/status r,
+-  owner @{PROC}/[0-9]*/cmdline r,
++  owner @{PROC}/@{pid}/environ r,
++  owner @{PROC}/@{pid}/auxv r,
++  owner @{PROC}/@{pid}/status r,
++  owner @{PROC}/@{pid}/cmdline r,
+   /etc/lsb-release r,
+   /etc/ssl/openssl.cnf r,
+   /usr/lib/thunderbird/crashreporter ix,
+-  /usr/bin/expr ix,
+   /sys/devices/system/cpu/ r,
+   /sys/devices/system/cpu/** r,
+ 
+   # about:memory
+-  owner @{PROC}/[0-9]*/statm r,
+-  owner @{PROC}/[0-9]*/smaps r,
++  owner @{PROC}/@{pid}/statm r,
++  owner @{PROC}/@{pid}/smaps r,
+ 
+   # Needed for container to work in xul builds
+   /usr/lib/xulrunner-*/plugin-container ixr,
+@@ -331,10 +337,6 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+   deny /usr/share/mozilla/extensions/**/ w,
+   deny /usr/share/mozilla/ w,
+ 
+-  /usr/bin/gpg               Cx -> gpg,
+-  /usr/bin/gpg2              Cx -> gpg,
+-  /usr/bin/gpgconf           Cx -> gpg,
+-  /usr/bin/gpg-connect-agent Cx -> gpg,
+   /usr/lib/gnupg/gpg-wks-client ix,
+   /{,usr/}bin/ps                   ix,
+ 
+@@ -344,6 +346,11 @@ profile thunderbird /usr/lib/thunderbird/thunderbird{,-bin} {
+   # Required for Wayland display protocol support
+   owner /dev/shm/wayland.mozilla.ipc.[0-9]* rw,
+ 
++  # The Wayland Proxy prevents certain types of Wayland issues from
++  # crashing the client application. Details:
++  # https://mastransky.wordpress.com/2023/12/22/wayland-proxy-load-balancer/
++  owner @{run}/user/[0-9]*/wayland-proxy-@{pid} rw,
++
+   profile gpg {
+     #include <abstractions/base>
+ 

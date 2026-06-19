@@ -1,0 +1,18 @@
+#!/usr/bin/perl
+
+=head1 NAME
+
+tails-install-iuk - install an Incremental Upgrade Kit
+
+=cut
+
+use strictures 2;
+use 5.10.1;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
+use Tails::IUK::Install;
+
+my $iuk = pop;
+Tails::IUK::Install->new_with_options(from_file => $iuk)->run;

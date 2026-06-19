@@ -1,0 +1,56 @@
+{
+  "name": "@elizaos/plugin-github",
+  "version": "2.0.3-beta.14",
+  "description": "GitHub integration plugin for elizaOS agents — PRs, issues, notifications via the GitHub REST API",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts src/register-routes.ts --format esm --dts --clean",
+    "test": "vitest run",
+    "typecheck": "tsgo --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@octokit/rest": "^22.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.2",
+    "tsup": "8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.9"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

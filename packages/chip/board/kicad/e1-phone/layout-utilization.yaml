@@ -1,0 +1,56 @@
+schema: eliza.e1_phone_layout_utilization.v1
+status: concept_area_pressure_plausible_not_routed
+source_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+claim_boundary: Derived from gr_rect concept geometry only. This is not a routed-board
+  component courtyard, DRC, DFM, SI, RF, or enclosure-readiness result.
+board_bbox_mm:
+  width: 64.0
+  height: 132.0
+  area_mm2: 8448.0
+edge_cut_islands:
+  - x: 0.0
+    y: 0.0
+    width: 64.0
+    height: 29.0
+    area_mm2: 1856.0
+  - x: 0.0
+    y: 117.0
+    width: 64.0
+    height: 15.0
+    area_mm2: 960.0
+physical_pcb_area_from_edge_cuts_mm2: 2816.0
+battery_window_mm:
+  x: 0.0
+  y: 29.5
+  width: 64.0
+  height: 87.0
+  area_mm2: 5568.0
+antenna_keepout_area_mm2: 844.0
+physical_pcb_area_after_battery_window_mm2: 2816.0
+placement_area_after_battery_and_antenna_keepouts_mm2: 1972.0
+fab_region_area_by_class_mm2:
+  bottom_audio_haptic_speaker: 384.0
+  cellular_rf_module: 393.0
+  display_camera_ffc: 408.0
+  pmic: 132.0
+  soc_lpddr: 350.0
+  usb_c_receptacle: 96.0
+fab_region_total_area_mm2: 1763.0
+route_shield_test_reserve_area_mm2: 209.0
+route_shield_test_reserve_pct_of_placement_area: 10.6
+layout_pressure_assessment:
+  target_reserve_pct_range_after_real_footprints:
+    min: 35.0
+    max: 50.0
+  current_concept_reserve_pct: 10.6
+  interpretation: Concept area pressure is plausible, but this is still not routed-board
+    evidence until supplier footprints, courtyards, DRC, and STEP exist.
+required_next_evidence:
+  - replace F.Fab rectangles with supplier footprints and courtyards
+  - compute courtyard utilization from KiCad footprints
+  - replace split-island rectangular Edge.Cuts concept with routed rigid or rigid-flex
+    board outline
+  - assign net classes and run DRC after routing
+  - prove antenna/rf keepouts against enclosure metal and display stack
+  - prove USB-C, side button, camera, speaker, and battery mechanical interfaces in
+    STEP

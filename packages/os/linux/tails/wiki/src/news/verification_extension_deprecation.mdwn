@@ -1,0 +1,46 @@
+[[!meta date="Tue, 09 Dec 2020 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Deprecation of the Tails Verification extension"]]
+[[!tag announce]]
+
+Today, we are retiring the *Tails Verification* browser extension that
+used to be advertised on our download page. We are replacing it with
+similar JavaScript code that now runs directly on the page.
+
+This new verification procedure is:
+
+- Simpler and faster for first-time users
+
+- Compatible with more web browsers, for example, Edge and Safari
+
+- As secure as the *Tails Verification* extension
+
+From the logs on our website, it seems like only a minority of downloads are
+currently being verified. We believe that this simplified verification procedure will
+greatly increase the number of downloads being verified and improve the security of our users.
+
+Users of the *Tails Verification* extension can safely remove it from their
+browser. They will be reminded to do so on the download page.
+
+We will remove the *Tails Verification* extension from the Firefox and Chrome
+stores in a few days.
+
+The other 2 verification techniques are still available:
+
+- If you download Tails using BitTorrent, your BitTorrent client
+  automatically verifies the checksum of the Tails image when the
+  download finishes.
+
+- If you know OpenPGP, you can verify your Tails image using an OpenPGP
+  signature.
+
+Special thanks to [Mike Meixler](https://www.meixler-tech.com/) who donated his
+time to help us with the verification JavaScript!
+
+In the future, this simplification will allow us to further simplify the
+download page and installation instructions. We also want to research how to
+make the verification faster. If you know WebAssembly, see if you can help us
+[speed up the checksum computation](https://gitlab.tails.boum.org/tails/tails/-/issues/16905).
+
+See also our [[design document on the security and threat model of the
+download verification|contribute/design/download_verification]].

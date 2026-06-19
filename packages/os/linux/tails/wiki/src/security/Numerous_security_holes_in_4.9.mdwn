@@ -1,0 +1,17 @@
+[[!meta date="Sat, 22 Aug 2020 13:28:43 -0000"]]
+[[!meta title="Numerous security holes in Tails 4.9"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails 4.10|news/version_4.10]] fixes many security issues that affect
+Tails 4.9. You should [[upgrade to Tails 4.10|news/version_4.10]] as
+soon as possible.
+
+ - Tor Browser: [[!mfsa 2020-37]]
+ - Thunderbird: [[!mfsa 2020-31]]
+ - Linux: [[!cve CVE-2020-15780]], [[!cve CVE-2020-15393]], [[!cve
+   CVE-2020-10781]], [[!cve CVE-2020-15852]]
+ - webkit2gtk: [[!debsa2020 4739]]
+ - net-snmp: [[!debsa2020 4746]]
+ - json-c: [[!debsa2020 4741]]

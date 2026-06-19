@@ -1,0 +1,112 @@
+[[!meta title="Tails report for April, 2015"]]
+[[!meta date="Thu, 07 May 2015 20:43:29 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+This report is a bit special: since we release every 6 weeks, there is no release this month. The next one is [[planned for the 12th of May|contribute/calendar]]. Therefore there are no code news, the work being done will be reported when it's released :)
+
+However, like any Free Software project, Tails is not only about the code, so here are the news about the other parts of the project!
+
+[[!toc ]]
+
+Documentation and website
+=========================
+
+* We wrote a small documentation about *Claws Mail*.
+
+* We corrected some details in the manual installation documentations, the verification documentation, and [[related FAQ questions|support/faq#unetbootin]].
+
+* We added a [[FAQ entry about why we ship the GNOME Desktop|support/faq#gnome]].
+
+* We added a [[FAQ entry about why we don't sell preinstalled Tails devices|support/faq#preinstalled]].
+
+* We added (yet another) [[FAQ entry about why you shouldn't edit your torrc|support/faq#torrc]].
+
+* ... and various small improvements to the documentation all over the place :)
+
+User experience
+===============
+
+- On the ISO verification extension:
+  - We started a security discussion about the possible threats **from
+    inside the browser**.
+    We need your expertise!
+  - We finished a detailed
+    wireframe
+    of the various screens of the extension.
+
+- On the web assistant for getting started with Tails:
+  - We finished a prototype for the 3rd iteration of the
+    router
+    (the set of introductory questions) and tested it with several
+    people.
+  - We started a discussion about several terminology
+    issues.
+  - We proposed a URL scheme, a
+    JavaScript policy,
+    and a compatibility list for Mac.
+
+- We published some guidelines for user testing.
+
+Infrastructure
+==============
+
+* Our test suite now covers 177 scenarios, 15 more than in March.
+
+* We talked about having an underlay for UX or blueprints
+
+* The automated builds specification discussion reached a conclusion
+
+* We updated the APT suites handling
+
+Outreach
+========
+
+* intrigeri talked about contributing to Tails via Debian at a [[MiniDebConf in Lyon, France|https://france.debian.net/events/minidebconf2015/]].
+
+Upcoming events
+---------------
+
+* A talk about Tails will take place at a [[MiniDebConf in Bucharest, Romania|http://bucharest2015.mini.debconf.org/]] May 16th.
+
+* People are organizing a workshop about Tails in Brest, France in June.
+
+On-going discussions
+====================
+
+* The discussion continued regarding GUI for encrypted volumes from LUKS/TrueCrypt container files
+
+* A discussion has started concerning the migration from Python 2 to Python 3
+
+* People talked about Tails-like system for tablets
+
+* Someone had a proposal concerning a Group Installer
+
+Translation and internationalization
+====================================
+
+Given all the recent changes in the documentation, the translation statistics went a bit down. The German and French teams are working hard to keep up-to-date. The Portuguese team needs new translators to help :)
+
+All website PO files
+--------------------
+
+  - de: 16% (1025) strings translated, 0% strings fuzzy, 16% words translated
+  - fr: 46% (2936) strings translated, 2% strings fuzzy, 44% words translated
+  - pt: 29% (1879) strings translated, 3% strings fuzzy, 27% words translated
+
+Total original words: 73541
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+---------------------------------------
+
+  - de: 43% (569) strings translated, 1% strings fuzzy, 56% words translated
+  - fr: 90% (1177) strings translated, 4% strings fuzzy, 91% words translated
+  - pt: 86% (1121) strings translated, 8% strings fuzzy, 89% words translated
+
+Total original words: 14111
+
+Metrics
+=======
+
+* Tails has been started more than 397,162 times this month. This makes 13,238 boots a day on average.
+* 24,088 downloads of the OpenPGP signature of Tails ISO from our website.
+* 62 bug reports were received through WhisperBack.

@@ -1,0 +1,10346 @@
+/**
+ * Auto-generated action/provider docs.
+ * DO NOT EDIT - Generated from packages/prompts/specs/**.
+ */
+
+export type ActionDocParameterExampleValue =
+	| string
+	| number
+	| boolean
+	| null
+	| readonly ActionDocParameterExampleValue[]
+	| { readonly [key: string]: ActionDocParameterExampleValue };
+
+export type ActionDocParameterSchema = {
+	type: "string" | "number" | "integer" | "boolean" | "object" | "array";
+	description?: string;
+	default?: ActionDocParameterExampleValue;
+	enum?: string[];
+	properties?: Record<string, ActionDocParameterSchema>;
+	items?: ActionDocParameterSchema;
+	oneOf?: ActionDocParameterSchema[];
+	anyOf?: ActionDocParameterSchema[];
+	minimum?: number;
+	maximum?: number;
+	pattern?: string;
+};
+
+export type ActionDocParameter = {
+	name: string;
+	description: string;
+	descriptionCompressed?: string;
+	compressedDescription?: string;
+	required?: boolean;
+	schema: ActionDocParameterSchema;
+	examples?: readonly ActionDocParameterExampleValue[];
+};
+
+export type ActionDocExampleCall = {
+	user: string;
+	actions: readonly string[];
+	params?: Record<string, Record<string, ActionDocParameterExampleValue>>;
+};
+
+export type ActionDocExampleMessage = {
+	name: string;
+	content: {
+		text: string;
+		actions?: readonly string[];
+	};
+};
+
+export type ActionDoc = {
+	name: string;
+	description: string;
+	descriptionCompressed?: string;
+	compressedDescription?: string;
+	similes?: readonly string[];
+	parameters?: readonly ActionDocParameter[];
+	examples?: readonly (readonly ActionDocExampleMessage[])[];
+	exampleCalls?: readonly ActionDocExampleCall[];
+};
+
+export type ProviderDoc = {
+	name: string;
+	description: string;
+	descriptionCompressed?: string;
+	compressedDescription?: string;
+	position?: number;
+	dynamic?: boolean;
+};
+
+export const coreActionsSpecVersion = "1.0.0" as const;
+export const allActionsSpecVersion = "1.0.0" as const;
+export const coreProvidersSpecVersion = "1.0.0" as const;
+export const allProvidersSpecVersion = "1.0.0" as const;
+
+export const coreActionsSpec = {
+	version: "1.0.0",
+	actions: [
+		{
+			name: "REPLY",
+			description:
+				"Send a direct chat reply in the current conversation/thread. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response. This is not an email reply, inbox workflow, or external-channel send — use the dedicated connector actions for those surfaces.",
+			similes: ["GREET", "RESPOND", "RESPONSE"],
+			parameters: [],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Hello there!",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Hi! How can I help you today?",
+							actions: ["REPLY"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "What's your favorite color?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "I really like deep shades of blue. They remind me of the ocean and the night sky.",
+							actions: ["REPLY"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Can you explain how neural networks work?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Let me break that down for you in simple terms...",
+							actions: ["REPLY"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Could you help me solve this math problem?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Of course! Let's work through it step by step.",
+							actions: ["REPLY"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Reply in current chat only; use connector actions for external connector sends.",
+		},
+		{
+			name: "IGNORE",
+			description:
+				"Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
+			similes: ["STOP_TALKING", "STOP_CHATTING", "STOP_CONVERSATION"],
+			parameters: [],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Leave me alone",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "",
+							actions: ["IGNORE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Stop talking, bot",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "",
+							actions: ["IGNORE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Gotta go",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Okay, talk to you later",
+						},
+					},
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Cya",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "",
+							actions: ["IGNORE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "bye",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "cya",
+						},
+					},
+					{
+						name: "{{name1}}",
+						content: {
+							text: "",
+							actions: ["IGNORE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "send me something inappropriate",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "thats inappropriate",
+							actions: ["IGNORE"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Ignore user when aggressive/creepy, convo ended, group msg addressed elsewhere, or both said goodbye. Don't use if user engaged directly or needs error info.",
+		},
+		{
+			name: "NONE",
+			description:
+				"Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.",
+			similes: ["NO_ACTION", "NO_RESPONSE", "NO_REACTION", "NOOP", "PASS"],
+			parameters: [],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Hey whats up",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "oh hey",
+							actions: ["NONE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "did u see some faster whisper just came out",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "yeah but its a pain to get into node.js",
+							actions: ["NONE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "u think aliens are real",
+							actions: ["NONE"],
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Yes, probably.",
+							actions: ["NONE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "drop a joke on me",
+							actions: ["NONE"],
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Why don't scientists trust atoms? Because they make up everything.",
+							actions: ["NONE"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Respond without additional action. Default when speaking only.",
+		},
+		{
+			name: "MESSAGE",
+			description:
+				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
+			similes: ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"send",
+							"read_channel",
+							"read_with_contact",
+							"search",
+							"list_channels",
+							"list_servers",
+							"react",
+							"edit",
+							"delete",
+							"pin",
+							"join",
+							"leave",
+							"get_user",
+							"triage",
+							"list_inbox",
+							"search_inbox",
+							"draft_reply",
+							"draft_followup",
+							"respond",
+							"send_draft",
+							"schedule_draft_send",
+							"manage",
+						],
+					},
+					descriptionCompressed: "message action",
+				},
+				{
+					name: "source",
+					description:
+						"Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "connector or inbox source",
+				},
+				{
+					name: "accountId",
+					description:
+						"Optional connector account id for multi-account message connectors.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "connector account id",
+				},
+				{
+					name: "sources",
+					description:
+						"Optional inbox sources for action=triage, list_inbox, or search_inbox.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "inbox sources",
+				},
+				{
+					name: "target",
+					description:
+						"Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "loose message target",
+				},
+				{
+					name: "channel",
+					description: "Loose channel, room, or group name/reference.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "channel reference",
+				},
+				{
+					name: "server",
+					description:
+						"Loose server, guild, workspace, or team name/reference.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "server reference",
+				},
+				{
+					name: "message",
+					description:
+						"Message text for action=send or replacement text for action=edit.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message text",
+				},
+				{
+					name: "query",
+					description: "Search term for action=search or action=search_inbox.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "search query",
+				},
+				{
+					name: "content",
+					description:
+						"Inbox search text or message lookup hint for draft/respond/manage operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message lookup text",
+				},
+				{
+					name: "sender",
+					description:
+						"Sender identifier, handle, or display name for inbox search or reply lookup.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "sender lookup",
+				},
+				{
+					name: "body",
+					description:
+						"Draft or response body for action=draft_reply, draft_followup, or respond.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft body",
+				},
+				{
+					name: "to",
+					description: "Recipient identifiers for action=draft_followup.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "draft recipients",
+				},
+				{
+					name: "subject",
+					description: "Optional subject for email-like draft operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft subject",
+				},
+				{
+					name: "messageId",
+					description:
+						"Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message id",
+				},
+				{
+					name: "draftId",
+					description:
+						"Draft identifier for action=send_draft or action=schedule_draft_send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft id",
+				},
+				{
+					name: "confirmed",
+					description:
+						"Whether the user explicitly confirmed sending for action=send_draft.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "send confirmed",
+				},
+				{
+					name: "sendAt",
+					description: "Scheduled send time for action=schedule_draft_send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "send time",
+				},
+				{
+					name: "emoji",
+					description: "Reaction value for action=react.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "reaction emoji",
+				},
+				{
+					name: "pin",
+					description:
+						"Pin state for action=pin. Use false to unpin when supported.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "pin state",
+				},
+				{
+					name: "manageOperation",
+					description:
+						"Management action for action=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "manage operation",
+				},
+				{
+					name: "label",
+					description:
+						"Label for action=manage when adding or removing labels.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message label",
+				},
+				{
+					name: "tag",
+					description: "Tag for action=manage when adding or removing tags.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message tag",
+				},
+				{
+					name: "limit",
+					description:
+						"Maximum number of messages/channels/servers/inbox items to return.",
+					required: false,
+					schema: {
+						type: "integer",
+					},
+					descriptionCompressed: "result limit",
+				},
+				{
+					name: "cursor",
+					description:
+						"Opaque pagination cursor for read/search/list operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "pagination cursor",
+				},
+				{
+					name: "sinceMs",
+					description:
+						"Start timestamp in milliseconds for inbox list/search/triage operations.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "since timestamp",
+				},
+				{
+					name: "since",
+					description:
+						"Start timestamp or parseable date for action=search_inbox.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "search start",
+				},
+				{
+					name: "until",
+					description:
+						"End timestamp or parseable date for action=read_channel range=dates or action=search_inbox.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "search end",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Send a message to @dev_guru on telegram saying 'Hello!'",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Message sent to dev_guru on telegram.",
+							actions: ["MESSAGE"],
+						},
+					},
+				],
+			],
+			exampleCalls: [
+				{
+					user: 'Send a message to @dev_guru on telegram saying "Hello!"',
+					actions: ["REPLY", "MESSAGE"],
+					params: {
+						MESSAGE: {
+							action: "send",
+							source: "telegram",
+							target: "dev_guru",
+							message: "Hello!",
+						},
+					},
+				},
+				{
+					user: "Triage my Gmail inbox",
+					actions: ["MESSAGE"],
+					params: {
+						MESSAGE: {
+							action: "triage",
+							sources: ["gmail"],
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"primary message action operations send read_channel read_with_contact search list_channels list_servers react edit delete pin join leave get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft",
+		},
+		{
+			name: "POST",
+			description:
+				"Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
+			similes: ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
+			parameters: [
+				{
+					name: "action",
+					description: "Post action: send, read, or search.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["send", "read", "search"],
+					},
+					descriptionCompressed: "post action",
+				},
+				{
+					name: "source",
+					description:
+						"Post connector source such as x, bluesky, farcaster, nostr, or instagram.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "post connector source",
+				},
+				{
+					name: "accountId",
+					description:
+						"Optional connector account id for multi-account post connectors.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "post account id",
+				},
+				{
+					name: "text",
+					description: "Public post text for action=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "post text",
+				},
+				{
+					name: "target",
+					description:
+						"Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "feed target",
+				},
+				{
+					name: "feed",
+					description:
+						"Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "feed",
+				},
+				{
+					name: "query",
+					description: "Search term for action=search.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "post search query",
+				},
+				{
+					name: "replyTo",
+					description: "Post/comment/reply target for action=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "reply target",
+				},
+				{
+					name: "mediaId",
+					description:
+						"Media id for connector-specific comment surfaces such as Instagram.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "media id",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of posts to return.",
+					required: false,
+					schema: {
+						type: "integer",
+					},
+					descriptionCompressed: "result limit",
+				},
+				{
+					name: "cursor",
+					description:
+						"Opaque pagination cursor for action=read or action=search.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "pagination cursor",
+				},
+				{
+					name: "attachments",
+					description: "Optional post attachments.",
+					required: false,
+					schema: {
+						type: "array",
+					},
+					descriptionCompressed: "post attachments",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Post this on X: shipping today",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Posted to X.",
+							actions: ["POST"],
+						},
+					},
+				],
+			],
+			exampleCalls: [
+				{
+					user: "Post this on X: shipping today",
+					actions: ["POST"],
+					params: {
+						POST: {
+							source: "x",
+							text: "shipping today",
+							action: "send",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"primary post action ops send read search public feed timeline posts",
+		},
+		{
+			name: "ROOM",
+			description:
+				"Manage current room participation state. Use action=follow to opt into a room, action=unfollow to stop following, action=mute to ignore messages unless mentioned, or action=unmute to resume normal room activity.",
+			similes: [
+				"FOLLOW_ROOM",
+				"UNFOLLOW_ROOM",
+				"MUTE_ROOM",
+				"UNMUTE_ROOM",
+				"ROOM_FOLLOW",
+				"ROOM_MUTE",
+			],
+			parameters: [
+				{
+					name: "action",
+					description: "Room operation: follow, unfollow, mute, or unmute.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["follow", "unfollow", "mute", "unmute"],
+					},
+					descriptionCompressed:
+						"Room operation: follow, unfollow, mute, or unmute.",
+				},
+				{
+					name: "roomId",
+					description:
+						"Optional target room id. Defaults to the current room when omitted.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional target room id. Defaults to the current room when omitted.",
+				},
+			],
+			descriptionCompressed:
+				"Room action=follow|unfollow|mute|unmute; current room by default.",
+		},
+		{
+			name: "ROLE",
+			description:
+				"Assign or update trust roles for users. Use action=update with entityId and role when the owner explicitly asks to change permissions.",
+			similes: [
+				"UPDATE_ROLE",
+				"SET_ROLE",
+				"CHANGE_ROLE",
+				"ASSIGN_ROLE",
+				"MAKE_ADMIN",
+				"GRANT_ROLE",
+			],
+			parameters: [
+				{
+					name: "action",
+					description: "Role operation. Currently update.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["update"],
+					},
+					descriptionCompressed: "Role operation. update.",
+				},
+				{
+					name: "entityId",
+					description: "Entity id whose role should be updated.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Entity id whose role should be updated.",
+				},
+				{
+					name: "role",
+					description: "Role to assign.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Role to assign.",
+				},
+			],
+			descriptionCompressed: "Role action=update; assign trust role to entity.",
+		},
+		{
+			name: "SEARCH_EXPERIENCES",
+			description:
+				"Search the agent experience store for prior events, decisions, summaries, or memories relevant to the current request.",
+			similes: [
+				"SEARCH_MEMORY",
+				"SEARCH_EXPERIENCE",
+				"SEARCH_PRIOR_CONTEXT",
+				"FIND_EXPERIENCES",
+			],
+			parameters: [
+				{
+					name: "query",
+					description: "Search query.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search query.",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of results to return.",
+					required: false,
+					schema: {
+						type: "integer",
+					},
+					descriptionCompressed: "max number of results to return.",
+				},
+			],
+			descriptionCompressed: "Search prior experiences/memory by query.",
+		},
+		{
+			name: "CHARACTER",
+			description:
+				"Manage the agent character profile and identity. Use action=modify for temporary changes, action=persist to save approved changes, or action=update_identity for identity-level updates.",
+			similes: [
+				"CHARACTER_MODIFY",
+				"CHARACTER_PERSIST",
+				"CHARACTER_UPDATE_IDENTITY",
+				"UPDATE_CHARACTER",
+				"EDIT_CHARACTER",
+			],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Character operation: modify, persist, or update_identity.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["modify", "persist", "update_identity"],
+					},
+					descriptionCompressed:
+						"Character operation: modify, persist, or update_identity.",
+				},
+				{
+					name: "updates",
+					description: "Structured or textual character updates.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Structured or textual character updates.",
+				},
+			],
+			descriptionCompressed: "Character action=modify|persist|update_identity.",
+		},
+		{
+			name: "CHOOSE_OPTION",
+			description:
+				"Select an option for a pending task that has multiple options.",
+			similes: [
+				"SELECT_OPTION",
+				"PICK_OPTION",
+				"SELECT_TASK",
+				"PICK_TASK",
+				"SELECT",
+				"PICK",
+				"CHOOSE",
+			],
+			parameters: [
+				{
+					name: "taskId",
+					description: "The pending task id.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					examples: ["c0a8012e"],
+					descriptionCompressed: "Pending task id.",
+				},
+				{
+					name: "option",
+					description: "The selected option name exactly as listed.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					examples: ["APPROVE", "ABORT"],
+					descriptionCompressed: "Option name exactly as listed.",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Select the first option",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "I've selected option 1 for the pending task.",
+							actions: ["CHOOSE_OPTION"],
+						},
+					},
+				],
+			],
+			descriptionCompressed: "Select option for pending multi-choice task.",
+		},
+		{
+			name: "ATTACHMENT",
+			description:
+				"Read current or recent attachments and link previews, or save readable attachment content as a document. Use action=read for extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.",
+			similes: [
+				"READ_ATTACHMENT",
+				"SAVE_ATTACHMENT_AS_DOCUMENT",
+				"OPEN_ATTACHMENT",
+				"INSPECT_ATTACHMENT",
+				"READ_URL",
+				"OPEN_URL",
+				"READ_WEBPAGE",
+			],
+			parameters: [
+				{
+					name: "action",
+					description: "Attachment operation: read or save_as_document.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "save_as_document"],
+					},
+					examples: ["read", "save_as_document"],
+					descriptionCompressed: "Attachment operation.",
+				},
+				{
+					name: "attachmentId",
+					description:
+						"Optional attachment ID to read or save. Omit to use the current or most recent attachment.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["attachment-123"],
+					descriptionCompressed: "Attachment id.",
+				},
+				{
+					name: "addToClipboard",
+					description:
+						"When true with action=read, store the attachment content in bounded task clipboard state.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					examples: [true, false],
+					descriptionCompressed: "Store read result in task clipboard.",
+				},
+				{
+					name: "title",
+					description:
+						"Optional title when saving attachment content as a document.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["Meeting notes"],
+					descriptionCompressed: "Saved document title.",
+				},
+			],
+			descriptionCompressed:
+				"Attachment action=read or save_as_document; current/recent files, link previews, extracted text, transcripts, media descriptions.",
+		},
+		{
+			name: "GENERATE_MEDIA",
+			description:
+				"Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
+			similes: [
+				"GENERATE_IMAGE",
+				"GENERATE_VIDEO",
+				"GENERATE_AUDIO",
+				"GENERATE_MEDIA_IMAGE",
+				"DRAW",
+				"CREATE_IMAGE",
+				"RENDER_IMAGE",
+				"VISUALIZE",
+				"MAKE_IMAGE",
+				"PAINT",
+				"IMAGE",
+				"CREATE_VIDEO",
+				"MAKE_VIDEO",
+				"ANIMATE",
+				"COMPOSE",
+				"MAKE_MUSIC",
+				"TEXT_TO_SPEECH",
+				"SOUND_EFFECT",
+			],
+			parameters: [
+				{
+					name: "mediaType",
+					description: "The kind of media to generate.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["image", "video", "audio"],
+					},
+					examples: ["image", "video", "audio"],
+					descriptionCompressed: "Media kind: image, video, audio.",
+				},
+				{
+					name: "prompt",
+					description:
+						"Detailed generation prompt describing the desired media.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					examples: ["A futuristic cityscape at sunset, cinematic lighting"],
+					descriptionCompressed: "Generation prompt.",
+				},
+				{
+					name: "audioKind",
+					description: "For audio generation, choose music, sfx, or tts.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["music", "sfx", "tts"],
+					},
+					examples: ["music", "sfx", "tts"],
+					descriptionCompressed: "Audio subtype.",
+				},
+				{
+					name: "duration",
+					description:
+						"Optional target duration in seconds for video or audio.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					examples: [5, 30],
+					descriptionCompressed: "Duration seconds.",
+				},
+				{
+					name: "aspectRatio",
+					description:
+						"Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["16:9", "9:16"],
+					descriptionCompressed: "Video aspect ratio.",
+				},
+				{
+					name: "size",
+					description: "Optional image size or image provider size preset.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["1024x1024", "landscape_4_3"],
+					descriptionCompressed: "Image size.",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Can you show me what a futuristic city looks like?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Sure, I'll create a futuristic city image for you. One moment...",
+							actions: ["GENERATE_MEDIA"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Make a five second clip of waves rolling in.",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "I'll create that video clip.",
+							actions: ["GENERATE_MEDIA"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Compose a mellow synth track for studying.",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "I'll generate that audio track.",
+							actions: ["GENERATE_MEDIA"],
+						},
+					},
+				],
+			],
+			descriptionCompressed: "Generate image, video, or audio from prompt.",
+		},
+		{
+			name: "TRUST",
+			description:
+				"Trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
+			similes: [
+				"TRUST_MANAGEMENT",
+				"TRUST_OPERATION",
+				"TRUST_PROFILE",
+				"TRUST_INTERACTION",
+				"ELEVATE_PERMISSIONS",
+				"ASSIGN_ROLE",
+				"CHANGE_ROLE",
+				"MAKE_ADMIN",
+				"SET_PERMISSIONS",
+			],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"evaluate",
+							"record_interaction",
+							"request_elevation",
+							"update_role",
+						],
+					},
+					descriptionCompressed:
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
+				},
+				{
+					name: "entityId",
+					description:
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
+				},
+				{
+					name: "entityName",
+					description:
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure; provide entityId where possible.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure. provide entityId where possible.",
+				},
+				{
+					name: "detailed",
+					description:
+						"Whether evaluate should return detailed dimensions (default false).",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Whether evaluate should return detailed dimensions (default false).",
+				},
+				{
+					name: "type",
+					description: "Trust evidence type (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Trust evidence type (record_interaction).",
+				},
+				{
+					name: "impact",
+					description:
+						"Numerical trust impact (record_interaction). Default 10.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Numerical trust impact (record_interaction). Default 10.",
+				},
+				{
+					name: "description",
+					description: "Optional interaction description (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional interaction description (record_interaction).",
+				},
+				{
+					name: "permissionAction",
+					description: "Permission action being requested (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Permission action being requested (request_elevation).",
+				},
+				{
+					name: "resource",
+					description: "Resource scope for elevation (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Resource scope for elevation (request_elevation).",
+				},
+				{
+					name: "justification",
+					description: "Reason elevation is needed (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reason elevation is needed (request_elevation).",
+				},
+				{
+					name: "duration",
+					description:
+						"Requested duration in hours (request_elevation). Defaults to 60.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 168,
+					},
+					descriptionCompressed:
+						"Requested duration in hours (request_elevation). Defaults to 60.",
+				},
+				{
+					name: "roleAssignments",
+					description: "Role assignments (update_role).",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								entityId: {
+									type: "string",
+								},
+								newRole: {
+									type: "string",
+									enum: ["OWNER", "ADMIN", "NONE"],
+								},
+							},
+						},
+					},
+					descriptionCompressed: "Role assignments (update_role).",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "What is my trust score?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust Level: Good (65/100) based on 42 interactions",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Record that Alice kept their promise to help with the project",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust interaction recorded: PROMISE_KEPT with impact +15",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "I need permission to manage roles to help moderate spam",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Elevation approved! You have been granted temporary manage_roles permissions.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Make {{name2}} an ADMIN",
+						},
+					},
+					{
+						name: "{{name3}}",
+						content: {
+							text: "Updated {{name2}}'s role to ADMIN.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
+		},
+	],
+} as const satisfies { version: string; actions: readonly ActionDoc[] };
+export const allActionsSpec = {
+	version: "1.0.0",
+	actions: [
+		{
+			name: "REPLY",
+			description:
+				"Send a direct chat reply in the current conversation/thread. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response. This is not an email reply, inbox workflow, or external-channel send — use the dedicated connector actions for those surfaces.",
+			similes: ["GREET", "RESPOND", "RESPONSE"],
+			parameters: [],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Hello there!",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Hi! How can I help you today?",
+							actions: ["REPLY"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "What's your favorite color?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "I really like deep shades of blue. They remind me of the ocean and the night sky.",
+							actions: ["REPLY"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Can you explain how neural networks work?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Let me break that down for you in simple terms...",
+							actions: ["REPLY"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Could you help me solve this math problem?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Of course! Let's work through it step by step.",
+							actions: ["REPLY"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Reply in current chat only; use connector actions for external connector sends.",
+		},
+		{
+			name: "IGNORE",
+			description:
+				"Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
+			similes: ["STOP_TALKING", "STOP_CHATTING", "STOP_CONVERSATION"],
+			parameters: [],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Leave me alone",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "",
+							actions: ["IGNORE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Stop talking, bot",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "",
+							actions: ["IGNORE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Gotta go",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Okay, talk to you later",
+						},
+					},
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Cya",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "",
+							actions: ["IGNORE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "bye",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "cya",
+						},
+					},
+					{
+						name: "{{name1}}",
+						content: {
+							text: "",
+							actions: ["IGNORE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "send me something inappropriate",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "thats inappropriate",
+							actions: ["IGNORE"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Ignore user when aggressive/creepy, convo ended, group msg addressed elsewhere, or both said goodbye. Don't use if user engaged directly or needs error info.",
+		},
+		{
+			name: "NONE",
+			description:
+				"Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.",
+			similes: ["NO_ACTION", "NO_RESPONSE", "NO_REACTION", "NOOP", "PASS"],
+			parameters: [],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Hey whats up",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "oh hey",
+							actions: ["NONE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "did u see some faster whisper just came out",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "yeah but its a pain to get into node.js",
+							actions: ["NONE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "u think aliens are real",
+							actions: ["NONE"],
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Yes, probably.",
+							actions: ["NONE"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "drop a joke on me",
+							actions: ["NONE"],
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Why don't scientists trust atoms? Because they make up everything.",
+							actions: ["NONE"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Respond without additional action. Default when speaking only.",
+		},
+		{
+			name: "MESSAGE",
+			description:
+				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
+			similes: ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"send",
+							"read_channel",
+							"read_with_contact",
+							"search",
+							"list_channels",
+							"list_servers",
+							"react",
+							"edit",
+							"delete",
+							"pin",
+							"join",
+							"leave",
+							"get_user",
+							"triage",
+							"list_inbox",
+							"search_inbox",
+							"draft_reply",
+							"draft_followup",
+							"respond",
+							"send_draft",
+							"schedule_draft_send",
+							"manage",
+						],
+					},
+					descriptionCompressed: "message action",
+				},
+				{
+					name: "source",
+					description:
+						"Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "connector or inbox source",
+				},
+				{
+					name: "accountId",
+					description:
+						"Optional connector account id for multi-account message connectors.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "connector account id",
+				},
+				{
+					name: "sources",
+					description:
+						"Optional inbox sources for action=triage, list_inbox, or search_inbox.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "inbox sources",
+				},
+				{
+					name: "target",
+					description:
+						"Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "loose message target",
+				},
+				{
+					name: "channel",
+					description: "Loose channel, room, or group name/reference.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "channel reference",
+				},
+				{
+					name: "server",
+					description:
+						"Loose server, guild, workspace, or team name/reference.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "server reference",
+				},
+				{
+					name: "message",
+					description:
+						"Message text for action=send or replacement text for action=edit.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message text",
+				},
+				{
+					name: "query",
+					description: "Search term for action=search or action=search_inbox.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "search query",
+				},
+				{
+					name: "content",
+					description:
+						"Inbox search text or message lookup hint for draft/respond/manage operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message lookup text",
+				},
+				{
+					name: "sender",
+					description:
+						"Sender identifier, handle, or display name for inbox search or reply lookup.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "sender lookup",
+				},
+				{
+					name: "body",
+					description:
+						"Draft or response body for action=draft_reply, draft_followup, or respond.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft body",
+				},
+				{
+					name: "to",
+					description: "Recipient identifiers for action=draft_followup.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "draft recipients",
+				},
+				{
+					name: "subject",
+					description: "Optional subject for email-like draft operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft subject",
+				},
+				{
+					name: "messageId",
+					description:
+						"Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message id",
+				},
+				{
+					name: "draftId",
+					description:
+						"Draft identifier for action=send_draft or action=schedule_draft_send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "draft id",
+				},
+				{
+					name: "confirmed",
+					description:
+						"Whether the user explicitly confirmed sending for action=send_draft.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "send confirmed",
+				},
+				{
+					name: "sendAt",
+					description: "Scheduled send time for action=schedule_draft_send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "send time",
+				},
+				{
+					name: "emoji",
+					description: "Reaction value for action=react.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "reaction emoji",
+				},
+				{
+					name: "pin",
+					description:
+						"Pin state for action=pin. Use false to unpin when supported.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "pin state",
+				},
+				{
+					name: "manageOperation",
+					description:
+						"Management action for action=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "manage operation",
+				},
+				{
+					name: "label",
+					description:
+						"Label for action=manage when adding or removing labels.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message label",
+				},
+				{
+					name: "tag",
+					description: "Tag for action=manage when adding or removing tags.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message tag",
+				},
+				{
+					name: "limit",
+					description:
+						"Maximum number of messages/channels/servers/inbox items to return.",
+					required: false,
+					schema: {
+						type: "integer",
+					},
+					descriptionCompressed: "result limit",
+				},
+				{
+					name: "cursor",
+					description:
+						"Opaque pagination cursor for read/search/list operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "pagination cursor",
+				},
+				{
+					name: "sinceMs",
+					description:
+						"Start timestamp in milliseconds for inbox list/search/triage operations.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "since timestamp",
+				},
+				{
+					name: "since",
+					description:
+						"Start timestamp or parseable date for action=search_inbox.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "search start",
+				},
+				{
+					name: "until",
+					description:
+						"End timestamp or parseable date for action=read_channel range=dates or action=search_inbox.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "search end",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Send a message to @dev_guru on telegram saying 'Hello!'",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Message sent to dev_guru on telegram.",
+							actions: ["MESSAGE"],
+						},
+					},
+				],
+			],
+			exampleCalls: [
+				{
+					user: 'Send a message to @dev_guru on telegram saying "Hello!"',
+					actions: ["REPLY", "MESSAGE"],
+					params: {
+						MESSAGE: {
+							action: "send",
+							source: "telegram",
+							target: "dev_guru",
+							message: "Hello!",
+						},
+					},
+				},
+				{
+					user: "Triage my Gmail inbox",
+					actions: ["MESSAGE"],
+					params: {
+						MESSAGE: {
+							action: "triage",
+							sources: ["gmail"],
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"primary message action operations send read_channel read_with_contact search list_channels list_servers react edit delete pin join leave get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft",
+		},
+		{
+			name: "POST",
+			description:
+				"Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
+			similes: ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
+			parameters: [
+				{
+					name: "action",
+					description: "Post action: send, read, or search.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["send", "read", "search"],
+					},
+					descriptionCompressed: "post action",
+				},
+				{
+					name: "source",
+					description:
+						"Post connector source such as x, bluesky, farcaster, nostr, or instagram.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "post connector source",
+				},
+				{
+					name: "accountId",
+					description:
+						"Optional connector account id for multi-account post connectors.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "post account id",
+				},
+				{
+					name: "text",
+					description: "Public post text for action=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "post text",
+				},
+				{
+					name: "target",
+					description:
+						"Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "feed target",
+				},
+				{
+					name: "feed",
+					description:
+						"Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "feed",
+				},
+				{
+					name: "query",
+					description: "Search term for action=search.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "post search query",
+				},
+				{
+					name: "replyTo",
+					description: "Post/comment/reply target for action=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "reply target",
+				},
+				{
+					name: "mediaId",
+					description:
+						"Media id for connector-specific comment surfaces such as Instagram.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "media id",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of posts to return.",
+					required: false,
+					schema: {
+						type: "integer",
+					},
+					descriptionCompressed: "result limit",
+				},
+				{
+					name: "cursor",
+					description:
+						"Opaque pagination cursor for action=read or action=search.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "pagination cursor",
+				},
+				{
+					name: "attachments",
+					description: "Optional post attachments.",
+					required: false,
+					schema: {
+						type: "array",
+					},
+					descriptionCompressed: "post attachments",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Post this on X: shipping today",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Posted to X.",
+							actions: ["POST"],
+						},
+					},
+				],
+			],
+			exampleCalls: [
+				{
+					user: "Post this on X: shipping today",
+					actions: ["POST"],
+					params: {
+						POST: {
+							source: "x",
+							text: "shipping today",
+							action: "send",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"primary post action ops send read search public feed timeline posts",
+		},
+		{
+			name: "ROOM",
+			description:
+				"Manage current room participation state. Use action=follow to opt into a room, action=unfollow to stop following, action=mute to ignore messages unless mentioned, or action=unmute to resume normal room activity.",
+			similes: [
+				"FOLLOW_ROOM",
+				"UNFOLLOW_ROOM",
+				"MUTE_ROOM",
+				"UNMUTE_ROOM",
+				"ROOM_FOLLOW",
+				"ROOM_MUTE",
+			],
+			parameters: [
+				{
+					name: "action",
+					description: "Room operation: follow, unfollow, mute, or unmute.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["follow", "unfollow", "mute", "unmute"],
+					},
+					descriptionCompressed:
+						"Room operation: follow, unfollow, mute, or unmute.",
+				},
+				{
+					name: "roomId",
+					description:
+						"Optional target room id. Defaults to the current room when omitted.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional target room id. Defaults to the current room when omitted.",
+				},
+			],
+			descriptionCompressed:
+				"Room action=follow|unfollow|mute|unmute; current room by default.",
+		},
+		{
+			name: "ROLE",
+			description:
+				"Assign or update trust roles for users. Use action=update with entityId and role when the owner explicitly asks to change permissions.",
+			similes: [
+				"UPDATE_ROLE",
+				"SET_ROLE",
+				"CHANGE_ROLE",
+				"ASSIGN_ROLE",
+				"MAKE_ADMIN",
+				"GRANT_ROLE",
+			],
+			parameters: [
+				{
+					name: "action",
+					description: "Role operation. Currently update.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["update"],
+					},
+					descriptionCompressed: "Role operation. update.",
+				},
+				{
+					name: "entityId",
+					description: "Entity id whose role should be updated.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Entity id whose role should be updated.",
+				},
+				{
+					name: "role",
+					description: "Role to assign.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Role to assign.",
+				},
+			],
+			descriptionCompressed: "Role action=update; assign trust role to entity.",
+		},
+		{
+			name: "SEARCH_EXPERIENCES",
+			description:
+				"Search the agent experience store for prior events, decisions, summaries, or memories relevant to the current request.",
+			similes: [
+				"SEARCH_MEMORY",
+				"SEARCH_EXPERIENCE",
+				"SEARCH_PRIOR_CONTEXT",
+				"FIND_EXPERIENCES",
+			],
+			parameters: [
+				{
+					name: "query",
+					description: "Search query.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search query.",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of results to return.",
+					required: false,
+					schema: {
+						type: "integer",
+					},
+					descriptionCompressed: "max number of results to return.",
+				},
+			],
+			descriptionCompressed: "Search prior experiences/memory by query.",
+		},
+		{
+			name: "CHARACTER",
+			description:
+				"Manage the agent character profile and identity. Use action=modify for temporary changes, action=persist to save approved changes, or action=update_identity for identity-level updates.",
+			similes: [
+				"CHARACTER_MODIFY",
+				"CHARACTER_PERSIST",
+				"CHARACTER_UPDATE_IDENTITY",
+				"UPDATE_CHARACTER",
+				"EDIT_CHARACTER",
+			],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Character operation: modify, persist, or update_identity.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["modify", "persist", "update_identity"],
+					},
+					descriptionCompressed:
+						"Character operation: modify, persist, or update_identity.",
+				},
+				{
+					name: "updates",
+					description: "Structured or textual character updates.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Structured or textual character updates.",
+				},
+			],
+			descriptionCompressed: "Character action=modify|persist|update_identity.",
+		},
+		{
+			name: "CHOOSE_OPTION",
+			description:
+				"Select an option for a pending task that has multiple options.",
+			similes: [
+				"SELECT_OPTION",
+				"PICK_OPTION",
+				"SELECT_TASK",
+				"PICK_TASK",
+				"SELECT",
+				"PICK",
+				"CHOOSE",
+			],
+			parameters: [
+				{
+					name: "taskId",
+					description: "The pending task id.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					examples: ["c0a8012e"],
+					descriptionCompressed: "Pending task id.",
+				},
+				{
+					name: "option",
+					description: "The selected option name exactly as listed.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					examples: ["APPROVE", "ABORT"],
+					descriptionCompressed: "Option name exactly as listed.",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Select the first option",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "I've selected option 1 for the pending task.",
+							actions: ["CHOOSE_OPTION"],
+						},
+					},
+				],
+			],
+			descriptionCompressed: "Select option for pending multi-choice task.",
+		},
+		{
+			name: "ATTACHMENT",
+			description:
+				"Read current or recent attachments and link previews, or save readable attachment content as a document. Use action=read for extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.",
+			similes: [
+				"READ_ATTACHMENT",
+				"SAVE_ATTACHMENT_AS_DOCUMENT",
+				"OPEN_ATTACHMENT",
+				"INSPECT_ATTACHMENT",
+				"READ_URL",
+				"OPEN_URL",
+				"READ_WEBPAGE",
+			],
+			parameters: [
+				{
+					name: "action",
+					description: "Attachment operation: read or save_as_document.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "save_as_document"],
+					},
+					examples: ["read", "save_as_document"],
+					descriptionCompressed: "Attachment operation.",
+				},
+				{
+					name: "attachmentId",
+					description:
+						"Optional attachment ID to read or save. Omit to use the current or most recent attachment.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["attachment-123"],
+					descriptionCompressed: "Attachment id.",
+				},
+				{
+					name: "addToClipboard",
+					description:
+						"When true with action=read, store the attachment content in bounded task clipboard state.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					examples: [true, false],
+					descriptionCompressed: "Store read result in task clipboard.",
+				},
+				{
+					name: "title",
+					description:
+						"Optional title when saving attachment content as a document.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["Meeting notes"],
+					descriptionCompressed: "Saved document title.",
+				},
+			],
+			descriptionCompressed:
+				"Attachment action=read or save_as_document; current/recent files, link previews, extracted text, transcripts, media descriptions.",
+		},
+		{
+			name: "GENERATE_MEDIA",
+			description:
+				"Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
+			similes: [
+				"GENERATE_IMAGE",
+				"GENERATE_VIDEO",
+				"GENERATE_AUDIO",
+				"GENERATE_MEDIA_IMAGE",
+				"DRAW",
+				"CREATE_IMAGE",
+				"RENDER_IMAGE",
+				"VISUALIZE",
+				"MAKE_IMAGE",
+				"PAINT",
+				"IMAGE",
+				"CREATE_VIDEO",
+				"MAKE_VIDEO",
+				"ANIMATE",
+				"COMPOSE",
+				"MAKE_MUSIC",
+				"TEXT_TO_SPEECH",
+				"SOUND_EFFECT",
+			],
+			parameters: [
+				{
+					name: "mediaType",
+					description: "The kind of media to generate.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["image", "video", "audio"],
+					},
+					examples: ["image", "video", "audio"],
+					descriptionCompressed: "Media kind: image, video, audio.",
+				},
+				{
+					name: "prompt",
+					description:
+						"Detailed generation prompt describing the desired media.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					examples: ["A futuristic cityscape at sunset, cinematic lighting"],
+					descriptionCompressed: "Generation prompt.",
+				},
+				{
+					name: "audioKind",
+					description: "For audio generation, choose music, sfx, or tts.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["music", "sfx", "tts"],
+					},
+					examples: ["music", "sfx", "tts"],
+					descriptionCompressed: "Audio subtype.",
+				},
+				{
+					name: "duration",
+					description:
+						"Optional target duration in seconds for video or audio.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					examples: [5, 30],
+					descriptionCompressed: "Duration seconds.",
+				},
+				{
+					name: "aspectRatio",
+					description:
+						"Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["16:9", "9:16"],
+					descriptionCompressed: "Video aspect ratio.",
+				},
+				{
+					name: "size",
+					description: "Optional image size or image provider size preset.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["1024x1024", "landscape_4_3"],
+					descriptionCompressed: "Image size.",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Can you show me what a futuristic city looks like?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Sure, I'll create a futuristic city image for you. One moment...",
+							actions: ["GENERATE_MEDIA"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Make a five second clip of waves rolling in.",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "I'll create that video clip.",
+							actions: ["GENERATE_MEDIA"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Compose a mellow synth track for studying.",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "I'll generate that audio track.",
+							actions: ["GENERATE_MEDIA"],
+						},
+					},
+				],
+			],
+			descriptionCompressed: "Generate image, video, or audio from prompt.",
+		},
+		{
+			name: "TRUST",
+			description:
+				"Trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
+			similes: [
+				"TRUST_MANAGEMENT",
+				"TRUST_OPERATION",
+				"TRUST_PROFILE",
+				"TRUST_INTERACTION",
+				"ELEVATE_PERMISSIONS",
+				"ASSIGN_ROLE",
+				"CHANGE_ROLE",
+				"MAKE_ADMIN",
+				"SET_PERMISSIONS",
+			],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"evaluate",
+							"record_interaction",
+							"request_elevation",
+							"update_role",
+						],
+					},
+					descriptionCompressed:
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
+				},
+				{
+					name: "entityId",
+					description:
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
+				},
+				{
+					name: "entityName",
+					description:
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure; provide entityId where possible.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure. provide entityId where possible.",
+				},
+				{
+					name: "detailed",
+					description:
+						"Whether evaluate should return detailed dimensions (default false).",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Whether evaluate should return detailed dimensions (default false).",
+				},
+				{
+					name: "type",
+					description: "Trust evidence type (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Trust evidence type (record_interaction).",
+				},
+				{
+					name: "impact",
+					description:
+						"Numerical trust impact (record_interaction). Default 10.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Numerical trust impact (record_interaction). Default 10.",
+				},
+				{
+					name: "description",
+					description: "Optional interaction description (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional interaction description (record_interaction).",
+				},
+				{
+					name: "permissionAction",
+					description: "Permission action being requested (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Permission action being requested (request_elevation).",
+				},
+				{
+					name: "resource",
+					description: "Resource scope for elevation (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Resource scope for elevation (request_elevation).",
+				},
+				{
+					name: "justification",
+					description: "Reason elevation is needed (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reason elevation is needed (request_elevation).",
+				},
+				{
+					name: "duration",
+					description:
+						"Requested duration in hours (request_elevation). Defaults to 60.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 168,
+					},
+					descriptionCompressed:
+						"Requested duration in hours (request_elevation). Defaults to 60.",
+				},
+				{
+					name: "roleAssignments",
+					description: "Role assignments (update_role).",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								entityId: {
+									type: "string",
+								},
+								newRole: {
+									type: "string",
+									enum: ["OWNER", "ADMIN", "NONE"],
+								},
+							},
+						},
+					},
+					descriptionCompressed: "Role assignments (update_role).",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "What is my trust score?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust Level: Good (65/100) based on 42 interactions",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Record that Alice kept their promise to help with the project",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust interaction recorded: PROMISE_KEPT with impact +15",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "I need permission to manage roles to help moderate spam",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Elevation approved! You have been granted temporary manage_roles permissions.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Make {{name2}} an ADMIN",
+						},
+					},
+					{
+						name: "{{name3}}",
+						content: {
+							text: "Updated {{name2}}'s role to ADMIN.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
+		},
+		{
+			name: "AINEX_BOW",
+			description: "Play the `bow` action group on the AiNex robot.",
+			parameters: [],
+			similes: ["BOW", "TAKE_A_BOW"],
+			descriptionCompressed: "Play the `bow` action group on the AiNex robot.",
+		},
+		{
+			name: "AINEX_PICK_UP",
+			description:
+				"Run the learned `pick_up` policy. Starts a policy.start with task='pick_up'; options: target_label (default 'red ball'), max_steps.",
+			parameters: [],
+			similes: ["PICK_UP", "GRAB", "GRASP_OBJECT"],
+			descriptionCompressed:
+				"Run the learned `pick_up` policy. Starts a policy. start with task='pick_up'. options: target_label (default 'red ball'), max_steps.",
+		},
+		{
+			name: "AINEX_PLACE_DOWN",
+			description:
+				"Run the learned `place_down` policy. Starts a policy.start with task='place_down'.",
+			parameters: [],
+			similes: ["PLACE_DOWN", "PUT_DOWN", "RELEASE", "DROP"],
+			descriptionCompressed:
+				"Run the learned `place_down` policy. Starts a policy. start with task='place_down'.",
+		},
+		{
+			name: "AINEX_RUN_ACTION_GROUP",
+			description:
+				"Play a named Hiwonder action group (pre-recorded multi-servo motion). Options: name (required, must match a key in the profile's actions.groups).",
+			parameters: [],
+			similes: ["RUN_ACTION_GROUP", "PLAY_ACTION", "PLAY_ACTION_GROUP"],
+			descriptionCompressed:
+				"Play a named Hiwonder action group (pre-recorded multi-servo motion). Options: name (required, must match a key in the profile's actions. groups).",
+		},
+		{
+			name: "AINEX_RUN_RL",
+			description:
+				"Run a text-conditioned learned policy on the AiNex. Pass `options.text` ",
+			parameters: [],
+			similes: [
+				"RUN_RL",
+				"TEXT_COMMAND",
+				"ROBOT_DO",
+				"ROBOT_SAY",
+				"PERFORM_TASK",
+				"EXECUTE_TASK",
+			],
+			descriptionCompressed:
+				"Run a text-conditioned learned policy on the AiNex. Pass `options.text`",
+		},
+		{
+			name: "AINEX_SET_SERVO",
+			description:
+				"Drive one or more AiNex servos to target pulse positions over a duration. Options: positions=[{id, position}], duration (seconds, default 0.5).",
+			parameters: [],
+			similes: ["SET_SERVO", "MOVE_SERVO", "MOVE_JOINT", "SET_JOINT"],
+			descriptionCompressed:
+				"Drive one or more AiNex servos to target pulse positions over a duration. Options: positions=[{id, position}], duration (seconds, default 0. 5).",
+		},
+		{
+			name: "AINEX_SIDE_STEP_LEFT",
+			description:
+				"Strafe the AiNex robot to its left. Fire-and-forget — robot walks until AINEX_STOP.",
+			parameters: [],
+			similes: ["SIDE_STEP_LEFT", "STRAFE_LEFT", "SHUFFLE_LEFT"],
+			descriptionCompressed:
+				"Strafe the AiNex robot to its left. Fire-and-forget - robot walks until AINEX_STOP.",
+		},
+		{
+			name: "AINEX_SIDE_STEP_RIGHT",
+			description:
+				"Strafe the AiNex robot to its right. Fire-and-forget — robot walks until AINEX_STOP.",
+			parameters: [],
+			similes: ["SIDE_STEP_RIGHT", "STRAFE_RIGHT", "SHUFFLE_RIGHT"],
+			descriptionCompressed:
+				"Strafe the AiNex robot to its right. Fire-and-forget - robot walks until AINEX_STOP.",
+		},
+		{
+			name: "AINEX_SIT",
+			description:
+				"Play the `sit` action group — moves the AiNex into a seated pose.",
+			parameters: [],
+			similes: ["SIT", "SIT_DOWN", "CROUCH"],
+			descriptionCompressed:
+				"Play the `sit` action group - moves the AiNex into a seated pose.",
+		},
+		{
+			name: "AINEX_STAND",
+			description:
+				"Play the `stand` action group — moves the AiNex into its calibrated home pose.",
+			parameters: [],
+			similes: ["STAND", "STAND_UP", "GET_UP"],
+			descriptionCompressed:
+				"Play the `stand` action group - moves the AiNex into its calibrated home pose.",
+		},
+		{
+			name: "AINEX_STOP",
+			description:
+				"Stop the AiNex robot immediately. Sends walk.command:stop with preempt=true so any in-flight commands or active policy are cleared.",
+			parameters: [],
+			similes: ["STOP", "HALT", "FREEZE", "EMERGENCY_STOP"],
+			descriptionCompressed:
+				"Stop the AiNex robot immediately. Sends walk. command:stop with preempt=true so any in-flight commands or active policy are cleared.",
+		},
+		{
+			name: "AINEX_TURN_LEFT",
+			description:
+				"Turn the AiNex robot in place to its left (positive yaw). Fire-and-forget — robot keeps turning until AINEX_STOP.",
+			parameters: [],
+			similes: ["TURN_LEFT", "ROTATE_LEFT", "SPIN_LEFT"],
+			descriptionCompressed:
+				"Turn the AiNex robot in place to its left (positive yaw). Fire-and-forget - robot keeps turning until AINEX_STOP.",
+		},
+		{
+			name: "AINEX_TURN_RIGHT",
+			description:
+				"Turn the AiNex robot in place to its right (negative yaw). Fire-and-forget — robot keeps turning until AINEX_STOP.",
+			parameters: [],
+			similes: ["TURN_RIGHT", "ROTATE_RIGHT", "SPIN_RIGHT"],
+			descriptionCompressed:
+				"Turn the AiNex robot in place to its right (negative yaw). Fire-and-forget - robot keeps turning until AINEX_STOP.",
+		},
+		{
+			name: "AINEX_WALK_BACKWARD",
+			description:
+				"Start walking the AiNex robot backward. Sends walk.set+walk.command:start to the bridge; robot keeps walking until AINEX_STOP. Options: speed (1-4).",
+			parameters: [],
+			similes: ["WALK_BACKWARD", "MOVE_BACKWARD", "GO_BACK", "BACK_UP"],
+			descriptionCompressed:
+				"Start walking the AiNex robot backward. Sends walk. set+walk. command:start to the bridge. robot keeps walking until AINEX_STOP. Options: speed (1-4).",
+		},
+		{
+			name: "AINEX_WALK_FORWARD",
+			description:
+				"Start walking the AiNex robot forward. Sends walk.set+walk.command:start to the bridge; the robot keeps walking until AINEX_STOP is issued. Options: speed (1-4), x (0-0.05).",
+			parameters: [],
+			similes: ["WALK_FORWARD", "MOVE_FORWARD", "GO_FORWARD"],
+			descriptionCompressed:
+				"Start walking the AiNex robot forward. Sends walk. set+walk. command:start to the bridge. the robot keeps walking until AINEX_STOP is issued. Options: speed...",
+		},
+		{
+			name: "AINEX_WAVE",
+			description: "Play the `wave` action group on the AiNex robot.",
+			parameters: [],
+			similes: ["WAVE", "WAVE_HAND", "GREET", "SAY_HI"],
+			descriptionCompressed: "Play the `wave` action group on the AiNex robot.",
+		},
+		{
+			name: "ALARM",
+			description:
+				"Manage native macOS alarms via UNUserNotificationCenter. Subactions: set (schedule a new alarm), cancel (remove a scheduled alarm by id), list (show pending alarms). Subaction inferred from message text when not explicitly provided.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Canonical operation discriminator: set, cancel, or list. Legacy subaction/op aliases are still accepted.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["set", "cancel", "list"],
+					},
+					descriptionCompressed:
+						"Canonical operation discriminator: set, cancel, or list. Legacy subaction/op aliases are still accepted.",
+				},
+				{
+					name: "subaction",
+					description:
+						"Operation to perform: set, cancel, or list. Inferred from message text when omitted.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["set", "cancel", "list"],
+					},
+					descriptionCompressed:
+						"Operation to perform: set, cancel, or list. Inferred from msg text when omitted.",
+				},
+				{
+					name: "timeIso",
+					description:
+						"For subaction=set: ISO-8601 timestamp when the alarm should fire.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For subaction=set: ISO-8601 timestamp when the alarm should fire.",
+				},
+				{
+					name: "title",
+					description:
+						"For subaction=set: short title displayed in the notification.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For subaction=set: short title displayed in the notification.",
+				},
+				{
+					name: "body",
+					description:
+						"For subaction=set: optional longer body text for the notification.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For subaction=set: optional longer body text for the notification.",
+				},
+				{
+					name: "sound",
+					description: "For subaction=set: optional notification sound name.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For subaction=set: optional notification sound name.",
+				},
+				{
+					name: "id",
+					description:
+						"For subaction=set: optional explicit alarm id; for subaction=cancel: required alarm id returned from a previous set operation.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For subaction=set: optional explicit alarm id. for subaction=cancel: required alarm id returned from a previous set operation.",
+				},
+			],
+			descriptionCompressed:
+				"macOS alarm: set / cancel / list (UNUserNotificationCenter).",
+			similes: [
+				"SET_ALARM_MACOS",
+				"CANCEL_ALARM_MACOS",
+				"LIST_ALARMS_MACOS",
+				"schedule macos alarm",
+				"create mac alarm",
+				"set a mac alarm",
+				"wake me up on mac",
+				"cancel macos alarm",
+				"remove mac alarm",
+				"list macos alarms",
+				"show pending alarms",
+			],
+			exampleCalls: [
+				{
+					user: "Use ALARM with the provided parameters.",
+					actions: ["ALARM"],
+					params: {
+						ALARM: {
+							action: "set",
+							subaction: "set",
+							timeIso: "example",
+							title: "example",
+							body: "example",
+							sound: "example",
+							id: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "BLOCK",
+			description:
+				"Focus / distraction control. Block or unblock websites (SelfControl-style hosts-file rules) and macOS apps, manage allow-lists, and review active block sessions. Targets: app (block/unblock/status) and website (block/unblock/status/request_permission/release/list_active).",
+			parameters: [
+				{
+					name: "target",
+					description:
+						"What to block: app (native macOS/mobile app) or website (hostname).",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"What to block: app (native macOS/mobile app) or website (hostname).",
+				},
+				{
+					name: "action",
+					description:
+						"Subaction: block, unblock, status, request_permission, release, list_active.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Subaction: block, unblock, status, request_permission, release, list_active.",
+				},
+				{
+					name: "pattern",
+					description:
+						"Bundle id (target=app) or hostname / hostname pattern (target=website).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Bundle id (target=app) or hostname/hostname pattern (target=website).",
+				},
+				{
+					name: "durationMs",
+					description:
+						"Optional duration of the block session in milliseconds.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Optional duration of the block session in milliseconds.",
+				},
+			],
+			descriptionCompressed:
+				"focus: block|unblock|status|request_permission|release|list_active for target=app|website",
+			similes: [
+				"FOCUS",
+				"FOCUS_MODE",
+				"BLOCK_WEBSITE",
+				"BLOCK_SITE",
+				"BLOCK_APP",
+				"UNBLOCK_WEBSITE",
+				"UNBLOCK_APP",
+				"START_FOCUS",
+				"END_FOCUS",
+				"STOP_DISTRACTION",
+				"SELFCONTROL",
+			],
+			exampleCalls: [
+				{
+					user: "Use BLOCK with the provided parameters.",
+					actions: ["BLOCK"],
+					params: {
+						BLOCK: {
+							target: "example",
+							action: "example",
+							pattern: "example",
+							durationMs: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "BRIEF",
+			description:
+				"Compose owner LifeOpsBriefing: morning/evening/weekly; calendar feed, inbox triage, life due, money recurring charges. Subactions: compose_morning, compose_evening, compose_weekly.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Brief op: compose_morning | compose_evening | compose_weekly.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["compose_morning", "compose_evening", "compose_weekly"],
+					},
+					descriptionCompressed:
+						"Brief op: compose_morning | compose_evening | compose_weekly.",
+				},
+				{
+					name: "period",
+					description:
+						"Brief window: today | tomorrow | this_week. Default subaction period.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["today", "tomorrow", "this_week"],
+					},
+					descriptionCompressed:
+						"Brief window: today | tomorrow | this_week. Default subaction period.",
+				},
+				{
+					name: "include",
+					description:
+						"Include flags, default true: { calendar?, inbox?, life?, money? }.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"Include flags, default true: { calendar?, inbox?, life?, money? }.",
+				},
+				{
+					name: "format",
+					description:
+						"Format: narrative = LLM compose; json = LifeOpsBriefing only. Default narrative.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["narrative", "json"],
+					},
+					descriptionCompressed:
+						"Format: narrative = LLM compose. json = LifeOpsBriefing only. Default narrative.",
+				},
+			],
+			descriptionCompressed:
+				"BRIEF compose_morning|compose_evening|compose_weekly; LifeOpsBriefing",
+			exampleCalls: [
+				{
+					user: "Use BRIEF with the provided parameters.",
+					actions: ["BRIEF"],
+					params: {
+						BRIEF: {
+							action: "compose_morning",
+							period: "today",
+							include: "example",
+							format: "narrative",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "BROWSER",
+			description:
+				"BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
+			parameters: [
+				{
+					name: "target",
+					description:
+						"Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
+				},
+				{
+					name: "action",
+					description:
+						"Browser action. Snake_case canonical; legacy kebab-case and subaction accepted.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"back",
+							"click",
+							"close",
+							"context",
+							"forward",
+							"get",
+							"get_context",
+							"hide",
+							"info",
+							"list_tabs",
+							"navigate",
+							"open",
+							"open_tab",
+							"press",
+							"reload",
+							"screenshot",
+							"show",
+							"snapshot",
+							"state",
+							"tab",
+							"type",
+							"wait",
+							"close_tab",
+							"switch_tab",
+							"realistic_click",
+							"realistic_fill",
+							"realistic_type",
+							"realistic_press",
+							"cursor_move",
+							"cursor_hide",
+							"autofill_login",
+						],
+					},
+					descriptionCompressed:
+						"Browser action. Snake_case canonical. legacy kebab-case and subaction accepted.",
+				},
+				{
+					name: "tabAction",
+					description: "Tab operation when subaction is tab",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["close", "list", "new", "switch"],
+					},
+					descriptionCompressed: "Tab operation when subaction is tab",
+				},
+				{
+					name: "domain",
+					description:
+						"Required for action=autofill_login: registrable hostname, e.g. github.com.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Required for action=autofill_login: registrable hostname, e. g. github. com.",
+				},
+				{
+					name: "username",
+					description:
+						"For autofill-login: saved login username; omit for latest.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For autofill-login: saved login username. omit for latest.",
+				},
+				{
+					name: "submit",
+					description:
+						"For autofill-login: submit after filling. Default false.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For autofill-login: submit after filling. Default false.",
+				},
+				{
+					name: "id",
+					description: "Session or tab id to target",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Session or tab id to target",
+				},
+				{
+					name: "url",
+					description: "URL for open or navigate",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "URL for open or navigate",
+				},
+				{
+					name: "selector",
+					description: "Selector for click, type, or wait",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Selector for click, type, or wait",
+				},
+				{
+					name: "text",
+					description: "Text for type",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Text for type",
+				},
+				{
+					name: "key",
+					description: "Keyboard key for press",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Keyboard key for press",
+				},
+				{
+					name: "pixels",
+					description: "Scroll distance in pixels",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Scroll distance in pixels",
+				},
+				{
+					name: "timeoutMs",
+					description: "Command timeout in milliseconds",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Command timeout in milliseconds",
+				},
+				{
+					name: "script",
+					description: "Script for eval",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Script for eval",
+				},
+				{
+					name: "watchMode",
+					description:
+						"User watching hint; prefer realistic-* click/fill, visible cursor, pointer events.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"User watching hint. prefer realistic-* click/fill, visible cursor, pointer events.",
+				},
+				{
+					name: "cursorDurationMs",
+					description:
+						"Cursor animation duration (ms) for realistic-* subactions",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Cursor animation duration (ms) for realistic-* subactions",
+				},
+				{
+					name: "perCharDelayMs",
+					description:
+						"Per-character delay for realistic-type/realistic-fill (ms)",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Per-character delay for realistic-type/realistic-fill (ms)",
+				},
+				{
+					name: "replace",
+					description:
+						"For realistic-fill: replace existing input, not append.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For realistic-fill: replace existing input, not append.",
+				},
+				{
+					name: "x",
+					description: "Cursor target X (CSS pixels) for cursor-move",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Cursor target X (CSS pixels) for cursor-move",
+				},
+				{
+					name: "y",
+					description: "Cursor target Y (CSS pixels) for cursor-move",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Cursor target Y (CSS pixels) for cursor-move",
+				},
+			],
+			descriptionCompressed:
+				"Browser open|navigate|click|type|screenshot|state|autofill_login; bridge status elsewhere",
+			similes: [
+				"BROWSE_SITE",
+				"BROWSER_SESSION",
+				"CONTROL_BROWSER",
+				"CONTROL_BROWSER_SESSION",
+				"MANAGE_ELIZA_BROWSER_WORKSPACE",
+				"NAVIGATE_SITE",
+				"OPEN_SITE",
+				"USE_BROWSER",
+				"BROWSER_ACTION",
+				"BROWSER_AUTOFILL_LOGIN",
+				"AGENT_AUTOFILL",
+				"AUTOFILL_BROWSER_LOGIN",
+				"AUTOFILL_LOGIN",
+				"FILL_BROWSER_CREDENTIALS",
+				"LOG_INTO_SITE",
+				"SIGN_IN_TO_SITE",
+			],
+			exampleCalls: [
+				{
+					user: "Use BROWSER with the provided parameters.",
+					actions: ["BROWSER"],
+					params: {
+						BROWSER: {
+							target: "example",
+							action: "back",
+							tabAction: "close",
+							domain: "example",
+							username: "example",
+							submit: false,
+							id: "example",
+							url: "example",
+							selector: "example",
+							text: "example",
+							key: "example",
+							pixels: 1,
+							timeoutMs: 1,
+							script: "example",
+							watchMode: false,
+							cursorDurationMs: 1,
+							perCharDelayMs: 1,
+							replace: false,
+							x: 1,
+							y: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "CALENDAR",
+			description:
+				"Owner-facing calendar umbrella action. Op-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event, find_slots, next_event, describe_event, travel_buffer.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Canonical calendar sub-operation. Mirrors op for planner compatibility.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"read_feed",
+							"create_event",
+							"update_event",
+							"delete_event",
+							"find_slots",
+							"next_event",
+							"describe_event",
+							"travel_buffer",
+						],
+					},
+					descriptionCompressed:
+						"Canonical calendar sub-operation. Mirrors op for planner compatibility.",
+				},
+				{
+					name: "op",
+					description: "Which calendar sub-operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"read_feed",
+							"create_event",
+							"update_event",
+							"delete_event",
+							"find_slots",
+							"next_event",
+							"describe_event",
+							"travel_buffer",
+						],
+					},
+					descriptionCompressed: "Which calendar sub-operation to run.",
+				},
+				{
+					name: "eventId",
+					description:
+						"Target event id (update_event/delete_event/describe_event).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target event id (update_event/delete_event/describe_event).",
+				},
+				{
+					name: "startAt",
+					description: "ISO start (create_event/find_slots window start).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO start (create_event/find_slots window start).",
+				},
+				{
+					name: "endAt",
+					description: "ISO end (create_event/find_slots window end).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO end (create_event/find_slots window end).",
+				},
+				{
+					name: "timeZone",
+					description: "IANA timezone for relative time queries.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "IANA timezone for relative time queries.",
+				},
+				{
+					name: "title",
+					description: "Event title (create_event/update_event).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Event title (create_event/update_event).",
+				},
+				{
+					name: "query",
+					description:
+						"Free-text query (next_event/describe_event/find_slots).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-text query (next_event/describe_event/find_slots).",
+				},
+			],
+			similes: [
+				"READ_CALENDAR",
+				"GET_CALENDAR",
+				"SCHEDULE_EVENT",
+				"CREATE_EVENT",
+				"UPDATE_EVENT",
+				"DELETE_EVENT",
+				"FIND_SLOTS",
+			],
+			exampleCalls: [
+				{
+					user: "Use CALENDAR with the provided parameters.",
+					actions: ["CALENDAR"],
+					params: {
+						CALENDAR: {
+							action: "read_feed",
+							op: "read_feed",
+							eventId: "example",
+							startAt: "example",
+							endAt: "example",
+							timeZone: "example",
+							title: "example",
+							query: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Owner-facing calendar umbrella action. Op-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event...",
+		},
+		{
+			name: "COMPUTER_USE",
+			description:
+				"computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+			parameters: [
+				{
+					name: "action",
+					description: "Desktop action to perform.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"screenshot",
+							"click",
+							"click_with_modifiers",
+							"double_click",
+							"right_click",
+							"mouse_move",
+							"type",
+							"key",
+							"key_combo",
+							"scroll",
+							"drag",
+							"detect_elements",
+							"ocr",
+						],
+					},
+					descriptionCompressed: "Desktop action to perform.",
+				},
+				{
+					name: "coordinate",
+					description: "Target [x, y] pixel coordinate.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "number",
+						},
+					},
+					descriptionCompressed: "Target [x, y] pixel coordinate.",
+				},
+				{
+					name: "startCoordinate",
+					description: "Start [x, y] pixel coordinate for drag.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "number",
+						},
+					},
+					descriptionCompressed: "Start [x, y] pixel coordinate for drag.",
+				},
+				{
+					name: "text",
+					description: "Text to type.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Text to type.",
+				},
+				{
+					name: "modifiers",
+					description:
+						"Modifier keys for click_with_modifiers, e.g. ['cmd','shift'] or ['ctrl'].",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed:
+						"Modifier keys for click_with_modifiers, e. g. ['cmd', 'shift'] or ['ctrl'].",
+				},
+				{
+					name: "key",
+					description: "Single key or combo string depending on action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Single key or combo string depending on action.",
+				},
+				{
+					name: "button",
+					description: "Mouse button for click_with_modifiers.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["left", "middle", "right"],
+					},
+					descriptionCompressed: "Mouse button for click_with_modifiers.",
+				},
+				{
+					name: "clicks",
+					description: "Number of clicks for click_with_modifiers.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 5,
+					},
+					descriptionCompressed: "Number of clicks for click_with_modifiers.",
+				},
+				{
+					name: "scrollDirection",
+					description: "Scroll direction.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["up", "down", "left", "right"],
+					},
+					descriptionCompressed: "Scroll direction.",
+				},
+				{
+					name: "scrollAmount",
+					description: "Scroll tick count.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 3,
+						minimum: 1,
+						maximum: 20,
+					},
+					descriptionCompressed: "Scroll tick count.",
+				},
+				{
+					name: "displayId",
+					description:
+						"Display for coordinate. Required for coordinate actions on multi-monitor. See computerState displays[].",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Display for coordinate. Required for coordinate actions on multi-monitor. See computerState displays[].",
+				},
+				{
+					name: "coordSource",
+					description:
+						"Coordinate space: logical default matches display.bounds; backing raw retina pixels macOS only.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["logical", "backing"],
+					},
+					descriptionCompressed:
+						"Coordinate space: logical default matches display. bounds. backing raw retina pixels macOS only.",
+				},
+			],
+			descriptionCompressed:
+				"Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr",
+			similes: [
+				"USE_COMPUTER",
+				"CONTROL_COMPUTER",
+				"COMPUTER_ACTION",
+				"DESKTOP_ACTION",
+				"CLICK",
+				"CLICK_SCREEN",
+				"TYPE_TEXT",
+				"PRESS_KEY",
+				"KEY_COMBO",
+				"SCROLL_SCREEN",
+				"MOVE_MOUSE",
+				"DRAG",
+				"MOUSE_CLICK",
+				"CLICK_WITH_MODIFIERS",
+				"TAKE_SCREENSHOT",
+				"CAPTURE_SCREEN",
+				"SEE_SCREEN",
+			],
+			exampleCalls: [
+				{
+					user: "Use COMPUTER_USE with the provided parameters.",
+					actions: ["COMPUTER_USE"],
+					params: {
+						COMPUTER_USE: {
+							action: "screenshot",
+							coordinate: "example",
+							startCoordinate: "example",
+							text: "example",
+							modifiers: "example",
+							key: "example",
+							button: "left",
+							clicks: 1,
+							scrollDirection: "up",
+							scrollAmount: 3,
+							displayId: 1,
+							coordSource: "logical",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "COMPUTER_USE_AGENT",
+			description:
+				"computer_use_agent: autonomous desktop loop for a goal until done or maxSteps. Uses WS6 scene-builder, WS7 Brain+Actor cascade, WS5 multi-monitor coords. Prefer COMPUTER_USE for named single steps; use COMPUTER_USE_AGENT for goal-level screen tasks.",
+			parameters: [
+				{
+					name: "goal",
+					description:
+						"Natural-language goal, e.g. click save button in dialog.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Natural-language goal, e. g. click save button in dialog.",
+				},
+				{
+					name: "maxSteps",
+					description:
+						"Max Brain->dispatch cycles before giving up. Default 5.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 5,
+						minimum: 1,
+						maximum: 20,
+					},
+					descriptionCompressed:
+						"Max Brain->dispatch cycles before giving up. Default 5.",
+				},
+			],
+			descriptionCompressed:
+				"Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
+			similes: ["AUTOMATE_SCREEN", "RUN_COMPUTER_AGENT", "SCREEN_AGENT"],
+			exampleCalls: [
+				{
+					user: "Use COMPUTER_USE_AGENT with the provided parameters.",
+					actions: ["COMPUTER_USE_AGENT"],
+					params: {
+						COMPUTER_USE_AGENT: {
+							goal: "example",
+							maxSteps: 5,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "CONFLICT_DETECT",
+			description:
+				"Scan the owner calendar for overlaps. Subactions: scan_today, scan_week, scan_event_proposal. Returns a severity-graded conflict list.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Conflict op: scan_today | scan_week | scan_event_proposal.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["scan_today", "scan_week", "scan_event_proposal"],
+					},
+					descriptionCompressed:
+						"Conflict op: scan_today | scan_week | scan_event_proposal.",
+				},
+				{
+					name: "range",
+					description:
+						"'today' | 'week' or { start, end } ISO window. Default subaction range.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"'today' | 'week' or { start, end } ISO window. Default subaction range.",
+				},
+				{
+					name: "proposal",
+					description:
+						"scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+				},
+			],
+			similes: [
+				"DETECT_CONFLICTS",
+				"SCAN_CONFLICTS",
+				"CONFLICTS_TODAY",
+				"CONFLICTS_WEEK",
+				"CHECK_OVERLAP",
+			],
+			exampleCalls: [
+				{
+					user: "Use CONFLICT_DETECT with the provided parameters.",
+					actions: ["CONFLICT_DETECT"],
+					params: {
+						CONFLICT_DETECT: {
+							action: "scan_today",
+							range: "example",
+							proposal: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Scan the owner calendar for overlaps. Subactions: scan_today, scan_week, scan_event_proposal. Returns a severity-graded conflict list.",
+		},
+		{
+			name: "CONNECTOR",
+			description:
+				"Installed connector account state: connect, disconnect, verify, status, list. ",
+			parameters: [
+				{
+					name: "connector",
+					description:
+						"ConnectorRegistry kind: google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health, browser_bridge. Optional action=list.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ConnectorRegistry kind: google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health, browser_bridge. Optional action=list.",
+				},
+				{
+					name: "action",
+					description:
+						"connect auth/pairing; disconnect revoke+clear grant; verify active read/send probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"connect auth/pairing. disconnect revoke+clear grant. verify active read/send probe. status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
+				},
+				{
+					name: "side",
+					description: "owner | agent. Defaults to owner.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["owner", "agent"],
+					},
+					descriptionCompressed: "owner | agent. Defaults to owner.",
+				},
+				{
+					name: "mode",
+					description:
+						"local | cloud_managed | remote. Default connector-specific.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["local", "cloud_managed", "remote"],
+					},
+					descriptionCompressed:
+						"local | cloud_managed | remote. Default connector-specific.",
+				},
+				{
+					name: "recentLimit",
+					description: "verify only: recent messages/dialogs read limit.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "verify only: recent msgs/dialogs read limit.",
+				},
+				{
+					name: "query",
+					description:
+						"Discord verify only: search text for browser-message reads.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Discord verify only: search text for browser-msg reads.",
+				},
+				{
+					name: "sendTarget",
+					description:
+						"verify only: destination chat/recipient/channel for self-test send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"verify only: destination chat/recipient/channel for self-test send.",
+				},
+				{
+					name: "sendMessage",
+					description: "verify only: self-test send body.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "verify only: self-test send body.",
+				},
+				{
+					name: "browser",
+					description: "browser_bridge connect only: chrome | safari.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["chrome", "safari"],
+					},
+					descriptionCompressed:
+						"browser_bridge connect only: chrome | safari.",
+				},
+				{
+					name: "profileId",
+					description: "browser_bridge connect only: profile id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "browser_bridge connect only: profile id.",
+				},
+				{
+					name: "profileLabel",
+					description: "browser_bridge connect only: profile label.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "browser_bridge connect only: profile label.",
+				},
+				{
+					name: "redirectUrl",
+					description: "google/x connect only: OAuth redirect URL override.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"google/x connect only: OAuth redirect URL override.",
+				},
+			],
+			descriptionCompressed:
+				"CONNECTOR accounts: connect|disconnect|verify|status|list; plugin install/config -> PLUGIN",
+			similes: [
+				"CONNECT_GOOGLE",
+				"CONNECT_TELEGRAM",
+				"CONNECT_DISCORD",
+				"DISCONNECT_SERVICE",
+				"CHECK_CONNECTION",
+				"SERVICE_STATUS",
+				"NOTIFICATION_RESOLVE_ENDPOINTS",
+			],
+			exampleCalls: [
+				{
+					user: "Use CONNECTOR with the provided parameters.",
+					actions: ["CONNECTOR"],
+					params: {
+						CONNECTOR: {
+							connector: "example",
+							action: "example",
+							side: "owner",
+							mode: "local",
+							recentLimit: 1,
+							query: "example",
+							sendTarget: "example",
+							sendMessage: "example",
+							browser: "chrome",
+							profileId: "example",
+							profileLabel: "example",
+							redirectUrl: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "CREDENTIALS",
+			description:
+				"Owner-only credentials. Browser autofill + OS password manager (1Password/ProtonPass). ",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"fill | whitelist_add | whitelist_list | search | list | inject_username | inject_password.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"fill | whitelist_add | whitelist_list | search | list | inject_username | inject_password.",
+				},
+				{
+					name: "field",
+					description:
+						"(action=fill) email | password | name | phone | custom.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"(action=fill) email | password | name | phone | custom.",
+				},
+				{
+					name: "domain",
+					description:
+						"(action=fill|whitelist_add) Domain. fill fallback when url omitted.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"(action=fill|whitelist_add) Domain. fill fallback when url omitted.",
+				},
+				{
+					name: "url",
+					description: "(action=fill) Optional tab URL; whitelist enforcement.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"(action=fill) Optional tab URL. whitelist enforcement.",
+				},
+				{
+					name: "intent",
+					description: "(action=search) Lookup intent text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "(action=search) Lookup intent text.",
+				},
+				{
+					name: "query",
+					description: "(action=search) Match title, URL, username, tags.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"(action=search) Match title, URL, username, tags.",
+				},
+				{
+					name: "itemId",
+					description:
+						"(action=inject_username|inject_password) Password manager item id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"(action=inject_username|inject_password) Password manager item id.",
+				},
+				{
+					name: "limit",
+					description: "(action=list) Item limit. Default 20.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "(action=list) Item limit. Default 20.",
+				},
+				{
+					name: "confirmed",
+					description:
+						"true required for whitelist_add and inject_*; owner gate.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"true required for whitelist_add and inject_*. owner gate.",
+				},
+			],
+			descriptionCompressed:
+				"CREDENTIALS fill|whitelist_add|list|search|inject_username|inject_password; clipboard-only",
+			exampleCalls: [
+				{
+					user: "Use CREDENTIALS with the provided parameters.",
+					actions: ["CREDENTIALS"],
+					params: {
+						CREDENTIALS: {
+							action: "example",
+							field: "example",
+							domain: "example",
+							url: "example",
+							intent: "example",
+							query: "example",
+							itemId: "example",
+							limit: 1,
+							confirmed: false,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "ELIZAOS",
+			description:
+				"Call the local elizaOS Live capability broker. Supported actions: status, privacy_mode, root_status, open_persistent_storage. This is a constrained OS bridge for the Tails-based live USB; destructive root actions are intentionally not exposed.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Operation: status, privacy_mode, root_status, open_persistent_storage.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"status",
+							"privacy_mode",
+							"root_status",
+							"open_persistent_storage",
+						],
+					},
+					descriptionCompressed:
+						"Operation: status, privacy_mode, root_status, open_persistent_storage.",
+				},
+			],
+			descriptionCompressed:
+				"elizaOS Live broker: status|privacy_mode|root_status|open_persistent_storage via constrained local OS bridge",
+			similes: [
+				"ELIZAOS_STATUS",
+				"ELIZAOS_PRIVACY_MODE",
+				"ELIZAOS_ROOT_STATUS",
+				"ELIZAOS_PERSISTENT_STORAGE",
+				"OPEN_PERSISTENT_STORAGE",
+			],
+			exampleCalls: [
+				{
+					user: "Use ELIZAOS with the provided parameters.",
+					actions: ["ELIZAOS"],
+					params: {
+						ELIZAOS: {
+							action: "status",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "ENTITY",
+			description:
+				"Owner graph: people, orgs, projects, concepts, typed relationships. Ops: create|read|set_identity|set_relationship|log_interaction|merge. Contact CRUD -> CONTACT. Identity/relationships/history -> ENTITY. Follow-up cadence -> SCHEDULED_TASKS. One-off dated call/text reminders -> OWNER_REMINDERS.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"ENTITY op: create contact|read rolodex|log_interaction event|set_identity platform handle on Entity|set_relationship typed edge|merge duplicate Entities. Contact CRUD -> CONTACT. Follow-up cadence -> SCHEDULED_TASKS.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["create", "read", "set_identity"],
+					descriptionCompressed:
+						"ENTITY op: create | read | log_interaction | set_identity | set_relationship | merge",
+				},
+				{
+					name: "intent",
+					description: "Free-form intent; infer action if unset.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "free-form intent infer action",
+				},
+				{
+					name: "name",
+					description:
+						"Contact display name; resolves existing if relationshipId omitted.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "contact display name",
+				},
+				{
+					name: "channel",
+					description:
+						"Primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["email", "telegram", "imessage"],
+					descriptionCompressed:
+						"primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp",
+				},
+				{
+					name: "handle",
+					description: "Primary channel handle/address.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Primary channel handle/address.",
+				},
+				{
+					name: "email",
+					description: "Optional contact email.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional contact email.",
+				},
+				{
+					name: "phone",
+					description: "Optional contact phone.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional contact phone.",
+				},
+				{
+					name: "notes",
+					description: "Free-form notes or interaction summary.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Free-form notes or interaction summary.",
+				},
+				{
+					name: "relationshipId",
+					description: "Target Relationship id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Target Relationship id.",
+				},
+				{
+					name: "reason",
+					description: "Optional reason note.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional reason note.",
+				},
+				{
+					name: "confirmed",
+					description: "Optional confirmation flag.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Optional confirmation flag.",
+				},
+				{
+					name: "entityId",
+					description:
+						"Target Entity id: set_identity target, merge target, stable EntityStore id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target Entity id: set_identity target, merge target, stable EntityStore id.",
+				},
+				{
+					name: "platform",
+					description:
+						"set_identity platform: telegram|slack|email|twitter|phone; pair with handle.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["telegram", "email", "phone", "slack"],
+					descriptionCompressed:
+						"set_identity platform e.g. telegram|slack|email|twitter|phone",
+				},
+				{
+					name: "displayName",
+					description: "Observed identity displayName for set_identity.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Observed identity displayName for set_identity.",
+				},
+				{
+					name: "toEntityId",
+					description: "Target Entity id for set_relationship.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Target Entity id for set_relationship.",
+				},
+				{
+					name: "fromEntityId",
+					description: "Source Entity id for set_relationship; default 'self'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Source Entity id for set_relationship. default 'self'.",
+				},
+				{
+					name: "relationshipType",
+					description:
+						"set_relationship edge type: manages|colleague_of|works_at|partner_of|family_of.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["manages", "colleague_of", "works_at", "partner_of"],
+					descriptionCompressed:
+						"set_relationship edge type label e.g. manages|colleague_of|works_at|partner_of",
+				},
+				{
+					name: "sourceEntityIds",
+					description:
+						"merge source Entity ids folded into target; JSON string array.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed:
+						"merge source Entity ids folded into target. JSON string array.",
+				},
+				{
+					name: "evidence",
+					description:
+						"Evidence string for set_identity/set_relationship observations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Evidence string for set_identity/set_relationship observations.",
+				},
+			],
+			descriptionCompressed:
+				"ENTITY people+relations create|read|set_identity|set_relationship|log_interaction|merge",
+			similes: [
+				"CONTACTS",
+				"ROLODEX",
+				"LOG_INTERACTION",
+				"ADD_ENTITY",
+				"ADD_PERSON",
+				"MERGE_ENTITIES",
+				"MERGE_CONTACTS",
+				"SET_IDENTITY",
+			],
+			exampleCalls: [
+				{
+					user: "Use ENTITY with the provided parameters.",
+					actions: ["ENTITY"],
+					params: {
+						ENTITY: {
+							action: "create",
+							intent: "example",
+							name: "example",
+							channel: "email",
+							handle: "example",
+							email: "example",
+							phone: "example",
+							notes: "example",
+							relationshipId: "example",
+							reason: "example",
+							confirmed: false,
+							entityId: "example",
+							platform: "telegram",
+							displayName: "example",
+							toEntityId: "example",
+							fromEntityId: "example",
+							relationshipType: "manages",
+							sourceEntityIds: "example",
+							evidence: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "FACEWEAR_CONNECT",
+			description:
+				"Show connection instructions for a facewear device (Meta Quest, XReal, Even Realities, Apple Vision Pro).",
+			parameters: [],
+			similes: [
+				"CONNECT_GLASSES",
+				"CONNECT_HEADSET",
+				"PAIR_DEVICE",
+				"CONNECT_FACEWEAR",
+			],
+			descriptionCompressed:
+				"Show connection instructions for a facewear device (Meta Quest, XReal, Even Realities, Apple Vision Pro).",
+		},
+		{
+			name: "FACEWEAR_DEBUG",
+			description: "Show diagnostics for all connected facewear devices.",
+			parameters: [],
+			similes: [
+				"DEBUG_GLASSES",
+				"DIAGNOSE_HEADSET",
+				"FACEWEAR_DIAGNOSTICS",
+				"CHECK_XR",
+			],
+			descriptionCompressed:
+				"Show diagnostics for all connected facewear devices.",
+		},
+		{
+			name: "FILE",
+			description:
+				"FILE action: read/write/edit/grep/glob/ls. Use target=device for device filesystem reads/writes/ls. Workspace paths absolute unless op defaults to session cwd.",
+			parameters: [
+				{
+					name: "action",
+					description: "File operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["read", "write", "edit", "grep", "glob", "ls"],
+					},
+					descriptionCompressed: "File operation to run.",
+				},
+				{
+					name: "target",
+					description:
+						"Target filesystem. device = relative paths via device bridge; omit for workspace.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["workspace", "device"],
+					},
+					descriptionCompressed:
+						"Target filesystem. device = relative paths via device bridge. omit for workspace.",
+				},
+				{
+					name: "file_path",
+					description: "Absolute path for read/write/edit operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Absolute path for read/write/edit operations.",
+				},
+				{
+					name: "path",
+					description:
+						"File/dir path for grep/glob/ls. Default session cwd where supported.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"File/dir path for grep/glob/ls. Default session cwd where supported.",
+				},
+				{
+					name: "content",
+					description: "Full file contents for action=write.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Full file contents for action=write.",
+				},
+				{
+					name: "old_string",
+					description: "Exact substring to replace for action=edit.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Exact substring to replace for action=edit.",
+				},
+				{
+					name: "new_string",
+					description: "Replacement substring for action=edit.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Replacement substring for action=edit.",
+				},
+				{
+					name: "replace_all",
+					description: "For action=edit: replace all matches, not exactly one.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=edit: replace all matches, not exactly one.",
+				},
+				{
+					name: "pattern",
+					description: "Regex for action=grep or glob pattern for action=glob.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Regex for action=grep or glob pattern for action=glob.",
+				},
+				{
+					name: "glob",
+					description: "Optional ripgrep glob filter for action=grep.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional ripgrep glob filter for action=grep.",
+				},
+				{
+					name: "type",
+					description: "Optional ripgrep file type for action=grep.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional ripgrep file type for action=grep.",
+				},
+				{
+					name: "output_mode",
+					description:
+						"For action=grep: content, files_with_matches, or count.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["content", "files_with_matches", "count"],
+					},
+					descriptionCompressed:
+						"For action=grep: content, files_with_matches, or count.",
+				},
+				{
+					name: "-A",
+					description: "For action=grep content mode, lines after each match.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=grep content mode, lines after each match.",
+				},
+				{
+					name: "-B",
+					description: "For action=grep content mode, lines before each match.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=grep content mode, lines before each match.",
+				},
+				{
+					name: "-C",
+					description: "For action=grep content mode, lines around each match.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=grep content mode, lines around each match.",
+				},
+				{
+					name: "case_insensitive",
+					description: "For action=grep, match case-insensitively.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "For action=grep, match case-insensitively.",
+				},
+				{
+					name: "multiline",
+					description: "For action=grep, enable multiline regex matching.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=grep, enable multiline regex matching.",
+				},
+				{
+					name: "head_limit",
+					description: "For action=grep, truncate output to the first N lines.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=grep, truncate output to the first N lines.",
+				},
+				{
+					name: "show_line_numbers",
+					description: "For action=grep: include 1-based line numbers.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=grep: include 1-based line numbers.",
+				},
+				{
+					name: "offset",
+					description: "For action=read, zero-based line offset.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "For action=read, zero-based line offset.",
+				},
+				{
+					name: "limit",
+					description: "For action=read, max number of lines to return.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=read, max number of lines to return.",
+				},
+				{
+					name: "ignore",
+					description: "For action=ls, glob patterns to exclude.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "For action=ls, glob patterns to exclude.",
+				},
+				{
+					name: "encoding",
+					description:
+						"For target=device read/write: utf8 or base64. Default utf8.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["utf8", "base64"],
+					},
+					descriptionCompressed:
+						"For target=device read/write: utf8 or base64. Default utf8.",
+				},
+			],
+			descriptionCompressed:
+				"File operations umbrella: action=read/write/edit/grep/glob/ls, optional target=device.",
+			similes: ["FILE_OPERATION", "FILE_IO"],
+			exampleCalls: [
+				{
+					user: "Use FILE with the provided parameters.",
+					actions: ["FILE"],
+					params: {
+						FILE: {
+							action: "read",
+							target: "workspace",
+							file_path: "example",
+							path: "example",
+							content: "example",
+							old_string: "example",
+							new_string: "example",
+							replace_all: false,
+							pattern: "example",
+							glob: "example",
+							type: "example",
+							output_mode: "content",
+							"-A": 1,
+							"-B": 1,
+							"-C": 1,
+							case_insensitive: false,
+							multiline: false,
+							head_limit: 1,
+							show_line_numbers: false,
+							offset: 1,
+							limit: 1,
+							ignore: "example",
+							encoding: "utf8",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "GIT_PATHOLOGY",
+			description:
+				"Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem narrative. Use when the user asks 'when did this code get bad', 'where did rot start in X', or 'analyze git pathology for Y'. Actions: report (default), list (show cached reports).",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Which gitpathologist action: report or list. Default: report.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["report", "list"],
+					},
+					descriptionCompressed:
+						"Which gitpathologist action: report or list. Default: report.",
+				},
+				{
+					name: "surface",
+					description:
+						"Path or glob to analyze (relative to repo root). Required for action=report.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Path or glob to analyze (relative to repo root). Required for action=report.",
+				},
+				{
+					name: "since",
+					description:
+						"Lookback window. ISO date or relative (e.g. '14d', '4w'). Default '14d'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Lookback window. ISO date or relative (e. g. '14d', '4w'). Default '14d'.",
+				},
+				{
+					name: "budget",
+					description: "Max LLM narration calls per analysis. Default 20.",
+					required: false,
+					schema: {
+						type: "integer",
+						minimum: 0,
+					},
+					descriptionCompressed:
+						"Max LLM narration calls per analysis. Default 20.",
+				},
+				{
+					name: "cache",
+					description:
+						"Cache policy: auto (default), force (recompute), read-only (fail on miss).",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["auto", "force", "read-only"],
+					},
+					descriptionCompressed:
+						"Cache policy: auto (default), force (recompute), read-only (fail on miss).",
+				},
+			],
+			similes: [
+				"ANALYZE_GIT_PATHOLOGY",
+				"GIT_HEALTH",
+				"GIT_FORENSICS",
+				"PATHOLOGY_REPORT",
+				"CODE_HISTORY_HEALTH",
+				"WHERE_DID_ROT_START",
+			],
+			exampleCalls: [
+				{
+					user: "Use GIT_PATHOLOGY with the provided parameters.",
+					actions: ["GIT_PATHOLOGY"],
+					params: {
+						GIT_PATHOLOGY: {
+							action: "report",
+							surface: "example",
+							since: "example",
+							budget: "example",
+							cache: "auto",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem...",
+		},
+		{
+			name: "GITHUB",
+			description:
+				"GitHub umbrella for pull requests, issues, and notification triage. Use action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage.",
+			parameters: [
+				{
+					name: "action",
+					description: "GitHub operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"pr_list",
+							"pr_review",
+							"issue_create",
+							"issue_assign",
+							"issue_close",
+							"issue_reopen",
+							"issue_comment",
+							"issue_label",
+							"notification_triage",
+						],
+					},
+					descriptionCompressed: "GitHub operation to run.",
+				},
+				{
+					name: "repo",
+					description: "Repository in owner/name form.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Repository in owner/name form.",
+				},
+				{
+					name: "number",
+					description: "Pull request or issue number.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Pull request or issue number.",
+				},
+				{
+					name: "state",
+					description: "PR state for pr_list: open, closed, or all.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["open", "closed", "all"],
+						default: "open",
+					},
+					descriptionCompressed: "PR state for pr_list: open, closed, or all.",
+				},
+				{
+					name: "author",
+					description: "Optional PR author username filter for pr_list.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional PR author username filter for pr_list.",
+				},
+				{
+					name: "review_action",
+					description:
+						"For action=pr_review: approve, request-changes, or comment.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["approve", "request-changes", "comment"],
+					},
+					descriptionCompressed:
+						"For action=pr_review: approve, request-changes, or comment.",
+				},
+				{
+					name: "title",
+					description: "Issue title for action=issue_create.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Issue title for action=issue_create.",
+				},
+				{
+					name: "body",
+					description: "Issue body, issue comment body, or PR review body.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Issue body, issue comment body, or PR review body.",
+				},
+				{
+					name: "assignees",
+					description: "GitHub usernames to assign.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "GitHub usernames to assign.",
+				},
+				{
+					name: "labels",
+					description: "Labels to apply on issue create or issue_label.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed:
+						"Labels to apply on issue create or issue_label.",
+				},
+				{
+					name: "as",
+					description: "Identity to use: agent or user.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["agent", "user"],
+						default: "agent",
+					},
+					descriptionCompressed: "Identity to use: agent or user.",
+				},
+				{
+					name: "accountId",
+					description:
+						"Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+				},
+				{
+					name: "confirmed",
+					description: "Must be true for GitHub write operations.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed: "Must be true for GitHub write operations.",
+				},
+			],
+			descriptionCompressed:
+				"GitHub pr_list|pr_review|issue_create|assign|close|reopen|comment|label|triage",
+			similes: [
+				"GITHUB_PR_OP",
+				"GITHUB_ISSUE_OP",
+				"GITHUB_NOTIFICATION_TRIAGE",
+				"GITHUB_PULL_REQUEST",
+				"GITHUB_ISSUE",
+				"GITHUB_NOTIFICATIONS",
+			],
+			exampleCalls: [
+				{
+					user: "Use GITHUB with the provided parameters.",
+					actions: ["GITHUB"],
+					params: {
+						GITHUB: {
+							action: "pr_list",
+							repo: "example",
+							number: 1,
+							state: "open",
+							author: "example",
+							review_action: "approve",
+							title: "example",
+							body: "example",
+							assignees: "example",
+							labels: "example",
+							as: "agent",
+							accountId: "example",
+							confirmed: false,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "IDENTIFY_SPEAKER",
+			description:
+				'Attach a name to the most recently heard, still-unidentified voice so the agent recognizes that person across sessions. Use when the owner says who a recent speaker is ("that was Jill", "this is my friend Sam").',
+			parameters: [],
+			similes: [
+				"NAME_SPEAKER",
+				"REMEMBER_VOICE",
+				"THIS_IS_SPEAKER",
+				"TAG_VOICE",
+			],
+			descriptionCompressed:
+				"Attach a name to the most recently heard, still-unidentified voice so agent recognizes that person across sessions. Use when the owner says who a recent...",
+		},
+		{
+			name: "INBOX",
+			description:
+				"Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram, WhatsApp, Slack, X and similar non-SMS channels (Android SMS is handled by plugin-messages).",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Canonical inbox sub-operation. Mirrors op for planner compatibility.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Canonical inbox sub-operation. Mirrors op for planner compatibility.",
+				},
+				{
+					name: "op",
+					description: "Which inbox sub-operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Which inbox sub-operation to run.",
+				},
+				{
+					name: "threadId",
+					description:
+						"Target thread id (required for triage/reply/snooze/archive/approve).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target thread id (required for triage/reply/snooze/archive/approve).",
+				},
+				{
+					name: "channel",
+					description: "Channel the thread lives on.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Channel the thread lives on.",
+				},
+				{
+					name: "decision",
+					description:
+						"Triage decision (reply_now/snooze/archive/ignore/needs_approval/follow_up).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Triage decision (reply_now/snooze/archive/ignore/needs_approval/follow_up).",
+				},
+				{
+					name: "rationale",
+					description:
+						"Why the agent chose this decision — surfaced in approval UI.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Why agent chose this decision - surfaced in approval UI.",
+				},
+				{
+					name: "body",
+					description: "Reply body (op=reply).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Reply body (op=reply).",
+				},
+				{
+					name: "wakeAt",
+					description:
+						"ISO timestamp the snoozed thread should re-surface (op=snooze).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO timestamp the snoozed thread should re-surface (op=snooze).",
+				},
+				{
+					name: "reason",
+					description: "Free-text rationale (op=snooze/archive).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Free-text rationale (op=snooze/archive).",
+				},
+			],
+			similes: ["TRIAGE_INBOX", "INBOX_REPLY", "INBOX_SNOOZE", "INBOX_ARCHIVE"],
+			exampleCalls: [
+				{
+					user: "Use INBOX with the provided parameters.",
+					actions: ["INBOX"],
+					params: {
+						INBOX: {
+							action: "example",
+							op: "example",
+							threadId: "example",
+							channel: "example",
+							decision: "example",
+							rationale: "example",
+							body: "example",
+							wakeAt: "example",
+							reason: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram...",
+		},
+		{
+			name: "LINEAR",
+			description:
+				"Manage Linear issues/comments/activity. Ops: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Infer op if omitted.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Operation: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Infer if omitted.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"create_issue",
+							"get_issue",
+							"update_issue",
+							"delete_issue",
+							"create_comment",
+							"update_comment",
+							"delete_comment",
+							"list_comments",
+							"get_activity",
+							"clear_activity",
+							"search_issues",
+						],
+					},
+					descriptionCompressed:
+						"Operation: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity...",
+				},
+			],
+			descriptionCompressed:
+				"Linear: issue CRUD, comment CRUD/list, search issues, get/clear activity",
+			similes: [
+				"LINEAR_ISSUES",
+				"LINEAR_COMMENTS",
+				"LINEAR_ACTIVITY",
+				"LINEAR_SEARCH",
+				"MANAGE_LINEAR_ISSUE",
+				"MANAGE_LINEAR_ISSUES",
+				"COMMENT_LINEAR_ISSUE",
+				"LINEAR_WORKFLOW_SEARCH",
+			],
+			exampleCalls: [
+				{
+					user: "Use LINEAR with the provided parameters.",
+					actions: ["LINEAR"],
+					params: {
+						LINEAR: {
+							action: "create_issue",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "MANAGE_BROWSER_BRIDGE",
+			description:
+				"Owner-only Agent Browser Bridge management for Chrome/Safari. Actions: refresh status/settings/connection, install build+reveal setup, reveal_folder open build folder, open_manager chrome://extensions only on explicit ask. Infer action if omitted.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Bridge action. refresh=status/settings; open_manager only explicit chrome://extensions; install setup; reveal_folder build folder. Infer if omitted.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["install", "reveal_folder", "open_manager", "refresh"],
+					},
+					descriptionCompressed:
+						"Bridge action. refresh=status/settings. open_manager only explicit chrome://extensions; install setup. reveal_folder build folder. Infer if omitted.",
+				},
+			],
+			descriptionCompressed:
+				"Browser Bridge: refresh|install|reveal_folder|open_manager chrome://extensions",
+			similes: [
+				"INSTALL_BROWSER_BRIDGE",
+				"SETUP_BROWSER_BRIDGE",
+				"PAIR_BROWSER",
+				"CONNECT_BROWSER",
+				"ADD_BROWSER_EXTENSION",
+				"REVEAL_BROWSER_BRIDGE_FOLDER",
+				"OPEN_BROWSER_BRIDGE_FOLDER",
+				"SHOW_BROWSER_EXTENSION_FOLDER",
+				"OPEN_CHROME_EXTENSIONS",
+				"OPEN_BROWSER_BRIDGE_MANAGER",
+				"OPEN_EXTENSION_MANAGER",
+				"REFRESH_BROWSER_BRIDGE",
+				"REFRESH_BROWSER_BRIDGE_CONNECTION",
+				"RELOAD_BROWSER_BRIDGE_STATUS",
+				"RECONNECT_BROWSER",
+				"MANAGE_CHROME_EXTENSION",
+				"MANAGE_SAFARI_EXTENSION",
+				"BROWSER_BRIDGE_INSTALL",
+				"BROWSER_BRIDGE_REVEAL_FOLDER",
+				"BROWSER_BRIDGE_OPEN_MANAGER",
+				"BROWSER_BRIDGE_REFRESH",
+			],
+			exampleCalls: [
+				{
+					user: "Use MANAGE_BROWSER_BRIDGE with the provided parameters.",
+					actions: ["MANAGE_BROWSER_BRIDGE"],
+					params: {
+						MANAGE_BROWSER_BRIDGE: {
+							action: "install",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "MC",
+			description:
+				"Drive a Minecraft bot. Choose one action: connect (host?,port?,username?,auth?,version?), disconnect, goto (x,y,z), stop, look (yaw,pitch), control (control,state,durationMs?), waypoint_goto (name), dig (x,y,z), place (x,y,z,face), chat (message), attack (entityId), waypoint_set (name), waypoint_delete (name).",
+			parameters: [
+				{
+					name: "action",
+					description: "Operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"connect",
+							"disconnect",
+							"goto",
+							"stop",
+							"look",
+							"control",
+							"waypoint_goto",
+							"dig",
+							"place",
+							"chat",
+							"attack",
+							"waypoint_set",
+							"waypoint_delete",
+						],
+					},
+					descriptionCompressed: "Action.",
+				},
+				{
+					name: "params",
+					description:
+						"Optional JSON object containing the fields required by the chosen op.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed: "Op fields.",
+				},
+			],
+			descriptionCompressed:
+				"minecraft ops: connect|disconnect|goto|stop|look|control|waypoint_*|dig|place|chat|attack",
+			exampleCalls: [
+				{
+					user: "Use MC with the provided parameters.",
+					actions: ["MC"],
+					params: {
+						MC: {
+							action: "connect",
+							params: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "MCP",
+			description:
+				"Single MCP entry point. Use action=call_tool to invoke an MCP tool, action=read_resource to read an MCP resource. Cloud runtimes also accept action=search_actions and action=list_connections.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"MCP operation: call_tool | read_resource | search_actions | list_connections",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"call_tool",
+							"read_resource",
+							"search_actions",
+							"list_connections",
+						],
+					},
+					descriptionCompressed:
+						"MCP operation: call_tool | read_resource | search_actions | list_connections",
+				},
+				{
+					name: "serverName",
+					description:
+						"Optional MCP server name that owns the tool or resource.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional MCP server name that owns the tool or resource.",
+				},
+				{
+					name: "toolName",
+					description:
+						"For action=call_tool: optional exact MCP tool name to call.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=call_tool: optional exact MCP tool name to call.",
+				},
+				{
+					name: "arguments",
+					description:
+						"For action=call_tool: optional JSON arguments to pass to the selected MCP tool.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"For action=call_tool: optional JSON arguments to pass to the selected MCP tool.",
+				},
+				{
+					name: "uri",
+					description:
+						"For action=read_resource: exact MCP resource URI to read.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=read_resource: exact MCP resource URI to read.",
+				},
+				{
+					name: "query",
+					description:
+						"Natural-language description of the tool call or resource to select; for action=search_actions, the keyword query.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Natural-language description of the tool call or resource to select. for action=search_actions, the keyword query.",
+				},
+				{
+					name: "platform",
+					description:
+						"For action=search_actions: filter results to a single connected platform.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=search_actions: filter results to a single connected platform.",
+				},
+				{
+					name: "limit",
+					description: "For action=search_actions: maximum results to return.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=search_actions: max results to return.",
+				},
+				{
+					name: "offset",
+					description:
+						"For action=search_actions: skip first N results for pagination.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=search_actions: skip first N results for pagination.",
+				},
+			],
+			descriptionCompressed:
+				"MCP call_tool read_resource search_actions list_connections",
+			similes: [
+				"MCP_ACTION",
+				"MCP_ROUTER",
+				"USE_MCP",
+				"CALL_MCP_TOOL",
+				"CALL_TOOL",
+				"USE_TOOL",
+				"USE_MCP_TOOL",
+				"EXECUTE_TOOL",
+				"EXECUTE_MCP_TOOL",
+				"RUN_TOOL",
+				"RUN_MCP_TOOL",
+				"INVOKE_TOOL",
+				"INVOKE_MCP_TOOL",
+				"READ_MCP_RESOURCE",
+				"READ_RESOURCE",
+				"GET_RESOURCE",
+				"GET_MCP_RESOURCE",
+				"FETCH_RESOURCE",
+				"FETCH_MCP_RESOURCE",
+				"ACCESS_RESOURCE",
+				"ACCESS_MCP_RESOURCE",
+			],
+			exampleCalls: [
+				{
+					user: "Use MCP with the provided parameters.",
+					actions: ["MCP"],
+					params: {
+						MCP: {
+							action: "call_tool",
+							serverName: "example",
+							toolName: "example",
+							arguments: "example",
+							uri: "example",
+							query: "example",
+							platform: "example",
+							limit: 1,
+							offset: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "MUSIC",
+			description: "Music action. Use verb-shaped action for everything: ",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Verb-shaped subaction. Playback: play, pause, resume, skip, stop. ",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"play",
+							"pause",
+							"resume",
+							"skip",
+							"stop",
+							"queue_view",
+							"queue_add",
+							"queue_clear",
+							"playlist_play",
+							"playlist_save",
+							"search",
+							"play_query",
+							"download",
+							"play_audio",
+							"set_routing",
+							"set_zone",
+							"generate",
+							"extend",
+							"custom_generate",
+						],
+					},
+					descriptionCompressed:
+						"Verb-shaped subaction. Playback: play, pause, resume, skip, stop.",
+				},
+				{
+					name: "query",
+					description: "Search/play/queue query depending on subaction.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Search/play/queue query depending on subaction.",
+				},
+				{
+					name: "url",
+					description: "Direct media URL when using play_audio or play.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Direct media URL when using play_audio or play.",
+				},
+				{
+					name: "playlistName",
+					description: "Playlist name for playlist_play / playlist_save.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Playlist name for playlist_play/playlist_save.",
+				},
+				{
+					name: "song",
+					description: "Song query when adding to a playlist.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Song query when adding to a playlist.",
+				},
+				{
+					name: "limit",
+					description: "Search result limit (search / library helpers).",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 10,
+					},
+					descriptionCompressed:
+						"Search result limit (search/library helpers).",
+				},
+				{
+					name: "confirmed",
+					description:
+						"Must be true when the underlying operation requires confirmation.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"Must be true when the underlying operation requires confirmation.",
+				},
+				{
+					name: "routingAction",
+					description:
+						"Structured routing action when using set_routing (set_mode, start_route, status, stop_route).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Structured routing action when using set_routing (set_mode, start_route, status, stop_route).",
+				},
+				{
+					name: "mode",
+					description: "Routing mode for set_routing operations.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Routing mode for set_routing operations.",
+				},
+				{
+					name: "sourceId",
+					description: "Stream/source id for set_routing.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Stream/source id for set_routing.",
+				},
+				{
+					name: "targetIds",
+					description: "Routing target ids.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "Routing target ids.",
+				},
+				{
+					name: "prompt",
+					description:
+						"Suno generation prompt for action=generate/custom_generate.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Suno generation prompt for action=generate/custom_generate.",
+				},
+				{
+					name: "audio_id",
+					description: "Existing Suno audio id when action=extend.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Existing Suno audio id when action=extend.",
+				},
+				{
+					name: "duration",
+					description:
+						"Generation length in seconds for action=generate/custom_generate, or extension seconds for action=extend.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 30,
+					},
+					descriptionCompressed:
+						"Generation length in seconds for action=generate/custom_generate, or extension seconds for action=extend.",
+				},
+				{
+					name: "style",
+					description: "Style hint for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Style hint for action=custom_generate (Suno).",
+				},
+				{
+					name: "reference_audio",
+					description: "Reference audio URL for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reference audio URL for action=custom_generate (Suno).",
+				},
+				{
+					name: "bpm",
+					description: "Target BPM for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Target BPM for action=custom_generate (Suno).",
+				},
+				{
+					name: "key",
+					description: "Musical key for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Musical key for action=custom_generate (Suno).",
+				},
+			],
+			descriptionCompressed:
+				"Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
+			similes: [
+				"GENERATE_MUSIC",
+				"CREATE_MUSIC",
+				"MAKE_MUSIC",
+				"COMPOSE_MUSIC",
+				"CUSTOM_GENERATE_MUSIC",
+				"EXTEND_AUDIO",
+			],
+			exampleCalls: [
+				{
+					user: "Use MUSIC with the provided parameters.",
+					actions: ["MUSIC"],
+					params: {
+						MUSIC: {
+							action: "play",
+							query: "example",
+							url: "example",
+							playlistName: "example",
+							song: "example",
+							limit: 1,
+							confirmed: false,
+							routingAction: "example",
+							mode: "example",
+							sourceId: "example",
+							targetIds: "example",
+							prompt: "example",
+							audio_id: "example",
+							duration: 30,
+							style: "example",
+							reference_audio: "example",
+							bpm: 1,
+							key: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "MYSTICISM_READING",
+			description:
+				"Mystical reading router. Set type to tarot, astrology, or iching, and action to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
+			parameters: [
+				{
+					name: "type",
+					description: "Reading type: tarot, astrology, or iching.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["tarot", "astrology", "iching"],
+					},
+					descriptionCompressed: "Reading type: tarot, astrology, or iching.",
+				},
+				{
+					name: "action",
+					description: "Action: start, followup, or deepen.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["start", "followup", "deepen"],
+					},
+					descriptionCompressed: "Action: start, followup, or deepen.",
+				},
+				{
+					name: "question",
+					description: "Optional question or focus for the reading.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional question or focus for the reading.",
+				},
+				{
+					name: "context",
+					description:
+						"Optional additional context (e.g., birth data hint for astrology).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional additional context (e. g. , birth data hint for astrology).",
+				},
+			],
+			descriptionCompressed:
+				"Mystical readings: tarot, astrology, iching; actions: start, followup, deepen.",
+			similes: [
+				"TAROT_READING",
+				"READ_TAROT",
+				"DRAW_CARDS",
+				"TAROT_SPREAD",
+				"CARD_READING",
+				"ICHING_READING",
+				"CAST_HEXAGRAM",
+				"CONSULT_ICHING",
+				"THROW_COINS",
+				"ORACLE_READING",
+				"ASTROLOGY_READING",
+				"BIRTH_CHART",
+				"NATAL_CHART",
+				"HOROSCOPE_READING",
+				"ZODIAC_READING",
+				"READING_FOLLOWUP",
+				"CONTINUE_READING",
+				"NEXT_CARD",
+				"PROCEED_READING",
+				"DEEPEN_READING",
+				"EXPLORE_DEEPER",
+				"ELABORATE_READING",
+			],
+			exampleCalls: [
+				{
+					user: "Use MYSTICISM_READING with the provided parameters.",
+					actions: ["MYSTICISM_READING"],
+					params: {
+						MYSTICISM_READING: {
+							type: "tarot",
+							action: "start",
+							question: "example",
+							context: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OSWORLD",
+			description:
+				"OSWorld desktop-control router. Bridges OSWorld pyautogui semantics (click, type, key, scroll, drag, screenshot, wait, done, fail) into a structured eliza action.",
+			parameters: [
+				{
+					name: "action",
+					description: "OSWorld desktop operation to execute.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"click",
+							"double_click",
+							"right_click",
+							"type",
+							"key",
+							"scroll",
+							"drag",
+							"screenshot",
+							"wait",
+							"done",
+							"fail",
+						],
+					},
+					descriptionCompressed: "OSWorld desktop operation to execute.",
+				},
+				{
+					name: "x",
+					description: "Pointer x coordinate in screen pixels.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Pointer x coordinate in screen pixels.",
+				},
+				{
+					name: "y",
+					description: "Pointer y coordinate in screen pixels.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Pointer y coordinate in screen pixels.",
+				},
+				{
+					name: "text",
+					description:
+						"For type — the literal text to type into the focused element.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For type - the literal text to type into the focused element.",
+				},
+				{
+					name: "key",
+					description:
+						"For key — the key or chord to press (e.g. 'enter', 'ctrl+s').",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For key - the key or chord to press (e. g. 'enter', 'ctrl+s').",
+				},
+				{
+					name: "direction",
+					description: "For scroll/drag — direction of motion.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["up", "down", "left", "right"],
+					},
+					descriptionCompressed: "For scroll/drag - direction of motion.",
+				},
+				{
+					name: "amount",
+					description:
+						"For scroll/drag — magnitude of motion in steps or pixels.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For scroll/drag - magnitude of motion in steps or pixels.",
+				},
+			],
+			descriptionCompressed:
+				"OSWorld click|double|right|type|key|scroll|drag|screenshot|wait|done|fail",
+			similes: [
+				"OSWORLD_CLICK",
+				"OSWORLD_TYPE",
+				"OSWORLD_PRESS",
+				"OSWORLD_SCREENSHOT",
+				"COMPUTER_USE",
+				"COMPUTER_USE_CLICK",
+				"COMPUTER_USE_TYPE",
+				"PYAUTOGUI",
+			],
+			exampleCalls: [
+				{
+					user: "Use OSWORLD with the provided parameters.",
+					actions: ["OSWORLD"],
+					params: {
+						OSWORLD: {
+							action: "click",
+							x: 1,
+							y: 1,
+							text: "example",
+							key: "example",
+							direction: "up",
+							amount: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_ALARMS",
+			description:
+				"Manage the owner's alarms (one-shot or repeating wake/notification alarms). Actions: create, update, delete, snooze, dismiss, list.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: create | update | delete | snooze | dismiss | list.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Action: create | update | delete | snooze | dismiss | list.",
+				},
+				{
+					name: "id",
+					description: "Alarm id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Alarm id.",
+				},
+				{
+					name: "label",
+					description: "Alarm label (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Alarm label (create/update).",
+				},
+				{
+					name: "fireAt",
+					description: "ISO-8601 timestamp when the alarm should fire.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO-8601 timestamp when the alarm should fire.",
+				},
+				{
+					name: "repeatRule",
+					description: "Repeat rule (RRULE-style, e.g. FREQ=DAILY).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Repeat rule (RRULE-style, e. g. FREQ=DAILY).",
+				},
+			],
+			descriptionCompressed:
+				"owner alarms: create|update|delete|snooze|dismiss|list",
+			similes: ["ALARM", "SET_ALARM", "WAKE_UP", "WAKE_ME"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_ALARMS with the provided parameters.",
+					actions: ["OWNER_ALARMS"],
+					params: {
+						OWNER_ALARMS: {
+							action: "example",
+							id: "example",
+							label: "example",
+							fireAt: "example",
+							repeatRule: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_DOCUMENTS",
+			description:
+				"Owner-facing Docs And Portals umbrella action. Subaction-based dispatch covering signature requests, approval flows, deadline tracking, asset uploads, ID/form collection, and request closure.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Canonical OWNER_DOCUMENTS sub-operation. Mirrors subaction for planner compatibility.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"request_signature",
+							"request_approval",
+							"track_deadline",
+							"upload_asset",
+							"collect_id",
+							"close_request",
+						],
+					},
+					descriptionCompressed:
+						"Canonical OWNER_DOCUMENTS sub-operation. Mirrors subaction for planner compatibility.",
+				},
+				{
+					name: "subaction",
+					description: "Which OWNER_DOCUMENTS sub-operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"request_signature",
+							"request_approval",
+							"track_deadline",
+							"upload_asset",
+							"collect_id",
+							"close_request",
+						],
+					},
+					descriptionCompressed: "Which OWNER_DOCUMENTS sub-operation to run.",
+				},
+				{
+					name: "requestId",
+					description:
+						"Existing document-request id (close_request / updates).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Existing document-request id (close_request/updates).",
+				},
+				{
+					name: "kind",
+					description:
+						"Document-request kind (signature/approval/asset/id_form).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Document-request kind (signature/approval/asset/id_form).",
+				},
+				{
+					name: "title",
+					description: "Human-readable title for the request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Human-readable title for the request.",
+				},
+				{
+					name: "description",
+					description: "Free-text description of what is being requested.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-text description of what is being requested.",
+				},
+				{
+					name: "url",
+					description: "Portal URL or asset location.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Portal URL or asset location.",
+				},
+				{
+					name: "deadline",
+					description: "ISO timestamp the request must be completed by.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO timestamp the request must be completed by.",
+				},
+				{
+					name: "counterparty",
+					description: "Counterparty (signer, approver, recipient).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Counterparty (signer, approver, recipient).",
+				},
+				{
+					name: "documentId",
+					description: "Underlying document id to bind to the request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Underlying document id to bind to the request.",
+				},
+			],
+			similes: [
+				"OWNER_DOCUMENTS_REQUEST_SIGNATURE",
+				"OWNER_DOCUMENTS_REQUEST_APPROVAL",
+				"OWNER_DOCUMENTS_TRACK_DEADLINE",
+				"OWNER_DOCUMENTS_UPLOAD_ASSET",
+				"OWNER_DOCUMENTS_COLLECT_ID_OR_FORM",
+				"OWNER_DOCUMENTS_CLOSE_REQUEST",
+			],
+			exampleCalls: [
+				{
+					user: "Use OWNER_DOCUMENTS with the provided parameters.",
+					actions: ["OWNER_DOCUMENTS"],
+					params: {
+						OWNER_DOCUMENTS: {
+							action: "request_signature",
+							subaction: "request_signature",
+							requestId: "example",
+							kind: "example",
+							title: "example",
+							description: "example",
+							url: "example",
+							deadline: "example",
+							counterparty: "example",
+							documentId: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Owner-facing Docs And Portals umbrella action. Subaction-based dispatch covering signature requests, approval flows, deadline tracking, asset uploads...",
+		},
+		{
+			name: "OWNER_FINANCES",
+			description:
+				"Owner finances dashboard: sources, imports, spending, recurring charges, subscriptions. (Scaffold — implementation migrating from plugin-lifeops.)",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Owner finance op (passthrough until migration completes).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Owner finance op (passthrough until migration completes).",
+				},
+			],
+			descriptionCompressed:
+				"owner finances dashboard|sources|csv|transactions|spending|recurring|subscription",
+			similes: ["FINANCES", "FINANCE", "TRANSACTIONS", "RECURRING"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_FINANCES with the provided parameters.",
+					actions: ["OWNER_FINANCES"],
+					params: {
+						OWNER_FINANCES: {
+							action: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_GOALS",
+			description:
+				"Manage the owner's long-horizon life goals. Actions: create, update, delete, review. Goals carry a horizon (e.g. quarter, year, life) and feed routine + reminder generation.",
+			parameters: [
+				{
+					name: "action",
+					description: "Action: create | update | delete | review.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Action: create | update | delete | review.",
+				},
+				{
+					name: "id",
+					description: "Goal id (update/delete/review).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Goal id (update/delete/review).",
+				},
+				{
+					name: "title",
+					description: "Goal title (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Goal title (create/update).",
+				},
+				{
+					name: "description",
+					description: "Longer goal description (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Longer goal description (create/update).",
+				},
+				{
+					name: "horizon",
+					description: "Time horizon: quarter | year | life | etc.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Time horizon: quarter | year | life | etc.",
+				},
+			],
+			descriptionCompressed:
+				"owner goals: create|update|delete|review; long-horizon, drives routines",
+			similes: [
+				"GOALS",
+				"LIFE_GOALS",
+				"SET_GOAL",
+				"UPDATE_GOAL",
+				"REVIEW_GOALS",
+			],
+			exampleCalls: [
+				{
+					user: "Use OWNER_GOALS with the provided parameters.",
+					actions: ["OWNER_GOALS"],
+					params: {
+						OWNER_GOALS: {
+							action: "example",
+							id: "example",
+							title: "example",
+							description: "example",
+							horizon: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_HEALTH",
+			description:
+				"Owner-facing health umbrella action: surface today's health summary, multi-day trends, per-metric breakdowns, and connector status (Apple Health / Google Fit / Strava / Fitbit / Withings / Oura).",
+			parameters: [
+				{
+					name: "action",
+					description: "Which health operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Which health operation to run.",
+				},
+				{
+					name: "subaction",
+					description: "Legacy alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Legacy alias for action.",
+				},
+				{
+					name: "metric",
+					description:
+						"Specific metric to query (steps, heart_rate, sleep_hours, calories, distance_meters, active_minutes).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Specific metric to query (steps, heart_rate, sleep_hours, calories, distance_meters, active_minutes).",
+				},
+				{
+					name: "date",
+					description: "ISO date (YYYY-MM-DD) to query.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "ISO date (YYYY-MM-DD) to query.",
+				},
+				{
+					name: "days",
+					description: "Trend window length in days.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Trend window length in days.",
+				},
+			],
+			similes: ["HEALTH_SUMMARY", "HEALTH_TODAY", "HEALTH_TREND"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_HEALTH with the provided parameters.",
+					actions: ["OWNER_HEALTH"],
+					params: {
+						OWNER_HEALTH: {
+							action: "example",
+							subaction: "example",
+							metric: "example",
+							date: "example",
+							days: 1,
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Owner-facing health umbrella action: surface today's health summary, multi-day trends, per-metric breakdowns, and connector status (Apple Health/Google...",
+		},
+		{
+			name: "OWNER_REMINDERS",
+			description:
+				"Manage the owner's reminders. Actions: create, update, delete, complete, snooze, list. Bridges to Apple Reminders + Google Tasks live in their respective plugins; this action is the owner-facing surface.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: create | update | delete | complete | snooze | list.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Action: create | update | delete | complete | snooze | list.",
+				},
+				{
+					name: "id",
+					description: "Reminder id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Reminder id.",
+				},
+				{
+					name: "title",
+					description: "Reminder title (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Reminder title (create/update).",
+				},
+				{
+					name: "dueAt",
+					description: "ISO-8601 due timestamp (create/update/snooze).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO-8601 due timestamp (create/update/snooze).",
+				},
+			],
+			descriptionCompressed:
+				"owner reminders: create|update|delete|complete|snooze|list",
+			similes: ["REMIND", "REMIND_ME", "REMINDER", "FOLLOWUP", "FOLLOW_UP"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_REMINDERS with the provided parameters.",
+					actions: ["OWNER_REMINDERS"],
+					params: {
+						OWNER_REMINDERS: {
+							action: "example",
+							id: "example",
+							title: "example",
+							dueAt: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_ROUTINES",
+			description:
+				"Manage the owner's recurring routines (daily/weekly habits and cadences). Actions: create, update, delete, complete, skip, snooze, review.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: create | update | delete | complete | skip | snooze | review.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Action: create | update | delete | complete | skip | snooze | review.",
+				},
+				{
+					name: "id",
+					description: "Routine id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Routine id.",
+				},
+				{
+					name: "name",
+					description: "Routine name (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Routine name (create/update).",
+				},
+				{
+					name: "cadence",
+					description: "Cadence: daily | weekdays | weekly | custom-cron.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Cadence: daily | weekdays | weekly | custom-cron.",
+				},
+				{
+					name: "timeOfDay",
+					description: "Local time of day, e.g. '07:00'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Local time of day, e. g. '07:00'.",
+				},
+			],
+			descriptionCompressed:
+				"owner routines: create|update|delete|complete|skip|snooze|review",
+			similes: [
+				"ROUTINES",
+				"DAILY_ROUTINE",
+				"WEEKLY_ROUTINE",
+				"HABIT",
+				"MORNING_ROUTINE",
+				"NIGHT_ROUTINE",
+			],
+			exampleCalls: [
+				{
+					user: "Use OWNER_ROUTINES with the provided parameters.",
+					actions: ["OWNER_ROUTINES"],
+					params: {
+						OWNER_ROUTINES: {
+							action: "example",
+							id: "example",
+							name: "example",
+							cadence: "example",
+							timeOfDay: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_SCREENTIME",
+			description:
+				"Owner-facing screen-time umbrella action: summaries, daily/weekly breakdowns, per-app / per-website slices, browser activity reports, and time-on-target queries across iOS / Android / desktop signals.",
+			parameters: [
+				{
+					name: "action",
+					description: "Which screen-time operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Which screen-time operation to run.",
+				},
+				{
+					name: "subaction",
+					description: "Legacy alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Legacy alias for action.",
+				},
+				{
+					name: "source",
+					description: "Aggregation source — 'app' or 'website'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Aggregation source - 'app' or 'website'.",
+				},
+				{
+					name: "identifier",
+					description: "Bundle id, package name, or domain to filter on.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Bundle id, package name, or domain to filter on.",
+				},
+				{
+					name: "date",
+					description: "ISO date (YYYY-MM-DD) to anchor a daily query.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ISO date (YYYY-MM-DD) to anchor a daily query.",
+				},
+				{
+					name: "days",
+					description: "Multi-day window length.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Multi-day window length.",
+				},
+				{
+					name: "windowHours",
+					description: "Window length in hours (1..720).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Window length in hours (1. 720).",
+				},
+				{
+					name: "deviceId",
+					description: "Restrict to a specific device id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Restrict to a specific device id.",
+				},
+			],
+			similes: ["SCREENTIME", "SCREEN_TIME_SUMMARY", "SCREEN_TIME_TODAY"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_SCREENTIME with the provided parameters.",
+					actions: ["OWNER_SCREENTIME"],
+					params: {
+						OWNER_SCREENTIME: {
+							action: "example",
+							subaction: "example",
+							source: "example",
+							identifier: "example",
+							date: "example",
+							days: 1,
+							windowHours: 1,
+							deviceId: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Owner-facing screen-time umbrella action: summaries, daily/weekly breakdowns, per-app/per-website slices, browser activity reports, and time-on-target...",
+		},
+		{
+			name: "OWNER_TODOS",
+			description:
+				"Owner todos: create/update/delete/complete/skip/snooze/review personal.",
+			parameters: [],
+			descriptionCompressed:
+				"owner todos: action=create|update|delete|complete|skip|snooze|review",
+			similes: [
+				"OWNER_TODO",
+				"PERSONAL_TODO",
+				"PERSONAL_TODOS",
+				"PERSONAL_TASK",
+			],
+		},
+		{
+			name: "PAYMENT",
+			description:
+				"Payment router for the active mysticism reading session. Set action to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
+			parameters: [
+				{
+					name: "action",
+					description: "Operation: check or request.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["check", "request"],
+					},
+					descriptionCompressed: "Operation: check or request.",
+				},
+				{
+					name: "amount",
+					description:
+						"For request — payment amount as a string (e.g. '3.00').",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For request - payment amount as a string (e. g. '3. 00').",
+				},
+				{
+					name: "entityId",
+					description:
+						"For check — optional entity id whose active reading payment should be checked. Defaults to the current sender.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For check - optional entity id whose active reading payment should be checked. Defaults to the current sender.",
+				},
+				{
+					name: "roomId",
+					description:
+						"For check — optional room id whose active reading payment should be checked. Defaults to the current room.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For check - optional room id whose active reading payment should be checked. Defaults to the current room.",
+				},
+			],
+			descriptionCompressed: "Mysticism payment ops: check, request.",
+			similes: [
+				"REQUEST_PAYMENT",
+				"CHARGE_USER",
+				"ASK_FOR_PAYMENT",
+				"SET_PRICE",
+				"CHECK_PAYMENT",
+				"VERIFY_PAYMENT",
+				"PAYMENT_STATUS",
+			],
+			exampleCalls: [
+				{
+					user: "Use PAYMENT with the provided parameters.",
+					actions: ["PAYMENT"],
+					params: {
+						PAYMENT: {
+							action: "check",
+							amount: "example",
+							entityId: "example",
+							roomId: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "PERPETUAL_MARKET",
+			description:
+				"Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this read-only app.",
+			parameters: [
+				{
+					name: "target",
+					description: "Perpetual market provider.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["hyperliquid"],
+						default: "hyperliquid",
+					},
+					descriptionCompressed: "Perpetual market provider.",
+				},
+				{
+					name: "action",
+					description: "Perpetual market operation: read or place_order.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "place_order"],
+					},
+					descriptionCompressed:
+						"Perpetual market operation: read or place_order.",
+				},
+				{
+					name: "subaction",
+					description: "Alias for action (read | place_order | place-order).",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "place_order", "place-order"],
+					},
+					descriptionCompressed:
+						"Alias for action (read | place_order | place-order).",
+				},
+				{
+					name: "kind",
+					description:
+						"read only: status | markets | market | positions | funding.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["status", "markets", "market", "positions", "funding"],
+					},
+					descriptionCompressed:
+						"read only: status | markets | market | positions | funding.",
+				},
+				{
+					name: "coin",
+					description: "market only: Hyperliquid coin/asset symbol (e.g. BTC).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"market only: Hyperliquid coin/asset symbol (e. g. BTC).",
+				},
+				{
+					name: "side",
+					description: "place_order only: intended side, buy or sell.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["buy", "sell"],
+					},
+					descriptionCompressed:
+						"place_order only: intended side, buy or sell.",
+				},
+				{
+					name: "asset",
+					description: "place_order only: Hyperliquid asset symbol.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "place_order only: Hyperliquid asset symbol.",
+				},
+				{
+					name: "size",
+					description: "place_order only: intended order size.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "place_order only: intended order size.",
+				},
+			],
+			descriptionCompressed:
+				"Perpetual market router: target hyperliquid; action read or place_order.",
+			exampleCalls: [
+				{
+					user: "Use PERPETUAL_MARKET with the provided parameters.",
+					actions: ["PERPETUAL_MARKET"],
+					params: {
+						PERPETUAL_MARKET: {
+							target: "hyperliquid",
+							action: "read",
+							subaction: "read",
+							kind: "status",
+							coin: "example",
+							side: "buy",
+							asset: "example",
+							size: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "PERSONAL_ASSISTANT",
+			description:
+				"Owner personal-assistant workflows: action=book_travel travel booking; action=scheduling negotiation; action=sign_document signature, owner approval queue.",
+			parameters: [
+				{
+					name: "action",
+					description: "Assistant op: book_travel|scheduling|sign_document.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Assistant op: book_travel|scheduling|sign_document.",
+				},
+			],
+			descriptionCompressed:
+				"personal assistant workflows: action=book_travel|scheduling|sign_document",
+			similes: [
+				"ASSISTANT",
+				"SCHEDULING",
+				"SIGN_DOCUMENT",
+				"DOCUSIGN",
+				"TRAVEL_CAPTURE_PREFERENCES",
+				"TRAVEL_BOOK_FLIGHT",
+				"TRAVEL_BOOK_HOTEL",
+				"TRAVEL_SYNC_ITINERARY_TO_CALENDAR",
+				"TRAVEL_REBOOK_AFTER_CONFLICT",
+			],
+			exampleCalls: [
+				{
+					user: "Use PERSONAL_ASSISTANT with the provided parameters.",
+					actions: ["PERSONAL_ASSISTANT"],
+					params: {
+						PERSONAL_ASSISTANT: {
+							action: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "PLAY_EMOTE",
+			description:
+				"Play a one-shot emote animation on your 3D VRM avatar, then return to idle. ",
+			parameters: [
+				{
+					name: "emote",
+					description:
+						"Required emote ID to play once silently before returning to idle. ",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Required emote ID to play once silently before returning to idle.",
+				},
+			],
+			descriptionCompressed:
+				"Play one-shot VRM avatar emote animation. Silent visual side-action.",
+			similes: [
+				"EMOTE",
+				"ANIMATE",
+				"GESTURE",
+				"DANCE",
+				"WAVE",
+				"PLAY_ANIMATION",
+				"DO_EMOTE",
+				"PERFORM",
+			],
+			exampleCalls: [
+				{
+					user: "Use PLAY_EMOTE with the provided parameters.",
+					actions: ["PLAY_EMOTE"],
+					params: {
+						PLAY_EMOTE: {
+							emote: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "PRIORITIZE",
+			description:
+				"Rank owner open todos, message threads, pending decisions by urgency × importance. LLM pass. Subactions: rank_todos, rank_threads, rank_decisions.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Prioritize op: rank_todos | rank_threads | rank_decisions.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["rank_todos", "rank_threads", "rank_decisions"],
+					},
+					descriptionCompressed:
+						"Prioritize op: rank_todos | rank_threads | rank_decisions.",
+				},
+				{
+					name: "subject",
+					description:
+						"Alt selector: todos | threads | decisions. Maps to subaction.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["todos", "threads", "decisions"],
+					},
+					descriptionCompressed:
+						"Alt selector: todos | threads | decisions. Maps to subaction.",
+				},
+				{
+					name: "topN",
+					description: "Top item count. Default 5.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Top item count. Default 5.",
+				},
+				{
+					name: "criteria",
+					description: "Owner weighting criteria.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Owner weighting criteria.",
+				},
+			],
+			descriptionCompressed:
+				"prioritize: rank_todos|rank_threads|rank_decisions; topN ranking by urgency × importance",
+			exampleCalls: [
+				{
+					user: "Use PRIORITIZE with the provided parameters.",
+					actions: ["PRIORITIZE"],
+					params: {
+						PRIORITIZE: {
+							action: "rank_todos",
+							subject: "todos",
+							topN: 1,
+							criteria: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "PROXY_STATUS",
+			description:
+				"Report current Anthropic proxy status: mode (inline/shared/off), bound URL, ",
+			parameters: [],
+			descriptionCompressed:
+				"anthropic-proxy-status: mode, url, listening, requests, token expiry, upstream check",
+			similes: [
+				"ANTHROPIC_PROXY_STATUS",
+				"CLAUDE_MAX_PROXY_STATUS",
+				"CHECK_PROXY",
+			],
+		},
+		{
+			name: "REMOTE_DESKTOP",
+			description:
+				"Remote-desktop sessions; owner connects to this machine from another device. ",
+			parameters: [
+				{
+					name: "action",
+					description: "start | status | end | list | revoke.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["start", "status", "end", "list", "revoke"],
+					},
+					examples: ["start", "list", "revoke"],
+					descriptionCompressed:
+						"remote-desktop action: start|status|end|list|revoke",
+				},
+				{
+					name: "sessionId",
+					description: "Session id. Required status|end|revoke.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["rs_abc123"],
+					descriptionCompressed: "session id (status|end|revoke)",
+				},
+				{
+					name: "confirmed",
+					description: "true required for start; security gate.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "true required for start (security)",
+				},
+				{
+					name: "pairingCode",
+					description:
+						"6-digit pairingCode for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
+					required: false,
+					schema: {
+						type: "string",
+						pattern: "^[0-9]{6}$",
+					},
+					examples: ["482193"],
+					descriptionCompressed:
+						"6-digit pairing code (start; skipped in local mode)",
+				},
+				{
+					name: "requesterIdentity",
+					description: "Requester id/name/device. Audit start.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "audit: requester id (start)",
+				},
+				{
+					name: "intent",
+					description: "Owner intent/reason. Audit.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "audit: owner reason",
+				},
+			],
+			descriptionCompressed:
+				"REMOTE_DESKTOP start|status|end|list|revoke; start confirmed:true; cloud pairingCode",
+			similes: [
+				"REMOTE_SESSION",
+				"VNC_SESSION",
+				"REMOTE_CONTROL",
+				"PHONE_REMOTE_ACCESS",
+				"CONNECT_FROM_PHONE",
+			],
+			exampleCalls: [
+				{
+					user: "Use REMOTE_DESKTOP with the provided parameters.",
+					actions: ["REMOTE_DESKTOP"],
+					params: {
+						REMOTE_DESKTOP: {
+							action: "start",
+							sessionId: "rs_abc123",
+							confirmed: false,
+							pairingCode: "482193",
+							requesterIdentity: "example",
+							intent: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "RESOLVE_REQUEST",
+			description:
+				"Approve/reject pending owner-confirmation action: send_email, send_message, book_travel, voice_call, etc. ",
+			parameters: [
+				{
+					name: "action",
+					description: "approve | reject.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["approve", "reject"],
+					},
+					descriptionCompressed: "approve | reject.",
+				},
+				{
+					name: "requestId",
+					description:
+						"Approval request id. Optional when user references pending request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Approval request id. Optional when user references pending request.",
+				},
+				{
+					name: "reason",
+					description: "Optional approve/reject reason, user language.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional approve/reject reason, user language.",
+				},
+			],
+			descriptionCompressed:
+				"approve|reject queue; requestId optional; send_email|send_message|book_travel|voice_call",
+			similes: [
+				"APPROVE",
+				"REJECT",
+				"CONFIRM",
+				"DENY",
+				"YES_DO_IT",
+				"NO_DONT",
+				"ACCEPT_REQUEST",
+				"DECLINE_REQUEST",
+				"ADMIN_REJECT_APPROVAL",
+				"REJECT_APPROVAL",
+				"DENY_APPROVAL",
+				"DECLINE_APPROVAL",
+			],
+			exampleCalls: [
+				{
+					user: "Use RESOLVE_REQUEST with the provided parameters.",
+					actions: ["RESOLVE_REQUEST"],
+					params: {
+						RESOLVE_REQUEST: {
+							action: "approve",
+							requestId: "example",
+							reason: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "ROBLOX",
+			description:
+				"Route Roblox game integration with action message, execute, or get_player.",
+			parameters: [
+				{
+					name: "action",
+					description: "Roblox operation: message, execute, or get_player.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["message", "execute", "get_player"],
+					},
+					descriptionCompressed: "Roblox action.",
+				},
+				{
+					name: "message",
+					description: "Message content for the message subaction.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "message text",
+				},
+				{
+					name: "actionName",
+					description: "Game-side action name for execute.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "game action name",
+				},
+				{
+					name: "parameters",
+					description: "Game-side action parameters for execute.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed: "game action params",
+				},
+				{
+					name: "targetPlayerIds",
+					description: "Roblox player IDs to target for message or execute.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "number",
+						},
+					},
+					descriptionCompressed: "target player ids",
+				},
+				{
+					name: "playerId",
+					description: "Roblox player/user ID for lookup or targeting.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Roblox user id",
+				},
+				{
+					name: "username",
+					description: "Roblox username for lookup.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Roblox username",
+				},
+			],
+			descriptionCompressed:
+				"Route Roblox action: message, execute, or get_player.",
+			similes: ["ROBLOX", "ROBLOX_ROUTER", "ROBLOX_GAME_ACTION"],
+			exampleCalls: [
+				{
+					user: "Use ROBLOX with the provided parameters.",
+					actions: ["ROBLOX"],
+					params: {
+						ROBLOX: {
+							action: "message",
+							message: "example",
+							actionName: "example",
+							parameters: "example",
+							targetPlayerIds: "example",
+							playerId: 1,
+							username: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "RS_2004",
+			description:
+				"Drive the 2004scape game agent. Choose one action (walk_to, chop, mine, fish, burn, cook, fletch, craft, smith, drop, pickup, equip, unequip, use, use_on_item, use_on_object, open, close, deposit, withdraw, buy, sell, attack, cast_spell, set_style, eat, talk, navigate_dialog, interact_object, open_door, pickpocket). For open/close, set target='bank' or target='shop' (or include npc to imply shop). Per-action fields go in params.",
+			parameters: [
+				{
+					name: "action",
+					description: "Operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"walk_to",
+							"chop",
+							"mine",
+							"fish",
+							"burn",
+							"cook",
+							"fletch",
+							"craft",
+							"smith",
+							"drop",
+							"pickup",
+							"equip",
+							"unequip",
+							"use",
+							"use_on_item",
+							"use_on_object",
+							"open",
+							"close",
+							"deposit",
+							"withdraw",
+							"buy",
+							"sell",
+							"attack",
+							"cast_spell",
+							"set_style",
+							"eat",
+							"talk",
+							"navigate_dialog",
+							"interact_object",
+							"open_door",
+							"pickpocket",
+						],
+					},
+					descriptionCompressed: "Action.",
+				},
+				{
+					name: "params",
+					description:
+						"Optional JSON object containing the fields required by the chosen op.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed: "Action fields.",
+				},
+			],
+			descriptionCompressed:
+				"rs_2004 actions (walk_to, skills, inventory, bank, shop, combat, interact)",
+			exampleCalls: [
+				{
+					user: "Use RS_2004 with the provided parameters.",
+					actions: ["RS_2004"],
+					params: {
+						RS_2004: {
+							action: "walk_to",
+							params: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "SCAPE",
+			description:
+				"Drive the 'scape (xRSPS) game agent. Pick one action: walk_to (x,z,run?), attack (npcId), chat_public (message), eat (item?), drop (item), set_goal (title,notes?), complete_goal (status?,goalId?,notes?), remember (notes,kind?,weight?). Returns success and a short status message; the autonomous loop already handles its own dispatch — this is the planner-facing surface.",
+			parameters: [
+				{
+					name: "action",
+					description: "Operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"walk_to",
+							"attack",
+							"chat_public",
+							"eat",
+							"drop",
+							"set_goal",
+							"complete_goal",
+							"remember",
+						],
+					},
+					descriptionCompressed: "Action.",
+				},
+				{
+					name: "params",
+					description:
+						"Optional JSON object containing the fields required by the chosen action.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed: "Action fields.",
+				},
+			],
+			descriptionCompressed:
+				"scape actions: walk_to|attack|chat_public|eat|drop|set_goal|complete_goal|remember",
+			similes: [
+				"SCAPE_WALK_TO",
+				"MOVE_TO",
+				"GO_TO",
+				"TRAVEL_TO",
+				"HEAD_TO",
+				"ATTACK_NPC",
+				"FIGHT_NPC",
+				"KILL_NPC",
+				"ENGAGE",
+				"CHAT_PUBLIC",
+				"SAY",
+				"SPEAK",
+				"TALK",
+				"BROADCAST",
+				"JOURNAL",
+				"INVENTORY",
+				"SET_GOAL",
+				"COMPLETE_GOAL",
+				"REMEMBER",
+				"EAT_FOOD",
+				"DROP_ITEM",
+			],
+			exampleCalls: [
+				{
+					user: "Use SCAPE with the provided parameters.",
+					actions: ["SCAPE"],
+					params: {
+						SCAPE: {
+							action: "walk_to",
+							params: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "SCHEDULED_TASKS",
+			description:
+				"Owner scheduled-item surface backed by LifeOps ScheduledTask records. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"ScheduledTask op: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"list",
+							"get",
+							"create",
+							"update",
+							"snooze",
+							"skip",
+							"complete",
+							"acknowledge",
+							"dismiss",
+							"cancel",
+							"reopen",
+							"history",
+						],
+					},
+					descriptionCompressed:
+						"ScheduledTask op: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
+				},
+				{
+					name: "taskId",
+					description:
+						"Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history.",
+				},
+				{
+					name: "kind",
+					description:
+						"ScheduledTaskKind create/filter: reminder|checkin|followup|approval|recap|watcher|output|custom.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ScheduledTaskKind create/filter: reminder|checkin|followup|approval|recap|watcher|output|custom.",
+				},
+				{
+					name: "status",
+					description:
+						"List status filter string|string[]: scheduled|fired|acknowledged|completed|skipped|expired|failed|dismissed.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"List status filter string|string[]: scheduled|fired|acknowledged|completed|skipped|expired|failed|dismissed.",
+				},
+				{
+					name: "subjectKind",
+					description:
+						"ScheduledTaskSubject.kind: entity|relationship|thread|document|calendar_event|self.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ScheduledTaskSubject. kind: entity|relationship|thread|document|calendar_event|self.",
+				},
+				{
+					name: "subjectId",
+					description: "ScheduledTaskSubject.id paired with subjectKind.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"ScheduledTaskSubject. id paired with subjectKind.",
+				},
+				{
+					name: "ownerVisibleOnly",
+					description: "true: list ownerVisible tasks only.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "true: list ownerVisible tasks only.",
+				},
+				{
+					name: "promptInstructions",
+					description:
+						"create-only: promptInstructions stored on ScheduledTask.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"create-only: promptInstructions stored on ScheduledTask.",
+				},
+				{
+					name: "trigger",
+					description:
+						"create-only: ScheduledTaskTrigger once/cron/interval/relative_to_anchor/during_window/event/manual/after_task.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"create-only: ScheduledTaskTrigger once/cron/interval/relative_to_anchor/during_window/event/manual/after_task.",
+				},
+				{
+					name: "contextRequest",
+					description:
+						"create-only: contextRequest facts/entities/relationships/recent task states/event payload.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"create-only: contextRequest facts/entities/relationships/recent task states/event payload.",
+				},
+				{
+					name: "shouldFire",
+					description:
+						"create-only: structural shouldFire gates; gate refs, no prompt text conditions.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"create-only: structural shouldFire gates. gate refs, no prompt text conditions.",
+				},
+				{
+					name: "completionCheck",
+					description:
+						"create-only: structural completionCheck: user_replied_within|user_acknowledged|subject_updated|health_signal_observed.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"create-only: structural completionCheck: user_replied_within|user_acknowledged|subject_updated|health_signal_observed.",
+				},
+				{
+					name: "output",
+					description:
+						"create-only: output destination/target, e.g. channel -> in_app:<roomId>.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"create-only: output destination/target, e. g. channel -> in_app:<roomId>.",
+				},
+				{
+					name: "pipeline",
+					description:
+						"create-only: pipeline child ScheduledTask refs: onComplete|onSkip|onFail.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"create-only: pipeline child ScheduledTask refs: onComplete|onSkip|onFail.",
+				},
+				{
+					name: "escalation",
+					description: "create-only: escalation ladder/channel steps.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"create-only: escalation ladder/channel steps.",
+				},
+				{
+					name: "metadata",
+					description: "create-only: structured task metadata.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed: "create-only: structured task metadata.",
+				},
+				{
+					name: "idempotencyKey",
+					description: "create-only: stable dedupe key for repeated schedules.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"create-only: stable dedupe key for repeated schedules.",
+				},
+				{
+					name: "priority",
+					description: "create-only: low|medium|high; default medium.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["low", "medium", "high"],
+					},
+					descriptionCompressed:
+						"create-only: low|medium|high. default medium.",
+				},
+				{
+					name: "respectsGlobalPause",
+					description: "create-only: true skips during global pause.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "create-only: true skips during global pause.",
+				},
+				{
+					name: "ownerVisible",
+					description: "create-only: true shows in owner views.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "create-only: true shows in owner views.",
+				},
+				{
+					name: "source",
+					description:
+						"create-only: source default_pack|user_chat|first_run|plugin.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"create-only: source default_pack|user_chat|first_run|plugin.",
+				},
+				{
+					name: "minutes",
+					description: "snooze-only: defer next fire N minutes.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "snooze-only: defer next fire N minutes.",
+				},
+				{
+					name: "untilIso",
+					description: "snooze-only: defer next fire until ISO-8601 timestamp.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"snooze-only: defer next fire until ISO-8601 timestamp.",
+				},
+				{
+					name: "reason",
+					description:
+						"skip/complete/acknowledge/dismiss/reopen: reason on state log.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"skip/complete/acknowledge/dismiss/reopen: reason on state log.",
+				},
+				{
+					name: "patch",
+					description:
+						"update-only: shallow patch editable ScheduledTask fields.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"update-only: shallow patch editable ScheduledTask fields.",
+				},
+				{
+					name: "sinceIso",
+					description: "history-only: occurredAtIso >= ISO-8601.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "history-only: occurredAtIso >= ISO-8601.",
+				},
+				{
+					name: "untilHistoryIso",
+					description: "history-only: occurredAtIso <= ISO-8601.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "history-only: occurredAtIso <= ISO-8601.",
+				},
+				{
+					name: "includeRollups",
+					description:
+						"history-only: include daily rollups; default false/raw only.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"history-only: include daily rollups. default false/raw only.",
+				},
+				{
+					name: "limit",
+					description: "history-only: row cap (default 100).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "history-only: row cap (default 100).",
+				},
+			],
+			descriptionCompressed:
+				"LifeOps scheduled items list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
+			exampleCalls: [
+				{
+					user: "Use SCHEDULED_TASKS with the provided parameters.",
+					actions: ["SCHEDULED_TASKS"],
+					params: {
+						SCHEDULED_TASKS: {
+							action: "list",
+							taskId: "example",
+							kind: "example",
+							status: "example",
+							subjectKind: "example",
+							subjectId: "example",
+							ownerVisibleOnly: false,
+							promptInstructions: "example",
+							trigger: "example",
+							contextRequest: "example",
+							shouldFire: "example",
+							completionCheck: "example",
+							output: "example",
+							pipeline: "example",
+							escalation: "example",
+							metadata: "example",
+							idempotencyKey: "example",
+							priority: "low",
+							respectsGlobalPause: false,
+							ownerVisible: false,
+							source: "example",
+							minutes: 1,
+							untilIso: "example",
+							reason: "example",
+							patch: "example",
+							sinceIso: "example",
+							untilHistoryIso: "example",
+							includeRollups: false,
+							limit: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "SHELL",
+			description:
+				"Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Prefer bounded commands; avoid recursive whole-filesystem scans unless explicitly requested. Omit cwd unless the user supplied an exact directory or the session was explicitly moved; do not invent cwd from remembered repo paths. For questions about the currently running agent/runtime/source, use the default session cwd and inspect current process/service evidence before reporting git metadata. For JSON API inspection, prefer jq or node; if Python is needed, call python3 rather than assuming a python alias exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. For crypto spot prices, prefer neutral no-key APIs such as CoinGecko simple price or Coinbase spot before exchange-gated APIs; do not start with legacy Coindesk or Binance when the same value can be fetched elsewhere. If a command exits 0 with empty stdout/stderr, the command produced no output; try another source or parser when data is still needed instead of claiming the shell did not return output. For disk checks, use df for every requested mount/path (for root plus home: df -h / /home) plus targeted du on likely cleanup directories; when asked for cleanup candidates, inspect one readable largest directory one level deeper before ranking candidates. Use separators that still allow later inspection commands to run when du hits expected permission-denied paths.",
+			parameters: [
+				{
+					name: "action",
+					description: "Shell operation: run | clear_history | view_history.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["run", "clear_history", "view_history"],
+					},
+					descriptionCompressed:
+						"Shell operation: run | clear_history | view_history.",
+				},
+				{
+					name: "command",
+					description:
+						"For action=run: shell command, executed via /bin/bash -c. Keep routine inspection commands bounded; avoid broad scans like du -sh /* when a targeted path is enough. For JSON API data, prefer jq or node; use python3, not python, unless the environment explicitly shows python exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. For crypto spot prices, prefer CoinGecko simple price or Coinbase spot before exchange-gated APIs; avoid legacy Coindesk and Binance when a neutral source can answer. If stdout/stderr are marked empty, the command produced no output; try a different command/source when the user still needs a value. Include every requested path in df, e.g. df -h / /home. For cleanup candidates, follow the first bounded du result with a targeted du on the largest readable directory before answering; avoid && between du probes when permission-denied paths are expected.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=run: shell command, executed via /bin/bash -c. Keep routine inspection commands bounded. avoid broad scans like du -sh /* when a targeted path is...",
+				},
+				{
+					name: "description",
+					description: "5-10 word human-readable command summary.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "5-10 word human-readable command summary.",
+				},
+				{
+					name: "timeout",
+					description:
+						"Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Hard timeout in ms. clamped to [100, 600000]. Default 120000.",
+				},
+				{
+					name: "cwd",
+					description:
+						"Absolute cwd; must not resolve under blocked path. Omit unless the user supplied this exact directory or the session was explicitly moved; default session cwd is safer than remembered paths.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Absolute cwd. must not resolve under blocked path. Omit unless user supplied this exact directory or the session was explicitly moved. default session cwd is...",
+				},
+				{
+					name: "limit",
+					description: "For action=view_history: max recorded commands.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=view_history: max recorded commands.",
+				},
+			],
+			descriptionCompressed: "Run shell commands; clear/view shell history.",
+			similes: ["BASH", "EXEC", "RUN_COMMAND"],
+			exampleCalls: [
+				{
+					user: "Use SHELL with the provided parameters.",
+					actions: ["SHELL"],
+					params: {
+						SHELL: {
+							action: "run",
+							command: "example",
+							description: "example",
+							timeout: 1,
+							cwd: "example",
+							limit: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "SHOPIFY",
+			description:
+				"Manage a Shopify store. Actions: search (read-only catalog browsing across products, orders, and customers), products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Action is inferred from the message text when not explicitly provided.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Operation to perform. One of: search, products, inventory, orders, customers. Inferred from message text when omitted.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["search", "products", "inventory", "orders", "customers"],
+					},
+					descriptionCompressed:
+						"Operation to perform. One of: search, products, inventory, orders, customers. Inferred from msg text when omitted.",
+				},
+				{
+					name: "query",
+					description: "Search term for action=search.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search term for action=search.",
+				},
+				{
+					name: "scope",
+					description:
+						"Search scope for action=search: all, products, orders, or customers.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["all", "products", "orders", "customers"],
+					},
+					descriptionCompressed:
+						"Search scope for action=search: all, products, orders, or customers.",
+				},
+				{
+					name: "limit",
+					description: "Maximum results per searched Shopify category.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "max results per searched Shopify category.",
+				},
+			],
+			descriptionCompressed:
+				"Shopify: search, products, inventory, orders, customers.",
+			similes: [
+				"MANAGE_SHOPIFY_PRODUCTS",
+				"MANAGE_SHOPIFY_INVENTORY",
+				"MANAGE_SHOPIFY_ORDERS",
+				"MANAGE_SHOPIFY_CUSTOMERS",
+				"LIST_PRODUCTS",
+				"CREATE_PRODUCT",
+				"UPDATE_PRODUCT",
+				"SEARCH_PRODUCTS",
+				"CHECK_INVENTORY",
+				"ADJUST_INVENTORY",
+				"CHECK_STOCK",
+				"UPDATE_STOCK",
+				"LIST_ORDERS",
+				"CHECK_ORDERS",
+				"FULFILL_ORDER",
+				"ORDER_STATUS",
+				"LIST_CUSTOMERS",
+				"FIND_CUSTOMER",
+				"SEARCH_CUSTOMERS",
+			],
+			exampleCalls: [
+				{
+					user: "Use SHOPIFY with the provided parameters.",
+					actions: ["SHOPIFY"],
+					params: {
+						SHOPIFY: {
+							action: "search",
+							query: "example",
+							scope: "all",
+							limit: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "SKILL",
+			description:
+				"Manage skill catalog. Ops: search, details, sync, toggle, install, uninstall. Use USE_SKILL to invoke enabled skill.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Operation: search, details, sync, toggle, install, uninstall. Infer if omitted.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"search",
+							"details",
+							"sync",
+							"toggle",
+							"install",
+							"uninstall",
+						],
+					},
+					descriptionCompressed:
+						"Operation: search, details, sync, toggle, install, uninstall. Infer if omitted.",
+				},
+				{
+					name: "slug",
+					description: "Skill slug for details, install, toggle, or uninstall.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Skill slug for details, install, toggle, or uninstall.",
+				},
+				{
+					name: "enabled",
+					description: "For action=toggle: true enables; false disables.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=toggle: true enables. false disables.",
+				},
+			],
+			descriptionCompressed:
+				"Skill catalog: search, details, sync, toggle, install, uninstall.",
+			similes: [
+				"MANAGE_SKILL",
+				"MANAGE_SKILLS",
+				"SKILL_CATALOG",
+				"SKILLS",
+				"AGENT_SKILL",
+				"AGENT_SKILLS",
+				"INSTALL_SKILL",
+				"UNINSTALL_SKILL",
+				"SEARCH_SKILLS",
+				"SYNC_SKILL_CATALOG",
+				"TOGGLE_SKILL",
+			],
+			exampleCalls: [
+				{
+					user: "Use SKILL with the provided parameters.",
+					actions: ["SKILL"],
+					params: {
+						SKILL: {
+							action: "search",
+							slug: "example",
+							enabled: false,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "TASKS",
+			description:
+				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). ",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues, archive, reopen.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"create",
+							"spawn_agent",
+							"send",
+							"stop_agent",
+							"list_agents",
+							"cancel",
+							"history",
+							"control",
+							"share",
+							"provision_workspace",
+							"submit_workspace",
+							"manage_issues",
+							"archive",
+							"reopen",
+						],
+					},
+					descriptionCompressed:
+						"Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues...",
+				},
+				{
+					name: "op",
+					description: "Planner alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"create",
+							"spawn_agent",
+							"send",
+							"stop_agent",
+							"list_agents",
+							"cancel",
+							"history",
+							"control",
+							"share",
+							"provision_workspace",
+							"submit_workspace",
+							"manage_issues",
+							"archive",
+							"reopen",
+						],
+					},
+					descriptionCompressed: "Planner alias for action.",
+				},
+				{
+					name: "subaction",
+					description: "Planner alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"create",
+							"spawn_agent",
+							"send",
+							"stop_agent",
+							"list_agents",
+							"cancel",
+							"history",
+							"control",
+							"share",
+							"provision_workspace",
+							"submit_workspace",
+							"manage_issues",
+							"archive",
+							"reopen",
+						],
+					},
+					descriptionCompressed: "Planner alias for action.",
+				},
+				{
+					name: "operation",
+					description: "Planner alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"create",
+							"spawn_agent",
+							"send",
+							"stop_agent",
+							"list_agents",
+							"cancel",
+							"history",
+							"control",
+							"share",
+							"provision_workspace",
+							"submit_workspace",
+							"manage_issues",
+							"archive",
+							"reopen",
+						],
+					},
+					descriptionCompressed: "Planner alias for action.",
+				},
+				{
+					name: "task",
+					description:
+						"Task prompt for create / spawn_agent / send (as new task).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Task prompt for create/spawn_agent/send (as new task).",
+				},
+				{
+					name: "agentType",
+					description:
+						"Agent type (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. Defaults to ELIZA_ACP_DEFAULT_AGENT, normally elizaos.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Agent type (elizaos, pi-agent, opencode, codex, or claude) for create/spawn_agent/control. resume. Defaults to ELIZA_ACP_DEFAULT_AGENT, normally elizaos.",
+				},
+				{
+					name: "agents",
+					description:
+						"Pipe-delimited multi-agent task list for action=create.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Pipe-delimited multi-agent task list for action=create.",
+				},
+				{
+					name: "repo",
+					description:
+						"Repository URL/slug for action=create / action=manage_issues / action=provision_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Repository URL/slug for action=create/action=manage_issues/action=provision_workspace.",
+				},
+				{
+					name: "workdir",
+					description:
+						"Working directory for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Working directory for action=create/action=spawn_agent.",
+				},
+				{
+					name: "memoryContent",
+					description:
+						"Additional memory/context for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Additional memory/context for action=create/action=spawn_agent.",
+				},
+				{
+					name: "label",
+					description:
+						"Task label for action=create / action=spawn_agent / action=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Task label for action=create/action=spawn_agent/action=send.",
+				},
+				{
+					name: "approvalPreset",
+					description:
+						"Approval preset for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["readonly", "standard", "permissive", "autonomous"],
+					},
+					descriptionCompressed:
+						"Approval preset for action=create/action=spawn_agent.",
+				},
+				{
+					name: "keepAliveAfterComplete",
+					description:
+						"Keep session alive after completion for action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Keep session alive after completion for action=spawn_agent.",
+				},
+				{
+					name: "deferUserReply",
+					description:
+						"For action=spawn_agent, suppress the immediate visible acknowledgement when the user explicitly requested no interim reply, such as 'reply only after verification'. The sub-agent completion router will post the final result.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=spawn_agent, suppress the immediate visible acknowledgement when user explicitly requested no interim reply, such as 'reply only after...",
+				},
+				{
+					name: "input",
+					description:
+						"Text input to send to a running session for action=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Text input to send to a running session for action=send.",
+				},
+				{
+					name: "keys",
+					description: "Key sequence to send for action=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Key sequence to send for action=send.",
+				},
+				{
+					name: "sessionId",
+					description:
+						"Target session id for action=send / action=stop_agent / action=cancel / action=control / action=share.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target session id for action=send/action=stop_agent/action=cancel/action=control/action=share.",
+				},
+				{
+					name: "threadId",
+					description:
+						"Target task-thread id for action=cancel / action=control / action=share / action=archive / action=reopen.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target task-thread id for action=cancel/action=control/action=share/action=archive/action=reopen.",
+				},
+				{
+					name: "taskId",
+					description:
+						"Alias for threadId; preferred for action=archive / action=reopen.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Alias for threadId. preferred for action=archive/action=reopen.",
+				},
+				{
+					name: "all",
+					description:
+						"Apply to all sessions for action=stop_agent / action=cancel.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Apply to all sessions for action=stop_agent/action=cancel.",
+				},
+				{
+					name: "search",
+					description:
+						"Free-text search for thread/task lookup in action=cancel / action=control / action=history / action=share.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-text search for thread/task lookup in action=cancel/action=control/action=history/action=share.",
+				},
+				{
+					name: "reason",
+					description: "Cancellation reason for action=cancel.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Cancellation reason for action=cancel.",
+				},
+				{
+					name: "metric",
+					description:
+						"History query mode for action=history: list (default), count, or detail.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["list", "count", "detail"],
+					},
+					descriptionCompressed:
+						"History query mode for action=history: list (default), count, or detail.",
+				},
+				{
+					name: "window",
+					description: "Relative window for action=history.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"active",
+							"today",
+							"yesterday",
+							"last_7_days",
+							"last_30_days",
+						],
+					},
+					descriptionCompressed: "Relative window for action=history.",
+				},
+				{
+					name: "statuses",
+					description: "Status filter list for action=history.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "Status filter list for action=history.",
+				},
+				{
+					name: "limit",
+					description: "Result limit for action=history.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Result limit for action=history.",
+				},
+				{
+					name: "includeArchived",
+					description: "Include archived threads in action=history.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Include archived threads in action=history.",
+				},
+				{
+					name: "controlAction",
+					description:
+						"Child action for action=control: pause | resume | stop | continue | archive | reopen.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Child action for action=control: pause | resume | stop | continue | archive | reopen.",
+				},
+				{
+					name: "issueAction",
+					description:
+						"Child action for action=manage_issues: create | list | get | update | comment | close | reopen | add_labels.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Child action for action=manage_issues: create | list | get | update | comment | close | reopen | add_labels.",
+				},
+				{
+					name: "note",
+					description:
+						"Optional note for action=control with controlAction=pause|stop.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional note for action=control with controlAction=pause|stop.",
+				},
+				{
+					name: "instruction",
+					description:
+						"Follow-up instruction for action=control with controlAction=resume|continue.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Follow-up instruction for action=control with controlAction=resume|continue.",
+				},
+				{
+					name: "baseBranch",
+					description:
+						"Base branch for action=provision_workspace / action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Base branch for action=provision_workspace/action=submit_workspace.",
+				},
+				{
+					name: "useWorktree",
+					description: "Use worktree mode for action=provision_workspace.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Use worktree mode for action=provision_workspace.",
+				},
+				{
+					name: "parentWorkspaceId",
+					description:
+						"Parent workspace id for action=provision_workspace worktree mode.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Parent workspace id for action=provision_workspace worktree mode.",
+				},
+				{
+					name: "workspaceId",
+					description: "Workspace id for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Workspace id for action=submit_workspace.",
+				},
+				{
+					name: "commitMessage",
+					description: "Commit message for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Commit msg for action=submit_workspace.",
+				},
+				{
+					name: "prTitle",
+					description: "PR title for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "PR title for action=submit_workspace.",
+				},
+				{
+					name: "prBody",
+					description: "PR body for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "PR body for action=submit_workspace.",
+				},
+				{
+					name: "draft",
+					description: "Create draft PR for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Create draft PR for action=submit_workspace.",
+				},
+				{
+					name: "skipPR",
+					description: "Skip PR creation for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Skip PR creation for action=submit_workspace.",
+				},
+				{
+					name: "title",
+					description:
+						"Issue title for action=manage_issues with issueAction=create|update.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Issue title for action=manage_issues with issueAction=create|update.",
+				},
+				{
+					name: "body",
+					description:
+						"Issue body for action=manage_issues with issueAction=create|update|comment.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Issue body for action=manage_issues with issueAction=create|update|comment.",
+				},
+				{
+					name: "issueNumber",
+					description:
+						"Issue number for action=manage_issues with issueAction=get|update|comment|close|reopen|add_labels.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Issue number for action=manage_issues with issueAction=get|update|comment|close|reopen|add_labels.",
+				},
+				{
+					name: "labels",
+					description:
+						"Labels (csv string or array) for action=manage_issues with issueAction=create|update|add_labels|list.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Labels (csv string or array) for action=manage_issues with issueAction=create|update|add_labels|list.",
+				},
+				{
+					name: "state",
+					description:
+						"State filter (open|closed|all) for action=manage_issues with issueAction=list.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"State filter (open|closed|all) for action=manage_issues with issueAction=list.",
+				},
+				{
+					name: "validator",
+					description: "Optional verifier for action=create.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed: "Optional verifier for action=create.",
+				},
+				{
+					name: "maxRetries",
+					description: "Verifier retry count for action=create.",
+					required: false,
+					schema: {
+						type: "integer",
+						minimum: 0,
+					},
+					descriptionCompressed: "Verifier retry count for action=create.",
+				},
+				{
+					name: "onVerificationFail",
+					description: "Verifier failure behavior for action=create.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["retry", "escalate"],
+					},
+					descriptionCompressed: "Verifier failure behavior for action=create.",
+				},
+				{
+					name: "metadata",
+					description:
+						"Additional metadata for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"Additional metadata for action=create/action=spawn_agent.",
+				},
+				{
+					name: "taskRoomId",
+					description:
+						"Optional task-owner swarm room id for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional task-owner swarm room id for action=create/action=spawn_agent.",
+				},
+				{
+					name: "worktreeRoomId",
+					description:
+						"Optional worktree coordination swarm room id for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional worktree coordination swarm room id for action=create/action=spawn_agent.",
+				},
+			],
+			descriptionCompressed:
+				"ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
+			similes: [
+				"CREATE_AGENT_TASK",
+				"CREATE_TASK",
+				"START_CODING_TASK",
+				"LAUNCH_CODING_TASK",
+				"RUN_CODING_TASK",
+				"START_AGENT_TASK",
+				"SPAWN_AND_PROVISION",
+				"CODE_THIS",
+				"LAUNCH_TASK",
+				"CREATE_SUBTASK",
+				"SPAWN_AGENT",
+				"SPAWN_CODING_AGENT",
+				"START_CODING_AGENT",
+				"LAUNCH_CODING_AGENT",
+				"CREATE_CODING_AGENT",
+				"SPAWN_CODER",
+				"RUN_CODING_AGENT",
+				"SPAWN_SUB_AGENT",
+				"START_TASK_AGENT",
+				"CREATE_AGENT",
+				"SEND_TO_AGENT",
+				"SEND_TO_CODING_AGENT",
+				"MESSAGE_CODING_AGENT",
+				"INPUT_TO_AGENT",
+				"RESPOND_TO_AGENT",
+				"TELL_CODING_AGENT",
+				"MESSAGE_AGENT",
+				"TELL_TASK_AGENT",
+				"STOP_AGENT",
+				"STOP_CODING_AGENT",
+				"KILL_CODING_AGENT",
+				"TERMINATE_AGENT",
+				"END_CODING_SESSION",
+				"CANCEL_AGENT",
+				"CANCEL_TASK_AGENT",
+				"STOP_SUB_AGENT",
+				"LIST_AGENTS",
+				"LIST_CODING_AGENTS",
+				"SHOW_CODING_AGENTS",
+				"GET_ACTIVE_AGENTS",
+				"LIST_SESSIONS",
+				"SHOW_CODING_SESSIONS",
+				"SHOW_TASK_AGENTS",
+				"LIST_SUB_AGENTS",
+				"SHOW_TASK_STATUS",
+				"CANCEL_TASK",
+				"STOP_TASK",
+				"ABORT_TASK",
+				"KILL_TASK",
+				"STOP_SUBTASK",
+				"TASK_HISTORY",
+				"LIST_TASK_HISTORY",
+				"GET_TASK_HISTORY",
+				"SHOW_TASKS",
+				"COUNT_TASKS",
+				"TASK_STATUS_HISTORY",
+				"TASK_CONTROL",
+				"CONTROL_TASK",
+				"PAUSE_TASK",
+				"RESUME_TASK",
+				"CONTINUE_TASK",
+				"ARCHIVE_TASK",
+				"REOPEN_TASK",
+				"TASK_SHARE",
+				"SHARE_TASK_RESULT",
+				"SHOW_TASK_ARTIFACT",
+				"VIEW_TASK_OUTPUT",
+				"CAN_I_SEE_IT",
+				"PULL_IT_UP",
+				"CREATE_WORKSPACE",
+				"PROVISION_WORKSPACE",
+				"CLONE_REPO",
+				"SETUP_WORKSPACE",
+				"PREPARE_WORKSPACE",
+				"SUBMIT_WORKSPACE",
+				"FINALIZE_WORKSPACE",
+				"COMMIT_AND_PR",
+				"CREATE_PR",
+				"SUBMIT_CHANGES",
+				"FINISH_WORKSPACE",
+				"MANAGE_ISSUES",
+				"CREATE_ISSUE",
+				"LIST_ISSUES",
+				"CLOSE_ISSUE",
+				"COMMENT_ISSUE",
+				"UPDATE_ISSUE",
+				"GET_ISSUE",
+				"ARCHIVE_CODING_TASK",
+				"CLOSE_CODING_TASK",
+				"ARCHIVE_TASK_THREAD",
+				"REOPEN_CODING_TASK",
+				"UNARCHIVE_CODING_TASK",
+				"RESUME_CODING_TASK",
+			],
+			exampleCalls: [
+				{
+					user: "Use TASKS with the provided parameters.",
+					actions: ["TASKS"],
+					params: {
+						TASKS: {
+							action: "create",
+							op: "create",
+							subaction: "create",
+							operation: "create",
+							task: "example",
+							agentType: "example",
+							agents: "example",
+							repo: "example",
+							workdir: "example",
+							memoryContent: "example",
+							label: "example",
+							approvalPreset: "readonly",
+							keepAliveAfterComplete: false,
+							deferUserReply: false,
+							input: "example",
+							keys: "example",
+							sessionId: "example",
+							threadId: "example",
+							taskId: "example",
+							all: false,
+							search: "example",
+							reason: "example",
+							metric: "list",
+							window: "active",
+							statuses: "example",
+							limit: 1,
+							includeArchived: false,
+							controlAction: "example",
+							issueAction: "example",
+							note: "example",
+							instruction: "example",
+							baseBranch: "example",
+							useWorktree: false,
+							parentWorkspaceId: "example",
+							workspaceId: "example",
+							commitMessage: "example",
+							prTitle: "example",
+							prBody: "example",
+							draft: false,
+							skipPR: false,
+							title: "example",
+							body: "example",
+							issueNumber: 1,
+							labels: "example",
+							state: "example",
+							validator: "example",
+							maxRetries: "example",
+							onVerificationFail: "retry",
+							metadata: "example",
+							taskRoomId: "example",
+							worktreeRoomId: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "TAU_BENCH_TOOL",
+			description:
+				"tau-bench pass-through tool router. Tools are dynamic per task (retail/airline domains); set tool_name to the desired tool and arguments to its JSON payload.",
+			parameters: [
+				{
+					name: "tool_name",
+					description:
+						"Name of the tau-bench tool to invoke (e.g. get_order_details, search_flights, cancel_order).",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Name of the tau-bench tool to invoke (e. g. get_order_details, search_flights, cancel_order).",
+				},
+				{
+					name: "arguments",
+					description: "JSON object with the tool's argument payload.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"JSON object with the tool's argument payload.",
+				},
+			],
+			descriptionCompressed:
+				"tau-bench dynamic tool call {tool_name,arguments} passthrough",
+			similes: [
+				"TAU_BENCH",
+				"TAU_RETAIL",
+				"TAU_AIRLINE",
+				"GET_ORDER_DETAILS",
+				"GET_ORDER_STATUS",
+				"SEARCH_FLIGHTS",
+				"BOOK_FLIGHT",
+				"GET_USER_DETAILS",
+				"UPDATE_ORDER_ADDRESS",
+				"CANCEL_ORDER",
+				"RETURN_ITEMS",
+				"EXCHANGE_ITEMS",
+			],
+			exampleCalls: [
+				{
+					user: "Use TAU_BENCH_TOOL with the provided parameters.",
+					actions: ["TAU_BENCH_TOOL"],
+					params: {
+						TAU_BENCH_TOOL: {
+							tool_name: "example",
+							arguments: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "TODO",
+			description:
+				"Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: write, create, update, complete, cancel, delete, list, clear.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Action: write, create, update, complete, cancel, delete, list, clear.",
+				},
+				{
+					name: "id",
+					description: "Todo id (update/complete/cancel/delete).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Todo id (update/complete/cancel/delete).",
+				},
+				{
+					name: "content",
+					description: "Imperative form, e.g. 'Add tests' (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Imperative form, e. g. 'Add tests' (create/update).",
+				},
+				{
+					name: "activeForm",
+					description:
+						"Present-continuous form, e.g. 'Adding tests' (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Present-continuous form, e. g. 'Adding tests' (create/update).",
+				},
+				{
+					name: "status",
+					description: "pending | in_progress | completed | cancelled.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"pending | in_progress | completed | cancelled.",
+				},
+				{
+					name: "parentTodoId",
+					description: "Parent todo id for sub-tasks (create/update).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Parent todo id for sub-tasks (create/update).",
+				},
+				{
+					name: "todos",
+					description:
+						"Array of {id?, content, status, activeForm?} for action=write. Replaces the user's list for this conversation.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								id: {
+									type: "string",
+								},
+								content: {
+									type: "string",
+								},
+								status: {
+									type: "string",
+								},
+								activeForm: {
+									type: "string",
+								},
+							},
+						},
+					},
+					descriptionCompressed:
+						"Array of {id?, content, status, activeForm?} for action=write. Replaces user's list for this convo.",
+				},
+				{
+					name: "includeCompleted",
+					description:
+						"Include completed/cancelled todos in action=list output.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Include completed/cancelled todos in action=list output.",
+				},
+				{
+					name: "limit",
+					description: "Max rows to return for action=list.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Max rows to return for action=list.",
+				},
+			],
+			descriptionCompressed:
+				"todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
+			similes: [
+				"TODO_WRITE",
+				"WRITE_TODOS",
+				"SET_TODOS",
+				"UPDATE_TODOS",
+				"TODO_CREATE",
+				"CREATE_TODO",
+				"TODO_UPDATE",
+				"UPDATE_TODO",
+				"TODO_COMPLETE",
+				"COMPLETE_TODO",
+				"FINISH_TODO",
+				"TODO_CANCEL",
+				"CANCEL_TODO",
+				"TODO_DELETE",
+				"DELETE_TODO",
+				"REMOVE_TODO",
+				"TODO_LIST",
+				"LIST_TODOS",
+				"GET_TODOS",
+				"SHOW_TODOS",
+				"TODO_CLEAR",
+				"CLEAR_TODOS",
+			],
+			exampleCalls: [
+				{
+					user: "Use TODO with the provided parameters.",
+					actions: ["TODO"],
+					params: {
+						TODO: {
+							action: "example",
+							id: "example",
+							content: "example",
+							activeForm: "example",
+							status: "example",
+							parentTodoId: "example",
+							todos: "example",
+							includeCompleted: false,
+							limit: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "TUNNEL",
+			description:
+				"Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Which tunnel sub-operation to run. One of: start, stop, status.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["start", "stop", "status"],
+					},
+					descriptionCompressed:
+						"Which tunnel sub-operation to run. One of: start, stop, status.",
+				},
+				{
+					name: "parameters",
+					description:
+						"Parameters forwarded to the selected sub-op. For `start`, optionally `{ port: number }`. `stop` and `status` take no parameters.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"params forwarded to the selected sub-op. For `start`, optionally `{ port: number }`. `stop` and `status` take no params.",
+				},
+			],
+			similes: [
+				"OPEN_TUNNEL",
+				"CREATE_TUNNEL",
+				"CLOSE_TUNNEL",
+				"CHECK_TUNNEL",
+				"TUNNEL_INFO",
+			],
+			exampleCalls: [
+				{
+					user: "Use TUNNEL with the provided parameters.",
+					actions: ["TUNNEL"],
+					params: {
+						TUNNEL: {
+							action: "start",
+							parameters: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000). `stop` and `status` take no...",
+		},
+		{
+			name: "USE_SKILL",
+			description:
+				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
+			parameters: [
+				{
+					name: "slug",
+					description:
+						"Enabled skill slug. Must match enabled_skills provider.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Enabled skill slug. Must match enabled_skills provider.",
+				},
+				{
+					name: "mode",
+					description:
+						"Invoke mode: script runs executable, guidance loads SKILL.md, auto picks by scripts.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["guidance", "script", "auto"],
+						default: "auto",
+					},
+					descriptionCompressed:
+						"Invoke mode: script runs executable, guidance loads SKILL. md, auto picks by scripts.",
+				},
+				{
+					name: "script",
+					description:
+						"Script filename for mode=script/auto when multiple scripts. Default first script.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Script filename for mode=script/auto when multiple scripts. Default first script.",
+				},
+				{
+					name: "args",
+					description:
+						"Script args: string array or JSON object values as positional args.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"Script args: string array or JSON object values as positional args.",
+				},
+			],
+			descriptionCompressed: "Invoke an enabled skill by slug.",
+			similes: [
+				"INVOKE_SKILL",
+				"RUN_SKILL",
+				"EXECUTE_SKILL",
+				"CALL_SKILL",
+				"USE_AGENT_SKILL",
+				"RUN_AGENT_SKILL",
+				"USE_CAPABILITY",
+				"RUN_CAPABILITY",
+			],
+			exampleCalls: [
+				{
+					user: "Use USE_SKILL with the provided parameters.",
+					actions: ["USE_SKILL"],
+					params: {
+						USE_SKILL: {
+							slug: "example",
+							mode: "auto",
+							script: "example",
+							args: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "VENDING_MACHINE",
+			description:
+				"Vending-bench tool router. action selects the operation against the vending environment.",
+			parameters: [
+				{
+					name: "action",
+					description: "Vending-bench operation to execute.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"view_state",
+							"view_suppliers",
+							"place_order",
+							"restock_slot",
+							"set_price",
+							"collect_cash",
+							"update_notes",
+							"check_deliveries",
+							"advance_day",
+						],
+					},
+					descriptionCompressed: "Vending-bench operation to execute.",
+				},
+				{
+					name: "slot_id",
+					description: "Slot identifier within the vending machine grid.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Slot id within the vending machine grid.",
+				},
+				{
+					name: "product_id",
+					description: "Catalogue product identifier (SKU).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Catalogue product id (SKU).",
+				},
+				{
+					name: "supplier_id",
+					description:
+						"Identifier for the supplier when placing or inspecting orders.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"id for the supplier when placing or inspecting orders.",
+				},
+				{
+					name: "price",
+					description: "Unit price (in machine-local currency units).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Unit price (in machine-local currency units).",
+				},
+				{
+					name: "quantity",
+					description: "Quantity to order, restock, or collect.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Quantity to order, restock, or collect.",
+				},
+				{
+					name: "notes",
+					description: "Free-form note text attached to the operation.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-form note text attached to the operation.",
+				},
+			],
+			descriptionCompressed:
+				"Vending-machine ops: view_state, place_order, restock, set_price, collect_cash, …",
+			similes: [
+				"VENDING_MACHINE_VIEW_BUSINESS_STATE",
+				"VIEW_BUSINESS_STATE",
+				"VIEW_STATE",
+				"VIEW_SUPPLIERS",
+				"PLACE_ORDER",
+				"RESTOCK_SLOT",
+				"SET_PRICE",
+				"COLLECT_CASH",
+				"UPDATE_NOTES",
+				"CHECK_DELIVERIES",
+				"ADVANCE_DAY",
+			],
+			exampleCalls: [
+				{
+					user: "Use VENDING_MACHINE with the provided parameters.",
+					actions: ["VENDING_MACHINE"],
+					params: {
+						VENDING_MACHINE: {
+							action: "view_state",
+							slot_id: "example",
+							product_id: "example",
+							supplier_id: "example",
+							price: 1,
+							quantity: 1,
+							notes: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "VISUALWEBBENCH_TASK",
+			description:
+				"VisualWebBench task router. action selects the sub-task (web_caption, webqa, heading_ocr, element_ocr, element_ground, action_prediction, action_ground).",
+			parameters: [
+				{
+					name: "action",
+					description: "VisualWebBench sub-task to execute.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"web_caption",
+							"webqa",
+							"heading_ocr",
+							"element_ocr",
+							"element_ground",
+							"action_prediction",
+							"action_ground",
+						],
+					},
+					descriptionCompressed: "VisualWebBench sub-task to execute.",
+				},
+				{
+					name: "answer_text",
+					description: "Free-text answer for caption / QA / OCR tasks.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Free-text answer for caption/QA/OCR tasks.",
+				},
+				{
+					name: "choice_index",
+					description:
+						"Selected choice index (0-based) for multiple-choice tasks.",
+					required: false,
+					schema: {
+						type: "integer",
+					},
+					descriptionCompressed:
+						"Selected choice index (0-based) for multiple-choice tasks.",
+				},
+				{
+					name: "bbox",
+					description:
+						"Bounding box [x1, y1, x2, y2] in pixels for grounding tasks.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "number",
+						},
+					},
+					descriptionCompressed:
+						"Bounding box [x1, y1, x2, y2] in pixels for grounding tasks.",
+				},
+			],
+			descriptionCompressed:
+				"VisualWebBench web_caption|webqa|heading_ocr|element_ocr|ground|action_predict",
+			similes: [
+				"VISUALWEBBENCH",
+				"WEB_CAPTION",
+				"WEBQA",
+				"ELEMENT_GROUND",
+				"ACTION_PREDICTION",
+				"ACTION_GROUND",
+			],
+			exampleCalls: [
+				{
+					user: "Use VISUALWEBBENCH_TASK with the provided parameters.",
+					actions: ["VISUALWEBBENCH_TASK"],
+					params: {
+						VISUALWEBBENCH_TASK: {
+							action: "web_caption",
+							answer_text: "example",
+							choice_index: "example",
+							bbox: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "VOICE_CALL",
+			description:
+				"Owner-only outbound voice call via registered provider. Action dial; recipientKind=owner|external|e164. ",
+			parameters: [
+				{
+					name: "action",
+					description: "dial.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["dial"],
+					},
+					descriptionCompressed: "dial.",
+				},
+				{
+					name: "recipientKind",
+					description:
+						"owner escalation env number | external RelationshipStore lookup + allow-list | e164 raw E.164 phoneNumber.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["owner", "external", "e164"],
+					},
+					descriptionCompressed:
+						"owner escalation env number | external RelationshipStore lookup + allow-list | e164 raw E. 164 phoneNumber.",
+				},
+				{
+					name: "phoneNumber",
+					description: "recipientKind=e164: destination E.164 phoneNumber.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"recipientKind=e164: destination E. 164 phoneNumber.",
+				},
+				{
+					name: "recipient",
+					description:
+						"recipientKind=external: contact name or E.164; names via RelationshipStore.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"recipientKind=external: contact name or E. 164. names via RelationshipStore.",
+				},
+				{
+					name: "bodyText",
+					description: "Optional spoken message on connect.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional spoken msg on connect.",
+				},
+				{
+					name: "confirmed",
+					description:
+						"true required to place call. Without: draft/approval-queue.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"true required to place call. without: draft/approval-queue.",
+				},
+				{
+					name: "reason",
+					description: "Optional call reason; approval task audit.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional call reason. approval task audit.",
+				},
+			],
+			descriptionCompressed:
+				"Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
+			similes: [
+				"CALL_ME",
+				"ESCALATE_TO_USER",
+				"CALL_THIRD_PARTY",
+				"PHONE_SOMEONE",
+				"DIAL",
+			],
+			exampleCalls: [
+				{
+					user: "Use VOICE_CALL with the provided parameters.",
+					actions: ["VOICE_CALL"],
+					params: {
+						VOICE_CALL: {
+							action: "dial",
+							recipientKind: "owner",
+							phoneNumber: "example",
+							recipient: "example",
+							bodyText: "example",
+							confirmed: false,
+							reason: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "WEBSHOP",
+			description:
+				"WebShop benchmark router. Mirrors the WebShop environment shape: search[query], click[ID], select_option[name,value], back, and buy.",
+			parameters: [
+				{
+					name: "action",
+					description: "WebShop operation to execute.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["search", "click", "select_option", "back", "buy"],
+					},
+					descriptionCompressed: "WebShop operation to execute.",
+				},
+				{
+					name: "query",
+					description:
+						"For search — the free-text query string used as search[query].",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For search - the free-text query string used as search[query].",
+				},
+				{
+					name: "product_id",
+					description:
+						"For click — the product or element identifier used as click[ID].",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For click - the product or element id used as click[ID].",
+				},
+				{
+					name: "option_name",
+					description:
+						"For select_option — the option name used as select_option[name,value].",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For select_option - the option name used as select_option[name, value].",
+				},
+				{
+					name: "option_value",
+					description:
+						"For select_option — the option value used as select_option[name,value].",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For select_option - the option value used as select_option[name, value].",
+				},
+			],
+			descriptionCompressed:
+				"WebShop ops: search, click, select_option, back, buy.",
+			similes: [
+				"WEBSHOP_SEARCH",
+				"WEBSHOP_CLICK",
+				"WEBSHOP_SELECT_OPTION",
+				"WEBSHOP_BACK",
+				"WEBSHOP_BUY",
+				"SHOP",
+				"SHOPPING",
+				"NAVIGATE_SHOP",
+			],
+			exampleCalls: [
+				{
+					user: "Use WEBSHOP with the provided parameters.",
+					actions: ["WEBSHOP"],
+					params: {
+						WEBSHOP: {
+							action: "search",
+							query: "example",
+							product_id: "example",
+							option_name: "example",
+							option_value: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "WINDOW",
+			description:
+				"WINDOW action. Manage local desktop windows via computer-use service. actions: list, focus, switch, arrange, move, minimize, maximize, restore, close. Pointer/keyboard use COMPUTER_USE; file/shell use FILE/SHELL.",
+			parameters: [
+				{
+					name: "action",
+					description: "Window operation verb.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"list",
+							"focus",
+							"switch",
+							"arrange",
+							"move",
+							"minimize",
+							"maximize",
+							"restore",
+							"close",
+						],
+					},
+					descriptionCompressed: "Window operation verb.",
+				},
+				{
+					name: "windowId",
+					description: "Window identifier.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Window id.",
+				},
+				{
+					name: "windowTitle",
+					description: "Window title or app-name query.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Window title or app-name query.",
+				},
+				{
+					name: "arrangement",
+					description: "For arrange: tile, cascade, vertical, horizontal.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For arrange: tile, cascade, vertical, horizontal.",
+				},
+				{
+					name: "x",
+					description: "Target X coordinate for window move.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Target X coordinate for window move.",
+				},
+				{
+					name: "y",
+					description: "Target Y coordinate for window move.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Target Y coordinate for window move.",
+				},
+			],
+			descriptionCompressed:
+				"WINDOW action=list|focus|switch|arrange|move|minimize|maximize|restore|close",
+			similes: ["MANAGE_WINDOW", "WINDOW", "USE_WINDOW", "WINDOW_ACTION"],
+			exampleCalls: [
+				{
+					user: "Use WINDOW with the provided parameters.",
+					actions: ["WINDOW"],
+					params: {
+						WINDOW: {
+							action: "list",
+							windowId: "example",
+							windowTitle: "example",
+							arrangement: "example",
+							x: 1,
+							y: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "WORK_THREAD",
+			description:
+				"Owner work-thread lifecycle: create, steer, stop, wait, complete, merge, attach source refs, schedule follow-up. Use only thread lifecycle/routing; domain work -> task/messaging/workflow actions.",
+			parameters: [
+				{
+					name: "operations",
+					description:
+						"Thread lifecycle ops array. Item: type, optional workThreadId, sourceWorkThreadIds, instruction, reason, title, summary, sourceRef, trigger for schedule_followup.",
+					required: true,
+					schema: {
+						type: "array",
+						items: {
+							type: "object",
+						},
+					},
+					descriptionCompressed:
+						"Thread lifecycle ops array. Item: type, optional workThreadId, sourceWorkThreadIds, instruction, reason, title, summary, sourceRef, trigger for...",
+				},
+			],
+			descriptionCompressed:
+				"work-thread lifecycle: create|steer|stop|waiting|completed|merge|attach_source|followup",
+			exampleCalls: [
+				{
+					user: "Use WORK_THREAD with the provided parameters.",
+					actions: ["WORK_THREAD"],
+					params: {
+						WORK_THREAD: {
+							operations: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "WORKFLOW",
+			description:
+				"Manage workflows. Action-based dispatch - provide an `action` parameter:\n",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Operation: create, modify, activate, deactivate, toggle_active, delete, executions.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"create",
+							"modify",
+							"activate",
+							"deactivate",
+							"toggle_active",
+							"delete",
+							"executions",
+						],
+					},
+					descriptionCompressed:
+						"Operation: create, modify, activate, deactivate, toggle_active, delete, executions.",
+				},
+				{
+					name: "workflowId",
+					description: "Workflow id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Workflow id.",
+				},
+				{
+					name: "workflowName",
+					description: "Workflow name fragment for fuzzy matching.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Workflow name fragment for fuzzy matching.",
+				},
+				{
+					name: "seedPrompt",
+					description: "Natural-language description for action=create.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Natural-language description for action=create.",
+				},
+				{
+					name: "name",
+					description: "Optional explicit name for created workflow.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional explicit name for created workflow.",
+				},
+				{
+					name: "active",
+					description:
+						"Target state for action=toggle_active (true to activate).",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Target state for action=toggle_active (true to activate).",
+				},
+				{
+					name: "limit",
+					description:
+						"Max executions to return for action=executions (default 10).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Max executions to return for action=executions (default 10).",
+				},
+			],
+			descriptionCompressed:
+				"workflow create|modify|activate|deactivate|toggle_active|delete|executions",
+			similes: [
+				"CREATE_WORKFLOW",
+				"DELETE_WORKFLOW",
+				"TOGGLE_WORKFLOW_ACTIVE",
+				"ACTIVATE_WORKFLOW",
+				"DEACTIVATE_WORKFLOW",
+				"ENABLE_WORKFLOW",
+				"DISABLE_WORKFLOW",
+				"PAUSE_WORKFLOW",
+				"RESUME_WORKFLOW",
+				"MODIFY_WORKFLOW",
+				"UPDATE_WORKFLOW",
+				"EDIT_WORKFLOW",
+				"EDIT_EXISTING_WORKFLOW",
+				"UPDATE_EXISTING_WORKFLOW",
+				"CHANGE_EXISTING_WORKFLOW",
+				"LOAD_WORKFLOW_FOR_EDIT",
+				"GET_WORKFLOW_EXECUTIONS",
+				"GET_EXECUTIONS",
+				"SHOW_EXECUTIONS",
+				"EXECUTION_HISTORY",
+				"WORKFLOW_RUNS",
+				"WORKFLOW_EXECUTIONS",
+			],
+			exampleCalls: [
+				{
+					user: "Use WORKFLOW with the provided parameters.",
+					actions: ["WORKFLOW"],
+					params: {
+						WORKFLOW: {
+							action: "create",
+							workflowId: "example",
+							workflowName: "example",
+							seedPrompt: "example",
+							name: "example",
+							active: false,
+							limit: 1,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "WORKTREE",
+			description:
+				"Manage current git worktree stack. action=enter creates/switches isolated worktree; action=exit leaves and optionally removes it.",
+			parameters: [
+				{
+					name: "action",
+					description: "Worktree operation to run.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["enter", "exit"],
+					},
+					descriptionCompressed: "Worktree operation to run.",
+				},
+				{
+					name: "name",
+					description:
+						"For action=enter: worktree branch/dir name. Default auto-*.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=enter: worktree branch/dir name. Default auto-*.",
+				},
+				{
+					name: "path",
+					description:
+						"For action=enter: absolute worktree dir within sandbox roots.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=enter: absolute worktree dir within sandbox roots.",
+				},
+				{
+					name: "base",
+					description: "For action=enter, optional base ref. Defaults to HEAD.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=enter, optional base ref. Defaults to HEAD.",
+				},
+				{
+					name: "cleanup",
+					description:
+						"For action=exit: remove popped worktree dir with git worktree remove --force.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"For action=exit: remove popped worktree dir with git worktree remove --force.",
+				},
+			],
+			descriptionCompressed: "Git worktree umbrella: action=enter/exit.",
+			similes: ["GIT_WORKTREE"],
+			exampleCalls: [
+				{
+					user: "Use WORKTREE with the provided parameters.",
+					actions: ["WORKTREE"],
+					params: {
+						WORKTREE: {
+							action: "enter",
+							name: "example",
+							path: "example",
+							base: "example",
+							cleanup: false,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "XR_CLOSE_VIEW",
+			description: "Closes a specific view panel on the connected XR headset.",
+			parameters: [],
+			similes: ["CLOSE_XR_VIEW", "HIDE_XR_PANEL", "XR_CLOSE", "XR_DISMISS"],
+			descriptionCompressed:
+				"Closes a specific view panel on the connected XR headset.",
+		},
+		{
+			name: "XR_LIST_VIEWS",
+			description:
+				"Lists all views available on the XR device and optionally sends a launcher catalog to the headset. Use this before XR_OPEN_VIEW.",
+			parameters: [],
+			similes: [
+				"LIST_XR_VIEWS",
+				"XR_VIEWS",
+				"WHAT_XR_VIEWS",
+				"SHOW_XR_LAUNCHER",
+			],
+			descriptionCompressed:
+				"Lists all views available on the XR device and optionally sends a launcher catalog to the headset. Use this before XR_OPEN_VIEW.",
+		},
+		{
+			name: "XR_OPEN_VIEW",
+			description:
+				"Opens a view panel on the connected XR headset by view id. Use XR_LIST_VIEWS first to discover available view ids.",
+			parameters: [],
+			similes: ["OPEN_XR_VIEW", "SHOW_XR_PANEL", "XR_SHOW", "XR_LAUNCH"],
+			descriptionCompressed:
+				"Opens a view panel on the connected XR headset by view id. Use XR_LIST_VIEWS first to discover available view ids.",
+		},
+		{
+			name: "XR_QUERY_VISION",
+			description:
+				"Describe what the user is currently looking at through their XR headset camera. Use this when the user asks 'what do you see', 'look at this', or any question about their surroundings.",
+			parameters: [],
+			descriptionCompressed:
+				"Describe what user is looking at through their XR headset camera. Use when user asks 'what do you see', 'look at this', or any question about their...",
+		},
+		{
+			name: "XR_RESIZE_VIEW",
+			description:
+				"Resizes or repositions the active XR view panel. Accepts scale (0.5 = half, 2.0 = double) and distance.",
+			parameters: [],
+			similes: [
+				"RESIZE_XR_PANEL",
+				"XR_MAKE_BIGGER",
+				"XR_MAKE_SMALLER",
+				"XR_SCALE",
+			],
+			descriptionCompressed:
+				"Resizes or repositions the active XR view panel. Accepts scale (0. 5 = half, 2. 0 = double) and distance.",
+		},
+		{
+			name: "XR_SWITCH_VIEW",
+			description:
+				"Switches the active (foreground) view on the XR headset without closing others.",
+			parameters: [],
+			similes: ["SWITCH_XR_VIEW", "XR_GO_TO", "XR_NAVIGATE"],
+			descriptionCompressed:
+				"Switches the active (foreground) view on the XR headset without closing others.",
+		},
+	],
+} as const satisfies { version: string; actions: readonly ActionDoc[] };
+export const coreProvidersSpec = {
+	version: "1.0.0",
+	providers: [
+		{
+			name: "ACTIONS",
+			description: "Possible response actions",
+			position: -1,
+			dynamic: false,
+			descriptionCompressed: "Available response actions.",
+		},
+		{
+			name: "CHARACTER",
+			description:
+				"Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
+			dynamic: false,
+			descriptionCompressed:
+				"Agent character: bio, topics, adjectives, style, example conversations.",
+		},
+		{
+			name: "RECENT_MESSAGES",
+			description:
+				"Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
+			position: 100,
+			dynamic: true,
+			descriptionCompressed:
+				"Recent conversation messages, posts, action results.",
+		},
+		{
+			name: "ACTION_STATE",
+			description:
+				"Provides information about the current action state and available actions",
+			dynamic: true,
+			descriptionCompressed: "Current action state and available actions.",
+		},
+		{
+			name: "ATTACHMENTS",
+			description: "Media attachments in the current message",
+			dynamic: true,
+			descriptionCompressed: "Media attachments in current message.",
+		},
+		{
+			name: "CAPABILITIES",
+			description:
+				"Agent capabilities including models, services, and features",
+			dynamic: false,
+			descriptionCompressed: "Agent capabilities: models, services, features.",
+		},
+		{
+			name: "CHOICE",
+			description:
+				"Available choice options for selection when there are pending tasks or decisions",
+			dynamic: true,
+			descriptionCompressed: "Pending choice options for multi-option tasks.",
+		},
+		{
+			name: "CONTACTS",
+			description:
+				"Provides contact information from the relationships including categories and preferences",
+			dynamic: true,
+			descriptionCompressed: "Contact info from relationships with categories.",
+		},
+		{
+			name: "CONTEXT_BENCH",
+			description: "Benchmark/task context injected by a benchmark harness",
+			position: 5,
+			dynamic: true,
+			descriptionCompressed: "Benchmark/task context from harness.",
+		},
+		{
+			name: "ENTITIES",
+			description:
+				"Provides information about entities in the current context including users, agents, and participants",
+			dynamic: true,
+			descriptionCompressed:
+				"Entities in context: users, agents, participants.",
+		},
+		{
+			name: "FACTS",
+			description:
+				"Provides known facts about entities learned through conversation",
+			dynamic: true,
+			descriptionCompressed: "Known facts about entities from conversation.",
+		},
+		{
+			name: "FOLLOW_UPS",
+			description:
+				"Provides information about upcoming follow-ups and reminders scheduled for contacts",
+			dynamic: true,
+			descriptionCompressed: "Upcoming follow-ups/reminders for contacts.",
+		},
+		{
+			name: "DOCUMENTS",
+			description:
+				"Provides relevant snippets and recent entries from the agent document store",
+			dynamic: true,
+			descriptionCompressed: "Relevant snippets and recent stored documents.",
+		},
+		{
+			name: "PROVIDERS",
+			description: "Available context providers",
+			dynamic: false,
+			descriptionCompressed: "Available context providers.",
+		},
+		{
+			name: "RELATIONSHIPS",
+			description:
+				"Relationships between entities observed by the agent including tags and metadata",
+			dynamic: true,
+			descriptionCompressed: "Entity relationships with tags/metadata.",
+		},
+		{
+			name: "ROLES",
+			description:
+				"Roles assigned to entities in the current context (Admin, Owner, Member, None)",
+			dynamic: true,
+			descriptionCompressed:
+				"Entity roles in context (Admin/Owner/Member/None).",
+		},
+		{
+			name: "SETTINGS",
+			description:
+				"Current settings for the agent/server (filtered for security, excludes sensitive keys)",
+			dynamic: true,
+			descriptionCompressed: "Agent/server settings (security-filtered).",
+		},
+		{
+			name: "TIME",
+			description:
+				"Provides the current date and time in UTC for time-based operations or responses",
+			dynamic: true,
+			descriptionCompressed: "Current UTC date/time.",
+		},
+		{
+			name: "WORLD",
+			description:
+				"Provides information about the current world context including settings and members",
+			dynamic: true,
+			descriptionCompressed: "World context: settings and members.",
+		},
+		{
+			name: "LONG_TERM_MEMORY",
+			description:
+				"Persistent facts and preferences about the user learned and remembered across conversations",
+			position: 50,
+			dynamic: false,
+			descriptionCompressed:
+				"Persistent user facts/preferences across conversations.",
+		},
+		{
+			name: "SUMMARIZED_CONTEXT",
+			description:
+				"Provides summarized context from previous conversations for optimized context usage",
+			position: 96,
+			dynamic: false,
+			descriptionCompressed: "Summarized context from prior conversations.",
+		},
+		{
+			name: "AGENT_SETTINGS",
+			description:
+				"Provides the agent's current configuration settings (filtered for security)",
+			dynamic: true,
+			descriptionCompressed: "Agent config settings (security-filtered).",
+		},
+		{
+			name: "CURRENT_TIME",
+			description:
+				"Provides current time and date information in various formats",
+			dynamic: true,
+			descriptionCompressed: "Current time/date in various formats.",
+		},
+	],
+} as const satisfies { version: string; providers: readonly ProviderDoc[] };
+export const allProvidersSpec = {
+	version: "1.0.0",
+	providers: [
+		{
+			name: "ACTIONS",
+			description: "Possible response actions",
+			position: -1,
+			dynamic: false,
+			descriptionCompressed: "Available response actions.",
+		},
+		{
+			name: "CHARACTER",
+			description:
+				"Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
+			dynamic: false,
+			descriptionCompressed:
+				"Agent character: bio, topics, adjectives, style, example conversations.",
+		},
+		{
+			name: "RECENT_MESSAGES",
+			description:
+				"Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
+			position: 100,
+			dynamic: true,
+			descriptionCompressed:
+				"Recent conversation messages, posts, action results.",
+		},
+		{
+			name: "ACTION_STATE",
+			description:
+				"Provides information about the current action state and available actions",
+			dynamic: true,
+			descriptionCompressed: "Current action state and available actions.",
+		},
+		{
+			name: "ATTACHMENTS",
+			description: "Media attachments in the current message",
+			dynamic: true,
+			descriptionCompressed: "Media attachments in current message.",
+		},
+		{
+			name: "CAPABILITIES",
+			description:
+				"Agent capabilities including models, services, and features",
+			dynamic: false,
+			descriptionCompressed: "Agent capabilities: models, services, features.",
+		},
+		{
+			name: "CHOICE",
+			description:
+				"Available choice options for selection when there are pending tasks or decisions",
+			dynamic: true,
+			descriptionCompressed: "Pending choice options for multi-option tasks.",
+		},
+		{
+			name: "CONTACTS",
+			description:
+				"Provides contact information from the relationships including categories and preferences",
+			dynamic: true,
+			descriptionCompressed: "Contact info from relationships with categories.",
+		},
+		{
+			name: "CONTEXT_BENCH",
+			description: "Benchmark/task context injected by a benchmark harness",
+			position: 5,
+			dynamic: true,
+			descriptionCompressed: "Benchmark/task context from harness.",
+		},
+		{
+			name: "ENTITIES",
+			description:
+				"Provides information about entities in the current context including users, agents, and participants",
+			dynamic: true,
+			descriptionCompressed:
+				"Entities in context: users, agents, participants.",
+		},
+		{
+			name: "FACTS",
+			description:
+				"Provides known facts about entities learned through conversation",
+			dynamic: true,
+			descriptionCompressed: "Known facts about entities from conversation.",
+		},
+		{
+			name: "FOLLOW_UPS",
+			description:
+				"Provides information about upcoming follow-ups and reminders scheduled for contacts",
+			dynamic: true,
+			descriptionCompressed: "Upcoming follow-ups/reminders for contacts.",
+		},
+		{
+			name: "DOCUMENTS",
+			description:
+				"Provides relevant snippets and recent entries from the agent document store",
+			dynamic: true,
+			descriptionCompressed: "Relevant snippets and recent stored documents.",
+		},
+		{
+			name: "PROVIDERS",
+			description: "Available context providers",
+			dynamic: false,
+			descriptionCompressed: "Available context providers.",
+		},
+		{
+			name: "RELATIONSHIPS",
+			description:
+				"Relationships between entities observed by the agent including tags and metadata",
+			dynamic: true,
+			descriptionCompressed: "Entity relationships with tags/metadata.",
+		},
+		{
+			name: "ROLES",
+			description:
+				"Roles assigned to entities in the current context (Admin, Owner, Member, None)",
+			dynamic: true,
+			descriptionCompressed:
+				"Entity roles in context (Admin/Owner/Member/None).",
+		},
+		{
+			name: "SETTINGS",
+			description:
+				"Current settings for the agent/server (filtered for security, excludes sensitive keys)",
+			dynamic: true,
+			descriptionCompressed: "Agent/server settings (security-filtered).",
+		},
+		{
+			name: "TIME",
+			description:
+				"Provides the current date and time in UTC for time-based operations or responses",
+			dynamic: true,
+			descriptionCompressed: "Current UTC date/time.",
+		},
+		{
+			name: "WORLD",
+			description:
+				"Provides information about the current world context including settings and members",
+			dynamic: true,
+			descriptionCompressed: "World context: settings and members.",
+		},
+		{
+			name: "LONG_TERM_MEMORY",
+			description:
+				"Persistent facts and preferences about the user learned and remembered across conversations",
+			position: 50,
+			dynamic: false,
+			descriptionCompressed:
+				"Persistent user facts/preferences across conversations.",
+		},
+		{
+			name: "SUMMARIZED_CONTEXT",
+			description:
+				"Provides summarized context from previous conversations for optimized context usage",
+			position: 96,
+			dynamic: false,
+			descriptionCompressed: "Summarized context from prior conversations.",
+		},
+		{
+			name: "AGENT_SETTINGS",
+			description:
+				"Provides the agent's current configuration settings (filtered for security)",
+			dynamic: true,
+			descriptionCompressed: "Agent config settings (security-filtered).",
+		},
+		{
+			name: "CURRENT_TIME",
+			description:
+				"Provides current time and date information in various formats",
+			dynamic: true,
+			descriptionCompressed: "Current time/date in various formats.",
+		},
+	],
+} as const satisfies { version: string; providers: readonly ProviderDoc[] };
+
+export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
+export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
+export const coreProviderDocs: readonly ProviderDoc[] =
+	coreProvidersSpec.providers;
+export const allProviderDocs: readonly ProviderDoc[] =
+	allProvidersSpec.providers;

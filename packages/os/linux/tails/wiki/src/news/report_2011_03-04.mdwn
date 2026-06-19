@@ -1,0 +1,122 @@
+[[!meta date="Mon, 09 May 2011 19:23:22 +0200"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Bimonthly report: March and April 2011"]]
+[[!tag announce]]
+
+We are pleased to present you the second Tails bimonthly report.
+
+This report may, or may not, be followed by others depending on the
+feedback we get: if you like reading such news about Tails, don't
+hesitate [[telling us|support/talk]]!
+
+This report sums up the work that was done on Tails in March and
+April 2011.
+
+[[!toc levels=2]]
+
+# New releases
+
+The new Tails 0.7 major release was out on April 7th, quickly followed
+by a bugfix and security release (0.7.1) on April 30th. See their
+release announces for details:
+
+  * [[Tails 0.7 announce|news/version_0.7]]
+  * [[Tails 0.7.1 announce|news/version_0.7.1]]
+
+# Google Summer of Code
+
+We announced two months ago we [prepared three
+projects](https://2019.www.torproject.org/getinvolved/volunteer.html#project-tails)
+to be submitted under the Tor Project umbrella for the Google Summer
+of Code. This was a great success for our first participation into the
+GSoC program, as a total of five students sent applications for our
+projects. In the end, two students were selected and will work this
+summer on projects we have suggested:
+
+* Max will implement tails-greeter, the
+  graphical [[!tails_ticket 5528 desc="boot menu"]] Tails really needs as more and more
+  upcoming features (including persistence,
+  macchanger, bridge support) need to ask the user
+  for input at boot time; reports of his work will be posted on a
+  dedicated blog.
+* Julien Voisin will implement a Meta-data anonymizing toolkit for
+  file publication; thanks a lot to Mike Perry for accepting to be
+  Julien's mentor, as we ourselves lack the needed time to mentor two
+  students this year; Julien has setup a
+  [blog](http://mat-tor.blogspot.com/) where one can keep track of his
+  work.
+
+We warmly welcome Max and Julien into the Tails and Tor development
+communities!
+
+Thanks to everyone who made this happen, including the students whose
+GSoC application was rejected: you are welcome to join us anyway!
+
+# Documentation
+
+The Great Tails Documentation Rework Plan was started. Once this is
+done, several entry points will be available to better fit a given
+user's available time and energy. Such work happens in the
+`doc-rework` branch of our [[Git|contribute/git]] repository. [[Want to
+help?|contribute/how/documentation]]
+
+A brand new [["how to contribute to Tails" documentation|contribute]]
+was published. We hope it will make it easier for anyone interested to
+get involved and make Tails better as there many ways *you* can
+contribute to Tails: setting up a BitTorrent or HTTP mirror, helping
+other Tails users, improving documentation, reporting bugs, fixing
+bugs, implementing new features, improving Tails in your own language,
+providing needed input to developers, etc.
+
+# Outreach
+
+## In the press
+
+Shortly following their [announcement of Tails
+0.7 release](https://lwn.net/Articles/439371/), LWN published a [great, long and
+serious article about Tails](https://lwn.net/Articles/440279/) in last
+week's edition.
+
+Tails 0.7 release also [made
+it](http://distrowatch.com/weekly.php?issue=20110418#news)
+[twice](http://distrowatch.com/?newsid=06629) on DistroWatch.
+
+## Website
+
+We published our new website layout. If you're into CSS, patches are
+welcome to fix the latest glitches.
+
+# A glimpse towards the future
+
+## Upcoming releases
+
+We've not decided yet what our plans exactly are. The alternative
+seems to be: either we'll release 0.8 quickly with stuff that was
+mostly ready, but not tested enough to make it into 0.7, or we'll
+release 0.8 only when slightly more new major features are cooked and
+ready to serve.
+
+More 0.7.x point releases are to be expected anyway as security issues
+are discovered in software we ship.
+
+## Installing and upgrading Tails onto a USB stick
+
+In the next months, a few of us are going to focus on preparing a tool
+for easy install and upgrade of Tails onto USB sticks, with support
+for an encrypted persistent volume in mind. We're likely to use
+Fedora's [liveusb-creator](https://fedorahosted.org/liveusb-creator/)
+as a basis. Either we'll make it more generic or we'll fork it
+minimally, depending on how liveusb-creator's developers welcome the
+idea of supporting our usecases.
+
+## Other plans
+
+Bridges support: we now have a working prototype that is likely to be
+shipped into the upcoming 0.8 release. We'll make our patches to make
+Vidalia support our usecase generic enough so that they can be merged
+upstream.
+
+PowerPC support (pre-Intel Macs): we're "almost" there, but we have a
+hard time prioritizing this task among all exciting enhancements that
+could be done on Tails. If you need Tails to support pre-Intel Macs,
+don't hesitate [[telling us|support/talk]].

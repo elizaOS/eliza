@@ -1,0 +1,141 @@
+#!/usr/bin/python3 -I
+"""
+This program generates files in /etc/sudoers.d/ starting from TOML description files.
+
+This is useful because the default sudoers file counterintuitively fails open in its handling of arguments: if no argument list is specified, arbitrary arguments are allowed.
+The new syntax is more expressive, so we hope to reduce the risk of security incidents.
+"""
+
+from argparse import ArgumentParser
+from pathlib import Path
+import sys
+import tomllib
+from typing import Any
+
+import jinja2
+from pydantic import BaseModel, ValidationError
+
+TMPL = jinja2.Template(
+    """
+{% if c.env_keep %}
+Cmnd_Alias {{alias}} = {{c.s_cmdline}}
+{%- for env in c.env_keep.value %}
+Defaults!{{alias}} env_keep+="{{env}}"
+{%- endfor %}
+{% endif %}
+{{c.allowed_user}}  ALL ={{c.s_run_as_user}} NOPASSWD: {{alias if c.env_keep else c.s_cmdline}}
+""",
+)
+
+
+class DangerousOption(BaseModel):
+    value: Any
+    reason: str
+
+    def __bool__(self):
+        return bool(self.value)
+
+
+class EnvKeep(DangerousOption):
+    value: list[str]
+
+
+class ArbitraryArguments(DangerousOption):
+    value: bool
+
+
+class SudoCommand(BaseModel):
+    executable: str
+    allowed_user: str
+    alias: str = ""
+    run_as_user: str = "root"
+    args: list[str] = []
+    env_keep: EnvKeep = EnvKeep(value=[], reason="")
+    arbitrary_arguments: ArbitraryArguments = ArbitraryArguments(value=False, reason="")
+
+    def serialize(self, alias: str) -> str:
+        return TMPL.render(c=self, alias=alias)
+
+    # methods begininig with s_ are meant as helpers for the template logic
+
+    @property
+    def s_args(self):
+        if self.arbitrary_arguments:
+            return ""
+        if self.args:
+            return " ".join(self.args)
+        return '""'
+
+    @property
+    def s_cmdline(self):
+        if self.s_args:
+            return f"{self.executable} {self.s_args}"
+        return self.executable
+
+    @property
+    def s_run_as_user(self):
+        if self.run_as_user != "root":
+            return f" ({self.run_as_user})"
+        return ""
+
+
+class ConfigFile(BaseModel):
+    raw_block: str | None = None
+    commands: list[SudoCommand]
+
+    def serialize(self, basealias) -> str:
+        out = ""
+        if self.raw_block is not None:
+            out += "\n" + self.raw_block + "\n"
+
+        for i, command in enumerate(self.commands):
+            alias = basealias + str(i) if i else basealias
+            out += command.serialize(alias)
+
+        return out
+
+
+class GenerateSudo:
+    def __init__(self):
+        self.args = None
+
+    def get_parser(self) -> ArgumentParser:
+        p = ArgumentParser()
+        p.add_argument(
+            "--config-dir",
+            type=Path,
+            default=Path("/etc/generate-sudoers.d/"),
+        )
+        p.add_argument("--output-dir", type=Path, default=Path("/etc/sudoers.d/"))
+        return p
+
+    def main(self):
+        self.args = self.get_parser().parse_args()
+
+        for file in self.args.config_dir.glob("*.toml"):
+            self.generate_sudoers(file)
+
+    def generate_sudoers(self, file: Path):
+        with file.open("rb") as buf:
+            try:
+                data = tomllib.load(buf)
+            except tomllib.TOMLDecodeError as exc:
+                print(f"Error parsing {file.name}", file=sys.stderr)
+                print(exc, file=sys.stderr)
+                sys.exit(1)
+        basename = file.name.split(".")[0]
+        output = self.args.output_dir / ("zzz_" + basename)
+        with output.open("w") as buf:
+            try:
+                config = ConfigFile(**data)
+            except ValidationError as exc:
+                print(f"Error parsing {file.name}", file=sys.stderr)
+                print(exc, file=sys.stderr)
+                sys.exit(1)
+            alias = basename.upper().replace("-", "_")
+            buf.write(config.serialize(alias))
+        output.chmod(0o444)
+
+
+if __name__ == "__main__":
+    GenerateSudo().main()

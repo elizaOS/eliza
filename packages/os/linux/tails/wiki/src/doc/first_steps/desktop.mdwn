@@ -1,0 +1,388 @@
+[[!meta title="Introduction to GNOME and the Tails desktop"]]
+
+The desktop environment used in Tails is [GNOME](https://www.gnome.org).
+This page describes some important features of the desktop in the context of
+Tails.
+
+[[!toc levels=3]]
+
+<h1 id="top-navigation-bar">Top navigation bar</h1>
+
+In the upper-left corner of the screen, there are 2 elements:
+
+[[!img upper-left.png class="screenshot" alt=""]]
+
+- The Activities button [[!img lib/activities.png class="symbolic" link="no" alt=""]]
+
+- The Apps menu
+
+<h2 id="activities">Activities button</h2>
+
+The shape of the Activities button represents your workspaces, the grouping of
+windows on your desktop. For example, below is the shape of the Activities
+button if you have 3 workspaces and the second workspace is the one that it
+displayed right now.
+
+[[!img lib/workspaces.png class="symbolic" link="no" alt=""]]
+
+To open the Activities Overview, you can either:
+
+- Click on the Activities button.
+
+- Throw your mouse pointer to the upper-left corner of the screen.
+
+- Press the [[!img lib/start.png class="symbolic" link="no" alt="Super"]] key on your keyboard.
+
+You can see your windows and applications in the overview. You can also
+start typing to search your applications, files, and folders.
+
+<h2 id="applications">Apps menu</h2>
+
+The **Apps** menu provides launchers for the
+[[included software|about/features]] and GNOME utilities.
+
+[[!img applications.png class="screenshot" alt=""]]
+
+<a id="help"></a>
+
+<div class="icon">
+
+  [[!img lib/apps/settings.png link="no" alt=""]]
+
+  <div class="text">
+
+    <p><b><i>Settings</i></b></p>
+
+    <p>To change various system settings such as keyboard, mouse,
+    touchpad, or displays, choose <b>System Tools&nbsp;▸ Settings</b>.</p>
+
+    <div class="next">
+
+    <p>By default, any setting that you change in Tails is lost when you shut
+    down. Only the settings that you saved in the [[Persistent
+    Storage|persistent_storage]] are restored when you restart Tails.</p>
+
+    </div>
+
+    <div class="tip">
+
+    <p>To learn about the many keyboard shortcuts in GNOME, open the
+    <i>Settings</i>. At the bottom of the <b>Keyboard</b> section, choose
+    <b>View and Customize Shortcuts</b>.</p>
+
+    </div>
+
+  </div>
+
+</div>
+
+<div class="icon">
+
+  [[!img lib/apps/help-about.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p><b><i>About Tails</i></b></p>
+
+  <p>To know the version of Tails that you are currently running, choose
+  <b>Tails</b>&nbsp;▸ <b>About Tails</b>.</p>
+
+  </div>
+
+</div>
+
+<div class="icon">
+
+  [[!img lib/apps/help-browser.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p><b><i>Help</i></b></p>
+
+  <p>To access the <b>GNOME Desktop Help</b>, choose
+  <b>Utilities</b>&nbsp;▸ <b>Help</b>.</p>
+
+  </div>
+
+</div>
+
+<h3 id="favorites">Favorites submenu</h3>
+
+In the **Favorites** submenu, a few
+shortcuts allow you to launch the most frequently used applications:
+
+<div class="icon">
+
+  [[!img lib/apps/tor-browser.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p><b><i>Tor Browser</i></b> allows you to browse the web anonymously
+  and uncensored.</p>
+
+  <p>See [[browsing the web with <i>Tor Browser</i>|anonymous_internet/Tor_Browser]].</p>
+
+  </div>
+
+</div>
+
+<div class="icon">
+
+  [[!img lib/apps/tor-connection.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p><b><i>Tor Connection</i></b> allows you to connect to the Tor
+  network.</p>
+
+  <p>See [[connecting to Tor|anonymous_internet/tor]].</p>
+
+  </div>
+
+</div>
+
+<div class="icon">
+
+  [[!img lib/apps/persistent_storage.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p><b><i>Persistent Storage</i></b> allows you to save some of your
+  files and configuration in an encrypted Persistent Storage on your Tails
+  USB stick.</p>
+
+  <p>See [[Persistent Storage|persistent_storage]].</p>
+
+  </div>
+
+</div>
+
+<div class="icon">
+
+  [[!img lib/apps/help-browser.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p><b><i>Tails Documentation</i></b> opens an offline version of the Tails
+  website and documentation.</p>
+
+  <p>See our [[documentation|doc]].</p>
+
+  </div>
+
+</div>
+
+<div class="icon">
+
+  [[!img lib/apps/whisperback.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p><b><i>WhisperBack Error Reporting</i></b> allows you to report
+  problems to our team.</p>
+
+  <p>See [[reporting an error|whisperback]].</p>
+
+  </div>
+
+</div>
+
+<div class="icon">
+
+  [[!img lib/apps/tails-installer.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p><b><i>Tails Cloner</i></b> allows you to clone your Tails to another
+  USB stick and back up your Persistent Storage.</p>
+
+  <p>See [[installing by cloning from another Tails on PC|install/clone]].</p>
+
+</div>
+</div>
+
+<div class="icon">
+
+  [[!img lib/apps/thunderbird.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p><b><i>Thunderbird</i></b> allows you to write emails and read RSS and
+  Atom feeds.</p>
+
+  <p>See [[emailing and reading news with
+  <i>Thunderbird</i>|anonymous_internet/thunderbird]].</p>
+
+  </div>
+
+</div>
+
+<div class="icon">
+
+  [[!img lib/apps/secrets.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p>The <b><i>Secrets</i></b> password manager allows you to store and manage secure
+  passwords.</p>
+
+  <p>See [[managing passwords using the
+  <i>Secrets</i>|encryption_and_privacy/manage_passwords]] password manager.</p>
+
+  </div>
+
+</div>
+
+<div class="icon">
+
+  [[!img lib/apps/files.png link="no" alt=""]]
+
+  <div class="text">
+
+  <p>The <b><i>Files</i></b> browser allows you to browse and organize your
+  files, create folders, and [[connect to SSH or SFTP
+  servers|desktop#files]].</p>
+
+  </div>
+
+</div>
+
+<h2 id="tor-status">Tor status and circuits</h2>
+
+The Tor status icon ([[!img lib/symbolic/tor-disconnected.png alt="Tor status menu" link="no" class="symbolic"]] or [[!img lib/symbolic/tor-connected.png alt="Tor status menu" link="no" class="symbolic"]]) provides a shortcut to *Onion
+Circuits*, which allows you to manage the Tor circuits being used by Tails.
+
+[[!img tor_status.png class="screenshot" alt=""]]
+
+[[See our documentation on *Onion Circuits*.|anonymous_internet/tor/circuits]]
+
+<h2 id="accessibility">Accessibility menu</h2>
+
+The accessibility menu allows you to activate the screen reader,
+screen keyboard, large text display, and other assistive technologies.
+
+[[!img accessibility.png class="screenshot" alt=""]]
+
+[[See our documentation on accessibility.|accessibility]]
+
+<h2 id="keyboard">Keyboard layouts</h2>
+
+The keyboard layout menu allow you to change the keyboard layout and
+input method for non-Latin scripts.
+
+[[!img keyboard.png class="screenshot" alt=""]]
+
+<h2 id="system">System menu</h2>
+
+In the top-right corner of the top navigation bar, the system menu allows you to
+manage your settings, connect to a Wi-Fi network, and restart your computer.
+
+[[!img system-with-wired.png class="screenshot" alt=""]]
+
+<h3 id="networking">Networking</h3>
+
+From the system menu, you can choose which Wi-Fi network to connect to.
+
+See also the documentation on [[connecting to a network|anonymous_internet/networkmanager]].
+
+<h3 id="screen-locker">Screen locker</h3>
+
+Select the **Lock Screen** button to lock your screen with a password.
+
+- If you set up an [[administration password|first_steps/welcome_screen/administration_password]]
+  when starting Tails, you can unlock your screen with your administration
+  password.
+
+  <div class="tip">
+
+  <p>Your screen will automatically lock after some time if you have set up an
+  administration password. To disable this behavior, execute the following
+  command in a console.</p>
+
+  <p class="command">gsettings set org.gnome.desktop.screensaver lock-enabled false</p>
+
+  </div>
+
+- Otherwise, you can set up a password to unlock your screen when locking your
+  screen for the first time.
+
+  [[!img screen_locker.png class="screenshot" alt=""]]
+
+<h3 id="suspend">Suspend</h3>
+
+Click **Suspend** to suspend your computer.
+
+While suspended, your computer is not computing anymore but is still powered on,
+like if it was standing still but still alive.
+
+To resume from suspend and go back to the Tails desktop, push the power button
+of your computer.
+
+<div class="caution">
+
+<p>If you remove your Tails USB stick while suspended, your computer will not
+shut down immediately and will only shut down when resuming.</p>
+
+<p>An attacker with physical access to your computer and capable of finding
+your screen locker password or setting up a [[cold boot
+attack|doc/advanced_topics/cold_boot_attacks]] can compromise your Tails while
+suspended.</p>
+
+<p>For more security, [[shut down Tails|doc/first_steps/shutdown]] entirely.</p>
+
+</div>
+
+<h3 id="night_and_dark">Dark Mode and Night Light</h3>
+
+From the system menu, you can switch between:
+
+- The default *light* mode with colder colors and more brightness
+
+  [[!img light.png class="screenshot" alt=""]]
+
+- A *dark* mode
+
+  [[!img dark.png class="screenshot" alt=""]]
+
+- A *night light* mode with warmer colors and less brightness
+
+  [[!img night.png link="no" class="screenshot" alt=""]]
+
+- A combination of both the *dark* mode and *night light* mode
+
+  [[!img dark_night.png link="no" class="screenshot" alt=""]]
+
+<div class="note">
+
+<p>Night Light is unavailable when running Tails in a [[virtual
+machine|doc/advanced_topics/virtualization]].</p>
+
+</div>
+
+<h1 id="shortcuts">Keyboard shortcuts</h1>
+
+To learn about all keyboard shortcuts in GNOME visit [GNOME Help: Useful
+keyboard shortcuts](https://help.gnome.org/gnome-help/shell-keyboard-shortcuts.html)
+or use the *Settings* utility in Tails:
+
+1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Settings**.
+
+1. In the *Settings* utility, choose **Keyboard&nbsp;▸ Keyboard
+   Shortcuts&nbsp;▸ View and Customize Shortcuts**.
+
+<h1 id="files">The <i>Files</i> browser</h1>
+
+To open the *Files* browser, choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files**.
+
+[[!img lib/apps/files.png link="no" alt=""]]
+
+To connect to a remote SFTP (SSH File Transfer Protocol) server:
+
+1. Choose **Network** in the sidebar of the *Files* browser.
+
+1. Specify an SSH or SFTP server in the **Server address** field
+   at the bottom of the right pane. For example:
+
+       ssh://user@example.com/
+
+1. Click **Connect**.

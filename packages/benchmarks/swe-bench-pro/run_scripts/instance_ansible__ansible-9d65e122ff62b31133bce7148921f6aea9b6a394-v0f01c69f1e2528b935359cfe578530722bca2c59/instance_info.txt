@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-9d65e122ff62b31133bce7148921f6aea9b6a394-v0f01c69f1e2528b935359cfe578530722bca2c59
+Repository: ansible/ansible
+Base Commit: dc990058201d63df685e83a316cf3402242ff1b4
+Test Files: ["test/units/module_utils/basic/test_get_available_hash_algorithms.py"]
+FAIL_TO_PASS: ["test/units/module_utils/basic/test_get_available_hash_algorithms.py::test_unavailable_algorithm", "test/units/module_utils/basic/test_get_available_hash_algorithms.py::test_fips_mode"]
+PASS_TO_PASS: []

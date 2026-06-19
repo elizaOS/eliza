@@ -1,0 +1,41 @@
+[[!meta date="Fri, 12 Feb 2016 19:05:28 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.0.1 is out"]]
+[[!tag announce]]
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_2.0]]. All users must
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Upgrade Tor Browser to [5.5.2](https://blog.torproject.org/blog/tor-browser-552-released).
+
+## Fixed problems
+
+- Fix regression breaking boot on 32-bit UEFI platforms. ([[!tails_ticket 11007 desc="#11007"]])
+
+# Known issues
+
+See the current list of [[known issues|support/known_issues]].
+
+# Download or upgrade
+
+Go to the [[install]] or [[upgrade|doc/upgrade/]] page.
+
+If your Tails does not
+boot after an automatic upgrade, please [[upgrade your Tails
+manually|doc/upgrade#manual]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for March 08.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

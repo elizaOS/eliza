@@ -1,0 +1,74 @@
+task_id: M023_video_paper_understanding
+task_name: Video Paper Understanding
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.mp4
+
+    I find this paper very interesting. May I ask what the full title of the paper is? In the Task-adaptive Multimodal Alignment module, what are the specific network interaction mechanisms and decoupled training objectives of Meta Queries? Please help me list the formulas; I don't have a background in deep learning, so please explain it in a simple and easy-to-understand way. Also, has its code been open-sourced?
+  language: en
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+sandbox_files:
+  - fixtures/video.mp4
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files: []
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Use ReadMedia to extract frames from the paper presentation video.
+  Identify paper title, explain Meta Queries mechanism and formulas, check open-source status.
+primary_dimensions:
+  - completion
+  - robustness

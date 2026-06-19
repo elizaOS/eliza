@@ -1,0 +1,29 @@
+# Portfolio Status Summary
+# Auto-generated snapshot for quick reference
+# Source: Portfolio Management System
+
+portfolio_id: PF-2024-MAIN
+last_updated: "2024-11-12T09:00:00Z"
+currency: USD
+
+summary:
+  total_value: 1250000.00
+  available_cash: 520000.00
+  total_equity_value: 730000.00
+  unrealized_pnl: 38200.00
+  realized_pnl_ytd: 87620.00
+
+risk_overview:
+  risk_budget_remaining_pct: 72.0
+  max_single_position_pct: 10.0
+
+holdings_count: 5
+top_sectors:
+  - Technology: 15.0%
+  - Healthcare: 22.0%
+  - Energy: 10.0%
+  - Financials: 14.0%
+
+notes: >
+  Summary generated for quick portfolio overview.
+  Refer to full portfolio status for detailed holdings data.

@@ -1,0 +1,431 @@
+#!/usr/bin/python3
+
+import os
+import signal
+import sys
+
+import gi
+
+gi.require_version("Gdk", "3.0")
+gi.require_version("Gtk", "3.0")
+gi.require_version("WebKit2", "4.1")
+
+from gi.repository import Gdk, GLib, GObject, Gtk, WebKit2  # noqa: E402
+
+
+def ensure_live_user() -> None:
+    if os.geteuid() == 0:
+        print("elizaOS WebKit shell must run as the live user, not as root.", file=sys.stderr)
+        raise SystemExit(1)
+    if os.environ.get("USER") not in (None, "amnesia"):
+        print("elizaOS WebKit shell must run as the Tails live user 'amnesia'.", file=sys.stderr)
+        raise SystemExit(1)
+
+
+def set_if_available(settings, method_name: str, value) -> None:
+    method = getattr(settings, method_name, None)
+    if method is not None:
+        method(value)
+
+
+def build_webview(url: str) -> WebKit2.WebView:
+    state_dir = os.environ.get("ELIZA_STATE_DIR", "/home/amnesia/.eliza")
+    data_dir = os.path.join(state_dir, "webkit-data")
+    cache_dir = os.path.join(state_dir, "webkit-cache")
+    os.makedirs(data_dir, mode=0o700, exist_ok=True)
+    os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+
+    manager = WebKit2.WebsiteDataManager(
+        base_data_directory=data_dir,
+        base_cache_directory=cache_dir,
+    )
+    context = WebKit2.WebContext.new_with_website_data_manager(manager)
+    context.set_network_proxy_settings(WebKit2.NetworkProxyMode.NO_PROXY, None)
+
+    settings = WebKit2.Settings()
+    set_if_available(settings, "set_enable_javascript", True)
+    set_if_available(settings, "set_enable_html5_database", True)
+    set_if_available(settings, "set_enable_html5_local_storage", True)
+    set_if_available(settings, "set_enable_media", True)
+    set_if_available(settings, "set_enable_webaudio", True)
+    set_if_available(settings, "set_enable_webgl", True)
+    set_if_available(settings, "set_enable_developer_extras", False)
+    set_if_available(settings, "set_enable_hyperlink_auditing", False)
+    set_if_available(settings, "set_enable_write_console_messages_to_stdout", True)
+    set_if_available(settings, "set_javascript_can_open_windows_automatically", False)
+    set_if_available(settings, "set_media_playback_requires_user_gesture", False)
+
+    view = WebKit2.WebView.new_with_context(context)
+    view.set_settings(settings)
+    view.load_uri(url)
+    return view
+
+
+def env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    return int(raw)
+
+
+def _log_pill(message: str) -> None:
+    print(f"[pill-window] {message}", file=sys.stderr, flush=True)
+
+
+def _monitor_label(monitor) -> str:
+    getter = getattr(monitor, "get_model", None)
+    if getter is not None:
+        label = getter()
+        if label:
+            return label
+    getter = getattr(monitor, "get_manufacturer", None)
+    if getter is not None:
+        label = getter()
+        if label:
+            return label
+    return "monitor"
+
+
+def _geom_tuple(geom) -> str:
+    return f"({geom.x},{geom.y},{geom.width}x{geom.height})"
+
+
+def _monitor_contains(geom, x: int, y: int) -> bool:
+    return (
+        geom.x <= x < geom.x + geom.width
+        and geom.y <= y < geom.y + geom.height
+    )
+
+
+def _find_monitor_by_name(display, name: str):
+    if name == "":
+        return None
+    try:
+        index = int(name)
+    except ValueError:
+        index = None
+    n = display.get_n_monitors()
+    if index is not None and 0 <= index < n:
+        return display.get_monitor(index)
+    for i in range(n):
+        monitor = display.get_monitor(i)
+        if monitor is None:
+            continue
+        label = _monitor_label(monitor)
+        if label == name:
+            return monitor
+    return None
+
+
+def _cursor_position(display):
+    """Return (x, y) of pointer, or None if unavailable.
+
+    Uses GdkSeat -> pointer device -> Gdk.Device.get_position(). On Wayland
+    the cursor position may not be reported; callers must handle None.
+    """
+    seat_getter = getattr(display, "get_default_seat", None)
+    if seat_getter is None:
+        return None
+    seat = seat_getter()
+    if seat is None:
+        return None
+    device = seat.get_pointer()
+    if device is None:
+        return None
+    try:
+        _screen, x, y = device.get_position()
+    except TypeError:
+        # Some bindings return (screen, x, y) via out-args differently.
+        return None
+    return (int(x), int(y))
+
+
+def _monitor_containing_cursor(display):
+    pos = _cursor_position(display)
+    if pos is None:
+        return None
+    x, y = pos
+    for i in range(display.get_n_monitors()):
+        monitor = display.get_monitor(i)
+        if monitor is None:
+            continue
+        if _monitor_contains(monitor.get_geometry(), x, y):
+            return monitor
+    return None
+
+
+def pick_pill_monitor(display):
+    """Choose the monitor to anchor the pill on.
+
+    Priority:
+      1. Monitor containing the cursor (Gdk.Device.get_position()).
+      2. ELIZAOS_PILL_MONITOR env (name like 'eDP-1' or numeric index).
+      3. Gdk.Display.get_primary_monitor().
+      4. Monitor index 0.
+
+    Returns (monitor, geometry) or (None, None) when no monitor is attached.
+    """
+    if display is None:
+        return (None, None)
+
+    monitor = _monitor_containing_cursor(display)
+    if monitor is not None:
+        return (monitor, monitor.get_geometry())
+
+    env_name = os.environ.get("ELIZAOS_PILL_MONITOR", "")
+    if env_name:
+        monitor = _find_monitor_by_name(display, env_name)
+        if monitor is not None:
+            return (monitor, monitor.get_geometry())
+
+    monitor = display.get_primary_monitor()
+    if monitor is not None:
+        return (monitor, monitor.get_geometry())
+
+    if display.get_n_monitors() > 0:
+        monitor = display.get_monitor(0)
+        if monitor is not None:
+            return (monitor, monitor.get_geometry())
+
+    return (None, None)
+
+
+def _is_wayland_session() -> bool:
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
+        return True
+    display = Gdk.Display.get_default()
+    if display is None:
+        return False
+    name = display.get_name() or ""
+    return name.startswith("wayland")
+
+
+def _try_enable_layer_shell(window) -> bool:
+    """Probe gtk-layer-shell at runtime; anchor pill to bottom OVERLAY on success."""
+    try:
+        gi.require_version("GtkLayerShell", "0.1")
+        from gi.repository import GtkLayerShell  # noqa: WPS433
+    except (ImportError, ValueError) as exc:
+        _log_pill(f"gtk-layer-shell unavailable, falling back to window.move(): {exc}")
+        return False
+    GtkLayerShell.init_for_window(window)
+    GtkLayerShell.set_layer(window, GtkLayerShell.Layer.OVERLAY)
+    GtkLayerShell.set_anchor(window, GtkLayerShell.Edge.BOTTOM, True)
+    _log_pill("gtk-layer-shell active: anchored BOTTOM on OVERLAY layer")
+    return True
+
+
+def configure_pill_window(window: Gtk.Window) -> None:
+    """Pin the voice-pill overlay to the bottom-center of the active monitor.
+
+    Frameless, no taskbar entry, always on top. Width/height/bottom-margin
+    come from ELIZAOS_PILL_* env vars set by start-elizaos-pill-user. The
+    pill follows the cursor on focus / display hot-plug; see pick_pill_monitor.
+    """
+    width = env_int("ELIZAOS_PILL_WIDTH", 560)
+    height = env_int("ELIZAOS_PILL_HEIGHT", 140)
+    bottom_margin = env_int("ELIZAOS_PILL_BOTTOM_MARGIN", 24)
+
+    window.set_decorated(False)
+    window.set_resizable(False)
+    window.set_default_size(width, height)
+    window.set_size_request(width, height)
+    window.set_keep_above(True)
+    window.set_skip_taskbar_hint(True)
+    window.set_skip_pager_hint(True)
+    window.set_app_paintable(True)
+    window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+    window.stick()
+
+    visual = window.get_screen().get_rgba_visual()
+    if visual is not None:
+        window.set_visual(visual)
+
+    wayland = _is_wayland_session()
+    layer_shell_active = False
+    if wayland:
+        _log_pill("Wayland session detected; window.move() is unreliable")
+        layer_shell_active = _try_enable_layer_shell(window)
+
+    state = {"last_geom": None}
+
+    def place(*_args) -> None:
+        display = Gdk.Display.get_default()
+        monitor, geom = pick_pill_monitor(display)
+        if monitor is None or geom is None:
+            _log_pill("no monitor available; skipping placement")
+            return
+        label = _monitor_label(monitor)
+        if layer_shell_active:
+            # gtk-layer-shell handles anchoring; nothing to move.
+            _log_pill(
+                f"anchor monitor={label} {_geom_tuple(geom)} (layer-shell anchored)"
+            )
+            state["last_geom"] = geom
+            return
+        x = geom.x + (geom.width - width) // 2
+        y = geom.y + geom.height - height - bottom_margin
+        window.move(x, y)
+        display_for_flush = Gdk.Display.get_default()
+        if display_for_flush is not None:
+            display_for_flush.flush()
+        _log_pill(
+            f"anchor monitor={label} {_geom_tuple(geom)} pos=({x},{y})"
+        )
+        state["last_geom"] = geom
+
+    def ensure_on_active_monitor(*_args) -> None:
+        """Force a move if the current window position is off every monitor."""
+        display = Gdk.Display.get_default()
+        if display is None:
+            return
+        gdk_window = window.get_window()
+        if gdk_window is None:
+            place()
+            return
+        try:
+            origin_ok, win_x, win_y = gdk_window.get_origin()
+        except TypeError:
+            place()
+            return
+        if not origin_ok:
+            place()
+            return
+        for i in range(display.get_n_monitors()):
+            monitor = display.get_monitor(i)
+            if monitor is None:
+                continue
+            if _monitor_contains(monitor.get_geometry(), win_x, win_y):
+                return
+        _log_pill(
+            f"window at ({win_x},{win_y}) outside all monitors; relocating"
+        )
+        place()
+
+    def on_monitors_changed(*_args) -> None:
+        _log_pill("monitors-changed signal; recomputing anchor")
+        place()
+        ensure_on_active_monitor()
+
+    def on_size_changed(*_args) -> None:
+        _log_pill("size-changed signal; recomputing anchor")
+        place()
+
+    def on_monitor_added(_display, monitor) -> None:
+        _log_pill(f"monitor-added: {_monitor_label(monitor)}; recomputing anchor")
+        place()
+        ensure_on_active_monitor()
+
+    def on_monitor_removed(_display, monitor) -> None:
+        _log_pill(f"monitor-removed: {_monitor_label(monitor)}; recomputing anchor")
+        place()
+        ensure_on_active_monitor()
+
+    def on_focus_in(*_args) -> bool:
+        place()
+        return False
+
+    window.connect("realize", place)
+    window.connect("show", place)
+    window.connect("focus-in-event", on_focus_in)
+
+    screen = window.get_screen()
+    if screen is not None:
+        screen.connect("monitors-changed", on_monitors_changed)
+        screen.connect("size-changed", on_size_changed)
+
+    display = Gdk.Display.get_default()
+    if display is not None:
+        # monitor-added / monitor-removed only exist in GDK 3.22+. Probe.
+        if GObject.signal_lookup("monitor-added", display.__class__) != 0:
+            display.connect("monitor-added", on_monitor_added)
+        if GObject.signal_lookup("monitor-removed", display.__class__) != 0:
+            display.connect("monitor-removed", on_monitor_removed)
+
+
+def main() -> int:
+    ensure_live_user()
+
+    url = sys.argv[1] if len(sys.argv) > 1 else os.environ.get(
+        "ELIZAOS_SHELL_URL",
+        "http://127.0.0.1:5174/?apiBase=http%3A%2F%2F127.0.0.1%3A31337",
+    )
+
+    shell_mode = os.environ.get("ELIZAOS_SHELL_MODE", "main")
+    is_pill = shell_mode == "pill"
+
+    # ELIZAOS_SHELL_TITLE lets a caller override the window title without
+    # changing the wm_class (which stays "elizaOS" so GNOME keeps the
+    # window grouped under the same .desktop icon). Defaults preserve the
+    # historical behavior — "elizaOS Voice" for the pill, "elizaOS" for
+    # the main shell. Callers that spawn additional shells against
+    # different URLs (e.g. tails-documentation opening the offline doc
+    # in a second window) set this so users can tell the windows apart in
+    # the taskbar / Alt-Tab. WebKit may later replace the title via the
+    # HTML <title> element — that is the expected GTK browser behavior.
+    default_title = "elizaOS Voice" if is_pill else "elizaOS"
+    title = os.environ.get("ELIZAOS_SHELL_TITLE", default_title)
+    window = Gtk.Window(title=title)
+    if is_pill:
+        configure_pill_window(window)
+    else:
+        window.set_default_size(1280, 900)
+        window.set_position(Gtk.WindowPosition.CENTER)
+    window.set_wmclass("elizaOS", "elizaOS")
+    window.set_icon_name("elizaos")
+
+    view = build_webview(url)
+    window.add(view)
+
+    def minimize_to_background(*_args):
+        window.iconify()
+        return True
+
+    def reload_after_failure(_view, _event, failing_uri, error):
+        print(f"elizaOS WebKit load failed for {failing_uri}: {error}", file=sys.stderr)
+        GLib.timeout_add_seconds(3, lambda: (_view.load_uri(url), False)[1])
+        return False
+
+    # The pill overlay closes on user request (e.g. the close gesture on the
+    # pill itself). The main shell minimizes instead so the home surface
+    # stays one keystroke away.
+    if not is_pill:
+        window.connect("delete-event", minimize_to_background)
+    view.connect("load-failed", reload_after_failure)
+    window.connect("destroy", Gtk.main_quit)
+
+    signal.signal(signal.SIGTERM, lambda *_args: Gtk.main_quit())
+    signal.signal(signal.SIGINT, lambda *_args: Gtk.main_quit())
+
+    screen = Gdk.Screen.get_default()
+    if screen is not None:
+        provider = Gtk.CssProvider()
+        provider.load_from_data(
+            b"window { background: #F7F9FF; } "
+            b"webview { background: #F7F9FF; }"
+        )
+        Gtk.StyleContext.add_provider_for_screen(
+            screen,
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+
+    if is_pill:
+        # The pill renderer paints its own background; the GTK window must be
+        # transparent so the pill floats over whatever is behind it. Override
+        # the screen-wide rule with a higher-priority per-window provider.
+        pill_provider = Gtk.CssProvider()
+        pill_provider.load_from_data(b"window, webview { background: transparent; }")
+        window.get_style_context().add_provider(
+            pill_provider, Gtk.STYLE_PROVIDER_PRIORITY_USER
+        )
+        view.set_background_color(Gdk.RGBA(0.0, 0.0, 0.0, 0.0))
+
+    window.show_all()
+    window.present()
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

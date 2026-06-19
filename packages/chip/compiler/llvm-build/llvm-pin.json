@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "eliza.llvm_toolchain_pin.v1",
+  "as_of": "2026-05-19",
+  "last_audited": "2026-05-20",
+  "claim_boundary": "pinned_build_recipe_only_not_executable_evidence_of_a_built_toolchain",
+  "blocked_until_built": true,
+  "blocked_reason": "host is macOS arm64 per docs/toolchain/riscv64-cross-host.md; LLVM RISC-V toolchain MUST be built inside the canonical Linux container described in docs/toolchain/iree-eliza-npu.md before any pinned-build evidence is accepted",
+  "upstream": {
+    "project": "llvm/llvm-project",
+    "url": "https://github.com/llvm/llvm-project.git",
+    "branch": "main",
+    "commit_sha": "de3ee84346d6dcf77ac20fe5c8acc95594886cbc",
+    "commit_resolved_via": "git ls-remote https://github.com/llvm/llvm-project.git HEAD on 2026-05-19",
+    "commit_resolved_at_utc": "2026-05-19T10:15:30Z",
+    "release_track": "trunk",
+    "trunk_pin_policy": "refresh quarterly from a tested green commit; record the chosen SHA here and in docs/toolchain/llvm-trunk-pin.md in lockstep",
+    "minimum_release_floor": "llvm-21"
+  },
+  "rationale": [
+    "RVA23 mandatory features (V, Zicboz, Zicbom, Zicfilp, Zicfiss, Zihintntl, Ztso, Zacas, Zfh, Zvfh, Zvbb) land progressively across LLVM 19-23",
+    "RVV 1.0 cost model and vector predication scheduling continue to land each release",
+    "AArch64-shared VLA scaffolding benefits RVV directly; trunk captures the most recent shared work",
+    "ThinLTO, BasicBlockSections + Propeller infrastructure, and Machine Function Splitter all evolve in trunk"
+  ],
+  "build_environment": {
+    "canonical": "Linux x86_64 container built from packages/chip/Dockerfile",
+    "container_image": "eliza-chip:linux-x86_64",
+    "container_base_digest_source": "Dockerfile UBUNTU_DIGEST",
+    "host_disallowed": "macOS arm64 host cannot build glibc-targeted RISC-V userspace; clang/llvm host-build is feasible but glibc cross-link tests require the Linux container",
+    "required_apt_packages": [
+      "build-essential",
+      "cmake",
+      "ninja-build",
+      "python3",
+      "git",
+      "ccache",
+      "lld",
+      "zlib1g-dev",
+      "libzstd-dev",
+      "libxml2-dev",
+      "gcc-riscv64-linux-gnu",
+      "g++-riscv64-linux-gnu"
+    ]
+  },
+  "cmake": {
+    "generator": "Ninja",
+    "build_type": "Release",
+    "two_stage": true,
+    "stage1_args": [
+      "-DLLVM_ENABLE_PROJECTS=clang;lld",
+      "-DLLVM_TARGETS_TO_BUILD=Native;RISCV",
+      "-DLLVM_USE_LINKER=lld",
+      "-DCMAKE_BUILD_TYPE=Release"
+    ],
+    "stage2_args": [
+      "-DLLVM_ENABLE_PROJECTS=clang;lld;clang-tools-extra",
+      "-DLLVM_ENABLE_RUNTIMES=compiler-rt;libcxx;libcxxabi;libunwind",
+      "-DLLVM_TARGETS_TO_BUILD=Native;RISCV",
+      "-DLLVM_USE_LINKER=lld",
+      "-DLLVM_ENABLE_LTO=Thin",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DLLVM_INSTALL_UTILS=ON",
+      "-DLLVM_BUILD_TOOLS=ON",
+      "-DLLVM_INCLUDE_TESTS=ON",
+      "-DLLVM_INCLUDE_EXAMPLES=OFF",
+      "-DLLVM_INCLUDE_BENCHMARKS=ON",
+      "-DLLVM_ENABLE_BACKTRACES=ON",
+      "-DLLVM_ENABLE_ASSERTIONS=OFF",
+      "-DLLVM_DEFAULT_TARGET_TRIPLE=riscv64-unknown-linux-gnu",
+      "-DDEFAULT_SYSROOT=/usr/riscv64-linux-gnu"
+    ]
+  },
+  "rva23_patches": {
+    "policy": "no out-of-tree patches required for the pinned SHA; if a patch becomes necessary, archive it under compiler/llvm-build/patches/<NNN>-<topic>.patch and list each here with upstream review URL plus rationale",
+    "active": []
+  },
+  "pending_patches": [
+    {
+      "id": "001-riscv-propeller",
+      "path": "compiler/llvm-build/patches/001-riscv-propeller.patch",
+      "source_pr": "https://github.com/llvm/llvm-project/pull/170992",
+      "title": "[RISCV] Add Propeller support for RISC-V",
+      "pr_head_sha": "e799179ff829128b921eedd83cd61adc6d5e336e",
+      "pr_state": "OPEN",
+      "pr_last_updated": "2026-03-26",
+      "pr_reviews": "APPROVED x2 (wangpc-pp, topperc); libcxx-ci SUCCESS; Graphite mergeability_check SUCCESS",
+      "rebased_against": "de3ee84346d6dcf77ac20fe5c8acc95594886cbc",
+      "rebase_notes": "Trunk landed COFF/x86 support for -fbasic-block-address-map between PR base and our pin; the RISC-V additions were merged into the new ELF triple guard. PR head applies cleanly except for that orthogonal change, which is reflected in the saved patch.",
+      "files_touched": [
+        "clang/lib/Driver/ToolChains/Clang.cpp",
+        "clang/test/Driver/basic-block-address-map.c",
+        "clang/test/Driver/fbasic-block-sections.c",
+        "llvm/lib/Target/RISCV/RISCVInstrInfo.cpp",
+        "llvm/lib/Target/RISCV/RISCVInstrInfo.h"
+      ],
+      "patch_size_lines": 94,
+      "apply_verified": "git apply --check on 2026-05-20 against pinned SHA — clean",
+      "rationale": "Unblocks the future stage-3 PGO+Propeller+BOLT recipe documented in docs/toolchain/llvm-trunk-pin.md by enabling -fbasic-block-sections=labels|list= and -fbasic-block-address-map for riscv64-*-elf targets and providing the RISCVInstrInfo::insertNoop override Propeller requires.",
+      "remove_when": "PR #170992 merges into trunk and our pin advances past the merge commit"
+    }
+  ],
+  "default_target_triple": "riscv64-unknown-linux-gnu",
+  "march": "rva23u64",
+  "mcpu": "eliza-e1",
+  "mtune": "eliza-e1",
+  "extensions_baseline": [
+    "I",
+    "M",
+    "A",
+    "F",
+    "D",
+    "C",
+    "V",
+    "Zicboz",
+    "Zicbom",
+    "Zicfilp",
+    "Zicfiss",
+    "Zihintntl",
+    "Zfh",
+    "Zvfh",
+    "Zvbb",
+    "Zvkt",
+    "Zacas",
+    "Ztso",
+    "Zba",
+    "Zbb",
+    "Zbs"
+  ],
+  "release_flags_default": [
+    "-O3",
+    "-flto=thin",
+    "-fvectorize",
+    "-mcpu=eliza-e1",
+    "-march=rva23u64",
+    "-mtune=eliza-e1",
+    "-fbasic-block-sections=labels",
+    "-fcf-protection=full",
+    "-fstack-clash-protection",
+    "-fstack-protector-strong"
+  ],
+  "release_flags_pgo_attach": [
+    "-fprofile-sample-use=${AUTOFDO_PROFILE}"
+  ],
+  "release_flags_propeller_attach": [
+    "-Wl,--symbol-ordering-file=${PROPELLER_SYMBOL_ORDER}",
+    "-Wl,--no-keep-text-section-prefix"
+  ],
+  "bolt_post_link": {
+    "binary": "llvm-bolt",
+    "instrumentation": "--instrument --instrumentation-file-append-pid",
+    "optimize": "--reorder-blocks=ext-tsp --reorder-functions=hfsort+ --split-functions --split-all-cold --use-gnu-stack --dyno-stats",
+    "expected_uplift_pct_geomean_atop_fdo_lto": "2-6"
+  },
+  "produced_artifacts": [
+    "bin/clang",
+    "bin/clang++",
+    "bin/lld",
+    "bin/llvm-bolt",
+    "bin/llvm-mc",
+    "bin/llvm-objdump",
+    "bin/llvm-readelf",
+    "lib/clang/<ver>/lib/linux/*riscv64*",
+    "lib/clang/<ver>/include"
+  ],
+  "evidence_outputs": {
+    "tarball": "build/reports/compiler/llvm-trunk-${LLVM_SHA}.tar.zst",
+    "manifest": "docs/evidence/compiler/llvm-build-evidence.yaml",
+    "version_record": "build/reports/compiler/llvm-version.txt",
+    "compile_target_test": "build/reports/compiler/llvm-hello-rva23.elf",
+    "compile_target_dump": "build/reports/compiler/llvm-hello-rva23.dump"
+  },
+  "verification": [
+    "scripts/build_llvm_riscv.sh --verify",
+    "scripts/check_rva23_compliance.py --toolchain build/llvm-stage2",
+    "scripts/check_compiler_versions.py"
+  ],
+  "related_rebuild_plans": {
+    "openroad_deps": {
+      "plan_file": "compiler/openroad-deps-refresh-plan.json",
+      "scope": "version-refresh plan for external/openroad-deps; consumed on the next OpenROAD rebuild, not on LLVM rebuilds",
+      "last_audited": "2026-05-20"
+    }
+  }
+}

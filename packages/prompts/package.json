@@ -1,0 +1,50 @@
+{
+  "name": "@elizaos/prompts",
+  "private": false,
+  "version": "2.0.3-beta.14",
+  "description": "Shared prompt templates for elizaOS across TypeScript, Python, and Rust",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/generate-plugin-action-spec.js && bunx @biomejs/biome format --write specs/actions/plugins.generated.json && node scripts/generate-action-docs.js",
+    "build:action-docs": "node scripts/generate-action-docs.js",
+    "build:plugin-action-spec": "node scripts/generate-plugin-action-spec.js && bunx @biomejs/biome format --write specs/actions/plugins.generated.json",
+    "check:secrets": "node scripts/check-secrets.js",
+    "clean": "rm -rf dist",
+    "lint": "bunx @biomejs/biome check --write .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "echo 'No TypeScript source files to check'",
+    "test": "bun test ./test"
+  },
+  "files": [
+    "src/",
+    "dist/",
+    "scripts/"
+  ],
+  "keywords": [
+    "elizaos",
+    "prompts",
+    "templates",
+    "ai",
+    "llm"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
+}

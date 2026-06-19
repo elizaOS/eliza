@@ -1,0 +1,40 @@
+schema: eda.tool_action.v1
+id: blocked-rtl-patch-fixture
+action_type: source_rtl_patch
+intent: Demonstrate that direct AI RTL patch proposals are blocked by schema.
+mode: blocked
+claim_boundary: blocked_tool_action_only_no_source_patch_or_release_claim
+scope:
+  read_paths:
+    - rtl/npu/e1_npu.sv
+  write_paths:
+    - rtl/npu/e1_npu.sv
+  forbidden_paths:
+    - rtl/
+    - pd/
+    - sw/
+command:
+  tool: apply_patch
+  argv:
+    - blocked
+inputs:
+  manifests:
+    - docs/spec-db/ai-eda/tool-action-schemas.yaml
+outputs:
+  report: build/ai_eda/tool_actions/blocked-rtl-patch-fixture/report.json
+  artifacts: []
+safety:
+  source_tree_write_allowed: false
+  release_use_allowed: false
+  deterministic_replay_required: true
+  human_review_required: true
+replay:
+  dry_run_command: python3 scripts/ai_eda/check_tool_action_schemas.py
+  verification_gates:
+    - formal
+    - synth
+    - cocotb
+    - human_review
+decision:
+  status: blocked
+  reason: direct source RTL patch actions are forbidden until equivalence, tests, and explicit human approval exist

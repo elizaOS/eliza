@@ -1,0 +1,165 @@
+task_id: C27zh_data_automation
+task_name: 数据自动化
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 最近听说有些地方公安局在用RPA自动汇总各派出所每天的接处警数据然后生成日报，这个技术门槛高不高？我们现在还是每天各所手动填报再汇总，太费时间了，想搞个自动化的方案先试试，有没有什么思路？
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算或验证脚本。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是某市公安分局办公室的一名三级警长，在分局从事综合文字和行政管理工作已有八年多。你的日常围绕公文起草（通知、报告、实施方案、会议纪要）、政策文件解读与比对、数据统计上报（发案数据、破案率、警力配置等报表）、以及协助分局领导处理各类行政审批和考核材料。工作节奏紧凑，经常需要在短时间内赶出多份材料，对格式规范和措辞准确有严格要求。你做事一向有条不紊，严格遵照规章制度和公文写作规范，对每一处措辞、每一个数据都会反复核对，容不得半点含糊。技术方面，你能熟练使用办公软件和分局的各类业务系统，看得懂简单的配置和报错信息，但不会写代码——遇到系统报错会把错误提示原样复制下来去搜索或者找人问。
+
+
+    你刚从分局的月度工作推进会上回来，笔记本上密密麻麻记了两页。领导在会上点名要求办公室牵头起草一份全区社会面治安防控专项行动的实施方案，下周一前要初稿；同时年底的绩效考核材料汇总也压在手上，好几个派出所的数据还没报齐。你坐回工位，拧开保温杯喝了口水，觉得时间紧任务重，脑子里盘算着先从哪份材料下手。会上领导还顺嘴提了一句，说隔壁分局已经在试点用AI辅助写材料，效果不错，让大家也多琢磨琢磨。你心里有点触动——自己之前用OpenClaw帮忙起草过几份通知和简报，改改就能用，这次碰上大材料也可以让它先搭个框架出来。
+
+
+    你日常离不开WPS处理公文、Excel做各类统计报表，偶尔会用VBA写简单的数据汇总宏来批量处理各派出所上报的数据。你熟悉分局OA审批系统和公安综合信息平台的基本操作，日常用企业微信跟科室同事和各派出所对接材料报送。工作中你会定期梳理上级下发的新政策文件，跟原有制度做比对找变化点，标注出需要调整工作部署的地方。最近你对自动化办公比较感兴趣，在B站刷到过用Python脚本批量处理Excel和RPA自动填表的视频，觉得要是学会了能省不少事，但一直没腾出时间真正动手。你也会留意智能化相关的工作动态，听说有些兄弟单位已经在用AI辅助研判和自动化处理数据了。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    ### 第一批信息（助手问基本参数时提供）
+
+    - 下辖派出所数量：一共14个派出所
+
+    - Excel格式与列名：格式基本统一，列名为：报送单位、日期、接警总数、刑事警情、治安警情、交通警情、火灾警情、其他警情、出动警力、处结数、未处结数、备注
+
+    - 数据来源：各所内勤从警综平台手动导出再填到Excel里
+
+    - 用户技术水平：不会写代码，但能跑现成脚本，需要拿到可直接运行的完整脚本
+
+    - 操作系统：办公电脑是Windows 10，装了WPS，没装过Python
+
+
+    ### 第二批信息（助手问到背景或细节时提供）
+
+    - 每天汇总截止时间：各所要在当天下午4点前把Excel发到办公室企业微信群
+
+    - 日报输出格式：汇总后要生成一份Excel总表（按所汇总+全局合计行），同时还要一份Word版简报给领导看
+
+    - 数据量：每个所每天大概20-50条接警记录，但上报的是汇总后的一行数据（每所一行）
+
+    - 目前的痛点：主要是各所报表格式不完全一致，有两三个所经常自己改列名（比如把"接警总数"写成"总接警数"或"接警量"），还有的所会多加一列"出警时间"
+
+    - 历史数据：已经有近两年的历史数据（每天一套14个文件），领导也提过想做个趋势分析
+
+
+    ### 第三批信息（助手深入追问时提供）
+
+    - 网络环境限制：办公电脑不能直接上外网，装软件需要走信息科的审批流程，一般要3-5个工作日
+
+    - 数据敏感性：接处警数据属于内部工作数据，不涉密但有保密要求，不能传到外部云平台处理
+
+    - 一个困惑：上周有个所报上来的数据，"接警总数"是45，但刑事+治安+交通+火灾+其他加起来只有38，差了7条，不知道是漏填了还是分类有问题（之前也偶尔出现过这种情况）
+
+    - VBA经验：自己以前用VBA写过一个简单的宏，就是把14个Excel合并到一个工作簿里，但没做列名校验，遇到列名不一样的就会出错
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话过程中的意图理解与工具使用质量
+- name: numerical_quality
+  weight: 0.25
+  check:
+    type: llm_judge
+    description: 脚本/方案的技术准确性
+- name: content_quality
+  weight: 0.4
+  check:
+    type: llm_judge
+    description: 内容完整性与领域知识深度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在数据自动化多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了关键信息\n  - 轨迹质量(20%)：对话过程中的意图理解与工具使用\n  - 技术准确性(25%)：脚本和方案的技术正确性\n  - 内容质量(40%)：内容完整性、领域知识、方案的实用性"
+reference_solution: '1. 询问关键信息：下辖派出所数量、Excel格式和列名、数据来源流程、用户技术水平和环境、日报输出格式要求、网络和安装限制
+
+  2. 识别核心痛点：列名不统一、缺乏数据校验、手动合并易出错
+
+  3. 给出可直接运行的Python脚本，包含：列名模糊映射/容错、数据校验（如接警总数=各分类之和）、合并汇总+合计行、Word简报生成
+
+  4. 提供面向非技术用户的完整使用说明（含离线安装方案）
+
+  5. 发现数据矛盾（接警总数与分类之和不一致）并给出处理建议'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

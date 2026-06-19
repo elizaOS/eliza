@@ -1,0 +1,11 @@
+[[!meta title="Uninstalling Tails"]]
+
+[[!inline pages="doc/uninstall.intro" raw="yes" sort="age"]]
+
+- [[Uninstalling Tails using Windows|uninstall/windows]]
+
+- [[Uninstalling Tails using macOS|uninstall/mac]]
+
+- [[Uninstalling Tails using Linux|uninstall/linux]]
+
+- [[Uninstalling Tails using Tails itself|uninstall/tails]]

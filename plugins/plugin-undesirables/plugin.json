@@ -1,0 +1,39 @@
+{
+  "name": "plugin-undesirables",
+  "version": "2.4.3",
+  "description": "ElizaOS plugin — Personality-as-Code for AI agents. Live TCG market data from 370K+ products, passive market intelligence evaluator, 24 skills, 9 actions, and zero-config demo soul.",
+  "author": "The Undesirables LLC",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sailorpepe/plugin-undesirables"
+  },
+  "homepage": "https://the-undesirables.com",
+  "keywords": [
+    "elizaos",
+    "elizaos-plugin",
+    "elizaos-plugins",
+    "eliza",
+    "ai-agents",
+    "ai-personality",
+    "agent-personality",
+    "autonomous-agents",
+    "personality",
+    "soul",
+    "nft",
+    "ethereum",
+    "market-data",
+    "trading-cards",
+    "tcg",
+    "pokemon",
+    "oracle-api",
+    "x402",
+    "market-intelligence"
+  ],
+  "peerDependencies": {
+    "@elizaos/core": ">=1.0.0"
+  }
+}

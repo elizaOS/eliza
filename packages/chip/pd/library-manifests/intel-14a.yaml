@@ -1,0 +1,48 @@
+schema: eliza.pd_library_manifest.v1
+pdk: Intel_14A
+node_class: intel_14a_ribbonfet_2nd_gen_bspdn_high_na
+status: blocked_until_foundry_agreement
+evidence_class: procurement_blocked_no_library_set
+
+claim_boundary:
+  allowed: []
+  blocked:
+    - No Intel 14A library data may be checked in until an IFS agreement is in place.
+    - 14A is 2nd-gen PowerVia BSPDN + first commercial High-NA EUV node.
+
+procurement_gate:
+  status: blocked_until_foundry_agreement
+  unblock_requires:
+    - Executed Intel Foundry Services (IFS) agreement (potentially via DARPA / RAMP-C subsidy).
+    - SRAM compiler at 14A.
+    - LPDDR5X / LPDDR6 PHY available at 14A. Hard-IP ecosystem at Intel foundry is thinner than TSMC.
+    - USB 3.2 / USB4 PHY at 14A.
+    - MIPI D-PHY v3 / C-PHY v2 IP at 14A.
+    - PLL hard IP at 14A.
+    - Analog catalogue at 14A.
+    - Multi-Vt mix per Intel 14A guidance.
+    - Two-sided PDN methodology + extraction at BSPDN.
+    - High-NA-EUV DFM compliance methodology.
+
+economics:
+  wafer_usd_estimate: "not_public"
+  tapeout_nre_usd_estimate: "premium_over_tsmc_due_to_high_na_litho"
+  high_na_euv: "yes_industry_first"
+  bspdn_generation: "2nd_gen_powervia"
+  customer_window: "DARPA, US gov, hyperscaler diversification; non-Apple mobile"
+
+required_provenance_fields_after_unblock:
+  - 14A PDK release tag
+  - PowerVia BSPDN methodology revision
+  - High-NA litho DFM check version
+  - STD_CELL_LIBRARY revision
+  - SRAM compiler revision
+  - LPDDR / USB / MIPI / PLL PHY revisions
+  - Commercial EDA tool versions (Intel-qualified Cadence or Synopsys flow)
+
+forbidden_claims_until_unblocked:
+  - intel_14a_library_release
+  - intel_14a_signoff_clean
+  - intel_14a_tapeout_ready
+  - bspdn_signoff_clean
+  - high_na_dfm_clean

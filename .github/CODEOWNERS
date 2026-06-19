@@ -1,0 +1,63 @@
+# CODEOWNERS — elizaOS monorepo
+#
+# Required reviewers for sensitive areas. Used by GitHub branch-protection
+# rules to enforce change management (SOC2 CC8.1 / CC6.1).
+#
+# IMPORTANT — operator action required:
+#   The team handles below (`@elizaos/<role>`) are PLACEHOLDERS. Before enabling
+#   branch protection with "Require review from Code Owners", replace each
+#   handle with a real GitHub team in the elizaos org. The format is
+#   `@org-name/team-slug`. Verify each team exists with
+#   `gh api orgs/elizaos/teams/<slug>`.
+#
+# Order matters: later rules override earlier ones (last match wins).
+
+# Default — at least one core maintainer.
+*                                       @elizaos/core-maintainers
+
+# CI / CD pipeline definitions and reusable actions.
+/.github/                               @elizaos/security-team @elizaos/platform-team
+/.github/workflows/                     @elizaos/security-team
+/.github/actions/                       @elizaos/security-team
+/.github/dependabot.yml                 @elizaos/security-team
+
+# Cloud / backend — billing, auth, hosted APIs.
+/packages/cloud-api/                    @elizaos/backend-leads
+/packages/cloud-shared/                 @elizaos/backend-leads
+/packages/cloud-frontend/               @elizaos/backend-leads
+/packages/cloud-services/               @elizaos/backend-leads
+/packages/cloud-infra/                  @elizaos/backend-leads @elizaos/platform-team
+/packages/cloud-routing/                @elizaos/backend-leads
+/packages/cloud-sdk/                    @elizaos/backend-leads
+
+# Security and crypto-handling code — mandatory security review.
+/packages/security/                     @elizaos/security-team
+/packages/vault/                        @elizaos/security-team
+/packages/contracts/                    @elizaos/security-team @elizaos/backend-leads
+
+# Plugin runtime / sandboxing surface.
+/packages/plugin-host-shim/             @elizaos/runtime-team
+/packages/plugin-host-shim-android/     @elizaos/runtime-team
+/packages/plugin-host-shim-electrobun/  @elizaos/runtime-team
+/packages/plugin-host-shim-ios/         @elizaos/runtime-team
+/packages/plugin-worker-runtime/        @elizaos/runtime-team
+/packages/plugin-sub-agent-claude-code/ @elizaos/runtime-team @elizaos/security-team
+/packages/plugin-remote-manifest/       @elizaos/runtime-team @elizaos/security-team
+
+# ML / training / hardware.
+/packages/training/                     @elizaos/ml-hw-lead
+/packages/chip/                         @elizaos/ml-hw-lead
+/packages/feed/                         @elizaos/ml-hw-lead
+
+# Deployment artifacts.
+/deploy/                                @elizaos/platform-team
+
+# Install / bootstrap surface.
+/install/                               @elizaos/security-team
+
+# Dependency patches.
+/patches/                               @elizaos/backend-leads @elizaos/security-team
+/plugins/**/patches/                    @elizaos/backend-leads @elizaos/security-team
+
+# Documentation only — lighter review.
+/docs/security/                         @elizaos/security-team

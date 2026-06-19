@@ -1,0 +1,54 @@
+---
+title: AgentRuntime
+description: "The single class that hosts an Eliza agent."
+---
+
+`AgentRuntime` is the public surface of `@elizaos/core`. Every Eliza agent is an instance of this class.
+
+## Construction
+
+```ts
+const runtime = new AgentRuntime({
+  character,             // Character (required)
+  plugins,               // Plugin[] (required, can be empty)
+  agentId,               // optional UUID; auto-generated if omitted
+  databaseAdapter,       // optional; falls back to in-memory or PGLite
+  fetch,                 // optional fetch override (testing)
+  settings,              // optional environment overrides
+});
+```
+
+## Lifecycle
+
+```ts
+await runtime.initialize();   // resolves plugins, starts services, runs init hooks
+// ... use the runtime ...
+await runtime.stop();         // flushes writes, stops services
+```
+
+`initialize()` is idempotent — safe to call multiple times. `stop()` should be awaited on process exit.
+
+## Surface
+
+The runtime exposes:
+
+- `runtime.useModel(type, params)` — invoke any registered model (text, embedding, image, etc.).
+- `runtime.databaseAdapter` — the live database client.
+- `runtime.actions`, `runtime.providers`, `runtime.evaluators`, `runtime.services` — registered plugin surfaces.
+- `runtime.messageManager` — conversation memory.
+- `runtime.factManager`, `runtime.documentManager` — specialized memory stores.
+- `runtime.emit(event, payload)` — emit a runtime event.
+
+See [Runtime core](/runtime/core), [Models](/runtime/models), and [Types](/runtime/types) for the exhaustive API.
+
+## Embedding
+
+The framework is environment-agnostic. Use it from:
+
+- a long-lived Node server (Hono, Express, Fastify)
+- a serverless function (with care around cold starts and persistent state)
+- a CLI loop
+- a Discord/Telegram bot driver
+- a worker process
+
+When the runtime is short-lived, give it a remote database adapter (Postgres) so state persists across invocations.

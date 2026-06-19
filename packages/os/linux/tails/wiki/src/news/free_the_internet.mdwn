@@ -1,0 +1,92 @@
+[[!meta title="Free the internet"]]
+[[!meta date="Wed, 15 Oct 2025 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This year we are calling to **FREE THE INTERNET**! By supporting Tor, your
+donation will help break the chains of censorship and surveillance. If you give
+now during the campaign, [your donation will be
+matched](https://torproject.org/donate/donate-em2-yec2025) by our supporters at
+[Power Up Privacy](https://powerupprivacy.com/). This means a $25 donation will
+have a $50 impact &mdash; and all donations over $25 will qualify you for fun
+[Tor merchandise](https://torproject.org/donate/donate-em2-yec2025). 👀
+
+<p class="button">[[Donate now|https://torproject.org/donate/donate-em2-yec2025]]</p>
+
+At the Tor Project, along with our incredible community of supporters, we're
+not just envisioning a free internet — **we're building it**:
+
+- In countries like Turkmenistan where access to information is tightly
+  controlled, [Turkmen.news](https://turkmen.news/) trusts Tor to [provide safe
+  access to the free
+  internet](https://blog.torproject.org/Corruption-Control-Turkmenistan-internet-censorship-business/)
+  where it once did not exist.
+
+- [Freedom of the Press Foundation](https://freedom.press/) uses Tor as the
+  backbone of
+  [SecureDrop](https://securedrop.org/news/five-things-to-know-about-securedrop/),
+  a tool that allows journalists and sources to communicate freely without fear
+  of retaliation or exposure. 
+
+- In Russia and Egypt, where authorities often block encrypted tools to control
+  communications, individuals use Tor Browser to access encrypted email
+  services like [Tuta Mail](https://tuta.com/blog/tutanota-blocked-russia) to
+  freely communicate.
+ 
+Tor is a building block for a free internet, and it takes our collective
+efforts to improve and amplify it. That’s why during the next three months, the
+Tor Project will be holding a fundraising campaign during which we ask for your
+support to advance digital freedom.
+
+<p class="button">[[Donate now|https://torproject.org/donate/donate-em2-yec2025]]</p>
+
+To learn more about how Tor is freeing the internet from surveillance and
+censorship, and how we are putting charitable donations to work, please tune
+into our annual *State of the Onion* virtual event to learn more. Save these
+dates and make your [donation
+today](https://torproject.org/donate/donate-em2-yec2025)!
+
+# Upcoming events
+
+- **State of the Onion – the Tor Project (Wednesday, November 12)**
+
+  * The State of the Onion is the Tor Project's annual virtual event where we
+    share updates from the Tor Project and the Tor community. The event on
+    November 12 will focus on the Tor Project and the organization’s work.
+
+  * 📺 Stream live on our [YouTube channel](https://www.youtube.com/@TheTorProject)
+
+- **State of the Onion – Community (Wednesday, December 10)**
+
+  * The State of the Onion is the Tor Project's annual virtual event where we
+    share updates from the Tor Project and the Tor community. The event on
+    December 10 will be a special day celebrating the UN’s adoption and
+    proclamation of the [Universal Declaration of Human Rights
+    (UDHR)](https://en.wikipedia.org/wiki/Universal_Declaration_of_Human_Rights)
+    in 1948 as well.
+
+  * 📺 Stream live on our [YouTube channel](https://www.youtube.com/@TheTorProject)
+
+# Ways to get involved
+
+- **Make a donation**: [Donate through our
+  website](https://torproject.org/donate/donate-em2-yec2025) (or any other
+  method listed on our [FAQ](https://donate.torproject.org/faq/)) and your
+  donation will be matched, 1:1, up to $250,000.
+
+- **Ask the company you work for if they will match your donation**: Many
+  corporations will match their employees’ donations to charitable
+  organizations. Ask at work if your company will match your gift.
+
+- **Share on social media**: Let the people in your networks know that all
+  donations to the  Tor Project are currently being matched. You can easily
+  share a post from our social channels:
+  [Mastodon](https://mastodon.social/@torproject),
+  [Bluesky](https://bsky.app/profile/torproject.org),
+  [X](https://x.com/torproject), and
+  [more](https://forum.torproject.org/t/the-tor-projects-official-accounts-on-social-media/7125).
+
+- **Subscribe to Tor News**: No ads. No tracking. Just low-traffic [Tor updates
+  via email](https://newsletter.torproject.org/).
+
+Thank you for supporting a free internet. 

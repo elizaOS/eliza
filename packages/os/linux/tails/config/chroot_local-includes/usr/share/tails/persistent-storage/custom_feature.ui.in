@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.99.8 -->
+<interface>
+  <!-- interface-name custom_feature.ui.in -->
+  <requires lib="gtk+" version="3.24"/>
+  <requires lib="libhandy" version="0.0"/>
+  <template class="CustomFeatureRow" parent="HdyActionRow">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="icon-name">dialog-question</property>
+    <child>
+      <object class="GtkBox" id="custom_feature_box">
+        <property name="valign">center</property>
+        <property name="margin_start">6</property>
+        <property name="spacing">6</property>
+        <property name="visible">True</property>
+        <child>
+          <object class="GtkSwitch" id="custom_feature_switch">
+            <property name="visible">True</property>
+            <property name="sensitive">False</property>
+            <property name="can-focus">False</property>
+            <property name="halign">end</property>
+            <property name="valign">center</property>
+            <property name="active">True</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

@@ -1,0 +1,7 @@
+gymnasium
+solana
+python-dotenv
+requests
+matplotlib
+plotly
+pandas

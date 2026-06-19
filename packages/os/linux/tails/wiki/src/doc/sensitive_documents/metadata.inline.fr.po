@@ -1,0 +1,91 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"POT-Creation-Date: 2024-01-31 15:45+0100\n"
+"PO-Revision-Date: 2024-05-05 10:51+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Most files contain metadata, which is information used to describe,\n"
+"identify, categorize, and sort files. For example:</p>\n"
+msgstr ""
+"<p>La plupart des fichiers contiennent des métadonnées, qui sont des "
+"informations utilisées\n"
+"pour décrire, identifier, catégoriser et trier les fichiers. Par exemple "
+":</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<ul>\n"
+"<li>Cameras record data about when and where a picture was taken and what\n"
+"camera was used.</li>\n"
+"<li>Office documents automatically add author\n"
+"and company information to texts and spreadsheets.</li>\n"
+"</ul>\n"
+msgstr ""
+"<ul>\n"
+"<li>Les appareils photo enregistrent des données indiquant où et quand l'image a été prise,\n"
+"et quel appareil photo a été utilisé.</li>\n"
+"<li>Les traitements de texte ajoutent automatiquement aux fichiers\n"
+"le nom de l'auteur et des indications sur son entreprise.</li>\n"
+"</ul>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Use [[<i>Metadata Cleaner</i>|doc/sensitive_documents/metadata]] to clean\n"
+"metadata from your files before sharing them.</p>\n"
+msgstr ""
+"<p>Utilisez [[<i>Nettoyeur de métadonnées</i>|doc/sensitive_documents/"
+"metadata]] pour nettoyer\n"
+"les métadonnées de vos fichiers avant de les partager :</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<ol>\n"
+#~ "<li>Open the *Files* browser.</li>\n"
+#~ "<li>Navigate to the folder containing the files that you want to remove\n"
+#~ "   metadata from.</li>\n"
+#~ "<li>Select the files that you want to remove metadata from.</li>\n"
+#~ "<li>Right-click (on Mac, click with two fingers) on the files and choose\n"
+#~ "<strong>Remove metadata</strong>.</li>\n"
+#~ "</ol>\n"
+#~ msgstr ""
+#~ "<ol>\n"
+#~ "<li>Ouvrez le navigateur de *Fichiers* .</li>\n"
+#~ "<li>Naviguez jusqu'au dossier contenant les fichiers dont vous voulez supprimer\n"
+#~ "   les métadonnées.</li>\n"
+#~ "<li>Sélectionnez les fichiers dont vous voulez supprimer les métadonnées.</li>\n"
+#~ "<li>Faites un clic-droit (sur Mac, cliquez avec deux doigts) sur les fichiers et choisissez\n"
+#~ "<strong>supprimer les métadonnées</strong>.</li>\n"
+#~ "</ol>\n"

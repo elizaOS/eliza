@@ -1,0 +1,268 @@
+[[!meta title="Tails report for August, 2020"]]
+[[!meta date="Sat, 12 Sep 2020 14:21:15 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 4.10 was released on August 25|news/version_4.10]].
+
+* Tails 4.11 is [[scheduled for September 22|contribute/calendar]].
+
+The following changes were introduced in Tails 4.10:
+
+* Update Linux to 5.7.10. This should improve the support for newer hardware (graphics, Wi-Fi, etc.).
+
+* Hide the welcome message when starting Thunderbird.
+
+* Fix support for USB Wi-Fi adapters with Atheros AR9271 hardware. ([[!tails_ticket 17834]])
+
+* Fix USB tethering from iPhone. ([[!tails_ticket 17820]])
+
+Code
+====
+
+- Added support for older TREZOR firmware ([[!tails_mr 142]]).
+
+- Started working on the upgrade to Thunderbird 78 ESR,
+  and in particular its new OpenPGP support ([[!tails_ticket 17148]]).
+
+- Automated generation of our Changelog ([[!tails_ticket 17886]]).
+
+- Automated generation of the security advisory boilerplate from a template that
+  technical writers can improve ([[!tails_mr 128]]).
+
+- Hidden broken "Turn on Wi-Fi Hotspot" feature in GNOME Wi-Fi settings
+  ([[!tails_ticket 17887]]).
+
+- Fixed sorting Intel GPUs last in the "Error starting GDM" message
+  ([[!tails_ticket 17903]]).
+
+- Upgraded Linux to 5.7.17-1 ([[!tails_ticket 17895]]).
+
+Documentation and website
+=========================
+
+- Changed massively our instructions on how to start Tails:
+
+  1. Documented [[Shift + Restart on Windows|install/windows#restart]]. ([[!tails_ticket 16456]])
+
+     We're not telling Windows users to use the Boot Menu key anymore.
+
+     It's still the default for [[Linux|install/linux#restart]].
+
+  2. Wrote dedicated pages for starting Tails on [[PC|doc/first_steps/start/pc]] and
+     [[Mac|doc/first_steps/start/mac]].
+
+  3. Simplified troubleshooting sections.
+
+     We simplified and made consistent the [[troubleshooting instructions|install/windows#troubleshooting]]
+     in all installation scenarios.
+
+  4. Removed instructions to report to Help Desk from the installation
+     scenarios but kept them on [[doc/first_steps/start|doc/first_steps/start/pc/#help-desk]].
+
+  We believe that all these changes will lower your workload and make
+  more people start Tails at the same time.
+
+- Rephrased our [[FAQ about VPN|support/faq#vpn]]. ([[!tails_ticket 15783]])
+
+- Wrote an [[FAQ about 32-bit computers|support/faq#32-bit]]. ([[!tails_ticket 17866]])
+
+- Fixed all outdated links to torproject.org. ([[!tails_ticket 17717]])
+
+- Used ikiwiki's automatic referencing of HTML ids in table of content
+  on the pages that have the longest tables of content. ([[!tails_ticket 17844]])
+
+  Now you can copy links directly from the table of content to point to:
+
+  https://tails.boum.org/support/faq/#javascript
+
+User experience
+===============
+
+- Analyzed the responses of the [[!tails_blueprint desc="OpenPGP and Pidgin survey" user_survey#openpgp-pidgin]]. ([[!tails_ticket 17821]])
+
+  It's pretty exciting because we barely have quantitative data about
+  our user base at large.
+
+  Highlights:
+
+  * Our users find Tails relatively easy to use compared to an industry
+    average.
+
+  * Linux users are still the biggest share of the respondents and this
+    hasn't changed much since 2017.
+
+  * The top 5 wishes of our users are, in rough order:
+
+    1. Do nothing because Tails is great already :)
+
+    2. More persistent settings: security level in Tor Browser,
+       background, keyboard, and language
+
+    3. Messaging applications and voice calls
+
+    4. Make Tor less painful for web browsing
+
+    5. Better upgrades
+
+  * OpenPGP is much more popular outside Thunderbird: 49% vs. 16%.
+
+  * Enigmail users are more technical than OpenPGP users overall.
+
+  * Electrum (28%) is more used than Thunderbird (27%), which is more used than XMPP (17%).
+
+  * IRC is used by a non-negligible 8% of respondents.
+
+Hot topics on our help desk
+===========================
+
+This last month we felt that the social crisis created by covid is starting
+to take a toll on our users mental state, and we received
+more derailed emails than usual. Hopefully there are local resources you
+can count on for this difficult times. Take care!
+
+1. Many users wrote to us with problems related to MacbookPros from 2020.
+
+   Apple in general does not prioritize collaborating with Free Software
+   projects, and their newest hardware is usually very hard for Free Software
+   developers to get working with Linux, and thus Tails. In comparison,
+   hardware for PC tends to be more open and get support for Linux faster.
+   Please take that into consideration if you are buying hardware to run Tails.
+
+1. The last release also saw some users with graphics cards issues. Please
+   read the page shown on the error message
+   before mailing us, because there might be a solution for your graphics card.
+
+1. Some users [[!tails_ticket 17908 desc="had problems"]] to do automatic
+   upgrades to Tails 4.10. Update: this was fixed.
+
+Infrastructure
+==============
+
+- Set up infrastructure that will allow Release Managers to upload to
+  `git-annex` faster ([[!tails_gitlab tails/sysadmin/-/issues/17687]]).
+
+- Started coordination for requiring Buster or newer for running our test suite
+  ([[!tails_ticket 17842]]).
+
+- Started upgrading our Jenkins "isotester" workers to Buster.
+
+- [[!tails_blueprint desc="Summed up" CI_usability]] the findings from "Gather usability data
+  about our current CI" ([[!tails_ticket 16959]]).
+
+Funding
+=======
+
+Grants
+------
+
+- Our grant to [Reset](https://reset.tech/) from May 1 was rejected.
+
+- We applied to [RIPE NCC](https://www.ripe.net/support/cpf/call-for-applications)
+  to work on usability improvements for censorship circumvention.
+
+Donations
+---------
+
+- We surveyed lapsed donors who haven't
+  donated since 2019 and analyzed 121 responses. Conclusions:
+
+  * We're doing good! Negative comments were few exceptions in a mass of
+    love: the work that we do is very important and we do it well.
+
+  * We should communicate a bit more and better with past donors:
+
+    - The main reason for lapsed donors not to renew their donation is
+      lack of awareness.
+    - We should write a newsletter to donors half-way through the year
+      or when we have major improvements.
+    - Adding an opt-in mechanism for our newsletter would allow us to be
+      less shy to write them.
+    - LimeSurvey is more convenient to send mass emails to donors.
+    - We should communicate more about the impact of donations and how
+      we spend the money.
+
+  * About our donors and their interests:
+
+    - Donors are mostly users (74%) but they are really into helping
+      others (70%).
+
+    - Donors mostly talk about:
+
+      * Privacy (24)
+      * Protection from oppressive governments and persecution (18)
+      * Liberty and freedom of speech (16)
+
+- We merged a first batch of improvements to our Donate page:
+
+  * To better explain our mission:
+
+    - We wrote new slogans.
+    - We improved the text on the left.
+
+  * To better explain how we spend our money:
+
+    - We simplified the chart and added short text to explain each of
+      maintenance, improvements, user experience, and administration.
+    - We added a section about our impact with numbers of daily users.
+
+  * To increase trust:
+
+    - We duplicated the recommendations from the Home page.
+    - We improved the color scheme of the charts.
+
+Sponsors
+--------
+
+- We added Freiheitsfoo as sponsor.
+
+On-going discussions
+====================
+
+- Exporting secret PGP key in SeaHorse: Link to the [thread](https://lists.autistici.org/thread/20200909.161300.5d51a9ea.en.html#i20200909.161300.5d51a9ea).
+- GitLab MR terminology update: WIP→ Draft : Link to the [thread](https://lists.autistici.org/thread/20200831.183100.8fbe036d.en.html).
+- Reviewers: Link to the [thread](https://lists.autistici.org/thread/20200819.102500.4dd81e8c.en.html).
+
+Translations
+============
+
+## All the website
+
+  - de: 29% (1921) strings translated, 14% strings fuzzy
+  - es: 49% (3241) strings translated, 7% strings fuzzy
+  - fa: 21% (1401) strings translated, 13% strings fuzzy
+  - fr: 80% (5231) strings translated, 8% strings fuzzy
+  - it: 27% (1805) strings translated, 10% strings fuzzy
+  - pt: 19% (1289) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 47% (992) strings translated, 23% strings fuzzy
+  - es: 83% (1744) strings translated, 7% strings fuzzy
+  - fa: 20% (422) strings translated, 15% strings fuzzy
+  - fr: 79% (1651) strings translated, 12% strings fuzzy
+  - it: 48% (1010) strings translated, 21% strings fuzzy
+  - pt: 38% (803) strings translated, 15% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - ar: 8% (172) strings translated, 7% strings fuzzy
+  - ca: 8% (185) strings translated, 7% strings fuzzy
+  - id: 8% (189) strings translated, 4% strings fuzzy
+  - pl: 9% (214) strings translated, 6% strings fuzzy
+  - ru: 10% (230) strings translated, 7% strings fuzzy
+  - sr_Latn: 7% (164) strings translated, 3% strings fuzzy
+  - tr: 9% (216) strings translated, 6% strings fuzzy
+  - zh: 12% (272) strings translated, 7% strings fuzzy
+  - zh_TW: 23% (505) strings translated, 13% strings fuzzy
+
+
+Metrics
+=======
+
+* Tails has been started more than 939&#8239;540 times this month. This makes 30&#8239;308 boots a day on average.
+

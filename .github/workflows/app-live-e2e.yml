@@ -1,0 +1,314 @@
+name: App Live E2E
+
+# Gated, NON-blocking live lane for the packages/app e2e suite — the home for
+# REAL (not stub/mock) coverage of the dimensions the keyless PR lanes can only
+# fixture-test.
+#
+# Why the keyless lanes can't do this: every PR-gating lane (scenario-pr, ci,
+# test) forces the deterministic stub API (CI=true => FORCE_STUB_STACK, see the
+# tested shouldForceStubStack helper) and blanks all provider/cloud keys, because
+# secrets cannot be exposed to fork PRs and real model/cloud turns cost money and
+# add network flake. So real coverage MUST live in a secret-gated, non-PR lane.
+#
+# The keystone that makes this possible: ELIZA_UI_SMOKE_LIVE_STACK=1 overrides the
+# CI stub-force, so the live stack boots the real @elizaos/app-core runtime and
+# the live-only specs (test.skip'd in keyless CI) un-skip.
+#
+# Runs nightly + on-demand; never on pull_request.
+
+on:
+  schedule:
+    # 07:00 UTC daily — after the nightly build lanes settle.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      run_android_local_chat:
+        description: "Also run the on-device Android local-chat smoke (boots an emulator + builds/installs the APK + stages a GGUF)."
+        type: boolean
+        default: false
+
+concurrency:
+  group: app-live-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  # The keystone: opt the live stack out of the CI-based stub force so the real
+  # app-core runtime boots. Without this, CI=true re-forces the stub even with a
+  # provider key present and every "live" test self-skips.
+  ELIZA_UI_SMOKE_LIVE_STACK: "1"
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+  NODE_NO_WARNINGS: "1"
+  CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+  XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+  ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+
+jobs:
+  # Real LOCAL chat turn through the live stack: a real app-core runtime + a real
+  # provider model, asserting an exact model-produced marker (APP_LIVE_AGENT_OK).
+  # UI-driven counterpart to dev-smoke; proves chat send/stream reaches a real
+  # agent from the UI.
+  app-live-chat:
+    name: app live chat (real local runtime)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
+      PGLITE_WASM_MODE: node
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Free disk space for browser smoke
+        run: |
+          set -euxo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+          df -h /
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Generate shared i18n assets
+        run: bun run --cwd packages/shared build:i18n
+
+      # Prebuild the renderer dist so the live stack reuses a fresh bundle instead
+      # of a cold ~12 min in-harness vite build (viteRendererBuildNeeded check).
+      - name: Build app renderer bundle
+        run: bun run --cwd packages/app build:web
+
+      - name: Run live agent chat (real model turn)
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/live-agent-chat.spec.ts --project=chromium -g "live agent"
+
+      # Deep settings/vault round-trips that the keyless stub structurally
+      # cannot serve (write→reload→read-back against the real on-disk vault +
+      # runtime). LIVE_STACK=1 is set job-wide, so the test.skip(!LIVE_STACK)
+      # guards in these specs open. The two *-interactions specs also run keyless
+      # in scenario-pr.yml (skipping their deep blocks); here they run them.
+      - name: Run settings + vault live-stack deep e2e
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/vault-routing.spec.ts test/ui-smoke/wallet-keys.spec.ts test/ui-smoke/provider-config.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts --project=chromium
+
+      - name: Upload live-chat artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: app-live-e2e-chat
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Real CLOUD login + provisioning + chat through the app UI against real Eliza
+  # Cloud. cloud-live.spec.ts mocks nothing; ELIZA_UI_SMOKE_CLOUD_LIVE=1 leaves
+  # first-run open so the spec drives cloud onboarding, and ELIZAOS_CLOUD_API_KEY
+  # authenticates. Skips cleanly if the key is absent.
+  cloud-live:
+    name: cloud login + provision + chat (real Eliza Cloud)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
+      PGLITE_WASM_MODE: node
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Free disk space for browser smoke
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Generate shared i18n assets
+        run: bun run --cwd packages/shared build:i18n
+
+      - name: Build app renderer bundle
+        run: bun run --cwd packages/app build:web
+
+      - name: Run real cloud login + provision + chat
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium
+
+      - name: Upload cloud-live artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: app-live-e2e-cloud
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Real on-device LOCAL provisioning + chat on Android: boots an emulator, builds
+  # + installs the debuggable APK, stages the smoke GGUF, starts the native
+  # ElizaAgentService local runtime, and asserts a real streamed on-device model
+  # reply (test:sim:local-chat:android:live). The ONLY lane that exercises Android
+  # local provisioning for real. Opt-in (workflow_dispatch input) because it is
+  # heavy. android-emulator-runner is the de-facto standard emulator action.
+  android-local-chat:
+    name: android local chat (on-device GGUF)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_android_local_chat }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # android-emulator-runner provides the booted AVD + adb; the script builds
+      # and installs the APK, then runs the live on-device local-chat smoke, which
+      # stages the GGUF and asserts a real model reply.
+      - name: Build, install, and run Android on-device local-chat smoke
+        uses: reactivecircus/android-emulator-runner@62dbb605bba737720e10b196cb4220d374026a6d
+        with:
+          api-level: 34
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            bun run --cwd packages/app build:android
+            bun run --cwd packages/app install:android:adb
+            bun run --cwd packages/app test:sim:local-chat:android:live
+
+  # Desktop (Electrobun) packaged e2e. The build + agent boot run on a standard
+  # runner and catch real packaged-app bugs (e.g. a missing JSON import attribute
+  # that breaks the wallet plugin on boot). The renderer-driving assertions need a
+  # real GPU display (the app uses WebGPU); on GPU-less runners the build + launch
+  # still validate, so the renderer step is best-effort.
+  desktop-packaged:
+    name: desktop packaged (build + boot + renderer)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
+      PGLITE_WASM_MODE: node
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Install WebKitGTK + xvfb for the Electrobun webview
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libwebkit2gtk-4.1-0 libgtk-3-0 mesa-utils libgl1-mesa-dri
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright runner
+        run: bunx playwright install --with-deps chromium
+
+      # Build the packaged desktop app (catches build/packaging breaks). Run from
+      # the repo root so desktop-build.mjs resolves packages/app.
+      - name: Build the Electrobun desktop app
+        run: node packages/app-core/scripts/desktop-build.mjs build
+
+      # Launch + drive the packaged app under a virtual display + software GL.
+      - name: Run packaged desktop e2e (xvfb)
+        run: xvfb-run -a --server-args="-screen 0 1920x1080x24" bun run --cwd packages/app test:desktop:packaged
+
+      - name: Upload desktop-packaged artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: app-live-e2e-desktop
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

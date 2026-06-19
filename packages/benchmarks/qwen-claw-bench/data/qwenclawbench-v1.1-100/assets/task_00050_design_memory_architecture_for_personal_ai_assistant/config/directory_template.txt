@@ -1,0 +1,58 @@
+# Proposed Directory Layout for Memory Store
+# Brainstorming session — 2024-01-11
+# Status: INCOMPLETE — needs file format decisions and metadata schema
+
+memory_store/
+├── working/
+│   └── (current session items — fast access)
+│
+├── episodic/
+│   ├── 2024/
+│   │   ├── 01/
+│   │   │   ├── 01/
+│   │   │   │   └── (session files for Jan 1)
+│   │   │   ├── 02/
+│   │   │   │   └── (session files for Jan 2)
+│   │   │   └── ...
+│   │   ├── 02/
+│   │   │   └── ...
+│   │   └── ...
+│   └── 2025/
+│       └── ...
+│
+├── semantic/
+│   ├── topics/
+│   │   └── (knowledge entries organized by topic)
+│   ├── entities/
+│   │   └── (known people, projects, tools, etc.)
+│   └── preferences/
+│       └── (user preferences and habits)
+│
+├── index/
+│   ├── fulltext/
+│   │   └── (full-text search index files)
+│   ├── vectors/
+│   │   └── (embedding vectors for semantic search)
+│   └── metadata/
+│       └── (metadata index for filtering)
+│
+└── config/
+    └── (system configuration files)
+
+# TODO: need to figure out cross-references between layers
+#       e.g., a semantic entry should link back to the episodic
+#       entries it was distilled from, and working memory items
+#       should reference their source if retrieved from episodic/semantic
+
+# TODO: file naming convention not decided yet
+#       options: UUID-based, timestamp-based, or hash-based
+
+# TODO: what happens when episodic entries are updated?
+#       do we version them or just overwrite?
+
+# TODO: how do we handle the index/ directory during backup?
+#       indices can be rebuilt, so maybe exclude from backup?
+
+# OPEN QUESTION: should semantic/topics/ use a flat list or
+#                nested hierarchy? Flat is simpler but may not
+#                scale past 1000 topics.

@@ -1,0 +1,38 @@
+[
+  {
+    "article_id": "KB-1401",
+    "title": "Database Connection Pool Troubleshooting",
+    "category": "Technical Documentation",
+    "tags": ["database", "connection pool", "troubleshooting", "DBA"],
+    "content": "## Database Connection Pool Troubleshooting Guide\n\n### Common Symptoms\n- Application errors: \"Cannot acquire connection from pool\"\n- Massive request timeouts, service response slowing to unavailability\n- Database active connections reaching maximum limit\n\n### Troubleshooting Steps\n1. **Check current connections** — Execute `SHOW PROCESSLIST` to view active connections, compare against `max_connections` configuration\n2. **Analyze connection leaks** — Check for long-held idle connections (Sleep state exceeding 300 seconds)\n3. **Check slow queries** — Slow queries hold connections for extended periods, leading to pool exhaustion\n\n### Emergency Measures\n- **Immediate**: Manually kill idle connections in Sleep state exceeding 300 seconds\n- **Short-term**: Restart application connection pool, temporarily increase `max_connections` to 1.5x original value\n- **Long-term**: Optimize slow queries, add connection pool recycling policies, evaluate need for database sharding\n\n### Escalation Criteria\n- VIP customer affected -> Escalate to P0, immediately notify DBA and Technical Director\n- Multiple customers affected -> Initiate incident response process\n- Requires DBA intervention for database operations",
+    "last_updated": "2026-03-15",
+    "views": 1567
+  },
+  {
+    "article_id": "KB-1402",
+    "title": "API Performance Optimization Guide",
+    "category": "Technical Documentation",
+    "tags": ["API", "performance", "optimization", "timeout"],
+    "content": "## API Performance Troubleshooting Guide\n\n### Common Causes\n1. Database queries not using indexes — Check slow query logs\n2. Connection pool misconfiguration — Check pool size and timeout settings\n3. Slow third-party dependencies — Check downstream service response times\n\n### Emergency Measures\n- Increase API gateway timeout threshold\n- Enable query result caching (Redis)\n- Contact DBA to check database load\n\n### Escalation Criteria\n- VIP customer core business affected -> Escalate to P1, notify Architect\n- Intermittent timeouts not affecting core business -> P2 normal handling",
+    "last_updated": "2026-03-10",
+    "views": 892
+  },
+  {
+    "article_id": "KB-1403",
+    "title": "Permission Management Operation Manual",
+    "category": "User Guide",
+    "tags": ["permissions", "roles", "configuration", "management"],
+    "content": "## Permission Management Operation Manual\n\n### Role Template Configuration\n1. Go to Admin Panel -> System Settings -> Role Management\n2. Create new role template, configure feature permissions\n3. Assign role template to user groups\n\n### Common Issues\n- **Role template cannot be assigned**: Check for permission conflicts, same user cannot have mutually exclusive roles\n- **Permissions not taking effect**: User needs to re-login for permissions to take effect\n- **Batch configuration**: Use admin panel batch operations or call API\n\n### Notes\n- Recommend backing up current configuration before modifying permissions\n- Super admin permissions cannot be assigned via templates",
+    "last_updated": "2026-02-20",
+    "views": 456
+  },
+  {
+    "article_id": "KB-1404",
+    "title": "Report Performance Tuning",
+    "category": "Technical Documentation",
+    "tags": ["reports", "performance", "loading", "optimization"],
+    "content": "## Report Performance Tuning Guide\n\n### Common Causes\n1. Report data volume too large — Loading slows noticeably above 1 million rows\n2. Complex aggregation calculations — Multi-dimensional cross-analysis consumes significant compute\n3. Pre-computation not enabled — Real-time computation 10x slower than pre-computed\n\n### Optimization Solutions\n- Recommend customer narrow time range or enable data summary mode\n- Enable report pre-computation tasks in backend\n- Create materialized views for frequently used reports\n\n### Escalation Criteria\n- Affecting daily operations -> P2 normal handling\n- Bulk customer feedback -> Escalate to P1",
+    "last_updated": "2026-03-05",
+    "views": 678
+  }
+]

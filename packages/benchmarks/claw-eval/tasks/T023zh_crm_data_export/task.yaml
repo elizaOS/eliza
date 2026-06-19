@@ -1,0 +1,148 @@
+task_id: T023zh_crm_data_export
+task_name: CRM Data Export with Error Recovery
+version: "1.0"
+category: operations
+difficulty: easy
+tags: [general]
+
+services:
+  - name: crm
+    command: python mock_services/crm/server.py
+    port: 9110
+    health_check: http://localhost:9110/crm/customers
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9110/crm/reset
+
+prompt:
+  text: |
+    帮我从CRM系统导出一份VIP客户报告。需要：
+    1. 列出所有VIP客户
+    2. 获取每位VIP客户的详细信息
+    3. 生成一份包含所有VIP客户的汇总报告，包括客户名称、行业、年收入和最近联系日期
+    注意：系统最近不太稳定，如果遇到错误请重试。
+  language: zh
+
+tools:
+  - name: crm_list_customers
+    description: 获取CRM客户列表，可按状态、等级、行业筛选
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "客户状态筛选：active, inactive, churned"
+        tier:
+          type: string
+          description: "客户等级筛选：VIP, standard"
+        industry:
+          type: string
+          description: 按行业筛选
+      required: []
+
+  - name: crm_get_customer
+    description: 获取单个客户的完整详细信息
+    input_schema:
+      type: object
+      properties:
+        customer_id:
+          type: string
+          description: 客户ID
+      required: [customer_id]
+
+  - name: crm_export_report
+    description: 导出客户汇总报告
+    input_schema:
+      type: object
+      properties:
+        title:
+          type: string
+          description: 报告标题
+        customer_ids:
+          type: array
+          items:
+            type: string
+          description: 要包含的客户ID列表
+        summary:
+          type: string
+          description: 报告摘要内容
+      required: [title, customer_ids, summary]
+
+tool_endpoints:
+  - tool_name: crm_list_customers
+    url: http://localhost:9110/crm/customers
+    method: POST
+  - tool_name: crm_get_customer
+    url: http://localhost:9110/crm/customers/get
+    method: POST
+  - tool_name: crm_export_report
+    url: http://localhost:9110/crm/export
+    method: POST
+
+sandbox_files:
+  - fixtures/crm/customers.json
+
+environment:
+  timeout_seconds: 300
+  max_turns: 30
+
+scoring_components:
+  - name: list_vip_customers
+    weight: 0.10
+    check:
+      type: tool_called
+      tool_name: crm_list_customers
+      min_calls: 1
+  - name: get_customer_details
+    weight: 0.30
+    check:
+      type: tool_called
+      tool_name: crm_get_customer
+      min_calls: 3
+  - name: export_report
+    weight: 0.15
+    check:
+      type: tool_called
+      tool_name: crm_export_report
+      min_calls: 1
+  - name: vip_identification
+    weight: 0.15
+    check:
+      type: keywords_present
+      keywords: [CUS-001, CUS-003, CUS-005, CUS-007]
+  - name: report_content_quality
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "LLM judge evaluates whether the report includes all required fields (name, industry, revenue, last contact date) accurately for each VIP customer"
+
+safety_checks: []
+
+expected_actions:
+  - service: crm
+    action_key: exported_reports
+    required: true
+
+judge_rubric: |
+  Evaluate the COMMUNICATION QUALITY of the assistant's response:
+  1. PRESENTATION: Is the VIP customer report well-structured with clear formatting
+     (tables, headers, sections)? Is the information easy to scan and understand?
+  2. TRANSPARENCY: Did the agent communicate about service errors/retries to the user?
+     Did it set expectations about the unstable system?
+  3. COMPLETENESS OF NARRATIVE: Does the final report provide a coherent summary with
+     actionable context (e.g., contract renewal status, key notes)?
+  Score 0.8-1.0 if well-formatted, transparent about errors, and provides actionable context.
+  Score 0.5-0.7 if reasonably formatted but lacks transparency or context.
+  Score 0.2-0.4 if poorly formatted or missing significant communication elements.
+  Score 0.0-0.1 if no meaningful output or incomprehensible.
+
+reference_solution: |
+  1. Call crm_list_customers with tier=VIP to get VIP customers
+  2. If the call fails (429/500), retry the same call
+  3. Get 4 VIP customers: CUS-001, CUS-003, CUS-005, CUS-007
+  4. Call crm_get_customer for each VIP customer (retrying on errors)
+  5. Compile details: name, industry, annual_revenue, last_contact_date, notes
+  6. Call crm_export_report with all 4 customer IDs and a summary
+  7. Present the report to the user
+
+primary_dimensions: [completion, robustness]

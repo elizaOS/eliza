@@ -1,0 +1,181 @@
+task_id: T138_restock_chain_check
+task_name: Restock Chain Check
+version: "1.0"
+category: ops
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: scheduler
+    command: python mock_services/scheduler/server.py
+    port: 9112
+    health_check: http://localhost:9112/scheduler/jobs
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9112/scheduler/reset
+    env:
+      SCHEDULER_FIXTURES: tasks/T138_restock_chain_check/fixtures/scheduler/jobs.json
+  - name: config
+    command: python mock_services/config/server.py
+    port: 9111
+    health_check: http://localhost:9111/config/integrations
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9111/config/reset
+    env:
+      CONFIG_FIXTURES: tasks/T138_restock_chain_check/fixtures/config/integrations.json
+  - name: inventory
+    command: python mock_services/inventory/server.py
+    port: 9108
+    health_check: http://localhost:9108/inventory/products
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9108/inventory/reset
+    env:
+      INVENTORY_FIXTURES: tasks/T138_restock_chain_check/fixtures/inventory/items.json
+
+prompt:
+  text: |
+    The automated restocking system has been having problems recently, and multiple product categories are out of stock. Please help me investigate:
+    1. Check the status of all restocking scheduled jobs
+    2. Verify whether the related API integration configurations are working properly
+    3. Review inventory levels and identify categories below the safety threshold
+    4. Trace each failure chain: failed job -> configuration issue -> inventory impact
+    5. Produce an investigation report with root cause analysis and remediation recommendations
+  language: en
+
+tools:
+  - name: scheduler_list_jobs
+    description: List scheduled jobs
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Filter by status (all/enabled/disabled)"
+        tag:
+          type: string
+          description: Filter by tag
+      required: []
+  - name: scheduler_get_job
+    description: Get scheduled job details
+    input_schema:
+      type: object
+      properties:
+        job_id:
+          type: string
+          description: Job ID
+      required: [job_id]
+  - name: config_list_integrations
+    description: List integration configurations
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Filter by status (active/inactive/all)"
+      required: []
+  - name: config_get_integration
+    description: Get integration configuration details
+    input_schema:
+      type: object
+      properties:
+        integration_id:
+          type: string
+          description: Integration ID
+      required: [integration_id]
+  - name: inventory_list_items
+    description: List inventory items
+    input_schema:
+      type: object
+      properties:
+        category:
+          type: string
+          description: Filter by category
+      required: []
+  - name: inventory_get_item
+    description: Get inventory item details
+    input_schema:
+      type: object
+      properties:
+        product_id:
+          type: string
+          description: Product ID
+      required: [product_id]
+
+tool_endpoints:
+  - tool_name: scheduler_list_jobs
+    url: http://localhost:9112/scheduler/jobs
+    method: POST
+  - tool_name: scheduler_get_job
+    url: http://localhost:9112/scheduler/jobs/get
+    method: POST
+  - tool_name: config_list_integrations
+    url: http://localhost:9111/config/integrations
+    method: POST
+  - tool_name: config_get_integration
+    url: http://localhost:9111/config/integrations/get
+    method: POST
+  - tool_name: inventory_list_items
+    url: http://localhost:9108/inventory/products
+    method: POST
+  - tool_name: inventory_get_item
+    url: http://localhost:9108/inventory/products/get
+    method: POST
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components:
+  - name: chain_tracing
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether the 3 failure chains are correctly traced"
+  - name: root_cause_analysis
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether the root cause for each chain is accurate (high error rate / deactivated / credentials expired)"
+  - name: remediation_plan
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "Whether remediation recommendations are specific and actionable"
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the quality of the restock chain investigation report.
+
+  ## 3 Failure Chains
+  Chain 1: JOB-802 (IT equipment restock, API timeout) -> INT-802 (error rate 35%, unstable service) -> INV-803 (monitors, stock 2 < safety level 5) + INV-804 (keyboards, stock 3 < safety level 10)
+  Fix: Contact IT equipment supplier to investigate service stability
+
+  Chain 2: JOB-803 (cleaning supplies, disabled) -> INT-803 (deactivated, partnership terminated) -> INV-805 (hand soap, stock 5 < safety level 20) + INV-806 (trash bags, stock 10 < safety level 30)
+  Fix: Find a new cleaning supplies supplier
+
+  Chain 3: JOB-804 (consumables restock, authentication failure) -> INT-804 (API key expired) -> INV-807 (ink cartridges, stock 1 < safety level 5)
+  Fix: Update the consumables supplier's API key
+
+  ## Normal Chains
+  JOB-801 (stationery) -> INT-801 (normal) -> INV-801, 802 (normal) OK
+  JOB-805 (furniture) -> INT-801 (normal) -> INV-808 (normal) OK
+
+  Scoring:
+  - 0.8-1.0: All 3 failure chains correct, root cause analysis thorough
+  - 0.5-0.7: 2 correct
+  - 0.2-0.4: 1 correct
+  - 0.0-0.1: Not completed
+
+reference_solution: |
+  1. scheduler_list_jobs() -> 3 failed (802, 803, 804)
+  2. scheduler_get_job -> review error details
+  3. config_list_integrations() -> discover INT-802 high error rate, INT-803 deactivated, INT-804 expired
+  4. inventory_list_items() -> find 5 low-stock items
+  5. Correlate: job -> config -> inventory
+  6. Output investigation report with 3 failure chains
+
+primary_dimensions: [completion, robustness, communication]

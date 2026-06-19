@@ -1,0 +1,216 @@
+name: Cloud Tests
+
+# Runs cloud's lint/typecheck/unit/integration/playwright suite when cloud-* packages or tests change.
+# Source: cloud/.github/workflows/tests.yml in the original elizaOS/cloud repo.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "packages/cloud-api/**"
+      - "packages/cloud-frontend/**"
+      - "packages/cloud-shared/**"
+      - "packages/cloud-sdk/**"
+      - "packages/cloud-services/**"
+      - "packages/scripts/cloud/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/cloud-tests.yml"
+      - ".github/actions/cloud-setup-test-env/**"
+  push:
+    branches: [develop, main]
+    paths:
+      - "packages/cloud-api/**"
+      - "packages/cloud-frontend/**"
+      - "packages/cloud-shared/**"
+      - "packages/cloud-sdk/**"
+      - "packages/cloud-services/**"
+      - "packages/scripts/cloud/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/cloud-tests.yml"
+      - ".github/actions/cloud-setup-test-env/**"
+
+concurrency:
+  group: cloud-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+  TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+  CACHE_BACKEND: wadis
+  CACHE_ENABLED: "false"
+  NODE_OPTIONS: --max-old-space-size=4096
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  changed-paths:
+    runs-on: ubuntu-latest
+    outputs:
+      cloud_frontend: ${{ steps.filter.outputs.cloud_frontend }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+      - id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "cloud_frontend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+
+          if [[ "$base" =~ ^0+$ ]]; then
+            base="$(git rev-parse "$head^" 2>/dev/null || true)"
+            if [[ -z "$base" ]]; then
+              echo "cloud_frontend=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          changed_files="$(mktemp)"
+          git diff --name-only "$base" "$head" > "$changed_files"
+
+          if grep -Eq '^packages/cloud-frontend/' "$changed_files"; then
+            echo "cloud_frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cloud_frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  lint-and-types:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Lint and typecheck cloud workspaces
+        run: bun run verify:cloud
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Run cloud unit tests
+        run: bun run test:cloud
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/cloud-setup-test-env
+        with:
+          setup-db: "true"
+          db-backend: "pglite"
+      - name: Run cloud integration tests
+        run: bun run test:cloud:integration
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: [lint-and-types]
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/cloud-setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run cloud e2e tests
+        run: bun run test:cloud:e2e
+
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: [changed-paths, lint-and-types]
+    # WHY: the full dashboard Playwright audit currently carries pre-existing
+    # palette/API findings that make it unsuitable as a required PR gate. Keep
+    # it one-click runnable for maintainers while `playwright-smoke` below
+    # remains the blocking browser check on pull requests.
+    if: github.event_name == 'workflow_dispatch' && needs.changed-paths.outputs.cloud_frontend == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium-desktop, chromium-mobile]
+        shard: ["1/2", "2/2"]
+    env:
+      NODE_ENV: test
+      PLAYWRIGHT_WORKERS: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/cloud-setup-test-env
+        with:
+          setup-db: "true"
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+      - name: Run Playwright tests
+        # WHY: the cloud Playwright suite covers every route in both desktop and
+        # mobile projects. Running the full suite serially routinely exhausts
+        # the PR timeout; splitting by project and Playwright shard preserves
+        # the same test surface while letting GitHub schedule independent lanes
+        # in parallel.
+        run: bun run --cwd packages/cloud-frontend test:e2e -- --project=${{ matrix.project }} --shard=${{ matrix.shard }}
+
+  playwright-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [changed-paths, lint-and-types]
+    if: needs.changed-paths.outputs.cloud_frontend == 'true'
+    env:
+      NODE_ENV: test
+      PLAYWRIGHT_WORKERS: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+      - name: Run Playwright route smoke
+        # WHY: public route rendering gives PRs a fast, required browser gate
+        # with screenshot quality checks while the full dashboard audit is
+        # repaired separately.
+        run: bun run --cwd packages/cloud-frontend test:e2e tests/e2e/cloud-routes.spec.ts --project=chromium-desktop -g "public route renders:"
+
+  playwright-behavioral:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [changed-paths, lint-and-types]
+    if: needs.changed-paths.outputs.cloud_frontend == 'true'
+    env:
+      NODE_ENV: test
+      PLAYWRIGHT_WORKERS: "1"
+      # Runs every deterministic mock-driven flow spec; testIgnore in
+      # playwright.config.ts drops the audit/visual/live specs that can't gate.
+      CLOUD_E2E_BEHAVIORAL: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+      - name: Run Playwright behavioral flow suite
+        # WHY: the mock-driven flow specs (login/logout, api keys, app + agent
+        # CRUD, billing, monetization, admin, settings connections/invites,
+        # signing) exercise every page, input, and mutation against page.route
+        # mocks — deterministic and backend-free, so they are a required PR gate.
+        # Visual/palette/a11y audits + live-backend specs are excluded via the
+        # CLOUD_E2E_BEHAVIORAL testIgnore list in playwright.config.ts.
+        run: bun run --cwd packages/cloud-frontend test:e2e --project=chromium-desktop

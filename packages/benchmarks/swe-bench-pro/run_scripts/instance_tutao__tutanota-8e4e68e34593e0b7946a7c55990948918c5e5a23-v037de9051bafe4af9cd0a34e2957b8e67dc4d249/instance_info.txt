@@ -1,0 +1,6 @@
+Instance ID: instance_tutao__tutanota-8e4e68e34593e0b7946a7c55990948918c5e5a23-v037de9051bafe4af9cd0a34e2957b8e67dc4d249
+Repository: tutao/tutanota
+Base Commit: 20a913fa5c683cdfe0ca8358149150fadfd28073
+Test Files: ["test/client/Suite.ts", "test/tests/subscription/CreditCardViewModelTest.ts"]
+FAIL_TO_PASS: ["test/client/Suite.ts | client tests (8589 assertions)", "test/client/Suite.ts | client tests (17 assertions)", "test/client/Suite.ts | client tests (873 assertions)", "test/client/Suite.ts | client tests (10 assertions)", "test/client/Suite.ts | client tests (259 assertions)"]
+PASS_TO_PASS: []

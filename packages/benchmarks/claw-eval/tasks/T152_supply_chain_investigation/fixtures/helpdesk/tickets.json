@@ -1,0 +1,67 @@
+[
+  {
+    "ticket_id": "TK-1101",
+    "title": "Order #A001 Shipping Delay",
+    "description": "Dingxin Software (CUS-1101) Manager Zhou reports: Order #A001 was placed a week ago and includes Smart Router X1 and Switch S200, but has not shipped yet. The customer has followed up multiple times. Please handle urgently.",
+    "customer_id": "CUS-1101",
+    "reporter": "Manager Zhou",
+    "department": "Customer Service",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-22T10:00:00Z",
+    "tags": ["shipping delay", "order"],
+    "category": "Order Issue"
+  },
+  {
+    "ticket_id": "TK-1102",
+    "title": "Order #A002 Shipping Delay",
+    "description": "Hanhai E-commerce (CUS-1102) Director Lin reports: Order #A002 (Switch S200 and Firewall F500) is 5 days past the promised delivery date, impacting their data center deployment schedule.",
+    "customer_id": "CUS-1102",
+    "reporter": "Director Lin",
+    "department": "Customer Service",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-23T09:30:00Z",
+    "tags": ["shipping delay", "order"],
+    "category": "Order Issue"
+  },
+  {
+    "ticket_id": "TK-1103",
+    "title": "Order #A003 Products Out of Stock",
+    "description": "Wantong Logistics (CUS-1103) Director Zhao urgently reports: Order #A003 includes Smart Router X1, Firewall F500, and Fiber Optic Modules. Customer service replied that items are out of stock but could not provide an estimated restock date. As a VIP customer, they demand a definitive response.",
+    "customer_id": "CUS-1103",
+    "reporter": "Director Zhao",
+    "department": "Customer Service",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-24T08:15:00Z",
+    "tags": ["out of stock", "order", "VIP", "urgent"],
+    "category": "Order Issue"
+  },
+  {
+    "ticket_id": "TK-1104",
+    "title": "Software Login Error",
+    "description": "Qianfeng Technology (CUS-1104) Engineer Zhang reports: The admin dashboard occasionally returns a 502 error during login, requiring 2-3 page refreshes to gain access.",
+    "customer_id": "CUS-1104",
+    "reporter": "Engineer Zhang",
+    "department": "Technical Support",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-23T14:00:00Z",
+    "tags": ["login", "system error"],
+    "category": "Technical Issue"
+  },
+  {
+    "ticket_id": "TK-1105",
+    "title": "Invoice Information Correction",
+    "description": "Dingxin Software (CUS-1101) Finance Department requests a correction to last month's invoice billing information. The tax ID was incorrect and needs to be reissued.",
+    "customer_id": "CUS-1101",
+    "reporter": "Finance Department",
+    "department": "Finance",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-24T16:00:00Z",
+    "tags": ["invoice", "correction"],
+    "category": "Financial Issue"
+  }
+]

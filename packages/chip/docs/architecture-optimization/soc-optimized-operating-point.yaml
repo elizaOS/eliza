@@ -1,0 +1,144 @@
+schema: eliza.soc_optimized_operating_point_work_order.v1
+status: modeled_recommendation_release_blocked
+claim_allowed: false
+rtl_claim_allowed: false
+aosp_boot_claim_allowed: false
+linux_boot_claim_allowed: false
+silicon_claim_allowed: false
+release_claim_allowed: false
+phone_performance_claim_allowed: false
+claim_boundary: >
+  This work order records the best local modeled CPU+NPU operating point found
+  by the deterministic 14A sweep. It is not RTL, PDK, post-route, AOSP, silicon,
+  or sustained measured evidence.
+source_artifacts:
+  optimizer_report: benchmarks/results/soc-optimized-operating-point.json
+  baseline_sweep_report: benchmarks/results/soc-thermal-sweep.json
+  optimizer_command: make soc-optimization
+  checker_command: make soc-optimization
+  test_command: make soc-optimization-test
+  process_effects_contract: docs/spec-db/process-14a-effects.yaml
+  rail_plan_contract: docs/pd/rail-plan-2028.yaml
+rail_plan_hash:
+  rail_plan_path: docs/pd/rail-plan-2028.yaml
+  rail_plan_sha256: 2e692801c266587cd3ca7e2f97c486eb76d6634f5489b1e0a8546dac00ba51e3
+  enforcement: >
+    This sha256 must match the current sha256 of docs/pd/rail-plan-2028.yaml
+    AND the sha256 declared in docs/evidence/power/rail-plan-evidence.yaml.
+    If the rail plan changes, this field must be updated in the same commit
+    and the modeled power/perf claims in this work order must be re-derived.
+    Drift implies the operating-point claim has not been re-validated against
+    the new rail plan. Enforced by scripts/check_rail_plan.py
+    --binding-target docs/architecture-optimization/soc-optimized-operating-point.yaml.
+selected_modeled_point:
+  cpu_cores: 2
+  cpu_base_frequency_hz: 3200000000
+  cpu_base_ipc: 1.8
+  cpu_base_power_w: 1.4
+  npu_base_tops: 44.0
+  npu_base_power_w: 1.2
+  # memory_sustained_gbps is the modelled aggregate bandwidth used by
+  # the optimizer.  This number is the AI SKU envelope plus headroom;
+  # the per-SKU phone-class targets are tracked under
+  # memory_sustained_per_sku below and in
+  # docs/evidence/memory/uma-dram-evidence-gate.yaml.
+  memory_sustained_gbps: 240.0
+  ambient_c: 25.0
+memory_sustained_per_sku:
+  baseline:
+    standard: LPDDR5X-10667
+    bus_width_bits: 64
+    peak_bandwidth_gbps: 85.3
+    sustained_target_gbps: 70
+    capacity_gib_skus: [12, 16]
+    rationale: >
+      LPDDR5X-10667 over a 4 x 16-bit (64-bit) bus caps at 85.3 GB/s
+      peak.  Sustaining 70 GB/s under display+camera+NPU contention is
+      the realistic baseline-SKU target and matches Snapdragon 8 Elite
+      Gen 5 (~84.8 GB/s peak) and Dimensity 9500 (~85.3 GB/s peak).
+  ai:
+    standard: LPDDR6-14400
+    bus_width_bits: 96
+    peak_bandwidth_gbps: 172.8
+    sustained_target_gbps: 140
+    capacity_gib_skus: [24]
+    rationale: >
+      LPDDR6-14400 over a 4 x 24-bit (96-bit logical) bus reaches
+      172.8 GB/s peak.  Sustaining 140 GB/s is achievable with the
+      stretch SKU.  The 240 GB/s modelled point is reserved for the
+      optimizer's headroom guardband and should not be used directly
+      as a sustained gate.
+sku_split_decision:
+  decision: SKU_SPLIT_REQUIRED
+  reconciles:
+    - docs/evidence/memory/uma-dram-evidence-gate.yaml::phone_2028_target_profile
+    - docs/architecture-optimization/sota-2028/memory-subsystem.md (section C.1)
+  reason: >
+    The aspirational 240 GB/s figure in the optimizer's selected point
+    is higher than any 64-bit LPDDR5X-10667 SKU can deliver.  The gate's
+    180 GB/s peak / 120 GB/s sustained requirement maps to the LPDDR6 AI
+    SKU only.  Splitting the SKUs is the only way to reconcile the
+    headroom-driven optimizer point with the realistic baseline SKU
+    bandwidth without silently lowering either the bandwidth claim or
+    the optimizer numbers.
+  next:
+    - The phone_2028_target_profile is downgraded for the baseline SKU
+      to 85.3 GB/s peak / 70 GB/s sustained and retained as 180+ GB/s
+      peak / 120+ GB/s sustained for the AI SKU.  Both SKUs share the
+      same RTL; only the LPDDR PHY data rate and bus width differ.
+optimized_summary:
+  no_modeled_throttle: true
+  max_die_temp_c: 78.10407520000001
+  max_total_power_w: 4.56854
+  min_bandwidth_margin_gbps: 32.80000000000001
+  min_composite_perf_per_w: 0.7762635365079037
+  min_npu_int8_tops: 24.3936
+  process_corner_count: 4
+  scenario_count: 3
+  worst_efficiency_corner: 14a_ss_0p63v_105c_frontside_pdn
+  worst_efficiency_scenario: sustained_npu_camera_display
+  worst_thermal_corner: 14a_bspdn_follow_on_hot_ir_em_stress
+  worst_thermal_scenario: sustained_npu_camera_display
+baseline_delta:
+  baseline_had_modeled_throttle: true
+  optimized_has_modeled_throttle: false
+  max_die_c_delta: -51.149102400000004
+  max_power_w_delta: -4.206979999999999
+  min_bandwidth_margin_gbps_delta: 92.4
+  min_composite_perf_per_w_ratio: 2.246971643865274
+robustness_summary:
+  pass: true
+  case_count: 6
+  max_die_temp_c: 89.58743576
+  max_total_power_w: 4.676456999999999
+  min_bandwidth_margin_gbps: 23.560000000000002
+  min_composite_perf_per_w: 0.725014346244828
+  min_npu_int8_tops: 23.17392
+  failing_cases: []
+design_deltas_required_before_claim:
+  - id: cpu_power_budget
+    modeled_target: 1.4 W CPU/AP active budget at the selected 2-core scalable point.
+    implementation_dependency: Replace tiny CPU scaffold with generated Linux-capable AP and DVFS/power-state evidence.
+    release_blocker: cpu_ap_completion_gate
+  - id: npu_perf_per_w_budget
+    modeled_target: 44.0 dense INT8 base TOPS at 1.2 W NPU active budget.
+    implementation_dependency: Add measured NPU datapath, compiler/runtime coverage, NNAPI proof, and calibrated power trace.
+    release_blocker: sustained_power_thermal_evidence_check
+  - id: memory_bandwidth_budget
+    modeled_target: 240.0 GB/s sustained memory bandwidth for no-throttle CPU+NPU+display/camera scenarios plus 5% guardband sensitivity.
+    implementation_dependency: Add LPDDR-class controller/PHY, UMA/coherency, QoS, IOMMU/SMMU, and contended Android traces.
+    release_blocker: memory_uma_claim_gate
+  - id: thermal_budget
+    modeled_target: worst modeled die temperature <= 95 C across all 14A process corners.
+    implementation_dependency: Correlate activity, package, board, enclosure, and chamber traces from the selected target.
+    release_blocker: sustained_power_thermal_evidence_check
+  - id: process_corner_budget
+    modeled_target: no modeled throttle across four required 14A corners.
+    implementation_dependency: Replace planning derates with selected PDK libraries, extracted parasitics, IR/EM, STA, and thermal signoff.
+    release_blocker: pd_signoff_release_check
+forbidden_release_use_until:
+  - cpu_ap_completion_gate passes with real AP transcripts.
+  - aosp_simulator_completion_gate passes with local simulator evidence.
+  - sustained_power_thermal_evidence_check passes with measured aligned traces.
+  - memory_uma_claim_gate is replaced by measured LPDDR/UMA/IOMMU/QoS evidence.
+  - pd_signoff_release_check passes with extracted 14A PDK timing, power, and thermal data.

@@ -1,0 +1,201 @@
+item_id,dimension,discrimination_a,difficulty_b,guessing_c,item_total_correlation,response_count
+ITEM_001,Mathematics,1.83,-0.311,0.027,0.513,178
+ITEM_002,Reasoning,2.493,2.209,0.1098,0.751,63
+ITEM_003,Creative Writing,0.643,-1.643,0.0618,0.328,191
+ITEM_004,Scientific Knowledge,2.396,0.099,0.0041,0.8,108
+ITEM_005,Instruction Following,1.802,-0.137,0.0431,0.442,185
+ITEM_006,Language Understanding,1.608,-0.329,0.0082,0.597,158
+ITEM_007,Scientific Knowledge,0.543,1.251,0.0414,0.142,147
+ITEM_008,Reading Comprehension,1.111,-0.332,0.0717,0.271,87
+ITEM_009,Reading Comprehension,1.614,1.632,0.0119,0.555,50
+ITEM_010,Mathematics,1.244,-1.575,0.0113,0.446,190
+ITEM_011,Scientific Knowledge,0.983,1.748,0.0858,0.195,117
+ITEM_012,Language Understanding,1.015,3.0,0.043,0.364,105
+ITEM_013,Mathematics,0.37,-0.261,0.0509,0.103,80
+ITEM_014,Creative Writing,1.343,0.656,0.0489,0.539,65
+ITEM_015,Creative Writing,2.334,-0.72,0.0363,0.577,185
+ITEM_016,Logical Deduction,2.036,0.5,0.0887,0.7,147
+ITEM_017,Creative Writing,0.428,0.491,0.0548,0.1,196
+ITEM_018,Data Analysis,1.407,-1.449,0.0227,0.438,115
+ITEM_019,Data Analysis,1.106,0.422,0.0323,0.301,158
+ITEM_020,Instruction Following,1.738,-0.797,0.0227,0.543,165
+ITEM_021,Instruction Following,1.043,-0.642,0.0378,0.422,78
+ITEM_022,Scientific Knowledge,1.073,-1.127,0.006,0.262,59
+ITEM_023,Common Sense,1.287,-0.868,0.0063,0.36,53
+ITEM_024,Code Generation,1.364,1.986,0.0068,0.491,193
+ITEM_025,Summarization,1.961,0.188,0.0381,0.592,113
+ITEM_026,Language Understanding,1.721,0.259,0.0356,0.537,58
+ITEM_027,Data Analysis,1.733,0.717,0.0369,0.476,55
+ITEM_028,Common Sense,2.43,-2.106,0.0374,0.736,196
+ITEM_029,Reading Comprehension,1.756,0.258,0.0457,0.524,168
+ITEM_030,Common Sense,0.356,0.079,0.0233,0.1,75
+ITEM_031,Code Generation,2.055,0.6,0.0448,0.713,95
+ITEM_032,Instruction Following,2.16,0.697,0.005,0.685,85
+ITEM_033,Summarization,1.302,-1.215,0.0208,0.358,85
+ITEM_034,Creative Writing,0.337,0.211,0.0079,0.1,147
+ITEM_035,Creative Writing,0.56,-1.922,0.0219,0.181,165
+ITEM_036,Mathematics,1.057,0.23,0.0361,0.384,199
+ITEM_037,Language Understanding,1.512,-0.151,0.041,0.373,121
+ITEM_038,Creative Writing,2.228,0.844,0.0216,0.583,147
+ITEM_039,Scientific Knowledge,0.558,-1.61,0.0102,0.1,120
+ITEM_040,Data Analysis,2.016,1.542,0.0212,0.569,84
+ITEM_041,Mathematics,1.447,-0.615,0.0063,0.443,50
+ITEM_042,Language Understanding,1.457,-1.203,0.0078,0.391,87
+ITEM_043,Language Understanding,0.437,2.678,0.0579,0.1,160
+ITEM_044,Scientific Knowledge,0.302,-1.14,0.0465,0.23,142
+ITEM_045,Reasoning,1.199,-0.334,0.0896,0.323,102
+ITEM_046,Creative Writing,0.486,-0.342,0.0379,0.1,199
+ITEM_047,Summarization,1.185,-1.941,0.0137,0.217,189
+ITEM_048,Code Generation,1.732,0.663,0.0086,0.502,93
+ITEM_049,Creative Writing,2.369,1.465,0.018,0.665,134
+ITEM_050,Instruction Following,1.688,-0.937,0.0252,0.494,83
+ITEM_051,Reasoning,0.342,-0.275,0.0968,0.174,59
+ITEM_052,Creative Writing,1.131,-1.518,0.0245,0.257,179
+ITEM_053,Data Analysis,0.903,1.065,0.0191,0.162,175
+ITEM_054,Logical Deduction,1.477,2.601,0.0547,0.246,84
+ITEM_055,Common Sense,1.428,0.442,0.0567,0.487,53
+ITEM_056,Reasoning,1.758,0.991,0.0297,0.474,78
+ITEM_057,Language Understanding,2.243,0.155,0.0308,0.717,138
+ITEM_058,Common Sense,2.429,1.481,0.0393,0.8,122
+ITEM_059,Instruction Following,0.398,0.119,0.0342,0.1,107
+ITEM_060,Creative Writing,1.116,2.118,0.0484,0.364,125
+ITEM_061,Reading Comprehension,2.361,2.032,0.0692,0.695,145
+ITEM_062,Data Analysis,2.424,-0.974,0.0297,0.789,154
+ITEM_063,Code Generation,0.396,1.371,0.026,0.173,107
+ITEM_064,Instruction Following,1.801,-0.369,0.0411,0.598,87
+ITEM_065,Code Generation,2.057,-0.249,0.0592,0.563,86
+ITEM_066,Logical Deduction,1.752,-3.0,0.0352,0.561,159
+ITEM_067,Code Generation,0.844,-0.654,0.027,0.208,61
+ITEM_068,Language Understanding,1.043,2.096,0.0286,0.183,77
+ITEM_069,Creative Writing,0.798,-1.21,0.0485,0.289,110
+ITEM_070,Instruction Following,2.407,1.715,0.0151,0.8,194
+ITEM_071,Reading Comprehension,2.342,-2.228,0.0662,0.728,97
+ITEM_072,Language Understanding,2.293,-2.096,0.0325,0.725,113
+ITEM_073,Logical Deduction,0.779,-1.381,0.0716,0.246,54
+ITEM_074,Mathematics,1.365,-1.275,0.0375,0.312,61
+ITEM_075,Code Generation,1.222,-0.397,0.011,0.236,96
+ITEM_076,Creative Writing,0.394,-1.134,0.0122,0.177,94
+ITEM_077,Logical Deduction,1.583,0.832,0.0441,0.447,175
+ITEM_078,Reasoning,1.958,1.611,0.0927,0.648,124
+ITEM_079,Mathematics,1.806,-1.093,0.0758,0.585,178
+ITEM_080,Mathematics,1.833,0.811,0.0178,0.352,110
+ITEM_081,Common Sense,0.618,-0.161,0.085,0.14,96
+ITEM_082,Instruction Following,1.81,-1.839,0.1073,0.639,90
+ITEM_083,Language Understanding,0.427,1.135,0.0962,0.202,178
+ITEM_084,Reading Comprehension,1.992,-1.482,0.0396,0.501,57
+ITEM_085,Mathematics,2.415,-0.978,0.0263,0.624,61
+ITEM_086,Creative Writing,1.469,-0.842,0.0225,0.43,142
+ITEM_087,Common Sense,2.08,0.411,0.0551,0.592,105
+ITEM_088,Summarization,0.309,-1.032,0.0589,0.1,157
+ITEM_089,Scientific Knowledge,0.31,0.549,0.0817,0.14,145
+ITEM_090,Summarization,1.736,0.222,0.0307,0.369,182
+ITEM_091,Reasoning,2.02,-2.14,0.0004,0.543,177
+ITEM_092,Summarization,1.129,0.136,0.061,0.293,182
+ITEM_093,Logical Deduction,2.279,-0.353,0.051,0.667,53
+ITEM_094,Data Analysis,1.801,0.511,0.0058,0.67,61
+ITEM_095,Language Understanding,1.059,1.187,0.0468,0.309,71
+ITEM_096,Language Understanding,1.714,-1.398,0.0211,0.445,66
+ITEM_097,Scientific Knowledge,0.794,-0.423,0.0531,0.118,167
+ITEM_098,Common Sense,0.438,-0.913,0.06,0.1,60
+ITEM_099,Summarization,2.367,-1.749,0.023,0.701,130
+ITEM_100,Reasoning,0.35,0.26,0.0524,0.166,100
+ITEM_101,Instruction Following,0.657,-1.675,0.0105,0.204,108
+ITEM_102,Logical Deduction,2.013,1.089,0.059,0.542,200
+ITEM_103,Scientific Knowledge,1.851,-0.082,0.0443,0.443,107
+ITEM_104,Creative Writing,1.649,-1.463,0.004,0.66,80
+ITEM_105,Language Understanding,2.28,1.617,0.0214,0.705,92
+ITEM_106,Instruction Following,1.883,0.846,0.0535,0.567,189
+ITEM_107,Mathematics,1.922,-3.0,0.0131,0.646,84
+ITEM_108,Logical Deduction,1.526,-2.271,0.021,0.353,56
+ITEM_109,Creative Writing,2.227,2.18,0.0382,0.634,141
+ITEM_110,Common Sense,2.021,-0.4,0.0679,0.521,108
+ITEM_111,Logical Deduction,0.345,0.49,0.0382,0.232,60
+ITEM_112,Language Understanding,0.357,-1.239,0.0383,0.1,163
+ITEM_113,Language Understanding,1.454,-0.293,0.0184,0.592,117
+ITEM_114,Reading Comprehension,1.048,0.127,0.0369,0.423,121
+ITEM_115,Common Sense,1.103,0.001,0.0258,0.341,65
+ITEM_116,Common Sense,1.459,-0.592,0.028,0.476,88
+ITEM_117,Instruction Following,1.259,-0.34,0.0372,0.36,177
+ITEM_118,Common Sense,0.815,-0.672,0.0302,0.274,50
+ITEM_119,Language Understanding,0.996,1.9,0.0044,0.201,51
+ITEM_120,Logical Deduction,0.306,-0.278,0.0697,0.1,90
+ITEM_121,Creative Writing,1.584,-0.757,0.0554,0.418,173
+ITEM_122,Summarization,1.313,0.811,0.0259,0.426,85
+ITEM_123,Summarization,0.473,-0.505,0.0576,0.159,120
+ITEM_124,Code Generation,1.492,-1.028,0.0554,0.498,191
+ITEM_125,Instruction Following,0.901,-1.331,0.0341,0.336,121
+ITEM_126,Language Understanding,2.412,-0.796,0.0234,0.642,84
+ITEM_127,Language Understanding,1.036,-1.179,0.0524,0.319,177
+ITEM_128,Data Analysis,2.045,-0.449,0.0205,0.62,177
+ITEM_129,Language Understanding,2.39,-2.614,0.0454,0.666,190
+ITEM_130,Instruction Following,0.423,-1.169,0.0883,0.128,166
+ITEM_131,Summarization,0.304,-1.818,0.0308,0.1,145
+ITEM_132,Scientific Knowledge,2.489,2.895,0.1032,0.8,100
+ITEM_133,Common Sense,2.418,0.635,0.053,0.727,71
+ITEM_134,Summarization,1.133,0.744,0.0576,0.474,156
+ITEM_135,Scientific Knowledge,0.393,0.9,0.0158,0.1,179
+ITEM_136,Data Analysis,1.178,-0.305,0.0414,0.304,120
+ITEM_137,Logical Deduction,0.429,0.558,0.061,0.125,138
+ITEM_138,Instruction Following,0.475,-1.87,0.0003,0.131,53
+ITEM_139,Reasoning,0.426,0.301,0.0212,0.1,111
+ITEM_140,Reasoning,0.59,-0.84,0.0199,0.1,198
+ITEM_141,Summarization,0.914,0.729,0.087,0.325,66
+ITEM_142,Summarization,0.365,-0.588,0.0136,0.1,148
+ITEM_143,Reasoning,1.633,-1.862,0.0328,0.514,112
+ITEM_144,Scientific Knowledge,0.699,0.785,0.0149,0.117,131
+ITEM_145,Reading Comprehension,1.811,1.461,0.0272,0.372,183
+ITEM_146,Scientific Knowledge,0.798,0.593,0.0413,0.226,154
+ITEM_147,Data Analysis,0.456,0.608,0.0226,0.202,110
+ITEM_148,Reading Comprehension,1.634,-0.172,0.0571,0.461,140
+ITEM_149,Mathematics,1.284,-0.454,0.0607,0.351,158
+ITEM_150,Data Analysis,2.173,-0.172,0.0262,0.626,186
+ITEM_151,Language Understanding,0.303,-1.07,0.0772,0.1,69
+ITEM_152,Code Generation,0.577,-1.16,0.0314,0.27,122
+ITEM_153,Language Understanding,1.069,-1.58,0.0759,0.345,113
+ITEM_154,Scientific Knowledge,2.29,1.445,0.0046,0.764,143
+ITEM_155,Creative Writing,1.587,-0.794,0.1488,0.583,114
+ITEM_156,Common Sense,0.604,1.575,0.0237,0.228,123
+ITEM_157,Mathematics,2.288,-1.425,0.0769,0.557,142
+ITEM_158,Reading Comprehension,1.096,-1.013,0.0398,0.335,107
+ITEM_159,Summarization,2.371,-0.299,0.0207,0.643,70
+ITEM_160,Reading Comprehension,1.86,1.094,0.0679,0.427,196
+ITEM_161,Language Understanding,0.626,-2.79,0.0047,0.1,153
+ITEM_162,Creative Writing,1.662,1.007,0.0324,0.359,198
+ITEM_163,Common Sense,2.13,-1.115,0.0185,0.646,118
+ITEM_164,Mathematics,0.829,-1.716,0.1036,0.223,120
+ITEM_165,Reading Comprehension,1.425,2.555,0.0046,0.447,50
+ITEM_166,Common Sense,0.702,-0.529,0.0311,0.129,55
+ITEM_167,Logical Deduction,2.109,-0.358,0.0437,0.689,75
+ITEM_168,Reasoning,1.425,-0.797,0.0879,0.429,198
+ITEM_169,Mathematics,0.761,0.586,0.0536,0.345,84
+ITEM_170,Reading Comprehension,1.192,-0.815,0.016,0.401,97
+ITEM_171,Reasoning,0.588,2.014,0.0542,0.169,113
+ITEM_172,Language Understanding,2.244,-1.572,0.0238,0.758,181
+ITEM_173,Creative Writing,2.041,-0.598,0.0801,0.613,170
+ITEM_174,Language Understanding,0.987,1.266,0.0256,0.235,88
+ITEM_175,Summarization,2.194,1.314,0.0414,0.664,106
+ITEM_176,Creative Writing,0.911,0.684,0.0063,0.175,149
+ITEM_177,Instruction Following,1.621,-1.196,0.0218,0.588,73
+ITEM_178,Common Sense,2.224,-0.921,0.0782,0.64,177
+ITEM_179,Logical Deduction,2.125,-1.905,0.0235,0.65,61
+ITEM_180,Reading Comprehension,0.331,-0.504,0.0533,0.112,100
+ITEM_181,Scientific Knowledge,1.349,-0.171,0.0529,0.286,195
+ITEM_182,Creative Writing,1.868,-2.821,0.012,0.555,127
+ITEM_183,Scientific Knowledge,0.996,-0.209,0.0097,0.481,99
+ITEM_184,Code Generation,0.459,1.643,0.0678,0.234,181
+ITEM_185,Language Understanding,0.502,-1.44,0.0998,0.188,66
+ITEM_186,Code Generation,1.91,-1.439,0.0829,0.607,164
+ITEM_187,Reasoning,1.558,-0.743,0.0571,0.469,80
+ITEM_188,Summarization,1.44,0.433,0.0332,0.387,65
+ITEM_189,Creative Writing,1.537,-2.08,0.0203,0.364,103
+ITEM_190,Logical Deduction,1.741,-1.094,0.1513,0.575,157
+ITEM_191,Mathematics,1.595,1.564,0.0452,0.538,155
+ITEM_192,Creative Writing,0.657,-0.736,0.0198,0.127,59
+ITEM_193,Instruction Following,1.021,0.681,0.0393,0.248,97
+ITEM_194,Scientific Knowledge,1.381,0.997,0.0726,0.47,108
+ITEM_195,Code Generation,1.154,-1.989,0.012,0.473,95
+ITEM_196,Scientific Knowledge,2.016,0.894,0.0446,0.523,139
+ITEM_197,Instruction Following,1.221,-1.473,0.0312,0.298,189
+ITEM_198,Creative Writing,0.381,-0.608,0.0776,0.12,148
+ITEM_199,Mathematics,0.509,0.82,0.0593,0.202,132
+ITEM_200,Common Sense,1.137,-0.131,0.0178,0.408,76

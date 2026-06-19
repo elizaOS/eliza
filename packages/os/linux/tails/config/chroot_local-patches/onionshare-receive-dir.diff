@@ -1,0 +1,11 @@
+--- a/usr/lib/python3/dist-packages/onionshare_cli/mode_settings.py.orig	2025-03-05 01:53:15.000000000 +0000
++++ b/usr/lib/python3/dist-packages/onionshare_cli/mode_settings.py	2025-04-15 15:29:39.203427703 +0000
+@@ -122,7 +122,7 @@
+             return os.path.expanduser("~\\OnionShare")
+         else:
+             # All other OSes
+-            return os.path.expanduser("~/OnionShare")
++            return os.path.expanduser("~/Downloads")
+ 
+     def load(self, filename=None):
+         # Load persistent settings from disk. If the file doesn't exist, create it

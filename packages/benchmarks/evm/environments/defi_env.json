@@ -1,0 +1,8 @@
+{
+  "name": "defi_evm_benchmark",
+  "description": "DeFi-focused EVM benchmark using mainnet fork",
+  "chain": "general",
+  "chain_id": 31337,
+  "timeout": 45000,
+  "notes": "Set FORK_URL to an Alchemy/Infura mainnet RPC via env var."
+}

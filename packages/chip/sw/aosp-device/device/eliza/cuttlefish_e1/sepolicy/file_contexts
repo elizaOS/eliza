@@ -1,0 +1,7 @@
+# SELinux file_contexts for the Cuttlefish e1_npu sim overlay.
+#
+# Label the simulator HAL binary into hal_e1_npu_default_exec so it
+# transitions into the same hal_e1_npu_default domain as the on-silicon
+# service. That keeps the SELinux surface identical for VTS/neverallow.
+
+/vendor/bin/hw/vendor\.eliza\.e1_npu@1\.0-service\.sim    u:object_r:hal_e1_npu_default_exec:s0

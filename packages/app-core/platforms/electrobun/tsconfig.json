@@ -1,0 +1,135 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    "outDir": "./dist",
+    "rootDir": "../../../..",
+    "types": ["bun-types"],
+    "paths": {
+      "drizzle-orm": [
+        "../../../../plugins/plugin-sql/node_modules/drizzle-orm"
+      ],
+      "drizzle-orm/*": [
+        "../../../../plugins/plugin-sql/node_modules/drizzle-orm/*"
+      ],
+      "@capacitor/app": [
+        "../../../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
+      ],
+      "@clack/prompts": ["../../../agent/node_modules/@clack/prompts"],
+      "@elizaos/app-core": ["../../src/index.ts"],
+      "@elizaos/app-core/*": ["../../src/*"],
+      "@elizaos/plugin-remote-manifest": [
+        "../../../plugin-remote-manifest/src/index.ts"
+      ],
+      "@elizaos/plugin-remote-manifest/*": [
+        "../../../plugin-remote-manifest/src/*"
+      ],
+      "@elizaos/plugin-worker-runtime": [
+        "../../../plugin-worker-runtime/src/index.ts"
+      ],
+      "@elizaos/plugin-worker-runtime/*": [
+        "../../../plugin-worker-runtime/src/*"
+      ],
+      "@elizaos/agent": ["../../../agent/src/index.ts"],
+      "@elizaos/agent/*": ["../../../agent/src/*"],
+      "@elizaos/core": ["../../../core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../../core/src/*"],
+      "@elizaos/shared": ["../../../shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../../shared/src/*"],
+      "@elizaos/ui": ["../../../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../../ui/src/*"],
+      "@elizaos/plugin-elizacloud": [
+        "../../../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../../../plugins/plugin-elizacloud/src/*"
+      ],
+      "@elizaos/cloud-sdk": ["../../../cloud-sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../../../cloud-sdk/src/*"],
+      "@elizaos/plugin-coding-tools": [
+        "../../../../plugins/plugin-coding-tools/src/index.ts"
+      ],
+      "@elizaos/plugin-coding-tools/*": [
+        "../../../../plugins/plugin-coding-tools/src/*"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../../../plugins/plugin-local-inference/src/*"
+      ],
+      "@elizaos/plugin-app-manager": [
+        "../../../../plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-app-manager/*": [
+        "../../../../plugins/plugin-app-manager/src/*"
+      ],
+      "@elizaos/plugin-workflow": [
+        "../../../../plugins/plugin-workflow/src/index.ts"
+      ],
+      "@elizaos/plugin-workflow/*": [
+        "../../../../plugins/plugin-workflow/src/*"
+      ],
+      "@elizaos/plugin-signal": [
+        "../../../../plugins/plugin-signal/src/index.ts"
+      ],
+      "@elizaos/plugin-signal/*": ["../../../../plugins/plugin-signal/src/*"],
+      "@elizaos/plugin-whatsapp": [
+        "../../../../plugins/plugin-whatsapp/src/index.ts"
+      ],
+      "@elizaos/plugin-whatsapp/*": [
+        "../../../../plugins/plugin-whatsapp/src/*"
+      ],
+      "@elizaos/capacitor-llama": [
+        "../../../native-plugins/llama/src/index.ts"
+      ],
+      "@elizaos/capacitor-*": ["../../../native-plugins/*/src/index.ts"],
+      "@elizaos/plugin-wallet-ui": [
+        "../../../../plugins/plugin-wallet-ui/src/index.ts"
+      ],
+      "@elizaos/plugin-wallet-ui/*": [
+        "../../../../plugins/plugin-wallet-ui/src/*"
+      ],
+      "@elizaos/plugin-task-coordinator": [
+        "../../../../plugins/plugin-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/plugin-task-coordinator/*": [
+        "../../../../plugins/plugin-task-coordinator/src/*"
+      ],
+      "@elizaos/vault": ["../../../vault/src/index.ts"],
+      "@elizaos/vault/*": ["../../../vault/src/*"],
+      "@elizaos/plugin-wallet": [
+        "../../../../plugins/plugin-wallet/src/index.ts"
+      ],
+      "@elizaos/plugin-wallet/*": ["../../../../plugins/plugin-wallet/src/*"],
+      "@elizaos/plugin-registry": [
+        "../../../../plugins/plugin-registry/src/index.ts"
+      ],
+      "@elizaos/plugin-registry/*": [
+        "../../../../plugins/plugin-registry/src/*"
+      ],
+      "@elizaos/plugin-sql": [
+        "../../../../plugins/plugin-sql/src/index.node.ts"
+      ],
+      "@elizaos/plugin-sql/*": ["../../../../plugins/plugin-sql/src/*"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "../../src/ambient-modules.d.ts",
+    "../../../agent/src/external-modules.d.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

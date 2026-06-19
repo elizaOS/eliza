@@ -1,0 +1,1047 @@
+import type { MessageExampleGroup } from "@elizaos/core";
+import { ChevronLeft } from "lucide-react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { client } from "../../api/client";
+import type {
+  CharacterData,
+  CharacterHistoryEntry,
+  DocumentRecord,
+  ExperienceRecord,
+  RelationshipsActivityItem,
+} from "../../api/client-types";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
+import {
+  getWindowNavigationPath,
+  shouldUseHashNavigation,
+} from "../../navigation";
+import { useApp } from "../../state/useApp";
+// Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
+// chunk-level circular dependency.
+import { WidgetHost } from "../../widgets/WidgetHost";
+import { getBrandIcon } from "../conversations/brand-icons";
+import { DocumentsView } from "../pages/DocumentsView";
+import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
+import { Button } from "../ui/button";
+import {
+  CharacterExamplesPanel,
+  CharacterIdentityPanel,
+  CharacterStylePanel,
+} from "./CharacterEditorPanels";
+import { CharacterExperienceWorkspace } from "./CharacterExperienceWorkspace";
+import { CharacterLearnedSkillsSection } from "./CharacterLearnedSkillsSection";
+import {
+  CharacterOverviewSection,
+  type CharacterOverviewWidget,
+} from "./CharacterOverviewSection";
+import {
+  type CharacterHubSection,
+  getCharacterHubSectionLabel,
+  mapExperienceRecordToHubRecord,
+} from "./character-hub-helpers";
+
+type CharacterStyleSection = "all" | "chat" | "post";
+
+type LearnedSkillSummary = {
+  description?: string | null;
+  name: string;
+  source?: string | null;
+  status?: "active" | "proposed" | "disabled" | string;
+};
+
+type LearnedSkillsResponse = {
+  skills?: LearnedSkillSummary[];
+};
+
+const CHARACTER_SECTION_PATHS: Record<CharacterHubSection, string> = {
+  overview: "/character",
+  personality: "/character/personality",
+  documents: "/character/documents",
+  skills: "/character/skills",
+  experience: "/character/experience",
+  relationships: "/character/relationships",
+};
+
+function getSectionFromLocation(tab: string): CharacterHubSection {
+  const pathname = getWindowNavigationPath().toLowerCase();
+  if (pathname.endsWith("/personality")) return "personality";
+  if (pathname.endsWith("/documents")) return "documents";
+  if (pathname.endsWith("/skills")) return "skills";
+  if (pathname.endsWith("/experience")) return "experience";
+  if (pathname.endsWith("/relationships")) return "relationships";
+  if (tab === "documents") return "documents";
+  return "overview";
+}
+
+function updateCharacterSectionPath(
+  section: CharacterHubSection,
+  mode: "push" | "replace" = "push",
+): void {
+  if (typeof window === "undefined") return;
+  const path = CHARACTER_SECTION_PATHS[section];
+  if (!path || getWindowNavigationPath() === path) return;
+  if (shouldUseHashNavigation()) {
+    window.location.hash = path;
+    return;
+  }
+  window.history[mode === "replace" ? "replaceState" : "pushState"](
+    null,
+    "",
+    path,
+  );
+}
+
+const DEFAULT_DOCUMENT_FILENAMES = new Set([
+  "eliza-overview.txt",
+  "eliza-history.txt",
+  "eliza-cloud-basics.txt",
+]);
+
+function isDefaultDocumentRecord(document: DocumentRecord): boolean {
+  const normalizedFilename = document.filename.trim().toLowerCase();
+  return (
+    document.source === "bundled" ||
+    document.source === "character" ||
+    document.provenance.kind === "bundled" ||
+    document.provenance.kind === "character" ||
+    DEFAULT_DOCUMENT_FILENAMES.has(normalizedFilename)
+  );
+}
+
+function mergeCharacterPatch(
+  base: CharacterData,
+  patch: CharacterData,
+): CharacterData {
+  return {
+    ...base,
+    ...patch,
+    style: patch.style ? { ...(base.style ?? {}), ...patch.style } : base.style,
+  };
+}
+
+function latestTimestamp(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+const HUB_CACHE_PREFIX = "character-hub-cache";
+
+function hubCacheKey(suffix: string): string {
+  return `${HUB_CACHE_PREFIX}:${suffix}`;
+}
+
+function readHubCache<T>(suffix: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(hubCacheKey(suffix));
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as T;
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeHubCache<T>(suffix: string, value: T): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(hubCacheKey(suffix), JSON.stringify(value));
+  } catch {
+    /* ignore quota / serialization errors */
+  }
+}
+
+export function CharacterHubView({
+  d,
+  bioText,
+  normalizedMessageExamples,
+  pendingStyleEntries,
+  styleEntryDrafts,
+  handleFieldEdit,
+  applyFieldEdit,
+  handlePendingStyleEntryChange,
+  applyStyleEdit,
+  handleStyleEntryDraftChange,
+  characterSaving,
+  characterSaveSuccess,
+  characterSaveError,
+  hasPendingChanges,
+  onSave,
+}: {
+  d: CharacterData;
+  bioText: string;
+  normalizedMessageExamples: MessageExampleGroup[];
+  pendingStyleEntries: Record<string, string>;
+  styleEntryDrafts: Record<string, string[]>;
+  handleFieldEdit: (field: string, value: unknown) => void;
+  applyFieldEdit: (field: string, value: unknown) => void;
+  handlePendingStyleEntryChange: (key: string, value: string) => void;
+  applyStyleEdit: (key: CharacterStyleSection, value: string) => void;
+  handleStyleEntryDraftChange: (
+    key: string,
+    index: number,
+    value: string,
+  ) => void;
+  characterSaving: boolean;
+  characterSaveSuccess: string | null;
+  characterSaveError: string | null;
+  hasPendingChanges: boolean;
+  onSave: () => Promise<unknown>;
+}) {
+  useRenderGuard("CharacterHubView");
+  const { setActionNotice, setTab, tab, t } = useApp();
+  const [activeSection, setActiveSection] = useState<CharacterHubSection>(() =>
+    getSectionFromLocation(tab),
+  );
+  const [documentRecords, setDocumentRecords] = useState<DocumentRecord[]>(() =>
+    readHubCache<DocumentRecord[]>("documents", []),
+  );
+  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
+    null,
+  );
+  const [historyEntries, setHistoryEntries] = useState<CharacterHistoryEntry[]>(
+    () => readHubCache<CharacterHistoryEntry[]>("history", []),
+  );
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [, setHistoryError] = useState<string | null>(null);
+  const [relationshipActivity, setRelationshipActivity] = useState<
+    RelationshipsActivityItem[]
+  >(() =>
+    readHubCache<RelationshipsActivityItem[]>("relationship-activity", []),
+  );
+  const [relationshipActivityLoading, setRelationshipActivityLoading] =
+    useState(true);
+  const [relationshipActivityError, setRelationshipActivityError] = useState<
+    string | null
+  >(null);
+  const [learnedSkills, setLearnedSkills] = useState<LearnedSkillSummary[]>(
+    () => readHubCache<LearnedSkillSummary[]>("learned-skills", []),
+  );
+  const [learnedSkillsLoading, setLearnedSkillsLoading] = useState(true);
+  const [experienceRecords, setExperienceRecords] = useState<
+    ExperienceRecord[]
+  >(() => readHubCache<ExperienceRecord[]>("experience-records", []));
+  const [selectedExperienceId, setSelectedExperienceId] = useState<
+    string | null
+  >(null);
+  const [experienceLoading, setExperienceLoading] = useState(true);
+  const [experienceError, setExperienceError] = useState<string | null>(null);
+  const [savingExperienceId, setSavingExperienceId] = useState<string | null>(
+    null,
+  );
+  const [deletingExperienceId, setDeletingExperienceId] = useState<
+    string | null
+  >(null);
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
+  const autoSaveTimerRef = useRef<number | null>(null);
+  const pendingAutoSavePatchRef = useRef<CharacterData>({});
+
+  const flushPendingAutoSave = useCallback(async () => {
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+
+    const patch = pendingAutoSavePatchRef.current;
+    if (Object.keys(patch).length === 0) {
+      return;
+    }
+
+    pendingAutoSavePatchRef.current = {};
+
+    try {
+      await client.updateCharacter(patch);
+    } catch (error) {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : "Failed to autosave personality updates.",
+        "error",
+        5000,
+      );
+    }
+  }, [setActionNotice]);
+
+  const scheduleAutoSave = useCallback(
+    (patch: CharacterData) => {
+      pendingAutoSavePatchRef.current = mergeCharacterPatch(
+        pendingAutoSavePatchRef.current,
+        patch,
+      );
+      if (autoSaveTimerRef.current !== null) {
+        window.clearTimeout(autoSaveTimerRef.current);
+      }
+      autoSaveTimerRef.current = window.setTimeout(() => {
+        autoSaveTimerRef.current = null;
+        void flushPendingAutoSave();
+      }, 700);
+    },
+    [flushPendingAutoSave],
+  );
+
+  useEffect(() => {
+    return () => {
+      void flushPendingAutoSave();
+    };
+  }, [flushPendingAutoSave]);
+
+  useEffect(() => {
+    setActiveSection(getSectionFromLocation(tab));
+  }, [tab]);
+
+  useEffect(() => {
+    const syncSectionFromLocation = () => {
+      setActiveSection(getSectionFromLocation(tab));
+    };
+    window.addEventListener("popstate", syncSectionFromLocation);
+    window.addEventListener("hashchange", syncSectionFromLocation);
+    return () => {
+      window.removeEventListener("popstate", syncSectionFromLocation);
+      window.removeEventListener("hashchange", syncSectionFromLocation);
+    };
+  }, [tab]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryError(null);
+
+    void client
+      .listCharacterHistory({ limit: 100 })
+      .then((response) => {
+        if (!cancelled) {
+          setHistoryEntries(response.history);
+          writeHubCache("history", response.history);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setHistoryError(
+            error instanceof Error
+              ? error.message
+              : "Failed to load personality history.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setExperienceLoading(true);
+    setExperienceError(null);
+
+    void client
+      .listExperiences({ limit: 100 })
+      .then((response) => {
+        if (!cancelled) {
+          setExperienceRecords(response.experiences);
+          writeHubCache("experience-records", response.experiences);
+          setSelectedExperienceId(
+            (current) => current ?? response.experiences[0]?.id ?? null,
+          );
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setExperienceError(
+            error instanceof Error
+              ? error.message
+              : "Failed to load experiences.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setExperienceLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void client
+      .getRelationshipsActivity(50)
+      .then((response) => {
+        if (!cancelled) {
+          const activity = response.activity ?? [];
+          setRelationshipActivity(activity);
+          writeHubCache("relationship-activity", activity);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setRelationshipActivityError(
+            error instanceof Error
+              ? error.message
+              : "Failed to load relationship activity.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setRelationshipActivityLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void client
+      .listDocuments({ limit: 100 })
+      .then((response) => {
+        if (cancelled) return;
+        const docs = response.documents ?? [];
+        setDocumentRecords(docs);
+        writeHubCache("documents", docs);
+      })
+      .catch(() => {
+        /* ignored — DocumentsView shows its own error when active */
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDocumentsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void client
+      .fetch<LearnedSkillsResponse>("/api/skills/curated")
+      .then((data) => {
+        if (cancelled) return;
+        const filtered = (data.skills ?? []).filter(
+          (skill) => skill.source !== "human",
+        );
+        setLearnedSkills(filtered);
+        writeHubCache("learned-skills", filtered);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLearnedSkills([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLearnedSkillsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void client
+      .listDocuments({ limit: 100 })
+      .then((response) => {
+        if (!cancelled) {
+          setDocumentRecords(response.documents);
+          setSelectedDocumentId(
+            (current) => current ?? response.documents[0]?.id ?? null,
+          );
+        }
+      })
+      .catch(() => {
+        // The embedded documents view owns the richer error UI.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const customDocumentRecords = useMemo(
+    () =>
+      documentRecords.filter((document) => !isDefaultDocumentRecord(document)),
+    [documentRecords],
+  );
+
+  // Stable identity: DocumentsView's loadData effect depends on this callback,
+  // so an inline closure would re-trigger fetch → setState → render → new
+  // closure, looping the hub (render-guard trips on /character/documents).
+  const handleDocumentsChange = useCallback((docs: DocumentRecord[]) => {
+    setDocumentRecords(docs);
+    writeHubCache("documents", docs);
+    setDocumentsLoading(false);
+  }, []);
+
+  const overviewWidgets = useMemo<CharacterOverviewWidget[]>(() => {
+    const styleItems = Object.values(d.style ?? {}).reduce(
+      (count, values) => count + (Array.isArray(values) ? values.length : 0),
+      0,
+    );
+    const exampleCount = normalizedMessageExamples.length;
+    const activeSkills = learnedSkills.filter(
+      (skill) => skill.status !== "disabled",
+    );
+    const recentExperience = [...experienceRecords].sort(
+      (left, right) =>
+        latestTimestamp(right.updatedAt ?? right.createdAt) -
+        latestTimestamp(left.updatedAt ?? left.createdAt),
+    )[0];
+    // Unique people the agent knows (drop edge-only "relationship" rows).
+    const peopleNames = Array.from(
+      new Set(
+        relationshipActivity
+          .filter((item) => item.type !== "relationship")
+          .map((item) => item.personName?.trim())
+          .filter((name): name is string => Boolean(name)),
+      ),
+    );
+
+    const trimmedBio = bioText.trim();
+    const personalityHasContent =
+      historyEntries.length > 0 ||
+      trimmedBio.length > 0 ||
+      styleItems > 0 ||
+      exampleCount > 0;
+
+    function StatChip({ children }: { children: ReactNode }) {
+      return (
+        <span className="rounded-full border border-border/40 bg-bg/60 px-2.5 py-1 text-xs font-medium text-muted backdrop-blur-sm">
+          {children}
+        </span>
+      );
+    }
+
+    /** Clean person chip: avatar initial + name + optional platform badge. */
+    function PersonChip({ name }: { name: string }) {
+      const Brand = getBrandIcon(name);
+      return (
+        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/40 bg-bg/70 py-1 pl-1 pr-2.5 text-xs font-medium text-txt backdrop-blur-sm">
+          <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-2xs font-semibold uppercase text-accent">
+            {name.slice(0, 1)}
+          </span>
+          <span className="truncate">{name}</span>
+          {Brand ? (
+            <Brand className="h-3 w-3 shrink-0 text-muted/70" aria-hidden />
+          ) : null}
+        </span>
+      );
+    }
+
+    const personalityBody: ReactNode = personalityHasContent ? (
+      <div className="flex flex-wrap gap-1.5">
+        {styleItems > 0 ? (
+          <StatChip>
+            {styleItems} style rule{styleItems === 1 ? "" : "s"}
+          </StatChip>
+        ) : null}
+        {exampleCount > 0 ? (
+          <StatChip>
+            {exampleCount} example{exampleCount === 1 ? "" : "s"}
+          </StatChip>
+        ) : null}
+        {styleItems === 0 && exampleCount === 0 && trimmedBio ? (
+          <StatChip>bio set</StatChip>
+        ) : null}
+      </div>
+    ) : (
+      <span className="text-xs text-muted">Tap to define voice + bio</span>
+    );
+
+    const relationshipsBody: ReactNode =
+      peopleNames.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {peopleNames.slice(0, 4).map((name) => (
+            <PersonChip key={name} name={name} />
+          ))}
+          {peopleNames.length > 4 ? (
+            <StatChip>+{peopleNames.length - 4}</StatChip>
+          ) : null}
+        </div>
+      ) : (
+        <span className="text-xs text-muted">Builds up as we talk</span>
+      );
+
+    const skillsBody: ReactNode =
+      activeSkills.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {activeSkills.slice(0, 4).map((skill) => (
+            <StatChip key={skill.name}>{skill.name}</StatChip>
+          ))}
+          {activeSkills.length > 4 ? (
+            <StatChip>+{activeSkills.length - 4}</StatChip>
+          ) : null}
+        </div>
+      ) : (
+        <span className="text-xs text-muted">Learned over time</span>
+      );
+
+    return [
+      {
+        section: "personality",
+        title: "Personality",
+        meta: styleItems > 0 ? `${styleItems} rules` : null,
+        body: personalityBody,
+        isLoading: historyLoading && !personalityHasContent,
+        isEmpty: !personalityHasContent,
+      },
+      {
+        section: "relationships",
+        title: "Relationships",
+        meta:
+          peopleNames.length > 0
+            ? `${peopleNames.length} ${peopleNames.length === 1 ? "person" : "people"}`
+            : null,
+        body: relationshipsBody,
+        isLoading: relationshipActivityLoading && peopleNames.length === 0,
+        isEmpty: peopleNames.length === 0,
+      },
+      {
+        section: "documents",
+        title: "Knowledge",
+        meta:
+          customDocumentRecords.length > 0
+            ? `${customDocumentRecords.length} doc${
+                customDocumentRecords.length === 1 ? "" : "s"
+              }`
+            : null,
+        body:
+          customDocumentRecords.length > 0 ? (
+            <span className="text-xs text-muted">
+              {customDocumentRecords.length} custom document
+              {customDocumentRecords.length === 1 ? "" : "s"}
+            </span>
+          ) : (
+            <span className="text-xs text-muted">
+              Upload notes, docs, links
+            </span>
+          ),
+        isLoading: documentsLoading && documentRecords.length === 0,
+        isEmpty: customDocumentRecords.length === 0,
+      },
+      {
+        section: "skills",
+        title: "Skills",
+        meta: activeSkills.length > 0 ? `${activeSkills.length} active` : null,
+        body: skillsBody,
+        isLoading: learnedSkillsLoading && activeSkills.length === 0,
+        isEmpty: activeSkills.length === 0,
+      },
+      {
+        section: "experience",
+        title: "Experience",
+        meta:
+          experienceRecords.length > 0
+            ? `${experienceRecords.length} lesson${
+                experienceRecords.length === 1 ? "" : "s"
+              }`
+            : null,
+        body: recentExperience ? (
+          <span className="line-clamp-2 text-xs italic text-muted">
+            {recentExperience.learning ||
+              recentExperience.result ||
+              recentExperience.context ||
+              recentExperience.type}
+          </span>
+        ) : (
+          <span className="text-xs text-muted">Lessons added as we go</span>
+        ),
+        isLoading: experienceLoading && experienceRecords.length === 0,
+        isEmpty: experienceRecords.length === 0,
+      },
+    ];
+  }, [
+    bioText,
+    customDocumentRecords,
+    d.style,
+    experienceLoading,
+    experienceRecords,
+    historyEntries.length,
+    historyLoading,
+    documentRecords.length,
+    documentsLoading,
+    learnedSkills,
+    learnedSkillsLoading,
+    normalizedMessageExamples.length,
+    relationshipActivity,
+    relationshipActivityLoading,
+  ]);
+
+  const hubExperienceRecords = useMemo(
+    () => experienceRecords.map(mapExperienceRecordToHubRecord),
+    [experienceRecords],
+  );
+
+  const activeSectionLabel = getCharacterHubSectionLabel(activeSection);
+
+  const navigateToSection = useCallback(
+    (section: CharacterHubSection) => {
+      setActiveSection(section);
+      if (section === "documents") {
+        if (tab !== "documents") {
+          setTab("documents");
+        } else {
+          updateCharacterSectionPath(section);
+        }
+        return;
+      }
+      updateCharacterSectionPath(section);
+    },
+    [setTab, tab],
+  );
+
+  const handleOverviewOpenSection = (
+    section: CharacterOverviewWidget["section"],
+  ) => {
+    navigateToSection(section);
+  };
+
+  const handleSaveExperience = async (
+    experience: ExperienceRecord,
+    draft: {
+      learning: string;
+      importance: number;
+      confidence: number;
+      tags: string;
+    },
+  ) => {
+    setSavingExperienceId(experience.id);
+    try {
+      const response = await client.updateExperience(experience.id, {
+        learning: draft.learning,
+        importance: draft.importance,
+        confidence: draft.confidence,
+        tags: draft.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      });
+      setExperienceRecords((current) =>
+        current.map((item) =>
+          item.id === experience.id ? response.experience : item,
+        ),
+      );
+    } finally {
+      setSavingExperienceId(null);
+    }
+  };
+
+  const handleDeleteExperience = async (experience: ExperienceRecord) => {
+    setDeletingExperienceId(experience.id);
+    try {
+      await client.deleteExperience(experience.id);
+      setExperienceRecords((current) =>
+        current.filter((item) => item.id !== experience.id),
+      );
+      setSelectedExperienceId((current) =>
+        current === experience.id ? null : current,
+      );
+    } finally {
+      setDeletingExperienceId(null);
+    }
+  };
+
+  const handleAutoSavedExamplesEdit = useCallback(
+    (field: string, value: unknown) => {
+      applyFieldEdit(field, value);
+      if (field === "messageExamples" || field === "postExamples") {
+        scheduleAutoSave({ [field]: value } as CharacterData);
+      }
+    },
+    [applyFieldEdit, scheduleAutoSave],
+  );
+
+  const buildStylePatch = useCallback(
+    (key: CharacterStyleSection, items: string[]): CharacterData => ({
+      style: {
+        ...(d.style ?? {}),
+        [key]: items,
+      },
+    }),
+    [d.style],
+  );
+
+  const handleAutoAddStyleEntry = useCallback(
+    (key: string) => {
+      const styleKey = key as CharacterStyleSection;
+      const value = pendingStyleEntries[key]?.trim();
+      if (!value) return;
+      const currentItems = [...(d.style?.[styleKey] ?? [])];
+      const nextItems = currentItems.includes(value)
+        ? currentItems
+        : [...currentItems, value];
+      applyStyleEdit(styleKey, nextItems.join("\n"));
+      handlePendingStyleEntryChange(key, "");
+      scheduleAutoSave(buildStylePatch(styleKey, nextItems));
+    },
+    [
+      applyStyleEdit,
+      buildStylePatch,
+      d.style,
+      handlePendingStyleEntryChange,
+      pendingStyleEntries,
+      scheduleAutoSave,
+    ],
+  );
+
+  const handleAutoRemoveStyleEntry = useCallback(
+    (key: string, index: number) => {
+      const styleKey = key as CharacterStyleSection;
+      const nextItems = [...(d.style?.[styleKey] ?? [])];
+      nextItems.splice(index, 1);
+      applyStyleEdit(styleKey, nextItems.join("\n"));
+      scheduleAutoSave(buildStylePatch(styleKey, nextItems));
+    },
+    [applyStyleEdit, buildStylePatch, d.style, scheduleAutoSave],
+  );
+
+  const handleAutoCommitStyleEntry = useCallback(
+    (key: string, index: number) => {
+      const styleKey = key as CharacterStyleSection;
+      const nextValue = styleEntryDrafts[key]?.[index]?.trim() ?? "";
+      const nextItems = [...(d.style?.[styleKey] ?? [])];
+      if (!nextValue) {
+        nextItems.splice(index, 1);
+      } else {
+        nextItems[index] = nextValue;
+      }
+      applyStyleEdit(styleKey, nextItems.join("\n"));
+      scheduleAutoSave(buildStylePatch(styleKey, nextItems));
+    },
+    [
+      applyStyleEdit,
+      buildStylePatch,
+      d.style,
+      scheduleAutoSave,
+      styleEntryDrafts,
+    ],
+  );
+
+  const handleAutoReorderStyleEntries = useCallback(
+    (key: string, items: string[]) => {
+      const styleKey = key as CharacterStyleSection;
+      applyStyleEdit(styleKey, items.join("\n"));
+      scheduleAutoSave(buildStylePatch(styleKey, items));
+    },
+    [applyStyleEdit, buildStylePatch, scheduleAutoSave],
+  );
+
+  const handleManualSave = useCallback(async () => {
+    await flushPendingAutoSave();
+    try {
+      await onSave();
+    } catch {
+      // handleSaveCharacter already populates the visible error state
+    }
+  }, [flushPendingAutoSave, onSave]);
+
+  const renderSection = (): ReactNode => {
+    if (activeSection === "overview") {
+      return (
+        <CharacterOverviewSection
+          characterName={d.name}
+          widgets={overviewWidgets}
+          onOpenSection={handleOverviewOpenSection}
+        />
+      );
+    }
+
+    if (activeSection === "personality") {
+      return (
+        <div className="flex min-w-0 flex-col gap-8">
+          <section className="rounded-sm border border-border/40 bg-bg/70 px-4 py-4">
+            <CharacterIdentityPanel
+              bioText={bioText}
+              handleFieldEdit={handleFieldEdit}
+              t={t}
+            />
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/30 pt-4">
+              <div className="flex flex-col gap-1">
+                {characterSaveSuccess ? (
+                  <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-2 py-1 text-2xs font-semibold text-status-success">
+                    {characterSaveSuccess}
+                  </span>
+                ) : null}
+                {characterSaveError ? (
+                  <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
+                    {characterSaveError}
+                  </span>
+                ) : null}
+              </div>
+              <Button
+                type="button"
+                className="h-9 rounded-sm px-4 text-sm font-semibold tracking-[0.02em]"
+                disabled={characterSaving || !hasPendingChanges}
+                onClick={() => {
+                  void handleManualSave();
+                }}
+              >
+                {characterSaving
+                  ? t("charactereditor.Saving", { defaultValue: "saving..." })
+                  : t("common.save", { defaultValue: "Save" })}
+              </Button>
+            </div>
+          </section>
+
+          <CharacterStylePanel
+            d={d}
+            pendingStyleEntries={pendingStyleEntries}
+            styleEntryDrafts={styleEntryDrafts}
+            handlePendingStyleEntryChange={handlePendingStyleEntryChange}
+            handleAddStyleEntry={handleAutoAddStyleEntry}
+            handleRemoveStyleEntry={handleAutoRemoveStyleEntry}
+            handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+            handleCommitStyleEntry={handleAutoCommitStyleEntry}
+            handleReorderStyleEntries={handleAutoReorderStyleEntries}
+            t={t}
+          />
+
+          <section className="rounded-sm border border-border/40 bg-bg/70 px-4 py-4">
+            <CharacterExamplesPanel
+              d={d}
+              normalizedMessageExamples={normalizedMessageExamples}
+              handleFieldEdit={handleAutoSavedExamplesEdit}
+              t={t}
+            />
+          </section>
+        </div>
+      );
+    }
+
+    if (activeSection === "documents") {
+      return (
+        <DocumentsView
+          embedded
+          fileInputId="character-hub-documents-upload"
+          onDocumentsChange={handleDocumentsChange}
+          onSelectedDocumentIdChange={setSelectedDocumentId}
+          selectedDocumentId={selectedDocumentId}
+          showSelectorRail={false}
+        />
+      );
+    }
+
+    if (activeSection === "skills") {
+      return <CharacterLearnedSkillsSection />;
+    }
+
+    if (activeSection === "experience") {
+      return (
+        <div className="flex min-w-0 flex-col gap-4">
+          {experienceError ? (
+            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+              {experienceError}
+            </div>
+          ) : null}
+          {experienceLoading ? (
+            <div className="text-sm text-muted">Loading experiences…</div>
+          ) : (
+            <CharacterExperienceWorkspace
+              experiences={hubExperienceRecords}
+              selectedExperienceId={selectedExperienceId}
+              onSelectExperience={setSelectedExperienceId}
+              onSaveExperience={(experience, draft) => {
+                const source = experienceRecords.find(
+                  (item) => item.id === experience.id,
+                );
+                if (!source) return;
+                void handleSaveExperience(source, draft);
+              }}
+              onDeleteExperience={(experience) => {
+                const source = experienceRecords.find(
+                  (item) => item.id === experience.id,
+                );
+                if (!source) return;
+                void handleDeleteExperience(source);
+              }}
+              savingExperienceId={savingExperienceId}
+              deletingExperienceId={deletingExperienceId}
+            />
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <section className="flex min-w-0 flex-col gap-3">
+        {relationshipActivityError ? (
+          <div className="border-b border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+            {relationshipActivityError}
+          </div>
+        ) : null}
+        <div className="min-h-[40rem]">
+          <RelationshipsWorkspaceView
+            embedded
+            onViewMemories={() => {
+              setTab("memories");
+            }}
+          />
+        </div>
+      </section>
+    );
+  };
+
+  const isSubPage = activeSection !== "overview";
+
+  return (
+    <WorkspaceLayout
+      className="h-full"
+      contentPadding={false}
+      contentInnerClassName="flex w-full min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 sm:py-5 lg:px-6"
+      data-testid="character-editor-view"
+    >
+      <div
+        ref={contentScrollRef}
+        className="custom-scrollbar mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col overflow-y-auto overflow-x-hidden pb-32"
+      >
+        <WidgetHost slot="character" className="mb-4" />
+        {isSubPage ? (
+          <div className="mb-5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigateToSection("overview")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-card/50 py-1.5 pl-2 pr-3.5 text-sm font-medium text-muted transition-colors hover:border-accent/40 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              aria-label="Back to Character hub"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+              Character
+            </button>
+            <span className="text-lg font-semibold text-txt">
+              {activeSectionLabel}
+            </span>
+          </div>
+        ) : null}
+        {renderSection()}
+      </div>
+    </WorkspaceLayout>
+  );
+}

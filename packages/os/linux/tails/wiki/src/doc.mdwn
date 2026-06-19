@@ -1,0 +1,52 @@
+[[!meta title="Documentation"]]
+
+<div class="tip">
+
+<p>If this section doesn't answer your questions, you can also look at our
+[[FAQ|support/faq]].</p>
+
+</div>
+
+# General information
+
+[[!inline pages="doc/about.index" raw="yes" sort="age"]]
+
+# First steps with Tails
+
+[[!inline pages="doc/first_steps.index" raw="yes" sort="age"]]
+
+# Upgrading a Tails USB stick
+
+- [[Upgrading automatically|doc/upgrade]]
+
+- [[Upgrading manually from your Tails|doc/upgrade/tails]]
+
+- [[Upgrading manually from Windows|doc/upgrade/windows]]
+
+- [[Upgrading manually from macOS|doc/upgrade/mac]]
+
+- [[Upgrading manually from Linux|doc/upgrade/linux]]
+
+- [[Upgrading manually by cloning from another Tails|doc/upgrade/clone]]
+
+- [[Repairing a Tails USB stick that fails to start after an upgrade|doc/upgrade/repair]]
+
+# Persistent Storage
+
+[[!inline pages="doc/persistent_storage.index" raw="yes" sort="age"]]
+
+# Uncensored and anonymous Internet
+
+[[!inline pages="doc/anonymous_internet.index" raw="yes" sort="age"]]
+
+# Encryption and privacy
+
+[[!inline pages="doc/encryption_and_privacy.index" raw="yes" sort="age"]]
+
+# Working on sensitive documents
+
+[[!inline pages="doc/sensitive_documents.index" raw="yes" sort="age"]]
+
+# Advanced topics
+
+[[!inline pages="doc/advanced_topics.index" raw="yes" sort="age"]]

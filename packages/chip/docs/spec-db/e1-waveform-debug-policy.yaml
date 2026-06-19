@@ -1,0 +1,79 @@
+schema: eliza.waveform_debug_policy.v1
+claim_boundary: waveform_debug_policy_only_no_ai_root_cause_or_fix_claim
+status: DRAFT_CAPTURE_ONLY
+claim_allowed: false
+release_claim_allowed: false
+tapeout_claim_allowed: false
+ai_root_cause_claim_allowed: false
+ai_fix_claim_allowed: false
+coverage_closure_claim_allowed: false
+production_readiness_claim_allowed: false
+
+description: >-
+  Governs how a future automated debug agent may read simulation waveforms
+  (VCD/FST) when triaging the E1 RTL. The policy is read-only: a tool may
+  query allowlisted signals within a bounded time window, but it may never
+  claim a root cause, emit a fix or waiver, force a signal, or export a
+  waveform to a hosted model. Every read must be backed by waveform
+  provenance evidence (see docs/evidence/verification/waveform-provenance.yaml)
+  before any human-reviewed disposition is recorded.
+
+tool_policy:
+  generated_root_cause_allowed: false
+  generated_fix_allowed: false
+  generated_waiver_allowed: false
+  automatic_signal_force_allowed: false
+  export_waveform_to_hosted_model_allowed: false
+  local_read_only_query_allowed_after_review: true
+
+allowed_formats:
+  - vcd
+  - fst
+
+allowed_waveform_roots:
+  - build/reports/waveforms/
+  - build/ai_eda/waveform_debug/
+
+signal_allowlists:
+  - id: e1_soc_top
+    max_time_window_cycles: 4096
+    signals:
+      - clk
+      - rst_n
+      - dbg_valid
+      - dbg_ready
+  - id: e1_dbg_mmio_bridge
+    max_time_window_cycles: 2048
+    signals:
+      - clk
+      - rst_n
+      - mmio_addr
+      - mmio_rdata
+
+blocked_tasks:
+  - claim_root_cause
+  - claim_fix
+  - generate_rtl_patch
+  - generate_waiver
+  - force_signal
+  - modify_testbench
+  - export_waveform_to_hosted_model
+  - claim_coverage_closure
+  - claim_release_or_tapeout_readiness
+
+evidence_requirements:
+  - waveform_path
+  - waveform_format
+  - waveform_sha256
+  - source_test
+  - rtl_source_hashes
+  - tool_revision
+  - command_log
+  - reviewer_disposition
+  - human_debug_reviewer
+
+promotion_gates:
+  - python3 scripts/check_waveform_debug_policy.py
+  - make waveform-debug-policy-check
+  - make cocotb-contract
+  - make no-hardware-action-check

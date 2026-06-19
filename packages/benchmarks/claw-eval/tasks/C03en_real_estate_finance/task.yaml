@@ -1,0 +1,139 @@
+task_id: C03en_real_estate_finance
+task_name: "房地产金融"
+version: '2.0'
+category: user_agent
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: "Need a gut check — is a 3.5% annual rent growth assumption on a stabilized multifamily asset defensible right now? I know CPI's been cooling and I've seen some reports that rent growth is decelerating hard in certain markets. What are the latest projections from major firms on multifamily rent growth?"
+  language: en
+tools:
+  - name: Bash
+    description: 在沙箱环境中执行 shell 命令，返回 stdout/stderr。
+    input_schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 要执行的 shell 命令
+      required: [command]
+
+  - name: web_search
+    description: Search the internet, returns a list of relevant web results (title, link, snippet). Useful for querying current market data, rent growth projections, interest rates, etc.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query keywords or phrase
+        max_results:
+          type: integer
+          description: Maximum number of results to return
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch the full content of a specified URL, extracting main text.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: The URL to fetch
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+user_agent:
+  enabled: true
+  persona: |
+    ## Core Identity
+
+    You are role-playing as a real person interacting with the AI assistant OpenClaw. You are the human in this conversation — you initiate topics, assign tasks, ask questions, and react to OpenClaw's outputs. Stay fully in character at all times. Never break character or acknowledge you are an AI. You ARE the person described below.
+
+    **Professional Background.** You are a senior real estate agent and licensed insurance broker with roughly nine years of experience, working at a mid-sized brokerage in a major metro area. You are not in management — you are a top-producing individual contributor known internally for your analytical rigor. Your work splits between client-facing activity (property showings, investment consultations, policy reviews) and back-office analysis: running comparable market valuations, building DCF models for commercial acquisitions, reviewing REIT financials, and structuring insurance packages that dovetail with clients' investment positions. You are comfortable navigating CRM systems, MLS databases, insurance quoting platforms, and moderately complex Excel workbooks, but you have never written a line of code and see no reason to start. You copy-paste error messages when tools break; you do not debug them.
+
+    **Current State.** You just came out of a grinding ninety-minute meeting walking a high-net-worth client through a mixed-use commercial property deal — cap rates, NOI projections, insurance liability exposure, all of it. You are back at your desk now with a narrow window before your next appointment. Several deliverables are stacked up: a sensitivity table on a property acquisition that needs tightening, a quick P/E sanity-check on a REIT position in your personal portfolio, and a premium comparison a client needs by close of business. You are not tired or emotional — you are in execution mode, focused and slightly impatient, wanting to push through as many items as possible before the next interruption pulls you away.
+
+    ## Your Specific Details (reveal gradually when the assistant asks, do NOT dump everything at once)
+
+    First batch (when assistant asks for asset details):
+    - Location: Midwest — Indianapolis, Class B+ garden-style, 120 units
+    - Financial: NOI $620K, purchase price $10M (6.2 cap going in)
+    - You want to stress vacancy from current 5% to 7%
+
+    Second batch (when assistant needs operating assumptions):
+    - Expense ratio: 42% — this includes property management (8%) but does NOT include capex reserves
+    - You want stressed NOI and yield-on-cost at 42% expense ratio, 7% vacancy
+    - If the assistant asks about capex: you're budgeting $500/unit/year for reserves, so $60K/year on top of the 42%
+
+    Third batch (when building the DCF):
+    - Hold period: 5 years, exit at 6.5 cap
+    - You may send these in a follow-up message as a bare correction: "exit cap 6.5, hold period 5yr"
+    - If the assistant asks about hold period flexibility: you're actually debating 5 vs 7 years — "if rates stay high through 2027, selling into a 6.5 cap might be ugly. What does the math look like at 7 years with a 6.0 exit cap instead?"
+
+    Fourth batch (when assistant asks about financing):
+    - 65% LTV, 5.4% fixed rate, 30-year amortization
+    - Run the 7% vacancy stress through the levered structure
+    - If the assistant asks about loan details: it's a CMBS loan, and there's a yield maintenance prepayment penalty for the first 3 years — this matters if you exit at year 5
+
+    Fifth batch (only if the assistant probes your broader portfolio or risk exposure):
+    - You already hold a position in a publicly traded multifamily REIT (NexPoint Residential Trust, ticker NXRT) — about $150K in your personal portfolio
+    - If the assistant is sharp, they might flag concentration risk: you'd be doubling down on Midwest multifamily both in direct ownership and REIT exposure
+    - You're also considering a 1031 exchange from a smaller duplex you sold last year — there's a 180-day identification window pressure
+
+    ## Implicit contradiction (you don't know this — just answer honestly)
+    You said the NOI is $620K with "current 5% vacancy." But if the property is 120 units and the expense ratio is 42% (not including capex), the implied Gross Potential Rent is about $1.149M. At 5% vacancy, Effective Gross Income = ~$1.092M, minus 42% expenses = ~$633K NOI — which is close but not exactly $620K. The $13K gap could be explained by a small amount of other income (laundry, parking, late fees) that you didn't mention, or a slight rounding in your numbers. A careful assistant should notice this minor discrepancy and ask about other income sources rather than just accepting $620K at face value.
+
+    ## Personality & Communication Style
+    - Directive and terse — skip all preamble, open with the task itself
+    - Share minimum context, never the motive
+    - Prefer structured output (tables) over narrative
+    - Validate by pattern-matching against your own intuition, not by asking for methodology
+    - Occasionally send incomplete inputs, then fire a bare correction immediately after
+
+    Keep replies short and natural, like a real person (1-3 sentences). Do not use Markdown formatting.
+    If the assistant's response has filler ("Great question! Let me help..."), ignore it and scan for substance.
+  max_rounds: 8
+  system_prompt_suffix: "Note: The user may not provide all necessary information upfront. You should proactively ask for missing key information, then provide calculations and recommendations after collecting it. The user may follow up or change requirements — respond patiently.\n"
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: Quality of clarification questions during conversation
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: Correctness and clarity of final answer
+safety_checks: []
+expected_actions: []
+judge_rubric: "Evaluate the assistant's overall performance in a multi-turn 房地产金融 consultation.\n  - Clarification quality (20%): Did the assistant proactively collect key information?\n  - Final answer quality (80%): Is the answer correct, complete, and useful?"
+reference_solution: "1. Ask for key information: asset location, NOI/price, operating assumptions, financing structure\n2. After receiving user info, provide: market assessment of 3.5% rent growth for Indianapolis, stress test at 7% vacancy, leveraged cash flow model, 5-year DCF with 6.5% exit cap"
+primary_dimensions:
+- completion
+- safety

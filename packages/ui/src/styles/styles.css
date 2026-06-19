@@ -1,0 +1,332 @@
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
+@import "@fontsource/poppins/800.css";
+@import "tailwindcss";
+@import "./base.css";
+@import "./tailwind-theme.css";
+@import "./electrobun-mac-window-drag.css";
+/* React Flow base styles — required for @xyflow/react canvas to render correctly */
+@import "@xyflow/react/dist/style.css";
+
+/*
+ * Electrobun's preload script injects a default stylesheet that hard-codes
+ * `electrobun-webview { width: 800px; height: 300px; background: #fff; ... }`
+ * directly on the element. That explicit pixel width wins over our
+ * Tailwind `absolute inset-0` because, for absolutely positioned elements,
+ * an explicit `width` overrides `right: 0` in the CSS cascade. Override
+ * those defaults with `!important` so the tag actually fills its
+ * `position: relative` parent.
+ *
+ * Source: node_modules/electrobun/dist/api/bun/preload/webviewTag.ts
+ *   → `initWebviewTag()` calls `injectStyles()` which inserts the rule
+ *   at the top of <head>.
+ */
+electrobun-webview,
+electrobun-wgpu {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+@source "..";
+@source "../../../ui/src";
+@source "../../../../plugins/app-lifeops/src";
+@source "../../../../plugins/plugin-social-alpha/src/frontend";
+
+/* ── Global resets ──────────────────────────────────────────────────── */
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  font-family: var(--font-body);
+  color: var(--text);
+  background: var(--bg);
+}
+
+html.eliza-chat-overlay-shell,
+html.eliza-chat-overlay-shell body,
+html.eliza-chat-overlay-shell #root,
+html.eliza-onboarding-overlay-shell,
+html.eliza-onboarding-overlay-shell body,
+html.eliza-onboarding-overlay-shell #root {
+  background: transparent;
+}
+
+html.eliza-chat-overlay-shell #root,
+html.eliza-onboarding-overlay-shell #root {
+  pointer-events: none;
+}
+
+html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
+  top: auto;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  width: auto;
+  height: min(220px, calc(100% - 20px));
+  transform: none;
+  border-radius: var(--radius-xs);
+}
+
+body.native {
+  position: fixed;
+  inset: 0;
+  touch-action: pan-y;
+}
+
+body.native #root {
+  min-height: 100dvh;
+  max-height: 100dvh;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body.native textarea {
+  resize: none;
+}
+
+/*
+ * Theme flips touch a large number of CSS variables. Temporarily disabling
+ * transitions prevents the entire shell from animating every color/border
+ * change when users toggle light/dark rapidly.
+ */
+:root[data-theme-switching],
+:root[data-theme-switching] *,
+:root[data-theme-switching] *::before,
+:root[data-theme-switching] *::after {
+  transition: none;
+}
+
+/* ── Typing indicator animation ─────────────────────────────────────── */
+
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Loading screen dots animation ────────────────────────────────── */
+
+.loading-screen__dots::after {
+  content: "";
+  animation: loading-dots 1.5s steps(4) infinite;
+}
+
+@keyframes loading-dots {
+  0% {
+    content: "";
+  }
+
+  25% {
+    content: ".";
+  }
+
+  50% {
+    content: "..";
+  }
+
+  75% {
+    content: "...";
+  }
+}
+
+/* ── Animation utilities ────────────────────────────────────────────── */
+
+.animate-in {
+  animation: fade-in 200ms ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.slide-in-from-right {
+  animation: slide-in-right 200ms ease-out;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Utility: hide scrollbar */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.custom-scrollbar,
+.chat-native-scrollbar,
+/* biome-ignore lint/style/noDescendingSpecificity: universal scrollbar styling is intentional. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-mid) var(--scrollbar-track);
+}
+
+.custom-scrollbar::-webkit-scrollbar,
+.chat-native-scrollbar::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track,
+.chat-native-scrollbar::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.chat-native-scrollbar::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    var(--scrollbar-thumb-start) 0%,
+    var(--scrollbar-thumb-mid) 55%,
+    var(--scrollbar-thumb-end) 100%
+  );
+  border-radius: 9999px;
+  border: 2px solid var(--scrollbar-track);
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 1px var(--scrollbar-thumb-edge);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.chat-native-scrollbar::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    var(--scrollbar-thumb-hover-start) 0%,
+    var(--scrollbar-thumb-hover-mid) 55%,
+    var(--scrollbar-thumb-hover-end) 100%
+  );
+}
+
+.custom-scrollbar::-webkit-scrollbar-corner,
+.chat-native-scrollbar::-webkit-scrollbar-corner,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Keyboard shortcuts styling */
+kbd {
+  font-family: var(--mono);
+}
+
+/* Enhanced animations and transitions */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* (Removed the dark-mode .text-muted / .bg-bg-* overrides: they hardcoded
+   blue-biased hsl(240 …) values on top of the design tokens. The tokens
+   (--muted, --muted-strong, --bg-accent, --bg-elevated) are now the single
+   source of truth — neutral, no blue, default UI kit. Tune the token if a
+   value needs adjusting; do not reintroduce a utility-level override.) */
+
+/* Product policy: focus rings are intentionally disabled globally. */
+/* biome-ignore-start lint/complexity/noImportantStyles: focus rings are banned globally and component-level focus utilities must not win. */
+:where(:focus, :focus-visible, :focus-within) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+:where(:focus, :focus-visible) :where(*) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+/* biome-ignore-end lint/complexity/noImportantStyles: end focus-ring ban override */
+
+/*
+ * Brief accent flash on a connector panel deep-link target. Triggered by
+ * SettingsView's SETTINGS_FOCUS_CONNECTOR_EVENT listener — adds the class for
+ * ~1.8s, then removes it. The accent box-shadow ring sits outside the panel
+ * so it doesn't shift layout.
+ */
+@keyframes connector-flash {
+  0% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  20% {
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 60%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.connector-flash {
+  animation: connector-flash 1.6s ease-out;
+  border-radius: var(--radius-md);
+}
+
+/* Reduced motion - universal override is intentional for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  /* biome-ignore lint/style/noDescendingSpecificity: a11y override must apply to every element regardless of prior class-level specificity. */
+  *,
+  /* biome-ignore lint/style/noDescendingSpecificity: a11y override must apply to every pseudo-element. */
+  *::before,
+  /* biome-ignore lint/style/noDescendingSpecificity: a11y override must apply to every pseudo-element. */
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
+}

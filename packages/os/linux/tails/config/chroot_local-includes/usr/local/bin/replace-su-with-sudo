@@ -1,0 +1,30 @@
+#!/usr/bin/python3 -I
+
+# In Tails, the administration password doesn't work with 'su'. New
+# users in particular may be puzzled by the authentication failures
+# while trying to 'su' using administration password.
+#
+# This script is called by '/etc/bash.bashrc.d/replace-su-with-sudo.sh'.
+# It checks if the current user's password is set or not using
+# 'is_password_set()' function from 'adminpassword.py' library. If the
+# password is set, the user is asked to use 'sudo' instead of 'su'.
+# Otherwise, the user is asked to first set the administration password.
+
+import gettext
+import sys
+from tailslib.adminpassword import is_password_set
+
+def main() -> None:
+    if is_password_set():
+        print(_('su is disabled. Please use sudo instead.'))
+        sys.exit(0)
+    else:
+        print(open("/usr/share/tails/greeter/no-password-lecture.txt").read())
+        sys.exit(1)
+
+if __name__ == "__main__":
+    # Initialize translations
+    translation = gettext.translation("tails", fallback=True)
+    _ = translation.gettext
+
+    main()

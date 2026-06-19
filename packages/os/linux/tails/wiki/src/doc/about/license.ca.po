@@ -1,0 +1,600 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-18 09:16+0000\n"
+"PO-Revision-Date: 2026-04-06 12:18+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"License and source code distribution\"]]\n"
+msgstr "[[!meta title=\"Llicència i distribució del codi font\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails is [Free Software](https://www.gnu.org/philosophy/free-sw.html): you "
+"can download, use, and share it with no restrictions."
+msgstr ""
+"Tails és [Programari Lliure](https://www.gnu.org/philosophy/free-"
+"sw.ca.html): podeu baixar-lo, utilitzar-lo i compartir-lo sense restriccions."
+
+#. type: Plain text
+msgid ""
+"The Tails source code is released under the GNU/GPL (version 3 or above) and "
+"is Copyright (C) Tails developers <foundations@tails.net>.  Any exception to "
+"this rule is documented either below or in the affected source file."
+msgstr ""
+"El codi font de Tails es publica sota la llicència GNU/GPL (versió 3 o "
+"superior) i té Copyright (C) dels desenvolupadors de Tails "
+"<foundations@tails.net>. Qualsevol excepció a aquesta regla es documenta a "
+"continuació o al fitxer font afectat."
+
+#. type: Plain text
+msgid ""
+"However, Tails, like Debian, includes closed source binary firmware in order "
+"to work on as much hardware as possible."
+msgstr ""
+"Tanmateix, Tails, com Debian, inclou un microprogramari no lliure per tal de "
+"funcionar amb el màxim de maquinari possible."
+
+#. type: Plain text
+msgid ""
+"Tails is a registered trademark of The Tor Project, Inc. See our [Trademark "
+"and Brand policy](https://www.torproject.org/about/trademark/)."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Source code"
+msgstr "Codi font"
+
+#. type: Plain text
+msgid ""
+"Most of the software included in Tails is taken directly from upstream "
+"Debian packages and is neither modified nor recompiled by Tails."
+msgstr ""
+"La major part del programari inclòs a Tails s'obté directament dels paquets "
+"de Debian i Tails no els modifica ni els recompila."
+
+#. type: Bullet: '- '
+msgid ""
+"The source code of software that is specific to Tails is available in [[our "
+"Git repositories|contribute/git]]."
+msgstr ""
+"El codi font del programari específic de Tails està disponible [[als nostres "
+"repositoris Git|contribute/git]]."
+
+#. type: Bullet: '- '
+msgid ""
+"The source code of the Debian packages included in Tails is available in the "
+"[APT snapshot](https://tagged.snapshots.deb.tails.boum.org/)  that we "
+"created for that version of Tails."
+msgstr ""
+"El codi font dels paquets de Debian inclosos a Tails està disponible al "
+"[snapshot d'APT](https://tagged.snapshots.deb.tails.boum.org/) que vam crear "
+"per a aquesta versió de Tails."
+
+#. type: Bullet: '- '
+msgid ""
+"The [[!tails_gitweb config/chroot_local-includes/usr/share/tails/chroot-"
+"browsers/unsafe-browser/extensions/red-2.0-an+fx.xpi desc=\"red theme\"]] "
+"used by Tails' _Unsafe Browser_ was downloaded from Mozilla add-ons website "
+"(<https://addons.mozilla.org/en-US/firefox/addon/simplyred/>):"
+msgstr ""
+"El [[!tails_gitweb config/chroot_local-includes/usr/share/tails/"
+"chroot-browsers/unsafe-browser/extensions/red-2.0-an+fx.xpi desc="
+"\"tema vermell\"]] utilitzat pel _Navegador Insegur_ de Tails es va baixar "
+"del lloc web de complements de Mozilla (<https://addons.mozilla.org/firefox/"
+"addon/simplyred/>):"
+
+#. type: Bullet: '  - '
+msgid "license: Creative Commons Attribution 3.0"
+msgstr "llicència: Creative Commons Reconeixement 3.0"
+
+#. type: Bullet: '  - '
+msgid ""
+"author: [Firefox user 14030863](https://addons.mozilla.org/en-US/firefox/"
+"user/14030863/)"
+msgstr ""
+"autor: [usuari de Firefox 14030863](https://addons.mozilla.org/firefox/user/"
+"14030863/)"
+
+#. type: Bullet: '- '
+msgid "Icons copied from [[!debpts gnome-icon-theme]]:"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"[[!tails_gitweb config/chroot_local-includes/usr/share/tails/persistent-"
+"storage/icons/tps-NetworkConnections.png]]"
+msgstr ""
+"[[!tails_gitweb config/chroot_local-includes/usr/share/tails/persistent-"
+"storage/icons/tps-NetworkConnections.png]]"
+
+#. type: Bullet: '  - '
+msgid ""
+"[[!tails_gitweb config/chroot_local-includes/usr/share/tails/persistent-"
+"storage/icons/tps-WelcomeScreen.png]]"
+msgstr ""
+"[[!tails_gitweb config/chroot_local-includes/usr/share/tails/persistent-"
+"storage/icons/tps-WelcomeScreen.png]]"
+
+#. type: Bullet: '  - '
+msgid "license: GPL-2+"
+msgstr "llicència: GPL-2+"
+
+#. type: Bullet: '  - '
+msgid "Copyright:"
+msgstr "Copyright:"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Andreas Nilsson <nisses.mail@home.se>"
+msgstr "2002-2008 Andreas Nilsson <nisses.mail@home.se>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Hylke Bons <h.bons@student.rug.nl>"
+msgstr "2002-2008 Hylke Bons <h.bons@student.rug.nl>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Jakub Steiner <jimmac@novell.com>"
+msgstr "2002-2008 Jakub Steiner <jimmac@novell.com>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Josef Vybíral <cornelius@vybiral.info>"
+msgstr "2002-2008 Josef Vybíral <cornelius@vybiral.info>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Lapo Calamandrei <calamandrei@gmail.com>"
+msgstr "2002-2008 Lapo Calamandrei <calamandrei@gmail.com>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Luca Ferretti <elle.uca@libero.it>"
+msgstr "2002-2008 Luca Ferretti <elle.uca@libero.it>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Ricardo González <rick@jinlabs.com>"
+msgstr "2002-2008 Ricardo González <rick@jinlabs.com>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Riccardo Buzzotta <raozuzu@yahoo.it>"
+msgstr "2002-2008 Riccardo Buzzotta <raozuzu@yahoo.it>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Rodney Dawes <dobey@novell.com>"
+msgstr "2002-2008 Rodney Dawes <dobey@novell.com>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Tuomas Kuosmanen <tigert@gimp.org>"
+msgstr "2002-2008 Tuomas Kuosmanen <tigert@gimp.org>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Ulisse Perusin <uli.peru@gmail.com>"
+msgstr "2002-2008 Ulisse Perusin <uli.peru@gmail.com>"
+
+#. type: Bullet: '- '
+msgid "Forge JS library"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  - license: <details><summary>New BSD License (3-clause)</summary><pre>\n"
+"        New BSD License (3-clause)\n"
+"        Copyright (c) 2010, Digital Bazaar, Inc.\n"
+"        All rights reserved.\n"
+"        Redistribution and use in source and binary forms, with or without\n"
+"        modification, are permitted provided that the following conditions are met:\n"
+"            * Redistributions of source code must retain the above copyright\n"
+"              notice, this list of conditions and the following disclaimer.\n"
+"            * Redistributions in binary form must reproduce the above copyright\n"
+"              notice, this list of conditions and the following disclaimer in the\n"
+"              documentation and/or other materials provided with the distribution.\n"
+"            * Neither the name of Digital Bazaar, Inc. nor the\n"
+"              names of its contributors may be used to endorse or promote products\n"
+"              derived from this software without specific prior written permission.\n"
+"        THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND\n"
+"        ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED\n"
+"        WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\n"
+"        DISCLAIMED. IN NO EVENT SHALL DIGITAL BAZAAR BE LIABLE FOR ANY\n"
+"        DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES\n"
+"        (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;\n"
+"        LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND\n"
+"        ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n"
+"        (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\n"
+"        SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n"
+"    </pre></details>\n"
+"  - Copyright:\n"
+"    - 2010 - present: Digital Bazaar, Inc.\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Website"
+msgstr "Lloc web"
+
+#. type: Plain text
+msgid "This website uses the following fonts:"
+msgstr "Aquest lloc web utilitza les següents tipografies:"
+
+#. type: Bullet: '- '
+msgid ""
+"[Source Sans 3](https://fonts.google.com/specimen/Source+Sans+3/license), "
+"copyright 2010&ndash;2020 [Adobe Systems Incorporated](http://"
+"www.adobe.com/), licensed under the [SIL Open Font License, Version 1.1]"
+"(https://openfontlicense.org/open-font-license-official-text/)."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[Source Code Pro](https://fonts.google.com/specimen/Source+Code+Pro/"
+"license)  copyright 2010&ndash;2020 [Adobe Systems Incorporated](http://"
+"www.adobe.com/), licensed under the [SIL Open Font License, Version 1.1]"
+"(https://openfontlicense.org/open-font-license-official-text/)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This website uses several images with distinct copyright, licenses, "
+"trademarks and distribution terms:"
+msgstr ""
+"Aquest lloc web utilitza diverses imatges amb drets d'autor, llicències, "
+"marques comercials i termes de distribució diferents:"
+
+#. type: Bullet: '- '
+msgid ""
+"The Tails logo is based on [[USB|http://thenounproject.com/term/usb/23873/]] "
+"by Ilsur Aptukov from the Noun Project."
+msgstr ""
+"El logotip de Tails es basa en el llapis [[USB|http://thenounproject.com/"
+"term/usb/23873/]] d'Ilsur Aptukov del Noun Project."
+
+#. type: Bullet: '- '
+msgid "Debian logo: Copyright (c) 1999 Software in the Public Interest."
+msgstr "Logotip de Debian: Copyright (c) 1999 Programari d'interès públic."
+
+#. type: Bullet: '- '
+msgid ""
+"The drawings on our [[Home|index]], [[About|about]], and [[Warnings|doc/"
+"about/warnings]] pages are licensed under the [Creative Commons Attribution-"
+"ShareAlike 4.0 International License](https://creativecommons.org/licenses/"
+"by-sa/4.0/), copyright [Andrés Fernández Cordón](https://anhdres.com/)  "
+"([[source|lib/drawings.zip]] for Adobe Illustrator)."
+msgstr ""
+"Els dibuixos de les nostres pàgines d'[[Inici|index]], [[Quant a Tails|"
+"about]] i [[Advertències|doc/about/warnings]] tenen llicència sota la "
+"llicència [Creative Commons Reconeixement-CompartirIgual 4.0 International]"
+"(https://creativecommons.org/licenses/by-sa/4.0/), copyright d'[Andrés "
+"Fernández Cordón](https://anhdres.com/) ([[font|lib/drawings.zip]] per a "
+"l'Adobe Illustrator)."
+
+#. type: Bullet: '- '
+msgid ""
+"All the [[drawings of our personas|contribute/personas]] are licensed under "
+"the [Creative Commons Attribution-ShareAlike 4.0 International License]"
+"(https://creativecommons.org/licenses/by-sa/4.0/), copyright Thomas Verguet."
+msgstr ""
+"Tots els [[dibuixos dels nostres personatges|contribute/personas]] estan "
+"sota la llicència [Creative Commons Reconeixement-CompartirIgual 4.0 "
+"Internacional](https://creativecommons.org/licenses/by-sa/4.0/), copyright "
+"de Thomas Verguet ."
+
+#. type: Bullet: '- '
+msgid ""
+"The [[Boot Menu animation|doc/first_steps/start/pc#animation]] is licensed "
+"under the [Creative Commons Attribution-ShareAlike 4.0 International License]"
+"(https://creativecommons.org/licenses/by-sa/4.0/), copyright [Odile "
+"Carabantes](https://studiomoare.com/) and Enso Studio ([source](https://"
+"gitlab.tails.boum.org/tails/ux/-/raw/master/boot%20menu%20key/"
+"animation.rar)  for Adobe Illustrator and Adobe Premiere)."
+msgstr ""
+"L'[[animació del Menú d'Arrencada|doc/first_steps/start/pc#animation]] té la "
+"llicència [Creative Commons Reconeixement-ShareAlike 4.0 International]"
+"(https://creativecommons.org/licenses/by-sa/4.0/), copyright d'[Odile "
+"Carabantes](https://studiomoare.com/) i Enso Studio ([font](https://"
+"gitlab.tails.boum.org/tails/ux/-/raw/master/boot%20menu%20key/animation.rar) "
+"per a l'Adobe Illustrator i l'Adobe Premiere)."
+
+#. type: Bullet: '- '
+msgid "Icons from [[The Noun Project|http://thenounproject.com/]]:"
+msgstr "Icones de [[The Noun Project|http://thenounproject.com/]]:"
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Announcement|http://thenounproject.com/term/announcement/1186/]]: Creative "
+"Commons - Attribution, by Olivier Guin."
+msgstr ""
+"[[Announcement|http://thenounproject.com/term/announcement/1186/]]: Creative "
+"Commons - Reconeixement, d'Olivier Guin."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Code|http://thenounproject.com/term/code/18033/]]: Creative Commons — "
+"Attribution, by Azis."
+msgstr ""
+"[[Code|http://thenounproject.com/term/code/18033/]]: Creative Commons — "
+"Reconeixement, per Azis."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Pen|http://thenounproject.com/term/pen/18907/]]: Creative Commons — "
+"Attribution, by factor[e] design initiative."
+msgstr ""
+"[[Pen|http://thenounproject.com/term/pen/18907/]]: Creative Commons — "
+"Reconeixement, per factor[e] design initiative."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Loan|http://thenounproject.com/term/loan/19538/]]: Public Domain, by "
+"Rohith M S."
+msgstr ""
+"[[Loan|http://thenounproject.com/term/loan/19538/]]: Domini públic, per "
+"Rohith M S."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[User|http://thenounproject.com/term/user/419/]]: Creative Commons — "
+"Attribution, by Edward Boatman."
+msgstr ""
+"[[User|http://thenounproject.com/term/user/419/]]: Creative Commons — "
+"Reconeixement, per Edward Boatman."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Translation|http://thenounproject.com/term/translation/5735/]]: Creative "
+"Commons — Attribution, by Joe Mortell."
+msgstr ""
+"[[Translation|http://thenounproject.com/term/translation/5735/]]: Creative "
+"Commons — Reconeixement, per Joe Mortell."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Gears|http://thenounproject.com/term/gears/8949/]]: Creative Commons — "
+"Attribution, by Cris Dobbins."
+msgstr ""
+"[[Gears|http://thenounproject.com/term/gears/8949/]]: Creative Commons — "
+"Reconeixement, per Cris Dobbins."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Graphic Design|http://thenounproject.com/term/graphic_design/9198/]]: "
+"Creative Commons — Attribution, by Cornelius Danger."
+msgstr ""
+"[[Graphic Design|http://thenounproject.com/term/graphic_design/9198/]]: "
+"Creative Commons — Reconeixement, per Cornelius Danger."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Check Mark|https://thenounproject.com/term/check/4489/]]: Public Domain, "
+"by Julian Norton."
+msgstr ""
+"[[Check Mark|https://thenounproject.com/term/check/4489/]]: Domini públic, "
+"per Julian Norton."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Delete|https://thenounproject.com/term/delete/49691/]]: Creative Commons — "
+"Attribution, by Kervin Markle."
+msgstr ""
+"[[Delete|https://thenounproject.com/term/delete/49691/]]: Creative Commons — "
+"Reconeixement, per Kervin Markle."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Play|https://thenounproject.com/term/play/152052]]: Creative Commons — "
+"Attribution, by Zech Nelson."
+msgstr ""
+"[[Play|https://thenounproject.com/term/play/152052]]: Creative Commons — "
+"Reconeixement, per Zech Nelson."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Pause|https://thenounproject.com/term/pause/152046]]: Creative Commons — "
+"Attribution, by Zech Nelson."
+msgstr ""
+"[[Pause|https://thenounproject.com/term/pause/152046]]: Creative Commons — "
+"Reconeixement, per Zech Nelson."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[USB|https://thenounproject.com/term/usb/28901]]: Creative Commons — "
+"Attribution, by Wilson Joseph."
+msgstr ""
+"[[USB|https://thenounproject.com/term/usb/28901]]: Creative Commons — "
+"Reconeixement, per Wilson Joseph."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Time|https://thenounproject.com/term/time/6732]]: Creative Commons — "
+"Attribution, by Richard de Vos."
+msgstr ""
+"[[Time|https://thenounproject.com/term/time/6732]]: Creative Commons — "
+"Reconeixement, per Richard de Vos."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Printer|https://thenounproject.com/term/printer/146674]]: Creative Commons "
+"— Attribution, by Diego Naive."
+msgstr ""
+"[[Printer|https://thenounproject.com/term/printer/146674]]: Creative Commons "
+"— Reconeixement, per Diego Naive."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Smart Phones|https://thenounproject.com/term/smartphone/25790]]: Creative "
+"Commons — Attribution, by Pham Thi Dieu Linh."
+msgstr ""
+"[[Smart Phones|https://thenounproject.com/term/smartphone/25790]]: Creative "
+"Commons — Reconeixement, per Pham Thi Dieu Linh."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Laptop|https://thenounproject.com/term/laptop/6729]]: Public Domain, by "
+"Jean Yashu."
+msgstr ""
+"[[Laptop|https://thenounproject.com/term/laptop/6729]]: Domini públic, per "
+"Jean Yashu."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Love|https://thenounproject.com/term/love/218846/]]: Creative Commons — "
+"Attribution, by Thomas Helbig."
+msgstr ""
+"[[Love|https://thenounproject.com/term/love/218846/]]: Creative Commons — "
+"Reconeixement, per Thomas Helbig."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Survey|https://thenounproject.com/term/survey/1296072]]: Creative Commons "
+"— Attribution, by unlimicon."
+msgstr ""
+"[[Survey|https://thenounproject.com/term/survey/1296072]]: Creative Commons "
+"— Reconeixement, per unlimicon."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Info|https://thenounproject.com/term/info/808461]]: Creative Commons — "
+"Attribution, by icongeek."
+msgstr ""
+"[[Info|https://thenounproject.com/term/info/808461]]: Creative Commons — "
+"Reconeixement, per icongeek."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Command Line|https://thenounproject.com/icon/command-line-39108]]: Public "
+"Domain, by Daniel Gamage."
+msgstr ""
+"[[Command Line|https://thenounproject.com/icon/command-line-39108]]: Domini "
+"públic, per Daniel Gamage."
+
+#~ msgid ""
+#~ "[Forge](https://github.com/digitalbazaar/forge/), copyright Digital "
+#~ "Bazaar, Inc."
+#~ msgstr ""
+#~ "[Forge](https://github.com/digitalbazaar/forge/), copyright de Digital "
+#~ "Bazaar, Inc."
+
+#~ msgid ""
+#~ "Onion logo: registered trademark of The Tor Project, Inc.; the Tails "
+#~ "project is authorized to use it under certain conditions; licensed under "
+#~ "Creative Commons Attribution 3.0 United States License."
+#~ msgstr ""
+#~ "Logotip d'Onion: marca registrada de The Tor Project, Inc.; el projecte "
+#~ "Tails està autoritzat a utilitzar-lo en determinades condicions; amb "
+#~ "llicència de Creative Commons Reconeixement 3.0 d'Estats Units d'Amèrica."
+
+#, fuzzy
+#~ msgid ""
+#~ "  - The Tails logo is based on [[USB|http://thenounproject.com/term/usb/"
+#~ "23873/]]\n"
+#~ "    by Ilsur Aptukov from the Noun Project.\n"
+#~ "  - Debian logo: Copyright (c) 1999 Software in the Public Interest.\n"
+#~ "  - Onion logo: registered trademark of The Tor Project, Inc.; the Tails\n"
+#~ "project is authorized to use it under certain conditions; licensed under\n"
+#~ "Creative Commons Attribution 3.0 United States License.\n"
+#~ "  - Icons from [[The Noun Project|http://thenounproject.com/]]:\n"
+#~ "    - [[Announcement|http://thenounproject.com/term/announcement/"
+#~ "1186/]]:\n"
+#~ "      Creative Commons - Attribution, by Olivier Guin.\n"
+#~ "    - [[Code|http://thenounproject.com/term/code/18033/]]:\n"
+#~ "      Creative Commons — Attribution, by Azis.\n"
+#~ "    - [[Pen|http://thenounproject.com/term/pen/18907/]]:\n"
+#~ "      Creative Commons — Attribution, by factor[e] design initiative.\n"
+#~ "    - [[Loan|http://thenounproject.com/term/loan/19538/]]:\n"
+#~ "      Public Domain, by Rohith M S.\n"
+#~ "    - [[User|http://thenounproject.com/term/user/419/]]:\n"
+#~ "      Creative Commons — Attribution, by Edward Boatman.\n"
+#~ "    - [[Translation|http://thenounproject.com/term/translation/5735/]]:\n"
+#~ "      Creative Commons — Attribution, by Joe Mortell.\n"
+#~ "    - [[Gears|http://thenounproject.com/term/gears/8949/]]:\n"
+#~ "      Creative Commons — Attribution, by Cris Dobbins.\n"
+#~ "    - [[Graphic Design|http://thenounproject.com/term/graphic_design/"
+#~ "9198/]]:\n"
+#~ "      Creative Commons — Attribution, by Cornelius Danger.\n"
+#~ "    - [[Check Mark|https://thenounproject.com/term/check/4489/]]:\n"
+#~ "      Public Domain, by Julian Norton.\n"
+#~ "    - [[Delete|https://thenounproject.com/term/delete/49691/]]:\n"
+#~ "      Creative Commons — Attribution, by Kervin Markle.\n"
+#~ "    - [[Play|https://thenounproject.com/term/play/152052]]:\n"
+#~ "      Creative Commons — Attribution, by Zech Nelson.\n"
+#~ "    - [[Pause|https://thenounproject.com/term/pause/152046]]:\n"
+#~ "      Creative Commons — Attribution, by Zech Nelson.\n"
+#~ "    - [[USB|https://thenounproject.com/term/usb/28901]]:\n"
+#~ "      Creative Commons — Attribution, by Wilson Joseph.\n"
+#~ "    - [[Time|https://thenounproject.com/term/time/6732]]:\n"
+#~ "      Creative Commons — Attribution, by Richard de Vos.\n"
+#~ "    - [[Printer|https://thenounproject.com/term/printer/146674]]:\n"
+#~ "      Creative Commons — Attribution, by Diego Naive.\n"
+#~ "    - [[Smart Phones|https://thenounproject.com/term/smartphone/25790]]:\n"
+#~ "      Creative Commons — Attribution, by Pham Thi Dieu Linh.\n"
+#~ "    - [[Laptop|https://thenounproject.com/term/laptop/6729]]:\n"
+#~ "      Public Domain, by Jean Yashu.\n"
+#~ "    - [[Love|https://thenounproject.com/term/love/218846/]]:\n"
+#~ "      Creative Commons — Attribution, by Thomas Helbig.\n"
+#~ "    - [[Survey|https://thenounproject.com/term/survey/1296072]]:\n"
+#~ "      Creative Commons — Attribution, by unlimicon.\n"
+#~ "    - [[Info|https://thenounproject.com/term/info/808461]]:\n"
+#~ "      Creative Commons — Attribution, by icongeek]].\n"
+#~ msgstr ""
+#~ "  - Das Tails-Logo basiert auf [[USB|http://thenounproject.com/term/usb/"
+#~ "23873/]]\n"
+#~ "    von Ilsur Aptukov von The Noun Project.\n"
+#~ "  - Debian-Logo: Copyright (c) 1999 Software in the Public Interest.\n"
+#~ "  - Onion-Logo: eingetragenes Markenzeichen von The Tor Project, Inc.; "
+#~ "das Tails\n"
+#~ "Project ist autorisiert, es unter bestimmten Bedingungen zu verwenden; "
+#~ "lizenziert unter\n"
+#~ "Creative Commons Attribution 3.0 United States License.\n"
+#~ "  - Icons von [[The Noun Project|http://thenounproject.com/]]:\n"
+#~ "    - [[Announcement|http://thenounproject.com/term/announcement/"
+#~ "1186/]]:\n"
+#~ "      Creative Commons - Attribution, von Olivier Guin.\n"
+#~ "    - [[Code|http://thenounproject.com/term/code/18033/]]:\n"
+#~ "       Creative Commons — Attribution, von Azis.\n"
+#~ "    - [[Pen|http://thenounproject.com/term/pen/18907/]]:\n"
+#~ "       Creative Commons — Attribution, von factor[e] design initiative.\n"
+#~ "    - [[Loan|http://thenounproject.com/term/loan/19538/]]:\n"
+#~ "      Public Domain, von Rohith M S.\n"
+#~ "    - [[User|http://thenounproject.com/term/user/419/]]:\n"
+#~ "       Creative Commons — Attribution, von Edward Boatman.\n"
+#~ "    - [[Translation|http://thenounproject.com/term/translation/5735/]]:\n"
+#~ "      Creative Commons — Attribution, von Joe Mortell.\n"
+#~ "    - [[Gears|http://thenounproject.com/term/gears/8949/]]:\n"
+#~ "      Creative Commons — Attribution, von Cris Dobbins.\n"
+#~ "    - [[Graphic Design|http://thenounproject.com/term/graphic_design/"
+#~ "9198/]]:\n"
+#~ "      Creative Commons — Attribution, von Cornelius Danger.\n"
+#~ "    - [[Check Mark|https://thenounproject.com/term/check/4489/]]:\n"
+#~ "      Public Domain, von Julian Norton.\n"
+#~ "    - [[Delete|https://thenounproject.com/term/delete/49691/]]:\n"
+#~ "      Creative Commons — Attribution, von Kervin Markle.\n"
+#~ "    - [[Play|https://thenounproject.com/term/play/152052]]:\n"
+#~ "      Creative Commons — Attribution, von Zech Nelson.\n"
+#~ "    - [[Pause|https://thenounproject.com/term/pause/152046]]:\n"
+#~ "      Creative Commons — Attribution, von Zech Nelson.\n"
+#~ "    - [[USB|https://thenounproject.com/term/usb/28901]]:\n"
+#~ "      Creative Commons — Attribution, von Wilson Joseph.\n"
+#~ "    - [[Time|https://thenounproject.com/term/time/6732]]:\n"
+#~ "      Creative Commons — Attribution, von Richard de Vos.\n"
+#~ "    - [[Printer|https://thenounproject.com/term/printer/146674]]:\n"
+#~ "      Creative Commons — Attribution, von Diego Naive.\n"
+#~ "    - [[Smart Phones|https://thenounproject.com/term/smartphone/25790]]:\n"
+#~ "      Creative Commons — Attribution, von Pham Thi Dieu Linh.\n"
+#~ "    - [[Laptop|https://thenounproject.com/term/laptop/6729]]:\n"
+#~ "      Public Domain, von Jean Yashu.\n"
+#~ "    - [[Love|https://thenounproject.com/term/love/218846/]]:\n"
+#~ "      Creative Commons — Attribution, von Thomas Helbig.\n"
+#~ "    - [[Survey|https://thenounproject.com/term/survey/1296072]]:\n"
+#~ "      Creative Commons — Attribution, von unlimicon.\n"

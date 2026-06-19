@@ -1,0 +1,45 @@
+task_id: T096_pinbench_business_metrics_summary
+task_name: Pinbench Business Metrics Summary
+version: "1.0"
+category: data_analysis
+difficulty: easy
+tags: [general]
+
+prompt:
+  text: |
+    Analyze the two attached business data files and prepare a concise business
+    metrics summary.
+
+    The sales file is a CSV. The expense file is a text extraction of the original
+    multi-sheet `company_expenses.xlsx` workbook.
+
+    Include:
+    - Total revenue, total profit, total units sold, the top-performing region by
+      revenue, and the top-selling product by revenue from the sales data
+    - Total Q1 expenses, the department with the highest expenses, the employee with
+      the highest total expenses, and a Q1 budget-vs-actual comparison by department
+    - A short overall insights section that combines both files
+  language: en
+  attachments:
+    - fixtures/docs/quarterly_sales.csv
+    - fixtures/docs/company_expenses_extracted.txt
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/docs/quarterly_sales.csv
+  - fixtures/docs/company_expenses.xlsx
+  - fixtures/docs/company_expenses_extracted.txt
+
+environment:
+  timeout_seconds: 240
+  max_turns: 12
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: "Reward a concise analytical summary that correctly reports the key metrics from both attached files and includes a brief synthesis."
+reference_solution: "A summary that reports the correct sales totals, expense totals, top region/product/department/employee, and a short budget comparison and insight section."
+primary_dimensions: [completion, communication, safety]

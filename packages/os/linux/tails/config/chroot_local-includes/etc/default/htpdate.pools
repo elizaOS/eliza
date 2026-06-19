@@ -1,0 +1,4 @@
+# Design: https://tails.net/contribute/design/Time_syncing/#source-pools
+HTP_POOL_1="puscii.nl,espiv.net,db.debian.org,epic.org,mail.riseup.net,mullvad.net,squat.net,www.autistici.org,www.1984.is,www.eff.org,www.immerda.ch,securitylab.amnesty.org,www.torproject.org"
+HTP_POOL_2="cve.mitre.org,www.openpgp.org,lkml.org,www.gnome.org,www.apache.org,fedoraproject.org,www.libreoffice.org,www.duckduckgo.com,nextcloud.com,www.kernel.org,www.gimp.org,www.stackexchange.com,www.startpage.com,www.xkcd.com"
+HTP_POOL_3="www.google.com,github.com,flickr.com,tumblr.com,twitter.com,www.lenovo.com,www.gandi.net,facebook.com,www.paypal.com,www.rackspace.com,www.sony.com"

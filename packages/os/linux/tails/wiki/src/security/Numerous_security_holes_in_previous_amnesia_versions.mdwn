@@ -1,0 +1,25 @@
+[[!meta date="Sun, 25 Apr 2010 11:12:13 +0000"]]
+[[!meta title="Numerous security holes in previous amnesia versions"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect *amnesia* systems older than 0.5.
+
+We **strongly** urge you to [[upgrade to T(A)ILS 0.5|news/version_0.5]] in
+case you are still using an older version.
+
+- ffmpeg: [DSA-2000](http://www.debian.org/security/2010/dsa-2000)
+- polipo: [DSA-2002](http://www.debian.org/security/2010/dsa-2002)
+- Linux kernel:
+  [DSA-2003](http://www.debian.org/security/2010/dsa-2003),
+  [DSA-2012](http://www.debian.org/security/2010/dsa-2012),
+  [DSA-1996](http://www.debian.org/security/2010/dsa-1996)
+- cups: [DSA-2007](http://www.debian.org/security/2010/dsa-2007)
+- dpkg: [DSA-2011](http://www.debian.org/security/2010/dsa-2011)
+- curl: [DSA-2023](http://www.debian.org/security/2010/dsa-2023)
+- iceweasel: [DSA-2027](http://www.debian.org/security/2010/dsa-2027),
+  [DSA-1999](http://www.debian.org/security/2010/dsa-1999)
+- libpng: [DSA-2032](http://www.debian.org/security/2010/dsa-2032)
+- pidgin: [DSA-2038](http://www.debian.org/security/2010/dsa-2038)
+- openoffice.org: [DSA-1995](http://www.debian.org/security/2010/dsa-1995)

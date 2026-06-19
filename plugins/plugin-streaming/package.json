@@ -1,0 +1,117 @@
+{
+  "name": "@elizaos/plugin-streaming",
+  "description": "RTMP streaming for elizaOS (Twitch, YouTube, X, pump.fun, custom and named ingest URLs)",
+  "version": "2.0.3-beta.14",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "tsup && tsc --declaration --emitDeclarationOnly --noEmit false",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "lint": "bunx @biomejs/biome check --write --unsafe src",
+    "lint:check": "bunx @biomejs/biome check src",
+    "typecheck": "tsgo --noEmit",
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-streaming.git"
+  },
+  "keywords": [
+    "elizaos",
+    "elizaos-plugin",
+    "streaming",
+    "rtmp"
+  ],
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "TWITCH_STREAM_KEY": {
+        "type": "string",
+        "description": "Twitch RTMP stream key",
+        "required": false
+      },
+      "YOUTUBE_STREAM_KEY": {
+        "type": "string",
+        "description": "YouTube Live stream key",
+        "required": false
+      },
+      "YOUTUBE_RTMP_URL": {
+        "type": "string",
+        "description": "Optional YouTube RTMP ingest URL override",
+        "required": false
+      },
+      "X_STREAM_KEY": {
+        "type": "string",
+        "required": false
+      },
+      "X_RTMP_URL": {
+        "type": "string",
+        "required": false
+      },
+      "PUMPFUN_STREAM_KEY": {
+        "type": "string",
+        "required": false
+      },
+      "PUMPFUN_RTMP_URL": {
+        "type": "string",
+        "required": false
+      },
+      "CUSTOM_RTMP_URL": {
+        "type": "string",
+        "required": false
+      },
+      "CUSTOM_RTMP_KEY": {
+        "type": "string",
+        "required": false
+      }
+    }
+  }
+}

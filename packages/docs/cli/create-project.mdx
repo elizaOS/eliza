@@ -1,0 +1,46 @@
+---
+title: Create a Project
+description: "Scaffold a new Eliza agent project."
+---
+
+```bash
+npx elizaos create [name] --template project
+```
+
+## Flags
+
+| Flag                              | Purpose                                                          |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `-t, --template <template>`       | `project` (default) or `plugin`.                                 |
+| `-l, --language <lang>`           | Template language. TypeScript is the only shipping option today. |
+| `-y, --yes`                       | Skip confirmation prompts.                                       |
+| `--skip-upstream`                 | Don't initialize a local `eliza/` upstream checkout.             |
+
+## What you get
+
+The `project` template scaffolds a package-first elizaOS project:
+
+- `character.ts` — your agent's identity and plugin list.
+- `src/` — runtime entry point and any custom code.
+- `package.json` — wired to `@elizaos/core` and the default plugin set, plus a `dev` / `build` / `test` script set.
+- `bunfig.toml`, `tsconfig.json` — build config.
+- `.env.example` — required env variables for the included plugins.
+
+Optional local-source mode (`ELIZA_ELIZA_SOURCE=local`) links against a repo-local `eliza/` checkout so you can patch upstream alongside your project. Set `--skip-upstream` to opt out.
+
+## Next steps
+
+```bash
+cd <name>
+bun install
+cp .env.example .env   # fill in model provider key
+bun run dev
+```
+
+`bun run dev` starts the agent + dashboard. There is no `eliza start` — running an agent is a project script, not a CLI command.
+
+## See also
+
+- [Agent track](/tracks/agent/overview)
+- [Character files](/tracks/agent/character)
+- [Connect channels](/tracks/agent/connect-channels)

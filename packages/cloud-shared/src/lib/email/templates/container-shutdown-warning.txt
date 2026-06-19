@@ -1,0 +1,41 @@
+🚨 CONTAINER SHUTDOWN WARNING
+=============================
+
+Organization: {{organizationName}}
+
+URGENT: Your container will be shut down in 48 hours!
+
+Your account has insufficient credits to continue running your deployed container. Add funds within the next 48 hours to prevent service interruption.
+
+⏰ TIME UNTIL SHUTDOWN: 48 Hours
+   Scheduled: {{shutdownTime}}
+
+📦 CONTAINER DETAILS
+--------------------
+Container Name: {{containerName}}
+Project: {{projectName}}
+Daily Cost: ${{dailyCost}}/day
+Current Balance: ${{currentBalance}}
+Required to Continue: ${{requiredCredits}}
+
+⚡ WHAT HAPPENS WHEN SHUTDOWN OCCURS?
+-------------------------------------
+• Container will be stopped - Your agent will go offline
+• API endpoints will become unavailable
+• Data in memory will be lost (persistent storage retained for 30 days)
+
+💳 ADD CREDITS NOW
+------------------
+Visit: {{billingUrl}}
+
+💡 QUICK COST REFERENCE
+-----------------------
+Containers are billed daily at ${{dailyCost}}/day (${{monthlyCost}}/month).
+Add at least ${{minimumRecommended}} to keep your container running for the next week.
+
+---
+Questions? Reply to this email or visit your dashboard: {{dashboardUrl}}
+
+© {{currentYear}} Eliza Cloud. All rights reserved.
+
+You received this urgent alert because your container "{{containerName}}" is scheduled for shutdown due to insufficient credits.

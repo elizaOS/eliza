@@ -1,0 +1,128 @@
+schema: eliza.e1_phone_usb_sidekey_mechanical_decision.v1
+status: blocked_usb_sidekey_mechanical_decision_requires_supplier_drawings_routed_step_and_measurements
+date: '2026-05-21'
+claim_boundary: Mechanical decision gate for the single USB-C port and side power/volume controls. This records
+  the current EVT0 package choice and enclosure load-path policy, but it is not a supplier drawing pack, not a
+  KiCad footprint, not a routed board, not an insertion-force or force-travel test, and not enclosure release.
+source_artifacts:
+  - package/usb-c/e1-phone-usb-c-port.yaml
+  - package/human-interface/side-buttons.yaml
+  - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/enclosure-placement-closure.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+upstream_status:
+  usb_c_package: planning_binding_no_schematic_no_fabricated_board
+  side_buttons_package: planning_binding_no_schematic_no_fabricated_board
+  usb_sidekey_source_revalidation: public_sources_revalidated_usb_sidekey_not_supplier_approved
+  placement_interface_matrix: concept_constraints_not_routed_pcb
+  enclosure_placement: enclosure_placement_cross_checked_not_release_ready
+  component_height_step_integration: blocked_requires_supplier_step_models_approved_routed_board_step_physical_clearance_and_signoff
+  supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
+usb_mechanical_policy:
+  active_region_refdes: J_USB_C
+  active_region_mm:
+    x: 26.0
+    y: 126.0
+    width: 16.0
+    height: 6.0
+  board_edge: bottom_center
+  selected_evt0_connector:
+    vendor: GCT
+    family: USB4105
+    type: USB_Type_C_USB2_receptacle
+    active_contacts: 16
+    current_rating: VBUS_5A_collective
+    decision: keep_for_evt0_usb2_pd_charge_adb_fastboot_debug
+    rationale: keeps first routed phone board to USB2/PD/debug while SoC USB3/DP bonding, muxing, and SI burden remain unproven
+  conditional_production_alternate:
+    vendor: Molex
+    family: 221632_or_217804_Port_On
+    type: USB_Type_C_24_pin_waterproof_receptacle
+    decision: hold_for_waterproof_or_superspeed_revision_only
+    promote_only_if:
+      - exact waterproof MPN, gasket, cutout, drain, and shell datum are selected
+      - USB3 or DP lanes are bonded, muxed, routed, simulated, and validated
+      - enclosure aperture and cable overmold clearance are rerun with routed board STEP
+  required_mechanical_capture:
+    - through-hole shell stakes or enclosure saddle must carry plug insertion and extraction load
+    - chamfered or radiused external aperture must clear common cable overmolds
+    - SHIELD_GND chassis or logic ground policy must be closed before ESD testing
+    - supplier STEP must include shell, tongue, stake, board-edge datum, and maximum height
+side_key_mechanical_policy:
+  active_connector_refdes: SW_POWER_VOL
+  active_connector_region_mm:
+    x: 18.0
+    y: 26.0
+    width: 12.0
+    height: 3.0
+  actuator_spine_region_mm:
+    x: 4.0
+    y: 50.0
+    width: 7.0
+    height: 46.0
+  selected_primary_switch:
+    vendor: Panasonic
+    family: EVQ-P7_EVQ-P3_EVQ-9P7
+    type: SMD_side_push_tactile
+    dimensions_mm:
+      length: 3.5
+      width: 2.9
+      height: 1.35
+    travel_mm: 0.2
+    decision: keep_as_primary_phone_edge_side_push_family
+    rationale: side-push force path aligns better with phone-edge power and volume caps than a top-actuated plunger-only switch
+  conditional_alternate_switch:
+    vendor: Littelfuse_CK
+    family: KMR2
+    type: micro_miniature_SMT_tactile_top_actuated
+    dimensions_mm:
+      length: 4.2
+      width: 2.2
+      height: 1.9
+    decision: hold_for_plunger_or_subassembly_revision_only
+    promote_only_if:
+      - enclosure plunger converts side motion into top actuation without loading solder joints
+      - force/travel curve, return force, cap rattle, and tolerance stack pass on samples
+      - side-key flex or switch subassembly avoids battery cavity and split-interconnect service loop
+  required_mechanical_capture:
+    - external caps must push an enclosure rib, elastomer, or flex stiffener instead of solder joints
+    - switch centerlines must align with power and volume cap centerlines through tolerance stack
+    - force-travel samples must prove power, volume-up, and volume-down buttons independently
+    - recovery combo volume-down plus power must remain reachable during boot and fixture test
+release_dependency:
+  supplier_response_packs_received: 0
+  supplier_response_required_before_footprint_release: true
+  routed_board_step_required_before_enclosure_release: true
+  acceptance_measurements_required:
+    - usb_c_insertion_extraction_force
+    - usb_c_plug_overmold_clearance_sweep
+    - usb_c_shell_stake_or_saddle_load_path_review
+    - side_key_force_travel_csv_for_power_volume_up_volume_down
+    - side_key_wake_and_recovery_combo_log
+cross_checks:
+  evt0_usb_region_matches_active_matrix: true
+  evt0_usb_terminates_at_bottom_edge: true
+  evt0_usb2_choice_reduces_first_route_density: true
+  waterproof_superspeed_alternate_not_promoted: true
+  side_push_primary_matches_phone_edge_force_path: true
+  top_actuated_alternate_requires_plunger: true
+  no_supplier_responses_received: true
+release_blockers:
+  - USB-C exact signed drawing, land pattern, STEP, shell stake dimensions, insertion-force data, and lifecycle evidence are missing
+  - waterproof or superspeed USB-C alternate cannot be promoted without exact MPN, gasket/cutout datum, USB3/DP routing, and SI evidence
+  - side-key exact MPN, force-travel curve, land pattern, STEP, lifecycle evidence, and sample lot are missing
+  - side-key flex or enclosure load-path drawing with plunger, rib, elastomer, or stiffener datum is missing
+  - routed board STEP, plug overmold sweep, button force/travel data, wake/recovery logs, and enclosure clearance rerun are missing
+forbidden_claims:
+  - usb_c_mechanical_ready
+  - usb_c_waterproof_ready
+  - usb_c_superspeed_ready
+  - side_key_mechanical_ready
+  - side_buttons_ready
+  - power_key_wake_ready
+  - recovery_key_combo_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

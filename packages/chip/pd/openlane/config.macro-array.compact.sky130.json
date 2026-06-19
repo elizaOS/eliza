@@ -1,0 +1,114 @@
+{
+  "DESIGN_NAME": "e1_npu_weight_buffer_array",
+  "PDK": "sky130A",
+  "STD_CELL_LIBRARY": "sky130_fd_sc_hd",
+  "STD_CELL_LIBRARY_OPT": "sky130_fd_sc_hd",
+  "VERILOG_FILES": [
+    "dir::../../rtl/npu/e1_npu_weight_buffer_array.sv",
+    "dir::../../rtl/memory/e1_weight_buffer_sram.sv"
+  ],
+  "VERILOG_DEFINES": [
+    "E1_HAVE_HARD_SRAM"
+  ],
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 15,
+  "FP_SIZING": "absolute",
+  "DIE_AREA": "0 0 3600 2200",
+  "CORE_AREA": "100 100 3500 2100",
+  "FP_CORE_UTIL": 20,
+  "PL_TARGET_DENSITY": 0.3,
+  "FP_MACRO_HORIZONTAL_HALO": 30,
+  "FP_MACRO_VERTICAL_HALO": 30,
+  "MACRO_PLACEMENT_CFG": "dir::macro_array_cand_compact.cfg",
+  "RT_MAX_LAYER": "met5",
+  "RUN_HEURISTIC_DIODE_INSERTION": true,
+  "PRIMARY_GDSII_STREAMOUT_TOOL": "klayout",
+  "RUN_MAGIC_STREAMOUT": false,
+  "RUN_MAGIC_WRITE_LEF": false,
+  "RUN_KLAYOUT_XOR": false,
+  "MAGIC_MACRO_STD_CELL_SOURCE": "PDK",
+  "MACROS": {
+    "sky130_sram_2kbyte_1rw1r_32x512_8": {
+      "gds": [
+        "pdk_dir::libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds"
+      ],
+      "lef": [
+        "pdk_dir::libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef"
+      ],
+      "lib": {
+        "*": [
+          "pdk_dir::libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
+        ]
+      },
+      "nl": [
+        "dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"
+      ],
+      "instances": {
+        "u_bank0.u_sram": {
+          "location": [
+            150,
+            400
+          ],
+          "orientation": "N"
+        },
+        "u_bank1.u_sram": {
+          "location": [
+            893,
+            400
+          ],
+          "orientation": "N"
+        },
+        "u_bank2.u_sram": {
+          "location": [
+            1636,
+            400
+          ],
+          "orientation": "N"
+        },
+        "u_bank3.u_sram": {
+          "location": [
+            2379,
+            400
+          ],
+          "orientation": "N"
+        },
+        "u_bank4.u_sram": {
+          "location": [
+            150,
+            900
+          ],
+          "orientation": "N"
+        },
+        "u_bank5.u_sram": {
+          "location": [
+            893,
+            900
+          ],
+          "orientation": "N"
+        },
+        "u_bank6.u_sram": {
+          "location": [
+            1636,
+            900
+          ],
+          "orientation": "N"
+        },
+        "u_bank7.u_sram": {
+          "location": [
+            2379,
+            900
+          ],
+          "orientation": "N"
+        }
+      }
+    }
+  },
+  "PDN_VPITCH": 153.6,
+  "PDN_HPITCH": 153.6,
+  "PDN_VWIDTH": 3.1,
+  "PDN_HWIDTH": 3.1,
+  "PDN_CORE_RING": true,
+  "PDN_VERTICAL_LAYER": "met4",
+  "PDN_HORIZONTAL_LAYER": "met5",
+  "MAGIC_DRC_USE_GDS": true
+}

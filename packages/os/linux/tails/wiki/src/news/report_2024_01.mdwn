@@ -1,0 +1,53 @@
+[[!meta title="Tails report for January 2024"]]
+[[!meta date="Mon, 12 Feb 2024 18:58:53 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- Help us test Tails 6.0! A [[release candidate|/news/test_6.0-rc1]] of the
+  upcoming Tails 6.0 is out. Tails 6.0 promises to have a lot of exciting
+  upgrades and new features. You can help us by testing the [[release
+   candidate|/news/test_6.0-rc1]]. We welcome your feedback by February 18 to
+  either:
+    - [[tails-testers@boum.org|doc/about/contact#tails-testers]] (public mailing list), or 
+    - [[tails-support-private@boum.org|doc/about/contact#tails-support-private]] (private email)
+
+- It is all hands on deck for Tails 6.0! We have been upgrading Tails to Debian
+  12 ("bookworm"). We were also busy updating all our documentation to be ready
+  for Tails 6.0. 1378 edited lines of HTML and Markdown code later, the
+  documentation for Tails 6.0 is almost ready.
+
+- We were in the media! [Here's](https://www.youtube.com/watch?v=JvDwx6dqrpM)
+  [@sajolida](https://gitlab.tails.boum.org/sajolida) riffing with our long-time
+  illustrator and comrade [Anhdres](https://anhdres.com/) about all things Tails.
+  And
+  [here's](https://softwareengineeringdaily.com/2024/01/18/edward-snowdens-operating-system-with-redacted/)
+  [@groente](https://gitlab.tails.boum.org/groente) in conversation with Software
+  Engineering Daily about how we interpret our values and mission in light of the
+  various use cases of Tails.
+
+Releases
+========
+
+[[Tails 5.22|/news/version_5.22]] was our first release of 2024! In Tails 5.22:
+
+- we continued improving the Persistent Storage: 
+  - Tails now tries to repair the Persistent Storage if it is broken when you
+    unlock it.
+  - Tails now does not try to unlock or delete a Persistent Storage that's on a
+    read-only USB stick.
+
+- you can now download and upload files using Tor Browser to/from more folders.
+
+- we introduced more robust error messages when installing Tails with Tails
+  Cloner. Thanks again to
+  [@BenWestgate](https://gitlab.tails.boum.org/BenWestgate) for the efforts to
+  improve Tails Cloner!
+
+Metrics
+=======
+
+Tails was started more than 806,263 times this month. That's a daily average of over 26,008 boots.

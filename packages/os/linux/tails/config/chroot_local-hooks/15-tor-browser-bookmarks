@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -e
+
+echo "Set up Tor Browser bookmarks"
+
+# Create a symlink to places.sqlite in browser profile from a
+# dedicated "bookmarks" directory, so that it can be easily made
+# persistent
+mkdir -p /etc/skel/.mozilla/firefox/bookmarks
+ln -s /home/amnesia/.mozilla/firefox/bookmarks/places.sqlite \
+   /etc/skel/.tor-browser/profile.default/places.sqlite

@@ -1,0 +1,41 @@
+---
+title: Cloud Containers
+description: "Hosted agent container deploys."
+---
+
+Cloud containers are managed deploys of agent runtimes. You hand Cloud a container image (or let Cloud build from a repo), and it runs the agent with resource quotas, logs, and health checks.
+
+## When to use containers
+
+- The agent has a long-running background loop (autonomy, schedulers, social posting).
+- The agent needs server-side compute beyond a function's lifetime.
+- You want HA, log retention, and observability without operating it yourself.
+
+## Lifecycle
+
+- `POST /api/v1/containers` - create a deploy from a Docker image reference.
+- `GET /api/v1/containers/{id}` - fetch status (`deploying`, `running`, `failed`, `stopped`, `suspended`).
+- `PATCH /api/v1/containers/{id}` - update env, restart, or keep desired count at `1`.
+- `GET /api/v1/containers/{id}/logs` - fetch recent logs.
+- `GET /api/v1/containers/{id}/metrics` - fetch runtime metrics.
+- `DELETE /api/v1/containers/{id}` - stop and remove.
+
+Resource settings such as CPU units and memory are selected at deploy time.
+Public shared-pool deploys currently use `desired_count: 1`. Billing is tracked
+against the organization credits balance, with optional earnings-first hosting
+billing for creators.
+
+## Logs
+
+Container logs stream to the dashboard and are queryable through the Cloud API.
+
+## Source
+
+- Routes: `packages/cloud-api/v1/containers/`
+- Dashboard: `packages/cloud-frontend/src/dashboard/containers/`
+
+## See also
+
+- [Apps](/tracks/cloud/apps) - link a container to a Cloud app record
+- [Billing](/tracks/cloud/billing) - hosting uses credits or eligible earnings
+- [Containers API](/cloud/api/containers)

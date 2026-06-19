@@ -1,0 +1,118 @@
+schema: eliza.e1_phone_public_market_bom_cost_bands.v1
+date: '2026-05-28'
+status: public_market_cost_bands_not_avl_quote
+evidence_class: public_market_research
+claim_boundary: >
+  Public marketplace, distributor, and manufacturer-visible prices are recorded
+  as sourcing/RFQ seed evidence only. They are not signed supplier quotes, not
+  AVL approval, not purchase-order pricing, and not production-release BOM
+  evidence. Values exclude freight, tariffs, certification, tooling, calibration,
+  yield loss, warranty reserve, payment terms, and lifecycle guarantees unless
+  noted otherwise.
+currency: USD
+volume_columns: [100, 1000, 10000, 100000, 1000000]
+records:
+  - category: display_touch
+    supplier_examples: [Chenghao CH550FH01A-CT, META 5.5in FHD MIPI CTP, BOE/Tianma alternates]
+    public_evidence_summary: 5.5in 1080x1920 MIPI CTP public listings show low-volume and 1k+ price breaks.
+    source_urls:
+      - https://chenghaolcd.en.made-in-china.com/product/pmFUBTZDnXVH/China-LCD-Manufacturer-1080-1920-Pixels-5-5inch-Pcap-Capacitive-Touch-Display-TFT-Module.html
+      - https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html
+    cost_band_usd: {100: [17.40, 17.40], 1000: [15.40, 16.50], 10000: [14.00, 15.40], 100000: [12.00, 14.00], 1000000: [10.50, 12.50]}
+    release_caveat: Needs signed display drawing, FPC pinout, touch-controller data, STEP, init sequence, and samples.
+  - category: rear_camera
+    supplier_examples: [Sincere First OV13855, OV13850 AF MIPI module suppliers]
+    public_evidence_summary: Made-in-China style public camera-module listings show 5-999, 1k-9999, and 10k+ breaks.
+    source_urls:
+      - https://www.alibaba.com/showroom/cmos-sensor-ov13855.html
+    cost_band_usd: {100: [16.35, 16.35], 1000: [11.65, 11.65], 10000: [8.35, 8.35], 100000: [7.00, 8.00], 1000000: [6.00, 7.00]}
+    release_caveat: Needs supplier module drawing, FPC order, lens datum, optical stack, OTP/calibration, and STEP.
+  - category: front_camera
+    supplier_examples: [GC5035 module vendors, OV5640 module vendors, OV5648 module vendors]
+    public_evidence_summary: Public 5MP MIPI module listings commonly expose broad small-quantity ranges.
+    source_urls:
+      - https://www.sincerefirst.com/sincerefirst-solution/6053.html
+      - https://sincerefirst.en.made-in-china.com/product/rTVRCQFcfvhZ/China-5MP-Gc5035-Sensor-Camera-Module-Auto-Focus-Fixed-Focus-Mipl-Small-Size.html
+    cost_band_usd: {100: [6.00, 13.00], 1000: [4.50, 9.00], 10000: [3.50, 7.00], 100000: [2.80, 5.50], 1000000: [2.20, 4.50]}
+    release_caveat: Needs exact module supplier, drawing, connector pinout, lens stack, and driver validation.
+  - category: battery_pack
+    supplier_examples: [LiPol, Data Power, Lexitong, custom 3.85V pouch-pack vendors]
+    public_evidence_summary: Public quotes vary widely; MOQ-100 3.85V 5000mAh pack listings with protection/certification signals push low-volume estimates above the earlier placeholder range.
+    source_urls:
+      - https://99cd851fcf01676a.en.made-in-china.com/product/fnlREPqgBJVz/China-Flyoung-925266-3-85-V-5000-mAh-Lithium-Polymer-Batteries-and-Electronic-Products-Add-Protection-Plate.html
+    cost_band_usd: {100: [10.00, 12.00], 1000: [6.00, 10.00], 10000: [4.00, 7.00], 100000: [3.00, 5.00], 1000000: [2.50, 4.00]}
+    release_caveat: Needs cell grade, swelling, PCM, connector, UN38.3, sample lot, and pack-vendor drawing.
+  - category: usb_c_receptacle
+    supplier_examples: [GCT USB4105-GF-A, compatible USB2 Type-C receptacle vendors]
+    public_evidence_summary: Authorized distributor price breaks for GCT USB4105 class parts show sub-dollar volume pricing.
+    source_urls:
+      - https://www.digikey.com/en/products/detail/gct/USB4105-GF-A/11198441
+      - https://gct.co/connector/usb4105
+    cost_band_usd: {100: [0.58, 0.80], 1000: [0.44, 0.58], 10000: [0.42, 0.45], 100000: [0.35, 0.42], 1000000: [0.28, 0.35]}
+    release_caveat: Needs exact shell/stake drawing, board edge tolerance, insertion-force validation, and supplier-approved footprint.
+  - category: wifi_bluetooth
+    supplier_examples: [Murata Type 2EA LBEE5XV2EA-802, Ampak AP6275S, Realtek RTL8852BS module vendors]
+    public_evidence_summary: Distributor pricing proves purchasability; high-volume support/pricing requires Murata or module-vendor design-in.
+    source_urls:
+      - https://www.murata.com/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+      - https://www.digikey.jp/ja/products/detail/murata-electronics/LBEE5XV2EA-802/22205340
+    cost_band_usd: {100: [19.49, 25.39], 1000: [17.00, 19.50], 10000: [12.00, 16.00], 100000: [8.00, 12.00], 1000000: [6.50, 9.00]}
+    release_caveat: Needs RF layout review, antenna coexistence, regulatory collateral, and exact module lifecycle approval.
+  - category: cellular
+    supplier_examples: [Quectel RG255C-GL, Fibocom RedCap modules, MeigLink RedCap modules]
+    public_evidence_summary: Public broker and marketplace prices are high; OEM module pricing requires channel RFQ.
+    source_urls:
+      - https://www.quectel.com/library/new-product-intro-rg255c-5g-redcap-module/
+      - https://www.quectel.com/blog/document/5g-redcap-rg255c-series/
+    cost_band_usd: {100: [64.60, 67.40], 1000: [58.00, 65.00], 10000: [45.00, 55.00], 100000: [32.00, 42.00], 1000000: [25.00, 35.00]}
+    release_caveat: Needs region SKU, carrier bands, firmware pack, RF matching, certification, and supply approval.
+  - category: side_buttons
+    supplier_examples: [XKB TS-1187 side switch, Panasonic EVQ-P7A01P alternate, cap/gasket vendors]
+    public_evidence_summary: LCSC/distributor switch pricing is pennies, but phone line includes caps, gasket, flex, and assembly handling.
+    source_urls:
+      - https://app.ultralibrarian.com/details/61252631-757a-11ec-9033-0a34d6323d74/Panasonic/EVQ-P7A01P
+    cost_band_usd: {100: [0.35, 0.75], 1000: [0.25, 0.60], 10000: [0.18, 0.45], 100000: [0.14, 0.35], 1000000: [0.10, 0.28]}
+    release_caveat: Needs force variant, life-cycle data, actuator tolerance, ingress path, and side-key FPC drawing.
+  - category: audio_haptics
+    supplier_examples: [1115 speaker module vendors, MEMS microphone vendors, LRA and haptic vendors]
+    public_evidence_summary: Public speaker, MEMS mic, and LRA quotes support low single-digit category cost at volume.
+    cost_band_usd: {100: [3.00, 5.00], 1000: [2.20, 4.00], 10000: [1.60, 3.00], 100000: [1.00, 2.00], 1000000: [0.80, 1.60]}
+    release_caveat: Needs acoustic chamber drawing, gasket stack, haptic fixture data, codec/amp validation, and samples.
+  - category: connectors_fpc
+    supplier_examples: [Hirose BM28, Hirose DF40, KN13C-class connectors, custom FPC suppliers]
+    public_evidence_summary: Public connector unit pricing exists; custom FPC cost is RFQ-driven and stack-specific.
+    source_urls:
+      - https://www.hirose.com/product/series/BM28
+      - https://www.hirose.com/en/product/c/BM28
+    cost_band_usd: {100: [8.00, 14.00], 1000: [5.00, 9.00], 10000: [3.00, 6.00], 100000: [2.00, 4.00], 1000000: [1.50, 3.00]}
+    release_caveat: Needs exact mating pairs, plating/package suffixes, bend stack, stiffener drawings, and insertion clearance evidence.
+  - category: antennas
+    supplier_examples: [Keesun LTE FPC antenna, custom LTE/Wi-Fi/GNSS/NFC FPC/LDS vendors]
+    public_evidence_summary: Public FPC antenna pricing proves market availability; phone antenna performance is custom tuning work.
+    cost_band_usd: {100: [8.00, 14.00], 1000: [4.00, 8.00], 10000: [2.50, 5.00], 100000: [1.80, 3.50], 1000000: [1.20, 2.50]}
+    release_caveat: Needs antenna vendor drawing, spring/contact choice, VNA/SAR data, matching, carrier bands, and enclosure review.
+subtotal_researched_categories_usd:
+  100: [153.50, 186.00]
+  1000: [124.20, 154.00]
+  10000: [94.80, 123.50]
+  100000: [70.20, 97.20]
+  1000000: [56.10, 79.60]
+discount_vs_100_unit_baseline_pct:
+  100: [0, 0]
+  1000: [17, 19]
+  10000: [34, 38]
+  100000: [48, 54]
+  1000000: [57, 64]
+exclusions:
+  - compute_AP_or_SoM
+  - discrete_memory_or_storage_if_not_on_SoM
+  - PMIC_charger_PD_ICs_outside_researched_category
+  - PCB_fabrication_and_SMT_assembly
+  - enclosure_tooling_and_molding
+  - calibration_RF_certification_fixtures_packaging_logistics_tariffs_warranty
+summary:
+  category_count: 11
+  release_credit: false
+  avl_quote_count: 0
+  signed_supplier_quote_count: 0
+  volume_count: 5

@@ -1,0 +1,11 @@
+[[!meta date="Mon, 07 Dec 2009 11:20:24 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+As detailed on the related [[security
+announce|security/IP_address_leak_with_Icedove]] page, the real IP address
+being used,
+and thus, in some cases, the amnesia user's true location, is
+disclosed when using Icedove (Thunderbird) to send email.
+
+This has been fixed in [[amnesia 0.4.1|news/version_0.4.1]].

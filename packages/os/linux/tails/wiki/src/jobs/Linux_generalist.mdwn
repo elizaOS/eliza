@@ -1,0 +1,154 @@
+[[!meta title="Privacy loving Linux generalist"]]
+
+[[!meta stylesheet="jobs" rel="stylesheet" title=""]]
+[[!tag job/staff]]
+[[!meta robots="noindex"]]
+
+[[!toc levels=1]]
+
+**This job opening is closed.**
+
+Summary
+=======
+
+The Foundations Team at Tails is hiring a Linux generalist. Tails is a portable
+operating system that protects against surveillance and censorship.
+The Foundations Team is responsible for maintaining, releasing, and improving
+Tails. We work remotely, and do not have a traditional office space.
+
+About Tails
+===========
+
+Tails makes digital security tools accessible to everyone, whenever they need
+it: activists, journalists, freedom fighters, and ultimately, you, whenever you
+need extra privacy in this digital world.
+
+The Tails project was started in 2009 and has now more than 30 000 daily users.
+
+Read more about our [[mission and values|contribute/mission]].
+
+<div id="benefits">
+
+  <div class="benefit">
+
+    <h3>Nonprofit</h3>
+
+    <p>We put our users first, not profits.</p>
+
+  </div>
+
+  <div class="benefit">
+
+    <h3>Equal opportunity, equal pay</h3>
+
+    <p>We are committed to creating an inclusive and equitable
+    environment for all. We have a transparent compensation scheme where
+    everybody enjoys comparable pay and benefits.</p>
+
+  </div>
+
+  <div class="benefit">
+
+    <h3>Small team</h3>
+
+    <p>We are a small team that values transparency, autonomy, and horizontal
+    decision-making.</p>
+
+  </div>
+
+</div>
+
+About this position
+===================
+
+Role description
+----------------
+
+You are a Linux generalist who likes analyzing and solving technical problems in
+many different areas of a GNU/Linux system. You can dedicate at least 20 hours
+a week to Tails, although 30 hours a week would be ideal.
+
+You will join our Foundations Team, whose many
+responsibilities are
+divided among its members. We do not expect any single member to take all these
+responsibilities themselves — it's a team effort!
+
+Our main activity is what we call "plumbing": gluing things together without
+necessarily understanding in depth every individual part.
+
+You will be responsible for releasing Tails once every 2 months.
+Managing Tails’s release is a 2-day shift during which you will work a bit more
+than usual, and at unusual times. We plan this shift in advance, and rotate this
+responsibility within the team.
+
+You will be a Core Worker. Core Workers are in charge of maintaining not only an
+operating system but also the good health of the project as a whole. Together,
+we continuously discuss and improve organizational and strategic aspects of
+the project.
+
+Requirements
+------------
+
+We encourage you to apply if:
+
+- You have significant experience with GNU/Linux, and system
+  administration basics.
+  - Ideally this would be on Debian or one of its derivatives. If your
+    experience is about other Linux environments, that's fine: be ready to learn
+    lots of Debian-specific stuff!
+- You are somewhat familiar, or at least excited about, modern Linux desktop and
+  GNOME technologies,such as D-Bus, GTK, Flatpak, systemd, etc.
+- You have intermediate familiarity with:
+  - one programming language among Python and Ruby
+  - POSIX-like shell scripting, such as Bash
+  - as a bonus: JavaScript or Object-oriented Perl with Moo
+- You like to learn new stuff: Tails is big and you probably don't know
+  everything yet — nobody does!
+- You have good verbal and written communication skills in English.
+- You are self-organized, systematic, able to set priorities and
+  manage timelines.
+- You are interested in *how* groups of people communicate, express & hear needs
+  & feelings, handle crisis & conflicts, organize work, and make decisions.
+- You are enthusiastic about our [[mission and values|contribute/mission]],
+  motivated by social impact.
+- You have some experience working fully remote, primarily with
+  asynchronous communication.
+- You can work comfortably at least 3 hours during the peak of Tails activities:
+  between 10:00 and 17:00 Europe/Berlin.
+
+Working conditions
+------------------
+
+Given how Tails work is organized, you will:
+
+- Primarily work remotely and asynchronously with other people, who may live in
+  a different time zone.
+- Use GitLab, email, Jabber/XMPP, and video calls.
+- Also meet in-person a few times a year.
+- Participate in self-organizing a team whose members have varying degrees of
+  involvement and complementary skill sets.
+  - For example: attend remote and face to face team meetings, triage bugs
+    together, collectively build a roadmap.
+
+If you identify as being part of a group that is under-represented in Free and
+Open Source Software communities, we particularly encourage you to apply.
+Tails is not as diverse as we would like it to be. For example, paid workers at
+Tails are currently all cis-males, predominantly white. We are committed to
+creating a more inclusive and respectful work environment, which would be
+welcoming to more diverse people.
+
+Compensation and benefits
+-------------------------
+
+Pay scale is 40–90 k€ per year for 20-30 hours a week, including medical coverage.
+
+[[!inline pages="jobs/compensation" raw="yes" sort="age"]]
+
+How to apply
+============
+
+<style>
+.apply-portfolio { display: none; }
+</style>
+
+[[!inline pages="jobs/apply" raw="yes" sort="age"]]

@@ -1,0 +1,135 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-12 10:28+0000\n"
+"PO-Revision-Date: 2026-03-14 05:42+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+#, fuzzy
+#| msgid "[[!meta title=\"Write to our help desk\"]]"
+msgid "[[!meta title=\"Contact us\"]]"
+msgstr "[[!meta title=\"Scrivere al nostro help desk\"]]"
+
+#. type: Content of: <h1>
+msgid "Report an error"
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "WhisperBack"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-solid fa-user-secret\"></i>"
+msgstr "<i class=\"fa-4x fa-solid fa-user-secret\"></i>"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Reporting an error from Tails using [[<i>WhisperBack</i>|doc/first_steps/"
+"whisperback]] is the most private and the most useful way of contacting us."
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Other support channels"
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "Forum"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-comments\"></i>"
+msgstr "<i class=\"fa-4x fa-regular fa-comments\"></i>"
+
+#. type: Content of: <div><div><p><p>
+msgid ""
+"Talk with other Tails users in the [[Tails category of the Tor Forum|https://"
+"forum.torproject.org/c/support/tails/33]]."
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "Email"
+msgstr "Posta elettronica"
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-envelope\"></i>"
+msgstr "<i class=\"fa-4x fa-regular fa-envelope\"></i>"
+
+#. type: Content of: <div><div><p>
+#, fuzzy
+#| msgid "[[support@tails.net|doc/about/contact#support]]"
+msgid "Write us at [[support@tails.net|doc/about/contact#support]]."
+msgstr "[[support@tails.net|doc/about/contact#support]]"
+
+#. type: Content of: <div><div><p>
+msgid "Please write in English."
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Encrypting your emails with our [[OpenPGP key|doc/about/"
+"openpgp_keys#support]] is the only way to achieve end-to-end encryption."
+msgstr ""
+"Cifrare le tue email con la nostra [[chiave OpenPGP|doc/about/"
+"openpgp_keys#support]] è l'unico modo per ottenere una cifratura end-to-end."
+
+#. type: Content of: <div><div><h3>
+msgid "Chat"
+msgstr "Chat"
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-message\"></i>"
+msgstr "<i class=\"fa-4x fa-regular fa-message\"></i>"
+
+#. type: Content of: <div><div>
+msgid "[[!inline pages=\"support/chat\" raw=\"yes\" sort=\"age\"]]"
+msgstr "[[!inline pages=\"support/chat.it\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid "[[!img lib/email.png link=no]]"
+#~ msgstr "[[!img lib/email.png link=no]]"
+
+#, fuzzy
+#~| msgid "You can write to our help desk by email:"
+#~ msgid "You can write us by email:"
+#~ msgstr "Puoi scrivere al nostro help desk via posta elettronica:"
+
+#~ msgid "[[!img lib/chat.png link=no]]"
+#~ msgstr "[[!img lib/chat.png link=no]]"
+
+#~ msgid "Join our XMPP chat room to talk to contributors and users."
+#~ msgstr ""
+#~ "Unisciti alla nostra chat room XMPP per parlare con persone che "
+#~ "contribuiscono e utenti di Tails."
+
+#~ msgid "Room: <code>tails</code>"
+#~ msgstr "Room: <code>tails</code>"
+
+#~ msgid "Server: <code>chat.disroot.org</code>"
+#~ msgstr "Server: <code>chat.disroot.org</code>"
+
+#~ msgid "use TLS/SSL to connect!"
+#~ msgstr "usa TLS/SSL per connetterti!"
+
+#, fuzzy
+#~| msgid "[[!inline pages=\"support/talk/languages.inline\" raw=\"yes\"]]"
+#~ msgid ""
+#~ "[[!inline pages=\"support/talk/no_reply_every_request.inline\" "
+#~ "raw=\"yes\"]] [[!inline pages=\"support/talk/languages.inline\" "
+#~ "raw=\"yes\"]]"
+#~ msgstr "[[!inline pages=\"support/talk/languages.inline.it\" raw=\"yes\"]]"
+
+#~ msgid "Mail us on our private mailing list:"
+#~ msgstr "Scrivici nella nostra mailing list privata:"

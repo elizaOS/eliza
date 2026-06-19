@@ -1,0 +1,122 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails l10n\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2022-12-22 12:07+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails Chinese translators <jxt@twngo.xyz>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Office suite\"]]\n"
+msgstr "[[!meta title=\"辦公室應用套件\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Tails includes *[LibreOffice](https://www.libreoffice.org/)*, a powerful "
+"office suite which embeds several tools:"
+msgstr ""
+"Tails 有放入<span class=\"application\">[LibreOffice](https://www."
+"libreoffice.org/)</span>,\n"
+"它是一套強力的辦公室應用套件組，其中包含幾款工具：\n"
+
+#. type: Bullet: '- '
+msgid "*Writer*, a word processor"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "*Calc*, a spreadsheet application"
+msgstr "**<span class=\"application\">Calc</span>**, 試算表軟體"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "*Impress*, a presentation engine"
+msgstr "**<span class=\"application\">Impress</span>**, 簡報引擊"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "*Draw*, a drawing and flowcharting application"
+msgstr "**<span class=\"application\">Draw</span>**, 繪圖或製作流程圖的工具"
+
+#. type: Plain text
+msgid ""
+"To open *LibreOffice*, choose **Apps&nbsp;▸ Office&nbsp;▸ LibreOffice**."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"The *LibreOffice* website provides complete [user guides](https://wiki."
+"documentfoundation.org/Documentation/Publications) for each of these tools, "
+"translated into several languages."
+msgstr ""
+"<span class=\"application\">LibreOffice</span> 官網上提供了完整的 [用戶\n"
+"指南](https://wiki.documentfoundation.org/Documentation/Publications) ，其"
+"中\n"
+"每一項工具已有各種語言翻譯介紹。\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"To use *LibreOffice* in your language, you can\n"
+"install the <code>libreoffice-l10n-<span class=\"command-placeholder\">lang</span></code>\n"
+"package using the [[Additional Software|persistent_storage/additional_software]]\n"
+"feature. Replace <span class=\"command-placeholder\">lang</span> with the code\n"
+"for your language. For example, `vi` for Vietnamese.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails already includes language packages for Arabic, German, Spanish, Farsi, "
+"French, Hindi, Bahasa Indonesia, Italian, Portuguese, Russian, Turkish, and "
+"Simplified Chinese."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[List of available *LibreOffice* language packages](https://packages.debian."
+"org/search?keywords=libreoffice-l10n&searchon=names&suite=stable&section=all)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/persistence.zh_TW\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/metadata.inline.zh_TW\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "To start <span class=\"application\">LibreOffice</span> choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  <span class=\"guimenu\">Applications</span>&nbsp;▸\n"
+#~ "  <span class=\"guisubmenu\">Office</span>&nbsp;▸\n"
+#~ "  <span class=\"guimenuitem\">LibreOffice</span></span>.\n"
+#~ msgstr ""
+#~ "欲啟動<span class=\"application\">LibreOffice</span>請選\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  <span class=\"guimenu\">Applications</span>&nbsp;▸\n"
+#~ "  <span class=\"guisubmenu\">Office</span>&nbsp;▸\n"
+#~ "  <span class=\"guimenuitem\">LibreOffice</span></span>.\n"
+
+#~ msgid "**<span class=\"application\">Writer</span>**, a word processor"
+#~ msgstr "**<span class=\"application\">Writer</span>**, 文書處理軟體"
+
+#~ msgid "**<span class=\"application\">Math</span>**, for editing mathematics"
+#~ msgstr "**<span class=\"application\">Math</span>**, 可用於編寫數學運算式"

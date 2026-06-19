@@ -1,0 +1,1403 @@
+[
+  {
+    "name": "algorithmic-art",
+    "description": "Creating algorithmic art using p5.js with seeded randomness and interactive parameter exploration. Use this when users request creating art using code, generative art, algorithmic art, flow fields, or particle systems. Create original algorithmic art rather than copying existing artists' work to avoid copyright violations.",
+    "source": "anthropics/skills",
+    "path": "skills/algorithmic-art/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/algorithmic-art"
+  },
+  {
+    "name": "brand-guidelines",
+    "description": "Applies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic's look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.",
+    "source": "anthropics/skills",
+    "path": "skills/brand-guidelines/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/brand-guidelines"
+  },
+  {
+    "name": "canvas-design",
+    "description": "Create beautiful visual art in .png and .pdf documents using design philosophy. You should use this skill when the user asks to create a poster, piece of art, design, or other static piece. Create original visual designs, never copying existing artists' work to avoid copyright violations.",
+    "source": "anthropics/skills",
+    "path": "skills/canvas-design/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/canvas-design"
+  },
+  {
+    "name": "doc-coauthoring",
+    "description": "Guide users through a structured workflow for co-authoring documentation. Use when user wants to write documentation, proposals, technical specs, decision docs, or similar structured content. This workflow helps users efficiently transfer context, refine content through iteration, and verify the doc works for readers. Trigger when user mentions writing docs, creating proposals, drafting specs, or similar documentation tasks.",
+    "source": "anthropics/skills",
+    "path": "skills/doc-coauthoring/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/doc-coauthoring"
+  },
+  {
+    "name": "docx",
+    "description": "Comprehensive document creation, editing, and analysis with support for tracked changes, comments, formatting preservation, and text extraction. When Claude needs to work with professional documents (.docx files) for: (1) Creating new documents, (2) Modifying or editing content, (3) Working with tracked changes, (4) Adding comments, or any other document tasks",
+    "source": "anthropics/skills",
+    "path": "skills/docx/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/docx"
+  },
+  {
+    "name": "frontend-design",
+    "description": "Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, or when styling/beautifying any web UI). Generates creative, polished code and UI design that avoids generic AI aesthetics.",
+    "source": "anthropics/skills",
+    "path": "skills/frontend-design/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/frontend-design"
+  },
+  {
+    "name": "internal-comms",
+    "description": "A set of resources to help me write all kinds of internal communications, using the formats that my company likes to use. Claude should use this skill whenever asked to write some sort of internal communications (status reports, leadership updates, 3P updates, company newsletters, FAQs, incident reports, project updates, etc.).",
+    "source": "anthropics/skills",
+    "path": "skills/internal-comms/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/internal-comms"
+  },
+  {
+    "name": "mcp-builder",
+    "description": "Guide for creating high-quality MCP (Model Context Protocol) servers that enable LLMs to interact with external services through well-designed tools. Use when building MCP servers to integrate external APIs or services, whether in Python (FastMCP) or Node/TypeScript (MCP SDK).",
+    "source": "anthropics/skills",
+    "path": "skills/mcp-builder/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/mcp-builder"
+  },
+  {
+    "name": "pdf",
+    "description": "Comprehensive PDF manipulation toolkit for extracting text and tables, creating new PDFs, merging/splitting documents, and handling forms. When Claude needs to fill in a PDF form or programmatically process, generate, or analyze PDF documents at scale.",
+    "source": "anthropics/skills",
+    "path": "skills/pdf/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/pdf"
+  },
+  {
+    "name": "pptx",
+    "description": "Presentation creation, editing, and analysis. When Claude needs to work with presentations (.pptx files) for: (1) Creating new presentations, (2) Modifying or editing content, (3) Working with layouts, (4) Adding comments or speaker notes, or any other presentation tasks",
+    "source": "anthropics/skills",
+    "path": "skills/pptx/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/pptx"
+  },
+  {
+    "name": "skill-creator",
+    "description": "Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude's capabilities with specialized knowledge, workflows, or tool integrations.",
+    "source": "anthropics/skills",
+    "path": "skills/skill-creator/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/skill-creator"
+  },
+  {
+    "name": "slack-gif-creator",
+    "description": "Knowledge and utilities for creating animated GIFs optimized for Slack. Provides constraints, validation tools, and animation concepts. Use when users request animated GIFs for Slack like \"make me a GIF of X doing Y for Slack.",
+    "source": "anthropics/skills",
+    "path": "skills/slack-gif-creator/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/slack-gif-creator"
+  },
+  {
+    "name": "theme-factory",
+    "description": "Toolkit for styling artifacts with a theme. These artifacts can be slides, docs, reportings, HTML landing pages, etc. There are 10 pre-set themes with colors/fonts that you can apply to any artifact that has been creating, or can generate a new theme on-the-fly.",
+    "source": "anthropics/skills",
+    "path": "skills/theme-factory/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/theme-factory"
+  },
+  {
+    "name": "web-artifacts-builder",
+    "description": "Suite of tools for creating elaborate, multi-component claude.ai HTML artifacts using modern frontend web technologies (React, Tailwind CSS, shadcn/ui). Use for complex artifacts requiring state management, routing, or shadcn/ui components - not for simple single-file HTML/JSX artifacts.",
+    "source": "anthropics/skills",
+    "path": "skills/web-artifacts-builder/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/web-artifacts-builder"
+  },
+  {
+    "name": "webapp-testing",
+    "description": "Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs.",
+    "source": "anthropics/skills",
+    "path": "skills/webapp-testing/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/webapp-testing"
+  },
+  {
+    "name": "xlsx",
+    "description": "Comprehensive spreadsheet creation, editing, and analysis with support for formulas, formatting, data analysis, and visualization. When Claude needs to work with spreadsheets (.xlsx, .xlsm, .csv, .tsv, etc) for: (1) Creating new spreadsheets with formulas and formatting, (2) Reading or analyzing data, (3) Modify existing spreadsheets while preserving formulas, (4) Data analysis and visualization in spreadsheets, or (5) Recalculating formulas",
+    "source": "anthropics/skills",
+    "path": "skills/xlsx/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/skills/xlsx"
+  },
+  {
+    "name": "template",
+    "description": "Replace with description of the skill and when Claude should use it.",
+    "source": "anthropics/skills",
+    "path": "template/SKILL.md",
+    "url": "https://github.com/anthropics/skills/tree/main/template"
+  },
+  {
+    "name": "adaptyv",
+    "description": "Scientific skill: adaptyv",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/adaptyv/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/adaptyv"
+  },
+  {
+    "name": "aeon",
+    "description": "Scientific skill: aeon",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/aeon/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/aeon"
+  },
+  {
+    "name": "alphafold-database",
+    "description": "Scientific skill: alphafold-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/alphafold-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/alphafold-database"
+  },
+  {
+    "name": "anndata",
+    "description": "Scientific skill: anndata",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/anndata/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/anndata"
+  },
+  {
+    "name": "arboreto",
+    "description": "Scientific skill: arboreto",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/arboreto/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/arboreto"
+  },
+  {
+    "name": "astropy",
+    "description": "Scientific skill: astropy",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/astropy/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/astropy"
+  },
+  {
+    "name": "benchling-integration",
+    "description": "Scientific skill: benchling-integration",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/benchling-integration/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/benchling-integration"
+  },
+  {
+    "name": "biomni",
+    "description": "Scientific skill: biomni",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/biomni/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/biomni"
+  },
+  {
+    "name": "biopython",
+    "description": "Scientific skill: biopython",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/biopython/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/biopython"
+  },
+  {
+    "name": "biorxiv-database",
+    "description": "Scientific skill: biorxiv-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/biorxiv-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/biorxiv-database"
+  },
+  {
+    "name": "bioservices",
+    "description": "Scientific skill: bioservices",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/bioservices/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/bioservices"
+  },
+  {
+    "name": "brenda-database",
+    "description": "Scientific skill: brenda-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/brenda-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/brenda-database"
+  },
+  {
+    "name": "cellxgene-census",
+    "description": "Scientific skill: cellxgene-census",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/cellxgene-census/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/cellxgene-census"
+  },
+  {
+    "name": "chembl-database",
+    "description": "Scientific skill: chembl-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/chembl-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/chembl-database"
+  },
+  {
+    "name": "cirq",
+    "description": "Scientific skill: cirq",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/cirq/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/cirq"
+  },
+  {
+    "name": "citation-management",
+    "description": "Scientific skill: citation-management",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/citation-management/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/citation-management"
+  },
+  {
+    "name": "clinical-decision-support",
+    "description": "Scientific skill: clinical-decision-support",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/clinical-decision-support/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/clinical-decision-support"
+  },
+  {
+    "name": "clinical-reports",
+    "description": "Scientific skill: clinical-reports",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/clinical-reports/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/clinical-reports"
+  },
+  {
+    "name": "clinicaltrials-database",
+    "description": "Scientific skill: clinicaltrials-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/clinicaltrials-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/clinicaltrials-database"
+  },
+  {
+    "name": "clinpgx-database",
+    "description": "Scientific skill: clinpgx-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/clinpgx-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/clinpgx-database"
+  },
+  {
+    "name": "clinvar-database",
+    "description": "Scientific skill: clinvar-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/clinvar-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/clinvar-database"
+  },
+  {
+    "name": "cobrapy",
+    "description": "Scientific skill: cobrapy",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/cobrapy/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/cobrapy"
+  },
+  {
+    "name": "cosmic-database",
+    "description": "Scientific skill: cosmic-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/cosmic-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/cosmic-database"
+  },
+  {
+    "name": "dask",
+    "description": "Scientific skill: dask",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/dask/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/dask"
+  },
+  {
+    "name": "datacommons-client",
+    "description": "Scientific skill: datacommons-client",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/datacommons-client/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/datacommons-client"
+  },
+  {
+    "name": "datamol",
+    "description": "Scientific skill: datamol",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/datamol/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/datamol"
+  },
+  {
+    "name": "deepchem",
+    "description": "Scientific skill: deepchem",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/deepchem/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/deepchem"
+  },
+  {
+    "name": "deeptools",
+    "description": "Scientific skill: deeptools",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/deeptools/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/deeptools"
+  },
+  {
+    "name": "denario",
+    "description": "Scientific skill: denario",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/denario/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/denario"
+  },
+  {
+    "name": "diffdock",
+    "description": "Scientific skill: diffdock",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/diffdock/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/diffdock"
+  },
+  {
+    "name": "dnanexus-integration",
+    "description": "Scientific skill: dnanexus-integration",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/dnanexus-integration/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/dnanexus-integration"
+  },
+  {
+    "name": "docx",
+    "description": "Scientific skill: docx",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/document-skills/docx/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/document-skills/docx"
+  },
+  {
+    "name": "pdf",
+    "description": "Scientific skill: pdf",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/document-skills/pdf/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/document-skills/pdf"
+  },
+  {
+    "name": "pptx",
+    "description": "Scientific skill: pptx",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/document-skills/pptx/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/document-skills/pptx"
+  },
+  {
+    "name": "xlsx",
+    "description": "Scientific skill: xlsx",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/document-skills/xlsx/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/document-skills/xlsx"
+  },
+  {
+    "name": "drugbank-database",
+    "description": "Scientific skill: drugbank-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/drugbank-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/drugbank-database"
+  },
+  {
+    "name": "ena-database",
+    "description": "Scientific skill: ena-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/ena-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/ena-database"
+  },
+  {
+    "name": "ensembl-database",
+    "description": "Scientific skill: ensembl-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/ensembl-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/ensembl-database"
+  },
+  {
+    "name": "esm",
+    "description": "Scientific skill: esm",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/esm/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/esm"
+  },
+  {
+    "name": "etetoolkit",
+    "description": "Scientific skill: etetoolkit",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/etetoolkit/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/etetoolkit"
+  },
+  {
+    "name": "exploratory-data-analysis",
+    "description": "Scientific skill: exploratory-data-analysis",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/exploratory-data-analysis/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/exploratory-data-analysis"
+  },
+  {
+    "name": "fda-database",
+    "description": "Scientific skill: fda-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/fda-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/fda-database"
+  },
+  {
+    "name": "flowio",
+    "description": "Scientific skill: flowio",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/flowio/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/flowio"
+  },
+  {
+    "name": "fluidsim",
+    "description": "Scientific skill: fluidsim",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/fluidsim/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/fluidsim"
+  },
+  {
+    "name": "gene-database",
+    "description": "Scientific skill: gene-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/gene-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/gene-database"
+  },
+  {
+    "name": "generate-image",
+    "description": "Scientific skill: generate-image",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/generate-image/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/generate-image"
+  },
+  {
+    "name": "geniml",
+    "description": "Scientific skill: geniml",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/geniml/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/geniml"
+  },
+  {
+    "name": "geo-database",
+    "description": "Scientific skill: geo-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/geo-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/geo-database"
+  },
+  {
+    "name": "geopandas",
+    "description": "Scientific skill: geopandas",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/geopandas/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/geopandas"
+  },
+  {
+    "name": "get-available-resources",
+    "description": "Scientific skill: get-available-resources",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/get-available-resources/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/get-available-resources"
+  },
+  {
+    "name": "gget",
+    "description": "Scientific skill: gget",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/gget/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/gget"
+  },
+  {
+    "name": "gtars",
+    "description": "Scientific skill: gtars",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/gtars/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/gtars"
+  },
+  {
+    "name": "gwas-database",
+    "description": "Scientific skill: gwas-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/gwas-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/gwas-database"
+  },
+  {
+    "name": "histolab",
+    "description": "Scientific skill: histolab",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/histolab/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/histolab"
+  },
+  {
+    "name": "hmdb-database",
+    "description": "Scientific skill: hmdb-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/hmdb-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/hmdb-database"
+  },
+  {
+    "name": "hypogenic",
+    "description": "Scientific skill: hypogenic",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/hypogenic/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/hypogenic"
+  },
+  {
+    "name": "hypothesis-generation",
+    "description": "Scientific skill: hypothesis-generation",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/hypothesis-generation/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/hypothesis-generation"
+  },
+  {
+    "name": "iso-13485-certification",
+    "description": "Scientific skill: iso-13485-certification",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/iso-13485-certification/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/iso-13485-certification"
+  },
+  {
+    "name": "kegg-database",
+    "description": "Scientific skill: kegg-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/kegg-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/kegg-database"
+  },
+  {
+    "name": "labarchive-integration",
+    "description": "Scientific skill: labarchive-integration",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/labarchive-integration/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/labarchive-integration"
+  },
+  {
+    "name": "lamindb",
+    "description": "Scientific skill: lamindb",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/lamindb/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/lamindb"
+  },
+  {
+    "name": "latchbio-integration",
+    "description": "Scientific skill: latchbio-integration",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/latchbio-integration/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/latchbio-integration"
+  },
+  {
+    "name": "latex-posters",
+    "description": "Scientific skill: latex-posters",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/latex-posters/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/latex-posters"
+  },
+  {
+    "name": "literature-review",
+    "description": "Scientific skill: literature-review",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/literature-review/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/literature-review"
+  },
+  {
+    "name": "market-research-reports",
+    "description": "Scientific skill: market-research-reports",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/market-research-reports/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/market-research-reports"
+  },
+  {
+    "name": "markitdown",
+    "description": "Scientific skill: markitdown",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/markitdown/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/markitdown"
+  },
+  {
+    "name": "matchms",
+    "description": "Scientific skill: matchms",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/matchms/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/matchms"
+  },
+  {
+    "name": "matlab",
+    "description": "Scientific skill: matlab",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/matlab/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/matlab"
+  },
+  {
+    "name": "matplotlib",
+    "description": "Scientific skill: matplotlib",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/matplotlib/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/matplotlib"
+  },
+  {
+    "name": "medchem",
+    "description": "Scientific skill: medchem",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/medchem/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/medchem"
+  },
+  {
+    "name": "metabolomics-workbench-database",
+    "description": "Scientific skill: metabolomics-workbench-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/metabolomics-workbench-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/metabolomics-workbench-database"
+  },
+  {
+    "name": "modal",
+    "description": "Scientific skill: modal",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/modal/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/modal"
+  },
+  {
+    "name": "molfeat",
+    "description": "Scientific skill: molfeat",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/molfeat/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/molfeat"
+  },
+  {
+    "name": "networkx",
+    "description": "Scientific skill: networkx",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/networkx/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/networkx"
+  },
+  {
+    "name": "neurokit2",
+    "description": "Scientific skill: neurokit2",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/neurokit2/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/neurokit2"
+  },
+  {
+    "name": "neuropixels-analysis",
+    "description": "Scientific skill: neuropixels-analysis",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/neuropixels-analysis/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/neuropixels-analysis"
+  },
+  {
+    "name": "offer-k-dense-web",
+    "description": "Scientific skill: offer-k-dense-web",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/offer-k-dense-web/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/offer-k-dense-web"
+  },
+  {
+    "name": "omero-integration",
+    "description": "Scientific skill: omero-integration",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/omero-integration/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/omero-integration"
+  },
+  {
+    "name": "openalex-database",
+    "description": "Scientific skill: openalex-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/openalex-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/openalex-database"
+  },
+  {
+    "name": "opentargets-database",
+    "description": "Scientific skill: opentargets-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/opentargets-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/opentargets-database"
+  },
+  {
+    "name": "opentrons-integration",
+    "description": "Scientific skill: opentrons-integration",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/opentrons-integration/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/opentrons-integration"
+  },
+  {
+    "name": "paper-2-web",
+    "description": "Scientific skill: paper-2-web",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/paper-2-web/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/paper-2-web"
+  },
+  {
+    "name": "pathml",
+    "description": "Scientific skill: pathml",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pathml/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pathml"
+  },
+  {
+    "name": "pdb-database",
+    "description": "Scientific skill: pdb-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pdb-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pdb-database"
+  },
+  {
+    "name": "peer-review",
+    "description": "Scientific skill: peer-review",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/peer-review/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/peer-review"
+  },
+  {
+    "name": "pennylane",
+    "description": "Scientific skill: pennylane",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pennylane/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pennylane"
+  },
+  {
+    "name": "perplexity-search",
+    "description": "Scientific skill: perplexity-search",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/perplexity-search/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/perplexity-search"
+  },
+  {
+    "name": "plotly",
+    "description": "Scientific skill: plotly",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/plotly/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/plotly"
+  },
+  {
+    "name": "polars",
+    "description": "Scientific skill: polars",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/polars/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/polars"
+  },
+  {
+    "name": "pptx-posters",
+    "description": "Scientific skill: pptx-posters",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pptx-posters/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pptx-posters"
+  },
+  {
+    "name": "protocolsio-integration",
+    "description": "Scientific skill: protocolsio-integration",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/protocolsio-integration/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/protocolsio-integration"
+  },
+  {
+    "name": "pubchem-database",
+    "description": "Scientific skill: pubchem-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pubchem-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pubchem-database"
+  },
+  {
+    "name": "pubmed-database",
+    "description": "Scientific skill: pubmed-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pubmed-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pubmed-database"
+  },
+  {
+    "name": "pufferlib",
+    "description": "Scientific skill: pufferlib",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pufferlib/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pufferlib"
+  },
+  {
+    "name": "pydeseq2",
+    "description": "Scientific skill: pydeseq2",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pydeseq2/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pydeseq2"
+  },
+  {
+    "name": "pydicom",
+    "description": "Scientific skill: pydicom",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pydicom/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pydicom"
+  },
+  {
+    "name": "pyhealth",
+    "description": "Scientific skill: pyhealth",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pyhealth/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pyhealth"
+  },
+  {
+    "name": "pylabrobot",
+    "description": "Scientific skill: pylabrobot",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pylabrobot/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pylabrobot"
+  },
+  {
+    "name": "pymatgen",
+    "description": "Scientific skill: pymatgen",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pymatgen/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pymatgen"
+  },
+  {
+    "name": "pymc",
+    "description": "Scientific skill: pymc",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pymc/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pymc"
+  },
+  {
+    "name": "pymoo",
+    "description": "Scientific skill: pymoo",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pymoo/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pymoo"
+  },
+  {
+    "name": "pyopenms",
+    "description": "Scientific skill: pyopenms",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pyopenms/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pyopenms"
+  },
+  {
+    "name": "pysam",
+    "description": "Scientific skill: pysam",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pysam/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pysam"
+  },
+  {
+    "name": "pytdc",
+    "description": "Scientific skill: pytdc",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pytdc/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pytdc"
+  },
+  {
+    "name": "pytorch-lightning",
+    "description": "Scientific skill: pytorch-lightning",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/pytorch-lightning/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/pytorch-lightning"
+  },
+  {
+    "name": "qiskit",
+    "description": "Scientific skill: qiskit",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/qiskit/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/qiskit"
+  },
+  {
+    "name": "qutip",
+    "description": "Scientific skill: qutip",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/qutip/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/qutip"
+  },
+  {
+    "name": "rdkit",
+    "description": "Scientific skill: rdkit",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/rdkit/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/rdkit"
+  },
+  {
+    "name": "reactome-database",
+    "description": "Scientific skill: reactome-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/reactome-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/reactome-database"
+  },
+  {
+    "name": "research-grants",
+    "description": "Scientific skill: research-grants",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/research-grants/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/research-grants"
+  },
+  {
+    "name": "research-lookup",
+    "description": "Scientific skill: research-lookup",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/research-lookup/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/research-lookup"
+  },
+  {
+    "name": "scanpy",
+    "description": "Scientific skill: scanpy",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scanpy/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scanpy"
+  },
+  {
+    "name": "scholar-evaluation",
+    "description": "Scientific skill: scholar-evaluation",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scholar-evaluation/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scholar-evaluation"
+  },
+  {
+    "name": "scientific-brainstorming",
+    "description": "Scientific skill: scientific-brainstorming",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scientific-brainstorming/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scientific-brainstorming"
+  },
+  {
+    "name": "scientific-critical-thinking",
+    "description": "Scientific skill: scientific-critical-thinking",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scientific-critical-thinking/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scientific-critical-thinking"
+  },
+  {
+    "name": "scientific-schematics",
+    "description": "Scientific skill: scientific-schematics",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scientific-schematics/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scientific-schematics"
+  },
+  {
+    "name": "scientific-slides",
+    "description": "Scientific skill: scientific-slides",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scientific-slides/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scientific-slides"
+  },
+  {
+    "name": "scientific-visualization",
+    "description": "Scientific skill: scientific-visualization",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scientific-visualization/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scientific-visualization"
+  },
+  {
+    "name": "scientific-writing",
+    "description": "Scientific skill: scientific-writing",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scientific-writing/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scientific-writing"
+  },
+  {
+    "name": "scikit-bio",
+    "description": "Scientific skill: scikit-bio",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scikit-bio/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scikit-bio"
+  },
+  {
+    "name": "scikit-learn",
+    "description": "Scientific skill: scikit-learn",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scikit-learn/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scikit-learn"
+  },
+  {
+    "name": "scikit-survival",
+    "description": "Scientific skill: scikit-survival",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scikit-survival/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scikit-survival"
+  },
+  {
+    "name": "scvi-tools",
+    "description": "Scientific skill: scvi-tools",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/scvi-tools/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/scvi-tools"
+  },
+  {
+    "name": "seaborn",
+    "description": "Scientific skill: seaborn",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/seaborn/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/seaborn"
+  },
+  {
+    "name": "shap",
+    "description": "Scientific skill: shap",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/shap/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/shap"
+  },
+  {
+    "name": "simpy",
+    "description": "Scientific skill: simpy",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/simpy/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/simpy"
+  },
+  {
+    "name": "stable-baselines3",
+    "description": "Scientific skill: stable-baselines3",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/stable-baselines3/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/stable-baselines3"
+  },
+  {
+    "name": "statistical-analysis",
+    "description": "Scientific skill: statistical-analysis",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/statistical-analysis/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/statistical-analysis"
+  },
+  {
+    "name": "statsmodels",
+    "description": "Scientific skill: statsmodels",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/statsmodels/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/statsmodels"
+  },
+  {
+    "name": "string-database",
+    "description": "Scientific skill: string-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/string-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/string-database"
+  },
+  {
+    "name": "sympy",
+    "description": "Scientific skill: sympy",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/sympy/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/sympy"
+  },
+  {
+    "name": "torch_geometric",
+    "description": "Scientific skill: torch_geometric",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/torch_geometric/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/torch_geometric"
+  },
+  {
+    "name": "torchdrug",
+    "description": "Scientific skill: torchdrug",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/torchdrug/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/torchdrug"
+  },
+  {
+    "name": "transformers",
+    "description": "Scientific skill: transformers",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/transformers/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/transformers"
+  },
+  {
+    "name": "treatment-plans",
+    "description": "Scientific skill: treatment-plans",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/treatment-plans/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/treatment-plans"
+  },
+  {
+    "name": "umap-learn",
+    "description": "Scientific skill: umap-learn",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/umap-learn/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/umap-learn"
+  },
+  {
+    "name": "uniprot-database",
+    "description": "Scientific skill: uniprot-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/uniprot-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/uniprot-database"
+  },
+  {
+    "name": "uspto-database",
+    "description": "Scientific skill: uspto-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/uspto-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/uspto-database"
+  },
+  {
+    "name": "vaex",
+    "description": "Scientific skill: vaex",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/vaex/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/vaex"
+  },
+  {
+    "name": "venue-templates",
+    "description": "Scientific skill: venue-templates",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/venue-templates/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/venue-templates"
+  },
+  {
+    "name": "zarr-python",
+    "description": "Scientific skill: zarr-python",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/zarr-python/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/zarr-python"
+  },
+  {
+    "name": "zinc-database",
+    "description": "Scientific skill: zinc-database",
+    "source": "claude-scientific-skills",
+    "path": "scientific-skills/zinc-database/SKILL.md",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills/zinc-database"
+  },
+  {
+    "name": "brainstorming",
+    "description": "Superpowers skill: brainstorming",
+    "source": "obra/superpowers",
+    "path": "skills/brainstorming/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/brainstorming"
+  },
+  {
+    "name": "dispatching-parallel-agents",
+    "description": "Superpowers skill: dispatching-parallel-agents",
+    "source": "obra/superpowers",
+    "path": "skills/dispatching-parallel-agents/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/dispatching-parallel-agents"
+  },
+  {
+    "name": "executing-plans",
+    "description": "Superpowers skill: executing-plans",
+    "source": "obra/superpowers",
+    "path": "skills/executing-plans/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/executing-plans"
+  },
+  {
+    "name": "finishing-a-development-branch",
+    "description": "Superpowers skill: finishing-a-development-branch",
+    "source": "obra/superpowers",
+    "path": "skills/finishing-a-development-branch/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/finishing-a-development-branch"
+  },
+  {
+    "name": "receiving-code-review",
+    "description": "Superpowers skill: receiving-code-review",
+    "source": "obra/superpowers",
+    "path": "skills/receiving-code-review/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/receiving-code-review"
+  },
+  {
+    "name": "requesting-code-review",
+    "description": "Superpowers skill: requesting-code-review",
+    "source": "obra/superpowers",
+    "path": "skills/requesting-code-review/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/requesting-code-review"
+  },
+  {
+    "name": "subagent-driven-development",
+    "description": "Superpowers skill: subagent-driven-development",
+    "source": "obra/superpowers",
+    "path": "skills/subagent-driven-development/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/subagent-driven-development"
+  },
+  {
+    "name": "systematic-debugging",
+    "description": "Superpowers skill: systematic-debugging",
+    "source": "obra/superpowers",
+    "path": "skills/systematic-debugging/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/systematic-debugging"
+  },
+  {
+    "name": "test-driven-development",
+    "description": "Superpowers skill: test-driven-development",
+    "source": "obra/superpowers",
+    "path": "skills/test-driven-development/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/test-driven-development"
+  },
+  {
+    "name": "using-git-worktrees",
+    "description": "Superpowers skill: using-git-worktrees",
+    "source": "obra/superpowers",
+    "path": "skills/using-git-worktrees/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/using-git-worktrees"
+  },
+  {
+    "name": "using-superpowers",
+    "description": "Superpowers skill: using-superpowers",
+    "source": "obra/superpowers",
+    "path": "skills/using-superpowers/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/using-superpowers"
+  },
+  {
+    "name": "verification-before-completion",
+    "description": "Superpowers skill: verification-before-completion",
+    "source": "obra/superpowers",
+    "path": "skills/verification-before-completion/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/verification-before-completion"
+  },
+  {
+    "name": "writing-plans",
+    "description": "Superpowers skill: writing-plans",
+    "source": "obra/superpowers",
+    "path": "skills/writing-plans/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/writing-plans"
+  },
+  {
+    "name": "writing-skills",
+    "description": "Superpowers skill: writing-skills",
+    "source": "obra/superpowers",
+    "path": "skills/writing-skills/SKILL.md",
+    "url": "https://github.com/obra/superpowers/tree/main/skills/writing-skills"
+  },
+  {
+    "name": "coach",
+    "description": "Netresearch skill: coach",
+    "source": "netresearch",
+    "path": "plugins/coach/skills/coach/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/plugins/coach/skills/coach"
+  },
+  {
+    "name": "agents",
+    "description": "Netresearch skill: agents",
+    "source": "netresearch",
+    "path": "skills/agents/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/agents"
+  },
+  {
+    "name": "cli-tools",
+    "description": "Netresearch skill: cli-tools",
+    "source": "netresearch",
+    "path": "skills/cli-tools/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/cli-tools"
+  },
+  {
+    "name": "context7",
+    "description": "Netresearch skill: context7",
+    "source": "netresearch",
+    "path": "skills/context7/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/context7"
+  },
+  {
+    "name": "enterprise-readiness",
+    "description": "Netresearch skill: enterprise-readiness",
+    "source": "netresearch",
+    "path": "skills/enterprise-readiness/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/enterprise-readiness"
+  },
+  {
+    "name": "git-workflow",
+    "description": "Netresearch skill: git-workflow",
+    "source": "netresearch",
+    "path": "skills/git-workflow/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/git-workflow"
+  },
+  {
+    "name": "github-project",
+    "description": "Netresearch skill: github-project",
+    "source": "netresearch",
+    "path": "skills/github-project/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/github-project"
+  },
+  {
+    "name": "go-development",
+    "description": "Netresearch skill: go-development",
+    "source": "netresearch",
+    "path": "skills/go-development/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/go-development"
+  },
+  {
+    "name": "jira-integration",
+    "description": "Netresearch skill: jira-integration",
+    "source": "netresearch",
+    "path": "skills/jira-integration/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/jira-integration"
+  },
+  {
+    "name": "jira-communication",
+    "description": "Netresearch skill: jira-communication",
+    "source": "netresearch",
+    "path": "skills/jira-integration/skills/jira-communication/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/jira-integration/skills/jira-communication"
+  },
+  {
+    "name": "jira-syntax",
+    "description": "Netresearch skill: jira-syntax",
+    "source": "netresearch",
+    "path": "skills/jira-integration/skills/jira-syntax/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/jira-integration/skills/jira-syntax"
+  },
+  {
+    "name": "netresearch-branding",
+    "description": "Netresearch skill: netresearch-branding",
+    "source": "netresearch",
+    "path": "skills/netresearch-branding/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/netresearch-branding"
+  },
+  {
+    "name": "php-modernization",
+    "description": "Netresearch skill: php-modernization",
+    "source": "netresearch",
+    "path": "skills/php-modernization/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/php-modernization"
+  },
+  {
+    "name": "security-audit",
+    "description": "Netresearch skill: security-audit",
+    "source": "netresearch",
+    "path": "skills/security-audit/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/security-audit"
+  },
+  {
+    "name": "skill-repo",
+    "description": "Netresearch skill: skill-repo",
+    "source": "netresearch",
+    "path": "skills/skill-repo/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/skill-repo"
+  },
+  {
+    "name": "typo3-ckeditor5",
+    "description": "Netresearch skill: typo3-ckeditor5",
+    "source": "netresearch",
+    "path": "skills/typo3-ckeditor5/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/typo3-ckeditor5"
+  },
+  {
+    "name": "typo3-conformance",
+    "description": "Netresearch skill: typo3-conformance",
+    "source": "netresearch",
+    "path": "skills/typo3-conformance/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/typo3-conformance"
+  },
+  {
+    "name": "typo3-core-contributions",
+    "description": "Netresearch skill: typo3-core-contributions",
+    "source": "netresearch",
+    "path": "skills/typo3-core-contributions/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/typo3-core-contributions"
+  },
+  {
+    "name": "typo3-ddev",
+    "description": "Netresearch skill: typo3-ddev",
+    "source": "netresearch",
+    "path": "skills/typo3-ddev/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/typo3-ddev"
+  },
+  {
+    "name": "typo3-docs",
+    "description": "Netresearch skill: typo3-docs",
+    "source": "netresearch",
+    "path": "skills/typo3-docs/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/typo3-docs"
+  },
+  {
+    "name": "typo3-extension-upgrade",
+    "description": "Netresearch skill: typo3-extension-upgrade",
+    "source": "netresearch",
+    "path": "skills/typo3-extension-upgrade/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/typo3-extension-upgrade"
+  },
+  {
+    "name": "typo3-testing",
+    "description": "Netresearch skill: typo3-testing",
+    "source": "netresearch",
+    "path": "skills/typo3-testing/SKILL.md",
+    "url": "https://github.com/netresearch/claude-code-marketplace/tree/main/skills/typo3-testing"
+  },
+  {
+    "name": "ios-simulator-skill",
+    "description": "iOS app building, navigation, and testing through automation",
+    "source": "awesome-claude-skills",
+    "url": "https://github.com/conorluddy/ios-simulator-skill"
+  },
+  {
+    "name": "ffuf-web-fuzzing",
+    "description": "Expert guidance for ffuf web fuzzing during penetration testing",
+    "source": "awesome-claude-skills",
+    "url": "https://github.com/jthack/ffuf_claude_skill"
+  },
+  {
+    "name": "playwright-skill",
+    "description": "General-purpose browser automation using Playwright",
+    "source": "awesome-claude-skills",
+    "url": "https://github.com/lackeyjb/playwright-skill"
+  },
+  {
+    "name": "claude-d3js-skill",
+    "description": "Visualizations in d3.js",
+    "source": "awesome-claude-skills",
+    "url": "https://github.com/chrisvoncsefalvay/claude-d3js-skill"
+  },
+  {
+    "name": "web-asset-generator",
+    "description": "Generates web assets like favicons, app icons, and social media images",
+    "source": "awesome-claude-skills",
+    "url": "https://github.com/alonw0/web-asset-generator"
+  },
+  {
+    "name": "Skill_Seekers",
+    "description": "Convert documentation websites into Claude Skills",
+    "source": "awesome-claude-skills",
+    "url": "https://github.com/yusufkaraaslan/Skill_Seekers"
+  }
+]

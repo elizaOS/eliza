@@ -1,0 +1,17 @@
+{"type": "session_start", "session_id": "heartbeat_4160621", "model": "claude-sonnet-4-20250514", "created_at": "2026-03-02T03:03:13.997091", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-03-02T03:05:06.985076", "session_id": "heartbeat_4160621", "seq": 1, "usage": {"prompt_tokens": 4462, "completion_tokens": 3932, "total_tokens": 4631}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-02T03:06:37.090217", "session_id": "heartbeat_4160621", "seq": 2, "usage": {"prompt_tokens": 4940, "completion_tokens": 3989, "total_tokens": 8611}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-02T03:07:27.740863", "session_id": "heartbeat_4160621", "seq": 3, "usage": {"prompt_tokens": 3289, "completion_tokens": 3146, "total_tokens": 2845}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-02T03:10:55.131119", "session_id": "heartbeat_4160621", "seq": 4, "usage": {"prompt_tokens": 6276, "completion_tokens": 1990, "total_tokens": 2828}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-02T03:12:43.977760", "session_id": "heartbeat_4160621", "seq": 5, "usage": {"prompt_tokens": 1164, "completion_tokens": 2707, "total_tokens": 9091}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-02T03:13:55.814063", "session_id": "heartbeat_4160621", "seq": 6}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-02T03:17:43.735992", "session_id": "heartbeat_4160621", "seq": 7}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-02T03:21:48.275182", "session_id": "heartbeat_4160621", "seq": 8}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-02T03:22:03.557555", "session_id": "heartbeat_4160621", "seq": 9}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-02T03:25:10.665383", "session_id": "heartbeat_4160621", "seq": 10}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-02T03:27:30.212107", "session_id": "heartbeat_4160621", "seq": 11, "usage": {"prompt_tokens": 483, "completion_tokens": 2199, "total_tokens": 5085}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-02T03:27:53.130628", "session_id": "heartbeat_4160621", "seq": 12}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-02T03:31:51.399363", "session_id": "heartbeat_4160621", "seq": 13}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-02T03:35:15.159901", "session_id": "heartbeat_4160621", "seq": 14}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-02T03:39:48.252971", "session_id": "heartbeat_4160621", "seq": 15, "usage": {"prompt_tokens": 452, "completion_tokens": 3730, "total_tokens": 9421}}
+{"type": "session_end", "session_id": "heartbeat_4160621", "ended_at": "2026-03-02T03:39:58.252971", "total_messages": 15, "status": "timeout"}

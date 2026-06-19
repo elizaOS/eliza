@@ -1,0 +1,46 @@
+#!/usr/bin/python3 -I
+
+import argparse
+import logging
+import os
+import subprocess
+
+# This script:
+# * Starts a daemonized xdg-dbus-proxy
+# * Waits until the proxy is ready
+# * Write the proxy's PID to a PID file
+# * And then exits, leaving the xdg-dbus-proxy running
+
+
+def main():
+    logging.basicConfig(level=logging.INFO)
+
+    p = argparse.ArgumentParser()
+    p.add_argument("ADDRESS")
+    p.add_argument("PATH")
+    p.add_argument("--pid-file", required=True)
+    args = p.parse_args()
+
+    r, w = os.pipe2(0)
+    cmd = ["nohup", "xdg-dbus-proxy", f"--fd={w}", args.ADDRESS, args.PATH]
+    logging.info(f"Executing {' '.join(cmd)}")
+    p = subprocess.Popen(
+        cmd,
+        # We pass both file descriptors to avoid that the xdg-dbus-proxy
+        # exits when the read fd is closed.
+        pass_fds=(r, w),
+        start_new_session=True,
+    )
+
+    logging.info(f"Started process {p.pid}. Waiting for proxy to signal readiness...")
+    os.read(r, 1)
+
+    logging.info(f"Writing to PID file {args.pid_file}")
+    with open(args.pid_file, "w+") as f:
+        f.write(str(p.pid))
+
+    logging.info(f"Proxy is ready. Exiting...")
+
+
+if __name__ == "__main__":
+    main()

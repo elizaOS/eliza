@@ -1,0 +1,60 @@
+{
+  "name": "@elizaos/logger",
+  "version": "2.0.3-beta.14",
+  "description": "Standalone structured logger for elizaOS (extracted from @elizaos/core).",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/logger"
+  },
+  "keywords": [
+    "elizaos",
+    "logger",
+    "logging"
+  ],
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run build",
+    "build": "bun run build:dist",
+    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/logger",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format src",
+    "format:fix": "bunx @biomejs/biome format --write src",
+    "pack:dry-run": "cd dist && npm pack --dry-run"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "adze": "^2.2.5",
+    "fast-redact": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/fast-redact": "^3.0.4",
+    "@types/node": "^24.0.0"
+  }
+}

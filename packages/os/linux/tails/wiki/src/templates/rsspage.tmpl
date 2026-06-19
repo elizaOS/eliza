@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<rss version="2.0"
+     xmlns:dc="http://purl.org/dc/elements/1.1/"
+     xmlns:dcterms="http://purl.org/dc/terms/"
+     xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+<title>Tails - <TMPL_VAR TITLE></title>
+<link><TMPL_VAR PAGEURL></link>
+<atom:link href="<TMPL_VAR FEEDURL>" rel="self" type="application/rss+xml"/>
+<TMPL_IF COPYRIGHT>
+<copyright><TMPL_VAR COPYRIGHT ESCAPE=HTML></copyright>
+</TMPL_IF>
+<description><TMPL_VAR FEEDDESC ESCAPE=HTML></description>
+<generator>ikiwiki</generator>
+<pubDate><TMPL_VAR FEEDDATE_822></pubDate>
+<TMPL_VAR CONTENT>
+</channel>
+</rss>

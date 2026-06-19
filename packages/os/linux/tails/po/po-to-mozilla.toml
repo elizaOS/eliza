@@ -1,0 +1,81 @@
+[map]
+# This section maps languages to locale we support
+
+af="af_ZA"   # Afrikaans, South Africa
+ar="ar:EG"
+ay="ay:PE"
+az=["az_AZ", "az_IR"] # Azerbaijani
+be="be:BY" # Belarusian, Belarus
+bg="bg:BG"   # Bulgarian, Bulgaria
+bn=["bn_BD", "bd_IN"] # Bengali
+bs="bs_BA"   # Bosnian, Bosnia And Herzegovina
+ca="ca:ES"
+cs="cs:CZ"
+da="da:DK"
+de="de:DE"
+el="el:GR"
+es=["es-MX:MX", "es-ES:ES", "es-AR:AR"]
+et="et_EE"   # Estonian, Estonia
+eu="eu_ES" # Basque, Spain
+fa="fa:IR"
+fi="fi:FI"
+fr="fr:FR"
+fy=["fy_DE", "fy_NL"] # Western Frisian
+ga="ga-IE:IE"
+gd="gd:GB"
+gl="gl_ES" # Galician, Spain
+gu="gu_IN"   # Gujarati, India
+he="he:IL"
+hi="hi_IN"   # Hindi, India
+hr="hr_HR"   # Croatian, Croatia
+hu="hu:HU"
+hy="hy_AM"   # Armenian, Armenia
+id="id:ID"
+is="is:IS"
+it="it:IT"
+ja="ja:JP"
+kab="kab_DZ"   # Kabyle, Algeria
+ka="ka:GE"
+ki="ki:KE"
+kk="kk_KZ"   # Kazakh, Kazakhstan
+km="km_KH"   # Central Khmer, Cambodia
+kn="kn_IN"   # Kannada, India
+ko="ko:KR"
+lt="lt:LT"
+lv="lv_LV"   # Latvian, Latvia
+mk="mk:MK"
+ml="ml_IN"   # Malayalam, India
+mr="mr_IN"   # Marathi, India
+ms="ms:MY"
+my="my:MM"
+nb="nb-NO:NO"
+ne="ne_NP"   # Nepali, Nepal
+nl="nl:NL"
+nn="nn_NO"   # Norwegian Nynorsk, Norway
+oc="oc_FR"   # Occitan (post 1500), France
+or="or_IN"   # Oriya, India
+pa=["pa_PK", "pa_IN"] # Panjabi
+pl="pl:PL"
+ro="ro:RO"
+ru="ru:RU"
+si="si_LK"   # Sinhala, Sri Lanka
+sk="sk_SK"   # Slovak, Slovakia
+sl="sl_SI"   # Slovenian, Slovenia
+sq="sq:AL"
+sr=["sr_ME", "sr_RS"]  # Serbian
+sv="sv-SE:SE"
+sw=["sw_KE", "sw_TZ"]   # Swahili (macrolanguage)
+ta=["ta_IN", "ta_LK"]   # Tamil
+te="te_IN"   # Telugu, India
+th="th:TH"
+tr="tr:TR"
+uk="uk:UA"
+ur=["ur_PK", "ur_IN"]  # Urdu
+uz="uz_UZ"   # Uzbek, Uzbekistan
+vi="vi:VN"
+
+[extra]
+# extra_languages are added to config/chroot_local-includes/usr/share/tails/browser-localization/descriptions as-is
+
+extra_languages = [
+]

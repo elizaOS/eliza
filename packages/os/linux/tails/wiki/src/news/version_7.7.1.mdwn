@@ -1,0 +1,62 @@
+[[!meta title="Tails 7.7.1"]]
+[[!meta date="Thu, 30 Apr 2026 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release is an emergency release to fix important security
+vulnerabilities in *Tor Browser*.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to
+  [15.0.11](https://blog.torproject.org/new-release-tor-browser-15011/), which
+  fixes [several vulnerabilities in *Firefox*
+  140.10.1](https://www.mozilla.org/en-US/security/advisories/mfsa2026-36/).
+
+  <div class="attack">
+
+  <p>We are not aware of these vulnerabilities being exploited in practice until now.</p>
+
+  </div>
+
+- Update *Thunderbird* to [140.10.0](https://www.thunderbird.net/en-US/thunderbird/140.10.0esr/releasenotes/).
+
+- Stop making it possible to start our ISO images from a USB stick.
+
+  Since [[2019|news/version_3.12]], we recommend *USB images* to start Tails
+  from a USB stick, which is by far the most common way of running Tails.
+
+  We still distribute [[*ISO images*|install/download-iso]] to start Tails from
+  a DVD or in a virtual machine. Until now, these ISO images worked on USB
+  sticks as well, but provided a degraded experience without automatic upgrades
+  or Persistent Storage.
+
+  Our ISO images no longer work on USB sticks to save a few megabytes and
+  prevent confusion for people who use USB sticks.
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 7.7.1</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 7.0 or later to 7.7.1.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 7.7.1 on a new USB stick
+
+Follow our [[installation instructions|install]].
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 7.7.1 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

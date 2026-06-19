@@ -1,0 +1,33 @@
+{
+  "name": "@elizaos/agent-server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "lint": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write .",
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "typecheck": "tsgo --noEmit",
+    "test": "bun test",
+    "test:unit": "bun test __tests__/unit/",
+    "test:integration": "bun test __tests__/integration/ --pass-with-no-tests"
+  },
+  "dependencies": {
+    "@elizaos/cloud-services-common": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-workflow": "workspace:*",
+    "elysia": "^1.1.0",
+    "ioredis": "^5.10.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.0",
+    "@types/node": "^22.19.17",
+    "bun-types": "^1.3.10",
+    "ioredis-mock": "^8.13.1",
+    "typescript": "^6.0.3"
+  }
+}

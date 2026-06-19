@@ -1,0 +1,560 @@
+#!/usr/bin/env bun
+/**
+ * Vision-language bench runner.
+ *
+ * Usage:
+ *   bun run src/runner.ts --tier eliza-1-9b --benchmark screenspot \
+ *       --samples 100 --output report.json
+ *
+ *   bun run src/runner.ts --smoke              # 5 samples per benchmark, no model
+ *
+ * Flow:
+ *   1. resolve a `VisionRuntime` for the requested tier (or stub for --smoke)
+ *   2. construct the benchmark adapter
+ *   3. iterate the loaded samples, ask the runtime, score, aggregate
+ *   4. write the report under `results/<tier>-<benchmark>-<date>.json`
+ */
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { ChartQaAdapter, predictChartQa } from "./adapters/chartqa_adapter.ts";
+import { DocVqaAdapter, predictDocVqa } from "./adapters/docvqa_adapter.ts";
+import { OSWorldAdapter, predictOSWorld } from "./adapters/osworld_adapter.ts";
+import {
+  predictScreenSpot,
+  ScreenSpotAdapter,
+} from "./adapters/screenspot_adapter.ts";
+import { predictTextVqa, TextVqaAdapter } from "./adapters/textvqa_adapter.ts";
+import { resolveRuntime } from "./runtime-resolver.ts";
+import type {
+  BaselineEntry,
+  BenchmarkAdapter,
+  BenchmarkName,
+  BenchReport,
+  Eliza1TierId,
+  Prediction,
+  Sample,
+  SampleResult,
+  UsageTelemetry,
+  VisionRuntime,
+} from "./types.ts";
+
+const HERE = fileURLToPath(new URL(".", import.meta.url));
+const PACKAGE_ROOT = join(HERE, "..");
+
+const ALL_BENCHMARKS: BenchmarkName[] = [
+  "textvqa",
+  "docvqa",
+  "chartqa",
+  "screenspot",
+  "osworld",
+];
+
+const VALID_TIERS = new Set<string>([
+  "eliza-1-0_8b",
+  "eliza-1-2b",
+  "eliza-1-4b",
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
+  "stub",
+]);
+
+const EDGE_VARIANTS = [
+  "answer despite low contrast visual elements",
+  "ignore irrelevant decorative text in the image",
+  "handle rotated or off-center target content",
+  "resolve abbreviated labels and nearby distractors",
+  "prefer visible evidence over prior assumptions",
+  "handle mixed numeric and textual references",
+  "preserve coordinate precision for small UI targets",
+  "follow the final instruction when multiple cues appear",
+  "handle unicode and punctuation-heavy text",
+  "recover when the key evidence is near an image edge",
+] as const;
+
+interface Args {
+  tier: Eliza1TierId | "stub";
+  harness: "eliza" | "hermes" | "openclaw" | "elizaos" | "opencode";
+  provider: string;
+  model?: string;
+  benchmarks: BenchmarkName[];
+  samples: number;
+  output?: string;
+  smoke: boolean;
+  /** Force the deterministic stub runtime even if a model is available. */
+  forceStub: boolean;
+  expandScenarios: boolean;
+  countScenarios: boolean;
+  validateScenarios: boolean;
+}
+
+const HELP = `vision-language bench
+
+Flags:
+  --tier <id>          eliza-1 tier; one of eliza-1-0_8b, eliza-1-2b,
+                       eliza-1-4b, eliza-1-9b, eliza-1-27b, eliza-1-27b-256k.
+                       Default: eliza-1-9b.
+  --harness <name>     eliza, hermes, openclaw, elizaos, or opencode.
+                       Default: eliza.
+  --model-provider <p> OpenAI-compatible provider for hermes/openclaw VLM runs.
+  --model <id>         Multimodal model id for hermes/openclaw VLM runs.
+  --benchmark <name>   one of textvqa, docvqa, chartqa, screenspot, osworld.
+                       May be repeated; "all" expands to every benchmark.
+                       Default: all.
+  --samples <count>    samples per benchmark. Default: 100 (or 5 with --smoke).
+  --output <path>      output JSON for a single-benchmark run. When omitted
+                       the runner writes results/<tier>-<bench>-<date>.json
+                       (the path the HF model-card pipeline reads from).
+  --smoke              run 5 samples per benchmark using the checked-in
+                       fixtures and a deterministic stub runtime.
+  --stub               use the stub runtime even outside --smoke (useful
+                       for harness CI on hosts with no model on disk).
+  --expand-scenarios   run each selected sample plus ten edge-condition clones.
+  --count-scenarios    print base/edge/total sample counts for each benchmark.
+  --validate-scenarios validate generated sample ids before scoring.
+  --help, -h           show this help.
+`;
+
+function parseArgs(argv: string[]): Args {
+  const args: Args = {
+    tier: "eliza-1-9b",
+    harness: "eliza",
+    provider: "openai",
+    benchmarks: ALL_BENCHMARKS,
+    samples: 100,
+    smoke: false,
+    forceStub: false,
+    expandScenarios: false,
+    countScenarios: false,
+    validateScenarios: false,
+  };
+  const requestedBenchmarks: BenchmarkName[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--help" || arg === "-h") {
+      process.stdout.write(HELP);
+      process.exit(0);
+    } else if (arg === "--tier") {
+      const next = argv[++i];
+      if (!next) throw new Error("--tier requires a value");
+      if (!VALID_TIERS.has(next)) {
+        throw new Error(
+          `--tier must be one of ${[...VALID_TIERS].join(", ")} (got '${next}')`,
+        );
+      }
+      args.tier = next as Eliza1TierId | "stub";
+    } else if (arg === "--harness") {
+      const next = argv[++i];
+      if (!next) throw new Error("--harness requires a value");
+      if (
+        !["eliza", "hermes", "openclaw", "elizaos", "opencode"].includes(next)
+      ) {
+        throw new Error(
+          "--harness must be one of eliza, hermes, openclaw, elizaos, opencode",
+        );
+      }
+      args.harness = next as Args["harness"];
+    } else if (arg === "--model-provider") {
+      const next = argv[++i];
+      if (!next) throw new Error("--model-provider requires a value");
+      args.provider = next;
+    } else if (arg === "--model") {
+      const next = argv[++i];
+      if (!next) throw new Error("--model requires a value");
+      args.model = next;
+    } else if (arg === "--benchmark") {
+      const next = argv[++i];
+      if (!next) throw new Error("--benchmark requires a value");
+      if (next === "all") {
+        requestedBenchmarks.push(...ALL_BENCHMARKS);
+        continue;
+      }
+      if (!ALL_BENCHMARKS.includes(next as BenchmarkName)) {
+        throw new Error(
+          `--benchmark must be one of ${ALL_BENCHMARKS.join(", ")} or 'all'`,
+        );
+      }
+      requestedBenchmarks.push(next as BenchmarkName);
+    } else if (arg === "--samples") {
+      const next = argv[++i];
+      if (!next) throw new Error("--samples requires a value");
+      const parsed = Number.parseInt(next, 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw new Error(`--samples must be a positive integer (got '${next}')`);
+      }
+      args.samples = parsed;
+    } else if (arg === "--output") {
+      const next = argv[++i];
+      if (!next) throw new Error("--output requires a value");
+      args.output = next;
+    } else if (arg === "--smoke") {
+      args.smoke = true;
+    } else if (arg === "--stub") {
+      args.forceStub = true;
+    } else if (arg === "--expand-scenarios") {
+      args.expandScenarios = true;
+    } else if (arg === "--count-scenarios") {
+      args.countScenarios = true;
+    } else if (arg === "--validate-scenarios") {
+      args.validateScenarios = true;
+    } else {
+      throw new Error(`unknown flag: ${arg}`);
+    }
+  }
+  if (requestedBenchmarks.length > 0) args.benchmarks = requestedBenchmarks;
+  if (args.smoke && args.samples === 100) args.samples = 5;
+  if (args.smoke) args.forceStub = true;
+  return args;
+}
+
+function adapterFor(name: BenchmarkName): BenchmarkAdapter {
+  if (name === "textvqa") return new TextVqaAdapter();
+  if (name === "docvqa") return new DocVqaAdapter();
+  if (name === "chartqa") return new ChartQaAdapter();
+  if (name === "screenspot") return new ScreenSpotAdapter();
+  if (name === "osworld") return new OSWorldAdapter();
+  throw new Error(`no adapter registered for benchmark '${name}'`);
+}
+
+async function predictFor(
+  name: BenchmarkName,
+  runtime: VisionRuntime,
+  samples: Sample[],
+  smoke: boolean,
+): Promise<Prediction[]> {
+  if (name === "textvqa")
+    return predictTextVqa(runtime, samples as Sample<{ answers: string[] }>[]);
+  if (name === "docvqa")
+    return predictDocVqa(runtime, samples as Sample<{ answers: string[] }>[]);
+  if (name === "chartqa") {
+    return predictChartQa(
+      runtime,
+      samples as Sample<{
+        answers: string[];
+        answerType: "numeric" | "categorical";
+      }>[],
+    );
+  }
+  if (name === "screenspot") {
+    return predictScreenSpot(
+      runtime,
+      samples as Sample<{
+        bbox: readonly [number, number, number, number];
+        platform: "desktop" | "mobile" | "web";
+      }>[],
+    );
+  }
+  if (name === "osworld") {
+    return predictOSWorld(
+      runtime,
+      samples as Sample<{ trace: import("./types.ts").PredictedAction[] }>[],
+      { smoke },
+    );
+  }
+  throw new Error(`no predict driver for benchmark '${name}'`);
+}
+
+function clonePayload<T>(payload: T): T {
+  return JSON.parse(JSON.stringify(payload)) as T;
+}
+
+export function expandSamples<T>(
+  samples: Sample<T>[],
+  expandScenarios: boolean,
+): Sample<T>[] {
+  if (!expandScenarios) return [...samples];
+  const expanded: Sample<T>[] = [...samples];
+  for (const sample of samples) {
+    for (let index = 0; index < EDGE_VARIANTS.length; index += 1) {
+      const edgeCondition = EDGE_VARIANTS[index];
+      expanded.push({
+        ...sample,
+        id: `${sample.id}__edge_${String(index + 1).padStart(2, "0")}`,
+        question: `${sample.question}\nEdge condition: ${edgeCondition}.`,
+        payload: clonePayload(sample.payload),
+      });
+    }
+  }
+  return expanded;
+}
+
+export function scenarioCounts(baseCount: number, expandScenarios: boolean) {
+  const edge = expandScenarios ? baseCount * EDGE_VARIANTS.length : 0;
+  return { base: baseCount, edge, total: baseCount + edge };
+}
+
+export function validateSamples<T>(
+  samples: Sample<T>[],
+  expandScenarios: boolean,
+) {
+  const expanded = expandSamples(samples, expandScenarios);
+  const ids = expanded.map((sample) => sample.id);
+  const duplicateCount = ids.length - new Set(ids).size;
+  return {
+    valid: duplicateCount === 0,
+    duplicateCount,
+    total: expanded.length,
+  };
+}
+
+interface BaselinesFile {
+  baselines: Record<string, { score: number; source: string }>;
+}
+
+let cachedBaselines: BaselinesFile | null = null;
+
+function loadBaselines(): BaselinesFile {
+  if (cachedBaselines) return cachedBaselines;
+  const file = join(PACKAGE_ROOT, "baselines.json");
+  cachedBaselines = JSON.parse(readFileSync(file, "utf8")) as BaselinesFile;
+  return cachedBaselines;
+}
+
+export function lookupBaseline(
+  tier: string,
+  benchmark: BenchmarkName,
+): BaselineEntry | null {
+  const file = loadBaselines();
+  const entry = file.baselines[`${tier}::${benchmark}`];
+  if (!entry) return null;
+  return {
+    tier,
+    benchmark,
+    score: entry.score,
+    source: entry.source,
+  };
+}
+
+export interface RunOneArgs {
+  tier: Eliza1TierId | "stub";
+  benchmark: BenchmarkName;
+  samples: number;
+  smoke: boolean;
+  runtime: VisionRuntime;
+  expandScenarios?: boolean;
+  countScenarios?: boolean;
+  validateScenarios?: boolean;
+}
+
+/**
+ * Core single-benchmark run, exposed for tests + programmatic use.
+ */
+export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
+  const adapter = adapterFor(args.benchmark);
+  const baseSamples = await adapter.loadSamples(args.samples, {
+    smoke: args.smoke,
+  });
+  const counts = scenarioCounts(baseSamples.length, args.expandScenarios === true);
+  if (args.countScenarios) {
+    process.stdout.write(
+      `vision-language ${args.benchmark} scenario counts: base=${counts.base} edge=${counts.edge} total=${counts.total}\n`,
+    );
+  }
+  if (args.validateScenarios) {
+    const validation = validateSamples(baseSamples, args.expandScenarios === true);
+    if (!validation.valid) {
+      throw new Error(
+        `invalid vision-language sample expansion for ${args.benchmark}: ${JSON.stringify(validation)}`,
+      );
+    }
+    process.stdout.write(
+      `vision-language ${args.benchmark} scenario validation passed: ${validation.total} sample(s)\n`,
+    );
+  }
+  const samples = expandSamples(baseSamples, args.expandScenarios === true);
+  const startedAt = Date.now();
+  const predictions = await predictFor(
+    args.benchmark,
+    args.runtime,
+    samples,
+    args.smoke,
+  );
+  const runtimeSec = (Date.now() - startedAt) / 1000;
+  const sampleResults: SampleResult[] = [];
+  let total = 0;
+  let errorCount = 0;
+  const usage = aggregateUsage(predictions, args.runtime);
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = samples[i];
+    const pred = predictions[i];
+    if (pred.error) errorCount += 1;
+    const { score, detail } = adapter.scoreOne(sample, pred);
+    total += score;
+    sampleResults.push({
+      sampleId: sample.id,
+      score,
+      prediction: pred,
+      detail,
+    });
+  }
+  const baseline = lookupBaseline(args.tier, args.benchmark);
+  const score = samples.length === 0 ? 0 : total / samples.length;
+  const baselineScore = baseline?.score ?? null;
+  return {
+    schemaVersion: "vision-language-bench-v1",
+    tier: args.tier,
+    runtime_id: args.runtime.id,
+    smoke: args.smoke,
+    benchmark: args.benchmark,
+    generatedAt: new Date().toISOString(),
+    sample_count: samples.length,
+    score,
+    baseline_score: baselineScore,
+    delta: baselineScore === null ? null : score - baselineScore,
+    runtime_seconds: runtimeSec,
+    error_count: errorCount,
+    include_edge_scenarios: args.expandScenarios === true,
+    scenario_counts: counts,
+    input_tokens: usage.input_tokens ?? 0,
+    output_tokens: usage.output_tokens ?? 0,
+    total_tokens: usage.total_tokens ?? 0,
+    cached_tokens: usage.cached_tokens ?? 0,
+    cache_creation_tokens: usage.cache_creation_tokens ?? 0,
+    cached_token_percent:
+      usage.input_tokens && usage.cached_tokens !== undefined
+        ? (usage.cached_tokens / usage.input_tokens) * 100
+        : null,
+    llm_call_count: usage.llm_call_count ?? 0,
+    samples: sampleResults,
+  };
+}
+
+function aggregateUsage(
+  predictions: Prediction[],
+  runtime: VisionRuntime,
+): UsageTelemetry {
+  const runtimeUsage = runtime.usage?.();
+  if (runtimeUsage && Object.keys(runtimeUsage).length) {
+    return normalizeTotalTokens(runtimeUsage);
+  }
+  const totals: Required<UsageTelemetry> = {
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    cached_tokens: 0,
+    cache_creation_tokens: 0,
+    llm_call_count: 0,
+  };
+  let sawUsage = false;
+  for (const prediction of predictions) {
+    if (!prediction.usage) continue;
+    sawUsage = true;
+    totals.input_tokens += prediction.usage.input_tokens ?? 0;
+    totals.output_tokens += prediction.usage.output_tokens ?? 0;
+    totals.total_tokens += prediction.usage.total_tokens ?? 0;
+    totals.cached_tokens += prediction.usage.cached_tokens ?? 0;
+    totals.cache_creation_tokens += prediction.usage.cache_creation_tokens ?? 0;
+    totals.llm_call_count += prediction.usage.llm_call_count ?? 0;
+  }
+  if (!sawUsage) return {};
+  if (!totals.total_tokens && (totals.input_tokens || totals.output_tokens)) {
+    totals.total_tokens = totals.input_tokens + totals.output_tokens;
+  }
+  return normalizeTotalTokens(totals);
+}
+
+function normalizeTotalTokens(usage: UsageTelemetry): UsageTelemetry {
+  if (!usage.total_tokens && (usage.input_tokens || usage.output_tokens)) {
+    return {
+      ...usage,
+      total_tokens: (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
+    };
+  }
+  return usage;
+}
+
+function reportPath(
+  tier: string,
+  benchmark: BenchmarkName,
+  override?: string,
+): string {
+  if (override) return override;
+  const date = new Date().toISOString().slice(0, 10);
+  return join(PACKAGE_ROOT, "results", `${tier}-${benchmark}-${date}.json`);
+}
+
+function writeReport(report: BenchReport, override?: string): string {
+  const target = reportPath(report.tier, report.benchmark, override);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, JSON.stringify(report, null, 2));
+  return target;
+}
+
+function renderSummary(report: BenchReport): string {
+  const baseline =
+    report.baseline_score === null
+      ? "n/a"
+      : `${(report.baseline_score * 100).toFixed(1)}%`;
+  const delta =
+    report.delta === null
+      ? "n/a"
+      : `${report.delta >= 0 ? "+" : ""}${(report.delta * 100).toFixed(1)}pp`;
+  return [
+    `[bench] ${report.tier} × ${report.benchmark}`,
+    `  samples       : ${report.sample_count}`,
+    `  score         : ${(report.score * 100).toFixed(1)}%`,
+    `  baseline      : ${baseline}`,
+    `  delta         : ${delta}`,
+    `  errors        : ${report.error_count}`,
+    `  tokens        : ${report.total_tokens}`,
+    `  llm calls     : ${report.llm_call_count}`,
+    `  runtime (sec) : ${report.runtime_seconds.toFixed(2)}`,
+  ].join("\n");
+}
+
+async function main(): Promise<void> {
+  let args: Args;
+  try {
+    args = parseArgs(process.argv.slice(2));
+  } catch (err) {
+    process.stderr.write(
+      `${err instanceof Error ? err.message : String(err)}\n${HELP}`,
+    );
+    process.exit(2);
+  }
+  process.stdout.write(
+    `vision-language bench — tier=${args.tier} harness=${args.harness} benchmarks=${args.benchmarks.join(",")} ` +
+      `samples=${args.samples} smoke=${args.smoke}\n`,
+  );
+  const runtime = await resolveRuntime({
+    tier: args.tier,
+    forceStub: args.forceStub,
+    harness: args.harness,
+    provider: args.provider,
+    model: args.model,
+  });
+  process.stdout.write(`runtime: ${runtime.id}\n`);
+  const reports: BenchReport[] = [];
+  for (const benchmark of args.benchmarks) {
+    const report = await runOneBenchmark({
+      tier: args.tier,
+      benchmark,
+      samples: args.samples,
+      smoke: args.smoke,
+      runtime,
+      expandScenarios: args.expandScenarios,
+      countScenarios: args.countScenarios,
+      validateScenarios: args.validateScenarios,
+    });
+    const dest = writeReport(
+      report,
+      args.benchmarks.length === 1 ? args.output : undefined,
+    );
+    process.stdout.write(`\n${renderSummary(report)}\nwrote ${dest}\n`);
+    reports.push(report);
+  }
+  await runtime.cleanup?.();
+  if (reports.some((r) => r.error_count > 0)) {
+    process.exitCode = 1;
+  }
+}
+
+if (import.meta.main) {
+  main().catch((err) => {
+    process.stderr.write(
+      `fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+    );
+    process.exit(1);
+  });
+}

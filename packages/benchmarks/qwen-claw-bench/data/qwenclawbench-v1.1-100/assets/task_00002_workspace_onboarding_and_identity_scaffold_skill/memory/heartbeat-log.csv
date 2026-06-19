@@ -1,0 +1,23 @@
+timestamp,status,checks_run,alerts_sent,duration_ms,notes
+1773676800,healthy,"email,calendar,weather",0,2340,Initial boot heartbeat
+1773684000,healthy,"email,github",0,1870,
+1773691200,healthy,"calendar,weather",0,1520,
+1773698400,healthy,"email,social",0,3100,MoltBook slow response
+1773705600,healthy,"email,calendar,github",0,2210,
+1773712800,healthy,"weather",0,980,Weekend reduced checks
+1773720000,healthy,"email",0,1150,
+1773741600,healthy,"email,calendar",0,1890,
+1773756000,healthy,"email,calendar,weather,github",0,3450,Full check cycle
+1773770400,healthy,"email",0,1230,
+1773784800,healthy,"calendar,weather",0,1670,
+1773799200,healthy,"email,github",0,2050,
+1773813600,degraded,"email,calendar,weather,social",1,4820,MoltBook API 503 - alert sent
+1773828000,healthy,"email,github",0,1940,MoltBook recovered
+1773842400,healthy,"email,calendar",0,1780,
+1773856800,healthy,"weather",0,910,
+1773871200,healthy,"email,calendar,github",0,2630,
+1773885600,healthy,"email",0,1340,
+1773900000,healthy,"email,calendar,weather",0,2180,
+1773914400,healthy,"email,github",0,1990,
+1773928800,healthy,"calendar,weather,social",0,2870,
+1773932400,healthy,"email",0,1120,Latest heartbeat

@@ -1,0 +1,13 @@
+{"type": "session_start", "session_id": "subagent_3366001", "model": "deepseek-r1", "created_at": "2026-02-14T15:27:33.601899", "user_id": "subagent-runner", "channel": "internal"}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-14T15:27:43.033226", "session_id": "subagent_3366001", "seq": 1}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-14T15:32:31.257894", "session_id": "subagent_3366001", "seq": 2}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-14T15:37:14.787984", "session_id": "subagent_3366001", "seq": 3}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-14T15:38:30.534480", "session_id": "subagent_3366001", "seq": 4, "usage": {"prompt_tokens": 2870, "completion_tokens": 707, "total_tokens": 2833}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-14T15:43:16.675812", "session_id": "subagent_3366001", "seq": 5, "usage": {"prompt_tokens": 3737, "completion_tokens": 3867, "total_tokens": 11028}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-14T15:47:36.208097", "session_id": "subagent_3366001", "seq": 6}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-14T15:50:14.538749", "session_id": "subagent_3366001", "seq": 7, "usage": {"prompt_tokens": 7989, "completion_tokens": 2307, "total_tokens": 6218}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-14T15:53:34.192502", "session_id": "subagent_3366001", "seq": 8}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-14T15:54:45.962561", "session_id": "subagent_3366001", "seq": 9, "usage": {"prompt_tokens": 3029, "completion_tokens": 3985, "total_tokens": 5653}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-14T15:59:02.637244", "session_id": "subagent_3366001", "seq": 10, "usage": {"prompt_tokens": 2503, "completion_tokens": 3799, "total_tokens": 11862}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-14T15:59:17.828475", "session_id": "subagent_3366001", "seq": 11}
+{"type": "session_end", "session_id": "subagent_3366001", "ended_at": "2026-02-14T15:59:27.828475", "total_messages": 11, "status": "completed"}

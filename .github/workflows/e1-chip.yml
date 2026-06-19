@@ -1,0 +1,83 @@
+name: e1-chip
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - "packages/chip/**"
+      - ".github/workflows/e1-chip.yml"
+  pull_request:
+    paths:
+      - "packages/chip/**"
+      - ".github/workflows/e1-chip.yml"
+
+concurrency:
+  group: e1-chip-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  docker-regression:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/chip
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Build tool image
+        run: docker build -t eliza-soc-tools .
+
+      - name: Run full lint and type checks
+        run: docker run --rm -v "$PWD:/work" -w /work eliza-soc-tools make lint typecheck
+
+      - name: Run e1-chip regression
+        run: docker run --rm -v "$PWD:/work" -w /work eliza-soc-tools make clean ci-fast
+
+      - name: Run evidence boundary regression
+        run: docker run --rm -v "$PWD:/work" -w /work eliza-soc-tools make evidence-regression-test
+
+      - name: Check generated pipeline artifacts
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work eliza-soc-tools make tool-versions
+          docker run --rm -v "$PWD:/work" -w /work eliza-soc-tools python3 scripts/pipeline_check.py
+
+      - name: Record release-gate tool manifest
+        if: always()
+        continue-on-error: true
+        run: docker run --rm -v "$PWD:/work" -w /work eliza-soc-tools make record-tool-versions
+
+      - name: Emit mvp-status JSON
+        if: always()
+        continue-on-error: true
+        run: docker run --rm -v "$PWD:/work" -w /work eliza-soc-tools make mvp-status-json
+
+      - name: Show release evidence gate command
+        run: |
+          echo "Release evidence gate is separate from scaffold CI: make ci-release-evidence"
+
+      - name: Fix permissions on docker-written reports
+        if: always()
+        continue-on-error: true
+        run: sudo chown -R "$(id -u):$(id -g)" build verify 2>/dev/null || true; sudo chmod -R a+rX build verify || true
+
+      - name: Upload regression artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        continue-on-error: true
+        with:
+          name: e1-chip-regression
+          path: |
+            packages/chip/build/reports
+            packages/chip/build/netlist
+            packages/chip/verify/cocotb/results.xml
+            packages/chip/verify/cocotb/results/*.xml
+            packages/chip/build/reports/cocotb
+            packages/chip/build/reports/formal_manifest.json
+            packages/chip/verify/formal/*/status
+            packages/chip/verify/formal/*/logfile.txt
+          if-no-files-found: warn
+          retention-days: 7

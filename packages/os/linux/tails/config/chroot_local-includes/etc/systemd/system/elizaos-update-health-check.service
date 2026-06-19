@@ -1,0 +1,15 @@
+[Unit]
+Description=Promote verified elizaOS runtime after local health checks
+After=elizaos.service elizaos-update-verify.service
+Wants=elizaos-update-verify.service
+ConditionPathExists=/run/elizaos/runtime-selection.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/elizaos/update-health-check
+TimeoutStartSec=300
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/run/elizaos -/live/persistence/TailsData_unlocked/elizaos-system

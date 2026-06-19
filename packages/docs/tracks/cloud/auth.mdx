@@ -1,0 +1,48 @@
+---
+title: Cloud Auth
+description: "Browser sessions, API keys, wallet auth, and x402 payments."
+---
+
+Eliza Cloud auth is multi-modal. Pick whichever fits the caller.
+
+## Browser sessions
+
+Use the hosted dashboard login for user-facing dashboard flows. Browser calls
+use the Steward session cookie and `credentials: "include"`.
+
+Some endpoints are intentionally browser-session-only, such as accepting an
+invite, redeeming a signup code, Stripe checkout completion, and CLI web login
+completion. API-key attempts on those flows return `session_auth_required`.
+
+## API keys
+
+Issued from the dashboard or wallet SIWE flow. Long-lived, scoped per key, and
+sent as either `Authorization: Bearer <key>` or `X-API-Key: <key>`. Use API
+keys for backend integrations, CI, scripted automation, and OpenAI-compatible
+chat.
+
+## Wallet auth
+
+Wallet users can sign in with SIWE (`GET /api/auth/siwe/nonce`, then
+`POST /api/auth/siwe/verify`) to receive an API key. Headless clients can also
+sign each request with `X-Wallet-Address`, `X-Timestamp`, and
+`X-Wallet-Signature`.
+
+## x402
+
+x402 topups use `POST /api/v1/topup/10`, `/50`, or `/100` with `X-PAYMENT`.
+Missing payment headers return a 402 quote; valid payments credit the org
+ledger.
+
+## Where this lives
+
+- API keys: `packages/cloud-api/v1/api-keys/`
+- SIWE: `packages/cloud-api/auth/siwe/`
+- Wallet auth middleware: `packages/cloud-api/src/lib/auth/`
+- x402 topups: `packages/cloud-api/v1/topup/`
+
+## See also
+
+- [Apps](/tracks/cloud/apps)
+- [Authentication](/cloud/authentication)
+- [Wallet API](/cloud/wallet-api)

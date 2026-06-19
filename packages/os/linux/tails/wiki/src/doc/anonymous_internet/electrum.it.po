@@ -1,0 +1,304 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-02 09:34+0000\n"
+"PO-Revision-Date: 2025-12-08 13:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Exchanging bitcoins using Electrum\"]]\n"
+msgstr "[[!meta title=\"Scambiare bitcoin con Electrum\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+msgid ""
+"[*Electrum*](https://electrum.org/) is a [[!wikipedia Bitcoin]] client that "
+"is particularly suited to the context of Tails because:"
+msgstr ""
+"[*Electrum*](https://electrum.org/) è un client [[!wikipedia_it Bitcoin]] "
+"che è particolarmente adatto al contesto di Tails poiché:"
+
+#. type: Bullet: '- '
+msgid ""
+"You can use your wallet from different devices and avoid losing bitcoins in "
+"a backup mistake or computer failure."
+msgstr ""
+"Potete usare il vostro portafoglio da dispositivi differenti ed evitare la "
+"perdita dei bitcoin in un errore di backup o del computer."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "Electrum does not download the blockchain, so there is no waiting time "
+#| "when starting."
+msgid ""
+"*Electrum* does not download the blockchain, so there is no waiting time "
+"when opening."
+msgstr ""
+"Electrum non scarica la blockchain quindi non ci sono tempi di attesa quando "
+"viene avviato."
+
+#. type: Bullet: '- '
+msgid ""
+"You can sign transactions from an offline working session for additional "
+"security."
+msgstr ""
+"Per ulteriore sicurezza potete firmare le transazioni durante una sessione "
+"di lavoro offline."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To start *Electrum* choose **Applications&nbsp;▸ Internet&nbsp;▸ Electrum "
+#| "Bitcoin Wallet**."
+msgid ""
+"To open *Electrum*, choose **Apps&nbsp;▸ Internet&nbsp;▸ Electrum Bitcoin "
+"Wallet**."
+msgstr ""
+"Per avviare *Electrum* seleziona **Applicazioni&nbsp;▸ Internet&nbsp;▸ "
+"Electrum Bitcoin Wallet**."
+
+#. type: Plain text
+msgid ""
+"To learn how to use *Electrum*, read the [*Electrum* documentation](https://"
+"electrum.readthedocs.io/)."
+msgstr ""
+"Per imparare ad usare *Electrum* leggi la [documentazione di *Electrum*]"
+"(https://electrum.readthedocs.io/)."
+
+#. type: Plain text
+msgid ""
+"For an explanation of how Bitcoin works in simple terms, read [The In-Depth "
+"Guide to Bitcoin That Won’t Leave You Frustrated](https://www.vpnmentor.com/"
+"blog/ultimate-guide-bitcoin/)."
+msgstr ""
+"Per una spiegazione del funzionamento delle Bitcoin in termini semplici, "
+"leggi [La guida approfondita dei Bitcoin](https://it.vpnmentor.com/blog/"
+"research/guida-approfondita-dei-bitcoin/)."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Bitcoin is <a href=\"https://bitcoin.org/en/faq#is-bitcoin-anonymous\">not\n"
+"anonymous</a>.</p>\n"
+msgstr ""
+"<p>Bitcoin <a href=\"https://bitcoin.org/it/faq#bitcoin-e-anonimo\">non è\n"
+"anonimo</a>.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To make it harder to relate your different transactions, you should use\n"
+"a different receiving address for each transaction.\n"
+"<i>Electrum</i> automatically generates new\n"
+"addresses for you to use.</p>\n"
+msgstr ""
+"<p>Per rendere più difficile collegare le diverse transazioni, ti "
+"consigliamo di utilizzare\n"
+"un destinatario diverso per ogni transazione.\n"
+"<i>Electrum</i> genera automaticamente nuovi\n"
+"indirizzi da utilizzare.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p><i>Electrum</i> uses <i>mBTC</i> as the\n"
+"default base unit. 1 mBTC = 0.001 BTC. To change the base unit, choose\n"
+"<b>Tools&nbsp;▸ Preferences</b>.</p>\n"
+msgstr ""
+"<p><i>Electrum</i> usa <i>mBTC</i> come\n"
+"unità di misura predefinita. 1 mBTC = 0.001 BTC. Per cambiare l'unità di "
+"misura predefinit, seleziona\n"
+"<b>Strumenti&nbsp;▸ Preferenze</b>.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Do not blindly trust the bitcoin balance that <i>Electrum</i>\n"
+"displays as <em>unconfirmed</em>. Wait for transactions to be confirmed.</p>\n"
+msgstr ""
+"<p>Non fidarti ciecamente del saldo che <i>Electrum</i>\n"
+"visualizza come <em>non confermato</em>.  Attendi che le transazioni vengano "
+"confermate.</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Recovering your wallet from its seed"
+msgstr "Recupera il tuo portafoglio dal suo seed/intera copia"
+
+#. type: Title -
+#, no-wrap
+msgid "Backing up your seed"
+msgstr "Fare Backup del seed/copia intera"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Your wallet can be recovered entirely from its <em>seed</em>: the\n"
+"chain of words generated by *Electrum*\n"
+"when creating the wallet. But if you lose your seed, you\n"
+"lose your entire wallet.\n"
+msgstr ""
+"Il tuo portafoglio può essere recuperato interamente dal suo <em>seed</em>: "
+"la\n"
+"catena di parole generata da *Electrum*\n"
+"durante la creazione del portafoglio. Ma se perdi il tuo seed,\n"
+"perdi l'intero portafoglio.\n"
+
+#. type: Plain text
+msgid "That's why we recommend you both:"
+msgstr "Ecco perché ti consigliamo entrambi:"
+
+#. type: Bullet: '- '
+msgid ""
+"Turn on the [[Electrum Bitcoin Wallet|persistent_storage/"
+"configure#electrum]] feature of the Persistent Storage to store your bitcoin "
+"wallet and preferences across separate working sessions."
+msgstr ""
+"Attiva la funzionalità [[Electrum Bitcoin Wallet|persistent_storage/"
+"configure#electrum]] dell' Archivio Persistente per memorizzare il "
+"portafoglio bitcoin e le preferenze in sessioni di lavoro separate."
+
+#. type: Bullet: '- '
+msgid ""
+"Backup your seed outside of Tails. For example, you can write it down on a "
+"piece of paper and keep it with you."
+msgstr ""
+"Esegui un backup del tuo seed al di fuori di Tails. Ad esempio, puoi "
+"scriverlo su un foglio di carta e tenerlo con te."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a name=\"corrupted\"></a>\n"
+msgstr "<a name=\"corrupted\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Fixing a corrupted wallet"
+msgstr "Correggere un portafoglio danneggiato"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "If *Electrum* fails to start or stays minimized, maybe your *Electrum* "
+#| "folder is corrupted."
+msgid ""
+"If *Electrum* fails to open or stays minimized, maybe your *Electrum* folder "
+"is corrupted."
+msgstr ""
+"Se *Electrum* non si avvia o rimane minimizzato, può darsi che la tua "
+"cartella di *Electrum* sia danneggiata."
+
+#. type: Plain text
+msgid "To recover your wallet from its seed:"
+msgstr "Per recuperare il tuo portafoglio dal suo seed:"
+
+#. type: Bullet: '1. '
+msgid "Make sure that *Electrum* is closed."
+msgstr "Assicurati che *Electrum* sia chiuso."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Open your *Home* folder."
+msgid "Open your *Home* folder in the *Files* browser."
+msgstr "Apri la tua cartella *Home*."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Click on the <span class=\"guimenu\">[[!img lib/pan-down.png alt=\"menu "
+#| "toggle\" class=\"symbolic\" link=\"no\"]]</span> button in the title bar "
+#| "and choose **Show Hidden Files**."
+msgid ""
+"Select the [[!img lib/go-down.png alt=\"View Options\" class=\"symbolic\" "
+"link=\"no\"]] button in the title bar and select the option **Show Hidden "
+"Files**."
+msgstr ""
+"Fai clic sul bottone <span class=\"guimenu\">[[!img lib/pan-down.png "
+"alt=\"mostra menù\" class=\"symbolic\" link=\"no\"]]</span> nella barra del "
+"titolo e seleziona **Mostra file nascosti**."
+
+#. type: Bullet: '1. '
+msgid "Open the *.electrum* folder."
+msgstr "Apri la cartella *.electrum*."
+
+#. type: Bullet: '1. '
+msgid "Delete the *wallets* folder."
+msgstr "Elimina la cartella *wallets*."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Start *Electrum*."
+msgid "Open *Electrum*."
+msgstr "Avvia *Electrum*."
+
+#. type: Bullet: '1. '
+msgid ""
+"When creating a new wallet choose **I already have a seed** and specify the "
+"seed of your wallet."
+msgstr ""
+"Alla creazione di un nuovo portafoglio seleziona <span "
+"class=\"guilabel\">Possiedo già un seed</span> e specifica il seed del tuo "
+"portafoglio."
+
+#. type: Title =
+#, no-wrap
+msgid "Hardware wallets"
+msgstr "Hardware wallet"
+
+#. type: Plain text
+msgid "You can use hardware wallets that work with Debian 13 (Trixie)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In the past, different wallets have worked with different versions of "
+"Debian.  For example, Trezor hardware wallets stopped working in Debian 12 "
+"(Bookworm), so they don't work in Tails 6.0 or later."
+msgstr ""
+
+#~ msgid "[[!meta title=\"Exchange bitcoins using Electrum\"]]\n"
+#~ msgstr "[[!meta title=\"Scambiare bitcoin utilizzando Electrum\"]]\n"
+
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"bug\">\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/anonymous_internet/electrum/phishing.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/anonymous_internet/electrum/phishing.inline.it\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"

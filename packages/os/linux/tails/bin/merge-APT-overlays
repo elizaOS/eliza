@@ -1,0 +1,39 @@
+#!/bin/bash
+
+set -eu
+set -x
+
+error () {
+    echo "error: ${*}" >&2
+    exit 1
+}
+
+USAGE="Usage: $(basename "$0") BRANCH"
+
+[ $# -eq 1 ] || error "$USAGE"
+
+BRANCH="$1"
+
+### Merge the APT overlays in reprepro
+
+git checkout "$BRANCH"
+for overlay in config/APT_overlays.d/* ; do
+    # handle the case when there is no overlay
+    [[ -e "$overlay" ]] || break
+    # shellcheck disable=SC2029
+    if ! ssh reprepro@incoming.deb.tails.boum.org \
+         tails-merge-suite "$(basename "${overlay}")" "$BRANCH" ; then
+        error "Failed to merge '$overlay' into '$BRANCH': $?"
+    fi
+done
+
+### Empty config/APT_overlays.d/
+
+git checkout "$BRANCH"
+find config/APT_overlays.d -type f -not -name .placeholder -exec git rm '{}' \;
+git commit config/APT_overlays.d/ \
+    -m "Empty the list of APT overlays: they were merged" || :
+
+### Push the Git branch
+
+git push origin "${BRANCH}:${BRANCH}"

@@ -1,0 +1,104 @@
+[[!meta title="Improve Tails in your own language"]]
+
+<div id="intro">
+
+<p>Thank you for your interest in making Tails easier to use in your own language!</p>
+
+[[!toc levels=2]]
+
+</div>
+
+<a id="translate"></a>
+
+# What you can translate
+
+## Translate Tails custom programs
+
+You can help correct, improve, or complete the translations of Tails
+programs into your native language. Read [[translating with Hosted Weblate|translate/with_Hosted_Weblate]].
+Tails programs can be translated into more than 140 languages this way.
+
+<a id="website"></a>
+
+## Translate this website, including the Tails documentation
+
+[[Get started|translate/with_translation_platform]] with translating
+this website.
+
+Please focus on translating and maintaining the
+[[core pages|contribute/l10n_tricks/core_po_files.txt]] first.
+
+<a id="follow-up"></a>
+
+# Mailing list for translators
+
+[[!inline pages="contribute/how/translate/tails-l10n.inline" raw="yes" sort="age"]]
+
+<a id="language-teams"></a>
+
+# Translation teams
+
+Currently, there are several active **language teams**:
+
+* [[Catalan|translate/team/ca]]
+* [[Chinese (Simplified)|translate/team/zh]]
+* [[Farsi|translate/team/fa]]
+* [[French|translate/team/fr]]
+* [[German|translate/team/de]]
+* [[Portuguese|translate/team/pt]]
+* [[Italian|translate/team/it]]
+* [[Spanish|translate/team/es]]
+
+Other teams are being set up:
+
+* Turkish
+
+If your language is not listed here, read the documentation
+to [[add a new language|translate/team/new]].
+
+<a id="tier-1-languages"></a>
+
+Tier-1 languages
+================
+
+We call "tier-1 languages" the languages that we consider the most
+important for our target user base:
+
+- Languages proposed on our website
+- Languages that make Tails understandable by a majority of the
+  population of the top 10 countries of either
+  - [Directly-connecting Tor clients](https://metrics.torproject.org/userstats-relay-table.html)
+  - [Tor clients connecting via bridges](https://metrics.torproject.org/userstats-bridge-table.html)
+
+In March 2019 this list was:
+
+- Arabic
+- English
+- Farsi
+- French
+- German
+- Hindi
+- Indonesian
+- Italian
+- Portuguese
+- Russian
+- Simplified Chinese
+- Spanish
+- Turkish
+
+We are particularly interested in translations in these languages and
+include language packs and dictionaries by default in Tails for them.
+
+## After updating the list of tier-1 languages
+
+After updating the list of tier-1 languages, update:
+
+- [[!tails_gitweb auto/scripts/generate-languages-list]]
+- [[!tails_gitweb features/localization.feature]]
+- [[!tails_gitweb wiki/src/doc/about/features.mdwn]]
+
+# For native English speakers
+
+Most of Tails developers are not native English speakers so you're
+more than welcome to correct or improve our English.
+Get in touch on [[tails-dev@boum.org|doc/about/contact#tails-dev]].

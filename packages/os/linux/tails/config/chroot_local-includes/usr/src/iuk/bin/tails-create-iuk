@@ -1,0 +1,24 @@
+#!/usr/bin/perl
+
+=head1 NAME
+
+tails-create-iuk - create an Incremental upgrade Kit
+
+=head1 VERSION
+
+Version 
+
+=cut
+
+use strictures 2;
+use 5.10.1;
+
+our $VERSION = '4.0.3';
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
+use Tails::IUK;
+
+umask 022;
+Tails::IUK->new_with_options()->run;

@@ -1,0 +1,63 @@
+[[!meta date="Tue, 13 Nov 2012 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.14 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.14, is out.
+
+All users must upgrade as soon as possible.
+
+Thank you, and congrats, to everyone who helped make this happen!
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Tor
+  - Upgrade to 0.2.3.24-rc
+  - Enable [[contribute/design/stream_isolation]]
+
+* Iceweasel
+  - Upgrade iceweasel to 10.0.10esr-1+tails1, with anonymity enhancing
+    patches from the TorBrowser applied
+  - Fix Iceweasel's file associations. No more should you be suggested
+    to open a PDF in the GIMP
+
+* Hardware support
+  - Upgrade Linux to 3.2.32
+  - Support more than 4GB of RAM
+  - Support more than one CPU core
+
+* Miscellaneous
+  - Mostly fix memory wiping at shutdown
+  - gpgApplet can now handle public-key cryptography
+  - Add a persistence preset for NetworkManager connections
+  - Better support setting up persistence on large USB sticks
+  - Make boot faster by fixing a read-ahead bug
+  - Make shutdown faster by disabling useless scripts
+
+* Localization
+  - Custom software is now translated in many more languages
+  - Add Japanese input system
+
+Plus the usual bunch of bug reports and minor improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails. If you want to help, come talk to us!

@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Eliza Tier 2 minimal Linux defconfig fragment for qemu-system-riscv64 -M virt.
+#
+# Usage:
+#   cd external/linux
+#   make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- defconfig
+#   ./scripts/kconfig/merge_config.sh -m .config \
+#       ../../sw/linux/configs/eliza_tier2_qemu_defconfig
+#   make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- olddefconfig
+#   make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- -j$(nproc) Image
+#
+# Goal: arch/riscv/boot/Image < 5 MB.
+
+# --- Keep: RISC-V virt platform essentials ---
+CONFIG_SMP=y
+CONFIG_NR_CPUS=4
+CONFIG_RISCV_SBI=y
+CONFIG_RISCV_SBI_V01=y
+CONFIG_HVC_RISCV_SBI=y
+CONFIG_SERIAL_8250=y
+CONFIG_SERIAL_8250_CONSOLE=y
+CONFIG_SERIAL_OF_PLATFORM=y
+CONFIG_OF=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_TMPFS=y
+CONFIG_PROC_FS=y
+CONFIG_SYSFS=y
+
+# --- Keep: virtio for QEMU virt ---
+CONFIG_VIRTIO=y
+CONFIG_VIRTIO_MMIO=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_CONSOLE=y
+
+# --- Keep: filesystems we need ---
+CONFIG_EXT4_FS=y
+CONFIG_BLK_DEV_INITRD=y
+CONFIG_INITRAMFS_SOURCE=""
+CONFIG_RD_GZIP=y
+
+# --- Strip: heavyweight subsystems we do not need for a busybox boot ---
+# CONFIG_NETFILTER is not set
+# CONFIG_BTRFS_FS is not set
+# CONFIG_XFS_FS is not set
+# CONFIG_F2FS_FS is not set
+# CONFIG_MD is not set
+# CONFIG_BLK_DEV_DM is not set
+# CONFIG_SCSI is not set
+# CONFIG_ATA is not set
+# CONFIG_USB_SUPPORT is not set
+# CONFIG_SOUND is not set
+# CONFIG_WIRELESS is not set
+# CONFIG_WLAN is not set
+# CONFIG_NFS_FS is not set
+# CONFIG_NFSD is not set
+# CONFIG_IPV6 is not set
+# CONFIG_BRIDGE is not set
+# CONFIG_VLAN_8021Q is not set
+# CONFIG_DRM is not set
+# CONFIG_FB is not set
+# CONFIG_INPUT_JOYSTICK is not set
+# CONFIG_INPUT_TABLET is not set
+# CONFIG_INPUT_TOUCHSCREEN is not set
+# CONFIG_BT is not set
+# CONFIG_CAN is not set
+# CONFIG_MTD is not set
+# CONFIG_NFC is not set
+
+# --- Size knobs ---
+CONFIG_CC_OPTIMIZE_FOR_SIZE=y
+# CONFIG_KALLSYMS_ALL is not set
+# CONFIG_DEBUG_INFO is not set
+# CONFIG_DEBUG_KERNEL is not set
+# CONFIG_FTRACE is not set

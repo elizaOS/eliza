@@ -1,0 +1,121 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-26 08:18+0100\n"
+"PO-Revision-Date: 2024-05-21 08:55+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+msgid "You can use *obfs4* and *WebTunnel* bridges in Tails right now."
+msgstr ""
+
+#. type: Plain text
+msgid "To configure a Tor bridge in *Tor Connection*, you can either:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Ask for a bridge based on your region**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  This option is the easiest as it allows you to learn about bridges directly\n"
+"  from Tails.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Tails downloads information about bridges that are most likely to work in\n"
+"  your region from the [[Moat\n"
+"  API|https://gitlab.torproject.org/tpo/anti-censorship/rdsys/-/blob/main/doc/moat.md]]\n"
+"  of the Tor Project. To circumvent censorship, this connection is disguised as\n"
+"  a connection to another website using [[!wikipedia domain fronting]].\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  If you choose *Automatic* as region, the country of your IP address is used.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Ask for a bridge by email**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  You can send an empty email to\n"
+"  <a href=\"mailto:bridges@torproject.org\">bridges@torproject.org</a> from a\n"
+"  Gmail or Riseup email address.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Sending the email reveals to Gmail or Riseup that you are trying to\n"
+"  connect to Tor but not to someone who monitors your Internet connection.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Enter a bridge that you already know**"
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Before starting Tails, learn about bridges by either:"
+msgstr ""
+
+#. type: Bullet: '     * '
+msgid "Visiting <https://bridges.torproject.org/options>."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       We recommend that you visit this page from a different local network if\n"
+"       accessing this page is blocked or if you want to hide that you are\n"
+"       connecting to Tor.\n"
+msgstr ""
+
+#. type: Bullet: '     * '
+msgid ""
+"Sending a message to [[@GetBridgesBot|https://support.torproject.org/tor-"
+"browser/circumvention/getting-bridges/#telegram-bot]] from [[*Telegram*|"
+"https://telegram.org/]]."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"Store the bridge lines in a text document on separate USB stick for later "
+"use in Tails."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"After you started Tails, copy one of the bridge lines from this other USB "
+"stick into *Tor Connection*."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Even someone who knows your bridge cannot know what you are doing online "
+"from Tails."
+msgstr ""
+
+#, fuzzy, no-wrap
+#~ msgid "</div>\n"
+#~ msgstr "  </div>\n"

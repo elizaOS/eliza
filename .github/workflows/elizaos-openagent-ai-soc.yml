@@ -1,0 +1,166 @@
+name: ElizaOS OpenAgent E1 (RISC-V AI SoC)
+
+# Fused-product AOSP build pipeline for `eliza_openagent_ai_soc_phone`:
+# OpenAgent E1 RISC-V AI phone SoC base device tree (from packages/chip/)
+# plus the shared ElizaOS system overlay (packages/os/android/vendor/eliza/).
+#
+# Manual-only trigger (workflow_dispatch): a real AOSP riscv64 build is a
+# 12+ hour job on the largest self-hosted runners and produces no usable
+# artifact for an automatic merge gate. Run this job from the Actions UI
+# when a real-hardware image is needed; the per-PR validation surface is
+# covered by elizaos-cuttlefish.yml + the standalone validate.mjs unit
+# tests.
+#
+# Boot validation is NOT performed here. There is no virtual device for
+# the E1 SoC in this workflow (Cuttlefish does not host a riscv64 target
+# in our self-hosted infra today), and real-hardware bring-up runs on a
+# bench, not in CI. The `--launch` / `--boot-validate` flags on
+# build-aosp.mjs are intentionally omitted; that phase lives in the
+# chip-team bench harness and the evidence files listed under
+# `packages/chip/sw/aosp-device/evidence_manifest.json`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      aosp-root:
+        description: "Existing AOSP checkout root on the runner (will receive the chip device tree import)"
+        required: true
+        type: string
+      jobs:
+        description: "AOSP build parallelism (`m -j<jobs>` value)"
+        required: false
+        default: "8"
+        type: string
+      skip-apk-rebuild:
+        description: "Skip privileged APK rebuild (assumes vendor/eliza/apps/Eliza/Eliza.apk is up to date)"
+        required: false
+        default: false
+        type: boolean
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    name: Build and validate eliza_openagent_ai_soc_phone
+    # Reuses the cuttlefish-class self-hosted runner pool. AOSP riscv64
+    # builds need at least the same RAM/disk envelope as the x86_64
+    # Cuttlefish build (~256GB RAM headroom, ~600GB scratch), so the
+    # existing `[self-hosted, linux, x64, kvm]` label is the right
+    # target. If a dedicated riscv64-build label is introduced later,
+    # swap it in here; do not invent labels that do not exist yet.
+    runs-on: [self-hosted, linux, x64, kvm]
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+
+      - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # `aapt` is needed by validate.mjs for APK badging inspection.
+      # Gradle (for build:android:system) needs the platform/build-tools.
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        if: ${{ inputs.skip-apk-rebuild != true }}
+        with:
+          packages: "platform-tools build-tools;36.0.0 platforms;android-36"
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
+
+      - name: Resolve brand
+        id: brand
+        run: |
+          BRAND_CONFIG="packages/scripts/distro-android/brand.openagent.json"
+          if [ ! -f "$BRAND_CONFIG" ]; then
+            echo "::error::Brand config not found: $BRAND_CONFIG"
+            exit 1
+          fi
+          echo "config=$BRAND_CONFIG" >> "$GITHUB_OUTPUT"
+          BUILD_CMD=$(node -e "const c=JSON.parse(require('fs').readFileSync('$BRAND_CONFIG','utf8')); console.log((c.buildAndroidSystemCmd ?? ['bun','run','build:android:system']).join(' '))")
+          echo "build-cmd=$BUILD_CMD" >> "$GITHUB_OUTPUT"
+          LUNCH_TARGET=$(node -p "JSON.parse(require('fs').readFileSync('$BRAND_CONFIG','utf8')).lunchTarget")
+          echo "lunch-target=$LUNCH_TARGET" >> "$GITHUB_OUTPUT"
+
+      - name: Build privileged Eliza APK
+        if: ${{ inputs.skip-apk-rebuild != true }}
+        run: ${{ steps.brand.outputs.build-cmd }}
+
+      # The chip device tree is vendored in-tree under packages/chip/ and
+      # must be rsynced into the AOSP checkout before the fused product
+      # makefile can `$(call inherit-product, device/eliza/eliza_ai_soc/eliza_ai_soc.mk)`.
+      # The chip import script is owned by the chip team — we only invoke
+      # it. If the script's interface changes, update brand.openagent.json
+      # `chip.chipImport` rather than re-coding logic here.
+      - name: Import chip device tree into AOSP checkout
+        run: |
+          IMPORT_SCRIPT=$(node -p "JSON.parse(require('fs').readFileSync('${{ steps.brand.outputs.config }}','utf8')).chip.chipImport.script")
+          if [ ! -x "$IMPORT_SCRIPT" ] && [ ! -f "$IMPORT_SCRIPT" ]; then
+            echo "::error::Chip import script not found: $IMPORT_SCRIPT"
+            exit 1
+          fi
+          bash "$IMPORT_SCRIPT" "${{ inputs.aosp-root }}"
+
+      - name: Static brand validation (openagent)
+        run: |
+          node packages/scripts/distro-android/validate.mjs \
+            --brand-config "${{ steps.brand.outputs.config }}" \
+            --aosp-root "${{ inputs.aosp-root }}"
+
+      - name: Sync + build AOSP image (no virtual-device boot)
+        run: |
+          # No --launch / --boot-validate: there is no virtual device for
+          # the OpenAgent E1 fusion in this workflow. Real-hardware boot
+          # validation runs on the chip-team bench harness and is captured
+          # as evidence under packages/chip/docs/evidence/android/.
+          node packages/scripts/distro-android/build-aosp.mjs \
+            --brand-config "${{ steps.brand.outputs.config }}" \
+            --aosp-root "${{ inputs.aosp-root }}" \
+            --jobs "${{ inputs.jobs }}"
+
+      - name: Collect chip evidence logs (if produced by build)
+        if: always()
+        run: |
+          # The 9 evidence logs listed in
+          # packages/chip/sw/aosp-device/evidence_manifest.json land in
+          # packages/chip/docs/evidence/android/ when the chip evidence
+          # capture script has been run against the same AOSP checkout.
+          # We surface them as build artifacts so the chip team can audit
+          # the run without needing direct runner access. Missing logs
+          # are not a failure here (the chip-team capture is a separate,
+          # bench-driven phase) — this step is best-effort archival only.
+          EVIDENCE_DIR="packages/chip/docs/evidence/android"
+          if [ -d "$EVIDENCE_DIR" ]; then
+            ls -la "$EVIDENCE_DIR" || true
+          else
+            echo "No chip evidence directory present; skipping collection."
+          fi
+
+      - name: Upload AOSP build logs and vendor image
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: openagent-e1-aosp-build-logs
+          path: |
+            ${{ inputs.aosp-root }}/out/dist/**/build_log.txt
+            ${{ inputs.aosp-root }}/out/target/product/eliza_ai_soc/vendor.img
+            ${{ inputs.aosp-root }}/out/target/product/eliza_ai_soc/installed-files-vendor.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload chip evidence logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: openagent-e1-chip-evidence
+          path: packages/chip/docs/evidence/android/*.log
+          if-no-files-found: warn
+          retention-days: 7

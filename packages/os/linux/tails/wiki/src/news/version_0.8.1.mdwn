@@ -1,0 +1,53 @@
+[[!meta date="Mon, 17 Oct 2011 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.8.1 is out"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.8.1, is out.
+
+This is a bugfix-only release mainly aimed at fixing serious security
+issues in bundled software.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Iceweasel
+  - Update to 3.5.16-10 (fixes DSA-2313-1).
+  - FireGPG: force crypto action results to appear in a new window, otherwise
+    JavaScript can steal decrypted plaintext. Advice: always use FireGPG's
+    text editor when writing text you want to encrypt. If you write it in a
+    textbox the plaintext can be stolen through JavaScript before it is
+    encrypted in the same way.
+  - Update HTTPS Everywhere extension to 1.0.3-1.
+  - Stop using the small version of the Tor check page. The small version
+    incorrectly tells Tails users to upgrade their Torbrowser, which has
+    confused some users.
+
+* Linux 3.0.0-2 (fixes DSA-2310-1, CVE-2011-2905, CVE-2011-2909,
+  CVE-2011-2723, CVE-2011-2699, CVE-2011-1162, CVE-2011-1161).
+
+* Other software:
+  - Update usb-modeswitch and usb-modeswitch-data from Debian
+    backports. This adds support for a few devices such as Pantech
+    UMW190 CDMA modem.
+  - Install barry-util for better BlackBerry integration.
+  - Debian security upgrades: OpenOffice.org (DSA-2315-1), openjdk-6
+    (DSA-2311-1), policykit-1 (DSA-2319-1)
+
+* Protecting against memory recovery: set parameters that should make
+  the wipe process a bit more robust and efficient.
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / upgrade!
+
+See the Getting started page.

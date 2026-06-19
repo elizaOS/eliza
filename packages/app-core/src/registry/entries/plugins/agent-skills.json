@@ -1,0 +1,72 @@
+{
+  "id": "agent-skills",
+  "name": "Agent Skills",
+  "description": "Agent Skills plugin for elizaOS - implement the Agent Skills specification with progressive disclosure",
+  "npmName": "@elizaos/plugin-agent-skills",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "agent-skills",
+    "clawhub",
+    "otto",
+    "skills",
+    "agents",
+    "progressive-disclosure",
+    "agent"
+  ],
+  "config": {
+    "SKILLS_DIR": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Dir",
+      "help": "Directory to install and load skills from (default: ./skills)",
+      "advanced": false
+    },
+    "SKILLS_AUTO_LOAD": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Auto Load",
+      "help": "Automatically load installed skills on startup",
+      "advanced": false
+    },
+    "SKILLS_REGISTRY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Registry",
+      "help": "Skill registry URL (default: https://clawhub.ai)",
+      "advanced": false
+    },
+    "BUNDLED_SKILLS_DIRS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Skills Dirs",
+      "help": "Comma-separated list of directories containing bundled (read-only) skills",
+      "advanced": false
+    },
+    "OTTO_BUNDLED_SKILLS_DIR": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Bundled Skills Dir",
+      "help": "Legacy: Single directory containing Otto bundled skills",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Wrench",
+    "group": "agents",
+    "groupOrder": 7,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "agents"
+}

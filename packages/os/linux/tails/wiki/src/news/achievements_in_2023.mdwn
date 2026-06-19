@@ -1,0 +1,147 @@
+[[!meta title="2023 at Tails: a new home, small steps, and giant leaps"]]
+[[!meta date="Wed, 20 Dec 2023 19:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+**Malicious actors upped the ante in 2023.**
+
+So-called artificial intelligence systems soared in popularity, supercharging
+political
+[disinformation](https://www.wired.com/story/slovakias-election-deepfakes-show-ai-is-a-danger-to-democracy/)
+[programs](https://www.theguardian.com/us-news/2023/jul/19/ai-generated-disinformation-us-elections).
+Internet shutdowns and slowdowns became [firmly
+entrenched](https://www.accessnow.org/publication/internet-shutdowns-in-2023-mid-year-update/)
+in authoritarian toolkits to censor progressive speech. And the [continuing
+revelations](https://securitylab.amnesty.org/latest/2023/11/serbia-civil-society-threatened-by-spyware/)
+of zero-click attacks drove home the perilous omnipotence of the
+military-digital complex.
+
+**But, we also made plans to call their ante.**
+
+We built a state-of-the-art 3-year strategy to make Tails a formidable
+adversary to these powerful, repressive forces. We made plans to better
+understand the use of Tails by journalists and activists, and understand and
+improve the use of Tails in the [majority
+world](https://www.harvarddesignmagazine.org/articles/shahidul-alam-on-the-majority-world/).
+All this while introducing new features and improvements to existing features
+that make Tails even more relevant.
+
+Here's the progress we made in the first year of the plan.
+
+## Product development
+
+**The Persistent Storage got even better at storing encrypted data.**
+
+[[Tails 5.8|news/version_5.8/]] was one of the most important Tails releases in
+years. In Tails 5.8, we unveiled a brand new Persistent Storage. The new
+Persistent Storage doesn't require restarting after creation or any time after
+you activate a new feature. It also made it easier to persist more settings.
+The icing on the cake: a dashing makeover for the Persistent Storage!
+
+But the new Persistent Storage wasn't all fun and games for Tails users. It was
+buggy and we worked extra hard to fix the issues our users faced.
+
+We didn't stop there. We also continued to add functionality to the Persistent
+Storage. Now, it is easier to both do [[backups of the whole Persistent
+Storage|news/version_5.14/]] and [[delete the data of a each
+feature|news/version_5.12/]].
+
+[[!img  version_5.12/delete-data.png alt="" caption="New button to delete the data of a Persistent Storage feature"]]
+
+[[!img doc/persistent_storage/backup/clone.png alt="" caption="Option to clone the current Persistent Storage in Tails Installer"]]
+
+We also introduced better password practices for securing the Persistent
+Storage. Randomly generated [diceware](https://diceware.dmuth.org/) passphrases
+and an upgraded encryption format make the Persistent Storage [[exponentially
+more secure|security/argon2id]].
+
+<div class="center"><img src="https://imgs.xkcd.com/comics/password_strength.png" alt="" style="width: 66%"/></div>
+
+**Improvements to the [[Tor Connection|news/version_4.20]] make it easier to
+circumvent censorship.**
+
+The Tor Connection Assistant is slicker. We improved the error messaging when
+connecting automatically to the Tor network and the handling of captive
+portals.
+
+Connecting to Tor is only part of the story. At times, Tails users may find
+themselves on slow Tor circuits. And worse, unable to troubleshoot issues. So,
+we've made it easier to close pesky Tor circuits that we can sometimes land on.
+
+[[!img version_5.19/close_circuit.png alt="" caption="Option to close a circuit in Onion Circuits"]]
+
+**Tails remains one of the most secure operating systems in the world.**
+
+This year, we released 15 versions of Tails, ensuring users had the latest Tor
+Browser and Thunderbird. Yes, FIFTEEN!
+
+We also asked [Radically Open Security](https://www.radicallyopensecurity.com/)
+to do a security audit of Tails. Their [[findings|news/audit_by_ROS]] affirmed
+our cutting-edge security.
+
+PS: Keeping Tails updated is your best defense against online surveillance and
+censorship!
+
+**And we started moving to our new home!**
+
+🎉 ✨ tails.net ✨ 🎉
+
+We completed a bunch of home improvement projects. So our new home is even more
+welcoming to folks speaking different languages, we overhauled the language
+switcher. We just added Catalan translations too.
+*Gràcies per ser aquí!*
+
+<div class="center">[[!img language_switcher.png alt=""]]</div>
+
+High footfall areas of the website got a new carpet too. Check out our new
+[[Contribute|contribute]], [[Support|support]], and [[Contact
+us|doc/about/contact]] pages.
+
+A huge shout-out to the volunteers who made these possible:
+[@jawlensky](https://gitlab.tails.boum.org/jawlensky) for the website redesign
+and to our [[Catalan translations team|contribute/how/translate/team/ca]]!
+
+## Community and organizational health
+
+- **Sprints.** Our core team organized 2 sprints this year. Around Easter, we
+  bunkered up in Paris. The agenda was budgeting the year ahead and building a
+  roadmap to financial health. Also on the agenda: French cheese, spicy Indian
+  snacks, and [Dixit](https://boardgamegeek.com/boardgame/39856/dixit). Later in
+  the year, we met again in a mix of online and in-person participation. We
+  reflected on our efforts this year and hatched plans for a more sustainable
+  future of the project.
+
+- **Reflections.** Aspiring to reach and encourage more diverse populations of
+  Tails users, we also embarked on a path to improving the project's diversity.
+  Our core team started meeting fortnightly to reflect on our workplace norms.
+  We are using [this text by the Centre for Community
+  Organizations](https://coco-net.org/wp-content/uploads/2019/11/Coco-WhiteSupCulture-ENG4.pdf)
+  as our guide to reflection and improvement.
+
+## Financial health
+
+Malicious actors are not going to buckle down, but neither are we. This year,
+Tails was instrumental in several high-risk investigations and struggles for
+progressive change. Like this [damning
+indictment](https://nocallaronlasolas.serendipia.digital/) of the Mexican
+army's systematic surveillance of feminists in the country.
+
+I, ([@bokonon](https://gitlab.tails.boum.org/bokonon)), joined our small team at
+Tails this year, to lead our fundraising activities. I have been obsessing over
+how a free software project like ours can continue improving Tails while
+keeping it free. And one thing is already clear: we will need your help. Often.
+
+While we don't know how many Tails users donate to Tails, our
+guess is ~1%. Tails is designed for use by people living vulnerable, high-risk
+lives. Many of whom are likely to not be in a position to contribute. Your
+donations keep Tails free for everybody else!
+
+We are near the end of our campaign to fund Tails in 2024, but quite a way off
+our goals.
+
+We might never have the resources that powerful, malicious actors do, but we
+know one thing: together, we can punch much above our weight. As we go into the
+holidays, join us in ensuring that the Internet does not become synonymous with
+surveillance and censorship. Give the gift of privacy today!
+
+[Donate](https://tails.net/donate/)

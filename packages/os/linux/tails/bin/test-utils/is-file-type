@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+
+from argparse import ArgumentParser
+from pathlib import Path
+import os
+import sys
+
+sys.path.append(os.path.dirname(__file__))
+from file_type import Language  # NOQA: E402
+
+
+def get_parser():
+    def get_language(language_name: str):
+        return Language.lookup_language(language_name)()
+
+    p = ArgumentParser()
+    p.set_defaults(func=main_help)
+
+    sub = p.add_subparsers()
+
+    supported_languages = ",".join(Language.list_languages())
+
+    check = sub.add_parser("check")
+    check.add_argument(
+        "language", type=get_language, help=f"One of {supported_languages}"
+    )
+    check.add_argument("file", type=Path)
+    check.set_defaults(func=main_check)
+
+    _filter = sub.add_parser("filter", description="Only print matching lines")
+    _filter.add_argument(
+        "--zero",
+        action="store_true",
+        default=False,
+        help="Use \\0 instead of newlines, both as input and output delimiter",
+    )
+    _filter.add_argument(
+        "language", type=get_language, help=f"One of {supported_languages}"
+    )
+    _filter.add_argument(
+        "files", type=Path, nargs="*", help="If no file is provided, read from stdin"
+    )
+    _filter.set_defaults(func=main_filter)
+
+    return p
+
+
+def main_help(args):
+    print("Wrong usage, try --help", file=sys.stderr)
+    sys.exit(1)
+
+
+def main_check(args):
+    if not args.language.check(args.file):
+        sys.exit(1)
+    sys.exit(0)
+
+
+def split_read(handle, line_separator="\n", chunk_size=1024):
+    # adapted from https://stackoverflow.com/a/45305837
+    buf = ""  # storage buffer
+    while not handle.closed:  # while our handle is open
+        data = handle.read(chunk_size)
+        if not data:
+            break
+        buf += data
+        if line_separator in buf:
+            chunks = buf.split(line_separator)
+            buf = chunks.pop()  # keep the last entry in our buffer
+            yield from chunks
+    if buf:
+        yield buf  # return the last buffer if any
+
+
+def iterate_file_list(args, delimiter="\n"):
+    if args.files:
+        yield from args.files
+    else:
+        for file in split_read(sys.stdin, line_separator=delimiter):
+            yield Path(file)
+
+
+def main_filter(args):
+    delimiter = "\0" if args.zero else "\n"
+    for file in iterate_file_list(args, delimiter=delimiter):
+        if not file.is_file() or file.is_symlink():
+            continue
+        if args.language.check(file):
+            print(file, end=delimiter)
+
+
+def main():
+    args = get_parser().parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

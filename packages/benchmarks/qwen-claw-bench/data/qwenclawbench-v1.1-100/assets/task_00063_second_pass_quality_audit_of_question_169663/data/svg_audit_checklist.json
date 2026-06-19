@@ -1,0 +1,62 @@
+{
+  "checks": [
+    {
+      "id": "SVG-01",
+      "name": "hidden_text_check",
+      "description": "Search for text elements with fill matching background, opacity<0.1, or font-size<1px",
+      "severity": "critical",
+      "auto_fail": true,
+      "detection_methods": [
+        "Check fill attribute against known background colors (white, #ffffff, #fff)",
+        "Check opacity attribute for values below 0.1",
+        "Check font-size attribute for values below 1px",
+        "Check for display:none or visibility:hidden in style attributes"
+      ]
+    },
+    {
+      "id": "SVG-02",
+      "name": "answer_leak_check",
+      "description": "Search for any numeric values matching answer options within SVG non-label elements",
+      "severity": "critical",
+      "auto_fail": true,
+      "detection_methods": [
+        "Extract all text content from SVG",
+        "Compare against answer option values",
+        "Flag any matches that are not dimension labels referenced in the question stem",
+        "Check metadata, comments, and hidden groups for answer content"
+      ]
+    },
+    {
+      "id": "SVG-03",
+      "name": "consistency_check",
+      "description": "Verify SVG dimensions match question stem values",
+      "severity": "major",
+      "auto_fail": false,
+      "detection_methods": [
+        "Parse dimension labels from SVG text elements",
+        "Parse dimension values from question stem",
+        "Cross-reference for consistency",
+        "Flag any mismatches or missing labels"
+      ]
+    },
+    {
+      "id": "SVG-04",
+      "name": "clarity_check",
+      "description": "Ensure shapes are clearly distinguishable and unambiguous",
+      "severity": "minor",
+      "auto_fail": false,
+      "detection_methods": [
+        "Verify stroke width is sufficient for visibility",
+        "Check that shapes do not overlap ambiguously",
+        "Ensure labels are positioned clearly near their referenced elements",
+        "Verify viewBox and dimensions allow adequate rendering"
+      ]
+    }
+  ],
+  "metadata": {
+    "version": "1.3",
+    "last_updated": "2024-10-20",
+    "author": "QA Team",
+    "applies_to": "all SVG assets in question bank"
+  }
+}

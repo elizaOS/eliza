@@ -1,0 +1,22 @@
+{
+  "per_benchmark": {
+    "swe_bench_orchestrated": {
+      "matrix": true,
+      "max_instances": 3,
+      "no_docker": true,
+      "providers": ["claude-code", "swe-agent", "codex"],
+      "required_capabilities": [
+        "code.read",
+        "code.write",
+        "code.edit",
+        "code.search",
+        "code.shell"
+      ],
+      "strict_capabilities": true
+    },
+    "orchestrator_lifecycle": {
+      "max_scenarios": 12,
+      "strict": true
+    }
+  }
+}

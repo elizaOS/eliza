@@ -1,0 +1,95 @@
+{
+  "schema": "eliza.benchmark_target_metadata_contract.v1",
+  "claim_boundary": "target metadata contract only; not benchmark evidence, not calibrated target evidence, and not a release efficiency claim",
+  "required_sections": [
+    "software",
+    "clocks",
+    "memory",
+    "thermal",
+    "power",
+    "process",
+    "calibration"
+  ],
+  "required_fields": {
+    "software": {
+      "os": "string",
+      "kernel": "string",
+      "firmware": "string",
+      "runtime": "string",
+      "build_id": "string"
+    },
+    "clocks": {
+      "source": "string",
+      "cpu_hz": "number",
+      "npu_hz": "number",
+      "memory_hz": "number",
+      "governor": "string"
+    },
+    "memory": {
+      "type": "string",
+      "capacity_bytes": "integer",
+      "bandwidth_bytes_per_second": "number",
+      "channels": "integer"
+    },
+    "thermal": {
+      "ambient_c": "number",
+      "die_c": "number",
+      "cooling": "string",
+      "throttle_state": "string"
+    },
+    "power": {
+      "source": "string",
+      "watts": "number",
+      "measurement_method": "string",
+      "sample_count": "integer",
+      "averaging_window_seconds": "number"
+    },
+    "process": {
+      "node": "string",
+      "pdk": "string",
+      "process_effects_contract": "object",
+      "process_corner_count": "integer",
+      "worst_process_corner": "string",
+      "pdk_signoff_claim": "string"
+    },
+    "calibration": {
+      "status": "string",
+      "source": "string",
+      "ground_truth_reference": "string",
+      "last_calibrated_utc": "utc_timestamp",
+      "assets": "object"
+    }
+  },
+  "required_calibration_assets": [
+    "clock_source",
+    "power_meter"
+  ],
+  "calibration_asset_required_fields": [
+    "status",
+    "source",
+    "sha256",
+    "evidence"
+  ],
+  "calibration_asset_sha256": "64-character lowercase SHA-256 hex digest of the exact archived evidence file",
+  "calibration_asset_evidence_root": "packages/chip",
+  "process_effects_contract": {
+    "path": "docs/spec-db/process-14a-effects.yaml",
+    "sha256": "64-character lowercase SHA-256 hex digest of the archived process effects contract"
+  },
+  "forbidden_release_values": [
+    "example",
+    "placeholder",
+    "blocked",
+    "missing",
+    "unknown",
+    "todo",
+    "tbd",
+    "undecided"
+  ],
+  "release_gate_notes": [
+    "Every required section must be present for dry_run=false L5/L6 benchmark reports.",
+    "Every passed measured result must reference calibrated clock_source and power_meter assets.",
+    "Every calibration asset evidence path must be archived under packages/chip and match its SHA-256 digest.",
+    "Simulator wall-clock, host-smoke tools, and FPGA power are excluded from phone efficiency comparisons."
+  ]
+}

@@ -1,0 +1,131 @@
+[[!meta title="Call for testing: 3.0~rc1"]]
+
+[[!meta date="Mon, 21 May 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails! The first release candidate for the upcoming
+version 3.0 is out. We are very excited and cannot wait to hear what
+you think about it :)
+
+[[!toc levels=1]]
+
+# What's new in 3.0~rc1?
+
+Tails 3.0 will be the first version of Tails based on Debian 9
+(Stretch). As such, it upgrades essentially all included software.
+
+Changes since Tails 3.0~beta4 include:
+
+* Important security fixes!
+
+* Upgrade to current Debian 9 (Stretch).
+
+* Upgrade tor to 0.3.0.7-1.
+
+* Upgrade Tor Browser to 7.0a4.
+
+* Migrate from Icedove to Thunderbird (only cosmetic).
+
+Technical details of all the changes are listed in the
+Changelog.
+
+# How to test Tails 3.0~rc1?
+
+**We will provide security updates for Tails 3.0~rc1**, just like we do
+for stable versions of Tails.
+
+But **keep in mind that this is a test image**. We tested that it is
+not broken in obvious ways, but it might still contain
+undiscovered issues.
+
+But test wildly!
+
+If you find anything that is not working as it should, please report to
+us on <tails-testers@boum.org>.
+
+Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+Get Tails 3.0~rc1
+-------------------
+
+To upgrade, an automatic upgrade is available from 3.0~beta4 to 3.0~rc1.
+
+If you cannot do an automatic upgrade, you can install 3.0~rc1 by
+following our usual [[installation instructions|install]], skipping
+the **Download and verify** step.
+
+Tails 3.0~rc1 ISO image
+
+Tails 3.0~rc1 torrent
+
+<a id="known_issues"></a>
+
+Known issues in 3.0~rc1
+=========================
+
+* The documentation has only been partially updated so far.
+
+* The graphical interface fails to start on some Intel
+  graphics adapters. If this happens to you:
+  1. Add the `xorg-driver=intel` option in the
+     [[boot menu|doc/advanced_topics/boot_options]].
+  2. If this fixes the problem, report to to <tails-testers@boum.org>
+     the output of the following commands:
+     
+         lspci -v
+         lspci -mn
+     
+     … so we get the identifier of your graphics adapter and can have
+     this fix applied automatically in the next Tails 3.0 pre-release.
+  3. If this does not fix the problem, try Troubleshooting Mode and
+     report the problem to <tails-testers@boum.org>. Include the exact
+     model of your Intel graphics adapter.
+
+* There is no **Read-Only** feature for the
+  persistent volume anymore; it is not clear yet whether it will be
+  re-introduced in time for Tails 3.0 final ([[!tails_ticket 12093]]).
+
+* The persistent Tor Browser bookmarks feature is broken if you enable
+  it for the first time in Tails 3.0~rc1; any persistent bookmarks
+  from before will still work.
+
+  You can workaround this as follows, after you start Tails the first
+  time with Browser bookmarks persistence enabled:
+
+  1. Start Tor Browser and let it load
+  2. Close Tor Browser
+  3. Run this in a Terminal:
+
+         cp /home/amnesia/.tor-browser/profile.default/places.sqlite \
+            /home/amnesia/.mozilla/firefox/bookmarks/places.sqlite
+         rm /home/amnesia/.tor-browser/profile.default/places.sqlite*
+         ln -s /home/amnesia/.mozilla/firefox/bookmarks/places.sqlite \
+               /home/amnesia/.tor-browser/profile.default/places.sqlite
+
+* [[!tails_ticket 12580 desc="Thunderbird email client fails to load for some
+  users"]]. You can fix this by creating a file called *.migrated* in
+  the folder of your Thunderbird profile. To do so, run this command in a
+  Terminal:
+
+      touch /home/amnesia/.thunderbird/profile.default/.migrated
+
+* Open tickets for Tails 3.0~rc1
+
+* Open tickets for Tails 3.0
+
+* [[Longstanding known issues|support/known_issues]]
+
+# What's coming up?
+
+We will likely publish the first release candidate for Tails 3.0
+around May 19.
+
+Tails 3.0 is [[scheduled|contribute/calendar]] for June 13.
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.0-rc1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

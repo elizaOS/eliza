@@ -1,0 +1,71 @@
+[[!meta date="Wed, 05 Feb 2014 10:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.22.1 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.22.1, is out.
+
+All users must upgrade as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_0.22]].
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Security fixes
+  - Upgrade the web browser to 24.3.0esr, that fixes a few serious
+    security issues.
+  - Upgrade the system NSS to 3.14.5, that fixes a few serious
+    security issues.
+  - Workaround a browser size fingerprinting issue by using small
+    icons in the web browser's navigation toolbar.
+  - Upgrade Pidgin to 2.10.8, that fixes a number of serious
+    security issues.
+
+* Major improvements
+  - Check for upgrades availability using Tails Upgrader, and propose
+    to apply an incremental upgrade whenever possible.
+  - Install Linux 3.12 (3.12.6-2).
+
+* Bugfixes
+  - Fix the keybindings problem introduced in 0.22.
+  - Fix the Unsafe Browser problem introduced in 0.22.
+  - Use IE's icon in Windows camouflage mode.
+  - Handle some corner cases better in Tails Installer.
+  - Use the correct browser homepage in Spanish locales.
+
+* Minor improvements
+  - Update Torbutton to 1.6.5.3.
+  - Do not start Tor Browser automatically, but notify when Tor
+    is ready.
+  - Import latest Tor Browser prefs.
+  - Many user interface improvements in Tails Upgrader.
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+* The memory erasure on shutdown [[!tails_ticket 6460 desc="does not
+  work on some hardware"]].
+* [[Longstanding|support/known_issues]] known issues.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+March 18.
+
+
+Would you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

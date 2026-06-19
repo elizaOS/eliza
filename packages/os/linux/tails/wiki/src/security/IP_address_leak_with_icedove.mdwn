@@ -1,0 +1,57 @@
+[[!meta date="Mon, 07 Dec 2009 11:20:24 +0000"]]
+[[!meta title="Icedove (Thunderbird) leaks the real IP address"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The Torbutton extension installed in amnesia being incompatible with
+Icedove (Thunderbird), the real IP address of the computer is
+disclosed to the SMTP relay that is used to send email.
+
+# Impact
+
+When using Icedove to send email, the computer's real IP address is
+disclosed to the SMTP relay, that usually writes it down to
+a `Received:` header inside outgoing email. This private information
+is therefore disclosed to:
+
+* the SMTP relay's administrators;
+* anyone who is able to read such a sent email, including: anyone the
+  email is sent to, various network and email
+  servers administrators.
+
+When using a NAT-ed Internet connection, the disclosed IP is a local
+network one (e.g. 192.168.1.42), which usually does not reveal too
+much. On the other hand, when connecting directly to the Internet,
+e.g. using a PPP or DSL modem and no router, the disclosed IP truly
+reveals the location of the amnesia user.
+
+# Solution
+
+Upgrade to [[amnesia 0.4.1|news/version_0.4.1]], that ships with Claws Mail instead of Icedove,
+**and** set the following preferences in `~/.claws-mail/accountrc` for
+every account:
+
+        set_domain=1
+        domain=localhost
+
+See [[!tails_ticket 6119]] for details.
+
+# Mitigation
+
+Best is to avoid using Icedove (Thunderbird) in amnesia until
+fixed images are released. If not possible:
+
+* Use amnesia behind a NAT-ed Internet connection, inside a LAN that
+  uses widespread IP addresses.
+* Use a trustworthy, privacy-friendly SMTP relay that does not write
+  down the client's IP address anywhere, especially in email headers.
+
+Note that using GnuPG does not fix this problem at all: GnuPG only
+encrypts the email body, the email headers being always kept
+in clear.
+
+# Affected versions
+
+Any amnesia release until, and including, 0.3.
+amnesia 0.4 is not affected.

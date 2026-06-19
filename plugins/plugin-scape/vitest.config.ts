@@ -1,0 +1,298 @@
+import { existsSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, "../..");
+
+// jsdom component tests (ScapeOperatorSurface / ScapeTuiView) must mount against
+// a single React copy. react is a peer dep resolvable from the plugin; react-dom
+// is hoisted to the monorepo's node_modules/.bun under a content-hashed dir, so
+// locate the react-dom@<version>+<hash> dir that matches the resolved react.
+const requireFromHere = createRequire(import.meta.url);
+const reactPkgJson = requireFromHere.resolve("react/package.json");
+const reactDir = path.dirname(reactPkgJson);
+const reactVersion = (requireFromHere(reactPkgJson) as { version: string })
+  .version;
+
+function locateBunModulesDir(start: string): string {
+  let current = start;
+  while (true) {
+    const candidate = path.join(current, "node_modules/.bun");
+    if (existsSync(candidate)) return candidate;
+    const parent = path.dirname(current);
+    if (parent === current) {
+      throw new Error("Unable to locate node_modules/.bun");
+    }
+    current = parent;
+  }
+}
+
+const bunModulesDir = locateBunModulesDir(here);
+const reactDomEntry = readdirSync(bunModulesDir).find((entry) =>
+  entry.startsWith(`react-dom@${reactVersion}+`),
+);
+if (!reactDomEntry) {
+  throw new Error(
+    `Unable to locate react-dom@${reactVersion} in ${bunModulesDir}`,
+  );
+}
+const reactDomDir = path.join(
+  bunModulesDir,
+  reactDomEntry,
+  "node_modules/react-dom",
+);
+
+// Alias all @elizaos/plugin-* packages that agent/src imports to their source
+// so vitest can resolve them without a pre-built dist. Anchors the find
+// pattern to the exact module so subpath imports like
+// `@elizaos/plugin-local-inference/runtime` resolve via the package's exports
+// map (or the explicit subpath aliases below) instead of being rewritten to
+// `<src>/runtime`, which yields ENOTDIR when <src> points to a single file.
+function pluginAlias(name: string, srcPath?: string) {
+  const src = srcPath ?? path.join(repoRoot, `plugins/${name}/src/index.ts`);
+  return { find: new RegExp(`^@elizaos/${name}$`), replacement: src };
+}
+
+export default defineConfig({
+  root: here,
+  resolve: {
+    alias: [
+      // React single-copy resolution for jsdom component tests.
+      { find: /^react$/, replacement: reactDir },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: path.join(reactDir, "jsx-runtime.js"),
+      },
+      {
+        find: /^react\/jsx-dev-runtime$/,
+        replacement: path.join(reactDir, "jsx-dev-runtime.js"),
+      },
+      { find: /^react-dom$/, replacement: reactDomDir },
+      {
+        find: /^react-dom\/client$/,
+        replacement: path.join(reactDomDir, "client.js"),
+      },
+      {
+        find: /^react-dom\/test-utils$/,
+        replacement: path.join(reactDomDir, "test-utils.js"),
+      },
+      {
+        find: /^react-dom\/server$/,
+        replacement: path.join(reactDomDir, "server.node.js"),
+      },
+      // The view components import @elizaos/ui subpaths (agent-surface). Every
+      // component test mocks @elizaos/ui, so collapse the subpaths onto the
+      // root spec so a single vi.mock("@elizaos/ui") covers them all.
+      {
+        find: /^@elizaos\/ui\/(agent-surface|api|components(?:\/.*)?|hooks|layouts|state|utils)$/,
+        replacement: "@elizaos/ui",
+      },
+      // Anchor the bare-specifier aliases so subpath imports
+      // (e.g. `@elizaos/shared/brand`) resolve via the explicit subpath aliases
+      // below instead of being rewritten to `<index.ts>/brand` (ENOTDIR).
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/shared/src/$1"),
+      },
+      {
+        find: /^@elizaos\/core\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/core/src/$1"),
+      },
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.join(repoRoot, "packages/core/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/logger$/,
+        replacement: path.join(repoRoot, "packages/logger/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/agent$/,
+        replacement: path.join(repoRoot, "packages/agent/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
+      },
+      // All plugins in plugins/ that have no pre-built dist — point vitest at
+      // source so it can resolve without built artifacts.
+      pluginAlias("plugin-agent-orchestrator"),
+      pluginAlias("plugin-agent-skills"),
+      pluginAlias(
+        "plugin-anthropic",
+        path.join(repoRoot, "plugins/plugin-anthropic/index.ts"),
+      ),
+      pluginAlias("plugin-aosp-local-inference"),
+      pluginAlias("plugin-app-control"),
+      pluginAlias("plugin-background-runner"),
+      pluginAlias("plugin-bluebubbles"),
+      pluginAlias(
+        "plugin-bluesky",
+        path.join(repoRoot, "plugins/plugin-bluesky/index.ts"),
+      ),
+      pluginAlias("plugin-browser"),
+      pluginAlias("plugin-calendly"),
+      pluginAlias("plugin-capacitor-bridge"),
+      pluginAlias("plugin-cli"),
+      pluginAlias(
+        "plugin-codex-cli",
+        path.join(repoRoot, "plugins/plugin-codex-cli/index.ts"),
+      ),
+      pluginAlias("plugin-coding-tools"),
+      pluginAlias("plugin-commands"),
+      pluginAlias("plugin-computeruse"),
+      pluginAlias("plugin-device-filesystem"),
+      pluginAlias(
+        "plugin-discord",
+        path.join(repoRoot, "plugins/plugin-discord/index.ts"),
+      ),
+      pluginAlias("plugin-discord-local"),
+      pluginAlias("plugin-edge-tts"),
+      pluginAlias("plugin-elevenlabs"),
+      pluginAlias(
+        "plugin-eliza-classic",
+        path.join(repoRoot, "plugins/plugin-eliza-classic/index.ts"),
+      ),
+      pluginAlias("plugin-elizacloud"),
+      pluginAlias(
+        "plugin-farcaster",
+        path.join(repoRoot, "plugins/plugin-farcaster/index.ts"),
+      ),
+      pluginAlias("plugin-feishu"),
+      pluginAlias("plugin-form"),
+      pluginAlias("plugin-github"),
+      pluginAlias("plugin-google"),
+      pluginAlias("plugin-google-chat"),
+      pluginAlias(
+        "plugin-google-genai",
+        path.join(repoRoot, "plugins/plugin-google-genai/index.ts"),
+      ),
+      pluginAlias(
+        "plugin-groq",
+        path.join(repoRoot, "plugins/plugin-groq/index.ts"),
+      ),
+      pluginAlias("plugin-health"),
+      pluginAlias("plugin-imessage"),
+      pluginAlias(
+        "plugin-inmemorydb",
+        path.join(repoRoot, "plugins/plugin-inmemorydb/index.ts"),
+      ),
+      pluginAlias("plugin-instagram"),
+      pluginAlias("plugin-line"),
+      pluginAlias("plugin-linear"),
+      pluginAlias(
+        "plugin-lmstudio",
+        path.join(repoRoot, "plugins/plugin-lmstudio/index.ts"),
+      ),
+      pluginAlias(
+        "plugin-local-ai",
+        path.join(repoRoot, "plugins/plugin-local-ai/index.ts"),
+      ),
+      pluginAlias("plugin-local-inference"),
+      // plugin-local-inference exposes subpath exports (`/runtime`, `/routes`,
+      // `/services`) consumed via `@elizaos/app-core`; alias each to source so
+      // vitest can resolve them without a built dist.
+      {
+        find: /^@elizaos\/plugin-local-inference\/runtime$/,
+        replacement: path.join(
+          repoRoot,
+          "plugins/plugin-local-inference/src/runtime/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-local-inference\/routes$/,
+        replacement: path.join(
+          repoRoot,
+          "plugins/plugin-local-inference/src/routes/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-local-inference\/services$/,
+        replacement: path.join(
+          repoRoot,
+          "plugins/plugin-local-inference/src/services/index.ts",
+        ),
+      },
+      pluginAlias("plugin-local-storage"),
+      pluginAlias(
+        "plugin-localdb",
+        path.join(repoRoot, "plugins/plugin-localdb/index.ts"),
+      ),
+      pluginAlias("plugin-matrix"),
+      pluginAlias("plugin-mcp"),
+      pluginAlias("plugin-minecraft"),
+      pluginAlias("plugin-music"),
+      pluginAlias("plugin-mysticism"),
+      pluginAlias("plugin-ngrok"),
+      pluginAlias("plugin-nostr"),
+      pluginAlias(
+        "plugin-ollama",
+        path.join(repoRoot, "plugins/plugin-ollama/index.ts"),
+      ),
+      pluginAlias("plugin-omnivoice"),
+      pluginAlias(
+        "plugin-openai",
+        path.join(repoRoot, "plugins/plugin-openai/index.ts"),
+      ),
+      pluginAlias(
+        "plugin-openrouter",
+        path.join(repoRoot, "plugins/plugin-openrouter/index.ts"),
+      ),
+      pluginAlias(
+        "plugin-pdf",
+        path.join(repoRoot, "plugins/plugin-pdf/index.ts"),
+      ),
+      pluginAlias(
+        "plugin-rlm",
+        path.join(repoRoot, "plugins/plugin-rlm/index.ts"),
+      ),
+      pluginAlias(
+        "plugin-roblox",
+        path.join(repoRoot, "plugins/plugin-roblox/index.ts"),
+      ),
+      pluginAlias(
+        "plugin-shell",
+        path.join(repoRoot, "plugins/plugin-shell/index.ts"),
+      ),
+      pluginAlias("plugin-shopify"),
+      pluginAlias("plugin-signal"),
+      pluginAlias("plugin-slack"),
+      pluginAlias("plugin-social-alpha"),
+      pluginAlias("plugin-sql"),
+      pluginAlias("plugin-streaming"),
+      pluginAlias("plugin-suno"),
+      pluginAlias("plugin-tailscale"),
+      pluginAlias("plugin-tee"),
+      pluginAlias("plugin-telegram"),
+      pluginAlias("plugin-todos"),
+      pluginAlias("plugin-tunnel"),
+      pluginAlias("plugin-twitch"),
+      pluginAlias("plugin-video"),
+      pluginAlias("plugin-vision"),
+      pluginAlias("plugin-wallet"),
+      pluginAlias("plugin-web-search"),
+      pluginAlias("plugin-wechat"),
+      pluginAlias("plugin-whatsapp"),
+      pluginAlias("plugin-workflow"),
+      pluginAlias("plugin-x"),
+      pluginAlias("plugin-x402"),
+      pluginAlias(
+        "plugin-xai",
+        path.join(repoRoot, "plugins/plugin-xai/index.ts"),
+      ),
+      pluginAlias(
+        "plugin-zai",
+        path.join(repoRoot, "plugins/plugin-zai/index.ts"),
+      ),
+    ],
+  },
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    exclude: ["dist/**", "node_modules/**"],
+    restoreMocks: true,
+  },
+});

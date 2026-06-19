@@ -1,0 +1,25 @@
+[[!meta robots="noindex"]]
+
+<h1 id="verify-other" class="step">Verify that the other Tails is up-to-date</h1>
+
+To prevent
+<span class="pc-clone mac-clone">installing</span>
+<span class="upgrade-clone">upgrading to</span>
+an outdated version of Tails with known security issues, make sure that the Tails you are
+<span class="pc-clone mac-clone">installing</span>
+<span class="upgrade-clone">upgrading</span>
+from is up-to-date:
+
+1. Choose **Apps&nbsp;▸ Tails&nbsp;▸ About Tails**.
+
+1. Verify that you are running
+   **Tails [[!inline pages="inc/stable_amd64_version" raw="yes" sort="age"]]**
+   released on [[!inline pages="inc/stable_amd64_date" raw="yes" sort="age"]]:
+
+   - If you are running Tails [[!inline pages="inc/stable_amd64_version"
+     raw="yes" sort="age"]], continue with the next step.
+
+   - If you are not running Tails [[!inline pages="inc/stable_amd64_version"
+     raw="yes" sort="age"]], click **Check for Upgrades**.
+
+     Apply all upgrades as requested.

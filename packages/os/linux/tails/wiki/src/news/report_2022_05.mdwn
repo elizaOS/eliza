@@ -1,0 +1,28 @@
+[[!meta title="Tails report for May 2022"]]
+[[!meta date="Thu, 09 Jun 2022 10:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Here are a few highlights about what we did in May, among many other things:
+
+- We implemented many improvements to the Tor Connection assistant.
+  This makes is much easier for people in Asia to circumvent censorship.
+  For details, see the [[Tails 5.1 release notes|version_5.1]].
+
+- We wrote a new homepage for the *Unsafe Browser* when you are not connected
+  to the Tor network yet. This new version makes it easier to understand how to
+  sign in to the network using a captive portal.
+
+- We started organized training and usability tests sessions for August
+  in Brazil.
+
+- [[Tails 5.0 was released on May 3|news/version_5.0]].
+  It was the first version of
+  Tails based on Debian 11 (Bullseye) and brought new versions of a lot of
+  the software included in Tails and new OpenPGP tools.
+
+- We started evaluating Mirrorbits to manage our download mirror pool. On top of
+  decreasing the required maintenance work, this should make downloads of Tails
+  faster and more reliable.
+
+- Tails has been started more than 769&#8239;997 times this month. This makes
+  24&#8239;838 boots a day on average.

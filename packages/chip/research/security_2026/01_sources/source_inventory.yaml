@@ -1,0 +1,811 @@
+schema: eliza.security_2026.source_inventory.v1
+captured_date: "2026-05-19"
+scope:
+  - open Root of Trust IP (OpenTitan, Caliptra, CHERIoT, Tock OS for sec cores)
+  - secure boot stacks (AVB 2.0/3.0, U-Boot VB, EDK2, OpenSBI signed payloads,
+    dm-verity, fs-verity)
+  - OTP / eFuse / lifecycle and key ladder
+  - hardware crypto accelerators (AES, ChaCha20-Poly1305, SHA-2/3,
+    Curve25519/Ed25519)
+  - post-quantum cryptography (Kyber/ML-KEM, Dilithium/ML-DSA, Falcon,
+    FIPS 203/204/205) on-chip implementations
+  - hardware RNG / TRNG and Physically Unclonable Functions (PUFs)
+  - TEE designs on RISC-V (Keystone, Penglai, Sanctum, MultiZone, CoVE),
+    CHERI / CHERIoT, IOPMP, RISC-V Hypervisor 1.0, Smaia/Ssaia AIA
+  - side channels (Spectre/Meltdown class, cache side channels,
+    constant-time crypto, masked implementations, fault injection)
+  - anti-tamper (active mesh, RowHammer, memory encryption — TDX, SEV-SNP,
+    CCA, CoVE)
+  - confidential compute and attestation (DICE / Open DICE, IETF RATS, SPDM,
+    TPM 2.0, Caliptra DPE)
+  - mobile platform attestation (Android KeyMint, StrongBox, Play Integrity)
+  - trusted firmware (TF-A, TF-M, OP-TEE, riscv-pk vs OpenSBI, BL31 equivalents)
+  - USB-PD security surface
+  - formal verification of secure designs (seL4, Hyperkernel, ProvableV,
+    OpenTitan formal, Bedrock2, Komodo, SecureCells)
+
+claim_boundary: >
+  Sources below are public papers, vendor pages, open-source project README
+  / docs, RISC-V International specs, NIST/FIPS publications, IETF/DMTF
+  specs, OCP Caliptra docs. None of them constitute E1 implementation
+  evidence. Any movement of forbidden claims listed in
+  docs/project/security-usb-storage-update-fail-closed-work-order-2026-05-17.yaml
+  must be backed by the TC-* transcript files described in
+  docs/security/test-plan.md, not by entries in this inventory.
+
+online_sources:
+
+  # ===== Root of Trust =====
+
+  - id: opentitan_repo
+    title: "OpenTitan — lowRISC open silicon Root of Trust"
+    url: "https://github.com/lowRISC/opentitan"
+    captured_points:
+      - Ibex core, Earl Grey top, ROM_ctrl, lifecycle controller, OTP_ctrl,
+        keymgr, AES, OTBN, KMAC, SHA-256/3, HMAC, CSRNG, EDN, ENTROPY_SRC.
+      - Country-led tape-out (EarlGrey) and continued silicon program.
+      - Apache-2.0 license; supports RISC-V Privileged + Bitmanip + Zk.
+    relevance:
+      - canonical reference for an open security chip on RV; OTP, keymgr,
+        lifecycle FSMs, ROM_ctrl integrity, KMAC, OTBN crypto coprocessor
+
+  - id: opentitan_design_verification
+    title: "OpenTitan Design Verification Methodology"
+    url: "https://opentitan.org/book/doc/contributing/dv/methodology/"
+    captured_points:
+      - UVM-style verification, formal, lint, sim flows; DV grade per block.
+      - Lifecycle and OTP DV in particular treated as security-critical.
+    relevance:
+      - DV maturity bar for an OTP / lifecycle / ROM_ctrl block we adopt
+
+  - id: caliptra_repo
+    title: "Caliptra — OCP open Silicon Root of Trust for measurement"
+    url: "https://github.com/chipsalliance/Caliptra"
+    captured_points:
+      - RISC-V (Veer-EL2) based RoT for Measurement (RoT-M) and DPE
+        (DICE Protection Environment).
+      - Reference RTL, FW, FPGA validation; OCP S.A.F.E. framework.
+      - Caliptra 1.x ratified by OCP; 2.x in development for production
+        deployment in data-center silicon.
+      - Apache-2.0 license.
+    relevance:
+      - Open RoT-M IP that already implements DICE / DPE / SPDM Recovery,
+        an alternative to OpenTitan for a "measurement-only" companion RoT
+
+  - id: caliptra_2x_spec
+    title: "Caliptra 2.x Specification (OCP)"
+    url: "https://chipsalliance.github.io/Caliptra/doc/Caliptra.html"
+    captured_points:
+      - Caliptra 2.0 adds PQC (ML-DSA-87) signing for attestation;
+        SHA3, AES-GCM, ECC P-384, HMAC, MLDSA, mailbox, RoT MMU.
+      - DPE per TCG spec; SPDM transport; recovery protocol.
+    relevance:
+      - Reference for PQC-capable open RoT firmware-signing path
+
+  - id: cheriot_repo
+    title: "CHERIoT — Capability Hardware Extension to RISC-V for IoT (Microsoft)"
+    url: "https://github.com/microsoft/cheriot-ibex"
+    captured_points:
+      - CHERIoT-Ibex 32-bit core with CHERI capabilities and compartments.
+      - Designed for security cores / management cores / embedded TEEs.
+      - Tape-out (Sonata) at lowRISC; Microsoft + lowRISC + SCI Semi.
+    relevance:
+      - Strong-typed memory safety for a tiny security/management hart;
+        candidate for the security MCU / boot supervisor role
+
+  - id: tockos_repo
+    title: "Tock OS — secure embedded OS in Rust"
+    url: "https://github.com/tock/tock"
+    captured_points:
+      - Process isolation via MPU/PMP; kernel-userland separation in Rust;
+        capsule abstraction for hardware drivers.
+      - Used as the application OS layer on OpenTitan Earl Grey.
+    relevance:
+      - Firmware OS for a security MCU; pairs naturally with OpenTitan or
+        a small RV CHERIoT/PMP core
+
+  - id: hensoldt_oktal_sgx
+    title: "Microsoft Pluton documentation (public)"
+    url: "https://learn.microsoft.com/en-us/windows/security/hardware-security/pluton/microsoft-pluton-security-processor"
+    captured_points:
+      - Pluton is an integrated MS-defined security processor in AMD/Intel/
+        Qualcomm silicon; closed RTL but documented behaviorally.
+      - Provides FIDO/TPM-like services + Microsoft-signed FW updates.
+    relevance:
+      - Behavioral benchmark for an integrated RoT vs. a discrete one;
+        open analog = OpenTitan + Caliptra
+
+  # ===== Secure boot =====
+
+  - id: avb_aosp
+    title: "Android Verified Boot (AVB / vbmeta) — AOSP source.android.com"
+    url: "https://source.android.com/docs/security/features/verifiedboot"
+    captured_points:
+      - vbmeta + chain partition descriptors, hashtree (dm-verity) for
+        read-only partitions, hash for boot/ramdisk, rollback_index,
+        verified-boot states GREEN/YELLOW/ORANGE/RED.
+      - libavb reference implementation; AVB tools (avbtool).
+    relevance:
+      - Authoritative for the AVB chain encoded in docs/security/avb-a-b-ota.md
+
+  - id: avb_libavb_repo
+    title: "libavb — AVB reference verifier"
+    url: "https://android.googlesource.com/platform/external/avb/"
+    captured_points:
+      - Reference C implementation; bootloader integration patterns;
+        avb_slot_verify, libavb_atx (Android Things eXtensions).
+    relevance:
+      - Direct dependency for BL1/BL2 AVB verifier code we ship
+
+  - id: avb_atx_pixel
+    title: "Pixel verified-boot details (Android open-source builds)"
+    url: "https://source.android.com/docs/security/features/verifiedboot/dm-verity"
+    captured_points:
+      - dm-verity Merkle hashtree topology; FEC (forward-error correction)
+        coverage; salt / root_hash binding into vbmeta.
+    relevance:
+      - dm-verity blueprint for system/vendor/product partitions
+
+  - id: fs_verity_kernel
+    title: "fs-verity — Linux kernel filesystem-level integrity"
+    url: "https://www.kernel.org/doc/html/latest/filesystems/fsverity.html"
+    captured_points:
+      - Per-file Merkle tree built on ext4/F2FS; root hash in inode;
+        signed by trusted key; used by Android for APK and conscrypt.
+    relevance:
+      - Complements dm-verity for read/write partitions that hold signed
+        userspace assets (APKs, model binaries, KeyMint blobs)
+
+  - id: dm_verity_kernel
+    title: "dm-verity — Linux Device Mapper verity target"
+    url: "https://www.kernel.org/doc/html/latest/admin-guide/device-mapper/verity.html"
+    captured_points:
+      - Read-only block-level verification with Merkle tree; restart_on_corruption
+        policy; salt; ignore_zero_blocks; check_at_most_once.
+    relevance:
+      - The runtime side of AVB hashtree-descriptor for system/vendor/product
+
+  - id: uboot_verified_boot
+    title: "U-Boot Verified Boot (FIT image, RSA/Ed25519/ECDSA)"
+    url: "https://docs.u-boot.org/en/latest/usage/fit/signature.html"
+    captured_points:
+      - FIT image format with embedded keys hashed into the U-Boot DTB;
+        signature algorithms include RSA-PKCS1, ECDSA, Ed25519.
+    relevance:
+      - Alternative / supplementary to AVB-2 if early bringup uses U-Boot
+        rather than a custom BL1/BL2
+
+  - id: edk2_secure_boot
+    title: "EDK2 (UEFI) Secure Boot"
+    url: "https://github.com/tianocore/edk2"
+    captured_points:
+      - PK / KEK / db / dbx variable model; PE/COFF SignerInfo; Authenticode.
+      - Not adopted in v0 but represents the alternate ecosystem.
+    relevance:
+      - Reference contrast against AVB; informs why AVB is simpler for
+        embedded Android targets
+
+  - id: opensbi_repo
+    title: "OpenSBI — RISC-V Supervisor Binary Interface reference"
+    url: "https://github.com/riscv-software-src/opensbi"
+    captured_points:
+      - Firmware payload signing (FW_PAYLOAD, FW_JUMP, FW_DYNAMIC);
+        domain support (multi-domain isolation in M-mode).
+      - SBI domain extension for PMP-based isolation between supervisors.
+    relevance:
+      - RISC-V equivalent of TF-A BL31; needed even for Linux-capable RV
+        bring-up
+
+  - id: tfa_repo
+    title: "TF-A — Trusted Firmware-A (ARM secure boot reference)"
+    url: "https://www.trustedfirmware.org/projects/tf-a/"
+    captured_points:
+      - BL1/BL2/BL31 image authentication, fconf, fwu, AMU, FF-A.
+      - PSCI, secure partitioning; AArch64 reference but architecture
+        ideas (BL1 -> BL2 -> BL31 chain) carry to RV.
+    relevance:
+      - Mental model for the chained loader / world-switch design
+
+  - id: tfm_repo
+    title: "TF-M — Trusted Firmware-M (ARMv8-M; cross-arch with PSA Crypto)"
+    url: "https://www.trustedfirmware.org/projects/tf-m/"
+    captured_points:
+      - PSA Crypto API; Secure Partition Manager; SPM IPC; Initial
+        Attestation.
+    relevance:
+      - PSA Crypto API as a portable interface for a security MCU
+        irrespective of M-class vs PMP-class core
+
+  - id: optee_repo
+    title: "OP-TEE — open TEE OS (ARM TrustZone + RISC-V experimental ports)"
+    url: "https://github.com/OP-TEE/optee_os"
+    captured_points:
+      - GP TEE API, TA loading, secure storage, KeyMint TA reference.
+      - RISC-V port exists under arch/riscv but is experimental.
+    relevance:
+      - Reference for KeyMint TEE implementation if E1 ever adopts an
+        S-mode TEE; experimental RV port is the candidate path
+
+  # ===== Key management and crypto accelerators =====
+
+  - id: opentitan_aes_block
+    title: "OpenTitan AES block specification"
+    url: "https://opentitan.org/book/hw/ip/aes/"
+    captured_points:
+      - AES-128/192/256 ECB/CBC/CFB/OFB/CTR with side-channel masking
+        (first-order); CSRNG-fed mask refresh.
+    relevance:
+      - Reference AES core for AVB hashtree, FDE, KeyMint primitives
+
+  - id: opentitan_kmac
+    title: "OpenTitan KMAC / SHA-3 block"
+    url: "https://opentitan.org/book/hw/ip/kmac/"
+    captured_points:
+      - Keccak permutation; SHA-3-224/256/384/512, SHAKE128/256, cSHAKE,
+        KMAC; first-order masking.
+    relevance:
+      - SHA-3 in spec context for image hashing if we move away from SHA-2
+
+  - id: opentitan_otbn
+    title: "OpenTitan OTBN (Big Number coprocessor)"
+    url: "https://opentitan.org/book/hw/ip/otbn/"
+    captured_points:
+      - Wide-register RV-flavored bignum ISA; 256/512-bit lanes; intended
+        for RSA, ECDSA, Curve25519, Dilithium/Kyber, etc.
+    relevance:
+      - Candidate engine for Ed25519, ECDSA-P256/P384, PQC primitives
+
+  - id: ascon_lwc_repo
+    title: "Ascon — NIST LWC winner (lightweight AEAD + hash)"
+    url: "https://ascon.iaik.tugraz.at/"
+    captured_points:
+      - NIST SP 800-232 selection; Ascon-128a, Ascon-Hash; HW footprint
+        ~3 kGE for AEAD; high SCA resistance options.
+    relevance:
+      - Alternative AEAD for resource-tight subsystems (sensor hubs,
+        radio MCUs) versus AES-GCM
+
+  - id: chacha20_poly1305_rfc8439
+    title: "ChaCha20 and Poly1305 — RFC 8439"
+    url: "https://www.rfc-editor.org/rfc/rfc8439"
+    captured_points:
+      - ChaCha20 stream cipher + Poly1305 MAC; AEAD construction;
+        constant-time on stock RV with no special hardware needed.
+    relevance:
+      - Software-fast AEAD if the AES core slot is reserved for AVB only
+
+  - id: rv_zk_crypto_ext_spec
+    title: "RISC-V Zk Cryptography Extensions (Zkn, Zks, Zknd, Zkne, Zknh)"
+    url: "https://github.com/riscv/riscv-crypto"
+    captured_points:
+      - AES round instructions, SM4, SHA-2-256/512 acceleration; Zbkb/Zbkc/
+        Zbkx bit-manipulation helpers; ratified.
+    relevance:
+      - Lets a small in-order RV hart do AES-256 / SHA-256 at adequate rate
+        without dedicated hardware; complements OTBN
+
+  - id: rv_zvk_vector_crypto
+    title: "RISC-V Vector Crypto Extensions (Zvk, Zvkn, Zvks)"
+    url: "https://github.com/riscv/riscv-v-spec"
+    captured_points:
+      - Vector AES/SM4/SHA-2/SHA-3 acceleration in RVV; ratified 2024.
+    relevance:
+      - If RVV is enabled (per cpu_subsystem_2026), bulk crypto can ride
+        the vector path instead of a separate accelerator
+
+  - id: nist_fips_203_mlkem
+    title: "FIPS 203 — Module-Lattice-Based Key-Encapsulation Mechanism (ML-KEM)"
+    url: "https://csrc.nist.gov/pubs/fips/203/final"
+    captured_points:
+      - ML-KEM-512/768/1024 (Kyber-derived); finalized August 2024.
+    relevance:
+      - Mandatory if E1 ever claims PQ-secure key wrapping for OTA or
+        attestation
+
+  - id: nist_fips_204_mldsa
+    title: "FIPS 204 — Module-Lattice-Based Digital Signature Algorithm (ML-DSA)"
+    url: "https://csrc.nist.gov/pubs/fips/204/final"
+    captured_points:
+      - ML-DSA-44/65/87 (Dilithium-derived); finalized August 2024.
+    relevance:
+      - Candidate firmware-signing algorithm once Ed25519 sunsets;
+        Caliptra 2.x already supports ML-DSA-87
+
+  - id: nist_fips_205_slhdsa
+    title: "FIPS 205 — Stateless Hash-Based Digital Signature Algorithm (SLH-DSA)"
+    url: "https://csrc.nist.gov/pubs/fips/205/final"
+    captured_points:
+      - SLH-DSA (SPHINCS+-derived); large signatures but hash-only
+        security foundation.
+    relevance:
+      - Hybrid signing option for long-lifetime root keys (mask-ROM root)
+
+  - id: open_pqc_kyber_hw
+    title: "Open hardware Kyber accelerator (e.g., Banerjee et al., ASAP 2022)"
+    url: "https://eprint.iacr.org/2022/1086"
+    captured_points:
+      - Compact NTT-based Kyber accelerator; ~30 kGE; constant-time NTT
+        and CBD sampler.
+    relevance:
+      - Realistic area budget for adding Kyber on-chip; benchmark target
+
+  - id: open_pqc_dilithium_hw
+    title: "Open hardware Dilithium accelerator (e.g., Beckwith et al., HOST 2021)"
+    url: "https://eprint.iacr.org/2021/1451"
+    captured_points:
+      - Hardware Dilithium signer/verifier; rejection-sampler microarch.
+    relevance:
+      - Reference for an ML-DSA signing engine; pairs with OTBN-class
+        coprocessor
+
+  - id: opentitan_csrng_entsrc
+    title: "OpenTitan ENTROPY_SRC + CSRNG (NIST SP 800-90B/A/C compliant)"
+    url: "https://opentitan.org/book/hw/ip/entropy_src/"
+    captured_points:
+      - Physical noise source + health tests (Repetition, Adaptive
+        Proportion); SP 800-90A CTR_DRBG; AES-256 backend.
+    relevance:
+      - Drop-in TRNG architecture; aligns with NIST SP 800-90B health-
+        test requirements for FIPS-style audits
+
+  - id: puf_sram_silego
+    title: "SRAM PUF surveys (Maes et al.; Helinski PUF taxonomy)"
+    url: "https://eprint.iacr.org/2007/277"
+    captured_points:
+      - SRAM PUF as device-unique identifier from power-up state;
+        helper-data scheme for stable extraction.
+    relevance:
+      - Candidate UID source feeding device_uid in otp-fuse-map.md
+        without requiring antifuse OTP for the UID itself
+
+  - id: secureic_sca_pqc
+    title: "Side-channel-protected PQC implementations (NIST PQC HW status)"
+    url: "https://csrc.nist.gov/projects/post-quantum-cryptography/implementations"
+    captured_points:
+      - Masking schemes for Kyber/Dilithium; performance penalties; HW
+        footprint estimates.
+    relevance:
+      - Sets expectation for cost of "PQ-safe + SCA-safe" KeyMint
+
+  # ===== TEE designs =====
+
+  - id: keystone_repo
+    title: "Keystone — open RISC-V TEE framework (Berkeley/MIT)"
+    url: "https://keystone-enclave.org/"
+    captured_points:
+      - PMP-based enclave isolation; OpenSBI-integrated security monitor;
+        Eyrie runtime; remote attestation via SM-signed report.
+    relevance:
+      - Lightest-weight RV TEE; usable on Rocket + ElizaRocketConfig
+
+  - id: penglai_repo
+    title: "Penglai Enclave (Shanghai Jiao Tong, RISC-V TEE with scalable mem)"
+    url: "https://github.com/Penglai-Enclave/Penglai-Enclave"
+    captured_points:
+      - sPMP/MPT (memory protection tree) to scale enclave count beyond
+        PMP slots; Penglai-VM for confidential VMs on RV.
+    relevance:
+      - Path to >16 simultaneous enclaves on a single hart; close to
+        what KeyMint + sensor TAs need
+
+  - id: sanctum_paper
+    title: "Sanctum: Minimal Hardware Extensions for Strong Software Isolation"
+    url: "https://eprint.iacr.org/2015/564"
+    captured_points:
+      - Modifies PMP + cache partitioning; isolates enclaves from cache
+        side channels; minimal hardware delta to a baseline RV core.
+    relevance:
+      - Provides the cache-side-channel piece that Keystone and Penglai
+        do not address by default
+
+  - id: multizone_security
+    title: "MultiZone Security (Hex Five, RISC-V trust separation)"
+    url: "https://hex-five.com/multizone-security/"
+    captured_points:
+      - Multi-zone software runtime with PMP/ePMP partitioning; small TCB
+        (~1 kLOC); Apache-2 reference for non-Linux RV.
+    relevance:
+      - Candidate firmware for the management MCU if not Tock or Zephyr
+
+  - id: cove_spec
+    title: "RISC-V Confidential VM Extension (CoVE) — AP-TEE specification"
+    url: "https://github.com/riscv-non-isa/riscv-ap-tee"
+    captured_points:
+      - Defines TEE-Security-Manager (TSM), TVMs, attestation, memory
+        confidentiality; uses MPT/H-mode/hypervisor extension; not yet
+        ratified.
+    relevance:
+      - Future-proof TEE path; matches CoVE-IO sibling spec used for
+        accelerator confidentiality
+
+  - id: cove_io_spec
+    title: "RISC-V CoVE-IO (TEE I/O extension)"
+    url: "https://github.com/riscv-non-isa/riscv-ap-tee-io"
+    captured_points:
+      - Defines TDI (TEE Device Interface) for confidential DMA from
+        accelerators; IOMMU integration; SPDM-based attestation of devices.
+    relevance:
+      - Path to confidential NPU/GPU DMA in a future generation
+
+  - id: iopmp_spec
+    title: "RISC-V IOPMP specification"
+    url: "https://github.com/riscv-non-isa/iopmp-spec"
+    captured_points:
+      - Memory protection at the SoC interconnect for DMA-mastering
+        devices; complements PMP/ePMP on harts; ratified for non-ISA
+        track.
+    relevance:
+      - Required for production-grade DMA isolation (S6 in threat model)
+
+  - id: cheri_isa_spec
+    title: "CHERI ISA Specification (Cambridge / SRI / Arm Morello)"
+    url: "https://www.cl.cam.ac.uk/research/security/ctsrd/cheri/"
+    captured_points:
+      - Capability-based memory safety; Morello hardware ships Arm + CHERI;
+        CHERI-RISC-V Sail model exists.
+    relevance:
+      - Long-horizon path to memory-safety hardware on the security/
+        management hart
+
+  - id: rv_hypervisor_spec
+    title: "RISC-V Hypervisor (H) Extension — ratified"
+    url: "https://github.com/riscv/riscv-isa-manual"
+    captured_points:
+      - Two-stage translation, VS-mode / VU-mode, HS-mode, HSTATUS, HCAUSE;
+        underpinning for KVM-RISCV and Keystone-VM/Penglai-VM.
+    relevance:
+      - Necessary base for confidential VM and full-fat TEE; available on
+        Rocket / BOOM / CVA6 / XiangShan via build flags
+
+  - id: rv_aia_spec
+    title: "RISC-V Advanced Interrupt Architecture (AIA): Smaia/Ssaia/Sscofpmf"
+    url: "https://github.com/riscv/riscv-aia"
+    captured_points:
+      - APLIC/IMSIC interrupt controllers; per-hart counters; needed for
+        secure interrupt routing in TEE/hypervisor flows.
+    relevance:
+      - Without AIA, TEE timing and interrupt-isolation gaps appear under
+        attacker-controlled IRQ flooding
+
+  # ===== Confidential compute / attestation =====
+
+  - id: tcg_dice_spec
+    title: "TCG DICE (Device Identifier Composition Engine)"
+    url: "https://trustedcomputinggroup.org/work-groups/dice-architectures/"
+    captured_points:
+      - UDS -> CDI -> Alias Key derivation chain; per-stage measurement
+        binding; smallest viable attestation root.
+    relevance:
+      - Minimum attestation chain to claim "device identity" from OTP UDS
+
+  - id: open_dice_google
+    title: "Open DICE — Google open implementation"
+    url: "https://pigweed.googlesource.com/open-dice/"
+    captured_points:
+      - C reference for DICE layering, CBOR-encoded certificates, X.509
+        bridge.
+    relevance:
+      - Drop-in DICE engine for ROM/BL1; small enough for mask ROM
+
+  - id: caliptra_dpe_spec
+    title: "Caliptra DPE (DICE Protection Environment)"
+    url: "https://github.com/chipsalliance/caliptra-dpe"
+    captured_points:
+      - TCG DPE specification implementation; isolated DICE environment
+        with CDI rotation; certificate chain export.
+    relevance:
+      - Reference DPE for Caliptra-style measurement RoT
+
+  - id: ietf_rats_arch
+    title: "IETF RATS — Remote ATtestation procedureS architecture (RFC 9334)"
+    url: "https://datatracker.ietf.org/doc/rfc9334/"
+    captured_points:
+      - Roles — Attester, Verifier, Relying Party; Evidence/Attestation
+        Result flow; reference for any attestation API.
+    relevance:
+      - Architecture blueprint for the eventual Eliza attestation service
+
+  - id: dmtf_spdm_spec
+    title: "DMTF SPDM — Security Protocol and Data Model"
+    url: "https://www.dmtf.org/standards/spdm"
+    captured_points:
+      - Device-to-device mutual attestation; measurement reporting;
+        key exchange; PCIe CMA/IDE binding.
+    relevance:
+      - Reference for attested communication with external devices
+        (eMMC/UFS, modem); used by Caliptra Recovery
+
+  - id: tpm2_spec
+    title: "TPM 2.0 Library Specification (TCG)"
+    url: "https://trustedcomputinggroup.org/resource/tpm-library-specification/"
+    captured_points:
+      - PCR model, key hierarchies, EK/SRK, sealing, attestation, NV;
+        baseline for an "identity TPM-like" service.
+    relevance:
+      - Behavioral reference for a KeyMint StrongBox-class service
+
+  - id: keymint_aosp
+    title: "Android KeyMint 3.x — keystore HAL specification"
+    url: "https://source.android.com/docs/security/features/keystore"
+    captured_points:
+      - KeyMint replaces Keymaster; supports per-key authorizations,
+        biometrics binding, attestation, StrongBox class for discrete SE.
+    relevance:
+      - Mandatory HAL surface to support Android user keys, app keys,
+        per-app encryption
+
+  - id: strongbox_keymint_repo
+    title: "AOSP StrongBox reference (KeyMint over discrete SE)"
+    url: "https://source.android.com/docs/security/features/keystore#strongbox"
+    captured_points:
+      - StrongBox class signals a discrete tamper-resistant SE; KeyMint
+        TA in OP-TEE supports a TEE-only path.
+    relevance:
+      - Defines what "v0 ceiling = KeyMint TEE-only" in our threat model
+        actually requires
+
+  - id: play_integrity_api
+    title: "Google Play Integrity API and hardware attestation"
+    url: "https://developer.android.com/google/play/integrity"
+    captured_points:
+      - Combines hardware-backed key attestation with Play services
+        signals; certain verdicts require GMS certification.
+    relevance:
+      - Reminds us that downstream app attestation depends on Play
+        certification, which is policy not hardware
+
+  # ===== Side channels and fault =====
+
+  - id: xiangshan_security_assess
+    title: "XiangShan public security analyses (cache side channels, BPU)"
+    url: "https://github.com/OpenXiangShan/XiangShan"
+    captured_points:
+      - Public discussion of Spectre-class concerns; on-chip Meltdown
+        mitigations through TLB/permission checks; BPU isolation under
+        study.
+    relevance:
+      - Indicator that even modern open OoO RV cores carry SC risk that
+        must be modeled before claiming SC resistance
+
+  - id: spectre_kocher
+    title: "Spectre Attacks: Exploiting Speculative Execution (Kocher et al.)"
+    url: "https://spectreattack.com/spectre.pdf"
+    captured_points:
+      - Variant 1 / 2 / 4 speculative side channels; cross-context cache
+        leakage; original paper.
+    relevance:
+      - Foundational; defines minimum SC threat surface for any
+        speculation-capable RV core
+
+  - id: meltdown_lipp
+    title: "Meltdown (Lipp et al., USENIX Security 2018)"
+    url: "https://meltdownattack.com/meltdown.pdf"
+    captured_points:
+      - Out-of-order Meltdown attack; KAISER / KPTI mitigations.
+    relevance:
+      - Same; cross-arch reminder that RV cores are not immune by virtue
+        of being RV
+
+  - id: glitch_eye_fault_inj
+    title: "Voltage / clock / EM / laser fault injection surveys"
+    url: "https://eprint.iacr.org/2018/595"
+    captured_points:
+      - ChipWhisperer-style cheap voltage glitching; EM injection with
+        near-field probes; laser fault injection with focused spot;
+        bypasses signature checks if not protected.
+    relevance:
+      - Defines the v0 explicit non-goal in threat-model.md (T9, T8); a
+        v1 plan needs glitch detectors and redundant comparison
+
+  - id: rowhammer_kim
+    title: "Flipping Bits in Memory Without Accessing Them (Kim et al., ISCA 2014)"
+    url: "https://users.ece.cmu.edu/~yoonguk/papers/kim-isca14.pdf"
+    captured_points:
+      - DRAM row activation induces bit-flips in adjacent rows; affects
+        LPDDR4 and LPDDR5 with mitigations.
+    relevance:
+      - LPDDR5 controller selection must enable target-row refresh (TRR)
+        and refresh management (RFM) features
+
+  - id: tdx_intel_spec
+    title: "Intel TDX (Trust Domain Extensions) specification"
+    url: "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-trust-domain-extensions.html"
+    captured_points:
+      - VM-level memory encryption, integrity, attestation; TDX module
+        in SEAM mode; reference for "confidential VM" semantics.
+    relevance:
+      - Architectural reference for what CoVE aims to provide on RV
+
+  - id: amd_sev_snp_spec
+    title: "AMD SEV-SNP architecture specification"
+    url: "https://www.amd.com/system/files/TechDocs/SEV-SNP-strengthening-vm-isolation-with-integrity-protection-and-more.pdf"
+    captured_points:
+      - VM memory encryption with RMP integrity, attestation report
+        signed by VCEK derived from chip endorsement key.
+    relevance:
+      - Reference for RMP-style integrity that CoVE will translate to RV
+
+  - id: arm_cca_spec
+    title: "Arm CCA / Realm Management Extension (RME) architecture"
+    url: "https://developer.arm.com/Architectures/Confidential%20Compute%20Architecture"
+    captured_points:
+      - Realm world, Realm Management Monitor (RMM), granular protection
+        check; attestation via DICE-derived RAK.
+    relevance:
+      - Closest peer to CoVE; behaviorally equivalent target
+
+  # ===== Formal / verified secure designs =====
+
+  - id: seL4_repo
+    title: "seL4 — formally verified microkernel"
+    url: "https://sel4.systems/"
+    captured_points:
+      - Functional correctness, integrity, and confidentiality proofs;
+        ARM, x86, RISC-V ports; small TCB.
+    relevance:
+      - Candidate TEE kernel if KeyMint TA migrates off OP-TEE
+
+  - id: hyperkernel_repo
+    title: "Hyperkernel (UW; push-button verification of OS kernels)"
+    url: "https://unsat.cs.washington.edu/projects/hyperkernel/"
+    captured_points:
+      - SMT-driven verification of small kernels; demonstrates push-button
+        verification for OS-class code.
+    relevance:
+      - Methodology reference for verified security monitor on RV
+
+  - id: bedrock2_kami
+    title: "Bedrock2 / Kami / Kami-RV formal stack"
+    url: "https://github.com/mit-plv/bedrock2"
+    captured_points:
+      - Verified low-level language + verified compilation; Kami-RV for
+        verified RV core RTL; used in OpenTitan ROM verification work.
+    relevance:
+      - Path to verified ROM code (image_size and signature parser are
+        ROM-resident and small enough for verification)
+
+  - id: opentitan_rom_formal
+    title: "OpenTitan ROM_ctrl and lifecycle formal proofs"
+    url: "https://opentitan.org/book/hw/ip/rom_ctrl/"
+    captured_points:
+      - ROM_ctrl integrity (SHA-3-based scrambled-ROM image check);
+        formal proofs on lifecycle state-machine encodings.
+    relevance:
+      - Reference proof pattern for our lifecycle one-hot fuse FSM
+
+  - id: komodo_secureenc
+    title: "Komodo — verified secure enclave on Arm (Microsoft Research)"
+    url: "https://www.microsoft.com/en-us/research/publication/komodo-using-verification-to-disentangle-secure-enclave-hardware-from-software/"
+    captured_points:
+      - Verified secure-monitor + enclave runtime separating HW from SW.
+    relevance:
+      - Architecture pattern for a verified security monitor that owns
+        the M-mode boundary
+
+  - id: securecells_paper
+    title: "SecureCells: A Building Block for Physical Memory Protection"
+    url: "https://arxiv.org/abs/2206.11149"
+    captured_points:
+      - Cell-based memory protection with scalable permissions; RISC-V
+        prototype.
+    relevance:
+      - Alternative to ePMP+IOPMP for scaling enclave count beyond PMP
+
+  # ===== Trusted firmware / signed payload landscape =====
+
+  - id: riscv_pk_repo
+    title: "riscv-pk — RISC-V Proxy Kernel and BBL (legacy)"
+    url: "https://github.com/riscv-software-src/riscv-pk"
+    captured_points:
+      - BBL bootloader; superseded by OpenSBI for production; useful for
+        Fesvr / sim flows.
+    relevance:
+      - Legacy reference only; OpenSBI is the production target
+
+  - id: zephyr_repo
+    title: "Zephyr RTOS — security-focused IoT RTOS (Linux Foundation)"
+    url: "https://www.zephyrproject.org/"
+    captured_points:
+      - LTS releases; secure-boot blueprint via MCUboot; PSA Crypto;
+        certified-ready policies.
+    relevance:
+      - Candidate firmware OS for the management MCU / radio MCU; pairs
+        with TF-M PSA Crypto
+
+  - id: mcuboot_repo
+    title: "MCUboot — open bootloader for 32-bit MCUs"
+    url: "https://github.com/mcu-tools/mcuboot"
+    captured_points:
+      - Image format, RSA/EC/Ed25519 signing, monotonic counters,
+        confirm/revert, downgrade prevention; Apache-2.0.
+    relevance:
+      - Reference for an MCU-class secure boot if Zephyr is on the RoT/
+        sensor hub
+
+  - id: cynthion_repo
+    title: "Cynthion (Great Scott Gadgets) — USB-PD / USB-C analyzer & fuzzer"
+    url: "https://greatscottgadgets.com/cynthion/"
+    captured_points:
+      - Open-hardware USB attack/analysis tool; useful for USB-PD policy
+        validation.
+    relevance:
+      - Test lab equipment for TC-USB-PD evidence and S8 fuzz coverage
+
+  - id: usb_pd_security_analyses
+    title: "USB-PD security analyses (BadPower, etc.; Xuanwu Lab)"
+    url: "https://blog.xuanwu.tencent.com/?p=1059"
+    captured_points:
+      - BadPower demonstrates malicious USB-PD source firmware can force
+        unsafe voltages on naive sinks; underscores need for OVP at PCB.
+    relevance:
+      - Justifies sink-side hardware OVP/OCP and PD policy hardening per
+        usb-pd-spec.md
+
+  - id: ocp_safe_caliptra_program
+    title: "OCP S.A.F.E. program (Caliptra component)"
+    url: "https://www.opencompute.org/projects/safe"
+    captured_points:
+      - Security Appraisal Framework and Enablement; certifies Caliptra-
+        compliant designs.
+    relevance:
+      - Compliance path if E1 ever targets data-center adjacency claims
+        (out of scope v0 but informs spec stability of Caliptra)
+
+  - id: tcg_attestation_dpe_iref
+    title: "TCG DICE Attestation Architecture (informational draft)"
+    url: "https://trustedcomputinggroup.org/wp-content/uploads/DICE-Attestation-Architecture-r23-final.pdf"
+    captured_points:
+      - DICE attestation layering; CDI / Alias Key cert chain; CBOR/CWT
+        encoding; integration with TPM and SPDM.
+    relevance:
+      - Canonical reference for the attestation chain we wire from DICE
+        engine through to RATS Verifier
+
+  - id: open_titan_lifecycle_doc
+    title: "OpenTitan Lifecycle Controller specification"
+    url: "https://opentitan.org/book/hw/ip/lc_ctrl/"
+    captured_points:
+      - 7-state lifecycle with token-authorized transitions; DV evidence;
+        scrap/RMA flow; key revocation tie-in.
+    relevance:
+      - Direct reference for the lifecycle FSM in docs/security/otp-fuse-map.md
+        and debug-policy.md
+
+  - id: rv_iommu_spec
+    title: "RISC-V IOMMU specification (ratified)"
+    url: "https://github.com/riscv-non-isa/riscv-iommu"
+    captured_points:
+      - DMA address translation, ATS/PRI, two-stage for guest, MSI
+        translation, process-context ID; ratified track.
+    relevance:
+      - Pairs with IOPMP to bound DMA blast radius for accelerators (NPU,
+        ISP, modem)
+
+  - id: sky130_pdk_fuse_options
+    title: "SkyWater Sky130 PDK — OTP / fuse macro options"
+    url: "https://github.com/google/skywater-pdk"
+    captured_points:
+      - Sky130 lacks vendor OTP IP in the open PDK; antifuse via custom
+        macro or third-party IP needed.
+    relevance:
+      - If E1 prototypes through Sky130 (OpenLane), OTP must be supplied
+        externally; informs prototype-vs-production split
+
+  - id: efabless_chipignite
+    title: "Efabless / ChipIgnite OTP and fuse macro availability"
+    url: "https://efabless.com/chipignite"
+    captured_points:
+      - Public availability of small OTP macros on shuttle-friendly nodes;
+        cost / area envelope.
+    relevance:
+      - Practical path to fuse macros for a sub-130 nm tape-out
+
+  - id: openmpw_caravel_security
+    title: "Caravel (Efabless) security analyzer harness"
+    url: "https://github.com/efabless/caravel"
+    captured_points:
+      - Open SoC harness used for OpenMPW shuttles; pattern for hooking
+        an OpenTitan-like RoT to a user project.
+    relevance:
+      - Reference if we tape out an OpenTitan-derived security MCU on a
+        shared shuttle for an early prototype run

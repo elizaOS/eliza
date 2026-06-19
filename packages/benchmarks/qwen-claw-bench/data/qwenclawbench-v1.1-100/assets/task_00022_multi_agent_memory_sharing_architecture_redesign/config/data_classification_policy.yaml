@@ -1,0 +1,112 @@
+# Data Classification Policy
+# Organization: AgentOps Inc.
+# Policy Version: 2.4
+# Effective Date: 2024-06-01
+# Approved By: Chief Information Security Officer
+# Review Cycle: Quarterly
+
+policy_version: "2.4"
+effective_date: "2024-06-01"
+next_review_date: "2024-09-01"
+
+classification_tiers:
+  public:
+    level: 0
+    description: >
+      Information that is freely available and poses no risk if disclosed.
+      Examples include published documentation, public API specs, and
+      general product information.
+    sharing_allowed: true
+    requires_encryption: false
+    retention_days: -1  # unlimited
+    audit_required: false
+    examples:
+      - "Public API documentation"
+      - "Open-source code references"
+      - "Published product specifications"
+      - "General workflow templates"
+
+  internal:
+    level: 1
+    description: >
+      Information intended for use within the agent ecosystem. Not sensitive
+      but should not be disclosed externally. Includes internal configs,
+      non-sensitive analytics, and workflow definitions.
+    sharing_allowed: true
+    requires_encryption: false
+    retention_days: 365
+    audit_required: false
+    examples:
+      - "Internal configuration parameters"
+      - "Agent performance metrics"
+      - "Non-sensitive analytics results"
+      - "Internal workflow definitions"
+
+  confidential:
+    level: 2
+    description: >
+      Sensitive information that requires explicit permission to access or share.
+      Includes personally identifiable information (PII), customer data,
+      financial records, and proprietary algorithms. Must be masked before
+      any sharing operation.
+    sharing_allowed: true
+    requires_encryption: true
+    retention_days: 90
+    audit_required: true
+    sharing_conditions:
+      - "Explicit permission from data owner agent required"
+      - "PII must be masked or tokenized before sharing"
+      - "Receiving agent must have confidential-level clearance"
+      - "All sharing events must be logged with full audit trail"
+    pii_handling:
+      masking_required: true
+      masking_strategy: "tokenization"
+      tokenization_service: "vault://pii-tokenizer.internal"
+      fields_requiring_masking:
+        - email
+        - phone_number
+        - full_name
+        - address
+        - social_security_number
+        - credit_card_number
+        - date_of_birth
+    examples:
+      - "Customer PII (names, emails, phone numbers)"
+      - "Financial transaction records"
+      - "Proprietary ML model weights"
+      - "Customer segmentation data"
+
+  restricted:
+    level: 3
+    description: >
+      Highly sensitive information that must never be shared between agents.
+      Includes API keys, credentials, encryption keys, and security
+      configurations. Access is strictly limited to the owning agent.
+    sharing_allowed: false
+    requires_encryption: true
+    retention_days: 30
+    audit_required: true
+    access_controls:
+      - "No inter-agent sharing permitted under any circumstances"
+      - "Access limited to owning agent only"
+      - "Must be encrypted at rest with per-agent keys"
+      - "Automatic purge after retention period"
+      - "Any attempted sharing must trigger a security alert"
+    examples:
+      - "API keys and secrets"
+      - "Database credentials"
+      - "Encryption private keys"
+      - "Security audit findings"
+      - "Vulnerability reports"
+
+enforcement:
+  violation_actions:
+    - "Block the operation immediately"
+    - "Log the violation with full context"
+    - "Notify the security operations team"
+    - "Quarantine the affected data"
+  automated_scanning:
+    enabled: true
+    scan_frequency_minutes: 15
+    pii_detection_model: "presidio-v2"
+    classification_model: "internal/data-classifier-v3"

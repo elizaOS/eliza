@@ -1,0 +1,153 @@
+[[!meta title="Test suite installation and setup"]]
+
+Here's how to set up an environment to run our automated test suite.
+
+Once you have a working environment, see [[test/usage]].
+
+[[!toc levels=2]]
+
+Operating system
+================
+
+If you usually run another operating system than Debian
+Trixie or Sid, then you need to:
+
+1. Enable nested virtualization on your host system.
+
+   For example, if the host system has an Intel CPU:
+
+       if [ "$(cat /sys/module/kvm_intel/parameters/nested)" != Y ]; then
+          echo "options kvm_intel nested=Y" | \
+               sudo tee /etc/modprobe.d/kvm.conf
+       fi
+
+2. Prepare a Debian virtual machine; we recommend the stable release.
+
+3. And then, every step below applies to this virtual machine, instead
+   of to the host system.
+
+Install dependencies
+====================
+
+To install the dependencies on our test suite:
+
+1. Enable the `non-free` APT component.
+
+1. If you are running Debian Forky or newer, pin Cucumber
+   related packages to the versions in Trixie ([[!tails_ticket
+   21463]]):
+
+       if [ "$(lsb_release --short --codename)" != trixie ]; then
+           sudo tee /etc/apt/preferences.d/cucumber.pref <<EOF
+       Package: cucumber ruby-cucumber-core ruby-cucumber-wire ruby-gherkin
+       Pin: release n=trixie, o=Debian
+       Pin-Priority: 1000
+       EOF
+       fi
+
+1. Install the following packages:
+
+       sudo apt update && \
+       sudo apt install \
+           cucumber \
+           dbus-x11 \
+           devscripts \
+           dnsmasq-base \
+           gawk \
+           git \
+           imagemagick \
+           libcap2-bin \
+           libnss3-tools \
+           libvirt-clients \
+           libvirt-daemon-system \
+           libvirt-dev \
+           libvirt0 \
+           obfs4proxy \
+           openssh-server \
+           ovmf \
+           pry \
+           python3-debian \
+           python3-distro-info \
+           python3-requests \
+           python3-psycopg2 \
+           python3-slixmpp \
+           python3-tomli-w \
+           python3-yaml \
+           qemu-system-common \
+           qemu-system-x86 \
+           qemu-utils \
+           qrencode \
+           ruby-guestfs \
+           ruby-json \
+           ruby-libvirt \
+           ruby-packetfu \
+           ruby-net-dns \
+           ruby-rb-inotify \
+           ruby-rspec \
+           ruby-test-unit \
+           seabios \
+           tcpdump \
+           tcplay \
+           tesseract-ocr \
+           tor \
+           unclutter \
+           virt-viewer \
+           x11vnc \
+           tigervnc-viewer \
+           x264 \
+           xdotool \
+           xfwm4 \
+           xvfb \
+           ffmpeg \
+           python3-opencv \
+           python3-paramiko \
+           python3-pil \
+           python3-pydantic \
+           python3-typeguard \
+           && \
+       sudo service libvirtd restart
+
+Other requirements
+==================
+
+Synchronized clock
+------------------
+
+Enable `systemd-timesyncd.service` or your favorite time synchronization tool:
+the system running the test suite needs an accurate clock.
+
+File permissions
+----------------
+
+The user that runs QEMU (via libvirt) needs read-access at least to
+the content of `features/misc_files/` in the Git checkout.
+
+Firewall
+----------
+
+If you have a firewall enabled, check that you can receive connections from VMs back to your host
+system. A typical rule to accomplish this might be:
+
+```
+iptables -I INPUT 1 -i virbr+ -j ACCEPT
+```
+
+but of course this depends on the specific firewall you have.
+
+The rule posted above will accept any connections from any VM you have on your system. If you have other VMs
+running on your system and don't want to accept their connection, take care before running this
+command.
+
+Special use cases
+=================
+
+Access the system under test with VNC
+-------------------------------------
+
+If you're running the test suite in a nested environment, install
+`tigervnc-viewer` on the bare metal level-0 host. Then you can use vncviewer's
+`-via` option so that it automatically setup a ssh tunnel to your first level
+test suite domain for you and display the Tails VM. E.g.
+where `$DISPLAY` is the display given to you by `run_test_suite` (often 0):
+
+    vncviewer -viewonly -via user@level0 localhost:$DISPLAY

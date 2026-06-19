@@ -1,0 +1,17 @@
+[[!meta date="Sat, 05 Aug 2017 17:37:22 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.0.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.0.1 are now fixed in Tails 3.1.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.1|news/version_3.1]] as soon as possible.
+
+- Linux: [[!debsa2017 3927]]
+- [MSFA 2017-19](https://www.mozilla.org/en-US/security/advisories/mfsa2017-19/)
+- tiff: [[!debsa2017 3903]]
+- bind9: [[!debsa2017 3904]]
+- evince: [[!debsa2017 3911]]
+- imagemagick: [[!debsa2017 3914]]

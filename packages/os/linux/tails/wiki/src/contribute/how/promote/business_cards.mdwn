@@ -1,0 +1,10 @@
+[[!meta title="Business cards"]]
+
+The collective version can be used to spread the fingerprint of the
+Tails signing key.
+
+The individual version can be printed on the back of collective ones.
+
+They use the [[!wikipedia ISO/IEC_7810#ID-1 desc="ISO 7810 ID-1"]] format.
+
+[[!map pages="contribute/how/promote/business_cards/*"]]

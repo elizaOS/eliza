@@ -1,0 +1,20 @@
+{
+  "report_date": "2024-07-15",
+  "source": "Federal Reserve Economic Data (FRED)",
+  "indicators": {
+    "vix_current": 14.2,
+    "vix_30d_avg": 15.8,
+    "us_10y_yield": 4.25,
+    "us_2y_yield": 4.65,
+    "yield_curve_spread_bps": -40,
+    "fed_funds_rate": 5.5,
+    "cpi_yoy_pct": 3.0,
+    "pce_yoy_pct": 2.6,
+    "unemployment_rate": 4.1,
+    "gdp_growth_annualized": 2.8,
+    "ism_manufacturing": 48.5,
+    "consumer_confidence": 100.4
+  },
+  "regime_classification": "late_cycle_tightening",
+  "analyst_note": "Inverted yield curve persists. Risk-off positioning recommended for low-conviction signals. Monitor VIX for regime shifts."
+}

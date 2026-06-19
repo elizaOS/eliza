@@ -1,0 +1,39 @@
+#!/bin/sh
+
+set -eu
+
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+session_flag="${runtime_dir}/elizaos-persistence-setup"
+maintenance_helper=/usr/local/lib/elizaos/persistence-maintenance
+
+start_elizaos_units() {
+    # Defense-in-depth: even if `sudo leave` already restarted these units via
+    # the maintenance helper, retry from the user session in case the sudo
+    # call was rejected or the helper crashed mid-restart.
+    systemctl --user reset-failed \
+        elizaos-agent.service \
+        elizaos-renderer.service \
+        elizaos.service >/dev/null 2>&1 || true
+    systemctl --user start --no-block elizaos-agent.service >/dev/null 2>&1 || true
+    systemctl --user start --no-block elizaos-renderer.service >/dev/null 2>&1 || true
+    systemctl --user start --no-block elizaos.service >/dev/null 2>&1 || true
+}
+
+cleanup() {
+    rm -f -- "${session_flag}"
+    sudo "${maintenance_helper}" leave >/dev/null 2>&1 || true
+    start_elizaos_units
+}
+
+mkdir -p -- "${runtime_dir}"
+printf 'persistent-storage\n' > "${session_flag}"
+chmod 0644 "${session_flag}"
+trap cleanup EXIT
+sudo "${maintenance_helper}" enter >/dev/null 2>&1
+
+ELIZAOS_PERSISTENCE_SESSION_ACTIVE=1 /usr/local/bin/tails-persistent-storage "$@" &
+wizard_pid=$!
+trap 'kill -TERM "${wizard_pid}" 2>/dev/null || true' INT TERM
+wait "${wizard_pid}"
+rc=$?
+exit "${rc}"

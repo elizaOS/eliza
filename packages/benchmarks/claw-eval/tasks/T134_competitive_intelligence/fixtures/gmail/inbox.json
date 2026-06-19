@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_901",
+    "from": "product-manager@company.com",
+    "to": "me@company.com",
+    "subject": "Please submit competitor analysis report by Friday",
+    "date": "2026-03-24T09:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "Hi team, please complete the latest analysis report on Competitor A and Competitor B by this Friday. Key focus areas: 1. The threat posed by Competitor A's new version to us 2. Competitor B's market strategy after funding 3. Our recommended responses. Send the report to management."
+  },
+  {
+    "message_id": "msg_902",
+    "from": "sales-rep@company.com",
+    "to": "me@company.com",
+    "subject": "Client mentioned Competitor A's AI features",
+    "date": "2026-03-25T11:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "During today's visit to Wantong Logistics, Director Zhao mentioned that Competitor A just released an AI assistant feature and asked when we would have something similar. I replied that it's in planning. Please include a focused analysis of this competitive threat in the report."
+  }
+]

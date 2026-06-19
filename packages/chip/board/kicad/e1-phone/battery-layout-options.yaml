@@ -1,0 +1,102 @@
+schema: eliza.e1_phone_battery_layout_options.v1
+status: blocked_routed_split_board_and_supplier_pack_evidence_required
+date: 2026-05-20
+claim_boundary: >
+  Battery/layout trade study only. This records the conflict between the
+  selected 22.05 Wh thick pouch planning class, the current board window, and
+  the regenerated CAD full-width battery cavity. It is not a battery approval,
+  enclosure release, or board-layout closure.
+
+source_artifacts:
+  - package/battery/e1-phone-17p3wh-pack.yaml
+  - docs/board/e1-phone-mainboard-metrics.yaml
+  - docs/board/e1-phone-enclosure-interface.yaml
+  - mechanical/e1-phone/cad/e1_phone_params.yaml
+  - board/kicad/e1-phone/layout-utilization.yaml
+  - board/kicad/e1-phone/preliminary-bom.yaml
+
+selected_energy_reference:
+  pack_class: LiPol_LP566487_3p85V_5727mAh_22p05Wh_PCM_NTC_JST_SHR_03V_class
+  nominal_voltage_v: 3.85
+  capacity_mah: 5727
+  energy_wh: 22.05
+  public_reference_dimensions_mm: {width: 64.0, height: 87.0, thickness: 5.6}
+  required_board_signals: [VBAT, GND, BAT_NTC, BAT_ID]
+
+current_geometry:
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.8}
+  board_bbox_mm: {width: 64.0, height: 132.0}
+  board_battery_window_mm: {width: 64.0, height: 87.0}
+  cad_selected_battery_mm: {width: 64.0, height: 87.0, thickness: 5.6}
+  cad_topology: top_bottom_pcb_islands_with_full_width_battery_cavity
+
+fit_deltas_vs_selected_pack:
+  board_window_shortfall_mm:
+    width: 0.0
+    height: 0.0
+    area_mm2: 0.0
+  cad_selected_pack_delta_mm:
+    width: 0.0
+    height: 0.0
+    thickness: 0.0
+  selected_pack_fits_device_width_with_rails: true
+  selected_pack_fits_current_board_window: true
+  selected_pack_fits_current_cad: true
+
+layout_options:
+  - id: keep_45x72_window_reduce_capacity
+    summary: Keep current board split and source a smaller custom pack.
+    estimated_capacity_class_mah: 2800_to_3400
+    board_size_impact: none
+    runtime_impact: high_negative
+    enclosure_impact: lowest_mechanical_change
+    status: not_preferred_runtime_regression
+    required_actions:
+      - quote_custom_45x72x4p4_pack
+      - update_runtime_estimates_after_supplier_capacity
+      - re-run battery safety and thermal charge limits
+  - id: enlarge_cavity_for_64x87_pack
+    summary: Revise board split and enclosure ribs around the selected 64 x 87 mm pack class.
+    estimated_capacity_class_mah: 5727
+    board_size_impact: high
+    runtime_impact: improves_to_22p05wh_target
+    enclosure_impact: requires_rib_speaker_haptic_and_pcb_island_repack
+    status: preferred_if_cad_and_pcb_repack_pass
+    required_actions:
+      - move side_key_flex_clearances_outside_64mm_pack_width
+      - shrink_or_relocate_bottom_audio_haptic_region
+      - update KiCad battery keepout and mechanical overlay
+      - keep CAD generated with 64x87x5p6 battery envelope
+      - rerun enclosure placement and board package checks
+  - id: custom_narrow_17wh_pack
+    summary: Keep phone envelope and ask suppliers for a custom narrow high-voltage pack.
+    estimated_capacity_class_mah: 3900_to_4500_if_supplier_confirms
+    board_size_impact: medium
+    runtime_impact: potentially_preserves_target
+    enclosure_impact: needs supplier pouch and PCM tail drawing before layout closure
+    status: viable_but_quote_dependent
+    required_actions:
+      - request_quotes_for_55x92_or_58x88_pack_variants
+      - require PCM tail and swelling allowance drawing
+      - update charger current limits from cell vendor rating
+
+recommended_next_step:
+  decision: run_evt0_repack_for_64x87_energy_reference_and_parallel_quote_custom_narrow_pack
+  rationale: >
+    The 22.05 Wh thick pouch planning class is the strongest runtime anchor,
+    and CAD plus the KiCad concept keepout now carry the 64 x 87 x 5.6 mm cavity. The
+    remaining blockers are board implementation and evidence: the split-island
+    concept is not routed or DRC clean, and the pack still lacks approved
+    supplier drawings, PCM tail, NTC, connector, swelling, and safety data.
+
+release_blockers:
+  - supplier pack drawing, PCM tail drawing, NTC curve, and connector pinout are not approved
+  - split-island KiCad concept is not routed or DRC clean
+  - no enclosure tolerance stack with measured battery swelling allowance
+
+forbidden_claims:
+  - battery_layout_closed
+  - battery_pack_fits_current_board
+  - enclosure_ready
+  - runtime_validated
+  - charging_ready

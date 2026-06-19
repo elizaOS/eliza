@@ -1,0 +1,205 @@
+[[!meta title="Connecting to the Tor network"]]
+
+[[!toc startlevel=2]]
+
+Everything you do on the Internet from Tails goes through the Tor network.
+
+Tor encrypts and anonymizes your connection by passing it through 3 relays. Tor
+relays are servers operated by different people and organizations around the
+world.
+
+[[!img tor.png link="no" class="svg" alt="A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination"]]
+
+<!--
+
+To, hopefully, ease translations, this SVG embeds the font used in the
+labels "Tor hides ...":
+
+To update it:
+
+1. Convert the TTF file SourceSansPro-Semibold.ttf to Base64 using:
+
+   https://hellogreg.github.io/woff2base/
+
+2. Copy it to a <style> tag in the <defs> tag of the SVG.
+
+-->
+
+You cannot access the Internet from Tails until you are connected to Tor. For
+example, *Tor Browser* displays the error message `The proxy
+server is refusing connections` until you are connected to Tor.
+
+<div class="note">
+
+<p>Because Tor routes your Internet traffic through 3 relays
+before reaching its destination, the
+connection is slower than when you are not using Tor.</p>
+
+<p>See our documentation on
+[[why Tor is slow|doc/anonymous_internet/tor/slow]].</p>
+
+</div>
+
+To connect to the Tor network:
+
+1. [[Connect to a local network|networkmanager]], wired, Wi-Fi, or mobile.
+
+2. The *Tor Connection* assistant appears to help you connect to the Tor network.
+
+   [[!img tor-connection.png class="screenshot" alt=""]]
+
+3. Choose whether you want to:
+
+   - Connect to Tor automatically
+
+   - Hide to your local network that you are connecting to Tor
+
+   The implications of both methods are detailed below.
+
+<h2 id="bridges">Tor relays and bridges</h2>
+
+- **Public Tor relays**
+
+  Most of the time, your local network does not block access to the Tor network
+  and you can use a public relay as your first Tor relay.
+
+  Using a public Tor relay as your first Tor relay makes it clear to your local
+  network that you are connecting to Tor, while still keeping your online
+  activity secure and anonymous.
+
+- **Tor bridges**
+
+  Tor bridges are secret Tor relays that hide that you are connecting to Tor.
+
+  Use a bridge as your first Tor relay if connecting to Tor is blocked or if
+  using Tor could look suspicious to someone who monitors your Internet
+  connection.
+
+  The technology used by Tor bridges is designed to circumvent censorship
+  where connections to Tor are blocked, for example in some countries with heavy censorship,
+  by some public networks, or by some parental controls.
+
+  It does so by camouflaging your connection so it cannot be recognized as a
+  connection to Tor. As a consequence, the same technology can be used to hide
+  that you are using Tor if it could look suspicious to someone who monitors
+  your Internet connection.
+
+  Tor bridges are often less reliable and slower than public Tor relays.
+
+<h2 id="automatic">Connecting to Tor automatically</h2>
+
+We recommend connecting to Tor automatically if you are on a public Wi-Fi
+network or if many people in your country use Tor to circumvent censorship.
+
+When you choose this option:
+
+1. First, Tails synchronizes the clock of the computer automatically, because a
+   correct time is needed to be able to connect to the Tor network.
+
+   Tails learns the current time by connecting to the captive portal detection
+   service of [Fedora](http://fedoraproject.org/static/hotspot.txt), which is used by most Linux
+   distributions. This connection does not go through the Tor network and is an
+   exception to our policy of only making Internet connections through the Tor
+   network.
+
+   <div class="next">
+
+   <p>You can learn more about our security assessment of this time
+   synchronization in our [[design documentation about non-Tor
+   traffic|contribute/design/Tor_enforcement#non-tor-traffic]].</p>
+
+   </div>
+
+   If you choose instead to [[hide that you are connecting to Tor|tor#hiding]],
+   you might have to fix the computer clock manually.
+
+1. If Tails fails to synchronize the clock because you have to sign in to the
+   network using a captive portal, an error screen is displayed that helps you
+   do so.
+
+   For detailed instructions, see how to [[sign in to the network using a
+   captive portal|unsafe_browser]].
+
+1. Then, Tails tries different ways of connecting to Tor
+   until it succeeds:
+
+   1. Tails tries to connect to Tor directly using **public relays**, without
+      using a bridge.
+
+   1. Tails tries to connect to Tor using one of the **default bridges**,
+      already included in Tails, if connecting using public relays fails.
+
+      <div class="note">
+
+      <p>Tails uses the [[default <i>obfs4</i> bridges from <i>Tor
+      Browser</i>|https://gitlab.torproject.org/tpo/applications/tor-browser-build/-/blob/main/projects/tor-expert-bundle/pt_config.json?ref_type=heads]].</p>
+
+      </div>
+
+   1. If public relays and default bridges don't work, Tails asks you to
+      configure a **custom bridge**.
+
+      See [[configuring a Tor bridge|tor#bridge]] below.
+
+Someone monitoring your Internet connection could identify these attempts as
+coming from a Tails user.
+
+<h2 id="hiding">Hiding to your local network that you are connecting to Tor</h2>
+
+You might need to go unnoticed if using Tor could look suspicious to someone
+who monitors your Internet connection.
+
+When you choose this option, Tails will only connect to Tor after you configure a custom Tor bridge. Bridges are
+secret Tor relays that hide that you are connecting to Tor.
+
+<div class="note">
+
+<p>It is impossible to hide to the websites that you visit that you are using
+Tor, because the <a href="https://metrics.torproject.org/exonerator.html">list
+of exit nodes of the Tor network</a> is public.</p>
+
+</div>
+
+Our team is doing its best to help you connect to Tor using the most discreet
+types of Tor bridges. That is why, when you decide to hide that you are connecting to Tor:
+
+- Tails does not automatically detect whether you have to [[sign in to the
+  network using a captive portal|unsafe_browser]].
+
+- Default bridges are not available.
+
+<h2 id="bridge">Configuring a Tor bridge</h2>
+
+When *Tor Connection* fails to connect to Tor using public relays and default
+bridges, select **Configure a Tor Bridge** from the error screen.
+
+[[!img bridge.png class="screenshot" alt="Tor Connection: Configure a Tor bridge"]]
+
+[[!inline pages="doc/anonymous_internet/tor/bridge.inline" raw="yes" sort="age"]]
+
+To save the last Tor bridge that connected to Tor successfully, turn on the
+[[Tor Bridge|persistent_storage/configure#bridge]] feature of the Persistent
+Storage.
+
+<h2 id="troubleshoot-tor">Troubleshooting connecting to Tor</h2>
+
+<div class="next">
+
+<p>See our documentation on [[troubleshooting connecting to Tor|tor/troubleshoot]].</p>
+
+</div>
+
+<h2 id="status">Viewing the status of Tor</h2>
+
+The status of Tor appears as an onion icon in the
+notification area:
+
+  - [[!img lib/symbolic/tor-connected.png alt="Onion icon" link="no" class="symbolic"]]
+    You are connected to Tor.
+
+  - [[!img lib/symbolic/tor-disconnected.png alt="Onion icon that is crossed out" link="no" class="symbolic"]]
+    You are not connected to Tor.
+
+To view the list of Tor circuits that are used by your different applications,
+click on the Tor status icon and choose **View Tor Circuits**. Learn more about
+[[managing Tor circuits|circuits]].

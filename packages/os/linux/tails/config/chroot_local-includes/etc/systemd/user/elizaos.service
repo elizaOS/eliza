@@ -1,0 +1,21 @@
+[Unit]
+Description=elizaOS AI desktop home
+ConditionUser=1000
+ConditionPathExists=!/run/elizaos/persistence-maintenance
+After=elizaos-renderer.service graphical-session.target tails-dump-user-env.service
+Wants=elizaos-renderer.service tails-dump-user-env.service
+RefuseManualStop=yes
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=ELIZAOS_SYSTEMD_SUPERVISED=1
+Environment=ELIZAOS_WAIT_FOR_LOCK=1
+ExecStart=/usr/local/lib/elizaos/start-elizaos-browser-user
+Restart=always
+RestartSec=2
+SyslogIdentifier=elizaos
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

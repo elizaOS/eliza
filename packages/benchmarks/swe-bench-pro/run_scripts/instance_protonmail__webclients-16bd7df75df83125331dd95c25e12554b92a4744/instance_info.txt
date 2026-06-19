@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-16bd7df75df83125331dd95c25e12554b92a4744
+Repository: protonmail/webclients
+Base Commit: ff3fc1e2fb6f69881e3fcb6f50acc8f1ef478edb
+Test Files: ["packages/key-transparency/test/vrf.spec.js", "packages/utils/throttle.test.ts", "packages/utils/debounce.test.ts"]
+FAIL_TO_PASS: ["packages/key-transparency/test/vrf.spec.js | invokes function at most once every wait milliseconds", "packages/key-transparency/test/vrf.spec.js | delays invoking function until after wait time", "packages/key-transparency/test/vrf.spec.js | does not invoke function if already invoked", "packages/key-transparency/test/vrf.spec.js | defaults to false and does not invoke function immediately", "packages/key-transparency/test/vrf.spec.js | invokes function immediately if true", "packages/key-transparency/test/vrf.spec.js | does not invoke function if abort is called before wait time expires"]
+PASS_TO_PASS: []

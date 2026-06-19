@@ -1,0 +1,67 @@
+---
+title: Training & Simulation
+description: "Eliza-1 fine-tuning, the Feed simulation, robot embodiment, benchmarks."
+---
+
+The Training & Simulation track covers four overlapping subsystems:
+
+- **Eliza-1** — open-weight Eliza model family (0.8B–27B), trained from Qwen bases with native tool-calling SFT and APOLLO optimization.
+- **Feed** — a satirical prediction-market simulation that generates social narratives and training data for Eliza agents.
+- **Robot** — MuJoCo-based robotic embodiment with RL training and a real-hardware bridge.
+- **Benchmarks** — 70+ evaluation harnesses spanning agent autonomy, tool-call correctness, voice, vision, and long-horizon reasoning.
+
+## Track contents
+
+<CardGroup cols={2}>
+  <Card title="Eliza-1" icon="microchip" href="/tracks/training/eliza-1">
+    Fine-tuning, quantization, model publishing.
+  </Card>
+  <Card title="Feed" icon="rss" href="/tracks/training/feed">
+    The prediction-market simulation.
+  </Card>
+  <Card title="Robot" icon="robot" href="/tracks/training/robot">
+    MuJoCo sim, RL, real-hardware deployment.
+  </Card>
+  <Card title="Benchmarks" icon="gauge" href="/tracks/training/benchmarks">
+    Evaluation harnesses for agents and models.
+  </Card>
+</CardGroup>
+
+## Where this comes from
+
+- Eliza-1 pipeline: [`packages/training/`](https://github.com/elizaOS/eliza/tree/develop/packages/training)
+- Feed simulation: [`packages/feed/`](https://github.com/elizaOS/eliza/tree/develop/packages/feed)
+- Robot stack: [`packages/robot/`](https://github.com/elizaOS/eliza/tree/develop/packages/robot)
+- Benchmarks: [`packages/benchmarks/`](https://github.com/elizaOS/eliza/tree/develop/packages/benchmarks)
+
+## Fine-tuning collection runs
+
+The fine-tuning plugin can collect Hugging Face training data, Feed-generated trajectories, natural app trajectories, scenario runs, test trajectories, eval artifacts, Eliza harness benchmarks, Cerebras comparisons, and model registry manifests into one collection directory.
+
+Run a collection from the CLI:
+
+```bash
+bun run --cwd plugins/plugin-training training:cli run-collection --tiers all
+```
+
+Each run writes `collection-manifest.json`, `README.md`, an analysis manifest, readiness report, and `analysis/index.html` for browsing data sources, trajectories, benchmarks, evals, model stats, and base-vs-trained comparisons. The collection root also gets `collection-index.json` and `collection-index.html` so saved runs can be rediscovered from the fine-tuning view or listed from the CLI:
+
+```bash
+bun run --cwd plugins/plugin-training training:cli list-collections
+```
+
+To include app/runtime trajectories that were already exported, pass the sanitized and optional raw JSONL paths into the same collection run:
+
+```bash
+bun run --cwd plugins/plugin-training training:cli run-collection \
+  --natural-sanitized-jsonl ~/.local/state/eliza/training/natural/trajectories.sanitized.jsonl \
+  --natural-raw-jsonl ~/.local/state/eliza/training/natural/trajectories.raw.jsonl \
+  --natural-run-id app-run-1 \
+  --natural-tasks response,action_planner
+```
+
+## Locked conventions
+
+- **Training always uses APOLLO** optimizer. Memory-efficient; no alternatives ship.
+- **Inference always applies every optimization** we have. DSPy artifacts auto-load on agent boot.
+- **Recommended local model: `eliza-1`** — not enforced. Any HuggingFace model can be searched and downloaded from the models surface.

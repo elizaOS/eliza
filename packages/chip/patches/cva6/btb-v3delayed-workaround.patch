@@ -1,0 +1,62 @@
+From: elizaOS chip team <chip-team@elizaos.invalid>
+Subject: [PATCH] cva6: btb.sv work around V3Delayed whole-array NBA limitation
+
+The simulator 5.049 (devel rev v5.048-46-g7c5069c7d) aborts with
+
+    Internal Error: ../V3Delayed.cpp:958: Unexpected LHS form
+
+while lowering core/frontend/btb.sv:188 -- the whole-array non-blocking
+assignment `btb_q <= btb_d;` to a 2D unpacked struct array
+
+    btb_prediction_t btb_q[NR_ROWS-1:0][CVA6Cfg.INSTR_PER_FETCH-1:0]
+
+The V3Delayed pass currently does not support whole-array NBA on 2D
+unpacked struct arrays.  --lint-only succeeds because the failure is in
+the elaboration-to-C++ lowering, not in lint.
+
+This patch replaces the whole-array NBA with an explicit per-element
+nested for-loop.  The two forms are semantically equivalent (every
+[i][j] element is non-blockingly assigned to the corresponding [i][j]
+of btb_d on the same clock edge) but the per-element form exercises the
+supported per-element NBA lowering path.
+
+The replacement comment block intentionally avoids the literal token
+"verilator" at the start of any C-style block: tools beginning a block
+comment with that token treat the entire comment as a control-pragma
+candidate and emit BADVLTPRAGMA.
+
+Tracked in external/cva6/pin-manifest.json::verilator_full_conversion_blocker.
+The patch is carried locally under patches/cva6/ and applied by
+scripts/apply_cva6_patches.sh before each simulator run against the
+CVA6 source tree.  Drop the patch when a release lands that lowers the
+whole-array NBA form natively.
+---
+ core/frontend/btb.sv | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/core/frontend/btb.sv b/core/frontend/btb.sv
+index 139f655..96c70b8 100644
+--- a/core/frontend/btb.sv
++++ b/core/frontend/btb.sv
+@@ -185,7 +185,18 @@ module btb #(
+             end
+           end
+         end else begin
+-          btb_q <= btb_d;
++          // Local workaround for an internal-error in the C++ lowering
++          // pass on whole-array NBA to a 2D unpacked struct array
++          // (see V3Delayed.cpp:958 Unexpected LHS form).  The
++          // per-element nested loop below is semantically equivalent
++          // and exercises the supported per-element NBA path.  See
++          // patches/cva6/btb-v3delayed-workaround.patch in the
++          // consuming repo.
++          for (int i = 0; i < NR_ROWS; i++) begin
++            for (int j = 0; j < CVA6Cfg.INSTR_PER_FETCH; j++) begin
++              btb_q[i][j] <= btb_d[i][j];
++            end
++          end
+         end
+       end
+     end
+--
+2.43.0

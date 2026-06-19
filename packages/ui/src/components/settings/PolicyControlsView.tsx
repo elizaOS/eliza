@@ -1,0 +1,1102 @@
+import { asRecord as asSharedRecord } from "@elizaos/shared";
+import { AlertTriangle } from "lucide-react";
+import type React from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
+import { client } from "../../api";
+import { useTranslation } from "../../state/TranslationContext.hooks";
+import type {
+  ApprovedAddressesConfig,
+  PolicyRule,
+  PolicyType,
+  TimeWindowConfig,
+} from "../policy-controls";
+import {
+  approvedAddressValue,
+  chainTypeLabel,
+  DAY_NAMES,
+  DEFAULT_APPROVED_ADDRESSES,
+  DEFAULT_AUTO_APPROVE,
+  DEFAULT_RATE_LIMIT,
+  DEFAULT_SPENDING,
+  DEFAULT_TIME_WINDOW,
+  findPolicy,
+  getPolicyConfig,
+  isValidAddress,
+  TIMEZONES,
+} from "../policy-controls";
+import { StewardLogo } from "../steward/injected";
+import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/confirm-dialog";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Slider } from "../ui/slider";
+import { Spinner } from "../ui/spinner";
+import { Switch } from "../ui/switch";
+import { useSettingsSave } from "./settings-control-primitives.hooks";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  asSharedRecord(value) ?? {};
+
+/** Static hour options to avoid array-index-as-key lint issues. */
+const HOUR_FROM_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
+  key: `from-${i}`,
+  value: i,
+  label: `${String(i).padStart(2, "0")}:00`,
+}));
+
+const HOUR_TO_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
+  key: `to-${i + 1}`,
+  value: i + 1,
+  label: `${String(i + 1).padStart(2, "0")}:00`,
+}));
+
+export function PolicyControlsView() {
+  const { t } = useTranslation();
+  const [policies, setPolicies] = useState<PolicyRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [stewardConnected, setStewardConnected] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [confirmCallback, setConfirmCallback] = useState<(() => void) | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const status = await client.getStewardStatus();
+        if (cancelled) return;
+        setStewardConnected(status.connected);
+        if (!status.connected) {
+          setLoading(false);
+          return;
+        }
+        const result = await client.getStewardPolicies();
+        if (cancelled) return;
+        setPolicies(result as PolicyRule[]);
+      } catch (err) {
+        if (cancelled) return;
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("policycontrols.error.loadFailed", {
+                defaultValue: "Failed to load policies",
+              }),
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
+
+  const performSave = useCallback(async () => {
+    setError(null);
+    try {
+      await client.setStewardPolicies(policies);
+      setDirty(false);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("policycontrols.error.saveFailed", {
+              defaultValue: "Failed to save policies",
+            }),
+      );
+      throw err;
+    }
+  }, [policies, t]);
+
+  const {
+    saving,
+    saveSuccess,
+    handleSave,
+    resetStatus: resetSaveStatus,
+  } = useSettingsSave({
+    onSave: performSave,
+    errorFallback: t("policycontrols.error.saveFailed", {
+      defaultValue: "Failed to save policies",
+    }),
+  });
+
+  const getPolicy = useCallback(
+    (type: PolicyType) => findPolicy(policies, type),
+    [policies],
+  );
+
+  const updatePolicy = useCallback(
+    (type: PolicyType, updates: Partial<PolicyRule>) => {
+      setPolicies((prev) => {
+        const existing = prev.find((p) => p.type === type);
+        if (existing) {
+          return prev.map((p) => (p.type === type ? { ...p, ...updates } : p));
+        }
+        return [
+          ...prev,
+          {
+            id: `${type}-${Date.now()}`,
+            type,
+            enabled: true,
+            config: {},
+            ...updates,
+          },
+        ];
+      });
+      setDirty(true);
+      resetSaveStatus();
+    },
+    [resetSaveStatus],
+  );
+
+  const togglePolicy = useCallback(
+    (
+      type: PolicyType,
+      enabled: boolean,
+      defaultConfig: Record<string, unknown>,
+    ) => {
+      const existing = findPolicy(policies, type);
+      if (!enabled && existing?.enabled) {
+        setConfirmMessage(
+          t("policycontrols.confirm.message", {
+            defaultValue:
+              "Disabling this removes a safety guardrail. Are you sure?",
+          }),
+        );
+        setConfirmCallback(() => () => updatePolicy(type, { enabled: false }));
+        setConfirmOpen(true);
+        return;
+      }
+      updatePolicy(type, {
+        enabled,
+        config: existing?.config ?? defaultConfig,
+      });
+    },
+    [policies, updatePolicy, t],
+  );
+
+  // Extract configs (must be before early returns so hooks are unconditional)
+  const autoApprovePolicy = getPolicy("auto-approve-threshold");
+  const autoApproveConfig = getPolicyConfig<"auto-approve-threshold">(
+    autoApprovePolicy,
+    DEFAULT_AUTO_APPROVE,
+  );
+
+  const spendingPolicy = getPolicy("spending-limit");
+  const spendingConfig = getPolicyConfig<"spending-limit">(
+    spendingPolicy,
+    DEFAULT_SPENDING,
+  );
+
+  const addressPolicy = getPolicy("approved-addresses");
+  const addressConfig = getPolicyConfig<"approved-addresses">(
+    addressPolicy,
+    DEFAULT_APPROVED_ADDRESSES,
+  );
+
+  const rateLimitPolicy = getPolicy("rate-limit");
+  const rateLimitConfig = getPolicyConfig<"rate-limit">(
+    rateLimitPolicy,
+    DEFAULT_RATE_LIMIT,
+  );
+
+  const timeWindowPolicy = getPolicy("time-window");
+  const timeWindowConfig = getPolicyConfig<"time-window">(
+    timeWindowPolicy,
+    DEFAULT_TIME_WINDOW,
+  );
+
+  const normalizedAddresses = useMemo(
+    () =>
+      (addressConfig.addresses ?? []).map((addr) => approvedAddressValue(addr)),
+    [addressConfig.addresses],
+  );
+
+  const { ref: saveRef, agentProps: saveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "policy-save",
+      role: "button",
+      label: "Save policies",
+      group: "policy-controls",
+      description: "Persist wallet policy changes",
+      onActivate: () => void handleSave(),
+    });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Spinner size={24} />
+        <span className="ml-3 text-sm text-muted">
+          {t("policycontrols.loading", { defaultValue: "Loading…" })}
+        </span>
+      </div>
+    );
+  }
+
+  if (!stewardConnected) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-8 text-center">
+        <StewardLogo size={48} className="opacity-30" />
+        <p className="text-sm font-semibold text-txt">
+          {t("policycontrols.notConnected.title", {
+            defaultValue: "Steward Not Connected",
+          })}
+        </p>
+        <p className="text-xs text-muted max-w-sm">
+          {t("policycontrols.notConnected.description", {
+            defaultValue:
+              "Connect your Steward instance to manage wallet policies.",
+          })}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <SettingsStack>
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
+          <AlertTriangle className="h-4 w-4 text-danger shrink-0" />
+          <span className="text-xs text-danger">{error}</span>
+        </div>
+      )}
+
+      <SettingsGroup>
+        {/* Auto-Approve */}
+        <PolicyRow
+          agentId="auto-approve"
+          title={t("policycontrols.autoApprove.title", {
+            defaultValue: "Auto-Approve",
+          })}
+          desc={
+            autoApprovePolicy?.enabled
+              ? t("policycontrols.autoApprove.desc", {
+                  threshold: autoApproveConfig.threshold ?? "5",
+                  // biome-ignore lint/suspicious/noTemplateCurlyInString: i18n currency format ($ + {{var}}), not a JS template literal
+                  defaultValue: "Under ${{threshold}}",
+                })
+              : t("policycontrols.off", { defaultValue: "Off" })
+          }
+          enabled={autoApprovePolicy?.enabled ?? false}
+          onToggle={(v) =>
+            togglePolicy(
+              "auto-approve-threshold",
+              v,
+              asRecord(DEFAULT_AUTO_APPROVE),
+            )
+          }
+        >
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted whitespace-nowrap">
+              {t("policycontrols.threshold", { defaultValue: "Threshold" })}
+            </Label>
+            <UsdField
+              agentId="auto-approve-threshold"
+              agentLabel={t("policycontrols.threshold", {
+                defaultValue: "Threshold",
+              })}
+              value={autoApproveConfig.threshold ?? "5"}
+              onChange={(v) =>
+                updatePolicy("auto-approve-threshold", {
+                  config: asRecord({ threshold: v }),
+                })
+              }
+            />
+          </div>
+        </PolicyRow>
+
+        {/* Spending Limits */}
+        <PolicyRow
+          agentId="spending-limit"
+          title={t("policycontrols.spending.title", {
+            defaultValue: "Spending Limits",
+          })}
+          desc={
+            spendingPolicy?.enabled
+              ? t("policycontrols.spending.desc", {
+                  perTx: spendingConfig.maxPerTx,
+                  perDay: spendingConfig.maxPerDay,
+                  perWeek: spendingConfig.maxPerWeek,
+                  defaultValue:
+                    // biome-ignore lint/suspicious/noTemplateCurlyInString: i18n currency format ($ + {{var}}), not a JS template literal
+                    "${{perTx}}/tx · ${{perDay}}/day · ${{perWeek}}/wk",
+                })
+              : t("policycontrols.off", { defaultValue: "Off" })
+          }
+          enabled={spendingPolicy?.enabled ?? false}
+          onToggle={(v) =>
+            togglePolicy("spending-limit", v, asRecord(DEFAULT_SPENDING))
+          }
+        >
+          <div className="grid grid-cols-3 gap-3">
+            <UsdFieldLabeled
+              agentId="spending-per-tx"
+              label={t("policycontrols.spending.perTx", {
+                defaultValue: "Per Tx",
+              })}
+              value={spendingConfig.maxPerTx}
+              onChange={(v) =>
+                updatePolicy("spending-limit", {
+                  config: asRecord({ ...spendingConfig, maxPerTx: v }),
+                })
+              }
+            />
+            <UsdFieldLabeled
+              agentId="spending-daily"
+              label={t("policycontrols.spending.daily", {
+                defaultValue: "Daily",
+              })}
+              value={spendingConfig.maxPerDay}
+              onChange={(v) =>
+                updatePolicy("spending-limit", {
+                  config: asRecord({ ...spendingConfig, maxPerDay: v }),
+                })
+              }
+            />
+            <UsdFieldLabeled
+              agentId="spending-weekly"
+              label={t("policycontrols.spending.weekly", {
+                defaultValue: "Weekly",
+              })}
+              value={spendingConfig.maxPerWeek}
+              onChange={(v) =>
+                updatePolicy("spending-limit", {
+                  config: asRecord({ ...spendingConfig, maxPerWeek: v }),
+                })
+              }
+            />
+          </div>
+        </PolicyRow>
+
+        {/* Rate Limits */}
+        <PolicyRow
+          agentId="rate-limit"
+          title={t("policycontrols.rateLimit.title", {
+            defaultValue: "Rate Limits",
+          })}
+          desc={
+            rateLimitPolicy?.enabled
+              ? t("policycontrols.rateLimit.desc", {
+                  perHour: rateLimitConfig.maxTxPerHour,
+                  perDay: rateLimitConfig.maxTxPerDay,
+                  defaultValue: "{{perHour}}/hr · {{perDay}}/day",
+                })
+              : t("policycontrols.off", { defaultValue: "Off" })
+          }
+          enabled={rateLimitPolicy?.enabled ?? false}
+          onToggle={(v) =>
+            togglePolicy("rate-limit", v, asRecord(DEFAULT_RATE_LIMIT))
+          }
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <SliderField
+              agentId="rate-limit-per-hour"
+              label={t("policycontrols.rateLimit.perHour", {
+                defaultValue: "Per Hour",
+              })}
+              value={rateLimitConfig.maxTxPerHour}
+              min={1}
+              max={100}
+              onChange={(v) =>
+                updatePolicy("rate-limit", {
+                  config: asRecord({ ...rateLimitConfig, maxTxPerHour: v }),
+                })
+              }
+            />
+            <SliderField
+              agentId="rate-limit-per-day"
+              label={t("policycontrols.rateLimit.perDay", {
+                defaultValue: "Per Day",
+              })}
+              value={rateLimitConfig.maxTxPerDay}
+              min={1}
+              max={500}
+              onChange={(v) =>
+                updatePolicy("rate-limit", {
+                  config: asRecord({ ...rateLimitConfig, maxTxPerDay: v }),
+                })
+              }
+            />
+          </div>
+        </PolicyRow>
+
+        {/* Address Controls */}
+        <PolicyRow
+          agentId="approved-addresses"
+          title={t("policycontrols.address.title", {
+            defaultValue: "Address Controls",
+          })}
+          desc={
+            addressPolicy?.enabled
+              ? addressConfig.mode === "whitelist"
+                ? t("policycontrols.address.descAllowed", {
+                    count: normalizedAddresses.length,
+                    defaultValue: "{{count}} allowed",
+                  })
+                : t("policycontrols.address.descBlocked", {
+                    count: normalizedAddresses.length,
+                    defaultValue: "{{count}} blocked",
+                  })
+              : t("policycontrols.off", { defaultValue: "Off" })
+          }
+          enabled={addressPolicy?.enabled ?? false}
+          onToggle={(v) =>
+            togglePolicy(
+              "approved-addresses",
+              v,
+              asRecord(DEFAULT_APPROVED_ADDRESSES),
+            )
+          }
+        >
+          <AddressSection
+            config={addressConfig}
+            addresses={normalizedAddresses}
+            onUpdate={(cfg) =>
+              updatePolicy("approved-addresses", { config: asRecord(cfg) })
+            }
+          />
+        </PolicyRow>
+
+        {/* Time Restrictions */}
+        <PolicyRow
+          agentId="time-window"
+          title={t("policycontrols.time.title", {
+            defaultValue: "Time Restrictions",
+          })}
+          desc={
+            timeWindowPolicy?.enabled
+              ? t("policycontrols.time.desc", {
+                  count: timeWindowConfig.allowedDays?.length ?? 0,
+                  defaultValue: "{{count}} days",
+                })
+              : t("policycontrols.off", { defaultValue: "Off" })
+          }
+          enabled={timeWindowPolicy?.enabled ?? false}
+          onToggle={(v) =>
+            togglePolicy("time-window", v, asRecord(DEFAULT_TIME_WINDOW))
+          }
+        >
+          <TimeSection
+            config={timeWindowConfig}
+            onUpdate={(cfg) =>
+              updatePolicy("time-window", { config: asRecord(cfg) })
+            }
+          />
+        </PolicyRow>
+      </SettingsGroup>
+
+      {/* Save */}
+      {dirty && (
+        <div className="flex items-center justify-end gap-3">
+          <span className="text-xs text-accent">
+            {t("policycontrols.unsavedChanges", {
+              defaultValue: "Unsaved changes",
+            })}
+          </span>
+          <Button
+            ref={saveRef}
+            {...saveAgentProps}
+            variant="default"
+            size="sm"
+            className="text-xs"
+            onClick={() => void handleSave()}
+            disabled={saving}
+          >
+            {saving ? (
+              <>
+                <Spinner size={14} />
+                <span className="ml-1.5">
+                  {t("policycontrols.saving", { defaultValue: "Saving…" })}
+                </span>
+              </>
+            ) : (
+              t("policycontrols.save", { defaultValue: "Save" })
+            )}
+          </Button>
+        </div>
+      )}
+      {saveSuccess && !dirty && (
+        <div className="text-right">
+          <span className="text-xs text-ok">
+            {t("policycontrols.saved", { defaultValue: "Saved" })}
+          </span>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title={t("policycontrols.confirm.title", {
+          defaultValue: "Disable Policy",
+        })}
+        message={confirmMessage}
+        confirmLabel={t("policycontrols.confirm.confirmLabel", {
+          defaultValue: "Disable",
+        })}
+        cancelLabel={t("policycontrols.confirm.cancelLabel", {
+          defaultValue: "Keep",
+        })}
+        variant="warn"
+        onConfirm={() => {
+          confirmCallback?.();
+          setConfirmOpen(false);
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
+    </SettingsStack>
+  );
+}
+
+/* ── Sub-components ──────────────────────────────────────────────────── */
+
+function PolicyRow({
+  agentId,
+  title,
+  desc,
+  enabled,
+  onToggle,
+  children,
+}: {
+  agentId: string;
+  title: string;
+  desc: string;
+  enabled: boolean;
+  onToggle: (v: boolean) => void;
+  children?: React.ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `policy-toggle-${agentId}`,
+    role: "toggle",
+    label: `Toggle ${title}`,
+    group: "policy-controls",
+    status: enabled ? "active" : "inactive",
+    onActivate: () => onToggle(!enabled),
+  });
+  return (
+    <SettingsRow
+      label={title}
+      description={desc}
+      control={
+        <Switch
+          ref={ref}
+          {...agentProps}
+          checked={enabled}
+          onCheckedChange={onToggle}
+          aria-label={title}
+        />
+      }
+    >
+      {enabled && children ? children : null}
+    </SettingsRow>
+  );
+}
+
+function UsdField({
+  agentId,
+  agentLabel,
+  value,
+  onChange,
+}: {
+  agentId: string;
+  agentLabel: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: `policy-usd-${agentId}`,
+    role: "number-input",
+    label: agentLabel,
+    group: "policy-controls",
+    getValue: () => value,
+    onFill: (v) => {
+      if (/^(?:\d+(?:\.\d*)?|\.\d*)?$/.test(v)) onChange(v.slice(0, 32));
+    },
+  });
+  return (
+    <div className="relative w-28">
+      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-2xs text-muted pointer-events-none">
+        $
+      </span>
+      <Input
+        ref={ref}
+        {...agentProps}
+        type="text"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => {
+          const v = e.target.value.slice(0, 32);
+          if (/^(?:\d+(?:\.\d*)?|\.\d*)?$/.test(v)) onChange(v);
+        }}
+        className="h-8 text-xs pl-6 tabular-nums"
+        placeholder="0"
+      />
+    </div>
+  );
+}
+
+function UsdFieldLabeled({
+  agentId,
+  label,
+  value,
+  onChange,
+}: {
+  agentId: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs text-muted">{label}</Label>
+      <UsdField
+        agentId={agentId}
+        agentLabel={label}
+        value={value}
+        onChange={onChange}
+      />
+    </div>
+  );
+}
+
+function SliderField({
+  agentId,
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  agentId: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLSpanElement>({
+    id: `policy-slider-${agentId}`,
+    role: "slider",
+    label,
+    group: "policy-controls",
+    getValue: () => value,
+    onFill: (v) => {
+      const n = Number(v);
+      if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n)));
+    },
+  });
+  return (
+    <div className="space-y-1.5">
+      <div className="flex justify-between">
+        <Label className="text-xs text-muted">{label}</Label>
+        <span className="text-xs font-medium text-txt tabular-nums">
+          {value}
+        </span>
+      </div>
+      <Slider
+        ref={ref}
+        {...agentProps}
+        value={[value]}
+        min={min}
+        max={max}
+        step={1}
+        onValueChange={([v]: number[]) => onChange(v)}
+      />
+    </div>
+  );
+}
+
+function AddressRow({
+  address,
+  chain,
+  onRemove,
+}: {
+  address: string;
+  chain: string;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  const removeControl = useAgentElement<HTMLButtonElement>({
+    id: `policy-address-remove-${address}`,
+    role: "button",
+    label: t("policycontrols.address.remove", { defaultValue: "remove" }),
+    group: "policy-addresses",
+    description: `Remove ${address} from the address policy list`,
+    onActivate: onRemove,
+  });
+  return (
+    <div className="flex items-center justify-between group text-xs font-mono text-muted py-1">
+      <div className="flex items-center gap-1.5 truncate">
+        <span className="truncate">{address}</span>
+        {chain && (
+          <span className="text-xs text-muted bg-muted/10 px-1.5 py-0.5 rounded-sm shrink-0">
+            {chain}
+          </span>
+        )}
+      </div>
+      <button
+        ref={removeControl.ref}
+        type="button"
+        className="text-danger opacity-0 group-hover:opacity-100 text-xs ml-2"
+        onClick={onRemove}
+        {...removeControl.agentProps}
+      >
+        {t("policycontrols.address.remove", { defaultValue: "remove" })}
+      </button>
+    </div>
+  );
+}
+
+function AddressSection({
+  config,
+  addresses,
+  onUpdate,
+}: {
+  config: ApprovedAddressesConfig;
+  addresses: string[];
+  onUpdate: (cfg: ApprovedAddressesConfig) => void;
+}) {
+  const { t } = useTranslation();
+  const [newAddr, setNewAddr] = useState("");
+  const [addrError, setAddrError] = useState<string | null>(null);
+
+  const { ref: allowlistRef, agentProps: allowlistAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "policy-address-allowlist",
+      role: "button",
+      label: "Address allowlist mode",
+      group: "policy-address",
+      status: config.mode === "whitelist" ? "active" : "inactive",
+      onActivate: () => onUpdate({ ...config, mode: "whitelist" }),
+    });
+  const { ref: blocklistRef, agentProps: blocklistAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "policy-address-blocklist",
+      role: "button",
+      label: "Address blocklist mode",
+      group: "policy-address",
+      status: config.mode === "blacklist" ? "active" : "inactive",
+      onActivate: () => onUpdate({ ...config, mode: "blacklist" }),
+    });
+  const { ref: newAddrRef, agentProps: newAddrAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "policy-address-input",
+      role: "text-input",
+      label: "New policy address",
+      group: "policy-address",
+      getValue: () => newAddr,
+      onFill: (v) => {
+        setNewAddr(v);
+        setAddrError(null);
+      },
+    });
+  const { ref: addRef, agentProps: addAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "policy-address-add",
+      role: "button",
+      label: "Add policy address",
+      group: "policy-address",
+    });
+
+  const handleAdd = () => {
+    const trimmed = newAddr.trim();
+    if (!trimmed) return;
+    if (!isValidAddress(trimmed)) {
+      setAddrError(
+        t("policycontrols.address.invalid", {
+          defaultValue: "Invalid address (EVM 0x... or Solana base58)",
+        }),
+      );
+      return;
+    }
+    if (
+      config.addresses.some((entry) => approvedAddressValue(entry) === trimmed)
+    ) {
+      setAddrError(
+        t("policycontrols.address.duplicate", {
+          defaultValue: "Already in list",
+        }),
+      );
+      return;
+    }
+    onUpdate({ ...config, addresses: [...config.addresses, trimmed] });
+    setNewAddr("");
+    setAddrError(null);
+  };
+
+  const handleRemove = (addr: string) => {
+    const labels = { ...config.labels };
+    delete labels[addr];
+    onUpdate({
+      ...config,
+      addresses: config.addresses.filter(
+        (entry) => approvedAddressValue(entry) !== addr,
+      ),
+      labels,
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <Button
+          ref={allowlistRef}
+          {...allowlistAgentProps}
+          variant={config.mode === "whitelist" ? "default" : "ghost"}
+          size="sm"
+          className="text-xs h-7"
+          onClick={() => onUpdate({ ...config, mode: "whitelist" })}
+        >
+          {t("policycontrols.address.allowlist", {
+            defaultValue: "Allowlist",
+          })}
+        </Button>
+        <Button
+          ref={blocklistRef}
+          {...blocklistAgentProps}
+          variant={config.mode === "blacklist" ? "default" : "ghost"}
+          size="sm"
+          className="text-xs h-7"
+          onClick={() => onUpdate({ ...config, mode: "blacklist" })}
+        >
+          {t("policycontrols.address.blocklist", {
+            defaultValue: "Blocklist",
+          })}
+        </Button>
+      </div>
+
+      {addresses.length > 0 && (
+        <div className="space-y-1">
+          {addresses.map((addr) => (
+            <AddressRow
+              key={addr}
+              address={addr}
+              chain={chainTypeLabel(addr)}
+              onRemove={() => handleRemove(addr)}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Input
+          ref={newAddrRef}
+          {...newAddrAgentProps}
+          type="text"
+          value={newAddr}
+          onChange={(e) => {
+            setNewAddr(e.target.value);
+            setAddrError(null);
+          }}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          placeholder={t("policycontrols.address.placeholder", {
+            defaultValue: "EVM or Solana address",
+          })}
+          className="h-8 text-xs font-mono flex-1"
+        />
+        <Button
+          ref={addRef}
+          {...addAgentProps}
+          variant="ghost"
+          size="sm"
+          className="text-xs h-8"
+          onClick={handleAdd}
+        >
+          {t("policycontrols.address.add", { defaultValue: "Add" })}
+        </Button>
+      </div>
+      {addrError && <div className="text-xs text-danger">{addrError}</div>}
+    </div>
+  );
+}
+
+function TimeSection({
+  config,
+  onUpdate,
+}: {
+  config: TimeWindowConfig;
+  onUpdate: (cfg: TimeWindowConfig) => void;
+}) {
+  const { t } = useTranslation();
+  const hours = config.allowedHours?.[0] ?? { start: 9, end: 17 };
+  const days = config.allowedDays ?? [1, 2, 3, 4, 5];
+  const timezone =
+    config.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const { ref: fromRef, agentProps: fromAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "policy-time-from",
+      role: "select",
+      label: t("policycontrols.time.from", { defaultValue: "From" }),
+      group: "policy-time",
+      options: HOUR_FROM_OPTIONS.map((h) => String(h.value)),
+      getValue: () => String(hours.start),
+      onFill: (v) =>
+        onUpdate({
+          ...config,
+          allowedHours: [{ start: Number(v), end: hours.end }],
+        }),
+    });
+  const { ref: toRef, agentProps: toAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "policy-time-to",
+      role: "select",
+      label: t("policycontrols.time.to", { defaultValue: "To" }),
+      group: "policy-time",
+      options: HOUR_TO_OPTIONS.map((h) => String(h.value)),
+      getValue: () => String(hours.end),
+      onFill: (v) =>
+        onUpdate({
+          ...config,
+          allowedHours: [{ start: hours.start, end: Number(v) }],
+        }),
+    });
+  const { ref: tzRef, agentProps: tzAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "policy-time-timezone",
+      role: "select",
+      label: t("policycontrols.time.timezone", { defaultValue: "Timezone" }),
+      group: "policy-time",
+      options: TIMEZONES.map((tz) => String(tz)),
+      getValue: () => timezone,
+      onFill: (v) => onUpdate({ ...config, timezone: v }),
+    });
+
+  const toggleDay = (i: number) => {
+    const next = days.includes(i)
+      ? days.filter((d) => d !== i)
+      : [...days, i].sort();
+    onUpdate({ ...config, allowedDays: next });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted">
+            {t("policycontrols.time.from", { defaultValue: "From" })}
+          </Label>
+          <select
+            ref={fromRef}
+            {...fromAgentProps}
+            value={hours.start}
+            onChange={(e) =>
+              onUpdate({
+                ...config,
+                allowedHours: [
+                  { start: Number(e.target.value), end: hours.end },
+                ],
+              })
+            }
+            className="h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
+          >
+            {HOUR_FROM_OPTIONS.map((h) => (
+              <option key={h.key} value={h.value}>
+                {h.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <span className="text-muted text-xs mt-5">→</span>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted">
+            {t("policycontrols.time.to", { defaultValue: "To" })}
+          </Label>
+          <select
+            ref={toRef}
+            {...toAgentProps}
+            value={hours.end}
+            onChange={(e) =>
+              onUpdate({
+                ...config,
+                allowedHours: [
+                  { start: hours.start, end: Number(e.target.value) },
+                ],
+              })
+            }
+            className="h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
+          >
+            {HOUR_TO_OPTIONS.map((h) => (
+              <option key={h.key} value={h.value}>
+                {h.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex gap-1">
+        {DAY_NAMES.map((name, i) => (
+          <DayToggle
+            key={name}
+            name={name}
+            index={i}
+            active={days.includes(i)}
+            onToggle={toggleDay}
+          />
+        ))}
+      </div>
+
+      <div className="space-y-1">
+        <Label className="text-xs text-muted">
+          {t("policycontrols.time.timezone", { defaultValue: "Timezone" })}
+        </Label>
+        <select
+          ref={tzRef}
+          {...tzAgentProps}
+          value={timezone}
+          onChange={(e) => onUpdate({ ...config, timezone: e.target.value })}
+          className="h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt w-full"
+        >
+          {TIMEZONES.map((tz) => (
+            <option key={tz} value={tz}>
+              {tz}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function DayToggle({
+  name,
+  index,
+  active,
+  onToggle,
+}: {
+  name: string;
+  index: number;
+  active: boolean;
+  onToggle: (index: number) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `policy-day-${index}`,
+    role: "toggle",
+    label: `Allow ${name}`,
+    group: "policy-time",
+    status: active ? "on" : "off",
+    getValue: () => active,
+    onActivate: () => onToggle(index),
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      className={`h-7 w-9 rounded-sm text-xs font-medium transition-colors ${
+        active
+          ? "bg-accent/20 text-accent border border-accent/30"
+          : "bg-bg text-muted border border-border/30 hover:border-border/50"
+      }`}
+      onClick={() => onToggle(index)}
+    >
+      {name}
+    </button>
+  );
+}

@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "ignoreDeprecations": "6.0",
+    "types": ["bun-types"],
+    "baseUrl": ".",
+    "paths": {
+      "@feed/a2a": ["../../a2a/src/index.ts"],
+      "@feed/a2a/*": ["../../a2a/src/*"],
+      "@feed/mcp": ["../../mcp/src/index.ts"],
+      "@feed/db": ["../../db/src/index.ts"],
+      "@feed/db/*": ["../../db/src/*"],
+      "@feed/agents/agent0": ["../../api/src/agent0.d.ts"],
+      "@feed/shared": ["../../shared/src/index.ts"],
+      "@feed/shared/*": ["../../shared/src/*"],
+      "@feed/contracts": ["../../contracts/src/index.ts"],
+      "@feed/contracts/*": ["../../contracts/src/*"],
+      "@feed/pack-default": ["../../pack-default/src/index.ts"],
+      "@feed/pack-default/*": ["../../pack-default/src/*"]
+    }
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": [
+    "node_modules",
+    "../../api/**/*",
+    "../../engine/**/*",
+    "../../shared/**/*",
+    "../../contracts/**/*",
+    "../../agents/**/*",
+    "../../a2a/**/*",
+    "../../training/**/*",
+    "../../testing/**/*",
+    "../../db/**/*"
+  ]
+}

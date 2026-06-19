@@ -1,0 +1,32 @@
+# see wiki/src/contribute/design/greeter_storage.mdwn
+
+[[commands]]
+allowed_user = "Debian-gdm"
+executable = "/usr/local/bin/tails-cleartext-storage"
+args = ["load", "keyboard"]
+
+[[commands]]
+allowed_user = "Debian-gdm"
+executable = "/usr/local/bin/tails-cleartext-storage"
+args = ["save", "keyboard"]
+
+[[commands]]
+allowed_user = "Debian-gdm"
+executable = "/usr/local/bin/tails-cleartext-storage"
+args = ["delete", "keyboard"]
+
+[[commands]]
+allowed_user = "Debian-gdm"
+executable = "/usr/local/bin/tails-cleartext-storage"
+args = ["load", "language"]
+
+[[commands]]
+allowed_user = "Debian-gdm"
+executable = "/usr/local/bin/tails-cleartext-storage"
+args = ["save", "language"]
+
+[[commands]]
+allowed_user = "Debian-gdm"
+executable = "/usr/local/bin/tails-cleartext-storage"
+args = ["delete", "language"]
+

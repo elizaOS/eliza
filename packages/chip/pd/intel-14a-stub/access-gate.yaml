@@ -1,0 +1,69 @@
+schema: eliza.pd_advanced_node_access_gate.v1
+pdk: Intel_14A
+node_class: intel_14a_ribbonfet_2nd_gen_bspdn_high_na
+status: blocked_until_foundry_agreement
+evidence_class: procurement_blocked_no_artifacts
+
+role: second_source_strategic_2028
+
+reason:
+  - Intel Foundry Services (IFS) agreement at 14A is not in place.
+  - 14A is industry-first commercial High-NA EUV node; High-NA scanner allocation
+    is reserved by ASML for Intel and TSMC.
+  - 14A is 2nd-gen PowerVia BSPDN; methodology / extraction / dynamic-IR
+    requires two-sided PDN support.
+  - Hard-IP ecosystem at Intel foundry (LPDDR PHY, MIPI v3, USB4) is thinner than
+    TSMC at the equivalent node.
+
+unblock_requires:
+  - executed_intel_foundry_services_agreement_at_14a
+  - darpa_or_ramp_c_or_us_gov_subsidy_alignment_if_applicable
+  - lpddr5x_or_lpddr6_phy_license_at_intel_14a
+  - usb32_or_usb4_phy_license_at_intel_14a
+  - mipi_d_phy_v3_or_c_phy_v2_license_at_intel_14a
+  - dsi2_or_csi2_controller_license_at_intel_14a
+  - pll_hard_ip_license_at_intel_14a
+  - sram_compiler_license_at_intel_14a
+  - commercial_signoff_eda_seat_qualified_by_intel_at_14a
+  - two_sided_pdn_extraction_tool_voltus_or_redhawk_bspdn_aware
+  - high_na_euv_dfm_check_methodology
+  - lvf_or_socv_corner_set_loaded
+  - tapeout_nre_budget_committed_premium_over_tsmc_n2p
+  - high_na_scanner_allocation_window_confirmed
+
+procurement_economics:
+  wafer_usd_estimate: "not_public_premium_over_tsmc_n2p_due_to_high_na"
+  tapeout_nre_usd_estimate: "premium_over_tsmc_n2p"
+  expected_customer_window: "DARPA, US gov, hyperscaler diversification; non-Apple mobile late-2028"
+
+process_technical_summary:
+  transistor: ribbonfet_gaa_2nd_gen
+  bspdn: powervia_2nd_gen
+  high_na_euv: yes_industry_first
+  hd_density_mtr_per_mm2: ">_n2_class_targeted_not_public"
+  perf_or_power_lift_vs_18a: "+15-20% perf @ iso-power OR +25-30% power @ iso-perf"
+  bspdn_tax_thermal_c: "+5_to_10_at_active_region"
+  bspdn_warpage_during_hpa: "real_methodology_risk"
+  bspdn_two_sided_test_access: "new_methodology_required"
+  bspdn_bring_up_learning_curve_months: "6_to_12"
+
+corner_set: pd/corner-manifests/intel-14a.yaml
+library_set: pd/library-manifests/intel-14a.yaml
+
+forbidden_claims_until_unblocked:
+  - intel_14a_tapeout_ready
+  - intel_14a_signoff_clean
+  - bspdn_signoff_clean
+  - high_na_dfm_clean
+  - any_advanced_node_ppa_number_marked_as_signoff
+
+what_can_be_said_today:
+  - This project's strategic 2nd-source 2028 target is Intel 14A, subject to
+    foundry-customer alignment and possible DARPA / RAMP-C subsidy.
+  - Intel 14A is the only public 2028 node committing to High-NA EUV.
+  - Intel 14A is the only public 2028 node committing to 2nd-gen PowerVia BSPDN.
+
+next_commands:
+  preflight: make pdk-portability-check
+  projection: make ppa-projection
+  procurement_gate: make pdk-access-gate

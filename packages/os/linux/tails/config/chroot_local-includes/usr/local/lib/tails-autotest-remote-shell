@@ -1,0 +1,342 @@
+#!/usr/bin/python3 -I
+
+# ATTENTION: Yes, this is a backdoor! :) But it is of course not
+# enabled by default, and is only intended for automated testing
+# purposes, which you can read more about here:
+#
+#   https://tails.net/contribute/release_process/test/automated_tests/
+#
+# In order for an adversary to make use of this backdoor these things
+# must be the true:
+#
+# 1. You must be running Tails in a virtual machine supporting virtio
+#    channels (e.g. qemu). In particular, this backdoor cannot work
+#    when Tails is running on real hardware. So from now on we'll
+#    assume Tails is running in a virtual machine.
+#
+# 2. The attacker must convince you to add the appropriate virtio
+#    channel to your virtual machine configuration (see
+#    REMOTE_SHELL_DEV below).
+#
+# 3. Since this script is not started automatically the adversary must
+#    somehow convince you to manually start it. For instance by adding
+#    "autotest_never_use_this_option" to the kernel commandline.
+#
+# 4. The attacker must also be able to write to the virtio channel on
+#    your host, which on a well-configured system (e.g. Debian)
+#    requires privileges that give full control of the virtual machine
+#    running Tails.
+#
+# In other words, this backdoor is completely irrelevant, since
+# requirement 4 alone gives them full control over the Tails system,
+# so no backdoor is needed.
+
+import base64
+import fcntl
+import json
+import os
+import pwd
+import pathlib
+import signal
+import subprocess
+import sys
+import systemd.daemon
+import textwrap
+import time
+import traceback
+import logging
+
+from tailslib.userenv import read_user_env
+
+REMOTE_SHELL_DEV = "/dev/virtio-ports/org.tails.remote_shell.0"
+
+
+def mk_switch_user_fn(user):
+    pwd_user = pwd.getpwnam(user)
+
+    def switch_user():
+        os.initgroups(user, pwd_user.pw_gid)
+        os.setgid(pwd_user.pw_gid)
+        os.setuid(pwd_user.pw_uid)
+
+    return switch_user
+
+
+def get_user_env(user):
+    if user == "Debian-gdm":
+        # Restore environment dumped by tails-greeter. We can't use
+        # the userenv module here because we need to dump and restore
+        # environment variables which are not allowed in the userenv
+        # module (for example GTK_MODULES).
+        with open("/tmp/gdm-env") as f:  # noqa: S108
+            env_data = f.read()
+            return dict(line.split("=", 1) for line in env_data.splitlines())
+
+    # Get the default environment that's set up when logging in via `su`
+    wrapped_env_cmd = f"su -c env {user}"
+    pipe = subprocess.Popen(wrapped_env_cmd, stdout=subprocess.PIPE, shell=True)  # noqa: S602
+    env_data = pipe.communicate()[0].decode("utf-8")
+    env_dict = dict(line.split("=", 1) for line in env_data.splitlines())
+
+    if user == "amnesia":
+        # Get the stored user environment
+        try:
+            env_dict.update(read_user_env(user, allow_root=True))
+        except FileNotFoundError as e:
+            logging.info(f"Failed to load user env for {user}: {e}")
+
+    # To allow using Dogtail with applications run as root
+    # (e.g. synaptic), we also load the user env from amnesia when
+    # executing commands as root. Note that this allows privilege
+    # escalation because we export amnesia-controlled environment
+    # variables in a root process, but we don't care about that here
+    # because it's only done in tests.
+    if user == "root":
+        try:
+            env_dict.update(read_user_env("amnesia", allow_root=True))
+        except FileNotFoundError:
+            pass
+
+    return env_dict
+
+
+# Dogtail does not seem to support the root user interacting with
+# other users' applications, so let's wrap around an interactive
+# Python shell started as a subprocess.
+class PythonSession:
+    def __init__(self, user=None):
+        logging.info("Starting new Python session")
+        interactive_shell_code = "import sys; import code; sys.ps1 = ''; sys.ps2 = ''; code.interact(banner='')"
+        if not user:
+            user = pwd.getpwuid(os.getuid()).pw_name
+        env = get_user_env(user)
+        # If WAYLAND_DISPLAY is set, Dogtail breaks for non-amnesia
+        # users. It is not needed for Dogtail even when run as
+        # amnesia, so we can just unset it as long as this class is
+        # used solely for Dogtail.
+        if "WAYLAND_DISPLAY" in env:
+            del env["WAYLAND_DISPLAY"]
+        cwd = env.get("HOME", "/")
+        # Since Debian Trixie the python process crashes without this
+        # when importing Dogtail
+        env["GTK_MODULES"] = "gail:atk-bridge"
+        # Without XDG_SESSION_TYPE=wayland the click() tree API method
+        # does not work for some applications, like GNOME Shell. But
+        # at the same time that makes the root user unable to `import
+        # dogtail`.
+        if user == "root":
+            del env["XDG_SESSION_TYPE"]
+        else:
+            env["XDG_SESSION_TYPE"] = "wayland"
+        self.process = subprocess.Popen(
+            ["python3", "-u", "-c", interactive_shell_code],  # noqa: S607
+            bufsize=0,
+            shell=False,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+            cwd=cwd,
+            preexec_fn=mk_switch_user_fn(user),  # noqa: PLW1509
+        )
+        init_code = """
+            import io
+            import json
+            import sys
+            orig_stdout = sys.stdout
+            orig_stderr = sys.stderr
+            """.replace("            ", "").lstrip()
+        self.process.stdin.write(init_code)
+        self.process.stdin.flush()
+
+    def execute(self, code) -> tuple[str, str, str]:
+        # This wrapping ensures that we can run almost any reasonable
+        # code and capture what it does.
+        wrapper = """
+            fake_stdout = io.StringIO()
+            fake_stderr = io.StringIO()
+            sys.stdout = fake_stdout
+            sys.stderr = fake_stderr
+            exc_str = None
+            try:
+            {code}
+            except Exception as e:
+                exc_str = '%s: %s' % (type(e).__name__, str(e))
+            # This newline is needed to end the `try` statement.
+
+            sys.stdout = orig_stdout
+            sys.stderr = orig_stderr
+            out_str = fake_stdout.getvalue()
+            err_str = fake_stderr.getvalue()
+            fake_stdout.close()
+            fake_stderr.close()
+            print(json.dumps([exc_str, out_str, err_str]))
+            """.replace("            ", "").lstrip()
+        indented_code = textwrap.indent(code, prefix=" " * 4)
+        wrapped_code = wrapper.format(code=indented_code)
+        self.process.stdin.write(wrapped_code)
+        self.process.stdin.flush()
+
+        if self.process.poll() is not None:
+            exc_str = (
+                f"Python process exited unexpectedly with {self.process.returncode}"
+            )
+            out_str = self.process.stdout.read()
+            err_str = self.process.stderr.read()
+            return exc_str, out_str, err_str
+
+        return_str = self.process.stdout.readline().strip()
+        try:
+            exc_str, out_str, err_str = json.loads(return_str)
+            return exc_str, out_str, err_str
+        except Exception as e:
+            time.sleep(1)
+            if self.process.poll() is not None:
+                exc_str = (
+                    f"Python process exited unexpectedly with {self.process.returncode}"
+                )
+                out_str = self.process.stdout.read()
+                err_str = self.process.stderr.read()
+                return exc_str, out_str, err_str
+
+            exc_str = f"{type(e).__name__}: {e!s}"
+            return exc_str, "", ""
+
+
+def execute_cmd_as_user(cmd, env: dict, user, **kwargs):
+    switch_user_fn = mk_switch_user_fn(user)
+    user_env = get_user_env(user)
+    user_env.update(env)
+    cwd = user_env.get("HOME", "/")
+    return subprocess.Popen(
+        cmd,
+        shell=True,  # noqa: S602
+        text=True,
+        env=user_env,
+        cwd=cwd,
+        preexec_fn=switch_user_fn,  # noqa: PLW1509
+        **kwargs,
+    )
+
+
+def main():
+    logging.basicConfig(level=logging.DEBUG)
+    python_sessions = dict()
+    fd = os.open(REMOTE_SHELL_DEV, os.O_RDWR)
+    port = open(fd, "wb+", buffering=0)
+    # In order to avoid busy-waiting when polling the above character
+    # device for new data sent from clients, we borrow the approach used
+    # by python-negotiator (https://github.com/xolox/python-negotiator):
+    # We add O_ASYNC so a SIGIO signal is sent to us whenever data is
+    # ready to be read from the device.
+    # But first we must override the signal handler for SIGIO to do
+    # nothing (below we'll wait for it with signal.sigtimedwait())
+    # since the default behavior is to terminate the process.
+    signal.signal(signal.SIGIO, lambda *args: None)
+    flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+    fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_ASYNC)
+    fcntl.fcntl(fd, fcntl.F_SETOWN, os.getpid())
+
+    systemd.daemon.notify('STATUS=Wait for "signal ready" from remote shell...\n')
+
+    while True:
+        # We can avoid an unnecessary delay of up to one second during the
+        # first iteration of this loop; if a client sends a request
+        # before we run SETOWN above, the expected signal never
+        # reaches us, and we enter the loop and pass through the
+        # conditional doomed to a full second of mournful waiting
+        # for this lost signal. :_( By trying to read before we do a
+        # timed wait for the signal, this delay is avoided.
+        line = port.readline().decode("utf-8")
+        if line == "":
+            # In case the SIGIO gets lost for whatever reason
+            # (e.g. the one mentioned above), let's always poll at
+            # least once every second.
+            try:
+                signal.sigtimedwait([signal.SIGIO], 1)
+            except InterruptedError:
+                # Thrown if any other signal is received.
+                pass
+            continue
+        try:
+            tx_id, cmd_type, *rest = json.loads(line)
+            ret = ""
+            if cmd_type in ["sh_call", "sh_spawn"]:
+                user, env, cmd = rest
+                logging.info(f"Executing as {user}: {cmd}")
+                if cmd_type == "sh_spawn":
+                    execute_cmd_as_user(cmd, env, user)
+                    # Spawning provides no feedback/ACK
+                    continue
+                else:
+                    p = execute_cmd_as_user(
+                        cmd, env, user, stderr=subprocess.PIPE, stdout=subprocess.PIPE
+                    )
+                    stdout, stderr = p.communicate()
+                    returncode = p.returncode
+                    ret = json.dumps([tx_id, "success", returncode, stdout, stderr])
+                    logging.info(f"Result: {ret}")
+            elif cmd_type == "python_execute":
+                user, env, code = rest
+                if (
+                    user not in python_sessions
+                    or python_sessions[user].process.poll() is not None
+                ):
+                    python_sessions[user] = PythonSession(user)
+                session = python_sessions[user]
+                logging.info(f"Executing Python as {user}:\n{code}")
+                exc, out_str, err_str = session.execute(code)
+                ret = json.dumps([tx_id, "success", exc, out_str, err_str])
+                logging.info(f"Result: {ret}")
+            elif cmd_type in ["file_read", "file_write", "file_append"]:
+                path, *rest = rest
+                open_mode = cmd_type[5] + "b"
+                logging.info(f"Opening ({open_mode}) file: {path}")
+                with open(path, open_mode) as f:
+                    if cmd_type == "file_read":
+                        assert rest == []
+                        ret = str(base64.b64encode(f.read()), "utf-8")
+                    elif cmd_type in ["file_write", "file_append"]:
+                        assert len(rest) == 1
+                        data = base64.b64decode(rest[0])
+                        ret = f.write(data)
+                        if ret != len(data):
+                            raise OSError(
+                                f"we only wrote {ret} bytes out of {len(data)}"
+                            )
+                ret = json.dumps([tx_id, "success", ret])
+            elif cmd_type in ["signal_ready"]:
+                logging.info("Mark systemd service as ready.")
+                # Notify systemd that we"re ready
+                systemd.daemon.notify("READY=1")
+                systemd.daemon.notify("STATUS=Processing requests...\n")
+                ret = json.dumps([tx_id, "success"])
+            else:
+                raise ValueError("unknown command type")
+            response = (ret + "\n").encode("utf-8")
+            # We can only write 2**15 bytes at a time to the virtio channel
+            # (seems to only affect the guest -> host direction).
+            chunk_size = 2**15
+            chunks = (
+                response[0 + i : chunk_size + i]
+                for i in range(0, len(response), chunk_size)
+            )
+            for chunk in chunks:
+                port.write(chunk)
+            port.flush()
+        except Exception as e:
+            logging.info("Error caught while processing line:")
+            logging.info("    " + line)
+            logging.info("The error was:")
+            traceback.print_exc(file=sys.stderr)
+            logging.info("-----")
+            sys.stderr.flush()
+            exc_str = f"{type(e).__name__}: {e!s}"
+            port.write(json.dumps([tx_id, "error", exc_str]).encode("utf-8") + b"\n")
+            port.flush()
+            continue
+
+
+if __name__ == "__main__":
+    main()

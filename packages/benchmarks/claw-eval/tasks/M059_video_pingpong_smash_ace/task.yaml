@@ -1,0 +1,47 @@
+task_id: M059_video_pingpong_smash_ace
+task_name: Video Ping Pong Smash Ace Count
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Please carefully watch this video of the first game of a table tennis match. In the first 10 points shown in the video, how many times did the Chinese player score directly by smashing the ball such that the opponent could not touch it at all? For each such point, please list the score before that point started (Chinese player's score first).
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the ping pong match video.
+  2 times where Chinese player smashed and opponent couldn't touch the ball.
+  Scores before these points (Chinese first): 0:0, 3:1.
+
+primary_dimensions:
+  - completion
+  - robustness

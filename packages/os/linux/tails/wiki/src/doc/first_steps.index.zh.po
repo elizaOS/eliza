@@ -1,0 +1,142 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 02:00+0000\n"
+"PO-Revision-Date: 2020-08-14 10:57+0000\n"
+"Last-Translator: emmapeel <emma.peel@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 3.5.1\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Starting Tails|first_steps/start]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[Starting Tails on PC|first_steps/start/pc]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[Starting Tails on Mac|first_steps/start/mac]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Accessibility|first_steps/accessibility]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Welcome Screen|first_steps/welcome_screen]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Administration password|first_steps/welcome_screen/"
+"administration_password]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[MAC address anonymization|first_steps/welcome_screen/mac_spoofing]]"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Introduction to GNOME and the Tails desktop|first_steps/desktop]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[Why is the time wrong?|first_steps/desktop/time]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Reporting an error using *WhisperBack*|first_steps/whisperback]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Shutting down Tails|first_steps/shutdown]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Uninstalling Tails|doc/first_steps/uninstall]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+msgid "[[Uninstalling Tails using Windows|doc/first_steps/uninstall/windows]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+msgid "[[Uninstalling Tails using macOS|doc/first_steps/uninstall/mac]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+msgid "[[Uninstalling Tails using Linux|doc/first_steps/uninstall/linux]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+msgid ""
+"[[Uninstalling Tails using Tails itself|doc/first_steps/uninstall/tails]]"
+msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#, fuzzy
+#~ msgid "[[!traillink Persistent_Storage|first_steps/persistence]]"
+#~ msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!traillink Changing_the_passphrase_of_the_Persistent_Storage|"
+#~ "first_steps/persistence/passphrase]]"
+#~ msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!traillink Installing_additional_software|first_steps/"
+#~ "additional_software]]"
+#~ msgstr "[[!traillink Tails_starten|first_steps/start]]"
+
+#~ msgid "<div class=\"tip\">\n"
+#~ msgstr "<div class=\"tip\">\n"
+
+#~ msgid ""
+#~ "<p>For installing and starting Tails, we recommend you try our new\n"
+#~ "[[installation assistant|install]]. The following pages are the old\n"
+#~ "instructions, provided as a fallback.</p>\n"
+#~ msgstr ""
+#~ "<p>Wir empfehlen Ihnen für das Installieren und Starten von Tails unseren "
+#~ "neuen\n"
+#~ "[[Installationsassistenten|install]]. Die nachfolgenden Seiten sind die "
+#~ "alten\n"
+#~ "Anweisungen, als Ausweichlösung</p>\n"
+
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"
+
+#~ msgid ""
+#~ "[[!traillink "
+#~ "Choosing_between_burning_a_DVD_and_installing_onto_a_USB_stick_or_SD_card|"
+#~ "first_steps/media]]"
+#~ msgstr ""
+#~ "[[!traillink "
+#~ "Zwischen_dem_Brennen_einer_DVD,_oder_der_Installation_auf_einem_USB-"
+#~ "Stick_oder_einer_SD-Karte_wählen|first_steps/media]]"

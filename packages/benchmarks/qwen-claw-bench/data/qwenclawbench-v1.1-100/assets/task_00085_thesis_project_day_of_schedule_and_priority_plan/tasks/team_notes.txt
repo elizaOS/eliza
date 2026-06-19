@@ -1,0 +1,56 @@
+Study Group Meeting Notes
+Date: June 13, 2024 (Thursday)
+Location: Library Room 204
+Attendees: Alex, Jordan, Sam, Taylor
+
+===========================================
+AGENDA & DISCUSSION POINTS
+===========================================
+
+1. Thesis Progress Check-In
+   - Alex: Abstract is done, working on final formatting.
+   - Jordan: Still revising methodology chapter.
+   - Sam: Literature review is fully finished, moving on to proofreading.
+   - Taylor: Working on results section, about 80% complete.
+
+2. Task Status Updates (Our Group)
+   - Thesis outline document - still needs to be completed by tomorrow.
+     Jordan offered to help review it once it's drafted.
+   - Literature review is fully finished - Sam confirmed this is wrapped up.
+   - References formatting can wait until after the main text is finalized.
+
+3. Defense Preparation Tips (from Prof. Martinez's workshop)
+   - Keep slides clean and minimal — no more than 6 bullet points per slide.
+   - Practice the presentation at least twice before the actual defense.
+   - Anticipate 3-5 common questions from the committee.
+   - Bring a printed copy of your thesis to the defense as backup.
+   - Speak slowly and clearly; aim for 15-20 minutes of presentation time.
+
+4. Formatting Advice
+   - Use the university's official LaTeX or Word template.
+   - APA 7th edition is required for all citations.
+   - Page margins: 1 inch on all sides.
+   - Font: Times New Roman, 12pt for body text.
+   - Line spacing: double-spaced throughout.
+   - Page numbers in the top-right corner.
+
+5. Submission Reminders
+   - Upload to the university portal before the deadline.
+   - File format must be PDF.
+   - Maximum file size: 50MB.
+   - Include a signed declaration page.
+
+6. Next Steps
+   - Everyone should finalize their remaining tasks by Saturday.
+   - Group review session planned for Sunday afternoon.
+   - Share final drafts via the shared Google Drive folder.
+
+===========================================
+Action Items:
+- Alex: Help Taylor with results section graphs
+- Jordan: Complete outline and share with group
+- Sam: Start proofreading and share checklist
+- Taylor: Finish results section by Friday evening
+===========================================
+
+Meeting adjourned at 4:30 PM.

@@ -1,0 +1,174 @@
+name: Publish to apt Repository
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Semver string e.g. 2.0.1
+        required: true
+        type: string
+      tag:
+        description: Git tag e.g. v2.0.1
+        required: true
+        type: string
+      channel:
+        description: apt repo codename (stable | beta)
+        required: false
+        type: string
+        default: stable
+    secrets:
+      # All three GPG secrets are `required: false` — the workflow body has
+      # an early `Check GPG credentials` step that emits a warning + skips
+      # the publish path with `can_publish=false` when DEBIAN_GPG_PRIVATE_KEY
+      # is empty. Declaring them `required: true` here would fail the
+      # reusable-workflow startup validation in 0-3 seconds BEFORE any job
+      # runs — turning every release-tag of elizaos-os-full-release.yml
+      # into a startup_failure with no logs (verified 2026-05-25:
+      # v2.0.0 / v2.0.1 / v2.0.3 all startup_failure'd at 0-3 sec because
+      # the elizaOS/eliza repo doesn't have DEBIAN_GPG_PRIVATE_KEY set).
+      # `required: false` lets the body decide; the existing graceful
+      # skip then carries the rest of the release through.
+      DEBIAN_GPG_PRIVATE_KEY:
+        required: false
+      DEBIAN_GPG_KEY_ID:
+        required: false
+      DEBIAN_GPG_PASSPHRASE:
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semver string e.g. 2.0.1
+        required: true
+        type: string
+      tag:
+        description: Git tag e.g. v2.0.1
+        required: true
+        type: string
+      channel:
+        description: apt repo codename (stable | beta)
+        required: false
+        type: string
+        default: stable
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  publish-apt:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check GPG credentials
+        id: gpg_check
+        env:
+          DEBIAN_GPG_PRIVATE_KEY: ${{ secrets.DEBIAN_GPG_PRIVATE_KEY }}
+          DEBIAN_GPG_KEY_ID: ${{ secrets.DEBIAN_GPG_KEY_ID }}
+        run: |
+          # Both PRIVATE_KEY and KEY_ID are needed to sign Release files —
+          # a half-configured repo where only one is set still can't sign,
+          # and reprepro would fail later with a less obvious error.
+          # Surface the actual gap up front.
+          if [[ -z "$DEBIAN_GPG_PRIVATE_KEY" ]]; then
+            echo "::warning::DEBIAN_GPG_PRIVATE_KEY not configured. Apt repo publish skipped."
+            echo "can_publish=false" >> "$GITHUB_OUTPUT"
+          elif [[ -z "$DEBIAN_GPG_KEY_ID" ]]; then
+            echo "::warning::DEBIAN_GPG_KEY_ID not configured (PRIVATE_KEY was set). Apt repo publish skipped."
+            echo "can_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "can_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout main repo (to create apt-repo branch if needed)
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          path: main-repo
+
+      - name: Ensure apt-repo branch exists
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        run: |
+          cd main-repo
+          if git ls-remote --heads origin apt-repo | grep -q apt-repo; then
+            echo "apt-repo branch already exists"
+          else
+            echo "apt-repo branch does not exist — creating orphan branch"
+            git push origin "$(git hash-object -t tree /dev/null):refs/heads/apt-repo"
+            echo "Created empty apt-repo branch"
+          fi
+
+      - name: Checkout apt-repo branch
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: apt-repo
+          path: apt-repo
+          fetch-depth: 0
+
+      - name: Checkout release tag (for conf files)
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ inputs.tag }}
+          path: src-repo
+          submodules: false
+
+      - name: Import GPG key
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        env:
+          DEBIAN_GPG_PRIVATE_KEY: ${{ secrets.DEBIAN_GPG_PRIVATE_KEY }}
+          DEBIAN_GPG_PASSPHRASE: ${{ secrets.DEBIAN_GPG_PASSPHRASE }}
+        run: |
+          echo "$DEBIAN_GPG_PRIVATE_KEY" | gpg --batch --import
+          # Trust the key
+          KEY_ID=$(gpg --list-secret-keys --with-colons | grep '^sec' | head -1 | cut -d: -f5)
+          echo "$KEY_ID:6:" | gpg --import-ownertrust
+
+      - name: Install reprepro
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        run: sudo apt-get install -y reprepro
+
+      - name: Download .deb from release
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/deb
+          gh release download "${{ inputs.tag }}" --pattern "*.deb" --dir /tmp/deb/
+          ls -la /tmp/deb/
+
+      - name: Add .deb to reprepro
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        env:
+          DEBIAN_GPG_PASSPHRASE: ${{ secrets.DEBIAN_GPG_PASSPHRASE }}
+        run: |
+          CODENAME="${{ inputs.channel }}"
+          # Ensure conf/ exists in apt-repo branch
+          mkdir -p apt-repo/conf
+          cp src-repo/packages/app-core/packaging/debian/apt-repo-config/conf/distributions apt-repo/conf/distributions
+
+          # Add the package
+          cd apt-repo
+          if [[ -n "$DEBIAN_GPG_PASSPHRASE" ]]; then
+            echo "$DEBIAN_GPG_PASSPHRASE" | reprepro --ask-passphrase includedeb "$CODENAME" /tmp/deb/*.deb
+          else
+            reprepro includedeb "$CODENAME" /tmp/deb/*.deb
+          fi
+
+      - name: Export GPG public key
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        run: |
+          gpg --armor --export > apt-repo/gpg.key
+
+      - name: Commit and push apt-repo branch
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        run: |
+          cd apt-repo
+          git config user.name "elizaOS CI"
+          git config user.email "ci@elizaos.ai"
+          git add -A
+          git commit -m "chore: add elizaos-app ${{ inputs.version }} to apt repo" || echo "Nothing to commit"
+          git push origin apt-repo

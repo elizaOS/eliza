@@ -1,0 +1,694 @@
+schema: eliza.e1_phone_radio_module_integration.v1
+status: blocked_requires_module_pinout_firmware_rf_measurement_and_regulatory_evidence
+date: '2026-05-21'
+claim_boundary: Board-level radio module integration closure. This confirms the selected off-the-shelf cellular
+  and Wi-Fi/Bluetooth module classes are represented in logical nets, placement, RF feeds, firmware gates, and release
+  outputs. It is not a routed RF layout, not firmware bring-up, not antenna tuning, not modular approval, not carrier
+  approval, and not SAR evidence.
+source_artifacts:
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+  - package/wifi/evidence-gates.yaml
+  - board/kicad/e1-phone/radio-module-source-revalidation.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/module-host-integration-closure.yaml
+  - board/kicad/e1-phone/rf-connectivity-closure.yaml
+  - board/kicad/e1-phone/rf-antenna-coexistence-closure.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/supplier-source-verification.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/radio-module-schematic-net-binding.yaml
+public_source_refresh:
+  date: '2026-05-21'
+  cellular:
+    vendor: Quectel
+    family: RG255C_or_RM255C
+    class: 5G_RedCap_Sub_6
+    observed_public_fields:
+      release: 3GPP_Rel_17_RedCap
+      peak_downlink_mbps: 223
+      peak_uplink_mbps: 123
+      fallback: LTE_Cat_4
+      gnss: optional_multi_constellation
+      host_interfaces:
+        - USB_2_0
+        - PCIe_2_0
+        - PCM
+        - UART
+        - SGMII
+        - SPI
+      driver_os:
+        - Linux
+        - Android
+        - Windows
+    sourcing_url: https://www.quectel.com/product/5g-redcap-rg255c-series/
+    source_verification_id: cellular_primary_quectel_rg255c
+  wifi_bluetooth:
+    vendor: Murata
+    order_number: LBEE5XV2EA-802
+    chipset: Infineon_CYW55573
+    wireless:
+      wifi: 802.11a_b_g_n_ac_ax_2x2_MIMO_2p4_5_6_GHz
+      wifi_phy_rate_mbps: 1200
+      bluetooth: 5.3_BR_EDR_LE
+    interfaces:
+      - PCIe
+      - SDIO
+      - UART
+      - GPIO
+      - PCM
+    package_mm:
+      width: 12.5
+      height: 9.4
+      thickness: 1.2
+    certification_note: FCC_IC_reference_certified
+    sourcing_url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+    source_verification_id: wifi_bluetooth_primary_murata_type_2ea
+module_integration:
+  cellular_5g_redcap:
+    status: sourcing_shortlist_no_bonded_pins_no_fabricated_board
+    placement:
+      refdes_group: U_CELL
+      function: cellular_5g_redcap_module
+      package_binding: package/cellular/quectel-5g-redcap.yaml
+      region_mm:
+        x: 3.0
+        y: 3.0
+        width: 14.0
+        height: 14.0
+      side: top_left_rf
+      required_nets:
+        - CELL_VBAT
+        - CELL_VDDIO_1V8
+        - CELL_USB2
+        - CELL_PCIE
+        - USIM
+        - CELL_RESET_N
+        - CELL_WAKE_AP
+        - AP_WAKE_CELL
+        - CELL_W_DISABLE_N
+      constraints:
+        - rf_keepout
+        - cellular_main_div_feeds
+        - sim_or_esim
+        - conducted_rf_test_points
+    module_host_record:
+      id: cellular_5g_redcap_module
+      bom_functions:
+        - cellular
+      placement_groups:
+        - U_CELL
+      package_bindings:
+        - package/cellular/quectel-5g-redcap.yaml
+      required_block_ids:
+        - U_CELL
+        - U_SIM_ESIM
+        - U_SOC
+      host_contract_count: 18
+      required_contracts: &id001
+        - CELL_USB2_DP
+        - CELL_USB2_DN
+        - CELL_PCIE_TX_P
+        - CELL_PCIE_TX_N
+        - CELL_PCIE_RX_P
+        - CELL_PCIE_RX_N
+        - CELL_RESET_N
+        - CELL_WAKE_AP
+        - AP_WAKE_CELL
+        - CELL_W_DISABLE_N
+        - USIM_CLK
+        - USIM_RST
+        - USIM_IO
+        - CELL_RF_MAIN
+        - CELL_RF_DIV
+        - CELL_GNSS_RF
+        - RF_VBAT
+        - IO_1V8
+      release_blocker: region SKU, band matrix, SIM/eSIM path, reference layout, RF measurements, SAR, and carrier
+        plan are missing
+    rf_connectivity_record:
+      name: cellular_5g_redcap
+      module:
+        vendor: Quectel
+        family: RG255C_or_RM255C
+        class: 5G_RedCap_Sub_6
+        rationale: 'RedCap is the pragmatic first-phone cellular target: lower throughput than full eMBB 5G, but
+          smaller power/RF burden and enough bandwidth for voice, messaging, maps, telemetry, and moderate data.
+
+          '
+        public_features:
+          release: 3GPP_Rel_17_RedCap
+          peak_downlink_mbps: 223
+          peak_uplink_mbps: 123
+          fallback: LTE_Cat_4
+          gnss: optional_multi_constellation
+          host_interfaces:
+            - USB_2_0
+            - PCIe_2_0
+            - PCM
+            - UART
+            - SGMII
+            - SPI
+          driver_os:
+            - Linux
+            - Android
+            - Windows
+        sourcing_url: https://www.quectel.com/product/5g-redcap-rg255c-series/
+      placement:
+        refdes_group: U_CELL
+        function: cellular_5g_redcap_module
+        package_binding: package/cellular/quectel-5g-redcap.yaml
+        region_mm:
+          x: 3.0
+          y: 3.0
+          width: 14.0
+          height: 14.0
+        side: top_left_rf
+        required_nets:
+          - CELL_VBAT
+          - CELL_VDDIO_1V8
+          - CELL_USB2
+          - CELL_PCIE
+          - USIM
+          - CELL_RESET_N
+          - CELL_WAKE_AP
+          - AP_WAKE_CELL
+          - CELL_W_DISABLE_N
+        constraints:
+          - rf_keepout
+          - cellular_main_div_feeds
+          - sim_or_esim
+          - conducted_rf_test_points
+      block: U_CELL
+      minimum_rf_ports:
+        - cellular_main
+        - cellular_diversity
+        - gnss_optional
+      production_rf_ports:
+        - cellular_main
+        - cellular_diversity
+        - cellular_mimo_0
+        - cellular_mimo_1
+        - gnss
+      required_nets:
+        - AP_WAKE_CELL
+        - CELL_GNSS_RF
+        - CELL_PCIE_RX_N
+        - CELL_PCIE_RX_P
+        - CELL_PCIE_TX_N
+        - CELL_PCIE_TX_P
+        - CELL_RESET_N
+        - CELL_RF_DIV
+        - CELL_RF_MAIN
+        - CELL_USB2_DN
+        - CELL_USB2_DP
+        - CELL_WAKE_AP
+        - CELL_W_DISABLE_N
+        - IO_1V8
+        - RF_VBAT
+        - USIM_CLK
+        - USIM_IO
+        - USIM_RST
+      matching_networks_present:
+        - CELL_GNSS_RF
+        - CELL_RF_DIV
+        - CELL_RF_MAIN
+      layout_requirements:
+        module_placement:
+          - Keep the RedCap module on the top RF island near cellular matching networks and away from the USB-C
+            bottom-edge shell current path.
+          - Preserve a grounded shield perimeter around the module while leaving top-edge antenna plastic clear
+            of midframe metal.
+          - Route USB2 and PCIe to the SoC with continuous ground reference and no crossing through display/camera
+            FPC bend keepouts.
+        antenna_plan:
+          cellular_main: top_or_bottom_plastic_edge_after_vendor_review
+          cellular_diversity: opposite_plastic_edge_or_side_slot_after_vendor_review
+          gnss_optional: top_edge_or_dedicated_LNA_path_if_desense_allows
+          matching_required:
+            - CELL_RF_MAIN
+            - CELL_RF_DIV
+            - CELL_GNSS_RF
+          conducted_access_required_before_matching_network: true
+        sim_esim_layout:
+          - USIM/ESIM lines require ESD and short routing away from cellular RF feeds.
+          - Region SKU, band matrix, and SIM/eSIM certification path must be locked before EVT1 routing release.
+        coexistence_requirements:
+          - Reserve modem W_DISABLE_N and AP/module wake lines for airplane mode, suspend, and regulatory testing.
+          - Capture cellular transmit-current burst profile before RF_VBAT copper/via signoff.
+          - Run conducted coexistence checks against Wi-Fi 2.4/5/6 GHz, Bluetooth, GNSS, display bias, and USB-C
+            charging states.
+      release_blockers:
+        - selected_region_sku_and_band_matrix
+        - module_datasheet_and_reference_layout_under_NDA_if_required
+        - sim_or_esim_certification_path
+        - antenna_vendor_review
+        - carrier_certification_plan
+        - sar_and_rf_exposure_pre_scan
+    required_contracts: *id001
+    block_netlist_nets:
+      - AP_WAKE_CELL
+      - CELL_GNSS_RF
+      - CELL_PCIE_RX_N
+      - CELL_PCIE_RX_P
+      - CELL_PCIE_TX_N
+      - CELL_PCIE_TX_P
+      - CELL_RESET_N
+      - CELL_RF_DIV
+      - CELL_RF_MAIN
+      - CELL_USB2_DN
+      - CELL_USB2_DP
+      - CELL_WAKE_AP
+      - CELL_W_DISABLE_N
+      - ESIM_CLK
+      - ESIM_IO
+      - ESIM_RST
+      - ESIM_VCC
+      - GND
+      - IO_1V8
+      - RF_VBAT
+      - USIM_CLK
+      - USIM_DET
+      - USIM_IO
+      - USIM_RST
+      - USIM_VCC
+    sim_esim_nets:
+      - ESIM_CLK
+      - ESIM_IO
+      - ESIM_RST
+      - ESIM_VCC
+      - GND
+      - IO_1V8
+      - USIM_CLK
+      - USIM_DET
+      - USIM_IO
+      - USIM_RST
+      - USIM_VCC
+    required_rf_ports:
+      minimum_first_board:
+        - cellular_main
+        - cellular_diversity
+        - gnss_optional
+      production_target:
+        - cellular_main
+        - cellular_diversity
+        - cellular_mimo_0
+        - cellular_mimo_1
+        - gnss
+    power_sequence_status: required_not_implemented
+    release_blockers:
+      - selected_region_sku_and_band_matrix
+      - module_datasheet_and_reference_layout_under_NDA_if_required
+      - sim_or_esim_certification_path
+      - antenna_vendor_review
+      - carrier_certification_plan
+      - sar_and_rf_exposure_pre_scan
+  wifi6e_bluetooth_5p3:
+    status: phone_class_sourcing_target_no_bonded_pins_no_fabricated_board
+    placement:
+      refdes_group: U_WIFI_BT
+      function: wifi_6e_bluetooth_module
+      package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
+      region_mm:
+        x: 3.0
+        y: 18.0
+        width: 14.0
+        height: 10.0
+      side: upper_mid_rf
+      required_nets:
+        - WIFI_PCIE_OR_SDIO
+        - BT_UART
+        - WIFI_EN
+        - BT_EN
+        - WIFI_IRQ
+        - WIFI_HOST_WAKE
+        - VDDIO_1V8
+      constraints:
+        - rf_keepout
+        - pi_matching_network
+        - coexistence_with_cellular
+    module_host_record:
+      id: wifi_bluetooth_module
+      bom_functions:
+        - wifi_bluetooth
+      placement_groups:
+        - U_WIFI_BT
+      package_bindings:
+        - package/wifi/murata-type-2ea-wifi6e.yaml
+      required_block_ids:
+        - U_WIFI_BT
+        - U_SOC
+      host_contract_count: 20
+      required_contracts: &id002
+        - WIFI_PCIE_TX_P
+        - WIFI_PCIE_TX_N
+        - WIFI_PCIE_RX_P
+        - WIFI_PCIE_RX_N
+        - WIFI_SDIO_CLK
+        - WIFI_SDIO_CMD
+        - WIFI_SDIO_D0
+        - WIFI_SDIO_D1
+        - WIFI_SDIO_D2
+        - WIFI_SDIO_D3
+        - BT_UART_TX
+        - BT_UART_RX
+        - BT_UART_CTS_N
+        - BT_UART_RTS_N
+        - WIFI_EN
+        - BT_EN
+        - WIFI_HOST_WAKE
+        - WIFI_IRQ
+        - WIFI_BT_RF0
+        - WIFI_BT_RF1
+      release_blocker: Murata reference layout, firmware/NVRAM/CLM licensing, antenna matching, coexistence, and
+        regulatory evidence are missing
+    rf_connectivity_record:
+      name: wifi6e_bluetooth_5p3
+      module:
+        vendor: Murata
+        order_number: LBEE5XV2EA-802
+        chipset: Infineon_CYW55573
+        wireless:
+          wifi: 802.11a_b_g_n_ac_ax_2x2_MIMO_2p4_5_6_GHz
+          wifi_phy_rate_mbps: 1200
+          bluetooth: 5.3_BR_EDR_LE
+        package_mm:
+          width: 12.5
+          height: 9.4
+          thickness: 1.2
+      placement:
+        refdes_group: U_WIFI_BT
+        function: wifi_6e_bluetooth_module
+        package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
+        region_mm:
+          x: 3.0
+          y: 18.0
+          width: 14.0
+          height: 10.0
+        side: upper_mid_rf
+        required_nets:
+          - WIFI_PCIE_OR_SDIO
+          - BT_UART
+          - WIFI_EN
+          - BT_EN
+          - WIFI_IRQ
+          - WIFI_HOST_WAKE
+          - VDDIO_1V8
+        constraints:
+          - rf_keepout
+          - pi_matching_network
+          - coexistence_with_cellular
+      block: U_WIFI_BT
+      required_nets:
+        - BT_EN
+        - BT_UART_CTS_N
+        - BT_UART_RTS_N
+        - BT_UART_RX
+        - BT_UART_TX
+        - IO_1V8
+        - RF_VBAT
+        - WIFI_BT_RF0
+        - WIFI_BT_RF1
+        - WIFI_EN
+        - WIFI_HOST_WAKE
+        - WIFI_IRQ
+        - WIFI_PCIE_RX_N
+        - WIFI_PCIE_RX_P
+        - WIFI_PCIE_TX_N
+        - WIFI_PCIE_TX_P
+        - WIFI_SDIO_CLK
+        - WIFI_SDIO_CMD
+        - WIFI_SDIO_D0
+        - WIFI_SDIO_D1
+        - WIFI_SDIO_D2
+        - WIFI_SDIO_D3
+      matching_networks_present:
+        - WIFI_BT_RF0
+        - WIFI_BT_RF1
+      layout_requirements:
+        module_placement:
+          - Follow Murata reference layout for module land pattern, ground, antenna feed, keepout, and matching
+            network.
+          - Place the shielded SMT module on the top RF island with a short return-stitch path to both antenna matching
+            networks.
+          - Keep PCIe/SDIO and Bluetooth UART away from cellular RF feeds and display bias switching nodes.
+        antenna_plan:
+          wifi_bt_rf0: side_plastic_or_top_edge_antenna_after_vendor_review
+          wifi_bt_rf1: spatially_separated_side_or_bottom_edge_antenna_after_vendor_review
+          matching_required:
+            - WIFI_BT_RF0
+            - WIFI_BT_RF1
+          conducted_access_required_before_matching_network: true
+          minimum_isolation_targets:
+            wifi_to_cellular_main_db: supplier_defined_before_release
+            wifi0_to_wifi1_db: supplier_defined_for_2x2_mimo
+        coexistence_requirements:
+          - Define WLAN/BT PTA or coexistence pins if required by the CYW55573 firmware package.
+          - Run 2.4 GHz Wi-Fi, Bluetooth, cellular transmit, GNSS, display bias, and charger coexistence tests.
+          - Confirm country-code/regulatory-domain handling before Android Wi-Fi framework release.
+        firmware_and_regulatory:
+          - Murata/CYW55573 firmware, NVRAM/CLM blobs, and license terms must be captured before EVT1 software image
+            release.
+          - Modular approval scope must be reviewed against the final antenna gains and enclosure plastics.
+    required_contracts: *id002
+    block_netlist_nets:
+      - BT_EN
+      - BT_UART_CTS_N
+      - BT_UART_RTS_N
+      - BT_UART_RX
+      - BT_UART_TX
+      - GND
+      - IO_1V8
+      - RF_VBAT
+      - WIFI_BT_RF0
+      - WIFI_BT_RF1
+      - WIFI_EN
+      - WIFI_HOST_WAKE
+      - WIFI_IRQ
+      - WIFI_PCIE_RX_N
+      - WIFI_PCIE_RX_P
+      - WIFI_PCIE_TX_N
+      - WIFI_PCIE_TX_P
+      - WIFI_SDIO_CLK
+      - WIFI_SDIO_CMD
+      - WIFI_SDIO_D0
+      - WIFI_SDIO_D1
+      - WIFI_SDIO_D2
+      - WIFI_SDIO_D3
+    wifi_evidence_gate_status: blocked_no_host_controller_or_module
+    wifi_release_blockers:
+      wifi_sdio_host:
+        artifact_class: SDIO host
+        status: blocked
+        evidence_required:
+          - SDIO host RTL or integrated platform IP with 4-bit SDR25 timing.
+          - Enabled DTS node with real clocks, pinctrl, regulator, GPIO, and IRQ phandles.
+          - SDIO function enumeration transcript from real hardware or a bound platform model.
+      wifi_bt_uart:
+        artifact_class: BT UART
+        status: blocked
+        evidence_required:
+          - UART controller implementation with RTS/CTS flow control.
+          - Bluetooth HCI UART pin assignment and pinctrl state.
+          - hci_uart_bcm attach transcript with selected module firmware.
+      wifi_firmware_provenance:
+        artifact_class: firmware provenance
+        status: blocked
+        evidence_required:
+          - brcmfmac SDIO firmware binary source, license, and sha256.
+          - Board-specific NVRAM source, license, and sha256.
+          - clm_blob or equivalent regulatory data source and sha256.
+          - Bluetooth patchram source, license, and sha256.
+          - Kernel log showing firmware load results.
+      wifi_android_framework_logs:
+        artifact_class: Android framework logs
+        status: blocked
+        evidence_required:
+          - Android WiFi/Bluetooth feature XML and package list from a successful vendorimage.
+          - supplicant or hostapd startup log.
+          - dumpsys wifi output.
+          - Bluetooth HCI service log.
+          - CTS/VTS subset results for declared WiFi/Bluetooth features.
+      wifi_regulatory_evidence:
+        artifact_class: regulatory evidence
+        status: blocked
+        evidence_required:
+          - Selected module certification scope for exact antenna and enclosure.
+          - Antenna gain and country-code handling record.
+          - SAR exposure assessment.
+          - FCC, CE, IC, or target-market filing plan.
+      wifi_board_power_sequencing:
+        artifact_class: board/power sequencing
+        status: blocked
+        evidence_required:
+          - Selected board rail map for module VBAT and VDDIO.
+          - 1.8 V IO bank proof or level-shifter design for SDIO, UART, GPIO, IRQ, and wake signals.
+          - WIFI_EN and WIFI_RST_N default-low measurement before firmware handoff.
+          - Scope capture for rail ramp, reset release, SDIO clock start, and UART RTS/CTS behavior.
+          - Wake/IRQ polarity and suspend/resume measurement on the selected module.
+    release_forbidden_claims:
+      - wifi_ready
+      - bluetooth_ready
+      - regulatory_ready
+rf_feed_and_antenna_integration:
+  required_rf_nets:
+    - CELL_GNSS_RF
+    - CELL_RF_DIV
+    - CELL_RF_MAIN
+    - WIFI_BT_RF0
+    - WIFI_BT_RF1
+  antenna_feed_count: 5
+  antenna_feed_plan:
+    - net: CELL_RF_MAIN
+      owner_module: cellular_5g_redcap
+      role: cellular_main
+      candidate_zone: top_antenna
+      keepout_ref: top_antenna_keepout
+      matching_network_required: true
+      conducted_access_required: true
+      factory_calibration_required: true
+      status: blocked_no_vendor_antenna_review_or_vna_data
+    - net: CELL_RF_DIV
+      owner_module: cellular_5g_redcap
+      role: cellular_diversity
+      candidate_zone: bottom_antenna
+      keepout_ref: bottom_antenna_keepout
+      matching_network_required: true
+      conducted_access_required: true
+      factory_calibration_required: true
+      status: blocked_no_vendor_antenna_review_or_vna_data
+    - net: CELL_GNSS_RF
+      owner_module: cellular_5g_redcap
+      role: gnss_optional
+      candidate_zone: top_antenna_or_dedicated_lna
+      keepout_ref: top_antenna_keepout
+      matching_network_required: true
+      conducted_access_required: true
+      factory_calibration_required: true
+      status: blocked_no_gnss_desense_or_lna_review
+    - net: WIFI_BT_RF0
+      owner_module: wifi6e_bluetooth_5p3
+      role: wifi_bt_chain0
+      candidate_zone: wifi_bt_side_antenna
+      keepout_ref: wifi_bt_side_antenna_keepout
+      matching_network_required: true
+      conducted_access_required: true
+      factory_calibration_required: true
+      status: blocked_no_murata_reference_layout_or_vna_data
+    - net: WIFI_BT_RF1
+      owner_module: wifi6e_bluetooth_5p3
+      role: wifi_bt_chain1
+      candidate_zone: bottom_antenna
+      keepout_ref: bottom_antenna_keepout
+      matching_network_required: true
+      conducted_access_required: true
+      factory_calibration_required: true
+      status: blocked_no_murata_reference_layout_or_vna_data
+  matching_networks_required:
+    - net: CELL_RF_MAIN
+      near: U_CELL
+    - net: CELL_RF_DIV
+      near: U_CELL
+    - net: CELL_GNSS_RF
+      near: U_CELL_or_GNSS_LNA
+    - net: WIFI_BT_RF0
+      near: U_WIFI_BT
+    - net: WIFI_BT_RF1
+      near: U_WIFI_BT
+  conducted_access_required_for_every_feed: true
+  factory_probe_rf_domain_covers_all_radio_feeds: true
+  factory_rf_outputs_required:
+    - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+    - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+    - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+    - board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+    - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+    - board/kicad/e1-phone/production/reports/rf/sar-prescan-summary.pdf
+    - board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+firmware_regulatory_and_factory_evidence:
+  cellular_required:
+    - selected_region_sku_band_matrix
+    - quectel_android_or_linux_driver_package
+    - sim_esim_profile_and_emergency_call_policy
+    - carrier_ptcrb_gcf_plan
+    - sar_and_rf_exposure_pre_scan
+  wifi_bt_required:
+    - selected_quectel_region_sku_band_matrix_and_modular_grant_scope
+    - cellular_usb_or_pcie_driver_stack_and_android_radio_interface_layer_plan
+    - sim_esim_profile_provisioning_and_emergency_call_policy
+    - murata_cyw55573_firmware_nvram_clm_regulatory_database_and_license_pack
+    - country_code_and_antenna_gain_limits_for_wifi_bluetooth_modular_approval
+    - coexistence_configuration_for_cellular_wifi_bluetooth_gnss_display_and_charger
+  wifi_evidence_gate_blockers:
+    - wifi_sdio_host
+    - wifi_bt_uart
+    - wifi_firmware_provenance
+    - wifi_android_framework_logs
+    - wifi_regulatory_evidence
+    - wifi_board_power_sequencing
+  aosp_probe_scripts:
+    - sw/aosp-device/peripherals/probe-cellular-5g.sh
+    - sw/aosp-device/peripherals/probe-wifi.sh
+    - sw/aosp-device/peripherals/probe-bluetooth.sh
+power_thermal_and_enclosure_dependencies:
+  power_sequence_status: blocked_requires_routed_schematic_first_power_and_scope_logs
+  component_height_step_status: blocked_requires_supplier_step_models_approved_routed_board_step_physical_clearance_and_signoff
+  routed_release_status: blocked_routed_release_requires_real_route_and_supplier_outputs
+  requires_rf_vbat_burst_profile: true
+  requires_final_enclosure_plastic_metal_stack_review: true
+  requires_radio_shield_and_antenna_step_models: true
+supplier_data_dependencies:
+  supplier_source_status: public_sources_verified_not_supplier_approved_or_procurement_ready
+  supplier_to_kicad_status: blocked_supplier_evidence_not_ready_for_kicad_capture
+  required_supplier_outputs:
+    - cellular_region_sku_band_matrix
+    - cellular_hardware_design_guide_reference_layout_lga_pad_map
+    - cellular_step_model_shield_height_and_rf_feed_rules
+    - murata_type_2ea_footprint_dxf_hardware_app_note_radio_law_note
+    - murata_firmware_nvram_clm_license_pack
+    - antenna_vendor_review_for_final_enclosure
+required_release_outputs:
+  - board/kicad/e1-phone/production/reports/radio-module-integration.yaml
+  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  - board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  - board/kicad/e1-phone/production/reports/rf/sar-prescan-summary.pdf
+  - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+  - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  - package/wifi/evidence/firmware
+  - package/wifi/evidence/regulatory
+  - package/cellular/evidence/carrier-certification
+cross_checks:
+  selected_modules_are_off_the_shelf_module_boundaries: true
+  cellular_contracts_present_in_block_netlist: true
+  wifi_bluetooth_contracts_present_in_block_netlist: true
+  rf_feed_plan_matches_rf_connectivity_required_nets: true
+  wifi_evidence_gates_remain_fail_closed: true
+  component_height_step_blocks_radio_supplier_models: true
+  routed_release_blocks_rf_and_regulatory_outputs: true
+release_blockers:
+  - cellular module region SKU, band matrix, hardware design guide, STEP, RF feed rules, and SIM/eSIM path are missing
+  - Wi-Fi/Bluetooth footprint, firmware/NVRAM/CLM, license, country-code, and modular approval scope are missing
+  - routed RF feed geometry, matching networks, via fences, shields, and conducted access are missing
+  - VNA, conducted RF, coexistence, GNSS desense, SAR pre-scan, and carrier/PTCRB/GCF evidence are missing
+  - factory RF calibration procedure, test limits, and first-article transcript are missing
+  - Android/Linux cellular, Wi-Fi, and Bluetooth bring-up logs are missing
+forbidden_claims:
+  - radio_modules_integrated
+  - cellular_ready
+  - wifi_ready
+  - bluetooth_ready
+  - gnss_ready
+  - rf_ready
+  - carrier_ready
+  - sar_ready
+  - regulatory_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

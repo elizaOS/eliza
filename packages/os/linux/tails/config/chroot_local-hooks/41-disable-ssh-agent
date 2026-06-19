@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+# Disable ssh-agent: GNOME Keyring is more user-friendly
+
+echo "Disabling ssh-agent"
+
+OPTS_FILE='/etc/X11/Xsession.options'
+
+[ -f "${OPTS_FILE}" ] || exit 11
+
+sed -i'' 's,^use-ssh-agent,#use-ssh-agent,' "${OPTS_FILE}"

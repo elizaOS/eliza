@@ -1,0 +1,50 @@
+---
+title: Agent App
+description: "Wrap an agent in a desktop, mobile, or dashboard product."
+---
+
+An **Agent-Based App** is a distribution shell built on top of an Eliza agent. The bundled elizaOS app — desktop (Electrobun), mobile (Capacitor + iOS/Android), and the web dashboard — is the canonical example. You can clone it, white-label it, ship your own.
+
+## What you build
+
+A signed, distributable product (`.dmg` / `.exe` / `.AppImage` / TestFlight / Play Store / hosted web) that boots a local agent, walks the user through onboarding, and exposes the agent's connectors, capabilities, and chat through a polished UI.
+
+## How it fits together
+
+```
+Agent (core runtime + character + plugins)
+   ↓ embedded in
+Agent App (desktop / mobile / web shell, onboarding, settings, chat UI)
+   ↓ optionally registered with
+Eliza Cloud (appId, deployments, billing, domains)
+```
+
+## Track contents
+
+<CardGroup cols={2}>
+  <Card title="Desktop" icon="desktop" href="/tracks/agent-app/desktop">
+    Electrobun shell, native modules, packaging, code signing.
+  </Card>
+  <Card title="Mobile" icon="mobile" href="/tracks/agent-app/mobile">
+    iOS and Android via Capacitor. Bun-backed local agent.
+  </Card>
+  <Card title="Dashboard" icon="grid" href="/tracks/agent-app/dashboard">
+    The web dashboard that ships in every app shell.
+  </Card>
+  <Card title="Deploy" icon="upload" href="/tracks/agent-app/deploy">
+    Register the app with Eliza Cloud, bind a domain, ship to users.
+  </Card>
+</CardGroup>
+
+## Where this comes from
+
+- Desktop / web shell: [`packages/app/`](https://github.com/elizaOS/eliza/tree/develop/packages/app)
+- Shared UI + onboarding: [`packages/app-core/`](https://github.com/elizaOS/eliza/tree/develop/packages/app-core)
+- Cloud app registration: [`packages/cloud-api/`](https://github.com/elizaOS/eliza/tree/develop/packages/cloud-api)
+
+## See also
+
+- [Apps overview](/apps/overview)
+- [Desktop development](/apps/desktop-local-development)
+- [Mobile build guide](/apps/mobile/build-guide)
+- [Dashboard](/apps/dashboard)

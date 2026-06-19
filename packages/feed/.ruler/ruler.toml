@@ -1,0 +1,51 @@
+# Ruler configuration (single source of truth: `.ruler/**`)
+
+# Default agents to run when `--agents` is not specified (case-insensitive substring match)
+default_agents = ["claude", "codex", "cursor", "antigravity", "gemini-cli", "opencode"]
+
+# --- Global MCP configuration ---
+[mcp]
+enabled = true
+merge_strategy = "merge"
+
+# Minimal local MCP servers (optional; requires Node + npx)
+[mcp_servers.git]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
+
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+# Context7 (Upstash) — optional, but recommended for up-to-date library docs.
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"
+
+# --- Agent configurations ---
+# CLAUDE.md is the single source of truth for all agents.
+# Other agent configs point to CLAUDE.md rather than duplicating rules.
+
+[agents.claude]
+enabled = true
+output_path = "CLAUDE.md"
+
+[agents.codex]
+enabled = true
+output_path = "AGENTS.md"
+output_path_config = ".codex/config.toml"
+
+[agents.cursor]
+enabled = true
+output_path = ".cursorrules"
+
+[agents.antigravity]
+enabled = true
+output_path = ".agent/rules/ruler.md"
+
+[agents.gemini-cli]
+enabled = true
+output_path = "AGENTS.md"
+
+[agents.opencode]
+enabled = true
+output_path = "AGENTS.md"

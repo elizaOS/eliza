@@ -1,0 +1,82 @@
+[
+  {
+    "year": 2015,
+    "gdp_growth_pct": -0.34,
+    "inflation_rate_pct": 2.82,
+    "unemployment_rate_pct": 5.6,
+    "interest_rate_pct": 3.78,
+    "policy_uncertainty_index": 82.2
+  },
+  {
+    "year": 2016,
+    "gdp_growth_pct": 4.48,
+    "inflation_rate_pct": 1.6,
+    "unemployment_rate_pct": 3.17,
+    "interest_rate_pct": 2.67,
+    "policy_uncertainty_index": 118.1
+  },
+  {
+    "year": 2017,
+    "gdp_growth_pct": 3.22,
+    "inflation_rate_pct": 2.24,
+    "unemployment_rate_pct": 5.87,
+    "interest_rate_pct": 1.7,
+    "policy_uncertainty_index": 108.4
+  },
+  {
+    "year": 2018,
+    "gdp_growth_pct": 3.1,
+    "inflation_rate_pct": 1.2,
+    "unemployment_rate_pct": 5.82,
+    "interest_rate_pct": 0.48,
+    "policy_uncertainty_index": 85.5
+  },
+  {
+    "year": 2019,
+    "gdp_growth_pct": 2.77,
+    "inflation_rate_pct": 2.66,
+    "unemployment_rate_pct": 5.43,
+    "interest_rate_pct": 3.5,
+    "policy_uncertainty_index": 120.9
+  },
+  {
+    "year": 2020,
+    "gdp_growth_pct": 4.03,
+    "inflation_rate_pct": 2.57,
+    "unemployment_rate_pct": 3.44,
+    "interest_rate_pct": 4.84,
+    "policy_uncertainty_index": 111.9
+  },
+  {
+    "year": 2021,
+    "gdp_growth_pct": 2.25,
+    "inflation_rate_pct": 2.31,
+    "unemployment_rate_pct": 5.52,
+    "interest_rate_pct": 3.94,
+    "policy_uncertainty_index": 62.5
+  },
+  {
+    "year": 2022,
+    "gdp_growth_pct": 2.35,
+    "inflation_rate_pct": 1.84,
+    "unemployment_rate_pct": 10.08,
+    "interest_rate_pct": 4.0,
+    "policy_uncertainty_index": 104.9
+  },
+  {
+    "year": 2023,
+    "gdp_growth_pct": 0.6,
+    "inflation_rate_pct": 2.39,
+    "unemployment_rate_pct": 5.5,
+    "interest_rate_pct": 4.11,
+    "policy_uncertainty_index": 104.6
+  },
+  {
+    "year": 2024,
+    "gdp_growth_pct": 1.88,
+    "inflation_rate_pct": 3.5,
+    "unemployment_rate_pct": 5.71,
+    "interest_rate_pct": 3.53,
+    "policy_uncertainty_index": 98.6
+  }
+]

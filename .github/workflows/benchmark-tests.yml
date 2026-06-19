@@ -1,0 +1,62 @@
+name: Benchmark Bridge Tests
+
+concurrency:
+  group: benchmark-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/app-core/src/benchmark/**"
+      - ".github/workflows/benchmark-tests.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/app-core/src/benchmark/**"
+      - ".github/workflows/benchmark-tests.yml"
+  workflow_dispatch:
+
+env:
+  NODE_NO_WARNINGS: "1"
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: benchmark-tests
+            command: bunx vitest run --config packages/app-core/vitest.config.ts packages/app-core/src/benchmark/*.test.ts --passWithNoTests
+          - lane: benchmark-lint
+            command: bunx @biomejs/biome check packages/app-core/src/benchmark
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+          check-latest: false
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "canary"
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+
+      - name: Run ${{ matrix.lane }} lane
+        env:
+          CI: "true"
+        run: ${{ matrix.command }}

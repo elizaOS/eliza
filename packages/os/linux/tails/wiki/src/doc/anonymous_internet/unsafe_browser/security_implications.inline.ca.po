@@ -1,0 +1,61 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2025-06-11 14:58+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"The *Unsafe Browser* does not use Tor. The websites that you visit can see "
+"your real IP address."
+msgstr ""
+"El *Navegador Insegur* no utilitza Tor. Els llocs web que visiteu poden "
+"veure la vostra adreça IP real."
+
+#. type: Plain text
+msgid "This is why we recommend that you:"
+msgstr "Per això us recomanem que:"
+
+#. type: Bullet: '- '
+msgid ""
+"Only use the *Unsafe Browser* to sign in to a network using a captive portal "
+"or [[browse trusted web pages on the local network|advanced_topics/"
+"lan#browser]]."
+msgstr ""
+"Utilitzeu només el *Navegador Insegur* per iniciar la sessió a una xarxa "
+"mitjançant un portal captiu o per [[navegar per pàgines web de confiança a "
+"la xarxa local|advanced_topics/lan#browser]]."
+
+#. type: Bullet: '- '
+msgid "Close the *Unsafe Browser* after signing in to the network."
+msgstr "Tanqueu el *Navegador Insegur* després d'iniciar la sessió a la xarxa."
+
+#, no-wrap
+#~ msgid ""
+#~ "  <p>It is particularly important that you close the <i>Unsafe Browser</i> if\n"
+#~ "  you use accessibility features like the Screen Keyboard or the Screen Reader.\n"
+#~ "  If you keep the <i>Unsafe Browser</i> open, a very advanced network attacker\n"
+#~ "  might use it to deanonymize you.</p>\n"
+#~ msgstr ""
+#~ "  <p>És especialment important que tanqueu el <i>Navegador Insegur</i> si\n"
+#~ "  utilitzeu funcions d'accessibilitat com el teclat de pantalla o el lector de pantalla.\n"
+#~ "  Si manteniu el <i>Navegador Insegur</i> obert, un atacant de xarxa molt avançat\n"
+#~ "  podria utilitzar-lo per desanonimitzar-vos.</p>\n"

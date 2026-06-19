@@ -1,0 +1,22 @@
+{
+  "isaac_sim": {
+    "version": "4.5.0",
+    "min_version": "4.2.0",
+    "install_docs": "https://docs.isaacsim.omniverse.nvidia.com/"
+  },
+  "isaaclab": {
+    "version": "2.1.0",
+    "git_url": "https://github.com/isaac-sim/IsaacLab.git",
+    "git_ref": "v2.1.0"
+  },
+  "gpu_requirements": {
+    "min_vram_gb": 8,
+    "recommended_vram_gb": 16,
+    "cuda_min": "12.1",
+    "driver_min": "535"
+  },
+  "python": {
+    "min_version": "3.10",
+    "max_version": "3.11"
+  }
+}

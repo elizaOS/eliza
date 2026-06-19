@@ -1,0 +1,53 @@
+[[!meta title="Tails report for June 2024"]]
+[[!meta date="Wed, 10 Jul 2024 16:43:44 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- The European summer is here, and with it are summer holidays! We took some
+  time off for some quality rest and recreation. How we vacationed: music
+  festivals in Milan, hiking in the Alps, the Sierra Nevada, and the High Sierra,
+  and biking in the Pyrenees. We do love the mountains! ⛰️
+
+- But before we went away for some quality R&R, we continued making it easier
+  for Tails users to recover from the most common failure modes without
+  requiring technical expertise: 
+
+  - We finalized a design to detect corruption of the _Persistent Storage_ on a
+    Tails USB stick, reporting it to users, and repairing it. 
+
+  - We made incremental progress towards warning Tails users when they have low
+    available memory. We don't detect all the problematic cases yet but, when we
+    do, GNOME gently notifies the user. 
+
+- We have been working on a [new user journey for
+  backups](https://gitlab.tails.boum.org/tails/tails/-/issues/20194#note_236586).
+  In June, we finished designing all interfaces and solicited feedback. The
+  proposal was well received by 2 volunteers who have contributed code related to
+  backups. 
+
+Releases
+========
+
+📢 [[We released Tails 6.4|news/version_6.4]]! 
+
+In Tails 6.4, we brought:
+    
+- even stronger cryptographic protections, as Tails now stores a random seed on
+  the Tails USB stick
+- fixes to make unlocking the _Persisted Storage_ smoother
+- more reliable installation of Additional Software, due to a switch to using
+  HTTPS addresses instead of onion addresses for the Debian and Tails APT
+  repositories
+
+To know more, check out the Tails 6.4 [[release notes|news/version_6.4]] and
+the [changelog](https://gitlab.tails.boum.org/tails/tails/-/blob/master/debian/changelog).
+
+Metrics
+=======
+
+Tails was started more than 775,377 times this month. That's a daily average of
+over 25,946 boots.

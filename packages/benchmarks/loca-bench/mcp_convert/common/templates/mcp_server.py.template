@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""
+{MCP_NAME} MCP Server
+
+A Model Context Protocol server that provides {API_DESCRIPTION} functionality
+using local JSON/CSV files as the database instead of connecting to external APIs.
+
+Uses the common MCP framework for simplified development.
+"""
+
+import asyncio
+import sys
+import os
+
+# Add project root to path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
+from common.mcp.server_base import BaseMCPServer
+from common.mcp.tools import ToolRegistry, create_simple_tool_schema
+from .database_utils import {DATABASE_CLASS_NAME}
+
+
+class {SERVER_CLASS_NAME}(BaseMCPServer):
+    """{MCP_NAME} MCP server implementation"""
+    
+    def __init__(self):
+        super().__init__("{MCP_SERVER_ID}", "1.0.0")
+        self.db = {DATABASE_CLASS_NAME}()
+        self.tool_registry = ToolRegistry()
+        self.setup_tools()
+    
+    def setup_tools(self):
+        """Setup all {MCP_NAME} tools"""
+        
+        # Example Tool 1: Basic data retrieval
+        self.tool_registry.register(
+            name="get_{DATA_TYPE}",
+            description="Get {DATA_TYPE} data from local database.",
+            input_schema=create_simple_tool_schema(
+                required_params=["id"],
+                optional_params={
+                    "format": {
+                        "type": "string",
+                        "description": "Output format (json, csv, etc.)",
+                        "default": "json"
+                    }
+                }
+            ),
+            handler=self.get_{DATA_TYPE}
+        )
+        
+        # Add more tools here following the same pattern
+        # self.tool_registry.register(...)
+    
+    async def list_tools(self):
+        """List all available tools"""
+        return self.tool_registry.get_tool_definitions()
+    
+    async def call_tool(self, name: str, arguments: dict):
+        """Handle tool calls using the registry"""
+        return await self.tool_registry.call_tool(name, arguments)
+    
+    # Tool handlers
+    async def get_{DATA_TYPE}(self, args: dict):
+        """Get {DATA_TYPE} data"""
+        item_id = args["id"]
+        format_type = args.get("format", "json")
+        
+        data = self.db.get_{DATA_TYPE}(item_id)
+        if not data:
+            return self.create_text_response(f"No {DATA_TYPE} data found for ID: {item_id}")
+        
+        return self.create_json_response(data)
+    
+    # Add more tool handlers here
+
+
+async def main():
+    """Main entry point"""
+    server = {SERVER_CLASS_NAME}()
+    await server.run()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

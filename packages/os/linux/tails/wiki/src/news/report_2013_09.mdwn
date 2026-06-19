@@ -1,0 +1,139 @@
+[[!meta title="Tails report for September, 2013"]]
+[[!meta date="Mon, 07 Oct 2013 12:01:24 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Releases
+========
+
+Tails 0.20.1 [[was released|news/version_0.20.1]] on September 19.
+
+Tails 0.21 has been
+scheduled
+for October 29.
+
+Tails 0.22 has been
+scheduled
+for December 11.
+
+Metrics
+=======
+
+- Tails has been started more than 174 269 times in September.
+  This makes a boot every 15 seconds on average.
+
+- 14 166 downloads of the OpenPGP signature of Tails ISO.
+
+Code
+====
+
+- We had a low-hanging fruits
+  session
+  on Saturday 21.
+- A launcher for KeePassX
+  was added to the desktop ([[!tails_ticket 6290]]).
+- It is now possible to install Tails on SD cards using
+  SDIO hardware
+  ([[!tails_ticket 6324]]).
+- Some issues were fixed for the migration to
+  Tails Wheezy.
+- The problem that prevented
+  some packages to be
+  installable on Tails was solved.
+- Tails USB Installer:
+  - Rebranded
+    to *Tails Installer*.
+  - Display a confirmation
+    dialog
+    before installing Tails ([[!tails_ticket 6293]]).
+  - Display device vendor, model and
+    size
+    ([[!tails_ticket 6292]]).
+  - Any `.iso` file present in the Tails partition will be skipped during
+    cloning ([[!tails_ticket 5300]]). Many thanks to Sina for providing a patch!
+- The information icon when a bad passphrase is entered in Tails Greeter
+  was replaced by a proper warning
+  icon
+  ([[!tails_ticket 5332]]).
+  Many thanks to Andres Gomez for providing a patch!
+- The persistent volume
+  is now properly umounted
+  on shutdown ([[!tails_ticket 6228]]).
+- Tails now ships Tor
+  0.2.4.
+- Tails now
+  includes Linux 3.10.11.
+- A minor fix to our automated test suite
+  was proposed.
+
+Documentation and website
+=========================
+
+- A branch to improve the
+  bug reporting workflow was
+  submitted.
+- A plan to restructure the documentation for Mac was drafted
+  ([[!tails_ticket 6319]]).
+- A mockup for the new [[contribute
+  section|contribute]] has been designed
+  incrementally.
+- The documentation on
+  cold boot attacks and ways to shutdown has been rewritten
+  ([[!tails_ticket 6008]]).
+  Many thanks to mercedes508 for working on that!
+- The documentation
+  explaining why Tor is slow has been refined
+  ([[!tails_ticket 5641]]).
+
+Infrastructure
+==============
+
+- You can download nightly builds of different branches of Tails on
+  <http://nightly.tails.boum.org/>.
+  - They have more unique names than previous builds.
+  - They are signed with OpenPGP key 0xD83A438B2F916605
+    ([[!tails_ticket 6193]]).
+- We have started looking what UEFI hardware we need to do research
+  and tests in this area. We would not mind a 13-inch 2011 MacBook Pro
+  (MacBookPro8,1) or similar. We would not refuse a recent netbook
+  that boots off UEFI, either.
+
+On-going discussions
+====================
+
+- Removing the clock applet from the
+  desktop
+  or [[!tails_ticket 6284 desc="Displaying localized timezone"]]
+- [[!tails_ticket 5797 desc="Creating a logo for Tails"]], with new
+  proposals by
+  Carmie
+  and Kevin C.
+  Krinke
+- Emptying Trash on persistent
+  volume
+
+Funding
+=======
+
+- We finally signed our short-term contract with sponsor Bravo. That
+  will keep us very busy until the end of the year, and will address
+  some of the stumbling blocks on the road towards Tails 1.0!
+
+- We paid the first bounty of our bounty program. This one automated the
+  migration of our ikiwiki tickets to
+  Redmine.
+
+Press and testimonials
+======================
+
+* 2013-09-12: In Inside the Effort to Crowdfund NSA-Proof Email and
+  Chat
+  Services
+  by DJ Pangburn, Riseup birds write (about the TBB) "Combined with the
+  TAILS project, which Riseup supports, there is nothing better."
+
+* 2013-09-05: In [How to remain secure against NSA
+  surveillance](http://www.theguardian.com/world/2013/sep/05/nsa-how-to-remain-secure-surveillance),
+  Bruce Schneier wrote: "Since I started working with Snowden's
+  documents, I have been using GPG, Silent Circle, Tails, OTR,
+  TrueCrypt, BleachBit, and a few other things I'm not going to
+  write about."

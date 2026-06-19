@@ -1,0 +1,3 @@
+library(e1_fixture) {
+  delay_model : table_lookup;
+}

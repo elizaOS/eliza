@@ -1,0 +1,71 @@
+#!/usr/bin/python3 -I
+
+import argparse
+import logging
+import os
+import sys
+from pathlib import Path
+
+import xattr
+
+log = logging.getLogger()
+
+
+def remove_xattrs(file: Path, prefix: str) -> None:
+    attrs = xattr.xattr(file, options=xattr.XATTR_NOFOLLOW)
+    for attr_name in attrs:
+        if attr_name.startswith(prefix):
+            log.debug("Removing xattr %s on %s", attr_name, file)
+            # It's safe to delete elements from the dictionary `attrs` even
+            # though we are iterating over it, because xattr.__iter__ returns
+            # a new list which is separate from the list that is modified
+            # by xattr.__delitem__.
+            del attrs[attr_name]
+
+
+def remove_xattrs_recursively(directory: Path, prefix: str) -> None:
+    def raise_on_error(os_error: OSError):
+        raise os_error
+
+    remove_xattrs(file=directory, prefix=prefix)
+
+    for dirpath, dirnames, filenames in os.walk(directory, onerror=raise_on_error):
+        for name in dirnames + filenames:
+            remove_xattrs(file=Path(dirpath, name), prefix=prefix)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--directory",
+        type=Path,
+        action="store",
+        required=True,
+        help="Directory where to remove xattrs from",
+    )
+    parser.add_argument(
+        "--prefix",
+        type=str,
+        action="store",
+        required=True,
+        help="Remove xattrs whose name starts with this prefix",
+    )
+    parser.add_argument("--debug", action="store_true")
+    args = parser.parse_args()
+
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    log_format = "%(asctime)-15s %(levelname)s %(message)s"
+    logging.basicConfig(level=log_level, format=log_format)
+
+    if args.prefix.startswith("trusted.") and os.geteuid() != 0:
+        log.fatal(
+            "This script must be run as root in order to remove xattrs "
+            "in the 'trusted' namespace",
+        )
+        sys.exit(1)
+
+    remove_xattrs_recursively(directory=args.directory, prefix=args.prefix)
+
+
+if __name__ == "__main__":
+    main()

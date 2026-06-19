@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/**/*.{ts,tsx}", "vitest.config.ts"],
+  "project": ["src/**/*.{ts,tsx}", "vitest.config.ts"],
+  "ignoreDependencies": [
+    "@elizaos/core",
+    "@elizaos/plugin-browser",
+    "@elizaos/shared",
+    "jsdom",
+    "node-llama-cpp",
+    "three",
+    "vite",
+    "vite/client",
+    "ws",
+    "zod"
+  ],
+  "ignore": ["dist/**", "storybook-static/**"],
+  "vitest": false
+}

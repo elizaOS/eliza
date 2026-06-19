@@ -1,0 +1,21 @@
+#!/usr/bin/ruby
+#
+# Usage:
+#
+#    apt-snapshots-serials-load-json SERIALS_JSON
+#
+# Example:
+#
+#    apt-snapshots-serials-load-json \
+#      '{"torproject":"2017120803","debian":"2017120903"}'
+
+require 'json'
+
+usage_str = 'Usage: apt-snapshots-serials-load-json SERIALS_JSON'
+(ARGV.size == 1) || raise(usage_str)
+serials = JSON.parse(ARGV[0])
+
+serials.each do |origin, serial|
+  (serial != 'latest') || raise('Only numeric serials are supported')
+  puts "#{origin}: #{serial}\n"
+end

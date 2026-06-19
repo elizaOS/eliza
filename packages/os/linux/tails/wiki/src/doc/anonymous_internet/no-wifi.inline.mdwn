@@ -1,0 +1,80 @@
+[[!meta robots="noindex"]]
+
+If your Wi-Fi interface is not working, you might experience the following:
+
+* There is no **Wi-Fi** menu in the system menu:
+
+  [[!img no-wifi/system_without_wifi.png class="screenshot" alt=""]]
+
+* There is a **Wi-Fi** menu in the system menu, but connecting to a Wi-Fi
+  network fails.
+
+* The interface is disabled because MAC address anonymization failed:
+
+  [[!img no-wifi/mac_spoofing_disabled.png class="screenshot" alt="Notification: MAC address anonymization failed"]]
+
+  In this case, you can disable MAC address anonymization in the Welcome
+  Screen. Doing so has security implications, so read carefully our
+  [[documentation about MAC address
+  anonymization|first_steps/welcome_screen/mac_spoofing]].
+
+* The following notification appears:
+
+      Activation of network connection failed
+
+To connect to the Internet, you can try to:
+
+* Use an Ethernet cable instead of Wi-Fi if possible. Wired interfaces work
+  much more reliably than Wi-Fi in Tails.
+
+* Share the Wi-Fi or mobile data connection of your phone using a
+  USB cable. Sharing a connection this way is called *USB tethering*.
+
+  [[!img no-wifi/usb-tethering.png link="no" class="svg" alt=""]]
+
+  See instructions for:
+
+  * [iPhones or iPads](https://support.apple.com/en-us/HT204023)
+
+    Only sharing mobile data works on iPhones and iPads; sharing Wi-Fi does not work.
+
+  * [Android](https://support.google.com/android/answer/9059108?hl=en)
+
+  <div class="caution">
+  <p>Tails cannot hide the information that identifies your phone on the local
+  network. If you connect your phone to a:</p>
+  <ul>
+  <li><p>Wi-Fi network: the network can see the MAC
+  address of your phone.</p>
+  <p>This has security implications that we explain in our [[documentation on
+  MAC address anonymization|first_steps/welcome_screen/mac_spoofing]].  Some
+  phones have a feature to hide the MAC address of the phone.</p></li>
+  <li><p>Mobile data network: the network is able to know the identifier of
+  your SIM card (IMSI) and the serial number of your phone (IMEI).</p></li>
+  </ul>
+  </div>
+
+<a id="wifi-adapters"></a>
+
+* Buy a USB Wi-Fi adapter that works in Tails:
+
+  - Panda Wireless Ultra ($25)
+
+    [[Buy on Amazon|https://www.amazon.com/d/B00762YNMG]]
+
+  - ThinkPenguin TPE-N150USB ($64)
+
+    [[Buy on ThinkPenguin|https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb]]
+
+<!--
+
+  <table>
+  <tr><th>Vendor</th><th>Model</th><th>Size</th><th>Speed</th><th>Price</th><th>Buy offline</th><th>Buy online</th></tr>
+  <tr><td>Panda Wireless</td><td>Ultra</td><td>Nano</td><td>150 Mbit/s</td><td>$25</td><td>No</td><td><a href="https://www.amazon.com/d/B00762YNMG">Amazon</a></td></tr> 148f:5370
+  <tr><td>ThinkPenguin</td><td>TPE-N150USB</td><td>Nano</td><td>150 Mbit/s</td><td>$64</td><td>No</td><td><a href="https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb">ThinkPenguin</a></td></tr> ????:????
+  </table>
+
+-->
+
+* Check in our list of [[known Wi-Fi issues|support/known_issues#problematic-wifi]]
+  if there is a workaround to get your Wi-Fi interface to work in Tails.

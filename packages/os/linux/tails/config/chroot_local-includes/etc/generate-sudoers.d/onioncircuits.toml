@@ -1,0 +1,6 @@
+[[commands]]
+executable = "/usr/local/bin/onioncircuits"
+allowed_user = "amnesia"
+[commands.env_keep]
+value = ["ENVFILE"]
+reason = "FIXME: next time you have the problem space in mind, e.g. if you edit this file, explain why this is needed *and* safe. For details, see tails/tails#20863."

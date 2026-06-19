@@ -1,0 +1,21 @@
+# Build artifacts produced by verify/Makefile.
+verify/*.o
+verify/gen_fixture
+verify/vulkan_verify
+verify/metal_verify
+verify/cpu_simd_bench
+verify/*.spv
+vulkan/*.spv
+
+# Generated local reports and hardware/run evidence.
+reports/
+verify/bench_results/
+verify/hardware-results/
+verify/reports/
+verify/android-vulkan-smoke/
+verify/asr_bench_real_recorded_*.json
+verify/vision-smoke-*-rpath-*.json
+
+# whisper.cpp build outputs from build-whisper.mjs (host + cross-compile).
+build-whisper/
+build-whisper-*/

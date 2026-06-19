@@ -1,0 +1,63 @@
+{
+  "name": "@elizaos/capacitor-network-policy",
+  "version": "2.0.3-beta.14",
+  "description": "Android + iOS native shims surfacing the `metered` / `isExpensive` hints used by the voice-model auto-updater (R5-versioning §4).",
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "bun": "./src/index.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "ios/Sources/",
+    "ios/Package.swift",
+    "ElizaosCapacitorNetworkPolicy.podspec",
+    "dist/",
+    "dist"
+  ],
+  "scripts": {
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-network-policy -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run",
+    "prepublishOnly": "bun run build",
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
+  },
+  "license": "MIT",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    },
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "rollup": "^4.60.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "elizaos": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Web fallback returns metered=null / isExpensive=false so callers downgrade to ask.",
+      "node": "Server-side consumers read the bridge through the runtime probe; no Capacitor required."
+    }
+  }
+}

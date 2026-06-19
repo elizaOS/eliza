@@ -1,0 +1,427 @@
+verification_scope: pd_package_si_pi_board_manufacturing
+status: release_blocked
+claim_allowed: false
+phone_claim_allowed: false
+release_claim_allowed: false
+tapeout_claim_allowed: false
+board_fabrication_claim_allowed: false
+silicon_claim_allowed: false
+production_readiness_claim_allowed: false
+false_claim_flags:
+  claim_allowed: false
+  phone_claim_allowed: false
+  release_claim_allowed: false
+  tapeout_claim_allowed: false
+  board_fabrication_claim_allowed: false
+  silicon_claim_allowed: false
+  production_readiness_claim_allowed: false
+owner: product_physical_closure
+last_updated: 2026-05-17
+evidence_root: docs/manufacturing/evidence
+release_gates:
+  pd_release:
+    blocked: true
+    evidence_manifest: pd/signoff/manifest.yaml
+    reason: Routed PD closure is missing real signoff artifacts from one selected run.
+    unblock_requires:
+      - Archive one complete routed run with all PD signoff artifacts required by pd/signoff/manifest.yaml.
+      - Clear or explicitly waive every DRC, LVS, antenna, STA, congestion, and density/fill issue.
+  tapeout_release:
+    blocked: true
+    evidence_manifest: pd/signoff/manifest.yaml
+    reason: Tapeout evidence is missing foundry padframe, package, SI/PI, and PDN/current-budget releases.
+    unblock_requires:
+      - Replace placeholder package and padframe contracts with vendor/foundry release artifacts.
+      - Archive package electrical models, SI/PI reports, and PDN/current-budget reports.
+  board_fabrication_release:
+    blocked: true
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    reason: Board fabrication evidence is missing a real KiCad project, vendor footprint, DFM review, and first-article limits.
+    unblock_requires:
+      - Release a KiCad project generated from package-vendor data with ERC, DRC, plot, BOM, and position outputs.
+      - Archive board SI/PI, current-limit, assembly DFM, and first-article smoke-test evidence.
+      - Pass scripts/check_kicad_artifacts.py and scripts/check_manufacturing_artifacts.py without release blockers.
+required_gap_categories:
+  - physical_design
+  - package
+  - padframe
+  - signal_integrity
+  - power_integrity
+  - pdn_current_budget
+  - thermal
+  - board_fabrication
+  - manufacturing_test
+  - modem_cellular
+  - wireless_gnss_nfc
+  - camera_isp
+  - audio
+  - sensors_input_haptics
+  - usb_storage_update
+  - battery_pmic_thermal
+  - secure_boot_key_debug
+  - privacy_data
+  - regulatory_compliance
+  - factory_test
+gaps:
+  - id: routed_pd_signoff
+    category: physical_design
+    release_gate: pd_release
+    status: missing_external_tool_run
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_pd_signoff.py
+    required_evidence:
+      - Final routed GDS or OASIS from the selected PDK flow.
+      - Final DEF, gate netlist, and SDC for the same run.
+      - Clean or waived DRC, LVS, antenna, and STA reports from one run directory.
+
+  - id: selected_pdk_corner_record
+    category: physical_design
+    release_gate: pd_release
+    status: missing_external_tool_run
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_pd_signoff.py
+    required_evidence:
+      - Selected PDK, standard-cell library, RC corner, voltage, temperature, and timing mode record.
+      - Tool version record for OpenLane/OpenROAD, Magic/KLayout, Netgen, and STA.
+
+  - id: foundry_io_padframe_release
+    category: padframe
+    release_gate: tapeout_release
+    status: missing_vendor_artifact
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_padframe_contract.py
+    required_evidence:
+      - Foundry IO, power, ground, corner, and ESD cell list.
+      - Padframe-inclusive DRC and LVS reports.
+      - Approved pad-ring placement and power-domain strategy.
+
+  - id: package_vendor_drawing
+    category: package
+    release_gate: tapeout_release
+    status: missing_vendor_artifact
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    required_evidence:
+      - Package vendor drawing with dimensions, tolerances, exposed pad data, and pin-1 orientation.
+      - Package material and assembly constraints.
+
+  - id: bond_diagram_release
+    category: package
+    release_gate: tapeout_release
+    status: missing_vendor_artifact
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_package_cross_probe.py
+    required_evidence:
+      - Bond diagram mapping die pads to package pins.
+      - Cross-probe report proving package, padframe, RTL, and board net names agree.
+
+  - id: package_electrical_model
+    category: signal_integrity
+    release_gate: tapeout_release
+    status: missing_vendor_artifact
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_pd_signoff.py
+    required_evidence:
+      - IBIS, SPICE, S-parameter, or package parasitic model for clock, reset, debug, GPIO, and supplies.
+      - Model provenance and version record.
+
+  - id: board_stackup_and_return_paths
+    category: signal_integrity
+    release_gate: board_fabrication_release
+    status: missing_board_artifact
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_kicad_artifacts.py
+    required_evidence:
+      - Released PCB stackup with impedance targets (50Ω single-ended on L1/L4 over 0.2mm dielectric to L2 GND).
+      - Return-path and reference-plane review for clock, reset, debug, GPIO, IRQ, and JTAG nets.
+
+  - id: board_signal_integrity_report
+    category: signal_integrity
+    release_gate: board_fabrication_release
+    status: missing_board_artifact
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_pd_signoff.py
+    required_evidence:
+      - Board-level SI simulation or review for clock, reset, debug nibble, GPIO, IRQ, and JTAG nets.
+      - Accepted overshoot, undershoot, ringing, setup, and hold margins.
+
+  - id: power_integrity_report
+    category: power_integrity
+    release_gate: board_fabrication_release
+    status: missing_board_artifact
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_pd_signoff.py
+    required_evidence:
+      - Rail impedance and decoupling review for VDDCORE (TPS62150, 0.8V) and VDDIO (TLV74033/TLV74018, 3.3V/1.8V).
+      - Return-current and plane-continuity review.
+
+  - id: post_route_power_budget
+    category: pdn_current_budget
+    release_gate: tapeout_release
+    status: missing_external_tool_run
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_pd_signoff.py
+    required_evidence:
+      - Post-route power report for selected workloads and clocks.
+      - VDDCORE and VDDIO static, dynamic, peak, and margin current budget.
+
+  - id: ir_drop_em_report
+    category: pdn_current_budget
+    release_gate: tapeout_release
+    status: missing_external_tool_run
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_pd_signoff.py
+    required_evidence:
+      - IR-drop and EM reports for selected corners (TT 25°C, SS 125°C).
+      - Waivers or redesign actions for any exceeded limits (IR drop >5% VDD, EM >foundry limit).
+
+  - id: board_current_limit_plan
+    category: pdn_current_budget
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    required_evidence:
+      - Bench supply current limits for first article bring-up.
+      - Fuse, regulator, and thermal current-limit review for VDDCORE and VDDIO.
+  - id: package_board_thermal_review
+    category: thermal
+    release_gate: board_fabrication_release
+    status: missing_board_artifact
+    evidence_manifest: pd/signoff/manifest.yaml
+    local_check: scripts/check_pd_signoff.py
+    required_evidence:
+      - Package and board thermal model or review tied to post-route power, regulator loss, ambient, and enclosure assumptions.
+      - Thermal stop conditions, measurement points, and first-article temperature limits for VDDCORE/VDDIO bring-up.
+  - id: board_footprint_release
+    category: board_fabrication
+    release_gate: board_fabrication_release
+    status: missing_board_artifact
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_package_cross_probe.py
+    required_evidence:
+      - PCB symbol and footprint generated from the package vendor drawing (not placeholder QFN64 assumptions).
+      - Pin-1, courtyard, paste, solder mask, and assembly-layer review.
+
+  - id: kicad_project_release
+    category: board_fabrication
+    release_gate: board_fabrication_release
+    status: missing_board_artifact
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_kicad_artifacts.py
+    required_evidence:
+      - KiCad project, schematic (5-page hierarchy), and PCB files checked in under board/kicad/e1-demo.
+      - Headless ERC, DRC, plot, Gerber, drill, BOM, and position export transcripts.
+
+  - id: footprint_source_checksum
+    category: board_fabrication
+    release_gate: board_fabrication_release
+    status: missing_vendor_artifact
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    required_evidence:
+      - SHA-256 checksum or immutable revision for the package-vendor drawing used to generate the footprint.
+      - Cross-probe report proving package pin numbers, KiCad symbol pins, footprint pads, and board nets match.
+
+  - id: assembly_dfm_review
+    category: board_fabrication
+    release_gate: board_fabrication_release
+    status: missing_vendor_artifact
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    required_evidence:
+      - Assembly-house DFM review for QFN package, 0.15mm stencil, SAC305 reflow (peak 245°C), inspection (AOI + X-ray), and rework constraints.
+      - Fabrication notes approved by the board vendor (IPC Class 2, ENIG surface finish).
+
+  - id: first_article_smoke_limits
+    category: manufacturing_test
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    required_evidence:
+      - First-article power-on limits, expected rail currents, and stop conditions.
+      - Oscillator, reset, debug, JTAG, IRQ, and GPIO smoke-test record.
+  - id: cellular_modem_stack
+    category: modem_cellular
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: Modem, baseband, RF front-end, SIM/eSIM, carrier provisioning, and cellular data/voice/SMS are not available as product functions.
+    required_evidence:
+      - Selected modem module or chipset integration record with host interface, power, reset, wake, SIM or eSIM, antenna, RF, firmware, and driver ownership.
+      - Hardware transcript proving modem enumeration, firmware identity, SIM or eSIM presence, network registration, data session, voice or IMS disposition, SMS disposition, suspend wake, and recovery from reset.
+      - Carrier, PTCRB, GCF, SAR, RF exposure, and regional certification evidence or explicit product-scope waiver.
+    future_cli_evidence_commands:
+      - mmcli -L
+      - mmcli -m <modem-index> --output-keyvalue
+      - nmcli dev status
+      - journalctl -b -u ModemManager --no-pager
+  - id: wifi_bluetooth_gnss_nfc_stack
+    category: wireless_gnss_nfc
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: Wi-Fi, Bluetooth, GNSS, and NFC product functions are not available; current Wi-Fi files are reference scaffolds only.
+    required_evidence:
+      - Selected module or chip records for Wi-Fi, Bluetooth, GNSS, and NFC with host buses, firmware, antennas, coexistence, clocks, resets, and regulatory boundaries.
+      - Hardware transcripts proving Wi-Fi scan/association/IP throughput, Bluetooth controller attach/pairing/audio or data role, GNSS fix or simulator lock, and NFC tag or reader operation.
+      - RF coexistence, antenna, country-code, MAC address provisioning, and module or board certification evidence.
+    future_cli_evidence_commands:
+      - iw dev
+      - nmcli device wifi list
+      - bluetoothctl show
+      - gpspipe -w -n 20
+      - nfc-list
+  - id: camera_isp_stack
+    category: camera_isp
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: Camera sensors, CSI, ISP, tuning, autofocus, flash, and Android camera HAL are not available as product functions.
+    required_evidence:
+      - Selected image sensor, lens, actuator, flash, CSI lane mapping, clock, reset, regulator, and ISP ownership records.
+      - Hardware transcripts proving media graph enumeration, frame capture, exposure/gain control, color pipeline, still capture, video capture, and failure recovery.
+      - Tuning package, calibration records, privacy indicator policy, and Android camera HAL or Linux V4L2 compliance evidence.
+    future_cli_evidence_commands:
+      - media-ctl -p
+      - v4l2-ctl --list-devices
+      - v4l2-ctl --stream-mmap --stream-count=60 --stream-to=/tmp/camera.raw
+      - dumpsys media.camera
+  - id: audio_codec_dsp_stack
+    category: audio
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: Audio codec, speakers, microphones, headset, DSP, routing, and Android audio HAL are not available as product functions.
+    required_evidence:
+      - Selected codec, amplifier, microphone, speaker, headset, I2S or PDM or SLIMbus, clocks, power, jack detect, and acoustic path records.
+      - Hardware transcripts proving playback, capture, loopback, volume, mute, routing, underrun handling, suspend resume, and thermal or current limits.
+      - Acoustic, safety, privacy, and Android audio policy or ALSA UCM evidence.
+    future_cli_evidence_commands:
+      - aplay -l
+      - arecord -l
+      - speaker-test -D <device> -c 2 -t wav
+      - arecord -D <device> -f S16_LE -r 48000 -d 5 /tmp/mic.wav
+      - dumpsys audio
+  - id: sensors_input_haptics_stack
+    category: sensors_input_haptics
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: Touch, buttons, IMU, proximity, ambient light, magnetometer, fingerprint, and haptics are not available as product functions.
+    required_evidence:
+      - Selected sensors, touch controller, buttons, haptic driver, interrupt lines, regulators, calibration storage, and mechanical stack records.
+      - Hardware transcripts proving input event delivery, sensor enumeration, sampling, calibration, suspend wake, haptic actuation, and error recovery.
+      - Android sensor HAL, input device, factory calibration, ESD, and environmental validation evidence.
+    future_cli_evidence_commands:
+      - getevent -lp
+      - evtest
+      - iio_info
+      - dumpsys sensorservice
+      - cmd vibrator vibrate 250
+  - id: usb_storage_update_stack
+    category: usb_storage_update
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: USB-C, removable or managed storage, fastboot/ADB, update, rollback, and recovery product flows are not available as product functions.
+    required_evidence:
+      - Selected USB PHY or controller, Type-C/PD policy, ESD, storage device, partition map, boot slots, recovery, and update ownership records.
+      - Hardware transcripts proving USB enumeration, role switching, charging/data policy, storage read/write integrity, ADB or fastboot access, OTA install, rollback, and recovery boot.
+      - Filesystem wear, data retention, factory reset, secure wipe, and update failure-mode evidence.
+    future_cli_evidence_commands:
+      - lsusb -t
+      - adb devices -l
+      - fastboot devices
+      - lsblk -o NAME,SIZE,MODEL,SERIAL
+      - update_engine_client --status
+  - id: battery_pmic_thermal_stack
+    category: battery_pmic_thermal
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: Battery, charger, PMIC, fuel gauge, regulators, thermal sensors, throttling, and safety policy are not available as product functions.
+    required_evidence:
+      - Selected cell, pack protection, charger, PMIC, fuel gauge, regulators, thermistors, thermal zones, and enclosure thermal path records.
+      - Hardware transcripts proving charge/discharge, fuel-gauge reporting, regulator telemetry, thermal readings, throttling, shutdown, suspend resume, and fault handling.
+      - Battery safety, shipping, charger compliance, thermal chamber, and current-limit evidence.
+    future_cli_evidence_commands:
+      - upower -d
+      - cat /sys/class/power_supply/*/uevent
+      - cat /sys/class/thermal/thermal_zone*/temp
+      - dmesg | grep -Ei 'pmic|charger|thermal|battery|fuel'
+  - id: secure_boot_key_debug_policy
+    category: secure_boot_key_debug
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: Secure boot, key provisioning, verified boot, debug lock, anti-rollback, and attestation are not available as product evidence.
+    required_evidence:
+      - Root-of-trust, ROM, bootloader, key ladder, fuse or OTP, debug-auth, rollback index, recovery, and manufacturing provisioning records.
+      - Hardware transcripts proving signed boot acceptance, unsigned image rejection, rollback rejection, debug lock/unlock policy, key erasure handling, and attestation or device identity behavior.
+      - Threat model, key ceremony, HSM or signer logs, manufacturing station controls, and vulnerability-response evidence.
+    future_cli_evidence_commands:
+      - fastboot getvar all
+      - adb shell getprop ro.boot.verifiedbootstate
+      - adb shell getprop ro.boot.flash.locked
+      - adb shell dmesg | grep -Ei 'secure|verified|avb|rollback|fuse|jtag'
+  - id: regulatory_compliance_release
+    category: regulatory_compliance
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: FCC, CE, UKCA, ISED, PTCRB/GCF, SAR, safety, RoHS/REACH, WEEE, and privacy/compliance release are not available as product evidence.
+    required_evidence:
+      - Product compliance matrix naming target countries, radio technologies, safety standards, EMC standards, environmental obligations, labels, manuals, and responsible owners.
+      - Accredited lab reports or module grant reuse analysis for EMC, radio, SAR/RF exposure, safety, battery, charger, and regional markings.
+      - Software compliance evidence for licenses, privacy permissions, telemetry defaults, accessibility scope, emergency/regulatory behavior, and post-market obligations.
+    future_cli_evidence_commands:
+      - cat /proc/device-tree/model
+      - getprop ro.product.model
+      - getprop ro.boot.hardware.sku
+      - scripts/check_real_world_gates.py
+  - id: privacy_data_protection_policy
+    category: privacy_data
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: Privacy permissions, telemetry defaults, data retention, secure wipe, sensor indicators, and user data protection are not available as product evidence.
+    required_evidence:
+      - Privacy threat model and data-flow inventory for camera, microphone, location, radios, sensors, identifiers, crash logs, update logs, and factory logs.
+      - Hardware or target-OS transcripts proving permission enforcement, privacy indicators, telemetry opt-in or disabled defaults, identifier reset behavior, secure wipe, factory reset, and log redaction.
+      - Regional privacy, retention, deletion, export, consent, child-safety if applicable, and post-market incident-response evidence.
+    future_cli_evidence_commands:
+      - adb shell appops get --uid
+      - adb shell cmd sensor_privacy list
+      - adb shell dumpsys permission
+      - adb shell dumpsys dropbox
+      - adb shell settings get secure advertising_id
+  - id: factory_test_provisioning_flow
+    category: factory_test
+    release_gate: board_fabrication_release
+    status: draft_local_plan
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    local_check: scripts/check_real_world_gates.py
+    claim_boundary: Factory test, calibration, serialization, key provisioning, radio calibration, and outgoing quality release are not available as product evidence.
+    required_evidence:
+      - Factory station plan covering board ID, serial, MAC addresses, IMEI if cellular, keys, calibration blobs, radio test mode, labels, rework, and audit logs.
+      - Hardware transcripts proving automated test coverage for power rails, boot, storage, USB, display, touch, camera, audio, radios, sensors, haptics, thermal sensors, secure boot state, and debug lock state.
+      - Yield, retest, quarantine, calibration-limit, label, traceability, and manufacturing data-retention evidence.
+    future_cli_evidence_commands:
+      - adb shell getprop ro.serialno
+      - adb shell getprop ro.boot.verifiedbootstate
+      - adb shell getprop ro.boot.flash.locked
+      - adb shell dumpsys battery
+      - adb shell cmd wifi status
+      - scripts/check_real_world_gates.py

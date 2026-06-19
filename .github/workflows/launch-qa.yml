@@ -1,0 +1,50 @@
+name: Launch QA
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "launchdocs/**"
+      - "packages/docs/docs/launchdocs/**"
+      - "packages/docs/launchdocs/**"
+      - "scripts/launch-qa/**"
+      - "package.json"
+      - ".github/workflows/launch-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launch-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24"
+  NODE_NO_WARNINGS: "1"
+
+jobs:
+  launch-qa:
+    name: Launch Docs And Static Gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run launch QA quick gate
+        run: bun run test:launch-qa

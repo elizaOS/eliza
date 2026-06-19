@@ -1,0 +1,488 @@
+work_order: e1_demo_physical_product_closure
+status: release_blocked
+source_gap_manifest: docs/manufacturing/real-world-verification-gaps.yaml
+evidence_root: docs/manufacturing/evidence
+claim_policy:
+  claim_allowed: false
+  release_claim_allowed: false
+  tapeout_claim_allowed: false
+  board_fabrication_claim_allowed: false
+  physical_signoff_claim_allowed: false
+  lab_validation_claim_allowed: false
+  false_claim_flags:
+    claim_allowed: false
+    release_claim_allowed: false
+    tapeout_claim_allowed: false
+    board_fabrication_claim_allowed: false
+    physical_signoff_claim_allowed: false
+    lab_validation_claim_allowed: false
+  allowed_local_claims:
+    - Machine checks prove only manifest structure, path hygiene, and release-gate consistency.
+    - Draft package, padframe, board, SI/PI, PDN, and first-article plans are planning artifacts only.
+  forbidden_claims_until_evidence_archived:
+    - Tapeout ready.
+    - Board fabrication ready.
+    - Foundry padframe approved.
+    - Package vendor approved.
+    - Lab verified.
+    - SI/PI closed.
+    - IR-drop or EM closed.
+    - Thermal closed.
+    - Privacy compliant.
+    - Factory test ready.
+global_acceptance:
+  - Every item below maps to a release-blocking gap in docs/manufacturing/real-world-verification-gaps.yaml.
+  - Evidence must be archived under docs/manufacturing/evidence, pd/signoff, pd/openlane/runs, runs, board/reports, package/models, or board/kicad/e1-demo as appropriate.
+  - Vendor, foundry, board-house, assembly-house, or lab evidence must identify source, revision, date, owner, and input artifact checksum.
+  - Local generated evidence must include command transcript, tool versions, input revisions, and pass/fail criteria.
+  - Any non-clean report must have a signed waiver naming the violated rule, measured value, limit, affected net or shape, risk, owner, and expiry condition.
+repo_local_release_checks:
+  - command: make product-check
+    purpose: Scaffold consistency only; must not be used as fabrication or tapeout evidence.
+  - command: make product-release-check
+    purpose: Fail-closed aggregate release gate for PD, package, KiCad, FPGA, and manufacturing evidence.
+  - command: scripts/check_package_cross_probe.py --release
+    purpose: Prove package pinout, padframe contract, RTL ports, and board nets agree before board/package release.
+  - command: scripts/check_kicad_artifacts.py --release
+    purpose: Require KiCad project, schematic, PCB, ERC, DRC, Gerber, drill, BOM, and position evidence.
+  - command: scripts/check_fpga_release.py --release
+    purpose: Require concrete FPGA pins, IO constraints, bitstream, and timing/pack reports.
+  - command: scripts/check_openlane_run_preflight.py --release
+    purpose: Require pinned OpenLane/OpenROAD runner availability and at least one configured run directory before signoff review.
+  - command: python3 scripts/run_product_evidence_command.py --list
+    purpose: Enumerate opt-in local FPGA and KiCad evidence commands declared by artifact manifests.
+  - command: python3 scripts/check_manufacturing_artifacts.py --resolved-manifest build/reports/manufacturing-resolved-artifacts.json
+    purpose: Emit deterministic local artifact inventory with sha256 hashes for review handoff.
+evidence_capture_work_orders:
+  - id: fpga_bitstream_evidence_capture
+    gate: board_fabrication_release
+    owner: fpga_closure
+    local_command_ids:
+      - e1_demo_fpga_bitstream_evidence.bitstream_release.synth
+      - e1_demo_fpga_bitstream_evidence.bitstream_release.place_route
+      - e1_demo_fpga_bitstream_evidence.bitstream_release.pack
+    manifest: board/fpga/artifact-manifest.yaml
+    output_roots:
+      - board/fpga/build/
+      - board/fpga/reports/
+    blocked_until:
+      - FPGA board revision, pin assignments, timing, route, pack logs, and tool versions are archived.
+  - id: kicad_fab_package_capture
+    gate: board_fabrication_release
+    owner: board_closure
+    local_command_ids:
+      - e1_demo_kicad_board_evidence.kicad_cli_outputs.erc
+      - e1_demo_kicad_board_evidence.kicad_cli_outputs.drc
+      - e1_demo_kicad_board_evidence.kicad_cli_outputs.gerbers
+      - e1_demo_kicad_board_evidence.kicad_cli_outputs.drill
+      - e1_demo_kicad_board_evidence.kicad_cli_outputs.bom
+      - e1_demo_kicad_board_evidence.kicad_cli_outputs.position
+    manifest: board/kicad/e1-demo/artifact-manifest.yaml
+    output_roots:
+      - board/reports/fab/
+    blocked_until:
+      - Vendor-derived footprint, board stackup, DFM, SI/PI, current-limit, and first-article evidence are archived.
+  - id: package_vendor_review_capture
+    gate: tapeout_release
+    owner: package_closure
+    local_command_ids: []
+    manifest: package/artifact-manifest.yaml
+    output_roots:
+      - docs/manufacturing/evidence/package/
+      - package/vendor/
+    blocked_until:
+      - Package vendor drawing, land-pattern data, bond diagram, material constraints, and source checksums are archived.
+  - id: si_pi_current_thermal_capture
+    gate: board_fabrication_release
+    owner: si_pi_closure
+    local_command_ids: []
+    manifest: docs/manufacturing/artifact-manifest.yaml
+    output_roots:
+      - board/reports/si/
+      - board/reports/pi/
+      - board/reports/thermal/
+      - docs/manufacturing/evidence/current/
+      - docs/manufacturing/evidence/thermal/
+    blocked_until:
+      - Board SI, PI, rail current, and thermal reviews are archived with source revisions, checksums, and dispositions.
+items:
+  - id: routed_pd_signoff
+    gate: pd_release
+    owner: pd_closure
+    artifact_names:
+      - selected-run-final-gds-or-oasis
+      - selected-run-final-def
+      - selected-run-gate-netlist
+      - selected-run-final-sdc
+      - selected-run-clean-or-waived-drc-lvs-antenna-sta
+    evidence_paths:
+      - pd/openlane/runs/<selected-run>/
+      - runs/<selected-run>/
+      - pd/signoff/waivers/
+    acceptance_criteria:
+      - scripts/check_pd_signoff.py passes without release-gate blockers after gates are intentionally unblocked with approvals.
+      - scripts/check_openlane_run_preflight.py --release passes before the selected run is reviewed.
+      - One selected run directory contains every artifact class listed in pd/signoff/manifest.yaml.
+      - DRC, LVS, antenna, STA, congestion, utilization, and density/fill reports are clean or have explicit waivers.
+  - id: selected_pdk_corner_record
+    gate: pd_release
+    owner: pd_closure
+    artifact_names:
+      - selected-pdk-corner-manifest
+      - pd-tool-version-record
+      - selected-library-rc-voltage-temperature-record
+    evidence_paths:
+      - pd/openlane/runs/<selected-run>/reports/signoff/
+      - pd/openlane/runs/<selected-run>/tool_versions.txt
+      - runs/<selected-run>/reports/signoff/
+    acceptance_criteria:
+      - Corner manifest names PDK, standard-cell library, RC corner, voltage, temperature, timing mode, and selected SDC.
+      - Tool-version record passes review for OpenLane/OpenROAD, Magic or KLayout, Netgen, STA, Yosys, Python, and PDK revision.
+  - id: foundry_io_padframe_release
+    gate: tapeout_release
+    owner: padframe_closure
+    artifact_names:
+      - foundry-io-cell-list
+      - esd-and-corner-cell-release
+      - padframe-inclusive-drc-lvs
+      - pad-ring-power-domain-approval
+    evidence_paths:
+      - pd/signoff/padframe/
+      - docs/manufacturing/evidence/padframe/
+    acceptance_criteria:
+      - Evidence names actual foundry IO, power, ground, corner, and ESD cells; placeholder package/padframe files are not sufficient.
+      - Padframe-inclusive DRC and LVS are clean or waived against the selected foundry rule deck.
+      - Power-domain strategy maps IO and core rails to package pins and ESD clamps.
+  - id: package_vendor_drawing
+    gate: tapeout_release
+    owner: package_closure
+    artifact_names:
+      - package-vendor-drawing
+      - package-material-and-assembly-constraints
+      - package-source-checksum
+    evidence_paths:
+      - docs/manufacturing/evidence/package/
+    acceptance_criteria:
+      - Drawing includes dimensions, tolerances, exposed pad data if any, pin-1 orientation, land-pattern inputs, and revision.
+      - Material, MSL, reflow, coplanarity, inspection, and handling constraints pass package review.
+  - id: bond_diagram_release
+    gate: tapeout_release
+    owner: package_closure
+    artifact_names:
+      - die-pad-to-package-pin-bond-diagram
+      - package-padframe-rtl-board-cross-probe
+    evidence_paths:
+      - docs/manufacturing/evidence/package/
+      - pd/signoff/padframe/
+    acceptance_criteria:
+      - Bond diagram maps every die pad to package pin or no-connect disposition.
+      - scripts/check_package_cross_probe.py --release passes against released package, RTL, padframe, and board files.
+      - Cross-probe passes by proving package pin, padframe signal, RTL port, and board net names agree.
+  - id: package_electrical_model
+    gate: tapeout_release
+    owner: si_pi_closure
+    artifact_names:
+      - package-ibis-spice-sparameter-or-parasitic-model
+      - package-model-provenance
+    evidence_paths:
+      - package/models/
+      - pd/signoff/si-pi/package-models/
+    acceptance_criteria:
+      - Model covers clock, reset, debug, GPIO, IRQ, JTAG, VDDCORE, VDDIO, and ground return paths.
+      - Model provenance passes review by naming vendor or extraction flow, revision, package drawing input, and checksum.
+  - id: board_stackup_and_return_paths
+    gate: board_fabrication_release
+    owner: board_closure
+    artifact_names:
+      - released-pcb-stackup
+      - return-path-reference-plane-review
+    evidence_paths:
+      - board/reports/si/
+      - docs/manufacturing/evidence/board/
+    acceptance_criteria:
+      - Stackup names layer order, dielectric thicknesses, copper weights, impedance targets, and board-house capability.
+      - Return-path review passes for clock, reset, debug, GPIO, IRQ, and JTAG nets across every layer transition.
+  - id: board_signal_integrity_report
+    gate: board_fabrication_release
+    owner: si_pi_closure
+    artifact_names:
+      - board-si-report
+      - accepted-signal-margin-table
+    evidence_paths:
+      - board/reports/si/
+      - pd/signoff/si-pi/board-si/
+    acceptance_criteria:
+      - Report covers overshoot, undershoot, ringing, setup, hold, and termination assumptions for clock, reset, debug, GPIO, IRQ, and JTAG.
+      - Margins pass against the selected package model, stackup, and receiver thresholds.
+  - id: power_integrity_report
+    gate: board_fabrication_release
+    owner: si_pi_closure
+    artifact_names:
+      - board-pi-report
+      - rail-impedance-and-decoupling-review
+      - return-current-plane-continuity-review
+    evidence_paths:
+      - board/reports/pi/
+      - pd/signoff/si-pi/power-integrity/
+    acceptance_criteria:
+      - VDDCORE and VDDIO rail impedance targets, decoupling network, placement, loop inductance, and return-current paths are reviewed.
+      - PI report input currents pass traceability to post-route power or measured silicon data, not placeholder estimates.
+  - id: post_route_power_budget
+    gate: tapeout_release
+    owner: pdn_closure
+    artifact_names:
+      - post-route-power-report
+      - vddcore-vddio-current-budget
+      - workload-clock-provenance
+    evidence_paths:
+      - pd/reports/power/
+      - pd/openlane/runs/<selected-run>/reports/power/
+      - runs/<selected-run>/reports/power/
+    acceptance_criteria:
+      - Current budget lists static, dynamic, peak, margin, voltage, temperature, frequency, activity source, and workload for VDDCORE and VDDIO.
+      - Board regulator and first-article current limits pass review against this budget with explicit margin.
+  - id: ir_drop_em_report
+    gate: tapeout_release
+    owner: pdn_closure
+    artifact_names:
+      - ir-drop-report
+      - electromigration-report
+      - pdn-waiver-or-redesign-log
+    evidence_paths:
+      - pd/reports/pdn/
+      - pd/openlane/runs/<selected-run>/reports/pdn/
+      - runs/<selected-run>/reports/pdn/
+    acceptance_criteria:
+      - IR-drop and EM reports cover selected signoff corners, rail definitions, switching activity, limits, and worst offenders.
+      - Any exceeded limit has a waiver or redesign action with owner and closure condition.
+  - id: board_current_limit_plan
+    gate: board_fabrication_release
+    owner: lab_closure
+    artifact_names:
+      - first-article-bench-current-limits
+      - fuse-regulator-thermal-current-limit-review
+    evidence_paths:
+      - docs/board/kicad/e1-demo/fab-notes.md
+      - docs/manufacturing/e1-demo-checklist.md
+      - docs/manufacturing/evidence/lab/
+    acceptance_criteria:
+      - Bring-up plan names initial, idle, active, and hard-stop current limits for VDDCORE and VDDIO.
+      - Limits pass traceability to regulator, fuse, thermal, and post-route power evidence before fabrication release.
+  - id: package_board_thermal_review
+    gate: board_fabrication_release
+    owner: thermal_closure
+    artifact_names:
+      - package-board-thermal-model-or-review
+      - first-article-temperature-limits
+      - thermal-measurement-plan
+    evidence_paths:
+      - docs/manufacturing/evidence/thermal/
+      - board/reports/thermal/
+      - pd/signoff/thermal/
+    acceptance_criteria:
+      - Review passes only when power inputs trace to post-route power or measured silicon, plus regulator loss, ambient, airflow, enclosure, and package assumptions.
+      - Temperature limits, sensor or thermocouple locations, soak time, and thermal stop conditions are cleanly recorded or waived before fabrication release.
+  - id: board_footprint_release
+    gate: board_fabrication_release
+    owner: board_closure
+    artifact_names:
+      - vendor-derived-symbol
+      - vendor-derived-footprint
+      - pin1-courtyard-paste-mask-assembly-review
+    evidence_paths:
+      - board/kicad/e1-demo/
+      - docs/manufacturing/evidence/board/
+    acceptance_criteria:
+      - Symbol and footprint are generated or reviewed from the package vendor drawing, not from placeholder QFN assumptions.
+      - scripts/check_package_cross_probe.py --release passes with KiCad schematic/PCB nets present.
+      - Pin-1, courtyard, paste, solder mask, assembly, inspection, and rework layers pass review.
+  - id: kicad_project_release
+    gate: board_fabrication_release
+    owner: board_closure
+    artifact_names:
+      - released-kicad-schematic
+      - released-kicad-pcb
+      - erc-drc-gerber-drill-bom-position-transcripts
+    evidence_paths:
+      - board/kicad/e1-demo/
+      - board/reports/fab/
+    acceptance_criteria:
+      - KiCad project includes schematic, PCB, libraries, netlist, and fabrication outputs from the selected footprint.
+      - scripts/check_kicad_artifacts.py --release passes.
+      - Headless ERC, DRC, plot, Gerber, drill, BOM, and position export transcripts are archived and clean or waived.
+  - id: footprint_source_checksum
+    gate: board_fabrication_release
+    owner: board_closure
+    artifact_names:
+      - package-drawing-source-checksum
+      - package-symbol-footprint-board-cross-probe
+    evidence_paths:
+      - docs/manufacturing/evidence/package/
+      - board/reports/fab/
+    acceptance_criteria:
+      - Checksum or immutable revision identifies the package drawing used for symbol and footprint generation.
+      - Cross-probe passes by proving package pin numbers, KiCad symbol pins, footprint pads, and board nets match.
+  - id: assembly_dfm_review
+    gate: board_fabrication_release
+    owner: manufacturing_closure
+    artifact_names:
+      - assembly-house-dfm-review
+      - fabrication-notes-approval
+    evidence_paths:
+      - docs/manufacturing/evidence/dfm/
+      - docs/board/kicad/e1-demo/fab-notes.md
+    acceptance_criteria:
+      - Assembly review covers package, stencil, paste aperture, reflow, inspection, rework, panelization, and component availability constraints.
+      - Board vendor approval passes only when it names fabrication notes revision and any accepted exceptions; the DFM result is clean or waived.
+  - id: first_article_smoke_limits
+    gate: board_fabrication_release
+    owner: lab_closure
+    artifact_names:
+      - first-article-power-on-procedure
+      - first-article-smoke-test-record
+      - stop-condition-log
+    evidence_paths:
+      - docs/manufacturing/evidence/lab/
+      - fw/board-smoke/tests/
+    acceptance_criteria:
+      - Procedure names rail ramp order, voltage tolerance, current limits, thermal stop points, and instrument configuration.
+      - Smoke record passes only with oscillator, reset, debug, JTAG, IRQ, GPIO, and serial or logic-analyzer evidence with pass/fail result.
+  - id: cellular_modem_stack
+    gate: board_fabrication_release
+    owner: modem_cellular_closure
+    artifact_names:
+      - selected-modem-integration-record
+      - modem-hardware-enumeration-and-registration-transcript
+      - carrier-and-cellular-certification-record
+    evidence_paths:
+      - docs/manufacturing/evidence/modem/
+      - docs/manufacturing/evidence/regulatory/
+    acceptance_criteria:
+      - Evidence passes only when it proves modem enumeration, firmware identity, SIM or eSIM presence, registration, data session, voice or IMS disposition, SMS disposition, reset recovery, and suspend wake on hardware.
+      - No cellular claim is allowed from source files, stubs, or module shortlist records alone.
+  - id: wifi_bluetooth_gnss_nfc_stack
+    gate: board_fabrication_release
+    owner: wireless_closure
+    artifact_names:
+      - selected-wireless-gnss-nfc-module-records
+      - wifi-bluetooth-gnss-nfc-hardware-transcripts
+      - rf-coexistence-and-certification-record
+    evidence_paths:
+      - docs/manufacturing/evidence/wireless/
+      - docs/manufacturing/evidence/regulatory/
+      - package/wifi/
+    acceptance_criteria:
+      - Evidence passes only when it proves Wi-Fi association and throughput, Bluetooth attach and role behavior, GNSS fix or simulator lock, NFC tag or reader operation, and coexistence on hardware.
+      - Reference Wi-Fi package manifests remain scaffold-only until selected BOM, padframe, board, driver, and RF evidence are archived.
+  - id: camera_isp_stack
+    gate: board_fabrication_release
+    owner: camera_closure
+    artifact_names:
+      - selected-camera-sensor-lens-isp-record
+      - camera-media-graph-and-capture-transcripts
+      - camera-tuning-and-hal-compliance-record
+    evidence_paths:
+      - docs/manufacturing/evidence/camera/
+    acceptance_criteria:
+      - Evidence passes only when it proves media graph enumeration, frame capture, exposure/gain control, still capture, video capture, and recovery on hardware.
+      - Camera and ISP claims remain blocked until sensor, lens, actuator, CSI, power, tuning, and HAL evidence are archived.
+  - id: audio_codec_dsp_stack
+    gate: board_fabrication_release
+    owner: audio_closure
+    artifact_names:
+      - selected-audio-codec-and-acoustic-path-record
+      - playback-capture-loopback-routing-transcripts
+      - audio-policy-acoustic-and-safety-record
+    evidence_paths:
+      - docs/manufacturing/evidence/audio/
+    acceptance_criteria:
+      - Evidence passes only when it proves playback, capture, loopback, volume, mute, routing, underrun handling, suspend resume, and current or thermal limits on hardware.
+      - Audio claims remain blocked until codec, amp, mic, speaker, headset, bus, clock, power, acoustic, and HAL or UCM evidence are archived.
+  - id: sensors_input_haptics_stack
+    gate: board_fabrication_release
+    owner: input_sensors_closure
+    artifact_names:
+      - selected-sensor-input-haptic-record
+      - input-event-sensor-haptic-transcripts
+      - factory-calibration-and-esd-record
+    evidence_paths:
+      - docs/manufacturing/evidence/sensors-input/
+    acceptance_criteria:
+      - Evidence passes only when it proves input events, sensor enumeration and sampling, calibration, suspend wake, haptic actuation, and recovery on hardware.
+      - Touch, buttons, sensors, fingerprint, and haptics claims remain blocked until device, mechanical, calibration, HAL, and ESD evidence are archived.
+  - id: usb_storage_update_stack
+    gate: board_fabrication_release
+    owner: platform_io_closure
+    artifact_names:
+      - selected-usb-storage-update-record
+      - usb-storage-adb-fastboot-update-transcripts
+      - recovery-rollback-and-data-integrity-record
+    evidence_paths:
+      - docs/manufacturing/evidence/usb-storage-update/
+    acceptance_criteria:
+      - Evidence passes only when it proves USB enumeration, role switching, storage integrity, ADB or fastboot access, OTA install, rollback, and recovery boot on hardware.
+      - USB, storage, update, and recovery claims remain blocked until PHY, Type-C, PD, storage, boot-slot, and failure-mode evidence are archived.
+  - id: battery_pmic_thermal_stack
+    gate: board_fabrication_release
+    owner: power_thermal_closure
+    artifact_names:
+      - selected-battery-pmic-thermal-record
+      - power-supply-thermal-telemetry-transcripts
+      - battery-safety-charger-and-thermal-validation-record
+    evidence_paths:
+      - docs/manufacturing/evidence/power-thermal/
+    acceptance_criteria:
+      - Evidence passes only when it proves charge, discharge, fuel gauge reporting, regulator telemetry, thermal readings, throttling, shutdown, suspend resume, and fault handling on hardware.
+      - Battery, PMIC, charger, fuel gauge, regulator, and thermal claims remain blocked until component, safety, and chamber evidence are archived.
+  - id: secure_boot_key_debug_policy
+    gate: board_fabrication_release
+    owner: security_closure
+    artifact_names:
+      - root-of-trust-key-provisioning-record
+      - signed-boot-rejection-rollback-debug-transcripts
+      - key-ceremony-and-manufacturing-security-record
+    evidence_paths:
+      - docs/manufacturing/evidence/security/
+    acceptance_criteria:
+      - Evidence passes only when it proves signed boot acceptance, unsigned image rejection, rollback rejection, debug lock or unlock policy, key erasure handling, and device identity behavior on hardware.
+      - Secure boot, key, debug lock, anti-rollback, and attestation claims remain blocked until threat model, key ceremony, signer, fuse or OTP, and manufacturing evidence are archived.
+  - id: regulatory_compliance_release
+    gate: board_fabrication_release
+    owner: compliance_closure
+    artifact_names:
+      - product-compliance-matrix
+      - accredited-lab-or-module-grant-evidence
+      - software-license-privacy-and-accessibility-record
+    evidence_paths:
+      - docs/manufacturing/evidence/regulatory/
+      - docs/manufacturing/evidence/compliance/
+    acceptance_criteria:
+      - Evidence passes only when it names target countries, standards, labels, manuals, responsible owners, lab reports or grant reuse analysis, and accepted exceptions.
+      - Regulatory and compliance claims remain blocked until EMC, radio, SAR or RF exposure, safety, environmental, software-license, privacy, and post-market evidence are archived.
+  - id: privacy_data_protection_policy
+    gate: board_fabrication_release
+    owner: privacy_compliance_closure
+    artifact_names:
+      - product-privacy-threat-model
+      - permission-telemetry-retention-transcripts
+      - secure-wipe-and-factory-reset-record
+    evidence_paths:
+      - docs/manufacturing/evidence/privacy/
+      - docs/manufacturing/evidence/compliance/
+    acceptance_criteria:
+      - Evidence passes only when camera, microphone, location, radio, sensor, identifier, crash-log, update-log, and factory-log data flows are reviewed.
+      - Privacy claims remain blocked until permission enforcement, indicators, telemetry defaults, identifier reset, secure wipe, factory reset, log redaction, and regional retention/deletion evidence are archived.
+  - id: factory_test_provisioning_flow
+    gate: board_fabrication_release
+    owner: manufacturing_test_closure
+    artifact_names:
+      - factory-station-test-plan
+      - provisioning-and-calibration-transcripts
+      - outgoing-quality-and-traceability-record
+    evidence_paths:
+      - docs/manufacturing/evidence/factory/
+      - docs/manufacturing/evidence/security/
+      - docs/manufacturing/evidence/regulatory/
+    acceptance_criteria:
+      - Evidence passes only when automated station logs cover power, boot, storage, USB, display, touch, camera, audio, radios, sensors, haptics, thermal, secure boot, and debug lock.
+      - Factory test claims remain blocked until serialization, MAC and IMEI if cellular, key provisioning, calibration, labeling, yield, retest, quarantine, and traceability evidence are archived.

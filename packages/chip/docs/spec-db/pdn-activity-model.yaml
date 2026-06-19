@@ -1,0 +1,101 @@
+schema: eliza.pdn_activity_model.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+claim_boundary: >
+  Vectorless per-block toggle-rate / activity-factor table for the E1 SoC. This
+  is a planning-grade activity assumption set used to derive a worst-case
+  vectorless dynamic-IR current budget. The toggle rates and simultaneous-switch
+  factors are documented engineering assumptions derived from RTL block class
+  and the per-rail peak/avg currents in docs/pd/rail-plan-2028.yaml. They are
+  NOT extracted from a VCD/SAIF and NOT measured silicon. The PDN signoff gate
+  (docs/evidence/power/pdn-signoff-gate.yaml) requires vector-driven dynamic IR
+  from a commercial tool; this model only sizes the planning budget those
+  vectors must later confirm, with a 2x margin per the gate's waiver penalty.
+source_artifacts:
+  - docs/pd/rail-plan-2028.yaml
+  - pd/upf/power-domains.yaml
+  - rtl/power/power_pkg.sv
+
+# Global assumptions, clearly labeled as planning inputs.
+assumptions:
+  # Activity factor = fraction of a block's combinational/sequential nodes
+  # toggling per clock in its worst sustained workload window. Sourced from
+  # block class (datapath-heavy NPU/CPU vs control-heavy fabric/IO), not silicon.
+  activity_factor_provenance: rtl_block_class_engineering_assumption_not_silicon
+  # Simultaneous-switching factor scales peak_a toward a vectorless worst case:
+  # the fraction of a rail's peak current that can be drawn within a single
+  # dynamic-IR evaluation window (di/dt event), bounded by [0,1].
+  simultaneous_switch_factor_provenance: vectorless_worst_case_engineering_bound
+  dynamic_margin_factor: 2.0   # matches pdn-signoff-gate open-flow waiver penalty
+  dynamic_margin_rationale: >
+    OpenROAD psm produces no vector-driven dynamic IR. The gate's open-flow
+    waiver path applies a 2.0x penalty; the vectorless dynamic-IR budget here
+    carries the same 2x so the planning budget never undercuts the gate.
+
+# Per-block table. peak_a is read from the rail plan at check time (not copied
+# here) to avoid drift; this table provides only the activity assumptions per
+# rail id. block names map to RTL hierarchy / power domains.
+blocks:
+  - rail: VDD_CPU_BIG
+    block: cpu_big_cluster
+    rtl_root: rtl/cpu
+    block_class: ooo_cpu_datapath
+    activity_factor: 0.55
+    simultaneous_switch_factor: 0.85
+    toggle_note: 2x OoO cores; high datapath toggle, AVFS-throttled di/dt.
+  - rail: VDD_CPU_LITTLE
+    block: cpu_little_cluster
+    rtl_root: rtl/cpu
+    block_class: inorder_cpu_datapath
+    activity_factor: 0.45
+    simultaneous_switch_factor: 0.80
+    toggle_note: 4x in-order cores; moderate datapath toggle.
+  - rail: VDD_NPU
+    block: npu
+    rtl_root: rtl/npu
+    block_class: mac_array_datapath
+    activity_factor: 0.70
+    simultaneous_switch_factor: 0.90
+    toggle_note: Dense INT8 MAC array; highest sustained switching, GEMM saturation.
+  - rail: VDD_GPU
+    block: gpu_display
+    rtl_root: rtl/display
+    block_class: graphics_datapath
+    activity_factor: 0.50
+    simultaneous_switch_factor: 0.80
+    toggle_note: GPU + display pipeline; bursty raster/compositor activity.
+  - rail: VDD_SOC_FABRIC
+    block: soc_fabric
+    rtl_root: rtl/interconnect
+    block_class: noc_control
+    activity_factor: 0.30
+    simultaneous_switch_factor: 0.60
+    toggle_note: NoC + IOMMU + system cache; control-dominated, lower switch density.
+  - rail: VDD_SRAM
+    block: on_die_sram
+    rtl_root: rtl/memory
+    block_class: sram_macro
+    activity_factor: 0.25
+    simultaneous_switch_factor: 0.70
+    toggle_note: On-die SRAM; bitline/wordline switching gated by access rate.
+  - rail: VDD_LPDDR_VDDQ
+    block: lpddr_io
+    rtl_root: rtl/memory
+    block_class: ddr_io
+    activity_factor: 0.40
+    simultaneous_switch_factor: 0.75
+    toggle_note: LPDDR5X IO; DQ/DQS toggling at burst, SSO-bounded.
+  - rail: VDD_SOC_FABRIC_DMA
+    block: dma_engines
+    rtl_root: rtl/dma
+    block_class: dma_datapath
+    activity_factor: 0.35
+    simultaneous_switch_factor: 0.65
+    toggle_note: DMA descriptor engines; folded into soc_fabric rail in rail plan.
+    folded_into_rail: VDD_SOC_FABRIC
+
+release_blockers:
+  - Toggle rates and switch factors are engineering assumptions, not VCD/SAIF or silicon.
+  - No vector-driven dynamic IR run (Voltus / RedHawk-SC) has confirmed this budget.
+  - Per-rail decoupling adequacy against this di/dt budget not signed off.
+check_command: python3 scripts/pdn_activity_model.py --check

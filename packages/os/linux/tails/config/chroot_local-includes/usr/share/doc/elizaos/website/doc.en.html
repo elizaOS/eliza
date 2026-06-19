@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>elizaOS Help</title>
+  <style>
+    @font-face {
+      font-family: "Poppins";
+      font-style: normal;
+      font-weight: 400;
+      src: url("file:///usr/share/fonts/truetype/elizaos/Poppins-Regular.ttf") format("truetype");
+    }
+    @font-face {
+      font-family: "Poppins";
+      font-style: normal;
+      font-weight: 500;
+      src: url("file:///usr/share/fonts/truetype/elizaos/Poppins-Medium.ttf") format("truetype");
+    }
+    :root {
+      color-scheme: light;
+      --eliza-blue: #0B35F1;
+      --surface: #ffffff;
+      --wash: #F7F9FF;
+      --line: #DCE5FF;
+      --text: #0B35F1;
+      --muted: #4A5DA8;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 88% 0%, rgba(11, 53, 241, 0.10), transparent 34%),
+        linear-gradient(160deg, var(--surface), var(--wash));
+      color: var(--text);
+      font-family: "Poppins", sans-serif;
+      line-height: 1.55;
+    }
+    main {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 64px 28px 80px;
+    }
+    .wordmark {
+      font-size: clamp(42px, 8vw, 88px);
+      line-height: 0.95;
+      margin: 0 0 28px;
+      letter-spacing: 0;
+    }
+    .wordmark span:first-child {
+      font-weight: 400;
+    }
+    .wordmark span:last-child {
+      color: var(--eliza-blue);
+      font-weight: 500;
+    }
+    h1, h2 {
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+    h1 {
+      font-size: 30px;
+      margin: 0 0 16px;
+    }
+    h2 {
+      border-left: 6px solid var(--eliza-blue);
+      font-size: 20px;
+      margin: 36px 0 12px;
+      padding-left: 14px;
+    }
+    p, li {
+      color: var(--muted);
+      font-size: 16px;
+    }
+    ul {
+      padding-left: 22px;
+    }
+    strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+    .accent {
+      background: var(--eliza-blue);
+      border-radius: 18px;
+      color: #ffffff;
+      padding: 18px 20px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="wordmark"><span>eliza</span><span>OS</span></p>
+    <h1>Private live AI workspace</h1>
+    <p>
+      elizaOS starts as an amnesic live USB environment with the elizaOS AI app ready on the desktop.
+      Normal desktop tools, Tor connectivity, encrypted Persistent Storage, and the elizaOS runtime are
+      available from the same session.
+    </p>
+
+    <h2>Storage</h2>
+    <ul>
+      <li><strong>Amnesia:</strong> files, browser state, and app data disappear when the session shuts down.</li>
+      <li><strong>Persistent Storage:</strong> selected folders and elizaOS app state are saved inside an encrypted USB partition.</li>
+    </ul>
+
+    <h2>Privacy</h2>
+    <ul>
+      <li><strong>Normal mode:</strong> direct networking for faster setup, sign-in, and model/provider onboarding.</li>
+      <li><strong>Privacy mode:</strong> Tor-first networking for the inherited privacy workflow.</li>
+    </ul>
+
+    <h2>AI App</h2>
+    <p>
+      The elizaOS app is supervised by the live session and starts automatically. Closing the last app
+      window is disabled so the runtime stays available while the desktop remains usable.
+    </p>
+
+    <p class="accent">For the full demo, boot from USB, choose storage and privacy settings, then continue into the desktop.</p>
+  </main>
+</body>
+</html>

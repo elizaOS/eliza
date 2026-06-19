@@ -1,0 +1,280 @@
+import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import type http from "node:http";
+import path from "node:path";
+import { resolveStateDir, type Service, ServiceType } from "@elizaos/core";
+import type { CompatRuntimeState } from "./compat-route-shared";
+import { readCompatJsonBody } from "./compat-route-shared";
+import { sendJson } from "./response";
+
+/**
+ * Internal routes called by sandboxed background-runner JSContexts (Capacitor
+ * BackgroundRunner on iOS QuickJS / Android V8) and by other host shims that
+ * cannot use the cookie-based session auth.
+ *
+ * Auth model: a single device-secret bearer token. The runner JS is shipped
+ * with the secret as one of its event args at build/launch time, so the
+ * secret travels in-process and is not user input.
+ *
+ * The bearer secret is persisted under the Eliza state dir so background
+ * runners rebuilt independently of the host process can be seeded with a
+ * stable value across restarts. `ELIZA_DEVICE_SECRET` still wins when present
+ * and sufficiently long, which keeps managed deployments deterministic.
+ */
+
+/**
+ * The runtime contract is `runDueTasks(): Promise<void>`. The optional
+ * `maxWallTimeMs` is currently advisory and is passed through for services
+ * that support deadline-bounded execution.
+ */
+interface TaskServiceLike {
+  runDueTasks(options?: { maxWallTimeMs?: number }): Promise<unknown>;
+}
+
+function isTaskServiceLike(
+  service: Service | null,
+): service is Service & TaskServiceLike {
+  return (
+    service !== null &&
+    typeof Reflect.get(service, "runDueTasks") === "function"
+  );
+}
+
+/**
+ * Wake telemetry visible to /api/health. Wave 5 reads `lastWakeFiredAt` to
+ * surface "last background tick" on the dashboard.
+ */
+export interface WakeTelemetry {
+  lastWakeFiredAt: number | null;
+  lastWakeKind: "refresh" | "processing" | null;
+  lastWakeDurationMs: number | null;
+  lastWakeError: string | null;
+}
+
+const wakeTelemetry: WakeTelemetry = {
+  lastWakeFiredAt: null,
+  lastWakeKind: null,
+  lastWakeDurationMs: null,
+  lastWakeError: null,
+};
+
+export function getWakeTelemetry(): Readonly<WakeTelemetry> {
+  return { ...wakeTelemetry };
+}
+
+// Resets between tests; not exported through the public barrel.
+export function __resetWakeTelemetryForTests(): void {
+  wakeTelemetry.lastWakeFiredAt = null;
+  wakeTelemetry.lastWakeKind = null;
+  wakeTelemetry.lastWakeDurationMs = null;
+  wakeTelemetry.lastWakeError = null;
+}
+
+/**
+ * Minimum length for the device bearer secret, enforced identically across
+ * both ingestion paths (env-provided and persisted). Freshly generated secrets
+ * are 64 hex chars (32 random bytes), comfortably above this floor.
+ */
+const MIN_DEVICE_SECRET_LENGTH = 32;
+
+let cachedDeviceSecret: string | null = null;
+let deviceSecretPathOverrideForTests: string | null = null;
+
+function getDeviceSecretPath(): string {
+  return (
+    deviceSecretPathOverrideForTests ??
+    path.join(resolveStateDir(), "internal", "device-secret")
+  );
+}
+
+function readPersistedDeviceSecret(filePath: string): string | null {
+  try {
+    const secret = fs.readFileSync(filePath, "utf8").trim();
+    return secret.length >= MIN_DEVICE_SECRET_LENGTH ? secret : null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    return null;
+  }
+}
+
+function writePersistedDeviceSecret(filePath: string, secret: string): void {
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const tmp = path.join(
+    dir,
+    `.device-secret-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}.tmp`,
+  );
+  fs.writeFileSync(tmp, `${secret}\n`, { encoding: "utf8", mode: 0o600 });
+  fs.renameSync(tmp, filePath);
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {
+    // Best-effort on platforms/filesystems that do not support POSIX modes.
+  }
+}
+
+/**
+ * Returns the bearer secret that wake POSTs must present. Generates one on
+ * first call and reuses it for the process lifetime.
+ */
+export function getDeviceSecret(): string {
+  if (cachedDeviceSecret === null) {
+    const fromEnv = process.env.ELIZA_DEVICE_SECRET;
+    if (
+      typeof fromEnv === "string" &&
+      fromEnv.length >= MIN_DEVICE_SECRET_LENGTH
+    ) {
+      cachedDeviceSecret = fromEnv;
+    } else {
+      const secretPath = getDeviceSecretPath();
+      cachedDeviceSecret = readPersistedDeviceSecret(secretPath);
+      if (cachedDeviceSecret === null) {
+        cachedDeviceSecret = randomBytes(32).toString("hex");
+        writePersistedDeviceSecret(secretPath, cachedDeviceSecret);
+      }
+    }
+  }
+  return cachedDeviceSecret;
+}
+
+export function __setDeviceSecretForTests(secret: string | null): void {
+  cachedDeviceSecret = secret;
+}
+
+export function __setDeviceSecretPathForTests(filePath: string | null): void {
+  deviceSecretPathOverrideForTests = filePath;
+  cachedDeviceSecret = null;
+}
+
+function readBearer(req: http.IncomingMessage): string | null {
+  const header = req.headers.authorization;
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (typeof raw !== "string") return null;
+  if (!raw.toLowerCase().startsWith("bearer ")) return null;
+  return raw.slice(7).trim();
+}
+
+/**
+ * Constant-time string comparison. Bearer secrets must not leak via
+ * early-exit comparison timing.
+ */
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+let runDueTasksInFlight: Promise<unknown> | null = null;
+
+async function runDueTasksOnce(
+  service: Service & TaskServiceLike,
+  options: { maxWallTimeMs: number },
+): Promise<{ coalesced: boolean }> {
+  if (runDueTasksInFlight !== null) {
+    await runDueTasksInFlight;
+    return { coalesced: true };
+  }
+  runDueTasksInFlight = service.runDueTasks(options);
+  try {
+    await runDueTasksInFlight;
+    return { coalesced: false };
+  } finally {
+    runDueTasksInFlight = null;
+  }
+}
+
+interface WakeBody {
+  kind: "refresh" | "processing";
+  deadlineMs: number;
+}
+
+function parseWakeBody(body: Record<string, unknown> | null): WakeBody | null {
+  if (body === null) return null;
+  const kind = body.kind;
+  const deadlineMs = body.deadlineMs;
+  if (kind !== "refresh" && kind !== "processing") return null;
+  if (typeof deadlineMs !== "number" || !Number.isFinite(deadlineMs))
+    return null;
+  return { kind, deadlineMs };
+}
+
+export async function handleInternalWakeRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: CompatRuntimeState,
+): Promise<boolean> {
+  const method = (req.method ?? "GET").toUpperCase();
+  const url = new URL(req.url ?? "/", "http://localhost");
+
+  if (method !== "POST" || url.pathname !== "/api/internal/wake") {
+    return false;
+  }
+
+  const presented = readBearer(req);
+  const expected = getDeviceSecret();
+  if (presented === null || !safeEqual(presented, expected)) {
+    sendJson(res, 401, { ok: false, error: "unauthorized" });
+    return true;
+  }
+
+  const body = await readCompatJsonBody(req, res);
+  if (body === null) {
+    // readCompatJsonBody already wrote 400/413 on failure.
+    return true;
+  }
+
+  const parsed = parseWakeBody(body);
+  if (parsed === null) {
+    sendJson(res, 400, {
+      ok: false,
+      error:
+        'invalid body: expected { kind: "refresh" | "processing", deadlineMs: number }',
+    });
+    return true;
+  }
+
+  const runtime = state.current;
+  if (!runtime) {
+    sendJson(res, 503, { ok: false, error: "runtime_unavailable" });
+    return true;
+  }
+
+  const taskService = runtime.getService(ServiceType.TASK);
+  if (!isTaskServiceLike(taskService)) {
+    sendJson(res, 503, { ok: false, error: "task_service_unavailable" });
+    return true;
+  }
+
+  const startedAt = Date.now();
+  // Deadline is the absolute target wall time the caller wants us done by.
+  // Clamp to at least 1s so an already-expired deadline can't pin runDueTasks
+  // to a zero/negative budget.
+  const maxWallTimeMs = Math.max(1000, parsed.deadlineMs - startedAt);
+
+  try {
+    const result = await runDueTasksOnce(taskService, { maxWallTimeMs });
+    const durationMs = Date.now() - startedAt;
+    wakeTelemetry.lastWakeFiredAt = startedAt;
+    wakeTelemetry.lastWakeKind = parsed.kind;
+    wakeTelemetry.lastWakeDurationMs = durationMs;
+    wakeTelemetry.lastWakeError = null;
+    sendJson(res, 200, {
+      ok: true,
+      durationMs,
+      coalesced: result.coalesced,
+      lastWakeFiredAt: startedAt,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : String(error ?? "unknown error");
+    wakeTelemetry.lastWakeFiredAt = startedAt;
+    wakeTelemetry.lastWakeKind = parsed.kind;
+    wakeTelemetry.lastWakeDurationMs = Date.now() - startedAt;
+    wakeTelemetry.lastWakeError = message;
+    sendJson(res, 500, { ok: false, error: message });
+  }
+  return true;
+}

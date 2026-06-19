@@ -1,0 +1,473 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 00:15+0000\n"
+"PO-Revision-Date: 2026-03-29 14:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta title=\"Resetting a USB stick using Windows\"]]\n"
+msgid "[[!meta title=\"Uninstalling Tails using Windows\"]]\n"
+msgstr "[[!meta title=\"Réinitialiser une clé USB en utilisant Windows\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!inline pages=\"doc/reset.intro\" raw=\"yes\" sort=\"age\"]]\n"
+msgid "[[!inline pages=\"doc/first_steps/uninstall.intro\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/reset.intro.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc startlevel=2]]\n"
+msgstr ""
+
+#. type: Title -
+#, fuzzy, no-wrap
+#| msgid "Erase Tails from the USB stick"
+msgid "Erasing Tails from the USB stick"
+msgstr "Effacer Tails de la clé USB"
+
+#. type: Plain text
+msgid "First, erase Tails from the USB stick:"
+msgstr "Premièrement, effacez Tails de votre clé USB :"
+
+#. type: Bullet: '1. '
+msgid "Start on Windows."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the **Start** [[!img lib/start.png alt=\"\" class=\"symbolic\" "
+"link=\"no\"]] button and open the *Settings* app."
+msgstr ""
+"Cliquez sur le bouton **Démarrer** [[!img lib/start.png alt=\"\" "
+"class=\"symbolic\" link=\"no\"]] et ouvrez l'application *Paramètres*."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the *Settings* app, choose **System&nbsp;▸ Storage&nbsp;▸ Advanced "
+"storage settings&nbsp;▸ Disk & volumes**."
+msgstr ""
+"Dans l'application *Paramètres*, choisissez **Système&nbsp;▸ Stockage&nbsp;▸ "
+"Paramètres de stockage avancés&nbsp;▸ Disques et volumes**."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Plug in the Tails USB stick that you want to reset."
+msgid "Plug in the Tails USB stick that you want to uninstall."
+msgstr "Branchez la clé USB Tails que vous voulez réinitialiser."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img disks.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img disks.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Identify the USB stick in the list of disks."
+msgstr "Identifiez la clé USB dans la liste des disques."
+
+#. type: Bullet: '1. '
+msgid "Identify the volume called **TAILS**, which has a FAT32 file system."
+msgstr ""
+"Identifiez le volume appelé **TAILS**, qui utilise le système de fichiers "
+"FAT32."
+
+#. type: Plain text
+#, no-wrap
+msgid "   This volume corresponds to the Tails system partition on the USB stick.\n"
+msgstr "   Ce volume correspond à la partition système de Tails sur la clé USB.\n"
+
+#. type: Bullet: '   1. '
+msgid "Select the **Properties** button corresponding to the **TAILS** volume."
+msgstr ""
+"Cliquez sur le bouton **Propriétés** correspondant au volume **TAILS**."
+
+#. type: Bullet: '   1. '
+msgid "In the properties of the **TAILS** volume, select **Delete**."
+msgstr "Dans les propriétés du volume **TAILS**, sélectionnez **Supprimer**."
+
+#. type: Plain text
+#, no-wrap
+msgid "      Windows gives no feedback after deletion.\n"
+msgstr "      Windows ne donne aucune indication après la suppression.\n"
+
+#. type: Bullet: '1. '
+msgid "Select **Disks & volumes** to go back to the list of volumes."
+msgstr ""
+"Sélectionnez **Disques et volumes** pour retourner à la liste des volumes."
+
+#. type: Bullet: '1. '
+msgid ""
+"If there is a [[Persistent Storage|doc/persistent_storage]] on the USB "
+"stick, a volume called **(No label)** also appears on the USB stick."
+msgstr ""
+"Si il y a un [[stockage persistant|doc/persistent_storage]] sur la clé USB, "
+"un volume appelé **(Aucune étiquette)** apparaît également sur la clé USB."
+
+#. type: Plain text
+#, no-wrap
+msgid "   This volume corresponds to the Tails Persistent Storage on the USB stick.\n"
+msgstr "   Ce volume correspond au stockage persistant de Tails sur la clé USB.\n"
+
+#. type: Bullet: '   1. '
+msgid ""
+"Select the **Properties** button corresponding to the **(No label)** volume."
+msgstr ""
+"Sélectionnez le bouton **Propriétés** correspondant au volume **(Aucune "
+"étiquette)**."
+
+#. type: Bullet: '   1. '
+msgid "In the properties of the **(No label)** volume, select **Delete**."
+msgstr ""
+"Dans les propriétés du volume **(Aucune étiquette)**, sélectionnez "
+"**Supprimer**."
+
+#. type: Bullet: '1. '
+msgid "The USB stick now has no volumes and is entirely unallocated."
+msgstr ""
+"La clé USB n'a désormais plus aucun volume et est entièrement non allouée."
+
+#. type: Title -
+#, fuzzy, no-wrap
+#| msgid "Create a new partition on the USB stick"
+msgid "Creating a new partition on the USB stick"
+msgstr "Créer une nouvelle partition sur la clé USB"
+
+#. type: Plain text
+msgid "Then, create a new partition on the USB stick:"
+msgstr "Ensuite, créez une nouvelle partition sur la clé USB :"
+
+#. type: Bullet: '1. '
+msgid "Select the **Properties** button corresponding to the USB stick."
+msgstr "Cliquez sur le bouton **Propriétés** correspondant à la clé USB."
+
+#. type: Bullet: '1. '
+msgid "In the properties of the USB stick, select **Convert to MBR**."
+msgstr "Dans les propriétés de la clé USB, sélectionnez **Convertir en MBR**."
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the **Create Volume** button for the USB stick and choose **Create "
+"Simple Volume**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **New Volume** dialog, enter a label of your choice and select "
+"**Format**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Unplug the USB stick."
+msgstr "Débranchez la clé USB."
+
+#. type: Bullet: '1. '
+msgid "Close the *Settings* app."
+msgstr "Fermez l'application *Paramètres*."
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the **Start** [[!img lib/start.png alt=\"\" class=\"symbolic\" "
+"link=\"no\"]] button and open the *File Explorer* app."
+msgstr ""
+"Sélectionnez le bouton **Démarrer** [[!img lib/start.png alt=\"\" "
+"class=\"symbolic\" link=\"no\"]] et ouvrez l'application *Explorateur de "
+"fichiers*."
+
+#. type: Bullet: '1. '
+msgid "Plug back the USB stick."
+msgstr "Rebranchez la clé USB."
+
+#. type: Plain text
+#, no-wrap
+msgid "   Your new volume appears in the left sidebar of the *File Explorer*.\n"
+msgstr "   Votre nouveau volume apparaît dans la barre latérale gauche de l'*Explorateur de fichiers*.\n"
+
+#, no-wrap
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, no-wrap
+#~ msgid "<p><b>You might overwrite any hard disk on the computer.</b></p>\n"
+#~ msgstr "<p><b>Vous pourriez écraser n'importe quel disque dur sur l'ordinateur.</b></p>\n"
+
+#, no-wrap
+#~ msgid "<p>If at some point you are not sure about which device to choose, stop proceeding.</p>\n"
+#~ msgstr "<p>Si à un moment donné vous avez un doute sur quel périphérique choisir, arrêtez la procédure.</p>\n"
+
+#, no-wrap
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"
+
+#~ msgid "Make sure that the USB stick that you want to reset is unplugged."
+#~ msgstr ""
+#~ "Assurez-vous que la clé USB que vous voulez réinitialiser est débranchée."
+
+#~ msgid "Choose **Windows System**&nbsp;▸ **Command Prompt**."
+#~ msgstr "Choisissez **Système Windows**&nbsp;▸ **Invite de commandes**."
+
+#~ msgid "Execute the following command to start the *Diskpart* utility."
+#~ msgstr ""
+#~ "Exécutez la commande suivante pour démarrer l'utilitaire *Diskpart*."
+
+#, no-wrap
+#~ msgid "   <p class=\"command-windows\">diskpart</p>\n"
+#~ msgstr "   <p class=\"command-windows\">diskpart</p>\n"
+
+#~ msgid ""
+#~ "Execute the following command to obtain information about the disks in "
+#~ "the computer."
+#~ msgstr ""
+#~ "Exécutez la commande suivante pour obtenir des informations sur les "
+#~ "disques de l'ordinateur."
+
+#, no-wrap
+#~ msgid "   <p class=\"command-windows\">list disk</p>\n"
+#~ msgstr "   <p class=\"command-windows\">list disk</p>\n"
+
+#, no-wrap
+#~ msgid "   For example:\n"
+#~ msgstr "   Par exemple :\n"
+
+#, no-wrap
+#~ msgid "       Diskpart> list disk\n"
+#~ msgstr "       Diskpart> list disk\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "         Disk ###  Status      Size     Free     Dyn  Gpt\n"
+#~ "         --------  ----------  -------  -------  ---  ---\n"
+#~ "         Disk 0    Online        80 GB      0 B\n"
+#~ msgstr ""
+#~ "         N° disque  Statut      Taille     Libre     Dyn  GPT\n"
+#~ "         ---------  -------------  -------  -------  ---  ---\n"
+#~ "         Disque 0    En ligne        80 G octets      0 octets\n"
+
+#~ msgid "Run the same command again."
+#~ msgstr "Lancez la même commande à nouveau."
+
+#, no-wrap
+#~ msgid ""
+#~ "   A new disk, which corresponds to the USB stick that you plugged in,\n"
+#~ "   appears in the list.\n"
+#~ msgstr ""
+#~ "   Un nouveau disque, correspondant à la clé USB que vous avez branché,\n"
+#~ "   apparaît dans la liste.\n"
+
+#, no-wrap
+#~ msgid "        Diskpart> list disk\n"
+#~ msgstr "        Diskpart> list disk\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "          Disk ###  Status      Size     Free     Dyn  Gpt\n"
+#~ "          --------  ----------  -------  -------  ---  ---\n"
+#~ "          Disk 0    Online        80 GB      0 B\n"
+#~ "          Disk 1    Online         8 GB      0 B\n"
+#~ msgstr ""
+#~ "          N° disque  Statut      Taille     Libre     Dyn  GPT\n"
+#~ "          ---------  -------------  -------  -------  ---  ---\n"
+#~ "          Disque 0    En ligne        80 G octets      0 octets\n"
+#~ "          Disque 1    En ligne         8 G octets      0 octets\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   Make sure that its size corresponds to the size of the USB stick that you want to\n"
+#~ "   reset. Note down its disk number.\n"
+#~ msgstr ""
+#~ "   Assurez-vous que sa taille correspond à la taille de la clé USB que vous voulez\n"
+#~ "   réinitialiser. Notez son numéro de disque.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   In this example, the disk number of the USB stick is 1.\n"
+#~ "   Yours might be different.\n"
+#~ msgstr ""
+#~ "   Dans cet exemple, le numéro de disque de la clé USB est 1.\n"
+#~ "   Le votre peut être différent.\n"
+
+#~ msgid ""
+#~ "Execute the following command to select the USB stick. Replace <span "
+#~ "class=\"command-placeholder\">number</span> with the disk number found in "
+#~ "step 7."
+#~ msgstr ""
+#~ "Exécutez la commande suivante pour sélectionner la clé USB. Remplacez "
+#~ "<span class=\"command-placeholder\">numéro</span> par le numéro de disque "
+#~ "trouvé à l'étape 7."
+
+#, no-wrap
+#~ msgid "   <p class=\"command-windows command-template\">select disk=<span class=\"command-placeholder\">number</span></p>\n"
+#~ msgstr "   <p class=\"command-windows command-template\">select disk=<span class=\"command-placeholder\">numéro</span></p>\n"
+
+#~ msgid ""
+#~ "Execute the following command to delete the partition table from the USB "
+#~ "stick."
+#~ msgstr ""
+#~ "Exécutez la commande suivante pour supprimer la table de partition de la "
+#~ "clé USB."
+
+#, no-wrap
+#~ msgid "   <p class=\"command-windows\">clean</p>\n"
+#~ msgstr "   <p class=\"command-windows\">clean</p>\n"
+
+#~ msgid ""
+#~ "Execute the following command to create a new partition table on the USB "
+#~ "stick."
+#~ msgstr ""
+#~ "Exécutez la commande suivante pour créer une table de partition sur la "
+#~ "clé USB."
+
+#, no-wrap
+#~ msgid "   <p class=\"command-windows\">convert mbr</p>\n"
+#~ msgstr "   <p class=\"command-windows\">convert mbr</p>\n"
+
+#~ msgid ""
+#~ "Execute the following command to create a new primary partition on the "
+#~ "USB stick."
+#~ msgstr ""
+#~ "Exécutez la commande suivante pour créer une nouvelle partition primaire "
+#~ "sur la clé USB."
+
+#, no-wrap
+#~ msgid "   <p class=\"command-windows\">create partition primary</p>\n"
+#~ msgstr "   <p class=\"command-windows\">create partition primary</p>\n"
+
+#~ msgid "Plug the USB stick again."
+#~ msgstr "Branchez à nouveau la clé USB."
+
+#~ msgid "A dialog appears to format the disk before using it."
+#~ msgstr "Une fenêtre apparaît pour formater le disque avant de l'utiliser."
+
+#, no-wrap
+#~ msgid "   [[!img format.png class=\"screenshot\" alt=\"You need to format the disk before you can use it. Do you want to format it?\"]]\n"
+#~ msgstr "   [[!img format.png class=\"screenshot\" alt=\"Vous devez formater le disque avant de l'utiliser. Voulez-vous le formater ?\"]]\n"
+
+#~ msgid "Click on the **Format disk** button."
+#~ msgstr "Cliquez sur le bouton **Formater le disque**."
+
+#~ msgid ""
+#~ "In the **Format USB Drive** dialog, review the settings and click "
+#~ "**Start**."
+#~ msgstr ""
+#~ "Dans la fenêtre **Formater Lecteur USB**, vérifiez les paramètres et "
+#~ "cliquez sur **Démarrer**."
+
+#~ msgid ""
+#~ "After the formatting is complete, the USB stick should appear as a new "
+#~ "drive in the files browser."
+#~ msgstr ""
+#~ "Une fois que le formatage est terminé, la clé USB doit apparaître comme "
+#~ "un nouveau lecteur dans le navigateur de fichiers."
+
+#, no-wrap
+#~ msgid "   Otherwise, try unplugging and plugging it again.\n"
+#~ msgstr "   Sinon, essayez de la débrancher puis de la rebrancher à nouveau.\n"
+
+#, no-wrap
+#~ msgid "Troubleshooting"
+#~ msgstr "Résolution des problèmes"
+
+#~ msgid ""
+#~ "[How to start the *Command Prompt*](https://www.computerhope.com/issues/"
+#~ "chdos.htm)"
+#~ msgstr ""
+#~ "[Comment lancer l'*Invite de commandes*](https://www.computerhope.com/"
+#~ "issues/chdos.htm) (en anglais)"
+
+#~ msgid ""
+#~ "[Microsoft: diskpart](https://learn.microsoft.com/en-us/windows-server/"
+#~ "administration/windows-commands/diskpart)"
+#~ msgstr ""
+#~ "[Microsoft : diskpart](https://learn.microsoft.com/fr-fr/windows-server/"
+#~ "administration/windows-commands/diskpart)"
+
+#, no-wrap
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"bug\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<strong>The following instructions do not work on Windows XP.</strong><br/>\n"
+#~ "The version of *Diskpart* on Windows XP does not list removable disks.\n"
+#~ msgstr ""
+#~ "<strong>Les instructions suivantes ne marchent pas sur Windows XP.</strong><br/>\n"
+#~ "La version de  *Diskpart* sur Windows XP ne liste pas les périphériques amovibles.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<strong>You might overwrite any hard disk on the computer.</strong><br/>\n"
+#~ "If at some point you are not sure about the disk number, stop proceeding.\n"
+#~ msgstr ""
+#~ "<strong>Vous pourriez écraser n'importe quel disque dur sur l'ordinateur.</strong><br/>\n"
+#~ "Si à un moment vous n'êtes pas sûr du choix du périphérique, arrêtez-vous là.\n"
+
+#~ msgid ""
+#~ "Click on the **Start** button, and choose <span class=\"menuchoice\">All "
+#~ "Programs&nbsp;▸ Accessories&nbsp;▸ Command Prompt</span>, to open the "
+#~ "<span class=\"application\">[[!wikipedia cmd.exe desc=\"Command "
+#~ "Prompt\"]]</span>,"
+#~ msgstr ""
+#~ "Cliquer sur le bouton **Démarrer**, et choisir <span "
+#~ "class=\"menuchoice\">Tous les programmes&nbsp;▸ Accessoires&nbsp;▸ Invite "
+#~ "de commandes</span>, pour ouvrir <span class=\"application\">[[!"
+#~ "wikipedia_fr Cmd desc=\"l'interpréteur de commande\"]]</span>,"
+
+#, no-wrap
+#~ msgid ""
+#~ "    [[More help on how to start the <span class=\"application\">Command\n"
+#~ "    Prompt</span>|https://www.computerhope.com/issues/chdos.htm]]\n"
+#~ msgstr ""
+#~ "    [[Plus d'aide sur comment lancer <span class=\"application\">l'interpréteur\n"
+#~ "    de commande</span>|https://www.computerhope.com/issues/chdos.htm]] (en anglais)\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "2.  Execute the <span class=\"command\">diskpart</span> command, to start\n"
+#~ "*Diskpart*.\n"
+#~ msgstr ""
+#~ "2.  Exécutez la commande <span class=\"command\">diskpart</span> pour lancer\n"
+#~ "*Diskpart*.\n"
+
+#, no-wrap
+#~ msgid "    For example:\n"
+#~ msgstr "    Par exemple :\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Plug in the USB stick that you want to reset. Run the <span "
+#~ "class=\"command\">list disk</span> command again."
+#~ msgstr ""
+#~ "Branchez la clé USB que vous voulez réinitialiser. Relancez la commande "
+#~ "<span class=\"command\">list disk</span>."
+
+#~ msgid ""
+#~ "To select the USB stick, execute the following command: <span "
+#~ "class=\"command\">select disk=<span class=\"replaceable\">number</span></"
+#~ "span>.  Replace <span class=\"replaceable\">number</span> by the disk "
+#~ "number of the USB stick that you want to reset."
+#~ msgstr ""
+#~ "Pour sélectionner la clé USB, exécutez la commande suivante : <span "
+#~ "class=\"command\">select disk=<span class=\"replaceable\">numéro</span></"
+#~ "span>. Remplacez <span class=\"replaceable\">numéro</span> par le numéro "
+#~ "de disque de la clé USB que vous voulez réinitialiser."
+
+#~ msgid ""
+#~ "See the [[Diskpart documentation from Microsoft Support|http://"
+#~ "support.microsoft.com/kb/300415]]."
+#~ msgstr ""
+#~ "Voir la [[documentation sur Diskpart de l'assistance Microsoft|http://"
+#~ "support.microsoft.com/kb/300415/fr]]."

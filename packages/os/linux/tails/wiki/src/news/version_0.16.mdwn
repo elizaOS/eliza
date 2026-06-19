@@ -1,0 +1,69 @@
+[[!meta date="Fri, 11 Jan 2013 16:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.16 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.16, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Minor improvements
+  - Replace the too-easy-to-misclick shutdown button with a better
+    "Shutdown Helper" applet.
+  - Display `~/Persistent` in GNOME Places and Gtk file chooser.
+  - Install dictionaries for a few languages.
+  - Set Unsafe Browser's window title to "Unsafe Browser".
+  - Install ekeyd to support the EntropyKey.
+  - Install font for Sinhala script.
+  - Update Poedit to 1.5.4.
+  - Expose Vidalia's "broken onion" icon less.
+  - Hide the persistence setup launchers in kiosk mode.
+
+* Bugfixes
+  - Disable IPv6 on all network interfaces. This is a workaround for
+    the IPv6 link-local multicast leak that was recently discovered.
+  - Tails may previously have been able to list GPT partitions labeled
+    "TailsData" on hard drives (!) as valid persistence volumes...
+    this is now fixed.
+  - Fix SCIM in the autostarted web browser.
+  - Talk of DVD, not of CD, in the shutdown messages.
+  - Make tordate work in bridge mode with an incorrect clock.
+
+* Iceweasel
+  - Update iceweasel to 10.0.12esr-1+tails1.
+  - Set the homepage to the news section on the Tails website.
+  - Hide the iceweasel add-on bar by default.
+  - Don't hide the AdBlock-Plus button in the add-on bar anymore.
+  - Don't install xul-ext-monkeysphere anymore.
+
+* Localization
+  - tails-greeter: add German translation, update Portuguese (Brasil)
+    and Russian ones.
+  - tails-persistence-setup: update French, German and
+    Italian translations.
+
+Plus the usual bunch of bug reports and minor improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], there are many ways **you** can contribute
+to Tails. If you want to help, come talk to us!

@@ -1,0 +1,14 @@
+{
+  "execution_time": "2026-02-10T13:30:00Z",
+  "script": "stable_literature_retrieval.py",
+  "exit_code": 1,
+  "sources_attempted": 6,
+  "sources_succeeded": 4,
+  "articles_found": 12,
+  "articles_new": 3,
+  "errors": [
+    "[medrxiv_infectious] HTTPError: 429 Too Many Requests (12th consecutive failure for this source)",
+    "[pubmed_amr] HTTPError: 429 Too Many Requests"
+  ],
+  "duration_seconds": 63
+}

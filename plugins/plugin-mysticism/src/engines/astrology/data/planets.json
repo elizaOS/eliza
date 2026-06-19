@@ -1,0 +1,282 @@
+[
+  {
+    "id": "sun",
+    "name": "Sun",
+    "symbol": "☉",
+    "keywords": ["identity", "ego", "vitality", "purpose", "will"],
+    "description": "The Sun represents your core identity, ego, and the conscious self. It is the center of your being — what you are here to express and develop. The Sun sign reveals your fundamental character, creative force, and the qualities you are growing into throughout your life.",
+    "dignities": {
+      "domicile": "leo",
+      "exaltation": "aries",
+      "detriment": "aquarius",
+      "fall": "libra"
+    },
+    "orbitalPeriodDays": 365.25,
+    "meaningsInSigns": {
+      "aries": "Bold, pioneering identity. Natural leaders who thrive on initiative and courage. The self is expressed through action, competition, and the drive to be first. There is an inherent need to forge one’s own path and assert individual will.",
+      "taurus": "Steady, sensual identity. Values stability, beauty, and material security. The self is expressed through persistence, the cultivation of resources, and an appreciation for life’s pleasures. There is a deep need for consistency and tangible results.",
+      "gemini": "Curious, communicative identity. Thrives on intellectual stimulation, variety, and social exchange. The self is expressed through learning, sharing ideas, and connecting diverse perspectives. There is an inherent restlessness and need for mental engagement.",
+      "cancer": "Nurturing, protective identity. Deeply connected to family, home, and emotional roots. The self is expressed through caring for others, creating emotional security, and honoring the past. There is a profound sensitivity and intuitive depth.",
+      "leo": "Radiant, creative identity. Born to shine, lead, and inspire. The self is expressed through artistic creation, generous leadership, and wholehearted self-expression. There is an innate need for recognition and a gift for bringing joy to others.",
+      "virgo": "Analytical, service-oriented identity. Driven to improve, refine, and perfect. The self is expressed through skilled work, attention to detail, and practical service to others. There is an inherent modesty paired with exacting standards.",
+      "libra": "Harmonious, relationship-oriented identity. Seeks balance, beauty, and partnership. The self is expressed through diplomacy, aesthetic creation, and the art of relating. There is a deep need for fairness and an ability to see all sides of every situation.",
+      "scorpio": "Intense, transformative identity. Driven to penetrate beneath surfaces and uncover hidden truths. The self is expressed through emotional depth, psychological insight, and the courage to face life’s darkest corners. There is an innate power and magnetic presence.",
+      "sagittarius": "Adventurous, philosophical identity. Hungry for meaning, truth, and new horizons. The self is expressed through exploration, teaching, and the quest for wisdom. There is an inherent optimism and a need to understand the big picture.",
+      "capricorn": "Ambitious, disciplined identity. Built for achievement, responsibility, and long-term mastery. The self is expressed through strategic planning, hard work, and the steady climb toward meaningful goals. There is a natural authority and wisdom born of experience.",
+      "aquarius": "Innovative, humanitarian identity. Driven to reform, liberate, and envision the future. The self is expressed through original thinking, social consciousness, and the courage to be different. There is an inherent idealism and commitment to collective progress.",
+      "pisces": "Compassionate, mystical identity. Connected to the transcendent, the imaginative, and the universal. The self is expressed through empathy, artistic vision, and spiritual sensitivity. There is a natural ability to dissolve boundaries and merge with the greater whole."
+    }
+  },
+  {
+    "id": "moon",
+    "name": "Moon",
+    "symbol": "☽",
+    "keywords": ["emotions", "instincts", "nurturing", "subconscious", "receptivity"],
+    "description": "The Moon represents your emotional nature, instinctive reactions, and deepest needs. It governs how you process feelings, what makes you feel safe, and the patterns you fall into unconsciously. The Moon sign reveals your inner world — the private self that exists beneath the solar identity.",
+    "dignities": {
+      "domicile": "cancer",
+      "exaltation": "taurus",
+      "detriment": "capricorn",
+      "fall": "scorpio"
+    },
+    "orbitalPeriodDays": 27.32,
+    "meaningsInSigns": {
+      "aries": "Emotionally impulsive and fiery. Needs excitement, independence, and the freedom to act on feelings immediately. Emotions flare quickly and cool just as fast. There is a warrior quality to the emotional nature — feelings are expressed through action rather than reflection.",
+      "taurus": "Emotionally steady and comfort-seeking. Needs stability, physical affection, and sensory pleasure to feel secure. Emotions are slow to change but deeply rooted. There is a profound need for material and emotional consistency that provides an anchor in turbulent times.",
+      "gemini": "Emotionally curious and changeable. Needs intellectual stimulation, conversation, and variety to feel alive. Emotions are processed through the mind and expressed through words. There is a tendency to rationalize feelings rather than simply experience them.",
+      "cancer": "Emotionally deep, nurturing, and highly intuitive. Needs family, home, and emotional belonging. Feelings are intense, cyclical, and profoundly connected to memory. The emotional world is rich and complex, with an extraordinary capacity for empathy and care.",
+      "leo": "Emotionally warm, generous, and dramatic. Needs recognition, creative expression, and heartfelt appreciation. Feelings are expressed openly and passionately. There is a childlike quality to the emotional nature — a need to be seen, loved, and celebrated for who you truly are.",
+      "virgo": "Emotionally reserved, analytical, and service-oriented. Needs order, usefulness, and practical routines to feel grounded. Feelings are processed through analysis and expressed through acts of service. There is a tendency toward worry that masks a deep desire to be truly helpful.",
+      "libra": "Emotionally balanced, diplomatic, and relationship-focused. Needs harmony, beauty, and partnership to feel complete. Feelings are processed through the lens of fairness and expressed with grace. There is a deep aversion to conflict that can sometimes suppress authentic emotional expression.",
+      "scorpio": "Emotionally intense, penetrating, and transformative. Needs depth, honesty, and emotional authenticity. Feelings are powerful undercurrents that run deep beneath a controlled surface. There is an all-or-nothing quality to the emotional life — half measures are impossible.",
+      "sagittarius": "Emotionally expansive, optimistic, and freedom-loving. Needs adventure, philosophical meaning, and room to roam. Feelings are expressed with enthusiasm and generosity. There is a restless emotional quality that seeks growth through new experiences and broader horizons.",
+      "capricorn": "Emotionally reserved, responsible, and self-contained. Needs structure, achievement, and the respect of others to feel secure. Feelings are controlled and expressed cautiously. There is a deep emotional maturity that sometimes manifests as emotional suppression or an overly serious demeanor.",
+      "aquarius": "Emotionally detached, progressive, and intellectually oriented. Needs freedom, friendship, and a sense of contributing to something larger. Feelings are processed through the intellect and expressed through humanitarian ideals. There is a coolness to the emotional nature that values principles over personal sentiment.",
+      "pisces": "Emotionally boundless, empathic, and spiritually attuned. Needs creative expression, spiritual connection, and emotional transcendence. Feelings are oceanic — vast, formless, and profoundly connected to the collective unconscious. There is an extraordinary sensitivity that can be both a gift and a vulnerability."
+    }
+  },
+  {
+    "id": "mercury",
+    "name": "Mercury",
+    "symbol": "☿",
+    "keywords": ["communication", "thought", "learning", "logic", "perception"],
+    "description": "Mercury represents the mind — how you think, communicate, process information, and make connections. It governs speech, writing, learning style, and the way you perceive and interpret the world around you. Mercury is the messenger, the trickster, and the bridge between ideas and expression.",
+    "dignities": {
+      "domicile": "gemini",
+      "exaltation": "virgo",
+      "detriment": "sagittarius",
+      "fall": "pisces"
+    },
+    "orbitalPeriodDays": 87.97,
+    "meaningsInSigns": {
+      "aries": "Quick, direct, and assertive in thought and speech. The mind works fast, favoring bold ideas and immediate expression. Communication is straightforward, sometimes blunt. There is a pioneering quality to the intellect — first to speak, first to decide, impatient with lengthy deliberation.",
+      "taurus": "Deliberate, practical, and grounded in thinking. The mind works methodically, favoring concrete ideas and tangible results. Communication is steady and reliable. There is a gift for thinking through practical matters with patience and common sense.",
+      "gemini": "Brilliant, versatile, and endlessly curious. The mind moves rapidly between subjects, making connections others miss. Communication is witty, articulate, and adaptable. There is a natural gift for language, learning, and the art of conversation.",
+      "cancer": "Intuitive, emotional, and memory-driven in thinking. The mind is colored by feeling, and memories form the foundation of understanding. Communication is nurturing and sometimes indirect. There is a poetic quality to the intellect that thinks in images and emotional impressions.",
+      "leo": "Creative, dramatic, and confident in thought and expression. The mind gravitates toward big ideas, creative visions, and self-expression. Communication is warm, authoritative, and entertaining. There is a gift for storytelling and the ability to speak from the heart.",
+      "virgo": "Precise, analytical, and detail-oriented in thinking. The mind excels at analysis, organization, and problem-solving. Communication is clear, practical, and sometimes critical. There is an exceptional ability to discern patterns, spot errors, and refine complex systems.",
+      "libra": "Balanced, diplomatic, and aesthetically minded. The mind seeks fairness, weighing all sides before reaching conclusions. Communication is graceful, persuasive, and socially aware. There is a gift for mediation and the ability to articulate complex relational dynamics.",
+      "scorpio": "Penetrating, investigative, and psychologically astute. The mind digs beneath surfaces to uncover hidden truths. Communication is strategic, powerful, and sometimes secretive. There is a detective quality to the intellect — nothing escapes scrutiny.",
+      "sagittarius": "Expansive, philosophical, and visionary in thinking. The mind seeks the big picture, grand theories, and universal truths. Communication is enthusiastic, inspiring, and sometimes bluntly honest. There is a gift for teaching and the synthesis of diverse ideas.",
+      "capricorn": "Structured, strategic, and pragmatic in thinking. The mind is disciplined, focused on long-term goals, and respects established knowledge. Communication is authoritative, measured, and purposeful. There is a gift for planning and turning abstract ideas into concrete realities.",
+      "aquarius": "Original, progressive, and intellectually independent. The mind generates innovative ideas and unconventional perspectives. Communication is inventive, sometimes eccentric, and oriented toward the future. There is a genius quality to the intellect that thinks in systems and paradigms.",
+      "pisces": "Imaginative, intuitive, and boundary-dissolving in thinking. The mind operates through impressions, symbols, and creative vision rather than strict logic. Communication is poetic, empathetic, and sometimes vague. There is a gift for artistic expression and channeling inspiration from the unconscious."
+    }
+  },
+  {
+    "id": "venus",
+    "name": "Venus",
+    "symbol": "♀",
+    "keywords": ["love", "beauty", "values", "attraction", "harmony"],
+    "description": "Venus represents love, beauty, values, and the principle of attraction. It governs what you find beautiful, how you express affection, what you value in relationships, and your aesthetic sensibility. Venus reveals your style of loving and being loved, as well as your relationship with pleasure and material comfort.",
+    "dignities": {
+      "domicile": "taurus",
+      "exaltation": "pisces",
+      "detriment": "scorpio",
+      "fall": "virgo"
+    },
+    "orbitalPeriodDays": 224.7,
+    "meaningsInSigns": {
+      "aries": "Passionate, direct, and impulsive in love. Attraction is immediate and consuming. Values independence, excitement, and the thrill of the chase. Love is expressed through bold action and competitive ardor.",
+      "taurus": "Sensual, devoted, and comfort-loving in relationships. Attraction is slow-building but deeply rooted. Values loyalty, physical affection, and material beauty. Love is expressed through consistent presence and the creation of a beautiful, stable environment.",
+      "gemini": "Flirtatious, intellectually stimulated, and socially versatile in love. Attraction begins in the mind. Values wit, communication, and variety. Love is expressed through conversation, curiosity, and the playful exchange of ideas.",
+      "cancer": "Nurturing, protective, and emotionally deep in love. Attraction is tied to emotional safety and vulnerability. Values family, emotional connection, and a sense of belonging. Love is expressed through caring, cooking, and creating a warm, safe home.",
+      "leo": "Generous, romantic, and dramatically expressive in love. Attraction is theatrical and heart-centered. Values loyalty, admiration, and grand gestures. Love is expressed through creativity, lavish attention, and wholehearted devotion.",
+      "virgo": "Devoted, practical, and quietly attentive in love. Attraction grows through shared work and mutual improvement. Values reliability, intelligence, and thoughtful gestures. Love is expressed through acts of service, careful attention to detail, and genuine helpfulness.",
+      "libra": "Graceful, partnership-oriented, and aesthetically refined in love. Attraction is based on harmony, beauty, and social compatibility. Values equality, elegance, and genuine partnership. Love is expressed through diplomacy, gift-giving, and the creation of harmonious relationships.",
+      "scorpio": "Intense, passionate, and all-consuming in love. Attraction is magnetic, psychological, and deeply transformative. Values loyalty, emotional honesty, and profound intimacy. Love is expressed through total commitment, emotional depth, and the willingness to face the shadows.",
+      "sagittarius": "Adventurous, generous, and freedom-loving in love. Attraction is sparked by shared philosophy and wanderlust. Values honesty, growth, and intellectual companionship. Love is expressed through shared adventures and an expansive vision of life together.",
+      "capricorn": "Loyal, reserved, and commitment-oriented in love. Attraction develops slowly through demonstrated reliability. Values responsibility, ambition, and long-term dedication. Love is expressed through steadfast support, practical commitment, and building something lasting.",
+      "aquarius": "Independent, unconventional, and friendship-based in love. Attraction is intellectual, based on shared ideals and originality. Values freedom, equality, and authentic individuality. Love is expressed through friendship, intellectual stimulation, and respect for uniqueness.",
+      "pisces": "Romantic, compassionate, and spiritually connected in love. Attraction is intuitive, empathic, and transcendent. Values spiritual connection, artistic sensitivity, and unconditional acceptance. Love is expressed through selfless devotion and the dissolution of boundaries between self and other."
+    }
+  },
+  {
+    "id": "mars",
+    "name": "Mars",
+    "symbol": "♂",
+    "keywords": ["action", "desire", "energy", "courage", "aggression"],
+    "description": "Mars represents your drive, ambition, physical energy, and the way you assert yourself. It governs how you pursue what you want, how you handle anger and conflict, and the nature of your physical vitality. Mars is the warrior principle — the force that propels you forward and gives you the courage to act.",
+    "dignities": {
+      "domicile": "aries",
+      "exaltation": "capricorn",
+      "detriment": "libra",
+      "fall": "cancer"
+    },
+    "orbitalPeriodDays": 686.97,
+    "meaningsInSigns": {
+      "aries": "Aggressive, fearless, and explosively energetic. Action is immediate, instinctive, and unapologetically direct. Anger flares fast and dissipates quickly. The warrior at their most natural and uninhibited.",
+      "taurus": "Persistent, determined, and slowly building in force. Action is deliberate, patient, and directed toward material goals. Anger is slow to build but formidable when provoked. An unstoppable quality like a force of nature that cannot be redirected once in motion.",
+      "gemini": "Mentally agile, verbally sharp, and strategically versatile. Action is directed through communication, debate, and intellectual maneuver. Anger is expressed through words and wit. A restless quality to the drive that needs multiple outlets and thrives on mental challenge.",
+      "cancer": "Defensively powerful, emotionally motivated, and protective. Action is driven by emotional needs and the desire to protect loved ones. Anger is indirect, sometimes passive-aggressive, but fiercely protective. Tremendous strength in the drive to nurture and defend what you love.",
+      "leo": "Bold, dramatic, and creatively driven. Action is confident, generous, and aimed at self-expression and recognition. Anger is loud, theatrical, but ultimately warm-hearted. A heroic quality motivated by pride, loyalty, and the desire to make a memorable impact.",
+      "virgo": "Precise, methodical, and efficiently directed. Action is practical, detail-oriented, and aimed at improvement. Anger is expressed through criticism and sharpened analytical faculties. A quiet, relentless drive toward perfection through steady, focused effort.",
+      "libra": "Diplomatic, strategically indirect, and motivated by fairness. Action is filtered through consideration of others and a desire for balance. Anger is suppressed in favor of negotiation, but injustice provokes fierce advocacy. A refined strength that fights for equality through charm.",
+      "scorpio": "Intensely focused, strategically powerful, and emotionally driven. Action is calculated, relentless, and aimed at transformation. Anger runs deep and is rarely forgotten. Extraordinary willpower — once committed, nothing can divert this energy.",
+      "sagittarius": "Enthusiastic, adventurous, and ideologically motivated. Action is expansive, risk-taking, and driven by belief and vision. Anger is expressed through blunt honesty and righteous indignation. A crusader quality motivated by truth, justice, and the quest for meaning.",
+      "capricorn": "Disciplined, strategic, and relentlessly ambitious. Action is planned, controlled, and directed toward long-term achievement. Anger is cold, calculating, and expressed through increased determination. A commanding quality that channels raw energy into structured accomplishment.",
+      "aquarius": "Rebellious, innovative, and collectively motivated. Action is driven by ideals, reform, and the desire to break outdated structures. Anger is expressed through detachment and revolutionary impulses. An electric quality that fights for freedom, progress, and collective rights.",
+      "pisces": "Gentle, spiritually motivated, and compassionately driven. Action is inspired by imagination, empathy, and a desire to transcend material limitations. Anger is diffuse, often turned inward or expressed through artistic channels. A mystical quality that acts from inspiration rather than force."
+    }
+  },
+  {
+    "id": "jupiter",
+    "name": "Jupiter",
+    "symbol": "♃",
+    "keywords": ["expansion", "wisdom", "abundance", "optimism", "philosophy"],
+    "description": "Jupiter represents expansion, growth, wisdom, and the principle of abundance. It governs your beliefs, your sense of meaning and purpose, and the areas of life where you experience good fortune and generosity. Jupiter is the great benefic — the planet that opens doors, broadens horizons, and inspires faith in the future.",
+    "dignities": {
+      "domicile": "sagittarius",
+      "exaltation": "cancer",
+      "detriment": "gemini",
+      "fall": "capricorn"
+    },
+    "orbitalPeriodDays": 4332.59,
+    "meaningsInSigns": {
+      "aries": "Growth through bold initiative and courageous action. Luck favors the brave — opportunities come through taking risks and leading from the front. An expansive enthusiasm and philosophical belief in the power of individual will.",
+      "taurus": "Growth through steady accumulation and sensory appreciation. Abundance manifests through patience, practical wisdom, and a talent for building material wealth. A generous, earthy faith in the goodness of the physical world.",
+      "gemini": "Growth through knowledge, communication, and intellectual curiosity. Abundance comes through learning, networking, and the versatile exchange of ideas. A philosophical restlessness that seeks wisdom through diversity of experience.",
+      "cancer": "Growth through nurturing, emotional generosity, and the cultivation of family bonds. Abundance manifests through creating safe spaces and caring communities. A deep, intuitive faith in the power of love and emotional connection.",
+      "leo": "Growth through creative self-expression, generosity, and joyful leadership. Abundance comes through confidence, dramatic flair, and the courage to shine. An expansive warmth and belief that life is a celebration.",
+      "virgo": "Growth through service, practical improvement, and attention to detail. Abundance comes through skilled work, health awareness, and the refinement of systems. A modest, analytical faith in diligent effort and continuous improvement.",
+      "libra": "Growth through partnership, diplomacy, and the pursuit of justice. Abundance comes through harmonious relationships, artistic collaboration, and social grace. A philosophical commitment to fairness and the belief that beauty and balance are forces for good.",
+      "scorpio": "Growth through transformation, psychological depth, and fearless self-examination. Abundance comes through confronting life’s mysteries and emerging renewed. A profound faith in the regenerative power of crisis and the wisdom gained through facing the shadow.",
+      "sagittarius": "Growth through adventure, philosophical exploration, and the pursuit of truth. Abundance is natural and expansive — opportunities multiply through optimism and broad vision. A boundless faith in possibility and a generous approach to life’s great questions.",
+      "capricorn": "Growth through discipline, strategic planning, and patient mastery. Abundance comes through long-term effort, responsible leadership, and the wisdom of experience. A mature, pragmatic faith in the value of hard work and perseverance.",
+      "aquarius": "Growth through innovation, humanitarian vision, and collective progress. Abundance comes through original thinking, community engagement, and the courage to envision a better future. A progressive faith in human potential and the power of ideas.",
+      "pisces": "Growth through compassion, spiritual surrender, and imaginative vision. Abundance flows through empathy, artistic inspiration, and the willingness to serve something greater than the self. A mystical faith in the interconnectedness of all things."
+    }
+  },
+  {
+    "id": "saturn",
+    "name": "Saturn",
+    "symbol": "♄",
+    "keywords": ["structure", "discipline", "responsibility", "limitation", "mastery"],
+    "description": "Saturn represents structure, discipline, limitation, and the process of maturation. It governs the areas of life where you face your greatest challenges and, through sustained effort, achieve your deepest mastery. Saturn is the great teacher — the planet that demands accountability, rewards patience, and builds character through adversity.",
+    "dignities": {
+      "domicile": "capricorn",
+      "exaltation": "libra",
+      "detriment": "cancer",
+      "fall": "aries"
+    },
+    "orbitalPeriodDays": 10759.22,
+    "meaningsInSigns": {
+      "aries": "Lessons in tempering impulsiveness with strategic discipline. Challenges around asserting authority and managing anger constructively. Mastery comes through learning that true courage includes patience and that sustainable leadership requires structure and self-control.",
+      "taurus": "Lessons in building lasting material security through disciplined effort. Challenges around scarcity, possessiveness, and the fear of loss. Mastery comes through patient accumulation, wise stewardship of resources, and developing unshakeable self-worth independent of possessions.",
+      "gemini": "Lessons in disciplined communication and focused thinking. Challenges around scattered attention, superficial knowledge, and difficulty committing to ideas. Mastery comes through developing depth in learning, precision in speech, and the discipline to follow thoughts to their logical conclusions.",
+      "cancer": "Lessons in emotional maturity and responsible nurturing. Challenges around family obligations, emotional suppression, and the fear of vulnerability. Mastery comes through building emotional resilience, creating secure foundations, and learning that true strength includes the ability to feel deeply.",
+      "leo": "Lessons in humble leadership and authentic self-expression. Challenges around ego, the fear of not being recognized, and creative self-doubt. Mastery comes through developing genuine authority from within, and learning that true creativity requires discipline and craft.",
+      "virgo": "Lessons in service, health, and the discipline of daily practice. Challenges around perfectionism, harsh self-criticism, and anxiety about inadequacy. Mastery comes through accepting imperfection while still striving for excellence, and finding joy in continuous improvement.",
+      "libra": "Lessons in commitment, fairness, and the responsibilities of partnership. Challenges around codependency, indecision, and the fear of confrontation. Mastery comes through building balanced relationships based on mutual respect, and the courage to make difficult but fair decisions.",
+      "scorpio": "Lessons in emotional control, trust, and the responsible use of power. Challenges around obsession, fear of betrayal, and the misuse of psychological insight. Mastery comes through transforming fear into wisdom, developing deep trust, and using power with integrity.",
+      "sagittarius": "Lessons in grounding philosophical vision with practical wisdom. Challenges around dogmatism, overextension, and the gap between ideals and reality. Mastery comes through tempering optimism with realism, and building belief systems that withstand the test of experience.",
+      "capricorn": "Lessons in the proper use of authority, ambition, and worldly achievement. Challenges around rigidity, workaholism, and the fear of failure. Mastery comes through building lasting structures with integrity, developing true authority through competence, and balancing ambition with humanity.",
+      "aquarius": "Lessons in responsible innovation and the practical application of ideals. Challenges around emotional detachment, rebelliousness for its own sake, and difficulty with intimacy. Mastery comes through channeling visionary ideas into concrete social progress and balancing individuality with community responsibility.",
+      "pisces": "Lessons in spiritual discipline and grounding imagination in reality. Challenges around escapism, martyrdom, and the dissolution of healthy boundaries. Mastery comes through developing spiritual practices that anchor transcendent experiences, and learning to serve others without losing oneself."
+    }
+  },
+  {
+    "id": "uranus",
+    "name": "Uranus",
+    "symbol": "♅",
+    "keywords": ["revolution", "innovation", "freedom", "awakening", "disruption"],
+    "description": "Uranus represents sudden change, innovation, rebellion, and the breaking of established patterns. It governs the areas of life where you seek freedom, originality, and authentic self-expression beyond social conventions. Uranus is the great awakener — the planet that shatters outdated structures and reveals new possibilities.",
+    "dignities": {
+      "domicile": "aquarius",
+      "exaltation": "scorpio",
+      "detriment": "leo",
+      "fall": "taurus"
+    },
+    "orbitalPeriodDays": 30688.5,
+    "meaningsInSigns": {
+      "aries": "Revolution through pioneering individual action. A generation that breaks new ground in personal freedom and self-determination. Innovation manifests through bold assertion of individual rights and the courage to forge entirely new paths.",
+      "taurus": "Revolution in values, economics, and relationship with the material world. A generation that disrupts traditional financial systems, environmental practices, and concepts of ownership. Innovation through new approaches to sustainability and bodily autonomy.",
+      "gemini": "Revolution in communication, information, and the way knowledge is shared. A generation that transforms media, education, and the exchange of ideas. Innovation through new forms of communication, radical transparency, and the democratization of information.",
+      "cancer": "Revolution in family structures, homeland concepts, and emotional expression. A generation that transforms domestic life, housing, and the definition of family. Innovation through new models of community, nurturing, and emotional intelligence.",
+      "leo": "Revolution in creative expression, entertainment, and individual identity. A generation that transforms art, performance, and the nature of personal authenticity. Innovation through radical self-expression, new art forms, and the redefinition of creativity itself.",
+      "virgo": "Revolution in health, work, and service systems. A generation that transforms healthcare, employment, and daily living practices. Innovation through new approaches to wellness, work organization, and the integration of technology into daily life.",
+      "libra": "Revolution in relationships, justice, and social harmony. A generation that transforms partnership models, legal systems, and aesthetic standards. Innovation through new relationship paradigms and social justice movements.",
+      "scorpio": "Revolution in power dynamics, sexuality, and psychological understanding. A generation that transforms attitudes toward death, intimacy, and shared resources. Innovation through radical psychological awareness and the transformation of hidden power structures.",
+      "sagittarius": "Revolution in belief systems, higher education, and global consciousness. A generation that transforms philosophy, religion, and international relations. Innovation through new spiritual paradigms and a radically expanded vision of human potential.",
+      "capricorn": "Revolution in government, corporate structures, and institutional authority. A generation that transforms the foundations of social order and redefines responsible leadership. Innovation through the dismantling and rebuilding of outdated hierarchies.",
+      "aquarius": "Revolution in technology, social networks, and collective consciousness. A generation that transforms humanity’s relationship with the future itself. Innovation through radical technological advancement and the evolution of human identity in a connected world.",
+      "pisces": "Revolution in spirituality, compassion, and the collective unconscious. A generation that transforms humanity’s relationship with the transcendent and the oceanic. Innovation through new spiritual technologies and the dissolution of boundaries between self and cosmos."
+    }
+  },
+  {
+    "id": "neptune",
+    "name": "Neptune",
+    "symbol": "♆",
+    "keywords": ["dreams", "illusion", "spirituality", "compassion", "transcendence"],
+    "description": "Neptune represents dreams, illusion, spirituality, and the dissolution of boundaries. It governs the areas of life where you seek transcendence, artistic inspiration, and connection to something greater than yourself. Neptune is the mystic and the dreamer — the planet that dissolves the barriers between the real and the imagined.",
+    "dignities": {
+      "domicile": "pisces",
+      "exaltation": "cancer",
+      "detriment": "virgo",
+      "fall": "capricorn"
+    },
+    "orbitalPeriodDays": 60182,
+    "meaningsInSigns": {
+      "aries": "Spiritual idealism expressed through heroic action and pioneering vision. A generation that dreams of individual liberation and spiritual warriorship. The collective imagination is fired by visions of bold, compassionate leadership.",
+      "taurus": "Spiritual idealism expressed through beauty, nature, and the sanctification of the material world. A generation that dreams of a more beautiful, sustainable Earth. The collective imagination is stirred by visions of paradise and natural harmony.",
+      "gemini": "Spiritual idealism expressed through communication, media, and the power of ideas. A generation that dreams of perfect understanding and the unity of all knowledge. The collective imagination is captivated by visions of interconnected minds and the transcendent power of story.",
+      "cancer": "Spiritual idealism expressed through nurturing, emotional connection, and the sanctity of home. A generation that dreams of universal belonging and emotional healing. The collective imagination is moved by visions of the sacred family and ancestral wisdom.",
+      "leo": "Spiritual idealism expressed through creative vision, romantic love, and the divine spark in each individual. A generation that dreams of a world illuminated by authentic self-expression. The collective imagination is inspired by visions of artistic transcendence.",
+      "virgo": "Spiritual idealism expressed through service, healing, and the sacred in the everyday. A generation that dreams of perfecting the human condition through compassionate work. The collective imagination is drawn to visions of holistic health and spiritual craftsmanship.",
+      "libra": "Spiritual idealism expressed through beauty, justice, and the perfection of human relationships. A generation that dreams of a world in perfect balance and harmony. The collective imagination is entranced by visions of ideal love and aesthetic transcendence.",
+      "scorpio": "Spiritual idealism expressed through deep transformation, psychological insight, and the confrontation with mystery. A generation that dreams of piercing life’s veils and accessing hidden power. The collective imagination is drawn to the occult and the spiritual dimensions of death and rebirth.",
+      "sagittarius": "Spiritual idealism expressed through philosophical quest, religious vision, and the expansion of consciousness. A generation that dreams of universal truth and global spiritual awakening. The collective imagination is inspired by visions of cosmic purpose and prophetic wisdom.",
+      "capricorn": "Spiritual idealism expressed through the transformation of worldly structures and the quest for meaningful authority. A generation that dreams of institutions that serve the soul. The collective imagination wrestles with disillusionment in power structures.",
+      "aquarius": "Spiritual idealism expressed through humanitarian vision, technological transcendence, and collective awakening. A generation that dreams of a radically evolved humanity connected through shared consciousness. The collective imagination is captivated by visions of spiritual technology.",
+      "pisces": "Spiritual idealism at its most pure and transcendent. A generation that dreams of dissolving all boundaries between self and cosmos. The collective imagination is immersed in visions of universal compassion, artistic revelation, and the oceanic unity of all consciousness. This is Neptune in its home sign — spirituality at its most powerful."
+    }
+  },
+  {
+    "id": "pluto",
+    "name": "Pluto",
+    "symbol": "♇",
+    "keywords": ["transformation", "power", "death", "rebirth", "the unconscious"],
+    "description": "Pluto represents the deepest processes of transformation, death, rebirth, and the evolutionary force that drives the soul. It governs the areas of life where you must confront power, face annihilation, and emerge fundamentally changed. Pluto is the lord of the underworld — the planet that destroys what is no longer authentic so that something truer can be born.",
+    "dignities": {
+      "domicile": "scorpio",
+      "exaltation": "aries",
+      "detriment": "taurus",
+      "fall": "libra"
+    },
+    "orbitalPeriodDays": 90560,
+    "meaningsInSigns": {
+      "aries": "Generational transformation of individual identity and the nature of self-assertion. The collective undergoes a radical redefinition of what it means to be an individual, the uses and abuses of personal power, and the evolution of courage.",
+      "taurus": "Generational transformation of values, economics, and humanity’s relationship with the Earth. The collective undergoes a radical restructuring of material life — how resources are owned, shared, and sustained. Deep forces reshape concepts of wealth and bodily existence.",
+      "gemini": "Generational transformation of communication, thought, and the information landscape. The collective undergoes a radical evolution in how knowledge is created, shared, and controlled. Deep forces reshape media, education, and the very nature of truth.",
+      "cancer": "Generational transformation of family, nationality, and emotional foundations. The collective undergoes a radical restructuring of domestic life, national identity, and the meaning of security. Deep forces reshape how humanity nurtures and processes collective memory.",
+      "leo": "Generational transformation of creative expression, leadership, and the nature of personal power. The collective undergoes a radical evolution in entertainment, art, and the cult of personality. Deep forces reshape how individuals express authority.",
+      "virgo": "Generational transformation of work, health, and service systems. The collective undergoes a radical restructuring of labor, wellness, and the daily practices that sustain life. Deep forces reshape the relationship between technology and the human body.",
+      "libra": "Generational transformation of relationships, justice, and social contracts. The collective undergoes a radical evolution in partnership models, legal frameworks, and aesthetic standards. Deep forces reshape the balance of power between individuals and social classes.",
+      "scorpio": "Generational transformation at its most intense — the collective confronts death, sexuality, power, and the deepest shadows of human nature. This is Pluto in its home sign, where the forces of destruction and regeneration are at maximum intensity.",
+      "sagittarius": "Generational transformation of belief systems, global consciousness, and the search for truth. The collective undergoes a radical evolution in religion, philosophy, and international relations. Deep forces reshape the narratives that give life meaning.",
+      "capricorn": "Generational transformation of power structures, governments, and institutional authority. The collective undergoes a radical dismantling and rebuilding of the foundations of social order. Deep forces expose corruption in hierarchies and demand authentic leadership.",
+      "aquarius": "Generational transformation of technology, social networks, and the nature of human community. The collective undergoes a radical evolution in how people connect, organize, and envision the future. Deep forces reshape the relationship between individual freedom and collective responsibility.",
+      "pisces": "Generational transformation of spirituality, the collective unconscious, and the boundaries of reality itself. The collective undergoes a radical dissolution of old spiritual paradigms and the emergence of new ways to connect with the transcendent."
+    }
+  }
+]

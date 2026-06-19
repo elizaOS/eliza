@@ -1,0 +1,313 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: TPS65987DDH
+manufacturer: Texas Instruments
+package: 56-pin QFN, RSH package (9 x 9 mm, 0.4 mm pitch), USB Type-C and USB PD 3.1 controller with integrated power switches
+source_doc: https://www.ti.com/lit/ds/symlink/tps65987d.pdf
+source_doc_alt:
+  - https://www.ti.com/product/TPS65987D
+  - https://www.ti.com/lit/an/slva888c/slva888c.pdf
+  - https://www.ti.com/lit/pdf/slvubh2
+source_doc_revision: TPS65987D datasheet rev. as of 2024
+captured_date: 2026-05-21
+captured_by: agent
+evidence_class: public_supplier_datasheet
+notes: |
+  TPS65987DDH is USB-PD 3.1 / USB Type-C controller with integrated PPHV power
+  FETs (up to 60 W per port), BC1.2, 20 GPIOs, Cortex-M0 core, and dual-CC
+  detection. Package marking RSHR = 56-pin QFN. The interface group set below
+  and the 1-59 pin/pad table are captured from the public TI datasheet Table
+  5-1 and RSH package top view. For KiCad symbol authoring, still cross-check
+  against TI's package drawing and any published .bsdl / IBIS files before
+  production release.
+mechanical:
+  package: QFN
+  pin_count: 56
+  exposed_pad_count: 3
+  electrical_pad_count_with_exposed_pads: 59
+  pitch_mm: 0.4
+  body_mm: [9.0, 9.0]
+  height_mm_max: 1.0
+electrical:
+  vin_3v3_v: [3.0, 3.6]
+  vbus_v: [3.3, 21.0]
+  power_max_w_per_port: 60
+  gpio_count: 20
+  i2c_count: 2
+  pd_spec: 3.1
+  type_c_spec: 1.2
+interface_pin_groups:
+  power_in:
+    - VIN_3V3 (digital + analog supply)
+    - LDO_1V8_OUT (internal LDO output, decap only)
+    - LDO_3V3_OUT (internal LDO output, decap only)
+    - GND (multiple, including thermal pad)
+  vbus_power:
+    - PP_HV (high-voltage source/sink port)
+    - PP_5V0 (5 V source path)
+    - PP_CABLE (Vconn supply for active cable powering)
+    - VBUS_SENSE (VBUS voltage divider feedback)
+  cc:
+    - CC1
+    - CC2
+  data:
+    - HSD_P (USB 2.0 D+ through-mux)
+    - HSD_N (USB 2.0 D- through-mux)
+    - DM_IN_P / DM_IN_N (alt routing in active mux variant)
+  bc12:
+    - DP_IN / DM_IN (charging detection)
+  host_interface:
+    - I2C1_SDA (host I2C target)
+    - I2C1_SCL
+    - I2C2_SDA (secondary I2C)
+    - I2C2_SCL
+    - SPI_MISO (boot SPI flash)
+    - SPI_MOSI
+    - SPI_CLK
+    - SPI_CS_N
+    - I2C_IRQ_N (interrupt to host)
+  gpio:
+    - GPIO_0 .. GPIO_19 (20 user-programmable GPIO)
+  config_strap:
+    - ADCIN1 (configuration ADC inputs)
+    - ADCIN2
+  thermistor:
+    - TS_C (cable thermistor)
+  thermal:
+    - PAD (exposed thermal pad, tie to GND)
+pins:
+  - pin: 1
+    name: PP_HV2
+    function: system_side_vbus_power_switch_2
+    direction: power
+  - pin: 2
+    name: PP_HV2
+    function: system_side_vbus_power_switch_2
+    direction: power
+  - pin: 3
+    name: VBUS2
+    function: port_side_vbus_power_switch_2
+    direction: power
+  - pin: 4
+    name: VBUS2
+    function: port_side_vbus_power_switch_2
+    direction: power
+  - pin: 5
+    name: VIN_3V3
+    function: core_and_io_supply
+    direction: power
+  - pin: 6
+    name: ADCIN1
+    function: boot_configuration_input
+    direction: input
+  - pin: 7
+    name: DRAIN2
+    function: internal_power_path_2_drain
+    direction: power
+  - pin: 8
+    name: DRAIN1
+    function: internal_power_path_1_drain
+    direction: power
+  - pin: 9
+    name: LDO_3V3
+    function: internal_3v3_ldo_output
+    direction: power_output
+  - pin: 10
+    name: ADCIN2
+    function: i2c_address_configuration_input
+    direction: input
+  - pin: 11
+    name: PP_HV1
+    function: system_side_vbus_power_switch_1
+    direction: power
+  - pin: 12
+    name: PP_HV1
+    function: system_side_vbus_power_switch_1
+    direction: power
+  - pin: 13
+    name: VBUS1
+    function: port_side_vbus_power_switch_1
+    direction: power
+  - pin: 14
+    name: VBUS1
+    function: port_side_vbus_power_switch_1
+    direction: power
+  - pin: 15
+    name: DRAIN1
+    function: internal_power_path_1_drain
+    direction: power
+  - pin: 16
+    name: GPIO0
+    function: general_purpose_io_0
+    direction: bidirectional
+  - pin: 17
+    name: GPIO1
+    function: general_purpose_io_1
+    direction: bidirectional
+  - pin: 18
+    name: GPIO2
+    function: general_purpose_io_2
+    direction: bidirectional
+  - pin: 19
+    name: DRAIN1
+    function: internal_power_path_1_drain
+    direction: power
+  - pin: 20
+    name: GND
+    function: ground
+    direction: ground
+  - pin: 21
+    name: I2C3_SCL_GPIO5
+    function: i2c3_clock_or_gpio5
+    direction: bidirectional
+  - pin: 22
+    name: I2C3_SDA_GPIO6
+    function: i2c3_data_or_gpio6
+    direction: bidirectional
+  - pin: 23
+    name: I2C3_IRQ_GPIO7
+    function: i2c3_interrupt_or_gpio7
+    direction: bidirectional
+  - pin: 24
+    name: C_CC1
+    function: type_c_cc_or_vconn_1
+    direction: bidirectional
+  - pin: 25
+    name: PP_CABLE
+    function: vconn_supply_input
+    direction: power
+  - pin: 26
+    name: C_CC2
+    function: type_c_cc_or_vconn_2
+    direction: bidirectional
+  - pin: 27
+    name: I2C1_SCL
+    function: i2c1_clock
+    direction: bidirectional
+  - pin: 28
+    name: I2C1_SDA
+    function: i2c1_data
+    direction: bidirectional
+  - pin: 29
+    name: I2C1_IRQ
+    function: i2c1_interrupt
+    direction: output
+  - pin: 30
+    name: GPIO3_HPD
+    function: gpio3_or_displayport_hpd
+    direction: bidirectional
+  - pin: 31
+    name: GPIO4
+    function: general_purpose_io_4
+    direction: bidirectional
+  - pin: 32
+    name: I2C2_SCL
+    function: i2c2_clock
+    direction: bidirectional
+  - pin: 33
+    name: I2C2_SDA
+    function: i2c2_data
+    direction: bidirectional
+  - pin: 34
+    name: I2C2_IRQ
+    function: i2c2_interrupt
+    direction: output
+  - pin: 35
+    name: LDO_1V8
+    function: internal_1v8_ldo_output
+    direction: power_output
+  - pin: 36
+    name: SPI_POCI
+    function: spi_controller_input_from_peripheral
+    direction: input
+  - pin: 37
+    name: SPI_PICO
+    function: spi_controller_output_to_peripheral
+    direction: output
+  - pin: 38
+    name: SPI_CLK
+    function: spi_clock
+    direction: bidirectional
+  - pin: 39
+    name: SPI_CS
+    function: spi_chip_select
+    direction: bidirectional
+  - pin: 40
+    name: GPIO12
+    function: general_purpose_io_12
+    direction: bidirectional
+  - pin: 41
+    name: GPIO13
+    function: general_purpose_io_13
+    direction: bidirectional
+  - pin: 42
+    name: GPIO14_PWM
+    function: gpio14_or_pwm
+    direction: bidirectional
+  - pin: 43
+    name: GPIO15_PWM
+    function: gpio15_or_pwm
+    direction: bidirectional
+  - pin: 44
+    name: HRESET
+    function: active_high_hardware_reset
+    direction: input
+  - pin: 45
+    name: GND
+    function: ground
+    direction: ground
+  - pin: 46
+    name: GND
+    function: ground
+    direction: ground
+  - pin: 47
+    name: GND
+    function: ground
+    direction: ground
+  - pin: 48
+    name: GPIO16_PP_EXT1
+    function: gpio16_or_external_power_path_1_enable
+    direction: bidirectional
+  - pin: 49
+    name: GPIO17_PP_EXT2
+    function: gpio17_or_external_power_path_2_enable
+    direction: bidirectional
+  - pin: 50
+    name: C_USB_P_GPIO18
+    function: usb_dplus_bc12
+    direction: bidirectional
+  - pin: 51
+    name: GND
+    function: ground
+    direction: ground
+  - pin: 52
+    name: DRAIN2
+    function: internal_power_path_2_drain
+    direction: power
+  - pin: 53
+    name: C_USB_N_GPIO19
+    function: usb_dminus_bc12
+    direction: bidirectional
+  - pin: 54
+    name: GPIO20
+    function: general_purpose_io_20
+    direction: bidirectional
+  - pin: 55
+    name: GPIO21
+    function: general_purpose_io_21
+    direction: bidirectional
+  - pin: 56
+    name: DRAIN2
+    function: internal_power_path_2_drain
+    direction: power
+  - pin: 57
+    name: DRAIN2
+    function: exposed_drain_pad_power_path_2
+    direction: power
+  - pin: 58
+    name: DRAIN1
+    function: exposed_drain_pad_power_path_1
+    direction: power
+  - pin: 59
+    name: THERMAL_PAD_PPAD
+    function: exposed_ground_thermal_pad
+    direction: ground

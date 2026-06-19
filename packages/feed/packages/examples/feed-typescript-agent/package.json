@@ -1,0 +1,39 @@
+{
+  "name": "@feed/typescript-agent-example",
+  "version": "1.0.0",
+  "description": "Complete autonomous agent example for Feed with Agent0 and A2A integration",
+  "type": "module",
+  "scripts": {
+    "agent": "bun run src/index.ts",
+    "agent:local": "bun run src/local-agent.ts",
+    "lint": "cd ../../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/feed-typescript-agent/package.json packages/examples/feed-typescript-agent/tsconfig.json packages/examples/feed-typescript-agent/src packages/examples/feed-typescript-agent/tests",
+    "typecheck": "bun run tsc -p . --noEmit",
+    "test": "bun test tests/",
+    "test:integration": "bun test tests/integration.test.ts",
+    "test:e2e": "bun test tests/e2e.test.ts",
+    "test:actions": "bun test tests/actions-comprehensive.test.ts",
+    "test:local": "bun test tests/local-e2e.test.ts",
+    "register": "bun run src/registration.ts",
+    "benchmark": "bun run src/benchmark-runner.ts"
+  },
+  "dependencies": {
+    "@a2a-js/sdk": "^0.3.5",
+    "agent0-sdk": "^1.5.2",
+    "@ai-sdk/groq": "^3.0.39",
+    "@ai-sdk/anthropic": "^1.0.10",
+    "@ai-sdk/openai": "^1.0.10",
+    "ai": "6.0.207",
+    "ethers": "^6.15.0",
+    "ws": "^8.18.3",
+    "dotenv": "^17.2.3",
+    "@feed/a2a": "workspace:*",
+    "@feed/db": "workspace:*",
+    "@feed/shared": "workspace:*",
+    "viem": "^2.45.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/ws": "^8.18.1",
+    "bun-types": "^1.3.2"
+  }
+}

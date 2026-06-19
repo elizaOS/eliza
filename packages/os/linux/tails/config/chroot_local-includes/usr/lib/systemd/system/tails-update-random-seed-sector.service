@@ -1,0 +1,19 @@
+# This service updates the random seed after boot to ensure that the
+# seed is different at the next boot, even if the system is not shut
+# down cleanly.
+
+[Unit]
+Description=Update the random seed stored in LBA 34 of the boot device
+Documentation=https://tails.net/contribute/design/random/
+ConditionKernelCommandLine=!toram
+ConditionPathExists=/dev/bilibop
+# Run this service at the end of the boot process because we might
+# gather some entropy during boot.
+After=gnome-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/dd bs=512 seek=34 count=1 oflag=direct if=/dev/urandom of=/dev/bilibop
+
+[Install]
+WantedBy=gnome-session.target

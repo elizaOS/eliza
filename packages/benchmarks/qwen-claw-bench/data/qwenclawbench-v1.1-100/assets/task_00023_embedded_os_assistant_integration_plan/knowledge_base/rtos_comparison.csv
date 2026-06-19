@@ -1,0 +1,13 @@
+name,license,min_ram_kb,supported_archs,primary_language,rust_support,package_manager,github_stars,last_release_date,commercial_support
+FreeRTOS,MIT,4,ARM Cortex-M;ARM Cortex-A;RISC-V;Xtensa;x86,C,yes,none,5200,2024-02-15,yes (AWS)
+Zephyr,Apache-2.0,8,ARM Cortex-M;ARM Cortex-A;RISC-V;x86;ARC;Xtensa;MIPS,C,yes,west,10400,2024-03-01,yes (Nordic; NXP; Intel)
+RT-Thread,Apache-2.0,3,ARM Cortex-M;ARM Cortex-A;RISC-V;MIPS,C,no,pkgs,9800,2024-01-20,yes (RT-Thread Dev)
+NuttX,Apache-2.0,16,ARM Cortex-M;ARM Cortex-A;RISC-V;x86;Xtensa;MIPS;sim,C,no,none,2500,2024-02-28,yes (Sony; Xiaomi)
+ChibiOS,GPL-3.0/Commercial,2,ARM Cortex-M;e200z,C,no,none,850,2023-12-10,yes (ChibiOS SRL)
+ThreadX (Azure RTOS),MIT,2,ARM Cortex-M;ARM Cortex-A;RISC-V;ARC;x86,C,no,none,2800,2024-01-05,yes (Microsoft)
+Mbed OS,Apache-2.0,16,ARM Cortex-M,C++,no,mbed-cli,4700,2023-07-15,no (EOL announced)
+RIOT,LGPL-2.1,1,ARM Cortex-M;RISC-V;MSP430;AVR;ESP;native,C,no,none,4900,2024-02-22,no
+embOS,Commercial,1,ARM Cortex-M;ARM Cortex-A;RISC-V;Renesas RX,C,no,none,0,2024-03-10,yes (SEGGER)
+uC/OS-III,Apache-2.0,4,ARM Cortex-M;ARM Cortex-A;RISC-V;ColdFire;PIC32,C,no,none,720,2023-09-01,yes (Weston Embedded)
+LiteOS,BSD-3-Clause,2,ARM Cortex-M;RISC-V,C,no,hpm,4700,2023-11-18,yes (Huawei)
+Contiki-NG,BSD-3-Clause,10,ARM Cortex-M;MSP430;native,C,no,none,1400,2023-10-05,no

@@ -1,0 +1,52 @@
+task_id: M074_doc_extraction_thinking_impact
+task_name: Document Extraction - Thinking Mode Impact Analysis
+version: "1.0"
+category: doc_extraction
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/GroundingME.pdf
+
+    Based on the GroundingME paper, I need an analysis of how much the "Thinking"
+    mode relatively improves model performance.
+
+    Please focus exclusively on the open-source models among those evaluated for
+    this feature in Figure 5. Synthesize their baseline "Total" accuracy (No-Think)
+    from Table 3 and their "Think" accuracy from Figure 5 to calculate the relative
+    percentage increase for each model.
+
+    Generate two artifacts:
+    1. A CSV file named /workspace/thinking_relative_impact.csv containing the
+       model names, their baseline accuracy, their thinking accuracy, and the
+       calculated relative percentage increase (rounded to 2 decimal places).
+       Sort the data in descending order of this relative increase.
+    2. A vertical bar chart named /workspace/relative_gain_bar.png that visualizes
+       this sorted relative percentage increase.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/GroundingME.pdf
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/thinking_relative_impact.csv
+  - /workspace/relative_gain_bar.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Read GroundingME.pdf, extract baseline from Table 3 and Think accuracy from
+  Figure 5, filter open-source models only (exclude Seed-1.6-V), compute
+  relative percentage increase, sort descending, save CSV and bar chart.
+primary_dimensions:
+  - completion
+  - robustness

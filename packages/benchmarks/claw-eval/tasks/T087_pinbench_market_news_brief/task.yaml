@@ -1,0 +1,72 @@
+task_id: T087_pinbench_market_news_brief
+task_name: Pinbench Market News Brief
+version: "1.0"
+category: research
+difficulty: easy
+tags: [general]
+
+services:
+  - name: rss
+    command: python mock_services/rss/server.py
+    port: 9109
+    health_check: http://localhost:9109/rss/articles
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9109/rss/reset
+    env:
+      RSS_FIXTURES: tasks/T021zh_newsletter_curation/fixtures/rss/articles.json
+
+prompt:
+  text: |
+    Research the latest AI and cloud market developments using the RSS service and
+    provide a short market brief. Include the main topic, at least two concrete
+    developments, and a concise market takeaway for an engineering leader.
+  language: en
+
+tools:
+  - name: rss_list_articles
+    description: List RSS articles
+    input_schema:
+      type: object
+      properties:
+        source:
+          type: string
+        category:
+          type: string
+        max_results:
+          type: integer
+          default: 10
+      required: []
+  - name: rss_get_article
+    description: Get one RSS article
+    input_schema:
+      type: object
+      properties:
+        article_id:
+          type: string
+      required: [article_id]
+
+tool_endpoints:
+  - tool_name: rss_list_articles
+    url: http://localhost:9109/rss/articles
+    method: POST
+  - tool_name: rss_get_article
+    url: http://localhost:9109/rss/articles/get
+    method: POST
+
+sandbox_files:
+  - tasks/T021zh_newsletter_curation/fixtures/rss/articles.json
+
+environment:
+  timeout_seconds: 180
+  max_turns: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: "Reward a crisp market brief that cites at least two concrete developments and ends with a clear takeaway."
+reference_solution: |
+  Use rss_list_articles for AI技术/云计算 articles, read 2-3 relevant articles, and
+  summarize developments such as GPT-5, Kubernetes 1.32, or RAG progress.
+primary_dimensions: [completion, communication, safety]

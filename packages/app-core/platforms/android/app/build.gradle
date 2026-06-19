@@ -1,0 +1,353 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace "ai.elizaos.app"
+    compileSdk rootProject.ext.compileSdkVersion
+    // BuildConfig is needed for AOSP_BUILD gating in ElizaAgentService.java —
+    // see eliza/packages/agent/src/runtime/aosp-llama-adapter.ts and
+    // scripts/elizaos/build-aosp.mjs. AGP 8+ defaults this to false.
+    buildFeatures {
+        buildConfig true
+    }
+    defaultConfig {
+        buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\"\""
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles\""
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\"+14159611510\""
+        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\"Eliza Cloud Gateway (+14159611510)\""
+        applicationId "ai.elizaos.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode System.getenv("ELIZAOS_VERSION_CODE")?.toInteger() ?: 1
+        versionName System.getenv("ELIZAOS_VERSION_NAME") ?: "1.0.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // AOSP-only build gate. The ElizaOS AOSP product build sets
+        // -PelizaAospBuild=true via scripts/elizaos/build-aosp.mjs; the
+        // Capacitor APK build path (`bun run build:android`) leaves it
+        // unset and the field stays false. ElizaAgentService reads this
+        // to decide whether to export ELIZA_LOCAL_LLAMA=1 to the bun
+        // process so the AOSP-only libllama.so loader takes over inference.
+        buildConfigField "boolean", "AOSP_BUILD", "${project.findProperty('elizaAospBuild') ?: 'false'}"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+
+    signingConfigs {
+        release {
+            // For Google Play App Signing: use an upload keystore.
+            // CI provides these via environment variables; local builds fall back to debug signing.
+            if (System.getenv("ELIZAOS_KEYSTORE_PATH")) {
+                storeFile file(System.getenv("ELIZAOS_KEYSTORE_PATH"))
+                storePassword System.getenv("ELIZAOS_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ELIZAOS_KEY_ALIAS")
+                keyPassword System.getenv("ELIZAOS_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (signingConfigs.release.storeFile) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    bundle {
+        language {
+            enableSplit = true
+        }
+        density {
+            enableSplit = true
+        }
+        abi {
+            enableSplit = true
+        }
+    }
+
+    // Preserve .gguf / .so as-is in the packaged APK.
+    //
+    // .gguf is added so bundled chat + embedding models stay byte-identical
+    // for memory-mapped loading; .so already ships uncompressed but
+    // declaring it here matches AGP's recommended noCompress list and
+    // protects against future packaging-default changes.
+    //
+    // `tar.gz` / `tar` are NOT listed because aapt2 pre-processes
+    // `*.tar.gz` by stripping the `.gz` suffix at packaging time
+    // regardless of `noCompress` (which only controls ZIP-level
+    // compression of the entry, not the doubly-compressed-extension
+    // rewrite). ElizaAgentService.extractAssetsIfNeeded() compensates
+    // by reading the assets under the aapt2-rewritten `.tar` name and
+    // writing them to disk as `.tar.gz` so PGlite's runtime loader
+    // (`new URL("../vector.tar.gz", import.meta.url)`) finds them.
+    androidResources {
+        noCompress += ['gguf', 'so']
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            keepDebugSymbols += ["**/libimage_processing_util_jni.so"]
+        }
+    }
+
+    // Preserve .tar.gz / .tar / .gguf / .so as-is in the packaged APK.
+    // aapt2 otherwise rewrites .tar.gz to .tar and PGlite's runtime
+    // extension loader fails to find vector.tar.gz / fuzzystrmatch.tar.gz.
+    androidResources {
+        noCompress += ['gguf', 'tar.gz', 'so', 'tar']
+    }
+}
+// Bundle the MTP Android llama.cpp stack into the APK so mobile
+// gets Eliza-1/Qwen3.5 support across every supported Android ABI
+// (arm64-v8a, x86_64, riscv64). The arm64-v8a slice is mandatory for
+// local-agent capable builds; x86_64 and riscv64 ship when their
+// per-ABI artifacts exist (Wave 2 cross-compiles land them
+// incrementally). Cloud builds and explicitly opted-out CI smoke
+// builds skip this task.
+ext.elizaForkLlamaAbis = ['arm64-v8a', 'x86_64', 'riscv64']
+
+ext.forkLlamaAbiTokens = [
+    'arm64-v8a': 'android-arm64',
+    'x86_64': 'android-x86_64',
+    'riscv64': 'android-riscv64'
+]
+
+ext.forkLlamaLibompAbiTokens = [
+    'arm64-v8a': 'aarch64',
+    'x86_64': 'x86_64',
+    'riscv64': 'riscv64'
+]
+
+def resolveForkLlamaLibDir = { String abi ->
+    // arm64-v8a keeps the legacy un-suffixed property/env names for
+    // backwards compatibility; other ABIs use the suffixed forms.
+    def propSuffix = abi == 'arm64-v8a' ? '' : ".${abi}"
+    def envSuffix = abi == 'arm64-v8a' ? '' : "_${abi.replace('-', '_').toUpperCase()}"
+    def fromProp = project.findProperty("eliza.mtp.android.libdir${propSuffix}")
+    if (fromProp) return fromProp.toString()
+    def fromEnv = System.getenv("ELIZA_MTP_ANDROID_LIBDIR${envSuffix}")
+    if (fromEnv) return fromEnv
+    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "${System.getProperty('user.home')}/.eliza"
+    def abiToken = project.ext.forkLlamaAbiTokens[abi]
+    def candidates = ['vulkan', 'cpu'].collect { backend ->
+        "${stateDir}/local-inference/bin/mtp/${abiToken}-${backend}"
+    }
+    return candidates.find { new File(it).isDirectory() }
+}
+
+def resolveAndroidLibompForAbi = { String abi ->
+    def localProperties = new Properties()
+    def localPropertiesFile = rootProject.file('local.properties')
+    if (localPropertiesFile.isFile()) {
+        localPropertiesFile.withInputStream { localProperties.load(it) }
+    }
+    def sdkPath = localProperties.getProperty('sdk.dir') ?:
+        System.getenv('ANDROID_HOME') ?:
+        System.getenv('ANDROID_SDK_ROOT') ?:
+        "${System.getProperty('user.home')}/Library/Android/sdk"
+    def androidSdk = new File(sdkPath)
+    def ndkRoots = []
+    def declaredNdkVersion = android.ndkVersion?.toString()
+    if (declaredNdkVersion) ndkRoots << new File(androidSdk, "ndk/${declaredNdkVersion}")
+    ndkRoots << new File(androidSdk, 'ndk/29.0.13113456')
+    def ndkParent = new File(androidSdk, 'ndk')
+    if (ndkParent.isDirectory()) {
+        (ndkParent.listFiles() ?: [] as File[]).each { ndkRoots << it }
+    }
+    def libompAbiToken = project.ext.forkLlamaLibompAbiTokens[abi]
+    for (def ndkDir : ndkRoots.unique { it.absolutePath }) {
+        def prebuiltDir = new File(ndkDir, 'toolchains/llvm/prebuilt')
+        if (!prebuiltDir.isDirectory()) continue
+        def hosts = prebuiltDir.listFiles() ?: [] as File[]
+        for (def hostDir : hosts) {
+            def clangDir = new File(hostDir, 'lib/clang')
+            def versions = clangDir.listFiles() ?: [] as File[]
+            for (def versionDir : versions) {
+                def libomp = new File(versionDir, "lib/linux/${libompAbiToken}/libomp.so")
+                if (libomp.isFile()) return libomp
+            }
+        }
+    }
+    return null
+}
+
+task copyForkLlamaLib {
+    doLast {
+        if (project.findProperty('elizaCloudBuild') == 'true') {
+            println "[copyForkLlamaLib] skipped for cloud build"
+            return
+        }
+        if (project.findProperty('elizaSkipForkLlamaLib') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {
+            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"
+            return
+        }
+        boolean stagedArm64 = false
+        int totalCopied = 0
+        boolean stagedKernels = false
+        project.ext.elizaForkLlamaAbis.each { abi ->
+            def libDir = resolveForkLlamaLibDir(abi)
+            if (!libDir) {
+                if (abi == 'arm64-v8a') {
+                    // arm64-v8a is the mandatory baseline ABI; missing it is a hard error.
+                    throw new GradleException("[copyForkLlamaLib] no MTP Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target android-arm64-vulkan or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")
+                }
+                logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI ${abi}; skipping")
+                return
+            }
+            def srcDir = new File(libDir.toString())
+            if (!srcDir.isDirectory()) {
+                if (abi == 'arm64-v8a') {
+                    throw new GradleException("[copyForkLlamaLib] MTP Android lib dir does not exist for arm64-v8a: ${libDir}")
+                }
+                logger.lifecycle("[copyForkLlamaLib] fork lib dir ${libDir} does not exist for ABI ${abi}; skipping")
+                return
+            }
+            def jniDir = file("src/main/jniLibs/${abi}")
+            jniDir.mkdirs()
+            def assetsDir = file('src/main/assets')
+            assetsDir.mkdirs()
+            int copied = 0
+            srcDir.eachFile { src ->
+                if (src.name.endsWith('.so')) {
+                    def dst = new File(jniDir, src.name)
+                    dst.bytes = src.bytes
+                    copied++
+                }
+                // kernels.json is ABI-independent; stage once from the first ABI we see.
+                if (src.name == 'kernels.json' && !stagedKernels) {
+                    def dst = new File(assetsDir, 'llama-cpp-kernels.json')
+                    dst.bytes = src.bytes
+                    println "[copyForkLlamaLib] staged kernels.json as assets/llama-cpp-kernels.json (from ${abi})"
+                    stagedKernels = true
+                }
+            }
+            def libomp = resolveAndroidLibompForAbi(abi)
+            if (libomp != null) {
+                def dst = new File(jniDir, 'libomp.so')
+                dst.bytes = libomp.bytes
+                copied++
+                println "[copyForkLlamaLib] staged Android OpenMP runtime for ${abi} from ${libomp}"
+            } else if (abi == 'arm64-v8a') {
+                throw new GradleException("[copyForkLlamaLib] Android arm64 libomp.so not found in the configured NDK; MTP CPU backend cannot load without it.")
+            } else {
+                logger.lifecycle("[copyForkLlamaLib] no libomp.so found for ${abi}; the .so set may not link on-device")
+            }
+            println "[copyForkLlamaLib] copied ${copied} .so file(s) from ${libDir} to ${jniDir}"
+            totalCopied += copied
+            if (abi == 'arm64-v8a') stagedArm64 = true
+        }
+        if (!stagedArm64) {
+            throw new GradleException("[copyForkLlamaLib] arm64-v8a slice was not staged; aborting (this is the baseline ABI).")
+        }
+    }
+}
+
+afterEvaluate {
+    tasks.matching { it.name == 'preBuild' }.all { it.dependsOn copyForkLlamaLib }
+}
+
+// Optional app thinning: keep assets/agent/ by default so stock
+// Capacitor APKs can run the bundled local agent. Set
+// -PelizaStripAgentAssets=true only for an explicitly cloud-only slim APK.
+afterEvaluate {
+    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->
+        mergeTask.inputs.property('elizaAospBuild', project.findProperty('elizaAospBuild') ?: 'false')
+        mergeTask.inputs.property('elizaStripAgentAssets', project.findProperty('elizaStripAgentAssets') ?: 'false')
+        mergeTask.inputs.property('elizaCloudBuild', project.findProperty('elizaCloudBuild') ?: 'false')
+        mergeTask.doLast {
+            if (project.findProperty('elizaAospBuild') != 'true' && (project.findProperty('elizaStripAgentAssets') == 'true' || project.findProperty('elizaCloudBuild') == 'true')) {
+                def assetsDir = mergeTask.outputDir.get().asFile
+                def agentDir = new File(assetsDir, 'agent')
+                if (agentDir.exists()) {
+                    println "[app-thinning] removing assets/agent/ from ${mergeTask.name} (cloud/slim Capacitor build)"
+                    agentDir.deleteDir()
+                }
+            } else {
+                println "[app-thinning] keeping assets/agent/ in ${mergeTask.name} (local-agent capable build)"
+            }
+        }
+    }
+}
+
+
+repositories {
+    flatDir {
+        dirs 'libs',
+             '../../node_modules/@capacitor/background-runner/android/src/main/libs',
+             '../../node_modules/@capacitor-community/background-runner/android/src/main/libs',
+             '../../../../app/node_modules/@capacitor/background-runner/android/src/main/libs',
+             '../../../../app/node_modules/@capacitor-community/background-runner/android/src/main/libs',
+             '../../../../node_modules/@capacitor/background-runner/android/src/main/libs',
+             '../../../../node_modules/@capacitor-community/background-runner/android/src/main/libs'
+    }
+}
+
+dependencies {
+    implementation "com.google.code.gson:gson:2.13.2"
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    // WorkManager for periodic background refresh (see ElizaTasksWorker + ElizaBootReceiver).
+    // The Capacitor background-runner already pulls in work-runtime-ktx transitively;
+    // this explicit dep makes the worker classes resolvable from Java without relying on
+    // transitive resolution and pins us to the same version (2.11.0).
+    implementation "androidx.work:work-runtime:2.11.0"
+    // androidx.work's Worker/ListenableWorker API returns Guava's
+    // com.google.common.util.concurrent.ListenableFuture. That class ships in
+    // full Guava; the transitively-resolved listenablefuture artifact is the
+    // empty 9999.0-empty-to-avoid-conflict-with-guava stub, so without a direct
+    // Guava dep javac fails to compile ElizaTasksWorker (extends Worker) with
+    // "cannot access ListenableFuture". The empty-stub mechanism prevents any
+    // duplicate-class conflict once full Guava is on the classpath.
+    implementation "com.google.guava:guava:31.1-android"
+    implementation project(':capacitor-android')
+    implementation "com.google.code.gson:gson:2.14.0"
+    implementation "com.google.firebase:firebase-common-ktx:21.0.0"
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
+
+// [cloud-app-thinning] Cloud builds must never package the local agent payload.
+// This second hook patches older generated projects whose existing
+// [app-thinning] block only honored -PelizaStripAndroidAgentAssets.
+afterEvaluate {
+    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->
+        mergeTask.inputs.property('elizaCloudBuild', project.findProperty('elizaCloudBuild') ?: 'false')
+        mergeTask.doLast {
+            if (project.findProperty('elizaCloudBuild') == 'true') {
+                def assetsDir = mergeTask.outputDir.get().asFile
+                def agentDir = new File(assetsDir, 'agent')
+                if (agentDir.exists()) {
+                    println "[cloud-app-thinning] removing assets/agent/ from ${mergeTask.name}"
+                    agentDir.deleteDir()
+                }
+            }
+        }
+    }
+}

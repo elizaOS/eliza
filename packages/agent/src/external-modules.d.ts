@@ -1,0 +1,937 @@
+declare module "@elizaos/plugin-agent-orchestrator";
+declare module "@elizaos/plugin-capacitor-bridge" {
+  import type { Server } from "node:http";
+  import type { AgentRuntime } from "@elizaos/core";
+
+  export interface MobileDeviceBridgeStatus {
+    enabled: boolean;
+    connected: boolean;
+    devices: Array<{
+      deviceId: string;
+      capabilities: {
+        platform: "ios" | "android" | "web";
+        deviceModel: string;
+        totalRamGb: number;
+        cpuCores: number;
+        gpu: {
+          backend: "metal" | "vulkan" | "gpu-delegate";
+          available: boolean;
+        } | null;
+      };
+      loadedPath: string | null;
+      connectedSince: string;
+    }>;
+    primaryDeviceId: string | null;
+    pendingRequests: number;
+    modelPath: string | null;
+  }
+
+  export const mobileDeviceBridge: unknown;
+  export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus;
+  export function loadMobileDeviceBridgeModel(
+    modelPath: string,
+    modelId?: string,
+  ): Promise<void>;
+  export function unloadMobileDeviceBridgeModel(): Promise<void>;
+  export function attachMobileDeviceBridgeToServer(
+    server: Server,
+  ): Promise<void>;
+  export function ensureMobileDeviceBridgeInferenceHandlers(
+    runtime: AgentRuntime,
+  ): Promise<boolean>;
+  export function runAndroidBridgeCli(): Promise<void>;
+  export function runIosBridgeCli(argv?: string[]): Promise<void>;
+}
+declare module "@elizaos/capacitor-mobile-agent-bridge" {
+  export interface MobileAgentBridgeStartOptions {
+    relayUrl: string;
+    deviceId: string;
+    pairingToken?: string;
+    localAgentApiBase?: string;
+  }
+
+  export type MobileAgentTunnelState =
+    | "idle"
+    | "connecting"
+    | "registered"
+    | "disconnected"
+    | "error";
+
+  export interface MobileAgentTunnelStatus {
+    state: MobileAgentTunnelState;
+    relayUrl: string | null;
+    deviceId: string | null;
+    lastError: string | null;
+  }
+
+  export interface MobileAgentTunnelStateEvent {
+    state: MobileAgentTunnelState;
+    reason?: string;
+  }
+
+  export interface MobileAgentBridgePlugin {
+    startInboundTunnel(
+      options: MobileAgentBridgeStartOptions,
+    ): Promise<MobileAgentTunnelStatus>;
+    stopInboundTunnel(): Promise<void>;
+    getTunnelStatus(): Promise<MobileAgentTunnelStatus>;
+    addListener(
+      eventName: "stateChange",
+      listenerFunc: (event: MobileAgentTunnelStateEvent) => void,
+    ): Promise<{ remove(): Promise<void> }>;
+    removeAllListeners(): Promise<void>;
+  }
+
+  export const MobileAgentBridge: MobileAgentBridgePlugin;
+}
+declare module "qrcode-terminal" {
+  export function generate(
+    input: string,
+    options?: { small?: boolean },
+    callback?: (qrcode: string) => void,
+  ): void;
+}
+declare module "telegram" {
+  export class TelegramClient {
+    constructor(
+      session: unknown,
+      apiId: number,
+      apiHash: string,
+      options: Record<string, unknown>,
+    );
+    session: { save(): string } & Record<string, unknown>;
+    connect(): Promise<void>;
+    disconnect(): Promise<void>;
+    checkAuthorization(): Promise<boolean>;
+    sendCode(
+      ...args: unknown[]
+    ): Promise<
+      { phoneCodeHash: string; isCodeViaApp: boolean } & Record<string, unknown>
+    >;
+    invoke(request: unknown): Promise<unknown>;
+    signInWithPassword(...args: unknown[]): Promise<Record<string, unknown>>;
+    getDialogs(args: { limit: number }): Promise<ReadonlyArray<unknown>>;
+    getEntity(target: unknown): Promise<unknown>;
+    sendMessage(
+      entity: unknown,
+      args: { message: string },
+    ): Promise<{ id?: unknown } | null | undefined>;
+    getMessages(
+      entity: unknown,
+      args: { search?: string; ids?: number | number[]; limit?: number },
+    ): Promise<ReadonlyArray<unknown>>;
+    [key: string]: unknown;
+  }
+  export namespace Api {
+    interface User {
+      id: { toString(): string } | string;
+      username?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
+      phone?: string | null;
+      [key: string]: unknown;
+    }
+    namespace auth {
+      class SignIn {
+        constructor(args: {
+          phoneNumber: string;
+          phoneCodeHash: string;
+          phoneCode: string;
+        });
+      }
+      class Authorization {
+        user: unknown;
+        [key: string]: unknown;
+      }
+    }
+    namespace account {}
+  }
+  export const Api: {
+    auth: {
+      SignIn: typeof Api.auth.SignIn;
+      Authorization: typeof Api.auth.Authorization;
+    };
+    account: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+}
+declare module "telegram/sessions" {
+  export class StringSession {
+    constructor(sessionString?: string);
+    save(): string;
+    [key: string]: unknown;
+  }
+}
+declare module "@elizaos/plugin-elizacloud" {
+  import type { IAgentRuntime, Service } from "@elizaos/core";
+
+  export interface CloudConfigLike {
+    apiKey?: string | null;
+    baseUrl?: string | null;
+    [key: string]: unknown;
+  }
+
+  export interface CloudSetupResult {
+    apiKey: string;
+    agentId: string | undefined;
+    baseUrl: string;
+    bridgeUrl?: string;
+  }
+
+  export interface CloudSetupObserver {
+    [key: string]: unknown;
+  }
+
+  export class ClackObserver implements CloudSetupObserver {
+    constructor(clack: unknown);
+    [key: string]: unknown;
+  }
+
+  export class NullCloudSetupObserver implements CloudSetupObserver {
+    [key: string]: unknown;
+  }
+
+  export interface CloudRouteState {
+    config?: unknown;
+    runtime?: unknown;
+    [key: string]: unknown;
+  }
+
+  export interface CloudAuthApiKeyService {
+    isAuthenticated: () => boolean;
+    getApiKey?: () => string | undefined;
+  }
+
+  export interface CloudWalletDescriptor {
+    agentWalletId: string;
+    walletAddress: string;
+    walletProvider: CloudWalletProvider;
+    chainType: "evm" | "solana";
+    balance?: string | number;
+  }
+
+  export type CloudWalletProvider = "privy" | "steward";
+
+  export interface CloudVoiceCatalogEntry {
+    id: string;
+    name: string;
+    gender?: string;
+    preview?: string;
+    category?: string;
+    language?: string;
+  }
+
+  export class ElizaCloudClient {
+    constructor(...args: unknown[]);
+    [key: string]: unknown;
+  }
+
+  export class CloudManager {
+    constructor(...args: unknown[]);
+    init(): Promise<void>;
+    connect(
+      agentId: string,
+    ): Promise<{ agentName?: string; [key: string]: unknown }>;
+    disconnect(): Promise<void>;
+    [key: string]: unknown;
+  }
+
+  export function normalizeCloudSiteUrl(value?: string): string;
+  export function normalizeCloudSecret(
+    value: string | null | undefined,
+  ): string | null;
+  export function normalizeCloudApiKey(
+    value: string | null | undefined,
+  ): string | null;
+  export function isCloudAuthApiKeyService(
+    value: Service | null | undefined,
+  ): value is Service & CloudAuthApiKeyService;
+  export function validateCloudBaseUrl(value: string): Promise<string | null>;
+  export function resolveCloudApiBaseUrl(...args: unknown[]): string;
+  export function resolveCloudApiKey(...args: unknown[]): string | null;
+  export function __resetCloudBaseUrlCache(): void;
+  export function clearCloudSecrets(): void;
+  export function ensureCloudTtsApiKeyAlias(...args: unknown[]): void;
+  export function fetchCloudVoiceCatalog(
+    runtime: IAgentRuntime,
+  ): Promise<CloudVoiceCatalogEntry[]>;
+  export function getCloudSecret(...args: unknown[]): string | undefined;
+  export function getOrCreateClientAddressKey(): Promise<{ address: string }>;
+  export function isCloudProvisionedContainer(...args: unknown[]): boolean;
+  export function provisionCloudWalletsBestEffort(...args: unknown[]): Promise<{
+    descriptors: Partial<Record<"evm" | "solana", CloudWalletDescriptor>>;
+    failures: Array<{ chain: "evm" | "solana"; error: unknown }>;
+    warnings: string[];
+  }>;
+  export function persistCloudWalletCache(...args: unknown[]): void;
+  export function resolveCloudTtsBaseUrl(...args: unknown[]): string;
+  export function resolveElevenLabsApiKeyForCloudMode(
+    ...args: unknown[]
+  ): string | undefined;
+  export function runCloudSetup(
+    ...args: unknown[]
+  ): Promise<CloudSetupResult | null>;
+
+  export function handleCloudBillingRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudCompatRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudRelayRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudStatusRoutes(...args: unknown[]): Promise<boolean>;
+  export function handleCloudTtsPreviewRoute(
+    ...args: unknown[]
+  ): Promise<boolean>;
+  export function mirrorCompatHeaders(...args: unknown[]): void;
+
+  const plugin: unknown;
+  export default plugin;
+}
+declare module "@elizaos/plugin-video" {
+  import type { Plugin } from "@elizaos/core";
+
+  const plugin: Plugin;
+  export default plugin;
+}
+// @elizaos/plugin-commands is a workspace package with full types; no ambient shim needed.
+declare module "@elizaos/plugin-signal" {
+  export type SignalPairingStatus =
+    | "idle"
+    | "initializing"
+    | "waiting_for_qr"
+    | "connected"
+    | "disconnected"
+    | "timeout"
+    | "error";
+
+  export interface SignalPairingEvent {
+    type: "signal-qr" | "signal-status";
+    accountId: string;
+    qrDataUrl?: string;
+    status?: SignalPairingStatus;
+    uuid?: string;
+    phoneNumber?: string;
+    error?: string;
+  }
+
+  export interface SignalPairingSnapshot {
+    status: SignalPairingStatus;
+    qrDataUrl: string | null;
+    phoneNumber: string | null;
+    error: string | null;
+  }
+
+  export interface SignalPairingOptions {
+    authDir: string;
+    accountId: string;
+    cliPath?: string;
+    onEvent: (event: SignalPairingEvent) => void;
+  }
+
+  export class SignalPairingSession {
+    constructor(options: SignalPairingOptions);
+    start(): Promise<void>;
+    stop(): void;
+    getStatus(): SignalPairingStatus;
+    getSnapshot(): SignalPairingSnapshot;
+  }
+
+  export function applySignalQrOverride(
+    plugins: {
+      id: string;
+      validationErrors: unknown[];
+      configured: boolean;
+      qrConnected?: boolean;
+    }[],
+    workspaceDir: string,
+  ): void;
+
+  export function classifySignalPairingErrorStatus(
+    errorMessage: string,
+  ): SignalPairingStatus;
+  export function extractSignalCliProvisioningUrl(text: string): string | null;
+  export function parseSignalCliAccountsOutput(output: string): string | null;
+  export function sanitizeSignalAccountId(raw: string): string;
+  export function signalAuthExists(
+    workspaceDir: string,
+    accountId?: string,
+  ): boolean;
+  export function signalLogout(workspaceDir: string, accountId?: string): void;
+}
+declare module "@elizaos/plugin-whatsapp" {
+  import type { Plugin } from "@elizaos/core";
+
+  export function applyWhatsAppQrOverride(...args: unknown[]): void;
+  export function handleWhatsAppRoute(...args: unknown[]): unknown;
+  export type WhatsAppPairingEventLike = Record<string, unknown>;
+  export type WhatsAppPairingSessionLike = Record<string, unknown>;
+  export type WhatsAppRouteDeps = Record<string, unknown>;
+  export type WhatsAppRouteState = Record<string, unknown>;
+
+  export type WhatsAppPairingEvent = Record<string, unknown>;
+  export type WhatsAppPairingOptions = Record<string, unknown>;
+  export type WhatsAppPairingStatus = string;
+
+  export class WhatsAppPairingSession {
+    constructor(...args: unknown[]);
+    stop(): void;
+  }
+
+  export function sanitizeWhatsAppAccountId(...args: unknown[]): string;
+  export function whatsappAuthExists(...args: unknown[]): boolean;
+  export function whatsappLogout(...args: unknown[]): void;
+
+  const whatsappPlugin: Plugin;
+  export default whatsappPlugin;
+}
+
+declare module "@elizaos/plugin-computeruse" {
+  export function handleSandboxRoute(
+    req: unknown,
+    res: unknown,
+    pathname: unknown,
+    method: unknown,
+    options: unknown,
+  ): Promise<boolean>;
+  export function handleComputerUseRoutes(...args: unknown[]): unknown;
+}
+
+declare module "@elizaos/plugin-mcp" {
+  export function handleMcpRoutes(...args: unknown[]): unknown;
+}
+
+declare module "@elizaos/plugin-contacts" {
+  import type { Plugin, Provider } from "@elizaos/core";
+
+  export const contactsProvider: Provider;
+  export const appContactsPlugin: Plugin;
+}
+
+declare module "@elizaos/plugin-phone" {
+  import type { Plugin, Provider } from "@elizaos/core";
+
+  export const phoneCallLogProvider: Provider;
+  export const appPhonePlugin: Plugin;
+  const plugin: Plugin;
+  export default plugin;
+}
+
+declare module "@elizaos/plugin-wifi" {
+  import type { Plugin, Provider } from "@elizaos/core";
+
+  export const appWifiPlugin: Plugin;
+  export const wifiNetworksProvider: Provider;
+}
+
+declare module "@elizaos/plugin-discord-local" {
+  const plugin: unknown;
+  export default plugin;
+}
+
+declare module "@elizaos/plugin-edge-tts";
+declare module "@elizaos/plugin-imessage" {
+  export function resolveBlueBubblesWebhookPath(...args: unknown[]): string;
+  const imessagePlugin: unknown;
+  export default imessagePlugin;
+}
+declare module "@elizaos/plugin-ollama";
+declare module "@elizaos/plugin-openai";
+declare module "@elizaos/plugin-shell";
+declare module "@elizaos/plugin-x402" {
+  import type {
+    IAgentRuntime,
+    PaymentEnabledRoute,
+    Route,
+    RouteRequest,
+    RouteResponse,
+  } from "@elizaos/core";
+
+  export interface X402StartupValidationResult {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  }
+
+  export function createPaymentAwareHandler(
+    route: PaymentEnabledRoute,
+  ): (
+    req: RouteRequest,
+    res: RouteResponse,
+    runtime: IAgentRuntime,
+  ) => void | Promise<void>;
+  export function isRoutePaymentWrapped(route: unknown): boolean;
+  export function validateX402Startup(
+    routes: Route[],
+    character?: unknown,
+    options?: { agentId?: string },
+  ): X402StartupValidationResult;
+}
+declare module "fast-redact" {
+  interface FastRedactOptions {
+    paths: string[];
+    censor?: string | ((value: unknown, path: string) => unknown);
+    serialize?: boolean | ((value: unknown) => string);
+    strict?: boolean;
+    remove?: boolean;
+  }
+  function fastRedact(
+    opts: FastRedactOptions,
+  ): (obj: Record<string, unknown>) => string | Record<string, unknown>;
+  export = fastRedact;
+}
+
+declare module "markdown-it" {
+  interface Token {
+    type: string;
+    tag: string;
+    nesting: number;
+    content: string;
+    children: Token[] | null;
+    markup: string;
+    info: string;
+    level: number;
+    block: boolean;
+    hidden: boolean;
+    attrs: [string, string][] | null;
+    map: [number, number] | null;
+    meta: unknown;
+  }
+  class MarkdownIt {
+    constructor(
+      presetOrOptions?: string | Record<string, unknown>,
+      options?: Record<string, unknown>,
+    );
+    parse(src: string, env?: object): Token[];
+    render(src: string, env?: object): string;
+    enable(rule: string | string[], ignoreInvalid?: boolean): this;
+    disable(rule: string | string[], ignoreInvalid?: boolean): this;
+  }
+  export = MarkdownIt;
+}
+
+declare module "three/examples/jsm/libs/meshopt_decoder.module.js" {
+  export const MeshoptDecoder: {
+    supported: boolean;
+    ready: Promise<void>;
+    decode(
+      target: Uint8Array,
+      count: number,
+      size: number,
+      source: Uint8Array,
+      mode?: number,
+    ): void;
+    decodeGltfBuffer(
+      target: Uint8Array,
+      count: number,
+      size: number,
+      source: Uint8Array,
+      mode: string,
+      filter?: string,
+    ): void;
+    useWorkers?(count: number): void;
+  };
+}
+
+// `ws` is an optional native dep dynamic-imported by plugin-local-inference's
+// device bridge. Marked `--external` in the tsup build; declare a loose
+// surface so transitive type-checking can resolve it.
+declare module "ws" {
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for an optional dep
+  export const WebSocket: any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for an optional dep
+  export const WebSocketServer: any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for an optional dep
+  export type WebSocket = any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for an optional dep
+  export type WebSocketServer = any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for an optional dep
+  const ws: any;
+  export default ws;
+}
+
+declare module "jsdom" {
+  export class JSDOM {
+    constructor(
+      html?: string,
+      options?: {
+        url?: string;
+        pretendToBeVisual?: boolean;
+        [key: string]: unknown;
+      },
+    );
+    window: Window & typeof globalThis;
+    serialize(): string;
+  }
+}
+
+// `isomorphic-git` is a runtime dep used by vfs-git.ts for VFS git operations.
+// Declared here so the agent typecheck does not require the package to be
+// installed as a peer in the local workspace (it may be unavailable in some
+// dev environments). Only the symbols actually imported by vfs-git.ts need
+// surface here.
+declare module "isomorphic-git" {
+  /** [filepath, head, workdir, stage] — numeric states: 0 = absent, 1 = unchanged, 2/3 = modified/added. */
+  export type StatusRow = [string, number, number, number];
+  export interface ReadCommitResult {
+    oid: string;
+    commit: {
+      message: string;
+      author: {
+        name: string;
+        email: string;
+        timestamp: number;
+        timezoneOffset: number;
+      };
+      committer: {
+        name: string;
+        email: string;
+        timestamp: number;
+        timezoneOffset: number;
+      };
+      parent: string[];
+      tree: string;
+    };
+    payload: string;
+  }
+  export type AuthCallback = (
+    url: string,
+    auth: { username?: string; password?: string },
+  ) =>
+    | { username?: string; password?: string }
+    | undefined
+    | Promise<{ username?: string; password?: string } | undefined>;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for optional dep
+  const git: any;
+  export default git;
+}
+
+declare module "isomorphic-git/http/node" {
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for optional dep
+  const http: any;
+  export default http;
+}
+
+declare module "@elizaos/plugin-wallet" {
+  import type http from "node:http";
+  import type { AgentRuntime } from "@elizaos/core";
+  import type { WalletAddresses } from "@elizaos/shared";
+
+  // biome-ignore lint/suspicious/noExplicitAny: ambient shim for optional built package
+  type AnyFunction = (...args: any[]) => any;
+
+  export type WalletAddressesSnapshot = WalletAddresses;
+
+  export interface WalletRpcReadinessSnapshot {
+    ready: boolean;
+    reason?: string | null;
+    [key: string]: unknown;
+  }
+
+  export interface WalletCapabilityStatusArgs {
+    // biome-ignore lint/suspicious/noExplicitAny: mirrors external plugin declaration surface
+    config: any;
+    runtime: AgentRuntime | null;
+    getWalletAddresses: () => WalletAddressesSnapshot;
+  }
+
+  export interface WalletRouteDependencies {
+    getWalletAddresses: () => WalletAddressesSnapshot;
+    fetchEvmBalances: AnyFunction;
+    fetchSolanaBalances: AnyFunction;
+    fetchSolanaNativeBalanceViaRpc: AnyFunction;
+    validatePrivateKey: AnyFunction;
+    importWallet: AnyFunction;
+    generateWalletForChain: AnyFunction;
+    deriveSolanaAddress: AnyFunction;
+    setSolanaWalletEnv: AnyFunction;
+    resolveWalletRpcReadiness: AnyFunction;
+    resolveWalletNetworkMode: AnyFunction;
+    getStoredWalletRpcSelections: AnyFunction;
+    applyWalletRpcConfigUpdate: AnyFunction;
+    resolveWalletCapabilityStatus: (
+      args: WalletCapabilityStatusArgs,
+    ) => Record<string, unknown>;
+    isCloudWalletEnabled: () => boolean;
+    persistConfigEnv: (key: string, value: string) => Promise<void>;
+    createIntegrationTelemetrySpan: AnyFunction;
+  }
+
+  export interface WalletRouteContext {
+    req: http.IncomingMessage;
+    res: http.ServerResponse;
+    method: string;
+    pathname: string;
+    // biome-ignore lint/suspicious/noExplicitAny: mirrors external plugin declaration surface
+    config: any;
+    saveConfig: AnyFunction;
+    ensureWalletKeysInEnvAndConfig: AnyFunction;
+    resolveWalletExportRejection: AnyFunction;
+    restartRuntime: AnyFunction;
+    scheduleRuntimeRestart: AnyFunction;
+    readJsonBody: AnyFunction;
+    json: AnyFunction;
+    error: AnyFunction;
+    deps: WalletRouteDependencies;
+    runtime: AgentRuntime | null;
+  }
+
+  export function handleWalletRoutes(
+    context: WalletRouteContext,
+  ): Promise<boolean>;
+  export function _resetForTesting(): void;
+  export function getWalletExportAuditLog(): unknown[];
+}
+
+declare module "@elizaos/ui" {
+  import type { ComponentType, RefObject } from "react";
+
+  // biome-ignore lint/suspicious/noExplicitAny: server-side ambient UI shim
+  type AnyValue = any;
+  // biome-ignore lint/suspicious/noExplicitAny: server-side ambient UI shim
+  type AnyFunction = (...args: any[]) => any;
+
+  export interface AutomationNodeDescriptor {
+    id: string;
+    label: string;
+    description?: string;
+    class: "action" | "trigger" | "context" | "agent" | string;
+    source?: string;
+    backingCapability?: string;
+    ownerScoped?: boolean;
+    requiresSetup?: boolean;
+    availability?: "enabled" | "disabled" | string;
+    disabledReason?: string;
+    [key: string]: unknown;
+  }
+
+  export type AgentElementRole =
+    | "button"
+    | "link"
+    | "text-input"
+    | "number-input"
+    | "textarea"
+    | "select"
+    | "toggle"
+    | "slider"
+    | "tab"
+    | "menu-item"
+    | "list-item"
+    | "card"
+    | "metric"
+    | "status"
+    | "image"
+    | "chart"
+    | "region"
+    | "heading"
+    | "custom";
+
+  export interface AgentElementDescriptor {
+    id: string;
+    role?: AgentElementRole;
+    label: string;
+    group?: string;
+    description?: string;
+    status?: string;
+    order?: number;
+    fillable?: boolean;
+    clickable?: boolean;
+    options?: readonly string[];
+    getValue?: () => unknown;
+    onFill?: (value: string) => void;
+    onActivate?: () => void;
+  }
+
+  export interface AgentElementHandle<T extends HTMLElement> {
+    ref: RefObject<T | null>;
+    agentProps: {
+      "data-agent-id": string;
+      "data-agent-role": string;
+      "data-agent-label": string;
+      "data-state"?: string;
+    };
+  }
+
+  export interface AutomationNodeCatalogResponse {
+    nodes: AutomationNodeDescriptor[];
+    summary: {
+      total: number;
+      enabled: number;
+      disabled: number;
+    };
+  }
+
+  export type WindowShellRoute = string;
+  export type AppDetailExtensionProps = AnyValue;
+  export type AppBootConfig = AnyValue;
+  export type AppOperatorSurfaceProps = AnyValue;
+  export type AppRunSummary = AnyValue;
+  export type AppSessionJsonValue = AnyValue;
+  export type BrandingConfig = AnyValue;
+  export type CharacterCatalogData = AnyValue;
+  export type CodingAgentTasksPanelProps = AnyValue;
+  export type CompanionInferenceNotice = AnyValue;
+  export type CompanionSceneStatus = AnyValue;
+  export type CompanionShellComponentProps = AnyValue;
+  export type ConversationMessage = AnyValue;
+  export type FeedActivityItem = AnyValue;
+  export type FeedAgentGoal = AnyValue;
+  export type FeedAgentStatus = AnyValue;
+  export type FeedChatMessage = AnyValue;
+  export type FeedPredictionMarket = AnyValue;
+  export type FeedTeamAgent = AnyValue;
+  export type FeedWallet = AnyValue;
+  export type FineTuningViewProps = AnyValue;
+  export type GameOperatorAction = AnyValue;
+  export type GameOperatorEvent = AnyValue;
+  export type NetworkStatusChangeDetail = AnyValue;
+  export type OverlayApp = AnyValue;
+  export type OverlayAppContext = AnyValue;
+  export type ResolveCompanionInferenceNoticeArgs = AnyValue;
+  export type ShareTargetPayload = AnyValue;
+  export type StewardApprovalQueueProps = AnyValue;
+  export type StewardLogoProps = AnyValue;
+  export type StewardTransactionHistoryProps = AnyValue;
+  export type SurfaceTone = string;
+  export type VincentStateHookArgs = AnyValue;
+  export type VincentStateHookResult = AnyValue;
+
+  export interface IosLocalAgentNativeRequestOptions {
+    path: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string | null;
+    timeoutMs?: number;
+  }
+
+  export interface IosLocalAgentNativeRequestResult {
+    status: number;
+    headers?: Record<string, string>;
+    body?: string | null;
+    error?: string;
+  }
+
+  export const AGENT_READY_EVENT: string;
+  export const ANDROID_LOCAL_AGENT_IPC_BASE: string;
+  export const APP_PAUSE_EVENT: string;
+  export const APP_RESUME_EVENT: string;
+  export const App: ComponentType<AnyValue>;
+  export const AppProvider: ComponentType<AnyValue>;
+  export const AppWindowRenderer: ComponentType<AnyValue>;
+  export const Button: ComponentType<AnyValue>;
+  export const CharacterEditor: ComponentType<AnyValue>;
+  export const COMMAND_PALETTE_EVENT: string;
+  export const CONNECT_EVENT: string;
+  export const ELIZA_DEFAULT_THEME: string;
+  export const ErrorBoundary: ComponentType<AnyValue>;
+  export const GameOperatorShell: ComponentType<AnyValue>;
+  export const Input: ComponentType<AnyValue>;
+  export const IOS_LOCAL_AGENT_IPC_BASE: string;
+  export const MOBILE_LOCAL_AGENT_API_BASE: string;
+  export const MOBILE_RUNTIME_MODE_CHANGED_EVENT: string;
+  export const MOBILE_RUNTIME_MODE_STORAGE_KEY: string;
+  export const NETWORK_STATUS_CHANGE_EVENT: string;
+  export const PagePanel: ComponentType<AnyValue>;
+  export const SHARE_TARGET_EVENT: string;
+  export const Spinner: ComponentType<AnyValue>;
+  export const SurfaceBadge: ComponentType<AnyValue>;
+  export const SurfaceCard: ComponentType<AnyValue>;
+  export const SurfaceEmptyState: ComponentType<AnyValue>;
+  export const SurfaceGrid: ComponentType<AnyValue>;
+  export const SurfaceSection: ComponentType<AnyValue>;
+  export const TRAY_ACTION_EVENT: string;
+
+  export const applyLaunchConnection: AnyFunction;
+  export const applyLaunchConnectionFromUrl: AnyFunction;
+  export const applyUiTheme: AnyFunction;
+  export const client: AnyValue;
+  export const dispatchAppEvent: AnyFunction;
+  export const formatDetailTimestamp: AnyFunction;
+  export const getBootConfig: AnyFunction;
+  export const getWindowNavigationPath: AnyFunction;
+  export const installAndroidNativeAgentFetchBridge: AnyFunction;
+  export const isAppWindowRoute: AnyFunction;
+  export const isDetachedWindowShell: AnyFunction;
+  export const isElectrobunRuntime: AnyFunction;
+  export const isMobileLocalAgentIpcUrl: AnyFunction;
+  export const loadUiTheme: AnyFunction;
+  export const normalizeMobileRuntimeMode: AnyFunction;
+  export const registerDetailExtension: AnyFunction;
+  export const registerOperatorSurface: AnyFunction;
+  export const registerOverlayApp: AnyFunction;
+  export const resolveWindowShellRoute: AnyFunction;
+  export const routeFirstRunDeepLink: AnyFunction;
+  export const selectLatestRunForApp: AnyFunction;
+  export const setBootConfig: AnyFunction;
+  export const shouldUseCloudOnlyBranding: AnyFunction;
+  export const subscribeDesktopBridgeEvent: AnyFunction;
+  export const syncDetachedShellLocation: AnyFunction;
+  export const toneForHealthState: AnyFunction;
+  export const toneForStatusText: AnyFunction;
+  export const toneForViewerAttachment: AnyFunction;
+  export function useAgentElement<T extends HTMLElement = HTMLElement>(
+    descriptor: AgentElementDescriptor,
+  ): AgentElementHandle<T>;
+  export const useApp: AnyFunction;
+
+  export const applyForceFreshFirstRunReset: AnyFunction;
+  export const initializeCapacitorBridge: AnyFunction;
+  export const initializeStorageBridge: AnyFunction;
+  export const installDesktopPermissionsClientPatch: AnyFunction;
+  export const installForceFreshFirstRunClientPatch: AnyFunction;
+  export const installLocalProviderCloudPreferencePatch: AnyFunction;
+  export const isElizaOS: AnyFunction;
+  export const preSeedAndroidLocalRuntimeIfFresh: AnyFunction;
+  export const shouldInstallMainWindowFirstRunPatches: AnyFunction;
+  export const primeIosFullBunRuntime: AnyFunction;
+}
+
+declare module "@elizaos/ui/navigation" {
+  export const TAB_PATHS: Record<string, string>;
+}
+
+declare module "@elizaos/plugin-discord" {
+  import type { AgentRuntime } from "@elizaos/core";
+
+  export interface DiscordUserProfile {
+    avatarUrl?: string;
+    displayName?: string;
+    username?: string;
+  }
+
+  export interface DiscordMessageAuthorProfile extends DiscordUserProfile {
+    rawUserId?: string;
+  }
+
+  export interface StoredDiscordEntityProfile extends DiscordUserProfile {
+    rawUserId?: string;
+  }
+
+  export function cacheDiscordAvatarUrl(
+    url: string | undefined,
+    options?: {
+      fetchImpl?: typeof fetch;
+      userId?: string;
+    },
+  ): Promise<string | undefined>;
+  export function getDiscordAvatarCacheDir(): string;
+  export function getDiscordAvatarCachePath(fileName: string): string;
+  export function isCanonicalDiscordSource(
+    source: string | null | undefined,
+  ): boolean;
+  export function cacheDiscordAvatarForRuntime(
+    runtime: AgentRuntime,
+    avatarUrl: string | undefined,
+    userId?: string,
+  ): Promise<string | undefined>;
+  export function resolveDiscordMessageAuthorProfile(
+    runtime: AgentRuntime,
+    channelId: string,
+    messageId: string,
+  ): Promise<DiscordMessageAuthorProfile | null>;
+  export function resolveDiscordUserProfile(
+    runtime: AgentRuntime,
+    userId: string,
+  ): Promise<DiscordUserProfile | null>;
+  export function resolveStoredDiscordEntityProfile(
+    runtime: AgentRuntime,
+    entityId: string | undefined,
+  ): Promise<StoredDiscordEntityProfile | null>;
+}

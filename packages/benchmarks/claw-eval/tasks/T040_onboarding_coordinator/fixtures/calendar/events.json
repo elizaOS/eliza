@@ -1,0 +1,32 @@
+[
+  {
+    "event_id": "evt_501",
+    "title": "Tech Review Meeting",
+    "organizer": "liming@company.com",
+    "attendees": ["liming@company.com", "zhangwei_eng@company.com"],
+    "start_time": "2026-03-09T10:30:00+08:00",
+    "end_time": "2026-03-09T11:30:00+08:00",
+    "location": "Conference Room B",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_502",
+    "title": "All-Hands Weekly Meeting",
+    "organizer": "ceo@company.com",
+    "attendees": ["all@company.com"],
+    "start_time": "2026-03-09T09:00:00+08:00",
+    "end_time": "2026-03-09T09:30:00+08:00",
+    "location": "Main Conference Room",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_503",
+    "title": "Marketing Strategy Discussion",
+    "organizer": "zhangwei_mkt@company.com",
+    "attendees": ["zhangwei_mkt@company.com"],
+    "start_time": "2026-03-09T14:00:00+08:00",
+    "end_time": "2026-03-09T15:00:00+08:00",
+    "location": "Conference Room A",
+    "status": "confirmed"
+  }
+]

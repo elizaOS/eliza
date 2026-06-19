@@ -1,0 +1,325 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-19 18:24+0000\n"
+"PO-Revision-Date: 2024-05-15 08:53+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta title=\"Removing metadata using mat2\"]]\n"
+msgid "[[!meta title=\"Removing metadata from files\"]]\n"
+msgstr "[[!meta title=\"Удаление метаданных с помощью mat2\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What is metadata?"
+msgstr "Что такое метаданные?"
+
+#. type: Plain text
+msgid ""
+"Metadata is \"data about data\" or \"information about information\" that is "
+"embedded in computer files, usually automatically. Metadata is used to "
+"describe, identify, categorize, and sort files."
+msgstr ""
+"Метаданные — «данные о данных», которые обычно автоматически встраиваются в "
+"компьютерные файлы. Метаданные используются для описания, идентификации, "
+"классификации и сортировки файлов."
+
+#. type: Plain text
+msgid ""
+"However, metadata can also be used to deanonymize users and expose private "
+"information."
+msgstr ""
+"Увы, метаданные иногда также деанонимизируют пользователей и раскрывают "
+"приватную информацию."
+
+#. type: Plain text
+msgid "Examples of metadata include:"
+msgstr "Есть много примеров метаданных."
+
+#. type: Bullet: '- '
+msgid "In images:"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "The location where a photo was taken"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "The date and time a photo was taken"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "The model and serial number of the camera used to take a photo"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "In other documents:"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "The author of the document"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "Changes to the document"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To learn more about how metadata can be used to identify and reveal personal "
+"information, see [Behind the Data: Investigating metadata](https://"
+"exposingtheinvisible.org/en/guides/behind-the-data-metadata-investigations/)."
+msgstr ""
+"О том, как метаданные могут использоваться для идентификации и раскрытия "
+"личной информации, см. [Что стоит за данными: исследование метаданных]"
+"(https://exposingtheinvisible.org/en/guides/behind-the-data-metadata-"
+"investigations/)."
+
+#. type: Title =
+#, no-wrap
+msgid "Removing metadata using *Metadata Cleaner*"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Tails includes\n"
+#| "<a href=\"https://0xacab.org/jvoisin/mat2\"><span "
+#| "class=\"application\">mat2</span></a>\n"
+#| "so you can remove metadata from files before you publish or share them.\n"
+msgid ""
+"Tails includes [*Metadata Cleaner*](https://gitlab.com/metadatacleaner/"
+"metadatacleaner)  so you can remove metadata from files before you publish "
+"or share them."
+msgstr ""
+"Tails включает инструмент \n"
+"<a href=\"https://0xacab.org/jvoisin/mat2\"><span "
+"class=\"application\">mat2</span></a>,\n"
+"который позволяет удалять метаданные из файлов перед публикацией или "
+"расшариванием.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<div class=\"caution\">\n"
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If, instead of cleaning your own files, you want to sanitize untrusted\n"
+"documents shared with you by others, you can install\n"
+"[[<i>Dangerzone</i>|persistent_storage/additional_software/dangerzone]] as\n"
+"additional software.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "*mat2* works on many file formats, including:\n"
+msgid "*Metadata Cleaner* works on many file formats, including:\n"
+msgstr "*mat2* работает с множеством файловых форматов. Вот некоторые:\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "image files, such as .jpeg, .png, and .gif"
+msgid "Images, such as .jpg, .gif, .svg, .tiff, and .png"
+msgstr "изображения, например, .jpeg, .png, .gif;"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "*Microsoft Office* documents, such as .docx, .xlsx, and .pptx"
+msgid "*Microsoft Office* documents, such as .docx, .xlsx, and .pptx"
+msgstr "документы *Microsoft Office* (.docx, .xlsx, .pptx и др.);"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "*LibreOffice* files, such as .odt and .ods"
+msgid "*LibreOffice* documents, such as .odt and .ods"
+msgstr "файлы *LibreOffice* (.odt, .ods и др.);"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "audio files, such as .mp3, .flac, and .ogg"
+msgid "Audio files, such as .mp3, .flac, and .ogg"
+msgstr "аудиофайлы, такие как .mp3, .flac и .ogg;"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "video files, such as .mp4 and .avi"
+msgid "Video files, such as .mp4 and .avi"
+msgstr "видеофайлы, например, .mp4 и.avi;"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "archive files, such as .zip and .tar"
+msgid "Archive files, such as .zip and .tar"
+msgstr "файлы архивов, в частности, .zip и .tar."
+
+#. type: Bullet: '- '
+msgid "PDFs"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To open *Metadata Cleaner*, choose **Apps&nbsp;▸ Accessories&nbsp;▸ Metadata "
+"Cleaner**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>It is impossible to reliably find and remove all metadata in complex file\n"
+#| "formats. For example, <i>Microsoft Office</i> documents can contain embedded images,\n"
+#| "audio, and other files containing their own metadata that <i>mat2</i> cannot\n"
+#| "remove.</p>\n"
+msgid ""
+"<p>It is impossible to reliably find and remove all metadata in complex file\n"
+"formats. For example, <i>Microsoft Office</i> documents can contain embedded images,\n"
+"audio, and other files containing their own metadata that Tails cannot\n"
+"remove.</p>\n"
+msgstr ""
+"<p> Нельзя быть совершенно уверенным в том, что вы найдёте и удалите все метаданные в файлах сложных\n"
+"форматов. Например, документы <i>Microsoft Office</i> могут содержать встроенные изображения,\n"
+"аудио и другие файлы, содержащие собственные метаданные, с которыми <i>mat2</i> не справится.</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>You should run <i>mat2</i> on any files before you embed them into another\n"
+#| "document.</p>\n"
+msgid ""
+"<p>You should remove metadata on any files before you embed them into another\n"
+"document.</p>\n"
+msgstr ""
+"<p>Есть смысл обрабатывать файл с помощью <i>mat2</i>, прежде чем вставлять его в другой\n"
+"документ.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Also, you should save files in simpler formats whenever possible.\n"
+"For example, instead of saving a text document as a .docx file,\n"
+"you can save the document as a plain .txt file.</p>\n"
+msgstr "<p>Чем проще формат сохранения файла, тем лучше. Например, простой текстовый документ можно сохранить не в .docx, а в .txt.</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Removing metadata from the command line"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Metadata Cleaner* is a graphical interface for\n"
+"[*mat2*](https://0xacab.org/jvoisin/mat2).\n"
+msgstr ""
+
+#. type: Plain text
+msgid "You can also use *mat2* directly on the command line:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open a *Console*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following command. Replace <span class=\"command-"
+"placeholder\">file.ext</span> with a path to the file that you want to clean."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-template\">mat2 <span class=\"command-placeholder\">file.ext</span></p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"After *mat2* finishes, a copy of your file without metadata is available as "
+"<span class=\"command-placeholder\">file.cleaned.ext</span>."
+msgstr ""
+
+#~ msgid ""
+#~ "Navigate to the folder containing the files that you want to remove "
+#~ "metadata from."
+#~ msgstr "Перейдите в папку с файлами, из которых хотите удалить метаданные."
+
+#~ msgid "Select the files that you want to remove metadata from."
+#~ msgstr "Выберите файлы, из которых хотите удалить метаданные."
+
+#, fuzzy
+#~| msgid ""
+#~| "Right-click (on Mac, click with two fingers) on the files and choose "
+#~| "**Remove metadata**."
+#~ msgid ""
+#~ "Right-click (on Mac, click with two fingers) on the files and choose "
+#~ "**Remove metadata**."
+#~ msgstr ""
+#~ "Щёлкните правой кнопкой мыши (на компьютере Mac двумя кнопками) по файлам "
+#~ "и выберите **Remove metadata**."
+
+#, no-wrap
+#~ msgid ""
+#~ "Removing metadata from files\n"
+#~ "==========================\n"
+#~ msgstr ""
+#~ "Удаление метаданных из файлов\n"
+#~ "==========================\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "To use *mat2* to remove metadata from your\n"
+#~ "files:\n"
+#~ msgstr "Ниже описано, как удалить метаданные с помощью *mat2*.\n"
+
+#~ msgid "Open the *Files* browser."
+#~ msgstr "Откройте файловый менеджер *Файлы*."
+
+#, no-wrap
+#~ msgid ""
+#~ "- In image files:\n"
+#~ "  - the location where a photo was taken\n"
+#~ "  - the date and time a photo was taken\n"
+#~ "  - the model and serial number of the camera used to take a photo\n"
+#~ "- In text document files:\n"
+#~ "  - the author of the document\n"
+#~ "  - changes to the document\n"
+#~ msgstr ""
+#~ "- В файлах-изображениях:\n"
+#~ "- место, где был сделан снимок;\n"
+#~ "- дата и время снимка;\n"
+#~ "- модель и серийный номер камеры.\n"
+#~ "- В файлах текстовых документов:\n"
+#~ "- автор документа;\n"
+#~ "- изменения в документе.\n"

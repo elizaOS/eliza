@@ -1,0 +1,146 @@
+schema: eliza.e1_phone_radio_module_envelope_orderability_gate.v1
+status: blocked_cellular_region_too_small_and_supplier_design_packs_missing
+date: '2026-05-21'
+claim_boundary: >
+  Fail-closed radio module envelope and orderability gate for the selected
+  off-the-shelf cellular and Wi-Fi/Bluetooth module classes. This records
+  public module sizes and current placement-region fit only. It is not a
+  supplier land pattern, routed RF layout, antenna review, firmware release,
+  regulatory approval, carrier approval, SAR evidence, or enclosure release.
+source_artifacts:
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+  - board/kicad/e1-phone/radio-module-source-revalidation.yaml
+  - board/kicad/e1-phone/radio-module-integration.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/component-envelope-fit-audit.yaml
+  - board/kicad/e1-phone/placement-repack-candidate.yaml
+  - board/kicad/e1-phone/route-feasibility-density.yaml
+  - board/kicad/e1-phone/trial-route-input-matrix.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+upstream_status:
+  radio_module_source_revalidation: public_sources_revalidated_radio_modules_not_supplier_approved
+  radio_module_integration: blocked_requires_module_pinout_firmware_rf_measurement_and_regulatory_evidence
+  placement_interface_matrix: concept_constraints_not_routed_pcb
+  component_envelope_fit_audit: blocked_component_envelopes_require_supplier_drawings_or_region_updates_before_routing
+  route_feasibility_density: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
+  trial_route_input_matrix: blocked_trial_route_inputs_missing_supplier_packs_footprints_stackup_and_escape_reviews
+  supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
+public_module_envelopes:
+  cellular_primary_lga:
+    vendor: Quectel
+    family: RG255C_or_RM255C
+    selected_phone_form_factor: RG255C_LGA
+    source: package/cellular/quectel-5g-redcap.yaml
+    public_source: https://www.quectel.com/content/uploads/2026/01/Quectel_Product_Brochure_V8.5_2026.pdf
+    envelope_mm: {width: 29.0, height: 32.0, thickness: 2.4}
+    source_field: primary_first_phone.public_2026_brochure_fields.rg255c_lga_dimensions_mm
+    status: public_brochure_outline_only_not_orderable_layout_pack
+  cellular_lab_fallback_m2:
+    vendor: Quectel
+    family: RM255C_GL_or_RG255C_M2
+    board_use: lab_dev_bringup_only_not_phone_layout_primary
+    source: package/cellular/quectel-5g-redcap.yaml
+    public_envelopes_mm:
+      rg255c_m2: {width: 30.0, height: 42.0, thickness: 3.25}
+      rm255c_gl_m2: {width: 42.0, height: 30.0, thickness: 2.3}
+    status: excluded_from_phone_region_fit_because_m2_is_lab_fallback
+  wifi_bluetooth_primary_smt:
+    vendor: Murata
+    order_number: LBEE5XV2EA-802
+    source: package/wifi/murata-type-2ea-wifi6e.yaml
+    public_source: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+    envelope_mm: {width: 12.5, height: 9.4, thickness: 1.2}
+    source_field: vendor_public_specs.package_mm
+    status: public_outline_fits_current_region_pending_supplier_land_pattern_reference_layout_and_step
+placement_region_fit:
+  cellular_primary_lga_vs_u_cell:
+    placement_refdes_group: U_CELL
+    package_binding: package/cellular/quectel-5g-redcap.yaml
+    placement_region_mm: {x: 3.0, y: 3.0, width: 14.0, height: 14.0}
+    module_envelope_mm: {width: 29.0, height: 32.0, thickness: 2.4}
+    fit:
+      fits_width: false
+      fits_height: false
+      width_shortfall_mm: 15.0
+      height_shortfall_mm: 18.0
+      fits_xy: false
+      fits_rotated: false
+      rotated_width_shortfall_mm: 18.0
+      rotated_height_shortfall_mm: 15.0
+    consequence: current_u_cell_region_invalid_for_selected_rg255c_lga
+    required_action: repack_top_rf_island_for_approximately_32x29_mm_cellular_zone_or_select_smaller_orderable_lga_before_evt1_route
+  wifi_bluetooth_primary_smt_vs_u_wifi_bt:
+    placement_refdes_group: U_WIFI_BT
+    package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
+    placement_region_mm: {x: 3.0, y: 18.0, width: 14.0, height: 10.0}
+    module_envelope_mm: {width: 12.5, height: 9.4, thickness: 1.2}
+    fit:
+      fits_width: true
+      fits_height: true
+      width_clearance_mm: 1.5
+      height_clearance_mm: 0.6
+      fits_xy: true
+      fits_rotated: false
+      rotated_width_shortfall_mm: 0.0
+      rotated_height_shortfall_mm: 2.5
+    consequence: public_outline_fits_current_region_but_rf_keepout_land_pattern_and_antenna_review_are_still_missing
+    required_action: keep_region_reserved_but_do_not_release_until_murata_design_pack_firmware_regulatory_and_antenna_gain_review_are_captured
+route_and_enclosure_consequence:
+  current_cellular_region_invalid_for_selected_lga: true
+  current_wifi_region_accepts_public_outline_only: true
+  m2_cellular_fallback_allowed_only_for_lab_bringup: true
+  top_island_repack_or_smaller_cellular_module_required_before_evt1_route: true
+  routed_step_and_enclosure_rerun_required_after_radio_region_change: true
+  recommended_next_action: repack_top_island_or_select_smaller_orderable_lga_before_evt1_route
+orderability_and_design_pack_requirements:
+  cellular_required_before_layout_release:
+    - exact Quectel region SKU and orderable MPN
+    - supported band matrix for target markets and carrier plan
+    - hardware design guide and reference layout
+    - LGA pad map, reserved-pin rules, land pattern, paste mask, and courtyard
+    - STEP model, shield height, RF feed rules, and antenna matching recommendations
+    - modem firmware, driver package, test-mode procedure, PTCRB/GCF/carrier plan, and SAR scope
+  wifi_bluetooth_required_before_layout_release:
+    - exact Murata orderable MPN and procurement path
+    - application note, land pattern, reference layout, paste mask, courtyard, and STEP model
+    - module pinout, RF keepout, antenna feed rules, and final antenna gain review
+    - CYW55573 firmware, NVRAM, CLM, license archive, country-code policy, and regulatory database
+    - modular approval scope review and conducted coexistence procedure
+supplier_response_dependency:
+  supplier_rfq_response_packs_received: 0
+  expected_response_packs:
+    - cellular_quectel_design_pack
+    - wifi_murata_design_pack
+    - antenna_vendor_review
+    - assembly_footprint_step_pack
+  release_allowed_without_supplier_response_packs: false
+cross_checks:
+  cellular_lga_dimensions_match_package_binding: true
+  wifi_dimensions_match_package_binding: true
+  cellular_placement_region_matches_matrix: true
+  wifi_placement_region_matches_matrix: true
+  cellular_region_fit_failure_recorded: true
+  cellular_rotated_fit_failure_recorded: true
+  wifi_public_outline_fit_recorded: true
+  cellular_m2_confined_to_lab_fallback: true
+  supplier_response_packs_absent_and_required: true
+  blocks_evt1_route_until_cellular_region_or_module_changes: true
+release_blockers:
+  - selected Quectel RG255C LGA public envelope is 29.0 x 32.0 mm and does not fit the current 14.0 x 14.0 mm U_CELL region
+  - exact cellular region SKU, orderable MPN, band matrix, hardware design guide, LGA pad map, land pattern, STEP, and reference layout are missing
+  - cellular antenna vendor review, carrier/PTCRB/GCF plan, SAR scope, and conducted RF procedure are missing
+  - Murata Type 2EA land pattern, reference layout, STEP, firmware/NVRAM/CLM/license, regulatory database, and antenna gain review are missing
+  - no supplier response packs have been received for the radio modules or antenna design
+  - routed RF geometry, matching networks, conducted access, routed STEP, and enclosure rerun are missing
+forbidden_claims:
+  - cellular_region_ready
+  - radio_modules_fit
+  - modules_wired_final
+  - rf_ready
+  - carrier_ready
+  - sar_ready
+  - regulatory_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

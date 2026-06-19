@@ -1,0 +1,315 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  DIRECT_ACCOUNT_PROVIDER_ENV,
+  DIRECT_ACCOUNT_PROVIDER_IDS,
+} from "../auth/types";
+import type { ElizaConfig } from "../config/types.eliza";
+import {
+  applyFirstRunConnectionConfig,
+  applySubscriptionProviderConfig,
+  clearPersistedFirstRunConfig,
+  clearSubscriptionProviderConfig,
+  openAiBaseUrlIsThirdParty,
+} from "./provider-switch-config";
+
+describe("applySubscriptionProviderConfig", () => {
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it("configures Codex subscriptions for the Codex CLI model provider", () => {
+    const config: Partial<ElizaConfig> = {};
+
+    applySubscriptionProviderConfig(config, "openai-codex");
+
+    expect(config.agents?.defaults?.subscriptionProvider).toBe("openai-codex");
+    expect(config.agents?.defaults?.model?.primary).toBe("codex-cli");
+  });
+
+  it("keeps Gemini CLI subscriptions out of runtime model routing", () => {
+    const config: Partial<ElizaConfig> = {};
+
+    applySubscriptionProviderConfig(config, "gemini-subscription");
+
+    expect(config.agents?.defaults?.subscriptionProvider).toBe("gemini-cli");
+    expect(config.agents?.defaults?.model?.primary).toBeUndefined();
+  });
+
+  it("keeps coding-plan endpoint subscriptions out of direct API routing", () => {
+    const config: Partial<ElizaConfig> = {};
+
+    applySubscriptionProviderConfig(config, "zai-coding-subscription");
+
+    expect(config.agents?.defaults?.subscriptionProvider).toBe("zai-coding");
+    expect(config.agents?.defaults?.model?.primary).toBeUndefined();
+  });
+
+  it("clears subscription provider settings without touching direct API env", () => {
+    process.env.OPENAI_API_KEY = "sk-direct-openai-key";
+    const config: Partial<ElizaConfig> = {};
+
+    applySubscriptionProviderConfig(config, "openai-codex");
+    clearSubscriptionProviderConfig(config);
+
+    expect(config.agents?.defaults?.subscriptionProvider).toBeUndefined();
+    expect(process.env.OPENAI_API_KEY).toBe("sk-direct-openai-key");
+  });
+});
+
+describe("clearPersistedFirstRunConfig (reset everything)", () => {
+  const CLOUD_ENV_KEYS = [
+    "ELIZAOS_CLOUD_API_KEY",
+    "ELIZAOS_CLOUD_ENABLED",
+    "ELIZAOS_CLOUD_NANO_MODEL",
+    "ELIZAOS_CLOUD_MEDIUM_MODEL",
+    "ELIZAOS_CLOUD_SMALL_MODEL",
+    "ELIZAOS_CLOUD_LARGE_MODEL",
+    "ELIZAOS_CLOUD_MEGA_MODEL",
+  ] as const;
+
+  const MODEL_ENV_KEYS = [
+    "ANTHROPIC_LARGE_MODEL",
+    "OPENAI_SMALL_MODEL",
+    "OPENAI_LARGE_MODEL",
+    "CEREBRAS_MODEL",
+    "GROQ_LARGE_MODEL",
+  ] as const;
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    for (const key of [...CLOUD_ENV_KEYS, ...MODEL_ENV_KEYS]) {
+      delete process.env[key];
+    }
+  });
+
+  function buildFullyOnboardedConfig(): Partial<ElizaConfig> {
+    return {
+      meta: { firstRunComplete: true },
+      agents: { list: [{ id: "agent-1", name: "Eliza" }] },
+      cloud: { apiKey: "cloud-secret", enabled: true },
+      models: { nano: "n", small: "s", medium: "m", large: "l", mega: "x" },
+      messages: { tts: { provider: "elevenlabs" } },
+      ui: { selectedVrmIndex: 3 },
+      connection: { provider: "openai", apiKey: "sk-live" },
+      deploymentTarget: { runtime: "cloud" },
+      linkedAccounts: { elizacloud: { status: "linked" } },
+      serviceRouting: { llmText: { transport: "cloud-proxy", backend: "x" } },
+      env: { vars: { OPENAI_API_KEY: "sk-config" } },
+    } as unknown as Partial<ElizaConfig>;
+  }
+
+  it("wipes every onboarding-derived slot back to a fresh-install shape", () => {
+    process.env.OPENAI_API_KEY = "sk-config";
+    process.env.ELIZAOS_CLOUD_API_KEY = "cloud-secret";
+    process.env.ELIZAOS_CLOUD_ENABLED = "true";
+
+    const config = buildFullyOnboardedConfig();
+    clearPersistedFirstRunConfig(config);
+
+    expect((config.meta as Record<string, unknown>)?.firstRunComplete).toBe(
+      undefined,
+    );
+    expect(config.agents).toEqual({ list: [] });
+    expect(config.cloud).toEqual({});
+    expect(config.models).toBeUndefined();
+    expect(config.messages).toBeUndefined();
+    expect(config.ui).toBeUndefined();
+    expect((config as Record<string, unknown>).connection).toBeUndefined();
+    expect(config.deploymentTarget).toBeUndefined();
+    expect(config.linkedAccounts).toBeUndefined();
+    expect(config.serviceRouting).toBeUndefined();
+  });
+
+  it("clears provider credentials from both config.env and process.env", () => {
+    process.env.OPENAI_API_KEY = "sk-config";
+
+    const config = buildFullyOnboardedConfig();
+    clearPersistedFirstRunConfig(config);
+
+    expect(config.env).toBeUndefined();
+    expect(process.env.OPENAI_API_KEY).toBeUndefined();
+  });
+
+  it("clears provider-specific default model env vars (no stale model leaks)", () => {
+    for (const key of MODEL_ENV_KEYS) process.env[key] = "stale-model";
+
+    clearPersistedFirstRunConfig(buildFullyOnboardedConfig());
+
+    for (const key of MODEL_ENV_KEYS) {
+      expect(process.env[key]).toBeUndefined();
+    }
+  });
+
+  it("strips Eliza Cloud env keys so a fresh boot does not re-link cloud", () => {
+    for (const key of CLOUD_ENV_KEYS) {
+      process.env[key] = "stale";
+    }
+
+    clearPersistedFirstRunConfig(buildFullyOnboardedConfig());
+
+    for (const key of CLOUD_ENV_KEYS) {
+      expect(process.env[key]).toBeUndefined();
+    }
+  });
+
+  it("is a no-op-safe on an already-empty config", () => {
+    const config: Partial<ElizaConfig> = {};
+    expect(() => clearPersistedFirstRunConfig(config)).not.toThrow();
+    expect(config.agents).toEqual({ list: [] });
+  });
+});
+
+describe("openAiBaseUrlIsThirdParty", () => {
+  // Tests are sequential so they can mutate `process.env.OPENAI_BASE_URL`
+  // without cross-test contamination — vitest serializes tests within a
+  // single `describe` block.
+  const originalBaseUrl = process.env.OPENAI_BASE_URL;
+
+  beforeEach(() => {
+    delete process.env.OPENAI_BASE_URL;
+  });
+
+  afterEach(() => {
+    if (typeof originalBaseUrl === "string") {
+      process.env.OPENAI_BASE_URL = originalBaseUrl;
+    } else {
+      delete process.env.OPENAI_BASE_URL;
+    }
+  });
+
+  it("returns false when OPENAI_BASE_URL is unset", () => {
+    expect(openAiBaseUrlIsThirdParty()).toBe(false);
+  });
+
+  it("returns false when OPENAI_BASE_URL is whitespace-only", () => {
+    process.env.OPENAI_BASE_URL = "   ";
+    expect(openAiBaseUrlIsThirdParty()).toBe(false);
+  });
+
+  it("returns false when OPENAI_BASE_URL points at api.openai.com (canonical)", () => {
+    process.env.OPENAI_BASE_URL = "https://api.openai.com/v1";
+    expect(openAiBaseUrlIsThirdParty()).toBe(false);
+  });
+
+  it("returns false for api.openai.com with a trailing path / query", () => {
+    process.env.OPENAI_BASE_URL = "https://api.openai.com/v1/?tracing=1";
+    expect(openAiBaseUrlIsThirdParty()).toBe(false);
+  });
+
+  it("returns true for the Cerebras host (the case that motivated this guard)", () => {
+    process.env.OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
+    expect(openAiBaseUrlIsThirdParty()).toBe(true);
+  });
+
+  it("returns true for Groq", () => {
+    process.env.OPENAI_BASE_URL = "https://api.groq.com/openai/v1";
+    expect(openAiBaseUrlIsThirdParty()).toBe(true);
+  });
+
+  it("returns true for OpenRouter", () => {
+    process.env.OPENAI_BASE_URL = "https://openrouter.ai/api/v1";
+    expect(openAiBaseUrlIsThirdParty()).toBe(true);
+  });
+
+  it("returns true for Together AI", () => {
+    process.env.OPENAI_BASE_URL = "https://api.together.xyz/v1";
+    expect(openAiBaseUrlIsThirdParty()).toBe(true);
+  });
+
+  it("returns true for localhost (vLLM / LM Studio / Ollama gateway)", () => {
+    process.env.OPENAI_BASE_URL = "http://localhost:11434/v1";
+    expect(openAiBaseUrlIsThirdParty()).toBe(true);
+  });
+
+  it("returns true for an arbitrary in-house gateway", () => {
+    process.env.OPENAI_BASE_URL = "https://gateway.acme.internal/openai";
+    expect(openAiBaseUrlIsThirdParty()).toBe(true);
+  });
+
+  it("treats unparseable URLs as third-party (fail-safe)", () => {
+    process.env.OPENAI_BASE_URL = "not://a real:url";
+    expect(openAiBaseUrlIsThirdParty()).toBe(true);
+  });
+
+  it("returns true for openai.com subdomains other than api.openai.com", () => {
+    // Regression guard: this protects against someone pointing at
+    // `platform.openai.com` or `dashboard.openai.com` by mistake.
+    process.env.OPENAI_BASE_URL = "https://platform.openai.com/v1";
+    expect(openAiBaseUrlIsThirdParty()).toBe(true);
+  });
+
+  it("is case-insensitive on the hostname", () => {
+    process.env.OPENAI_BASE_URL = "https://API.OpenAI.COM/v1";
+    expect(openAiBaseUrlIsThirdParty()).toBe(false);
+  });
+});
+
+describe("Cerebras direct-account wiring", () => {
+  it("maps the cerebras-api account to CEREBRAS_API_KEY", () => {
+    expect(DIRECT_ACCOUNT_PROVIDER_IDS).toContain("cerebras-api");
+    expect(DIRECT_ACCOUNT_PROVIDER_ENV["cerebras-api"]).toBe(
+      "CEREBRAS_API_KEY",
+    );
+  });
+});
+
+describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
+  const CEREBRAS_ENV = [
+    "CEREBRAS_API_KEY",
+    "CEREBRAS_MODEL",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENAI_SMALL_MODEL",
+    "OPENAI_LARGE_MODEL",
+  ] as const;
+
+  beforeEach(() => {
+    for (const key of CEREBRAS_ENV) delete process.env[key];
+  });
+  afterEach(() => {
+    for (const key of CEREBRAS_ENV) delete process.env[key];
+  });
+
+  it("sets CEREBRAS_API_KEY + a valid CEREBRAS_MODEL and never strays into OpenAI vars", async () => {
+    const config: Partial<ElizaConfig> = {};
+
+    await applyFirstRunConnectionConfig(config, {
+      kind: "local-provider",
+      provider: "cerebras",
+      apiKey: "csk-test-123",
+    });
+
+    const vars = (config.env as { vars?: Record<string, string> } | undefined)
+      ?.vars;
+    expect(vars?.CEREBRAS_API_KEY).toBe("csk-test-123");
+    // Without a valid Cerebras model the OpenAI plugin would fall back to
+    // gpt-5* ids that 404 on api.cerebras.ai — this is the load-bearing default.
+    expect(vars?.CEREBRAS_MODEL).toBe("gpt-oss-120b");
+    // Setting any OPENAI_* var here would knock the plugin out of Cerebras
+    // mode (isCerebrasMode requires no OPENAI_API_KEY / OPENAI_BASE_URL).
+    expect(vars?.OPENAI_API_KEY).toBeUndefined();
+    expect(vars?.OPENAI_BASE_URL).toBeUndefined();
+    expect(vars?.OPENAI_SMALL_MODEL).toBeUndefined();
+    expect(vars?.OPENAI_LARGE_MODEL).toBeUndefined();
+    // Same values land in process.env so a hot-reloaded runtime picks them up.
+    expect(process.env.CEREBRAS_API_KEY).toBe("csk-test-123");
+    expect(process.env.CEREBRAS_MODEL).toBe("gpt-oss-120b");
+    // The agent routes its text inference at Cerebras.
+    expect(config.serviceRouting?.llmText?.backend).toBe("cerebras");
+    expect(config.serviceRouting?.llmText?.transport).toBe("direct");
+  });
+
+  it("clears the persisted Cerebras key on a full reset", () => {
+    process.env.CEREBRAS_API_KEY = "csk-stale";
+    const config: Partial<ElizaConfig> = {
+      env: { vars: { CEREBRAS_API_KEY: "csk-stale" } },
+    } as Partial<ElizaConfig>;
+
+    clearPersistedFirstRunConfig(config);
+
+    expect(process.env.CEREBRAS_API_KEY).toBeUndefined();
+    const vars = (config.env as { vars?: Record<string, string> } | undefined)
+      ?.vars;
+    expect(vars?.CEREBRAS_API_KEY).toBeUndefined();
+  });
+});

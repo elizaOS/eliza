@@ -1,0 +1,115 @@
+schema: eliza.chip_topology.v1
+as_of: "2026-05-21"
+target_year: 2028
+target_class: performance_heavy_android_phone_ap
+
+claim_boundary: >
+  This file is the single nameplate source of truth for the Eliza E1 chip:
+  CPU core counts and clocks, memory class/capacity, storage, NPU TOPS targets,
+  fabric geometry, debug, and process node. Every other spec-db, rail-plan,
+  operating-point, and AOSP-gate YAML that restates a nameplate number must
+  either match a field below or carry an explicit override in
+  scripts/check_chip_stats_consistency.py's allowance table.
+
+  These are architectural targets and validation nameplates, not silicon
+  evidence. Peak TOPS, clock, capacity, and bandwidth numbers are claims to be
+  proven by the named evidence gates (cpu-ap-completion-gate,
+  sustained_power_thermal_evidence_check, memory_uma_claim_gate,
+  pd_signoff_release_check, aosp_simulator_completion_gate). This file does not
+  promote, replace, or weaken any existing fail-closed gate.
+
+source_anchors:
+  cpu_topology: docs/arch/ooo-cluster.md
+  cpu_target: docs/spec-db/cpu-2028-target.yaml
+  npu_target: docs/spec-db/npu-2028-target.yaml
+  memory_target: docs/spec-db/memory-2028-target.yaml
+  rail_plan: docs/pd/rail-plan-2028.yaml
+  operating_point: docs/architecture-optimization/soc-optimized-operating-point.yaml
+  process_effects: docs/spec-db/process-14a-effects.yaml
+  cluster_rtl: rtl/cpu/cluster/e1_cluster_top.sv
+  soc_top_rtl: rtl/top/e1_soc_integrated.sv
+  axi4_pkg: rtl/interconnect/axi4/e1_axi4_pkg.sv
+
+cpu:
+  # Full nameplate topology: 1 big + 3 mid + 4 little = 8 application harts,
+  # plus 1 always-on Ibex management/security hart (not counted in NUM_CORES).
+  # This is the count the cluster RTL defaults, the SoC top, the architecture
+  # doc, and the AOSP target floor all agree on. The rail plan and the
+  # SoC-optimized operating point describe a *power-optimized DVFS subset*
+  # (2 active cores), not the nameplate — encoded as documented overrides in
+  # the consistency checker, not as a competing nameplate.
+  big_cores: 1
+  mid_cores: 3
+  little_cores: 4
+  application_cores: 8
+  management_security_harts: 1
+  big_core_base_ghz: 3.2
+  big_core_burst_ghz: 4.3
+  mid_core_base_ghz: 3.0
+  mid_core_max_ghz: 3.4
+  little_core_base_ghz: 1.8
+  little_core_max_ghz: 2.2
+  management_hart_max_mhz: 400
+
+memory:
+  # External main memory. Baseline phone SKU is LPDDR5X; the AI SKU is LPDDR6.
+  # Both SKUs share the same RTL — only the PHY data rate and bus width differ
+  # (see soc-optimized-operating-point.yaml::memory_sustained_per_sku).
+  external_class: LPDDR6
+  baseline_sku_class: LPDDR5X
+  capacity_gib_min: 12
+  capacity_gib_ai_sku: 24
+  peak_bandwidth_gbps_min: 180
+  sustained_bandwidth_gbps_min: 120
+  shared_system_cache_mib_min: 32
+
+storage:
+  class: UFS
+  fallback_class: eMMC
+  capacity_gb_min: 256
+
+npu:
+  # Peak nameplate TOPS targets from docs/spec-db/npu-2028-target.yaml.
+  # The 44.0 dense-INT8 figure in the rail plan and operating point is the
+  # *nominal active base operating point* used for the power/thermal model,
+  # NOT the peak nameplate — encoded as a documented override in the checker.
+  dense_int8_peak_tops: 160
+  dense_int8_sustained_tops: 80
+  dense_int8_base_operating_tops: 44.0
+  sparse_int4_peak_tops: 512
+  sparse_int4_sustained_tops: 200
+  int2_bitnet_peak_tops: 900
+  fp8_peak_tflops: 80
+  local_sram_mib_min: 64
+  tile_count_min: 8
+  tile_count_max: 16
+
+fabric:
+  # Canonical CPU-cluster master-bus geometry per docs/arch/ooo-cluster.md and
+  # rtl/cpu/cluster/e1_cluster_top.sv. AXI_ADDR_W is the 64-bit RISC-V VA/PA
+  # carrier on the per-core master ports. The SoC-top integration narrows the
+  # post-translation physical address to 40 bits (soc_phys_addr_w) downstream
+  # of the cluster, which is a documented narrowing, not a competing nameplate.
+  axi_addr_w: 64
+  axi_data_w: 128
+  axi_id_w: 8
+  soc_phys_addr_w: 40
+  topology: mesh_noc
+  coherence_protocol: TileLink-C
+
+debug:
+  standard: RVdebug_1_0
+  transport: JTAG
+  status: spec_only_no_dm_rtl
+
+process:
+  marketing_name: N2P / A14 / Intel 14A class
+  node_range_nm: "2.0_to_1.4"
+  selected_option_status: blocked_until_foundry_pdk_and_library_selection
+
+forbidden_claims_until_complete:
+  - Phone-class AP silicon nameplate
+  - Peak NPU TOPS as measured silicon
+  - Sustained memory bandwidth as measured silicon
+  - Clock frequency as measured silicon
+  - Capacity / storage as shipped product

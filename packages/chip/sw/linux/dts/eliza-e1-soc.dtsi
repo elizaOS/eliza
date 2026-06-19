@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+/*
+ * Eliza e1 SoC device-tree include file.
+ *
+ * The canonical SoC node graph (CPU, DRAM, CLINT, PLIC, UART, DMA, NPU,
+ * display) is provided by the generated platform base
+ * sw/platform/generated/e1-platform.dtsi, produced from
+ * sw/platform/e1_platform_contract.json. This file extends that base with
+ * the GPIO controller and the simple-framebuffer reservation, then can be
+ * dropped into an external Linux tree at arch/<arch>/boot/dts/eliza/ and
+ * included from a board .dts that enables the framebuffer once
+ * /reserved-memory carves it out of DRAM.
+ *
+ * Compile path includes -i sw/platform/generated so dtc resolves the base.
+ */
+
+/include/ "../../platform/generated/e1-platform.dtsi"
+
+/ {
+	soc {
+		e1_gpio: gpio@10000000 {
+			compatible = "eliza,e1-gpio";
+			reg = <0x0 0x10000000 0x0 0x00001000>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			/* E1_PERIPHERAL_CONTROL_BASE; GPIO_OUT at +0x08 */
+		};
+
+		e1_framebuffer: framebuffer@80000000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0x80000000 0x0 0x00384000>;
+			width = <720>;
+			height = <1280>;
+			stride = <2880>;
+			format = "x8r8g8b8";
+			status = "disabled";
+			/* Enable from the board .dts once /reserved-memory
+			 * carves the framebuffer out of DRAM.
+			 */
+		};
+	};
+};

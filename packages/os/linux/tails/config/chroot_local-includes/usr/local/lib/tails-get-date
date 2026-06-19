@@ -1,0 +1,79 @@
+#!/usr/bin/python3 -I
+
+import datetime
+import json
+import locale
+import logging
+import os
+import sys
+import zoneinfo
+
+
+def normalize_tzname(tzname):
+    """
+    Tor Connection stores some tz in non-standard way.
+
+    This helps us avoid problem when this appears.
+    """
+    if tzname is None:
+        return None
+    if tzname.startswith("UTC"):
+        tzname = None
+    return tzname
+
+
+def get_tz(tzname):
+    return zoneinfo.ZoneInfo(tzname)
+
+
+def tzname_is_valid(tzname):
+    try:
+        get_tz(tzname)
+    except Exception as exc:
+        logging.warning("tzname is not valid: %s", str(exc))
+        return False
+    return True
+
+
+def get_os_locale_string():
+    if "LC_TIME" in os.environ:
+        return os.environ["LC_TIME"]
+    else:
+        return os.environ["LANG"]
+
+
+def main():
+    if os.getuid() != 0:
+        print("Only root can run this!", file=sys.stderr)
+        sys.exit(1)
+
+    current_locale = get_os_locale_string()
+
+    try:
+        locale.setlocale(locale.LC_TIME, current_locale)
+    except locale.Error:
+        logging.warning("Invalid locale specified: %s", current_locale)
+
+    try:
+        tca_state = json.load(open("/run/tca/tca.state"))
+    except:
+        tzname = None
+    else:
+        tzname = tca_state.get("ui", {}).get("time", {}).get("tz", None)
+
+    tzname = normalize_tzname(tzname)
+
+    # This is the default date format used by GNOME's clock. Note that
+    # there are dconf settings for making it show seconds etc that we
+    # don't support.
+    date_format = "%a %b %-e  %R"
+    if tzname and tzname_is_valid(tzname):
+        now = datetime.datetime.now(tz=get_tz(tzname))
+        print(now.strftime(date_format))
+    else:
+        now = datetime.datetime.now()
+        print(now.strftime(date_format), "GMT")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,6 @@
+# Suppress info and style-level codes that are noisy in infrastructure scripts.
+# SC2317: "Command appears to be unreachable" — false positives in trap handlers and sourced functions.
+# SC2038: "Use -print0/-0 or -exec +" — valid but low-risk in controlled paths.
+# SC3013: "In POSIX sh, -nt is undefined" — scripts use bash, not POSIX sh.
+# SC2015: "A && B || C is not if-then-else" — intentional pattern in these scripts.
+disable=SC2317,SC2038,SC3013,SC2015

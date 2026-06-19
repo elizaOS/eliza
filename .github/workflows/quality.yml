@@ -1,0 +1,181 @@
+name: Quality (Extended)
+
+# Additional quality gates layered on top of `ci.yaml`. These are the
+# eliza-derived checks that have no equivalent job in the canonical
+# eliza CI: the homepage build (so PRs that touch packages/homepage
+# don't first regress on `develop` push) and a workspace-level
+# typecheck/biome format gate.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "packages/docs/**"
+      - "AGENTS.md"
+      - "CHANGELOG.md"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "packages/docs/**"
+      - "AGENTS.md"
+      - "CHANGELOG.md"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+  workflow_dispatch:
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  homepage-build:
+    name: Homepage Build (PR smoke)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Check homepage smoke scope
+        id: homepage-scope
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          if merge_base="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"; then
+            changed_files="$(git diff --name-only "${merge_base}" HEAD)"
+          else
+            echo "No merge base found with origin/${{ github.base_ref }}; falling back to direct base/head diff." >&2
+            changed_files="$(git diff --name-only "origin/${{ github.base_ref }}" HEAD)"
+          fi
+          if grep -Eq '^(packages/homepage/|packages/shared/|packages/app-core/scripts/write-homepage-release-data\.mjs|\.github/workflows/(deploy-homepage|release-electrobun|release-orchestrator)\.yml)' <<< "${changed_files}"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip unrelated homepage smoke
+        if: steps.homepage-scope.outputs.run != 'true'
+        run: echo "Skipping homepage smoke; this PR does not touch homepage release surfaces."
+
+      - name: Build homepage
+        if: steps.homepage-scope.outputs.run == 'true'
+        working-directory: packages/homepage
+        run: bun run build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install homepage browser
+        if: steps.homepage-scope.outputs.run == 'true'
+        working-directory: packages/homepage
+        run: ../../node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Generate missing snapshot baselines
+        if: steps.homepage-scope.outputs.run == 'true'
+        id: gen-baselines
+        working-directory: packages/homepage
+        run: |
+          SNAP_DIR="tests/e2e/visual.spec.ts-snapshots"
+          # 5 routes × 2 viewports × 1 browser project = 10 expected snapshots
+          EXPECTED=10
+          ACTUAL=$(ls "$SNAP_DIR"/*.png 2>/dev/null | wc -l || echo 0)
+          if [ "$ACTUAL" -lt "$EXPECTED" ]; then
+            echo "Found $ACTUAL of $EXPECTED snapshot baselines — regenerating all."
+            rm -f "$SNAP_DIR"/*.png 2>/dev/null || true
+            bun run test:e2e -- --update-snapshots || true
+            echo "generated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit new snapshot baselines
+        if: steps.homepage-scope.outputs.run == 'true' && steps.gen-baselines.outputs.generated == 'true'
+        continue-on-error: true
+        run: |
+          SNAP_DIR="packages/homepage/tests/e2e/visual.spec.ts-snapshots"
+          if [ -n "$(git status --porcelain $SNAP_DIR)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add $SNAP_DIR
+            git commit -m "chore: generate visual regression snapshot baselines [skip ci]"
+            git push origin HEAD:${{ github.ref_name }} || (git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }})
+            echo "Pushed new snapshot baselines."
+          fi
+
+      - name: Test homepage downloads
+        if: steps.homepage-scope.outputs.run == 'true' && steps.gen-baselines.outputs.generated == 'false'
+        working-directory: packages/homepage
+        run: bun run test:e2e
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  format-check:
+    name: Format Check (biome)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          # Biome only needs JS dependencies; skipping Python/protoc keeps this
+          # 5-minute format gate away from apt mirrors and Rust build tooling.
+          setup-python: "false"
+          install-protoc: "false"
+          run-postinstall: "false"
+
+      - name: Run biome format check
+        run: bun run format:check

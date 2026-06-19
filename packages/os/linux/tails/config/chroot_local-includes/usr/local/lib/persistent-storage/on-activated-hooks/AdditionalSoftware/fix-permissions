@@ -1,0 +1,16 @@
+#!/bin/sh
+
+set -eu
+
+fix_permissions() {
+    local dir="$1"
+
+    [ -d "$dir" ] || return 0
+
+    chown _apt:root "$dir"
+    find "$dir" -maxdepth 1 -type f -exec chown _apt:nogroup '{}' \;
+}
+
+for dir in /var/lib/apt/lists/partial /var/cache/apt/archives/partial; do
+    fix_permissions "$dir"
+done

@@ -1,0 +1,48 @@
+{
+  "schema": "eliza.external_pin_manifest.v1",
+  "name": "google-research/circuit_training AlphaChip checkpoint blocker",
+  "last_audited": "2026-06-02",
+  "claim_boundary": "metadata_only_no_checkpoint_binary_or_training_claim",
+  "repo": {
+    "url": "https://github.com/google-research/circuit_training",
+    "pinned_commit": "c5a83e5",
+    "pin_status": "historical_public_reference_only"
+  },
+  "checkpoint_status": "gcs-403-with-local-mitigation-blocked-by-closed-source-binary",
+  "artifacts": [
+    {
+      "name": "tpu_checkpoint_20240815",
+      "url": "https://storage.googleapis.com/rl-infra-public/circuit-training/tpu_checkpoint_20240815.tar.gz",
+      "expected_http_status": 403,
+      "sha256": null,
+      "status": "blocked_until_lawful_mirror"
+    },
+    {
+      "name": "plc_wrapper_main",
+      "url": "https://storage.googleapis.com/rl-infra-public/circuit-training/placement_cost/plc_wrapper_main",
+      "expected_http_status": 403,
+      "sha256": null,
+      "status": "closed_source_binary_blocked"
+    },
+    {
+      "name": "plc_wrapper_main_0.0.4",
+      "url": "https://storage.googleapis.com/rl-infra-public/circuit-training/placement_cost/plc_wrapper_main_0.0.4",
+      "expected_http_status": 403,
+      "sha256": null,
+      "status": "closed_source_binary_blocked"
+    },
+    {
+      "name": "dreamplace_python3.9",
+      "url": "https://storage.googleapis.com/rl-infra-public/circuit-training/dreamplace/dreamplace_python3.9.tar.gz",
+      "expected_http_status": 403,
+      "sha256": null,
+      "status": "blocked_until_lawful_mirror"
+    }
+  ],
+  "recovery": {
+    "canonical_url": "blocked",
+    "private_mirror_requires_sha256": true,
+    "local_bootstrap_requires_plc_wrapper_main": true,
+    "release_use_allowed": false
+  }
+}

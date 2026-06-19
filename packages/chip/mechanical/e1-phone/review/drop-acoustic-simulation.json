@@ -1,0 +1,370 @@
+{
+  "evidence_class": "physics_simulation_not_lab_measured",
+  "params_source": "mechanical/e1-phone/cad/e1_phone_params.yaml",
+  "mass_source": "mechanical/e1-phone/review/mass-budget.json",
+  "drop": {
+    "drop_height_m": 1.0,
+    "impact_velocity_m_s": 4.4294,
+    "mass_g": 164.45,
+    "restitution": 0.5,
+    "safety_factor_target": 1.5,
+    "orientations": [
+      {
+        "orientation": "front_face_screen_down",
+        "regime": "linear_structural",
+        "v_impact_m_s": 4.429,
+        "contact_radius_mm": null,
+        "contact_patch_radius_mm": 0.0,
+        "peak_g": 1363.7,
+        "peak_force_n": 2199.9,
+        "contact_time_ms": 1.0402,
+        "max_compression_mm": 1.4666,
+        "kinetic_energy_j": 1.6133,
+        "energy_absorbed_j": 1.2099,
+        "checks": {
+          "enclosure_corner": {
+            "bearing_area_mm2": 7188.48,
+            "bearing_stress_mpa": 0.306,
+            "yield_strength_mpa": 55.0,
+            "safety_factor": 179.72,
+            "survives": true,
+            "note": "conformal flat-face bearing crush vs PC+ABS yield (spread load)"
+          },
+          "cover_glass": {
+            "contact_patch_radius_mm": 19.275,
+            "rim_inset_mm": 0.3,
+            "rim_force_relief_factor": 0.71,
+            "perimeter_cushion": true,
+            "cushion_relief_factor": 0.8,
+            "force_into_glass_n": 1561.2,
+            "tensile_stress_mpa": 336.9,
+            "flex_strength_mpa": 650.0,
+            "safety_factor": 1.93,
+            "survives": true,
+            "note": "recessed glass (0.3 mm below rim) + perimeter foam cushion: rim takes face-drop first-contact energy, cushion damps the edge reaction; reduced back-face tensile share vs strengthened-glass flexural strength"
+          },
+          "display_bond": {
+            "bond_area_mm2": 457.7,
+            "shear_stress_mpa": 0.24,
+            "shear_strength_mpa": 0.5,
+            "safety_factor": 2.08,
+            "survives": true,
+            "note": "perimeter PSA shear from in-plane impact share"
+          },
+          "screw_boss": {
+            "battery_mass_kg": 0.0827,
+            "pcb_mass_kg": 0.0042,
+            "boss_count": 10,
+            "battery_coupling_factor": 0.6,
+            "coupled_internal_mass_kg": 0.0538,
+            "shear_area_mm2": 113.1,
+            "inertial_force_n": 720.0,
+            "shear_stress_mpa": 6.366,
+            "shear_strength_mpa": 35.0,
+            "safety_factor": 5.5,
+            "survives": true,
+            "note": "10 bosses + corner gussets share PCB + compliant-shelf-softened battery inertial load in shear (foam coupling factor 0.6)"
+          }
+        },
+        "governing_element": "cover_glass",
+        "governing_safety_factor": 1.93,
+        "survives": true
+      },
+      {
+        "orientation": "back_face_flat",
+        "regime": "linear_structural",
+        "v_impact_m_s": 4.429,
+        "contact_radius_mm": null,
+        "contact_patch_radius_mm": 0.0,
+        "peak_g": 1760.5,
+        "peak_force_n": 2840.1,
+        "contact_time_ms": 0.8057,
+        "max_compression_mm": 1.136,
+        "kinetic_energy_j": 1.6133,
+        "energy_absorbed_j": 1.2099,
+        "checks": {
+          "enclosure_corner": {
+            "bearing_area_mm2": 7188.48,
+            "bearing_stress_mpa": 0.395,
+            "yield_strength_mpa": 55.0,
+            "safety_factor": 139.21,
+            "survives": true,
+            "note": "conformal flat-face bearing crush vs PC+ABS yield (spread load)"
+          },
+          "screw_boss": {
+            "battery_mass_kg": 0.0827,
+            "pcb_mass_kg": 0.0042,
+            "boss_count": 10,
+            "battery_coupling_factor": 0.6,
+            "coupled_internal_mass_kg": 0.0538,
+            "shear_area_mm2": 113.1,
+            "inertial_force_n": 929.5,
+            "shear_stress_mpa": 8.219,
+            "shear_strength_mpa": 35.0,
+            "safety_factor": 4.26,
+            "survives": true,
+            "note": "10 bosses + corner gussets share PCB + compliant-shelf-softened battery inertial load in shear (foam coupling factor 0.6)"
+          }
+        },
+        "governing_element": "screw_boss",
+        "governing_safety_factor": 4.26,
+        "survives": true
+      },
+      {
+        "orientation": "long_edge",
+        "regime": "hertzian",
+        "v_impact_m_s": 4.429,
+        "contact_radius_mm": 1.5,
+        "contact_patch_radius_mm": 1.2064,
+        "peak_g": 2576.4,
+        "peak_force_n": 4156.4,
+        "contact_time_ms": 0.6448,
+        "max_compression_mm": 0.9703,
+        "kinetic_energy_j": 1.6133,
+        "energy_absorbed_j": 1.2099,
+        "checks": {
+          "enclosure_corner": {
+            "criterion": "impact_energy_vs_notched_izod",
+            "ligament_mm": 18.0,
+            "izod_capacity_j": 10.8,
+            "local_energy_j": 0.605,
+            "izod_safety_factor": 17.85,
+            "peak_hertz_pressure_mpa": 909.0,
+            "local_yielding_expected": true,
+            "safety_factor": 17.85,
+            "survives": true,
+            "note": "impact energy into the corner/edge ligament vs notched-Izod toughness; local surface yielding is expected and absorbs energy"
+          },
+          "screw_boss": {
+            "battery_mass_kg": 0.0827,
+            "pcb_mass_kg": 0.0042,
+            "boss_count": 10,
+            "battery_coupling_factor": 0.6,
+            "coupled_internal_mass_kg": 0.0538,
+            "shear_area_mm2": 113.1,
+            "inertial_force_n": 1360.3,
+            "shear_stress_mpa": 12.028,
+            "shear_strength_mpa": 35.0,
+            "safety_factor": 2.91,
+            "survives": true,
+            "note": "10 bosses + corner gussets share PCB + compliant-shelf-softened battery inertial load in shear (foam coupling factor 0.6)"
+          }
+        },
+        "governing_element": "screw_boss",
+        "governing_safety_factor": 2.91,
+        "survives": true
+      },
+      {
+        "orientation": "short_edge_bottom",
+        "regime": "hertzian",
+        "v_impact_m_s": 4.429,
+        "contact_radius_mm": 1.5,
+        "contact_patch_radius_mm": 1.2064,
+        "peak_g": 2576.4,
+        "peak_force_n": 4156.4,
+        "contact_time_ms": 0.6448,
+        "max_compression_mm": 0.9703,
+        "kinetic_energy_j": 1.6133,
+        "energy_absorbed_j": 1.2099,
+        "checks": {
+          "enclosure_corner": {
+            "criterion": "impact_energy_vs_notched_izod",
+            "ligament_mm": 18.0,
+            "izod_capacity_j": 10.8,
+            "local_energy_j": 0.605,
+            "izod_safety_factor": 17.85,
+            "peak_hertz_pressure_mpa": 909.0,
+            "local_yielding_expected": true,
+            "safety_factor": 17.85,
+            "survives": true,
+            "note": "impact energy into the corner/edge ligament vs notched-Izod toughness; local surface yielding is expected and absorbs energy"
+          },
+          "screw_boss": {
+            "battery_mass_kg": 0.0827,
+            "pcb_mass_kg": 0.0042,
+            "boss_count": 10,
+            "battery_coupling_factor": 0.6,
+            "coupled_internal_mass_kg": 0.0538,
+            "shear_area_mm2": 113.1,
+            "inertial_force_n": 1360.3,
+            "shear_stress_mpa": 12.028,
+            "shear_strength_mpa": 35.0,
+            "safety_factor": 2.91,
+            "survives": true,
+            "note": "10 bosses + corner gussets share PCB + compliant-shelf-softened battery inertial load in shear (foam coupling factor 0.6)"
+          }
+        },
+        "governing_element": "screw_boss",
+        "governing_safety_factor": 2.91,
+        "survives": true
+      },
+      {
+        "orientation": "corner",
+        "regime": "hertzian",
+        "v_impact_m_s": 4.429,
+        "contact_radius_mm": 7.5,
+        "contact_patch_radius_mm": 2.2966,
+        "peak_g": 3554.8,
+        "peak_force_n": 5734.8,
+        "contact_time_ms": 0.4673,
+        "max_compression_mm": 0.7033,
+        "kinetic_energy_j": 1.6133,
+        "energy_absorbed_j": 1.2099,
+        "checks": {
+          "enclosure_corner": {
+            "criterion": "impact_energy_vs_notched_izod",
+            "ligament_mm": 12.0,
+            "izod_capacity_j": 7.2,
+            "local_energy_j": 0.605,
+            "izod_safety_factor": 11.9,
+            "peak_hertz_pressure_mpa": 346.1,
+            "local_yielding_expected": true,
+            "safety_factor": 11.9,
+            "survives": true,
+            "note": "impact energy into the corner/edge ligament vs notched-Izod toughness; local surface yielding is expected and absorbs energy"
+          },
+          "screw_boss": {
+            "battery_mass_kg": 0.0827,
+            "pcb_mass_kg": 0.0042,
+            "boss_count": 10,
+            "battery_coupling_factor": 0.6,
+            "coupled_internal_mass_kg": 0.0538,
+            "shear_area_mm2": 113.1,
+            "inertial_force_n": 1876.8,
+            "shear_stress_mpa": 16.595,
+            "shear_strength_mpa": 35.0,
+            "safety_factor": 2.11,
+            "survives": true,
+            "note": "10 bosses + corner gussets share PCB + compliant-shelf-softened battery inertial load in shear (foam coupling factor 0.6)"
+          }
+        },
+        "governing_element": "screw_boss",
+        "governing_safety_factor": 2.11,
+        "survives": true
+      }
+    ]
+  },
+  "acoustic": {
+    "constants": {
+      "speed_of_sound_m_s": 343.0,
+      "air_density_kg_m3": 1.204,
+      "reference_temp_c": 20
+    },
+    "speaker": {
+      "model": "thiele_small_sealed_box",
+      "ts_params": {
+        "Re_ohm": 7.0,
+        "fs_hz": 850.0,
+        "Qts": 0.9,
+        "Vas_cc": 0.6,
+        "sensitivity_1w_10cm_db": 88.0,
+        "rated_w": 1.0
+      },
+      "box_volume_cc": 0.5148,
+      "system_resonance_fc_hz": 1250.8,
+      "system_Qtc": 1.324,
+      "low_freq_minus3db_hz": 897.1,
+      "spl_1w_10cm_db": 88.0,
+      "target_spl_db": 90.0,
+      "meets_target": true,
+      "note": "Sealed micro-speaker box. Passband SPL is the vendor-typical sensitivity; the small 0.5 cc chamber pushes fc/f3 up so low-bass is limited (expected for a handset speaker). Voiceband (300-3400 Hz) and 1 kHz reference sit in the passband above fc."
+    },
+    "earpiece": {
+      "model": "receiver_ear_reference_spl",
+      "spl_ear_reference_db": 108.0,
+      "reference": "IEC 60318 ear-simulator / sealed coupler, 1 kHz",
+      "target_spl_db": 95.0,
+      "meets_target": true,
+      "note": "1206 receiver behind the bonded cover-glass slot. SPL is at the ear reference plane (sealed coupler), well above conversational level; the behind-glass slot+gasket leak is the dominant low-frequency risk (see leak model)."
+    },
+    "grille_helmholtz": {
+      "model": "helmholtz_grille_port",
+      "port_open_area_mm2": 24.0,
+      "port_length_mm": 1.15,
+      "chamber_volume_mm3": 514.8,
+      "resonance_hz": 6301.0,
+      "voiceband_hz": [
+        300,
+        3400
+      ],
+      "outside_voiceband": true,
+      "note": "Grille-slot + chamber Helmholtz. Above the 3.4 kHz voiceband top it does not color speech; it adds a high-frequency port lift typical of a vented handset grille."
+    },
+    "mic": {
+      "model": "mems_tunnel_acoustic_lowpass",
+      "snr_dba": 65.0,
+      "target_snr_db": 60.0,
+      "snr_meets_target": true,
+      "aop_db_spl": 120.0,
+      "sensitivity_dbv_per_pa": -38.0,
+      "tunnel_length_mm": 3.15,
+      "tunnel_area_mm2": 1.595,
+      "front_volume_mm3": 1.5,
+      "tunnel_lowpass_corner_hz": 31717.1,
+      "tunnel_above_audio_band": true,
+      "note": "Bottom-port MEMS with molded tunnel. SNR is datasheet; the tunnel acoustic mass + front-volume compliance form a high-frequency low-pass whose corner stays above 20 kHz, so the audio band is flat. AOP > 120 dB SPL clears speakerphone near-field levels."
+    },
+    "leak": {
+      "model": "gasket_leak_highpass",
+      "residual_slit_um": 8.0,
+      "compression_set_ctq_max_um": 8.0,
+      "seal_perimeter_mm": 50.0,
+      "leak_area_mm2": 0.4,
+      "leak_corner_f_leak_hz": 1647.3,
+      "box_corner_fc_hz": 1250.8,
+      "lf_spl_loss_db": 2.39,
+      "leak_below_box_corner": false,
+      "acceptable": true,
+      "note": "Residual gasket leak as a 1st-order acoustic high-pass (corner f_leak) in series with the sealed box; LF SPL loss = 10*log10(1+(f_leak/fc)^2) at the box passband edge fc. Holding the compression-set residual slit <= the CTQ keeps this loss small. A real sealed-vs-leaking SPL-delta sweep is the binding evidence."
+    }
+  },
+  "acoustic_recommendations": [
+    "Speaker SPL, earpiece SPL, mic SNR, grille resonance, and tunnel rolloff all meet targets; an anechoic/coupler measurement should confirm the assumed Thiele-Small and receiver values."
+  ],
+  "worst_case_drop": {
+    "orientation": "corner",
+    "peak_g": 3554.8,
+    "peak_force_n": 5734.8,
+    "governing_element": "screw_boss",
+    "governing_safety_factor": 2.11,
+    "survives": true
+  },
+  "drop_recommendations": [
+    "All drop orientations clear the SF>=1.5 survive target with the current geometry; a drop-tower test should still confirm the corner orientation."
+  ],
+  "verdicts": {
+    "worst_case_drop_peak_g": {
+      "value": "3554.8 G (corner)",
+      "verdict": "PASS"
+    },
+    "cover_glass_survives": {
+      "value": "SF 1.93",
+      "verdict": "PASS"
+    },
+    "all_drop_orientations_survive": {
+      "value": "5/5 survive",
+      "verdict": "PASS"
+    },
+    "speaker_spl": {
+      "value": "88.0 dB @1W/10cm",
+      "verdict": "PASS"
+    },
+    "earpiece_spl": {
+      "value": "108.0 dB @ear ref",
+      "verdict": "PASS"
+    },
+    "mic_snr": {
+      "value": "65.0 dBA",
+      "verdict": "PASS"
+    },
+    "grille_port_outside_voiceband": {
+      "value": "6301.0 Hz",
+      "verdict": "PASS"
+    },
+    "acoustic_leak_within_3db": {
+      "value": "2.39 dB LF loss",
+      "verdict": "PASS"
+    }
+  },
+  "any_fail": false
+}

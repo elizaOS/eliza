@@ -1,0 +1,95 @@
+[[!meta title="Call for testing: 3.0~beta1"]]
+
+[[!meta date="Mon, 02 Feb 2017 11:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails! The first beta for the upcoming version 3.0 is
+out. We are very excited and cannot wait to hear what you think about
+it :)
+
+[[!toc levels=1]]
+
+# What's new in 3.0~beta1?
+
+Tails 3.0 will be the first version of Tails based on Debian 9
+(Stretch). As such, it upgrades essentially all included software.
+
+Other changes include:
+
+ * A 64-bit processor
+   [[is now required|news/Tails_3.0_will_require_a_64-bit_processor]].
+
+ * We redesigned Tails Greeter entirely.
+
+   [[!img news/test_redesigned_Tails_Greeter/greeter-alpha.png link="no" class="top-margin center" alt="Redesigned Tails Greeter alpha screenshot"]]
+
+ * GNOME Shell is now configured to use its default black theme.
+
+ * We fixed a lot of problems since Tails 3.0~alpha1.
+
+Technical details of all the changes are listed in the
+Changelog.
+
+# How to test Tails 3.0~beta1?
+
+**We will provide security updates for Tails 3.0~beta1**, just like we do
+for stable versions of Tails.
+
+But **keep in mind that this is a test image**. We tested that it is
+not broken in obvious ways, but it might still contain
+undiscovered issues.
+
+But test wildly!
+
+If you find anything that is not working as it should, please report to
+us on <tails-testers@boum.org>.
+
+Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+Download and install
+--------------------
+
+Tails 3.0~beta1 ISO image
+
+To install 3.0~beta1, follow our usual
+[[installation instructions|install]], skipping the **Download and
+verify** step.
+
+<a id="known_issues"></a>
+
+Known issues in 3.0~beta1
+=========================
+
+* The documentation was not adjusted yet.
+
+* The **Formats** settings chosen in Tails
+  Greeter have no effect ([[!tails_ticket 12079]]).
+
+* There is no **Read-Only** feature for the
+  persistent volume anymore; it is not clear yet whether it will be
+  re-introduced in time for Tails 3.0 final ([[!tails_ticket 12093]]).
+
+* Some commonly used ways to start graphical applications as the
+  `root` user are not supported anymore. Some workarounds are documented on
+  [[!tails_ticket 12000]].
+
+* If you use the *KeePassX* persistence feature, you need to manually
+  import your passwords database ([[!tails_ticket 10956]]).
+
+* Some command-line programs (at least *Monkeysign*, *Git*, and
+  *wget*) display confusing error messages in the *Terminal*,
+  although they work fine: [[!tails_ticket 11736]],
+  [[!tails_ticket 12091]], [[!tails_ticket 12205]].
+
+* *I2P* fails to start ([[!tails_ticket 12108]]). Note that the *I2P*
+  feature has not been maintained in Tails since more than a year, so
+  *I2P* [[!tails_ticket 11276#note-29 desc="may be removed"]] in
+  Tails 2.12 if this problem is not solved soon.
+
+* Open tickets for Tails 3.0.
+
+* [[Longstanding known issues|support/known_issues]]

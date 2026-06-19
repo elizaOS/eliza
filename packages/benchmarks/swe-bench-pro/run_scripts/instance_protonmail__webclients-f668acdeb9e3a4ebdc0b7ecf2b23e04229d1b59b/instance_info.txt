@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-f668acdeb9e3a4ebdc0b7ecf2b23e04229d1b59b
+Repository: protonmail/webclients
+Base Commit: 191ba8bd8323538c01c03a42775a157fa04b9b46
+Test Files: ["applications/mail/src/app/helpers/expiration.test.ts", "src/app/helpers/expiration.test.ts"]
+FAIL_TO_PASS: ["src/app/helpers/expiration.test.ts | should return a Unix timestamp if days is > 0"]
+PASS_TO_PASS: ["src/app/helpers/expiration.test.ts | should return false if feature flag is false", "src/app/helpers/expiration.test.ts | should return false if user is free", "src/app/helpers/expiration.test.ts | should return true if feature flag is true and user is paid", "src/app/helpers/expiration.test.ts | should return null if days is undefined"]

@@ -1,0 +1,146 @@
+/**
+ * @elizaos/shared/brand
+ *
+ * Canonical brand tokens and asset paths. Every elizaOS surface — homepages,
+ * cloud frontend, docs, app, electrobun — sources its logos, cloud video,
+ * and color palette from here so the look stays in sync.
+ *
+ * Asset *bytes* are duplicated into each consumer's `public/` at sync time
+ * (see `scripts/sync-to-public.mjs`). This module exports only the constants
+ * needed at runtime: colors, font stacks, and the on-disk paths the sync
+ * script will produce.
+ */
+
+/**
+ * Canonical external URLs for every Eliza surface. Import from here instead
+ * of hardcoding strings so a domain change is a one-line edit.
+ */
+export const EXTERNAL_URLS = {
+  app: "https://elizaos.ai",
+  cloud: "https://elizacloud.ai",
+  os: "https://elizaos.ai",
+  docs: "https://docs.elizaos.ai",
+  github: "https://github.com/elizaOS/eliza",
+  discord: "https://discord.gg/eliza",
+  twitter: "https://x.com/elizaos",
+} as const;
+
+export type ExternalUrlKey = keyof typeof EXTERNAL_URLS;
+
+export const BRAND_COLORS = {
+  blue: "#0B35F1",
+  orange: "#FF5800",
+  white: "#FFFFFF",
+  black: "#000000",
+  gray: "#D1D0D4",
+} as const;
+
+export type BrandColor = keyof typeof BRAND_COLORS;
+
+/**
+ * Per-surface theme. Each maps to a `.theme-*` class defined in
+ * `packages/ui/src/styles/base.css`.
+ */
+export const SURFACE_THEMES = {
+  cloud: {
+    themeClass: "theme-cloud",
+    background: BRAND_COLORS.black,
+    text: BRAND_COLORS.white,
+  },
+  os: {
+    themeClass: "theme-os",
+    background: BRAND_COLORS.blue,
+    text: BRAND_COLORS.white,
+  },
+  app: {
+    themeClass: "theme-app",
+    background: BRAND_COLORS.orange,
+    text: BRAND_COLORS.black,
+  },
+} as const;
+
+export type Surface = keyof typeof SURFACE_THEMES;
+
+export const FONT_STACK =
+  '"Poppins", system-ui, -apple-system, "Segoe UI", Arial, sans-serif';
+
+export const FONT_WEIGHTS = [400, 500, 600, 700, 800] as const;
+
+/**
+ * Default public-relative paths for the synced assets. Each consumer that
+ * runs the sync script ends up with files at exactly these paths.
+ */
+export const BRAND_PATHS = {
+  logos: "/brand/logos",
+  banners: "/brand/banners",
+  ogembeds: "/brand/ogembeds",
+  concepts: "/brand/concepts",
+  background: "/brand/background",
+  favicons: "/brand/favicons",
+} as const;
+
+export const BRAND_FAVICONS = {
+  ico: "/brand/favicons/favicon.ico",
+  svg: "/brand/favicons/favicon.svg",
+  png16: "/brand/favicons/favicon-16x16.png",
+  png32: "/brand/favicons/favicon-32x32.png",
+  appleTouchIcon: "/brand/favicons/apple-touch-icon.png",
+  androidChrome192: "/brand/favicons/android-chrome-192x192.png",
+  androidChrome512: "/brand/favicons/android-chrome-512x512.png",
+} as const;
+
+export const CONCEPT_PRODUCT_IMAGES = {
+  billboard: "/brand/concepts/billboard_concept_1200.jpg",
+  chibiUsb: "/brand/concepts/chibi_usb_concept_900.jpg",
+  miniPc: "/brand/concepts/concept_minipc_900.jpg",
+  phone: "/brand/concepts/concept_phone_800.jpg",
+  usbDrive: "/brand/concepts/concept_usbdrive_900.jpg",
+} as const;
+
+export const CLOUD_BACKGROUND_ASSETS = {
+  poster: "/brand/background/clouds_background.jpg",
+  source1080pMp4: "/brand/background/Clouds_Loop_HQ_1080p.mp4",
+  sourceMobile480pMp4: "/brand/background/Clouds_Loop_Mobile_480p.mp4",
+} as const;
+
+/**
+ * The canonical logo variants. File names match `assets/logos/`. Pick the
+ * one that fits the surface theme contrast.
+ */
+export const LOGO_FILES = {
+  cloudBlack: "elizacloud_logotext_black.svg",
+  cloudWhite: "elizacloud_logotext.svg",
+  cloudTextBlack: "elizacloud_text_black.svg",
+  cloudTextWhite: "elizacloud_text_white.svg",
+  osBlack: "elizaOS_text_black.svg",
+  osWhite: "elizaOS_text_white.svg",
+  osLockupBlack: "elizaos_logotext_black.svg",
+  osLockupWhite: "elizaos_logotext.svg",
+  elizaBlack: "eliza_text_black.svg",
+  elizaWhite: "eliza_text_white.svg",
+  elizaLockupBlack: "eliza_logotext_black.svg",
+  elizaLockupWhite: "eliza_logotext.svg",
+  markBlueNoBg: "logo_blue_nobg.svg",
+  markBlueBlackBg: "logo_blue_blackbg.svg",
+  markOrangeNoBg: "logo_orange_nobg.svg",
+  markOrangeBlackBg: "logo_orange_blackbg.svg",
+  markWhiteNoBg: "logo_white_nobg.svg",
+  markWhiteBlackBg: "logo_white_blackbg.svg",
+  markWhiteBlueBg: "logo_white_bluebg.svg",
+  markWhiteOrangeBg: "logo_white_orangebg.svg",
+  markWhiteGrayBg: "logo_white_graybg.svg",
+} as const;
+
+export type LogoVariant = keyof typeof LOGO_FILES;
+
+export const BANNER_FILES = {
+  eliza: "eliza_banner.svg",
+  cloud: "elizacloud_banner.svg",
+  os: "elizaos_banner.svg",
+} as const;
+
+export const OG_EMBED_FILES = {
+  eliza: "eliza_ogembed.png",
+  cloud: "elizacloud_ogembed.png",
+  os: "elizaos_ogembed.png",
+} as const;

@@ -1,0 +1,31 @@
+{
+  "packageId": "market.feed.app",
+  "host": "feed.market",
+  "name": "Feed",
+  "launcherName": "Feed",
+  "display": "standalone",
+  "themeColor": "#0066FF",
+  "navigationColor": "#0a0a0a",
+  "navigationColorDark": "#0a0a0a",
+  "navigationDividerColor": "#0a0a0a",
+  "navigationDividerColorDark": "#0a0a0a",
+  "backgroundColor": "#0a0a0a",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://feed.market/icons/icon-512.png",
+  "maskableIconUrl": "https://feed.market/icons/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./signing-key.keystore",
+    "alias": "feed"
+  },
+  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://feed.market/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "enableSiteSettingsShortcut": false,
+  "isChromeOSOnly": false,
+  "orientation": "portrait"
+}

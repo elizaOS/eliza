@@ -1,0 +1,92 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-12-08 13:08+0100\n"
+"PO-Revision-Date: 2024-10-09 09:41+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Download Tails"
+msgstr ""
+
+#. type: Content of: <div>
+msgid "[[!img inc/infography/download.png link=\"no\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"[[!img inc/infography/download-with-intermediary.png link=\"no\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div>
+msgid "[[!img inc/infography/download-from-tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<span id=\"download-img\" class=\"button display-as-inline-block\"> <a "
+"href=\"[[!inline pages=\"inc/stable_amd64_img_url\" raw=\"yes\" "
+"sort=\"age\"]]\">Download Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]] USB image (<span class=\"remove-extra-space\">[[!"
+"inline pages=\"inc/stable_amd64_img_size\" raw=\"yes\" sort=\"age\"]]</"
+"span>)</a> </span> <span class=\"no-js button\"> <a href=\"[[!inline "
+"pages=\"inc/stable_amd64_img_url_https\" raw=\"yes\" sort=\"age\"]]"
+"\">Download Tails [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+"sort=\"age\"]] USB image (<span class=\"remove-extra-space\">[[!inline "
+"pages=\"inc/stable_amd64_img_size\" raw=\"yes\" sort=\"age\"]]</span>)</a> </"
+"span>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<span id=\"download-iso\" class=\"button display-as-inline-block\"> <a "
+"href=\"[[!inline pages=\"inc/stable_amd64_iso_url\" raw=\"yes\" "
+"sort=\"age\"]]\">Download Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]] ISO image (<span class=\"remove-extra-space\">[[!"
+"inline pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</"
+"span>)</a> </span> <span class=\"no-js button\"> <a href=\"[[!inline "
+"pages=\"inc/stable_amd64_iso_url_https\" raw=\"yes\" sort=\"age\"]]"
+"\">Download Tails [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+"sort=\"age\"]] ISO image (<span class=\"remove-extra-space\">[[!inline "
+"pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</span>)</a> </"
+"span>"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"Save your download to your usual <i>Downloads</i> folder and not to the USB "
+"stick."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"We recommend that you save your download to your Persistent Storage. "
+"Otherwise, Tails might stop responding if the RAM memory of the computer "
+"gets full."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"While you are downloading, we recommend you read the [[release notes|"
+"latest]] for Tails [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+"sort=\"age\"]]<span class=\"remove-extra-space\">.</span>&nbsp; They "
+"document all the changes in this new version: new features, problems that "
+"were solved, and known issues that have already been identified."
+msgstr ""

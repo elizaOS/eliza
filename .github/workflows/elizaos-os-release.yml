@@ -1,0 +1,130 @@
+name: ElizaOS OS release validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/elizaos-os-release.yml"
+      - "packages/os/**"
+      - "packages/os-homepage/**"
+      - "packages/os/usb-installer/**"
+      - "packages/os/setup/**"
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  validate-os-release:
+    name: Validate OS release surfaces
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Validate OS release manifest
+        run: |
+          manifest=packages/os/release/beta-2026-05-16/manifest.json
+          evidence=packages/os/release/beta-2026-05-16/evidence/ci-evidence.json
+
+          node --check packages/os/scripts/*.mjs
+          node --test packages/os/scripts/__tests__/os-release-scripts.test.mjs
+          if [ -f "$manifest" ]; then
+            node packages/os/scripts/validate-release-manifest.mjs \
+              --manifest "$manifest"
+            node packages/os/scripts/collect-release-evidence.mjs \
+              --manifest "$manifest" \
+              --output "$evidence"
+          else
+            echo "::notice::${manifest} is not present; skipping beta release manifest validation."
+          fi
+
+      - name: Validate USB installer
+        run: |
+          bun run --cwd packages/os/usb-installer lint
+          bun run --cwd packages/os/usb-installer typecheck
+          bun run --cwd packages/os/usb-installer test
+          bun run --cwd packages/os/usb-installer build
+          bunx playwright install --with-deps chromium
+          bun run --cwd packages/os/usb-installer test:e2e
+          if modinfo scsi_debug >/dev/null 2>&1; then
+            bun run --cwd packages/os/usb-installer test:linux-virtual-usb
+          else
+            echo "::notice::scsi_debug kernel module is unavailable on this runner; skipping virtual block-device USB proof."
+          fi
+
+      - name: Validate Android installer
+        run: |
+          android_manifest=packages/os/release/beta-2026-05-16/android-release-manifest.json
+
+          packages/os/android/installer/tests/run-tests.sh
+          node packages/os/android/installer/scripts/validate-release-manifest.mjs \
+            packages/os/android/installer/manifests/android-release-manifest.example.json
+          if [ -f "$android_manifest" ]; then
+            node packages/os/android/installer/scripts/validate-release-manifest.mjs \
+              "$android_manifest" \
+              --allow-placeholders
+          else
+            echo "::notice::${android_manifest} is not present; skipping beta Android release manifest validation."
+          fi
+
+      - name: Validate elizaos-setup (formerly aosp-flasher)
+        run: |
+          bun run --cwd packages/os/setup typecheck
+          bun run --cwd packages/os/setup build
+
+      - name: Validate Linux live USB metadata
+        run: |
+          cd packages/os/linux
+          ELIZAOS_STATIC_SOURCE_ONLY=1 ./scripts/static-smoke.sh
+
+      - name: Validate OS homepage
+        run: |
+          bun run --cwd packages/os-homepage lint:check
+          bun run --cwd packages/os-homepage typecheck
+          bun run --cwd packages/os-homepage build
+          (cd packages/os-homepage && ../../node_modules/.bin/playwright install --with-deps chromium)
+          bun run --cwd packages/os-homepage test:e2e
+
+      - name: Capture homepage contact sheet
+        run: |
+          set -euo pipefail
+          bun --bun --cwd packages/os-homepage vite preview --host 127.0.0.1 --port 4455 &
+          echo $! > /tmp/os-homepage-preview.pid
+          ready=0
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:4455 >/dev/null; then
+              ready=1
+              break
+            fi
+            echo "Waiting for os-homepage preview (${attempt}/60)..."
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            echo "ERROR: os-homepage preview never came up on 127.0.0.1:4455"
+            kill "$(cat /tmp/os-homepage-preview.pid)" 2>/dev/null || true
+            exit 1
+          fi
+          bun run --cwd packages/os-homepage screenshots
+          kill "$(cat /tmp/os-homepage-preview.pid)" 2>/dev/null || true
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: elizaos-os-release-validation
+          path: |
+            packages/os/release/beta-2026-05-16/evidence/**
+            packages/os/linux/vm/output/ci-bundle-metadata/**
+            packages/os-homepage/artifacts/screenshots/**
+            packages/os-homepage/test-results/**
+          if-no-files-found: warn
+          retention-days: 14

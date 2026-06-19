@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1600" viewBox="0 0 1080 1600">
+  <defs>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #14213d; }
+      .title { font-size: 30px; font-weight: 700; }
+      .sub { font-size: 17px; fill: #45515f; }
+      .label { font-size: 16px; font-weight: 700; }
+      .small { font-size: 12px; fill: #3d4752; }
+      .tiny { font-size: 2.2px; fill: #4e5966; }
+      .board { fill: #1f7a5b; stroke: #0f3f31; stroke-width: 4; }
+      .keepout { fill: #f4f0e8; stroke: #c8bfae; stroke-width: 3; stroke-dasharray: 10 8; }
+      .module { stroke: #17202a; stroke-width: 2; rx: 8; ry: 8; }
+      .rf { fill: #f3b33d; }
+      .compute { fill: #77b7d7; }
+      .power { fill: #e0695f; }
+      .io { fill: #9fc36a; }
+      .media { fill: #ba8bd4; }
+      .antenna { fill: #fff3bf; stroke: #936c00; stroke-width: 2; stroke-dasharray: 5 4; }
+      .route { stroke: #e9f5ef; stroke-width: 4; fill: none; opacity: 0.85; }
+      .dim { stroke: #374151; stroke-width: 2; marker-start: url(#arrow); marker-end: url(#arrow); }
+      .dimtext { font-size: 2.4px; fill: #374151; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/>
+    </marker>
+  </defs>
+
+  <rect width="1080" height="1600" fill="#f8fafc"/>
+  <text x="70" y="72" class="title">Eliza E1 Phone Mainboard Concept Floorplan</text>
+  <text x="70" y="104" class="sub">5.5 inch FHD MIPI display anchor, 64 x 132 mm split-island board, one USB-C port, integrated phone subsystems</text>
+
+  <g transform="translate(250 155) scale(5.9)">
+    <rect x="0" y="0" width="78.0" height="153.6" rx="8" ry="8" fill="#e9edf2" stroke="#9aa6b2" stroke-width="0.8"/>
+    <text x="4" y="-6" class="tiny">device envelope 78.0 x 153.6 mm around 5.5 in FHD CTP module</text>
+
+    <rect x="4" y="4" width="64" height="30" class="board"/>
+    <rect x="4" y="121" width="64" height="15" class="board"/>
+
+    <rect x="4" y="34" width="64" height="87" class="keepout"/>
+    <text x="22" y="76" class="tiny">battery cavity</text>
+    <text x="25" y="81" class="tiny">64 x 87 mm</text>
+
+    <rect x="6" y="7" width="13" height="19" class="module rf"/>
+    <text x="6" y="16" class="tiny">5G</text>
+    <text x="6" y="21" class="tiny">module</text>
+
+    <rect x="22" y="9" width="14" height="12" class="module compute"/>
+    <text x="23" y="15" class="tiny">SoC</text>
+    <text x="23" y="20" class="tiny">LPDDR</text>
+
+    <rect x="37" y="22" width="9" height="7" class="module power"/>
+    <text x="38" y="13" class="tiny">PMIC</text>
+
+    <rect x="42" y="20" width="7" height="8" class="module io"/>
+    <text x="48" y="13" class="tiny">UFS</text>
+
+    <rect x="57" y="7" width="8" height="9" class="module media"/>
+    <text x="58" y="13" class="tiny">FFC</text>
+
+    <rect x="49" y="18" width="16" height="11" class="module media"/>
+    <text x="53" y="27" class="tiny">rear</text>
+    <text x="53" y="32" class="tiny">camera</text>
+
+    <rect x="46" y="7" width="10" height="8" class="module media"/>
+    <text x="38" y="28" class="tiny">front</text>
+
+    <rect x="23" y="27" width="12" height="3" class="module power"/>
+    <text x="21" y="31" class="tiny">charger</text>
+
+    <rect x="7" y="26" width="13" height="4" class="module rf"/>
+    <text x="36" y="39" class="tiny">Wi-Fi 6E/BT</text>
+
+    <rect x="56" y="23" width="9" height="6" class="module rf"/>
+    <text x="55" y="40" class="tiny">GNSS</text>
+
+    <rect x="5" y="31" width="16" height="3" class="module io"/>
+    <text x="5.5" y="33.4" class="tiny">side-key flex</text>
+
+    <rect x="6" y="122" width="10" height="8" class="module media"/>
+    <text x="7" y="127" class="tiny">mic</text>
+
+    <rect x="18" y="122" width="13" height="8" class="module media"/>
+    <text x="19" y="127" class="tiny">audio</text>
+
+    <rect x="35" y="122" width="11" height="8" class="module io"/>
+    <text x="36" y="127" class="tiny">haptic</text>
+
+    <rect x="49" y="122" width="13" height="8" class="module media"/>
+    <text x="50" y="127" class="tiny">speaker</text>
+
+    <rect x="28" y="130" width="16" height="6" class="module power"/>
+    <text x="31" y="134.5" class="tiny">USB-C</text>
+
+    <rect x="6" y="4" width="60" height="4" class="antenna"/>
+    <text x="21" y="7" class="tiny">top antenna keepout</text>
+    <rect x="6" y="128" width="60" height="4" class="antenna"/>
+    <text x="20" y="131" class="tiny">bottom antenna keepout</text>
+
+    <path d="M19 17 C26 21, 31 28, 38 38" class="route"/>
+    <path d="M36 14 C43 19, 47 24, 52 28" class="route"/>
+    <path d="M36 31 C40 56, 36 92, 31 130" class="route"/>
+
+    <line x1="4" y1="140" x2="68" y2="140" class="dim"/>
+    <text x="24" y="145" class="dimtext">64 mm board bbox width</text>
+    <line x1="74" y1="4" x2="74" y2="132" class="dim"/>
+    <text x="77" y="73" class="dimtext" transform="rotate(90 77 73)">132 mm board bbox height</text>
+  </g>
+
+  <g transform="translate(70 1110)">
+    <text x="0" y="0" class="label">Area Metrics</text>
+    <text x="0" y="30" class="sub">Board bbox: 8,448 mm2 | PCB copper area: 4,990 mm2 | Battery/non-PCB window: 3,458 mm2</text>
+    <text x="0" y="58" class="sub">Estimated unallocated/wasted board area: 550 mm2 (11.0%) | target after layout: 8-12%</text>
+
+    <text x="0" y="108" class="label">Power Targets</text>
+    <text x="0" y="138" class="sub">Battery target: 4,500 mAh / 17.3 Wh | USB-C PD/PPS sink | video call avg &lt;= 3.2 W</text>
+    <text x="0" y="166" class="sub">Sustained skin-limited compute budget: 4.0 W | skin target &lt;= 43 C | charge path peak efficiency &gt;= 92%</text>
+
+    <text x="0" y="216" class="label">Release Boundary</text>
+    <text x="0" y="246" class="sub">Placement preview only. Required next: KiCad schematic, routed PCB, SI/PI/RF/thermal,</text>
+    <text x="0" y="274" class="sub">DFM review, enclosure stack-up, and first-article evidence.</text>
+  </g>
+</svg>

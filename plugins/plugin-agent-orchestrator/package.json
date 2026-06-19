@@ -1,0 +1,233 @@
+{
+  "name": "@elizaos/plugin-agent-orchestrator",
+  "version": "2.0.3-beta.14",
+  "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via native Agent Client Protocol transports — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git",
+    "directory": "plugins/plugin-agent-orchestrator"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "require": "./dist/cjs/index.node.cjs",
+      "default": "./dist/node/index.node.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "PROJECT.md",
+    "LICENSE",
+    "docs"
+  ],
+  "sideEffects": [
+    "./src/register-routes.ts",
+    "./src/register-routes.js",
+    "./dist/node/index.node.js",
+    "./dist/cjs/index.node.cjs"
+  ],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "agent-client-protocol",
+    "coding-agent",
+    "subagent",
+    "task"
+  ],
+  "author": "@stwd / 0xSolace",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "git-workspace-service": "0.4.5"
+  },
+  "dependencies": {
+    "@octokit/rest": "^22.0.0",
+    "coding-agent-adapters": "0.16.3",
+    "drizzle-orm": "^0.45.1",
+    "effect": "^3.21.1",
+    "smithers-orchestrator": "0.22.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@electric-sql/pglite": "^0.4.0",
+    "@elizaos/core": "workspace:*",
+    "@types/bun": "^1.3.9",
+    "@types/node": "^25.2.3",
+    "bun-types": "1.3.14",
+    "git-workspace-service": "0.4.5",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "bunx vitest run --config vitest.config.ts",
+    "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
+    "test:e2e:manual": "node tests/e2e/acp-codex-smoke.mjs",
+    "test:e2e:multi-account": "bun --conditions=eliza-source scripts/compose-multi-account-e2e.ts",
+    "test:watch": "bunx vitest --config vitest.config.ts",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ELIZA_ACP_CLI": {
+        "type": "string",
+        "description": "Path or command name for the legacy acpx command-wrapper transport when ELIZA_ACP_TRANSPORT=cli.",
+        "required": false,
+        "default": "acpx",
+        "sensitive": false
+      },
+      "ELIZA_ACP_TRANSPORT": {
+        "type": "string",
+        "description": "ACP transport mode. Native/direct uses the embedded TypeScript ACP client; cli/acpx keeps the legacy command-wrapper transport.",
+        "required": false,
+        "default": "native",
+        "sensitive": false
+      },
+      "ELIZA_ACP_DEFAULT_AGENT": {
+        "type": "string",
+        "description": "Default coding agent adapter for TASKS create/spawn_agent when the user or planner does not choose one. Supported defaults include elizaos, pi-agent, and opencode.",
+        "required": false,
+        "default": "elizaos",
+        "sensitive": false
+      },
+      "ELIZA_DEFAULT_AGENT_TYPE": {
+        "type": "string",
+        "description": "Compatibility alias for the default coding agent adapter. Use elizaos, pi-agent, or opencode to switch the default code agent from settings.",
+        "required": false,
+        "default": "elizaos",
+        "sensitive": false
+      },
+      "ELIZA_AGENT_SELECTION_STRATEGY": {
+        "type": "string",
+        "description": "Task-agent selection policy. fixed makes the configured default adapter authoritative; dynamic allows runtime selection when implemented.",
+        "required": false,
+        "default": "fixed",
+        "sensitive": false
+      },
+      "ELIZA_ELIZAOS_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for ElizaOS coding-agent sessions when ELIZA_ACP_TRANSPORT=native.",
+        "required": false,
+        "default": "elizaos",
+        "sensitive": false
+      },
+      "ELIZA_PI_AGENT_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for Pi Agent sessions when ELIZA_ACP_TRANSPORT=native.",
+        "required": false,
+        "default": "pi-agent",
+        "sensitive": false
+      },
+      "ELIZA_CODEX_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for Codex sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",
+        "required": false,
+        "default": "npx -y @zed-industries/codex-acp@0.14.0",
+        "sensitive": false
+      },
+      "ELIZA_CLAUDE_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for Claude sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",
+        "required": false,
+        "default": "npx -y @agentclientprotocol/claude-agent-acp@0.34.0",
+        "sensitive": false
+      },
+      "ELIZA_OPENCODE_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for OpenCode sessions when ELIZA_ACP_TRANSPORT=native. Defaults to the bundled OpenCode shim when available, otherwise opencode acp.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_ACP_FORMAT": {
+        "type": "string",
+        "description": "Agent Client Protocol event format expected from legacy transports.",
+        "required": false,
+        "default": "json",
+        "sensitive": false
+      },
+      "ACPX_DEFAULT_TIMEOUT_MS": {
+        "type": "number",
+        "description": "Default timeout in milliseconds for ACP prompt/session calls when an action does not provide a timeout.",
+        "required": false,
+        "sensitive": false
+      },
+      "ACPX_APPROVE_ALL": {
+        "type": "boolean",
+        "description": "When true, defaults ACP sessions to the approve-all approval preset unless an action overrides approvalPreset.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "ACPX_FORMAT": {
+        "type": "string",
+        "description": "Deprecated alias for ELIZA_ACP_FORMAT.",
+        "required": false,
+        "default": "json",
+        "sensitive": false
+      },
+      "ACPX_NO_TERMINAL": {
+        "type": "boolean",
+        "description": "When true, passes --no-terminal so coding agents communicate through ACP events rather than terminal UI.",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "ACPX_DEFAULT_CWD": {
+        "type": "string",
+        "description": "Default working directory for ACP sessions when an action does not provide workdir.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js subprocess integration available via exports.node; browser export is a compatibility shim for package resolution."
+    }
+  }
+}

@@ -1,0 +1,1245 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2023-03-13 17:39+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"persistence/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"مانای رمزگذاری‌شده\"]]\n"
+
+#. type: Plain text
+msgid "Everything you do disappears automatically when you shut down Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"But you can save some of your files and configuration in an encrypted "
+"Persistent Storage on your Tails USB stick, for example:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Your documents"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Your Wi-Fi passwords"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "Your browser bookmarks"
+msgstr "<a id=\"browser_bookmarks\"></a>\n"
+
+#. type: Bullet: '- '
+msgid "..."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"The Persistent Storage is an encrypted partition protected by a passphrase "
+"that occupies all the free space left on the USB stick."
+msgstr "درایو مانا یک درایو رمزگذاری شده است که با یک گذرواژه محافظت می‌شود."
+
+#. type: Plain text
+msgid "Everything in the Persistent Storage is encrypted automatically."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"You can choose to unlock your Persistent Storage or not each time you start "
+"Tails."
+msgstr ""
+"وقتی درایو مانا ساخته می‌شود، هر بار که تیلز را راه‌اندازی می‌کنید می‌توانید "
+"انتخاب کنید که فعال شود یا نه."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The Persistent Storage is not hidden. An attacker in possession of your USB\n"
+"stick can know that there is a Persistent Storage. Take into consideration that\n"
+"you could be forced or tricked to give out its passphrase.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!inline pages=\"doc/persistent_storage.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/first_steps/persistence.caution.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"luks\">How strong is the encryption of the Persistent Storage?</h2>\n"
+msgstr "استفاده از درایو مانا\n"
+
+#. type: Plain text
+msgid "The encryption of the Persistent Storage uses LUKS and DMCrypt."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[LUKS](https://gitlab.com/cryptsetup/cryptsetup/) and [DMCrypt](https://"
+"gitlab.com/cryptsetup/cryptsetup/-/wikis/DMCrypt) are the standard system "
+"for disk encryption in Linux. Tails uses their default encryption "
+"parameters, which are considered highly secure. This is the same technique "
+"as we recommend for [[creating and using encrypted volumes|doc/"
+"encryption_and_privacy/encrypted_volumes]] in general."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Consider removing after #18148. -->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The weakest point of such encryption is often the passphrase chosen by\n"
+"the user.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>We recommend choosing a long passphrase made of 5 to 7 random words.\n"
+"   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">Learn\n"
+"   about the maths behind memorizable and secure passphrases.</a></p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Spaces added for translators. -->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To learn more about how the Persistent Storage is implemented, see our\n"
+"[[design documentation|contribute/design/persistence]].</p>\n"
+msgstr ""
+
+#, fuzzy
+#~ msgid ""
+#~ "If you start Tails from a USB stick, you can create an encrypted "
+#~ "Persistent Storage in the free space left on the USB stick.  The files "
+#~ "and settings stored in the Persistent Storage are saved encrypted and "
+#~ "remain available across different working sessions."
+#~ msgstr ""
+#~ "اگر تیلز را از روی درایو یواس‌بی یا کارت حافظه راه‌اندازی می‌کنید، می‌توانید "
+#~ "با استفاده از\n"
+#~ "*نصب کنندهٔ تیلز* یک درایو مانا در فضای "
+#~ "خالی روی دستگاه‌تان ایجاد کنید.\n"
+#~ "فایل‌های روی درایو مانا به صورت رمزگذاری شده ذخیره می‌شوند و برای نشست‌های "
+#~ "کاری جداگانه قابل استفاده‌اند.\n"
+
+#, fuzzy
+#~ msgid "You can use this Persistent Storage to store, for example:"
+#~ msgstr ""
+#~ "با استفاده از این درایو مانا می‌توانید فایل‌های مختلفی را نگهداری کنید:"
+
+#, fuzzy
+#~ msgid "Encryption keys"
+#~ msgstr "کلیدهای رمزگذاری شما"
+
+#, no-wrap
+#~ msgid "[[!toc levels=3]]\n"
+#~ msgstr "[[!toc levels=3]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h1 id=\"create\">Creating the Persistent Storage</h1>\n"
+#~ msgstr "ایجاد درایو مانا\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img creation.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "[[!img welcome_screen/persistence.png link=\"no\" alt=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "<div class=\"note\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>The error message <em>Error, Persistence volume is not\n"
+#~ "unlocked.</em> means that the Persistent Storage was not unlocked in\n"
+#~ "the Welcome Screen. You cannot use or configure your Persistent Storage\n"
+#~ "but you can delete it and create a new one.</p>\n"
+#~ msgstr ""
+#~ "پیغام خطای *خطا؛ پارتیشن مانا قفل است*\n"
+#~ "به این معنی است که درایو مانا از *خوشامدگوی تیلز*\n"
+#~ "فعال نشده بوده است. بنابراین نمی‌توانید آن را تنظیم کنید اما می‌توانید آن را حذف کرده\n"
+#~ "و مانای جدیدی ایجاد کنید.\n"
+
+#, no-wrap
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"bug\">\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When run for the first time, or after [[deleting the Persistent Storage|"
+#~ "delete]], an assistant allows you to create a Persistent Storage in the "
+#~ "free space left on the USB stick. Refer to our [[installation "
+#~ "instructions|install/clone#create-persistence]] for more guidance on "
+#~ "creating the Persistent Storage."
+#~ msgstr ""
+#~ "هنگام راه‌اندازی راهنما برای بار اول یا پس از [[حذف درایو مانا|delete]]، "
+#~ "راهنما به شما پیشنهاد می‌دهد درایو مانادی جدیدی روی دستگاهی که تیلز از آن "
+#~ "راه‌اندازی شده ایجاد کنید."
+
+#, fuzzy, no-wrap
+#~ msgid "<h1 id=\"configure\">Configuring the Persistent Storage</h1>\n"
+#~ msgstr "[[!meta title=\"درایو مانا را ایجاد و تنظیم کنید\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p><strong>Restart Tails to apply the changes</strong> after selecting or\n"
+#~ "deselecting one or several features.</p>\n"
+#~ msgstr ""
+#~ "پس از فعال یا غیرفعال کردن یک یا چند ویژگی\n"
+#~ "<strong>تیلز را دوباره راه‌اندازی کنید تا آن تغییرات به کار بیافتند</strong>.\n"
+
+#, no-wrap
+#~ msgid "<div class=\"bug\" id=\"deselect\">\n"
+#~ msgstr "<div class=\"bug\" id=\"deselect\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>If you turn off a feature, it will be\n"
+#~ "unavailable after restarting Tails but the\n"
+#~ "corresponding files\n"
+#~ "are still saved in the Persistent Storage.</p>\n"
+#~ msgstr "اگر یک ویژگی فعال را غیرفعال کنید، پس از راه‌اندازی دوباره تیلز این اتفاق رخ می‌دهد، اما فایل‌های مرتبط با آن روی درایو مانا باقی خواهند ماند."
+
+#, no-wrap
+#~ msgid "<a id=\"personal_data\"></a>\n"
+#~ msgstr "<a id=\"personal_data\"></a>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"icon\">\n"
+#~ msgstr "<div class=\"icon\">\n"
+
+#, no-wrap
+#~ msgid "[[!img stock_folder.png link=no]]\n"
+#~ msgstr "[[!img stock_folder.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Personal Data</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>داده‌های شخصی</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "When the Personal Data feature is turned on, you can save your personal files and working\n"
+#~ "documents in the *Persistent* folder.\n"
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال شد، می‌توانید فایل‌های شخصی و سندهای کاری خود را\n"
+#~ "در پوشهٔ *مانا* ذخیره کنید.\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "To open the *Persistent* folder, choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;▸\n"
+#~ "  **Persistent**</span>.\n"
+#~ msgstr ""
+#~ "برای باز کردن پوشهٔ *مانا* این مسیر را بروید\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;◀\n"
+#~ "  **مانا**</span>.\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<a id=\"welcome_screen\"></a>\n"
+#~ msgstr "<a id=\"gnome_keyring\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img lib/apps/preferences-system.png link=\"no\"]]\n"
+#~ msgstr "[[!img preferences-desktop.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Welcome Screen</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>کارخواه بیت‌کوین</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When the Welcome Screen feature is turned on, the settings from the "
+#~ "Welcome Screen are saved in the Persistent Storage: language, keyboard, "
+#~ "and additional settings."
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال شد، تمام فایل‌های مرتبط با کارخواه دارای پوستهٔ "
+#~ "امن روی درایو مانا ذخیره می‌شوند."
+
+#, fuzzy, no-wrap
+#~ msgid "<a id=\"tor-bridge\">\n"
+#~ msgstr "<a id=\"thunderbird\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img onioncircuits.png link=no]]\n"
+#~ msgstr "[[!img printer.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Tor Bridge</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>پیجین</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When the Tor Bridge feature is turned on, the last [[Tor bridge|doc/"
+#~ "anonymous_internet/tor]] that you used to connect to Tor successfully is "
+#~ "saved in the Persistent Storage."
+#~ msgstr ""
+#~ "وقتی این ویژگی فعال باشد، تنظیمات و رایانامه‌هایی \n"
+#~ "که توسط \n"
+#~ "[[*Claws Mail*کارخواه رایانامهٔ |doc/"
+#~ "anonymous_internet/claws_mail]]\n"
+#~ "ذخیره می‌شوند، روی درایو مانا ذخیره خواهند شد.\n"
+
+#, no-wrap
+#~ msgid "[[!img user-bookmarks.png link=no]]\n"
+#~ msgstr "[[!img user-bookmarks.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Browser Bookmarks</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>نشانک‌های مرورگر</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When the Browser Bookmarks feature is turned on, changes to the bookmarks "
+#~ "in [[*Tor Browser*|doc/anonymous_internet/Tor_Browser]] are saved in the "
+#~ "Persistent Storage. This does not apply to the [[*Unsafe Browser*|doc/"
+#~ "anonymous_internet/unsafe_browser]]."
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال شود تغییرات نشانک‌ها در\n"
+#~ "[[*مرورگر تور*|doc/anonymous_internet/"
+#~ "Tor_Browser]]\n"
+#~ "روی درایو مانا ذخیره خواهند شد. این امر در مورد\n"
+#~ "[[*مرورگر غیرامن*|doc/anonymous_internet/"
+#~ "unsafe_browser]] صدق نمی‌کند.\n"
+
+#, no-wrap
+#~ msgid "<a id=\"network_connections\"></a>\n"
+#~ msgstr "<a id=\"network_connections\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img network-manager.png link=no]]\n"
+#~ msgstr "[[!img network-manager.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Network Connections</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>ارتباط‌های شبکه</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When the Network Connections feature is turned on, the [[configuration of "
+#~ "the network devices and connections|doc/anonymous_internet/"
+#~ "networkmanager]] is saved in the Persistent Storage, for example the "
+#~ "passwords of Wi-Fi networks."
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال باشد، [[پیکربندی دستگاه‌ها و ارتباط‌های شبکه|doc/"
+#~ "anonymous_internet/networkmanager]]\n"
+#~ "روی درایو مانا ذخیره می‌شوند."
+
+#, no-wrap
+#~ msgid "<a id=\"additional_software\"></a>\n"
+#~ msgstr "<a id=\"additional_software\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img additional-software.png link=no]]\n"
+#~ msgstr "[[!img printer.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Additional Software</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>داده‌های شخصی</h2></div>\n"
+#~ "</div>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"printers\"></a>\n"
+#~ msgstr "<a id=\"printers\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img printer.png link=no]]\n"
+#~ msgstr "[[!img printer.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Printers</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>چاپ‌گرها</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When the Printers feature is turned on, the [[configuration of the "
+#~ "printers|doc/sensitive_documents/printing_and_scanning]] is saved in the "
+#~ "Persistent Storage."
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال باشد،  [[تنظیمات چاپ‌گرها|doc/sensitive_documents/"
+#~ "printing_and_scanning]] روی درایو مانا ذخیره خواهند شد."
+
+#, no-wrap
+#~ msgid "<a id=\"thunderbird\"></a>\n"
+#~ msgstr "<a id=\"thunderbird\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img lib/apps/thunderbird.png link=no]]\n"
+#~ msgstr "[[!img lib/apps/thunderbird.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Thunderbird</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>دات‌فایلز</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When the Thunderbird feature is turned on, the email, feeds, and OpenPGP "
+#~ "keys in the [[*Thunderbird* email client|doc/anonymous_internet/"
+#~ "thunderbird]] are saved in the Persistent Storage."
+#~ msgstr ""
+#~ "وقتی این ویژگی فعال باشد، تنظیمات و رایانامه‌هایی \n"
+#~ "که توسط \n"
+#~ "[[*Claws Mail*کارخواه رایانامهٔ |doc/"
+#~ "anonymous_internet/claws_mail]]\n"
+#~ "ذخیره می‌شوند، روی درایو مانا ذخیره خواهند شد.\n"
+
+#, no-wrap
+#~ msgid "<a id=\"gnupg\"></a>\n"
+#~ msgstr "<a id=\"gnupg\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img seahorse-key.png link=no]]\n"
+#~ msgstr "[[!img seahorse-key.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>GnuPG</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>GnuPG</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When the GnuPG feature is turned on, the OpenPGP keys that you create or "
+#~ "import in *GnuPG* and *Kleopatra* are saved in the Persistent Storage."
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال شد، کلیدهای اُپن‌پی‌جی‌پی که ایجاد یا وارد کرده‌اید "
+#~ "روی درایو مانا ذخیره می‌شوند."
+
+#, no-wrap
+#~ msgid "<a id=\"bitcoin\"></a>\n"
+#~ msgstr "<a id=\"bitcoin\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img lib/apps/electrum.png link=no]]\n"
+#~ msgstr "[[!img electrum.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Bitcoin Client</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>کارخواه بیت‌کوین</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When the Bitcoin Client feature is turned on, the bitcoin wallet and "
+#~ "preferences of the [[*Electrum* bitcoin client|anonymous_internet/"
+#~ "electrum]] are saved in the Persistent Storage."
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال باشد، کیف‌پول و ترجیحات [[کارخواه بیت‌کوین "
+#~ "*الکترام*|anonymous_internet/electrum]] روی درایو مانا ذخیره خواهند شد."
+
+#, no-wrap
+#~ msgid "<a id=\"pidgin\"></a>\n"
+#~ msgstr "<a id=\"pidgin\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img lib/apps/pidgin.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Pidgin</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>پیجین</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When the Pidgin feature is turned on, all the configuration files of the "
+#~ "[[*Pidgin* internet messenger|doc/anonymous_internet/pidgin]] are saved "
+#~ "in the Persistent Storage:"
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال شد تمام فایل‌های پیکربندی\n"
+#~ "[[پیغام‌رسان اینترنتی*پیچین*|doc/"
+#~ "anonymous_internet/pidgin]]\n"
+#~ "روی درایو مانا ذخیره خواهند شد.\n"
+
+#~ msgid "The configuration of your accounts, buddies and chats."
+#~ msgstr "تنظیمات حساب‌ها، دوستان و گفتگوهای شما."
+
+#~ msgid "Your OTR encryption keys and keyring."
+#~ msgstr "کلیدها و دسته‌کلید رمزگذاری ORT شما"
+
+#~ msgid ""
+#~ "The content of the discussions is not saved unless you configure <span "
+#~ "class=\"application\">Pidgin</span> to do so."
+#~ msgstr ""
+#~ "محتوای گفتگوها ذخیره نمی‌شوند مگر شما <span class=\"application\">پیجین</"
+#~ "span> را طور دیگری تنظیم کنید."
+
+#, fuzzy
+#~ msgid ""
+#~ "All the configuration options are available from the graphical interface "
+#~ "of *Pidgin*. There is no need to manually edit or overwrite the "
+#~ "configuration files."
+#~ msgstr ""
+#~ "تمام تنظیمات این نرم‌افزار دارای رابط گرافیکی هستند. نیازی به ویرایش یا "
+#~ "بازنویسی دستی فایل‌های تنظیمات آن نیست."
+
+#, no-wrap
+#~ msgid "<a id=\"ssh_client\"></a>\n"
+#~ msgstr "<a id=\"ssh_client\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img seahorse-key-ssh.png link=no]]\n"
+#~ msgstr "[[!img seahorse-key-ssh.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>SSH Client</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>کارخواه اس‌اس‌اچ</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When the SSH Client feature is turned on, all the files related to the "
+#~ "secure-shell (SSH) client are saved in the Persistent Storage:"
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال شد، تمام فایل‌های مرتبط با کارخواه دارای پوستهٔ "
+#~ "امن روی درایو مانا ذخیره می‌شوند."
+
+#~ msgid "The SSH keys that you create or import"
+#~ msgstr "کلیدهای اس‌اس‌اچ که ایجاد یا وارد می‌کنید"
+
+#~ msgid "The public keys of the hosts you connect to"
+#~ msgstr "کلیدهای عمومی که میزبان‌ها که به آن‌ها متصل می‌شوید"
+
+#~ msgid ""
+#~ "The SSH configuration file in <span class=\"filename\">~/.ssh/config</"
+#~ "span>"
+#~ msgstr ""
+#~ "فایل پیکربندی اس‌اس‌اچ در *~/.ssh/config*"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>If you manually edit the <i>~/.ssh/config</i>\n"
+#~ "configuration file, make sure not to overwrite the\n"
+#~ "default configuration from the\n"
+#~ "<i>/etc/ssh/ssh_config</i> file. Otherwise, you might weaken the\n"
+#~ "encryption defaults or render SSH unusable.</p>\n"
+#~ msgstr ""
+#~ "اگر فایل پیکربندی *~/.ssh/config*\n"
+#~ "را دستی ویرایش می‌کنید، پیکربندی پیش‌فرض فایل */etc/ssh/ssh_config* file\n"
+#~ "را تغییر ندهید. در غیر این صورت ممکن است باعث تضعیف پیش‌فرض‌های\n"
+#~ "رمزگذاری یا غیرقابل‌استفاده شدن اس‌اس‌اچ شوید.\n"
+
+#, no-wrap
+#~ msgid "<a id=\"dotfiles\"></a>\n"
+#~ msgstr "<a id=\"dotfiles\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img preferences-desktop.png link=no]]\n"
+#~ msgstr "[[!img preferences-desktop.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Dotfiles</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>دات‌فایلز</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "For example, having the following files in */live/persistence/"
+#~ "TailsData_unlocked/dotfiles*:"
+#~ msgstr ""
+#~ "برای نمونه این فایل‌ها در <span\n"
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</span>\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "    /live/persistence/TailsData_unlocked/dotfiles\n"
+#~ "    ├── file_a\n"
+#~ "    ├── folder\n"
+#~ "    │   ├── file_b\n"
+#~ "    │   └── subfolder\n"
+#~ "    │       └── file_c\n"
+#~ "    └── emptyfolder\n"
+#~ msgstr ""
+#~ "    /live/persistence/TailsData_unlocked/dotfiles\n"
+#~ "    ├── file_a\n"
+#~ "    ├── folder\n"
+#~ "    │   ├── file_b\n"
+#~ "    │   └── subfolder\n"
+#~ "    │       └── file_c\n"
+#~ "    └── emptyfolder\n"
+
+#, fuzzy
+#~ msgid "Produces the following result in */home/amnesia*:"
+#~ msgstr ""
+#~ "منجر به چنین نتیجه‌ای در */home/amnesia* "
+#~ "می‌شوند:\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "    /home/amnesia\n"
+#~ "    ├── file_a → /live/persistence/TailsData_unlocked/dotfiles/file_a\n"
+#~ "    └── folder\n"
+#~ "        ├── file_b → /live/persistence/TailsData_unlocked/dotfiles/folder/file_b\n"
+#~ "        └── subfolder\n"
+#~ "            └── file_c → /live/persistence/TailsData_unlocked/dotfiles/folder/subfolder/file_c\n"
+#~ msgstr ""
+#~ "    /home/amnesia\n"
+#~ "    ├── file_a → /live/persistence/TailsData_unlocked/dotfiles/file_a\n"
+#~ "    └── folder\n"
+#~ "        ├── file_b → /live/persistence/TailsData_unlocked/dotfiles/folder/file_b\n"
+#~ "        └── subfolder\n"
+#~ "            └── file_c → /live/persistence/TailsData_unlocked/dotfiles/folder/subfolder/file_c\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<a id=\"displays\"></a>\n"
+#~ msgstr "<a id=\"dotfiles\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "Save the configuration of your displays"
+#~ msgstr "تنظیمات حساب‌ها، دوستان و گفتگوهای شما"
+
+#, fuzzy
+#~ msgid "Turn on the *Dotfiles* feature and restart Tails."
+#~ msgstr "روی دکمهٔ **ایجاد** کلیک کنید."
+
+#, fuzzy
+#~ msgid ""
+#~ "Choose <span class=\"menuchoice\"> <span class=\"guimenu\">Devices</"
+#~ "span>&nbsp;▸ **Displays**</span>."
+#~ msgstr ""
+#~ "برای آغاز کردن راهنمای درایو مانا از این مسیر بروید:\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **ابزارها**&nbsp;◀\n"
+#~ "  **تیلز**&nbsp;◀\n"
+#~ "  **تنظیم درایو مانا**</span>.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Choose **Places**&nbsp;▸ **Dotfiles** to open the <span "
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</span> "
+#~ "folder in the *Files* browser."
+#~ msgstr ""
+#~ "برای نمونه این فایل‌ها در <span\n"
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</span>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Click on the <span class=\"guimenu\">[[!img lib/pan-down.png alt=\"menu "
+#~ "toggle\" class=\"symbolic\" link=\"no\"]]</span> button in the title bar "
+#~ "and choose **Show Hidden Files**."
+#~ msgstr ""
+#~ "برای آغاز کردن راهنمای درایو مانا از این مسیر بروید:\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **ابزارها**&nbsp;◀\n"
+#~ "  **تیلز**&nbsp;◀\n"
+#~ "  **تنظیم درایو مانا**</span>.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Copy the *.config/monitors.xml* file from "
+#~ "your *Home* folder to <span "
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles/.config</"
+#~ "span>."
+#~ msgstr ""
+#~ "برای نمونه این فایل‌ها در <span\n"
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</span>\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "When starting Tails, in the\n"
+#~ "**Encrypted Persistent Storage** section of\n"
+#~ "the [[Welcome Screen|welcome_screen]], enter your passphrase and click\n"
+#~ "**Unlock**.\n"
+#~ msgstr ""
+#~ "۱. وقتی تیلز را راه‌اندازی می‌کنید، در \n"
+#~ "پنجرهٔ **استفاده از مانا؟** در [[خوشامدگوی تیلز|welcome_screen]] **بله** را انتخاب کنید تا\n"
+#~ "درایو مانا را برای نشست کاری فعلی فعال شود.\n"
+
+#, no-wrap
+#~ msgid "[[!img welcome_screen/persistence.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "[[!img welcome_screen/persistence.png link=\"no\" alt=\"\"]]\n"
+
+#, fuzzy, no-wrap
+#~| msgid "You can use this persistent volume to store different kinds of files:"
+#~ msgid "How to use the Persistent Storage"
+#~ msgstr "با استفاده از این درایو مانا می‌توانید فایل‌های مختلفی را نگهداری کنید:"
+
+#, fuzzy
+#~| msgid "[[Warnings about persistence|first_steps/persistence/warnings]]"
+#~ msgid ""
+#~ "[[Warnings about the Persistent Storage|first_steps/persistence/warnings]]"
+#~ msgstr "[[هشدارهایی درباره‌ی مانا|first_steps/persistence/warnings]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[Create & configure the persistent volume|first_steps/persistence/"
+#~| "configure]]"
+#~ msgid ""
+#~ "[[Creating and configuring the Persistent Storage|first_steps/persistence/"
+#~ "configure]]"
+#~ msgstr "[[ساخت و تنظیم درایو مانا|first_steps/persistence/configure]]"
+
+#, fuzzy
+#~| msgid "[[Enable & use the persistent volume|first_steps/persistence/use]]"
+#~ msgid ""
+#~ "[[Unlocking and using the Persistent Storage|first_steps/persistence/use]]"
+#~ msgstr "[[فعال کردن و استفاده از درایو مانا|first_steps/persistence/use]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[Manually copy your persistent data to a new device|first_steps/"
+#~| "persistence/backup]]"
+#~ msgid ""
+#~ "[[Making a backup of your Persistent Storage|first_steps/persistence/"
+#~ "backup]]"
+#~ msgstr ""
+#~ "[[کپی کردن دستی داده‌های مانا روی یک دستگاه جدید|first_steps/persistence/"
+#~ "copy]]"
+
+#, fuzzy
+#~| msgid "[[Delete the persistent volume|first_steps/persistence/delete]]"
+#~ msgid ""
+#~ "[[Rescuing your Persistent Storage from a broken Tails|first_steps/"
+#~ "persistence/rescue]]"
+#~ msgstr "[[پاک کردن درایو مانا|first_steps/persistence/delete]]"
+
+#, fuzzy
+#~| msgid "[[Delete the persistent volume|first_steps/persistence/delete]]"
+#~ msgid "[[Deleting the Persistent Storage|first_steps/persistence/delete]]"
+#~ msgstr "[[پاک کردن درایو مانا|first_steps/persistence/delete]]"
+
+#, fuzzy, no-wrap
+#~| msgid "[[!meta title=\"Enable & use the persistent volume\"]]\n"
+#~ msgid "[[!meta title=\"Unlocking and using the Persistent Storage\"]]\n"
+#~ msgstr "[[!meta title=\"فعال کردن و استفاده از درایو مانا\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!toc levels=1]]\n"
+#~ msgstr "[[!toc levels=1]]\n"
+
+#, fuzzy, no-wrap
+#~| msgid "Enable the persistent volume\n"
+#~ msgid "Unlocking the Persistent Storage"
+#~ msgstr "فعال کردن درایو مانا\n"
+
+#~ msgid ""
+#~ "How to use the persistent volume\n"
+#~ "=================================\n"
+#~ msgstr ""
+#~ "چگونه از درایو مانا استفاده کنیم\n"
+#~ "=================================\n"
+
+#~ msgid ""
+#~ "[[Change the passphrase of the persistent volume|first_steps/persistence/"
+#~ "change_passphrase]]"
+#~ msgstr ""
+#~ "[[تغییر گذرواژهٔ درایو مانا|first_steps/persistence/change_passphrase]]"
+
+#~ msgid ""
+#~ "[[Check the file system of the persistent volume|first_steps/persistence/"
+#~ "check_file_system]]"
+#~ msgstr ""
+#~ "[[بررسی نسخهٔ فایل درایو مانا|first_steps/persistence/check_file_system]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "<p>It is only possible to create a persistent volume if the device, USB "
+#~| "stick or\n"
+#~| "SD card, was installed using <span class=\"application\">Tails "
+#~| "Installer</span>.</p>\n"
+#~ msgid ""
+#~ "<p>It is only possible to create a persistent volume if the USB stick\n"
+#~ "was installed using *Tails Installer*.</"
+#~ "p>\n"
+#~ msgstr ""
+#~ "<p>تنها راه ممکن برای ایجاد درایوی مانا این است که \n"
+#~ "دستگاه، یواس‌بی یا کارت حافظه‌ای که روی آن نصب می‌شود از <span "
+#~ "class=\"application\">نصب کنندهٔ تیلز</span> استفاده کند.</p>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "<p>This requires a USB stick or SD card of <strong>at least 8 GB</"
+#~| "strong>.</p>\n"
+#~ msgid ""
+#~ "<p>This requires a USB stick of <strong>at least 8 GB</strong>.</p>\n"
+#~ msgstr ""
+#~ "<p>برای این کار نیاز به یک درایو یواس‌بی یا کارت حافظه‌ای با <strong>حداقل "
+#~ "۴ گیگابایت فضا</strong> دارید.</p>\n"
+
+#~ msgid "your personal files and working documents"
+#~ msgstr "فایل‌های شخصی شما و مستنداتی که روی آن‌ها کار می‌کنید"
+
+#~ msgid "the software packages that you download and install in Tails"
+#~ msgstr "بسته‌های نرم‌افزاری که دانلود و روی تیلز نصب می‌کنید"
+
+#~ msgid "the configuration of the programs you use"
+#~ msgstr "تنظیمات برنامه‌هایی که استفاده می‌کنید"
+
+#, fuzzy
+#~| msgid ""
+#~| "As you can see in the previous example, empty folders are ignored. This "
+#~| "feature\n"
+#~| "only links files, and not folders, from the persistent volume into the "
+#~| "<span\n"
+#~| "class=\"filename\">Home</span> folder.\n"
+#~ msgid ""
+#~ "As in the previous example, empty folders are ignored. The Dotfiles "
+#~ "feature only links files, and not folders, from the Persistent Storage "
+#~ "into the *Home* folder."
+#~ msgstr ""
+#~ "همان‌طور که می‌توانید در مثال قبل ببینید، پوشه‌های خالی نادیده گرفته شده‌اند. "
+#~ "این ویژگی\n"
+#~ "تنها فایل‌ها را از درایو مانا به پوشهٔ <span\n"
+#~ "class=\"filename\">خانه</span> متصل می‌کند و نه پوشه‌هایشان را.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "Only features that are listed here can currently be made persistent. "
+#~| "Some other features have been asked and accepted, but are waiting to be "
+#~| "implemented: browser extensions, [[!tails_ticket 7148 "
+#~| "desc=\"wallpaper\"]], [[!tails_ticket 7625 desc=\"RSS feeds\"]], [[!"
+#~| "tails_ticket 7246 desc=\"default sound card\"]], [[!tails_ticket 5979 "
+#~| "desc=\"mouse and touchpad settings\"]], etc. See the [[corresponding "
+#~| "tickets|https://labs.riseup.net/code/projects/tails/issues?"
+#~| "query_id=122]] for more details."
+#~ msgid ""
+#~ "<p>Only the features that are listed below can currently be made\n"
+#~ "persistent. We are often asked to implement new features to the\n"
+#~ "Persistent Storage:\n"
+#~ "[[!tails_ticket 5501 desc=\"language and keyboard layout\"]],\n"
+#~ "[[!tails_ticket 5461 desc=\"Tor configuration\"]],\n"
+#~ "[[!tails_ticket 7148 desc=\"wallpaper\"]],\n"
+#~ "[[!tails_ticket 5979 desc=\"mouse and touchpad settings\"]],\n"
+#~ "etc. See the\n"
+#~ msgstr ""
+#~ "در حال حاضر تنها ویژگی‌هایی که در زیر آمده‌اند را می‌توان در مانا آورد. برخی "
+#~ "ویژگی‌های دیگر درخواست شده و پذیرفته شده‌اند، اما کمی طول می‌کشد تا در تیلز "
+#~ "بیایند: افزونه‌های مرورگر، [[!tails_ticket 7148 desc=\"کاغذدیواری\"]]،  [[!"
+#~ "tails_ticket 7625 desc=\"خوراک آراس‌اس\"]]، [[!tails_ticket 7246 "
+#~ "desc=\"کارت صدای پیش‌فرض\"]]، [[!tails_ticket 5979 desc=\"تنظیمات موش‌واره "
+#~ "و صفحهٔ لمسی\"]] و غیره. برای جزییات بیشتر نگاه کنید به [[درخواست‌های مرتبط|"
+#~ "https://labs.riseup.net/code/projects/tails/issues?query_id=122]]."
+
+#~ msgid ""
+#~ "To start the persistent volume assistant, choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Tails**&nbsp;▸\n"
+#~ "  **Configure persistent volume**</span>.\n"
+#~ msgstr ""
+#~ "برای آغاز کردن راهنمای درایو مانا از این مسیر بروید:\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **ابزارها**&nbsp;◀\n"
+#~ "  **تیلز**&nbsp;◀\n"
+#~ "  **تنظیم درایو مانا**</span>.\n"
+
+#~ msgid "Persistence features\n"
+#~ msgstr "ویژگی‌های درایو مانا\n"
+
+#~ msgid ""
+#~ "If you manually edit or overwrite the\n"
+#~ "*~/.gnupg/gpg.conf* configuration file\n"
+#~ "you may lessen your anonymity,\n"
+#~ "weaken the encryption defaults or render GnuPG unusable.\n"
+#~ msgstr ""
+#~ "اگر فایل پیکربندی *~/.gnupg/gpg.conf* \n"
+#~ "را دستی ویرایش یا بازنویسی کنید ممکن است ناشناسی شما\n"
+#~ " کمتر شودو پیش‌فرض‌های رمزگذاری شما ضعیف شده \n"
+#~ "یا GnuPG برایتان غیرقابل‌استفاده شود.\n"
+
+#~ msgid ""
+#~ "When this feature is activated, all the files in the <span\n"
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</span> "
+#~ "folder\n"
+#~ "are linked in the *Home* folder. Files in\n"
+#~ "subfolders of *dotfiles* are also linked\n"
+#~ "in the corresponding subfolder of your <span class=\"filename\">Home\n"
+#~ "</span> folder.\n"
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال شده باشد تمام فایل‌ها در پوشهٔ <span\n"
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</span>\n"
+#~ "به پوشهٔ *خانه* متصل می‌شوند. فایل‌های "
+#~ "زیرپوشه‌های\n"
+#~ "*دات‌فایلز* نیز به زیرپوشه‌های مرتبط در "
+#~ "پوشهٔ \n"
+#~ "*خانه* متصل می‌شوند.\n"
+
+#~ msgid ""
+#~ "This option is useful if you want to make some specific files\n"
+#~ "persistent, but not the folders they are stored in. A fine example are\n"
+#~ "the so called \"dotfiles\" (and hence the name of this feature), the\n"
+#~ "hidden configuration files in the root of your home directory, like\n"
+#~ "*~/.gitconfig* and <span\n"
+#~ "class=\"filename\">~/.bashrc</span>.\n"
+#~ msgstr ""
+#~ "اگر بخواهید فایل‌هایی خاص و نه پوشه‌های حاوی آن‌ها\n"
+#~ " را مانا کنید این ویژگی به کارتان می‌آید. یک مثال خوب در این مورد "
+#~ "«دات‌فایلز» \n"
+#~ "(و همنام این ویژگی) هستند، یعنی تنظیمات مخفی فایل‌ها\n"
+#~ "در روت پوشهٔ خانهٔ شما، مانند\n"
+#~ " *~/.gitconfig* و <span\n"
+#~ "class=\"filename\">~/.bashrc</span>\n"
+
+#~ msgid "[[!img seahorse-key-personal.png link=no]]\n"
+#~ msgstr "[[!img seahorse-key-personal.png link=no]]\n"
+
+#~ msgid ""
+#~ "<div class=\"text\"><h2>GNOME Keyring</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>دسته‌کلید گنوم</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When this feature is activated, the secrets of\n"
+#~ "*GNOME Keyring* are saved in the "
+#~ "persistent\n"
+#~ "volume.\n"
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال باشد، رازهای \n"
+#~ "*دسته‌کلید گنوم* روی درایو مانا ذخیره\n"
+#~ "خواهند شد.\n"
+
+#~ msgid ""
+#~ "GNOME Keyring is a collection of components in GNOME that store secrets,\n"
+#~ "passwords, keys, certificates and make them available to applications.\n"
+#~ "For more information about <span class=\"application\">GNOME Keyring</"
+#~ "span> see\n"
+#~ "the [official documentation](http://live.gnome.org/GnomeKeyring).\n"
+#~ msgstr ""
+#~ "دسته‌کلید گنوم مجموعه‌ای از مولفه‌ها است که رازها، گذرواژه‌ها، کلیدها و "
+#~ "پروانه‌ها را ذخیره کدره\n"
+#~ "و آن‌ها را در اختیار برنامه‌های شما می‌گذارد.\n"
+#~ "برای کسب اطلاعات بیشتر دربارهٔ  <span class=\"application\">دسته‌کلید گنوم</"
+#~ "span>\n"
+#~ "رجوع کنید به [اسناد رسمی آن](http://live.gnome.org/GnomeKeyring).\n"
+
+#~ msgid ""
+#~ "To save passwords, for example the passwords of encrypted wireless "
+#~ "connections,\n"
+#~ "the [[*GNOME Keyring* persistence\n"
+#~ "feature|configure#gnome_keyring]] must also be activated.\n"
+#~ msgstr ""
+#~ "برای ذخیره کردن گذرواژه‌ها، برای نمونه گذروازه‌های رمزگذاری‌شدهٔ ارتباط‌های "
+#~ "بی‌سیم خود،\n"
+#~ " [[ویژگی مانای *دسته‌کلید گنوم* |"
+#~ "configure#gnome_keyring]] \n"
+#~ "نیز باید فعال شده باشد.\n"
+
+#~ msgid "<a id=\"apt_packages\"></a>\n"
+#~ msgstr "<a id=\"apt_packages\"></a>\n"
+
+#~ msgid "[[!img synaptic.png link=no]]\n"
+#~ msgstr "[[!img synaptic.png link=no]]\n"
+
+#~ msgid ""
+#~ "<div class=\"text\"><h2>APT Packages</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>بسته‌های اپت</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When this feature is activated, the packages that you install using the\n"
+#~ "*Synaptic* package manager or the\n"
+#~ "<span class=\"command\">apt</span> command are saved in the persistent "
+#~ "volume.\n"
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال شده باشد، بسته‌هایی که با استفاده از\n"
+#~ "ابزار مدیریت بستهٔ *سیناپتیک*\n"
+#~ "یا فرمان <span class=\"command\">apt</span> نصب می‌کنید روی درایو مانا "
+#~ "ذخیره می‌شوند.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "If you [[install additional programs|doc/advanced_topics/"
+#~| "additional_software]], this feature allows you to download them once and "
+#~| "reinstall them during future working sessions, even offline. Note that "
+#~| "those packages are not automatically installed when restarting Tails."
+#~ msgid ""
+#~ "If you [[install additional programs|doc/advanced_topics/"
+#~ "additional_software]], this feature allows you to download them once and "
+#~ "reinstall them during future working sessions, even offline."
+#~ msgstr ""
+#~ "اگر  [[نرم‌افزارهای بیشتری نصب کنید|doc/advanced_topics/"
+#~ "additional_software]]، این ویژگی به شما اجازه می‌دهد آن‌ها را یک‌باره دانلود "
+#~ "و در نشست‌های کاری بعدی حتی در حالت آفلاین دوباره نصب کنید. در خاطر داشته "
+#~ "باشید که این بسته‌ها پس از راه‌اندازی دوبارهٔ تیلز خودکار نصب نمی‌شوند."
+
+#, fuzzy
+#~| msgid ""
+#~| "If you activate this feature, it is recommended to activate the\n"
+#~| "**APT Lists** feature as well.\n"
+#~ msgid ""
+#~ "If you activate the **APT Packages** "
+#~ "persistence feature,\n"
+#~ "it is recommended to activate the <span class=\"guilabel\">APT Lists</"
+#~ "span> feature as well.\n"
+#~ msgstr ""
+#~ "اگر این ویژگی را فعال می‌کنید، توصیه می‌شود ویژگی\n"
+#~ "**فهرست‌های اپت** را نیز فعال کنید.\n"
+
+#~ msgid "<a id=\"apt_lists\"></a>\n"
+#~ msgstr "<a id=\"apt_lists\"></a>\n"
+
+#~ msgid ""
+#~ "<div class=\"text\"><h2>APT Lists</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>فهرست‌های اپت</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When this feature is activated, the lists of all the software packages "
+#~ "available for installation are saved in the persistent volume."
+#~ msgstr ""
+#~ "هنگامی که این ویژگی فعال شد، فهرست‌های تمام بسته‌های نرم‌افزاری موجود برای "
+#~ "نصب روی درایو مانا ذخیره می‌شوند."
+
+#~ msgid ""
+#~ "Those so called *APT lists* correspond to "
+#~ "the files\n"
+#~ "downloaded while doing\n"
+#~ "**Reload** from the\n"
+#~ "*Synaptic* package manager or issuing "
+#~ "the\n"
+#~ "<span class=\"command\">apt update</span> command.\n"
+#~ msgstr ""
+#~ "*فهرست‌های اپت* با فایل‌های \n"
+#~ "دانلودشده هنگام **بارگذاری دوباره** \n"
+#~ "از ابزار مدیریت بسته‌های *سیناپتیک*\n"
+#~ "یا اجرای فرمان <span class=\"command\">apt update</span>\n"
+#~ "مرتبط هستند.\n"
+
+#~ msgid ""
+#~ "The *APT lists* are needed to\n"
+#~ "[[install additional programs|doc/advanced_topics/additional_software]]\n"
+#~ "or explore the list of available software packages. This feature\n"
+#~ "allows you to reuse them during future working sessions, even offline.\n"
+#~ msgstr ""
+#~ "*فهرست‌های اپت* برای \n"
+#~ "[[نصب برنامه‌های اضافی|doc/advanced_topics/additional_software]]\n"
+#~ "یا جستجو در فهرست بسته‌های نرم‌افزاری موجود مورد نیاز هستند. این ویژگی\n"
+#~ "به شما اجازه می‌دهد تا از آن‌ها در نشست‌های کاری آینده حتی به صورت آفلاین "
+#~ "دوباره استفاده کنید.\n"
+
+#~ msgid "Additional software packages\n"
+#~ msgstr "بسته‌های نرم‌افزارهای اضافی\n"
+
+#~ msgid ""
+#~ "<p>Pidgin fails to load any account if you enable persistence and\n"
+#~ "select the **Read-Only** check box as a "
+#~ "startup option.</p>\n"
+#~ msgstr ""
+#~ "<p>اگر مانا را فعال کرده و **تنها خواندن** را "
+#~ "به عنوان گزینهٔ\n"
+#~ "هنگام راه‌اندازی تیک بزنید پیجین نخواهد توانست وارد هیچ حسابی بشود.</p>\n"
+
+#~ msgid ""
+#~ "<p>Don't use the **Read-Only** option if you "
+#~ "want to use Pidgin. See\n"
+#~ "[[!tails_ticket 8465]].</p>\n"
+#~ msgstr ""
+#~ "<p>اگر قصد استفاده از پیجین را دارید از گزینهٔ <span "
+#~ "class=\"guilabel\">تنها خواندن</span> استفاده نکنید.\n"
+#~ "رجوع کنید به [[!tails_ticket 8465]].</p>\n"
+
+#~ msgid "Start the persistent volume assistant\n"
+#~ msgstr "باز کردن راهنمای درایو مانا\n"
+
+#~ msgid ""
+#~ "1. The persistent volume is an encrypted partition protected by a "
+#~ "passphrase.\n"
+#~ "Specify a passphrase of your choice in both the\n"
+#~ "**Passphrase** and <span "
+#~ "class=\"guilabel\">Verify\n"
+#~ "Passphrase</span> text boxes.\n"
+#~ msgstr ""
+#~ "۱. درایو مانا یک درایو رمزگذاری‌شده دارای گذرواژه است.\n"
+#~ "در هر دو قسمت **گذرواژه** و \n"
+#~ "**تأیید گذرواژه** \n"
+#~ "گذرواژه‌ای به انتخاب خود وارد کنید.\n"
+
+#~ msgid "Wait for the creation to finish."
+#~ msgstr "صبر کنید تا روند ایجاد درایو به پایان برسد."
+
+#~ msgid ""
+#~ "<strong>If the creation is interrupted before it finishes</strong>, you "
+#~ "may not\n"
+#~ "be able to start Tails from this device any more. This can happen if you\n"
+#~ "close the window of the wizard or unplug the USB stick or SD card during "
+#~ "the creation of\n"
+#~ "the persistent volume. [[Delete|first_steps/reset]] and\n"
+#~ "[[reinstall|first_steps/installation]] Tails to fix this issue.\n"
+#~ msgstr ""
+#~ "<strong>اگر روند ایجاد درایو پیش از به پایان رسیدن متوقف شود</strong> \n"
+#~ "شاید نتوانید دیگر تیلز را از آن دستگاه راه‌اندازی کنید. این اتفاق ممکن "
+#~ "است \n"
+#~ "هنگامی رخ دهد که هنگام ایجاد درایو مانا پنجرهٔ راهنما را ببندید یا درایو "
+#~ "یواس‌بی\n"
+#~ " یا کارت حافظه را از رایانه جدا کنید. برای حل این مشکل تیلز را [[حذف|"
+#~ "first_steps/reset]] \n"
+#~ "و [[دوباره نصب|first_steps/installation]] کنید.\n"
+
+#~ msgid ""
+#~ "When run from a Tails device that already has a persistent volume, the "
+#~ "assistant shows a list of the possible persistence features. Each feature "
+#~ "corresponds to a set a files to be saved in the persistent volume."
+#~ msgstr ""
+#~ "اگر تیلز را از دستگاهی راه‌اندازی کرده باشید که درایو مانا داشته باشد، "
+#~ "راهنمای درایو مانا فهرستی از ویژگی‌های ممکن آن را در اختیارتان می‌گذارد. هر "
+#~ "ویژگی با دسته‌ای از فایل‌ها و نحوهٔ ذخیره‌ شدن آن‌ها روی درایو مانا مرتبط است."
+
+#~ msgid "<a id=\"claws_mail\"></a>\n"
+#~ msgstr "<a id=\"claws_mail\"></a>\n"
+
+#~ msgid "[[!img claws-mail.png link=no]]\n"
+#~ msgstr "[[!img claws-mail.png link=no]]\n"
+
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Claws Mail</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Claws Mail</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/anonymous_internet/claws_mail/persistence.bug\" "
+#~ "raw=\"yes\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/anonymous_internet/claws_mail/persistence.bug\" "
+#~ "raw=\"yes\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "For advanced users to access the internal content of the Persistent "
+#~ "Storage, choose **Places**&nbsp;▸ **Computer** and open the folders "
+#~ "*live*&nbsp;▸ *persistence*&nbsp;▸ *TailsData_unlocked*."
+#~ msgstr ""
+#~ "برای کاربران پیشرفته‌ای که می‌خواهند کنترل درایو مانا را در دست بگیرند،\n"
+#~ "مسیر زیر را بروید:\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;◀\n"
+#~ "  **رایانه**</span>, and open the folders\n"
+#~ "  *لایو*&nbsp;◀\n"
+#~ "  *مانا*&nbsp;◀\n"
+#~ "  *TailsData_unlocked*.\n"
+
+#~ msgid ""
+#~ "To open the *Persistent* folder and access "
+#~ "your\n"
+#~ "personal files and working documents, choose \n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;▸\n"
+#~ "  **Persistent**</span>.\n"
+#~ msgstr ""
+#~ "برای باز کردن پوشهٔ *مانا* و دسترسی به\n"
+#~ "فایل‌های شخصی و سندهای کاری، مسیر زیر را بروید:\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;◀\n"
+#~ "  **مانا**</span>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "2. Enter the passphrase of the persistent volume in the\n"
+#~| "**Passphrase** text box.</span>\n"
+#~ msgid ""
+#~ "2. Enter the passphrase of the persistent volume in the\n"
+#~ "**Passphrase** text box.\n"
+#~ msgstr ""
+#~ "۲. گذرواژهٔ درایو مانا را در\n"
+#~ "در بخش **گذرواژه** وارد کنید.\n"
+
+#~ msgid ""
+#~ "3. If you select the **Read-Only** check box, "
+#~ "the\n"
+#~ "content of persistent volume will be available and you will be able to "
+#~ "modify\n"
+#~ "it but the changes will not be saved.\n"
+#~ msgstr ""
+#~ "۳. اگر گزینهٔ **فقط خواندن** را انتخاب "
+#~ "کرده‌اید،\n"
+#~ "محتویات درایو مانا قابل دسترسی خواهد بود و می‌توانید آن‌ها را تغییر دهید\n"
+#~ "اما تغییرات ذخیره نخواهند شد.\n"

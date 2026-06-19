@@ -1,0 +1,15 @@
+--- a/ggml/src/ggml-cpu/ggml-cpu.c
++++ b/ggml/src/ggml-cpu/ggml-cpu.c
+@@ -<near the existing TBQ type-traits row> @@
++#include "quants-polar.h"
+@@ -<inside type_traits[] table> @@
++    [GGML_TYPE_Q4_POLAR] = {
++        .from_float               = (ggml_from_float_t) quantize_row_q4_polar,
++        .vec_dot                  = (ggml_vec_dot_t)   ggml_vec_dot_q4_polar_q8_0,
++        .vec_dot_type             = GGML_TYPE_Q8_0,
++        .nrows                    = 1,
++    },
+@@ -<inside type_traits_cpu[] table or wherever the dequantize hooks live> @@
++    // Note: the dequantize hook for Q4_POLAR is intentionally
++    // dequantize_row_q4_polar (the SIMD dispatcher) — same as
++    // the TBQ types route through their dispatcher.

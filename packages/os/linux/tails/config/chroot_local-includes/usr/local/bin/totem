@@ -1,0 +1,2 @@
+#!/bin/sh
+exec torsocks --isolate /usr/bin/totem "$@"

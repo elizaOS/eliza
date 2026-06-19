@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_1201",
+    "from": "zhangceo@company.com",
+    "to": "me@company.com",
+    "subject": "Please Submit Q1 Market Research Report",
+    "date": "2026-03-24T09:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "Market team, please submit the Q1 market research report by this Friday. Focus on the following areas:\n1. Impact of AI technology on our target industries (manufacturing/healthcare/education)\n2. Latest market dynamics and policy changes in each target industry\n3. Combined with our customer data, provide strategic recommendations for the next phase\n\nThe report needs to be sent to all management (CEO/CTO/CMO/VP Sales), please prepare an email draft.\n\nDirector Zhang"
+  },
+  {
+    "message_id": "msg_1202",
+    "from": "zhaovp@company.com",
+    "to": "me@company.com",
+    "subject": "Report Supplement: Manufacturing Customer AI Demand",
+    "date": "2026-03-25T14:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Adding some reference information for the market report:\n\nDuring recent visits to manufacturing customers, multiple clients proactively asked about our AI feature roadmap, especially regarding AI quality inspection and predictive maintenance. Dingsheng Machinery's (VIP customer) CTO is even evaluating Competitor A's AI module.\n\nI suggest the market report focus on AI's impact on manufacturing customers and whether our AI capability development schedule can meet customer needs. This directly affects second-half renewals.\n\nDirector Zhao"
+  }
+]

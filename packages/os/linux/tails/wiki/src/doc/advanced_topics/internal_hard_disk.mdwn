@@ -1,0 +1,60 @@
+[[!meta title="Accessing the internal hard disk"]]
+
+<div class="caution">
+
+<p>Accessing internal disks of the computer has security implications:
+
+<ul>
+  <li>You can leave traces of your Tails activities on the hard disks.</li>
+  <li>If Tails is compromised, a malware could install itself on your usual operating system.</li>
+  <li>If an application in Tails is compromised, it could access private data on your disks and use it to deanonymize you.</li>
+</ul>
+
+</p>
+
+</div>
+
+To access internal hard disks:
+
+1. When starting Tails, [[set up an administration
+   password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Choose **Apps&nbsp;▸ Utilities&nbsp;▸ Disks** to open the *Disks* utility.
+
+1. In the left pane of the *Disks* utility, select the storage device that
+   corresponds to your internal hard disk.
+
+   Verify its brand and size.
+
+1. In the right pane is displayed a schema of the partitions on your internal
+   hard disk.
+
+1. Select the partition of your internal hard disk that you want to access.
+
+1. In the **Authentication Required** dialog, enter your administration
+   password.
+
+1. Select the [[!img lib/media-playback-start.png alt="Mount selected partition"
+   class="symbolic" link="no"]] button to mount the partition.
+
+1. Select the */media/amnesia/* link to open the volume in the *Files*
+   browser.
+
+<div class="caution">
+
+<p>If your usual operating system is in
+hibernation, accessing it might corrupt your file system. Only access your disk
+if your system was shut down entirely.</p>
+
+</div>
+
+<div class="note">
+
+<p>If you have a GNU/Linux system on your disks, you can only access
+files owned by the first user (with UID 1000) on that system.</p>
+
+<p>In all cases, you might encounter permissions problems. To bypass
+permission limitations, you can run the <i>Files</i> browser
+with administration rights.</p>
+
+</div>

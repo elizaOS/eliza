@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# Same purpose as config/chroot_local-includes/usr/local/bin/tails-persistent-storage,
+# see the comment there.
+
+set -eu
+
+if [ "$(id -u)" = 1000 ]; then
+  ENVFILE=$(mktemp --suffix -env)
+  export ENVFILE
+  env --null >"${ENVFILE}"
+  exec sudo -u tails-persistent-storage "$0" "$@"
+fi
+
+exec \
+  /usr/local/lib/inherit-fd --dbus-system-bus -- \
+  sudo --close-from=4 -u amnesia \
+  /usr/local/lib/run-with-env --env-file="${ENVFILE}" --delete -- \
+  /usr/local/lib/tails-installer "$@"

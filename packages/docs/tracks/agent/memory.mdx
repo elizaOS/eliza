@@ -1,0 +1,38 @@
+---
+title: Agent Memory
+description: "How an Eliza agent remembers and recalls."
+---
+
+Eliza agents persist three kinds of state, all backed by the SQL plugin:
+
+## Conversations
+
+Every message in and out is stored with metadata (room, entity, timestamp, source) and a vector embedding. Recall is by similarity, recency, or both — see the `messages` provider.
+
+## Facts
+
+The reflection evaluator extracts durable facts from conversations and stores them as embedded memories with `type: 'fact'`. The `facts` provider injects relevant facts into future prompts.
+
+## State
+
+Per-room and per-agent key-value state. Goals, preferences, autonomy plans, and plugin scratch state all live here.
+
+## Where it's stored
+
+- Local-only: PGLite, embedded in `~/.local/state/elizaos/db/` (no server).
+- Server-backed: Postgres, configured via `POSTGRES_URL`.
+- The schema is owned by `@elizaos/plugin-sql`; plugins register tables via the `schemas` plugin surface.
+
+## Embeddings
+
+The embedding model is configurable per character via `settings.embeddingModel`. Defaults follow the active model provider. See [Model Providers](/model-providers).
+
+## Recall
+
+Actions and providers call `runtime.useModel`, `runtime.databaseAdapter`, and the memory APIs directly. The runtime caches frequently-accessed rooms and entities.
+
+## See also
+
+- [Memory and state](/agents/memory-and-state)
+- [Runtime memory](/runtime/memory)
+- [Database](/advanced/database)

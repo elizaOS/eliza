@@ -1,0 +1,828 @@
+{
+  "$schema": "./keywords.schema.json",
+  "locales": ["es", "ko", "pt", "tl", "vi", "zh-CN"],
+  "entries": {
+    "contextSignal.admin.strong": {
+      "base": [
+        "admin",
+        "owner",
+        "permissions",
+        "roles",
+        "policy",
+        "system control"
+      ],
+      "es": ["administrador", "dueño", "permisos", "roles", "politica"],
+      "ko": ["관리자", "소유자", "권한", "역할", "정책"],
+      "pt": ["administrador", "dono", "permissoes", "funcoes", "politica"],
+      "tl": ["admin", "may ari", "pahintulot", "role", "patakaran"],
+      "vi": [
+        "quản trị",
+        "quan tri",
+        "chủ sở hữu",
+        "chu so huu",
+        "quyền",
+        "quyen"
+      ],
+      "zh-CN": ["管理员", "所有者", "权限", "角色", "策略"]
+    },
+    "contextSignal.agent_internal.strong": {
+      "base": [
+        "agent internal",
+        "self management",
+        "autonomous task",
+        "internal state"
+      ],
+      "es": ["interno del agente", "gestion interna", "estado interno"],
+      "ko": ["에이전트 내부", "자체 관리", "내부 상태"],
+      "pt": ["interno do agente", "gestao interna", "estado interno"],
+      "tl": ["internal ng agent", "sariling pamamahala", "internal state"],
+      "vi": ["nội bộ tác tử", "noi bo tac tu", "tự quản lý", "tu quan ly"],
+      "zh-CN": ["代理内部", "自我管理", "内部状态"]
+    },
+    "contextSignal.automation.strong": {
+      "base": [
+        "automation",
+        "workflow",
+        "trigger",
+        "cron",
+        "monitor",
+        "scheduled job"
+      ],
+      "es": [
+        "automatizacion",
+        "flujo de trabajo",
+        "disparador",
+        "cron",
+        "monitor"
+      ],
+      "ko": ["자동화", "워크플로", "트리거", "크론", "모니터"],
+      "pt": ["automacao", "fluxo de trabalho", "gatilho", "cron", "monitor"],
+      "tl": ["automation", "workflow", "trigger", "cron", "monitor"],
+      "vi": [
+        "tự động hóa",
+        "tu dong hoa",
+        "quy trình",
+        "quy trinh",
+        "kich hoat"
+      ],
+      "zh-CN": ["自动化", "工作流", "触发器", "定时", "监控"]
+    },
+    "contextSignal.browser.strong": {
+      "base": [
+        "browser",
+        "open page",
+        "click",
+        "type on website",
+        "browser session"
+      ],
+      "es": ["navegador", "abrir pagina", "hacer clic", "sitio web"],
+      "ko": ["브라우저", "페이지 열기", "클릭", "웹사이트 입력"],
+      "pt": ["navegador", "abrir pagina", "clicar", "site"],
+      "tl": ["browser", "buksan ang pahina", "click", "website"],
+      "vi": ["trình duyệt", "trinh duyet", "mở trang", "mo trang", "nhấp"],
+      "zh-CN": ["浏览器", "打开页面", "点击", "网站输入"]
+    },
+    "contextSignal.character.strong": {
+      "base": [
+        "character",
+        "personality",
+        "voice",
+        "style",
+        "system prompt",
+        "agent profile"
+      ],
+      "es": ["personaje", "personalidad", "voz", "estilo", "perfil"],
+      "ko": ["캐릭터", "성격", "목소리", "스타일", "프로필"],
+      "pt": ["personagem", "personalidade", "voz", "estilo", "perfil"],
+      "tl": ["karakter", "personalidad", "boses", "estilo", "profile"],
+      "vi": [
+        "nhân vật",
+        "nhan vat",
+        "tính cách",
+        "tinh cach",
+        "giọng",
+        "giong"
+      ],
+      "zh-CN": ["角色", "性格", "声音", "风格", "资料"]
+    },
+    "contextSignal.code.strong": {
+      "base": [
+        "code",
+        "programming",
+        "repo",
+        "repository",
+        "implementation",
+        "debug",
+        "test"
+      ],
+      "es": [
+        "codigo",
+        "programacion",
+        "repositorio",
+        "implementar",
+        "depurar",
+        "prueba"
+      ],
+      "ko": ["코드", "프로그래밍", "저장소", "구현", "디버그", "테스트"],
+      "pt": [
+        "codigo",
+        "programacao",
+        "repositorio",
+        "implementar",
+        "depurar",
+        "teste"
+      ],
+      "tl": ["code", "programming", "repo", "ipatupad", "debug", "test"],
+      "vi": [
+        "mã",
+        "ma",
+        "lập trình",
+        "lap trinh",
+        "kho mã",
+        "kho ma",
+        "kiểm thử"
+      ],
+      "zh-CN": ["代码", "编程", "仓库", "实现", "调试", "测试"]
+    },
+    "contextSignal.connectors.strong": {
+      "base": [
+        "connector",
+        "integration",
+        "oauth",
+        "mcp",
+        "account connection",
+        "app auth"
+      ],
+      "es": ["conector", "integracion", "oauth", "mcp", "cuenta conectada"],
+      "ko": ["커넥터", "통합", "오어스", "계정 연결"],
+      "pt": ["conector", "integracao", "oauth", "mcp", "conta conectada"],
+      "tl": ["connector", "integration", "oauth", "account connection"],
+      "vi": [
+        "kết nối",
+        "ket noi",
+        "tích hợp",
+        "tich hop",
+        "oauth",
+        "tài khoản"
+      ],
+      "zh-CN": ["连接器", "集成", "授权", "账号连接"]
+    },
+    "contextSignal.contacts.strong": {
+      "base": [
+        "contacts",
+        "person",
+        "people",
+        "relationship",
+        "friend",
+        "colleague"
+      ],
+      "es": ["contactos", "persona", "gente", "relacion", "amigo", "colega"],
+      "ko": ["연락처", "사람", "관계", "친구", "동료"],
+      "pt": ["contatos", "pessoa", "pessoas", "relacao", "amigo", "colega"],
+      "tl": ["contacts", "tao", "relasyon", "kaibigan", "kasamahan"],
+      "vi": ["liên hệ", "lien he", "người", "nguoi", "quan hệ", "quan he"],
+      "zh-CN": ["联系人", "人物", "关系", "朋友", "同事"]
+    },
+    "contextSignal.crypto.strong": {
+      "base": [
+        "crypto",
+        "token",
+        "defi",
+        "on-chain",
+        "swap",
+        "bridge",
+        "liquidity"
+      ],
+      "es": ["cripto", "token", "defi", "cadena", "intercambio", "liquidez"],
+      "ko": ["암호화폐", "토큰", "디파이", "온체인", "스왑", "유동성"],
+      "pt": ["cripto", "token", "defi", "onchain", "troca", "liquidez"],
+      "tl": ["crypto", "token", "defi", "swap", "liquidity"],
+      "vi": [
+        "crypto",
+        "tiền mã hóa",
+        "tien ma hoa",
+        "token",
+        "defi",
+        "thanh khoản"
+      ],
+      "zh-CN": ["加密货币", "代币", "链上", "交换", "流动性"]
+    },
+    "contextSignal.documents.strong": {
+      "base": [
+        "document",
+        "documents",
+        "notes",
+        "file content",
+        "save notes",
+        "artifact"
+      ],
+      "es": ["documento", "documentos", "notas", "guardar notas", "archivo"],
+      "ko": ["문서", "노트", "파일 내용", "저장"],
+      "pt": ["documento", "documentos", "notas", "salvar notas", "arquivo"],
+      "tl": ["dokumento", "notes", "nilalaman ng file", "i-save"],
+      "vi": ["tài liệu", "tai lieu", "ghi chú", "ghi chu", "lưu ghi chú"],
+      "zh-CN": ["文档", "笔记", "文件内容", "保存笔记"]
+    },
+    "contextSignal.email.strong": {
+      "base": ["email account", "mail", "inbox", "draft email", "send email"],
+      "es": ["correo", "bandeja", "redactar correo", "enviar correo"],
+      "ko": ["이메일", "메일함", "받은편지함", "메일 보내기"],
+      "pt": ["email", "correio", "caixa de entrada", "enviar email"],
+      "tl": ["email", "inbox", "gumawa ng email", "magpadala ng email"],
+      "vi": ["email", "thư", "thu", "hộp thư", "hop thu", "gửi email"],
+      "zh-CN": ["邮件", "邮箱", "收件箱", "发送邮件"]
+    },
+    "contextSignal.files.strong": {
+      "base": [
+        "file",
+        "files",
+        "folder",
+        "directory",
+        "read file",
+        "write file"
+      ],
+      "es": ["archivo", "archivos", "carpeta", "directorio", "leer archivo"],
+      "ko": ["파일", "폴더", "디렉터리", "파일 읽기", "파일 쓰기"],
+      "pt": ["arquivo", "arquivos", "pasta", "diretorio", "ler arquivo"],
+      "tl": ["file", "files", "folder", "directory", "basahin file"],
+      "vi": ["tệp", "tep", "thư mục", "thu muc", "đọc tệp", "doc tep"],
+      "zh-CN": ["文件", "文件夹", "目录", "读取文件", "写文件"]
+    },
+    "contextSignal.finance.strong": {
+      "base": [
+        "finance",
+        "money",
+        "balance",
+        "portfolio",
+        "invoice",
+        "account"
+      ],
+      "es": ["finanzas", "dinero", "saldo", "portafolio", "factura", "cuenta"],
+      "ko": ["금융", "돈", "잔액", "포트폴리오", "청구서", "계정"],
+      "pt": ["financas", "dinheiro", "saldo", "portfolio", "fatura", "conta"],
+      "tl": ["finance", "pera", "balance", "portfolio", "invoice", "account"],
+      "vi": ["tài chính", "tai chinh", "tiền", "tien", "số dư", "so du"],
+      "zh-CN": ["财务", "钱", "余额", "投资组合", "发票", "账户"]
+    },
+    "contextSignal.game.strong": {
+      "base": ["game", "gameplay", "match", "simulation", "player", "turn"],
+      "es": ["juego", "partida", "simulacion", "jugador", "turno"],
+      "ko": ["게임", "플레이", "매치", "시뮬레이션", "플레이어", "턴"],
+      "pt": ["jogo", "partida", "simulacao", "jogador", "turno"],
+      "tl": ["laro", "gameplay", "simulation", "player", "turn"],
+      "vi": ["trò chơi", "tro choi", "mô phỏng", "mo phong", "người chơi"],
+      "zh-CN": ["游戏", "对局", "模拟", "玩家", "回合"]
+    },
+    "contextSignal.general.strong": {
+      "base": ["general chat", "conversation", "reply", "answer", "talk"],
+      "es": ["conversacion", "respuesta", "hablar", "chat general"],
+      "ko": ["일반 대화", "답변", "말하기", "채팅"],
+      "pt": ["conversa", "resposta", "falar", "chat geral"],
+      "tl": ["usap", "sagot", "makipag-usap", "general chat"],
+      "vi": ["trò chuyện", "tro chuyen", "trả lời", "tra loi", "nói chuyện"],
+      "zh-CN": ["普通聊天", "对话", "回复", "回答"]
+    },
+    "contextSignal.health.strong": {
+      "base": [
+        "health",
+        "wellness",
+        "sleep",
+        "exercise",
+        "medicine",
+        "symptom"
+      ],
+      "es": ["salud", "bienestar", "sueño", "ejercicio", "medicina", "sintoma"],
+      "ko": ["건강", "웰니스", "수면", "운동", "약", "증상"],
+      "pt": ["saude", "bem-estar", "sono", "exercicio", "remedio", "sintoma"],
+      "tl": [
+        "kalusugan",
+        "wellness",
+        "tulog",
+        "ehersisyo",
+        "gamot",
+        "sintomas"
+      ],
+      "vi": ["sức khỏe", "suc khoe", "ngủ", "ngu", "tập luyện", "trieu chung"],
+      "zh-CN": ["健康", "睡眠", "运动", "药物", "症状"]
+    },
+    "contextSignal.knowledge.strong": {
+      "base": [
+        "knowledge",
+        "known facts",
+        "saved notes",
+        "recall",
+        "semantic search"
+      ],
+      "es": ["conocimiento", "hechos guardados", "notas guardadas", "recordar"],
+      "ko": ["지식", "저장된 사실", "저장된 노트", "회상", "검색"],
+      "pt": ["conhecimento", "fatos salvos", "notas salvas", "lembrar"],
+      "tl": ["kaalaman", "saved facts", "saved notes", "alalahanin"],
+      "vi": [
+        "kiến thức",
+        "kien thuc",
+        "ghi chú đã lưu",
+        "ghi chu da luu",
+        "nhớ lại"
+      ],
+      "zh-CN": ["知识", "已保存事实", "已保存笔记", "回忆", "语义搜索"]
+    },
+    "contextSignal.media.strong": {
+      "base": ["media", "image", "video", "audio", "screenshot", "transcript"],
+      "es": [
+        "multimedia",
+        "imagen",
+        "video",
+        "audio",
+        "captura",
+        "transcripcion"
+      ],
+      "ko": ["미디어", "이미지", "비디오", "오디오", "스크린샷", "전사"],
+      "pt": ["midia", "imagem", "video", "audio", "captura", "transcricao"],
+      "tl": ["media", "larawan", "video", "audio", "screenshot", "transcript"],
+      "vi": [
+        "đa phương tiện",
+        "da phuong tien",
+        "hình ảnh",
+        "hinh anh",
+        "video",
+        "âm thanh"
+      ],
+      "zh-CN": ["媒体", "图片", "视频", "音频", "截图", "转录"]
+    },
+    "contextSignal.memory.strong": {
+      "base": [
+        "memory",
+        "remember",
+        "recall",
+        "save memory",
+        "long term memory"
+      ],
+      "es": ["memoria", "recordar", "recuerdo", "guardar memoria"],
+      "ko": ["기억", "기억해", "회상", "장기 기억"],
+      "pt": ["memoria", "lembrar", "recordar", "salvar memoria"],
+      "tl": ["memory", "tandaan", "alalahanin", "long term memory"],
+      "vi": ["ký ức", "ky uc", "nhớ", "nho", "ghi nhớ", "ghi nho"],
+      "zh-CN": ["记忆", "记住", "回忆", "长期记忆"]
+    },
+    "contextSignal.payments.strong": {
+      "base": [
+        "payment",
+        "pay",
+        "invoice",
+        "billing",
+        "checkout",
+        "subscription charge"
+      ],
+      "es": ["pago", "pagar", "factura", "cobro", "checkout"],
+      "ko": ["결제", "지불", "청구서", "요금", "체크아웃"],
+      "pt": ["pagamento", "pagar", "fatura", "cobranca", "checkout"],
+      "tl": ["bayad", "magbayad", "invoice", "billing", "checkout"],
+      "vi": ["thanh toán", "thanh toan", "hóa đơn", "hoa don", "tính tiền"],
+      "zh-CN": ["付款", "支付", "发票", "账单", "结账"]
+    },
+    "contextSignal.phone.strong": {
+      "base": ["phone", "sms", "text message", "call", "dial", "iMessage"],
+      "es": ["telefono", "sms", "mensaje", "llamada", "marcar"],
+      "ko": ["전화", "문자", "메시지", "통화", "아이메시지"],
+      "pt": ["telefone", "sms", "mensagem", "ligacao", "discar"],
+      "tl": ["telepono", "sms", "text", "tawag", "dial"],
+      "vi": ["điện thoại", "dien thoai", "sms", "tin nhắn", "cuộc gọi"],
+      "zh-CN": ["电话", "短信", "消息", "通话", "拨号"]
+    },
+    "contextSignal.productivity.strong": {
+      "base": [
+        "productivity",
+        "planning",
+        "priorities",
+        "work planning",
+        "personal operations"
+      ],
+      "es": [
+        "productividad",
+        "planificacion",
+        "prioridades",
+        "plan de trabajo"
+      ],
+      "ko": ["생산성", "계획", "우선순위", "업무 계획"],
+      "pt": [
+        "produtividade",
+        "planejamento",
+        "prioridades",
+        "plano de trabalho"
+      ],
+      "tl": ["productivity", "pagpaplano", "prayoridad", "work plan"],
+      "vi": [
+        "năng suất",
+        "nang suat",
+        "lập kế hoạch",
+        "lap ke hoach",
+        "ưu tiên"
+      ],
+      "zh-CN": ["效率", "规划", "优先级", "工作计划"]
+    },
+    "contextSignal.research.strong": {
+      "base": [
+        "research",
+        "investigate",
+        "compare sources",
+        "findings",
+        "citations",
+        "synthesis"
+      ],
+      "es": [
+        "investigacion",
+        "investigar",
+        "comparar fuentes",
+        "hallazgos",
+        "citas"
+      ],
+      "ko": ["조사", "연구", "출처 비교", "결과", "인용", "종합"],
+      "pt": [
+        "pesquisa",
+        "investigar",
+        "comparar fontes",
+        "achados",
+        "citacoes"
+      ],
+      "tl": [
+        "research",
+        "imbestiga",
+        "ikumpara sources",
+        "findings",
+        "citations"
+      ],
+      "vi": ["nghiên cứu", "nghien cuu", "điều tra", "dieu tra", "trích dẫn"],
+      "zh-CN": ["研究", "调查", "比较来源", "发现", "引用", "综合"]
+    },
+    "contextSignal.screen_time.strong": {
+      "base": [
+        "screen time",
+        "device usage",
+        "app limits",
+        "usage report",
+        "focus"
+      ],
+      "es": [
+        "tiempo de pantalla",
+        "uso del dispositivo",
+        "limites de apps",
+        "enfoque"
+      ],
+      "ko": ["스크린 타임", "기기 사용", "앱 제한", "사용 보고서", "집중"],
+      "pt": ["tempo de tela", "uso do dispositivo", "limites de app", "foco"],
+      "tl": ["screen time", "gamit ng device", "app limits", "focus"],
+      "vi": ["thời gian màn hình", "thoi gian man hinh", "giới hạn ứng dụng"],
+      "zh-CN": ["屏幕时间", "设备使用", "应用限制", "使用报告", "专注"]
+    },
+    "contextSignal.secrets.strong": {
+      "base": [
+        "secret",
+        "secrets",
+        "api key",
+        "token",
+        "credential",
+        "password"
+      ],
+      "es": [
+        "secreto",
+        "secretos",
+        "clave api",
+        "token",
+        "credencial",
+        "contraseña"
+      ],
+      "ko": ["비밀", "시크릿", "api 키", "토큰", "자격 증명", "비밀번호"],
+      "pt": [
+        "segredo",
+        "segredos",
+        "chave api",
+        "token",
+        "credencial",
+        "senha"
+      ],
+      "tl": ["secret", "api key", "token", "credential", "password"],
+      "vi": ["bí mật", "bi mat", "khóa api", "khoa api", "token", "mật khẩu"],
+      "zh-CN": ["密钥", "秘密", "API 密钥", "令牌", "凭据", "密码"]
+    },
+    "contextSignal.settings.strong": {
+      "base": [
+        "settings",
+        "preferences",
+        "configuration",
+        "config",
+        "toggle",
+        "model settings"
+      ],
+      "es": ["ajustes", "preferencias", "configuracion", "activar", "modelo"],
+      "ko": ["설정", "환경설정", "구성", "토글", "모델 설정"],
+      "pt": [
+        "configuracoes",
+        "preferencias",
+        "configuracao",
+        "alternar",
+        "modelo"
+      ],
+      "tl": [
+        "settings",
+        "preferences",
+        "configuration",
+        "toggle",
+        "model settings"
+      ],
+      "vi": ["cài đặt", "cai dat", "tùy chọn", "tuy chon", "cấu hình"],
+      "zh-CN": ["设置", "偏好", "配置", "开关", "模型设置"]
+    },
+    "contextSignal.simple.strong": {
+      "base": ["simple answer", "no tools", "direct reply", "just answer"],
+      "es": ["respuesta simple", "sin herramientas", "respuesta directa"],
+      "ko": ["간단한 답", "도구 없음", "직접 답변"],
+      "pt": ["resposta simples", "sem ferramentas", "resposta direta"],
+      "tl": ["simpleng sagot", "walang tools", "direktang sagot"],
+      "vi": ["trả lời đơn giản", "tra loi don gian", "không dùng công cụ"],
+      "zh-CN": ["简单回答", "不用工具", "直接回复"]
+    },
+    "contextSignal.social.strong": {
+      "base": ["social", "social media", "feed", "timeline", "dm", "reply"],
+      "es": [
+        "social",
+        "redes sociales",
+        "feed",
+        "linea de tiempo",
+        "dm",
+        "responder"
+      ],
+      "ko": ["소셜", "소셜 미디어", "피드", "타임라인", "디엠", "답글"],
+      "pt": [
+        "social",
+        "rede social",
+        "feed",
+        "linha do tempo",
+        "dm",
+        "responder"
+      ],
+      "tl": ["social", "social media", "feed", "timeline", "dm", "reply"],
+      "vi": [
+        "mạng xã hội",
+        "mang xa hoi",
+        "bảng tin",
+        "bang tin",
+        "tin nhắn riêng"
+      ],
+      "zh-CN": ["社交", "社交媒体", "动态", "时间线", "私信", "回复"]
+    },
+    "contextSignal.social_posting.strong": {
+      "base": [
+        "post",
+        "publish",
+        "tweet",
+        "timeline",
+        "public reply",
+        "feed search"
+      ],
+      "es": [
+        "publicar",
+        "post",
+        "tuit",
+        "linea de tiempo",
+        "respuesta publica"
+      ],
+      "ko": ["게시", "발행", "트윗", "타임라인", "공개 답글"],
+      "pt": [
+        "postar",
+        "publicar",
+        "tweet",
+        "linha do tempo",
+        "resposta publica"
+      ],
+      "tl": ["mag-post", "publish", "tweet", "timeline", "public reply"],
+      "vi": ["đăng", "dang", "xuất bản", "xuat ban", "tweet", "dòng thời gian"],
+      "zh-CN": ["发布", "帖子", "推文", "时间线", "公开回复"]
+    },
+    "contextSignal.state.strong": {
+      "base": [
+        "state",
+        "status",
+        "current mode",
+        "runtime state",
+        "room state"
+      ],
+      "es": ["estado", "estatus", "modo actual", "estado de runtime"],
+      "ko": ["상태", "현재 모드", "런타임 상태", "룸 상태"],
+      "pt": ["estado", "status", "modo atual", "estado do runtime"],
+      "tl": ["state", "status", "current mode", "runtime state"],
+      "vi": ["trạng thái", "trang thai", "chế độ hiện tại", "che do hien tai"],
+      "zh-CN": ["状态", "当前模式", "运行时状态", "房间状态"]
+    },
+    "contextSignal.subscriptions.strong": {
+      "base": [
+        "subscription",
+        "renewal",
+        "recurring service",
+        "billing cycle",
+        "membership"
+      ],
+      "es": [
+        "suscripcion",
+        "renovacion",
+        "servicio recurrente",
+        "ciclo de cobro"
+      ],
+      "ko": ["구독", "갱신", "반복 서비스", "결제 주기", "멤버십"],
+      "pt": [
+        "assinatura",
+        "renovacao",
+        "servico recorrente",
+        "ciclo de cobranca"
+      ],
+      "tl": ["subscription", "renewal", "recurring service", "billing cycle"],
+      "vi": ["đăng ký", "dang ky", "gia hạn", "gia han", "chu kỳ thanh toán"],
+      "zh-CN": ["订阅", "续费", "周期服务", "账单周期", "会员"]
+    },
+    "contextSignal.system.strong": {
+      "base": [
+        "system",
+        "runtime",
+        "diagnostics",
+        "process",
+        "operational command"
+      ],
+      "es": ["sistema", "runtime", "diagnostico", "proceso", "operacion"],
+      "ko": ["시스템", "런타임", "진단", "프로세스", "운영 명령"],
+      "pt": ["sistema", "runtime", "diagnostico", "processo", "operacao"],
+      "tl": ["system", "runtime", "diagnostics", "process", "operation"],
+      "vi": ["hệ thống", "he thong", "runtime", "chẩn đoán", "chan doan"],
+      "zh-CN": ["系统", "运行时", "诊断", "进程", "运维命令"]
+    },
+    "contextSignal.tasks.strong": {
+      "base": ["task", "tasks", "todo", "reminder", "follow up", "due date"],
+      "es": [
+        "tarea",
+        "tareas",
+        "pendiente",
+        "recordatorio",
+        "seguimiento",
+        "fecha limite"
+      ],
+      "ko": ["작업", "할 일", "리마인더", "후속 조치", "마감일"],
+      "pt": [
+        "tarefa",
+        "tarefas",
+        "afazer",
+        "lembrete",
+        "acompanhamento",
+        "prazo"
+      ],
+      "tl": ["task", "todo", "paalala", "follow up", "deadline"],
+      "vi": ["tác vụ", "tac vu", "việc cần làm", "viec can lam", "nhắc nhở"],
+      "zh-CN": ["任务", "待办", "提醒", "跟进", "截止日期"]
+    },
+    "contextSignal.terminal.strong": {
+      "base": [
+        "terminal",
+        "shell",
+        "command line",
+        "bash",
+        "process",
+        "stdout"
+      ],
+      "es": ["terminal", "shell", "linea de comandos", "bash", "proceso"],
+      "ko": ["터미널", "셸", "명령줄", "배시", "프로세스"],
+      "pt": ["terminal", "shell", "linha de comando", "bash", "processo"],
+      "tl": ["terminal", "shell", "command line", "bash", "process"],
+      "vi": [
+        "terminal",
+        "shell",
+        "dòng lệnh",
+        "dong lenh",
+        "bash",
+        "tiến trình"
+      ],
+      "zh-CN": ["终端", "命令行", "Bash", "进程", "标准输出"]
+    },
+    "contextSignal.todos.strong": {
+      "base": [
+        "todo",
+        "todos",
+        "task list",
+        "complete task",
+        "delete task",
+        "active task"
+      ],
+      "es": [
+        "pendiente",
+        "pendientes",
+        "lista de tareas",
+        "completar tarea",
+        "borrar tarea"
+      ],
+      "ko": ["할 일", "작업 목록", "작업 완료", "작업 삭제", "활성 작업"],
+      "pt": [
+        "afazer",
+        "afazeres",
+        "lista de tarefas",
+        "concluir tarefa",
+        "apagar tarefa"
+      ],
+      "tl": ["todo", "task list", "kumpletuhin task", "burahin task"],
+      "vi": [
+        "việc cần làm",
+        "viec can lam",
+        "danh sách tác vụ",
+        "hoàn thành tác vụ"
+      ],
+      "zh-CN": ["待办", "任务列表", "完成任务", "删除任务", "活动任务"]
+    },
+    "contextSignal.wallet.strong": {
+      "base": [
+        "wallet",
+        "balance",
+        "transfer",
+        "sign transaction",
+        "account address",
+        "portfolio"
+      ],
+      "es": [
+        "billetera",
+        "saldo",
+        "transferir",
+        "firmar transaccion",
+        "direccion"
+      ],
+      "ko": ["지갑", "잔액", "전송", "거래 서명", "주소", "포트폴리오"],
+      "pt": [
+        "carteira",
+        "saldo",
+        "transferir",
+        "assinar transacao",
+        "endereco"
+      ],
+      "tl": ["wallet", "balance", "transfer", "sign transaction", "address"],
+      "vi": ["ví", "vi", "số dư", "so du", "chuyển", "chuyen", "ký giao dịch"],
+      "zh-CN": ["钱包", "余额", "转账", "签名交易", "地址", "投资组合"]
+    },
+    "contextSignal.web.strong": {
+      "base": [
+        "web",
+        "internet",
+        "current information",
+        "search web",
+        "open url",
+        "latest"
+      ],
+      "es": [
+        "web",
+        "internet",
+        "informacion actual",
+        "buscar web",
+        "abrir url",
+        "ultimo"
+      ],
+      "ko": ["웹", "인터넷", "최신 정보", "웹 검색", "url 열기", "최신"],
+      "pt": [
+        "web",
+        "internet",
+        "informacao atual",
+        "buscar na web",
+        "abrir url"
+      ],
+      "tl": [
+        "web",
+        "internet",
+        "kasalukuyang impormasyon",
+        "search web",
+        "open url"
+      ],
+      "vi": [
+        "web",
+        "internet",
+        "thông tin hiện tại",
+        "thong tin hien tai",
+        "tìm web"
+      ],
+      "zh-CN": ["网络", "互联网", "最新信息", "网页搜索", "打开网址"]
+    },
+    "contextSignal.world.strong": {
+      "base": [
+        "world",
+        "server",
+        "room",
+        "channel",
+        "participants",
+        "membership"
+      ],
+      "es": ["mundo", "servidor", "sala", "canal", "participantes", "miembros"],
+      "ko": ["월드", "서버", "방", "채널", "참가자", "멤버십"],
+      "pt": ["mundo", "servidor", "sala", "canal", "participantes", "membros"],
+      "tl": [
+        "world",
+        "server",
+        "room",
+        "channel",
+        "participants",
+        "membership"
+      ],
+      "vi": ["thế giới", "the gioi", "máy chủ", "may chu", "phòng", "kenh"],
+      "zh-CN": ["世界", "服务器", "房间", "频道", "参与者", "成员"]
+    }
+  }
+}

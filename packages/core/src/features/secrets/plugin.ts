@@ -1,0 +1,141 @@
+/**
+ * Secrets capability
+ *
+ * Comprehensive secret management for ElizaOS with:
+ * - Multi-level storage (global, world, user)
+ * - Encryption at rest
+ * - Dynamic plugin activation when secrets become available
+ * - Natural language secret management
+ * - Conversational setup flow (Discord, Telegram)
+ */
+
+import { logger } from "../../logger.ts";
+import type { IAgentRuntime, Plugin } from "../../types/index.ts";
+import { secretsAction } from "./actions/manage-secret.ts";
+import {
+	secretsInfoProvider,
+	secretsStatusProvider,
+} from "./providers/index.ts";
+import {
+	PLUGIN_ACTIVATOR_SERVICE_TYPE,
+	PluginActivatorService,
+} from "./services/plugin-activator.ts";
+import { SECRETS_SERVICE_TYPE, SecretsService } from "./services/secrets.ts";
+import {
+	missingSecretsProvider,
+	SETUP_SERVICE_TYPE,
+	SetupService,
+	setupSettingsProvider,
+	updateSettingsAction,
+} from "./setup/index.ts";
+
+/**
+ * Plugin configuration
+ */
+export interface SecretsManagerPluginConfig {
+	/** Enable encryption for stored secrets (default: true) */
+	enableEncryption?: boolean;
+	/** Custom salt for encryption key derivation */
+	encryptionSalt?: string;
+	/** Enable access logging (default: true) */
+	enableAccessLogging?: boolean;
+	/** Enable automatic plugin activation when secrets are available (default: true) */
+	enableAutoActivation?: boolean;
+	/** Polling interval for checking plugin requirements (ms, default: 5000) */
+	activationPollingMs?: number;
+}
+
+/**
+ * Secrets capability
+ *
+ * Provides comprehensive secret management capabilities:
+ *
+ * **Storage Levels:**
+ * - Global: Agent-wide secrets (API keys, tokens) stored in character settings
+ * - World: Server/channel-specific secrets stored in world metadata
+ * - User: Per-user secrets stored as components
+ *
+ * **Features:**
+ * - Automatic encryption using AES-256-GCM
+ * - Natural language secret management via actions
+ * - Plugin activation when required secrets become available
+ * - Access logging and auditing
+ *
+ * **Usage:**
+ * ```typescript
+ * import { secretsManagerPlugin } from '@elizaos/core';
+ *
+ * const runtime = createAgentRuntime({
+ *   plugins: [secretsManagerPlugin],
+ * });
+ *
+ * // Get the secrets service
+ * const secrets = runtime.getService<SecretsService>('SECRETS');
+ *
+ * // Set a global secret
+ * await secrets.setGlobal('OPENAI_API_KEY', 'sk-...');
+ *
+ * // Get a global secret
+ * const apiKey = await secrets.getGlobal('OPENAI_API_KEY');
+ * ```
+ */
+export const secretsManagerPlugin: Plugin = {
+	name: "secrets",
+	description:
+		"Multi-level secret management with encryption, dynamic plugin activation, and conversational setup",
+
+	// Services
+	services: [SecretsService, PluginActivatorService, SetupService],
+
+	// Actions for natural language secret management and setup.
+	// The planner sees exactly two actions: `SECRETS` (the umbrella that
+	// dispatches to get|set|delete|list|check|mirror|request via the `action`
+	// discriminator) and `SECRETS_UPDATE_SETTINGS` (a settings mutation, not
+	// a secret operation). No virtual promoted subactions are registered.
+	actions: [secretsAction, updateSettingsAction],
+
+	// Providers for context injection
+	providers: [
+		secretsStatusProvider,
+		secretsInfoProvider,
+		setupSettingsProvider,
+		missingSecretsProvider,
+	],
+
+	// Plugin initialization
+	init: async (_config: SecretsManagerPluginConfig, _runtime) => {
+		logger.info("[SecretsManagerPlugin] Initializing");
+
+		// Configuration is passed to services via their start() methods
+		// The runtime will call Service.start() for each service
+
+		logger.info("[SecretsManagerPlugin] Initialized");
+	},
+
+	async dispose(runtime: IAgentRuntime) {
+		const activator = runtime.getService<PluginActivatorService>(
+			PLUGIN_ACTIVATOR_SERVICE_TYPE,
+		);
+		await activator?.stop();
+		const secrets = runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+		await secrets?.stop();
+		const setup = runtime.getService<SetupService>(SETUP_SERVICE_TYPE);
+		await setup?.stop();
+	},
+};
+
+// Default export
+export default secretsManagerPlugin;
+
+export * from "./crypto/index.ts";
+export * from "./services/index.ts";
+export * from "./setup/index.ts";
+export * from "./storage/index.ts";
+// Re-export types and utilities
+export * from "./types.ts";
+export {
+	inferValidationStrategy,
+	registerValidator,
+	ValidationStrategies,
+	validateSecret,
+} from "./validation.ts";

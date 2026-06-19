@@ -1,0 +1,17 @@
+# Note: ATTR{type}=="1" means ethernet (ARPHDR_ETHER, see Linux'
+# sources, beginning of include/linux/if_arp.h)
+
+# Disable MAC spoofing for the following devices
+# iPhone tethering ethernet over USB
+SUBSYSTEM=="net", ACTION=="add", ATTR{type}=="1", DRIVERS=="ipheth", GOTO="mac_spoof_ignore"
+# veth interfaces used by network namespaces
+ENV{INTERFACE}=="veth*", ACTION=="add", GOTO="mac_spoof_ignore"
+
+# Perform MAC spoofing otherwise
+SUBSYSTEM=="net", ACTION=="add", ATTR{type}=="1", RUN+="/usr/bin/systemd-cat -t spoof-mac -p debug /usr/local/lib/tails-spoof-mac $name"
+SUBSYSTEM=="net", ACTION=="add", ATTR{type}=="1", GOTO="mac_spoof_end"
+
+LABEL="mac_spoof_ignore"
+SUBSYSTEM=="net", ACTION=="add", ATTR{type}=="1", RUN+="/usr/bin/logger -t spoof-mac -p debug \"MAC spoofing discarded by udev rule for $name ($driver)\""
+
+LABEL="mac_spoof_end"

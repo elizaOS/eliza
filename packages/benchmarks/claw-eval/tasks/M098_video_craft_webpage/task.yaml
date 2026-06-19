@@ -1,0 +1,78 @@
+task_id: M098_video_craft_webpage
+task_name: Handicraft Showcase Webpage from Video
+version: "1.0"
+category: web_dev
+difficulty: hard
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    这是一段关于中国传统手工艺的纪录短片。视频中展示了多位手工艺人及其精致的手工艺品。
+
+    请完成以下任务：
+
+    1. 仔细观看整段视频，识别其中出现的精致手工艺品。
+    2. 为每件手工品从视频中截取一张高质量的展示图片，保存到 /workspace/images/ 目录下（如 craft_1.png, craft_2.png, ...）。
+    3. 制作一个精美的 HTML 展示网页 /workspace/index.html，要求：
+       - 页面顶部有标题，如"中国传统手工艺精品展"或类似主题名
+       - 每件手工品以卡片形式展示，包含：截取的图片、作品名称、一段简短的文字介绍（描述工艺类型、材料、特点等）
+       - 页面样式美观，有合理的布局（可使用 CSS grid/flexbox），适合在浏览器中浏览
+       - 图片使用相对路径引用 images/ 目录下的文件
+    4. 确保网页能在浏览器中正常打开渲染。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files:
+  - fixtures/gt_1.png
+  - fixtures/gt_2.png
+  - fixtures/gt_3.png
+  - fixtures/gt_4.png
+  - fixtures/gt_5.png
+  - fixtures/gt_6.png
+  - fixtures/gt_7.png
+  - fixtures/gt_8.png
+  - fixtures/gt_9.png
+  - fixtures/gt_10.png
+
+env_snapshot_commands:
+  - "ls -la /workspace/images/ 2>/dev/null || echo 'no images dir'"
+  - "wc -c /workspace/index.html 2>/dev/null || echo 'no index.html'"
+env_snapshot_files:
+  - /workspace/index.html
+  - /workspace/images/craft_1.png
+  - /workspace/images/craft_2.png
+  - /workspace/images/craft_3.png
+  - /workspace/images/craft_4.png
+  - /workspace/images/craft_5.png
+  - /workspace/images/craft_6.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+
+reference_solution: |
+  观看视频，识别手工艺品（参考6件）：
+  1. 古风仕女人偶（~0:05）2. 点翠珍珠头饰（~0:55）
+  3. 琉璃水晶悬挂装饰（~1:05）4. 泥塑动物群像（~1:45）
+  5. 骑马武将泥塑（~1:55）6. 面塑小人偶（~2:35）
+  截取图片，制作HTML展示网页。
+  评分：0.2 HTML存在可渲染 + 0.2 美感布局 + 0.6 内容（3件工艺品各0.2）
+
+primary_dimensions:
+  - completion
+  - robustness

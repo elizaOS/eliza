@@ -1,0 +1,29 @@
+[[!meta date="Sun, 06 Mar 2016 12:34:56 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.0.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.0.1 are now fixed in Tails 2.2.
+
+We **strongly** encourage you to [[upgrade to Tails 2.2|news/version_2.2]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: [[!mfsa 2016-16]], [[!mfsa 2016-17]], [[!mfsa 2016-20]],
+               [[!mfsa 2016-21]], [[!mfsa 2016-23]], [[!mfsa 2016-24]],
+               [[!mfsa 2016-25]], [[!mfsa 2016-27]], [[!mfsa 2016-28]],
+               [[!mfsa 2016-31]], [[!mfsa 2016-34]], [[!mfsa 2016-35]],
+               [[!mfsa 2016-37]]
+* graphite2: [[!debsa2016 3479]]
+* glibc: [[!debsa2016 3481]]
+* libreoffice: [[!debsa2016 3482]]
+* cpio: [[!debsa2016 3483]]
+* libssh2: [[!debsa2016 3487]]
+* pillow: [[!debsa2016 3499]]
+* openssl: [[!debsa2016 3500]]
+* perl: [[!debsa2016 3501]]
+* linux: [[!debsa2016 3503]]
+* libav: [[!debsa2016 3506]]
+* jasper: [[!debsa2016 3508]]

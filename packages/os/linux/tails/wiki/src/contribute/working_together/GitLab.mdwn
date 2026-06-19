@@ -1,0 +1,634 @@
+[[!meta title="GitLab source code and bug tracker"]]
+
+Tails issues and code are managed in [[!tails_gitlab groups/tails/-/issues desc="GitLab"]].
+
+This page focuses on aspects of GitLab usage that are specific to Tails.
+
+This workflow is not set in stone: it will evolve based on what
+we learn while using GitLab.
+
+For general GitLab usage information, see the
+[[!tails_gitlab help/user/index.md desc="GitLab user documentation"]].
+
+[[!toc levels=2]]
+
+<a id="getting-started"></a>
+# Getting started
+
+If you were using Redmine previously, read [[how to transition to
+GitLab|GitLab/transition]]. If you have an account at [0xacab](https://0xacab.org/), you can
+go to the Tails Gitlab [[!tails_gitlab users/sign_in desc="login page"]] and use your 0xacab
+account to sign in. Else, to request a GitLab account, please e-mail sysadmins@tails.net.
+If you want, you can
+[[!tails_gitlab help/user/profile/index.md#add-your-gender-pronouns desc="add your pronouns"]]
+to your GitLab account so that your pronouns appear next to your name in your profile.
+Also, your pronouns will appear when someone hovers over your GitLab username.
+
+Once you have created your GitLab account, you will be allowed to open new issues, create merge requests, and fork
+your own copy of our repositories.
+
+Later on, you will probably need to:
+
+ - [[!tails_gitlab profile/keys desc="Add your SSH key"]]
+   to your GitLab account
+ - [[Request more credentials|GitLab#request-access]]
+
+The first time you connect over SSH to a Git repository hosted on our GitLab,
+you will be prompted to verify the server's SSH host key. Here are the
+corresponding fingerprints:
+
+ - ECDSA: `SHA256:AOj9ec6hRjN7fNnjXMlmPum7dZWRd5oJKAuo4UGAxxs`
+ - Ed25519: `SHA256:mtZeDs2+KKLZ8kJOvmrGoTCuszqc29DOyH6MZaqtlss`
+ - RSA: `SHA256:JuwD+e+wOas+2JtDdF0BHu+9RAIJOhWI+2VkjuZ6Znk`
+
+<a id="2fa"></a>
+# Two-factor authentication
+
+Access to some of our repositories requires you to enable two-factor
+authentication (2FA) for your GitLab account.
+
+<p>To learn how to enable 2FA for your GitLab account, read the
+[[!tails_gitlab help/user/profile/account/two_factor_authentication.md desc="GitLab documentation on two-factor authentication"]].</p>
+
+<div class="note">
+
+<p>GitLab supports time-based one-time passwords (TOTPs) for two-factor
+authentication. You can
+[[use <i>Secrets</i> in Tails|/doc/encryption_and_privacy/manage_passwords]]
+to generate TOTPs.</p>
+
+<p>To use <i>Secrets</i> in Tails to generate TOTPs:</p>
+
+<ol>
+  <li>[[Create a password database|/doc/encryption_and_privacy/manage_passwords#create]]
+    to store the secrets needed to generate TOTPs. To maximize security, this
+    database should be separate from the database that you use to store your
+    passwords. <a href="https://keepassxc.org/docs/#faq-security-totp">Learn more</a>.
+  </li>
+  <li>Add a new password entry for the account that you want to generate TOTPs for.</li>
+  <li>Choose
+    <b>Show more</b>.
+  </li>
+  <li>Enter your secret key for generating TOTPs. Do not include any spaces.</li>
+</ol>
+
+</div>
+
+# Group and projects
+
+All our work is tracked in projects under the [[!tails_gitlab tails
+desc="tails group"]].
+
+The main Git repository and most issues live in the [[!tails_gitlab tails/tails
+desc="tails/tails project"]].
+
+<a id="metadata"></a>
+# How we use GitLab metadata
+
+On GitLab, issues and merge requests have metadata.
+
+Being consistent in the use of GitLab metadata makes collective work
+smoother.
+
+## Title and description
+
+The title should be a short but clear description of what this is about.
+Some people are case sensitive, please try to consider that.
+
+<a id="status"></a>
+## Status
+
+### Open issues
+
+Each open issue can have up to 1 status label:
+
+ - _To Do_: this issue is actionable and it would be good if someone worked on it
+
+ - _Doing_: someone is actively working on this issue
+
+ - _Needs Validation_: a resolution has been proposed and needs to be reviewed.
+   For details, see our [[merge policy|/contribute/merge_policy]].
+
+The main advantage of using these labels is to organize and visualize issues on
+[[!tails_gitlab help/user/project/issue_board.html desc="Issue Boards"]].
+
+The UX and Tails teams triage issues that have no status label.
+
+### Closed issues
+
+Closing an issue means one of:
+
+ - The bugfix or feature the issue is about:
+
+    - was merged and will be in a future release
+    - or is already available to our users
+
+   The _Milestone_ value tells in which case we are.
+
+ - We've rejected it.
+
+   For example: it does not fit into Tails' mission,
+   or the problem shall be resolved elsewhere than in Tails.
+
+   To reject an issue, create a comment that:
+
+    - explains why you're rejecting it
+    - adds the _Rejected_ label (`/label ~Rejected`)
+
+ - It duplicates another issue.
+
+   To mark an issue as a duplicate, create a comment that:
+
+    - mentions the other, duplicated issue
+    - adds the _Duplicate_ label (`/label ~Duplicate`)
+
+<a id="assignee"></a>
+
+## Assignee
+
+We use the _Assignee_ field in a way that helps us organize our
+work as a team, focus on what matters most currently, and avoid
+individual over-commitment & feelings of failure.
+
+To this aim, most tasks should be up for grabs for anyone who has spare capacity
+and the required skills: [Don't Lick the
+Cookie](https://www.benday.com/2016/10/21/scrum-dont-lick-the-cookie/).
+
+So in general, issues and merge requests should not be assigned to anyone.
+
+This being said, we do assign them if at least one of these conditions is
+met:
+
+ - Someone is actively working on it.
+
+ - The task is both important and urgent.
+
+ - The milestone is set to the next Tails release.
+   See the [[milestone|GitLab#milestone]] section for details.
+
+ - We did all the work we could on this task already and now have to
+   track progress on a blocker that we cannot address ourselves.
+   For example, regularly tracking progress and pinging on patches
+   we've submitted upstream.
+
+ - Only one of us can complete the task. This helps identify
+   bottlenecks, high bus factor, and over-commitment.
+
+ - Sponsor deliverables that are managed under the "let's decide
+   a long time in advance who exactly will do each task" paradigm.
+
+ - It is about the parent tracking issue for a large project with several
+   subtasks that will be tackled by different people, and we need
+   someone to coordinate the project.
+
+<a id="milestone"></a>
+
+## Milestone
+
+Different teams and contributors use the _Milestone_ value differently:
+
+ - Some teams try their best to treat it as a commitment, that other Tails
+   contributors should be able to rely on.
+ - Others use it as a pool of tasks they want to have on their short-term radar.
+
+For issues that are on our roadmap, no milestone is set,
+until it makes sense to target a specific release. However, such issues
+have a `$YEAR` label.
+
+Postponing to the next milestone more than once is not business
+as usual — it's a red flag. Ideally, the underlying problem should be identified
+and addressed: for example, the assignee might need help or be over-committed;
+the team could be under-staffed; or perhaps the task should simply not have
+any milestone in the first place.
+
+## Priority
+
+Every open issue must have exactly 0 or 1 of these labels:
+
+ - _P:Low_: it would be good to do this, but the Tails Team does not think it's
+   important enough for team members to spend time on it — contributions are
+   welcome though!
+ - _P:Normal_, or no such label: this is the general case
+ - _P:Elevated_
+ - _P:High_
+ - _P:Urgent_
+
+See the
+[[!tails_gitlab groups/tails/-/labels?search=P%3A
+desc="list of priority labels"]].
+
+## Category
+
+We classify issues with labels whose name starts with _C:_.
+
+For example, _C:Email Client_ or _C:Installation_.
+
+See the
+[[!tails_gitlab groups/tails/-/labels?search=C%3A
+desc="list of category labels"]].
+
+## Type of work
+
+To indicate the type of work that's needed to complete the next step
+on an issue, we use labels whose name starts with _T:_.
+
+For example:
+
+ - _T:Debian_: the work shall be done in Debian
+
+ - _T:End-user documentation_: everything below [[doc]] and [[support]]
+    on our website
+
+ - _T:Contributors documentation_: everything below [[contribute]]
+    on our website
+
+ - _T:Wait_: we are waiting/tracking actions we need non-Tails
+   people to do, outside of Tails
+
+ - _T:Website_: website work not covered by other options
+
+See the
+[[!tails_gitlab groups/tails/-/labels?search=T%3A
+desc="list of type of work labels"]].
+
+## Other labels
+
+ - _Starter_: issues flagged as *Starter* can be a good pick for new contributors.
+   [[Learn more|contribute/working_together/criteria_for_starter_tasks/]].
+
+## Relationships between issues
+
+Arguably, GitLab CE is a bit limited when it comes to expressing semantic
+relationships between issues. Here is how we can overcome these limitations.
+
+### Parent/subtask and Blocks relationship
+
+A GitLab issue can have a
+[[!tails_gitlab help/user/markdown.html#task-lists desc="task list"]].
+
+Every task is a task list can be:
+
+ - free-form text
+
+ - a `#NNNN` link to another issue, that needs to be closed
+   before the issue with the task list can itself be closed.
+
+### Related issues
+
+You can list related issues either in the description or in a comment.
+
+Either way, this adds a message in the Activity stream of the
+referenced issue, with a link to the referencing issue.
+
+## Confidential issues
+<a id="confidential-issues"></a>
+
+You can make an issue
+[[!tails_gitlab help/user/project/issues/confidential_issues.html desc="confidential"]]
+when creating it or at any later time.
+
+A confidential issue is visible only by:
+
+ - whoever created it
+
+ - project members with at least
+   [[!tails_gitlab help/user/permissions.html#project-members-permissions
+   desc="Reporter"]]
+   access; that is, for our [[!tails_gitlab tails/tails desc="main GitLab
+   project"]]: most past and present Tails contributors
+
+<div class="caution">
+
+<p>Only share the URL of an attachment with people you want to allow downloading
+that file.</p>
+
+<p>In contrast with Redmine, that enforced access control on attachments, with
+GitLab, anyone can download <emph>any</emph> attachment if they know its URL.
+This applies equally to attachments added to a confidential issue.</p>
+
+</div>
+
+If your team regularly manipulates confidential data, then its issues live under
+a dedicated GitLab project, with a different set of members, and possibly
+only visible to project members.
+
+<a id="document-progress"></a>
+# How to document progress
+
+## Create and update issues
+
+When you start working on a task, update the corresponding GitLab issue, after
+creating one if needed: replace any status label with the *Doing* label.
+For details about labels, see [[metadata|GitLab#metadata]].
+
+All the knowledge useful to the others should be kept on that issue,
+or at least linked from there.
+
+Please keep the issues you are working on updated, so that they reflect the
+actual status of the task, and especially the next thing to do for it to
+be completed.
+
+When committing changes that will resolve an issue once merged, please
+include `#NNNN` in the commit message, _NNNN_
+being the issue number. Then, GitLab will automatically reference this
+commit on the corresponding issue, once the branch is pushed to our
+[[Git repository|contribute/Git]]. For example:
+
+    Write release notes for 4.27 (#18214)
+
+## Report progress or failure
+
+It is important to:
+
+ - Keep the team informed of how you feel committed to issues assigned to you,
+   and about the timeline you're envisioning.
+
+ - Avoid individual over-commitment & feelings of failure.
+
+If you don't think you will manage to work on an issue any time soon,
+it's often best to make this clear on the issue, or to de-assign yourself.
+
+For details, see how we use the [[assignee|GitLab#assignee]]
+and [[milestone|GitLab#milestone]] information.
+
+<a id="merge-requests"></a>
+# How to propose, review, and merge changes
+
+We use [[!tails_gitlab help/user/project/merge_requests/index.md desc="Merge Requests"]]
+(aka. MRs) to propose, review, and merge changes.
+
+See:
+
+ - [[how to propose, review, and merge changes|contribute/merge_policy]]
+
+ - [[how to participate in discussions|GitLab#discussions]]
+
+## Confidential merge requests
+
+When [an issue is confidential](#confidential-issues), we make the Merge Request confidential, too. Confidential Merge Requests in
+Gitlab follow a very different path:
+
+ - They don't happen in [[!tails_gitlab tails/tails]], but in [[!tails_gitlab tails/tails-private]]. Both the
+   source branch and the target branch must be in tails-private! Beware, if you target a branch on
+   [[!tails_gitlab tails/tails]] then your code will become public.
+ - When they get merged, they are only merged to tails-private. It's then up to the release manager to merge
+   from tails-private during the release process.
+
+# How to request and provide input
+
+<a id="discussions"></a>
+
+## How to participate in discussions
+
+You can comment on issues and merge requests.
+The [Tor Project Code of Conduct](https://community.torproject.org/policies/code_of_conduct/) applies.
+
+If you want to start a new discussion, please use _Start thread_ instead of
+_Comment_: a thread can be marked as resolved, while a comment cannot.
+This helps keeping track of which discussions have reached a conclusion,
+and which ones are still pending.
+
+To start a thread, type your message and choose _Start thread_ in the
+_Comment_ split button.
+
+[[!img start_thread.png link="no" alt=""]]
+
+For more information, see the GitLab documentation about [[!tails_gitlab
+help/user/discussions/index.md desc="Discussions"]].
+
+## Requesting input from someone else
+
+If you need input from someone else on an issue or merge request,
+ask your question in a comment there, mentioning them
+with their GitLab login name: `@nick`. GitLab will send them
+an email notification about it and add it to their To-Do list.
+
+If you want to raise attention of every single member of a team, mention it with
+the name of the corresponding [[!tails_gitlab explore/groups desc="group"]]:
+`@xyz-team`. GitLab will send an email notification about it to every member
+of this group, and add it to their To-Do list.
+
+Please note that the `root` user is part of all groups only because it is used
+for the administration of our GitLab instance. There's no human being behind
+that account and its notifications are turned off. Do not expect to receive
+answers from that user, make sure to mention other appropriate users and groups
+instead.
+
+## Acting upon input requests
+
+It's important to provide requested information as quickly as you can,
+to make the Tails contribution process more efficient and enjoyable.
+
+When input is requested from you on an issue or merge request with `@nick`:
+
+ - GitLab adds an item in your
+   [To-Do list](https://gitlab.tails.boum.org/dashboard/todos).
+
+ - GitLab may send you an email notification
+
+   Please ensure your GitLab email notification settings and your email setup
+   allow you to receive and notice these messages.
+
+When you receive such a request, if you cannot provide the requested input
+immediately, you're responsible for keeping track of this task, for example via
+the To-Do list, or by creating a new issue assigned to yourself, or using
+whatever personal organization tools work for you.
+
+# Email interface
+
+Using the email address registered with your GitLab account,
+you can:
+
+ - Stay informed of what's happening in GitLab
+
+   To do so, enable email
+   [[!tails_gitlab help/user/profile/notifications.html desc="notifications"]].
+
+ - Participate in [[!tails_gitlab help/user/discussions/index.md desc="discussions"]]
+   on issues and merge requests, modify issues metadata
+
+   To do so, reply to an email notification you've received from GitLab.
+
+   Write your email just as if you [replied from the
+   web].
+   In particular:
+
+    - Write your email in
+      [[!tails_gitlab help/user/markdown.html desc="Markdown"]].
+    - You can use
+      [[!tails_gitlab help/user/project/quick_actions.html desc="Quick actions"]].
+
+ - Create new issues
+
+   See [[!tails_gitlab help/user/project/issues/managing_issues.html#new-issue-via-email desc="New issue via email"]]
+   in the GitLab documentation.
+
+<a id="api"></a>
+
+# Scripts that use the GitLab API
+
+We have several scripts that query or manipulate data using the GitLab API:
+for example, [[!tails_gitweb bin/generate-changelog]] and [[!tails_gitweb
+bin/generate-report]].
+
+To use them:
+
+* Install the `python3-gitlab` Debian package:
+
+        sudo apt install python3-gitlab
+
+* Configure your `~/.python-gitlab.cfg`.
+
+  You need at least this content:
+
+        [global]
+        ssl_verify = true
+
+        [Tails]
+        url = https://gitlab.tails.boum.org
+        per_page = 100
+        private_token = XXX
+
+  In the `Tails` section, set the value of the `private_token` option to a
+  GitLab API token for your own user. To generate such a token,
+  visit [[!tails_gitlab -/user_settings/personal_access_tokens]].
+
+* If you are working from Tails, run the scripts using `torsocks`.
+
+<a id="core-work"></a>
+
+# Core teams' work
+
+Some of the teams who do
+[[Core work|contribute/working_together/roles]] (be it paid or done on
+a volunteer basis) maintain GitLab metadata in order to:
+
+ * provide visibility on what they doing & their priorities;
+
+ * give the Tails community some power over setting these priorities;
+
+ * get notifications about issues newly added to their plate;
+
+ * encourage the Tails community to help core workers define their
+   priorities: they sometimes have a hard time deciding by themselves
+   how they should spend their time on what matters the most to
+   the project.
+
+To track this, these teams use
+[[!tails_gitlab groups/tails/-/labels?utf8=✓&search=Core+work
+desc="labels whose name starts with *Core work*"]].
+
+Such a label on an issue means that the corresponding team thinks it's worth
+investing Tails resources, and considers it's their responsibility to fix the
+issue. This does not imply they will have the capacity to do so quickly.
+
+The teams who use this mechanism are more than happy to get feedback
+about these priorities: both addition and removal suggestions are
+welcome. Please check the mission statement for the corresponding team
+first, to ensure you're not asking them to do something that's outside
+of the scope of their job. And please justify your suggestions.
+Please check these views once in a while and talk to us! :)
+
+<a id="ci"></a>
+
+# GitLab CI
+
+We use [GitLab CI](https://docs.gitlab.com/ee/ci/) for some quality assurance checks that
+don't require building or booting Tails images.
+
+## Feedback and patches are welcome
+
+Please [[give feedback and
+input|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/role-description#contact]] about this
+topic to Tails sysadmins.
+
+For example, you can propose new tests that we could run on GitLab CI.
+Please explain what the expected benefit would be for your work or for Tails
+users: this will help us prioritize our work.
+
+Finally, you can send merge requests that improve the existing jobs
+or add new ones: [[!tails_gitweb .gitlab-ci-pipeline.yml]].
+
+## Container images policy
+
+Because we use give a lot of power to some jobs in the CI, we have a
+[[Container image policy|contribute/working_together/GitLab/container_images]]
+that should be followed when building, pushing and using container images in
+our GitLab.
+
+<a id="access-control"></a>
+
+# Access control
+
+<a id="request-access"></a>
+
+## Requesting access
+
+If you need to do something in GitLab and you appear to lack the
+needed credentials, please ask the [Tails Team](https://gitlab.tails.boum.org/tails/team/-/wikis/home).
+
+They will triage your request and potentially vouch for you,
+asking the Tails
+[[system administrators|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/role-description#contact]]
+to grant you more power.
+
+For example, you will need "Reporter" access on the [[!tails_gitlab
+tails/tails]] project in order to add labels or assign issues.
+
+If your collaboration with a new contributor would benefit from them having such
+credentials, please help them request access.
+
+## Adding/removing access
+
+Do not grant access via the web interface:
+
+ - Such manual changes would be later overwritten by automated processes.
+
+ - Manual changes can easily have side effects that violate our access control
+   requirements.
+
+Instead, after following the relevant process (if any),
+request the access modification from the Tails
+[[system administrators|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/role-description#contact]].
+
+## Relevant GitLab doc
+
+ - [[!tails_gitlab help/user/permissions.html desc="Permissions"]]
+ - [[!tails_gitlab help/user/project/merge_requests/authorization_for_merge_requests.html desc="Authorization for Merge requests"]]
+ - [[!tails_gitlab help/user/project/repository/branches/protected.md desc="Protected Branches"]]
+ - [[!tails_gitlab help/user/group/index.md desc="Groups"]]
+
+## Access levels
+
+We use the [[!tails_gitlab
+help/user/project/merge_requests/authorization_for_merge_requests.html#protected-branch-flow
+desc="Protected branch flow"]]:
+
+ - Our major branches and release tags are marked as "Protected".
+
+ - Committers get "Maintainer" access.
+
+   This is done via the `.committers` variable in our gitlabracadabra
+   configuration. This is subject to approval by the [[Board|doc/about/contact#board]].
+
+ - Regular, particularly trusted contributors, who are not granted full commit
+   access but have access to our CI, get "Developer" access. They can push
+   a topic branch to the canonical Git repository and our CI will pick it up.
+   They can also modify any non-protected topic branch.
+
+
+   This is done via the `.developers` variable in our gitlabracadabra
+   configuration. This is subject to approval by the [[Board|doc/about/contact#board]].
+
+ - Other contributors get access strictly lower than "Developer".
+   They push topic branches to their own fork of the repository and
+   create merge requests.
+
+ - Our Jenkins CI jobs generation process is the same as in pre-GitLab days.
+
+<a id="operations"></a>
+
+# Operations
+
+See our documentation about [[GitLab for Tails
+sysadmins|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/services/gitlab]].

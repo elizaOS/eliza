@@ -1,0 +1,1 @@
+{"steps":[{"perp_orders":{"orders":[{"coin":"ETH","tif":"Gtc","side":"buy","sz":0.02,"reduceOnly":false,"px":"mid-0.5%"}]}},{"sleep_ms":{"durationMs":150}},{"cancel_all":{"coin":"ETH"}}]}

@@ -1,0 +1,62 @@
+candidate_upstreams:
+- license: BSD-3-Clause
+  name: Saturn
+  repo: https://github.com/ucb-bar/saturn-vectors
+- license: Solderpad-Hardware-License-2.1
+  name: Ara
+  repo: https://github.com/pulp-platform/ara
+- license: ISC
+  name: Vicuna
+  repo: https://github.com/vproc/vicuna
+- license: Mulan-PSL-v2
+  name: XiangShan vector backend
+  repo: https://github.com/OpenXiangShan/XiangShan (subset)
+claim_boundary: 'RVV 1.0 execution gate. CSR file (rtl/cpu/rvv/rvv_csr.sv), a real
+  element-wise integer/logic ALU subset (rtl/cpu/rvv/rvv_alu_subset.sv, cocotb-verified
+  against a reference model), and the dispatch-boundary stub for unsupported ops (rtl/cpu/rvv/rvv_unit_stub.sv)
+  are in place. Full vector load/store, gather/scatter, reductions, narrowing, widening,
+  fixed-point, floating-point, masking, and permutation are NOT yet in RTL. ISA-level
+  functional evidence (RVV 1.0 executes end to end with a measured scalar-vs-vector
+  dynamic instruction reduction) is recorded in e1-rvv-vector.json at claim_level
+  "functional"; this is NOT a cycle- accurate or silicon perf claim. No RTL vector
+  perf or full-conformance claim is allowed until a complete vector backend (forked
+  from Saturn, Ara, Vicuna, or XiangShan, or a from-scratch extension of the subset
+  ALU) lands and passes the riscv-arch-test RVV 1.0 subset.
+
+  '
+fail_closed_until:
+- one candidate upstream forked under external/, OR
+- the rvv_alu_subset is extended (or a from-scratch backend in rtl/cpu/rvv/ added)
+  to cover memory + reductions + masking and passes the riscv-arch-test RVV 1.0 subset
+  and the riscv-dv vector smoke
+functional_iss_evidence:
+  claim_level: functional
+  metric: dynamic instruction count, scalar rv64gc vs vector rv64gcv
+  reproduce: scripts/run_e1_rvv_vector.sh
+  substrate: qemu-user rva23u64 (RVV 1.0), vlen=256
+generated_utc: '2026-05-22T18:49:58Z'
+missing:
+- vector load/store interaction with LSU/cache (RTL)
+- reductions, permutations, slides, gather/scatter (RTL)
+- narrowing / widening / fixed-point saturation (RTL)
+- floating-point vector ops (RTL)
+- mask-producing compares and masked (vm=0) execution (RTL)
+- Zvbb / Zvfh / Zvkt extension subroutines
+- exception precise reporting
+- riscv-arch-test RVV 1.0 conformance pass on RTL
+present:
+- rtl/cpu/rvv/rvv_csr.sv
+- rtl/cpu/rvv/rvv_alu_subset.sv
+- rtl/cpu/rvv/rvv_unit_stub.sv
+- verify/cocotb/cpu/test_rvv_alu_subset.py
+- docs/evidence/cpu_ap/e1-rvv-vector.json
+- docs/arch/rvv-integration-plan.md
+real_rtl_subset_implemented:
+- vadd.vv vsub.vv vand.vv vor.vv vxor.vv
+- vsll.vv vsrl.vv vsra.vv
+- vminu.vv vmin.vv vmaxu.vv vmax.vv
+- vmul.vv (OPMVV) and the .vx scalar-operand forms
+- vmv.v.v / vmv.v.x
+- element widths E8/E16/E32/E64, vl, vstart prefix, vta tail policy, vill
+schema: eliza.cpu_ap_rvv_1_0_execution_gate.v1
+status: partial_real_elementwise_alu_subset_plus_functional_iss_evidence

@@ -1,0 +1,14 @@
+{
+  "name": "@elizaos/elizalaunch-runtime-remote",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/bun/worker.ts src/dev/phase1-smoke.ts src/dev/phase2-smoke.ts src/dev/phase3-smoke.ts --outdir dist --target bun",
+    "smoke": "bun src/dev/phase1-smoke.ts",
+    "smoke:phase1": "bun src/dev/phase1-smoke.ts",
+    "smoke:phase2": "bun src/dev/phase2-smoke.ts",
+    "smoke:phase3": "bun src/dev/phase3-smoke.ts",
+    "typecheck": "tsc --ignoreConfig --noEmit --skipLibCheck --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --types bun-types --allowImportingTsExtensions src/bun/protocol.ts src/bun/errors.ts src/bun/log-buffer.ts src/bun/sse-parser.ts src/bun/api-client.ts src/bun/route-discovery.ts src/bun/runtime-manager.ts src/bun/stream-manager.ts src/bun/worker.ts src/dev/phase1-smoke.ts src/dev/phase2-smoke.ts src/dev/phase3-smoke.ts"
+  }
+}

@@ -1,0 +1,240 @@
+schema: eliza.e1_phone_supplier_sample_release_gate.v1
+status: blocked_supplier_samples_response_packs_and_reviews_required_before_layout_release
+date: 2026-05-21
+claim_boundary: >
+  Supplier sample/release gate for the E1 phone board. This binds public
+  supplier research, draft RFQs, supplier drawing intake, KiCad footprint
+  capture, routed layout release, factory release, and enclosure clearance into
+  one fail-closed handoff. It is not a sent RFQ, supplier response, approved
+  AVL, received sample, accepted drawing pack, KiCad footprint approval, routed
+  PCB, factory release, or enclosure-ready evidence.
+
+source_artifacts:
+  - board/kicad/e1-phone/supplier-rfq-intake.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+  - board/kicad/e1-phone/procurement-readiness.yaml
+  - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+  - board/kicad/e1-phone/schematic-capture-readiness-binding.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - board/kicad/e1-phone/production-factory-release-execution.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+
+upstream_status:
+  rfq_intake: blocked_waiting_supplier_quote_drawing_sample_and_approval_packs
+  rfq_transmittal_drafts: drafts_prepared_not_sent_not_supplier_evidence
+  supplier_to_kicad_evidence_map: blocked_supplier_evidence_not_ready_for_kicad_capture
+  supplier_drawing_intake: blocked_supplier_drawing_intake_required_before_real_footprints_or_route
+  procurement_readiness: blocked_preliminary_bom_not_avl_or_purchase_order
+  pinout_footprint_freeze: blocked_pinout_footprint_freeze_missing_supplier_evidence
+  evt1_footprint_capture: blocked_evt1_footprint_capture_requires_supplier_intake_reviews_and_real_kicad_libraries
+  schematic_capture_readiness: blocked_schematic_capture_requires_real_symbols_supplier_pinouts_footprints_erc_and_trial_route
+  routed_layout_readiness: blocked_layout_readiness_requires_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance
+  production_factory_release: blocked_requires_routed_release_supplier_packs_fab_assembly_fixture_and_first_article
+  enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+
+gate_policy:
+  minimum_sample_lot_per_candidate: 5
+  sample_receipt_required_before_pinout_freeze: true
+  supplier_response_pack_required_before_symbol_or_footprint_capture: true
+  supplier_step_model_required_before_routed_board_step_export: true
+  incoming_sample_inspection_required_before_release: true
+  production_archive_required_before_factory_or_enclosure_release: true
+  required_evidence_keys:
+    - rfq_transmittal
+    - rfq_response_pack
+    - signed_2d_drawing
+    - pinout_or_pad_map
+    - recommended_land_pattern
+    - step_or_brep_model
+    - sample_inspection
+    - compliance_pack
+    - pinout_review_signoff
+    - symbol_review
+    - footprint_review
+    - footprint_3d_binding
+
+evidence_inventory:
+  function_count: 10
+  evidence_keys_per_function: 12
+  required_evidence_path_count: 120
+  present_evidence_path_count: 0
+  blocked_or_local_candidate_evidence_path_count: 70
+  local_surrogate_step_path_count: 10
+  missing_evidence_path_count: 120
+  every_required_production_path_absent: false
+  every_required_production_path_absent_or_blocked: true
+
+handoff_records:
+  - function: display_touch
+    status: blocked_waiting_supplier_response_pack_sample_and_reviews
+    primary_candidate: CH550FH01A-CT
+    freeze_record: display_touch_fpc
+    draft_path: board/kicad/e1-phone/sourcing-drafts/display_touch/rfq-transmittal.yaml
+    required_evidence_key_count: 12
+    present_evidence_key_count: 0
+    missing_evidence_key_count: 12
+    sample_required_before_layout: true
+    blocks_layout_domains: [display_touch, enclosure, routed_step]
+  - function: rear_camera
+    status: blocked_waiting_supplier_response_pack_sample_and_reviews
+    primary_candidate: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+    freeze_record: rear_camera_fpc
+    draft_path: board/kicad/e1-phone/sourcing-drafts/rear_camera/rfq-transmittal.yaml
+    required_evidence_key_count: 12
+    present_evidence_key_count: 0
+    missing_evidence_key_count: 12
+    sample_required_before_layout: true
+    blocks_layout_domains: [cameras, enclosure, routed_step]
+  - function: front_camera
+    status: blocked_waiting_supplier_response_pack_sample_and_reviews
+    primary_candidate: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+    freeze_record: front_camera_fpc
+    draft_path: board/kicad/e1-phone/sourcing-drafts/front_camera/rfq-transmittal.yaml
+    required_evidence_key_count: 12
+    present_evidence_key_count: 0
+    missing_evidence_key_count: 12
+    sample_required_before_layout: true
+    blocks_layout_domains: [cameras, enclosure, routed_step]
+  - function: cellular
+    status: blocked_waiting_supplier_response_pack_sample_and_reviews
+    primary_candidate: Quectel_RG255C_or_RM255C_5G_RedCap
+    freeze_record: cellular_module
+    draft_path: board/kicad/e1-phone/sourcing-drafts/cellular/rfq-transmittal.yaml
+    required_evidence_key_count: 12
+    present_evidence_key_count: 0
+    missing_evidence_key_count: 12
+    sample_required_before_layout: true
+    blocks_layout_domains: [radios, rf, factory_test]
+  - function: wifi_bluetooth
+    status: blocked_waiting_supplier_response_pack_sample_and_reviews
+    primary_candidate: Murata_LBEE5XV2EA-802_Type_2EA
+    freeze_record: wifi_bluetooth_module
+    draft_path: board/kicad/e1-phone/sourcing-drafts/wifi_bluetooth/rfq-transmittal.yaml
+    required_evidence_key_count: 12
+    present_evidence_key_count: 0
+    missing_evidence_key_count: 12
+    sample_required_before_layout: true
+    blocks_layout_domains: [radios, rf, factory_test]
+  - function: usb_c_receptacle_evt0
+    status: blocked_waiting_supplier_response_pack_sample_and_reviews
+    primary_candidate: GCT_USB4105_class_USB2_Type_C
+    freeze_record: usb_c_receptacle
+    draft_path: board/kicad/e1-phone/sourcing-drafts/usb_c_receptacle_evt0/rfq-transmittal.yaml
+    required_evidence_key_count: 12
+    present_evidence_key_count: 0
+    missing_evidence_key_count: 12
+    sample_required_before_layout: true
+    blocks_layout_domains: [usb_c_power, enclosure, factory_test]
+  - function: side_buttons
+    status: blocked_waiting_supplier_response_pack_sample_and_reviews
+    primary_candidate: side_key_flex_or_enclosure_mounted_switch_subassembly
+    freeze_record: side_power_volume_controls
+    draft_path: board/kicad/e1-phone/sourcing-drafts/side_buttons/rfq-transmittal.yaml
+    required_evidence_key_count: 12
+    present_evidence_key_count: 0
+    missing_evidence_key_count: 12
+    sample_required_before_layout: true
+    blocks_layout_domains: [side_buttons, enclosure, factory_test]
+  - function: battery_pack
+    status: blocked_waiting_supplier_response_pack_sample_and_reviews
+    primary_candidate: 5727mAh_22p05Wh_64x87x5p6mm_pouch_class
+    freeze_record: battery_pack_connector
+    draft_path: board/kicad/e1-phone/sourcing-drafts/battery_pack/rfq-transmittal.yaml
+    required_evidence_key_count: 12
+    present_evidence_key_count: 0
+    missing_evidence_key_count: 12
+    sample_required_before_layout: true
+    blocks_layout_domains: [battery, power_thermal, enclosure]
+  - function: audio_speaker_microphone_flexes
+    status: blocked_waiting_supplier_response_pack_sample_and_reviews
+    primary_candidate: codec_amp_mics_speaker_receiver_haptic_stack
+    freeze_record: audio_speaker_microphone_flexes
+    draft_path: board/kicad/e1-phone/sourcing-drafts/audio_speaker_microphone_flexes/rfq-transmittal.yaml
+    required_evidence_key_count: 12
+    present_evidence_key_count: 0
+    missing_evidence_key_count: 12
+    sample_required_before_layout: true
+    blocks_layout_domains: [audio_haptics, enclosure, factory_test]
+  - function: top_bottom_interconnect
+    status: blocked_waiting_supplier_response_pack_sample_and_reviews
+    primary_candidate: Hirose_BM28_class_board_to_board_or_flex_stack
+    freeze_record: top_bottom_interconnect_pair
+    draft_path: board/kicad/e1-phone/sourcing-drafts/top_bottom_interconnect/rfq-transmittal.yaml
+    required_evidence_key_count: 12
+    present_evidence_key_count: 0
+    missing_evidence_key_count: 12
+    sample_required_before_layout: true
+    blocks_layout_domains: [split_interconnect, routed_step, factory_test]
+
+release_coupling:
+  blocks_real_symbols_and_footprints: true
+  blocks_evt1_route_start: true
+  blocks_routed_board_step_export: true
+  blocks_factory_release: true
+  blocks_enclosure_clearance_release: true
+  blocks_end_to_end_phone_readiness: true
+
+alternate_display_sample_release_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/procurement-readiness.yaml
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/production-factory-release-execution.yaml
+  status: blocked_until_alternate_display_response_pack_samples_inspection_and_reviews_exist
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      minimum_sample_lot: 5
+      required_before_layout_release:
+        - RFQ response pack with quote, lifecycle, MOQ, lead time, compliance, and supplier SKU
+        - signed drawing, 40-pin pinout, mating connector, recommended land pattern, and STEP/B-rep models
+        - sample receipt, incoming inspection, display/touch bring-up, and promotion review against CH550FH01A-CT
+        - pinout, symbol, footprint, 3D binding, routed layout, factory, and enclosure gates updated for selected branch
+      sample_release_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      minimum_sample_lot: 5
+      required_before_layout_release:
+        - RFQ response pack with quote, lifecycle, MOQ, lead time, compliance, and supplier SKU
+        - signed AMOLED drawing, FPC pinout, mating connector, recommended land pattern, STEP/B-rep models, and RM67191/GT1151 data
+        - sample receipt, incoming inspection, burn-in/luminance data, display/touch bring-up, and promotion review against CH550FH01A-CT
+        - pinout, symbol, footprint, 3D binding, routed layout, factory, and enclosure gates updated for selected branch
+      sample_release_allowed: false
+
+cross_checks:
+  manifest_cites_gate: true
+  source_artifacts_exist: true
+  upstream_statuses_match_current_sources: true
+  handoff_records_match_supplier_to_kicad_map: true
+  handoff_records_match_supplier_drawing_intake: true
+  every_required_evidence_path_is_absent: false
+  every_required_evidence_path_is_absent_or_blocked: true
+  no_record_allows_layout_without_samples: true
+  release_coupling_remains_fail_closed: true
+  alternate_display_sample_release_gate_fail_closed: true
+
+release_blockers:
+  - RFQ transmittals are drafts and have not been sent or archived as production evidence
+  - supplier response packs, signed drawings, exact pinouts, land patterns, supplier-approved STEP models, and samples are missing
+  - incoming sample inspection and compliance packs are missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter layout release until RFQ response packs, samples, inspection, reviews, and promotion evidence exist
+  - pinout, symbol, footprint, and 3D binding reviews are missing
+  - routed layout, factory release, and enclosure clearance cannot close without supplier evidence
+
+forbidden_claims:
+  - supplier_samples_received
+  - supplier_response_pack_complete
+  - supplier_drawings_approved
+  - supplier_pinouts_ready
+  - supplier_footprints_ready
+  - supplier_step_models_bound
+  - kicad_capture_ready
+  - layout_ready
+  - factory_release_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

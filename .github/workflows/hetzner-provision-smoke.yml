@@ -1,0 +1,78 @@
+name: Hetzner Provision Smoke
+
+# Manual real-Hetzner provision smoke. Provisions a fresh cx22 server, waits
+# for cloud-init / SSH readiness, then tears it down — all in one job so the
+# /tmp state file persists across steps. Deliberately bypasses the Eliza Cloud
+# staging API (no auth preflight, no trivial-agent deploy) so the core Hetzner
+# provisioning path can be authentically confirmed even when the staging Cloud
+# API or its Redis is degraded. Uses the same `ci-hetzner-e2e` environment
+# secrets and the same provision/wait/teardown scripts as the nightly e2e.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: hetzner-e2e
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    name: Provision + wait-ready + teardown (real Hetzner)
+    runs-on: ubuntu-latest
+    environment: ci-hetzner-e2e
+    timeout-minutes: 20
+    env:
+      HCLOUD_TOKEN_CI: ${{ secrets.HCLOUD_TOKEN_CI }}
+      CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
+      CI_SSH_PUBLIC_KEY_ID: ${{ secrets.CI_SSH_PUBLIC_KEY_ID }}
+      HETZNER_E2E_STATE_FILE: /tmp/hetzner-e2e-state.json
+      # cx22 is deprecated and cax (ARM) isn't placeable for this project;
+      # cpx22 (x86 2c/4g) is available across the EU datacenters.
+      HETZNER_E2E_SERVER_TYPE: cpx22
+      HETZNER_E2E_LOCATION: nbg1
+    steps:
+      - name: Check secret configuration
+        run: |
+          missing=()
+          [ -z "$HCLOUD_TOKEN_CI" ] && missing+=("HCLOUD_TOKEN_CI")
+          [ -z "$CI_SSH_PRIVATE_KEY" ] && missing+=("CI_SSH_PRIVATE_KEY")
+          [ -z "$CI_SSH_PUBLIC_KEY_ID" ] && missing+=("CI_SSH_PUBLIC_KEY_ID")
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing ci-hetzner-e2e secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+
+      - name: Install dependencies
+        run: bun install --no-save --ignore-scripts
+
+      - name: List Hetzner catalog (what's actually placeable)
+        run: |
+          echo "=== non-deprecated server types (id  name  arch  cores/mem) ==="
+          curl -s -H "Authorization: Bearer $HCLOUD_TOKEN_CI" \
+            https://api.hetzner.cloud/v1/server_types \
+            | jq -r '.server_types[] | select(.deprecation==null) | "\(.id)\t\(.name)\t\(.architecture)\t\(.cores)c/\(.memory)g"' | sort -n
+          echo "=== per-datacenter available server-type IDs ==="
+          curl -s -H "Authorization: Bearer $HCLOUD_TOKEN_CI" \
+            https://api.hetzner.cloud/v1/datacenters \
+            | jq -r '.datacenters[] | "\(.name)\tavail=[\(.server_types.available | join(","))]"'
+
+      - name: Provision Hetzner server
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts
+
+      - name: Wait for host ready (cloud-init + SSH)
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
+
+      - name: Teardown (always)
+        if: always()
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-teardown.ts

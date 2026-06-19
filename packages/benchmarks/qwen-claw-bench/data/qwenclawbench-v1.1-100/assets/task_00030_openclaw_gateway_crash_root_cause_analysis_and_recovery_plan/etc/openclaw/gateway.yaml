@@ -1,0 +1,42 @@
+# OpenClaw Gateway Configuration
+# Last modified: 2026-02-09T18:30:00+08:00
+
+gateway:
+  bind: "0.0.0.0:3000"
+  remote:
+    url: "https://gw.openclaw.ai"
+  tls:
+    enabled: false
+  logging:
+    level: info
+    file: /var/log/openclaw/gateway.log
+
+plugins:
+  entries:
+    device-pair:
+      enabled: true
+      config:
+        publicUrl: "https://home.example.com:3000"
+    telegram:
+      enabled: true
+      config:
+        botToken: "REDACTED"
+    discord:
+      enabled: false
+
+sessions:
+  defaultModel: "claude-sonnet-4-20250514"
+  maxConcurrent: 5
+  timeoutMinutes: 30
+
+heartbeat:
+  enabled: true
+  intervalMs: 1800000
+  prompt: "Read HEARTBEAT.md if it exists. Follow it strictly."
+
+cron:
+  enabled: true
+  jobs:
+    - id: "system-gateway-monitor"
+      schedule: "*/5 * * * *"
+      payload: "Check if openclaw process is running. If not, start it immediately."

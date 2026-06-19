@@ -1,0 +1,50 @@
+# Strategy Parameters Configuration
+# Strategy: Momentum-Value Hybrid
+# Version: 2.1
+# Last updated: 2024-08-15
+
+stock_selection:
+  method: "momentum_value"
+  ma_periods: [5, 10, 20, 60]
+  volume_threshold: 1.5
+  momentum_lookback: 20
+  value_metrics:
+    - pe_ratio
+    - pb_ratio
+  universe_filter:
+    min_market_cap: 10000000000  # 10 billion CNY
+    min_daily_volume: 5000       # lots
+    exclude_st: true
+    exclude_new_listings_days: 60
+
+position_management:
+  max_single_position: 0.25
+  max_total_position: 0.80
+  initial_capital: 1000000
+  position_sizing_method: "equal_weight"
+  max_stocks: 8
+  rebalance_frequency: "weekly"
+
+stop_loss:
+  trailing_stop: 0.08
+  fixed_stop: 0.10
+  time_stop_days: 30
+  use_atr_stop: false
+
+take_profit:
+  target: 0.20
+  partial_exit: 0.50
+  partial_exit_at: 0.12
+
+risk_control:
+  max_daily_loss: 0.03
+  max_drawdown: 0.15
+  max_consecutive_losses: 5
+  cool_down_days: 3
+  sector_concentration_limit: 0.40
+
+execution:
+  slippage_model: "fixed"
+  slippage_bps: 5
+  fill_assumption: "close"
+  order_type: "limit"

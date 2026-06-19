@@ -1,0 +1,6 @@
+{"type": "session_start", "session_id": "cron_1328258", "model": "claude-sonnet-4-20250514", "created_at": "2026-02-21T04:23:38.749943", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-21T04:23:42.716833", "session_id": "cron_1328258", "seq": 1}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-21T04:26:20.837808", "session_id": "cron_1328258", "seq": 2, "usage": {"prompt_tokens": 6586, "completion_tokens": 1414, "total_tokens": 5190}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-21T04:27:57.285542", "session_id": "cron_1328258", "seq": 3, "usage": {"prompt_tokens": 1246, "completion_tokens": 2955, "total_tokens": 10679}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-21T04:28:40.349281", "session_id": "cron_1328258", "seq": 4, "usage": {"prompt_tokens": 511, "completion_tokens": 989, "total_tokens": 394}}
+{"type": "session_end", "session_id": "cron_1328258", "ended_at": "2026-02-21T04:28:50.349281", "total_messages": 4, "status": "completed"}

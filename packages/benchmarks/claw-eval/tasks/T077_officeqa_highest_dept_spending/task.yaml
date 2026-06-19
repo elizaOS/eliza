@@ -1,0 +1,99 @@
+task_id: T077_officeqa_highest_dept_spending
+task_name: "OfficeQA: Highest Spending U.S. Federal Department (FY1955)"
+version: "1.0"
+category: office_qa
+difficulty: hard
+tags: [general]
+
+services:
+  - name: ocr_t51
+    command: python mock_services/ocr/server.py
+    port: 9121
+    health_check: http://localhost:9121/ocr/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9121/ocr/reset
+    env:
+      OCR_FIXTURES: tasks/T077_officeqa_highest_dept_spending/fixtures
+      OCR_FILENAME: treasury_bulletin_1958_10.txt
+      PORT: "9121"
+
+prompt:
+  text: |
+    I have a scanned U.S. Treasury Bulletin from October 1958 (file: treasury_bulletin_1958_10.pdf).
+    Please extract the text using OCR, then answer this question:
+
+    What was the amount spent in millions of nominal dollars by the highest spending U.S Federal
+    Department in the fiscal year of 1955?
+
+    Please provide a precise numerical answer.
+    Put your answer between `<FINAL_ANSWER></FINAL_ANSWER>`.
+  language: en
+
+tools:
+  - name: ocr_extract_text
+    description: Extract text from an image using OCR. Returns the recognized text content.
+    input_schema:
+      type: object
+      properties:
+        image_path:
+          type: string
+          description: Path to the image file to process
+      required: [image_path]
+
+tool_endpoints:
+  - tool_name: ocr_extract_text
+    url: http://localhost:9121/ocr/extract
+    method: POST
+
+sandbox_files:
+  - fixtures/ocr/treasury_bulletin_1958_10.txt
+  - fixtures/pdf/treasury_bulletin_1958_10.pdf
+
+environment:
+  timeout_seconds: 300
+  max_turns: 15
+
+scoring_components:
+  - name: numerical_accuracy
+    weight: 0.55
+    check:
+      type: keywords_present
+      keywords: ["36080", "36,080"]
+  - name: ocr_tool_usage
+    weight: 0.10
+    check:
+      type: tool_called
+      tool_name: ocr_extract_text
+  - name: reasoning_quality
+    weight: 0.35
+    check:
+      type: llm_judge
+      rubric: "Dept identification & comparison (45%) + data source (25%) + answer presentation (30%)"
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the COMMUNICATION QUALITY of the agent's response about the highest spending
+  U.S. Federal Department in FY1955. Focus on presentation, NOT on numerical correctness.
+
+  Scoring criteria:
+  - Structure: Is the response well-organized with clear sections or headings?
+  - Comparison: Does it present a comparison across departments, not just the top one?
+  - Context: Does it provide context (fiscal year, units in millions, data source)?
+  - Clarity: Is the final answer clearly stated with the department name and amount?
+  - Readability: Is the formatting clean (tables, bullet points, bold key figures)?
+
+  Scoring:
+  - 0.9-1.0: Excellent structure, multi-department comparison, well-formatted
+  - 0.6-0.8: Decent structure, mentions the department and amount with some context
+  - 0.3-0.5: Minimal structure, answer given but poorly presented
+  - 0.0-0.2: No structure, confusing or disorganized response
+
+reference_solution: |
+  1. ocr_extract_text(image_path="treasury_bulletin_1958_10.pdf")
+  2. Find department expenditure table for FY1955
+  3. Identify the highest spending department (Defense: 36,080 million)
+
+primary_dimensions: [completion, robustness, communication]

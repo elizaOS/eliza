@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-a547ee4654b19c7fded422fa9be4ed21570bce01
+Repository: element-hq/element-web
+Base Commit: af55ac7b8c9dcb33326b84dd3d4b9f1f81f8a9a6
+Test Files: ["test/end-to-end-tests/src/usecases/settings.js", "/app/test/components/views/settings/CryptographyPanel-test.ts", "test/components/views/settings/CryptographyPanel-test.tsx"]
+FAIL_TO_PASS: ["/app/test/components/views/settings/CryptographyPanel-test.tsx | CryptographyPanel | shows the session ID and key"]
+PASS_TO_PASS: []

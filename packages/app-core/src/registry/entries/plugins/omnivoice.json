@@ -1,0 +1,96 @@
+{
+  "id": "omnivoice",
+  "name": "Omnivoice",
+  "description": "Local TTS via omnivoice.cpp — voice cloning, voice design, emotion-aware synthesis, and singing.",
+  "npmName": "@elizaos/plugin-omnivoice",
+  "version": "2.0.0-beta.1",
+  "source": "bundled",
+  "tags": [
+    "omnivoice",
+    "text-to-speech",
+    "local-tts",
+    "voice-cloning",
+    "voice-design",
+    "emotion",
+    "singing",
+    "ggml"
+  ],
+  "config": {
+    "OMNIVOICE_LIB_PATH": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "libomnivoice path",
+      "help": "Absolute path to libomnivoice.{so,dylib,dll}. Built via packages/inference/build-omnivoice.mjs.",
+      "advanced": true
+    },
+    "OMNIVOICE_MODEL_PATH": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "Base LM GGUF",
+      "help": "Path to the omnivoice base LM GGUF (e.g. omnivoice-base-Q8_0.gguf from huggingface.co/Serveurperso/OmniVoice-GGUF).",
+      "advanced": false
+    },
+    "OMNIVOICE_CODEC_PATH": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "Tokenizer GGUF",
+      "help": "Path to the omnivoice tokenizer/codec GGUF (e.g. omnivoice-tokenizer-Q8_0.gguf).",
+      "advanced": false
+    },
+    "OMNIVOICE_SINGING_MODEL_PATH": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Singing model GGUF",
+      "help": "Optional ModelsLab/omnivoice-singing GGUF for the singing codepath.",
+      "advanced": false
+    },
+    "OMNIVOICE_LANG": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "English",
+      "label": "Default language",
+      "help": "Default language hint. \"\" = auto.",
+      "advanced": false
+    },
+    "OMNIVOICE_INSTRUCT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Default instruct string",
+      "help": "Voice-design instruct, e.g. \"female young adult moderate happy\".",
+      "advanced": false
+    },
+    "OMNIVOICE_USE_FA": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "true",
+      "label": "Flash attention",
+      "help": "Enable flash attention for the GPU backend.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Volume2",
+    "group": "voice",
+    "groupOrder": 4,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza",
+    "model": "https://huggingface.co/Serveurperso/OmniVoice-GGUF",
+    "singingModel": "https://huggingface.co/ModelsLab/omnivoice-singing"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "voice"
+}

@@ -1,0 +1,1269 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-25 14:39+0000\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Installing additional software\"]]\n"
+msgstr "[[!meta title=\"Instal·lació de programari addicional\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Which additional software can I install in Tails?"
+msgstr "Quin programari addicional puc instal·lar a Tails?"
+
+#. type: Plain text
+msgid ""
+"Tails includes a [[limited set of applications|doc/about/features]] but you "
+"can install more software."
+msgstr ""
+"Tails inclou un [[conjunt limitat d'aplicacions|doc/about/features]] però "
+"podeu instal·lar més programari."
+
+#. type: Plain text
+msgid ""
+"This software is distributed in packages that are made available from the "
+"Debian repositories, which are similar to an app store."
+msgstr ""
+"Aquest programari es distribueix en paquets que estan disponibles des dels "
+"repositoris de Debian, que són similars a una botiga d'aplicacions."
+
+#. type: Plain text
+msgid "To know which packages are available in Debian:"
+msgstr "Per saber quins paquets estan disponibles a Debian:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "Browse locally with the <span class=\"application\">Synaptic Package "
+#| "Manager</span>:"
+msgid "Browse locally with the *Synaptic Package Manager*:"
+msgstr ""
+"Navegueu localment amb el <span class=\"application\">Gestor de paquets "
+"Synaptic</span>:"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"En iniciar Tails, [[configureu una contrasenya d'administració|doc/"
+"first_steps/welcome_screen/administration_password]]."
+
+#. type: Bullet: '    1. '
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Synaptic Package Manager**."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"Wait until *Synaptic* finishes downloading new package information from the "
+"Debian servers."
+msgstr ""
+"Espereu fins que <span class=\"application\">Synaptic</span> acabi de baixar "
+"la informació del paquet nou dels servidors de Debian."
+
+#. type: Bullet: '  1. '
+msgid "You can:"
+msgstr "Podeu:"
+
+#. type: Bullet: '     - '
+msgid "Browse the packages by sections from the left sidebar."
+msgstr "Explorar els paquets per seccions des de la barra lateral esquerra."
+
+#. type: Bullet: '     - '
+msgid ""
+"Search on titles and descriptions of packages with the **Search** button."
+msgstr ""
+"Cercar títols i descripcions de paquets amb el botó <span "
+"class=\"bold\">Cerca</span>."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Search the Internet for alternatives to other software."
+msgid "Search the Internet for alternatives to other software."
+msgstr "- Cercar a Internet alternatives a altres programaris."
+
+#. type: Plain text
+#, no-wrap
+msgid "  For example: \"*debian alternatives to photoshop*\".\n"
+msgstr "  Per exemple: \"*alternatives de photoshop a debian*\".\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Ask a friend who is knowledgeable about Linux."
+msgid "Ask a friend who is knowledgeable about Linux."
+msgstr "- Preguntar a un amic que conegui de Linux."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- Search the [Debian website](https://www.debian.org/distrib/"
+#| "packages#search_packages)."
+msgid ""
+"Search the [Debian website](https://www.debian.org/distrib/"
+"packages#search_packages)."
+msgstr ""
+"- Cercar al [lloc web de Debian](https://www.debian.org/distrib/"
+"packages#search_packages) (en anglès)."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"warning\"></a>\n"
+msgstr "<a id=\"warning\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Be careful about what you install"
+msgstr "Aneu amb compte amb el que instal·leu"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>The packages included in Tails are carefully tested for security.\n"
+#| "Installing additional packages might break the security built in Tails. For\n"
+#| "example, installing OpenVPN might modify the firewall rules that Tails uses to\n"
+#| "force network traffic to go through Tor. So, be careful with what you\n"
+#| "install.</p>\n"
+msgid ""
+"<p>The packages included in Tails are carefully tested for security.\n"
+"Installing additional packages might break the security built into Tails. For\n"
+"example, installing OpenVPN might modify the firewall rules that Tails uses to\n"
+"force network traffic to go through Tor.</p>\n"
+msgstr ""
+"<p>Els paquets inclosos a Tails s'han provat acuradament per garantir la seguretat.\n"
+"La instal·lació de paquets addicionals pot trencar la seguretat integrada a Tails. Per\n"
+"exemple, la instal·lació d'OpenVPN pot modificar les regles del tallafoc que utilitza Tails\n"
+"per forçar el trànsit de la xarxa a passar per Tor. Per tant, aneu amb compte amb el que\n"
+"instal·leu.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid "If you are unsure:"
+msgstr "Si no esteu segur:"
+
+#. type: Bullet: '- '
+msgid ""
+"Packages that use the network need to be configured to go through Tor. They "
+"are otherwise blocked from accessing the network."
+msgstr ""
+"Els paquets que utilitzen la xarxa s'han de configurar per passar per Tor. "
+"En cas contrari, se'ls bloqueja l'accés a la xarxa."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "Some software might, for example, modify the firewall and break the "
+#| "security built in Tails. But other software like games or office tools "
+#| "are probably fine."
+msgid ""
+"Some software might, for example, modify the firewall and break the security "
+"built into Tails. But other software like games or office tools are probably "
+"fine."
+msgstr ""
+"Algun programari podria, per exemple, modificar el tallafoc i trencar la "
+"seguretat integrada a Tails. Però altres programaris com jocs o eines "
+"d'oficina probablement estan bé."
+
+#. type: Bullet: '- '
+msgid ""
+"Software not [[officially included in Tails|doc/about/features]] might have "
+"not been tested for security.  We also cannot provide support or "
+"documentation for it."
+msgstr ""
+"És possible que el programari no [[inclòs oficialment a Tails|doc/about/"
+"features]] no s'hagi provat per a seguretat. Tampoc podem proporcionar "
+"suport ni documentació."
+
+#. type: Bullet: '- '
+msgid ""
+"Only applications that are packaged for Debian can be installed and they are "
+"under [[public scrutiny|doc/about/trust#trust_debian]]."
+msgstr ""
+"Només es poden instal·lar aplicacions empaquetades per a Debian i que "
+"estiguin sota [[escrutini públic|doc/about/trust#trust_debian]]."
+
+#. type: Title =
+#, no-wrap
+msgid "Examples of additional useful software"
+msgstr "Exemples de programari addicional útil"
+
+#. type: Bullet: '- '
+msgid ""
+"[*VLC*](https://www.videolan.org/vlc/), a multimedia player with advanced "
+"features."
+msgstr ""
+"[*VLC*](https://www.videolan.org/vlc/), un reproductor multimèdia amb "
+"funcions avançades."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [*Pitivi*](https://www.pitivi.org/), a video editor."
+msgid "[*Pitivi*](https://www.pitivi.org/), a video editor."
+msgstr "- [*Pitivi*](https://www.pitivi.org/), un editor de vídeo."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [*Scribus*](https://www.scribus.net/), a page layout application."
+msgid "[*Scribus*](https://www.scribus.net/), a page layout application."
+msgstr ""
+"- [*Scribus*](https://www.scribus.net/), una aplicació de disseny de pàgina."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[*Cheese*](https://wiki.gnome.org/Apps/Cheese), an application to take "
+#| "pictures and videos from your webcam."
+msgid ""
+"[*GNOME Camera*](https://apps.gnome.org/Snapshot/), from the `gnome-"
+"snapshot` package, an application to take pictures and videos from your "
+"webcam."
+msgstr ""
+"[*Cheese*](https://wiki.gnome.org/Apps/Cheese), una aplicació per fer fotos "
+"i vídeos des de la vostra càmera web."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [*Mumble*](https://www.mumble.info/), a voice chat application."
+msgid "[*Mumble*](https://www.mumble.info/), a voice chat application."
+msgstr "- [*Mumble*](https://www.mumble.info/), una aplicació de xat de veu."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [*Calibre*](https://calibre-ebook.com/), an EPUB reader and library "
+#| "manager."
+msgid ""
+"[*Calibre*](https://calibre-ebook.com/), an EPUB reader and library manager."
+msgstr ""
+"- [*Calibre*](https://calibre-ebook.com/), un lector d'EPUB i gestor de "
+"biblioteques."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [*GtkHash*](https://gtkhash.org/), a utility to calculate the checksum "
+#| "of files."
+msgid ""
+"[*GtkHash*](https://gtkhash.org/), a utility to calculate the checksum of "
+"files."
+msgstr ""
+"- [*GtkHash*](https://gtkhash.org/), una utilitat per calcular la suma de "
+"verificació dels fitxers."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"language-packages\"></a>\n"
+msgstr "<a id=\"language-packages\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Language packages and dictionaries"
+msgstr "Paquets d'idiomes i diccionaris"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Replace <span class=\"command-placeholder\">lang</span> with the code for your\n"
+"language. For example, `vi` for Vietnamese.\n"
+msgstr ""
+"Substituïu <span class=\"command-placeholder\">lang</span> pel codi del vostre\n"
+"idioma. Per exemple, `vi` per al vietnamita.\n"
+
+#. type: Plain text
+msgid ""
+"Tails already includes language packages and dictionaries for Arabic, "
+"German, Spanish, Farsi, French, Hindi, Bahasa Indonesia, Italian, "
+"Portuguese, Russian, Turkish, and Simplified Chinese."
+msgstr ""
+"Tails ja inclou paquets d'idiomes i diccionaris per a àrab, alemany, "
+"espanyol, farsi, francès, hindi, bahasa indonèsia, italià, portuguès, rus, "
+"turc i xinès simplificat."
+
+#. type: Bullet: '- '
+msgid ""
+"*LibreOffice* language package: <code>libreoffice-l10n-<span class=\"command-"
+"placeholder\">lang</span></code>"
+msgstr ""
+"Paquet d'idioma del *LibreOffice*: <code>libreoffice-l10n-<span "
+"class=\"command-placeholder\">lang</span></code>"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [List of available *LibreOffice* language packages](https://packages.debian.org/search?keywords=libreoffice-l10n&searchon=names&suite=stable&section=all)\n"
+msgstr "  [Llista de paquets d'idiomes del *LibreOffice* disponibles](https://packages.debian.org/search?keywords=libreoffice-l10n&searchon=names&suite=stable&section=all)\n"
+
+#. type: Bullet: '- '
+msgid ""
+"*Thunderbird* language package: <code>thunderbird-l10n-<span class=\"command-"
+"placeholder\">lang</span></code>"
+msgstr ""
+"Paquet d'idioma del *Thunderbird*: <code>thunderbird-l10n-<span "
+"class=\"command-placeholder\">lang</span></code>"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [List of available *Thunderbird* language packages](https://packages.debian.org/search?keywords=thunderbird-l10n&searchon=names&suite=stable&section=all)\n"
+msgstr "  [Llista de paquets d'idiomes disponibles al *Thunderbird*](https://packages.debian.org/search?keywords=thunderbird-l10n&searchon=names&suite=stable&section=all)\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "*Hunspell* dictionnary: <code>hunspell-<span class=\"command-"
+#| "placeholder\">lang</span></code>"
+msgid ""
+"*Hunspell* dictionary: <code>hunspell-<span class=\"command-"
+"placeholder\">lang</span></code>"
+msgstr ""
+"Diccionari *Hunspell*: <code>hunspell-<span class=\"command-"
+"placeholder\">lang</span></code>"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  The *Hunspell* dictionaries are used for spell-checking by *Tor Browser*,\n"
+"  *LibreOffice*, *Thunderbird*, and many other applications.\n"
+msgstr ""
+"  Els diccionaris *Hunspell* s'utilitzen per a la correcció ortogràfica al *Navegador Tor*,\n"
+"  al *LibreOffice*, al *Thunderbird* i a moltes altres aplicacions.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  [List of available *Hunspell* dictionnaries](https://packages.debian.org/search?keywords=hunspell&searchon=names&suite=stable&section=all)\n"
+msgid "  [List of available *Hunspell* dictionaries](https://packages.debian.org/search?keywords=hunspell&searchon=names&suite=stable&section=all)\n"
+msgstr "  [Llista de diccionaris *Hunspell* disponibles](https://packages.debian.org/search?keywords=hunspell&searchon=names&suite=stable&section=all)\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Installing additional software"
+msgstr "Instal·lació de programari addicional"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To install a package using <span class=\"application\">Synaptic</span>:\n"
+msgid "To install a package using *Synaptic*:"
+msgstr ""
+"Per instal·lar un paquet amb <span class=\"application\">Synaptic</span>:\n"
+
+#. type: Bullet: '    1. '
+#, fuzzy
+#| msgid ""
+#| "Click <span class=\"bold\">Search</span> and search for the name of the "
+#| "package."
+msgid "Click **Search** and search for the name of the package."
+msgstr ""
+"Feu clic a <span class=\"bold\">Cerca</span> i cerqueu el nom del paquet."
+
+#. type: Bullet: '1. '
+msgid ""
+"Right-click (on Mac, click with two fingers) on the name of the package in "
+"the search results and choose **Mark for Installation**."
+msgstr ""
+"Feu clic amb el botó dret (a Mac, feu clic amb dos dits) al nom del paquet "
+"als resultats de la cerca i trieu <span class=\"guimenuitem\">Marca per a la "
+"instal·lació</span>."
+
+#. type: Bullet: '1. '
+msgid ""
+"*Synaptic* calculates the additional changes for your package to work. Click "
+"**Mark** to confirm those changes."
+msgstr ""
+"<span class=\"application\">Synaptic</span> calcula els canvis addicionals "
+"perquè el vostre paquet funcioni. Feu clic a <span class=\"bold\">Marca</"
+"span> per confirmar aquests canvis."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Click <span class=\"bold\">Apply</span> to download, install, and "
+#| "configure the package."
+msgid "Click **Apply** to download, install, and configure the package."
+msgstr ""
+"Feu clic a <span class=\"bold\">Aplica</span> per baixar, instal·lar i "
+"configurar el paquet."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>If you are comfortable with the command line, you can use <code>apt</code> instead.</p>\n"
+msgstr "<p>Si us sentiu còmode amb la línia d'ordres, podeu utilitzar <code>apt</code>.</p>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Installing additional software automatically when starting Tails"
+msgstr "Instal·lació de programari addicional automàticament en iniciar Tails"
+
+#. type: Plain text
+msgid "To install an additional package automatically when starting Tails:"
+msgstr "Per instal·lar automàticament un paquet addicional en iniciar Tails:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Turn on the [[Additional Software|persistent_storage/"
+"configure#additional_software]] feature of the Persistent Storage."
+msgstr ""
+"Activeu la funció [[Programari Addicional|persistent_storage/"
+"configure#additional_software]] de l'Emmagatzematge Persistent."
+
+#. type: Bullet: '1. '
+msgid "Install the package using *Synaptic* or the `apt` command."
+msgstr "Instal·leu el paquet utilitzant *Synaptic* o l'ordre `apt`."
+
+#. type: Bullet: '1. '
+msgid ""
+"After the package is installed, a notification appears to ask if you want to "
+"install this package every time you start Tails in the future."
+msgstr ""
+"Un cop instal·lat el paquet, apareix una notificació per demanar-vos si "
+"voleu instal·lar aquest paquet cada vegada que inicieu Tails en el futur."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img add.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img add.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"If you choose **Install Every Time**, the package is saved in the Persistent "
+"Storage and will be reinstalled automatically every time you start Tails."
+msgstr ""
+"Si trieu <span class=\"bold\">Instal·la cada vegada</span>, el paquet es "
+"desa a l'Emmagatzematge Persistent i es reinstal·larà automàticament cada "
+"vegada que inicieu Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     The package will also be updated automatically when you connect to the\n"
+"     Internet.\n"
+msgstr ""
+"     El paquet també s'actualitzarà automàticament quan us connecteu a\n"
+"     Internet.\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"If you choose **Install Only Once**, the package is also saved in the "
+"Persistent Storage but won't be reinstalled automatically every time you "
+"start Tails."
+msgstr ""
+"Si trieu <span class=\"bold\">Instal·la només una vegada</span>, el paquet "
+"també es desa a l'Emmagatzematge Persistent però no es reinstal·larà "
+"automàticament cada vegada que inicieu Tails."
+
+#. type: Plain text
+msgid ""
+"The same package can be reinstalled faster for some time because you won't "
+"have to download it again."
+msgstr ""
+"El mateix paquet es pot reinstal·lar més ràpidament durant un temps perquè "
+"no l'haureu de tornar a baixar."
+
+#. type: Title =
+#, no-wrap
+msgid "Using additional software"
+msgstr "Ús de programari addicional"
+
+#. type: Plain text
+msgid ""
+"Once installed, applications that don't use the network usually work out of "
+"the box.  However, Tails has some differences in terms of additional "
+"configuration and network access."
+msgstr ""
+"Un cop instal·lades, les aplicacions que no utilitzen la xarxa solen "
+"funcionar de manera immediata. Tanmateix, Tails té algunes diferències pel "
+"que fa a la configuració addicional i l'accés a la xarxa."
+
+#. type: Title -
+#, no-wrap
+msgid "Additional configuration"
+msgstr "Configuració addicional"
+
+#. type: Plain text
+msgid ""
+"To save the configuration of additional software across different Tails "
+"sessions, you can use the [[Dotfiles|persistent_storage/configure#dotfiles]] "
+"feature of the Persistent Storage."
+msgstr ""
+"Per desar la configuració del programari addicional en diferents sessions de "
+"Tails, podeu utilitzar la funció [[Dotfiles|persistent_storage/"
+"configure#dotfiles]] de l'Emmagatzematge Persistent."
+
+#. type: Plain text
+msgid ""
+"Each application handles its configuration very differently, so we cannot "
+"give general instructions on which files have to be saved using the Dotfiles "
+"features."
+msgstr ""
+"Cada aplicació gestiona la seva configuració de manera molt diferent, de "
+"manera que no podem donar instruccions generals sobre quins fitxers s'han de "
+"desar mitjançant les funcions de Dotfiles."
+
+#. type: Title -
+#, no-wrap
+msgid "Network access"
+msgstr "Accés a la xarxa"
+
+#. type: Plain text
+msgid ""
+"Tails only allows connections to the Tor network. Additional software that "
+"uses the Internet must be configured to go through the Tor network "
+"otherwise, their connections are blocked by default for security."
+msgstr ""
+"Tails només permet connexions a la xarxa Tor. El Programari Addicional que "
+"utilitza Internet s'ha de configurar per passar per la xarxa Tor, en cas "
+"contrari, les seves connexions restaran bloquejades per defecte per motius "
+"de seguretat."
+
+#. type: Plain text
+msgid "To make an application use the Tor network, you can either:"
+msgstr "Per fer que una aplicació utilitzi la xarxa Tor, podeu:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "A. Configure the application to use Tor as a proxy with the following "
+#| "parameters:"
+msgid ""
+"Configure the application to use Tor as a proxy with the following "
+"parameters:"
+msgstr ""
+"A. Configurar l'aplicació perquè utilitzi Tor com a servidor intermediari "
+"amb els paràmetres següents:"
+
+#. type: Bullet: '  * '
+msgid "Type: SOCKS5"
+msgstr "Tipus: SOCKS5"
+
+#. type: Bullet: '  * '
+msgid "Host: 127.0.0.1"
+msgstr "Amfitrió: 127.0.0.1"
+
+#. type: Bullet: '  * '
+msgid "Port: 9050"
+msgstr "Port: 9050"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   For example, to use *Mumble* in Tails, you can configure Tor as proxy in the\n"
+#| "   network configuration of *Mumble*:\n"
+msgid ""
+"  For example, to use *Mumble* in Tails, you can configure Tor as proxy in the\n"
+"  network configuration of *Mumble*:\n"
+msgstr ""
+"   Per exemple, per utilitzar *Mumble* a Tails, podeu configurar Tor com a servidor intermediari\n"
+"   a la configuració de xarxa de *Mumble*:\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   [[!img mumble.png link=\"no\" alt=\"Network configuration of Mumble with proxy settings\"]]\n"
+msgid "  [[!img mumble.png class=\"screenshot\" alt=\"Network configuration of Mumble with proxy settings\"]]\n"
+msgstr "   [[!img mumble.png link=\"no\" alt=\"Configuració de xarxa de Mumble amb la configuració del servidor intermediari\"]]\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "B. Run the application using `torsocks` on the command line."
+msgid "Open the application using `torsocks` on the command line."
+msgstr "B. Executar l'aplicació utilitzant `torsocks` a la línia d'ordres."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   Execute the following command in a *Terminal*. Replace <span\n"
+#| "   class=\"command-placeholder\">application</span> with the command line of the\n"
+#| "   application that you want to run:\n"
+msgid ""
+"  Execute the following command in a *Console*. Replace\n"
+"  <span class=\"command-placeholder\">application</span> with the command line\n"
+"  of the application that you want to open.\n"
+msgstr ""
+"   Executeu l'ordre següent en un *Terminal*. Substituïu <span class=\"command-placeholder\">aplicació</span> amb la línia d'ordres de\n"
+"   l'aplicació que voleu executar:\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command-template\">torsocks <span class=\"command-placeholder\">application</span></p>\n"
+msgid "  <p class=\"command-template\">torsocks <span class=\"command-placeholder\">application</span></p>\n"
+msgstr "   <p class=\"command-template\">torsocks <span class=\"command-placeholder\">aplicació</span></p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   For example, to use *Mumble* in Tails, you can also execute the following\n"
+#| "   command:\n"
+msgid ""
+"  For example, to use *Mumble* in Tails, you can also execute the following\n"
+"  command:\n"
+msgstr ""
+"   Per exemple, per utilitzar *Mumble* a Tails, també podeu executar l'ordre\n"
+"   següent:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p class=\"command\">torsocks mumble</p>\n"
+msgstr "  <p class=\"command\">torsocks mumble</p>\n"
+
+#. type: Title ###
+#, no-wrap
+msgid "Technical networking considerations"
+msgstr "Consideracions tècniques de xarxa"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Only TCP connections can go through the Tor network."
+msgid "Only TCP connections can go through the Tor network."
+msgstr "- Només les connexions TCP poden passar per la xarxa Tor."
+
+#. type: Bullet: '- '
+msgid ""
+"UDP connections, for example in many VoIP applications, and ICMP "
+"connections, for example in the `ping` utility, cannot go through the Tor "
+"network and are blocked in Tails."
+msgstr ""
+"Les connexions UDP, per exemple en moltes aplicacions VoIP, i les connexions "
+"ICMP, per exemple a la utilitat `ping`, no poden passar per la xarxa Tor i "
+"es bloquegen a Tails."
+
+#. type: Bullet: '- '
+msgid ""
+"DNS requests go through the Tor network if the application uses the system "
+"configuration otherwise, DNS requests will fail to resolve."
+msgstr ""
+"Les sol·licituds de DNS passen per la xarxa Tor si l'aplicació utilitza la "
+"configuració del sistema, en cas contrari, les sol·licituds de DNS no es "
+"resoldran."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- IPv6 connections are blocked in Tails."
+msgid "IPv6 connections are blocked in Tails."
+msgstr "- Les connexions IPv6 estan bloquejades a Tails."
+
+#. type: Bullet: '- '
+msgid ""
+"The default Tor port in Tails (9050) forces the use of different Tor "
+"circuits for each different destination IP and port, also called \"*stream "
+"isolation*\"."
+msgstr ""
+"El port de Tor predeterminat a Tails (9050) obliga a utilitzar diferents "
+"circuits de Tor per a cada IP i port de destinació diferents, també anomenat "
+"«*aïllament de flux*»."
+
+#. type: Title =
+#, no-wrap
+msgid "Checking your list of additional software"
+msgstr "Comprovar la vostra llista de Programari Addicional"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To see which packages are installed automatically every time you start "
+#| "Tails, choose **Applications&nbsp;▸ System Tools&nbsp;▸ Additional "
+#| "Software**."
+msgid ""
+"To see which packages are installed automatically every time you start "
+"Tails, choose **Apps&nbsp;▸ System Tools&nbsp;▸ Additional Software**."
+msgstr ""
+"Per veure quins paquets s'instal·len automàticament cada vegada que inicieu "
+"Tails, trieu <span class=\"menuchoice\">    <span "
+"class=\"guimenu\">Aplicacions</span>&nbsp;▸    <span "
+"class=\"guisubmenu\">Eines del sistema</span>&nbsp;▸    <span "
+"class=\"guimenuitem\">Programari Addicional</span></span>."
+
+#. type: Plain text
+msgid ""
+"Click the **[[!img lib/window-close.png class=\"symbolic\" link=\"no\" "
+"alt=\"\"]]** button to remove a package from the list."
+msgstr ""
+"Feu clic a <span class=\"bold\">[[!img lib/window-close.png "
+"class=\"symbolic\" link=\"no\" alt=\"\"]]</span> per eliminar un paquet de "
+"la llista."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "The same list is also available from the Persistent Storage settings, by "
+#| "clicking on the\n"
+#| "[[!img lib/emblem-system.png class=\"symbolic\" link=\"no\"]] button of "
+#| "the <span class=\"guilabel\">Additional\n"
+#| "Software</span> feature.\n"
+msgid ""
+"The same list is also available from the Persistent Storage settings, by "
+"clicking on the [[!img lib/emblem-system.png class=\"symbolic\" "
+"link=\"no\"]] button of the **Additional Software** feature."
+msgstr ""
+"La mateixa llista també està disponible des de la configuració de "
+"l'Emmagatzematge Persistent, fent clic al botó\n"
+"[[!img lib/emblem-system.png class=\"symbolic\" link=\"no\"]] de la funció "
+"de <span class=\"guilabel\">Programari\n"
+"Addicional</span>.\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Removing additional software"
+msgstr "Eliminació de programari addicional"
+
+#. type: Plain text
+msgid "When you installed the package, if you chose:"
+msgstr "Quan vau instal·lar el paquet, si vau triar:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "<span class=\"bold\">Install Only Once</span>, you can remove it by "
+#| "restarting Tails."
+msgid "**Install Only Once**, you can remove it by restarting Tails."
+msgstr ""
+"<span class=\"bold\">Instal·la només una vegada</span>, podeu eliminar-lo "
+"reiniciant Tails."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "<span class=\"bold\">Install Every Time</span>, you can remove it:"
+msgid "**Install Every Time**, you can remove it either:"
+msgstr "<span class=\"bold\">Instal·la cada vegada</span>, podeu eliminar-lo:"
+
+#. type: Bullet: '  - '
+#, fuzzy
+#| msgid "Using additional software"
+msgid "Using *Additional Software*:"
+msgstr "Ús de programari addicional"
+
+#. type: Bullet: '    1. '
+#, fuzzy
+#| msgid ""
+#| "To see which packages are installed automatically every time you start "
+#| "Tails, choose **Applications&nbsp;▸ System Tools&nbsp;▸ Additional "
+#| "Software**."
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Additional Software**."
+msgstr ""
+"Per veure quins paquets s'instal·len automàticament cada vegada que inicieu "
+"Tails, trieu <span class=\"menuchoice\">    <span "
+"class=\"guimenu\">Aplicacions</span>&nbsp;▸    <span "
+"class=\"guisubmenu\">Eines del sistema</span>&nbsp;▸    <span "
+"class=\"guimenuitem\">Programari Addicional</span></span>."
+
+#. type: Bullet: '    1. '
+msgid ""
+"Click the **[[!img lib/window-close.png class=\"symbolic\" link=\"no\" "
+"alt=\"\"]]** to the right of the name of the package."
+msgstr ""
+"Feu clic a <span class=\"bold\">[[!img lib/window-close.png "
+"class=\"symbolic\" link=\"no\" alt=\"\"]]</span> a la dreta del nom del "
+"paquet ."
+
+#. type: Bullet: '  - '
+msgid "Using *Synaptic*:"
+msgstr "Utilitzant el *Synaptic*:"
+
+#. type: Bullet: '    1. '
+msgid ""
+"Right-click (on Mac, click with two fingers) on the name of the package in "
+"the search results and choose **Mark for Removal**."
+msgstr ""
+"Feu clic amb el botó dret (a Mac, feu clic amb dos dits) al nom del paquet "
+"als resultats de la cerca i trieu <span class=\"guimenuitem\">Marca per a "
+"l'eliminació</span>."
+
+#. type: Bullet: '    1. '
+#, fuzzy
+#| msgid "Click <span class=\"bold\">Apply</span> to remove the package."
+msgid "Click **Apply** to remove the package."
+msgstr "Feu clic a <span class=\"bold\">Aplica</span> per eliminar el paquet."
+
+#. type: Bullet: '  - '
+msgid "From the command line using `apt`."
+msgstr "Des de la línia d'ordres utilitzant `apt`."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  After the package is removed, a notification appears to ask if you want to\n"
+"  remove this package from your list of additional software.\n"
+msgstr ""
+"  Un cop eliminat el paquet, apareix una notificació per demanar-vos si voleu\n"
+"  eliminar aquest paquet de la vostra llista de Programari Addicional.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img remove.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img remove.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Freeing space in your Persistent Storage"
+msgstr "Alliberar espai al vostre Emmagatzematge Persistent"
+
+#. type: Plain text
+msgid ""
+"After you installed many packages that you are not using anymore, you can "
+"free some space in your Persistent Storage:"
+msgstr ""
+"Després d'instal·lar molts paquets que ja no utilitzeu, podeu alliberar "
+"espai al vostre Emmagatzematge Persistent:"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "To see which packages are installed automatically every time you start "
+#| "Tails, choose **Applications&nbsp;▸ System Tools&nbsp;▸ Additional "
+#| "Software**."
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**."
+msgstr ""
+"Per veure quins paquets s'instal·len automàticament cada vegada que inicieu "
+"Tails, trieu <span class=\"menuchoice\">    <span "
+"class=\"guimenu\">Aplicacions</span>&nbsp;▸    <span "
+"class=\"guisubmenu\">Eines del sistema</span>&nbsp;▸    <span "
+"class=\"guimenuitem\">Programari Addicional</span></span>."
+
+#. type: Bullet: '1. '
+msgid "Execute the following command."
+msgstr "Executeu l'ordre següent."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo apt clean</p>\n"
+msgstr "   <p class=\"command\">sudo apt clean</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Configuring additional APT repositories  (for advanced users)"
+msgstr "Configuració de repositoris APT addicionals (per a usuaris avançats)"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The packages available in Debian are\n"
+"submitted to public scrutiny.</p>\n"
+msgstr ""
+"<p>Els paquets disponibles a Debian són\n"
+"sotmesos a l'escrutini públic.</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>Configuring additional APT repositories might break the security built in\n"
+#| "Tails and might install software that has not even been approved by Debian. Be even more careful\n"
+#| "with what you install.</p>\n"
+msgid ""
+"<p>Configuring additional APT repositories might break the security built into\n"
+"Tails and might install software that has not even been approved by Debian. Be even more careful\n"
+"with what you install.</p>\n"
+msgstr ""
+"<p>La configuració de repositoris APT addicionals pot trencar la seguretat integrada\n"
+"a Tails i podria instal·lar programari que ni tan sols ha estat aprovat per Debian. Tingueu encara més cura\n"
+"amb el que instal·leu.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>This step is usually not needed to install additional software and might be necessary\n"
+"only in very rare occasions.</p>\n"
+msgstr ""
+"<p>Aquest pas normalment no és necessari per instal·lar programari addicional i pot ser necessari\n"
+"només en ocasions molt rares.</p>\n"
+
+#. type: Plain text
+msgid ""
+"Sometimes, you might need to configure additional APT repositories. For "
+"example, to install packages from the `non-free` section of Debian. To do so:"
+msgstr ""
+"De vegades, és possible que hàgiu de configurar repositoris APT addicionals. "
+"Per exemple, per instal·lar paquets des de la secció `no lliure` de Debian. "
+"Per fer-ho:"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Create an <span class=\"filename\">apt-sources.list.d</span> folder in "
+#| "your Persistent Storage:"
+msgid "Create an *apt-sources.list.d* folder in your Persistent Storage:"
+msgstr ""
+"Creeu una carpeta <span class=\"filename\">apt-sources.list.d</span> al "
+"vostre Emmagatzematge Persistent:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo install -d -m 755 /live/persistence/TailsData_unlocked/apt-sources.list.d</p>\n"
+msgstr "   <p class=\"command\">sudo install -d -m 755 /live/persistence/TailsData_unlocked/apt-sources.list.d</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"As root, edit */live/persistence/TailsData_unlocked/persistence.conf*, the "
+"configuration of the Persistent Storage, and add the *apt-sources.list.d* "
+"folder as a feature of type `link`:"
+msgstr ""
+"Com a administrador, editeu */live/persistence/TailsData_unlocked/"
+"persistence.conf*, la configuració de l'Emmagatzematge Persistent, i afegiu "
+"la carpeta *apt-sources.list.d* com a funcionalitat del tipus `link`:"
+
+#. type: Plain text
+#, no-wrap
+msgid "       /etc/apt/sources.list.d\tsource=apt-sources.list.d,link\n"
+msgstr "       /etc/apt/sources.list.d\tsource=apt-sources.list.d,link\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Write your additional `sources.list` files in the *apt-sources.list.d* "
+"folder."
+msgstr ""
+"Escriviu els vostres fitxers `sources.list` addicionals a la carpeta *apt-"
+"sources.list.d*."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   For example, to add\n"
+#| "   the `non-free` sections of Debian 11 (Bullseye), backports, and security\n"
+#| "   updates, you can create a file named\n"
+#| "   */live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list*\n"
+#| "   with the following content:\n"
+msgid ""
+"   For example, to add\n"
+"   the `non-free` sections of Debian 13 (Trixie), backports, and security\n"
+"   updates, you can create a file named\n"
+"   */live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list*\n"
+"   with the following content:\n"
+msgstr ""
+"   Per exemple, per afegir\n"
+"   les seccions `no lliures` de Debian 11 (Bullseye), backports i actualitzacions de\n"
+"   seguretat, podeu crear un fitxer anomenat\n"
+"   */live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list*\n"
+"   amb el contingut següent:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       deb tor+http://ftp.us.debian.org/debian/ trixie non-free\n"
+"       deb tor+http://security.debian.org/ trixie-security non-free\n"
+"       deb tor+http://ftp.us.debian.org/debian/ trixie-updates non-free\n"
+"       deb tor+http://ftp.us.debian.org/debian/ trixie-backports non-free\n"
+msgstr ""
+"       deb tor+http://ftp.us.debian.org/debian/ trixie non-free\n"
+"       deb tor+http://security.debian.org/ trixie-security non-free\n"
+"       deb tor+http://ftp.us.debian.org/debian/ trixie-updates non-free\n"
+"       deb tor+http://ftp.us.debian.org/debian/ trixie-backports non-free\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   File names must end with *.list* and must only contain the following\n"
+"   characters: letters, digits, underscore, hyphen, and period.\n"
+msgstr ""
+"   Els noms dels fitxers han d'acabar amb *.list* i només han de contenir els següents\n"
+"   caràcters: lletres, dígits, guió baix, guionet i punt.\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Correct the ownership and permissions of your additional `sources.list` "
+#| "files to be owned by `root` and only readable by others. For example:"
+msgid ""
+"Correct the ownership and permissions of your additional `sources.list` "
+"files to be owned by `root` and only readable by others. For example, "
+"execute the following commands."
+msgstr ""
+"Corregiu la propietat i els permisos dels vostres fitxers `sources.list` "
+"addicionals perquè siguin propietat de `root` i només els puguin llegir "
+"altres. Per exemple:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo chown root:root /live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list</p>\n"
+msgstr "   <p class=\"command\">sudo chown root:root /live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo chmod 644 /live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list</p>\n"
+msgstr "   <p class=\"command\">sudo chmod 644 /live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list</p>\n"
+
+#. type: Bullet: '1. '
+msgid "Restart Tails to apply the changes."
+msgstr "Reinicieu Tails per aplicar els canvis."
+
+#, no-wrap
+#~ msgid ""
+#~ "       chown root:root /live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list\n"
+#~ "       chmod 644 /live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list\n"
+#~ msgstr ""
+#~ "       chown root:root /live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list\n"
+#~ "       chmod 644 /live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list\n"
+
+#~ msgid "Using <span class=\"application\">Additional Software</span>:"
+#~ msgstr ""
+#~ "Utilitzant <span class=\"application\">Programari Addicional</span>:"
+
+#~ msgid ""
+#~ "Choose <span class=\"menuchoice\"> <span class=\"guimenu\">Applications</"
+#~ "span>&nbsp;▸ <span class=\"guisubmenu\">System Tools</span>&nbsp;▸ <span "
+#~ "class=\"guimenuitem\">Synaptic Package Manager</span></span>."
+#~ msgstr ""
+#~ "Trieu <span class=\"menuchoice\"> <span class=\"guimenu\">Aplicacions</"
+#~ "span>&nbsp;▸ <span class=\"guisubmenu\">Eines del sistema</span>&nbsp;▸ "
+#~ "<span class=\"guimenuitem\">Gestor de paquets Synaptic</span></span>."
+
+#, no-wrap
+#~ msgid ""
+#~ "1. Choose <span class=\"menuchoice\">\n"
+#~ "     <span class=\"guimenu\">Applications</span>&nbsp;▸\n"
+#~ "     <span class=\"guisubmenu\">System Tools</span>&nbsp;▸\n"
+#~ "     <span class=\"guimenuitem\">Synaptic Package Manager</span></span>.\n"
+#~ msgstr ""
+#~ "1. Trieu <span class=\"menuchoice\">\n"
+#~ "     <span class=\"guimenu\">Aplicacions</span>&nbsp;▸\n"
+#~ "     <span class=\"guisubmenu\">Eines del sistema</span>&nbsp;▸\n"
+#~ "     <span class=\"guimenuitem\">Gestor de paquets Synaptic</span></span>.\n"
+
+#~ msgid ""
+#~ "Choose <span class=\"menuchoice\"> <span class=\"guimenu\">Applications</"
+#~ "span>&nbsp;▸ <span class=\"guisubmenu\">System Tools</span>&nbsp;▸ <span "
+#~ "class=\"guimenuitem\">Additional Software</span></span>."
+#~ msgstr ""
+#~ "Trieu <span class=\"menuchoice\"> <span class=\"guimenu\">Aplicacions</"
+#~ "span>&nbsp;▸ <span class=\"guisubmenu\">Eines del sistema</span>&nbsp;▸ "
+#~ "<span class=\"guimenuitem\">Programari Addicional</span></span>."
+
+#~ msgid "Using <span class=\"application\">Synaptic</span>:"
+#~ msgstr "Utilitzant <span class=\"application\">Synaptic</span>:"
+
+#~ msgid ""
+#~ "Choose <span class=\"menuchoice\"> <span class=\"guimenu\">Applications</"
+#~ "span>&nbsp;▸ <span class=\"guisubmenu\">System Tools</span>&nbsp;▸ <span "
+#~ "class=\"guimenuitem\">Root Terminal</span> </span> to open a <span "
+#~ "class=\"application\">Root Terminal</span>."
+#~ msgstr ""
+#~ "Trieu <span class=\"menuchoice\"> <span class=\"guimenu\">Aplicacions</"
+#~ "span>&nbsp;▸ <span class=\"guisubmenu\">Eines del sistema</span>&nbsp;▸ "
+#~ "<span class=\"guimenuitem\">Terminal d'administrador</span> </span> per "
+#~ "obrir un <span class=\"application\">Terminal d'administrador</span>."
+
+#~ msgid ""
+#~ "[[Set up an administration password |first_steps/welcome_screen/"
+#~ "administration_password]] when you start Tails."
+#~ msgstr ""
+#~ "[[Configureu una contrasenya d'administració |first_steps/welcome_screen/"
+#~ "administration_password]] quan inicieu Tails."
+
+#, fuzzy, no-wrap
+#~| msgid "Spell-checking dictionaries"
+#~ msgid "Spell checking dictionaries"
+#~ msgstr "Diccionaris de correcció ortogràfica"
+
+#, no-wrap
+#~ msgid "       apt clean\n"
+#~ msgstr "       apt clean\n"
+
+#~ msgid ""
+#~ "Tails includes a [[coherent but limited set of applications|doc/about/"
+#~ "features]]. More applications can be installed as on any Debian system. "
+#~ "Only applications that are packaged for Debian can be installed. To know "
+#~ "if an application is packaged for Debian, and to find the name of the "
+#~ "corresponding software packages, you can search for it in the [[Debian "
+#~ "package directory|https://www.debian.org/distrib/packages]]."
+#~ msgstr ""
+#~ "Tails enthält einen [[aufeinander abgestimmten, aber begrenzten Satz an "
+#~ "Anwendungen|doc/about/features]]. Zusätzliche Anwendungen können wie auf "
+#~ "jedem Debian-System installiert werden. Nur Anwendungen, die für Debian "
+#~ "paketiert wurden, können installiert werden. Um herauszufinden, ob eine "
+#~ "Anwendung für Debian paketiert ist, und um den Namen des entsprechenden "
+#~ "Softwarepakets herauszufinden, können Sie in der [[Debian Paketsuche|"
+#~ "https://www.debian.org/distrib/packages.de.html]] danach suchen."
+
+#~ msgid ""
+#~ "Since Tails is amnesic, any additional software package needs to be "
+#~ "reinstalled in each working\n"
+#~ "session. To install the same software packages automatically at the "
+#~ "beginning of every working session use the\n"
+#~ "[[<span class=\"guilabel\">Additional software packages</span> "
+#~ "persistence feature|doc/first_steps/persistence/"
+#~ "configure#additional_software]] instead.\n"
+#~ msgstr ""
+#~ "Da Tails vergesslich ist, müssen alle zusätzlichen Softwarepakete in "
+#~ "jeder Arbeitssitzung neu installiert\n"
+#~ "werden. Benutzen Sie die dafür die [[Funktion für <span "
+#~ "class=\"guilabel\">Zusätzliche Softwarepakete</span> \n"
+#~ "des beständigen\n"
+#~ "Speicherbereichs|doc/first_steps/persistence/"
+#~ "configure#additional_software]], um die gleichen Softwarepakete "
+#~ "automatisch zu Beginn von jeder Arbeitssitzung zu installieren.\n"
+
+#~ msgid ""
+#~ "Open a [[root terminal|doc/first_steps/startup_options/"
+#~ "administration_password#open_root_terminal]]."
+#~ msgstr ""
+#~ "Öffnen Sie ein [[Root-Terminal|doc/first_steps/startup_options/"
+#~ "administration_password#open_root_terminal]]."
+
+#~ msgid ""
+#~ "Execute the following command to update the lists of available packages:"
+#~ msgstr ""
+#~ "Führen Sie folgenden Befehl aus, um die Listen verfügbarer Pakete zu "
+#~ "aktualisieren:"
+
+#~ msgid ""
+#~ "To install an additional package, execute the following command, "
+#~ "replacing `[package]` with the name of the package that you want to "
+#~ "install:"
+#~ msgstr ""
+#~ "Um ein zusätzliches Paket zu installieren, führen Sie folgenden Befehl "
+#~ "aus und ersetzen `[package]` mit dem Namen des Pakets, das Sie "
+#~ "installieren möchten:"
+
+#~ msgid "   For example, to install the package `ikiwiki`, execute:\n"
+#~ msgstr ""
+#~ "   Zum Beispiel, um das Paket `ikiwiki` zu installieren, führen Se "
+#~ "folgendes aus:\n"
+
+#~ msgid "       apt install ikiwiki\n"
+#~ msgstr "       apt install ikiwiki\n"
+
+#~ msgid ""
+#~ "   <p>You can also write multiple package names to install several "
+#~ "packages at the same\n"
+#~ "   time. If a package has dependencies, those will be installed\n"
+#~ "   automatically.</p>\n"
+#~ msgstr ""
+#~ "   <p>Sie können auch mehrere Paketnamen angeben, um mehrere Pakete "
+#~ "gleichzeitig zu\n"
+#~ "   installieren. Falls ein Paket Abhängigkeiten besitzt, werden diese "
+#~ "automatisch\n"
+#~ "   installiert.</p>\n"
+
+#~ msgid ""
+#~ "This is an experimental feature which does not appear in the assistant."
+#~ msgstr ""
+#~ "Dies ist eine experimentelle Funktion, die nicht im Assistenten erscheint."
+
+#~ msgid ""
+#~ "When this feature is enabled, a list of [[additional software|doc/"
+#~ "advanced_topics/additional_software]] of your choice is automatically "
+#~ "installed at the beginning of every working session. The corresponding "
+#~ "software packages are stored in the persistent volume. They are "
+#~ "automatically upgraded for security after a network connection is "
+#~ "established."
+#~ msgstr ""
+#~ "Wenn diese Funktion aktiviert ist, wird eine Liste von [[zusätzlicher "
+#~ "Software|doc/advanced_topics/additional_software]] Ihrer Wahl beim Beginn "
+#~ "jeder Arbeitssitzung automatisch installiert. Die entsprechenden "
+#~ "Softwarepakete werden im beständigen Speicherbereich gespeichert. Sie "
+#~ "werden im Bezug auf Sicherheit aktualisiert, sobald eine "
+#~ "Netzwerkverbindung hergestellt wurde."
+
+#~ msgid ""
+#~ "To use this feature you need to enable both the <span\n"
+#~ "class=\"guilabel\">APT Lists</span> and <span class=\"guilabel\">APT\n"
+#~ "Packages</span> features.\n"
+#~ msgstr ""
+#~ "Um diese Funktion zu nutzen, müssen Sie sowohl die Funktionen für <span\n"
+#~ "class=\"guilabel\">APT Listen</span> als auch für <span "
+#~ "class=\"guilabel\">APT\n"
+#~ "Pakete</span> aktivieren.\n"
+
+#~ msgid ""
+#~ "If you are offline and your additional software packages don't install, "
+#~ "it might be caused by outdated APT Lists. The issue will be fixed next "
+#~ "time you connect Tails to Internet with persistence activated."
+#~ msgstr ""
+#~ "Falls Sie offline sind und Ihre zusätzlichen Softwarepakete sich nicht "
+#~ "installieren lassen, kann dies an veralteten APT Listen liegen. Das "
+#~ "Problem wird behoben, wenn Sie sich das nächste Mal mit Tails bei "
+#~ "aktiviertem beständigen Speicherbereich ins Internet verbinden."
+
+#~ msgid ""
+#~ "To choose the list of additional software, start Tails with an "
+#~ "administrator password and edit (as an administrator) the file called `/"
+#~ "live/persistence/TailsData_unlocked/live-additional-software.conf`.  Each "
+#~ "line of this file must contain the name of a Debian package to be "
+#~ "installed as an additional software package."
+#~ msgstr ""
+#~ "Um die Liste der zusätzlichen Software auszuwählen, starten Sie Tails mit "
+#~ "einem Administrationskennwort und bearbeiten Sie (mit "
+#~ "Administrationsrechten) die Datei mit dem Namen `/live/persistence/"
+#~ "TailsData_unlocked/live-additional-software.conf`. Jede Zeile dieser "
+#~ "Datei muss den Namen eines Debian Pakets enthalten, welches als "
+#~ "zusätzliches Softwarepaket installiert werden soll."
+
+#~ msgid ""
+#~ "For example, to automatically install the `dia` software, a diagram "
+#~ "editor, and the `font-manager` software, a font manager, add the "
+#~ "following content to `live-additional-software.conf`:"
+#~ msgstr ""
+#~ "Zum Beispiel, wenn Sie die Software `dia`, einen Diagrammeditor, und die "
+#~ "Software `font-manager`, eine Verwaltung für Schriftarten, automatisch "
+#~ "installieren möchten, fügen Sie folgenden Inhalt zu `live-additional-"
+#~ "software.conf` hinzu:"
+
+#~ msgid ""
+#~ "    dia\n"
+#~ "    font-manager\n"
+#~ msgstr ""
+#~ "    dia\n"
+#~ "    font-manager\n"
+
+#~ msgid ""
+#~ "To learn about the many software packages available in Debian, visit "
+#~ "<http://packages.debian.org/stable/>."
+#~ msgstr ""
+#~ "Um mehr über die in Debian verfügbaren Softwarepakete zu erfahren, "
+#~ "besuchen Sie <http://packages.debian.org/stable/>."
+
+#~ msgid ""
+#~ "<strong>Installing additional software is at your own risk.</strong>\n"
+#~ "Most additional software requires extra configuration to be able to\n"
+#~ "connect to the network through Tor, and will not work otherwise. Some "
+#~ "other software might, for\n"
+#~ "example, modify the firewall and break the security built in Tails.\n"
+#~ "Software not officially included in Tails is not tested for security.\n"
+#~ msgstr ""
+#~ "<strong>Die Installation zusätzlicher Software geschieht auf eigene "
+#~ "Gefahr.</strong>\n"
+#~ "Die meiste zusätzliche Software benötigt extra Konfigurationen, um in der "
+#~ "Lage zu sein,\n"
+#~ "eine Netzwerkverbindung über Tor herzustellen und wird sonst nicht "
+#~ "funktionieren. Manch andere Software könnte\n"
+#~ "beispielsweise die Firewall verändern und die in Tails implementierte "
+#~ "Sicherheit zerstören.\n"
+#~ "Software, die nicht in Tails enthalten ist, wurde nicht im Bezug auf "
+#~ "Sicherheit getestet.\n"
+
+#, fuzzy
+#~ msgid "   <div class=\"note\">\n"
+#~ msgstr "<div class=\"tip\">\n"
+
+#, fuzzy
+#~ msgid "   </div>\n"
+#~ msgstr "</div>\n"

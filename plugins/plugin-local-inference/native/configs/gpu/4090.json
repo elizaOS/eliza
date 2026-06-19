@@ -1,0 +1,70 @@
+{
+  "$schema": "./gpu-config.schema.json",
+  "id": "rtx-4090",
+  "name": "NVIDIA GeForce RTX 4090",
+  "match_names": ["RTX 4090", "GeForce RTX 4090"],
+  "vram_gb": 24,
+  "compute_capability": "8.9",
+  "arch": "ada-lovelace",
+  "memory_bandwidth_gbs": 1008,
+  "fp8": true,
+  "fp4": false,
+  "flash_attn_3": false,
+  "llama_server_flags": {
+    "n_gpu_layers": 999,
+    "ctx_size": 32768,
+    "batch_size": 2048,
+    "ubatch_size": 512,
+    "n_parallel": 8,
+    "cache_type_k": "qjl1_256",
+    "cache_type_v": "q4_polar",
+    "flash_attn": true,
+    "split_mode": "none",
+    "main_gpu": 0,
+    "mlock": true,
+    "no_mmap": false,
+    "no_kv_offload": false,
+    "ctx_checkpoints": 8,
+    "ctx_checkpoint_interval": 8192,
+    "draft_max": 24,
+    "draft_min": 4,
+    "draft_p_min": 0.5
+  },
+  "bundle_recommendations": {
+    "voice": {
+      "ctx_size": 8192,
+      "max_parallel": 4,
+      "batch_size": 1024,
+      "ubatch_size": 256
+    },
+    "eliza-1-2b": {
+      "ctx_size": 65536,
+      "max_parallel": 16
+    },
+    "eliza-1-4b": {
+      "ctx_size": 65536,
+      "max_parallel": 8
+    },
+    "eliza-1-9b": {
+      "ctx_size": 65536,
+      "max_parallel": 8
+    },
+    "eliza-1-27b": {
+      "ctx_size": 32768,
+      "max_parallel": 2
+    }
+  },
+  "expected_metrics": {
+    "ttfa_p50_ms": 220,
+    "ttfa_p95_ms": 320,
+    "rtf": 0.4,
+    "tokens_per_second_decode": 140,
+    "_provenance": "extrapolated"
+  },
+  "known_limits": [
+    "flash-attn-3 unsupported (Hopper-only); uses flash-attn-2",
+    "FP4 not supported on sm_89",
+    "27B + 32k context is single-slot only"
+  ],
+  "_provenance": "extrapolated; numbers derived from VRAM + mem-bw math in SPECS.md"
+}

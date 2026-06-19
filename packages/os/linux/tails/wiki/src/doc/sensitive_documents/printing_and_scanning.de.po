@@ -1,0 +1,146 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:08+0000\n"
+"PO-Revision-Date: 2024-10-09 09:09+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Printing and scanning\"]]\n"
+msgstr "[[!meta title=\"Drucken und Scannen\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Printing"
+msgstr "Drucken"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To configure a printer or manage your printing jobs choose\n"
+#| "**Applications&nbsp;▸ System Tools&nbsp;▸ Settings**&nbsp;▸ **Printers**</"
+#| "span>.\n"
+msgid ""
+"To configure a printer or manage your printing jobs, choose **Apps&nbsp;▸ "
+"System Tools&nbsp;▸ Settings&nbsp;▸ Printers**."
+msgstr ""
+"Um einen Drucker zu konfigurieren oder Ihre Druckaufträge zu verwalten, "
+"wählen Sie\n"
+"<span class=\"menuchoice\">\n"
+"  **Anwendungen**&nbsp;▸\n"
+"  **Systemwerkzeuge**&nbsp;▸\n"
+"  **Einstellungen**</span>&nbsp;▸\n"
+"  **Drucker**</span>.\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To check the compatibility of your printer with Linux and Tails, consult "
+#| "the [OpenPrinting database](https://www.openprinting.org/printers) of the "
+#| "Linux Foundation."
+msgid ""
+"To check the compatibility of your printer with Linux and Tails, consult the "
+"[OpenPrinting database](https://openprinting.github.io/printers/) of the "
+"Linux Foundation."
+msgstr ""
+"Um die Kompatibilität Ihres Druckers mit Linux und Tails zu überprüfen, "
+"schlagen Sie in der [OpenPrinting Datenbank](https://www.openprinting.org/"
+"printers) der Linux Foundation nach."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"tip\">\n"
+"<p>To reuse the configuration of your printers across different working\n"
+"sessions, turn on the [[Printers|persistent_storage/configure#printers]]\n"
+"feature of the Persistent Storage.</p>\n"
+"</div>\n"
+msgstr ""
+"<div class=\"tip\">\n"
+"<p>Um die Konfiguration Ihrer Drucker über verschiedene Arbeitssitzungen hinweg wiederzuverwenden, \n"
+"aktivieren Sie die [[Drucker|persistent_storage/configure#printers]] Funktion des Persistent Storage.</p>\n"
+"</div>\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid "Printing"
+msgid "Printing PDFs"
+msgstr "Drucken"
+
+#. type: Plain text
+msgid ""
+"Before printing PDFs, you can use [*BookletImposer*](https://"
+"kjo.herbesfolles.org/bookletimposer/) to:"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Reduce the number of pages in a PDF by putting several pages on every sheet."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid "Produce a PDF booklet that can be folded after printing."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Scanning"
+msgstr "Scannen"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Tails includes the [*Document Scanner*](https://gitlab.gnome.org/GNOME/"
+#| "simple-scan)  utility to scan documents and photos."
+msgid ""
+"Tails includes the [*Document Scanner*](https://apps.gnome.org//"
+"SimpleScan/)  utility to scan documents and photos."
+msgstr ""
+"Tails enthält das Dienstprogramm [*Dokumentenscanner*](https://"
+"gitlab.gnome.org/GNOME/simple-scan) zum Scannen von Dokumenten und Fotos."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To start *Document Scanner*, choose **Applications**&nbsp;▸ "
+#| "**Utilities**&nbsp;▸ **Document Scanner**."
+msgid ""
+"To open *Document Scanner*, choose **Apps&nbsp;▸ Utilities&nbsp;▸ Document "
+"Scanner**."
+msgstr ""
+"Um *Document Scanner* zu starten, wählen Sie **Anwendungen**&nbsp;▸ "
+"**Dienstprogramme**&nbsp;▸ **Dokumenten-Scanner**."
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "To start *Simple Scan* choose\n"
+#~| "<span class=\"menuchoice\">\n"
+#~| "  **Applications**&nbsp;▸\n"
+#~| "  **Graphics**&nbsp;▸\n"
+#~| "  **Simple Scan**</span>.\n"
+#~ msgid ""
+#~ "To start *Simple Scan* choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Graphics**&nbsp;▸\n"
+#~ "  **Simple Scan**</span>.\n"
+#~ msgstr ""
+#~ "Um *Simple Scan* zu starten, wählen Sie\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Anwendungen**&nbsp;▸\n"
+#~ "  **Grafik**&nbsp;▸\n"
+#~ "  **Simple Scan**</span>.\n"

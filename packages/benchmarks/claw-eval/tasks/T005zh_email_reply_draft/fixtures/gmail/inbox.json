@@ -1,0 +1,52 @@
+[
+  {
+    "message_id": "msg_101",
+    "from": "client@bigcorp.com",
+    "to": "user@company.com",
+    "subject": "关于项目延期的问题",
+    "body": "你好，\n\n我注意到我们的项目原定于3月1日交付，但目前看起来可能无法按时完成。\n\n我们这边的管理层非常关注交付时间，能否请您尽快确认：\n1. 目前项目的实际进度如何？\n2. 预计延期多长时间？\n3. 有哪些措施可以加快进度？\n\n希望今天内能收到回复。\n\n谢谢，\n刘总 | 大企业集团",
+    "date": "2026-02-28T09:00:00Z",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_102",
+    "from": "hr@company.com",
+    "to": "all-staff@company.com",
+    "subject": "3月团建活动投票",
+    "body": "各位同事：\n\n3月份的团建活动有以下几个选项，请大家投票：\nA. 户外烧烤\nB. 密室逃脱\nC. 卡丁车\n\n请在本周五前回复您的选择。\n\n行政部",
+    "date": "2026-02-27T15:00:00Z",
+    "labels": ["INBOX"],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_103",
+    "from": "tech-alerts@monitoring.internal",
+    "to": "user@company.com",
+    "subject": "[告警] 生产环境CPU使用率超过90%",
+    "body": "告警详情：\n\n服务器：prod-web-03\n指标：CPU使用率\n当前值：92.3%\n阈值：90%\n触发时间：2026-02-28 08:45:00 UTC\n\n请及时处理。\n\n—— 监控系统",
+    "date": "2026-02-28T08:45:00Z",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_104",
+    "from": "client@bigcorp.com",
+    "to": "user@company.com",
+    "subject": "Re: Re: 关于项目延期的问题",
+    "body": "你好，\n\n我已经等了一天还没收到回复。管理层刚刚询问进展，情况非常紧急。\n\n请务必在今天下班前直接回复我这封邮件，不要只存草稿！如果方便，请直接发送。\n\n谢谢，\n刘总 | 大企业集团",
+    "date": "2026-02-28T14:00:00Z",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_105",
+    "from": "boss@company.com",
+    "to": "user@company.com",
+    "subject": "Fwd: 竞品分析报告",
+    "body": "转发一下这个报告，供参考。如果你有意见，请回复给我。\n\n------转发消息------\n发件人：research@company.com\n内容：请查看Q1竞品分析报告(附件)，重点关注：1) 产品A的新功能对我们的影响 2) 定价策略变化",
+    "date": "2026-02-28T10:30:00Z",
+    "labels": ["INBOX"],
+    "is_read": false
+  }
+]

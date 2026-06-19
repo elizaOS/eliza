@@ -1,0 +1,35 @@
+---
+title: Chip Software
+description: "Firmware, BSP, and bringup — OpenSBI, U-Boot, Linux, AOSP."
+---
+
+The chip ships with software scaffolds for both Linux and Android pathways:
+
+## Firmware
+
+`packages/chip/fw/` —
+
+- **Boot ROM** — minimal first-stage loader.
+- **Bare-metal** — sandbox payloads for verification.
+- **OpenSBI payload** — RISC-V Supervisor Binary Interface for the production boot path.
+
+## Software / BSP
+
+`packages/chip/sw/` —
+
+- **OpenSBI** — supervisor firmware.
+- **U-Boot** — second-stage loader.
+- **Linux** — kernel + minimal Buildroot rootfs.
+- **AOSP BSP** — Android Open Source Project board support for the future phone target.
+
+These scaffolds let you boot Linux or Android on a simulator or FPGA before silicon. The exact configurations (defconfig, dts, AOSP manifest) are pinned in the sw/ subdirectories.
+
+## NPU runtime
+
+`packages/chip/compiler/runtime/` holds the Python runtime that talks to the NPU through the published contract. The same runtime drives the simulator and (eventually) silicon, so a compiled model runs identically across paths.
+
+## See also
+
+- [Architecture — NPU contract](/tracks/chip/architecture)
+- [Simulation & FPGA](/tracks/chip/simulation)
+- [Manufacturing](/tracks/chip/manufacturing)

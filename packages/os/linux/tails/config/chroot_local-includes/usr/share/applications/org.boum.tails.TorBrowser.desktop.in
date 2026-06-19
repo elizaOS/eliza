@@ -1,0 +1,16 @@
+[Desktop Entry]
+_Name=Tor Browser
+_Comment=Anonymous Web Browser
+_GenericName=Anonymous Web Browser
+_Keywords=web;tor;browser
+Categories=Network;
+Icon=/usr/local/lib/tor-browser/browser/chrome/icons/default/default128.png
+Terminal=false
+Type=Application
+# The "@@u ... @@" part is required for `flatpak run`'s
+# --file-forwarding option (see the flatpak-run(1) man page for
+# details).
+Exec=/usr/local/bin/tor-browser @@u %u @@
+StartupNotify=true
+StartupWMClass=Tor Browser
+X-Flatpak=org.boum.tails.TorBrowser

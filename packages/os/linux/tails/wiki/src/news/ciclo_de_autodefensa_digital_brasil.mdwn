@@ -1,0 +1,54 @@
+[[!meta title="Ciclo de Autodefesa Digital no Brasil"]]
+[[!meta date="Wed, 08 Feb 2022 20:00:00 -0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Esse é um chamado aberto feito pelo Projeto Tor, Tails e Guardian Project para
+todos e todas as defensoras de direitos humanos, jornalistas, ativistas,
+feministas, defensoras de território, etc.
+
+Em meio a crescente ameaça a nossa segurança e liberdade digital no Brasil,
+sabemos que é cada vez mais importante compartilhar táticas contra a
+vigilância, para a nossa autodefesa digital, escutar e empoderar as pessoas que
+lutam pela mudança social.
+
+**Inscreva-se até 28 de fevereiro!**
+
+Por favor, compartilhe esse chamado com todas as pessoas que possam se interessar :)
+
+<img src="https://gitlab.torproject.org/tpo/ux/research/uploads/1c51538dfe0a1fa4961e7db129525358/cfp-training.jpg" style="margin: 50px 10%; max-width: 600px; width: 80%;"/>
+
+Se quiser aprender mais sobre autodefesa digital
+================================================
+
+Estamos organizando algumas oficinas online em março e em abril:
+
+- **[Tor Browser](https://torproject.org/)**: Como navegar na Internet de
+  maneira anônima e sem censura (para computadores).
+
+- **[Tor Browser Android](https://torproject.org/)** e **[Onion
+  Browser](https://onionbrowser.com/)**: Como navegar na Internet de maneira
+  anônima e sem censura (para celulares).
+
+- **[Orbot](https://guardianproject.info/apps/org.torproject.android/)**:
+  Aumente a sua privacidade quando usa as aplicações do seu celular.
+
+- **[Tails](https://tails.net/)**: seu computador seguro em qualquer
+  lugar.
+
+As oficinas são gratuítas, mas as vagas são limitadas.
+
+Você poderá participar das oficinas de forma anônima e não haverá gravação.
+
+Se quiser compartilhar a sua experiência conosco para melhorar as nossas ferramentas
+====================================================================================
+
+Estamos interessadas em aprender como melhorar nossas ferramentas para que
+sejam mais úteis para o seu trabalho e suas lutas no Brasil.
+
+Organizaremos entrevistas, testes de usabilidade, questionários e outras
+atividades para aprender sobre os problemas que encontram nossas usuárias no
+Brasil.
+
+Se quiser falar com a gente sobre o seu uso do Navegador Tor, Orbot, Onion
+Browser ou Tails, por favor preencha o formulário abaixo.

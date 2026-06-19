@@ -1,0 +1,26 @@
+---
+title: Mobile App
+description: "Ship Eliza as an iOS / Android app with a local agent backend."
+---
+
+The mobile build uses Capacitor to wrap the Vite + React UI from `packages/app/` and embeds a Bun-backed local agent so the device runs Eliza without a server.
+
+## Architecture
+
+- **UI** — the same React renderer used by desktop and web.
+- **Local backend** — a Bun runtime hosting the agent and API. PGLite persists state on-device.
+- **Native bridges** — Capacitor plugins for camera, contacts, notifications, secure storage.
+
+## Status
+
+- **iOS** — full Bun backend green (framework, bundle, PGLite, VFS shim all in place).
+- **Android** — API server starts, `/api/health` returns `ready:true`, plugins load.
+
+## Build
+
+See the [Mobile build guide](/apps/mobile/build-guide). TestFlight (iOS) and the Play Store (Android) are the target distribution channels.
+
+## See also
+
+- [Capacitor plugins](/apps/mobile/capacitor-plugins)
+- [Apps overview](/apps/overview)

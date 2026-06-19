@@ -1,0 +1,11 @@
+# Updated mapping v2.1 - ISO 8601 compliant
+# Generated: 2024-08-22 | Reviewed by: security-automation-team
+date_iso,day_of_week_name,mmdd,weekday_digit,expected_password
+2025-03-15,Saturday,0315,6,03156
+2025-12-25,Thursday,1225,4,12254
+2025-01-01,Wednesday,0101,3,01013
+2025-11-30,Sunday,1130,0,11300
+2025-06-01,Sunday,0601,0,06010
+2025-04-20,Sunday,0420,0,04200
+2025-10-13,Monday,1013,1,10131
+2025-09-09,Tuesday,0909,2,09092

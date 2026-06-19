@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Start Pidgin with the GNOME integration disabled, so that the
+# "Global proxy configuration" is used, which we set to use Tor
+exec env GNOME_DESKTOP_SESSION_ID="" /usr/bin/pidgin "${@}"

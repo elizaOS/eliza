@@ -1,0 +1,541 @@
+/* Eliza — Theme System */
+
+:root {
+  --brand-blue: #0b35f1;
+  --brand-orange: #ff5800;
+  --brand-black: #000000;
+  --brand-white: #ffffff;
+  --brand-gray: #d1d0d4;
+  --sky-0: var(--brand-blue);
+  --sky-1: var(--brand-blue);
+  --sky-2: var(--brand-white);
+  --eliza-orange: var(--brand-orange);
+
+  /* Backgrounds */
+  --bg: var(--brand-white);
+  --bg-accent: rgba(11, 53, 241, 0.08);
+  --bg-elevated: rgba(255, 255, 255, 0.94);
+  --bg-hover: rgba(11, 53, 241, 0.1);
+  --bg-muted: rgba(11, 53, 241, 0.12);
+
+  --card: var(--brand-white);
+  --card-foreground: var(--brand-black);
+  --surface: rgba(0, 0, 0, 0.04);
+
+  /* Text */
+  --text: var(--brand-black);
+  --text-strong: var(--brand-black);
+  --chat-text: var(--brand-black);
+  --txt: var(--text);
+  --muted: rgba(0, 0, 0, 0.58);
+  --muted-strong: rgba(0, 0, 0, 0.74);
+
+  /* shadcn token aliases */
+  --foreground: var(--text);
+  --background: var(--bg);
+  --muted-foreground: var(--muted);
+
+  /* Borders */
+  --border: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.22);
+  --border-hover: var(--brand-orange);
+  --input: var(--brand-white);
+  --ring: var(--brand-blue);
+
+  /* Accent */
+  --accent: var(--brand-orange);
+  --accent-rgb: 255, 88, 0;
+  --accent-hover: #e54f00;
+  --accent-muted: #c94400;
+  --accent-subtle: rgba(255, 88, 0, 0.14);
+  --accent-foreground: var(--brand-white);
+  --primary: var(--brand-orange);
+  --primary-foreground: var(--brand-white);
+
+  /* Status */
+  --ok: #22c55e;
+  --ok-muted: rgba(34, 197, 94, 0.72);
+  --ok-subtle: rgba(34, 197, 94, 0.12);
+  --destructive: var(--brand-orange);
+  --destructive-foreground: var(--brand-white);
+  --destructive-subtle: rgba(255, 88, 0, 0.12);
+  --warn: var(--brand-orange);
+  --warn-muted: rgba(255, 88, 0, 0.72);
+  --warn-subtle: rgba(255, 88, 0, 0.14);
+  --danger: var(--brand-orange);
+  --info: var(--brand-blue);
+
+  /* Status semantic aliases */
+  --status-success: var(--ok);
+  --status-success-bg: var(--ok-subtle);
+  --status-danger: var(--danger);
+  --status-danger-bg: var(--destructive-subtle);
+  --status-warning: var(--warn);
+  --status-warning-bg: var(--warn-subtle);
+  /* Neutral, not blue — orange is the only accent (status-info is rendered and
+     not theme-overridden, so a blue value here is a live accent violation). */
+  --status-info: var(--muted-strong);
+  --status-info-bg: rgba(0, 0, 0, 0.06);
+
+  --focus: rgba(11, 53, 241, 0.18);
+  --focus-ring: none;
+  --scrollbar-track: rgba(255, 255, 255, 0.3);
+  --scrollbar-thumb-start: rgba(11, 53, 241, 0.42);
+  --scrollbar-thumb-mid: rgba(11, 53, 241, 0.58);
+  --scrollbar-thumb-end: rgba(11, 53, 241, 0.66);
+  --scrollbar-thumb-hover-start: rgba(255, 88, 0, 0.56);
+  --scrollbar-thumb-hover-mid: rgba(255, 88, 0, 0.7);
+  --scrollbar-thumb-hover-end: rgba(255, 88, 0, 0.78);
+  --scrollbar-thumb-edge: rgba(11, 53, 241, 0.12);
+
+  /* Header */
+  --header-bar-bg: rgba(255, 255, 255, 0.9);
+  --header-bar-fg: var(--brand-black);
+  --section-bar-bg: var(--brand-white);
+  --section-bar-fg: var(--brand-black);
+  --link-color: var(--brand-black);
+  --link-hover-color: var(--brand-blue);
+
+  --font-sans:
+    "Poppins", "Poppins Variable", system-ui, -apple-system, "Segoe UI", Arial,
+    sans-serif;
+  --mono: var(--font-sans);
+  --font-body: var(--font-sans);
+  --font-display: var(--font-sans);
+  --font-chat: var(--font-sans);
+
+  /* Legacy */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+  --shadow-inset: none;
+  /* Brand: slight xs rounding. Never hard-edged, never pill-shaped. */
+  --radius-xs: 3px;
+  --radius-sm: var(--radius-xs);
+  --radius-md: var(--radius-xs);
+  --radius-lg: var(--radius-xs);
+  --radius-xl: var(--radius-xs);
+  --radius-2xl: var(--radius-xs);
+  --radius-3xl: var(--radius-xs);
+  --radius-full: 9999px;
+  --radius: var(--radius-xs);
+  --duration-normal: 150ms;
+
+  /* Compact text sizes (replaces arbitrary text-[9px], text-[10px], text-[11px]) */
+  --text-3xs: 0.5625rem;
+  --text-2xs: 0.625rem;
+  --text-xs-tight: 0.6875rem;
+
+  /* Touch target minimum (Apple HIG 44px) */
+  --min-touch-target: 2.75rem;
+  --eliza-mobile-nav-offset: 0px;
+
+  /* Plugin UI Design Tokens */
+  --plugin-field-gap: 1rem;
+  --plugin-group-gap: 1.5rem;
+  --plugin-section-padding: 1.5rem;
+  --plugin-label-size: 0.8125rem;
+  --plugin-help-size: 0.6875rem;
+  --plugin-error-size: 0.6875rem;
+  --plugin-label: var(--text);
+  --plugin-help: var(--muted);
+  --plugin-error: var(--destructive);
+  --plugin-border: var(--border);
+  --plugin-focus-ring: var(--accent);
+  --plugin-input-height: 2.25rem;
+  --plugin-max-field-width: 32rem;
+
+  color-scheme: light;
+}
+
+:root.eliza-mobile-bottom-nav {
+  --eliza-mobile-nav-offset: 3.75rem;
+}
+
+[data-theme="dark"],
+.dark {
+  --bg: var(--brand-black);
+  --bg-accent: var(--brand-black);
+  --bg-elevated: rgba(255, 255, 255, 0.04);
+  --bg-hover: rgba(255, 255, 255, 0.08);
+  --bg-muted: rgba(255, 255, 255, 0.06);
+
+  --card: rgba(0, 0, 0, 0.72);
+  --card-foreground: var(--brand-white);
+  --surface: rgba(255, 255, 255, 0.06);
+
+  --text: var(--brand-white);
+  --text-strong: var(--brand-white);
+  --chat-text: var(--brand-white);
+  --txt: var(--text);
+  --muted: rgba(255, 255, 255, 0.58);
+  --muted-strong: rgba(255, 255, 255, 0.74);
+
+  /* shadcn token aliases */
+  --foreground: var(--text);
+  --background: var(--bg);
+  --muted-foreground: var(--muted);
+
+  --border: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.22);
+  --border-hover: var(--brand-orange);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: var(--brand-blue);
+
+  --accent: var(--brand-orange);
+  --accent-rgb: 255, 88, 0;
+  --accent-hover: #ff6d1f;
+  --accent-muted: #c94400;
+  --accent-subtle: rgba(255, 88, 0, 0.14);
+  --accent-foreground: var(--brand-white);
+  --primary: var(--brand-orange);
+  --primary-foreground: var(--brand-white);
+
+  --ok: #4ade80;
+  --ok-muted: rgba(74, 222, 128, 0.7);
+  --ok-subtle: rgba(74, 222, 128, 0.12);
+  --destructive: var(--brand-orange);
+  --destructive-foreground: var(--brand-white);
+  --destructive-subtle: rgba(255, 88, 0, 0.12);
+  --warn: var(--brand-orange);
+  --warn-muted: rgba(255, 88, 0, 0.7);
+  --warn-subtle: rgba(255, 88, 0, 0.12);
+  --danger: var(--brand-orange);
+  --info: var(--brand-blue);
+
+  --status-success: var(--ok);
+  --status-success-bg: var(--ok-subtle);
+  --status-danger: var(--danger);
+  --status-danger-bg: var(--destructive-subtle);
+  --status-warning: var(--warn);
+  --status-warning-bg: var(--warn-subtle);
+  /* Neutral, not blue (dark) — see the :root note above. */
+  --status-info: var(--muted-strong);
+  --status-info-bg: rgba(255, 255, 255, 0.08);
+
+  --focus: rgba(11, 53, 241, 0.18);
+  --focus-ring: none;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb-start: rgba(11, 53, 241, 0.88);
+  --scrollbar-thumb-mid: rgba(11, 53, 241, 0.72);
+  --scrollbar-thumb-end: rgba(11, 53, 241, 0.8);
+  --scrollbar-thumb-hover-start: rgba(255, 88, 0, 0.94);
+  --scrollbar-thumb-hover-mid: rgba(255, 88, 0, 0.82);
+  --scrollbar-thumb-hover-end: rgba(255, 88, 0, 0.88);
+  --scrollbar-thumb-edge: rgba(255, 255, 255, 0.12);
+
+  --header-bar-bg: var(--brand-black);
+  --header-bar-fg: var(--brand-white);
+  --section-bar-bg: var(--brand-black);
+  --section-bar-fg: var(--brand-white);
+  --link-color: var(--text);
+  --link-hover-color: var(--brand-blue);
+
+  --mono: var(--font-sans);
+  --font-body: var(--font-sans);
+  --font-display: var(--font-sans);
+  --font-chat: var(--font-sans);
+
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+  --shadow-inset: none;
+  --radius-sm: var(--radius-xs);
+  --radius-md: var(--radius-xs);
+  --radius-lg: var(--radius-xs);
+  --radius-xl: var(--radius-xs);
+  --radius-2xl: var(--radius-xs);
+  --radius-3xl: var(--radius-xs);
+  --radius-full: 9999px;
+  --radius: var(--radius-xs);
+  --duration-normal: 150ms;
+
+  /* Compact text sizes */
+  --text-3xs: 0.5625rem;
+  --text-2xs: 0.625rem;
+  --text-xs-tight: 0.6875rem;
+  --min-touch-target: 2.75rem;
+
+  /* Plugin UI */
+  --plugin-field-gap: 1rem;
+  --plugin-group-gap: 1.5rem;
+  --plugin-section-padding: 1.5rem;
+  --plugin-label-size: 0.8125rem;
+  --plugin-help-size: 0.6875rem;
+  --plugin-error-size: 0.6875rem;
+  --plugin-label: var(--text);
+  --plugin-help: var(--muted);
+  --plugin-error: var(--destructive);
+  --plugin-border: var(--border);
+  --plugin-focus-ring: var(--accent);
+  --plugin-input-height: 2.25rem;
+  --plugin-max-field-width: 32rem;
+
+  color-scheme: dark;
+}
+
+/* macOS desktop: reserve space for traffic lights (close/min/max buttons)
+   when the title bar is hidden with hiddenInset. The .desktop class is
+   added by the Electrobun shell at startup. */
+body.desktop {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+@supports not (padding-top: env(safe-area-inset-top)) {
+  body.desktop {
+    padding-top: 0px;
+  }
+}
+
+/* ─── Mobile (native iOS / Android) lockdown ───
+   The native shell is a fixed-viewport app: no pinch zoom, no rubber-band
+   bounce, no two-finger drag, no callout/long-press menu, no scrollbars.
+   Safe-area padding is applied at `#root` (see `styles.css`) instead of
+   here — `#root` is locked to `100dvh` so body-level padding wouldn't
+   shrink the React tree's flex container, and inner shells would still
+   render under the status bar. */
+body.native,
+body.platform-ios,
+body.platform-android {
+  touch-action: pan-x pan-y;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  /* Lock the body to viewport extents so a stray drag can't scroll the
+     entire app off-screen. Inner regions opt back in to overflow. */
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  /* Raise the tiniest type ramps on phones: 9px/10px is uncomfortable to read
+     at arm's length on a handset. Desktop keeps the tighter scale. */
+  --text-3xs: 0.625rem;
+  --text-2xs: 0.6875rem;
+}
+
+/* Allow text selection inside inputs/contenteditable so users can still type,
+   select, copy and paste. */
+body.native input,
+body.native textarea,
+body.native [contenteditable="true"],
+body.platform-ios input,
+body.platform-ios textarea,
+body.platform-ios [contenteditable="true"],
+body.platform-android input,
+body.platform-android textarea,
+body.platform-android [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* Hide scrollbars on native shells. Mobile users don't need a visible
+   scrollbar; they get a momentum scroller. */
+body.native *::-webkit-scrollbar,
+body.platform-ios *::-webkit-scrollbar,
+body.platform-android *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+body.native *,
+body.platform-ios *,
+body.platform-android * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* ─── Brand theme variants ───────────────────────────────────────────
+   Each marketing surface picks one of these by setting the class on
+   <html> or <body>. Shared palette, different center of gravity:
+     .theme-cloud   eliza cloud   black + white, blue/orange as accents
+     .theme-os      elizaOS       blue primary, white text
+     .theme-app     eliza app     orange primary, black text on orange
+   Designed for full-bleed solid-color sections and a cloud video hero. */
+
+.theme-cloud {
+  --bg: var(--brand-black);
+  --bg-accent: rgba(255, 255, 255, 0.04);
+  --bg-elevated: rgba(255, 255, 255, 0.04);
+  --bg-hover: rgba(255, 255, 255, 0.08);
+  --bg-muted: rgba(255, 255, 255, 0.06);
+
+  --card: var(--brand-black);
+  --card-foreground: var(--brand-white);
+  --surface: rgba(255, 255, 255, 0.04);
+
+  --text: var(--brand-white);
+  --text-strong: var(--brand-white);
+  --muted: rgba(255, 255, 255, 0.62);
+  --muted-strong: rgba(255, 255, 255, 0.82);
+
+  --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.28);
+  --border-hover: var(--brand-white);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: var(--brand-white);
+
+  --accent: var(--brand-white);
+  --accent-hover: var(--brand-gray);
+  --accent-foreground: var(--brand-black);
+  --primary: var(--brand-white);
+  --primary-foreground: var(--brand-black);
+
+  --header-bar-bg: var(--brand-black);
+  --header-bar-fg: var(--brand-white);
+  --section-bar-bg: var(--brand-black);
+  --section-bar-fg: var(--brand-white);
+  --link-color: var(--brand-white);
+  --link-hover-color: var(--brand-blue);
+
+  color-scheme: dark;
+}
+
+.theme-os {
+  --bg: var(--brand-blue);
+  --bg-accent: rgba(255, 255, 255, 0.08);
+  --bg-elevated: rgba(255, 255, 255, 0.06);
+  --bg-hover: rgba(255, 255, 255, 0.12);
+  --bg-muted: rgba(255, 255, 255, 0.08);
+
+  --card: var(--brand-blue);
+  --card-foreground: var(--brand-white);
+  --surface: rgba(255, 255, 255, 0.08);
+
+  --text: var(--brand-white);
+  --text-strong: var(--brand-white);
+  --muted: rgba(255, 255, 255, 0.7);
+  --muted-strong: rgba(255, 255, 255, 0.88);
+
+  --border: rgba(255, 255, 255, 0.18);
+  --border-strong: rgba(255, 255, 255, 0.34);
+  --border-hover: var(--brand-white);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: var(--brand-white);
+
+  --accent: var(--brand-white);
+  --accent-hover: var(--brand-gray);
+  --accent-foreground: var(--brand-blue);
+  --primary: var(--brand-white);
+  --primary-foreground: var(--brand-blue);
+
+  --header-bar-bg: var(--brand-blue);
+  --header-bar-fg: var(--brand-white);
+  --section-bar-bg: var(--brand-blue);
+  --section-bar-fg: var(--brand-white);
+  --link-color: var(--brand-white);
+  --link-hover-color: var(--brand-orange);
+
+  color-scheme: dark;
+}
+
+.theme-app {
+  --bg: var(--brand-orange);
+  --bg-accent: rgba(0, 0, 0, 0.06);
+  --bg-elevated: rgba(0, 0, 0, 0.04);
+  --bg-hover: rgba(0, 0, 0, 0.08);
+  --bg-muted: rgba(0, 0, 0, 0.06);
+
+  --card: var(--brand-orange);
+  --card-foreground: var(--brand-black);
+  --surface: rgba(0, 0, 0, 0.04);
+
+  --text: var(--brand-black);
+  --text-strong: var(--brand-black);
+  --muted: rgba(0, 0, 0, 0.66);
+  --muted-strong: rgba(0, 0, 0, 0.82);
+
+  --border: rgba(0, 0, 0, 0.18);
+  --border-strong: rgba(0, 0, 0, 0.34);
+  --border-hover: var(--brand-black);
+  --input: rgba(0, 0, 0, 0.06);
+  --ring: var(--brand-black);
+
+  --accent: var(--brand-black);
+  --accent-hover: rgba(0, 0, 0, 0.86);
+  --accent-foreground: var(--brand-white);
+  --primary: var(--brand-black);
+  --primary-foreground: var(--brand-white);
+
+  --header-bar-bg: var(--brand-orange);
+  --header-bar-fg: var(--brand-black);
+  --section-bar-bg: var(--brand-orange);
+  --section-bar-fg: var(--brand-black);
+  --link-color: var(--brand-black);
+  --link-hover-color: var(--brand-blue);
+
+  color-scheme: light;
+}
+
+/* Cloud video hero: dark scrim over the video; black text per brand rule. */
+.theme-clouds {
+  --bg: var(--brand-white);
+  --text: var(--brand-black);
+  --text-strong: var(--brand-black);
+  --muted: rgba(0, 0, 0, 0.7);
+  --accent: var(--brand-black);
+  --accent-foreground: var(--brand-white);
+  color-scheme: light;
+}
+
+/* Brand utility: full-bleed solid sections, no rounded cards. */
+.brand-section {
+  display: block;
+  width: 100%;
+  padding: clamp(3rem, 8vw, 7rem) clamp(1.25rem, 4vw, 4rem);
+}
+.brand-section--blue {
+  background: var(--brand-blue);
+  color: var(--brand-white);
+}
+.brand-section--orange {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+.brand-section--black {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+.brand-section--white {
+  background: var(--brand-white);
+  color: var(--brand-black);
+}
+.brand-section--gray {
+  background: var(--brand-gray);
+  color: var(--brand-black);
+}
+
+@keyframes shell-overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(8%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* A freshly-arrived chat turn fades + lifts in. Subtler than shell-overlay-in
+   (a single bubble, not the whole panel). Applied via
+   `motion-safe:animate-[chat-turn-in_...]` on the message <article>, scoped to
+   the just-arrived row so reloaded history never animates. */
+@keyframes chat-turn-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

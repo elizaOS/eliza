@@ -1,0 +1,124 @@
+[[!toc levels=2]]
+
+<a id="goals-and-non-goals"></a>
+
+Goals and non-goals
+===================
+
+Goals
+-----
+
+* devices produced by Tails Cloner should boot on most UEFI-only
+  hardware (e.g. some relevant set of Macs)
+
+* devices produced by Tails Cloner should boot on most hardware
+  that only supports UEFI boot for GPT devices (e.g. ThinkPad X220)
+
+* Legacy BIOS boot support should be left unaffected (modulo a tiny
+  amount of really crazy firmware bugs, probably)
+
+* minimal support for 32-bit UEFI boot
+
+<a id="non-goals"></a>
+
+Non-goals
+---------
+
+* UEFI DVD boot: BIOS boot from DVD works fine on most hardware,
+  including Macs; adding the files needed to have UEFI DVD boot work
+  on some systems will break what currently works for others.
+
+* UEFI boot from hybrid ISO cat'd on a USB device: given BIOS DVD boot
+  works generally fine, it's OK to require users to go this way and
+  install their UEFI-capable Tails USB stick from DVD. In case one has
+  no DVD writer, another potentially workable option is to bootstrap
+  in Legacy BIOS boot mode from hybrid ISO cat'd on a USB device.
+  If the firmware supports it, this can be done on the same computer;
+  else, from another computer.
+
+* [[!tails_blueprint UEFI_boot_on_Mac_without_rEFInd]] would be too ambitious
+  a goal for this iteration. Besides, we think that installing rEFInd
+  is not that crazy a requirement, considering the additional features
+  a device installed with Tails Installed provides (namely:
+  persistence and incremental upgrades).
+
+Implementation
+==============
+
+### Boot loaders
+
+Tails uses:
+
+* GRUB (2.x) both for 64-bit and 32-bit UEFI boot
+* syslinux for legacy BIOS boot from a USB stick
+* isolinux for legacy BIOS boot from DVD
+
+### Boot device partitioning
+
+UEFI theoretically supports the standard PC disk partition scheme
+(MBR), but in practice it is most often used to boot off devices with
+a GUID Partition Table (GPT). Add to this that GPT supports labelling
+partitions (as opposed to *filesystem* labels, that are useless for
+detecting an encrypted Debian Live persistent volume). This is why we
+have decided, back when we were implementing persistence support and
+a graphical USB installer in 2012, to initialize Tails boot devices
+with a GPT. Since then, we have made great use of this feature in
+for the Persistent Storage, Upgrader, and Welcome Screen.
+
+Despite a few painful consequences we discovered along the way, all
+caused by buggy firmware implementations, we think that picking GPT at
+that point was the right choice to make. We now have the opportunity
+to take advantage of it even more, and to surpass the aforementioned
+firmware limitations, by adding UEFI support to Tails.
+
+### Boot loader installation path
+
+During our early testing, we have discovered that some hardware does
+not support running a UEFI boot loader, without entries added to the
+NVRAM, unless it is installed in the path meant for the device's
+fallback UEFI boot loader (`EFI/BOOT/BOOTX64.EFI`). At this point, let
+us make three observations:
+
+1. It is clearly not an option for most Tails users to fiddle with
+   `efibootmgr` each time they encounter such a system. This is not
+   only impractical and tedious, but requires technical expertise that
+   exceeds what our [[design goals|contribute/design]] expect from
+   our users.
+
+1. Developers and researchers in the GNU/Linux distributions field
+   have discovered many issues with how NVRAM and boot entries are
+   managed by UEFI firmware, often resulting in non-bootable systems,
+   and sometimes in fully bricked hardware, unless special tricks are
+   used. We do not feel comfortable assuming that every such problem
+   has been detected and workaround'ed to this date, and our current
+   team lacks the expertise to tackle this problem with
+   great confidence.
+
+1. Tails is designed to avoid leaving traces on the hardware being
+   used to run it. Without further consideration, our position is to
+   assume that adding boot entries in the computer's NVRAM directly
+   conflicts with this design goal.
+
+Therefore, we will *not* add boot entries for Tails in the NVRAM, and
+our only practically available choice is to install our boot loader of
+choice as the fallback UEFI boot loader on Tails devices.
+
+### Build-time implementation
+
+The UEFI boot loader setup is taken care of by:
+
+* `config/chroot_local-hooks/60-copy-syslinux-modules`
+* `config/binary_local-hooks/50-grub-efi`
+* `config/binary_local-includes/EFI/BOOT/grub/grub.cfg`
+* `config/binary_local-includes/EFI/debian/grub.cfg`
+* `config/binary_local-includes/EFI/debian/grub/splash.png`
+
+### Tails Cloner
+
+Tails Cloner creates the Tails system partition as an EFI System
+Partition (ESP), with the corresponding GUID.
+
+Future work
+===========
+
+See [[!tails_blueprint UEFI#future-work]].

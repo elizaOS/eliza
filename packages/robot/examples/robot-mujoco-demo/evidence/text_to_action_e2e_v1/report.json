@@ -1,0 +1,44 @@
+{
+  "checkpoint": "checkpoints/text_conditioned_smoke",
+  "host": "192.168.1.218:9090",
+  "no_real": false,
+  "policy_hz": 8.0,
+  "episode_s": 3.0,
+  "prompts": [
+    {
+      "prompt": "stand still",
+      "duration_s": 15.26,
+      "matched_task": "stand_up",
+      "similarity": 0.711,
+      "steps_completed": 24,
+      "video_frames": 23
+    },
+    {
+      "prompt": "walk forward",
+      "duration_s": 9.82,
+      "matched_task": "walk_forward",
+      "similarity": 0.751,
+      "steps_completed": 24,
+      "video_frames": 24
+    },
+    {
+      "prompt": "turn left",
+      "duration_s": 10.34,
+      "matched_task": "turn_left",
+      "similarity": 0.826,
+      "steps_completed": 24,
+      "video_frames": 24
+    },
+    {
+      "prompt": "wave hello",
+      "duration_s": 10.28,
+      "matched_task": "wave_right",
+      "similarity": 0.714,
+      "steps_completed": 24,
+      "video_frames": 22
+    }
+  ],
+  "divergence_samples": 0,
+  "divergence_mean_rms_cm": null,
+  "divergence_mean_dyaw_deg": null
+}

@@ -1,0 +1,12 @@
+{
+  "version": "2026-06-18.1",
+  "description": "Large generated/downloadable artifacts stripped from the repo for fast clones; pulled on install by packages/scripts/sync-artifacts.mjs. Full originals also preserved at elizaOS/eliza-archive (develop-old/main-old).",
+  "asset": {
+    "repo": "elizaOS/eliza-archive",
+    "tag": "dev-artifacts",
+    "name": "eliza-dev-artifacts.tar.gz",
+    "sha256": "f33042edcde955adfdcde1c1a98c62817d09e5f624f3b5b842aea7c4db975550",
+    "bytes": 1018170326
+  },
+  "fileCount": 638
+}

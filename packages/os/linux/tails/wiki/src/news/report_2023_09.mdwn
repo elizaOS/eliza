@@ -1,0 +1,42 @@
+[[!meta title="Tails report for September 2023"]]
+[[!meta date="Mon, 30 Oct 2023 16:04:09 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- From Tails 5.14, we started asking Tails users to consider donating to Tails
+  [[!tails_gitlab tails/tails/-/issues/18023 desc="when they open Electrum"]]. Since
+  then, Electrum users on Tails have donated USD 5k towards Tails' mission. We
+  are so grateful for your generous support!
+
+- The Tails community had very meaningful and lovely contributions to the
+  project. McFly helped solve [[!tails_gitlab tails/tails/-/issues/19194
+  desc="an issue"]] some users had while identifying the 'Alt' key on Apple
+  keyboards, and also designed some [[!tails_gitlab
+  tails/tails/uploads/8f6a6d8401c7a817b1da79e6013c06b2/collective.pdf desc="slick
+  business cards"]].  And jawlensky submitted a huge branch with tons of changes
+  all over the website. It will take us a few weeks to process it all! 
+
+- We were in Kerala at [DebConf 2023](https://debconf23.debconf.org/). Thank
+  you to DebConf for sponsoring our participation.
+
+Releases
+========
+
+[[Tails 5.17.1 was released on September 15, 2023|news/version_5.17.1]]. The
+emerency release fixes a [critical
+vulnerability](https://www.mozilla.org/en-US/security/advisories/mfsa2023-40/)
+in Tor Browser.
+
+We dedicate this Tails release to Debian developer Abraham Raji who [tragically
+lost his life](https://www.debian.org/News/2023/20230914) in an accident on
+September 13, 2023.
+
+Metrics
+=======
+
+Tails was started more than 767,166 times this month. That's a daily average of
+25,572 boots.

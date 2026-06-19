@@ -1,0 +1,9 @@
+name = "elizaos-homepage"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-04-29"
+
+[vars]
+PUBLIC_SITE_URL = "https://os.elizacloud.ai"
+
+[env.preview.vars]
+PUBLIC_SITE_URL = "https://os-preview.elizacloud.ai"

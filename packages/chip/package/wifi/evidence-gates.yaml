@@ -1,0 +1,169 @@
+schema: eliza.wifi_bluetooth_evidence_gates.v1
+manifest: wifi_bluetooth_evidence_gates
+status: blocked_no_host_controller_or_module
+claim_policy: interface_only_no_wifi_implementation_claim
+release_gate: wifi_bluetooth_product_claim
+capture_template: package/wifi/release-evidence-template.yaml
+evidence_record_requirements:
+  linked_release_gate: wifi_bluetooth_product_claim
+  accepted_release_statuses:
+    - accepted
+    - approved
+    - pass
+  supersedes_scaffold_claim_required: true
+  required_fields:
+    - blocker_id
+    - artifact_name
+    - artifact_class
+    - source_path
+    - captured_at
+    - captured_by
+    - board_or_platform_revision
+    - selected_module
+    - sha256
+    - acceptance_status
+    - acceptance_criteria
+    - raw_log_or_capture
+    - linked_release_blocker
+    - supersedes_scaffold_claim
+    - reviewer
+next_commands:
+  preflight: python3 scripts/check_wifi_interface.py
+  release_gate: python3 scripts/product_check.py --release
+  capture_template: package/wifi/release-evidence-template.yaml
+product_release_blockers:
+  - id: wifi_sdio_host
+    artifact_class: SDIO host
+    status: blocked
+    report: "SDIO host blocked: no RTL/platform SDIO host, pinctrl, clocks, IRQ, wake, or enumeration transcript."
+    evidence_required:
+      - SDIO host RTL or integrated platform IP with 4-bit SDR25 timing.
+      - Enabled DTS node with real clocks, pinctrl, regulator, GPIO, and IRQ phandles.
+      - SDIO function enumeration transcript from real hardware or a bound platform model.
+    capture_fields: [source_path, sha256, board_or_model_revision, kernel_log, reviewer]
+  - id: wifi_bt_uart
+    artifact_class: BT UART
+    status: blocked
+    report: "BT UART blocked: no UART RTS/CTS implementation, pinctrl binding, or hci_uart_bcm attach transcript."
+    evidence_required:
+      - UART controller implementation with RTS/CTS flow control.
+      - Bluetooth HCI UART pin assignment and pinctrl state.
+      - hci_uart_bcm attach transcript with selected module firmware.
+    capture_fields: [source_path, sha256, board_or_model_revision, hci_attach_log, reviewer]
+  - id: wifi_firmware_provenance
+    artifact_class: firmware provenance
+    status: blocked
+    report: "Firmware provenance blocked: no brcmfmac firmware, NVRAM, clm_blob, Bluetooth patchram provenance, license, sha256, or load log."
+    evidence_required:
+      - brcmfmac SDIO firmware binary source, license, and sha256.
+      - Board-specific NVRAM source, license, and sha256.
+      - clm_blob or equivalent regulatory data source and sha256.
+      - Bluetooth patchram source, license, and sha256.
+      - Kernel log showing firmware load results.
+    capture_fields: [firmware_source, license, sha256, load_log, reviewer]
+  - id: wifi_android_framework_logs
+    artifact_class: Android framework logs
+    status: blocked
+    report: "Android framework logs blocked: no feature XML/vendorimage proof, supplicant or hostapd log, dumpsys wifi, Bluetooth service log, or CTS/VTS subset."
+    evidence_required:
+      - Android WiFi/Bluetooth feature XML and package list from a successful vendorimage.
+      - supplicant or hostapd startup log.
+      - dumpsys wifi output.
+      - Bluetooth HCI service log.
+      - CTS/VTS subset results for declared WiFi/Bluetooth features.
+    capture_fields: [vendorimage_build, feature_xml, dumpsys_wifi, cts_vts_result, reviewer]
+  - id: wifi_regulatory_evidence
+    artifact_class: regulatory evidence
+    status: blocked
+    report: "Regulatory evidence blocked: no module certification scope, antenna gain record, country-code plan, SAR assessment, or FCC/CE/IC filing plan."
+    evidence_required:
+      - Selected module certification scope for exact antenna and enclosure.
+      - Antenna gain and country-code handling record.
+      - SAR exposure assessment.
+      - FCC, CE, IC, or target-market filing plan.
+    capture_fields: [module_certification, antenna_gain, country_code_plan, sar_assessment, reviewer]
+  - id: wifi_board_power_sequencing
+    artifact_class: board/power sequencing
+    status: blocked
+    report: "Board/power sequencing blocked: no selected board rails, 1.8 V IO bank proof, WIFI_EN/WIFI_RST_N default-low measurement, reset timing, or wake/IRQ polarity evidence."
+    evidence_required:
+      - Selected board rail map for module VBAT and VDDIO.
+      - 1.8 V IO bank proof or level-shifter design for SDIO, UART, GPIO, IRQ, and wake signals.
+      - WIFI_EN and WIFI_RST_N default-low measurement before firmware handoff.
+      - Scope capture for rail ramp, reset release, SDIO clock start, and UART RTS/CTS behavior.
+      - Wake/IRQ polarity and suspend/resume measurement on the selected module.
+    capture_fields: [board_revision, rail_map, scope_capture, io_bank_evidence, reviewer]
+required_evidence:
+  host_controller:
+    status: missing
+    capture_globs:
+      - package/wifi/evidence/host-controller/**/*
+      - board/reports/wifi/host-controller/**/*
+    blockers:
+      - SDIO host controller RTL or integrated platform IP with 4-bit SDR25 timing.
+      - UART controller with RTS/CTS flow control for Bluetooth HCI.
+      - GPIO, pinctrl, regulator, clock, interrupt, and wake bindings.
+  board_package:
+    status: missing
+    capture_globs:
+      - package/wifi/evidence/board-package/**/*
+      - board/reports/wifi/board-package/**/*
+    blockers:
+      - Package pins or FPGA pins assigned to the WiFi contract names.
+      - 1.8 V IO bank proof or level-shifter design.
+      - WIFI_EN and WIFI_RST_N default-low measurement.
+      - SDIO signal-integrity and UART flow-control measurement.
+  board_power_sequencing:
+    status: missing
+    capture_globs:
+      - package/wifi/evidence/power-sequencing/**/*
+      - board/reports/wifi/power-sequencing/**/*
+    blockers:
+      - Module VBAT and VDDIO rail ownership, voltage, current, ramp, and enable timing evidence.
+      - WIFI_EN and WIFI_RST_N default-low board measurement.
+      - Reset release, SDIO clock start, UART RTS/CTS, wake, and IRQ polarity scope captures.
+      - Suspend/resume wake behavior tied to the selected module datasheet.
+  linux_bsp:
+    status: missing
+    capture_globs:
+      - package/wifi/evidence/linux-bsp/**/*
+      - board/reports/wifi/linux-bsp/**/*
+    blockers:
+      - Enabled DTS nodes with real GPIO, pinctrl, regulator, clock, and IRQ phandles.
+      - SDIO function enumeration transcript.
+      - brcmfmac probe and firmware load kernel log.
+      - hci_uart_bcm Bluetooth attach transcript.
+  android_framework:
+    status: missing
+    capture_globs:
+      - package/wifi/evidence/android-framework/**/*
+      - board/reports/wifi/android-framework/**/*
+    blockers:
+      - Android WiFi feature XML and package list tied to a successful vendorimage.
+      - supplicant or hostapd startup log.
+      - dumpsys wifi evidence.
+      - Bluetooth HCI service evidence.
+      - CTS/VTS subset results for declared WiFi/Bluetooth features.
+  firmware:
+    status: missing
+    capture_globs:
+      - package/wifi/evidence/firmware/**/*
+      - board/reports/wifi/firmware/**/*
+    blockers:
+      - brcmfmac SDIO firmware binary provenance, license, and sha256.
+      - Board-specific NVRAM provenance, license, and sha256.
+      - clm_blob or equivalent regulatory data provenance and sha256.
+      - Bluetooth patchram provenance, license, and sha256.
+  regulatory:
+    status: missing
+    capture_globs:
+      - package/wifi/evidence/regulatory/**/*
+      - board/reports/wifi/regulatory/**/*
+    blockers:
+      - Selected module certification scope for the exact antenna and enclosure.
+      - Antenna gain and country-code handling record.
+      - SAR exposure assessment.
+      - FCC, CE, IC, or target-market filing plan.
+local_check:
+  command: make wifi-interface-check
+  expected_result_without_hardware: pass_with_blocked_evidence

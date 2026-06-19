@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "eliza-lifeops-bench"
+version = "0.1.0"
+description = "LifeOpsBench — multi-turn life-assistant tool-use benchmark for elizaOS, OpenClaw, and Hermes-template agents."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+
+dependencies = [
+  "httpx>=0.27.0",
+  "python-dotenv>=1.0.0",
+  "pyyaml>=6.0.2",
+  "litellm>=1.50.0",
+]
+
+[project.optional-dependencies]
+anthropic = [
+  "anthropic>=0.40.0",
+]
+hermes = []
+test = [
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.23.0",
+]
+
+[project.scripts]
+lifeops-bench = "eliza_lifeops_bench.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["eliza_lifeops_bench"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"

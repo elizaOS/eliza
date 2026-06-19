@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-f5226f9d5b51066be04a7f44a5fa5c542ff04a64
+Repository: element-hq/element-web
+Base Commit: c011fb7475285a4c8c11c14cff94371a27f34f47
+Test Files: ["/app/test/components/views/rooms/MessageComposerButtons-test.ts", "test/components/views/rooms/MessageComposerButtons-test.tsx"]
+FAIL_TO_PASS: ["/app/test/components/views/rooms/MessageComposerButtons-test.tsx | MessageComposerButtons | Renders emoji and upload buttons in wide mode", "/app/test/components/views/rooms/MessageComposerButtons-test.tsx | MessageComposerButtons | Renders other buttons in menu in wide mode", "/app/test/components/views/rooms/MessageComposerButtons-test.tsx | MessageComposerButtons | Renders only some buttons in narrow mode", "/app/test/components/views/rooms/MessageComposerButtons-test.tsx | MessageComposerButtons | Renders other buttons in menu (except voice messages) in narrow mode"]
+PASS_TO_PASS: []

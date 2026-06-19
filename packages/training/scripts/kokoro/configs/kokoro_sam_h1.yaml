@@ -1,0 +1,62 @@
+# H1 — Kokoro sam full-FT on 95 min OmniVoice-sam distilled corpus.
+#
+# Corpus: packages/training/data/voice/sam-distill/ (1090 clips, 95.06 min)
+#   All 1090 clips are OmniVoice-sam-distilled (NOT af_bella). Teacher is
+#   Kokoro KPipeline conditioned on /tmp/kokoro-f2/melfit-5/af_samantha.bin.
+#   100% same-distilled (exceeds the ≥80% brief requirement).
+#
+# H1 targets the full 8000 steps per the brief. This supersedes
+# kokoro_sam_distilled.yaml (3000 steps) with the larger step budget and
+# lower anchor to allow more style adaptation on the 95-min corpus.
+#
+# Per repo policy: APOLLO-Mini optimizer only — never AdamW/Muon.
+
+extends: base.yaml
+
+voice_name: af_sam
+voice_display_name: Sam (AI Voices, US English) — H1 Full FT
+voice_lang: a
+voice_tags:
+  - female
+  - sam
+  - eliza-1-voice
+  - ai-voices-derived
+  - research-only
+  - full-finetune
+  - omnivoice-distill-teacher
+
+# Inputs — run-dir is passed via CLI; dataset_path here is documentation.
+dataset_path: packages/training/data/voice/sam-distill
+run_dir: /tmp/kokoro-runs/sam-h1
+
+# Full FT hyperparameters — 95-min corpus, 8000 steps per brief.
+mode: full
+optimizer: apollo_mini
+learning_rate: 3.0e-5         # lower LR for large corpus (less risk of forgetting).
+max_steps: 8000               # per H1 brief.
+eval_every: 500               # 16 eval checkpoints across 8000 steps.
+checkpoint_every: 500
+log_every: 50
+warmup_steps: 200
+val_fraction: 0.10
+batch_size: 1
+grad_accum: 4
+
+# Very light anchor — 95-min corpus provides enough signal; allow adaptation.
+anchor_weight: 0.0005
+
+# Early stopping with patience=5 for 8000 steps.
+early_stop_patience: 5
+keep_top_k: 3
+
+# Mel reconstruction only (no MFA durations / F0 ground truth on synth audio).
+mel_loss_weight: 1.0
+duration_loss_weight: 0.0
+f0_loss_weight: 0.0
+
+# Eval gates per H1 brief.
+gates:
+  utmos_min: 4.0
+  wer_max: 0.10
+  speaker_similarity_min: 0.40
+  rtf_min: 5.0

@@ -1,0 +1,96 @@
+name: Terraform — Apps State Rm (Hetzner)
+
+# One-shot helper to remove an ORPHANED resource address from the
+# apps-data-plane Terraform state, then no-op. This is state-only surgery — it
+# NEVER touches real infrastructure (no plan, no apply, no provider refresh of
+# the resource itself). Use it to clear leftovers from a module split: e.g. the
+# #8386 split moved `random_password.tenant_db_admin` apps-data-plane ->
+# apps-shared, but the per-env state still lists it, which makes
+# `terraform init -lockfile=readonly` fail ("provider dependency changes
+# detected") on every plan/apply until the orphan is removed.
+#
+# Defaults to that exact orphan, so the common case is a zero-arg dispatch.
+#
+# Mirrors the terraform-apps-data-plane.yml credentials (repo-level
+# HCLOUD_APPS_TOKEN + R2 state creds). Init runs WITHOUT -lockfile=readonly here
+# (only here) so terraform can pull whatever provider the orphaned resource
+# references in order to load the state — readonly is restored on the normal
+# plan/apply workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment whose state to edit
+        type: choice
+        default: staging
+        options: [staging, production]
+      address:
+        description: "Terraform resource address to remove from state"
+        type: string
+        required: true
+        default: random_password.tenant_db_admin
+      confirm:
+        description: 'Type "remove" to confirm state surgery'
+        type: string
+        required: true
+        default: ""
+
+permissions:
+  contents: read
+
+# Share the apps-hetzner lock with the plan/apply + shared workflows so a state
+# rm can't race a concurrent apply on the same backend.
+concurrency:
+  group: terraform-apps-hetzner
+  cancel-in-progress: false
+
+env:
+  TF_DIR: packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane
+  TF_VERSION: "1.10.5"
+
+jobs:
+  state-rm:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    timeout-minutes: 10
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+      ADDRESS: ${{ github.event.inputs.address }}
+    steps:
+      - name: Guard
+        run: |
+          [ "${{ github.event.inputs.confirm }}" = "remove" ] || { echo "::error::confirm input must be the word 'remove'"; exit 1; }
+          [ -n "$HCLOUD_TOKEN" ] || { echo "::error::set repo secret HCLOUD_APPS_TOKEN"; exit 1; }
+          [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::missing repo secret R2_STATE_ACCESS_KEY_ID"; exit 1; }
+          [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::missing repo secret R2_STATE_SECRET_ACCESS_KEY"; exit 1; }
+          [ -n "$ADDRESS" ] || { echo "::error::address input is required"; exit 1; }
+
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Init (writable lock — needed to load a state with an orphaned provider)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false -backend-config="backend-${{ github.event.inputs.environment }}.hcl"
+
+      - name: Show whether the address is in state
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          if terraform state list | grep -qx "$ADDRESS"; then
+            echo "found '$ADDRESS' in state — will remove"
+          else
+            echo "::warning::'$ADDRESS' not in state (already removed?) — nothing to do"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: terraform state rm (state-only; no infra touched)
+        if: env.SKIP != '1'
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform state rm "$ADDRESS"
+          echo "--- remaining state ---"
+          terraform state list

@@ -1,0 +1,583 @@
+"use client";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+  Badge,
+  Button,
+  Input,
+  Label,
+  Switch,
+  Textarea,
+} from "@elizaos/ui";
+import {
+  AlertTriangle,
+  Key,
+  Loader2,
+  Plus,
+  Save,
+  Settings,
+  Shield,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
+import type { App } from "../../../lib/data/apps";
+import { storeOneTimeAppApiKey } from "./one-time-app-api-key";
+
+interface AppSettingsProps {
+  app: App;
+}
+
+export function AppSettings({ app }: AppSettingsProps) {
+  const t = useT();
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  const [allowedOrigins, setAllowedOrigins] = useState<string[]>(() => {
+    const origins = app.allowed_origins;
+    return Array.isArray(origins)
+      ? origins.filter((origin): origin is string => typeof origin === "string")
+      : [];
+  });
+  const [newOrigin, setNewOrigin] = useState("");
+
+  const [formData, setFormData] = useState({
+    name: app.name,
+    description: app.description || "",
+    app_url: app.app_url,
+    website_url: app.website_url || "",
+    contact_email: app.contact_email || "",
+    is_active: app.is_active,
+  });
+
+  const handleSave = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/v1/apps/${app.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...formData,
+          allowed_origins: allowedOrigins,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(
+          error.error ||
+            t("cloud.appSettings.updateFailed", {
+              defaultValue: "Failed to update app",
+            }),
+        );
+      }
+
+      toast.success(
+        t("cloud.appSettings.updateSuccess", {
+          defaultValue: "App updated successfully",
+        }),
+      );
+    } catch (error) {
+      toast.error(
+        t("cloud.appSettings.updateFailed", {
+          defaultValue: "Failed to update app",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.appSettings.tryAgain", {
+                  defaultValue: "Please try again",
+                }),
+        },
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegenerateApiKey = async () => {
+    setIsRegenerating(true);
+    try {
+      const response = await fetch(
+        `/api/v1/apps/${app.id}/regenerate-api-key`,
+        {
+          method: "POST",
+        },
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(
+          error.error ||
+            t("cloud.appSettings.regenerateFailed", {
+              defaultValue: "Failed to regenerate API key",
+            }),
+        );
+      }
+
+      const data = await response.json();
+      if (typeof data.apiKey !== "string" || data.apiKey.length === 0) {
+        throw new Error(
+          t("cloud.appSettings.regenerateNoKey", {
+            defaultValue: "Regeneration response did not include an API key",
+          }),
+        );
+      }
+      storeOneTimeAppApiKey(app.id, data.apiKey);
+
+      toast.success(
+        t("cloud.appSettings.regenerateSuccess", {
+          defaultValue: "API key regenerated",
+        }),
+        {
+          description: t("cloud.appSettings.regenerateSuccessDescription", {
+            defaultValue:
+              "Your new API key has been generated. Make sure to save it!",
+          }),
+        },
+      );
+
+      navigate(`/dashboard/apps/${app.id}?tab=overview`, {
+        preventScrollReset: true,
+      });
+    } catch (error) {
+      toast.error(
+        t("cloud.appSettings.regenerateFailed", {
+          defaultValue: "Failed to regenerate API key",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.appSettings.tryAgain", {
+                  defaultValue: "Please try again",
+                }),
+        },
+      );
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/v1/apps/${app.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(
+          error.error ||
+            t("cloud.appSettings.deleteFailed", {
+              defaultValue: "Failed to delete app",
+            }),
+        );
+      }
+
+      toast.success(
+        t("cloud.appSettings.deleteSuccess", {
+          defaultValue: "App deleted successfully",
+        }),
+      );
+      navigate("/dashboard/apps");
+    } catch (error) {
+      toast.error(
+        t("cloud.appSettings.deleteFailed", {
+          defaultValue: "Failed to delete app",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.appSettings.tryAgain", {
+                  defaultValue: "Please try again",
+                }),
+        },
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const addOrigin = () => {
+    if (newOrigin && !allowedOrigins.includes(newOrigin)) {
+      setAllowedOrigins([...allowedOrigins, newOrigin]);
+      setNewOrigin("");
+    }
+  };
+
+  const removeOrigin = (origin: string) => {
+    setAllowedOrigins(allowedOrigins.filter((o) => o !== origin));
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Basic Settings */}
+      <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
+        <h3 className="text-sm font-medium text-white flex items-center gap-2">
+          <Settings className="h-4 w-4 text-[var(--brand-orange)]" />
+          {t("cloud.appSettings.basicSettings", {
+            defaultValue: "Basic Settings",
+          })}
+        </h3>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name" className="text-xs text-neutral-400">
+              {t("cloud.appSettings.appName", { defaultValue: "App Name" })}
+            </Label>
+            <Input
+              id="name"
+              value={formData.name}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
+              placeholder={t("cloud.appSettings.appNamePlaceholder", {
+                defaultValue: "My Awesome App",
+              })}
+              className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description" className="text-xs text-neutral-400">
+              {t("cloud.appSettings.description", {
+                defaultValue: "Description",
+              })}
+            </Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) =>
+                setFormData({ ...formData, description: e.target.value })
+              }
+              placeholder={t("cloud.appSettings.descriptionPlaceholder", {
+                defaultValue: "A brief description of your app...",
+              })}
+              rows={3}
+              className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 resize-none rounded-sm"
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="app_url" className="text-xs text-neutral-400">
+                {t("cloud.appSettings.appUrl", { defaultValue: "App URL" })}
+              </Label>
+              <Input
+                id="app_url"
+                type="url"
+                value={formData.app_url}
+                onChange={(e) =>
+                  setFormData({ ...formData, app_url: e.target.value })
+                }
+                placeholder="https://myapp.com"
+                className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="website_url" className="text-xs text-neutral-400">
+                {t("cloud.appSettings.websiteUrl", {
+                  defaultValue: "Website URL",
+                })}
+              </Label>
+              <Input
+                id="website_url"
+                type="url"
+                value={formData.website_url}
+                onChange={(e) =>
+                  setFormData({ ...formData, website_url: e.target.value })
+                }
+                placeholder="https://website.com"
+                className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="contact_email" className="text-xs text-neutral-400">
+              {t("cloud.appSettings.contactEmail", {
+                defaultValue: "Contact Email",
+              })}
+            </Label>
+            <Input
+              id="contact_email"
+              type="email"
+              value={formData.contact_email}
+              onChange={(e) =>
+                setFormData({ ...formData, contact_email: e.target.value })
+              }
+              placeholder="contact@myapp.com"
+              className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-3 bg-black/30 rounded-sm border border-white/10">
+            <div>
+              <p className="text-sm font-medium text-white">
+                {t("cloud.appSettings.activeStatus", {
+                  defaultValue: "Active Status",
+                })}
+              </p>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                {t("cloud.appSettings.activeStatusHint", {
+                  defaultValue: "Inactive apps cannot make API requests",
+                })}
+              </p>
+            </div>
+            <Switch
+              id="is_active"
+              checked={formData.is_active}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, is_active: checked })
+              }
+              className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-neutral-700"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Allowed Origins */}
+      <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
+        <div>
+          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+            <Shield className="h-4 w-4 text-white/70" />
+            {t("cloud.appSettings.allowedOrigins", {
+              defaultValue: "Allowed Origins",
+            })}
+          </h3>
+          <p className="text-xs text-neutral-500 mt-1">
+            {t("cloud.appSettings.allowedOriginsHint", {
+              defaultValue: "API requests are only accepted from these domains",
+            })}
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <Input
+            value={newOrigin}
+            onChange={(e) => setNewOrigin(e.target.value)}
+            placeholder="https://example.com"
+            className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
+            onKeyPress={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addOrigin();
+              }
+            }}
+          />
+          <Button
+            type="button"
+            onClick={addOrigin}
+            variant="outline"
+            size="icon"
+            className="shrink-0 border-white/10 hover:bg-white/10"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {allowedOrigins.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {allowedOrigins.map((origin) => (
+              <Badge
+                key={origin}
+                className="bg-white/5 text-white/70 border-white/10 flex items-center gap-1 pr-1"
+              >
+                {origin}
+                <button
+                  type="button"
+                  onClick={() => removeOrigin(origin)}
+                  className="ml-1 p-0.5 hover:bg-white/10 rounded-sm transition-colors"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Save Button */}
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSave}
+          disabled={isLoading}
+          className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              {t("cloud.appSettings.saving", { defaultValue: "Saving..." })}
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              {t("cloud.appSettings.saveChanges", {
+                defaultValue: "Save Changes",
+              })}
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="bg-red-500/10 rounded-sm p-4 space-y-4 border border-red-500/20">
+        <h3 className="text-sm font-medium text-red-400 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4" />
+          {t("cloud.appSettings.dangerZone", { defaultValue: "Danger Zone" })}
+        </h3>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-4 bg-black rounded-sm border border-red-500/10">
+            <div className="min-w-0 flex-1 mr-3">
+              <p className="text-sm font-medium text-white">
+                {t("cloud.appSettings.regenerateApiKey", {
+                  defaultValue: "Regenerate API Key",
+                })}
+              </p>
+              <p className="text-xs text-neutral-400 mt-1">
+                {t("cloud.appSettings.regenerateApiKeyHint", {
+                  defaultValue: "This will invalidate the current API key",
+                })}
+              </p>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                  disabled={isRegenerating}
+                >
+                  {isRegenerating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Key className="h-4 w-4 mr-1.5" />
+                      {t("cloud.appSettings.regenerate", {
+                        defaultValue: "Regenerate",
+                      })}
+                    </>
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="bg-neutral-900 border-white/10">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-white">
+                    {t("cloud.appSettings.regenerateDialogTitle", {
+                      defaultValue: "Regenerate API Key?",
+                    })}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-neutral-400">
+                    {t("cloud.appSettings.regenerateDialogDescription", {
+                      defaultValue:
+                        "This action will immediately invalidate your current API key. Your app will stop working until you update it with the new key. This cannot be undone.",
+                    })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="border-white/10 text-white hover:bg-white/10">
+                    {t("cloud.appSettings.cancel", { defaultValue: "Cancel" })}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleRegenerateApiKey}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {t("cloud.appSettings.regenerateApiKey", {
+                      defaultValue: "Regenerate API Key",
+                    })}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-black rounded-sm border border-red-500/10">
+            <div className="min-w-0 flex-1 mr-3">
+              <p className="text-sm font-medium text-white">
+                {t("cloud.appSettings.deleteApp", {
+                  defaultValue: "Delete App",
+                })}
+              </p>
+              <p className="text-xs text-neutral-400 mt-1">
+                {t("cloud.appSettings.deleteAppHint", {
+                  defaultValue: "Permanently delete this app and all data",
+                })}
+              </p>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-1.5" />
+                      {t("cloud.appSettings.deleteApp", {
+                        defaultValue: "Delete App",
+                      })}
+                    </>
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="bg-neutral-900 border-white/10">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-white">
+                    {t("cloud.appSettings.deleteDialogTitle", {
+                      defaultValue: "Delete App?",
+                    })}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-neutral-400">
+                    {t("cloud.appSettings.deleteDialogIntro", {
+                      defaultValue:
+                        "This action cannot be undone. This will permanently delete the app",
+                    })}
+                    <strong className="text-white"> {app.name}</strong>{" "}
+                    {t("cloud.appSettings.deleteDialogOutro", {
+                      defaultValue:
+                        "and remove all associated data including analytics and user tracking.",
+                    })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="border-white/10 text-white hover:bg-white/10">
+                    {t("cloud.appSettings.cancel", { defaultValue: "Cancel" })}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDelete}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {t("cloud.appSettings.deleteApp", {
+                      defaultValue: "Delete App",
+                    })}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

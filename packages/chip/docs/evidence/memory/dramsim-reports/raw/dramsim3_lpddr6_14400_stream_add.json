@@ -1,0 +1,13 @@
+{
+  "bytes_per_dramsim3_access": 32,
+  "captured_utc": "2026-05-23T07:43:00Z",
+  "claim_boundary": "Archived DRAMSim3 stats are simulator-only and not physical phone or release evidence.",
+  "cycle_budget": 500000,
+  "generated_utc": "2026-05-29T02:54:06Z",
+  "schema": "eliza.memory.dram_sim_raw_stats_archive.v1",
+  "simulated_p95_latency_ns": 254.17,
+  "simulated_total_bandwidth_gbps": 13.7,
+  "sku": "lpddr6_14400",
+  "standard": "LPDDR6-14400",
+  "workload": "stream_add"
+}

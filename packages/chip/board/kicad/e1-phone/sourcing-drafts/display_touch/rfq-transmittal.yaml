@@ -1,0 +1,98 @@
+schema: eliza.e1_phone_supplier_rfq_transmittal_draft.v1
+status: draft_not_sent_not_supplier_evidence
+date: '2026-05-21'
+claim_boundary: Draft RFQ transmittal package only. These drafts are not sent RFQs, supplier responses, approved
+  quotes, samples, signed drawings, pinouts, footprints, STEP evidence, or authorization to route or fabricate the
+  PCB.
+draft:
+  draft_id: e1_phone_display_touch_rfq_2026-05-21
+  function: display_touch
+  status: draft_not_sent_not_supplier_evidence
+  primary_candidate: CH550FH01A-CT
+  package_binding: package/display/v0-dsi-720x1280.yaml
+  source_basis:
+    - Made-in-China Chenghao 5.5 inch 1080x1920 MIPI CTP listing
+    - Alibaba 5.5 inch 1080x1920 MIPI alternates
+    - Made-in-China E549/RM67191 5.49 inch AMOLED thin-display alternate
+  verified_public_source_ids:
+    - display_primary_chenghao_ch550fh01a_ct
+    - display_alternate_made_in_china_5p5_1080p_mipi_ctp
+    - display_alternate_alibaba_youritech_5p5_1080p_40pin
+    - display_alternate_alibaba_meta_055wu01
+    - display_alternate_made_in_china_e549_amoled
+  source_revalidation_trace:
+    rfq_matrix_key: display_touch
+    primary_revalidated_source_id: display_primary_chenghao_ch550fh01a_ct
+    supplemental_revalidated_source_id: display_primary_chenghao_ch550fh01a_ct_public_pdf
+    alternate_revalidated_source_ids:
+      - display_alternate_alibaba_meta_055wu01
+      - display_alternate_made_in_china_e549_amoled
+    rfq_ready_from_public_page: true
+    production_release_ready: false
+    route_release_dependency: J_DISPLAY_TOUCH symbol_footprint_and_MIPI_DSI_route_remain_blocked_until_supplier_pack_received
+  recipient_candidates:
+    - supplier: Shenzhen Chenghao Optoelectronic
+      candidate: CH550FH01A-CT
+      url: https://chenghaolcd.en.made-in-china.com/product/pmFUBTZDnXVH/China-LCD-Manufacturer-1080-1920-Pixels-5-5inch-Pcap-Capacitive-Touch-Display-TFT-Module.html
+      public_page_status: public_listing_observed_2026_05_20
+    - supplier: Suzhou Chaoxian Technology or equivalent Made-in-China OEM/ODM TFT supplier
+      candidate: 5p5_1080x1920_MIPI_CTP_OEM_ODM_class
+      url: https://www.made-in-china.com/price/prodetail_LCD-Display_qAZpedQGXIRK.html
+      public_page_status: public_listing_observed_2026_05_20
+    - supplier: Youritech or equivalent Alibaba display OEM
+      candidate: 5p5_1080x1920_MIPI_40pin_CTP_class
+      url: https://www.alibaba.com/product-detail/Youritech-OEM-5-5-Inch-TFT_1600495349630.html
+      public_page_status: public_listing_observed_2026_05_20
+    - supplier: META Display LLC or equivalent Alibaba 055WU01 display OEM
+      candidate: 055WU01_parseable_5p5_1080x1920_MIPI_40pin_CTP
+      url: https://www.alibaba.com/product-detail/5-5-inch-1080x1920-mipi-interface_1601403260309.html
+      public_page_status: public_listing_observed_2026_05_21
+    - supplier: Shenzhen Dayuan Display Technology / FET-class Made-in-China AMOLED supplier
+      candidate: E549-HC01_RM67191_AMOLED_class
+      url: https://fetoled.en.made-in-china.com/product/RwKmavZJCtcS/China-5-5-Inch-Hight-Resolution-1080X1920-Amoled-Display-Screen-with-Mipi.html
+      public_page_status: public_listing_observed_2026_05_21
+  request:
+    quote_quantities:
+      - 10
+      - 100
+      - 1000
+    minimum_sample_lot: 5
+    response_due_date: '2026-06-04'
+    required_response_format: supplier_signed_pdf_or_native_cad_plus_machine_readable_summary
+    accepted_document_languages:
+      - english
+      - bilingual_supplier_original_plus_english
+    required_supplier_artifacts:
+      - signed LCM plus CTP 2D drawing with active, viewing, outline, FPC, and cover-lens datums
+      - FPC pinout including MIPI DSI lanes, touch I2C, reset, TE, backlight, bias, and grounds
+      - mating connector MPN, height, keepout, and recommended land pattern
+      - display/touch power sequence and inrush/backlight current data
+      - STEP model for display stack, FPC tail, stiffener, and adhesive stack
+      - sample inspection report for outline, FPC exit, and touch stack thickness
+    board_dependency:
+      - J_DISPLAY_TOUCH exact FPC pinout
+      - 77.1 x 151.77 x 3.39 mm display stack clearance
+      - display FPC bend keepout and cover glass datum
+  acceptance_gate_before_kicad_use:
+    orderable_mpn_received: false
+    signed_2d_drawing_received: false
+    pinout_or_pad_map_received: false
+    recommended_land_pattern_received: false
+    step_or_brep_model_received: false
+    sample_received_and_inspected: false
+    compliance_pack_received: false
+    pinout_symbol_footprint_reviews_complete: false
+  planned_archive_paths_after_send:
+    draft: board/kicad/e1-phone/sourcing-drafts/display_touch/rfq-transmittal.yaml
+    release_archive: board/kicad/e1-phone/production/sourcing/display_touch/rfq-transmittal.yaml
+    supplier_response_pack: board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml
+forbidden_claims:
+  - rfq_sent
+  - supplier_response_received
+  - supplier_approved
+  - pinouts_frozen
+  - footprints_frozen
+  - step_models_bound
+  - production_archive_complete
+  - routed_pcb_ready
+  - enclosure_ready

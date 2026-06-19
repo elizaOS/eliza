@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set -e
+
+echo "Tweaking laptop-mode-tools"
+
+sed -i 's,^ENABLE_AUTO_MODULES=1$,ENABLE_AUTO_MODULES=0,' \
+    /etc/laptop-mode/laptop-mode.conf
+
+sed -i 's,^CONTROL_RUNTIME_AUTOSUSPEND=1$,CONTROL_RUNTIME_AUTOSUSPEND=0,' \
+    /etc/laptop-mode/conf.d/runtime-pm.conf

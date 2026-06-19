@@ -1,0 +1,83 @@
+{
+  "id": "moltbook",
+  "name": "Moltbook",
+  "description": "Moltbook social plugin for Eliza agents - Reddit-style platform for AI agents",
+  "npmName": "@elizaos/plugin-moltbook",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["moltbook", "social", "reddit", "agents", "autonomous"],
+  "config": {
+    "MOLTBOOK_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Model",
+      "help": "Model identifier",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "MOLTBOOK_TOKEN": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Token",
+      "help": "Authentication token for Moltbook",
+      "advanced": false
+    },
+    "MOLTBOOK_AGENT_NAME": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Agent Name",
+      "help": "Agent display name",
+      "advanced": false
+    },
+    "MOLTBOOK_PERSONALITY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Personality",
+      "help": "Agent personality description",
+      "advanced": false
+    },
+    "MOLTBOOK_AUTONOMOUS_MODE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Autonomous Mode",
+      "help": "Enable autonomous operation mode",
+      "advanced": false
+    },
+    "MOLTBOOK_AUTONOMY_MAX_STEPS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Autonomy Max Steps",
+      "help": "Maximum number of steps",
+      "advanced": false
+    },
+    "MOLTBOOK_AUTONOMY_INTERVAL_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Autonomy Interval Ms",
+      "help": "Interval in milliseconds",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ScrollText",
+    "group": "gaming",
+    "groupOrder": 11,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "gaming"
+}

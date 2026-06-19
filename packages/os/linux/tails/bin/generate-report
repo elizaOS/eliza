@@ -1,0 +1,174 @@
+#! /usr/bin/python3
+
+# Documentation: https://tails.net/contribute/working_together/GitLab/#api
+
+import functools
+import logging
+import os
+import sys
+from datetime import datetime
+
+try:
+    import gitlab
+except ImportError:
+    sys.exit("You need to install python3-gitlab to use this program.")
+
+try:
+    from dateutil.relativedelta import relativedelta
+except ImportError:
+    sys.exit("You need to install python3-dateutil to use this program.")
+from pathlib import Path
+
+# we can ignore PLW1508 because pathlib.Path.home
+# already handles the case of unset HOME environment variable
+PYTHON_GITLAB_CONFIG_FILE = os.getenv(
+    "PYTHON_GITLAB_CONFIG_FILE",
+    default=Path.home()  # noqa: PLW1508
+    / ".python-gitlab.cfg",
+)
+
+PYTHON_GITLAB_NAME = os.getenv("GITLAB_NAME", default="Tails")
+
+GROUP_NAME = "tails"
+
+# By default, only changes in these projects are considered
+PROJECTS = [
+    GROUP_NAME + "/" + project
+    for project in [
+        "chutney",
+        "installer",
+        "sysadmin",
+        "tails",
+        "whisperback",
+        "workarounds",
+    ]
+]
+
+LOG_FORMAT = "%(asctime)-15s %(levelname)s %(message)s"
+log = logging.getLogger()
+
+
+class GitLabWrapper(gitlab.Gitlab):
+    @functools.cache  # noqa: B019
+    def project(self, project_id):
+        return self.projects.get(project_id)
+
+    @functools.cache  # noqa: B019
+    def project_from_name(self, project_name):
+        project = next(
+            p
+            for p in self.projects.list(all=True)
+            # Disambiguate between projects whose names share a common prefix
+            if p.path_with_namespace == project_name
+        )
+        assert isinstance(project, gitlab.v4.objects.Project)
+        return project
+
+
+class ReportGenerator:
+    def __init__(
+        self,
+        gl,
+        group,
+        projects: list,
+        label: str,  # noqa: PLR0913
+        assignee: str,
+        year: int,
+        month: int,
+    ):
+        self.gl = gl
+        self.group = group
+        self.projects = projects
+        self.label = label
+        self.assignee = assignee
+        self.after = end_of_previous_month(year, month)
+        self.before = beginning_of_next_month(year, month)
+
+    def closed_issues_in_project(self, project_name) -> list:
+        project = self.gl.project_from_name(project_name)
+        closed_issues_events = project.events.list(
+            iterator=True,
+            get_all=True,
+            action="closed",
+            after=self.after,
+            before=self.before,
+        )
+
+        gl_closed_issues_with_duplicates = [
+            {
+                "project_id": event.project_id,
+                "iid": event.target_iid,
+            }
+            for event in closed_issues_events
+            if event.target_type in ["Issue", "WorkItem"]
+        ]
+        gl_closed_issues = []
+        for issue in gl_closed_issues_with_duplicates:
+            if issue not in gl_closed_issues:
+                gl_closed_issues.append(issue)
+
+        for raw_issue in gl_closed_issues:
+            project = self.gl.project(raw_issue["project_id"])
+            issue = project.issues.get(raw_issue["iid"])
+            if self.assignee is not None and self.assignee not in [
+                a["username"] for a in issue.assignees
+            ]:
+                continue
+            if self.label is not None and self.label not in issue.labels:
+                continue
+            yield {
+                "title": issue.title,
+                "web_url": issue.web_url,
+            }
+
+    def closed_issues(self) -> list:
+        for project in self.projects:
+            yield from self.closed_issues_in_project(project)
+
+
+def beginning_of_next_month(year, month):
+    return (datetime(year, month, 1) + relativedelta(months=1)).replace(day=1)
+
+
+def end_of_previous_month(year, month):
+    return datetime(year, month, 1) + relativedelta(seconds=-1)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--year", type=int, required=True)
+    parser.add_argument("--month", type=int, required=True)
+    parser.add_argument("--label", default=None)
+    parser.add_argument("--assignee", default=None)
+    parser.add_argument("--project")
+    parser.add_argument("--debug", action="store_true", help="debug output")
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+    else:
+        logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
+    gl = GitLabWrapper.from_config(
+        PYTHON_GITLAB_NAME, config_files=[PYTHON_GITLAB_CONFIG_FILE]
+    )
+    gl.auth()
+
+    group = gl.groups.list(search=GROUP_NAME)[0]
+    assert isinstance(group, gitlab.v4.objects.Group)
+
+    projects = [args.project] if args.project else PROJECTS
+
+    report_generator = ReportGenerator(
+        gl, group, projects, args.label, args.assignee, args.year, args.month
+    )
+
+    print("Closed issues")
+    print("=============")
+    print()
+    for closed_issue in report_generator.closed_issues():
+        print(f'- {closed_issue["title"]}')
+        print(f'  {closed_issue["web_url"]}')
+        print()

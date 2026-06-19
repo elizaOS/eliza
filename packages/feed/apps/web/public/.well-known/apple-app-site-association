@@ -1,0 +1,35 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["TEAM_ID.market.feed.app"],
+        "paths": [
+          "/redirect",
+          "/post/*",
+          "/agents/*",
+          "/markets/*",
+          "/nft/*",
+          "/feed",
+          "/u/*",
+          "/actors/*",
+          "/orgs/*",
+          "/profile/*",
+          "/comment/*",
+          "/article/*",
+          "/leaderboard",
+          "/chats",
+          "/notifications",
+          "/settings",
+          "/betting",
+          "/game",
+          "/rewards",
+          "/reputation",
+          "/trending/*"
+        ],
+        "components": []
+      }
+    ]
+  }
+}
+

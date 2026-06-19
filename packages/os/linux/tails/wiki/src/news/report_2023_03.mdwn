@@ -1,0 +1,26 @@
+[[!meta title="Tails report for March 2023"]]
+[[!meta date="Tue, 14 Apr 2023 13:59:23 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+We got in touch with the journalists that reported how feminists in Mexico were spied by the army: <https://nocallaronlasolas.serendipia.digital/>.
+
+We improved Persistent Storage behavior and UX in corner-cases ([[!tails_mr 1010]]).
+
+We have started tests of the new Persistent Storage. As you might remember, there was a big revamp in [[Tails 5.8|news/version_5.8]]. The new implementation has been designed to have a smoother UI.
+
+Releases
+========
+
+[[Tails 5.11 was released on March 20|news/version_5.11]]:
+
+it improves performance on low-memory systems, and improves your ability to record screencasts.
+
+Metrics
+=======
+
+Tails has been started more than 740000 times this month. This makes 23884 boots a day on average.

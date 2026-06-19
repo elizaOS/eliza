@@ -1,0 +1,12 @@
+menu "Eliza e1 BSP"
+
+config BR2_PACKAGE_ELIZA_E1_BSP
+	bool "Eliza e1 BSP smoke hooks"
+	help
+	  Import metadata for the Eliza e1 software BSP. The hardware
+	  register contract is owned by sw/platform/e1_platform_contract.json.
+
+source "$BR2_EXTERNAL_ELIZA_E1_PATH/package/e1-mmio-smoke/Config.in"
+source "$BR2_EXTERNAL_ELIZA_E1_PATH/package/e1-npu-ml-smoke/Config.in"
+
+endmenu

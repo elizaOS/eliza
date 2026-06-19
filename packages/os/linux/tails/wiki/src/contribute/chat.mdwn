@@ -1,0 +1,7 @@
+[[!meta title="Tails contributors chat room"]]
+
+In addition to the [[Tor users chat room|support/chat]],
+we have a dedicated chat room for Tails contributors:
+<https://matrix.to/#/#tails-dev:matrix.org>
+
+To join it, use a [Matrix client](https://matrix.org/ecosystem/clients/).

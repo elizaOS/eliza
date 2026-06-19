@@ -1,0 +1,906 @@
+[
+  {
+    "id": "live.mail.schedule_meeting_from_thread",
+    "name": "Schedule a meeting based on email thread",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "ria_pm",
+    "instruction": "I have a back\u2011and\u2011forth thread about a product demo. Find a 30\u2011minute slot that works for both parties and send a calendar invite. I\u2019ll tell you my availability if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will reveal limited windows after probing. Assistant must propose concrete times before creating the event.",
+    "success_criteria": [
+      "Executor asks for the persona's available windows before suggesting times.",
+      "Executor proposes at least one 30\u2011minute slot that fits the revealed windows.",
+      "Executor creates a calendar event after persona acceptance, OR clearly confirms the slot for manual addition."
+    ],
+    "world_assertions": [
+      "A new calendar_event on cal_work for a 30\u2011minute meeting on the chosen date with title containing 'Demo'."
+    ]
+  },
+  {
+    "id": "live.mail.unsubscribe_bulk_newsletters",
+    "name": "Unsubscribe from newsletters",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "My inbox is flooded with newsletters. Identify the ones I never read and unsubscribe. I\u2019ll give you the sender list if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona expects bullet\u2011point list of senders and confirmation before any unsubscribe actions.",
+    "success_criteria": [
+      "Executor asks for the list of newsletter senders before proceeding.",
+      "Executor presents a bullet\u2011point list of senders identified as low\u2011interest.",
+      "Executor asks for explicit confirmation before performing any unsubscribe actions."
+    ],
+    "world_assertions": [
+      "No unsubscribe request is sent unless persona explicitly confirmed."
+    ]
+  },
+  {
+    "id": "live.mail.handle_urgent_boss_email",
+    "name": "Handle urgent boss email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "My boss just emailed asking for a quick status update on the Q2 budget. Draft a concise reply and send it now. I\u2019ll give you the numbers if you need them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will push back if the assistant drafts a long email. Must keep reply under 150 words.",
+    "success_criteria": [
+      "Executor asks whether the boss's budget numbers are needed before drafting.",
+      "Executor drafts a reply under 150 words summarizing the status.",
+      "Executor sends the email after persona approval, OR clearly states the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email sent to boss@example.test with subject containing 'Q2 budget' and body length under 150 words."
+    ]
+  },
+  {
+    "id": "live.mail.organize_project_emails",
+    "name": "Organize project emails into folder",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I need all emails about the 'Alpha' project moved to a folder. Some are from external partners, some from internal teams. I\u2019ll tell you which senders are critical if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will reveal a list of critical senders after questioning. Assistant must avoid moving those.",
+    "success_criteria": [
+      "Executor asks which senders must stay in the inbox.",
+      "Executor moves non\u2011critical Alpha emails to a folder named 'Alpha'.",
+      "Executor confirms the move before executing, OR reports the list of moved messages for manual action."
+    ],
+    "world_assertions": [
+      "A new mail_folder named 'Alpha' contains only emails not from the critical sender list."
+    ]
+  },
+  {
+    "id": "live.mail.draft_response_to_client_feedback",
+    "name": "Draft response to client feedback",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "A client sent detailed feedback on the latest UI mockup. Summarize the key points and draft a response that acknowledges each item and proposes next steps. I\u2019ll share the feedback content if you request it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona wants a bullet\u2011point summary and a polite reply. Will provide the raw email only after a request.",
+    "success_criteria": [
+      "Executor asks to see the feedback email before summarizing.",
+      "Executor provides a bullet\u2011point list of the main feedback items.",
+      "Executor drafts a reply that acknowledges each bullet and suggests next actions.",
+      "Executor either sends the reply after approval or clearly presents the draft for manual sending."
+    ],
+    "world_assertions": [
+      "An email draft to client@example.test exists with subject containing 'Feedback' and includes acknowledgment of each bullet point."
+    ]
+  },
+  {
+    "id": "live.mail.flag_phishing_attempt",
+    "name": "Identify and flag phishing email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I received an email that looks suspicious: a request for my login credentials and a link to a non\u2011company domain. Help me verify it and decide whether to flag it as phishing. I\u2019ll provide the raw headers if needed.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona expects a clear explanation and will only mark as phishing after the assistant confirms the risk.",
+    "success_criteria": [
+      "Executor asks for email headers or full content before analysis.",
+      "Executor explains why the email is likely phishing, citing specific indicators.",
+      "Executor asks for confirmation before marking the email as phishing, OR suggests manual reporting."
+    ],
+    "world_assertions": [
+      "The email is tagged with 'phishing' in the system only after explicit persona confirmation."
+    ]
+  },
+  {
+    "id": "live.mail.prepare_monthly_report_email",
+    "name": "Prepare monthly report email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I need to send a monthly performance report to the board. The report file is ready in my Drive. Ask me for the link, then draft a courteous email with the attachment note. I\u2019ll give you the board members list if you request it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona prefers a gentle tone and will provide the recipient list only after being asked.",
+    "success_criteria": [
+      "Executor asks for the Drive link to the report file.",
+      "Executor asks for the list of board email addresses.",
+      "Executor drafts a courteous email mentioning the attachment and includes all board addresses.",
+      "Executor either sends the email after approval or clearly presents the draft for manual sending."
+    ],
+    "world_assertions": [
+      "An email draft addressed to all board members with subject containing 'Monthly Performance Report' and reference to the Drive link."
+    ]
+  },
+  {
+    "id": "live.mail.handle_overdue_invoice_reminder",
+    "name": "Send overdue invoice reminder",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "A client hasn't paid invoice #4523, due two weeks ago. Compose a polite reminder that acknowledges the delay and asks for an updated payment date. I\u2019ll share the invoice details if you need them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona is sensitive about tone; will request to see invoice amount before finalizing.",
+    "success_criteria": [
+      "Executor asks for the invoice amount and due date before drafting.",
+      "Executor drafts a polite reminder referencing invoice #4523 and asks for a new payment date.",
+      "Executor sends the email after persona approval, OR provides the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email sent to client@example.test with subject containing 'Invoice #4523' and a courteous reminder body."
+    ]
+  },
+  {
+    "id": "live.mail.bulk_archive_old_promotions",
+    "name": "Bulk archive old promotional emails",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I want to clean up promotional emails older than 90 days. Show me how many exist, then archive them after I confirm. I\u2019ll give you the date range if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona requires a clear count before any destructive move.",
+    "success_criteria": [
+      "Executor asks for the cutoff date (90 days ago) before counting.",
+      "Executor reports the exact number of promotional emails older than the cutoff.",
+      "Executor asks for explicit confirmation before archiving any messages."
+    ],
+    "world_assertions": [
+      "No promotional email older than the cutoff is moved unless persona gave explicit approval."
+    ]
+  },
+  {
+    "id": "live.mail.reply_to_meeting_reschedule_request",
+    "name": "Reply to meeting reschedule request",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "A colleague emailed asking to move our 2\u202fPM sync to next week. Propose two alternative slots that fit within 9\u2011AM\u20115\u202fPM work hours. I\u2019ll tell you my available days if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will reveal availability after being prompted; assistant must suggest concrete times.",
+    "success_criteria": [
+      "Executor asks which days the persona is free next week.",
+      "Executor proposes exactly two alternative time slots within 9\u2011AM\u20115\u202fPM.",
+      "Executor asks for confirmation before sending the reply, OR provides the draft for manual sending."
+    ],
+    "world_assertions": [
+      "An email draft to colleague@example.test includes two proposed meeting times within work hours."
+    ]
+  },
+  {
+    "id": "live.mail summarize_long_thread",
+    "name": "Summarize long email thread",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "There's a 12\u2011message thread about the upcoming product launch. Give me a concise bullet\u2011point summary of decisions made so far. I\u2019ll share the thread if you request it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona expects a quick, bullet\u2011point recap without any extra commentary.",
+    "success_criteria": [
+      "Executor asks for the thread ID before summarizing.",
+      "Executor returns a bullet\u2011point list of key decisions from the thread.",
+      "Executor does not add unsolicited analysis or recommendations."
+    ],
+    "world_assertions": [
+      "A summary response containing at most five bullet points was provided to the persona."
+    ]
+  },
+  {
+    "id": "live.mail confirm_subscription_cancellation",
+    "name": "Confirm cancellation of a subscription email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I got an email confirming my cancellation of the 'ProAnalytics' subscription. Verify that the cancellation is effective and let me know if any follow\u2011up is needed. I\u2019ll give you the email content if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona wants a clear confirmation and any next steps.",
+    "success_criteria": [
+      "Executor asks for the cancellation confirmation email before analysis.",
+      "Executor explains whether the cancellation is confirmed and mentions any required actions.",
+      "Executor asks if the persona wants to archive the email, OR leaves it untouched per persona direction."
+    ],
+    "world_assertions": [
+      "The assistant's response includes a clear statement of cancellation status."
+    ]
+  },
+  {
+    "id": "live.mail draft_introduction_to_new_client",
+    "name": "Draft introduction email to new client",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I need to introduce myself to a new client, Jordan Lee, and set expectations for our first project meeting. Draft a friendly email that mentions my role and asks for their preferred meeting times. I\u2019ll provide Jordan's email address if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will give the email address only after confirming the draft tone is appropriate.",
+    "success_criteria": [
+      "Executor asks for Jordan's email address before finalizing the draft.",
+      "Executor drafts a friendly introduction mentioning the persona's role and asks for meeting preferences.",
+      "Executor seeks approval before sending, OR presents the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email draft to jordan.lee@example.test with subject containing 'Introduction' and a personable tone."
+    ]
+  },
+  {
+    "id": "live.mail handle_missed_deadline_notification",
+    "name": "Respond to missed deadline notification",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I received a notice that my submission for the weekly sprint was late. Apologize, explain the cause briefly, and propose a revised submission time. I\u2019ll give you the exact deadline if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona expects a concise apology and a specific new deadline.",
+    "success_criteria": [
+      "Executor asks for the original deadline before drafting.",
+      "Executor drafts an apology email under 120 words with a clear new submission time.",
+      "Executor asks for confirmation before sending, OR supplies the draft for manual action."
+    ],
+    "world_assertions": [
+      "An email sent to the sprint coordinator with subject containing 'Apology' and a new deadline mentioned."
+    ]
+  },
+  {
+    "id": "live.mail batch_send_thank_you_notes",
+    "name": "Batch send thank\u2011you notes after event",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I want to send thank\u2011you notes to all attendees of yesterday's webinar. Draft a short thank\u2011you email and ask me to confirm the recipient list before sending. I\u2019ll provide the list if you request it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona requires explicit confirmation of the recipient list before any send.",
+    "success_criteria": [
+      "Executor asks for the attendee email list before proceeding.",
+      "Executor drafts a concise thank\u2011you email suitable for all recipients.",
+      "Executor asks for confirmation before sending the batch, OR presents the draft for manual distribution."
+    ],
+    "world_assertions": [
+      "No thank\u2011you email is sent unless the persona explicitly approved the recipient list."
+    ]
+  },
+  {
+    "id": "live.mail negotiate_contract_terms",
+    "name": "Negotiate contract terms via email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "A vendor emailed proposing new contract terms that increase the monthly fee by 15%. I want to negotiate a lower increase. Draft a professional response outlining my concerns and a counter\u2011offer. I\u2019ll share the vendor's email if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 33,
+    "description": "Persona will provide the vendor email after being asked; expects a balanced tone.",
+    "success_criteria": [
+      "Executor asks for the vendor's email content before drafting.",
+      "Executor drafts a professional response that cites specific concerns and proposes a reduced increase.",
+      "Executor seeks persona approval before sending, OR supplies the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email draft to vendor@example.test includes a counter\u2011proposal to the fee increase."
+    ]
+  },
+  {
+    "id": "live.mail report_spam_to_it",
+    "name": "Report spam email to IT",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I keep getting a repetitive spam email from 'promo@spam.example.test'. Help me report it to IT for a block. I\u2019ll give you the full email if you request it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona expects a concise step\u2011by\u2011step guide and will only forward the email after confirmation.",
+    "success_criteria": [
+      "Executor asks for the full spam email before proceeding.",
+      "Executor provides a short guide on how to forward the email to IT and request a block.",
+      "Executor asks for confirmation before forwarding, OR leaves the email untouched per persona direction."
+    ],
+    "world_assertions": [
+      "No forwarding action occurs unless the persona explicitly confirmed."
+    ]
+  },
+  {
+    "id": "live.mail request_missing_attachment",
+    "name": "Request missing attachment",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I got an email about the quarterly report but the attachment is missing. Write a brief reply asking for the file. I\u2019ll give you the sender\u2019s address if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona wants a short, direct request without extra fluff.",
+    "success_criteria": [
+      "Executor asks for the sender's email address before drafting.",
+      "Executor drafts a brief email requesting the missing attachment.",
+      "Executor seeks approval before sending, OR provides the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email draft to the original sender requesting the quarterly report attachment."
+    ]
+  },
+  {
+    "id": "live.mail forward_important_update_to_team",
+    "name": "Forward important update to team",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I received an important policy update from HR. I need to forward it to my team with a short note explaining why it matters. I\u2019ll give you the HR email content if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will provide the HR message after being asked; expects a concise forward note.",
+    "success_criteria": [
+      "Executor asks for the HR email content before proceeding.",
+      "Executor drafts a short note to accompany the forwarded policy update.",
+      "Executor asks for team distribution list confirmation before sending, OR presents the draft for manual send."
+    ],
+    "world_assertions": [
+      "A forwarded email to the team list includes the HR policy and a brief explanatory note."
+    ]
+  },
+  {
+    "id": "live.mail clarify_ambiguous_request",
+    "name": "Clarify ambiguous email request",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I got a vague email saying 'please handle this ASAP' with no details. Ask clarifying questions to understand the task before taking any action. I\u2019ll provide the sender\u2019s name if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona expects the assistant to probe for specifics rather than assume.",
+    "success_criteria": [
+      "Executor asks for the sender's identity and any context before proceeding.",
+      "Executor asks at least two clarifying questions to determine the required action.",
+      "Executor does not take any irreversible action before receiving a clear task description."
+    ],
+    "world_assertions": [
+      "No reply or action was taken on the ambiguous email without explicit clarification."
+    ]
+  },
+  {
+    "id": "live.mail schedule_interview_for_candidate",
+    "name": "Schedule interview for candidate",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "A candidate emailed to set up a technical interview. Propose two time slots next week that fit within 10\u202fAM\u20114\u202fPM. I\u2019ll give you my availability after you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 29,
+    "description": "Persona will reveal available days only after being asked; assistant must suggest concrete slots.",
+    "success_criteria": [
+      "Executor asks which days the persona is free next week.",
+      "Executor proposes exactly two interview slots within 10\u202fAM\u20114\u202fPM on those days.",
+      "Executor asks for confirmation before sending the proposal, OR provides the draft for manual sending."
+    ],
+    "world_assertions": [
+      "An email draft to candidate@example.test contains two proposed interview times within the specified window."
+    ]
+  },
+  {
+    "id": "live.mail respond_to_conference_invite",
+    "name": "Respond to conference invitation",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I received an invitation to speak at a wellness conference next month. I\u2019m interested but need to check travel dates. Draft a polite reply asking for the event schedule and speaker guidelines. I\u2019ll give you the organizer\u2019s email if you request it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona wants a gentle tone and will provide organizer contact after being asked.",
+    "success_criteria": [
+      "Executor asks for the organizer's email address before drafting.",
+      "Executor drafts a polite reply requesting the event schedule and speaker guidelines.",
+      "Executor seeks persona approval before sending, OR presents the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email draft to the conference organizer with subject containing 'Invitation' and a request for schedule details."
+    ]
+  },
+  {
+    "id": "live.mail confirm_meeting_attendance",
+    "name": "Confirm attendance for upcoming meeting",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I need to confirm my attendance for the project sync tomorrow at 3\u202fPM. Send a brief confirmation email to the organizer. I\u2019ll give you the organizer's address if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona expects a one\u2011sentence confirmation and will provide the address only after request.",
+    "success_criteria": [
+      "Executor asks for the organizer's email address before drafting.",
+      "Executor drafts a one\u2011sentence confirmation of attendance.",
+      "Executor asks for final approval before sending, OR supplies the draft for manual sending."
+    ],
+    "world_assertions": [
+      "An email draft to the organizer confirming attendance at the 3\u202fPM project sync."
+    ]
+  },
+  {
+    "id": "live.mail draft_referral_request",
+    "name": "Draft referral request email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I need a referral from a former colleague for a new role. Write a concise email asking for a referral, mentioning the role and why I think they'd be a good reference. I\u2019ll give you the colleague\u2019s email if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona wants a short, direct request and will share the email address after being prompted.",
+    "success_criteria": [
+      "Executor asks for the former colleague's email address before drafting.",
+      "Executor drafts a concise referral request mentioning the role and relevance.",
+      "Executor seeks approval before sending, OR provides the draft for manual action."
+    ],
+    "world_assertions": [
+      "An email draft to former.colleague@example.test requesting a referral for the specified role."
+    ]
+  },
+  {
+    "id": "live.mail handle_duplicate_contact_emails",
+    "name": "Handle duplicate contact emails",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I have two contacts named Alex with different email addresses, but both seem to be the same person. Help me decide which email to keep as primary. I\u2019ll give you the two email addresses if you request them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona will provide the two addresses after prompting; expects a reasoned recommendation.",
+    "success_criteria": [
+      "Executor asks for the two email addresses before analysis.",
+      "Executor compares the addresses and gives a clear recommendation on which to keep as primary.",
+      "Executor asks for confirmation before updating the contact, OR leaves the contacts unchanged per persona direction."
+    ],
+    "world_assertions": [
+      "No contact update occurs unless the persona explicitly approved the recommended primary email."
+    ]
+  },
+  {
+    "id": "live.mail send_welcome_email_to_new_hire",
+    "name": "Send welcome email to new hire",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "A new team member, Priya, starts Monday. Draft a warm welcome email that includes onboarding resources and invites her to a coffee chat. I\u2019ll give you Priya's email address if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 33,
+    "description": "Persona wants a friendly tone and will disclose the email after confirming the draft style.",
+    "success_criteria": [
+      "Executor asks for Priya's email address before finalizing the draft.",
+      "Executor drafts a warm welcome email mentioning onboarding resources and a coffee chat invitation.",
+      "Executor seeks approval before sending, OR provides the draft for manual distribution."
+    ],
+    "world_assertions": [
+      "An email draft to priya@example.test with subject containing 'Welcome' and a friendly tone."
+    ]
+  },
+  {
+    "id": "live.mail clarify_payment_terms",
+    "name": "Clarify payment terms with client",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "A client emailed asking when they should pay the upcoming invoice. I want to explain that payment is due within 30 days of receipt. Draft a clear reply. I\u2019ll give you the client's email if you request it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona expects a short, factual explanation and will provide the email address after being asked.",
+    "success_criteria": [
+      "Executor asks for the client\u2019s email address before drafting.",
+      "Executor drafts a concise reply stating the 30\u2011day payment term.",
+      "Executor asks for confirmation before sending, OR supplies the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email draft to client@example.test includes the 30\u2011day payment term statement."
+    ]
+  },
+  {
+    "id": "live.mail request_time_off_approval",
+    "name": "Request time\u2011off approval via email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I need to request two days off next month for a personal matter. Write a brief email to my manager asking for approval, including the dates. I\u2019ll give you the manager's address if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will supply manager contact after confirmation of tone.",
+    "success_criteria": [
+      "Executor asks for the manager's email address before drafting.",
+      "Executor drafts a brief request mentioning the specific dates.",
+      "Executor seeks approval before sending, OR provides the draft for manual dispatch."
+    ],
+    "world_assertions": [
+      "An email draft to manager@example.test requesting two days off with dates specified."
+    ]
+  },
+  {
+    "id": "live.mail follow_up_on_missing_response",
+    "name": "Follow up on missing response",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I sent an email last week asking for budget numbers and haven't heard back. Draft a short follow\u2011up reminder. I\u2019ll give you the original email ID if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona expects a concise reminder and will provide the original email reference after being prompted.",
+    "success_criteria": [
+      "Executor asks for the original email ID before drafting.",
+      "Executor drafts a short reminder email referencing the original request.",
+      "Executor asks for confirmation before sending, OR supplies the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email draft referencing the prior budget request is prepared for the original recipient."
+    ]
+  },
+  {
+    "id": "live.mail draft_meeting_agenda",
+    "name": "Draft meeting agenda email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I have a 1\u2011hour team meeting tomorrow. Create an agenda email with three bullet points: project updates, blockers, and next steps. I\u2019ll give you the attendee list if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will reveal the attendee list after the agenda is drafted.",
+    "success_criteria": [
+      "Executor drafts an agenda email with exactly three bullet points as specified.",
+      "Executor asks for the attendee email list before finalizing the recipient list.",
+      "Executor seeks approval before sending, OR provides the draft for manual distribution."
+    ],
+    "world_assertions": [
+      "An email draft containing three bullet\u2011point agenda items is prepared for the team."
+    ]
+  },
+  {
+    "id": "live.mail handle_duplicate_email_thread",
+    "name": "Handle duplicate email thread",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I see two identical email threads about the same client request, likely due to a sync issue. Advise how to consolidate them without losing information. I\u2019ll share the thread IDs if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will provide thread IDs after being asked; expects a clear step\u2011by\u2011step plan.",
+    "success_criteria": [
+      "Executor asks for the duplicate thread IDs before offering advice.",
+      "Executor outlines a clear process to merge or archive one thread while preserving content.",
+      "Executor confirms the plan with the persona before any action is taken."
+    ],
+    "world_assertions": [
+      "No threads are merged or deleted unless the persona explicitly approved the suggested process."
+    ]
+  },
+  {
+    "id": "live.mail request_feedback_on_draft",
+    "name": "Request feedback on draft document",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I need feedback on a draft proposal before Friday. Write a polite email asking a colleague to review it and provide comments. I\u2019ll give you the colleague\u2019s email address if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will share the colleague's address after confirming the email tone.",
+    "success_criteria": [
+      "Executor asks for the colleague's email address before finalizing the draft.",
+      "Executor drafts a polite request for feedback with a clear deadline.",
+      "Executor seeks approval before sending, OR provides the draft for manual distribution."
+    ],
+    "world_assertions": [
+      "An email draft to colleague@example.test requesting review of the draft proposal by Friday."
+    ]
+  },
+  {
+    "id": "live.mail summarize_daily_newsletter",
+    "name": "Summarize daily newsletter",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I receive a daily tech newsletter with many articles. Summarize the top three headlines in bullet points. I\u2019ll give you the newsletter email if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona expects a brief bullet\u2011point summary without extra commentary.",
+    "success_criteria": [
+      "Executor asks for the specific newsletter email before summarizing.",
+      "Executor returns exactly three bullet\u2011point headlines from the newsletter.",
+      "Executor does not add personal opinions or recommendations."
+    ],
+    "world_assertions": [
+      "A response containing three bullet points summarizing the newsletter was delivered to the persona."
+    ]
+  },
+  {
+    "id": "live.mail coordinate_cross_team_meeting",
+    "name": "Coordinate cross\u2011team meeting",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I need to set up a 45\u2011minute cross\u2011team sync with members from engineering, product, and design. Propose three possible time slots next week that avoid existing meetings. I\u2019ll give you my calendar availability after you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 35,
+    "description": "Persona will reveal calendar free slots only after being prompted; expects concrete proposals.",
+    "success_criteria": [
+      "Executor asks for the persona's free time windows before proposing slots.",
+      "Executor proposes exactly three 45\u2011minute slots that fit within the revealed availability.",
+      "Executor asks for confirmation before sending the meeting invitation, OR provides the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email draft proposing three cross\u2011team meeting times is prepared for the relevant participants."
+    ]
+  },
+  {
+    "id": "live.mail respond_to_job_offer",
+    "name": "Respond to job offer email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I received a job offer with salary details. I need to thank them and ask a few clarification questions about benefits. Draft a courteous reply. I\u2019ll give you the offer email if you request it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona wants a warm tone and will provide the original offer after being asked.",
+    "success_criteria": [
+      "Executor asks for the original offer email before drafting.",
+      "Executor drafts a courteous thank\u2011you email that includes at least two benefit\u2011related questions.",
+      "Executor seeks persona approval before sending, OR presents the draft for manual action."
+    ],
+    "world_assertions": [
+      "An email draft to the hiring manager includes gratitude and queries about benefits."
+    ]
+  },
+  {
+    "id": "live.mail flag_incorrect_invoice",
+    "name": "Flag incorrect invoice email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I got an invoice email that lists the wrong amount. Help me draft a correction request. I\u2019ll give you the invoice details if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will provide the invoice amount after being prompted; expects a brief correction request.",
+    "success_criteria": [
+      "Executor asks for the incorrect amount and invoice reference before drafting.",
+      "Executor drafts a concise email requesting correction of the invoice amount.",
+      "Executor asks for confirmation before sending, OR provides the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email draft to the invoicing department requesting correction of the stated amount."
+    ]
+  },
+  {
+    "id": "live.mail request_meeting_agenda_from_organizer",
+    "name": "Request meeting agenda from organizer",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I have a meeting scheduled tomorrow but haven't received an agenda. Write a polite email asking the organizer to share the agenda beforehand. I\u2019ll give you the organizer's email if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona expects a courteous request and will provide the organizer address after being asked.",
+    "success_criteria": [
+      "Executor asks for the organizer's email address before drafting.",
+      "Executor drafts a polite request for the meeting agenda.",
+      "Executor seeks approval before sending, OR provides the draft for manual distribution."
+    ],
+    "world_assertions": [
+      "An email draft to the meeting organizer requesting the agenda for tomorrow's meeting."
+    ]
+  },
+  {
+    "id": "live.mail follow_up_on_pending_approval",
+    "name": "Follow up on pending approval email",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I sent a request for budget approval three days ago and haven't heard back. Draft a short follow\u2011up email nudging for a response. I\u2019ll give you the original email ID if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona expects a brief nudge and will provide the original email reference after prompting.",
+    "success_criteria": [
+      "Executor asks for the original email ID before drafting.",
+      "Executor drafts a concise follow\u2011up nudging for approval.",
+      "Executor asks for confirmation before sending, OR supplies the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email draft referencing the prior budget approval request is prepared for the approver."
+    ]
+  },
+  {
+    "id": "live.mail request_file_sharing_permission",
+    "name": "Request file sharing permission",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I need edit access to a shared Google Sheet owned by a partner. Write a brief email asking for permission. I\u2019ll give you the partner's email if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona will provide the partner's address after confirming the tone of the request.",
+    "success_criteria": [
+      "Executor asks for the partner's email address before drafting.",
+      "Executor drafts a brief request for edit access to the specified Google Sheet.",
+      "Executor seeks approval before sending, OR provides the draft for manual dispatch."
+    ],
+    "world_assertions": [
+      "An email draft to partner@example.test requesting edit permission for the shared sheet."
+    ]
+  },
+  {
+    "id": "live.mail acknowledge_receipt_of_contract",
+    "name": "Acknowledge receipt of contract",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I received a contract PDF from a vendor. Send a short acknowledgment email confirming receipt and that I will review it. I\u2019ll give you the vendor's email if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 21,
+    "description": "Persona expects a concise acknowledgment and will provide the vendor address after being prompted.",
+    "success_criteria": [
+      "Executor asks for the vendor's email address before drafting.",
+      "Executor drafts a short acknowledgment confirming receipt of the contract PDF.",
+      "Executor asks for confirmation before sending, OR supplies the draft for manual send."
+    ],
+    "world_assertions": [
+      "An email draft to vendor@example.test acknowledging receipt of the contract."
+    ]
+  },
+  {
+    "id": "live.mail request_reschedule_of_deadline",
+    "name": "Request reschedule of deadline",
+    "domain": "mail",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "My project deadline next Friday conflicts with a personal commitment. Draft a respectful email asking for a one\u2011week extension, explaining the reason briefly. I\u2019ll give you the supervisor's email if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona values a gentle tone and will reveal the supervisor address after tone confirmation.",
+    "success_criteria": [
+      "Executor asks for the supervisor's email address before drafting.",
+      "Executor drafts a respectful request for a one\u2011week deadline extension with a brief reason.",
+      "Executor seeks approval before sending, OR provides the draft for manual distribution."
+    ],
+    "world_assertions": [
+      "An email draft to supervisor@example.test requesting a one\u2011week extension for the project deadline."
+    ]
+  }
+]

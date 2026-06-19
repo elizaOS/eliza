@@ -1,0 +1,47 @@
+# Evaluation Run Constraints
+# Last updated: 2025-03-15
+# Approved by: Evaluation Committee
+
+execution:
+  max_total_time_hours: 3
+  per_question_timeout_seconds: 120
+  max_retries_per_question: 2
+  retry_backoff_seconds: 5
+
+api:
+  model_endpoint: 'api.llm-provider.internal/v2/completions'
+  api_rate_limit_rpm: 80
+  max_concurrent_requests: 16
+  authentication: 'bearer_token'
+  api_version: 'v2.3.1'
+
+tokens:
+  max_input_tokens_per_question: 2048
+  max_output_tokens_per_question: 4096
+  system_prompt_tokens_reserved: 256
+
+benchmark_design:
+  target_total_questions: 970
+  target_dimensions: 18
+  min_questions_per_dimension: 30
+  max_questions_per_dimension: 80
+  difficulty_distribution:
+    easy: 0.25
+    medium: 0.50
+    hard: 0.25
+
+budget:
+  budget_usd: 500
+  cost_tracking: true
+  alert_threshold_pct: 80
+
+scoring:
+  primary_metric: 'weighted_accuracy'
+  confidence_level: 0.95
+  min_sample_size_per_cell: 10
+
+output:
+  results_format: 'json'
+  include_raw_responses: true
+  compress_output: true
+  output_directory: './results/'

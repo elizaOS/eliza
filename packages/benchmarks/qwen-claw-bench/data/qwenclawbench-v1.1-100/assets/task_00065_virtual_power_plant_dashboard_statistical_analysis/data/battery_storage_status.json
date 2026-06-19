@@ -1,0 +1,194 @@
+[
+  {
+    "hour": 0,
+    "timestamp": "2024-06-15T00:00",
+    "soc_percent": 36.1,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 89.2,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 1,
+    "timestamp": "2024-06-15T01:00",
+    "soc_percent": 30.1,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 59.9,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 2,
+    "timestamp": "2024-06-15T02:00",
+    "soc_percent": 25.1,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 50.3,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 3,
+    "timestamp": "2024-06-15T03:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 73.1,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 4,
+    "timestamp": "2024-06-15T04:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 5,
+    "timestamp": "2024-06-15T05:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 6,
+    "timestamp": "2024-06-15T06:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 7,
+    "timestamp": "2024-06-15T07:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 8,
+    "timestamp": "2024-06-15T08:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 9,
+    "timestamp": "2024-06-15T09:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 10,
+    "timestamp": "2024-06-15T10:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 11,
+    "timestamp": "2024-06-15T11:00",
+    "soc_percent": 32.4,
+    "charge_rate_kw": 124.2,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 12,
+    "timestamp": "2024-06-15T12:00",
+    "soc_percent": 52.4,
+    "charge_rate_kw": 200,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 13,
+    "timestamp": "2024-06-15T13:00",
+    "soc_percent": 58.4,
+    "charge_rate_kw": 59.7,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 14,
+    "timestamp": "2024-06-15T14:00",
+    "soc_percent": 58.4,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 15,
+    "timestamp": "2024-06-15T15:00",
+    "soc_percent": 51.6,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 68.1,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 16,
+    "timestamp": "2024-06-15T16:00",
+    "soc_percent": 41.7,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 99.2,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 17,
+    "timestamp": "2024-06-15T17:00",
+    "soc_percent": 21.7,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 200,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 18,
+    "timestamp": "2024-06-15T18:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 200,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 19,
+    "timestamp": "2024-06-15T19:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 20,
+    "timestamp": "2024-06-15T20:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 21,
+    "timestamp": "2024-06-15T21:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 22,
+    "timestamp": "2024-06-15T22:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  },
+  {
+    "hour": 23,
+    "timestamp": "2024-06-15T23:00",
+    "soc_percent": 20,
+    "charge_rate_kw": 0.0,
+    "discharge_rate_kw": 0.0,
+    "capacity_kwh": 1000
+  }
+]

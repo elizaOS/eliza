@@ -1,0 +1,72 @@
+[
+  {
+    "id": "conjunction",
+    "name": "Conjunction",
+    "symbol": "☌",
+    "degrees": 0,
+    "orb": 8,
+    "nature": "neutral",
+    "keywords": ["fusion", "intensity", "focus", "new cycle"],
+    "description": "A conjunction merges the energies of two planets into a single, intensified force. The nature of this aspect depends entirely on the planets involved — it can be harmonious or challenging. Conjunctions represent new beginnings and powerful focal points in the chart where planetary energies are concentrated and inseparable."
+  },
+  {
+    "id": "semi-sextile",
+    "name": "Semi-Sextile",
+    "symbol": "⚺",
+    "degrees": 30,
+    "orb": 2,
+    "nature": "mildly challenging",
+    "keywords": ["adjustment", "growth", "subtle tension", "awareness"],
+    "description": "The semi-sextile connects planets in adjacent signs that share little in common. This aspect creates a subtle friction that requires small but continuous adjustments. It represents areas where growth comes through learning to integrate very different energies, producing awareness through gentle, persistent irritation."
+  },
+  {
+    "id": "sextile",
+    "name": "Sextile",
+    "symbol": "⚹",
+    "degrees": 60,
+    "orb": 6,
+    "nature": "harmonious",
+    "keywords": ["opportunity", "talent", "ease", "cooperation"],
+    "description": "The sextile is a harmonious aspect that creates opportunities for growth and creative expression. It connects planets in compatible elements, facilitating easy communication between their energies. Sextiles represent innate talents and areas of natural ability, though they require conscious effort to fully activate their potential."
+  },
+  {
+    "id": "square",
+    "name": "Square",
+    "symbol": "□",
+    "degrees": 90,
+    "orb": 8,
+    "nature": "challenging",
+    "keywords": ["tension", "conflict", "motivation", "breakthrough"],
+    "description": "The square is a dynamic, challenging aspect that creates internal tension and external conflict. It connects planets in signs of the same modality but incompatible elements, producing friction that demands action. Squares are the engines of growth in a chart — they create the pressure that forces development, achievement, and ultimately strength through struggle."
+  },
+  {
+    "id": "trine",
+    "name": "Trine",
+    "symbol": "△",
+    "degrees": 120,
+    "orb": 8,
+    "nature": "harmonious",
+    "keywords": ["flow", "harmony", "natural talent", "ease"],
+    "description": "The trine is the most harmonious aspect, connecting planets in signs of the same element. Energy flows effortlessly between the planets, creating natural talent, ease, and grace. Trines represent gifts that come so naturally they may be taken for granted. While they bring comfort and ability, they can also lead to complacency if not consciously directed toward growth."
+  },
+  {
+    "id": "quincunx",
+    "name": "Quincunx",
+    "symbol": "⚻",
+    "degrees": 150,
+    "orb": 3,
+    "nature": "challenging",
+    "keywords": ["adjustment", "health", "reorganization", "paradox"],
+    "description": "The quincunx (also called the inconjunct) connects planets in signs that share no element, modality, or polarity. This creates a fundamental disconnect that requires constant adjustment and creative problem-solving. Quincunxes often manifest as health issues, compulsive behaviors, or situations where two parts of your life simply cannot be reconciled in obvious ways."
+  },
+  {
+    "id": "opposition",
+    "name": "Opposition",
+    "symbol": "☍",
+    "degrees": 180,
+    "orb": 8,
+    "nature": "challenging",
+    "keywords": ["awareness", "projection", "balance", "relationship"],
+    "description": "The opposition places two planets directly across the zodiac from each other, creating a dynamic polarity that demands balance and integration. It often manifests through relationships, as we tend to project the qualities of the opposing planet onto others. Oppositions bring awareness through contrast and the challenge of holding two seemingly contradictory truths simultaneously."
+  }
+]

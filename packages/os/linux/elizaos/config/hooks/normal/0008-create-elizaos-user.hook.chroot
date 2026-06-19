@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+# Create the elizaos system user + group that later hooks and units rely on:
+#   - 0010-elizaos-agent  (chown -R elizaos:elizaos /opt/elizaos)
+#   - 0012-riscv64-agent-postgres  (install -o elizaos -g elizaos /var/lib/elizaos)
+#   - the elizaos-*.service systemd units  (User=elizaos / Group=elizaos)
+# Nothing else in the live-build tree created it (regressed out of an earlier
+# integration), so the strict `install -o elizaos` in 0012 failed with
+# "invalid user 'elizaos'". Create it here, before 0010/0012 run.
+# Idempotent: a no-op if a package/sysusers entry already provides the account.
+
+if ! getent group elizaos >/dev/null 2>&1; then
+    groupadd --system elizaos
+fi
+
+if ! getent passwd elizaos >/dev/null 2>&1; then
+    useradd --system --gid elizaos \
+        --home-dir /var/lib/elizaos \
+        --no-create-home \
+        --shell /usr/sbin/nologin \
+        --comment "elizaOS agent" \
+        elizaos
+fi

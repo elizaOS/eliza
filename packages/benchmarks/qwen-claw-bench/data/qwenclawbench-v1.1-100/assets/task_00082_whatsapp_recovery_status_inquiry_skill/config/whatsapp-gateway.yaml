@@ -1,0 +1,32 @@
+# OpenClaw WhatsApp Gateway Configuration
+plugin: whatsapp
+enabled: true
+gateway:
+  phone: "+86188xxxxxxxx01"
+  session: "wa-session-main"
+  autoReconnect: true
+  reconnectInterval: 30
+  maxReconnectAttempts: 10
+
+auth:
+  method: "qr"
+  storeType: "file"
+  storePath: "./data/whatsapp-auth"
+
+messaging:
+  defaultReplyWindow: 300
+  typingIndicator: true
+  readReceipts: true
+  mediaDownload: true
+  mediaPath: "./data/whatsapp-media"
+
+logging:
+  level: "info"
+  file: "./logs/whatsapp-gateway.log"
+  maxSize: "10MB"
+  rotate: true
+
+webhooks:
+  inbound: "http://localhost:3120/webhook/whatsapp/inbound"
+  status: "http://localhost:3120/webhook/whatsapp/status"
+  presence: "http://localhost:3120/webhook/whatsapp/presence"

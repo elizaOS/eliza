@@ -1,0 +1,12 @@
+*
+
+!dist/**
+!package.json
+!README.md
+!readme.md
+!tsup.config.ts
+!schema.sql
+!seed.sql
+!config.toml
+!types/**
+__tests__/**

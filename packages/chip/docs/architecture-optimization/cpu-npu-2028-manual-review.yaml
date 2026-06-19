@@ -1,0 +1,149 @@
+schema: eliza.cpu_npu_2028_manual_review.v1
+status: modeled_review_release_blocked
+release_claim_allowed: false
+target_benchmark_claim_allowed: false
+aosp_runtime_claim_allowed: false
+pdk_signoff_claim_allowed: false
+post_route_signoff_claim_allowed: false
+silicon_claim_allowed: false
+phone_class_claim_allowed: false
+production_readiness_claim_allowed: false
+claim_boundary: 'Engineering review of the modeled CPU+NPU 2028 operating point. This review can approve
+  the local model recommendation for continued implementation, but it is not AOSP, target benchmark, PDK,
+  post-route, silicon, or phone-class performance evidence.
+
+  '
+review_inputs:
+  optimizer_report: benchmarks/results/soc-optimized-operating-point.json
+  work_order: docs/architecture-optimization/soc-optimized-operating-point.yaml
+  design_space_frontier: benchmarks/results/cpu-npu-2028-design-space-frontier.json
+  readiness_scorecard: docs/architecture-optimization/cpu-npu-2028-readiness-scorecard.yaml
+  modeled_benchmark_report: benchmarks/results/modeled-cpu-npu-2028-local/report.json
+  modeled_benchmark_eval: benchmarks/results/cpu-npu-2028-modeled-eval.json
+  burst_sustained_policy: benchmarks/results/cpu-npu-2028-burst-sustained-policy.json
+  burst_thermal_transient: benchmarks/results/cpu-npu-2028-burst-thermal-transient.json
+  aosp_governor_trace: benchmarks/results/cpu-npu-2028-aosp-governor-trace.json
+  process_14a_eval: benchmarks/results/cpu-npu-2028-14a-process-eval.json
+  competitive_envelope: benchmarks/results/cpu-npu-2028-competitive-envelope.json
+  tapeout_readiness_audit: benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.json
+  benchmark_plan: benchmarks/configs/benchmark_plan.json
+  process_effects_contract: docs/spec-db/process-14a-effects.yaml
+selected_modeled_point:
+  cpu_cores: 2
+  cpu_base_frequency_hz: 3200000000
+  cpu_base_ipc: 1.8
+  cpu_base_power_w: 1.4
+  npu_base_tops: 44.0
+  npu_base_power_w: 1.2
+  memory_sustained_gbps: 240.0
+modeled_review_findings:
+  - id: modeled_operating_point_pass
+    status: pass
+    evidence: Optimizer selected a no-throttle point across four required 14A planning corners.
+    metric_check: optimized.summary.any_modeled_throttle_required == false
+  - id: modeled_design_space_frontier_pass
+    status: pass
+    evidence: Pareto frontier search proves the selected CPU/NPU point is non-dominated and score-optimal
+      across robust feasible modeled candidates.
+    metric_check: make cpu-npu-design-space-frontier
+  - id: modeled_power_thermal_pass
+    status: pass
+    evidence: Nominal modeled worst die temperature and total power remain under the selected mobile budget.
+    metric_check: optimized.summary.max_die_temp_c <= 95 and optimized.summary.max_total_power_w <= 5
+  - id: modeled_memory_margin_pass
+    status: pass
+    evidence: Nominal modeled worst memory bandwidth margin is positive across CPU+NPU+display/camera
+      scenarios.
+    metric_check: optimized.summary.min_bandwidth_margin_gbps > 0
+  - id: robustness_guardband_pass
+    status: pass
+    evidence: 'Six deterministic guardband cases pass: nominal, hot ambient, power +5%, memory -5%, NPU
+      TOPS -5%, and combined.'
+    metric_check: robustness.summary.pass == true
+  - id: modeled_benchmark_harness_pass
+    status: pass
+    evidence: Local simulator-provenance benchmark report passes npu_arch_sim_open_2028, npu_arch_sim_sota_2028,
+      simulator_arch_metrics, and cpu_arch_sim_sota_2028 without measured-release claims.
+    metric_check: make benchmark-modeled-cpu-npu
+  - id: modeled_sota_npu_eval_pass
+    status: pass
+    evidence: SOTA modeled CPU and NPU benchmarks are checked against 2028 CPU efficiency/headroom plus
+      dense INT8 and sparse INT4 NPU targets, with sustained use still release-blocked.
+    metric_check: make cpu-npu-modeled-benchmark-eval
+  - id: modeled_burst_sustained_policy_pass
+    status: pass
+    evidence: Burst and sustained governor policy separates no-throttle sustained operation from SOTA
+      modeled burst headroom and keeps burst duration release-blocked.
+    metric_check: make cpu-npu-burst-sustained-policy
+  - id: modeled_burst_thermal_transient_pass
+    status: pass
+    evidence: Deterministic RC burst thermal transient report derives a conservative modeled burst window
+      while forbidding release use until measured package, skin, rail, and AOSP thermal evidence exists.
+    metric_check: make cpu-npu-burst-thermal-transient
+  - id: modeled_aosp_governor_trace_pass
+    status: pass
+    evidence: Modeled AOSP-style scheduler and thermal HAL trace selects sustained and burst CPU+NPU states,
+      denies repeat burst during cooldown, and remains blocked until real virtual-device evidence exists.
+    metric_check: make cpu-npu-aosp-governor-trace
+  - id: modeled_14a_process_eval_pass
+    status: pass
+    evidence: CPU+NPU 14A process evaluation covers all required process-effect categories and preserves
+      modeled SOTA headroom while keeping PDK/signoff claims blocked.
+    metric_check: make cpu-npu-14a-process-eval
+  - id: modeled_competitive_envelope_pass
+    status: pass
+    evidence: Local 2028 compact-flagship planning envelope checks CPU, NPU, memory, sustained power,
+      burst power, and thermal headroom while blocking future Pixel product claims.
+    metric_check: make cpu-npu-competitive-envelope
+  - id: modeled_tapeout_readiness_audit_pass
+    status: pass
+    evidence: Tapeout readiness audit proves the local modeled CPU/NPU stack is complete while enumerating
+      remaining proof-domain and tool blockers before any tapeout claim.
+    metric_check: make cpu-npu-tapeout-readiness-audit
+  - id: cpu_ap_evidence_blocked
+    status: blocked
+    evidence: Generated Linux-capable AP manifest and boot/benchmark transcripts are still absent.
+    release_gate: make cpu-ap-completion-gate
+  - id: npu_nnapi_evidence_blocked
+    status: blocked
+    evidence: Real e1-npu Android NNAPI proof, unsupported-operator accounting, and zero CPU fallback
+      evidence are still absent.
+    release_gate: make e1-npu-nnapi-proof-check
+  - id: aosp_simulator_evidence_blocked
+    status: blocked
+    evidence: Local AOSP virtual-device boot, VINTF/SELinux, CTS/VTS intake, QEMU, Cuttlefish, and Renode
+      smoke logs are absent.
+    release_gate: make aosp-simulator-completion-check
+  - id: benchmark_release_blocked
+    status: blocked
+    evidence: Target benchmark binaries and calibrated clock, power, thermal, memory, process metadata
+      are absent.
+    release_gate: make benchmarks
+  - id: sustained_power_thermal_blocked
+    status: blocked
+    evidence: Sustained measured aligned power and thermal trace evidence is absent.
+    release_gate: make power-thermal-evidence-check
+  - id: memory_uma_blocked
+    status: blocked
+    evidence: Real LPDDR, UMA, IOMMU/SMMU, QoS, and contended Android memory evidence is absent.
+    release_gate: make memory-uma-claim-gate
+  - id: process_pdk_blocked
+    status: blocked
+    evidence: Selected 14A PDK extracted timing, power, IR/EM, and thermal signoff is absent.
+    release_gate: make process-14a-effects-check
+  - id: physical_signoff_blocked
+    status: blocked
+    evidence: Post-route signoff, foundry/package artifacts, and fabrication evidence are absent.
+    release_gate: make pd-signoff-check
+review_decision:
+  modeled_recommendation: approve_for_next_implementation_step
+  release_claim: blocked
+  release_claim_forbidden_until:
+    - cpu_ap_evidence_blocked is resolved with real generated AP evidence.
+    - npu_nnapi_evidence_blocked is resolved with zero CPU fallback proof.
+    - aosp_simulator_evidence_blocked is resolved with local simulator evidence.
+    - benchmark_release_blocked is resolved with target binaries and calibrated metadata.
+    - sustained_power_thermal_blocked is resolved with measured trace evidence.
+    - memory_uma_blocked is resolved with real memory-system evidence.
+    - process_pdk_blocked and physical_signoff_blocked are resolved with extracted PDK and post-route
+      signoff.

@@ -1,0 +1,37 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@feed/a2a": ["../../packages/a2a/dist/index.d.ts"],
+      "@feed/a2a/*": ["../../packages/a2a/dist/*"],
+      "@feed/agents": ["../../packages/agents/dist/index.d.ts"],
+      "@feed/agents/*": ["../../packages/agents/dist/*"],
+      "@feed/api": ["../../packages/api/dist/index.d.ts"],
+      "@feed/api/*": ["../../packages/api/dist/*"],
+      "@feed/core": ["../../packages/core/dist/markets/index.d.ts"],
+      "@feed/core/markets/*": ["../../packages/core/dist/markets/*"],
+      "@feed/db": ["../../packages/db/dist/index.d.ts"],
+      "@feed/db/*": ["../../packages/db/dist/*"],
+      "@feed/engine": ["../../packages/engine/dist/index.d.ts"],
+      "@feed/engine/*": ["../../packages/engine/dist/*"],
+      "@feed/mcp": ["../../packages/mcp/dist/index.d.ts"],
+      "@feed/mcp/*": ["../../packages/mcp/dist/*"],
+      "@feed/pack-default": ["../../packages/pack-default/dist/index.d.ts"],
+      "@feed/pack-default/*": ["../../packages/pack-default/dist/*"],
+      "@feed/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@feed/shared/*": ["../../packages/shared/dist/*"],
+      "@/utils/api-url": ["../web/src/utils/api-url.ts"],
+      "@/mobile/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "capacitor.config.ts",
+    "next.config.ts",
+    "next-env.d.ts",
+    "src/components/**/*",
+    "src/lib/**/*",
+    "../web/src/utils/api-url.ts"
+  ],
+  "exclude": ["node_modules", "out", "ios", "android", "src/app/**/*"]
+}

@@ -1,0 +1,80 @@
+[
+  {
+    "customer_id": "CUS-701",
+    "name": "鼎新软件",
+    "contact_person": "周经理",
+    "email": "zhoujl@dingxin-soft.com",
+    "phone": "13900701001",
+    "industry": "软件",
+    "tier": "vip",
+    "annual_revenue": 5200000,
+    "last_contact_date": "2026-02-10",
+    "status": "active",
+    "notes": "三年战略合同客户，近期沟通减少"
+  },
+  {
+    "customer_id": "CUS-702",
+    "name": "瀚海电商",
+    "contact_person": "林总",
+    "email": "lin@hanhai-ec.com",
+    "phone": "13900701002",
+    "industry": "电商",
+    "tier": "standard",
+    "annual_revenue": 800000,
+    "last_contact_date": "2026-03-20",
+    "status": "active",
+    "notes": "年度续约在即，上周刚沟通过功能需求"
+  },
+  {
+    "customer_id": "CUS-703",
+    "name": "万通物流",
+    "contact_person": "赵总监",
+    "email": "zhao@wantong-logistics.com",
+    "phone": "13900701003",
+    "industry": "物流",
+    "tier": "vip",
+    "annual_revenue": 3800000,
+    "last_contact_date": "2026-02-25",
+    "status": "active",
+    "notes": "物流行业头部客户，服务满意度高"
+  },
+  {
+    "customer_id": "CUS-704",
+    "name": "公共机构",
+    "contact_person": "张老师",
+    "email": "zhang@edu-gov.cn",
+    "phone": "13900701004",
+    "industry": "教育",
+    "tier": "standard",
+    "annual_revenue": 200000,
+    "last_contact_date": "2026-01-15",
+    "status": "active",
+    "notes": "政府采购客户，使用频率低但合同还在"
+  },
+  {
+    "customer_id": "CUS-705",
+    "name": "阳光传媒",
+    "contact_person": "张华",
+    "email": "zhanghua@sunlight-media.com",
+    "phone": "13900701005",
+    "industry": "传媒",
+    "tier": "vip",
+    "annual_revenue": 4800000,
+    "last_contact_date": "2026-02-05",
+    "status": "active",
+    "notes": "VIP大客户，近期有合作意向升级"
+  },
+  {
+    "customer_id": "CUS-706",
+    "name": "前锋科技",
+    "contact_person": "王敏",
+    "email": "wangmin@qianfeng-tech.com",
+    "phone": "13900701006",
+    "industry": "科技",
+    "tier": "standard",
+    "annual_revenue": 360000,
+    "last_contact_date": "2026-03-25",
+    "status": "churned",
+    "notes": "已于上月正式流失，不再续约"
+  }
+]

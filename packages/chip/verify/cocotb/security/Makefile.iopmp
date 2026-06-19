@@ -1,0 +1,14 @@
+include ../common.mk
+
+VERILOG_SOURCES := \
+	$(REPO)/rtl/iommu/e1_iopmp_pkg.sv \
+	$(REPO)/rtl/iommu/e1_iopmp.sv
+
+TOPLEVEL ?= e1_iopmp
+MODULE   ?= test_e1_iopmp
+
+# Width waivers for the parameterized index/mask arithmetic in the DUT; lint is
+# enforced strictly (no waivers) by scripts/check_iopmp_rtl.py.
+EXTRA_ARGS += -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC
+
+include $(COCOTB_SIM_MK)

@@ -1,0 +1,43 @@
+schema: eliza.pd_corner_manifest.v1
+pdk: TSMC_N2P
+node_class: tsmc_n2_class_gaa_nanosheet
+status: blocked_until_foundry_agreement
+evidence_class: procurement_blocked_no_corner_set
+
+claim_boundary:
+  allowed: []
+  blocked:
+    - Any TSMC N2P corner-set claim is BLOCKED.
+    - No Liberty, no extraction view, no PVT data may be checked in.
+    - This file documents what would be required after foundry agreement, not the data itself.
+
+procurement_gate:
+  status: blocked_until_foundry_agreement
+  unblock_requires:
+    - Executed TSMC OIP / NDA agreement.
+    - Signed N2P PDK access through TSMC Open Innovation Platform.
+    - Commercial EDA seat (Cadence Tempus/Voltus or Synopsys PrimeTime/RedHawk-SC).
+    - LVF/SOCV-capable signoff STA infrastructure.
+
+required_after_unblock:
+  total_effective_corners_min: 32
+  total_full_corners_min: 100
+  pvt_axes:
+    process: [SS, TT, FF, SSGNP, FFGNP]
+    voltage_v: [vmin_low, vnom, vmax_high]
+    temperature_c: [-40, 0, 25, 85, 110, 125]
+    aging: [t0, EOL]
+    rc: [cworst, cbest, rcworst, rcbest, typical]
+  multi_vt_required:
+    - SLVT
+    - LVT
+    - RVT
+    - HVT
+    - HVT_SRAM_assist
+  ocv_model: LVF_or_SOCV
+  bspdn_corners: not_applicable_for_N2P_frontside
+
+forbidden_claims_until_unblocked:
+  - n2p_corner_clean
+  - mmmc_signoff_passed
+  - tsmc_n2p_release_evidence

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      ACCESS_NETWORK_STATE is required to call
+      `ConnectivityManager.getNetworkCapabilities`. The plugin gracefully
+      returns `metered: null` (TS downgrades to ask) when the permission
+      is denied so callers don't have to handle a SecurityException.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+</manifest>

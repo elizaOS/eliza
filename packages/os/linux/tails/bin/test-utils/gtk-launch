@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+
+"""
+This script will report all DesktopAppInfo usages which are not preceded by the qa-tails-20745-ok tag
+"""
+
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
+
+TAG = "qa-tails-20745-ok"
+
+
+@dataclass
+class MatchingLine:
+    filename: str
+    number: int
+    text: str
+
+
+@dataclass
+class Match:
+    lines: list[MatchingLine]
+
+    @property
+    def ref(self) -> str:
+        last = self.lines[-1]
+        return f"{last.filename}:{last.number}"
+
+
+line_re = re.compile(r"""^(.*)\x00(\d+)\x00(.*)$""")
+
+
+def parse_results(text: str) -> list[Match]:
+    for raw_result in text.split("\n--\n"):
+        results = []
+        for line in raw_result.split("\n"):
+            if not line.strip():
+                continue
+            match = line_re.match(line.rstrip("\n"))
+            if match is None:
+                print(f"Error! Invalid format for line {line!r}", file=sys.stderr)
+                sys.exit(1)
+            results.append(
+                MatchingLine(
+                    filename=match.group(1),
+                    number=int(match.group(2)),
+                    text=match.group(3),
+                )
+            )
+        yield Match(lines=results)
+
+
+def main():
+    results = subprocess.check_output(
+        [
+            "/usr/bin/git",
+            "grep",
+            "--null",
+            "--full-name",
+            "--line-number",
+            "-B1",
+            "-i",
+            "-e",
+            r"desktop.*app.*info",
+            "-e",
+            r"\bgtk-launch\b",
+            "config/",
+        ],
+        text=True,
+    )
+
+    matches = parse_results(results)
+    errors: list[Match] = []
+    for match in matches:
+        if any(TAG in line.text for line in match.lines):
+            continue
+        errors.append(match)
+
+    if not errors:
+        sys.exit(0)
+
+    print(
+        "DesktopAppInfo or gtk-launch used without a tag clarifying why this is ok wrt tails#20745:"
+    )
+    for err in errors:
+        ref = f"{err.ref}"
+        print(ref)
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,22 @@
+[Unit]
+Description=elizaOS kiosk render-capture share (headless validation only)
+# Inert in normal operation: only mounts when the kernel cmdline opts in with
+# elizaos.capture_dir=, which a QEMU validation harness sets. Mounts the 9p
+# virtfs tag "capshare" at the capture dir so grim screenshots taken inside the
+# cage session land on a host-readable share. Ordered before the kiosk so the
+# share exists when start-cage's capture loop starts writing.
+ConditionKernelCommandLine=elizaos.capture_dir=
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Before=elizaos-kiosk.service
+RequiresMountsFor=/run
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/elizaos/mount-capture-share
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target

@@ -1,0 +1,56 @@
+template: board_package_release_evidence_record
+status: template_not_release_evidence
+purpose: Capture real package-vendor, KiCad, fab, DFM, SI/PI, and first-article artifacts without treating this template as release evidence.
+record_location: Add completed records under the relevant artifact_groups.*.artifacts[].evidence_records entry in docs/manufacturing/board-package-evidence.yaml.
+cli_capture:
+  preflight_check: python3 scripts/check_board_package_evidence.py
+  release_check: python3 scripts/check_board_package_evidence.py --release
+  product_release_check: python3 scripts/product_check.py --release
+  hash_command: shasum -a 256 <real-evidence-file>
+artifact_record_required_fields:
+  - blocker_id
+  - artifact_name
+  - artifact_class
+  - source_path
+  - source_owner
+  - captured_at
+  - captured_by
+  - immutable_revision_or_lot
+  - sha256
+metadata_required_fields:
+  - vendor_or_tool
+  - revision
+  - source_document
+  - package_or_board_revision
+  - pin1_orientation_when_applicable
+  - reviewer
+acceptance_required_fields:
+  - acceptance_status
+  - acceptance_criteria
+  - review_record
+  - linked_release_gate
+  - supersedes_placeholder
+forbidden_claims:
+  - Do not mark package_vendor, kicad_sources, fab_exports, or release_reviews complete from this template alone.
+  - Do not use placeholder pinout, placeholder package notes, or skeleton KiCad notes as vendor evidence.
+  - Do not change docs/manufacturing/board-package-evidence.yaml status away from release_blocked until real artifacts are archived and checks pass.
+example_record_shape:
+  blocker_id: package_drawing
+  artifact_name: package_vendor_drawing
+  artifact_class: package_vendor_drawing
+  source_path: docs/manufacturing/evidence/package/<real-file>
+  source_owner: package_vendor_or_foundry
+  captured_at: <iso-8601 timestamp>
+  captured_by: <reviewer>
+  immutable_revision_or_lot: <vendor revision>
+  sha256: <64 lowercase hex chars>
+  vendor_or_tool: <vendor or tool name>
+  revision: <vendor drawing/tool output revision>
+  source_document: <source document or command transcript>
+  package_or_board_revision: <package or board revision>
+  reviewer: <reviewer>
+  acceptance_status: <accepted|approved|pass>
+  acceptance_criteria: <release criterion>
+  review_record: <review link or transcript path>
+  linked_release_gate: board_fabrication_release
+  supersedes_placeholder: true

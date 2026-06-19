@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-556cfc7ed81799789e9022255400d712353a97b7
+Repository: element-hq/element-web
+Base Commit: 2f4f3f2a8c7b713c26db2c2b6a79399fca91a6e7
+Test Files: ["test/stores/WidgetLayoutStore-test.ts", "/app/test/stores/WidgetLayoutStore-test.ts"]
+FAIL_TO_PASS: ["/app/test/stores/WidgetLayoutStore-test.ts | WidgetLayoutStore | remove pins when maximising (other widget)", "/app/test/stores/WidgetLayoutStore-test.ts | WidgetLayoutStore | remove pins when maximising (one of the pinned widgets)"]
+PASS_TO_PASS: ["/app/test/stores/WidgetLayoutStore-test.ts | WidgetLayoutStore | all widgets should be in the right container by default", "/app/test/stores/WidgetLayoutStore-test.ts | WidgetLayoutStore | add widget to top container", "/app/test/stores/WidgetLayoutStore-test.ts | WidgetLayoutStore | add three widgets to top container", "/app/test/stores/WidgetLayoutStore-test.ts | WidgetLayoutStore | cannot add more than three widgets to top container", "/app/test/stores/WidgetLayoutStore-test.ts | WidgetLayoutStore | remove maximised when pinning (other widget)", "/app/test/stores/WidgetLayoutStore-test.ts | WidgetLayoutStore | remove maximised when pinning (same widget)"]

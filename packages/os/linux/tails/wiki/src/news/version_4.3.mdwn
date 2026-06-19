@@ -1,0 +1,80 @@
+[[!meta title="Tails 4.3 is out"]]
+[[!meta date="Tue, 11 Feb 2020 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_4.2.2]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# New features
+
+- We included the `trezor` package, which provides a command line tool
+  to use a Trezor hardware wallet for cryptocurrencies.
+
+# Changes and updates
+
+- Update *Tor Browser* to [9.0.5](https://blog.torproject.org/new-release-tor-browser-905).
+
+- Update *Thunderbird* to [68.4.1](https://www.mozilla.org/en-US/thunderbird/68.4.1/releasenotes/).
+
+- Update *Linux* to 5.4.13. This should improve the support for newer
+  hardware (graphics, Wi-Fi, etc.).
+
+- Update *Tor* to 0.4.2.6.
+
+- Update the *VirtualBox Guest Additions* to 6.1.2.
+ 
+# Fixed problems
+
+- Fix the progress bar and prevent closing the window while an upgrade
+  is being applied. ([[!tails_ticket 16603]])
+
+  [[!img upgrading.png link="no" alt=""]]
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 4.3
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 4.2 and 4.2.2 to 4.3.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can directly download
+Tails 4.3:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.4 is [[scheduled|contribute/calendar]] for March 10.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.3">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750" role="img" aria-label="Inbox Home / Soft Sci-Fi generated assistant preview">
+    <rect width="1200" height="750" fill="#080607"/>
+    <circle cx="200" cy="120" r="180" fill="#ff8a00" opacity="0.18"/>
+    <circle cx="1020" cy="620" r="220" fill="#78d99a" opacity="0.10"/>
+    <rect x="40" y="40" width="1120" height="670" rx="3" fill="transparent" stroke="#78d99a26"/>
+    <text x="70" y="86" font-family="Inter, Arial, sans-serif" font-size="30" fill="#78d99a" font-weight="900">Inbox Home</text>
+    <text x="70" y="680" font-family="Inter, Arial, sans-serif" font-size="20" fill="#78d99a" opacity="0.72">Soft Sci-Fi / inline transcript / sheet apps</text>
+
+      <rect x="72" y="118" width="360" height="500" rx="3" fill="#78d99a18" stroke="#78d99a44"/>
+      <rect x="462" y="118" width="668" height="500" rx="3" fill="#78d99a18" stroke="#78d99a44"/>
+
+            <rect x="110" y="165" width="280" height="62" rx="3" fill="#ff8a00"/>
+            <text x="132" y="203" font-size="18" fill="#000" font-weight="800">Approve</text>
+
+            <rect x="110" y="259" width="280" height="62" rx="3" fill="#78d99a1f"/>
+            <text x="132" y="297" font-size="18" fill="#78d99a" font-weight="800">Reply</text>
+
+            <rect x="110" y="353" width="280" height="62" rx="3" fill="#78d99a1f"/>
+            <text x="132" y="391" font-size="18" fill="#78d99a" font-weight="800">Alert</text>
+
+            <rect x="110" y="447" width="280" height="62" rx="3" fill="#78d99a1f"/>
+            <text x="132" y="485" font-size="18" fill="#78d99a" font-weight="800">App</text>
+
+      <circle cx="650" cy="315" r="90" fill="#ff8a00"/>
+      <rect x="780" y="235" width="230" height="9" rx="4.5" fill="#78d99a33"/><rect x="780" y="259" width="300" height="9" rx="4.5" fill="#78d99a33"/><rect x="780" y="283" width="260" height="9" rx="4.5" fill="#78d99a33"/><rect x="780" y="307" width="180" height="9" rx="4.5" fill="#78d99a33"/>
+
+    <rect x="780" y="390" width="127" height="34" rx="17" fill="#78d99a18" stroke="#78d99a44"/>
+    <text x="798" y="412" font-size="13" fill="#78d99a" font-weight="700">compare</text>
+
+
+    <rect x="930" y="390" width="88" height="34" rx="17" fill="#78d99a18" stroke="#78d99a44"/>
+    <text x="948" y="412" font-size="13" fill="#78d99a" font-weight="700">book</text>
+
+
+  </svg>

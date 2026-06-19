@@ -1,0 +1,10 @@
+config BR2_PACKAGE_HELLO_MMIO_SMOKE
+	bool "hello-mmio-smoke"
+	depends on BR2_USE_MMU
+	help
+	  Tiny C tool that mmaps /dev/mem and reads the NPU and DMA scratch
+	  registers from sw/platform/hello_platform_contract.json. Useful as a
+	  first-light userspace BSP check before /dev/hello-npu and the DMA
+	  sysfs node are wired up.
+
+	  https://github.com/openphone/openphone-ai-soc

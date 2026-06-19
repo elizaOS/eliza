@@ -1,0 +1,48 @@
+---
+title: elizaOS Linux
+description: "The Tails-derived live distribution."
+---
+
+The primary Linux artifact is **elizaOS Live** — a USB-bootable distribution built on top of [Tails](https://tails.net) live-OS plumbing and presented to users as elizaOS Live. v1 is USB-only; an internal-disk installer is deferred.
+
+## What ships
+
+- A signed live image with checksums, release notes, known gaps, and a hardware-support matrix.
+- The elizaOS desktop app pre-installed and pinned to the dock.
+- A local agent runtime configured for offline-first operation.
+- Optional encrypted persistence for character files, plugin credentials, and model weights.
+
+## Security model
+
+elizaOS Live inherits Tails' security posture:
+
+- Runs from RAM; nothing is written to disk by default.
+- Network traffic can be routed through Tor (toggleable from the greeter).
+- All system identifiers (MAC address, hostname) are randomized per boot.
+
+Added elizaOS surfaces (the app, the agent, plugins) follow the same rule: no state escapes the persistent volume unless you opt in.
+
+## Updates
+
+App, runtime, and model updates should not require a new full image. Signed update channels carry these. OS/base changes use signed deltas where safe, with a full-image fallback when not.
+
+## Hardening status
+
+Honest current state:
+
+- A recent live-USB ISO passed QEMU greeter / desktop / app-service validation.
+- A prior artifact passed guarded USB flash/readback.
+- Real-hardware boot, real USB persistence validation, and a signed GUI/CLI flasher for macOS / Windows / Linux are still required before stable release.
+
+## Variants
+
+The active build lives at `packages/os/linux/elizaos/` — one multi-arch live-build (amd64/arm64/riscv64). Its configuration controls which plugins ship preinstalled, the default character, and dock pins.
+
+## Building locally
+
+Build scripts: `packages/os/linux/`. Building a live image requires a Debian-based host, root, and ~20 GB free disk. See the variant README for the full prerequisite list.
+
+## See also
+
+- [Install](/tracks/elizaos/install)
+- [AOSP variant](/tracks/elizaos/aosp)

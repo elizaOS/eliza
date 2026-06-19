@@ -1,0 +1,32 @@
+# Cloudflare Pages routing for eliza-cloud frontend (Vite SPA)
+# Format docs: https://developers.cloudflare.com/pages/configuration/redirects/
+#
+# Order matters: top-down, first match wins.
+#
+# /api/* and /steward/* are handled by Pages Functions, which proxy server-side
+# to the Workers API (true same-origin, no CORS preflight). Pages Functions take
+# precedence over _redirects, so adding rewrite rules here would be misleading
+# dead config.
+# The free-tier 200-rewrite to an external origin does not actually proxy.
+
+# Docs have moved to the unified Mintlify site at docs.elizaos.ai/cloud.
+# The /docs/api/* rule must precede /docs/* so API paths don't get mangled
+# by the catch-all (first-match-wins).
+/docs/api             https://docs.elizaos.ai/cloud/api          301
+/docs/api/*           https://docs.elizaos.ai/cloud/api/:splat   301
+/docs                 https://docs.elizaos.ai/cloud              301
+/docs/*               https://docs.elizaos.ai/cloud/:splat       301
+
+# Hashed-asset 404s must NOT fall through to the SPA index.html. When a
+# stale browser HTML references an asset hash that no longer exists, the
+# catch-all below would otherwise return index.html with status 200 for
+# the missing .js, and the browser would fail strict MIME checking with
+# "Expected a JavaScript-or-Wasm module script but the server responded
+# with a MIME type of text/html". Returning a real 404 lets the chunk-load
+# error boundary in src/providers/ConditionalWalletProviders.tsx catch it
+# and self-heal via a single hard reload.
+/assets/*  /index.html  404
+
+# SPA fallback — every other path falls through to index.html so React
+# Router can resolve client-side routes.
+/*  /index.html  200

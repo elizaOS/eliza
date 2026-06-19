@@ -1,0 +1,24 @@
+schema: eliza.ai_eda.external_intake_manifest.v1
+asset_id: open3dbench
+kind: repo
+source_url: https://github.com/lamda-bbo/Open3DBench
+upstream_revision:
+  type: commit
+  value: 397604eee16a6dee518ef574ea5315634dff1383
+license:
+  status: review_required
+  evidence:
+    - https://github.com/lamda-bbo/Open3DBench
+    - https://arxiv.org/abs/2503.12946
+  reviewed_at: 2026-05-21
+intake:
+  review_status: pending
+  allowed_use: training-only
+  release_use_allowed: false
+  deterministic_replay_required: true
+  next_action: fetch_to_ignored_payload_then_review_3dic_benchmarks_and_keep_E1_transfer_learning_separate_from_signoff
+local_payload:
+  downloaded: true
+  payload_path: external/repos/open3dbench/payload
+  checksum_status: verify_only_records_file_manifest
+claim_boundary: external_intake_metadata_only_no_payload_no_training_no_release_claim

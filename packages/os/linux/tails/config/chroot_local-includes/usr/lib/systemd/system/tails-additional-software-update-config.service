@@ -1,0 +1,33 @@
+[Unit]
+Description=Update the Additional Software configuration
+After=tails-additional-software-install.service
+# Without this, when Additional Software was previously enabled (the
+# default) but never used, we would be adding thunderbird to the list,
+# but nothing would download APT lists and packages, because the
+# upgrade service has
+# ConditionFileNotEmpty=/live/persistence/TailsData_unlocked/live-additional-software.conf,
+# so on next reboot, the Additional Software installation would
+# initially fail, and then the upgrade step would finally download the
+# needed files and succeed. Let's instead trigger the "upgrade"
+# from here.
+Wants=tails-additional-software-upgrade.service
+
+[Service]
+Type=oneshot
+Restart=no
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/additional-software/asp-update-config
+PrivateDevices=yes
+PrivateTmp=yes
+
+# Capabilities needed by tails-notify-user
+CapabilityBoundingSet=CAP_AUDIT_WRITE CAP_SYS_RESOURCE
+CapabilityBoundingSet=CAP_SETGID CAP_SETUID
+ProtectHome=no
+
+# Capabilities needed by additional_software.write_config
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
+
+# Extra capabilities needed by tails-documentation, so that
+# tails-run-tor-browser-in-flatpak can use "ip netns exec"
+CapabilityBoundingSet=CAP_SYS_ADMIN

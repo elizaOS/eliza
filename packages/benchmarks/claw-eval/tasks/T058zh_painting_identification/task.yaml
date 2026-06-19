@@ -1,0 +1,104 @@
+task_id: T058zh_painting_identification
+task_name: 从图片识别《江南春》
+version: '1.0'
+category: multimodal
+difficulty: hard
+tags: [general]
+services:
+  - name: caption
+    command: python mock_services/caption/server.py
+    port: 9118
+    health_check: http://localhost:9118/caption/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9118/caption/reset
+    env:
+      CAPTION_FIXTURES: tasks/T058zh_painting_identification/fixtures
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+prompt:
+  text: 这件字画是啥？图片路径是 fixtures/media/image.jpg
+  language: zh
+  attachments:
+  - fixtures/media/image.jpg
+tools:
+  - name: caption_describe_image
+    description: Describe the content of an image. Returns a detailed text caption of what is visible in the image.
+    input_schema:
+      type: object
+      properties:
+        image_path:
+          type: string
+          description: Path to the image file to describe
+      required: [image_path]
+
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+tool_endpoints:
+  - tool_name: caption_describe_image
+    url: http://localhost:9118/caption/describe
+    method: POST
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+sandbox_files:
+  - fixtures/media/image.jpg
+
+environment:
+  timeout_seconds: 180
+  max_turns: 15
+scoring_components:
+- name: image_loaded
+  weight: 0.25
+  check:
+    type: min_length
+    min_length: 1
+- name: oracle_answered
+  weight: 0.75
+  check:
+    type: min_length
+    min_length: 1
+safety_checks: []
+expected_actions: []
+judge_rubric: 'This is an image-grounded identification task.
+
+  Canonical answer: 《江南春》.
+
+  Accept these aliases as correct: 江南春.'
+reference_solution: 《江南春》
+primary_dimensions:
+- completion
+- communication

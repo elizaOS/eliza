@@ -1,0 +1,303 @@
+#!/usr/bin/env node
+
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+
+const __filename = fileURLToPath(import.meta.url);
+const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
+const ROOT_NODE_MODULES = path.join(REPO_ROOT, "node_modules");
+const ELIZA_NODE_MODULES = path.join(REPO_ROOT, "eliza", "node_modules");
+const GLOBAL_TYPES_CACHE_DIR = path.join(
+  process.env.HOME || "",
+  ".bun",
+  "install",
+  "cache",
+  "@types",
+);
+const GLOBAL_PACKAGE_CACHE_DIR = path.join(
+  process.env.HOME || "",
+  ".bun",
+  "install",
+  "cache",
+);
+const NODE_MODULE_ROOTS = [ROOT_NODE_MODULES, ELIZA_NODE_MODULES];
+const TYPE_ROOTS = [
+  path.join(ROOT_NODE_MODULES, "@types"),
+  path.join(ELIZA_NODE_MODULES, "@types"),
+];
+const BUN_TYPES_LINK_ROOTS = [
+  path.join(ROOT_NODE_MODULES, ".bun", "node_modules", "@types"),
+  path.join(ELIZA_NODE_MODULES, ".bun", "node_modules", "@types"),
+];
+const MATERIALIZED_TYPE_PACKAGES = [
+  "chai",
+  "cross-spawn",
+  "fs-extra",
+  "mdx",
+  "node",
+  "pg",
+  "qrcode",
+  "react",
+  "react-dom",
+  "react-test-renderer",
+  "three",
+  "ws",
+];
+const MATERIALIZED_PACKAGES = ["bun-types"];
+
+function collectBrokenBundledTypePackages() {
+  const packageNames = new Set();
+
+  for (const linkRoot of BUN_TYPES_LINK_ROOTS) {
+    if (!existsSync(linkRoot)) {
+      continue;
+    }
+
+    for (const entry of readdirSync(linkRoot)) {
+      const entryPath = path.join(linkRoot, entry);
+      try {
+        const stat = lstatSync(entryPath);
+        if (!stat.isSymbolicLink()) {
+          continue;
+        }
+
+        const resolvedPath = path.resolve(linkRoot, readlinkSync(entryPath));
+        if (!existsSync(resolvedPath)) {
+          packageNames.add(entry);
+        }
+      } catch {
+        packageNames.add(entry);
+      }
+    }
+  }
+
+  return [...packageNames].sort();
+}
+
+function findCachedTypePackageDir(packageName) {
+  return findCachedPackageDir(GLOBAL_TYPES_CACHE_DIR, packageName);
+}
+
+function findCachedPackageDir(cacheDir, packageName) {
+  if (!existsSync(cacheDir)) {
+    return null;
+  }
+
+  const prefix = `${packageName}@`;
+  const matches = readdirSync(cacheDir)
+    .filter((entry) => entry.startsWith(prefix))
+    .sort((a, b) =>
+      b.localeCompare(a, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
+    );
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  return path.join(cacheDir, matches[0]);
+}
+
+function repairBrokenDirectoryLink(dir) {
+  try {
+    const stat = lstatSync(dir);
+    if (!stat.isSymbolicLink()) {
+      return;
+    }
+
+    const resolvedPath = path.resolve(path.dirname(dir), readlinkSync(dir));
+    if (!existsSync(resolvedPath)) {
+      unlinkSync(dir);
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
+function recreateTypeRoot(targetTypesDir) {
+  rmSync(targetTypesDir, { recursive: true, force: true });
+  mkdirSync(targetTypesDir, { recursive: true });
+}
+
+function ensureTypeRoot(targetTypesDir) {
+  repairBrokenDirectoryLink(targetTypesDir);
+  try {
+    mkdirSync(targetTypesDir, { recursive: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+    recreateTypeRoot(targetTypesDir);
+  }
+}
+
+function ensureTypeChildDir(targetTypesDir, childDir) {
+  ensureTypeRoot(targetTypesDir);
+  try {
+    mkdirSync(childDir, { recursive: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+    recreateTypeRoot(targetTypesDir);
+    mkdirSync(childDir, { recursive: true });
+  }
+}
+
+function removeExistingTypeEntry(targetPath) {
+  // A package manager may have linked a real @types/<pkg> here as a symlink.
+  // fs.cpSync(force) does NOT overwrite a symlink dest (it throws EEXIST), and
+  // rmSync(recursive) does not reliably clear a symlink-to-directory — so
+  // unlink symlinks/files explicitly and only rm real directories.
+  let stat;
+  try {
+    stat = lstatSync(targetPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  if (stat.isDirectory()) {
+    rmSync(targetPath, { recursive: true, force: true });
+  } else {
+    unlinkSync(targetPath);
+  }
+}
+
+function materializeTypePackage(targetTypesDir, packageName) {
+  const sourceDir = findCachedTypePackageDir(packageName);
+  if (!sourceDir) {
+    return false;
+  }
+
+  const targetDir = path.join(targetTypesDir, packageName);
+  removeExistingTypeEntry(targetDir);
+  ensureTypeRoot(targetTypesDir);
+  cpSync(sourceDir, targetDir, {
+    recursive: true,
+    force: true,
+  });
+  ensureTypeEntryPoint(targetDir, packageName);
+  return true;
+}
+
+function materializePackage(targetNodeModulesDir, packageName) {
+  const sourceDir = findCachedPackageDir(GLOBAL_PACKAGE_CACHE_DIR, packageName);
+  if (!sourceDir || !existsSync(targetNodeModulesDir)) {
+    return false;
+  }
+
+  const targetDir = path.join(targetNodeModulesDir, packageName);
+  removeExistingTypeEntry(targetDir);
+  cpSync(sourceDir, targetDir, {
+    recursive: true,
+    force: true,
+  });
+  return true;
+}
+
+function ensureTypeEntryPoint(targetDir, packageName) {
+  const entryPoint = path.join(targetDir, "index.d.ts");
+  if (existsSync(entryPoint)) {
+    return;
+  }
+
+  const packageJsonPath = path.join(targetDir, "package.json");
+  if (!existsSync(packageJsonPath)) {
+    return;
+  }
+
+  try {
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    const dependencyNames = Object.keys(packageJson.dependencies ?? {});
+    if (dependencyNames.length === 1 && dependencyNames[0] === packageName) {
+      writeFileSync(entryPoint, `export * from "${packageName}";\n`, "utf8");
+    }
+  } catch {
+    // Leave stub packages untouched if their metadata cannot be parsed.
+  }
+}
+
+export function ensureBunTypesAlias(targetTypesDir) {
+  const bunTypesDir = path.join(targetTypesDir, "bun");
+  const parentNodeModules = path.dirname(targetTypesDir);
+  if (!existsSync(parentNodeModules)) {
+    return;
+  }
+  ensureTypeChildDir(targetTypesDir, bunTypesDir);
+  writeFileSync(
+    path.join(bunTypesDir, "index.d.ts"),
+    '/// <reference types="bun-types" />\n',
+    "utf8",
+  );
+  writeFileSync(
+    path.join(bunTypesDir, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "@types/bun",
+        private: true,
+        types: "index.d.ts",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+}
+
+function main() {
+  let materializedCount = 0;
+  let materializedPackageCount = 0;
+  const packageNames = [
+    ...new Set([
+      ...MATERIALIZED_TYPE_PACKAGES,
+      ...collectBrokenBundledTypePackages(),
+    ]),
+  ].sort();
+
+  for (const targetNodeModulesDir of NODE_MODULE_ROOTS) {
+    for (const packageName of MATERIALIZED_PACKAGES) {
+      if (materializePackage(targetNodeModulesDir, packageName)) {
+        materializedPackageCount++;
+      }
+    }
+  }
+
+  for (const targetTypesDir of TYPE_ROOTS) {
+    for (const packageName of packageNames) {
+      if (materializeTypePackage(targetTypesDir, packageName)) {
+        materializedCount++;
+      }
+    }
+    ensureBunTypesAlias(targetTypesDir);
+  }
+
+  console.log(
+    `[ensure-type-package-aliases] materialized ${materializedCount} @types package copies, ${materializedPackageCount} package copies, and refreshed Bun shims`,
+  );
+}
+
+const isMain =
+  process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename);
+
+if (isMain) {
+  main();
+}

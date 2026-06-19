@@ -1,0 +1,241 @@
+schema: eliza.pd_macros_manifest.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+scope: hard_macro_inventory_per_pdk_for_alphachip_and_floorplan
+description: |
+  Per-PDK hard macro inventory used by the e1 floorplan, AlphaChip macro
+  placement, DREAMPlace evaluation, and OpenROAD detailed routing. Each macro
+  entry must reference real LEF/GDS/Liberty artifacts before AlphaChip can
+  produce meaningful candidates. The first hard macro now in the release path
+  is the Sky130 OpenRAM pre-built `sky130_sram_2kbyte_1rw1r_32x512_8` block,
+  instantiated as `e1_weight_buffer_sram` in `e1_soc_top` so OpenLane carries
+  it through synthesis, floorplan, PDN, placement, CTS, and routing.
+pdks:
+  sky130A:
+    description: |
+      SkyWater Sky130 130 nm open PDK. Hard SRAM macros come from two sources:
+      pre-built OpenRAM macros shipped with `sky130_sram_macros` (available in
+      `external/pdks/volare/sky130/versions/...`) and, when needed, freshly
+      generated OpenRAM macros built from this repo (Docker recipe in
+      `pd/macros/sky130/README.md`). OpenRAM is the canonical open SRAM
+      compiler for Sky130.
+    generator: OpenRAM
+    generator_repo: https://github.com/VLSIDA/OpenRAM
+    generator_pinned_commit: e16d9eb0b4495e8beee441ced3fcad68391155e6
+    prebuilt_pdk_macro_root: external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros
+    target_macros:
+      - name: sky130_sram_2kbyte_1rw1r_32x512_8
+        kind: SRAM_1RW1R
+        words: 512
+        word_size_bits: 32
+        size_bytes: 2048
+        source: pdk_prebuilt
+        instantiated_in: rtl/memory/e1_weight_buffer_sram.sv
+        instance_path: u_soc/u_weight_buffer/u_sram
+        intended_use:
+          - npu_weight_buffer_scaffold_first_hard_macro_on_release_floorplan
+        lef: external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef
+        gds: external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds
+        lib: external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib
+        spice: external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice
+        verilog_model: external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/verilog/sky130_sram_2kbyte_1rw1r_32x512_8.v
+      - name: e1_sram_4kb_1rw
+        kind: SRAM_1RW
+        words: 1024
+        word_size_bits: 32
+        size_bytes: 4096
+        source: openram_generated
+        generator_pinned_commit: e16d9eb0b4495e8beee441ced3fcad68391155e6
+        config: pd/macros/sky130/e1_sram_4kb_1rw/e1_sram_4kb_1rw.openram.config.py
+        dimensions_um:
+          width: 1487.785
+          height: 310.39
+        class: BLOCK
+        symmetry: X Y R90
+        pin_count: 83
+        intended_use:
+          - cpu_l1_dcache_data_bank
+          - cpu_l1_icache_data_bank
+        lef: pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw.lef
+        gds: pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw.gds
+        lib: pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw_TT_1p8V_25C.lib
+        lib_corners:
+          - pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw_TT_1p8V_25C.lib
+          - pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw_TT_1p8V_85C.lib
+          - pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw_TT_1p8V_-40C.lib
+          - pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw_SS_1p8V_25C.lib
+          - pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw_FF_1p8V_25C.lib
+        spice: pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw.sp
+        verilog_model: pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw.v
+        drc:
+          tool: magic 8.3.645 (native, tools/bin/magic)
+          pdk: volare sky130A c6d73a35
+          method: drc(full) + drc listall why, per-rule classified by scripts/check_openram_macro_drc.py
+          report: build/reports/pd/openram_4kb_drc.json
+          schema: eliza.pd_openram_macro_verify.v3
+          total_error_tiles: 4287522
+          rule_tile_sum: 19458297       # each tile counts under several adjacent rules
+          rules_with_errors: 42
+          bitcell_waived_tiles: 15360854
+          residual_unclassified_tiles: 4097443
+          status: dominated_by_waived_foundry_bitcell_pseudo_errors
+          note: |
+            Standalone open-PDK drc(full) on the macro GDS reports 4,287,522
+            error tiles (19,458,297 rule-attributed; Magic counts each tile
+            under several adjacent rules). The dominant rules are the
+            proprietary SkyWater sky130_fd_bd_sram bitcell-array geometry:
+            li.5/li.1/li.c2 local-interconnect, diff/tap.8, licon.1/licon.14,
+            poly.4, and explicit "SRAM core"/"SRAM gate" rules — pushed-rule
+            geometry that exists only in the bitcell and is waived in the closed
+            PDK flow. The residual_unclassified_tiles bucket is dominated by the
+            bitcell-array abutment rule ("can't abut or partially overlap
+            between subcells", 2.93M) and the dense bitcell via rules (via.1a,
+            via.5a), which are also bitcell-array-origin; only a few hundred
+            tiles fall on standard-cell metal rules (met1.2/met2.2/met3.2/
+            poly.2). The rule-name split is a heuristic and does NOT yield a
+            clean periphery PASS, so this gate reports FAIL/dominated rather
+            than fabricate one. OpenLane's full-chip magic-drc on the e1 design
+            reports the same class (32.8M tiles, see
+            pd/openlane/runs/.../63-magic-drc) and the flow continues.
+          authoritative_signoff: |
+            Tapeout-grade DRC is the OpenLane flow that carries this macro as
+            an abstracted hard block (LEF-only, bitcell interior not re-checked).
+          rerun: |
+            source tools/env.sh && python3 scripts/check_openram_macro_drc.py \
+              --macro-dir pd/macros/sky130/e1_sram_4kb_1rw/build \
+              --macro-name e1_sram_4kb_1rw \
+              --out-json build/reports/pd/openram_4kb_drc.json
+        lvs:
+          status: BLOCKED_not_yet_run
+          feasible: true
+          netlist: pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw.lvs.sp
+          setup: external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.tech/netgen/sky130A_setup.tcl
+          rerun: |
+            source tools/env.sh
+            magic -dnull -noconsole -rcfile $PDK_ROOT/sky130A/libs.tech/magic/sky130A.magicrc <<'EOF'
+            gds read pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw.gds
+            load e1_sram_4kb_1rw ; select top cell ; extract all
+            ext2spice lvs ; ext2spice -o /tmp/e1_sram_4kb_1rw.ext.spice
+            quit -noprompt
+            EOF
+            netgen -batch lvs \
+              "/tmp/e1_sram_4kb_1rw.ext.spice e1_sram_4kb_1rw" \
+              "pd/macros/sky130/e1_sram_4kb_1rw/build/e1_sram_4kb_1rw.lvs.sp e1_sram_4kb_1rw" \
+              $PDK_ROOT/sky130A/libs.tech/netgen/sky130A_setup.tcl
+      - name: e1_sram_16kb_1rw
+        kind: SRAM_1RW
+        words: 4096
+        word_size_bits: 32
+        size_bytes: 16384
+        source: openram_generated
+        generator_pinned_commit: e16d9eb0b4495e8beee441ced3fcad68391155e6
+        config: pd/macros/sky130/e1_sram_16kb_1rw/e1_sram_16kb_1rw.openram.config.py
+        intended_use:
+          - npu_weight_buffer_scaffold
+          - cpu_l2_slice_bank
+        lef: BLOCKED_run_openram
+        gds: BLOCKED_run_openram
+        lib: BLOCKED_run_openram
+        spice: BLOCKED_run_openram
+        build_status: |
+          RUNNING (started 2026-05-22, detached under the shared heavy-EDA
+          lock). 512 cols x 256 rows (4x the 4 KB row count). Build is OpenRAM
+          submodule-generation + routing bound; expect well over the 4 KB
+          macro's ~6.9 h wall time. Outputs land in build/ on completion. If
+          interrupted, re-launch with the resume command below.
+        resume: |
+          flock -w 21600 /tmp/eliza_heavy_eda.lock -c \
+            'pd/macros/sky130/build_openram_macro.sh pd/macros/sky130/e1_sram_16kb_1rw'
+      - name: e1_sram_64kb_1rw
+        kind: SRAM_1RW
+        words: 16384
+        word_size_bits: 32
+        size_bytes: 65536
+        source: openram_generated
+        generator_pinned_commit: e16d9eb0b4495e8beee441ced3fcad68391155e6
+        config: pd/macros/sky130/e1_sram_64kb_1rw/e1_sram_64kb_1rw.openram.config.py
+        intended_use:
+          - cpu_l3_slice_scaffold
+          - npu_activation_buffer_scaffold
+        lef: BLOCKED_run_openram
+        gds: BLOCKED_run_openram
+        lib: BLOCKED_run_openram
+        spice: BLOCKED_run_openram
+        build_status: |
+          NOT_STARTED. 512 cols x 1024 rows — the largest macro in the e1
+          OpenRAM pipeline and at the upper edge of a single OpenRAM bank/pass.
+          Build time scales roughly with row count (16x the 4 KB bitcell
+          array), so expect a multi-day wall on this host. Must run alone on
+          the shared heavy-EDA lock; if it OOMs even alone, split into banks.
+        resume: |
+          flock -w 21600 /tmp/eliza_heavy_eda.lock -c \
+            'pd/macros/sky130/build_openram_macro.sh pd/macros/sky130/e1_sram_64kb_1rw'
+    mbist:
+      strategy: per_bank_mbist_controller
+      controller_rtl: BLOCKED_generate_with_openram
+      jtag_access: via_e1_chip_top_jtag_tap
+    blockers:
+      - >-
+        e1_sram_4kb_1rw is built natively (LEF/GDS/Liberty x5 corners/SPICE/
+        Verilog present). 16 KB build is re-launchable; 64 KB not yet started.
+        See per-macro build_status/resume above.
+      - >-
+        Standalone open-PDK Magic DRC on built macros is dominated by the
+        waived SkyWater foundry-bitcell pseudo-errors (see e1_sram_4kb_1rw.drc).
+        Tapeout-grade DRC is the OpenLane flow that abstracts the bitcell.
+      - >-
+        No Sky130 OpenRAM macro has a netgen LVS-clean result captured yet; LVS
+        is feasible (netlist + sky130A_setup.tcl present) — see the lvs.rerun
+        command on e1_sram_4kb_1rw.
+  ihp-sg13g2:
+    description: |
+      IHP SG13G2 130 nm BiCMOS open PDK. SRAM macros come from the IHP
+      open_pdk_sg13g2 distribution (selectable compiler-generated blocks),
+      not OpenRAM. Treated as second-source PDK for portability evidence;
+      not the primary advanced-node path.
+    generator: ihp_open_pdk_sram_compiler
+    generator_repo: https://github.com/IHP-GmbH/IHP-Open-PDK
+    generator_pinned_commit: BLOCKED_pin_after_first_local_run
+    target_macros:
+      - name: e1_sram_4kb_1rw_sg13g2
+        kind: SRAM_1RW
+        words: 1024
+        word_size_bits: 32
+        intended_use:
+          - portability_smoke_only
+        lef: BLOCKED_run_ihp_compiler
+        gds: BLOCKED_run_ihp_compiler
+        lib: BLOCKED_run_ihp_compiler
+      - name: e1_sram_16kb_1rw_sg13g2
+        kind: SRAM_1RW
+        words: 4096
+        word_size_bits: 32
+        intended_use:
+          - portability_smoke_only
+        lef: BLOCKED_run_ihp_compiler
+        gds: BLOCKED_run_ihp_compiler
+        lib: BLOCKED_run_ihp_compiler
+    mbist:
+      strategy: per_bank_mbist_controller
+      controller_rtl: BLOCKED_generate_with_ihp_compiler
+      jtag_access: via_e1_chip_top_jtag_tap
+    blockers:
+      - IHP open PDK SRAM compiler has not been run locally.
+      - SG13G2 is a portability target only; primary closure remains Sky130 at MVP.
+verification_required_before_unblock:
+  - OpenLane run that places at least one hard macro from this manifest and
+    completes Magic DRC, Netgen LVS, and antenna checks clean.
+  - AlphaChip benchmark protobuf regenerated from the new netlist showing
+    NUM_HARD_MACROS > 0 in the PLC (today the smoke handoff reports zero).
+  - Post-route PPA validator JSON captured under
+    research/alpha_chip_macro_placement/07_post_route_ppa/.
+release_blockers:
+  - OpenRAM-generated 4 KB SRAM is built natively (full LEF/GDS/Liberty/SPICE/
+    Verilog); 16 KB is re-launchable and 64 KB is not yet started. Standalone
+    DRC is dominated by waived foundry-bitcell pseudo-errors and netgen LVS is
+    not yet captured. Only the PDK-shipped 2 KB sky130_sram_2kbyte_1rw1r_32x512_8
+    macro is wired into the OpenLane release flow today.
+  - AlphaChip macro-placement value demonstration on the 1-hard-macro
+    release netlist (post-route PPA delta vs OpenROAD analytical placer)
+    pending Nebius H200 RL training and re-run of run_post_route_ppa.py.
+  - MBIST controller RTL is not generated.

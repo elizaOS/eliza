@@ -1,0 +1,166 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-20 17:54+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
+"|| n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Why does Tails use Tor?\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Both Tails and the Tor *software* are made by the [Tor Project](https://"
+"torproject.org/)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails [[was founded|news/celebrating_10_years]] in 2009 and [[joined forces "
+"with Tor|news/tails_tor]] in 2024."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"anonymity\">Anonymity enforcement</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We want to enforce good security by default for our users. That is why it is "
+"a fundamental assumption of Tails to force all outgoing traffic to anonymity "
+"networks such as Tor."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Over the years Tor has become a big network with a lot of capacity and a "
+"good speed."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Virtual Private Networks (VPNs) could be faster than Tor but they are not "
+"anonymity networks, because the administrators of the VPN can know both "
+"where you are connecting from and where you are connecting to and break your "
+"anonymity. Tor provides anonymity by making it impossible for a single point "
+"in the network to know both the origin and the destination of a connection."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When using a VPN, an attacker can also break your anonymity by monitoring "
+"the incoming and outgoing connections of the few servers of the VPN. On the "
+"other hand, the Tor network is formed by over 7500 relays run worldwide by "
+"volunteers."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img tor/tor.png link=\"no\" class=\"svg\" alt=\"A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See also our warnings about the [[limitations of the Tor\n"
+"network|doc/about/warnings/tor]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"popularity\">User base</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tor is the anonymity network with the largest user base. More than "
+"2&thinsp;000&thinsp;000 users connected to Tor daily in 2025. Being adopted "
+"by such a large audience proves its maturity, stability, and usability."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tor is being used equally by journalists, law enforcement, governments, "
+"human rights activists, business leaders, militaries, abuse victims and "
+"average citizens concerned about online privacy. This diversity actually "
+"provides stronger anonymity to everyone as it makes it more difficult to "
+"identify or target a specific profile of Tor user. Anonymity loves company."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Technical merits and recognition"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tor has partnered with leading research institutions, and has been subjected "
+"to intensive academic research. It is the anonymity network which benefits "
+"from the most auditing and peer review."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tor has been received awards by institutions such as the [Electronic "
+"Frontier Foundation](https://www.eff.org/awards/pioneer/2012), and the [Free "
+"Software Foundation](https://www.fsf.org/news/2010-free-software-awards-"
+"announced) to name a few."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"An extract of a Top Secret appraisal by the NSA characterized Tor as \"[the "
+"King of high secure, low latency Internet anonymity](https://www.theguardian."
+"com/world/interactive/2013/oct/04/tor-high-secure-internet-anonymity)\" with "
+"\"no contenders for the throne in waiting\"."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"i2p\">About I2P</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[I2P](https://geti2p.net/) is another anonymity network and alternative to "
+"Tor.  Tails used to include I2P until 2017. We removed I2P in [[Tails 2.12|"
+"news/version_2.11]] because it was too costly to maintain."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We have no plans to add I2P back in Tails because I2P hasn't yet become "
+"popular and usable enough to make a real difference for our [[target "
+"audience|contribute/personas]]."
+msgstr ""
+
+#, no-wrap
+#~ msgid "<a id=\"relationship\"></a>\n"
+#~ msgstr "<a id=\"relationship\"></a>\n"

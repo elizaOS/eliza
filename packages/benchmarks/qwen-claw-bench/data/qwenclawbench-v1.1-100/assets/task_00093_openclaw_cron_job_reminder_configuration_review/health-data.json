@@ -1,0 +1,32 @@
+{
+  "weightLog": [
+    { "date": "2026-01-20", "weight": 73.5, "unit": "kg" },
+    { "date": "2026-01-21", "weight": 73.2, "unit": "kg" },
+    { "date": "2026-01-22", "weight": 73.8, "unit": "kg" },
+    { "date": "2026-01-23", "weight": 73.1, "unit": "kg" },
+    { "date": "2026-01-24", "weight": 72.9, "unit": "kg" },
+    { "date": "2026-01-27", "weight": 73.0, "unit": "kg" },
+    { "date": "2026-01-28", "weight": 72.7, "unit": "kg" },
+    { "date": "2026-01-29", "weight": 72.5, "unit": "kg" },
+    { "date": "2026-02-01", "weight": 73.4, "unit": "kg" },
+    { "date": "2026-02-02", "weight": 73.6, "unit": "kg" },
+    { "date": "2026-02-03", "weight": 73.2, "unit": "kg" },
+    { "date": "2026-02-04", "weight": 72.8, "unit": "kg" },
+    { "date": "2026-02-05", "weight": 72.6, "unit": "kg" },
+    { "date": "2026-02-06", "weight": 72.4, "unit": "kg" }
+  ],
+  "sittingReminders": {
+    "schedule": ["09:20", "10:50", "11:40", "15:20", "16:50", "17:40"],
+    "timezone": "Asia/Shanghai",
+    "activeDays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "totalSent": 142,
+    "lastSent": "2026-02-06T09:20:00+08:00"
+  },
+  "goals": {
+    "targetWeight": 70.0,
+    "unit": "kg",
+    "startDate": "2026-01-15",
+    "sittingBreakDurationMin": 5,
+    "dailyStepTarget": 8000
+  }
+}

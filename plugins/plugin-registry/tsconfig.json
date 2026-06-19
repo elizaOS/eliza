@@ -1,0 +1,79 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "declaration": true,
+    "declarationMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node", "react"],
+    "outDir": "./dist",
+    "rootDir": "../..",
+    "paths": {
+      "react": ["../../node_modules/@types/react"],
+      "react/*": ["../../node_modules/@types/react/*"],
+      "react-dom": ["../../node_modules/@types/react-dom"],
+      "react-dom/*": ["../../node_modules/@types/react-dom/*"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/vault": ["../../packages/vault/src/index.ts"],
+      "@elizaos/capacitor-bun-runtime": [
+        "../plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
+      "@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
+      "@elizaos/plugin-agent-skills": ["../plugin-agent-skills/src/index.ts"],
+      "@elizaos/plugin-agent-skills/*": ["../plugin-agent-skills/src/*"],
+      "@elizaos/plugin-task-coordinator": [
+        "../plugin-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/plugin-task-coordinator/*": [
+        "../plugin-task-coordinator/src/*"
+      ],
+      "@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
+      "@elizaos/plugin-computeruse": ["../plugin-computeruse/dist/index.d.ts"],
+      "@elizaos/plugin-computeruse/*": ["../plugin-computeruse/dist/*"],
+      "@elizaos/plugin-registry": ["./src/index.ts"],
+      "@elizaos/plugin-registry/*": ["./src/*"],
+      "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
+      "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
+      "@elizaos/plugin-training": [
+        "../../packages/ui/src/types/host-external-modules.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "../../packages/app-core/src/ambient-modules.d.ts",
+    "../../packages/ui/src/types/host-external-modules.ts",
+    "../../packages/ui/src/cloud-ui/types/react-syntax-highlighter.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
+}

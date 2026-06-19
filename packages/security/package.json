@@ -1,0 +1,127 @@
+{
+  "name": "@elizaos/security",
+  "version": "2.0.3-beta.14",
+  "description": "Eliza security foundation: KMS contract, audit-event dispatcher, and AEAD primitives. Foundation package for SOC2 compliance work.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/security"
+  },
+  "keywords": [
+    "elizaos",
+    "security",
+    "kms",
+    "audit",
+    "soc2",
+    "steward"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "bun": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./kms": {
+      "types": "./dist/kms/index.d.ts",
+      "eliza-source": {
+        "types": "./src/kms/index.ts",
+        "import": "./src/kms/index.ts",
+        "default": "./src/kms/index.ts"
+      },
+      "bun": {
+        "types": "./src/kms/index.ts",
+        "import": "./src/kms/index.ts",
+        "default": "./src/kms/index.ts"
+      },
+      "import": "./dist/kms/index.js",
+      "default": "./dist/kms/index.js"
+    },
+    "./audit": {
+      "types": "./dist/audit/index.d.ts",
+      "eliza-source": {
+        "types": "./src/audit/index.ts",
+        "import": "./src/audit/index.ts",
+        "default": "./src/audit/index.ts"
+      },
+      "bun": {
+        "types": "./src/audit/index.ts",
+        "import": "./src/audit/index.ts",
+        "default": "./src/audit/index.ts"
+      },
+      "import": "./dist/audit/index.js",
+      "default": "./dist/audit/index.js"
+    },
+    "./mcp-server-config": {
+      "types": "./dist/mcp-server-config.d.ts",
+      "bun": {
+        "types": "./src/mcp-server-config.ts",
+        "import": "./src/mcp-server-config.ts",
+        "default": "./src/mcp-server-config.ts"
+      },
+      "import": "./dist/mcp-server-config.js",
+      "default": "./dist/mcp-server-config.js"
+    },
+    "./network-policy": {
+      "types": "./dist/network-policy.d.ts",
+      "bun": {
+        "types": "./src/network-policy.ts",
+        "import": "./src/network-policy.ts",
+        "default": "./src/network-policy.ts"
+      },
+      "import": "./dist/network-policy.js",
+      "default": "./dist/network-policy.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "bun": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run build",
+    "build": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/security",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  }
+}

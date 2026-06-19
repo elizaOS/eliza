@@ -1,0 +1,43 @@
+#!/bin/sh
+
+set -eu
+
+SETTINGS_DIR='/live/persistence/TailsData_unlocked/.tails/dont-ask-again'
+if [ ! -d "${SETTINGS_DIR}" ]; then
+    echo 'unavailable'
+    exit 0
+fi
+
+LONGOPTS='dont-ask-again,timeout:'
+OPTS="$(getopt -o "" --longoptions ${LONGOPTS} -n "$(basename "${0}")" -- "$@")"
+eval set -- "$OPTS"
+while [ "${#}" -gt 0 ]; do
+    case "${1}" in
+    --dont-ask-again)
+        DONT_ASK_AGAIN='yes'
+        ;;
+    --timeout)
+        shift
+        TIMEOUT="${1}" # in days
+        ;;
+    --)
+        shift
+        break
+        ;;
+    esac
+    shift
+done
+
+IDENTIFIER="${1}"
+if [ "${DONT_ASK_AGAIN:-}" = yes ]; then
+    touch "${SETTINGS_DIR}/${IDENTIFIER}"
+else
+    if [ -n "${TIMEOUT:-}" ]; then
+        find "${SETTINGS_DIR}" -name "${IDENTIFIER}" -mtime +"${TIMEOUT}" -delete
+    fi
+    if [ -e "${SETTINGS_DIR}/${IDENTIFIER}" ]; then
+        echo 'hide'
+    else
+        echo 'show'
+    fi
+fi

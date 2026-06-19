@@ -1,0 +1,50 @@
+{
+  "admin@company.com": {
+    "email": "admin@company.com",
+    "name": "Jennifer Martinez",
+    "password": "admin123",
+    "created_at": "2025-11-21T15:07:37.804860+00:00"
+  },
+  "robert.chen@company.com": {
+    "email": "robert.chen@company.com",
+    "name": "Dr. Robert Chen",
+    "password": "password123",
+    "created_at": "2025-11-21T15:07:37.804860+00:00"
+  },
+  "sarah.johnson@company.com": {
+    "email": "sarah.johnson@company.com",
+    "name": "Sarah Johnson",
+    "password": "password123",
+    "created_at": "2025-11-21T15:07:37.804860+00:00"
+  },
+  "michael.thompson@company.com": {
+    "email": "michael.thompson@company.com",
+    "name": "Michael Thompson",
+    "password": "password123",
+    "created_at": "2025-11-21T15:07:37.804860+00:00"
+  },
+  "emily.rodriguez@company.com": {
+    "email": "emily.rodriguez@company.com",
+    "name": "Emily Rodriguez",
+    "password": "password123",
+    "created_at": "2025-11-21T15:07:37.804860+00:00"
+  },
+  "james.wilson@company.com": {
+    "email": "james.wilson@company.com",
+    "name": "James Wilson",
+    "password": "password123",
+    "created_at": "2025-11-21T15:07:37.804860+00:00"
+  },
+  "sophia.patel@company.com": {
+    "email": "sophia.patel@company.com",
+    "name": "Sophia Patel",
+    "password": "password123",
+    "created_at": "2025-11-21T15:07:37.804860+00:00"
+  },
+  "daniel.kim@company.com": {
+    "email": "daniel.kim@company.com",
+    "name": "Daniel Kim",
+    "password": "password123",
+    "created_at": "2025-11-21T15:07:37.804860+00:00"
+  }
+}

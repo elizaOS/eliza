@@ -1,0 +1,60 @@
+{
+  "claim_boundary": "EVT fixture CAD for first-article checks; fixture geometry is conceptual until fabricated and correlated to metrology equipment.",
+  "status": "evt_fixture_cad_ready",
+  "fixture_count": 7,
+  "fixture_glb": "mechanical/e1-phone/out/e1-phone-evt-fixtures.glb",
+  "fixture_manifest": "mechanical/e1-phone/out/evt-fixture-manifest.json",
+  "cases": [
+    {
+      "id": "button_force_travel_fixture",
+      "fixture": "evt_fixture_button_force_probe",
+      "validates": [
+        "power_button_force_travel_pressure",
+        "volume_button_force_travel_pressure"
+      ],
+      "pass": true
+    },
+    {
+      "id": "usb_c_insertion_fixture",
+      "fixture": "evt_fixture_usb_c_insertion_gauge",
+      "validates": [
+        "usb_c_insertion_capture"
+      ],
+      "pass": true
+    },
+    {
+      "id": "screen_bond_clamp_fixture",
+      "fixture": "evt_fixture_screen_bond_clamp_frame",
+      "validates": [
+        "screen_bond_and_fpc_connection"
+      ],
+      "pass": true
+    },
+    {
+      "id": "camera_alignment_fixture",
+      "fixture": "evt_fixture_rear_camera_alignment_pin",
+      "secondary_fixture": "evt_fixture_front_camera_alignment_pin",
+      "validates": [
+        "camera_glass_and_under_glass_strategy"
+      ],
+      "pass": true
+    },
+    {
+      "id": "acoustic_leak_fixture",
+      "fixture": "evt_fixture_bottom_acoustic_leak_mask",
+      "secondary_fixture": "evt_fixture_earpiece_leak_mask",
+      "validates": [
+        "bottom_audio_port_alignment",
+        "handset_receiver_gasket_stack"
+      ],
+      "pass": true
+    }
+  ],
+  "first_article_use": [
+    "Use force probe with a calibrated load cell and dial indicator for side-key force/travel/rattle.",
+    "Use USB-C insertion gauge before cycle testing to catch aperture rub and shell shift.",
+    "Use screen clamp frame during bond trials to verify adhesive compression and FPC exit clearance.",
+    "Use camera alignment pins to inspect rear lens datum and front under-glass aperture position.",
+    "Use acoustic masks for speaker, microphone, and handset leakage A/B checks before chamber testing."
+  ]
+}

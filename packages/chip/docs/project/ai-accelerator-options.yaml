@@ -1,0 +1,97 @@
+schema: eliza.ai_accelerator_options.v1
+status: decision_open_fail_closed
+claim_allowed: false
+release_claim_allowed: false
+android_boot_claim_allowed: false
+wifi_claim_allowed: false
+ai_throughput_claim_allowed: false
+tapeout_claim_allowed: false
+selection_rule: >
+  No AI throughput, TOPS, NNAPI, or mobile-AI claim may pass until one option is
+  selected and its validation gates are satisfied with runtime evidence.
+options:
+  - id: keep_e1_mmio_npu
+    class: repo_local_prototype
+    summary: Extend the current MMIO scalar/SIMD/tiny-GEMM datapath.
+    advantages:
+      - Smallest repo-local RTL delta.
+      - Fastest cocotb/formal iteration.
+      - Good for register ABI and driver smoke tests.
+    blockers:
+      - Not a phone-class accelerator.
+      - No command queue, tensor DMA, sparsity, compiler, or NN runtime path.
+      - Cannot support meaningful mobile model throughput claims.
+    validation_gates:
+      - opcode_shape_coverage_report
+      - Linux fixed-vector driver smoke
+      - explicit no-throughput-claim status
+  - id: integrate_open_npu_ip
+    class: external_ip
+    summary: Wrap an existing open accelerator such as Gemmini-style systolic array or NVDLA-like block.
+    advantages:
+      - Real descriptor/memory path can be validated.
+      - Better alignment with compiler/runtime research.
+      - Can produce bounded model-layer measurements.
+    blockers:
+      - External generator/IP pinning and license review.
+      - Significant SoC fabric, DMA, IOMMU, and driver integration.
+      - FPGA/PD area and timing risk.
+    validation_gates:
+      - pinned_upstream_sha_and_license
+      - descriptor_ABI_spec
+      - coherent_or_dma_memory_validation
+      - Linux driver and runtime smoke
+      - model operator coverage and fallback report
+  - id: vector_cpu_baseline
+    class: cpu_extension
+    summary: Use RVV-capable CPU or vector coprocessor as the first AI acceleration path.
+    advantages:
+      - Simplifies memory coherency and Android runtime integration relative to a discrete NPU.
+      - Useful baseline for kernels and compiler work.
+      - May be easier to validate before custom NPU.
+    blockers:
+      - Requires real RV64GC/RVV CPU integration.
+      - Power/performance may not meet phone AI target.
+      - Still needs Android runtime feature detection and fallback accounting.
+    validation_gates:
+      - RVV toolchain and ISA proof
+      - TFLite/XNNPACK or delegate runtime log
+      - power/performance benchmark report
+  - id: gpu_compute_or_2d_first
+    class: graphics_path
+    summary: Prioritize GPU/2D display stack before AI compute, optionally using GPU compute later.
+    advantages:
+      - Android usability depends on graphics/display first.
+      - Validates shared memory, gralloc, HWC, and display QoS.
+      - Reduces risk of claiming AI before Android graphics works.
+    blockers:
+      - No GPU exists in the repo.
+      - Open mobile GPU IP, driver, Vulkan/OpenGL ES, and Android integration are large projects.
+      - GPU compute claims need a separate runtime and benchmark plan.
+    validation_gates:
+      - GPU/IP decision record
+      - DRM/KMS driver and HWC transcript
+      - graphics CTS subset
+      - memory QoS under display load
+  - id: external_ai_module_reference
+    class: board_level_reference
+    summary: Use an external accelerator module only as a software/runtime reference path.
+    advantages:
+      - Can exercise Android NN/runtime plumbing before on-die NPU.
+      - Avoids premature custom silicon claims.
+      - Provides a comparison baseline while the on-die accelerator remains blocked.
+    blockers:
+      - Not on-die SoC evidence.
+      - Requires board interface, firmware, and driver support.
+      - Must be labeled separately from Eliza SoC performance.
+    validation_gates:
+      - board module integration log
+      - runtime accelerator selection log
+      - claim level excludes on-die NPU throughput
+required_common_gates:
+  - model artifact sha256 and license
+  - operator coverage report
+  - unsupported op count
+  - CPU fallback percentage
+  - power and thermal measurement boundary
+  - exact platform claim level from docs/benchmarks/report-schema.yaml

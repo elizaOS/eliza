@@ -1,0 +1,7 @@
+[[!meta title="Starting Tails"]]
+
+To learn how to start Tails, refer to our installation instructions on:
+
+- [[Starting Tails on PC|pc]]
+
+- [[Starting Tails on Mac|mac]]

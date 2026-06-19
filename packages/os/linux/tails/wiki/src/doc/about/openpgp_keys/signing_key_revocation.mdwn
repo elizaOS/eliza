@@ -1,0 +1,365 @@
+[[!meta title="Revocation of the Tails signing key"]]
+
+This document proposes a mechanism for the distribution and activation of
+the revocation certificate of the Tails signing key.
+
+Status
+======
+
+This document is obsolete.
+
+It will be simplified or removed by [[!tails_gitlab tails/summit/-/issues/36]].
+
+Goals
+=====
+
+Covered by the current proposal:
+
+- Prevent any single individual from revoking our signing key.
+
+- Allow a coalition of people from the Board to revoke our signing key
+  in case most of the people from the Board become unavailable.
+
+- Allow a coalition of people, not necessarily from the Board, to
+  revoke our signing key in case everybody or almost everybody from
+  the Board becomes unavailable.
+
+- Make it hard for a coalition of people not from the Board to revoke
+  our signing key unless everybody or almost everybody from the Board
+  becomes unavailable.
+
+- People not from the Board shouldn't know how the shares are spread
+  and who has them.
+
+- People in possession of a share of the revocation certificate
+  of the signing key should have instructions on how to use it if needed.
+
+Groups
+======
+
+We define four complementary groups of trusted people:
+
+  - Group A: people from the Board themselves
+  - Group B
+  - Group C
+  - Group D
+
+All these people should have an OpenPGP key and understand what
+a revocation certificate is.
+
+Cryptographic shares
+====================
+
+We generate a revocation certificate of the signing key and split it
+into a number of cryptographic shares, using for example Shamir's secret
+sharing scheme implemented by `gfshare`.
+
+The following combinations of people could get together and reassemble their
+shares to reconstruct a complete revocation certificate:
+
+  - Three people from the Board: A{3}
+  - Two people from the Board and one person not from the Board: A{2}+(B|C|D)
+  - One person from the Board, and two people not from the Board but from two different groups: A+(B|C|D){2}
+  - Three people not from the Board but from three different groups: (B+C+D){3}
+
+We generate these shares:
+
+  - N shares, one for each person from the Board
+  - 1 share for people in group B
+  - 1 share for people in group C
+  - 1 share for people in group D
+
+Who knows what
+==============
+
+  - People from the Board know the composition of each group
+  - People not from the Board:
+    - Are explained in which circumstances they should revoke the signing key
+    - Are told to write to a certain contact email address if they decide to revoke the signing key
+    - Are told that they need three different shares to reassemble the revocation certificate
+
+Infrastructure
+==============
+
+  - Everybody who owns a share is subscribed to a mailing list.
+  - This mailing list is hosted on a trusted server different from boum.org to
+    be more resilient than our usual communication channels.
+  - Someone hosting the mailing list is part of group B, C, or D so they
+    can ensure that the list keeps working even if it never used.
+
+Changing the members of the groups B, C, or D
+=============================================
+
+To add someone to a given group:
+
+  - Request someone from that group to send her share to the new
+    person in the group.
+
+To remove someone from a given group:
+
+  - Send new shares to everybody except to the person who is being removed.
+  - Request everybody to delete their previous share and track this.
+    Once everybody in 2 groups amongst B, C, or D have deleted their share, it becomes
+    impossible for them to reassemble the revocation certificate with the previous
+    set of shares.
+  - Let's hope that this doesn't happen very often :)
+
+Expiry
+======
+
+There is no expiry date on revocation certificates. One way of
+cancelling the revocation power is to destroy all copies of shares of 2
+groups amongst B, C, or D.
+
+<a id="invitation"></a>
+
+Invitation email
+================
+
+Someone who has a personal trust relationship with the person being
+invited sends this email.
+
+<pre>
+Subject: distribution
+
+Hi,
+
+We want to propose you to be part of a distributed mechanism for the
+revocation certificate of the Tails signing key.
+
+The idea is to distribute cryptographic shares of this revocation
+certificate to people that we trust. These cryptographic shares can be
+put together to reassemble the revocation certificate and revoke the
+Tails signing key. This may be needed in case something really bad
+happens to us and we are not able to do the revocation ourselves.
+
+Note: In all this document, 'us' refers to the Board.
+
+You can read a complete description of the distribution mechanism on:
+
+https://tails.net/doc/about/openpgp_keys/signing_key_revocation.
+
+The recipe is public and the only secret component is the list of people
+who are in possession of the cryptographic material.
+
+We are proposing this to you because we trust in both your technical
+abilities to store your share in a safe place and manipulate it as
+required. But also because we trust you as a human being to make
+informed judgment on when to use your share and act only in the
+interest of Tails.
+
+The bad things that could happen if the mechanism fails are:
+
+A. The signing key is not revoked when it should be. This could allow
+possible attackers to distribute malicious Tails images or publish
+malicious information on our name.
+
+B. The signing key is revoked when it should not have been. This would
+prevent people from verifying our images with OpenPGP until we
+publish a new signing key and build trust in it.
+
+Distribution of the shares
+==========================
+
+Each person from the Board, group A, has a *different* share, A1,
+A2, ..., An.
+
+On top of this, we defined three complementary groups, B, C, and D of
+trusted people who have a close relationship with Tails but different
+interests and different access to information about us. You are part of
+one of these groups.
+
+Everybody in group B has an *identical* share B.
+
+Everybody in group C has an *identical* share C.
+
+Everybody in group D has an *identical* share D.
+
+Three different shares are needed to reassemble the revocation
+certificate. For example, shares A1, A2, and A3, or shares A1, B, and C.
+
+How to store your share
+=======================
+
+Please keep your share in an encrypted storage and make it as hard as
+you can for untrusted people to get a copy of it.
+
+You can rename the file as long as you keep the number in the file name
+of your share as it is needed to use the share.
+
+Feel free to back up the file but we might also request you to delete it
+at some point and you should be able to know whether you still have a
+copy of it or not. It is all-right to lose your share as long as you
+tell us that you have lost it. It is actually worse to still have a copy
+of the share "somewhere" while thinking that you don't, than to lose
+it by mistake.
+
+Don't hesitate to ask us if you need clarification on the technical
+aspects of this.
+
+When to use your share
+======================
+
+Everybody in possession of a share is subscribed to a mailing list.
+
+If someone in possession of a share gets to learn about a very bad event
+that happened to many of us and really thinks that we are not capable of
+revoking the Tails signing key ourselves anymore, then this person
+should write to the mailing list explaining why she thinks that the
+signing key needs to be revoked.
+
+Yes, there is no mathematically proven algorithm for this and here is
+where your judgment as a human being is needed. The description of the
+very bad event should be checked or backed by enough people to be
+plausible.
+
+People on the list who are also convinced that the signing key should be
+revoked share their shares until they have 3 different shares. Then they
+can assemble the revocation certificate and publish it to revoke the
+signing key.
+
+Keep in mind that we could still revoke the signing key ourselves as
+long as three of us are able to communicate and gather their shares. So
+we only need your help if no more than two of us are still able to
+communicate.
+
+Unless you really want to start the key revocation process, do not write
+to this mailing list.
+
+Further communications
+======================
+
+In case we need to communicate with you about this revocation mechanism
+in the future, we will always do it through the tails@boum.org mailing
+list. We might do so for example to:
+
+  - Ask you to send your share to a new member of your group.
+
+  - Ask you to delete your share. This could be needed to cancel the
+    power of others people's share: as long as enough of you delete
+    their shares, the few people that might not delete them would end up
+    with unusable shares.
+
+The tails@boum.org mailing list has its own OpenPGP key, which is
+signed by the Tails signing key itself:
+
+    https://tails.net/tails-email.key
+
+So, can we count on you for this?
+
+If you answer positively, we will send you your share and subscribe you
+to the mailing list.
+
+Thanks, and may the force be with you!
+</pre>
+
+Keeping the members of the groups B, C, and D up-to-date
+========================================================
+
+At least every 2 years, we make sure that the mechanism still works:
+
+1. We review internally the list of members of each group and decide
+   possible additions to, and removals from, each group.
+
+1. We write to every individual member of each group to ask them to check
+   that they still have their share and the number in the file name.
+
+1. We log in to the administration interface of the mailing list, make
+   sure that it still exists, and is configured correctly.
+
+<a id="update"></a>
+
+Update email
+------------
+
+We send these emails through tails@boum.org to avoid the need for a
+personal trust relationship between the person sending the mail and the
+recipient. We don't send shares from groups B, C, or D with
+tails@boum.org by doing so.
+
+<pre>
+Subject: update
+
+Hi,
+
+Some years ago, you agreed to be part of a distributed mechanism for the
+revocation certificate of the Tails signing key and we sent you a
+cryptographic share of this revocation certificate.
+
+Today, we are asking you to:
+
+1. Verify the authenticity of this email, either by verifying that it is
+   signed by the tails@boum.org mailing or by talking directly to
+   someone from the Board.
+
+   The tails@boum.org mailing list has its own OpenPGP key, which is
+   signed by the Tails signing key itself:
+
+   https://tails.net/tails-email.key
+
+2. Confirm whether you still have in your possession:
+
+   - Your share of the revocation certificate.
+
+   - The number NNN in the file name of your share.
+
+     The file was named tails-signing-key-revocation-cert.asc.NNN, where
+     NNN is a 3 digit number.
+
+For the record, the address of the mailing list that you should write to
+in case you want to assemble the revocation certificate is:
+
+    address@example.org
+
+Do not write to this mailing list unless you really want to start the
+key revocation process.
+
+We are also copying below a summary of the mechanism.
+
+XXX: Copy the invitation email:
+XXX: - Include "You can read a complete description of the distribution mechanism on:"
+XXX: - Stop before "So, can we count on you for this?"
+</pre>
+
+Adding a new member
+-------------------
+
+1. Send the [[invitation email|signing_key_revocation#invitation]] to
+   the new member.
+
+1. If they agree, ask someone else from the same group to send them
+   their share of the key.
+
+   Unfortunately, this reveals some membership information to these two
+   people.
+
+1. Ask the new member to confirm the reception of their share.
+
+<a id="sharing"></a>
+
+### Sharing email
+
+We send these emails through tails@boum.org to avoid the need for a
+personal trust relationship between the person sending the mail and the
+recipient. We don't send shares from groups B, C, or D with
+tails@boum.org by doing so.
+
+<pre>
+Subject: sharing
+
+Hi,
+
+We asked someone else from your group to send you a copy of your share.
+
+Please tell us once you receive it.
+
+The address of the mailing list that you should write to in case you
+want to assemble the revocation certificate is:
+
+    address@example.org
+
+Do not write to this mailing list unless you really want to start the
+key revocation process.
+
+Thanks, and may the force be with you!
+</pre>

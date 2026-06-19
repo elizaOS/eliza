@@ -1,0 +1,118 @@
+[[!meta title="Launching our donation campaign for 2020"]]
+[[!meta date="Mon, 07 Oct 2019 15:00:55 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+The mission of Tails is to empower people worldwide by giving out an operating
+system that protects from surveillance and censorship.
+
+We build liberating technology to put people in control of their digital lives,
+keeping in mind that the most vulnerable and oppressed people are also the most in need of
+privacy and security:
+
+- Journalists and whistleblowers use Tails to denounce the wrongdoings
+  of governments and corporations.
+- Activists use Tails to avoid surveillance and organize their
+  struggles for liberatory social change.
+- Human-rights defenders use Tails to avoid censorship and report
+  human-rights violations.
+- Domestic violence survivors use Tails to escape surveillance in
+  their homes.
+- Privacy-concerned citizens use Tails to avoid online tracking.
+
+And we give out Tails for free because nobody should have to pay to be safe
+while using computers.
+
+However, Tails needs funds to keep up the fight and we know that people
+who need Tails the most cannot always donate: because they would get in
+trouble for giving to an anti-surveillance tool or simply because they
+don't have the money.
+
+
+Why supporting Tails is more important than ever
+================================================
+
+The [2019 World Press Freedom
+Index](https://rsf.org/en/2019-world-press-freedom-index-cycle-fear) compiled
+by Reporters Without Borders (RSF) shows how hatred of journalists has
+degenerated into violence, contributing to an increase in fear. The number of
+countries regarded as safe, where journalists can work in complete security,
+continues to decline, while authoritarian regimes continue to tighten their
+grip on the media.
+
+According to the [2019 Report by United Nations' Special Rapporteur David
+Kaye](https://daccess-ods.un.org/access.nsf/Get?Open&DS=A/HRC/41/35&Lang=E),
+surveillance of individuals – often journalists, activists, opposition figures,
+critics and others exercising their right to freedom of expression – thrives
+because of weak controls on exports and transfers of surveillance technology to
+repressive governments. This surveillance is known to lead to arbitrary
+detention, sometimes to torture and possibly to extrajudicial killings.
+
+These technologies include targeted malware, online interception of network
+communications, and deep packet inspection; all technologies that Tails is one
+of the best tool to protect from while reducing the risk of dangerous mistakes.
+
+A legal framework to regulate this surveillance industry, as recommended by
+David Kaye, might be useful for the future. But digital freedom tools like
+Tails are more needed than ever right now, in an act of empowerment and
+self-defense.
+
+You are our best guarantee
+==========================
+
+We often hear complaints about software projects that are meant to fight
+surveillance, like Tor and Tails, getting funds from the US government. We
+share this concern and we will never be at ease as long as the well-being of
+our project depends on such funding.
+
+This is why it's so important to be sustained by users like you: our
+independence depends on you.
+
+We are extremely proud that our primary source of funding in the last
+years has been donations from passionate people like you. Let's keep it
+this way!
+
+In 2017&ndash;2019, our money came from:
+
+<div class="chart">
+<div class="chart-content">
+<svg width="75%" height="75%" viewBox="0 0 64 64">
+<circle cx="32" cy="32" r="15.91549430918954" fill="transparent" stroke="#5da5da" stroke-width="32" stroke-dasharray="36 64" stroke-dashoffset="25" aria-labelledby=""></circle>
+<circle cx="32" cy="32" r="15.91549430918954" fill="transparent" stroke="#faa43a" stroke-width="32" stroke-dasharray="30 70" stroke-dashoffset="89" aria-labelledby=""></circle>
+<circle cx="32" cy="32" r="15.91549430918954" fill="transparent" stroke="#60bd68" stroke-width="32" stroke-dasharray="25 75" stroke-dashoffset="59" aria-labelledby=""></circle>
+<circle cx="32" cy="32" r="15.91549430918954" fill="transparent" stroke="#f17cb0" stroke-width="32" stroke-dasharray="9 91" stroke-dashoffset="34" aria-labelledby=""></circle>
+</svg>
+</div>
+<div class="chart-key">
+<ul class="chart-key-list">
+<li class="blue"><div class="key-label">Passionate people like you</div><div class="key-percent">(36%)</div></li>
+<li class="orange"><div class="key-label">Foundations & NGOs</div><div class="key-percent">(30%)</div><br/>like Mozilla or the Handshake Foundation</li>
+<li class="green"><div class="key-label">Entities related to the US government</div><div class="key-percent">(25%)</div><br/>like the Open Technology Fund or the ISC Project</li>
+<li class="pink"><div class="key-label">Private companies</div><div class="key-percent">(9%)</div><br/>like DuckDuckGo or Lush</li>
+</ul>
+</div>
+</div>
+
+New anonymous ways to donate
+============================
+
+Because we know that being able to donate anonymously is very important to some
+of you, we are adding this year 3 new ways to donate anonymously to Tails.
+
+You can send us:
+
+- Monero:
+
+  4B93hjotwmMQeaZ799D84XTxhqUGqqjfveUTB1GeduAKNeH47WDyn5eb8P2mtScErGbsbL5X3J6vUPAVPrw8j5pMFh6dAwY
+
+- Zcash:
+
+  zs1ayrt0wckfpkddxqsqv9af6n7vtuspnv3t59w7e9mvykyznmcr3h9vep8emte2lgak8d5s0q65q2
+
+- Cash by post:
+
+  <em>Our former postal address is not valid anymore.</em>
+
+Please take a minute to donate to Tails today!
+
+[Donate](https://tails.net/donate/)

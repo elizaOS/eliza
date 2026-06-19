@@ -1,0 +1,340 @@
+name: Build Agent Image
+
+# Single source of truth for the cloud-agent container image used by the
+# cloud sandbox provisioner. Three trigger surfaces:
+#   - push to develop/main → :develop / :stable + :latest, plus :sha-<short>
+#   - GitHub release created → release tag (e.g. v2.0.0-alpha.176)
+#   - workflow_dispatch → manual reruns
+# The previous release-only workflow (image.yaml) duplicated this entire
+# pre-build sequence; it's been deleted in favor of this consolidated build.
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - "packages/app-core/deploy/Dockerfile.ci"
+      - "plugins/plugin-sql/**"
+      - "plugins/plugin-elizacloud/**"
+      - "packages/agent/**"
+      - "packages/server/**"
+      - "packages/core/**"
+      - "packages/app/**"
+      - "packages/app-core/**"
+      - "packages/cloud-sdk/**"
+      - ".github/workflows/build-agent-image.yml"
+      - ".dockerignore"
+  release:
+    types: [created]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -a -f || true
+
+      - name: Install jq
+        # Required by packages/app-core/scripts/docker-ci-smoke.sh per-plugin
+        # build loop: it gates each `bun run build` on `jq -e '.scripts.build'`.
+        # Without jq, the gate silently fails and the plugin dist/ is never
+        # produced, which ships a broken image (plugin-sql index.node.js missing).
+        run: sudo apt-get install -y --no-install-recommends jq
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Cache Bun install
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-canary-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-canary-
+            bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        # Use `--no-frozen-lockfile` so a downstream lockfile drift in
+        # `develop` doesn't short-circuit the install before postinstall
+        # gets a chance to run (which is what was happening with the
+        # earlier `--frozen-lockfile` + fallback dance — the frozen
+        # install would fail, Bun's silent retry would no-op against
+        # the already-extracted virtual store, and postinstall would
+        # never run, leaving root-level deps like `uuid`, `drizzle-orm`,
+        # and the patched `tsup/dist/rollup.js` unavailable to the
+        # per-plugin build loop). The heavy submodule fetch is guarded
+        # by NODE_LLAMA_CPP_SKIP_DOWNLOAD.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          bun install --no-frozen-lockfile
+
+      - name: Apply postinstall patches
+        # Belt-and-suspenders for the postinstall path: even with
+        # `bun install` (postinstall enabled), the silent fallback that
+        # kicks in when frozen-lockfile drifts doesn't always re-run the
+        # repo postinstall in CI. Explicitly run the patches the
+        # per-plugin builds depend on:
+        #   - ensure-type-package-aliases: materializes @types/* under
+        #     node_modules/@types so `tsc --build` resolves them.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          node packages/app-core/scripts/ensure-type-package-aliases.mjs
+
+      - name: Build @elizaos/core, shared, ui
+        # The per-plugin tsup `--dts` step needs @elizaos/core's
+        # `dist/*.d.ts` to exist; without this build, plugin-video's
+        # DTS pass trips `TS2307: Cannot find module '@elizaos/core'`.
+        # Build the same set docker-ci-smoke.sh builds before its
+        # per-plugin loop: contracts (required by core's
+        # tsconfig.declarations.json), core (Node-only), shared,
+        # cloud-sdk, ui. Workspace symlinks already exist from
+        # `bun install`; we just need the dist artifacts each plugin's
+        # tsup resolves through `exports`.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          # contracts and logger must build BEFORE core:
+          # packages/core/tsconfig.declarations.json maps `@elizaos/contracts` to
+          # `../contracts/dist/index.d.ts` and `@elizaos/logger` to
+          # `../logger/dist/index.d.ts`; the core declarations tsc step fails with
+          # TS2307 (src/logger.ts) if either dist is missing.
+          (cd packages/contracts && bun run build)
+          (cd packages/logger && bun run build)
+          node packages/shared/scripts/generate-keywords.mjs --target ts
+          (cd packages/core && bun run build.ts --node-only)
+          # security → plugin-remote-manifest → plugin-worker-runtime: ordered by
+          # build-time type deps; agent boot ERR_MODULE_NOT_FOUNDs without their dist.
+          # tui before ui: @elizaos/ui (workspace:* on @elizaos/tui) exposes the
+          # spatial/tui terminal renderer, and the app's `build:client` bundles it;
+          # without @elizaos/tui's dist the renderer build fails to resolve it.
+          for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/skills packages/tui packages/ui packages/security packages/plugin-remote-manifest packages/plugin-worker-runtime; do
+            if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then
+              echo "::group::Building $pkg"
+              (cd "$pkg" && bun install --no-frozen-lockfile --ignore-scripts && bun run build)
+              echo "::endgroup::"
+            fi
+          done
+
+      - name: Build workspace plugins
+        # Dockerfile.ci copies the repo and relies on pre-built dist/ in each
+        # workspace plugin. The docker-ci-smoke script (used by the smoke
+        # workflow) is the canonical place this lives; reuse the same loop so
+        # plugin-sql, plugin-elizacloud, etc. land in the image with their
+        # built artifacts.
+        #
+        # Why we re-install each plugin's deps before the build loop:
+        # Bun's workspace install leaves per-plugin `node_modules/.bin/`
+        # empty for CLI deps that live in DEVDependencies of a workspace
+        # *peer* (tsup is declared in plugin-video's own devDeps but Bun
+        # still routes its bin symlink through the hoisted root rather
+        # than the plugin's local .bin/, and `bun run build` runs the
+        # script under bash which only consults the local .bin/). The
+        # cheapest workaround: run `bun install --no-frozen-lockfile`
+        # inside each plugin dir before the build so the local .bin/ is
+        # actually populated. Idempotent and fast — bun reuses the global
+        # store.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf \
+            plugin-browser plugin-capacitor-bridge plugin-coding-tools \
+            plugin-commands plugin-computeruse plugin-discord plugin-edge-tts plugin-elizacloud \
+            plugin-imessage plugin-local-inference plugin-mcp plugin-signal \
+            plugin-streaming plugin-telegram plugin-whatsapp plugin-wallet plugin-workflow \
+            plugin-x402; do
+            plugin_dir="plugins/$plugin"
+            if [[ -f "$plugin_dir/package.json" ]] && jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then
+              echo "::group::Building @elizaos/$plugin"
+              (
+                cd "$plugin_dir"
+                # Ensure local node_modules/.bin/ has the dev CLIs the
+                # build script references (tsup, tsc, tsdown, etc.).
+                bun install --no-frozen-lockfile --ignore-scripts
+              )
+              (cd "$plugin_dir" && bun run build)
+              echo "::endgroup::"
+            fi
+          done
+
+      - name: Build UI
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: bun run build:client
+
+      - name: Build agent workspace
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          pushd packages/agent >/dev/null
+          bun run build:docker-dist
+          popd >/dev/null
+
+      - name: Build app UI
+        env:
+          NODE_ENV: production
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          pushd packages/app >/dev/null
+          bun run build:web
+          popd >/dev/null
+
+      - name: Prepare CI dockerignore
+        # The root .dockerignore is tuned for `bun install` runs (excludes
+        # everything heavy). The Docker build needs a different policy:
+        # keep root node_modules (Dockerfile.ci's pruner relink scripts
+        # consume them) but strip per-package node_modules and the other
+        # bulky CI-only inputs. Use the canonical CI dockerignore from
+        # packages/app-core/deploy/.dockerignore.ci, mirroring what
+        # docker-ci-smoke.sh does before its `docker build`.
+        run: |
+          cp packages/app-core/deploy/.dockerignore.ci .dockerignore
+
+      - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5
+        with:
+          driver-opts: |
+            env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760
+            env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760
+
+      # github.repository preserves the org's casing (elizaOS/eliza), but Docker
+      # tags must be all-lowercase. metadata-action lowercases for the push tags,
+      # but the raw :ci-boot-verify tag below needs an explicit lowercased image
+      # name or `docker build`/`docker push` fails with "repository name must be
+      # lowercase".
+      - id: image
+        run: echo "name=${REGISTRY}/${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
+      - id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # develop push  → :develop + :sha-<short>
+          # main push     → :stable + :latest + :sha-<short>
+          # release       → the git tag verbatim (e.g. v2.0.0-alpha.176)
+          # Keeping :latest on main avoids breaking the four code sites that
+          # still hardcode it (containers-env fallback, sandbox-provider
+          # fallback, two test fixtures) until they migrate to :stable.
+          tags: |
+            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=tag
+            type=sha,prefix=sha-,format=short
+
+      # Build the image into the local Docker daemon first (load, do NOT push).
+      # The boot-verification step below runs the REAL agent entrypoint against
+      # this exact image, and the push step ships these same loaded bytes by
+      # retagging the local image. This is the gate that stops a container which
+      # crashes on startup (missing runtime deps, broken entrypoint) from
+      # reaching ghcr. `provenance: false` keeps the loaded image a single-
+      # platform image so the retag-and-push below publishes the same content
+      # that was verified (no second build, no "latest yt-dlp" drift between the
+      # verified and published image).
+      - id: build-local
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        with:
+          context: .
+          file: packages/app-core/deploy/Dockerfile.ci
+          push: false
+          load: true
+          provenance: false
+          tags: ${{ steps.image.outputs.name }}:ci-boot-verify
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify image boots (real agent entrypoint)
+        # Runs the production entrypoint (node --import
+        # /opt/tsx/node_modules/tsx/dist/loader.mjs packages/agent/dist/bin.js
+        # start) inside the just-built image and fails RED if the agent crashes
+        # on startup, exits non-zero, logs a known crash signature (Cannot find
+        # package/module, Failed to start, crashed during init, ...), never
+        # serves /api/health within the timeout, or crashes during the
+        # post-health stability window. A failure here blocks the push below, so
+        # a non-bootable image is never published.
+        env:
+          DOCKER_IMAGE: ${{ steps.image.outputs.name }}:ci-boot-verify
+          BOOT_VERIFY_ONLY: "true"
+          SMOKE_TIMEOUT_SEC: "180"
+          BOOT_STABLE_WINDOW_SEC: "15"
+          SMOKE_PORT: "32138"
+          CONTAINER_PORT: "42138"
+        run: bash packages/app-core/scripts/docker-ci-smoke.sh --boot-verify-only
+
+      # Push the EXACT verified image. This runs only if the boot verification
+      # above succeeded (steps run in order; a failed step fails the job). We
+      # retag the locally-loaded :ci-boot-verify image to each computed tag and
+      # `docker push` it, so the published bytes are byte-for-byte the image
+      # that just booted cleanly. No rebuild means no chance of shipping a
+      # different image than the one that was verified.
+      - id: push
+        env:
+          LOCAL_IMAGE: ${{ steps.image.outputs.name }}:ci-boot-verify
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          first_tag=""
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            [ -z "$first_tag" ] && first_tag="$tag"
+            echo "Tagging $LOCAL_IMAGE as $tag and pushing"
+            docker tag "$LOCAL_IMAGE" "$tag"
+            docker push "$tag"
+          done <<< "$TAGS"
+          # Resolve the published digest from a pushed tag (its RepoDigests is
+          # populated by the push above) for the attestation step.
+          digest=""
+          if [ -n "$first_tag" ]; then
+            digest="$(docker inspect --format '{{ index .RepoDigests 0 }}' "$first_tag" 2>/dev/null | sed 's/.*@//' || true)"
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Generate artifact attestation
+        if: ${{ steps.push.outputs.digest != '' }}
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Make Docker image public
+        # Idempotent — patching to public when already public is a no-op.
+        # Previously lived in image.yaml; folded in here on consolidation.
+        run: |
+          curl \
+            -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/user/packages/container/${{ env.IMAGE_NAME }}/visibility \
+            -d '{"visibility":"public"}'

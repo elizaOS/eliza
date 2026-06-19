@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "policy": "eliza-tee-otp-fuse-map-v0",
+  "claim_allowed": false,
+  "release_claim_allowed": false,
+  "silicon_otp_claim_allowed": false,
+  "provisioning_claim_allowed": false,
+  "secure_boot_claim_allowed": false,
+  "wordBits": 32,
+  "readMajority": "2-of-3",
+  "partitions": [
+    {
+      "id": "creator_root_key",
+      "offset": 0,
+      "words": 8,
+      "writeLockable": true,
+      "secret": true,
+      "readableInProduction": false
+    },
+    {
+      "id": "owner_root_key",
+      "offset": 8,
+      "words": 8,
+      "writeLockable": true,
+      "secret": true,
+      "readableInProduction": false
+    },
+    {
+      "id": "device_id",
+      "offset": 16,
+      "words": 4,
+      "writeLockable": true,
+      "secret": false,
+      "readableInProduction": true
+    },
+    {
+      "id": "lifecycle_state",
+      "offset": 20,
+      "words": 2,
+      "writeLockable": false,
+      "secret": false,
+      "readableInProduction": true
+    },
+    {
+      "id": "rollback_index",
+      "offset": 22,
+      "words": 2,
+      "writeLockable": false,
+      "secret": false,
+      "readableInProduction": true,
+      "monotonic": true
+    },
+    {
+      "id": "debug_auth_pubkey_hash",
+      "offset": 24,
+      "words": 8,
+      "writeLockable": true,
+      "secret": false,
+      "readableInProduction": true
+    }
+  ]
+}

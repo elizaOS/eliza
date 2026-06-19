@@ -1,0 +1,224 @@
+{
+  "schema": "erobot-rom-requirements-v1",
+  "ok": true,
+  "method": "drive each joint actuator to both limits (gravity off, foot lifted, others held at home); toes via the cable winch sweep",
+  "failures": [],
+  "joints": [
+    {
+      "joint": "left_hip_pitch_joint",
+      "type": "hip_pitch",
+      "required_deg": 100.0,
+      "commanded_deg": 171.9,
+      "achieved_deg": 156.8,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "left_hip_roll_joint",
+      "type": "hip_roll",
+      "required_deg": 30.0,
+      "commanded_deg": 40.1,
+      "achieved_deg": 37.1,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "left_hip_yaw_joint",
+      "type": "hip_yaw",
+      "required_deg": 50.0,
+      "commanded_deg": 91.7,
+      "achieved_deg": 91.7,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "left_knee_joint",
+      "type": "knee",
+      "required_deg": 115.0,
+      "commanded_deg": 131.8,
+      "achieved_deg": 131.7,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "left_ankle_pitch_joint",
+      "type": "ankle_pitch",
+      "required_deg": 40.0,
+      "commanded_deg": 80.2,
+      "achieved_deg": 76.6,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "left_ankle_roll_joint",
+      "type": "ankle_roll",
+      "required_deg": 20.0,
+      "commanded_deg": 34.4,
+      "achieved_deg": 34.0,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "left_toe_joint",
+      "type": "toe",
+      "required_deg": 15.0,
+      "commanded_deg": 45.8,
+      "achieved_deg": 18.6,
+      "meets_requirement": true,
+      "tendon_driven": true
+    },
+    {
+      "joint": "right_hip_pitch_joint",
+      "type": "hip_pitch",
+      "required_deg": 100.0,
+      "commanded_deg": 171.9,
+      "achieved_deg": 156.8,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "right_hip_roll_joint",
+      "type": "hip_roll",
+      "required_deg": 30.0,
+      "commanded_deg": 40.1,
+      "achieved_deg": 37.1,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "right_hip_yaw_joint",
+      "type": "hip_yaw",
+      "required_deg": 50.0,
+      "commanded_deg": 91.7,
+      "achieved_deg": 91.7,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "right_knee_joint",
+      "type": "knee",
+      "required_deg": 115.0,
+      "commanded_deg": 131.8,
+      "achieved_deg": 131.7,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "right_ankle_pitch_joint",
+      "type": "ankle_pitch",
+      "required_deg": 40.0,
+      "commanded_deg": 80.2,
+      "achieved_deg": 76.6,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "right_ankle_roll_joint",
+      "type": "ankle_roll",
+      "required_deg": 20.0,
+      "commanded_deg": 34.4,
+      "achieved_deg": 34.0,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "right_toe_joint",
+      "type": "toe",
+      "required_deg": 15.0,
+      "commanded_deg": 45.8,
+      "achieved_deg": 18.6,
+      "meets_requirement": true,
+      "tendon_driven": true
+    },
+    {
+      "joint": "waist_yaw_joint",
+      "type": "waist_yaw",
+      "required_deg": 45.0,
+      "commanded_deg": 114.6,
+      "achieved_deg": 113.8,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "waist_pitch_joint",
+      "type": "waist_pitch",
+      "required_deg": 0.0,
+      "commanded_deg": 74.5,
+      "achieved_deg": 70.9,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "left_shoulder_pitch_joint",
+      "type": "shoulder_pitch",
+      "required_deg": 120.0,
+      "commanded_deg": 257.8,
+      "achieved_deg": 257.4,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "left_shoulder_roll_joint",
+      "type": "shoulder_roll",
+      "required_deg": 75.0,
+      "commanded_deg": 183.3,
+      "achieved_deg": 183.3,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "left_shoulder_yaw_joint",
+      "type": "shoulder_yaw",
+      "required_deg": 55.0,
+      "commanded_deg": 183.3,
+      "achieved_deg": 183.3,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "left_elbow_joint",
+      "type": "elbow",
+      "required_deg": 110.0,
+      "commanded_deg": 143.2,
+      "achieved_deg": 143.2,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "right_shoulder_pitch_joint",
+      "type": "shoulder_pitch",
+      "required_deg": 120.0,
+      "commanded_deg": 257.8,
+      "achieved_deg": 257.4,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "right_shoulder_roll_joint",
+      "type": "shoulder_roll",
+      "required_deg": 75.0,
+      "commanded_deg": 183.3,
+      "achieved_deg": 183.3,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "right_shoulder_yaw_joint",
+      "type": "shoulder_yaw",
+      "required_deg": 55.0,
+      "commanded_deg": 183.3,
+      "achieved_deg": 183.3,
+      "meets_requirement": true,
+      "tendon_driven": false
+    },
+    {
+      "joint": "right_elbow_joint",
+      "type": "elbow",
+      "required_deg": 110.0,
+      "commanded_deg": 143.2,
+      "achieved_deg": 143.2,
+      "meets_requirement": true,
+      "tendon_driven": false
+    }
+  ]
+}

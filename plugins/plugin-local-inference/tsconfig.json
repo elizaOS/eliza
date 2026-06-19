@@ -1,0 +1,101 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"esModuleInterop": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"ignoreDeprecations": "6.0",
+		"declaration": true,
+		"declarationMap": true,
+		"outDir": "./dist",
+		"rootDir": "../../../",
+		"lib": ["ES2022", "DOM"],
+		"types": ["node"],
+		"allowImportingTsExtensions": true,
+		"rewriteRelativeImportExtensions": true,
+		"paths": {
+			"@elizaos/plugin-local-inference": ["./src/index.ts"],
+			"@elizaos/plugin-local-inference/*": ["./src/*"],
+			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
+			"@elizaos/agent/*": ["../../packages/agent/src/*"],
+			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
+			"@elizaos/shared/local-inference": [
+				"../../packages/shared/src/local-inference/index.ts"
+			],
+			"@elizaos/shared/local-inference/*": [
+				"../../packages/shared/src/local-inference/*.ts"
+			],
+			"@elizaos/shared/*": ["../../packages/shared/src/*"],
+			"@elizaos/plugin-capacitor-bridge": [
+				"../plugin-capacitor-bridge/src/index.ts"
+			],
+			"@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
+			"@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
+			"@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],
+			"@elizaos/plugin-coding-tools/*": ["../plugin-coding-tools/src/*"],
+			"@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
+			"@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
+			"@elizaos/plugin-agent-skills": ["../plugin-agent-skills/src/index.ts"],
+			"@elizaos/plugin-agent-skills/*": ["../plugin-agent-skills/src/*"],
+			"@elizaos/plugin-registry": ["../plugin-registry/src/index.ts"],
+			"@elizaos/plugin-registry/*": ["../plugin-registry/src/*"],
+			"@elizaos/plugin-task-coordinator": [
+				"../plugin-task-coordinator/src/index.ts"
+			],
+			"@elizaos/plugin-task-coordinator/*": [
+				"../plugin-task-coordinator/src/*"
+			],
+			"@elizaos/plugin-remote-manifest": [
+				"../../packages/plugin-remote-manifest/src/index.ts"
+			],
+			"@elizaos/plugin-remote-manifest/*": [
+				"../../packages/plugin-remote-manifest/src/*"
+			],
+			"@elizaos/plugin-worker-runtime": [
+				"../../packages/plugin-worker-runtime/src/index.ts"
+			],
+			"@elizaos/plugin-worker-runtime/*": [
+				"../../packages/plugin-worker-runtime/src/*"
+			],
+			"@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.node.ts"],
+			"@elizaos/plugin-elizacloud/*": ["../plugin-elizacloud/src/*"],
+			"@elizaos/plugin-workflow": ["../plugin-workflow/src/index.ts"],
+			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
+			"@elizaos/ui/*": ["../../packages/ui/src/*"],
+			"@elizaos/vault": ["../../packages/vault/src/index.ts"],
+			"@elizaos/vault/*": ["../../packages/vault/src/*"],
+			"@elizaos/security": ["../../packages/security/src/index.ts"],
+			"@elizaos/security/*": ["../../packages/security/src/*"],
+			"@elizaos/cloud-sdk": ["../../packages/cloud-sdk/src/index.ts"],
+			"@elizaos/cloud-sdk/*": ["../../packages/cloud-sdk/src/*"],
+			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
+			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
+			"react": ["../../node_modules/@types/react/index.d.ts"],
+			"react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
+			"react/jsx-dev-runtime": [
+				"../../node_modules/@types/react/jsx-dev-runtime.d.ts"
+			],
+			"react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
+			"react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"]
+		}
+	},
+	"include": ["src/**/*"],
+	"exclude": [
+		"node_modules",
+		"dist",
+		"src/**/__tests__/**",
+		"src/**/*.test.ts",
+		"src/**/*.test.tsx",
+		"**/__tests__/**",
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/*.e2e.test.ts",
+		"build.ts"
+	]
+}

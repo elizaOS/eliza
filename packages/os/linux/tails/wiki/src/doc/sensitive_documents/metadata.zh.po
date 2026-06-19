@@ -1,0 +1,222 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-19 18:24+0000\n"
+"PO-Revision-Date: 2023-03-12 00:32+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Removing metadata from files\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What is metadata?"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Metadata is \"data about data\" or \"information about information\" that is "
+"embedded in computer files, usually automatically. Metadata is used to "
+"describe, identify, categorize, and sort files."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"However, metadata can also be used to deanonymize users and expose private "
+"information."
+msgstr ""
+
+#. type: Plain text
+msgid "Examples of metadata include:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "In images:"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "The location where a photo was taken"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "The date and time a photo was taken"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "The model and serial number of the camera used to take a photo"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "In other documents:"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "The author of the document"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "Changes to the document"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To learn more about how metadata can be used to identify and reveal personal "
+"information, see [Behind the Data: Investigating metadata](https://"
+"exposingtheinvisible.org/en/guides/behind-the-data-metadata-investigations/)."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Removing metadata using *Metadata Cleaner*"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails includes [*Metadata Cleaner*](https://gitlab.com/metadatacleaner/"
+"metadatacleaner)  so you can remove metadata from files before you publish "
+"or share them."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If, instead of cleaning your own files, you want to sanitize untrusted\n"
+"documents shared with you by others, you can install\n"
+"[[<i>Dangerzone</i>|persistent_storage/additional_software/dangerzone]] as\n"
+"additional software.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "*Metadata Cleaner* works on many file formats, including:\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Images, such as .jpg, .gif, .svg, .tiff, and .png"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "*Microsoft Office* documents, such as .docx, .xlsx, and .pptx"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "*LibreOffice* documents, such as .odt and .ods"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Audio files, such as .mp3, .flac, and .ogg"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Video files, such as .mp4 and .avi"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Archive files, such as .zip and .tar"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "PDFs"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To open *Metadata Cleaner*, choose **Apps&nbsp;▸ Accessories&nbsp;▸ Metadata "
+"Cleaner**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>It is impossible to reliably find and remove all metadata in complex file\n"
+"formats. For example, <i>Microsoft Office</i> documents can contain embedded images,\n"
+"audio, and other files containing their own metadata that Tails cannot\n"
+"remove.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You should remove metadata on any files before you embed them into another\n"
+"document.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Also, you should save files in simpler formats whenever possible.\n"
+"For example, instead of saving a text document as a .docx file,\n"
+"you can save the document as a plain .txt file.</p>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Removing metadata from the command line"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Metadata Cleaner* is a graphical interface for\n"
+"[*mat2*](https://0xacab.org/jvoisin/mat2).\n"
+msgstr ""
+
+#. type: Plain text
+msgid "You can also use *mat2* directly on the command line:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open a *Console*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following command. Replace <span class=\"command-"
+"placeholder\">file.ext</span> with a path to the file that you want to clean."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-template\">mat2 <span class=\"command-placeholder\">file.ext</span></p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"After *mat2* finishes, a copy of your file without metadata is available as "
+"<span class=\"command-placeholder\">file.cleaned.ext</span>."
+msgstr ""

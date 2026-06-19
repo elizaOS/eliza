@@ -1,0 +1,57 @@
+task_id: M100_su7_price_from_image
+task_name: Estimate SU7 Price From Image
+version: "1.0"
+category: multimodal
+difficulty: simple
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    How much does this car sell for now?
+    Please use the attached image. If exact pricing is uncertain, provide a plausible range and explain why.
+  language: en
+  attachments:
+    - fixtures/media/su7_image_old.jpg
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/media/su7_image_old.jpg
+
+environment:
+  timeout_seconds: 180
+  max_turns: 8
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate whether the assistant correctly identified the car and provided a plausible price range.
+
+  The correct answer is that the image shows a Xiaomi SU7 (launch era / old model).
+  Key facts the response should contain:
+  - Car model: Xiaomi SU7
+  - Price range: approximately 215,900 CNY (Standard) / 245,900 CNY (Pro) / 299,900 CNY (Max)
+  - Uncertainty handling: acknowledges trim/version/year ambiguity, avoids overclaiming exact price from image alone
+
+  Scoring guidance:
+  - 0.90-1.00: Correctly identifies Xiaomi SU7, gives realistic price range, explains uncertainty.
+  - 0.70-0.89: Correct model and approximate price with minor gaps.
+  - 0.40-0.69: Identifies car but price range is vague or missing uncertainty explanation.
+  - 0.00-0.39: Wrong model, wildly incorrect price, or no meaningful answer.
+
+reference_solution: |
+  1. Identify likely Xiaomi SU7 from image cues.
+  2. Provide plausible range and key trim prices:
+     - Standard around 215,900 CNY
+     - Pro around 245,900 CNY
+     - Max around 299,900 CNY
+  3. Explain uncertainty from trim, year, and used/new market differences.
+
+primary_dimensions:
+  - completion
+  - robustness

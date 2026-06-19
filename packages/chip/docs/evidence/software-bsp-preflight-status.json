@@ -1,0 +1,167 @@
+{
+  "claim_boundary": "local_preflight_only_not_external_bsp_build_boot_or_compatibility_evidence",
+  "generated_utc": "2026-05-19T01:51:14Z",
+  "scaffold_status": "PASS",
+  "schema": "eliza.software_bsp_preflight_status.v1",
+  "source_command": "python3 scripts/check_software_bsp.py preflight-report all",
+  "status": "BLOCKED",
+  "targets": [
+    {
+      "blockers": [
+        "buildroot BSP BLOCKED: missing evidence for external Buildroot image build plus e1 MMIO smoke transcript: docs/evidence/buildroot/eliza_e1_defconfig.log(missing_buildroot_defconfig_log), docs/evidence/buildroot/eliza_e1_image_manifest.txt(missing_buildroot_image_manifest), docs/evidence/buildroot/e1-mmio-smoke.log(missing_buildroot_mmio_smoke_log)"
+      ],
+      "errors": [],
+      "evidence_status": "BLOCKED",
+      "invalid_evidence": [],
+      "missing_evidence": [
+        {
+          "artifact": "Buildroot defconfig transcript",
+          "blocker_code": "missing_buildroot_defconfig_log",
+          "capture_command": "sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot defconfig",
+          "claim_boundary": "single_external_build_step_only_not_boot_evidence",
+          "path": "docs/evidence/buildroot/eliza_e1_defconfig.log",
+          "validation_command": "python3 scripts/check_software_bsp.py buildroot --require-evidence"
+        },
+        {
+          "artifact": "Buildroot image manifest",
+          "blocker_code": "missing_buildroot_image_manifest",
+          "capture_command": "sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot image-manifest",
+          "claim_boundary": "external_build_outputs_only_not_runtime_or_boot_evidence",
+          "path": "docs/evidence/buildroot/eliza_e1_image_manifest.txt",
+          "validation_command": "python3 scripts/check_software_bsp.py buildroot --require-evidence"
+        },
+        {
+          "artifact": "Buildroot runtime MMIO smoke",
+          "blocker_code": "missing_buildroot_mmio_smoke_log",
+          "capture_command": "E1_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-mmio-smoke' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot smoke",
+          "claim_boundary": "single_runtime_smoke_only_not_linux_or_android_boot_evidence",
+          "path": "docs/evidence/buildroot/e1-mmio-smoke.log",
+          "validation_command": "python3 scripts/check_software_bsp.py buildroot --require-evidence"
+        }
+      ],
+      "scaffold_status": "PASS",
+      "target": "buildroot"
+    },
+    {
+      "blockers": [
+        "linux BSP BLOCKED: missing evidence for external Linux kernel build, DTB validation, and runtime driver smoke transcript: docs/evidence/linux/eliza_e1_kernel_build.log(missing_linux_kernel_build_log), docs/evidence/linux/eliza_e1_dtb_check.log(missing_linux_dtb_check_log), docs/evidence/linux/e1-mmio-smoke.log(missing_linux_mmio_smoke_log)"
+      ],
+      "errors": [],
+      "evidence_status": "BLOCKED",
+      "invalid_evidence": [],
+      "missing_evidence": [
+        {
+          "artifact": "Linux kernel build transcript",
+          "blocker_code": "missing_linux_kernel_build_log",
+          "capture_command": "sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux kernel-build",
+          "claim_boundary": "external_kernel_build_only_not_boot_evidence",
+          "path": "docs/evidence/linux/eliza_e1_kernel_build.log",
+          "validation_command": "python3 scripts/check_software_bsp.py linux --require-evidence"
+        },
+        {
+          "artifact": "Linux DTB validation transcript",
+          "blocker_code": "missing_linux_dtb_check_log",
+          "capture_command": "sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux dtb-check",
+          "claim_boundary": "external_dtb_validation_only_not_boot_evidence",
+          "path": "docs/evidence/linux/eliza_e1_dtb_check.log",
+          "validation_command": "python3 scripts/check_software_bsp.py linux --require-evidence"
+        },
+        {
+          "artifact": "Linux runtime MMIO smoke",
+          "blocker_code": "missing_linux_mmio_smoke_log",
+          "capture_command": "E1_SMOKE_CMD='ssh root@TARGET <host-tmp>/e1-mmio-smoke' sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux smoke",
+          "claim_boundary": "single_runtime_driver_smoke_only_not_linux_or_android_boot_evidence",
+          "path": "docs/evidence/linux/e1-mmio-smoke.log",
+          "validation_command": "python3 scripts/check_software_bsp.py linux --require-evidence"
+        }
+      ],
+      "scaffold_status": "PASS",
+      "target": "linux"
+    },
+    {
+      "blockers": [
+        "aosp BSP BLOCKED: missing evidence for external AOSP lunch/vendorimage/VINTF/SELinux/CTS-VTS intake logs plus virtual-device smoke transcripts: docs/evidence/android/eliza_ai_soc_lunch.log(missing_aosp_lunch_log), docs/evidence/android/eliza_ai_soc_vendorimage.log(missing_aosp_vendorimage_log), docs/evidence/android/eliza_ai_soc_checkvintf.log(missing_aosp_checkvintf_log), docs/evidence/android/eliza_ai_soc_sepolicy_build.log(missing_aosp_sepolicy_build_log), docs/evidence/android/eliza_ai_soc_selinux_neverallow.log(missing_aosp_selinux_neverallow_log), docs/evidence/android/eliza_ai_soc_cts_vts_plan.log(missing_aosp_cts_vts_intake_log), docs/evidence/android/cuttlefish_riscv64_smoke.log(missing_cuttlefish_virtual_device_smoke_log), docs/evidence/android/qemu_riscv64_smoke.log(missing_qemu_virtual_device_smoke_log), docs/evidence/android/renode_e1_soc_smoke.log(missing_renode_virtual_device_smoke_log)"
+      ],
+      "errors": [],
+      "evidence_status": "BLOCKED",
+      "invalid_evidence": [],
+      "missing_evidence": [
+        {
+          "artifact": "AOSP lunch transcript",
+          "blocker_code": "missing_aosp_lunch_log",
+          "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp lunch",
+          "claim_boundary": "external_aosp_product_selection_only_not_boot_or_compatibility_evidence",
+          "path": "docs/evidence/android/eliza_ai_soc_lunch.log",
+          "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence"
+        },
+        {
+          "artifact": "AOSP vendorimage transcript",
+          "blocker_code": "missing_aosp_vendorimage_log",
+          "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp vendorimage",
+          "claim_boundary": "external_aosp_vendorimage_build_only_not_boot_or_compatibility_evidence",
+          "path": "docs/evidence/android/eliza_ai_soc_vendorimage.log",
+          "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence"
+        },
+        {
+          "artifact": "AOSP VINTF transcript",
+          "blocker_code": "missing_aosp_checkvintf_log",
+          "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp checkvintf",
+          "claim_boundary": "single_checkvintf_result_only_not_android_compatibility_evidence",
+          "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
+          "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence"
+        },
+        {
+          "artifact": "AOSP SELinux policy build transcript",
+          "blocker_code": "missing_aosp_sepolicy_build_log",
+          "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp sepolicy-build",
+          "claim_boundary": "expected_future_log_markers_only_not_boot_evidence",
+          "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
+          "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence"
+        },
+        {
+          "artifact": "AOSP SELinux neverallow transcript",
+          "blocker_code": "missing_aosp_selinux_neverallow_log",
+          "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp selinux-neverallow",
+          "claim_boundary": "expected_future_log_markers_only_not_boot_evidence",
+          "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
+          "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence"
+        },
+        {
+          "artifact": "AOSP CTS/VTS scope intake transcript",
+          "blocker_code": "missing_aosp_cts_vts_intake_log",
+          "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cts-vts-plan",
+          "claim_boundary": "expected_future_log_markers_only_not_boot_evidence",
+          "path": "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+          "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence"
+        },
+        {
+          "artifact": "AOSP Cuttlefish riscv64 smoke transcript",
+          "blocker_code": "missing_cuttlefish_virtual_device_smoke_log",
+          "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-smoke",
+          "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+          "path": "docs/evidence/android/cuttlefish_riscv64_smoke.log",
+          "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence"
+        },
+        {
+          "artifact": "AOSP QEMU riscv64 smoke transcript",
+          "blocker_code": "missing_qemu_virtual_device_smoke_log",
+          "capture_command": "AOSP_QEMU_SMOKE_COMMAND='/exact/qemu-system-riscv64 smoke command' sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp qemu-smoke",
+          "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+          "path": "docs/evidence/android/qemu_riscv64_smoke.log",
+          "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence"
+        },
+        {
+          "artifact": "AOSP Renode e1_soc smoke transcript",
+          "blocker_code": "missing_renode_virtual_device_smoke_log",
+          "capture_command": "AOSP_RENODE_SMOKE_COMMAND='/exact/renode smoke command' sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp renode-smoke",
+          "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+          "path": "docs/evidence/android/renode_e1_soc_smoke.log",
+          "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence"
+        }
+      ],
+      "scaffold_status": "PASS",
+      "target": "aosp"
+    }
+  ],
+  "validation_command": "python3 scripts/check_software_bsp.py all --require-evidence"
+}

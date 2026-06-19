@@ -1,0 +1,169 @@
+schema: eliza.e1_phone_supplier_evidence_outbound_intake_manifest.v1
+status: outbound_intake_templates_created_not_supplier_evidence
+date: 2026-05-22
+claim_boundary: >
+  Executable supplier evidence scaffold for E1 phone missing response packs.
+  These files are outbound and intake templates only. They are not returned
+  supplier evidence, not signed drawings, not land patterns, not STEP/B-rep
+  models, not sample receipts, not lifecycle/stock approvals, and cannot
+  unlock KiCad capture, routing, enclosure clearance, fabrication, or
+  end-to-end phone release.
+
+source_artifacts:
+  - board/kicad/e1-phone/supplier-evidence-drawing-gap-map-2026-05-22.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - board/kicad/e1-phone/supplier-response-pack-intake-contract.yaml
+  - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+  - board/kicad/e1-phone/sourcing-drafts/rfq-response-pack-template.yaml
+
+policy:
+  scaffold_root: board/kicad/e1-phone/production/sourcing
+  generated_date: 2026-05-22
+  evidence_class: outbound_supplier_intake_template
+  supplier_return_required: true
+  supplier_signature_required: true
+  sample_lot_required: true
+  production_release_evidence: false
+  public_listing_counts_as_response: false
+  outbound_template_counts_as_response: false
+  release_allowed: false
+
+required_common_return_files: &required_common_return_files
+  - rfq-response-pack.yaml
+  - signed-2d-drawing.pdf
+  - pinout-or-pad-map.csv
+  - recommended-land-pattern.pdf
+  - supplier-model.step
+  - sample-lot-tracking.yaml
+  - sample-inspection.yaml
+  - lifecycle-stock-quote.yaml
+  - compliance-pack-index.yaml
+
+default_release_flags: &default_release_flags
+  supplier_response_received: false
+  signed_drawing_received: false
+  pinout_or_pad_map_received: false
+  recommended_land_pattern_received: false
+  step_or_brep_model_received: false
+  sample_lot_received: false
+  incoming_inspection_complete: false
+  lifecycle_stock_quote_approved: false
+  kicad_capture_allowed: false
+  route_release_allowed: false
+  enclosure_release_allowed: false
+  fabrication_release_allowed: false
+  end_to_end_phone_release_allowed: false
+
+template_records:
+  - lane: display_touch
+    maps_to_gap_map_function: display_touch
+    selected_hardware: CH550FH01A-CT
+    template: board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack-intake-template.yaml
+    expected_return_archive: board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+  - lane: rear_camera
+    maps_to_gap_map_function: rear_camera
+    selected_hardware: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+    template: board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack-intake-template.yaml
+    expected_return_archive: board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+  - lane: front_camera
+    maps_to_gap_map_function: front_camera
+    selected_hardware: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+    template: board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack-intake-template.yaml
+    expected_return_archive: board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+  - lane: usb_c_receptacle_evt0
+    maps_to_gap_map_function: usb_c_receptacle_evt0
+    selected_hardware: GCT_USB4105_class_USB2_Type_C
+    template: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack-intake-template.yaml
+    expected_return_archive: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+  - lane: side_buttons
+    maps_to_gap_map_function: side_buttons
+    selected_hardware: Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7_side_push_tactile
+    template: board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack-intake-template.yaml
+    expected_return_archive: board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+  - lane: cellular
+    maps_to_gap_map_function: cellular
+    selected_hardware: Quectel_RG255C_or_RM255C_5G_RedCap
+    template: board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack-intake-template.yaml
+    expected_return_archive: board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+  - lane: wifi_bluetooth
+    maps_to_gap_map_function: wifi_bluetooth
+    selected_hardware: Murata_LBEE5XV2EA-802_Type_2EA
+    template: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack-intake-template.yaml
+    expected_return_archive: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+  - lane: battery
+    maps_to_gap_map_function: battery_pack
+    selected_hardware: LiPol_LP566487_3p85V_5727mAh_22p05Wh_PCM_NTC_JST_SHR_03V_class
+    template: board/kicad/e1-phone/production/sourcing/battery/rfq-response-pack-intake-template.yaml
+    expected_return_archive: board/kicad/e1-phone/production/sourcing/battery_pack/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+  - lane: split_interconnect
+    maps_to_gap_map_function: top_bottom_interconnect
+    selected_hardware: Hirose_BM28_hybrid_power_signal_fpc_bridge_class
+    template: board/kicad/e1-phone/production/sourcing/split_interconnect/rfq-response-pack-intake-template.yaml
+    expected_return_archive: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+  - lane: audio_haptics
+    maps_to_gap_map_function: audio_speaker_microphone_flexes
+    selected_hardware: ALC5688_CS35L41_SPH0641LM4H_speaker_receiver_haptic_stack
+    template: board/kicad/e1-phone/production/sourcing/audio_haptics/rfq-response-pack-intake-template.yaml
+    expected_return_archive: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+  - lane: charger_pd
+    maps_to_gap_map_functions:
+      - usb_pd_controller
+      - charger_power_path
+    selected_hardware:
+      - TI_TPS65987DDH
+      - MAX77860_class
+    template: board/kicad/e1-phone/production/sourcing/charger_pd/rfq-response-pack-intake-template.yaml
+    expected_return_archives:
+      - board/kicad/e1-phone/production/sourcing/usb_pd_controller/rfq-response-pack.yaml
+      - board/kicad/e1-phone/production/sourcing/charger_power_path/rfq-response-pack.yaml
+    required_return_files: *required_common_return_files
+    release_flags: *default_release_flags
+
+summary:
+  generated_template_count: 11
+  mapped_gap_map_record_count: 12
+  outbound_templates_only: true
+  returned_supplier_response_pack_count: 0
+  release_allowed: false
+
+forbidden_claims:
+  - supplier_response_received
+  - supplier_response_pack_complete
+  - supplier_drawing_complete
+  - sample_lot_received
+  - lifecycle_stock_approved
+  - kicad_capture_ready
+  - routed_pcb_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

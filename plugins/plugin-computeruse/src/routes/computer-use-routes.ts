@@ -1,0 +1,71 @@
+import type http from "node:http";
+
+const EMPTY_APPROVAL_SNAPSHOT = {
+  mode: "full_control",
+  pendingCount: 0,
+  pendingApprovals: [],
+} as const;
+
+function sendJson(
+  res: http.ServerResponse,
+  status: number,
+  body: unknown,
+): void {
+  if (res.headersSent) return;
+  res.statusCode = status;
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.end(JSON.stringify(body));
+}
+
+function sendEmptyApprovalStream(res: http.ServerResponse): void {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  });
+  res.write(
+    `data: ${JSON.stringify({ type: "snapshot", snapshot: EMPTY_APPROVAL_SNAPSHOT })}\n\n`,
+  );
+}
+
+export async function handleComputerUseRoutes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  method: string,
+): Promise<boolean> {
+  if (!pathname.startsWith("/api/computer-use/")) {
+    return false;
+  }
+
+  if (method === "GET" && pathname === "/api/computer-use/approvals") {
+    sendJson(res, 200, EMPTY_APPROVAL_SNAPSHOT);
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/computer-use/approvals/stream") {
+    sendEmptyApprovalStream(res);
+    req.on("close", () => {
+      res.end();
+    });
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/computer-use/approval-mode") {
+    sendJson(res, 200, { mode: EMPTY_APPROVAL_SNAPSHOT.mode });
+    return true;
+  }
+
+  const approvalDecision = /^\/api\/computer-use\/approvals\/([^/]+)$/.exec(
+    pathname,
+  );
+  if (method === "POST" && approvalDecision) {
+    sendJson(res, 404, {
+      error: "Computer-use approval is not pending.",
+      id: decodeURIComponent(approvalDecision[1] ?? ""),
+    });
+    return true;
+  }
+
+  return false;
+}

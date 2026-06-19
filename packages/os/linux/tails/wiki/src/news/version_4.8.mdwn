@@ -1,0 +1,151 @@
+[[!meta title="Tails 4.8 is out"]]
+[[!meta date="Tue, 30 Jun 2020 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_4.7]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# New features
+
+- We disabled the *Unsafe Browser* by default and clarified that [[the
+  *Unsafe Browser* can be used to deanonymize
+  you|doc/anonymous_internet/unsafe_browser#security]].
+
+  An attacker could exploit a security vulnerability in another
+  application in Tails to start an invisible *Unsafe Browser* and reveal
+  your IP address, even if you are not using the *Unsafe Browser*.
+
+  For example, an attacker could exploit a security vulnerability in
+  *Thunderbird* by sending you a phishing email that could start an
+  invisible *Unsafe Browser* and reveal them your IP address.
+
+  Such an attack is very unlikely but could be performed by a strong
+  attacker, such as a government or a hacking firm.
+
+  This is why we recommend that you:
+
+  - Only enable the *Unsafe Browser* if you need to log in to a captive
+    portal.
+  - Always upgrade to the latest version of Tails to fix known
+    vulnerabilities as soon as possible.
+
+- We added a new feature of the Persistent Storage to save the settings
+  from the Welcome Screen.
+
+  This feature is beta and only the additional setting to enable the
+  *Unsafe Browser* is made persistent. The other settings (language,
+  keyboard, and other additional settings) will be made persistent in
+  Tails 4.9 (July 28).
+
+  [[!img welcome_screen.png link="no" alt="new Welcome Screen feature in the Persistent Storage settings"]]
+
+# Changes and updates
+
+- Update *Tor Browser* to [9.5.1](https://blog.torproject.org/new-release-tor-browser-951).
+
+- Update *Thunderbird* to [68.9.0](https://www.thunderbird.net/en-US/thunderbird/68.9.0/releasenotes/).
+
+- Update *Linux* to 5.6.0. This should improve the support for newer
+  hardware (graphics, Wi-Fi, etc.).
+
+# Fixed problems
+
+- Fix the *Find in page* feature of *Thunderbird*. ([[!tails_ticket
+  17328]])
+
+- Fix shutting down automatically the laptop when resuming from suspend
+  with the Tails USB stick removed. ([[!tails_ticket 16787]])
+
+- Notify always when [[MAC address
+  spoofing|doc/first_steps/welcome_screen/mac_spoofing]] fails and the
+  network interface is disabled. ([[!tails_ticket 17779]])
+
+- Fix the import of OpenPGP public keys in binary format (non armored)
+  from the *Files* browser.
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+* Only use the following characters in the [[administration
+  password|doc/first_steps/welcome_screen/administration_password]]:
+
+  - <span class="code">a&ndash;z</span>
+  - <span class="code">A&ndash;Z</span>
+  - <span class="code">1&ndash;9</span>
+  - <span class="code">_@%+=:,./-</span>
+
+  If you use spaces or other accentuated characters, like <span
+  class="code">àéïøů</span>, your will not be able to type your
+  administration password again in your Tails session, unless you
+  type single quotes <span class="code">'</span> around it.
+
+  For example, if you set the administration password:
+  <span class="code">née entrepôt über señor</span>, you would have to
+  type <span class="code">'née entrepôt über señor'</span>.
+  ([[!tails_ticket 17792]])
+
+* The keyboard layout is not applied to the Welcome Screen when
+  automatically selected after you changed the language. ([[!tails_ticket 17794]])
+
+  For example, setting the language to French seems to change the
+  keyboard layout to French (AZERTY) but this change is not applied to
+  the Welcome Screen. This can prevent you from typing the passphrase
+  of your Persistent Storage.
+
+  To change the keyboard layout of the Welcome Screen, select your
+  keyboard layout manually from the **Keyboard Layout** drop-down menu.
+  Do so even if they keyboard layout is automatically selected after you
+  changed the language.
+
+* Tails fails to start with the <span class="code">toram</span> boot
+  option. ([[!tails_ticket 17800]])
+
+  To start with the <span class="code">toram</span> boot option, specify
+  both the <span class="code">toram</span> and the
+  <span class="code">fromiso=/dev/true</span> [[boot
+  options|doc/advanced_topics/boot_options]].
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 4.8
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 4.2 or later to 4.8.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.8 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.9 is [[scheduled|contribute/calendar]] for July 28.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.8">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

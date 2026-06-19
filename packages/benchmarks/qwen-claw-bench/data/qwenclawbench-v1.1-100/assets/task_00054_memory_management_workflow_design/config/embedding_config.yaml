@@ -1,0 +1,30 @@
+# Embedding and Vector Search Configuration
+# Maintained by: ML Infrastructure Team
+# Last updated: 2024-03-10
+
+embedding:
+  model: "text-embedding-ada-001"
+  vector_dimensions: 1024
+  batch_size: 64
+  normalize: true
+  cache_embeddings: true
+  cache_ttl_hours: 168
+
+search:
+  similarity_threshold: 0.85
+  max_results: 10
+  index_type: "flat"
+  reindex_schedule: "monthly"
+  distance_metric: "cosine"
+
+preprocessing:
+  lowercase: true
+  strip_punctuation: false
+  max_token_length: 512
+  truncation_strategy: "tail"
+
+performance:
+  request_timeout_seconds: 30
+  max_concurrent_requests: 4
+  retry_on_failure: true
+  max_retries: 3

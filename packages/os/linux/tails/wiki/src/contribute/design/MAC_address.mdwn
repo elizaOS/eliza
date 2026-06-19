@@ -1,0 +1,538 @@
+[[!meta title="MAC address anonymization"]]
+
+[[!toc levels=3]]
+
+# Rationale
+
+The uniqueness of [[!wikipedia MAC addresses]] introduce two types of
+potential issues for Tails users, in particular if the MAC address can
+be linked to the user's identity:
+
+1. Geographical location tracking: A time-stamped log of a MAC address
+   ties a device to a certain location at a particular time. If the
+   device's owner is known, his or her movements are also known. In
+   case an unknown owner, the tracked movements leak information about
+   the owner, which eventually may lead to identification.
+
+2. Identify Tails (or Tor) users: If the usage of Tails (or Tor) can
+   be fingerprinted on the network (despite other measures taken), and
+   the owner of a device is known, it can be determined that the owner
+   also is a Tails (or Tor) user.
+
+Spoofing the MAC address is the natural solution. Unfortunately, in
+some cases MAC spoofing may cause network connection issues or even
+raise alarms; care should be taken to prevent MAC spoofing in such
+situations.
+
+# Restrictions
+
+While some of the following concerns are related to MAC spoofing (or
+very similar in spirit) they are not covered in this feature.
+
+## IMEI
+
+[[!wikipedia IMEI]] numbers is another unique modifier affecting mobile
+network devices (e.g. 3G, but *not* Wi-Fi) that is very similar to MAC
+addresses and can be used by adversaries in similar ways. Given this
+similarity we'd like to deal with IMEI spoofing (or similar) in this
+feature but the lack of proper tools prevent us from doing it
+properly.
+
+## Pre-OS network activity
+
+It should be noted that we cannot do anything against network activity
+caused at BIOS time, such as [[!wikipedia Intel AMT]], beyond urging
+users to disable such features (if possible, like it is for Intel AMT).
+
+## Profiling based on chipset/driver particularities
+
+It's possible to profile the particular chipset and/or driver used by
+a device based on the active probing algorithm used, and its
+parameters (e.g. channel probe order, how many probes sent per
+channel, time spend per channel). See for instance the paper
+[A Characterization of Wireless NIC Active Scanning Algorithms](https://ieeexplore.ieee.org/document/4224690).
+
+Dealing with this may be impossible, or at least require re-writing
+all Linux wireless drivers so that the parameters can be changed so we
+cannot practically deal with this issue at this point.
+
+# Threat model
+
+## Adversary capabilities
+
+The adversary's capabilities are assumed to be:
+
+1. Omniscient wireless snooping of when and where (via triangulation)
+   all MAC addresses are used. Also access to Time-stamped logs of the
+   presence of MAC addresses on all wired networks (think compromised
+   routers and/or ISP:s). [AdvCapSniff]
+
+2. Has access, on specific request, to all user/customer records and
+   surveillance data of any public network. [AdvCapRecords]
+
+3. Knows who owns which MAC address according to the last traceable
+   transaction (e.g. credit card trail). Cash purchase, trade, trash
+   salvaging or theft are ways to potentially avoid this but the
+   adversary can interrogate the previous owner to obtain that
+   information if remembered (or at all known). [AdvCapOwners]
+
+## Adversary goals
+
+We assume an adversary whose goals are the following, which all
+happens on a global, omniscient level thanks to AdvCapSniff:
+
+1. Monitoring of when and where a particular MAC address with a known
+   owner is used. In other words, monitoring of an individual's
+   geographical movement while using a certain device (thanks to
+   AdvCapOwners).  [AdvGoalTracking]
+
+2. Dragnet-style logging of when and where MAC addresses with unknown
+   owners are used for large-scale social graphing and profiling which
+   leaks information owners' identities. [AdvGoalProfiling]
+
+3. Identify Tails (and Tor) users. If Tails (or Tor) usageAdv can be
+   fingerprinted, then that fact is documented about a particular
+   individual (thanks to AdvCapOwners). [AdvGoalIdTails]
+
+4. Identify MAC spoofing individuals. We assume that our adversary has
+   bought into the "nothing to hide" argument, which makes such
+   suspicious behaviour valuable information. [AdvGoalIdMacSpoof]
+
+## Tails user goals
+
+1. Hide geographical movement, i.e. prevent AdvGoalTracking and
+   AdvGoalProfiling. [AvoidTracking]
+
+2. No unspoofed usage of Tails (or Tor), i.e. prevent AdvGoalIdTails.
+   [AvoidIdTails]
+
+3. Not raising alarms on the network, i.e. prevent AdvGoalIdMacSpoof,
+   but also avoid alarming the local administrators (imagine a
+   situation where security guards are sent to investigate an "alien
+   computer" at your workplace, or similar). [AvoidIdMacSpoof]
+
+4. Avoid network connection problems due to MAC address allowlisting,
+   fixed ARP tables, hardware or driver issues, or
+   similar. [AvoidConnectionProbs]
+
+# Use case analysis
+
+Below we analyse how MAC address spoofing relates to each user goal
+for the given situation.
+
+## Using Tails at home
+
+First, note that the user's relation (owner, family member's,
+friend's, work's, borrowed, etc.) to the computer running Tails
+doesn't matter; the location is already directly related to the user's
+identity. Similarly, because of this, MAC spoofing is of very limited
+value for both AvoidTracking and AvoidIdTails value.
+
+MAC spoofing could hinder AvoidIdMacSpoof if detected by the ISP's
+hardware (i.e. no trusted router in the way). Similarly, ISP-provided
+hardware may employ some sort of MAC address allowlisting (e.g. only
+X unique ones are allowed) that can prevent AvoidConnectionProbs.
+
+Summary: MAC spoofing should be avoided but isn't terribly dangerous
+if enabled.
+
+## Using Tails at a friend's place
+
+### Using your computer
+
+MAC spoofing should be enabled for both AvoidTracking and
+AvoidIdTails. AvoidIdMacSpoof won't be your problem but your friend's
+(which isn't a problem at all unless you're there spoofing all the
+time). AvoidConnectionProbs can be problematic for the same reasons as
+in "Using Tails at home".
+
+Summary: Enable MAC spoofing!
+
+### Using any other computer
+
+Since the computer you use isn't tied to you, AvoidTracking and
+AvoidIdTails aren't relevant. AvoidIdMacSpoof won't be your problem but
+your friend's. AvoidConnectionProbs can be problematic for the same
+reasons as in "Using Tails at home".
+
+Summary: MAC spoofing should be avoided but isn't terribly dangerous
+if enabled.
+
+## Using Tails at a restricted public network
+
+Access is restricted to registered users' identities only. We use
+"registration" a bit loosely, but example of networks like these are:
+
+* paid-for access when there's a money trail (e.g. credit cards).
+
+* captive portals requiring logging in with an identity-tied account.
+
+* locations requiring a identity-tied key card (e.g. university
+  computer labs and workplaces) to access.
+
+This should probably also cover otherwise unrestricted networks that
+snoops on users in other ways, e.g. a library with video camera
+surveillance.
+
+### Using your computer
+
+Since the user is registered for network access, both AvoidTracking
+and AvoidIdTails are hard to get. However, AdvCapRecords requires
+explicit targeting (more expensive), while AdvCapSniff isn't, and MAC
+spoofing would defeat the latter, so it's not without merit.
+
+AvoidIdMacSpoof could be problematic if your registered presence on the
+network is correlated to constantly new MAC addresses. A quite likely
+situation for this case is that you login via some captive portal, and
+these often use your MAC address for access control purposes, so a log
+of which you have used
+
+AvoidConnectionProbs is a problem if your MAC address becomes part of
+your registration, and is assumed to not change (maybe a place where
+you have to pay for each device you connect with). This seems pretty
+far-fetched, though.
+
+Summary: There's no easy choice here but in most scenarios
+AvoidTracking is probably more valuable than AvoidIdMacSpoof, so MAC
+spoofing should be enabled.
+
+### Using a public computer
+
+Since the computer isn't tied to you, MAC spoofing does nothing to
+AvoidTracking and AvoidIdTails. It could cause problems to both
+AvoidIdMacSpoof and AvoidConnectionProbs.
+
+Summary: MAC spoofing should be avoided but isn't terribly dangerous
+if enabled.
+
+## Using Tails at an open public network
+
+Access is completely open, and no kind of registration is needed.
+
+### Using your computer
+
+MAC spoofing should be enabled for both AvoidTracking and
+AvoidIdTails. Such a network should expect to see many unique MAC
+addresses daily, and be ready to deal with it, so AvoidIdMacSpoof and
+AvoidConnectionProbs are of no consequence.
+
+Summary: Enable MAC spoofing!
+
+### Using a public computer
+
+Same as using a public computer at a restricted public network.
+
+Summary: MAC spoofing should be avoided but isn't terribly dangerous
+if enabled.
+
+## Conclusions
+
+The strong requirement of enabling MAC spoofing in a few cases, and
+the low risk of keeping it enabled even in the cases where it should
+be avoided, warrants for making this feature enabled by default, with
+the possibility to opt-out.
+
+<a id="leak-prevention"></a>
+
+# Leak prevention
+
+It is conceivable that NICs may send packets before the user has made
+a decision about whether to use MAC spoofing or not. In fact, someone
+on tails-dev@
+alluded
+to this being possible for wireless NICs although without any
+references (this may refer to so called "active probing"; see section
+below). If this is the case it at the very least implies that we must
+enforce the MAC spoofing setting as early as possible.
+
+However, since we (obviously) cannot foresee the user's decision we get
+a problematic time frame between when a network device is added during
+early boot and when the user makes the decision later on. Enforcing a
+default MAC spoofing setting immediately when a network device is
+added, that then potentially is reversed when the user makes the
+decision, leads to problems in some scenarios if we assume these early
+leaks happen:
+
+* If MAC spoofing is enabled before the user has made the decision, a
+  fake MAC address would leak before the user made the decision, and
+  the decision was to disable MAC spoofing. The sudden switch of MAC
+  address may result in a breach of AvoidIdMacSpoof.
+
+* If MAC spoofing is disabled before the user has made the decision, the
+  real MAC address would leak even if the user wanted MAC spoofing
+  enabled, which leaks to breaches of AvoidTracking and AvoidIdTails.
+  The sudden switch of MAC address may result in a breach of
+  AvoidIdMacSpoof.
+
+The real solution is therefore to eliminate the problematic this time
+frame completely by preventing any network devices from being enabled
+at all until the decision has been made, and have the MAC spoofing
+setting applied immediately when the device is added.
+
+<a id="active-probe-fingerprinting"></a>
+
+# Active probe fingerprinting
+
+**No protection against this is implemented yet**
+
+There's an opportunity for an adversary to achieve AdvGoalTracking and
+AdvGoalProfiling due to "active probing" performed by NetworkManager
+for Wi-Fi connections. This puts AvoidTracking at risk.
+
+Wi-Fi has both a passive and active scanning mode. Passive scanning,
+as the name suggests, passively listens for broadcasted wireless
+networks, which is entirely safe. Active scanning, however, actively
+sends probes for any known networks. In our case these are the saved
+connections in NetworkManager, so this turns especially problematic
+when persistent NM connections are used; the list of (up to 5, as of
+Networkmanager 1.4.2) networks actively probed for can be used as
+a fingerprint by an adversary, breaching AvoidTracking.
+
+While this has nothing to do with MAC spoofing, it does strongly
+affect the (arguably) most important user goal of this feature, namely
+AvoidTracking. Because of this, active scanning should be disabled in
+NetworkManager when MAC spoofing is enabled: [[!tails_ticket 6453]].
+
+# How to spoof the MAC address
+
+## Spoofing the OUI part of the MAC address
+
+**This is currently not implemented. See the
+[[Limitation: Only spoof the NIC part of the MAC address|MAC_address#limitation-only-spoof-nic-part]]
+section below.**
+
+The first three bytes of a MAC address determine the Organizationally Unique Identifier
+(OUI) which in practice determines the chipset's manufacturer, who
+generally owns several OUIs. Spoofing the OUI part in a way that
+satisfies our threat model is not straightforward because of
+`AvoidIdMacSpoof` since multiple, large categories of OUIs violate
+that user goal:
+
+* Unregistered OUI so it's not used for any real device.
+
+* Registered OUI that was never used for any device.
+
+* Registered OUI that is used for special purpose devices unlikely to
+  be used on most networks, e.g. NICs only used in ATMs, vending
+  machines or embedded devices.
+
+* Registered OUI used for NICs in normal computers but for a different
+  type of NIC than the device being spoofed. This is only relevant
+  when this difference actually can be detected by the adversary, like
+  with wired vs. wireless.
+
+* Registered OUI used for NICs in normal computers but they were
+  manufactured decades ago.
+
+* Registered OUI used for NICs in normal computers but whose
+  distribution is limited to some restricted, geographical area.
+
+* Registered OUI used for NICs in normal computers but that simply is
+  very rare.
+
+Great care should be taken when picking the OUI to avoid these
+categories. The whole point is to randomly pick an OUI that the
+adversary expects to see. In particular the OUI should be one used for
+common, consumer oriented hardware.
+
+## Spoofing the NIC part of the MAC address
+
+The last three bytes of the MAC address are meant to distinguish
+individual devices among those with the same OUI. These should simply
+be selected at random, with the exception that we never allow it to
+stay the same, even if done in a fair, random way. Theoretically
+speaking this leaks up to `24/2^24` bits of the NIC part of the real
+MAC address per Tails session but in practice the complete NIC part is
+leaked to adversaries that do not anticipate MAC spoofing, which is
+much worse.
+
+# Implementation
+
+The current implementation leaves the OUI part unchanged, and only spoofs the
+last three bytes of any network device's MAC address immediately after
+it is added by udev. Furthermore, to deal with potential network leaks
+before the user has chosen whether to enable MAC spoofing or not, the
+addition of network devices is delayed until after the Welcome Screen knows
+the user's final decision.
+
+## Network blocking
+
+As suggested in the "Leak prevention" section, we block all network
+devices' modules from being loaded until the user has made the decision about
+whether to enable MAC spoofing or not. The way we do this is by
+generating a list of all network device modules during build time, and
+add these to a `modprobe.d`-type blocklist. An implication of this is
+that in-kernel drivers and modules installed after build time will not
+be in the blocklist and hence are not supported. In the Welcome Screen's
+post-login script (when we know the user's decision) we unblock the
+network by simply removing that list, and then we have udev "re-probe"
+for network devices and load their modules.
+
+Scripts:
+
+* [[!tails_gitweb config/chroot_local-hooks/80-block-network]] (runs at
+  build time)
+
+* [[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-unblock-network]]
+
+* [[!tails_gitweb config/chroot_local-includes/etc/gdm3/PostLogin/Default]] (where `tails-unblock-network`
+  is started)
+
+## Trigger
+
+We use udev as the trigger that hooks MAC address spoofing. Because of
+that, it happens for every Ethernet device automatically, as early as
+possible (i.e. immediately after it's added), so even if there's some
+kind of weird leak before a device is up:ed the real MAC address
+shouldn't leak.
+
+Hook:
+[[!tails_gitweb config/chroot_local-includes/etc/udev/rules.d/00-mac-spoof.rules]]
+
+### Discarded approaches
+
+All other triggers that were considered do not deal with the "early"
+leaks issue, in addition to other reasons for being discarded:
+
+* ifupdown hook: A if-pre-up hook would probably work but since we use
+  NetworManager the exact behaviour is blurred and not particularly
+  well-documented. It doesn't feel robust for this reason.
+  Hence, we leave the macchanger package's built-in way to spoof
+  MAC addresses disabled.
+
+* NetworkManager hook: NM doesn't trigger events equivalent to
+  if-pre-up, so this isn't possible. See the commented parts in:
+  `/etc/NetworkManager/dispatcher.d/01ifupdown`. Note that
+  NetworkManager 0.9.10 introduces pre-up hooks, *but* they're used to
+  "allow scripts to execute before NetworkManager announces
+  connectivity to applications" (according to a [blog
+  post](http://blogs.gnome.org/dcbw/2014/06/20/well-build-a-dream-house-of-net/)
+  by Dan William), that is, after network activity (e.g.
+  DHCP requests) has already occurred.
+
+* NetworkManager's own support for MAC address randomization: see
+  [[!tails_ticket 11293]] for details. We explicitly disable
+  `cloned-mac-address` handling, as the default on Debian Stretch
+  is to reset the MAC address to the permanent one:
+  [[!tails_gitweb config/chroot_local-includes/etc/NetworkManager/conf.d/spoof-mac.conf]].
+
+* systemd integration: We did not use systemd yet back when we made
+  this design decision.
+
+* NetworkManager plugin: While this certainly would have a nice impact
+  outside of Tails, the added maintenance burden makes it less
+  attractive.
+
+## MAC changing tool
+
+The tool used to change the MAC address is simply macchanger, mostly
+because it's in Debian (where the known vulnerabilities are patched)
+and [macchiato](https://github.com/EtiennePerot/macchiato) isn't (and
+it's not as well tested, yet). macchanger is
+used in a very straightforward way, so if we want to switch tool in
+the future it's a simple task.
+
+Helper scripts:
+[[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-spoof-mac]]
+
+<a id="limitation-only-spoof-nic-part"></a>
+
+### Limitation: Only spoof the NIC part of the MAC address
+
+To put the categories listed in the "Spoofing the OUI part of the MAC
+address" section into context, let's look at `macchanger`'s
+options. Among the ones that some how modifies the OUI part of the MAC
+address (`-r`, `-a` and `-A`) all have a significant probability of
+picking an OUI from the problematic categories that violate the
+`AvoidIdMacSpoof` user goal.
+
+Another MAC spoofing tool,
+[`macchiato`](https://github.com/EtiennePerot/macchiato), takes this
+to the next level by maintaining lists of "common enough" OUIs for
+different categories of devices so a less suspicious choice of OUI can
+be made. However, the verification of the OUI being "common enough"
+lands on the submitter, so an ignorant (not necessarily malicious)
+submitter can easily get an uncommon OUI into the lists. See e.g. the
+"Contribute" section of its homepage, or the author's request on
+[reddit](http://www.reddit.com/r/privacy/comments/1avca3/got_any_internetconnected_devices_yes_you_do_help/).
+
+Another issue is that `macchiato`'s lists do not take into account
+that some devices are pretty much only used in some geographical
+areas. Note that collecting such data probably is orders of magnitude
+harder than `macchiato`'s current quest, and that the user interface
+would be further complicated (in Tails we'd have to ask for the
+current geographical location in the Welcome Screen, or similar). The real
+impact of this should be evaluated; it's very likely that the benefits
+still outweigh this risk.
+
+To end with, `macchiato`'s lists are very small with only ~20 OUIs in
+most of the relevant categories as of the current Git state (commit
+90fa147d), 2014-04-25. The exact impact of this is not
+well-understood. This is probably the main blocker for Tails to switch
+to `macchiato` and dare saying we satisfy the "Spoofing the OUI part
+of the MAC address" requirement from above.
+
+What remains is to only spoof the latter three bytes, the NIC part. We
+know it isn't a perfect strategy. The more uncommon the OUI of a
+user's device is, the more it can be used for tracking the user, i.e.
+the more it violates the `AvoidTracking` user goal. At least this
+comes with some uncertainty compared to many of the impossible choices
+of OUI listed above, which would guarantee widespread violation of
+`AvoidIdMacSpoof` among Tails users, so this seems like a reasonable
+tradeoff at the moment.
+
+## MAC spoofing fail safe
+
+For any network device, the MAC address is recorded both before and
+after the actual MAC spoofing. If the values are equal, or if they
+could not be obtained, we fail closed by going into "panic mode" for
+the device. This means that the device is `down`:ed, and its module is
+unloaded and blocklisted. If the network device's interface still
+exists after this, networking is completely disabled by shutting down
+NetworkManager. The user is notified of which device was the culprit,
+and whether the module was unloaded, or if the network was completely
+disabled.
+
+Note that we treat the perfectly fine `macchanger` behaviour of
+randomly picking the real MAC address as a failure. Since we randomise
+the lower 3 bytes of the MAC address there's a `1/2^24` chance for
+this happening for each device. To make it a bit less frequent (!) we
+repeat the MAC spoofing until a new address is obtained, with up to
+three tries.
+
+Script:
+[[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-spoof-mac]]
+
+## Connection failure detection
+
+This section deals with AvoidConnectionProbs. The goal is to somehow
+identify connection errors that are related to MAC spoofing, and
+notify the user when this happens.
+
+**Note**: the implementation described below had to be disabled:
+
+ * [[!tails_ticket 8328#note-5]]
+ * [[!tails_ticket 10560]]
+
+Due to lack of hooks into NetworkManager's connection error handling
+we currently use a simple monitoring script that's started when MAC
+spoofing is enabled. It scans the NetworkManager unit's journal for
+the error message patterns expected when the connection
+fails due to MAC spoofing. When such a pattern is found, a
+notification is shown to the user, stating that the connection problem
+*may* be MAC spoofing related. Due to the uncertainty and lack of
+information available for this approach, there certainly will be false
+positives.
+
+At the moment this script only deals with wireless connections. It
+successfully distinguishes between MAC-spoof related errors and errors
+when entering the wrong passphrase, so no false positives in that
+(relatively common) case.
+
+## Wi-Fi scanning
+
+During Wi-Fi access point scanning, NetworkManager randomizes MAC
+addresses (`wifi.scan-rand-mac-address`), so the MAC address used for
+scanning is different from the one later used to connect to a Wi-Fi
+access point. This makes it slightly harder to correlate scanning
+activity with actual connections to a Wi-Fi network.

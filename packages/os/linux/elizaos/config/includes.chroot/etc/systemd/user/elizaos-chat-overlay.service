@@ -1,0 +1,19 @@
+[Unit]
+Description=elizaOS global chat overlay
+PartOf=graphical-session.target
+After=graphical-session.target elizaos-launcher.service
+Wants=elizaos-launcher.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=ELIZAOS_SHELL_MODE=chat-overlay
+Environment=ELIZAOS_AGENT_URL=http://127.0.0.1:31337
+ExecStart=/usr/local/lib/elizaos/start-chat-overlay
+Restart=always
+RestartSec=2
+SyslogIdentifier=elizaos-chat-overlay
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=graphical-session.target

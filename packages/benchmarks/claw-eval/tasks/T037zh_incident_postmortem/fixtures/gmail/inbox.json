@@ -1,0 +1,32 @@
+[
+  {
+    "message_id": "msg_1901",
+    "from": "devops@company.com",
+    "to": "user@company.com",
+    "subject": "紧急：生产环境故障",
+    "body": "紧急通知：\n\n今晚20:15起，生产环境出现大面积服务异常。\n\n初步症状：\n1. 多个API端点响应超时（>5秒）\n2. 用户反馈页面无法加载\n3. 监控系统连续触发告警\n\n目前影响范围：\n- 支付服务不可用\n- 订单提交失败\n- 后台任务队列大量堆积\n\n请相关团队立即排查。DBA团队已介入调查数据库相关问题。\n\n运维团队",
+    "date": "2026-02-28T20:30:00+08:00",
+    "labels": ["INBOX", "IMPORTANT", "URGENT"],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1902",
+    "from": "wangxiao_dba@company.com",
+    "to": "user@company.com",
+    "subject": "Re: 生产故障 - 数据库分析",
+    "body": "各位好，\n\n我查了数据库慢查询日志，发现crm_data_sync进程在20:00启动后执行了一个新的SQL查询，这个查询没有走索引，做了全表扫描。这个SQL是上周五发版时改的CRM同步逻辑引入的。\n\n具体情况：\n- 进程名：crm_data_sync\n- 启动时间：20:00（定时任务触发）\n- 问题SQL：SELECT * FROM customers JOIN orders ON customers.id = orders.customer_id WHERE sync_status = 'pending'\n- 该查询扫描了约1200万行记录\n- 该进程持有超过300个数据库连接\n- 连接池被完全占满（200/200），其他服务无法获取新连接\n\n我已经在21:30手动kill了这个进程，并暂停了对应的定时任务。数据库连接正在恢复。\n\n后续需要：\n1. 给sync_status字段添加索引\n2. 将CRM同步查询迁移到读副本\n3. 限制单个进程的最大连接数\n\nDBA 小王",
+    "date": "2026-02-28T21:00:00+08:00",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1903",
+    "from": "pm@company.com",
+    "to": "user@company.com",
+    "subject": "上周五发版内容确认",
+    "body": "大家好，\n\n针对昨晚的故障，我整理了上周五（2月27日）的发版内容：\n\n发版变更列表：\n1. CRM客户数据同步优化（修改了同步查询逻辑）—— 开发团队负责\n2. 订单搜索功能改进 —— 已通过压测\n3. 支付结果页面优化 —— 前端变更，无后端影响\n\n代码评审记录显示：\n- CRM同步的SQL改动未经过DBA的性能评审\n- 评审会议上DBA曾建议补做性能测试，但因时间紧迫未被采纳\n- 该改动的评审者为开发负责人，跳过了DBA评审环节\n\n建议在复盘中讨论发版流程改进事项。\n\n项目经理",
+    "date": "2026-03-01T09:00:00+08:00",
+    "labels": ["INBOX"],
+    "is_read": false
+  }
+]

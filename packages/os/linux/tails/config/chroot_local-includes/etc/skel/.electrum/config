@@ -1,0 +1,6 @@
+{
+    "auto_connect": true,
+    "check_updates": false,
+    "proxy": "socks5:localhost:9050",
+    "server": ""
+}

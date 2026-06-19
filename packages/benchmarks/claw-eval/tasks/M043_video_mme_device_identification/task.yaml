@@ -1,0 +1,49 @@
+task_id: M043_video_mme_device_identification
+task_name: Video-MME Device Identification and Frame Extraction
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    There is a video file at /workspace/fixtures/video.mp4.
+
+    Watch the video carefully and complete the following task:
+
+    1. Identify what device is used to shoot vertical short videos in the video. Save your answer as a single line to /workspace/answer.txt.
+    2. Extract a frame from the video where this device clearly appears, and save it as /workspace/device_frame.png.
+
+    Make sure both output files are saved to their specified paths.
+  language: en
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/answer.txt
+  - /workspace/device_frame.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames.
+  Identify the device used to shoot vertical short videos: Quest 3 (Meta mixed reality headset).
+  Find a frame where Quest 3 is clearly visible and save it as /workspace/device_frame.png.
+
+primary_dimensions:
+  - completion
+  - robustness

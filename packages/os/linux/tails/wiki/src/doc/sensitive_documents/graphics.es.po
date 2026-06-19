@@ -1,0 +1,133 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-03-26 10:19+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: Spanish <https://translate.tails.net/projects/tails/"
+"first_stepsindex/es/>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Graphics\"]]\n"
+msgstr "[[!meta title=\"Gráficos\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails includes several applications for image manipulation, graphic design, "
+"and page layout:"
+msgstr ""
+"Tails incluye varias aplicaciones para la manipulación de imágenes, el "
+"diseño gráfico y la composición de páginas:"
+
+#. type: Bullet: '  - '
+msgid "[*GIMP*](https://www.gimp.org/), an image editor."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "***[GIMP](https://www.gimp.org/)*** is an advanced picture editor. You can use it to edit, enhance, and retouch photos and scans, create drawings, and make your own images."
+msgid ""
+"    You can use *GIMP* to edit, enhance, and retouch photos and scans, create\n"
+"    drawings, and make your own images.\n"
+msgstr "***[GIMP](https://www.gimp.org/)*** es un avanzado editor de imágenes. Puedes usarlo para editar, mejorar y retocar fotos e imágenes escaneadas, crear dibujos y hacer tus propias imágenes."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "    The *GIMP* website provides a [user\n"
+#| "    manual](https://www.gimp.org/docs/) translated into several languages.\n"
+msgid ""
+"    *GIMP* has [user manuals](https://docs.gimp.org/) in several\n"
+"    languages.\n"
+msgstr ""
+"    El sitio web de *GIMP* provee de un [manual\n"
+"    de usuario](https://www.gimp.org/docs/) traducido a varios idiomas.\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Inkscape*](https://inkscape.org/), a vector-based drawing application."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "***[Inkscape](https://inkscape.org/)*** is vector-based drawing application.  You can use it to create a wide variety of graphics such as illustrations, icons, logos, diagrams, maps, and web graphics."
+msgid ""
+"    You can use *Inkscape* to create a wide variety of graphics such as\n"
+"    illustrations, icons, logos, diagrams, maps, and web graphics.\n"
+msgstr "***[Inkscape](https://inkscape.org/)*** es un programa de dibujo vectorial. Puedes usarlo para crear una gran variedad de gráficos tales como ilustraciones, iconos, logos, diagramas, mapas y gráficos web."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "    The *Inkscape* website provides\n"
+#| "    [tutorials](https://inkscape.org/en/learn/tutorials/) translated into several\n"
+#| "    languages.\n"
+msgid ""
+"    The *Inkscape* website has\n"
+"    [tutorials](https://inkscape.org/en/learn/tutorials/) in several languages.\n"
+msgstr ""
+"    El sitio web de *Inkscape* provee\n"
+"    [tutoriales](https://inkscape.org/en/learn/tutorials/) traducidos a varios\n"
+"    idiomas.\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "These applications can be started from the **Applications&nbsp;▸ "
+#| "Graphics** menu."
+msgid ""
+"These applications are available in the **Apps&nbsp;▸ Graphics** submenu."
+msgstr ""
+"Estos programas se pueden iniciar desde el menú **Aplicaciones&nbsp;▸ "
+"Gráficos**."
+
+#. type: Plain text
+msgid ""
+"You can also install using the [[Additional Software|persistent_storage/"
+"additional_software]] feature:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[*Scribus*](https://www.scribus.net/), a page layout application."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/persistence.es\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/metadata.inline.es\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "**<span class=\"application\">[Scribus](https://www.scribus.net/)</"
+#~ "span>** is a page layout application. You can use it to design "
+#~ "newspapers, magazines, newsletters and posters to technical documentation."
+#~ msgstr ""
+#~ "**<span class=\"application\">[Scribus](https://www.scribus.net/)</"
+#~ "span>** es un programa para hacer composición de páginas. Lo puedes usar "
+#~ "para diseñar periódicos, revistas, newsletters y posters para "
+#~ "documentación técnica."
+
+#~ msgid ""
+#~ "    The *Scribus* website provides\n"
+#~ "    [documentation](https://wiki.scribus.net/canvas/Help:TOC) in several\n"
+#~ "    languages.\n"
+#~ msgstr ""
+#~ "    El sitio web de *Scribus* provee\n"
+#~ "    [documentación](https://wiki.scribus.net/canvas/Help:TOC) en varios\n"
+#~ "    idiomas.\n"

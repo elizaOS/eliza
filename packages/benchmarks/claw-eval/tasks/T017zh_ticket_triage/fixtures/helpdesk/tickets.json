@@ -1,0 +1,112 @@
+[
+  {
+    "ticket_id": "TK-1001",
+    "title": "无法登录CRM系统",
+    "description": "今天早上开始，输入正确的用户名和密码后，CRM系统一直显示【认证失败】。已经尝试重置密码，问题依旧。其他同事也有同样问题。",
+    "reporter": "张伟",
+    "department": "销售部",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T08:15:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1002",
+    "title": "打印机卡纸",
+    "description": "3楼打印机卡纸了，试过打开前盖板取纸但没成功。型号是 HP LaserJet Pro M404。",
+    "reporter": "李芳",
+    "department": "市场部",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T09:00:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1003",
+    "title": "CRM页面打不开",
+    "description": "CRM系统的客户列表页面一直在加载中，转圈超过5分钟了。今天早上还好好的，下午就访问不了了。",
+    "reporter": "王强",
+    "department": "销售部",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T14:30:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1004",
+    "title": "申请安装Python开发环境",
+    "description": "新项目需要用到Python 3.11和一些数据分析库(pandas, numpy等)。需要IT帮忙安装并配置开发环境。",
+    "reporter": "赵明",
+    "department": "技术部",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-27T16:00:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1005",
+    "title": "VPN连接不稳定",
+    "description": "远程办公时VPN每隔20分钟就断一次，需要手动重连。使用的是FortiClient，系统是macOS 15。已经尝试重新安装客户端但没有改善。",
+    "reporter": "陈丽",
+    "department": "产品部",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T10:45:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1006",
+    "title": "CRM系统报错500",
+    "description": "使用CRM导出客户数据时，系统返回500错误。尝试了多次都是同样的错误。",
+    "reporter": "刘洋",
+    "department": "运营部",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T11:20:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1007",
+    "title": "新员工入职设备申请",
+    "description": "新员工赵四下周一入职，需要准备笔记本电脑、显示器、门禁卡等。",
+    "reporter": "HR小王",
+    "department": "人力资源部",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-27T11:00:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1008",
+    "title": "会议室投影仪不工作",
+    "description": "B座2楼大会议室的投影仪无法连接笔记本，HDMI线也换过了，可能是投影仪本身的问题。",
+    "reporter": "孙晓",
+    "department": "行政部",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T13:00:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1009",
+    "title": "CRM培训需求调查",
+    "description": "为了提升团队使用CRM系统的效率，需要调查各部门的CRM培训需求。请各部门在下周五之前提交培训需求表。这不是系统故障，仅为培训安排。",
+    "reporter": "培训部小李",
+    "department": "人力资源部",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-27T09:30:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1010",
+    "title": "邮件签名格式统一",
+    "description": "已确认所有部门的邮件签名模板已更新完毕。此工单已完成所有操作，请关闭。—— IT运维组",
+    "reporter": "运维小张",
+    "department": "IT部",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-02-26T14:00:00Z",
+    "tags": []
+  }
+]

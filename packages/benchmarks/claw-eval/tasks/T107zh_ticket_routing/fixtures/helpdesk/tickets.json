@@ -1,0 +1,67 @@
+[
+  {
+    "ticket_id": "TK-501",
+    "title": "API接口频繁超时",
+    "description": "鼎新软件（CUS-501）反馈其对接的订单查询API在高峰时段频繁超时，平均响应时间超过10秒，严重影响其业务系统。已持续3天，要求尽快解决。",
+    "customer_id": "CUS-501",
+    "reporter": "周经理",
+    "department": "技术支持",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-25T09:00:00Z",
+    "tags": ["API", "性能", "VIP"],
+    "category": "性能问题"
+  },
+  {
+    "ticket_id": "TK-502",
+    "title": "导出功能报错",
+    "description": "瀚海电商（CUS-502）在使用数据导出功能时出现500错误，无法导出近3个月的销售数据。错误信息：InternalServerError: query timeout。",
+    "customer_id": "CUS-502",
+    "reporter": "林总助理",
+    "department": "技术支持",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T11:30:00Z",
+    "tags": ["导出", "错误", "数据"],
+    "category": "功能故障"
+  },
+  {
+    "ticket_id": "TK-503",
+    "title": "如何批量修改用户权限",
+    "description": "公共机构用户（CUS-503）张老师询问如何批量修改下属150个账号的权限设置，目前只能逐个修改，效率很低。",
+    "customer_id": "CUS-503",
+    "reporter": "张老师",
+    "department": "客户服务",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-25T14:00:00Z",
+    "tags": ["权限", "批量操作", "使用咨询"],
+    "category": "使用咨询"
+  },
+  {
+    "ticket_id": "TK-504",
+    "title": "数据同步延迟严重",
+    "description": "万通物流（CUS-504）赵总监紧急反馈：从昨晚开始物流跟踪数据同步延迟超过2小时，已导致多个订单状态无法实时更新，客户投诉增多。",
+    "customer_id": "CUS-504",
+    "reporter": "赵总监",
+    "department": "技术支持",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-25T08:15:00Z",
+    "tags": ["数据同步", "延迟", "VIP", "紧急"],
+    "category": "性能问题"
+  },
+  {
+    "ticket_id": "TK-505",
+    "title": "报表展示图表样式异常",
+    "description": "瀚海电商（CUS-502）反馈报表模块的饼图和柱状图显示不全，部分数据标签重叠无法读取。浏览器：Chrome 120。",
+    "customer_id": "CUS-502",
+    "reporter": "林总助理",
+    "department": "技术支持",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-25T15:00:00Z",
+    "tags": ["报表", "前端", "UI"],
+    "category": "UI问题"
+  }
+]

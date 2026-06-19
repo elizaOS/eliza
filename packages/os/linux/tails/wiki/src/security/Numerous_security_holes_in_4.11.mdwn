@@ -1,0 +1,13 @@
+[[!meta date="Sat, 17 Oct 2020 10:35:44 -0000"]]
+[[!meta title="Numerous security holes in Tails 4.11"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails 4.12|news/version_4.12]] fixes many security issues that affect
+Tails 4.11. You should [[upgrade to Tails 4.12|news/version_4.12]] as
+soon as possible.
+
+- Linux: [[!cve CVE-2020-25285]], [[!cve CVE-2020-25284]],
+  [[!cve CVE-2020-14390]], [[!cve CVE-2020-14314]], [[!cve CVE-2020-14386]]
+- Tor Browser [[!mfsa 2020-46]]

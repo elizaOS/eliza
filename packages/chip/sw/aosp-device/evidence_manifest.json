@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "claim_boundary": "android_external_logs_only_not_boot_or_compatibility_evidence",
+  "compatibility_claim": "none_without_full_external_compatibility_evidence",
+  "android_boot_claim": "blocked_until_all_required_evidence_passes",
+  "required_for_android_boot_claim": [
+    "docs/evidence/android/eliza_ai_soc_lunch.log",
+    "docs/evidence/android/eliza_ai_soc_vendorimage.log",
+    "docs/evidence/android/eliza_ai_soc_checkvintf.log",
+    "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
+    "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
+    "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+    "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
+    "docs/evidence/android/cuttlefish_riscv64_smoke.log",
+    "docs/evidence/android/cuttlefish_riscv64_boot.log",
+    "docs/evidence/android/qemu_riscv64_smoke.log",
+    "docs/evidence/android/renode_e1_soc_smoke.log",
+    "docs/evidence/android/eliza_launcher_runtime_evidence.json",
+    "agent_health:/api/health HTTP 200 from the launcher-bound local agent watchdog (proven by eliza_launcher_runtime_evidence.json)"
+  ],
+  "strict_gate": {
+    "checker": "scripts/check_software_bsp.py aosp --require-evidence",
+    "log_manifest": "docs/android/bsp-log-evidence-manifest.json",
+    "artifact_manifest": "docs/android/bsp-artifact-manifest.json"
+  },
+  "backward_compatible_aliases": [
+    {
+      "alias_path": "docs/evidence/android/cts_virtual_device_subset.log",
+      "current_gate_path": "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+      "producer": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cts-subset",
+      "status": "legacy_alias_not_full_gate"
+    },
+    {
+      "alias_path": "docs/evidence/android/vts_virtual_device_subset.log",
+      "current_gate_path": "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+      "producer": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp vts-subset",
+      "status": "legacy_alias_not_full_gate"
+    }
+  ],
+  "forbidden_claims_without_required_evidence": [
+    "Android boot proven",
+    "Android booted on e1_soc",
+    "Android compatible",
+    "CDD compliant",
+    "CTS passed",
+    "VTS passed",
+    "GMS certified"
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/android/eliza_ai_soc_lunch.log",
+      "claim": "AOSP product lunch is visible in an external AOSP checkout",
+      "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp lunch",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "build/envsetup.sh",
+        "device/eliza/eliza_ai_soc/AndroidProducts.mk"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/eliza_ai_soc_vendorimage.log",
+      "claim": "OpenAgent vendor image builds in an external AOSP checkout",
+      "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp vendorimage",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "out/target/product/eliza_ai_soc/vendor.img",
+        "out/target/product/eliza_ai_soc/installed-files-vendor.txt",
+        "out/target/product/eliza_ai_soc/vendor/etc/vintf/manifest/eliza_e1.xml"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
+      "claim": "OpenAgent VINTF packaging validates in an external AOSP checkout",
+      "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp checkvintf",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "out/target/product/eliza_ai_soc/vendor/etc/vintf/manifest/eliza_e1.xml",
+        "out/target/product/eliza_ai_soc/vendor.img"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
+      "claim": "OpenAgent vendor SELinux policy builds in an external AOSP checkout",
+      "capture_command": "m vendor_sepolicy.cil selinux_policy",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
+      "claim": "OpenAgent SELinux neverallow checks complete in an external AOSP checkout",
+      "capture_command": "m sepolicy_neverallows",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "out/target/product/eliza_ai_soc/obj/FAKE/sepolicy_neverallows_intermediates"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+      "claim": "CTS/VTS smoke scope, exclusions, and result directory intake are recorded without a compatibility claim",
+      "claim_boundary": "scope_intake_only_not_cdd_cts_vts_certification",
+      "capture_command": "m cts vts && cts-tradefed list modules && vts-tradefed list modules",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "out/host/linux-x86/cts",
+        "out/host/linux-x86/vts",
+        "Tradefed result directory"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/cuttlefish_riscv64_smoke.log",
+      "claim": "Reference-only AOSP riscv64 Cuttlefish smoke ran; this is not e1-chip/AP or Android compatibility evidence",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "capture_command": "launch_cvd or cvd start followed by adb shell getprop smoke checks",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "out/target/product/eliza_ai_soc/vendor.img",
+        "Cuttlefish instance adb transport"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/cuttlefish_riscv64_boot.log",
+      "claim": "Cuttlefish riscv64 launched, reached sys.boot_completed=1, and produced canonical boot markers; this is not e1-chip/AP or Android compatibility evidence",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-boot-full",
+      "validation_command": "python3 scripts/check_aosp_simulator_completion_gate.py",
+      "external_artifacts": [
+        "out/target/product/vsoc_riscv64/system.img",
+        "out/target/product/vsoc_riscv64/vendor.img",
+        "out/host/linux-x86/bin/launch_cvd",
+        "~/cuttlefish_runtime/kernel.log",
+        "~/cuttlefish_runtime/launcher.log"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/qemu_riscv64_smoke.log",
+      "claim": "Reference-only QEMU riscv64 smoke ran with AOSP-built artifacts; this is not e1-chip/AP or Android compatibility evidence",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "capture_command": "qemu-system-riscv64 with AOSP-built artifacts followed by console or adb smoke checks",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "AOSP-built kernel or image artifacts",
+        "QEMU console or adb transport"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
+      "claim": "Cuttlefish riscv64 booted, the e1_npu simulator HAL service registered, and lshal reported vendor.eliza.e1_npu@1.0::IE1Npu/default as available",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "capture_command": "sw/aosp-device/check-cvd-hal-smoke.sh /path/to/aosp",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "Cuttlefish instance adb transport",
+        "/vendor/bin/hw/vendor.eliza.e1_npu@1.0-service.sim"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/renode_e1_soc_smoke.log",
+      "claim": "Reference-only Renode smoke ran against the OpenAgent model; this is not Android compatibility evidence or a silicon boot claim",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "capture_command": "renode sim/renode/eliza_e1.resc with Android-capable firmware/kernel handoff when available",
+      "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
+      "external_artifacts": [
+        "Renode monitor transcript",
+        "UART smoke transcript"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/eliza_launcher_runtime_evidence.json",
+      "claim": "Cuttlefish riscv64 booted, the Eliza launcher held the HOME role, the ElizaAgentService process was alive, and /api/health returned HTTP 200; this is not e1-chip/AP or Android compatibility evidence",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-boot-full",
+      "validation_command": "python3 scripts/check_aosp_simulator_completion_gate.py",
+      "external_artifacts": [
+        "Cuttlefish instance adb transport",
+        "adb shell pm path ai.elizaos.app",
+        "adb shell cmd role get-role-holders android.app.role.HOME",
+        "adb shell pidof for ai.elizaos.app/.ElizaAgentService",
+        "/api/health forwarded over adb tcp"
+      ]
+    }
+  ],
+  "blocked_until": [
+    "External AOSP checkout is present and imported",
+    "vendor.img build transcript is archived",
+    "VINTF check transcript is archived",
+    "SELinux policy build transcript is archived",
+    "SELinux neverallow transcript is archived",
+    "CTS/VTS scope-intake transcript is archived without a compatibility claim",
+    "Cuttlefish, QEMU, and Renode virtual-device smoke transcripts are archived without Android boot or compatibility claims",
+    "Cuttlefish HAL registration smoke transcript records vendor.eliza.e1_npu@1.0::IE1Npu/default as INTERFACE_AVAILABLE"
+  ]
+}

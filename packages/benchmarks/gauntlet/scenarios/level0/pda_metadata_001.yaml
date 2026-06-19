@@ -1,0 +1,22 @@
+id: pda_metadata_001
+level: 0
+name: Metaplex Metadata PDA
+description: 'Level 0 foundational test: Metaplex Metadata PDA'
+category: pda
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_pda_metadata_001
+  type: query
+  parameters:
+    program: metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s
+    seeds:
+    - metadata
+    - mint
+  timeout_ms: 10000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

@@ -1,0 +1,351 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-05 00:51+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"virtualization/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Running Tails in a virtual machine\"]]\n"
+msgstr "[[!meta title=\"lمجازی‌سازی\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+msgid ""
+"It is sometimes convenient to be able to run Tails without having to restart "
+"your computer every time. This is possible using [[!wikipedia "
+"Virtual_machine desc=\"virtual machines\"]]."
+msgstr ""
+"گاهی خوب است که بتوان تیلز را بدون نیاز به هر بار راه‌اندازی دوبارهٔ رایانه "
+"اجرا کرد. این کار را می‌توان با [[!wikipedia Virtual_machine desc=\"ماشین‌های "
+"مجازی\"]] انجام داد."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"With virtual machines, it is possible to run Tails inside a *host* operating "
+"system. A virtual machine emulates a real computer and its operating system, "
+"called a *guest*, which appears in a window on the *host* operating system."
+msgstr ""
+"با ماشین‌های مجازی می‌توان تیلز را درون یک سیستم‌عامل *میزبان* (لینوکس، ویندوز "
+"یا مک او‌اس ده) راه‌اندازی کرد. یک ماشین مجازی از یک رایانهٔ واقعی و سیستم‌عامل "
+"آن تقلید می‌کند و به آن *مهمان* گفته می‌شود که در پنجره‌ای در سیستم‌عامل "
+"*میزبان* قابل دسترسی است."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Because, <i>VirtualBox</i> works pretty badly with Tails, we stopped\n"
+"advertising solutions for using virtual machines in Windows or macOS.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We only present below 2 solutions for Linux: <i>GNOME Boxes</i> and\n"
+"<i>virt-manager</i>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"When running Tails in a virtual machine, you can use most features of Tails "
+"from your usual operating system, and you can use both Tails and your usual "
+"operating system in parallel, without the need to restart the computer."
+msgstr ""
+"هنگام راه‌اندازی تیلز روی یک ماشین مجازی می‌توانید بیشتر ویژگی‌های تیلز را از "
+"سیستم‌عامل اصلی اجرا کنید و بدون نیاز به راه‌اندازی دوبارهٔ رایانه هر دو را به "
+"طور موازی پیش ببرید."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>We do not currently provide a solution for running a virtual machine\n"
+"inside a Tails host.</p>\n"
+msgstr ""
+"<p>در حال حاضر راه‌حلی برای اجرای یک ماشین مجازی روی یک تیلز میزبان نداریم.\n"
+"رجوع کنید به [[!tails_ticket 5606]].</p>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid "This is how Tails looks when run in a virtual machine on a Debian host."
+msgstr ""
+"تیلز هنگام اجرا روی یک ماشین مجازی در دبیان با استفاده از *ویرچوال‌باکس* "
+"این‌گونه است:"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!img tails-in-vm.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img tails-in-vm.png alt=\"\" link=no]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<a id=\"security\"></a>\n"
+msgstr "<a id=\"security\"></a>\n"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "Security considerations"
+msgstr "ملاحظات امنیتی\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>Running Tails inside a virtual machine has various security\n"
+"implications. Depending on the host operating system and your security\n"
+"needs, running Tails in a virtual machine might be dangerous.</p>\n"
+msgstr "اجرای تیلز در یک ماشین مجازی نکات امنیتی بسیاری دارد. بسته به سیستم‌عامل میزبان و نیازهای امنیتی شما اجرای تیلز روی یک ماشین مجازی ممکن است کاری خطرناک باشد."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<a id=\"trustworthy\"></a>\n"
+msgstr "<a id=\"trustworthy\"></a>\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"Both the host operating system and the [[virtualization software|"
+"virtualization#software]] are able to monitor what you are doing in Tails."
+msgstr ""
+"هم سیستم‌عامل میزبان و هم [[نرم‌افزار مجازی‌سازی|virtualization#software]] "
+"می‌توانند کارهایی که در تیلز انجام می‌دهید را ببینند."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"    If the host operating system is compromised with a software\n"
+"    keylogger or other malware, then it can break the security built into\n"
+"    Tails.\n"
+msgstr ""
+"    اگر سیستم‌عامل میهمان یک نرم‌افزار کی‌لاگر یا بدافزار دیگری داشته باشد\n"
+"    ممکن است باعث از بین رفتن ویژگی‌های امنیتی تیلز\n"
+"    شود.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "    <div class=\"caution\">\n"
+msgstr "    <div class=\"caution\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"    <p>Only run Tails in a virtual machine if both the host operating\n"
+"    system and the virtualization software are trustworthy.</p>\n"
+msgstr ""
+"    تنها در صورتی از تیلز روی یک ماشین مجازی استفاده کنید که \n"
+"    هم سیستم‌عامل میزبان و هم نرم‌افزار مجازی‌سازی قابل‌اعتماد باشند.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    </div>\n"
+msgstr "    </div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "    <div class=\"attack\">\n"
+msgstr "    <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    <p>For example, when using virtual machines in Windows, <a\n"
+"    href=\"https://support.microsoft.com/en-us/windows/retrace-your-steps-with-recall-aa03f8a0-a78b-4b3e-b0a1-2eb8ac48701c\"><i>Microsoft\n"
+"    Recall</i></a> might be taking regular screenshots of your activity.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<a id=\"traces\"></a>\n"
+msgstr "<a id=\"traces\"></a>\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"Traces of your Tails session are likely to be left on the local hard disk. "
+"For example, host operating systems usually use swapping (or *paging*) which "
+"copies part of the RAM to the hard disk."
+msgstr ""
+"ردپاهای نشست تیلز شما ممکن است روی سخت‌دیسک داخلی باقی بماند. برای نمونه "
+"معمولاً سیستم‌عامل‌های میزبان از روش‌هایی استفاده می‌کنند که بخشی از حافظهٔ تصادفی "
+"را روی سخت‌دیسک کپی می‌کند."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"    <p>Only run Tails in a virtual machine if leaving traces on the hard disk\n"
+"    is not a concern for you.</p>\n"
+msgstr ""
+"    تنها در صورتی از تیلز روی یک ماشین مجازی استفاده کنید که به جا ماندن ردپایتان\n"
+"    روی سخت‌دیسک برایتان مشکلی ایجاد نکند.\n"
+
+#. type: Plain text
+msgid ""
+"This is why Tails warns you when it is running inside a virtual machine."
+msgstr ""
+"به همین دلیل است که تیلز هنگام راه‌اندازی شدن در یک ماشین مجازی به شما هشدار "
+"می‌دهد."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>The Tails virtual machine does not modify the behavior of the host\n"
+"operating system and the network traffic of the host is not anonymized. The MAC\n"
+"address of the computer is not modified by the [[MAC address\n"
+"anonymization|first_steps/welcome_screen/mac_spoofing]] feature of Tails\n"
+"when run in a virtual machine.</p>\n"
+msgstr ""
+"ماشین مجازی تیلز رفتار سیستم‌عامل میزبان را تغییر نمی‌دهد و ترافیک شبکهٔ میزبان ناشناس نمی‌شود. ویژگی  [[جا زدن آدرس مک|first_steps/welcome_screen/mac_spoofing]] نیز\n"
+"هنگام راه‌اندازی تیلز از یک ماشین مجازی باعث عوض شدن آدرس مک رایانه نمی‌شود."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"software\"></a>\n"
+msgstr "<a id=\"software\"></a>\n"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "Virtualization solutions"
+msgstr "راه‌حل‌های مجازی‌سازی\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To run Tails inside a virtual machine, you need to have virtualization "
+"software installed on the host operating system.  Different virtualization "
+"software exists for Linux, Windows, and macOS.  Unfortunately, we only know "
+"of virtualization solutions for Linux that work well with Tails."
+msgstr ""
+"برای اجرای تیلز در یک ماشین مجازی باید یک نرم‌افزار مجازی‌سازی روی سیستم‌عامل "
+"میزبان نصب کرده باشید.  نرم‌افزارهای مجازی‌سازی مختلفی برای لینوکس، ویندوز و "
+"مک اواس ده وجود دارند."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We only mention Free Software, because we believe that it is a necessary\n"
+"condition to be trustworthy. Proprietary virtualization software exist, such as\n"
+"<i>VMWare</i>, but is not listed here on purpose.</p>\n"
+msgstr ""
+
+#. type: Bullet: '  - '
+#, fuzzy
+msgid ""
+"***GNOME Boxes*** is only available on Linux. It has a simpler user "
+"interface than *virt-manager* but does not allow to use a Persistent Storage."
+msgstr ""
+"***گنوم باکسز*** برای لینوکس موجود است. یک رابط کاربری ساده دارد اما به شما "
+"اجازهٔ استفاده از یک درایو مانا نمی‌دهد."
+
+#. type: Plain text
+#, no-wrap
+msgid "    See [[running Tails in *GNOME Boxes*|boxes]].\n"
+msgstr ""
+
+#. type: Bullet: '  - '
+#, fuzzy
+msgid ""
+"***virt-manager*** is only available on Linux. It has a more complex user "
+"interface than *GNOME Boxes* but allows to use a Persistent Storage, either "
+"by:"
+msgstr ""
+"***ویرت‌منجر*** برای لینوکس موجود است. رابط کاربری‌اش کمی پیچیده‌تر است و با "
+"یکی از این راه‌ها به شما اجازهٔ استفاده از یک درایو مانا می‌دهد:"
+
+#. type: Bullet: '    - '
+#, fuzzy
+msgid "Starting Tails from a USB stick."
+msgstr "راه‌اندازی تیلز از یک درایو یواس‌بی یا کارت حافظه."
+
+#. type: Bullet: '    - '
+msgid ""
+"Creating a virtual USB storage volume saved as a single file on the host "
+"operating system."
+msgstr ""
+"ایجاد یک درایو ذخیرهٔ یواس‌بی مجازی که به شکل یک فایل روی سیستم‌عامل میزبان "
+"ذخیره شده باشد."
+
+#. type: Plain text
+#, no-wrap
+msgid "    See [[running Tails in *virt-manager*|virt-manager]].\n"
+msgstr ""
+
+#, fuzzy
+#~ msgid ""
+#~ "***VirtualBox*** is available on Linux, Windows, and Mac. Its Free "
+#~ "Software version does not include support for USB devices and does not "
+#~ "allow to use a Persistent Storage."
+#~ msgstr ""
+#~ "***ویرچوال‌باکس*** برای لینوکس، ویندوز و مک موجود است. نسخهٔ آزاد آن از "
+#~ "دستگاه‌های یواس‌بی پشتیبانی نمی‌کند و به شما اجازهٔ استفاده از یک درایو مانا "
+#~ "نمی‌دهد."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>The following list includes only free software as we believe that\n"
+#~ "this is a necessary condition for the software to be trustworthy. See the\n"
+#~ "[[previous warning|virtualization#trustworthy]] and our statement about\n"
+#~ "[[free software and public scrutiny|about/trust#free_software]].</p>\n"
+#~ msgstr ""
+#~ "<p>این فهرست تنها شامل نرم‌افزارهای آزاد است چرا که که معتقدیم\n"
+#~ "نرم‌افزارها برای قابل‌اعتماد بودند باید آزاد باشند. رجوع کنید به\n"
+#~ "[[هشدار پیشین|virtualization#trustworthy]] و نظر ما راجع به\n"
+#~ "[[نرم‌افزار آزاد و مراقبت همگانی|about/trust#free_software]].</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Proprietary virtualization software solutions exist such as <span\n"
+#~ "class=\"application\">VMWare</span> but are not listed here on\n"
+#~ "purpose.</p>\n"
+#~ msgstr ""
+#~ "<p>نرم‌افزارهای مالکیتی مانند<span\n"
+#~ "class=\"application\">VMWare</span> نیز وجود دارند اما به عمد این‌جا گنجانده\n"
+#~ "نشده‌اند.</p>\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|virtualbox]]\n"
+#~ msgstr "    [[سند مرتبط را ببینید|virtualbox]]\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|boxes]]\n"
+#~ msgstr "    [[سند مرتبط را ببینید|boxes]]\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|virt-manager]]\n"
+#~ msgstr "    [[سند مرتبط را ببینید.|virt-manager]]\n"

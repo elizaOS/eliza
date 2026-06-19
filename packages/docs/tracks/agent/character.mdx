@@ -1,0 +1,60 @@
+---
+title: Character Files
+description: "The Character schema — identity, plugins, secrets, and behavior."
+---
+
+A **Character** is the configuration object that defines an Eliza agent. The full schema lives in [`packages/agent/src/config/character-schema.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/agent/src/config/character-schema.ts) and is exported as `CharacterSchema` (Zod) and `Character` (TypeScript type).
+
+## Minimum viable character
+
+```ts
+import type { Character } from '@elizaos/core';
+
+export const character: Character = {
+  name: 'Eliza',
+  bio: 'A helpful agent.',
+  plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-anthropic'],
+};
+```
+
+`name`, `bio`, and at least one model provider plugin are required for a runnable agent.
+
+## Core fields
+
+| Field             | Purpose                                                           |
+| ----------------- | ----------------------------------------------------------------- |
+| `name`            | Display name. Used in system prompts and UI.                      |
+| `bio`             | Short biography. String or `string[]`.                            |
+| `system`          | Override the default system prompt.                               |
+| `topics`          | Conversation seeds. Used by autonomy and idle loops.              |
+| `adjectives`      | Personality descriptors injected into prompts.                    |
+| `messageExamples` | Few-shot examples of agent voice in chat.                         |
+| `postExamples`    | Few-shot examples for posts (social connectors).                  |
+| `templates`       | Per-action prompt overrides.                                      |
+| `plugins`         | npm package names of plugins to load.                             |
+| `settings`        | Per-plugin settings, model overrides, embedding model, etc.       |
+| `secrets`         | Encrypted env values (loaded into the plugin runtime).            |
+| `knowledge`       | Files or URLs to ingest into the agent's knowledge base on boot.  |
+
+## Plugins
+
+The `plugins` array is a list of npm package names. They're resolved at boot, loaded into the runtime, and given a chance to register actions, providers, evaluators, services, and routes. See the [Plugin track](/tracks/plugin/overview) for what plugins can do.
+
+```ts
+plugins: [
+  '@elizaos/plugin-sql',
+  '@elizaos/plugin-anthropic',
+  '@elizaos/plugin-discord',
+  '@elizaos/plugin-twitter',
+]
+```
+
+## Where to put it
+
+The CLI template uses `character.ts` at the project root and imports it from `src/index.ts`. You can also load JSON characters via the `--character` CLI flag — useful for non-TypeScript projects.
+
+## See also
+
+- [Character interface reference](/agents/character-interface)
+- [Personality and behavior](/agents/personality-and-behavior)
+- [Configuration schema](/config-schema)

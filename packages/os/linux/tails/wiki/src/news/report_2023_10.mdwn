@@ -1,0 +1,50 @@
+[[!meta title="Tails report for October 2023"]]
+[[!meta date="Thu, 09 Nov 2023 22:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- In early October, we got together in Rome for a hybrid sprint! We reflected
+  on the year so far, our financial health, and plans to make Tails' mission
+  more sustainable.
+
+- Our annual fundraiser is
+  [[live|news/gift_of_privacy]]! For this year's
+  fundraiser, we are reflecting on a year in which progressive, liberatory
+  movements battled intense online surveillance from powerful public and
+  private actors alike. 
+
+As we enter 2024, make the gift of privacy. We welcome each contribution, no
+matter the size. And there are many ways to
+contribute). Spread word!
+
+And while we have you here, consider nominating Tails for support through
+[Proton's fundraiser](https://proton.me/blog/lifetime-fundraiser-survey-2023).
+Nominations close on 13 November 2023!
+
+- We also have a new sponsor. Please welcome [James
+  Seibel](https://jamesseibel.com/) to the community!
+
+Releases
+========
+
+[[Tails 5.18|news/version_5.18]] was released on October 03, 2023, and [[Tails 5.19|news/version_5.19]] was released on
+October 31, 2023.
+
+- You have upgrades to Tor Browser, Thunderbird, and the Linux kernel.
+
+- You can now close a given Tor circuit from the Onion Circuits interface.
+
+- Using SecureDrop on airgapped machines running Tails is even more secure now.
+  Tails 5.19 improves the cryptographic parameters of PGP keys stored in these
+  airgapped machines. SecureDrop is widely used by investigative journalists
+  and whistleblowers.
+
+Metrics
+=======
+
+Tails was started more than 830,216 times this month. That's a daily average of
+over 26,780 boots.

@@ -1,0 +1,162 @@
+[[!meta date="Tue, 05 Jul 2011 17:04:54 +0200"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Bimonthly report: May and June 2011"]]
+[[!tag announce]]
+
+We are pleased to present you the third Tails bimonthly report.
+This report sums up the work that was done on Tails in May and June 2011.
+
+[[!toc levels=2]]
+
+New releases
+============
+
+The new Tails 0.7.2 bugfix and security release was out on June 13th. See its
+[[announce|news/version_0.7.2]] for details.
+
+Documentation
+=============
+
+All main pages of Tails website have been vastly improved. Content
+is now better structured and easier to read; it also looks a lot nicer.
+
+Many efforts have been put in the [[install]] page that now provides
+a much improved step by step explanation of how to get, verify, install and
+use Tails. Screenshots, Windows and Mac OS X instructions are included
+for even more awesomeness, along with dozens of other tiny little
+layout and design improvements.
+
+The *walkthrough* that was initially imported from Incognito is still
+outdated, but sections that need to be reworked have been clearly labeled
+as such.
+
+More work on the documentation is happening in the public
+`doc-rework` Git
+branch.
+Tails developers are not that skilled in documentation writing, so
+[[help is needed and much welcome|contribute/how/documentation]]!
+
+Our public email address was renamed to <tails@boum.org>; its [[OpenPGP key|doc/about/openpgp_keys]] was
+updated accordingly. We also have documented
+how to get to trust our OpenPGP keys.
+
+GSoC
+====
+
+As [[announced in the previous report|news/report_2011_03-04]],
+the Tails project is participating in the Google Summer
+of Code. One student committed to work on the tails-greeter,
+which will enable us to implement many features that depend on a better boot menu.
+His progress can be followed on the project's development
+blog. The code can be seen in the tails-greeter Git
+repository
+and in a feature branch in the main Tails Git
+repository.
+
+With this new boot menu in mind, a solution was implemented
+to offer a [[!tails_ticket 5737 desc="safer handling of administrative privileges within
+Tails"]]. It will be enabled as soon as
+tails-greeter is ready for prime-time.
+
+And now?
+========
+
+Upcoming release
+----------------
+
+Unless bad security issues are detected, the next Tails version will
+be a major one, dubbed as 0.8. It should contain a few new features:
+
+ * To make Tails users harder to single out from other Tor users, Pidgin
+   nickname generation process was improved.
+ * An easily reachable immediate shutdown button was added to the top
+   panel; moreover, the computer is now shutdown when any
+   power-related button is pressed (power, sleep, lid close).
+ * Accessibility: install a screen magnifier and a screen reader.
+ * The current on-screen keyboard shipped in Tails (namely: onBoard)
+   never made it into Debian. We have been carrying the burden of
+   forward-porting our patches for more than one year. Florence, a
+   new, nicer and more featureful on-screen keyboard entered Debian a
+   few weeks ago and should be
+   shipped in Tails by the next
+   release.
+ * The PiTIVi video editor is now installed in Tails.
+
+It should also include several minor fixes and improvements:
+
+ * The handling of hardware clocks that are skewed enough to prevent
+   initial connection to Tor was fixed.
+ * The firewall was tightened a bit more.
+ * Tails build system now uses more elegant and robust ways to disable
+   swapoff and hide items from the GNOME menu.
+ * Frequent disconnections while using Gobby were fixed by adding its
+   port to Tor's LongLivedPorts list.
+ * VirtualBox 4.x guest packages are now installed. We have prepared
+   the backports that were pushed to the Debian Backports archive.
+ * The arm terminal status monitor for
+   Tor is now installed.
+
+This new major release will introduce several changes that might be
+tricky to get totally right at first. Enthusiasts, your help will be
+very welcome to test preview images once they are published. Stay
+tuned!
+
+Installing and upgrading Tails onto a USB stick
+-----------------------------------------------
+
+As [[announced in the previous report|news/report_2011_03-04]], a few
+of us have started working on a tool for easy install and upgrade of
+Tails onto USB sticks, with support for
+an encrypted persistent volume in mind.
+
+Research has also been made on how to reduce download size (and times)
+of minor releases. A solution to this problem was thought through and
+its working was confirmed by preliminary testing.
+
+Upcoming features
+-----------------
+
+As an alternative to [[!tails_ticket 5363 desc="supporting Flash"]], we are
+considering shipping a HTML5-compliant web
+browser. We have been investigating
+shipping Iceweasel_5.x and conducted some initial tests.
+Doing so would additionally allow us to stop using polipo in Iceweasel... and
+the problems it causes.
+
+We have acknowledged Claws Mail usability shortcomings, especially
+when using slow connections. After some more
+research, it looks like Icedove (Debian's
+rebranded version of Mozilla Thunderbird) could be a proper candidate
+to replace Claws Mail; a few tweaks and verifications are needed
+before this happens, though.
+
+Compressing the Tails SquashFS using XZ (formerly known as LZMA)
+compression will lower the generated
+images' size by about 100MB! XZ has been supported in the mainlaine
+Linux kernel since 2.6.38, and has since made its way into kernels
+shipped by Debian. Hence, Tails is likely to use this feature soon.
+
+Patches to mute the system's sound levels at boot time were
+contributed.
+However, they need more polishing before we can merge them.
+
+The lack of support of arbitrary DNS queries being annoying for some
+Tails (power-)users, we have made some
+progress towards a resolution
+of this issue; the implementation of a proper solution was blocked by
+[[!tor_bug 3369]]; therefore, we contributed a tiny patch to fix it.
+This issue will be solved once Tor 0.2.2.x is stabilized and shipped
+in Tails.
+
+We have also worked towards Tails-compatible support of bridges in Tor and
+Vidalia.
+
+With respect to VoIP support, we have refreshed our VoIP software
+round-up and got in touch with some of their developers to get a better idea
+of which one we will include in Tails.
+
+To end with, the Tails core developers have recently discussed nearly
+every pending task whose implementation was blocked by the lack of a
+clear decision. As a consequence, our roadmap was
+updated. This makes it possible for us, and [[any other
+contributor|contribute]], to move forward on many topics.

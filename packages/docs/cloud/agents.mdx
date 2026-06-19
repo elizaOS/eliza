@@ -1,0 +1,235 @@
+---
+title: AI Agents
+description: Create, deploy, and manage intelligent AI agents on elizaOS Cloud. Build conversational agents with custom personalities, knowledge, and capabilities.
+---
+
+# AI Agents
+
+AI Agents are the core of elizaOS Cloud. Each agent is a conversational AI with its own personality, knowledge, and capabilities.
+
+## Overview
+
+An agent in elizaOS Cloud consists of:
+
+- **Character Configuration**: Personality, bio, and style settings
+- **Model Settings**: AI model provider and parameters
+- **Knowledge Base**: Documents and data for RAG
+- **MCP Connections**: External tools and integrations
+- **Deployment Settings**: Runtime configuration
+
+## Creating an Agent
+
+<Tabs>
+  <Tab title="Dashboard">
+
+### Using the Dashboard
+
+<Steps>
+<Step title="Navigate to My Agents">
+
+Go to [Dashboard → My Agents](https://elizacloud.ai/dashboard/my-agents) and click "Create Agent".
+
+</Step>
+
+<Step title="Configure Character">
+
+Fill in the agent's personality:
+
+- **Name**: Display name for your agent
+- **Bio**: Background and expertise
+- **Style**: Communication tone and formatting
+
+</Step>
+
+<Step title="Select Model">
+
+Choose from the model providers and models currently available in the model
+catalog.
+
+</Step>
+
+<Step title="Deploy">
+
+Click "Deploy" to launch your agent.
+
+</Step>
+</Steps>
+  </Tab>
+  <Tab title="API">
+
+### Using the API
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/app/agents" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Research Assistant",
+    "bio": "Expert in scientific research and data analysis"
+  }'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "agent": {
+    "id": "uuid-abc123",
+    "name": "Research Assistant",
+    "username": "research-assistant",
+    "bio": ["Expert in scientific research and data analysis"],
+    "created_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+  </Tab>
+  <Tab title="CLI">
+
+### Using the CLI
+
+```bash
+# Install the scaffolding CLI
+bun add -g elizaos@beta
+
+# Create a local project
+elizaos create research-assistant --template project
+cd research-assistant
+
+# Run the generated project scripts
+bun install
+bun run dev
+```
+  </Tab>
+</Tabs>
+
+## Character Configuration
+
+The character JSON defines your agent's personality and behavior.
+
+```json
+{
+  "name": "Research Assistant",
+  "bio": [
+    "Expert researcher with deep knowledge in scientific literature",
+    "Specializes in data analysis and synthesis",
+    "Values accuracy and proper citation"
+  ],
+  "lore": [
+    "Trained on millions of academic papers",
+    "Developed by a team of PhD researchers"
+  ],
+  "style": {
+    "all": [
+      "Professional and academic tone",
+      "Evidence-based reasoning",
+      "Clear and structured responses"
+    ],
+    "chat": ["Concise yet thorough", "Ask clarifying questions when needed"],
+    "post": ["Formal academic style", "Include citations"]
+  },
+  "topics": ["science", "research", "data analysis", "academic writing"],
+  "adjectives": ["knowledgeable", "thorough", "precise", "helpful"],
+  "modelProvider": "eliza-cloud",
+  "settings": {
+    "model": "gpt-oss-120b",
+    "temperature": 0.7,
+    "maxTokens": 4096
+  }
+}
+```
+
+### Character Fields
+
+| Field           | Type     | Description                              |
+| --------------- | -------- | ---------------------------------------- |
+| `name`          | string   | Display name of the agent                |
+| `bio`           | string[] | Array of background/expertise statements |
+| `lore`          | string[] | Additional context and backstory         |
+| `style.all`     | string[] | Global style instructions                |
+| `style.chat`    | string[] | Chat-specific instructions               |
+| `style.post`    | string[] | Social media post instructions           |
+| `topics`        | string[] | Areas of expertise                       |
+| `adjectives`    | string[] | Personality descriptors                  |
+| `modelProvider` | string   | Model provider, such as `eliza-cloud` or a configured direct provider |
+| `settings`      | object   | Model-specific settings                  |
+
+## Agent Management
+
+### List Agents
+
+```bash
+curl -X GET "https://elizacloud.ai/api/my-agents/characters" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Get Agent Details
+
+```bash
+curl -X GET "https://elizacloud.ai/api/my-agents/characters/{agentId}" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Delete Agent
+
+```bash
+curl -X DELETE "https://elizacloud.ai/api/my-agents/characters/{agentId}" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Agent Status
+
+Agents can be in one of these states:
+
+| Status      | Description                             |
+| ----------- | --------------------------------------- |
+| `active`    | Agent is running and accepting requests |
+| `paused`    | Agent is temporarily disabled           |
+| `deploying` | Agent deployment in progress            |
+| `error`     | Agent encountered an error              |
+
+## Monetization
+
+Publish your agents to the marketplace and earn from usage.
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/agents/{agentId}/publish" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pricing": {
+      "perMessage": 0.001,
+      "perMinute": 0.01
+    },
+    "visibility": "public"
+  }'
+```
+
+<Info>
+  Learn more about agent monetization in the [Earnings](/cloud/earnings)
+  documentation.
+</Info>
+
+## Best Practices
+
+- **Clear Instructions** — Provide specific style guidelines for consistent behavior
+- **Test Thoroughly** — Use the [API Explorer](https://elizacloud.ai/dashboard/api-explorer) to test your agent before publishing
+- **Monitor Usage** — Track agent analytics in [Dashboard](/dashboard) to optimize performance
+- **Iterate** — Refine your agent based on user feedback
+
+## Next Steps
+
+<CardGroup>
+  <CardGroup.Card title="Agent Creator" href="/cloud/agent-creator">
+    Build agents with the visual editor
+  </Card>
+  <CardGroup.Card title="Character JSON" href="/cloud/character-json">
+    Complete character configuration reference
+  </Card>
+  <CardGroup.Card title="Knowledge Base" href="/cloud/documents">
+    Add documents for RAG capabilities
+  </Card>
+  <CardGroup.Card title="MCP Integration" href="/cloud/mcps">
+    Connect external tools and services
+  </Card>
+</CardGroup>

@@ -1,0 +1,100 @@
+name: Publish Android Update Manifest
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      version_code:
+        required: true
+        type: string
+      channel:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "App version (e.g. 2.0.1)"
+        required: true
+        type: string
+      version_code:
+        description: "Android versionCode integer"
+        required: true
+        type: string
+      channel:
+        description: "Release channel"
+        required: true
+        type: choice
+        default: stable
+        options:
+          - stable
+          - beta
+          - canary
+      tag:
+        description: "Release tag to attach manifest to (e.g. v2.0.1)"
+        required: true
+        type: string
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  publish-manifest:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+
+      - name: Download APK from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ inputs.tag }}" \
+            --pattern "Eliza-*.apk" \
+            --dir /tmp/apk/
+
+      - name: Compute APK sha256 and size
+        run: |
+          APK_FILE=$(ls /tmp/apk/Eliza-*.apk | head -1)
+          APK_SHA256=$(sha256sum "$APK_FILE" | awk '{print $1}')
+          APK_SIZE=$(stat -c%s "$APK_FILE")
+          echo "APK_SHA256=$APK_SHA256" >> "$GITHUB_ENV"
+          echo "APK_SIZE=$APK_SIZE" >> "$GITHUB_ENV"
+
+      - name: Get APK download URL from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DOWNLOAD_URL=$(gh release view "${{ inputs.tag }}" \
+            --json assets \
+            --jq '.assets[] | select(.name | test("Eliza-.*\\.apk")) | .browserDownloadUrl')
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> "$GITHUB_ENV"
+
+      - name: Generate update manifest
+        run: |
+          node packages/app-core/platforms/android/update-manifest/generate-manifest.mjs \
+            --version "${{ inputs.version }}" \
+            --version-code "${{ inputs.version_code }}" \
+            --channel "${{ inputs.channel }}" \
+            --sha256 "$APK_SHA256" \
+            --size-bytes "$APK_SIZE" \
+            --download-url "$DOWNLOAD_URL" \
+            --output android-update-manifest.json
+
+      - name: Upload manifests to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ inputs.tag }}" android-update-manifest.json --clobber
+          cp android-update-manifest.json "android-update-manifest-${{ inputs.channel }}.json"
+          gh release upload "${{ inputs.tag }}" "android-update-manifest-${{ inputs.channel }}.json" --clobber

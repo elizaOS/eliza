@@ -1,0 +1,93 @@
+{
+  "id": "copilot-proxy",
+  "name": "Copilot Proxy",
+  "description": "ElizaOS Copilot Proxy Model Provider - TypeScript implementation",
+  "npmName": "@elizaos/plugin-copilot-proxy",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["copilot-proxy", "copilot", "proxy"],
+  "config": {
+    "COPILOT_PROXY_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy Model",
+      "help": "Model identifier",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "COPILOT_PROXY_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "COPILOT_PROXY_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy Base Url",
+      "help": "Base URL for API requests",
+      "advanced": false
+    },
+    "COPILOT_PROXY_MAX_TOKENS": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Proxy Max Tokens",
+      "help": "Maximum tokens per request",
+      "advanced": false
+    },
+    "COPILOT_PROXY_LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy Large Model",
+      "help": "Model identifier",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "COPILOT_PROXY_SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy Small Model",
+      "help": "Model identifier",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "COPILOT_PROXY_CONTEXT_WINDOW": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy Context Window",
+      "help": "Context window size",
+      "advanced": false
+    },
+    "COPILOT_PROXY_TIMEOUT_SECONDS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy Timeout Seconds",
+      "help": "Timeout in seconds",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Handshake",
+    "group": "agents",
+    "groupOrder": 7,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "agents"
+}

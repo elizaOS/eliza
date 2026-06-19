@@ -1,0 +1,356 @@
+{
+  "verdict": "pass",
+  "required_images": [
+    "bodykit_front.png",
+    "bodykit_rear.png",
+    "bodykit_left.png",
+    "bodykit_right.png",
+    "bodykit_head.png",
+    "bodykit_head_three_quarter.png",
+    "bodykit_upper_three_quarter.png",
+    "bodykit_operating_blocker_front.png",
+    "bodykit_operating_blocker_left.png",
+    "bodykit_mechanical_blocker_head.png",
+    "bodykit_mechanical_blocker_right.png",
+    "bodykit-contact-sheet.png",
+    "visual-concept-orange-android.png",
+    "bodykit_front_concept_overlay.png",
+    "bodykit_left_concept_overlay.png",
+    "bodykit_right_concept_overlay.png",
+    "bodykit_rear_concept_overlay.png",
+    "bodykit_operating_blocker_front_concept_overlay.png",
+    "bodykit_operating_blocker_left_concept_overlay.png",
+    "bodykit_mechanical_blocker_right_concept_overlay.png",
+    "bodykit_front_reference_scale_overlay.png",
+    "bodykit_left_reference_scale_overlay.png",
+    "bodykit_right_reference_scale_overlay.png"
+  ],
+  "images": [
+    {
+      "name": "bodykit_front.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_front.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 42499,
+      "stddev_rgb": [
+        25.587,
+        23.681,
+        25.9
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_rear.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_rear.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 42197,
+      "stddev_rgb": [
+        26.875,
+        26.276,
+        28.823
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_left.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_left.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 34174,
+      "stddev_rgb": [
+        21.893,
+        21.757,
+        24.311
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_right.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_right.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 33983,
+      "stddev_rgb": [
+        21.894,
+        21.759,
+        24.315
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_head.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_head.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 29694,
+      "stddev_rgb": [
+        29.561,
+        27.26,
+        28.015
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_head_three_quarter.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_head_three_quarter.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 33110,
+      "stddev_rgb": [
+        24.329,
+        22.886,
+        24.781
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_upper_three_quarter.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_upper_three_quarter.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 57111,
+      "stddev_rgb": [
+        26.846,
+        25.506,
+        28.542
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_operating_blocker_front.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_operating_blocker_front.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 42374,
+      "stddev_rgb": [
+        25.495,
+        23.661,
+        25.924
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_operating_blocker_left.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_operating_blocker_left.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 32226,
+      "stddev_rgb": [
+        21.155,
+        20.994,
+        23.462
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_mechanical_blocker_head.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_mechanical_blocker_head.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 63063,
+      "stddev_rgb": [
+        29.521,
+        28.305,
+        31.637
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_mechanical_blocker_right.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_mechanical_blocker_right.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 40859,
+      "stddev_rgb": [
+        23.655,
+        23.476,
+        26.306
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit-contact-sheet.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit-contact-sheet.png",
+      "width": 960,
+      "height": 960,
+      "bytes": 163205,
+      "stddev_rgb": [
+        26.978,
+        26.11,
+        28.181
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "visual-concept-orange-android.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/visual-concept-orange-android.png",
+      "width": 1024,
+      "height": 1536,
+      "bytes": 1786716,
+      "stddev_rgb": [
+        43.395,
+        32.536,
+        39.205
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_front_concept_overlay.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_front_concept_overlay.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 229634,
+      "stddev_rgb": [
+        20.356,
+        16.696,
+        20.872
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_left_concept_overlay.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_left_concept_overlay.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 225090,
+      "stddev_rgb": [
+        19.195,
+        16.393,
+        20.593
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_right_concept_overlay.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_right_concept_overlay.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 225643,
+      "stddev_rgb": [
+        19.303,
+        16.429,
+        20.67
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_rear_concept_overlay.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_rear_concept_overlay.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 229749,
+      "stddev_rgb": [
+        21.038,
+        18.285,
+        22.477
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_operating_blocker_front_concept_overlay.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_operating_blocker_front_concept_overlay.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 231324,
+      "stddev_rgb": [
+        20.683,
+        17.163,
+        21.249
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_operating_blocker_left_concept_overlay.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_operating_blocker_left_concept_overlay.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 225332,
+      "stddev_rgb": [
+        19.65,
+        16.713,
+        20.833
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_mechanical_blocker_right_concept_overlay.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_mechanical_blocker_right_concept_overlay.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 229691,
+      "stddev_rgb": [
+        19.852,
+        17.083,
+        21.489
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_front_reference_scale_overlay.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_front_reference_scale_overlay.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 232026,
+      "stddev_rgb": [
+        30.314,
+        22.538,
+        25.488
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_left_reference_scale_overlay.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_left_reference_scale_overlay.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 226995,
+      "stddev_rgb": [
+        29.629,
+        22.317,
+        25.2
+      ],
+      "nonblank": true
+    },
+    {
+      "name": "bodykit_right_reference_scale_overlay.png",
+      "exists": true,
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_right_reference_scale_overlay.png",
+      "width": 640,
+      "height": 480,
+      "bytes": 227674,
+      "stddev_rgb": [
+        29.689,
+        22.341,
+        25.261
+      ],
+      "nonblank": true
+    }
+  ],
+  "missing_images": [],
+  "blank_images": [],
+  "video": null,
+  "rendered_paths": []
+}

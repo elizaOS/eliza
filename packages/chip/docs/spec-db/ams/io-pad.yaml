@@ -1,0 +1,70 @@
+schema: eliza.ams_block_contract.v1
+block_id: io_pad
+block_class: IO
+status: BLOCKED_procurement_or_pdk_ip_required
+claim_boundary: >
+  Interface and procurement contract for the E1 general-purpose IO pad cells and
+  ESD ring. Captures the supply rails, the LVCMOS33 demo signaling, target nodes,
+  and the IBIS / ESD signoff corners a foundry IO library must satisfy. Makes no
+  drive-strength, slew, or ESD-immunity claim: those stay blocked on the foundry
+  IO cell models and IBIS extraction.
+claim_allowed: false
+release_claim_allowed: false
+electrical_signoff_claim_allowed: false
+vendor_ip_claim_allowed: false
+silicon_claim_allowed: false
+
+supply_rails:
+  - rail: +3V3
+    nominal_v: 3.3
+    domain: io
+    serves_power_domain: PD_IO_3V3
+  - rail: +1V8
+    nominal_v: 1.8
+    domain: core
+    serves_power_domain: PD_CORE_1V8
+  - rail: GND
+    nominal_v: 0.0
+    domain: ground
+
+control_pins:
+  - name: IO_SLEW_CTRL
+    direction: input
+    role: slew_rate_control
+  - name: IO_DRIVE_SEL
+    direction: input
+    role: drive_strength_select
+  - name: IO_PULL_CFG
+    direction: input
+    role: pull_configuration
+
+signaling:
+  default_standard: LVCMOS33_planning
+  drive_strengths_ma: [4, 8]
+  series_resistor_ohm: 33
+  signal_group_refs: [clock_reset, debug_mmio, irq_test_points, gpio_led_bank, jtag_test]
+
+interface_revision:
+  kind: foundry_io_library
+  revision: vendor_specific_unresolved
+
+target_process_nodes: [sky130, gf180, ihp-sg13g2, tsmc-n2p, tsmc-a14, intel-14a, samsung-sf2p]
+
+signoff_required_corners:
+  pvt: [ss_3v0_125c, tt_3v3_25c, ff_3v6_m40c]
+  io: [ibis_rising_falling, esd_hbm_cdm, latch_up]
+  required_tool: foundry_io_cell_ibis_and_esd_signoff
+
+procurement:
+  posture: foundry_pdk_io_library
+  candidate_classes:
+    - foundry_pdk_io_esd_library
+  blockers:
+    - no_foundry_io_cell_or_ibis_model
+    - no_esd_qualification_report
+    - process_node_unsettled
+
+forbidden_claims:
+  - io_drive_verified
+  - io_slew_signed_off
+  - esd_immunity_qualified

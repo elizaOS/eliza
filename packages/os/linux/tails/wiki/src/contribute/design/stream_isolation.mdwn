@@ -1,0 +1,96 @@
+[[!meta title="Tor stream isolation"]]
+
+Tails implements basic Tor stream isolation, using functionality
+described in
+[Tor proposal 171](https://spec.torproject.org/proposals/171-separate-streams.html).
+
+Special needs
+=============
+
+Tails-specific applications
+---------------------------
+
+Tails-specific applications use a dedicated `SocksPort`, so that they
+don't help trivial correlating of other kinds of network traffic with
+Tails:
+
+* incremental updates
+* htpdate
+* security check
+* WhisperBack
+
+Web Browser
+-----------
+
+Tor Browser implements [fine-grained stream isolation](https://gitlab.torproject.org/tpo/applications/tor-browser/-/issues/3455) on its own. We configure it to use a dedicated SOCKS port
+with the options needed for that feature.
+
+Destination address/port -based circuit isolation
+-------------------------------------------------
+
+Do we want to use `IsolateDestAddr` and/or `IsolateDestPort`?
+
+Using these settings may help protecting against traffic correlation.
+However:
+
+* These settings are likely to have a performance impact on
+  applications that connect to many remote hosts.
+
+* These settings probably put more load on the network. On the other
+  hand, the Tor people probably are happy with people using it given
+  they have added the option in the first place. We will anyway ask
+  them to review our proposed configuration with network load in mind
+  before we ship it to the masses.
+
+For performance reasons, we will start with *not* using
+`IsolateDestAddr`/`IsolateDestPort` for the Tor Browser: nowadays,
+loading a mere web page often requires fetching resources from a dozen
+or more remote sources. (Also, it looks like the use of
+`IsolateDestAddr` in a modern web browser may create very uncommon
+HTTP behaviour patterns, that could ease fingerprinting.)
+
+Consider Pidgin with several accounts configured for different
+identities. If you connect with all of the accounts at the same time,
+they'll all get the same circuit, so the identities can be correlated.
+While Tails does not formally support using multiple contextual
+identities at the same time, Pidgin generally opens very few network
+connections, so the performance impact of using `IsolateDestAddr`
+should be small. Given how cheap it is, it looks like it is worth
+having Pidgin use a (not necessarily dedicated) `SocksPort` that has
+`IsolateDestAddr` and `IsolateDestPort` enabled.
+
+For the same reason, we actually want to enable `IsolateDestAddr` and
+`IsolateDestPort` for the `SocksPort` used by most applications,
+unless we tell them otherwise. It may break POP-before-SMTP
+in Thunderbird.
+
+Implementation
+==============
+
+A few SOCKS ports are configured
+in [[!tails_gitweb config/chroot_local-includes/etc/tor/torrc]]:
+
+* default system-wide `SocksPort` (9050): `IsolateDestAddr` and
+  `IsolateDestPort` enabled
+
+* dedicated `SocksPort` for other Tails-specific applications (9062):
+  `IsolateDestAddr` and `IsolateDestPort` enabled
+
+* dedicated `SocksPort` (9063) used by the *Upgrader* to download IUKs with
+  `tails-iuk-get-target-file`: we disable isolation flags so there's at least
+  a chance that the circuit used to connect to Mirrorbits is reused for the
+  actual download, thus benefiting from the fact Mirrorbits uses GeoIP to select
+  the mirror.
+
+* dedicated `SocksPort` for web browser (still 9050, but on a veth
+  dedicated to web browser's netns): no stream
+  isolation options
+
+* no specific isolation options for the `TransPort` ([[!tails_ticket 6378]])
+
+Applications are configured to use the right SOCKS port:
+
+- [[!tails_gitweb config/chroot_local-includes/usr/share/tails/tor-browser-prefs.js]]
+- [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/htpdate.service]]
+- [[!tails_gitweb config/chroot_local-includes/usr/local/bin/tails-security-check]]
+- [[!tails_gitweb config/chroot_local-includes/usr/local/bin/thunderbird]]

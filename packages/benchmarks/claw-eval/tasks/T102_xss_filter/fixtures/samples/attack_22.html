@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html><head><title>Object Embed</title></head>
+<body>
+<object type="text/html" data="javascript:alert('XSS via object')"></object>
+<embed src="javascript:alert('XSS via embed')" type="text/html">
+<p>Object and embed attacks.</p>
+</body></html>

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=systemd GNOME EarlyInitialization target
+GenericName=Start the GNOME EarlyInitialization target in the systemd user session
+Version=1.0
+Exec=/bin/systemctl --user start gnome-early-initialization.target
+Terminal=false
+Type=Application
+Categories=
+X-GNOME-Autostart-Phase=EarlyInitialization

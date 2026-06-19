@@ -1,0 +1,431 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-04-02 09:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Sharing files, websites, and chat rooms using OnionShare\"]]\n"
+msgstr "[[!meta title=\"Partager des fichiers, des sites web et des salons de discussion avec OnionShare\"]]\n"
+
+#. type: Plain text
+msgid ""
+"[*OnionShare*](https://onionshare.org/) allows you to create secure, "
+"anonymous, and disposable services that other people can connect to."
+msgstr ""
+"[*OnionShare*](https://onionshare.org/) vous permet de créer des services "
+"sûrs, anonymes et à usage unique, auxquels d'autres personnes peuvent se "
+"connecter."
+
+#. type: Plain text
+msgid ""
+"To open *OnionShare*, choose **Apps&nbsp;▸ Internet&nbsp;▸ OnionShare**."
+msgstr ""
+"Pour ouvrir *OnionShare*, choisissez **Applications&nbsp;▸ Internet&nbsp;▸ "
+"OnionShare**."
+
+#. type: Plain text
+msgid ""
+"From the welcome screen of *OnionShare*, you can choose between 4 different "
+"services:"
+msgstr ""
+"Depuis l'écran de bienvenue d'*OnionShare*, vous pouvez choisir entre 4 "
+"services différents :"
+
+#. type: Bullet: '- '
+msgid "Share files"
+msgstr "Partager des fichiers"
+
+#. type: Bullet: '- '
+msgid "Receive files"
+msgstr "Recevoir des fichiers"
+
+#. type: Bullet: '- '
+msgid "Host a website"
+msgstr "Héberger un site Web"
+
+#. type: Bullet: '- '
+msgid "Chat anonymously"
+msgstr "Dialoguer anonymement"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img services.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img services.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+msgid ""
+"All these services are provided as Tor onion services and are only available "
+"through the Tor network. You can share the address of these onion services "
+"with other people to create temporary and anonymous communication channels."
+msgstr ""
+"Tous ces services sont fournis sous la forme de services onion Tor et sont "
+"seulement disponibles via le réseau Tor. Vous pouvez partager l'adresse de "
+"ces services onion avec d'autres personnes pour créer des canaux de "
+"communication temporaires et anonymes."
+
+#. type: Plain text
+msgid ""
+"People who know their onion addresses can connect to these services from "
+"*Tor Browser*, either in Tails or outside of Tails."
+msgstr ""
+"Les personnes qui connaissent ces adresses onion peuvent se connecter à ces "
+"services depuis le *Navigateur Tor*, dans Tails ou en dehors de Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Unlike most Internet services, people using your <i>OnionShare</i> services\n"
+"connect directly to your Tails over the Tor network. Your data is never shared\n"
+"with or stored on any third-party server. Your Tails becomes a temporary and\n"
+"anonymous server.</p>\n"
+msgstr ""
+"<p>À la différence de la plupart des services Internet, les personnes utilisant vos services <i>OnionShare</i>\n"
+"se connectent directement à votre Tails à travers le réseau Tor. Vos données ne sont jamais stockées\n"
+"ou partagées avec un serveur tiers. Votre Tails devient un serveur temporaire et\n"
+"anonyme.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"These services become unavailable as soon as you close *OnionShare* or shut "
+"down Tails."
+msgstr ""
+"Ces services deviennent indisponibles dès que vous fermez *OnionShare* ou "
+"que vous éteignez Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p><i>OnionShare</i> uses different onion addresses each time.</p>\n"
+msgstr "<p><i>OnionShare</i> utilise des adresses onion différentes à chaque fois.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In the future, want to make it possible to store the onion addresses used by\n"
+"<i>OnionShare</i> to the Persistent Storage. ([[!tails_ticket 20136]])</p>\n"
+msgstr ""
+"<p>À l'avenir, nous voulons rendre possible le stockage des adresses onion utilisées\n"
+"par <i>OnionShare</i> dans le stockage persistant. ([[!tails_ticket 20136]])</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Sharing files"
+msgstr "Partage de fichiers"
+
+#. type: Plain text
+msgid "With the Share service of *OnionShare*:"
+msgstr "Avec le service Partager de *OnionShare* :"
+
+#. type: Bullet: '- '
+msgid ""
+"You select in *OnionShare* some files from your Tails that you want to share."
+msgstr ""
+"Vous sélectionnez dans *OnionShare* certains fichiers depuis votre Tails que "
+"vous voulez partager."
+
+#. type: Bullet: '- '
+msgid ""
+"People with the onion address can download these files from their *Tor "
+"Browser*."
+msgstr ""
+"Les personnes avec l'adresse onion peuvent télécharger ces fichiers depuis "
+"leur *Navigateur Tor*."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img share.png class=\"screenshot\" alt=\"\" size=\"719x\"]]\n"
+msgstr "[[!img share.png class=\"screenshot\" alt=\"\" size=\"719x\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Since Tails 6.0 (February 2024), the shortcut to share files via\n"
+"<i>OnionShare</i> directly from the <i>Files</i> browser is not available\n"
+"anymore.</p>\n"
+msgstr ""
+"<p>Depuis Tails 6.0 (février 2024), le raccourci pour partager des fichiers via\n"
+"<i>OnionShare</i> directement depuis le navigateur de <i>Fichiers</i> n'est plus\n"
+"disponible.</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Receiving files"
+msgstr "Recevoir des fichiers"
+
+#. type: Plain text
+msgid "With the Receive service of *OnionShare*:"
+msgstr "Avec le service Recevoir de *OnionShare* :"
+
+#. type: Bullet: '- '
+msgid ""
+"You specify in *OnionShare* a folder of your Tails in which you want to "
+"receive files."
+msgstr ""
+"Vous spécifiez dans *OnionShare* un dossier de votre Tails dans lequel vous "
+"voulez recevoir des fichiers."
+
+#. type: Bullet: '- '
+msgid ""
+"People with the onion address can upload files directly to this folder or "
+"send you text messages from their *Tor Browser*."
+msgstr ""
+"Les personnes avec l'adresse onion peuvent envoyer des fichiers directement "
+"dans ce dossier ou envoyer des messages texte depuis leur *Navigateur Tor*."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img receive.png class=\"screenshot\" alt=\"\" size=\"719x\"]]\n"
+msgstr "[[!img receive.png class=\"screenshot\" alt=\"\" size=\"719x\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Hosting a website"
+msgstr "Héberger un site web"
+
+#. type: Plain text
+msgid "With the Website service of *OnionShare*:"
+msgstr "Avec le service Site Web de *OnionShare* :"
+
+#. type: Bullet: '- '
+msgid ""
+"You specify in *OnionShare* a folder that contains HTML pages in your Tails."
+msgstr ""
+"Vous spécifiez dans *OnionShare* un dossier dans votre Tails qui contient "
+"des pages HTML."
+
+#. type: Bullet: '- '
+msgid ""
+"People with the onion address can visit these HTML pages as a website from "
+"their *Tor Browser*."
+msgstr ""
+"Les personnes avec l'adresse onion peuvent visiter ces pages HTML comme un "
+"site web depuis leur *Navigateur Tor*."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img website.png class=\"screenshot\" alt=\"\" size=\"719x\"]]\n"
+msgstr "[[!img website.png class=\"screenshot\" alt=\"\" size=\"719x\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Chatting anonymously"
+msgstr "Dialoguer anonymement"
+
+#. type: Plain text
+msgid "With the Chat service of *OnionShare*:"
+msgstr "Avec le service Dialoguer de *OnionShare* :"
+
+#. type: Bullet: '- '
+msgid "You start a chat room from *OnionShare*."
+msgstr "Vous démarrez un salon de discussion depuis *OnionShare*."
+
+#. type: Bullet: '- '
+msgid ""
+"People with the onion address can enter this chat room from their *Tor "
+"Browser* and chat with you or other people."
+msgstr ""
+"Les personnes avec l'adresse onion peuvent entrer dans ce salon de "
+"discussion depuis leur *Navigateur Tor* et discuter avec vous ou d'autres "
+"personnes."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img chat.png class=\"screenshot\" alt=\"\" size=\"719x\"]]\n"
+msgstr "[[!img chat.png class=\"screenshot\" alt=\"\" size=\"719x\"]]\n"
+
+#~ msgid "- Share files - Receive files - Host a website"
+#~ msgstr ""
+#~ "- Partager des fichiers\n"
+#~ "- Recevoir des fichiers\n"
+#~ "- Publier un site Web"
+
+#, no-wrap
+#~ msgid ""
+#~ "*OnionShare* creates an onion address\n"
+#~ "that someone else can visit in <span class=\"application\">Tor\n"
+#~ "Browser</span> to access the files that you want to share.\n"
+#~ msgstr ""
+#~ "*OnionShare* créé une adresse onion\n"
+#~ "qu'une autre personne peut consulter avec le <span class=\"application\">Navigateur\n"
+#~ "Tor</span> pour accéder aux fichiers que vous voulez partager.\n"
+
+#, no-wrap
+#~ msgid "To share files with *OnionShare*:\n"
+#~ msgstr "Pour partager des fichiers avec *OnionShare* :\n"
+
+#~ msgid "Open the *Files* browser."
+#~ msgstr "Ouvrez le navigateur de *Fichiers*."
+
+#~ msgid ""
+#~ "Right-click (on Mac, click with two fingers) on the files or folders that "
+#~ "you want to share and choose <span class=\"guilabel\">Share via "
+#~ "OnionShare</span>.  *OnionShare* starts."
+#~ msgstr ""
+#~ "Faites un clic droit (sur Mac cliquez avec deux doigts) sur les fichiers "
+#~ "ou dossiers que vous voulez partager et choisissez <span "
+#~ "class=\"guilabel\">Share via OnionShare</span>. <span "
+#~ "class=\"application\">OnionShare</span> démarre."
+
+#~ msgid "To share more files or folders, you can either:"
+#~ msgstr ""
+#~ "Pour partager plusieurs fichiers ou dossiers, vous pouvez au choix :"
+
+#~ msgid "Drag and drop them from the *Files* browser onto *OnionShare*."
+#~ msgstr ""
+#~ "Les glisser-déposer depuis le navigateur de <span "
+#~ "class=\"application\">Fichiers</span> vers <span "
+#~ "class=\"application\">OnionShare</span>."
+
+#~ msgid ""
+#~ "Click the **Add** button in <span class=\"application\">OnionShare</span>."
+#~ msgstr ""
+#~ "Cliquer sur le bouton **Ajouter** dans <span "
+#~ "class=\"application\">OnionShare</span>."
+
+#~ msgid "Click **Start Sharing**."
+#~ msgstr "Cliquez sur **Démarrer le serveur**."
+
+#, no-wrap
+#~ msgid ""
+#~ "   <div class=\"bug\">\n"
+#~ "   <p>Starting to share the files can take up to several minutes.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug\">\n"
+#~ "   <p>Le démarrage du partage de fichiers peut prendre jusqu'à plusieurs minutes.</p>\n"
+#~ "   </div>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   When the files are available for sharing, an onion address appears at\n"
+#~ "   the bottom of *OnionShare*.\n"
+#~ msgstr ""
+#~ "   Lorsque les fichiers sont disponibles pour le partage, une adresse onion apparaît en\n"
+#~ "   bas de *OnionShare*.\n"
+
+#~ msgid "Send this onion address to someone else, for example, by email."
+#~ msgstr ""
+#~ "Envoyez cette adresse onion à une autre personne, par exemple, par "
+#~ "courrier électronique."
+
+#, no-wrap
+#~ msgid ""
+#~ "   The other person can download the files by visiting the onion address\n"
+#~ "   in *Tor Browser*.\n"
+#~ msgstr ""
+#~ "   L'autre personne peut télécharger les fichiers en consultant l'adresse onion\n"
+#~ "   avec le *Navigateur Tor*.\n"
+
+#~ msgid "*OnionShare* informs you when the files are being accessed."
+#~ msgstr ""
+#~ "*OnionShare* vous informe lorsque les fichiers sont en cours de "
+#~ "téléchargement."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>To learn more about how to use <i>OnionShare</i>, see the\n"
+#~ "<a href=\"https://docs.onionshare.org/\"><i>OnionShare</i> documentation.</p>\n"
+#~ msgstr ""
+#~ "<p>Pour en savoir plus sur la façon d'utiliser <i>OnionShare</i>, voir la\n"
+#~ "documentation d'<a href=\"https://docs.onionshare.org/\"><i>OnionShare</i>.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <div class=\"tip\">\n"
+#~ "   <p>By default, the files can only be downloaded once. To allow more\n"
+#~ "   than one download:</p>\n"
+#~ msgstr ""
+#~ "   <div class=\"tip\">\n"
+#~ "   <p>Par défaut, les fichiers peuvent être téléchargés une seule fois. Pour permettre\n"
+#~ "   plus d'un téléchargement :</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <ol>\n"
+#~ "   <li>Click the [[!img lib/emblem-system.png link=\"no\" class=\"symbolic\"\n"
+#~ "   alt=\"Show site information\"]] button to open the settings of\n"
+#~ "   *OnionShare*.</li>\n"
+#~ "   <li>Deselect the <span class=\"guilabel\">Stop sharing after first\n"
+#~ "   download</span>.</li>\n"
+#~ "   <li>Click **Save**.</li>\n"
+#~ "   </ol>\n"
+#~ msgstr ""
+#~ "   <ol>\n"
+#~ "   <li>Cliquez sur le bouton [[!img lib/emblem-system.png link=\"no\" class=\"symbolic\"\n"
+#~ "   alt=\"Montrer les informations du site\"]] pour ouvrir les paramètres de\n"
+#~ "   *OnionShare*.</li>\n"
+#~ "   <li>Désélectionnez <span class=\"guilabel\">Stop sharing after first\n"
+#~ "   download</span>.</li>\n"
+#~ "   <li>Cliquez sur **Save**.</li>\n"
+#~ "   </ol>\n"
+
+#~ msgid ""
+#~ "Tails includes [OnionShare](https://onionshare.org/), a tool for "
+#~ "anonymous filesharing. It allows you to share files directly from your "
+#~ "running Tails.  To do so, it creates an onion service (a website whose "
+#~ "address ends with *.onion*)  within the Tor network. Any Tor user who you "
+#~ "give this address to can download the files you decided to share."
+#~ msgstr ""
+#~ "Tails inclut [OnionShare](https://onionshare.org/), un outil de partage "
+#~ "de fichiers anonyme. Il vous permet de partager des fichiers directement "
+#~ "depuis Tails. Pour ce faire, il crée un service oignon (un site web dont "
+#~ "l'adresse se termine par *.onion*) au sein du réseau Tor. N’importe "
+#~ "quelle personne utilisant Tor à qui vous donnez cette adresse peut "
+#~ "télécharger les fichiers que vous avez décidé de partager."
+
+#~ msgid "Start the [[file browser|doc/first_steps/desktop#nautilus]]."
+#~ msgstr ""
+#~ "Démarrez le [[gestionnaire de fichiers|doc/first_steps/desktop#nautilus]]."
+
+#~ msgid ""
+#~ "If you want to allow multiple downloads, uncheck the <span "
+#~ "class=\"guilabel\">Stop sharing automatically</span> check box.  "
+#~ "Otherwise *OnionShare* will stop sharing files after they have been "
+#~ "downloaded once."
+#~ msgstr ""
+#~ "Si vous voulez permettre des téléchargements multiples, décochez la case "
+#~ "**Arrêter le serveur automatiquement**. Autrement, *OnionShare* arrêtera "
+#~ "de partager les fichiers après qu'ils aient été téléchargés une fois."
+
+#~ msgid ""
+#~ "Click on **Start Sharing**.  When the files are available, an address "
+#~ "similar to *http://bwwijokny5qplq5q.onion/assam-cover* will be shown."
+#~ msgstr ""
+#~ "Cliquez sur **Démarrer le serveur**. Lorsque les fichiers sont "
+#~ "accessibles, une adresse similaire à *http://bwwijokny5qplq5q.onion/assam-"
+#~ "cover* s'affiche."

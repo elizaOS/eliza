@@ -1,0 +1,43 @@
+#!/bin/sh
+
+set -eu
+
+# Exit with success if running inside live-build.
+if [ -n "${SOURCE_DATE_EPOCH:-}" ]; then
+  exit 0
+fi
+
+INSTALLED_PACKAGES_FILE=/run/live-additional-software/packages/installed
+REMOVED_PACKAGES_FILE=/run/live-additional-software/packages/removed
+
+# Ensure that the packages files exist. This allows us to always pass
+# the files to asp-handle-package-changes below, without having to check
+# if they exist.
+touch "${INSTALLED_PACKAGES_FILE}" "${REMOVED_PACKAGES_FILE}"
+
+# Use a unique unit name, so that we can run multiple instances of the
+# hook in parallel.
+UUID=$(cat /proc/sys/kernel/random/uuid)
+
+# Rename the installed and removed package files to contain the UUID,
+# to avoid that subsequent runs of the hook use the same files.
+UNIQUE_INSTALLED_PACKAGES_FILE="${INSTALLED_PACKAGES_FILE}-${UUID}"
+mv "${INSTALLED_PACKAGES_FILE}" "${UNIQUE_INSTALLED_PACKAGES_FILE}"
+INSTALLED_PACKAGES="$(cat "${UNIQUE_INSTALLED_PACKAGES_FILE}")"
+
+UNIQUE_REMOVED_PACKAGES_FILE="${REMOVED_PACKAGES_FILE}-${UUID}"
+mv "${REMOVED_PACKAGES_FILE}" "${UNIQUE_REMOVED_PACKAGES_FILE}"
+REMOVED_PACKAGES="$(cat "${UNIQUE_REMOVED_PACKAGES_FILE}")"
+
+# If neither installed nor removed packages are present, there's
+# nothing to do.
+if [ -z "${INSTALLED_PACKAGES}" ] && [ -z "${REMOVED_PACKAGES}" ]; then
+  exit 0
+fi
+
+CMD=/usr/local/lib/additional-software/asp-handle-package-changes
+UNIT="tails-additional-software-post-apt-hook-${UUID}"
+systemd-run --unit="${UNIT}" --setenv=DEBUG --quiet "${CMD}" \
+  --installed="${UNIQUE_INSTALLED_PACKAGES_FILE}" \
+  --removed="${UNIQUE_REMOVED_PACKAGES_FILE}" \
+  "$@"

@@ -1,0 +1,62 @@
+[
+  {
+    "contact_id": "CT-201",
+    "name": "Wang Ming",
+    "department": "Product",
+    "title": "Technical Director",
+    "email": "wangming@company.com",
+    "phone": "13800201001",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for overall technical direction and product planning"
+  },
+  {
+    "contact_id": "CT-202",
+    "name": "Li Hua",
+    "department": "R&D",
+    "title": "Senior Architect",
+    "email": "lihua@company.com",
+    "phone": "13800201002",
+    "location": "Shanghai HQ",
+    "notes": "Leads technical architecture design, microservices and cloud-native expert"
+  },
+  {
+    "contact_id": "CT-203",
+    "name": "Zhao Lei",
+    "department": "Sales",
+    "title": "Account Manager",
+    "email": "zhaolei@company.com",
+    "phone": "13800201003",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for key account relationship management and business negotiations"
+  },
+  {
+    "contact_id": "CT-204",
+    "name": "Zhang Wei",
+    "department": "Security",
+    "title": "Security Manager",
+    "email": "zhangwei@company.com",
+    "phone": "13800201004",
+    "location": "Beijing Branch",
+    "notes": "Responsible for information security and compliance review"
+  },
+  {
+    "contact_id": "CT-205",
+    "name": "Ma Qiang",
+    "department": "Operations",
+    "title": "Ops Lead",
+    "email": "maqiang@company.com",
+    "phone": "13800201005",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for production environment stability and infrastructure"
+  },
+  {
+    "contact_id": "CT-206",
+    "name": "Zhou Ming",
+    "department": "R&D",
+    "title": "Frontend Lead",
+    "email": "zhouming@company.com",
+    "phone": "13800201006",
+    "location": "Shanghai HQ",
+    "notes": "Frontend tech stack owner, React/Vue expert"
+  }
+]

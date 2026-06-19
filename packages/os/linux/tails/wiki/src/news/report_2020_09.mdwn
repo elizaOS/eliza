@@ -1,0 +1,139 @@
+[[!meta title="Tails report for September, 2020"]]
+[[!meta date="Sat, 10 Oct 2020 08:48:24 +0200"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 4.11 was released on September 22|news/version_4.11]].
+
+* Tails 4.12 is [[scheduled for October 20|contribute/calendar]].
+
+The following changes were introduced in Tails 4.11:
+
+- We added a new feature of the Persistent Storage to save the settings
+  from the Welcome Screen: language, keyboard, and additional settings.
+
+- Configure *KeePassXC* to use the new default location *Passwords.kdbx*. ([[!tails_ticket 17286]])
+
+- Update <span class="code">python3-trezor</span> to 0.12.2 to add
+  compatibility with the new Trezor Model T.
+
+- Disable the feature to **Turn on Wi-Fi Hotspot** in the Wi-Fi settings
+  because it doesn't work in Tails. ([[!tails_ticket 17887]])
+
+Code
+====
+
+- Completed the last steps of an effort started 14 months ago to import our
+  custom software into our main Git repository ([[!tails_ticket 7036]]), in
+  order to streamline Tails development work:
+  - Tails Installer ([[!tails_ticket 17917]])
+  - WhisperBack ([[!tails_ticket 16936]])
+
+- Ported all our Perl code to a translatable strings format supported by _GNU
+  gettext_ ([[!tails_ticket 17928]]), which will then allow us to benefit from
+  [brand new `i18nspector`
+  checks](https://github.com/jwilk/i18nspector/issues/6), avoiding some classes
+  of Tails bugs caused by buggy translations
+
+- Upgraded to tor 0.4.4 ([[!tails_ticket 17932]])
+
+- Settled on a new policy for kernel updates, that balances rapid hardware
+  enablement with lower risk of regressions ([[!tails_ticket 17911]])
+
+Hot topics on our help desk
+===========================
+
+1. A lot of people reached the helpdesk complaining about JavaScript not being disabled by Tor Browser's safest mode anymore ([[NoScript is doing that job now|https://gitlab.torproject.org/tpo/applications/tor-browser/-/issues/40082]] [[as it should|https://gitlab.torproject.org/tpo/applications/tor-browser/-/issues/33613]]; to be documented in [[!tails_ticket 17963]]).
+
+1. People are still affected (and will be until the [[!tails_ticket 17896 desc="Linux kernel is upgraded to 5.8"]]) by a [[!tails_ticket 17953 desc="regression with some Intel GPU"]].
+
+1. Another regression [[!tails_ticket 17955 desc="affecting some Acer and Asus laptops"]] was reported since the release of Tails 4.11.
+
+1. People are still regularly complaining about [[!tails_ticket 17183 desc="Seahorse failing to import public keys"]].
+
+Also, it seemed important to the Help Desk team to remind Tails users that we are not responsible for the cosmetic changes made upstream (e.g. the handling of JavaScript in Tor Browser, or the new Firefox URL bar that received a lot of comments from users on our helpdesk as well as Tor project's). Any thoughts on those changes should be done directly to the people working on them.
+
+Outreach
+========
+
+- [Roma hackmeeting](https://www.hackmeeting.org/hackit20/): see
+  the [report](https://lists.autistici.org/message/20200914.110251.d63943a8.en.html)
+
+On-going discussions
+====================
+
+- [Merge tails-dev, tails-ux, and tails-project mailing lists](https://lists.autistici.org/message/20200904.103800.01272559.en.html)
+
+Translations
+============
+
+## All programs
+
+ - ar: 22 translated messages, 316 untranslated messages.
+ - ca: 48 translated messages, 290 untranslated messages.
+ - cs: 112 translated messages, 226 untranslated messages.
+ - da: 338 translated messages.
+ - de: 55 translated messages, 283 untranslated messages.
+ - el: 58 translated messages, 280 untranslated messages.
+ - es: 335 translated messages, 3 untranslated messages.
+ - es_AR: 336 translated messages, 2 untranslated messages.
+ - fi: 45 translated messages, 293 untranslated messages.
+ - fr: 338 translated messages.
+ - ga: 335 translated messages, 3 untranslated messages.
+ - he: 65 translated messages, 273 untranslated messages.
+ - hr: 338 translated messages.
+ - hu: 338 translated messages.
+ - id: 6 translated messages, 332 untranslated messages.
+ - it: 162 translated messages, 176 untranslated messages.
+ - km: 38 translated messages, 300 untranslated messages.
+ - ko: 1 translated message, 337 untranslated messages.
+ - lt: 87 translated messages, 251 untranslated messages.
+ - mk: 335 translated messages, 3 untranslated messages.
+ - nl: 17 translated messages, 321 untranslated messages.
+ - pl: 2 translated messages, 336 untranslated messages.
+ - pt_BR: 94 translated messages, 244 untranslated messages.
+ - pt_PT: 44 translated messages, 294 untranslated messages.
+ - ro: 135 translated messages, 203 untranslated messages.
+ - sv: 134 translated messages, 204 untranslated messages.
+ - tr: 337 translated messages, 1 untranslated message.
+ - zh_CN: 337 translated messages, 1 untranslated message.
+
+## All the website
+
+  - de: 28% (1899) strings translated, 14% strings fuzzy
+  - es: 49% (3300) strings translated, 6% strings fuzzy
+  - fa: 21% (1396) strings translated, 13% strings fuzzy
+  - fr: 78% (5159) strings translated, 9% strings fuzzy
+  - it: 28% (1863) strings translated, 10% strings fuzzy
+  - pt: 19% (1299) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 45% (972) strings translated, 23% strings fuzzy
+  - es: 83% (1791) strings translated, 6% strings fuzzy
+  - fa: 19% (425) strings translated, 15% strings fuzzy
+  - fr: 75% (1603) strings translated, 13% strings fuzzy
+  - it: 49% (1059) strings translated, 21% strings fuzzy
+  - pt: 38% (821) strings translated, 15% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - ar: 7% (164) strings translated, 8% strings fuzzy
+  - ca: 8% (174) strings translated, 7% strings fuzzy
+  - id: 6% (139) strings translated, 5% strings fuzzy
+  - pl: 7% (165) strings translated, 7% strings fuzzy
+  - ru: 8% (181) strings translated, 7% strings fuzzy
+  - sr_Latn: 5% (114) strings translated, 4% strings fuzzy
+  - tr: 7% (171) strings translated, 7% strings fuzzy
+  - zh: 10% (222) strings translated, 8% strings fuzzy
+  - zh_TW: 21% (461) strings translated, 13% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 906&#8239;004 times this month. This makes 30&#8239;200 boots a day on average.
+

@@ -1,0 +1,15 @@
+[Unit]
+Description=elizaOS App — Personal AI Assistant
+Documentation=https://github.com/elizaos/elizaos-app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/elizaos-app start
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target

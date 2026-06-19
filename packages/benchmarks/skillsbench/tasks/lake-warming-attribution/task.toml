@@ -1,0 +1,20 @@
+version = "1.0"
+
+[metadata]
+author_name = "Xin Lan"
+author_email = "xinlan@myyahoo.com"
+difficulty = "medium"
+category = "data-processing"
+tags = ["hydrology", "trend-analysis", "contribution-analysis"]
+
+[verifier]
+timeout_sec = 300.0
+
+[agent]
+timeout_sec = 300.0
+
+[environment]
+build_timeout_sec = 300.0
+cpus = 1
+memory_mb = 4096
+storage_mb = 10240

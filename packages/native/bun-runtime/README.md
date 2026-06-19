@@ -1,0 +1,231 @@
+# @elizaos/bun-ios-runtime
+
+This package owns the full Bun engine port for iOS. It intentionally lives under
+`packages/` so the repo does not need a separate top-level native workspace.
+
+The current upstream Bun release does not publish an iOS target for
+`bun build --compile`; the supported standalone executable targets are Linux,
+macOS, and Windows. A real phone build therefore needs an embeddable iOS
+framework produced from a Bun fork, not a macOS Bun executable copied into an
+iOS app bundle.
+
+## Artifact contract
+
+The app build looks for this framework when `ELIZA_IOS_FULL_BUN_ENGINE=1`:
+
+```text
+packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework
+```
+
+You can override the path with:
+
+```bash
+ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK=/absolute/path/ElizaBunEngine.xcframework
+```
+
+The app build validates an override first, then stages it into
+`packages/native/bun-runtime/artifacts/` before CocoaPods runs. The Podspec only
+accepts vendored frameworks inside this package so full-Bun builds do not depend
+on an external absolute path at install/sign time.
+
+If full-engine mode is requested and the framework is missing, the iOS build
+fails before CocoaPods instead of falling back to the JSContext compatibility
+host.
+
+## Reference ports
+
+The harness follows the same practical shape as the public mobile runtime
+examples:
+
+- `dannote/pi-ios` and `dannote/bun` prove the iOS Bun path by building
+  JavaScriptCore in `JSCOnly` / C_LOOP / no-JIT mode, then linking Bun as app
+  code that exposes `bun_start(...)`.
+- `iOSExpertise/nodejs-mobile` uses the same packaging pattern we need here:
+  build static mobile runtime pieces first, then wrap them in an iOS framework
+  that Xcode/CocoaPods can sign and embed.
+
+The package supplies the Eliza ABI shim in
+`Sources/ElizaBunEngineShim/`. A Bun fork can either export the Eliza ABI
+directly or expose the `src/ios/bun_ios.h` style API used by `dannote/bun`; the
+build script wraps that Bun API into `ElizaBunEngine.framework`.
+
+The exported Eliza ABI is documented in `BRIDGE_CONTRACT.md`:
+
+- `eliza_bun_engine_abi_version`
+- `eliza_bun_engine_last_error`
+- `eliza_bun_engine_set_host_callback`
+- `eliza_bun_engine_start`
+- `eliza_bun_engine_stop`
+- `eliza_bun_engine_is_running`
+- `eliza_bun_engine_call`
+- `eliza_bun_engine_free`
+
+Full-engine builds link this framework directly through CocoaPods and the Swift
+module import, so production/App Store builds do not import dynamic-loader APIs.
+Compatibility/debug builds keep an optional loader path so the JSContext bridge
+can run without embedding the full engine framework. When the framework exists,
+`start()` defaults to `engine: "auto"` and will boot the full engine. Passing
+`engine: "bun"` requires the framework and returns an error if it is missing.
+
+## SwiftBun compatibility lane
+
+SwiftBun is tracked as an optional JavaScriptCore bridge candidate, not as a
+replacement for the TypeScript runtime or the full Bun framework path. The
+policy is documented in `SWIFT_BUN_COMPATIBILITY.md` and codified in
+`packages/app-core/src/platform/ios-runtime-backends.ts`.
+
+The approved production local iOS backend remains
+`ElizaBunEngine.xcframework`. A SwiftBun-compatible lane may be enabled only as
+an explicit compatibility spike until it implements the existing
+`ElizaBunRuntime` contract, proves `http_request` and `sendMessage` routing,
+and reports unsupported native capabilities truthfully.
+
+Both lanes are native iOS app-process lanes. Neither lane turns Swift into the
+agent runtime owner; the TypeScript agent bundle remains the runtime surface the
+app talks to.
+
+## App Store execution profile
+
+Device/App Store builds of `ElizaBunEngine.xcframework` must be no-JIT and
+must not depend on unsigned executable memory, downloaded native code, helper
+executables, or arbitrary dynamic library loading. The framework metadata
+declares this with:
+
+```text
+ElizaBunEngineNoJIT = true
+ElizaBunEngineExecutionProfile = ios-app-store-nojit
+```
+
+The build and verifier reject engine binaries that import local code-loading or
+JIT-sensitive symbols such as `dlopen`, `dlsym`, `posix_spawn`, `fork`,
+`execve`, `system`, `pthread_jit_write_protect_np`, `mach_vm_protect`, or
+`vm_protect`. Regular file-backed model/runtime assets remain allowed; they are
+data inputs to the signed in-process runtime, not executable payloads.
+
+```bash
+# Verify the staged xcframework.
+bun run --cwd packages/native/bun-runtime verify:app-store
+
+# Verify only the device slice. This must fail until the xcframework contains
+# ios-arm64 and the engine imports no dynamic-loader/process/JIT symbols.
+bun run --cwd packages/native/bun-runtime verify:app-store -- --target=device
+
+# Verify a signed .app bundle and its embedded ElizaBunEngine framework.
+bun run --cwd packages/native/bun-runtime verify:app-store -- --app=/path/to/App.app
+```
+
+## Build workflow
+
+```bash
+# Verify upstream target reality on the current Bun binary.
+bun run --cwd packages/native/bun-runtime check
+
+# Build the simulator engine from a fork checkout.
+ELIZA_BUN_IOS_SOURCE_DIR=/path/to/elizaos-bun \
+  bun run --cwd packages/native/bun-runtime build:sim
+
+# Build and require the full engine inside the iOS app.
+ELIZA_IOS_FULL_BUN_ENGINE=1 \
+  bun run --cwd packages/app build:ios:local:sim
+```
+
+By default the build script expects a fork checkout at
+`packages/native/bun-runtime/vendor/bun` or `ELIZA_BUN_IOS_SOURCE_DIR`. The public
+`https://github.com/elizaos/bun` repository was not available at the time this
+package was added, so the scripts do not silently clone or vendor upstream Bun.
+
+The CMake backend is selected automatically when the source checkout has a
+`CMakeLists.txt`. Useful inputs:
+
+```bash
+# Staged WebKit/JSC output with lib/ and JavaScriptCore/Headers/.
+ELIZA_BUN_IOS_WEBKIT_BUILD_DIR=/path/to/WebKitBuild/JSCOnly
+
+# Or a ready include/lib staging directory.
+ELIZA_BUN_IOS_WEBKIT_PATH=/path/to/staged-ios-webkit
+
+# Force CMake and pass fork-specific flags.
+ELIZA_BUN_IOS_BUILD_BACKEND=cmake
+ELIZA_BUN_IOS_CMAKE_ARGS="-DWEBKIT_PATH=/path/to/staged-ios-webkit"
+```
+
+The harness always passes the App Store runtime profile into the Bun fork:
+
+```text
+ELIZA_IOS_APP_STORE_LOCAL_EXECUTION=1
+ELIZA_IOS_NO_JIT=1
+ELIZA_IOS_DISABLE_DYNAMIC_LOADING=1
+ELIZA_IOS_DISABLE_PROCESS_SPAWN=1
+ELIZA_IOS_DISABLE_BUN_FFI=1
+ELIZA_IOS_DISABLE_BUN_SHELL=1
+ELIZA_IOS_DISABLE_BUN_SUBPROCESS=1
+JSC_useJIT=0
+BUN_JSC_useJIT=0
+```
+
+Fork builds should consume those as compile-time guards and compile out
+`Bun.ffi`, native extension loading, `Bun.spawn`, `node:child_process`, shell
+helpers, package install runners, and executable-memory/JIT permission paths for
+the `ios-arm64` slice. The verifier groups failures by imported symbol family so
+device builds fail on the source feature that remains, not just on a raw `nm`
+line.
+
+When the Bun fork emits `libbun-profile.a` or `CMakeFiles/bun-profile.dir/*.o`
+plus `bun-zig.o`, this package links those objects with
+`Sources/ElizaBunEngineShim/eliza_bun_engine_shim.c`, validates the required
+symbols, and writes `artifacts/ElizaBunEngine.xcframework`.
+
+## Runtime bridge
+
+The C shim starts:
+
+```text
+public/agent/agent-bundle.js ios-bridge --stdio
+```
+
+`packages/agent/src/cli/ios-bridge.ts` then boots the real agent runtime and
+handles foreground routes over the Capacitor-owned stdio IPC. UI calls flow:
+
+```text
+React fetch / Agent.request
+  -> Capacitor ElizaBunRuntime.call("http_request")
+  -> ElizaBunEngine C ABI
+  -> stdio NDJSON
+  -> agent ios-bridge
+  -> in-process routes / buffered legacy handlers
+```
+
+Native llama calls use the same channel in the reverse direction. The agent
+bundle emits `host_call` frames, the C shim invokes Swift, and Swift delegates
+to `LlamaBridgeImpl`. No WebView, Bun, or native layer opens a TCP port for the
+full-Bun local backend.
+
+## Current status
+
+Implemented in this repo:
+
+- iOS app build gate for full-engine mode.
+- CocoaPods podspec for a generated `ElizaBunEngine.xcframework`.
+- C shim that wraps a `bun_start(...)` iOS fork into the Eliza ABI.
+- ABI v3 host-call callback for native llama operations.
+- Agent-side `ios-bridge --stdio` command for bridged HTTP requests and
+  `send_message`.
+- iOS full-Bun local-inference status and text-generation handlers over
+  native IPC.
+- React/UI transport that uses the full Bun bridge when the Capacitor plugin is
+  present, otherwise falls back to the JSContext ITTP compatibility kernel.
+- Runtime direct-link ABI that can boot a full Bun engine when the framework is
+  present.
+- Strict probes that prove current upstream Bun has no `bun-ios-*` compile
+  target.
+
+Still required in the Bun fork:
+
+- Add or maintain iOS and iOS Simulator targets in Bun's Zig/WebKit/JSC build.
+- Produce `ElizaBunEngine.xcframework`.
+- Export `bun_start(...)` compatible with `src/ios/bun_ios.h`, or export the
+  Eliza ABI directly.
+- Keep Bun FFI/native-plugin loading disabled or compiled out for iOS App Store
+  slices so the engine does not import arbitrary dynamic-loader symbols.
+- Run simulator smoke against `public/agent/agent-bundle.js`, then repeat on a
+  developer-signed sideload/device build.

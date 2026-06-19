@@ -1,0 +1,13 @@
+diff --git a/dist/node.js b/dist/node.js
+index e1fda0aa6c..1fdcaf3005 100644
+--- a/dist/node.js
++++ b/dist/node.js
+@@ -1,7 +1,7 @@
+ import { a as cleanUrl, c as createManualModuleSource } from './chunk-utils.js';
+ import { a as automockModule, e as esmWalker } from './chunk-automock.js';
+ import MagicString from 'magic-string';
+-import { createFilter } from 'vite';
++import { createFilter } from '@elizaos/vitest-vite';
+ import { h as hoistMocks } from './chunk-hoistMocks.js';
+ import { readFile } from 'node:fs/promises';
+ import { join } from 'node:path/posix';

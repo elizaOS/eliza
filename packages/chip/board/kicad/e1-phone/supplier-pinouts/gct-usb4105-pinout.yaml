@@ -1,0 +1,186 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: USB4105-GF-A
+manufacturer: Global Connector Technology (GCT)
+package: USB Type-C 2.0 receptacle, horizontal SMT, 24 positions (16 active + 8 dummy)
+source_doc: https://gct.co/files/specs/usb4105-spec.pdf
+source_doc_alt:
+  - https://gct.co/connector/usb4105
+  - https://gct.co/files/drawings/usb4105.pdf
+  - https://www.snapeda.com/parts/USB4105-GF-A/Global%20Connector%20Technology/view-part/
+source_doc_revision: Rev A3 (27/02/23)
+captured_date: 2026-05-21
+captured_by: agent
+evidence_class: public_supplier_datasheet
+notes: |
+  USB Type-C receptacle pin assignments are fixed by the USB-IF Type-C Cable
+  and Connector Specification (R2.1+). The pin layout below matches the
+  published USB-IF standard and the GCT USB4105 spec sheet. USB4105 is USB 2.0
+  only - SuperSpeed lanes (RX/TX) are not connected (NC) on the receptacle.
+mechanical:
+  pitch_mm: 0.5
+  positions: 24
+  active_contacts: 16
+  dummy_contacts: 8
+  mating_cycles: 20000
+  voltage_rating_v_dc: 48
+  current_rating_vbus_collective_a: 5.00
+  current_rating_gnd_collective_a: 6.25
+  current_rating_b5_a: 1.25
+  current_rating_other_per_pin_a: 0.25
+  operating_temperature_c: [-40, 85]
+  retention_force_n_min: 8.0
+  retention_force_n_max: 20.0
+  insertion_force_n_max: 20.0
+  extraction_force_n_min: 8.0
+pins:
+  - pin: A1
+    name: GND
+    function: ground
+    direction: power
+    voltage_v: 0
+    notes: ground return
+  - pin: A2
+    name: SSTXp1
+    function: superspeed_tx_pos_lane1
+    direction: out
+    voltage_v: null
+    notes: NC on USB 2.0-only USB4105 (no SS lanes)
+  - pin: A3
+    name: SSTXn1
+    function: superspeed_tx_neg_lane1
+    direction: out
+    voltage_v: null
+    notes: NC on USB 2.0-only USB4105
+  - pin: A4
+    name: VBUS
+    function: vbus
+    direction: power
+    voltage_v: 5.0
+    notes: bus power; up to 20V in PD profiles
+  - pin: A5
+    name: CC1
+    function: configuration_channel_1
+    direction: bidir
+    voltage_v: null
+    notes: orientation/PD signaling, pull to VBUS through Rp/Rd
+  - pin: A6
+    name: Dp1
+    function: usb2_data_plus
+    direction: bidir
+    voltage_v: null
+    notes: USB 2.0 D+; tied to B7 internally per spec (no second USB2 pair)
+  - pin: A7
+    name: Dn1
+    function: usb2_data_minus
+    direction: bidir
+    voltage_v: null
+    notes: USB 2.0 D-; tied to B6 internally per spec
+  - pin: A8
+    name: SBU1
+    function: sideband_use_1
+    direction: bidir
+    voltage_v: null
+    notes: SBU1 - audio/alt-mode sideband
+  - pin: A9
+    name: VBUS
+    function: vbus
+    direction: power
+    voltage_v: 5.0
+    notes: bus power (parallel with A4/B4/B9)
+  - pin: A10
+    name: SSRXn2
+    function: superspeed_rx_neg_lane2
+    direction: in
+    voltage_v: null
+    notes: NC on USB 2.0-only USB4105
+  - pin: A11
+    name: SSRXp2
+    function: superspeed_rx_pos_lane2
+    direction: in
+    voltage_v: null
+    notes: NC on USB 2.0-only USB4105
+  - pin: A12
+    name: GND
+    function: ground
+    direction: power
+    voltage_v: 0
+    notes: ground return
+  - pin: B1
+    name: GND
+    function: ground
+    direction: power
+    voltage_v: 0
+    notes: ground return
+  - pin: B2
+    name: SSTXp2
+    function: superspeed_tx_pos_lane2
+    direction: out
+    voltage_v: null
+    notes: NC on USB 2.0-only USB4105
+  - pin: B3
+    name: SSTXn2
+    function: superspeed_tx_neg_lane2
+    direction: out
+    voltage_v: null
+    notes: NC on USB 2.0-only USB4105
+  - pin: B4
+    name: VBUS
+    function: vbus
+    direction: power
+    voltage_v: 5.0
+    notes: bus power
+  - pin: B5
+    name: CC2
+    function: configuration_channel_2
+    direction: bidir
+    voltage_v: null
+    notes: orientation/PD signaling (alt orientation)
+  - pin: B6
+    name: Dp2
+    function: usb2_data_plus
+    direction: bidir
+    voltage_v: null
+    notes: USB 2.0 D+ alt orientation; tied to A6 in USB 2.0 receptacle
+  - pin: B7
+    name: Dn2
+    function: usb2_data_minus
+    direction: bidir
+    voltage_v: null
+    notes: USB 2.0 D- alt orientation; tied to A7 in USB 2.0 receptacle
+  - pin: B8
+    name: SBU2
+    function: sideband_use_2
+    direction: bidir
+    voltage_v: null
+    notes: SBU2 - audio/alt-mode sideband
+  - pin: B9
+    name: VBUS
+    function: vbus
+    direction: power
+    voltage_v: 5.0
+    notes: bus power
+  - pin: B10
+    name: SSRXn1
+    function: superspeed_rx_neg_lane1
+    direction: in
+    voltage_v: null
+    notes: NC on USB 2.0-only USB4105
+  - pin: B11
+    name: SSRXp1
+    function: superspeed_rx_pos_lane1
+    direction: in
+    voltage_v: null
+    notes: NC on USB 2.0-only USB4105
+  - pin: B12
+    name: GND
+    function: ground
+    direction: power
+    voltage_v: 0
+    notes: ground return
+shell_pins:
+  - pin: S1
+    name: SHELL
+    function: chassis_shield
+    direction: power
+    voltage_v: 0
+    notes: connector shell - tie to chassis ground via small impedance/cap network

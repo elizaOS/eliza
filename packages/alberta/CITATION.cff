@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: "Alberta Framework"
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+authors:
+  - family-names: Lawson
+    given-names: Keith
+repository-code: "https://github.com/j-klawson/alberta-framework"
+url: "https://j-klawson.github.io/alberta-framework"
+license: Apache-2.0
+version: "0.17.1"
+date-released: "2026-04-17"
+keywords:
+  - continual learning
+  - meta-learning
+  - reinforcement learning
+  - adaptive step-sizes
+  - JAX
+  - IDBD
+  - Autostep
+  - Alberta Plan
+abstract: >-
+  A JAX-based research framework implementing the Alberta Plan for
+  Continual AI. Focuses on adaptive step-size algorithms (IDBD, Autostep)
+  for non-stationary supervised learning and reinforcement learning problems,
+  with scan-based learning loops, online normalization, and publication-quality
+  analysis tools.

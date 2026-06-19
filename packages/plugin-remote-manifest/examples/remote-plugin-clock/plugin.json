@@ -1,0 +1,22 @@
+{
+  "id": "remote-plugin-clock",
+  "name": "Remote Plugin Clock",
+  "version": "0.1.0",
+  "description": "Window-mode reference remotePlugin — opens its own webview with a tiny live clock. Validates BrowserView + viewsRoot scheme resolution and window-close → stopWorker.",
+  "mode": "window",
+  "permissions": {
+    "host": {},
+    "bun": {},
+    "isolation": "shared-worker"
+  },
+  "view": {
+    "relativePath": "view/index.html",
+    "title": "Remote Plugin Clock",
+    "width": 320,
+    "height": 200,
+    "titleBarStyle": "default"
+  },
+  "worker": {
+    "relativePath": "worker.mjs"
+  }
+}

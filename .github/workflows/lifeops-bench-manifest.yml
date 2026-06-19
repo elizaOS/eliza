@@ -1,0 +1,92 @@
+# LifeOps Action Manifest Drift Gate
+#
+# Re-runs the manifest generator (TS exporter + Python umbrella augment) and
+# fails the build if the committed `actions.manifest.json` differs from a
+# fresh regeneration. This keeps `packages/benchmarks/lifeops-bench/manifests/`
+# in sync with the actual plugin actions exposed by app-lifeops, app-contacts,
+# app-phone, plugin-todos, plugin-imessage, and plugin-bluebubbles.
+#
+# Local equivalent (run before pushing):
+#
+#     tmp="$(mktemp)"
+#     cp packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"
+#     (cd packages/benchmarks/lifeops-bench && python -m eliza_lifeops_bench.manifest_export "$tmp")
+#     diff -u packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"
+#
+# Triggers on PRs that touch any of the input plugins, the export script,
+# the Python augment, or the manifest itself.
+
+name: LifeOps Action Manifest Gate
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "plugins/plugin-personal-assistant/**"
+      - "plugins/plugin-contacts/**"
+      - "plugins/plugin-phone/**"
+      - "plugins/plugin-bluebubbles/**"
+      - "plugins/plugin-imessage/**"
+      - "plugins/plugin-todos/**"
+      - "packages/benchmarks/lifeops-bench/manifests/actions.manifest.json"
+      - "packages/benchmarks/lifeops-bench/eliza_lifeops_bench/manifest_export.py"
+      - ".github/workflows/lifeops-bench-manifest.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: lifeops-bench-manifest-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  manifest-gate:
+    name: Verify lifeops action manifest is up to date
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Bun + workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+
+      - name: Install Python bench package
+        run: |
+          cd packages/benchmarks/lifeops-bench
+          pip install -e .
+
+      - name: Verify manifest is up to date
+        run: |
+          set -e
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          cp packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"
+          (
+            cd packages/benchmarks/lifeops-bench
+            python -m eliza_lifeops_bench.manifest_export "$tmp"
+          )
+          diff -u packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"

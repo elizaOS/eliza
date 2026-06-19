@@ -1,0 +1,149 @@
+[[!meta date="Wed, 02 Mar 2011 00:46:14 +0100"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Bimonthly report: January and February 2011"]]
+[[!tag announce]]
+
+We are pleased to present you the first Tails bimonthly report ever.
+
+This is a first try that may, or may not, be followed by others
+depending on the feedback we get: if you like reading such news about
+Tails, don't hesitate [[telling us|support/talk]]!
+
+This report sums up the work that was done on Tails in January and
+February 2011.
+
+[[!toc levels=2]]
+
+# Helping third-parties do security analyses of Tails
+
+We finished writing and published the [[Tails design
+document|contribute/design]] that presents a specification of a
+*Privacy Enhancing Live Distribution* (PELD) as well as the Tails
+actual implementation.
+
+By writing this document we intend to help third-parties do security
+analyses of any given PELD and specifically of Tails. We also wish to
+help establish best practices in the field of PELD design and
+implementation, and thus raise the baseline for all similar projects
+out there.
+
+Reviews of this document and audits of Tails are most welcome.
+
+# Preparing next release
+
+The next Tails release, which will be called 0.7, is based on the
+newly released Debian Squeeze. It has been feature freezed recently
+and is now being tested in a wild, unsuspecting world; if it survives,
+we can bet it will be the best Tails release ever... until 0.8 is out
+of course.
+
+Protecting against memory recovery
+----------------------------------
+
+A new, safer way to wipe memory on shutdown was implemented. It is now
+also used when the boot media is physically removed: in an emergency
+situation, one can grab her Tails Live USB stick or Live CD and leave
+while the system will quickly erase her traces from the computer's
+memory and shut it down.
+
+Making Tails easier to use
+--------------------------
+
+We enhanced the onBoard virtual keyboard; patches were obviously
+submitted upstream.
+
+The Tails user interface was improved in several other ways: hiding
+some useless GNOME preference menu items, using a background that does
+not overlap with the bootloader menu, adding a shutdown button to the
+right of the top GNOME panel (nice idea stolen from Ubuntu).
+
+Other noteworthy enhancements
+-----------------------------
+
+A fix for a virtual keyboard critical bug was prepared, amongst the
+ton of usual release preparation work.
+
+TrueCrypt can be optionally installed at boot time; we may not want to
+include TrueCrypt forever, but we at the very least we want to provide
+a migration path from TrueCrypt volumes created by good old Incognito
+to other formats.
+
+The [HTTPS Everywhere](https://www.eff.org/https-everywhere) Iceweasel
+extension is now installed.
+
+Queries to DNS resolvers on the LAN are now
+forbidden.
+
+Writing our [[design document|contribute/design]] made us think more
+thoroughly various parts of the Tails configuration and enhance many
+parts of it. Moreover, we compared it with the [Tor Browser
+Bundle](https://www.torproject.org)
+configuration, picked many nice ideas from there, and generally made
+Tails configuration more similar to the TBB's one, which shall ease
+peer review and enlarge the anonymity set Tails users are part of. A
+notable example is the enabling of US English browser spoofing in
+Iceweasel.
+
+The HTP time synchronization system is now more robust wrt. network
+failures.
+
+GNOME automatic media mounting and opening was disabled to protect
+against a class of attacks that was recently put under the spotlights.
+
+# Outreach
+
+Tails was added to a couple spots on the Tor website:
+
+- https://2019.www.torproject.org/projects/projects.html.en
+- https://2019.www.torproject.org/getinvolved/volunteer.html.en#Projects
+
+We discussed various funding and sponsoring opportunities; we have
+[prepared three
+projects](https://2019.www.torproject.org/getinvolved/volunteer.html#project-tails)
+that shall be submitted under the Tor Project umbrella for the Google
+Summer of Code and other summer intership programs. [One of
+those](https://2019.www.torproject.org/getinvolved/volunteer.html#tailsDebianLive).
+
+We have participated in the Debian Derivatives Census initiative
+([[!debwiki Derivatives/Census]]): Tails now has a dedicated page
+([[!debwiki Derivatives/Census/Tails]]) on the Debian Wiki; in order
+to better cooperate with Debian, we have followed their guidelines for
+Debian Derivatives ([[!debwiki Derivatives/Guidelines]]); e.g. we have
+published a statement about our
+[[contribute/relationship_with_upstream]].
+
+Website design: a few visible enhancements have been pushed online,
+but stay tuned, some more is being worked on under the hood! Rumor
+says our CSS gnomes are preparing something pretty slick.
+
+# A glimpse towards the future
+
+Bridges support: we now have a working prototype; it might not make
+its way into the upcoming 0.7 release though.
+
+Accessibility tools for visually impaired people have been
+selected and are installed in our development Git branch.
+
+We updated our survey of existing tools for easy install and upgrade
+of Tails onto USB sticks, with support for an encrypted persistent
+volume in mind.
+
+More and more upcoming Tails features (including persistence,
+macchanger, bridge support) need ways to ask the
+user for input at boot time. We have [[!tails_ticket 5528 desc="researched various
+ways"]] we could implement this.
+
+We have researched how we could harden a bit Tails resistance against
+exploitation of security issues in bundled software
+(Mandatory_Access_Control, nx_bit, kernel hardening,
+compiler hardening options) in a way that would not be a maintenance
+burden... while being efficient enough to protect against some classes
+of attacks. We have started efforts to push such hardening features in
+Debian.
+
+A general plan was thought through to reorganize the Tails user
+documentation. Once this is done, several entry points will be
+available to better fit a given user's available time and energy. In
+the meantime, we now at least have a nice
+documentation that explains how
+to install Tails onto a USB stick.

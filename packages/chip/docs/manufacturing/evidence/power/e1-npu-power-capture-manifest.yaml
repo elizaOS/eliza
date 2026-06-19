@@ -1,0 +1,41 @@
+schema: eliza.manufacturing_power_capture_manifest.v1
+status: blocked
+release_use: prohibited_until_measured_sustained_evidence_passes
+scope: e1_npu_sustained_power_capture
+claim_boundary: no_silicon_power_or_thermal_claims
+linked_benchmark_power_gate:
+  workload_plan: benchmarks/power/workload-plan.yaml
+  sustained_manifest_template: benchmarks/power/manifests/e1-npu-sustained-capture.template.json
+  sustained_manifest_schema: benchmarks/power/sustained-run-evidence.schema.json
+  checker: benchmarks/power/scripts/check_sustained_run_evidence.py
+  local_estimates: benchmarks/power/local-estimates/e1-npu-openlane-npu-estimates.json
+required_capture_artifacts:
+  - name: calibrated_power_trace
+    path: docs/manufacturing/evidence/power/e1-npu/power-trace.csv
+    status: blocked
+  - name: npu_frequency_trace
+    path: docs/manufacturing/evidence/power/e1-npu/frequency-trace.csv
+    status: blocked
+  - name: workload_transcript
+    path: docs/manufacturing/evidence/power/e1-npu/workload-transcript.txt
+    status: blocked
+  - name: calibration_record
+    path: docs/manufacturing/evidence/power/e1-npu/power-thermal-calibration.json
+    status: blocked
+capture_requirements:
+  minimum_duration_seconds: 1800
+  power_sample_hz_min: 10
+  same_window_alignment_required: true
+  rails:
+    - VDDCORE
+    - VDDIO
+  required_states:
+    - reset_static
+    - android_idle_or_linux_idle
+    - e1_npu_sustained_nnapi
+    - cpu_fallback_control
+release_blockers:
+  - No calibrated VDDCORE or VDDIO power trace is archived.
+  - No measured e1-NPU workload transcript from silicon or complete phone exists.
+  - No frequency, voltage, throttle, or CPU fallback trace is aligned to the power window.
+  - Local OpenLane and architecture-model arithmetic is not measured sustained power evidence.

@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Eliza Surface Remote</title>
+		<link rel="stylesheet" href="./index.css" />
+		<script type="module" src="./index.ts"></script>
+	</head>
+	<body>
+		<main class="shell">
+			<header class="topbar">
+				<div>
+					<h1>Eliza Surface Remote</h1>
+					<p>ElizaLaunch control surface backed by eliza.runtime</p>
+				</div>
+				<div class="status-strip">
+					<span>Mode <strong id="runtime-mode">unknown</strong></span>
+					<span>PID <strong id="runtime-pid">none</strong></span>
+					<span>API <strong id="runtime-api-base">not set</strong></span>
+				</div>
+			</header>
+
+			<section class="grid">
+				<section class="panel span-4">
+					<div class="panel-header">
+						<h2>Runtime Controls</h2>
+						<span id="runtime-error" class="error-text"></span>
+					</div>
+					<div class="button-row">
+						<button id="runtime-start">Start</button>
+						<button id="runtime-stop">Stop</button>
+						<button id="runtime-restart">Restart</button>
+						<button id="runtime-status">Status</button>
+						<button id="runtime-health">Health</button>
+						<button id="runtime-logs">Logs</button>
+					</div>
+				</section>
+
+				<section class="panel span-8">
+					<div class="panel-header">
+						<h2>API Discovery</h2>
+						<div class="button-row compact">
+							<button id="api-discover">Discover API</button>
+							<button id="api-status">API Status</button>
+						</div>
+					</div>
+					<div id="route-table" class="route-table">No discovery result yet.</div>
+				</section>
+
+				<section class="panel span-4">
+					<h2>Agents / Conversations</h2>
+					<label>
+						Agent
+						<input id="agent-id" placeholder="agent id" />
+					</label>
+					<select id="agent-select"></select>
+					<div class="button-row">
+						<button id="agent-list">List Agents</button>
+						<button id="agent-get">Get Agent</button>
+					</div>
+					<label>
+						Conversation
+						<input id="conversation-id" placeholder="conversation id" />
+					</label>
+					<select id="conversation-select"></select>
+					<div class="button-row">
+						<button id="conversation-list">List Conversations</button>
+						<button id="conversation-get">Get Conversation</button>
+					</div>
+				</section>
+
+				<section class="panel span-8 chat-panel">
+					<div class="panel-header">
+						<h2>Chat</h2>
+						<span>Active stream <strong id="active-stream-id">none</strong></span>
+					</div>
+					<textarea id="message-text" rows="4" placeholder="Message Eliza"></textarea>
+					<label>
+						Stream ID
+						<input id="stream-id" placeholder="optional stream id" />
+					</label>
+					<div class="button-row">
+						<button id="message-send">Send Non-Streaming Message</button>
+						<button id="message-stream">Stream Message</button>
+						<button id="message-cancel">Cancel Stream</button>
+						<button id="message-stream-status">Stream Status</button>
+					</div>
+					<div id="chat-transcript" class="transcript">No messages yet.</div>
+				</section>
+
+				<section class="panel span-6">
+					<h2>Stream Events / Actions</h2>
+					<div class="snapshot">
+						<h3>Latest callback/action snapshot</h3>
+						<pre id="latest-snapshot">No callback snapshot yet.</pre>
+					</div>
+					<div id="action-timeline" class="timeline">No stream events yet.</div>
+				</section>
+
+				<section class="panel span-6">
+					<h2>Plugins / Memory / Config</h2>
+					<div class="button-row">
+						<button id="plugin-list">List Plugins</button>
+						<button id="config-get">Get Config</button>
+					</div>
+					<label>
+						Memory query
+						<input id="memory-query" placeholder="search memory" />
+					</label>
+					<label>
+						Memory limit
+						<input id="memory-limit" type="number" min="1" max="50" value="10" />
+					</label>
+					<button id="memory-search">Search Memory</button>
+					<pre id="plugin-output" class="output"></pre>
+				</section>
+
+				<section class="panel span-12 file-panel">
+					<div class="panel-header">
+						<h2>Files</h2>
+						<div class="button-row compact">
+							<button id="file-status">File Status</button>
+							<button id="file-roots-button">Roots</button>
+							<button id="file-list-button">List</button>
+							<button id="file-read-button">Read Text</button>
+							<button id="file-search-button">Search</button>
+						</div>
+					</div>
+					<div class="file-controls">
+						<label>
+							Path
+							<input id="file-path" placeholder="absolute path or path under default root" />
+						</label>
+						<label>
+							Search query
+							<input id="file-search-query" placeholder="text to search" />
+						</label>
+						<label class="check-row">
+							<input id="file-include-hidden" type="checkbox" />
+							Include hidden files
+						</label>
+					</div>
+					<div class="file-grid">
+						<div>
+							<h3>Roots</h3>
+							<pre id="file-roots" class="output small">No roots loaded.</pre>
+						</div>
+						<div>
+							<h3>Directory</h3>
+							<pre id="file-list" class="output small">No directory listing loaded.</pre>
+						</div>
+						<div>
+							<h3>Text</h3>
+							<pre id="file-text" class="output small">No file loaded.</pre>
+						</div>
+						<div>
+							<h3>Search</h3>
+							<pre id="file-search" class="output small">No search results.</pre>
+						</div>
+					</div>
+					<div class="write-panel">
+						<label class="check-row">
+							<input id="file-enable-write" type="checkbox" />
+							Enable write request
+						</label>
+						<label class="check-row">
+							<input id="file-create-directories" type="checkbox" />
+							Create directories
+						</label>
+						<label class="check-row">
+							<input id="file-overwrite" type="checkbox" />
+							Overwrite
+						</label>
+						<textarea id="file-write-text" rows="4" placeholder="Text to write"></textarea>
+						<button id="file-write-button" disabled>Write Text</button>
+					</div>
+				</section>
+
+				<section class="panel span-12 terminal-panel">
+					<div class="panel-header">
+						<h2>Terminal</h2>
+						<div class="button-row compact">
+							<button id="pty-status-button">Terminal Status</button>
+							<button id="pty-create-button">Create Session</button>
+							<button id="pty-list-button">List Sessions</button>
+							<button id="pty-tail-button">Tail Output</button>
+							<button id="pty-clear-button">Clear Output</button>
+							<button id="pty-kill-button">Kill Session</button>
+						</div>
+					</div>
+					<div class="terminal-controls">
+						<label>
+							Shell / command
+							<input id="pty-command" placeholder="default shell" />
+						</label>
+						<label>
+							cwd
+							<input id="pty-cwd" placeholder="default runtime cwd" />
+						</label>
+						<label>
+							Active session
+							<input id="pty-session-id" placeholder="session id" />
+						</label>
+						<label>
+							Cols
+							<input id="pty-cols" type="number" min="20" value="120" />
+						</label>
+						<label>
+							Rows
+							<input id="pty-rows" type="number" min="5" value="32" />
+						</label>
+					</div>
+					<div class="terminal-send">
+						<input id="pty-input" placeholder="input to send to active session" />
+						<button id="pty-send-button">Send Input</button>
+						<button id="pty-resize-button">Resize</button>
+					</div>
+					<div class="terminal-grid">
+						<div>
+							<h3>Status</h3>
+							<pre id="pty-status-output" class="output small">No terminal status loaded.</pre>
+						</div>
+						<div>
+							<h3>Sessions</h3>
+							<pre id="pty-session-list" class="output small">No terminal sessions.</pre>
+						</div>
+						<div class="terminal-output-cell">
+							<h3>Output</h3>
+							<pre id="pty-output" class="output terminal-output">No terminal output loaded.</pre>
+						</div>
+					</div>
+				</section>
+
+				<section class="panel span-12 git-panel">
+					<div class="panel-header">
+						<h2>Git</h2>
+						<div class="button-row compact">
+							<button id="git-status-button">Git Status</button>
+							<button id="git-repo-button">Repo Info</button>
+							<button id="git-worktree-button">Worktree</button>
+							<button id="git-branches-button">Branches</button>
+							<button id="git-remotes-button">Remotes</button>
+							<button id="git-log-button">Log</button>
+							<button id="git-diff-button">Diff</button>
+							<button id="git-show-button">Show</button>
+							<button id="git-operations-button">Operations</button>
+						</div>
+					</div>
+					<div class="git-controls">
+						<label>
+							Repo path
+							<input id="git-cwd" placeholder="default runtime repo" />
+						</label>
+						<label>
+							File path
+							<input id="git-path" placeholder="optional file path" />
+						</label>
+						<label>
+							Ref
+							<input id="git-ref" placeholder="HEAD, branch, or commit" />
+						</label>
+						<label>
+							Log limit
+							<input id="git-log-limit" type="number" min="1" max="100" value="20" />
+						</label>
+						<label class="check-row">
+							<input id="git-staged" type="checkbox" />
+							Staged diff
+						</label>
+					</div>
+					<div class="git-write-grid">
+						<label>
+							Add paths
+							<input id="git-add-paths" placeholder="path1, path2" />
+						</label>
+						<button id="git-add-button">Add</button>
+						<label>
+							Restore paths
+							<input id="git-restore-paths" placeholder="path1, path2" />
+						</label>
+						<button id="git-restore-button">Restore</button>
+						<label>
+							Checkout ref
+							<input id="git-checkout-ref" placeholder="branch or commit" />
+						</label>
+						<button id="git-checkout-button">Checkout</button>
+					</div>
+					<div class="git-write-grid">
+						<label>
+							Create branch
+							<input id="git-create-branch" placeholder="new branch" />
+						</label>
+						<button id="git-branch-create-button">Create Branch</button>
+						<label>
+							Delete branch
+							<input id="git-delete-branch" placeholder="branch name" />
+						</label>
+						<button id="git-branch-delete-button">Delete Branch</button>
+						<label>
+							Commit message
+							<input id="git-commit-message" placeholder="commit message" />
+						</label>
+						<button id="git-commit-button">Commit</button>
+					</div>
+					<div class="git-remote-grid">
+						<label>
+							Remote
+							<input id="git-remote" placeholder="origin" />
+						</label>
+						<label>
+							Branch
+							<input id="git-remote-branch" placeholder="current branch" />
+						</label>
+						<button id="git-fetch-button">Fetch</button>
+						<button id="git-pull-button">Pull</button>
+						<button id="git-push-button">Push</button>
+					</div>
+					<div class="git-grid">
+						<div>
+							<h3>Status</h3>
+							<pre id="git-status-output" class="output small">No Git status loaded.</pre>
+						</div>
+						<div>
+							<h3>Repo</h3>
+							<pre id="git-repo-output" class="output small">No repo info loaded.</pre>
+						</div>
+						<div>
+							<h3>Files</h3>
+							<pre id="git-files-output" class="output small">No repo status loaded.</pre>
+						</div>
+						<div>
+							<h3>Branches</h3>
+							<pre id="git-branches-output" class="output small">No branches loaded.</pre>
+						</div>
+						<div>
+							<h3>Remotes</h3>
+							<pre id="git-remotes-output" class="output small">No remotes loaded.</pre>
+						</div>
+						<div>
+							<h3>Log</h3>
+							<pre id="git-log-output" class="output small">No log loaded.</pre>
+						</div>
+						<div>
+							<h3>Diff</h3>
+							<pre id="git-diff-output" class="output small">No diff loaded.</pre>
+						</div>
+						<div>
+							<h3>Show</h3>
+							<pre id="git-show-output" class="output small">No show output loaded.</pre>
+						</div>
+						<div>
+							<h3>Operations</h3>
+							<pre id="git-operations-output" class="output small">No operations loaded.</pre>
+						</div>
+					</div>
+				</section>
+
+				<section class="panel span-12 model-panel">
+					<div class="panel-header">
+						<h2>Models</h2>
+						<div class="button-row compact">
+							<button id="model-status-button">Model Status</button>
+							<button id="model-hub-button">Hub</button>
+							<button id="model-catalog-button">Catalog</button>
+							<button id="model-eliza1-catalog-button">Eliza-1 Catalog</button>
+							<button id="model-tiers-button">Eliza-1 Tiers</button>
+							<button id="model-voice-button">Voice Components</button>
+							<button id="model-hf-button">HF Metadata</button>
+							<button id="model-capabilities-button">Capabilities</button>
+						</div>
+					</div>
+					<div class="model-controls">
+						<label>
+							Model ID
+							<input id="model-id" placeholder="eliza-1-2b" />
+						</label>
+						<label>
+							Slot
+							<input id="model-slot" placeholder="TEXT_LARGE" />
+						</label>
+						<div class="button-row">
+							<button id="model-hardware-button">Hardware</button>
+							<button id="model-providers-button">Providers</button>
+							<button id="model-installed-button">Installed</button>
+							<button id="model-downloads-button">Downloads</button>
+							<button id="model-active-button">Active</button>
+						</div>
+					</div>
+					<div class="model-controls">
+						<div class="button-row">
+							<button id="model-activate-button">Activate</button>
+							<button id="model-unload-button">Unload</button>
+							<button id="model-download-button">Download</button>
+							<button id="model-cancel-download-button">Cancel Download</button>
+							<button id="model-assignments-button">Assignments</button>
+							<button id="model-set-assignment-button">Set Assignment</button>
+							<button id="model-routing-button">Routing</button>
+							<button id="model-use-local-button">Use Local</button>
+							<button id="model-use-cloud-button">Use Cloud</button>
+						</div>
+					</div>
+					<div class="model-generate-grid">
+						<label>
+							Generate test prompt
+							<textarea id="model-prompt" rows="3" placeholder="Direct local generation prompt"></textarea>
+						</label>
+						<label>
+							Embedding test input
+							<textarea id="model-embedding-input" rows="3" placeholder="Text to embed"></textarea>
+						</label>
+						<div class="button-row">
+							<button id="model-generate-button">Generate</button>
+							<button id="model-embedding-button">Embedding</button>
+						</div>
+					</div>
+					<div class="model-grid">
+						<div>
+							<h3>Hub</h3>
+							<pre id="model-hub-output" class="output small">No model hub snapshot loaded.</pre>
+						</div>
+						<div>
+							<h3>Catalog</h3>
+							<pre id="model-catalog-output" class="output small">No model catalog loaded.</pre>
+						</div>
+						<div>
+							<h3>Eliza-1 Tiers</h3>
+							<pre id="model-tiers-output" class="output small">No Eliza-1 tiers loaded.</pre>
+						</div>
+						<div>
+							<h3>Voice</h3>
+							<pre id="model-voice-output" class="output small">No voice components loaded.</pre>
+						</div>
+						<div>
+							<h3>Runtime</h3>
+							<pre id="model-runtime-output" class="output small">No model runtime data loaded.</pre>
+						</div>
+						<div>
+							<h3>Downloads</h3>
+							<pre id="model-downloads-output" class="output small">No model downloads loaded.</pre>
+						</div>
+						<div>
+							<h3>Routing</h3>
+							<pre id="model-routing-output" class="output small">No routing loaded.</pre>
+						</div>
+					</div>
+				</section>
+
+				<section class="panel span-6">
+					<h2>Logs</h2>
+					<label>
+						Log limit
+						<input id="log-limit" type="number" min="1" max="1000" value="80" />
+					</label>
+					<pre id="log-output" class="output">No logs loaded.</pre>
+				</section>
+
+				<section class="panel span-6">
+					<h2>Output / Errors</h2>
+					<pre id="general-output" class="output"></pre>
+					<div id="error-list" class="errors"></div>
+				</section>
+			</section>
+		</main>
+	</body>
+</html>

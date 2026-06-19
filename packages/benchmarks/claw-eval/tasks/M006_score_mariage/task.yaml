@@ -1,0 +1,56 @@
+task_id: M006_score_mariage
+task_name: Sheet Music Reproduction - Mariage
+version: "2.0"
+category: multimodal_webpage
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/mariage1.png — a sheet music image of Mariage d'Amour
+
+    Please first use tools to view the sheet music image, then generate /workspace/output.html to reproduce this score using SVG:
+    1. Include the title and composer information
+    2. Draw the staves with correct clefs
+    3. Correctly display the key signature and time signature
+    4. Reproduce the note pitches, durations, and positions as accurately as possible
+    5. Include barlines, stems, beams, and other notation details
+
+    You can use tools to preview and iteratively adjust until you are satisfied.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/mariage1.png
+
+sandbox_grader_files:
+  - fixtures/take_recording.py
+
+env_snapshot_commands:
+  - "python /workspace/fixtures/take_recording.py file:///workspace/output.html --frames 1 --interval 0.5 --wait-before 2"
+
+env_snapshot_files:
+  - /workspace/grading_frames/*.png
+local_grader_files:
+  - fixtures/mariage1.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Read mariage1.png using Read, analyze sheet music.
+  Create SVG-based output.html reproducing the score with staves, clefs, notes.
+
+primary_dimensions: [completion, robustness]

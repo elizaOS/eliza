@@ -1,0 +1,516 @@
+:root {
+  --font-sans: "Poppins", Arial, system-ui, sans-serif;
+  --font-mono: var(--font-sans);
+
+  --jet-black: #050506;
+  --rich-black: #0a0a0c;
+  --charcoal: #121214;
+
+  --deep-gold: #d8a000;
+  --classic-gold: #f0b90b;
+  --highlight-gold: #f3ba2f;
+  --champagne-gold: #f5f7fa;
+  --burnished-gold: #e9b52c;
+
+  --dark-silver: #313136;
+  --steel: #8a8a94;
+  --bright-silver: #b9b9c2;
+  --chrome-highlight: #f5f5f5;
+  --gunmetal: #232329;
+
+  --gold-glow: rgba(240, 185, 11, 0.16);
+  --soft-white-glow: rgba(255, 255, 255, 0.08);
+  --inner-shadow: rgba(0, 0, 0, 0.6);
+
+  --accent: var(--classic-gold);
+  --accent-rgb: 240, 185, 11;
+  --accent-hover: var(--highlight-gold);
+  --accent-muted: var(--deep-gold);
+  --accent-subtle: rgba(240, 185, 11, 0.12);
+  --accent-foreground: var(--jet-black);
+  --primary: var(--classic-gold);
+  --primary-foreground: var(--jet-black);
+  --ring: var(--highlight-gold);
+  --border-hover: var(--classic-gold);
+  --warn: var(--classic-gold);
+  --warn-muted: rgba(240, 185, 11, 0.7);
+  --warn-subtle: rgba(240, 185, 11, 0.14);
+  --focus: rgba(240, 185, 11, 0.18);
+  --focus-ring: none;
+  --link-color: var(--classic-gold);
+  --link-hover-color: var(--highlight-gold);
+}
+
+.first-run-screen {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: transparent;
+  --text: #111827;
+  --muted: #4b5563;
+  --border: rgba(31, 41, 55, 0.2);
+  --card: rgba(255, 255, 255, 0.58);
+  --ok: #3fa37c;
+  --ok-muted: rgba(63, 163, 124, 0.3);
+  --ok-subtle: rgba(63, 163, 124, 0.12);
+  --first-run-text-strong: rgba(5, 8, 14, 0.98);
+  --first-run-text-primary: rgba(9, 14, 22, 0.96);
+  --first-run-text-subtle: rgba(29, 38, 52, 0.88);
+  --first-run-text-muted: rgba(35, 45, 60, 0.84);
+  --first-run-text-faint: rgba(49, 61, 78, 0.76);
+  --first-run-text-stroke: rgba(255, 255, 255, 0.42);
+  --first-run-text-shadow-strong: none;
+  --first-run-text-shadow-primary: none;
+  --first-run-text-shadow-muted: none;
+  --first-run-card-bg: rgba(255, 255, 255, 0.42);
+  --first-run-card-bg-hover: rgba(255, 255, 255, 0.52);
+  --first-run-card-border: transparent;
+  --first-run-card-border-strong: rgba(255, 138, 36, 0.32);
+  --first-run-card-shadow: none;
+  --first-run-recommended-bg: rgba(255, 138, 36, 0.16);
+  --first-run-recommended-bg-hover: rgba(255, 138, 36, 0.22);
+  --first-run-recommended-border: rgba(255, 138, 36, 0.28);
+  --first-run-recommended-border-strong: rgba(255, 138, 36, 0.44);
+  --first-run-accent-bg: rgba(255, 138, 36, 0.18);
+  --first-run-accent-bg-hover: rgba(255, 138, 36, 0.24);
+  --first-run-accent-border: rgba(255, 138, 36, 0.3);
+  --first-run-accent-border-hover: rgba(255, 138, 36, 0.46);
+  --first-run-accent-foreground: rgba(24, 20, 10, 0.96);
+  --first-run-panel-bg: rgba(255, 255, 255, 0.42);
+  --first-run-panel-border: transparent;
+  --first-run-panel-shadow: none;
+  --first-run-input-bg: rgba(255, 255, 255, 0.7);
+  --first-run-input-border: transparent;
+  --first-run-text-support-bg: rgba(255, 255, 255, 0.46);
+  --first-run-text-support-shadow: none;
+  --first-run-divider: rgba(31, 41, 55, 0.16);
+  --first-run-footer-border: rgba(31, 41, 55, 0.14);
+  --first-run-link: var(--accent);
+  --first-run-ripple: rgba(255, 138, 36, 0.12);
+  --first-run-secondary-hover-bg: rgba(255, 138, 36, 0.08);
+  --first-run-secondary-pressed-bg: rgba(255, 138, 36, 0.14);
+  --first-run-secondary-focus-ring: rgba(255, 138, 36, 0.42);
+  --first-run-roster-bg: rgba(255, 255, 255, 0.68);
+  --first-run-roster-border: rgba(31, 41, 55, 0.16);
+  --first-run-field-focus-border: rgba(255, 138, 36, 0.46);
+  --first-run-field-focus-shadow: none;
+}
+
+/* Short landscape viewports (phones held sideways) trip the width-based `sm:`
+ * breakpoint, so they get the full-size hero heading + min-height and the
+ * primary action scrolls below the fold. Compress the heading on short
+ * viewports so Cloud/Local + Connect stay visible without scrolling. */
+@media (max-height: 540px) and (orientation: landscape) {
+  .first-run-screen h1 {
+    min-height: 0;
+    font-size: 1.75rem;
+    line-height: 1.15;
+  }
+}
+
+/* ── First-run theme variables ────────────────────────────────────────
+ * Used across all first-run screens (hosting, providers, identity, etc.).
+ * Dark variant by default; light-mode overrides below.
+ */
+:root {
+  --first-run-text-strong: rgba(5, 8, 14, 0.98);
+  --first-run-text-primary: rgba(9, 14, 22, 0.96);
+  --first-run-text-subtle: rgba(29, 38, 52, 0.88);
+  --first-run-text-muted: rgba(35, 45, 60, 0.84);
+  --first-run-text-faint: rgba(49, 61, 78, 0.76);
+  --first-run-text-stroke: rgba(255, 255, 255, 0.42);
+  --first-run-text-shadow-strong: none;
+  --first-run-text-shadow-primary: none;
+  --first-run-text-shadow-muted: none;
+
+  --first-run-card-bg: rgba(255, 255, 255, 0.42);
+  --first-run-card-bg-hover: rgba(255, 255, 255, 0.52);
+  --first-run-card-border: transparent;
+  --first-run-card-border-strong: rgba(255, 138, 36, 0.32);
+  --first-run-card-shadow: none;
+
+  --first-run-recommended-bg: rgba(255, 138, 36, 0.12);
+  --first-run-recommended-bg-hover: rgba(255, 138, 36, 0.18);
+  --first-run-recommended-border: rgba(255, 138, 36, 0.28);
+  --first-run-recommended-border-strong: rgba(255, 138, 36, 0.44);
+
+  --first-run-accent-bg: rgba(255, 138, 36, 0.16);
+  --first-run-accent-bg-hover: rgba(255, 138, 36, 0.24);
+  --first-run-accent-border: rgba(255, 138, 36, 0.24);
+  --first-run-accent-border-hover: rgba(255, 138, 36, 0.46);
+  --first-run-accent-foreground: rgba(24, 20, 10, 0.96);
+
+  --first-run-panel-bg: rgba(255, 255, 255, 0.42);
+  --first-run-panel-border: transparent;
+  --first-run-panel-shadow: none;
+  --first-run-input-bg: rgba(255, 255, 255, 0.7);
+  --first-run-input-border: transparent;
+  --first-run-text-support-bg: rgba(255, 255, 255, 0.46);
+  --first-run-text-support-shadow: none;
+
+  --first-run-divider: rgba(31, 41, 55, 0.16);
+  --first-run-footer-border: rgba(31, 41, 55, 0.14);
+  --first-run-link: var(--accent);
+  --first-run-ripple: rgba(255, 138, 36, 0.08);
+  --first-run-secondary-hover-bg: rgba(255, 138, 36, 0.08);
+  --first-run-secondary-pressed-bg: rgba(255, 138, 36, 0.14);
+  --first-run-secondary-focus-ring: rgba(255, 138, 36, 0.42);
+  --first-run-roster-bg: rgba(255, 255, 255, 0.68);
+  --first-run-roster-border: rgba(31, 41, 55, 0.16);
+  --first-run-field-focus-border: rgba(255, 138, 36, 0.42);
+  --first-run-field-focus-shadow: none;
+}
+
+[data-theme="dark"],
+.dark {
+  font-family: var(--font-sans);
+
+  --bg: #09090d;
+  --bg-accent: #111118;
+  --bg-elevated: #181820;
+  --bg-hover: #222230;
+  --bg-muted: #111118;
+
+  --card: #151518;
+  --card-foreground: #e4e4ea;
+  --surface: #1c1c26;
+
+  --text: #d0d0d8;
+  --text-strong: #f0f0f4;
+  --chat-text: #d0d0d8;
+  --muted: #7e7e8a;
+  --muted-strong: #a0a0ac;
+
+  --border: #32323c;
+  --border-strong: #44444e;
+  --border-subtle: #1c1c22;
+  --input: #282830;
+
+  --accent-foreground: var(--jet-black);
+  --primary-foreground: var(--jet-black);
+
+  --header-bar-bg: var(--jet-black);
+  --header-bar-fg: #e8e8ec;
+  --section-bar-bg: var(--rich-black);
+  --section-bar-fg: #e8e8ec;
+}
+
+[data-testid="companion-header-chat-controls"] > button {
+  color: #eaecef;
+  background: rgba(10, 10, 12, 0.9);
+  border-color: rgba(49, 49, 56, 0.4);
+  box-shadow: none;
+}
+
+[data-testid="companion-header-chat-controls"] > button svg {
+  color: inherit;
+}
+
+[data-testid="companion-header-chat-controls"] > button:hover,
+[data-testid="companion-header-chat-controls"] > button:focus-visible {
+  color: var(--chrome-highlight);
+  background: linear-gradient(
+    135deg,
+    rgba(18, 18, 21, 0.96) 0%,
+    rgba(10, 10, 12, 0.94) 100%
+  );
+  border-color: rgba(240, 185, 11, 0.36);
+  box-shadow: none;
+}
+
+[data-testid="companion-header-chat-controls"] > button[aria-pressed="true"] {
+  border-color: rgba(240, 185, 11, 0.32);
+}
+
+.settings-icon-sidebar {
+  background: linear-gradient(
+    180deg,
+    rgba(10, 10, 12, 0.98) 0%,
+    rgba(5, 5, 6, 0.96) 100%
+  );
+  border-right-color: transparent;
+  box-shadow: none;
+}
+
+.settings-content-area {
+  --s-panel-bg: rgba(10, 10, 12, 0.97);
+  --s-card-bg: rgba(18, 18, 21, 0.92);
+  --s-card-bg-hover: rgba(24, 24, 28, 0.96);
+  --s-input-bg: rgba(5, 5, 6, 0.92);
+  --s-input-bg-hover: rgba(10, 10, 12, 0.95);
+  --s-input-bg-focus: rgba(18, 18, 21, 0.98);
+  --s-sidebar-bg: rgba(5, 5, 6, 0.98);
+  --s-text: var(--chrome-highlight);
+  --s-text-secondary: #eaecef;
+  --s-text-muted: #848e9c;
+  --s-text-txt: var(--chrome-highlight);
+  --s-border-subtle: rgba(49, 49, 56, 0.28);
+  --s-border: rgba(49, 49, 56, 0.42);
+  --s-border-medium: rgba(138, 138, 148, 0.34);
+  --s-border-strong: rgba(177, 183, 191, 0.2);
+  --s-accent: var(--classic-gold);
+  --s-accent-glow: rgba(240, 185, 11, 0.16);
+  --s-accent-subtle: rgba(240, 185, 11, 0.1);
+  --s-grid-line: rgba(240, 185, 11, 0.018);
+  --s-glow-edge: rgba(240, 185, 11, 0.08);
+
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(240, 185, 11, 0.06),
+      transparent 26%
+    ),
+    linear-gradient(180deg, rgba(10, 10, 12, 0.98), rgba(5, 5, 6, 1));
+  box-shadow: none;
+}
+
+.settings-content-area::after {
+  background: linear-gradient(
+    180deg,
+    transparent 8%,
+    rgba(240, 185, 11, 0.16) 48%,
+    transparent 92%
+  );
+  box-shadow: none;
+}
+
+.settings-content-area::before {
+  opacity: 0.42;
+  background-size: 52px 52px;
+}
+
+.settings-content-area > [class*="sticky top-0"][class*="border-b"] {
+  border-color: transparent;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 10, 12, 0.94) 0%,
+    rgba(5, 5, 6, 0.88) 100%
+  );
+  box-shadow: none;
+}
+
+.settings-content-area [class*="bg-black/5"],
+.settings-content-area [class*="bg-black/10"],
+.settings-content-area [class*="bg-black/20"] {
+  background: rgba(5, 5, 6, 0.56);
+}
+
+.settings-content-area [class*="bg-card/40"],
+.settings-content-area [class*="bg-card/55"],
+.settings-content-area [class*="bg-card/60"],
+.settings-content-area [class*="bg-card/70"],
+.settings-content-area [class*="bg-card/90"] {
+  background: linear-gradient(
+    180deg,
+    rgba(18, 18, 21, 0.92) 0%,
+    rgba(10, 10, 12, 0.88) 100%
+  );
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.settings-content-area input[type="text"],
+.settings-content-area input[type="password"],
+.settings-content-area input[type="number"],
+.settings-content-area input[type="email"],
+.settings-content-area textarea,
+.settings-content-area select {
+  color: var(--chrome-highlight);
+}
+
+.settings-content-area input::placeholder,
+.settings-content-area textarea::placeholder {
+  color: #a1a1aa;
+}
+
+.plugins-game-card {
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-xs, 3px);
+  border: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(18, 18, 21, 0.92) 0%,
+    rgba(10, 10, 12, 0.9) 100%
+  );
+  box-shadow: none;
+}
+
+.plugins-game-card::after {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06),
+    transparent 30%
+  );
+  opacity: 0.45;
+}
+
+.plugins-game-card:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(24, 24, 28, 0.96) 0%,
+    rgba(10, 10, 12, 0.92) 100%
+  );
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.plugins-game-card.is-selected {
+  border-color: transparent;
+  border-left-color: transparent;
+  background: linear-gradient(
+    180deg,
+    rgba(240, 185, 11, 0.12) 0%,
+    rgba(18, 18, 21, 0.94) 100%
+  );
+  box-shadow: none;
+}
+
+.plugins-game-card-icon-shell,
+.plugins-game-detail-icon-shell {
+  border-color: transparent;
+  background: linear-gradient(
+    145deg,
+    rgba(245, 247, 250, 0.06),
+    rgba(10, 10, 12, 0.58)
+  );
+  box-shadow: none;
+}
+
+.plugins-game-card-name {
+  color: var(--chrome-highlight);
+  letter-spacing: 0.03em;
+}
+
+.plugins-game-card-meta,
+.plugins-game-detail-meta {
+  color: #b7bdc6;
+}
+
+.plugins-game-badge {
+  border-color: rgba(49, 49, 56, 0.36);
+  background: rgba(5, 5, 6, 0.48);
+  color: #b7bdc6;
+}
+
+.plugins-game-badge.is-on {
+  border-color: rgba(240, 185, 11, 0.28);
+  background: rgba(240, 185, 11, 0.12);
+  color: var(--highlight-gold);
+}
+
+/* Memory viewer type badges — color tokens for the memory type taxonomy
+ * (messages, memories, facts, documents). Surfaces avoid hardcoded rgba/rgb
+ * literals at the component layer.
+ */
+:root {
+  --memory-type-messages-bg: rgba(99, 102, 241, 0.15);
+  --memory-type-messages-fg: rgb(99, 102, 241);
+  --memory-type-memories-bg: rgba(168, 85, 247, 0.15);
+  --memory-type-memories-fg: rgb(168, 85, 247);
+  --memory-type-facts-bg: rgba(34, 197, 94, 0.15);
+  --memory-type-facts-fg: rgb(34, 197, 94);
+  --memory-type-documents-bg: rgba(245, 158, 11, 0.15);
+  --memory-type-documents-fg: rgb(245, 158, 11);
+  --memory-type-unknown-bg: rgba(156, 163, 175, 0.15);
+  --memory-type-unknown-fg: rgb(156, 163, 175);
+}
+
+.memory-type-badge-messages {
+  background-color: var(--memory-type-messages-bg);
+  color: var(--memory-type-messages-fg);
+}
+.memory-type-badge-memories {
+  background-color: var(--memory-type-memories-bg);
+  color: var(--memory-type-memories-fg);
+}
+.memory-type-badge-facts {
+  background-color: var(--memory-type-facts-bg);
+  color: var(--memory-type-facts-fg);
+}
+.memory-type-badge-documents {
+  background-color: var(--memory-type-documents-bg);
+  color: var(--memory-type-documents-fg);
+}
+.memory-type-badge-unknown {
+  background-color: var(--memory-type-unknown-bg);
+  color: var(--memory-type-unknown-fg);
+}
+
+.memory-type-dot-messages {
+  background-color: var(--memory-type-messages-fg);
+}
+.memory-type-dot-memories {
+  background-color: var(--memory-type-memories-fg);
+}
+.memory-type-dot-facts {
+  background-color: var(--memory-type-facts-fg);
+}
+.memory-type-dot-documents {
+  background-color: var(--memory-type-documents-fg);
+}
+.memory-type-dot-unknown {
+  background-color: var(--memory-type-unknown-fg);
+}
+
+/* Logs viewer toolbar buttons — shared glassy outline-button surface used
+ * for the "Clear filters" and "Refresh" controls. Keeps the rgba shadow
+ * literals out of the component layer so the JSX can reference a single
+ * design token.
+ */
+:root {
+  --logs-toolbar-button-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 84%, transparent),
+    color-mix(in srgb, var(--bg) 95%, transparent)
+  );
+  --logs-toolbar-button-bg-hover: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 90%, transparent),
+    color-mix(in srgb, var(--bg) 97%, transparent)
+  );
+  --logs-toolbar-button-shadow: none;
+  --logs-toolbar-button-shadow-hover: none;
+  --logs-toolbar-button-shadow-dark: none;
+}
+
+.logs-toolbar-button {
+  min-height: 2.5rem;
+  border-radius: var(--radius-xs, 3px);
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 0;
+  background: var(--logs-toolbar-button-bg);
+  color: var(--muted-strong);
+  box-shadow: var(--logs-toolbar-button-shadow);
+  backdrop-filter: blur(12px);
+  transition:
+    background-color 200ms,
+    color 200ms,
+    transform 200ms;
+}
+
+.logs-toolbar-button:hover {
+  background: var(--logs-toolbar-button-bg-hover);
+  color: var(--text);
+}
+
+.logs-toolbar-button:active {
+  transform: scale(0.95);
+}
+
+.logs-toolbar-button:disabled:hover {
+  background: var(--logs-toolbar-button-bg);
+  color: var(--muted-strong);
+}
+
+[data-theme="dark"] .logs-toolbar-button,
+.dark .logs-toolbar-button {
+  box-shadow: var(--logs-toolbar-button-shadow-dark);
+}
+
+/* Component-level theme overrides removed — use theme variables directly. */

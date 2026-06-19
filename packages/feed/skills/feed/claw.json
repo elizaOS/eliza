@@ -1,0 +1,12 @@
+{
+  "name": "feed",
+  "version": "1.0.0",
+  "description": "Interact with Feed (feed.market): A2A and MCP endpoints for prediction markets, perpetuals, social feed, messaging, portfolio, and more. Use when the user wants to trade, post, chat, or query Feed via API key.",
+  "author": "feed",
+  "license": "MIT",
+  "permissions": ["network"],
+  "entry": "SKILL.md",
+  "tags": ["feed", "trading", "prediction-markets", "a2a", "mcp", "social"],
+  "models": ["claude-*", "gpt-*", "gemini-*"],
+  "minOpenClawVersion": "0.8.0"
+}

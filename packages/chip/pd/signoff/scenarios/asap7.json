@@ -1,0 +1,229 @@
+{
+  "blocked": false,
+  "blocked_reason": null,
+  "evidence_class": "predictive_finfet_shape_only",
+  "node_class": "predictive_7nm_finfet",
+  "node_id": "asap7",
+  "pdk": "ASAP7",
+  "scenario_count": 9,
+  "scenarios": [
+    {
+      "analysis_type": "max_min",
+      "delay_corner": {
+        "liberty": "asap7sc7p5t_INVBUF_LVT_TT_nldm_201020.lib",
+        "name": "tt_25C_0v70",
+        "process": "tt",
+        "role": "nominal",
+        "temperature_c": 25.0,
+        "voltage_v": 0.7
+      },
+      "mode": "func",
+      "name": "func__tt_25C_0v70__rc_typical",
+      "ocv": {
+        "early_derate": 0.95,
+        "kind": "ocv",
+        "late_derate": 1.05,
+        "lvf_declared": false
+      },
+      "rc_corner": {
+        "name": "typical",
+        "role": "typical_extraction",
+        "view": "asap7_TypicalCorner.tech.lef"
+      }
+    },
+    {
+      "analysis_type": "max_min",
+      "delay_corner": {
+        "liberty": "asap7sc7p5t_INVBUF_LVT_TT_nldm_201020.lib",
+        "name": "tt_25C_0v70",
+        "process": "tt",
+        "role": "nominal",
+        "temperature_c": 25.0,
+        "voltage_v": 0.7
+      },
+      "mode": "func",
+      "name": "func__tt_25C_0v70__rc_rcworst",
+      "ocv": {
+        "early_derate": 0.95,
+        "kind": "ocv",
+        "late_derate": 1.05,
+        "lvf_declared": false
+      },
+      "rc_corner": {
+        "name": "rcworst",
+        "role": "slow_RC",
+        "view": "asap7_RCWorst.tech.lef"
+      }
+    },
+    {
+      "analysis_type": "max_min",
+      "delay_corner": {
+        "liberty": "asap7sc7p5t_INVBUF_LVT_TT_nldm_201020.lib",
+        "name": "tt_25C_0v70",
+        "process": "tt",
+        "role": "nominal",
+        "temperature_c": 25.0,
+        "voltage_v": 0.7
+      },
+      "mode": "func",
+      "name": "func__tt_25C_0v70__rc_rcbest",
+      "ocv": {
+        "early_derate": 0.95,
+        "kind": "ocv",
+        "late_derate": 1.05,
+        "lvf_declared": false
+      },
+      "rc_corner": {
+        "name": "rcbest",
+        "role": "fast_RC",
+        "view": "asap7_RCBest.tech.lef"
+      }
+    },
+    {
+      "analysis_type": "max",
+      "delay_corner": {
+        "liberty": "asap7sc7p5t_INVBUF_LVT_SS_nldm_201020.lib",
+        "name": "ss_125C_0v63",
+        "process": "ss",
+        "role": "worst_setup",
+        "temperature_c": 125.0,
+        "voltage_v": 0.63
+      },
+      "mode": "func",
+      "name": "func__ss_125C_0v63__rc_typical",
+      "ocv": {
+        "early_derate": 0.95,
+        "kind": "ocv",
+        "late_derate": 1.05,
+        "lvf_declared": false
+      },
+      "rc_corner": {
+        "name": "typical",
+        "role": "typical_extraction",
+        "view": "asap7_TypicalCorner.tech.lef"
+      }
+    },
+    {
+      "analysis_type": "max",
+      "delay_corner": {
+        "liberty": "asap7sc7p5t_INVBUF_LVT_SS_nldm_201020.lib",
+        "name": "ss_125C_0v63",
+        "process": "ss",
+        "role": "worst_setup",
+        "temperature_c": 125.0,
+        "voltage_v": 0.63
+      },
+      "mode": "func",
+      "name": "func__ss_125C_0v63__rc_rcworst",
+      "ocv": {
+        "early_derate": 0.95,
+        "kind": "ocv",
+        "late_derate": 1.05,
+        "lvf_declared": false
+      },
+      "rc_corner": {
+        "name": "rcworst",
+        "role": "slow_RC",
+        "view": "asap7_RCWorst.tech.lef"
+      }
+    },
+    {
+      "analysis_type": "max",
+      "delay_corner": {
+        "liberty": "asap7sc7p5t_INVBUF_LVT_SS_nldm_201020.lib",
+        "name": "ss_125C_0v63",
+        "process": "ss",
+        "role": "worst_setup",
+        "temperature_c": 125.0,
+        "voltage_v": 0.63
+      },
+      "mode": "func",
+      "name": "func__ss_125C_0v63__rc_rcbest",
+      "ocv": {
+        "early_derate": 0.95,
+        "kind": "ocv",
+        "late_derate": 1.05,
+        "lvf_declared": false
+      },
+      "rc_corner": {
+        "name": "rcbest",
+        "role": "fast_RC",
+        "view": "asap7_RCBest.tech.lef"
+      }
+    },
+    {
+      "analysis_type": "min",
+      "delay_corner": {
+        "liberty": "asap7sc7p5t_INVBUF_LVT_FF_nldm_201020.lib",
+        "name": "ff_n40C_0v77",
+        "process": "ff",
+        "role": "worst_hold",
+        "temperature_c": -40.0,
+        "voltage_v": 0.77
+      },
+      "mode": "func",
+      "name": "func__ff_n40C_0v77__rc_typical",
+      "ocv": {
+        "early_derate": 0.95,
+        "kind": "ocv",
+        "late_derate": 1.05,
+        "lvf_declared": false
+      },
+      "rc_corner": {
+        "name": "typical",
+        "role": "typical_extraction",
+        "view": "asap7_TypicalCorner.tech.lef"
+      }
+    },
+    {
+      "analysis_type": "min",
+      "delay_corner": {
+        "liberty": "asap7sc7p5t_INVBUF_LVT_FF_nldm_201020.lib",
+        "name": "ff_n40C_0v77",
+        "process": "ff",
+        "role": "worst_hold",
+        "temperature_c": -40.0,
+        "voltage_v": 0.77
+      },
+      "mode": "func",
+      "name": "func__ff_n40C_0v77__rc_rcworst",
+      "ocv": {
+        "early_derate": 0.95,
+        "kind": "ocv",
+        "late_derate": 1.05,
+        "lvf_declared": false
+      },
+      "rc_corner": {
+        "name": "rcworst",
+        "role": "slow_RC",
+        "view": "asap7_RCWorst.tech.lef"
+      }
+    },
+    {
+      "analysis_type": "min",
+      "delay_corner": {
+        "liberty": "asap7sc7p5t_INVBUF_LVT_FF_nldm_201020.lib",
+        "name": "ff_n40C_0v77",
+        "process": "ff",
+        "role": "worst_hold",
+        "temperature_c": -40.0,
+        "voltage_v": 0.77
+      },
+      "mode": "func",
+      "name": "func__ff_n40C_0v77__rc_rcbest",
+      "ocv": {
+        "early_derate": 0.95,
+        "kind": "ocv",
+        "late_derate": 1.05,
+        "lvf_declared": false
+      },
+      "rc_corner": {
+        "name": "rcbest",
+        "role": "fast_RC",
+        "view": "asap7_RCBest.tech.lef"
+      }
+    }
+  ],
+  "schema": "eliza.pd_mmmc_scenario.v1",
+  "status": "predictive_pdk_shape_only_not_signoff"
+}

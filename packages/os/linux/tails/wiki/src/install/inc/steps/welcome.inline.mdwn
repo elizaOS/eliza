@@ -1,0 +1,56 @@
+[[!meta robots="noindex"]]
+
+<h1 id="new" class="pc-clone mac-clone">Welcome to your new Tails!</h1>
+
+<div class="step-image pc-clone mac-clone">[[!img install/inc/infography/tails.png link="no" alt=""]]</div>
+
+<div class="success">
+
+<video autoplay loop muted width="200" height="200" poster="https://tails.net/install/inc/success/start.png">
+  <source src="https://tails.net/install/inc/success/start.mp4" type="video/mp4" />
+</video>
+
+<div>
+  <p class="big">You made it!</p>
+
+  <p>You managed to start <span class="pc-clone mac-clone">your new</span> Tails on your computer!</p>
+
+  <p>Congratulations on staying safe :)</p>
+
+  <p>To continue discovering Tails, read our [[documentation|doc]].</p>
+
+</div>
+
+</div>
+
+<h1 id="wi-fi" class="step">Test your Wi-Fi</h1>
+
+Problems with Wi-Fi are unfortunately quite common in Tails and Linux in
+general. To test if your Wi-Fi interface works in Tails:
+
+1. Open the system menu in the top-right corner:
+
+   [[!img doc/first_steps/desktop/system-with-wifi-only.png class="screenshot" alt=""]]
+
+1. Click [[!img lib/go-next.png link="no" class="symbolic" alt=""]] on the
+   right of the **Wi-Fi** button.
+
+   A list of available Wi-Fi networks appears below the **Wi-Fi** button.
+
+1. After establishing a connection to a local network, the *Tor Connection*
+   assistant appears to help you connect to the Tor
+   network.
+
+   [[!img doc/anonymous_internet/tor/tor-connection.png class="screenshot" alt=""]]
+
+   <div class="next">
+
+   <p>To learn more about the Tor network, go to [[Connecting to the Tor
+   network|doc/anonymous_internet/tor]].</p>
+
+   </div>
+
+Troubleshooting Wi-Fi not working
+---------------------------------
+
+[[!inline pages="doc/anonymous_internet/no-wifi.inline" raw="yes" sort="age"]]

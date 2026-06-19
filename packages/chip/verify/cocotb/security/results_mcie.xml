@@ -1,0 +1,13 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1780018690" />
+    <testcase name="aes_fips197_kat" classname="test_e1_mcie" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_mcie.py" lineno="293" time="0.0017156600952148438" sim_time_ns="50.001" ratio_time="29143.884700389102" />
+    <testcase name="roundtrip_confidential" classname="test_e1_mcie" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_mcie.py" lineno="308" time="0.009340047836303711" sim_time_ns="870.001" ratio_time="93147.38160316528" />
+    <testcase name="actually_encrypted" classname="test_e1_mcie" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_mcie.py" lineno="325" time="0.00474095344543457" sim_time_ns="450.001" ratio_time="94917.82722172492" />
+    <testcase name="non_deterministic_ciphertext" classname="test_e1_mcie" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_mcie.py" lineno="344" time="0.014039039611816406" sim_time_ns="1270.001" ratio_time="90462.09962475376" />
+    <testcase name="tamper_ciphertext_detected" classname="test_e1_mcie" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_mcie.py" lineno="370" time="0.008224964141845703" sim_time_ns="750.0010000000002" ratio_time="91185.92945399736" />
+    <testcase name="replay_old_triple_detected" classname="test_e1_mcie" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_mcie.py" lineno="395" time="0.0104217529296875" sim_time_ns="910.0010000000002" ratio_time="87317.46052122989" />
+    <testcase name="read_unwritten_confidential_faults" classname="test_e1_mcie" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_mcie.py" lineno="424" time="0.0021522045135498047" sim_time_ns="110.0009999999993" ratio_time="51110.849042206384" />
+    <testcase name="shared_plaintext_passthrough" classname="test_e1_mcie" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_mcie.py" lineno="441" time="0.0019299983978271484" sim_time_ns="140.0010000000002" ratio_time="72539.43845633118" />
+  </testsuite>
+</testsuites>

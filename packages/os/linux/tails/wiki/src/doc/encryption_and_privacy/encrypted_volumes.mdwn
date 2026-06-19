@@ -1,0 +1,232 @@
+[[!meta title="Creating and using LUKS encrypted volumes"]]
+
+[[!toc levels=2]]
+
+<h1 id="luks">Introduction to <i>LUKS</i></h1>
+
+<div class="tip">
+
+<p>The simplest way to carry around the documents that you want to use
+with Tails encrypted is to use the [[Persistent
+Storage|persistent_storage]].</p>
+
+</div>
+
+You can create other encrypted volumes using
+*LUKS* to encrypt, for example, another
+USB stick or an external hard disk.
+*LUKS* is the standard for disk
+encryption in Linux.
+
+- The *Disks* utility allows you to create encrypted volumes.
+
+- The GNOME desktop allows you to open encrypted volumes.
+
+<div class="attack">
+
+
+<p>Such encrypted volumes, like the Persistent Storage, are not hidden.</p>
+
+<p>An attacker in possession of the device can know that there is an encrypted
+volume on it. Take into consideration that you can be forced or tricked to give
+out its passphrase.</p>
+
+</div>
+
+<h2 id="comparison">Comparison between <i>LUKS</i> and <i>VeraCrypt</i></h2>
+
+You can also open *VeraCrypt* encrypted
+volumes in Tails. *VeraCrypt* is a disk
+encryption tool for Windows, macOS, and Linux. [[See our documentation
+about *VeraCrypt*.|veracrypt]]
+
+[[!inline pages="doc/encryption_and_privacy/luks_vs_veracrypt.inline" raw="yes" sort="age"]]
+
+<h1 id="creating">Creating an encrypted partition</h1>
+
+Choose **Apps&nbsp;▸ Utilities&nbsp;▸ Disks** to open the *Disks* utility.
+
+<h2 id="identifying">Identifying your external storage device</h2>
+
+The *Disks* utility lists all the current storage devices on the left side of
+the screen.
+
+  1. Plug in the external storage device that you want to use.
+
+  1. A new device appears in the list of storage devices. Click on it.
+
+     [[!img storage_devices_after.png class="screenshot" alt=""]]
+
+  1. Check that the description of the device on the right side of the screen
+  corresponds to your device: its brand, its size, etc.
+
+<h2 id="formatting">Formatting the device</h2>
+
+  1. Click on the [[!img lib/view-more.png alt="Drive Options" class="symbolic" link="no"]] button
+     in the title bar and choose **Format Disk**
+     to erase all the existing partitions on the device.
+
+  1. In the **Format Disk** dialog:
+
+     - If you want to overwrite all data on the device, choose **Overwrite
+       existing data with zeroes** in the **Erase** menu.
+
+         <div class="caution">
+         <p>Overwriting existing data does not erase all data on flash
+         memories, such as USB sticks and SSDs (Solid-State Drives).</p>
+
+         <p>See the [[limitations of file deletion|doc/encryption_and_privacy/secure_deletion#spare]].</p>
+
+         </div>
+
+     - Choose **Compatible with all systems and devices (MBR/DOS)** in the
+       **Partitioning** menu.
+
+  1. Click **Format**.
+
+  1. In the confirmation dialog, make sure that the device
+     is correct.
+
+  1. Click **Format**.
+
+<h2 id="partition">Creating a new encrypted partition</h2>
+
+Now the schema of the partitions in the middle of the screen shows an empty
+device:
+
+[[!img empty_device.png class="screenshot" alt="Free Space 123 GB"]]
+
+  1. Click on the **[[!img lib/list-add.png alt="Create partition" class="symbolic" link="no"]]**
+     button to create a new partition on the device.
+
+  1. Configure the various settings of your new partition in the
+  partition creation assistant:
+
+     - In the **Create Partition** screen:
+
+       - **Partition Size**: you can create a partition
+         on the whole device or only on part of it.
+
+         In the example below, we are creating a partition of 4.0 GB on a device of 8.1 GB.
+
+     - In the **Format Volume** dialog:
+
+       - **Volume Name**
+
+         You can give a name to the partition.
+         This name remains invisible until the partition is open but can help
+         you to identify it during use.
+
+       - **Erase**
+
+         You can choose to overwrite existing data on the partition.
+
+         <div class="caution">
+
+         <p>Overwriting existing data does not erase all data on flash
+         memories, such as USB sticks and SSDs (Solid-State Drives).</p>
+
+         <p>See the [[limitations of file deletion|doc/encryption_and_privacy/secure_deletion#spare]].</p>
+
+         </div>
+
+       - **Type**
+
+         Choose **Internal disk for use with Linux systems
+         only (Ext4)** and **Password protect volume (LUKS)**.
+
+     - In the **Set Password** screen:
+
+       - **Password**: type a passphrase for the
+         encrypted partition and repeat it to confirm.
+
+         <div class="tip">
+
+         <p>We recommend choosing a long passphrase made of 5 to 7 random words.
+         <a href="https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/">Learn
+         about the maths behind memorizable and secure passphrases.</a></p>
+
+         </div>
+
+         <div class="caution">
+         <p>It is impossible to recover your passphrase if you forget it!</p>
+
+         <p>To help you remember your passphrase, you can write it on a piece of
+         paper, store it in your wallet for a few days, and destroy it once
+         you know it well.</p>
+         </div>
+
+       Then click **Create**.
+
+  1. Creating the partition takes from a few seconds to a few minutes. After
+     that, the new encrypted partition appears in the volumes on the device:
+
+     [[!img encrypted_partition.png class="screenshot" alt="Partition 1 4.0 GB LUKS / Filesystem 4.0 GB Ext4"]]
+
+  1. If you want to create another partition in the free space on the
+     device, click on the free space and then click on the
+     **[[!img lib/list-add.png alt="Create partition" class="symbolic" link="no"]]**
+     button again.
+
+<h2 id="using">Using the new partition</h2>
+
+You can open this new partition from the sidebar of the *Files* browser with the
+name you gave it.
+
+<h1 id="opening">Opening an existing encrypted partition</h1>
+
+When you plug in a device that has an encrypted partition, Tails offers to
+unlock the encryption automatically.
+
+1. Plug in the external storage device that has the encrypted partition.
+
+1. A dialog appears, asking for the passphrase to unlock the partition.
+
+   [[!img unlock.png class="screenshot" alt="Authentication Required"]]
+
+1. Enter the passphrase of the partition in the password prompt and
+   click **Unlock**.
+
+   If you turn on the option **Remember Password**, Tails remembers the
+   passphrase of this partition only until you shut down. The passphrase is not
+   stored in your Persistent Storage.
+
+1. After unlocking, you can access the content of the partition from the
+   sidebar of the *Files* browser.
+
+After you finished using the partition, click on the [[!img lib/media-eject.png
+alt="Eject" class="symbolic" link="no"]] button next to the partition in the
+sidebar of the *Files* browser to eject the partition safety and lock again the
+encryption.
+
+<h1 id="os">Opening encrypted volumes from other operating systems</h1>
+
+It is possible to
+open such encrypted volumes from other operating systems. But, doing so might
+compromise the security provided by Tails.
+
+For example, image thumbnails might be created and saved by the other
+operating system. Or, the contents of files might be indexed by the other
+operating system.
+
+<h1 id="changing">Changing the passphrase of an existing encrypted partition</h1>
+
+1. Choose **Apps&nbsp;▸ Utilities&nbsp;▸ Disks** to open the *Disks* utility.
+
+1. Plug in the external storage device that contains the encrypted partition
+   for which you want to change the passphrase.
+
+1. The device appears in the list of storage devices. Click on it.
+
+   [[!img storage_devices_after.png class="screenshot" alt=""]]
+
+1. Check that the description of the device on the right side of the screen
+corresponds to your device: its brand, its size, etc.
+
+1. Click on the partition displaying a [[!img
+   lib/network-wireless-encrypted.png alt="Partition LUKS" class="symbolic"
+   link="no"]] in the bottom-right corner.
+
+1. Click on the [[!img lib/system-run.png alt="Additional partition options"
+   class="symbolic" link="no"]] button and choose **Change Passphrase** in the
+   shortcut menu.

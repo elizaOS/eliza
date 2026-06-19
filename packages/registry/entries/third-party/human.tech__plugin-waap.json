@@ -1,0 +1,9 @@
+{
+  "package": "@human.tech/plugin-waap",
+  "repository": "github:holonym-foundation/eliza-plugin-waap",
+  "kind": "plugin",
+  "description": "WaaP wallet plugin for ElizaOS — 2-of-2 MPC signing for EVM and Sui, with native 2FA and server-enforced spending policies; the agent never holds private keys.",
+  "homepage": "https://github.com/holonym-foundation/eliza-plugin-waap",
+  "version": "0.1.3",
+  "tags": ["wallet", "mpc", "2pc", "evm", "sui", "2fa"]
+}

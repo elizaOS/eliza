@@ -1,0 +1,1 @@
+{"steps":[{"perp_orders":{"orders":[{"coin":"ETH","tif":"Alo","side":"buy","sz":0.01,"reduceOnly":false,"px":"mid-1.0%"},{"coin":"ETH","tif":"Gtc","side":"sell","sz":0.01,"reduceOnly":false,"px":"mid+1.0%"}]}},{"cancel_last":{}}]}

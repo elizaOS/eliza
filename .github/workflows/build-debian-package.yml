@@ -1,0 +1,164 @@
+name: Build elizaOS Debian Package
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  release:
+    types: [created]
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      # contents: write covers the existing softprops/action-gh-release
+      # release upload + checkout.
+      # id-token + attestations are required by
+      # actions/attest-build-provenance@v4 to mint a Sigstore-signed
+      # SLSA build provenance for the .deb via GitHub OIDC.
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Debian build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            dpkg-dev \
+            devscripts \
+            debhelper \
+            dh-make \
+            fakeroot \
+            lintian
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Build .deb package
+        id: deb
+        run: |
+          set -euo pipefail
+          if [ ! -d packages/app-core/packaging/debian ]; then
+            echo "ERROR: packages/app-core/packaging/debian is missing — debian packaging dir is required for the .deb build. Repo state is bad."
+            exit 1
+          fi
+          # dpkg-buildpackage expects the source root to have a debian/ subdir
+          # alongside the source it needs to build. The repo keeps the
+          # packaging definitions under packages/app-core/packaging/debian to
+          # avoid clutter; link them into the app-core source root for the
+          # build, then unlink so a follow-up run is idempotent.
+          cd packages/app-core
+          if [ ! -L debian ]; then
+            ln -sfn packaging/debian debian
+          fi
+          dpkg-buildpackage -us -uc -b -d
+          rm -f debian
+
+      - name: Find and checksum .deb
+        id: find_deb
+        run: |
+          set -euo pipefail
+          DEB=$(find . -maxdepth 3 -name "*.deb" | head -1)
+          if [ -z "$DEB" ]; then
+            echo "ERROR: no .deb file produced after dpkg-buildpackage"
+            exit 1
+          fi
+          sha256sum "$DEB" > "${DEB}.sha256"
+          DEB_SHA256=$(cut -d' ' -f1 "${DEB}.sha256")
+          DEB_SIZE=$(stat --format="%s" "$DEB")
+          echo "deb_path=$DEB" >> "$GITHUB_OUTPUT"
+          echo "deb_sha256=$DEB_SHA256" >> "$GITHUB_OUTPUT"
+          echo "deb_size=$DEB_SIZE" >> "$GITHUB_OUTPUT"
+          echo "Found .deb: $DEB ($DEB_SIZE bytes)"
+
+      - name: Lint .deb with lintian
+        # lintian is installed in the "Install Debian build tools" step above.
+        # Findings are surfaced as GitHub annotations but do NOT fail the build —
+        # this is a visibility step. Flip to --fail-on-error once noise is acceptable.
+        if: steps.find_deb.outputs.deb_path != ''
+        run: |
+          set +e
+          lintian -i --pedantic --no-tag-display-limit "${{ steps.find_deb.outputs.deb_path }}" > lintian.log 2>&1
+          LINTIAN_EXIT=$?
+          set -e
+          while IFS= read -r line; do
+            case "$line" in
+              E:*) echo "::error::lintian: $line" ;;
+              W:*) echo "::warning::lintian: $line" ;;
+              I:*) echo "::notice::lintian: $line" ;;
+              P:*) echo "::notice::lintian: $line" ;;
+            esac
+          done < lintian.log
+          echo "lintian exit code: $LINTIAN_EXIT (annotations only; not failing build)"
+
+      - name: Upload lintian log
+        if: always() && steps.find_deb.outputs.deb_path != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: elizaos-debian-lintian-log
+          path: lintian.log
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Attest SLSA build provenance for .deb
+        # Mints a Sigstore-signed in-toto/SLSA provenance attestation
+        # tied to this repo + workflow + commit, via GitHub OIDC.
+        # No long-lived secrets. Users verify with:
+        #   gh attestation verify <deb-file> --owner elizaOS
+        if: steps.find_deb.outputs.deb_path != ''
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        with:
+          subject-path: ${{ steps.find_deb.outputs.deb_path }}
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: elizaos-debian-package
+          path: |
+            **/*.deb
+            **/*.deb.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload to GitHub Release
+        if: (github.event_name == 'release') && steps.find_deb.outputs.deb_path != ''
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
+        with:
+          files: |
+            **/*.deb
+            **/*.deb.sha256
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write .deb metadata to summary
+        run: |
+          {
+            echo "## elizaOS Debian Package"
+            echo "| Field | Value |"
+            echo "| ----- | ----- |"
+            if [ -n "${{ steps.find_deb.outputs.deb_path }}" ]; then
+              echo "| File | \`${{ steps.find_deb.outputs.deb_path }}\` |"
+              echo "| SHA-256 | \`${{ steps.find_deb.outputs.deb_sha256 }}\` |"
+              echo "| Size | ${{ steps.find_deb.outputs.deb_size }} bytes |"
+            else
+              echo "| Status | not produced (packaging/debian may not be present yet) |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

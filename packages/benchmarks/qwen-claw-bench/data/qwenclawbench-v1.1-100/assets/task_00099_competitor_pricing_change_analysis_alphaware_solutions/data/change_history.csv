@@ -1,0 +1,29 @@
+change_id,date,url,change_type,significance_score,summary
+CHG-3737,2024-01-05,https://www.alphaware-solutions.example.com/about,layout,0.33,New CTA banner placement on /about
+CHG-3201,2024-01-18,https://www.alphaware-solutions.example.com/pricing,price,0.72,Professional plan price reduced from $139/mo to $129/mo; minor copy update on pricing FAQ
+CHG-3377,2024-01-19,https://www.alphaware-solutions.example.com/integrations,seo,0.27,New structured data markup added to /integrations
+CHG-3957,2024-02-01,https://www.alphaware-solutions.example.com/blog,seo,0.13,Internal linking structure updated on /blog
+CHG-3279,2024-02-05,https://www.alphaware-solutions.example.com/about,layout,0.09,Footer redesign with updated social links on /about
+CHG-3690,2024-02-06,https://www.alphaware-solutions.example.com/customers,layout,0.22,Mobile responsive layout fix on /customers
+CHG-3187,2024-02-22,https://www.alphaware-solutions.example.com/integrations,content,0.29,Updated customer count from 1895 to 2116 on /integrations
+CHG-3582,2024-02-25,https://www.alphaware-solutions.example.com/blog,content,0.09,New case study link added to /blog
+CHG-3481,2024-03-02,https://www.alphaware-solutions.example.com/about,seo,0.13,New structured data markup added to /about
+CHG-3809,2024-03-03,https://www.alphaware-solutions.example.com/contact,seo,0.33,Open Graph tags updated on /contact
+CHG-3820,2024-03-10,https://www.alphaware-solutions.example.com/pricing,price,0.85,Enterprise plan price increased from $279/mo to $299/mo; seat count unchanged at 50
+CHG-3507,2024-03-18,https://www.alphaware-solutions.example.com/contact,seo,0.23,Title tag changed on /contact
+CHG-3556,2024-03-24,https://www.alphaware-solutions.example.com/pricing,content,0.1,New FAQ entries added to /pricing
+CHG-3609,2024-03-27,https://www.alphaware-solutions.example.com/integrations,seo,0.19,Canonical URL added to /integrations
+CHG-4002,2024-04-01,https://www.alphaware-solutions.example.com/integrations,content,0.08,New case study link added to /integrations
+CHG-3758,2024-04-07,https://www.alphaware-solutions.example.com/blog,layout,0.35,Adjusted grid spacing and card layout on /blog
+CHG-3918,2024-05-01,https://www.alphaware-solutions.example.com/features,layout,0.32,Button color scheme updated on /features
+CHG-3653,2024-05-03,https://www.alphaware-solutions.example.com/pricing,content,0.29,New FAQ entries added to /pricing
+CHG-3847,2024-05-07,https://www.alphaware-solutions.example.com/blog,content,0.22,New case study link added to /blog
+CHG-3154,2024-05-09,https://www.alphaware-solutions.example.com/resources,layout,0.15,Adjusted grid spacing and card layout on /resources
+CHG-3870,2024-05-15,https://www.alphaware-solutions.example.com/contact,seo,0.29,Meta description updated on /contact
+CHG-3243,2024-05-20,https://www.alphaware-solutions.example.com/features,seo,0.23,Title tag changed on /features
+CHG-3327,2024-05-24,https://www.alphaware-solutions.example.com/about,layout,0.33,Navigation menu restructured on /about
+CHG-3430,2024-06-10,https://www.alphaware-solutions.example.com/pricing,layout,0.22,Updated hero banner image on /pricing
+CHG-4485,2024-06-12,https://www.betatech-solutions.example.com/pricing,price,0.68,Standard plan price changed from $89/mo to $79/mo; annual billing discount added
+CHG-4490,2024-06-14,https://www.gammacloud-inc.example.com/pricing,price,0.55,Enterprise seat limit changed from 50 to 75 seats; new team analytics dashboard
+CHG-4491,2024-06-15,https://www.alphaware-solutions.example.com/pricing,price,0.95,Enterprise plan price decreased from $299/mo to $249/mo; seats doubled from 50 to 100; new AI Assistant add-on at $49/mo
+CHG-4497,2024-06-16,https://www.betatech-solutions.example.com/features,content,0.42,New integration marketplace launched with 50+ pre-built connectors

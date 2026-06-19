@@ -1,0 +1,37 @@
+[[!meta title="Tails report for August 2023"]]
+[[!meta date="Tue, 19 Sep 2023 14:27:05 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Tails report for August 2023
+============================
+
+Highlights
+==========
+
+- [We are hiring](https://tails.net/jobs/Linux_generalist/)! We are looking for a Linux generalist to join the Foundations team. We are committed to making the project more diverse, and request your help circulating the opening.
+
+- We published our [recommendations for hardware to run Tails](https://tails.net/doc/about/requirements/). 
+
+- We interviewed journalists, activists, and digital security trainers to better understand their communication needs. We want to speak to more such folks, especially if they are working in African and Asian contexts. If you are reading this, or know of anyone who fits, sajolida would love to hear from you. He's at <sajolida@pimienta.org>.
+
+- And internally too, we are working on better communication and collaboration tools. We are trying to make working on Tails a bit friendlier for those who don't suffer from command line addiction. 
+
+Releases
+========
+
+[Tails 5.16 was released on August 06 2023](https://tails.net/news/version_5.16/).
+
+- You have shiny, upgraded versions of Tor Browser and Thunderbird.
+
+- Some users were experiencing difficulties while unlocking Persistent Storage. In Tails 5.16, we fixed some of these issues and continued working on it for Tails 5.17.
+
+- You will now see the passphrase recommendation for the Persistent Storage only in lower case. Capitalising each word makes for more cumbersome typing, and is not more secure.
+
+[Tails 5.16.1 was released on August 15 2023](https://tails.net/news/version_5.16.1/). It fixes a critical vulnerability in the Linux kernel that large, powerful actors could have exploited (but, to the best of our knowledge, haven't).
+
+Metrics
+=======
+
+Tails was started more than 761771 times this month. That's a daily average of 24,573 boots.

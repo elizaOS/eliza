@@ -1,0 +1,48 @@
+task_id: M042_video_mme_multihop_reasoning
+task_name: Video-MME Multi-hop Reasoning
+version: "1.0"
+category: video_search
+difficulty: hard
+tags: [multimodal]
+
+prompt:
+  text: |
+    There is a video file at /workspace/fixtures/video.mp4 and its subtitle at /workspace/fixtures/subtitle.txt.
+
+    Watch the video carefully (or read the subtitle) and answer the following question:
+
+    On what date did the individual in the video leave a place that Simon thought was very important to him?
+
+    Please provide the exact date in your answer and save it to /workspace/answer.txt.
+  language: en
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+  - fixtures/subtitle.txt
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/answer.txt
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames.
+  Identify the individual and the place Simon considered important.
+  Find the date the individual left that place: June 9, 2021.
+
+primary_dimensions:
+  - completion
+  - robustness

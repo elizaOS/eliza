@@ -1,0 +1,185 @@
+[[!meta title="Tails report for January, 2018"]]
+[[!meta date="Thu, 08 Feb 2018 07:21:15 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 3.4 was released on January 9|news/version_3.4]] (bugfix release
+  to mitigate Meltdown and Spectre).
+
+* [[Tails 3.5 was released on January 23|news/version_3.5]] (bugfix release).
+
+* Tails 3.6 is [[scheduled for March 13|contribute/calendar]].
+
+The following changes were introduced in Tails 3.5:
+
+- Tor redesigned *Tor Launcher*, the application to configure a Tor
+  bridge or a local proxy.
+
+- Fix printing to a PDF in *Tor Browser*. ([[!tails_ticket 13403]]
+  and [[!tails_ticket 15024]])
+
+- Fix the opening of the **Applications** menu when the time
+  synchronization changed the clock in the past. ([[!tails_ticket 14250]])
+
+- Fix the opening of the documentation included in Tails for many
+  non-English languages. ([[!tails_ticket 15160]])
+
+- Fix translations of the time synchronization and "*Tor is ready*"
+  notifications. ([[!tails_ticket 13437]])
+
+- Remove the code to migrate from *Claws Mail* that was preventing
+  *Thunderbird* to start in some cases. ([[!tails_ticket 12734]])
+
+User experience
+===============
+
+### Interviews of Tails users
+
+We published 4 new interviews:
+
+- 2 from people attending 34C4: [[Daan|contribute/how/user_experience/interviews/daan]] and
+  [[Charles|contribute/how/user_experience/interviews/charles]].
+
+- 4 from journalists from Latin America: [[Joana and Orlando|contribute/how/user_experience/interviews/joana_orlando]] and
+  [[Claudia and Felix|contribute/how/user_experience/interviews/claudia_felix]].
+
+### Additional Software
+
+We designed the interactions and interfaces for people to install
+additional software every time Tails is started.
+
+Like for our work on VeraCrypt in
+December, we did that
+through paper prototyping and formative testing with users in Berlin.
+
+Here are the most visible parts of this upcoming feature.
+
+When installing a Debian package:
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/notification - add.png"/>
+
+When starting Tails with some additional packages configured:
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/notification - installing.png"/>
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/notification - installed.png"/>
+
+Additional Software feature in the persistent storage configuration:
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/persistent storage - configuration changed.png"/>
+
+Example list of additional software:
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/additional software.png"/>
+
+Hot topics on our help desk
+===========================
+
+<a id="electrum"></a>
+
+1. *Electrum* users were very stressed about [vulnerability found in Electrum
+in January](https://github.com/spesmilo/electrum/issues/3374). Tails is not
+affected as [[!tails_ticket 15151 desc="our firewall blocks the connections
+required to exploit this vulnerability"]]. Still, we will update *Electrum* in
+Tails 3.6.
+
+1. Meltdown and Spectre vulnerabilities made our users restless.
+
+1.  [[!tails_ticket 15254 desc="Tails Installer breaks in locales other
+than the default"]] was a hard one, although on the other side we see
+again that many people use Tails in another language than English.
+
+1.  [[!tails_ticket 15116 desc="Nvidia Maxwell and Pascal graphic cards
+are still giving problems in Tails 3.5."]]
+
+1. As every time we update the Tails signing key, many users got scared by
+the gpg messages received during OpenGPG ISO verification, but there are
+several tickets open about this [[!tails_ticket 14711]], [[!tails_ticket
+13634]],  [[!tails_ticket 14977]].
+
+Strategic planning
+==================
+
+We published notes on strategic planning
+sessions that we had in August to
+organize future discussions.
+
+Infrastructure
+==============
+
+- We made plans to finish migrating all our download mirrors to
+  HTTPS.
+
+- We updated almost all the Puppet modules we use. ([[!tails_ticket 15154]])
+
+- We started working on migrating our infrastructure to Puppet 4.
+  ([[!tails_ticket 11834]])
+
+Funding
+=======
+
+- We closed our donation campaign.
+
+- We added *I2P* in our list of sponsors. Thank you I2P for your generous donation!
+
+Outreach
+========
+
+Past events
+-----------
+
+Upcoming events
+---------------
+
+- Tails will be presented at the [Festival des Libertés
+  Numériques](https://fdln.insa-rennes.fr) in different cities of
+  Brittany, France, from February 10 to 25.
+
+- emmapeel and sajolida will be at the [Internet Freedom
+  Festival](https://internetfreedomfestival.org/), in Valencia from March 5 to 9.
+
+- jvoisin will give a talk about Tails at the [Journées
+  FedeRez](https://www.federez.net/journees/2018/) in
+  Paris on March 10.
+
+- intrigeri will be at the Tor Meeting in Rome from March 11 to 15.
+
+On-going discussions
+====================
+
+- Restructuring our support page
+
+Translations
+============
+
+## All the website
+
+  - de: 52% (2838) strings translated, 7% strings fuzzy, 46% words translated
+  - fa: 38% (2074) strings translated, 10% strings fuzzy, 40% words translated
+  - fr: 91% (4943) strings translated, 1% strings fuzzy, 89% words translated
+  - it: 35% (1914) strings translated, 5% strings fuzzy, 31% words translated
+  - pt: 22% (1212) strings translated, 9% strings fuzzy, 19% words translated
+
+Total original words: 57571
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 76% (1447) strings translated, 13% strings fuzzy, 76% words translated
+  - fa: 33% (638) strings translated, 11% strings fuzzy, 33% words translated
+  - fr: 98% (1873) strings translated, 1% strings fuzzy, 99% words translated
+  - it: 70% (1336) strings translated, 14% strings fuzzy, 70% words translated
+  - pt: 41% (779) strings translated, 15% strings fuzzy, 41% words translated
+
+Total original words: 17290
+
+Metrics
+=======
+
+* Tails has been started more than 671878 times this month. This makes 21673 boots a day on average.
+* 11977 downloads of the OpenPGP signature of Tails ISO from our website.
+* 107 bug reports were received through WhisperBack.
+

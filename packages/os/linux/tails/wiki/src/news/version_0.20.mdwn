@@ -1,0 +1,69 @@
+[[!meta date="Fri, 09 Aug 2013 15:30:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.20 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.20, is out.
+
+All users must upgrade as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_0.19]].
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* New features
+  - Install Linux kernel 3.10.3-1 from Debian unstable.
+  - Iceweasel 17.0.8esr + Torbrowser patches.
+
+* Bugfixes
+  - Prevent Iceweasel from displaying a warning when leaving HTTPS web sites.
+  - Make Iceweasel use the correct, localized search engine.
+  - Fix Git access to https:// repositories.
+
+* Minor improvements
+  - Install Dasher, a predictive text entry tool.
+  - Add a wrapper around TrueCrypt which displays a warning about it soon
+    being deprecated in Tails.
+  - Remove Pidgin libraries for all protocols but IRC and Jabber/XMPP.
+    Many of the other protocols Pidgin support are broken in Tails and
+    haven't got any security auditting.
+  - Disable the pre-defined Pidgin accounts so they do not auto-connect
+    on Pidgin start.
+  - Include information about Alsa in WhisperBack reports.
+  - Explicitly restrict access to ptrace. While this setting was enabled
+    by default in Debian's Linux 3.9.6-1, it will later disabled in 3.9.7-1.
+    It's unclear what will happen next, so let's explicitly enable it ourselves.
+  - Do not display dialog when a message is sent in Claws Mail.
+  - Sync iceweasel preferences with the Torbrowser's.
+
+* Localization
+  - Many translation updates all over the place.
+  - Merge all Tails-related POT files into one, and make use of intltoolize
+    for better integration with Transifex.
+
+See the online
+Changelog
+for technical details.
+
+# Known issue
+
+No new known issue but [[longstanding known issues|support/known_issues]].
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is scheduled for around September 19.
+
+
+Would you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

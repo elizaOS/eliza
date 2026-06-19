@@ -1,0 +1,60 @@
+[
+  {
+    "contact_id": "CT-301",
+    "name": "Zhang Wei",
+    "department": "Engineering",
+    "title": "Engineering Manager",
+    "email": "zhangwei_eng@company.com",
+    "phone": "13800001001"
+  },
+  {
+    "contact_id": "CT-302",
+    "name": "Zhang Wei",
+    "department": "Marketing",
+    "title": "Marketing Manager",
+    "email": "zhangwei_mkt@company.com",
+    "phone": "13800001002"
+  },
+  {
+    "contact_id": "CT-303",
+    "name": "Li Ming",
+    "department": "Engineering",
+    "title": "Senior Engineer",
+    "email": "liming@company.com",
+    "phone": "13800001003",
+    "notes": "Has a tech review meeting on Monday 10:30-11:30"
+  },
+  {
+    "contact_id": "CT-304",
+    "name": "Fang Wang",
+    "department": "Human Resources",
+    "title": "HR Director",
+    "email": "wangfang@company.com",
+    "phone": "13800001004"
+  },
+  {
+    "contact_id": "CT-305",
+    "name": "Jing Chen",
+    "department": "IT",
+    "title": "IT Support Lead",
+    "email": "chenjing@company.com",
+    "phone": "13800001005"
+  },
+  {
+    "contact_id": "CT-306",
+    "name": "Qiang Zhao",
+    "department": "Security",
+    "title": "Security Manager",
+    "email": "zhaoqiang@company.com",
+    "phone": "13800001006"
+  },
+  {
+    "contact_id": "CT-307",
+    "name": "Yang Liu",
+    "department": "Data",
+    "title": "",
+    "email": "liuyang@company.com",
+    "phone": "13800001007",
+    "notes": "The Data department currently has no department manager. Yang Liu is a senior analyst handling day-to-day operations."
+  }
+]

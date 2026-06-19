@@ -1,0 +1,98 @@
+[[!meta date="Mon, 9 Dec 2019 19:00:00 +0000"]]
+[[!meta title="Our plans for 2020"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+On October 7, we launched our donation campaign by explaining [[why
+supporting Tails is more important than ever|news/2019-fundraiser]]. On
+October 31, we summarized [[what we did in 2019 to make Tails easier to
+adopt by new users|news/achievements_in_2019]]. Today we pass on to you
+our plans for 2020.
+
+But first, we are pleased that the donation campaign has been pretty successful so far. We received
+around 50&#8239;000 € already, which is 69% more than last year.
+Still, these good results are due to some large donations and
+fewer people have been donating so far, 16% less than in 2018.
+We hope that after reading this post many of you will consider <a
+href="https://tails.net/donate/?r=plans2020">donating to Tails</a>.
+
+[[!toc levels=1]]
+
+Less manual upgrades (January 2020)
+===================================
+
+Tails ships an automatic upgrade mechanism since 2013. But this
+mechanism only works for a limited amount of upgrades, after which a
+[["manual" upgrade|doc/upgrade#manual]] is needed.
+
+These manual upgrades are a major pain point and we know that users often
+think their Tails is "broken" when automatic upgrades are not
+possible anymore.
+
+In 2020, we will
+remove the need for most of these manual upgrades. And as automatic
+upgrades are also often too painful we will research ways to make them
+lighter and more robust.
+
+New homepage and outreach material (April 2020)
+===============================================
+
+Leveraging all the work that we have done in the past years to
+make Tails easier to install and use, in 2020, we will
+explain better what Tails is and why people should use it.
+
+The text on our Home and About pages have not changed significantly
+since 2011. It is too verbose, too technical for most people, and
+not sufficiently engaging visually. Since then Tails has come a long way: the number
+of people using Tails has been multiplied by 16. Tails is no longer an
+experimental project for privacy experts but a well-established reference.
+
+For the less technical part of our target audience, Tails is a
+technological object like nothing they have used before. Some of the
+core concepts of Tails are particularly innovative and hard to understand before using it:
+
+- Tails is a full operating system that is started from a USB stick.
+
+- Tails forgets everything by default.
+
+To make sure that the new explanation of Tails makes sense to less tech-savvy users,
+we will use
+[user-centered](https://simplysecure.org/blog/formative-testing) [design
+techniques](https://simplysecure.org/blog/branding-tails) and work with
+[[professional graphic designers|jobs/illustrations_how_tails_work]].
+
+To reach critical communities of users and digital security trainers
+worldwide, we will also print outreach materials based on this new
+explanation, make it available in 4 languages, and send it to partner
+organizations worldwide.
+
+If your organization works with journalists, activists, or
+human-defenders and is interested in receiving leaflets about
+Tails in 2020, please <a href="mailto:sajolida@pimienta.org">get in
+touch with us</a>.
+
+Secure Boot for better hardware support (July 2020)
+===================================================
+
+In 2019, we worked on making it much easier for users to start Tails on Mac and as
+a consequence, their numbers more than
+doubled.
+
+For years, Secure Boot has been among the main sources of issues
+reported to our help desk and prevented less tech-savvy users to adopt Tails.
+
+Currently, many have to learn how to disable Secure Boot on their
+computer. This process is slightly different on every computer, is very
+complicated to learn on your own, and can lead to scary problems on
+Windows computers, for example [[!tails_ticket 15016#note-19
+desc="*BitLocker* asking you for a recovery key"]].
+
+Next year, we will add support for Secure Boot to Tails, making it
+easier to start on PC, for which 90% of people download Tails.
+
+<strong>In 2020, we will keep the focus on improving Tails usability
+and outreaching to the people the most in
+need of digital security. If you also think that this is important,
+please take a moment to donate to Tails.</strong>
+
+[Donate](https://tails.net/donate/)

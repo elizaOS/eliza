@@ -1,0 +1,56 @@
+{
+  "schema": "eliza.bpu_generator_manifest.v1",
+  "status": "selected_not_imported",
+  "upstream": {
+    "repo": "https://github.com/OpenXiangShan/XiangShan.git",
+    "branch": "kunminghu-v3",
+    "commit": "09d715b21d77a76354a8a088002f2191c37a4bc7",
+    "commit_pinned_note": "Reference commit captured 2026-05-19 from kunminghu-v3 HEAD via `gh api repos/OpenXiangShan/XiangShan/commits/kunminghu-v3`; refresh requires re-running scripts/check_branch_prediction.py and updating both manifest and docs/arch/branch-prediction.md before claims advance.",
+    "license": "MulanPSL-2.0",
+    "license_compatible_with_chip_package": false,
+    "license_resolution_required_before_import": true
+  },
+  "selected_modules_of_reference": [
+    "src/main/scala/xiangshan/frontend/UFTB.scala",
+    "src/main/scala/xiangshan/frontend/FTB.scala",
+    "src/main/scala/xiangshan/frontend/Tage.scala",
+    "src/main/scala/xiangshan/frontend/ITTage.scala",
+    "src/main/scala/xiangshan/frontend/SC.scala",
+    "src/main/scala/xiangshan/frontend/RAS.scala",
+    "src/main/scala/xiangshan/frontend/Ftq.scala",
+    "src/main/scala/xiangshan/frontend/LoopPredictor.scala",
+    "src/main/scala/xiangshan/Parameters.scala"
+  ],
+  "selected_path": {
+    "generator": "OpenXiangShan/XiangShan",
+    "branch": "kunminghu-v3",
+    "language": "Chisel/Scala",
+    "target": "frontend.BranchPredictionUnit",
+    "claim_level": "reference_for_2028_topology_only",
+    "not_phone_class_reason": "XiangShan Kunminghu has been taped out on TSMC N28/N14 at 1-2 GHz. A 2028 phone-class flagship AP requires N3/14A-class timing closure, dual-issue taken-branch BPU, FDIP-fed L1I, AOSP/Android workload MPKI evidence, and silicon validation that the open IP has not yet demonstrated."
+  },
+  "selected_repo_local_implementation": {
+    "package": "rtl/cpu/bpu",
+    "top": "rtl/cpu/bpu/bpu_top.sv",
+    "language": "SystemVerilog 2017",
+    "topology_matches_xiangshan": true,
+    "deviations": [
+      "Per-table TAGE useful-bit reset alternates LSB/MSB on a fixed cycle period rather than tracking misprediction-driven heuristics. This is the Seznec CBP-5 baseline; KMH uses a more aggressive adaptive scheme.",
+      "ITTAGE storage uses uniform `ITTAGE_ENTRIES_MAX`-sized arrays with index hashing modulo the per-table entry count. Synthesised area follows the largest table; KMH packs tables tightly.",
+      "Two-taken-per-cycle FTB read is parameterised but the prediction pipeline currently only emits one taken branch per cycle. Lifting to two taken requires a follow-up RTL workstream.",
+      "FDIP-style L1I prefetch is wired as a hint only; the prefetch engine remains a downstream blocker."
+    ]
+  },
+  "required_evidence": [
+    "docs/evidence/cpu_ap/branch-prediction-params.json"
+  ],
+  "claim_policy": {
+    "branch_prediction_workstream_claim": "scaffold_only",
+    "open_topology_match_claim": true,
+    "two_taken_per_cycle_claim": false,
+    "fdip_claim": false,
+    "android_mpki_claim": false,
+    "spec2017_mpki_claim": false,
+    "reason": "Open topology is wired in synthesisable SystemVerilog and exercised by cocotb. Workload MPKI claims remain blocked until SPEC/AOSP/JS traces are ingested through benchmarks/cpu/branch/."
+  }
+}

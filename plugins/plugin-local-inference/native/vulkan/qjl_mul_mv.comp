@@ -1,0 +1,99 @@
+// DRAFT: COMPILE-VERIFIED on Linux. Sister kernel to qjl.comp.
+// Ports `kernel_mul_mv_qjl1_256_f32` from metal/qjl.metal — matrix-vector
+// multiply against an fp32 query sketch (non-attention call sites).
+//
+// y[row] = ||k_row|| * sqrt(pi/2)/proj_dim * sum_j sign(j) * q[j]
+//
+// Dispatch: one workgroup per row. Threadgroup size = 32 (each thread = 1 byte = 8 sign bits).
+
+#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_int8  : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer KBlocks {
+    uint k_packed[];      // (n_rows) blocks, 34 bytes each
+};
+
+layout(std430, binding = 1) readonly buffer QSketch {
+    float q_sketch[];     // (proj_dim) fp32 sketch
+};
+
+layout(std430, binding = 2) writeonly buffer YOut {
+    float y[];            // (n_rows)
+};
+
+layout(push_constant) uniform Push {
+    uint n_rows;
+    uint proj_dim;        // must equal 256
+} push;
+
+const uint QJL_PROJECTION_DIM = 256u;
+const uint QJL_PACKED_BYTES   = 32u;
+const uint QJL_BLOCK_BYTES    = 34u;
+const float QJL_SCORE_SCALE   = 1.2533141373155003 / 256.0;
+
+uint read_byte(uint b) {
+    uint w = k_packed[b >> 2];
+    return (w >> ((b & 3u) * 8u)) & 0xFFu;
+}
+
+uint read_u16(uint b) {
+    return read_byte(b) | (read_byte(b + 1u) << 8u);
+}
+
+float qjl_bf16_to_fp32(uint b16) {
+    return uintBitsToFloat(b16 << 16);
+}
+
+shared float reduce_scratch[32];
+
+float reduce_sum_32(float v, uint tid) {
+    reduce_scratch[tid] = v;
+    barrier();
+    for (uint stride = 16u; stride > 0u; stride >>= 1) {
+        if (tid < stride) {
+            reduce_scratch[tid] += reduce_scratch[tid + stride];
+        }
+        barrier();
+    }
+    return reduce_scratch[0];
+}
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint row = gl_WorkGroupID.x;
+    if (row >= push.n_rows || push.proj_dim != QJL_PROJECTION_DIM) return;
+
+    uint blk_off = row * QJL_BLOCK_BYTES;
+
+    uint byte_i = tid;
+    uint bits   = read_byte(blk_off + byte_i);
+    uint base   = byte_i * 8u;
+
+    // Mirrors Wave-4-B Metal port: vec4 loads + branchless ±1 + chained fma.
+    vec4 q0 = vec4(q_sketch[base + 0u], q_sketch[base + 1u],
+                   q_sketch[base + 2u], q_sketch[base + 3u]);
+    vec4 q1 = vec4(q_sketch[base + 4u], q_sketch[base + 5u],
+                   q_sketch[base + 6u], q_sketch[base + 7u]);
+    vec4 s0 = vec4(
+        float(int(((bits >> 0) & 1u) << 1) - 1),
+        float(int(((bits >> 1) & 1u) << 1) - 1),
+        float(int(((bits >> 2) & 1u) << 1) - 1),
+        float(int(((bits >> 3) & 1u) << 1) - 1));
+    vec4 s1 = vec4(
+        float(int(((bits >> 4) & 1u) << 1) - 1),
+        float(int(((bits >> 5) & 1u) << 1) - 1),
+        float(int(((bits >> 6) & 1u) << 1) - 1),
+        float(int(((bits >> 7) & 1u) << 1) - 1));
+    vec4 acc4 = fma(q0, s0, fma(q1, s1, vec4(0.0)));
+    float acc = acc4.x + acc4.y + acc4.z + acc4.w;
+
+    float sum = reduce_sum_32(acc, tid);
+    if (tid == 0u) {
+        uint norm16 = read_u16(blk_off + QJL_PACKED_BYTES);
+        float norm_k = qjl_bf16_to_fp32(norm16);
+        y[row] = QJL_SCORE_SCALE * norm_k * sum;
+    }
+}

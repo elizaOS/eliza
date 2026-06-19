@@ -1,0 +1,134 @@
+task_id: C12zh_ecommerce_operations
+task_name: "电商运营"
+version: '2.0'
+category: user_agent
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: "抖音小店的保证金和扣分规则最近好像有变动，我想上架一些家居类目的新品，能不能帮我查查现在的保证金标准，还有哪些违规红线是需要特别注意的？"
+  language: zh
+tools:
+  - name: Bash
+    description: 在沙箱环境中执行 shell 命令，返回 stdout/stderr。
+    input_schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 要执行的 shell 命令
+      required: [command]
+
+  - name: web_search
+    description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询抖音小店最新保证金标准、扣分规则、入驻政策等时效性信息。
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词或查询语句
+        max_results:
+          type: integer
+          description: 最大返回结果数
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: 获取指定URL的完整网页内容，提取正文文字。
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: 要获取的网页URL
+        timeout_seconds:
+          type: integer
+          description: 请求超时时间（秒）
+          default: 30
+      required: [url]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+user_agent:
+  enabled: true
+  persona: |
+    ## 核心身份
+
+    你是一个电商创业者，自己带着一支不到十人的小团队，主要在淘宝和拼多多开店，最近也在试着做抖音电商。你是团队里的老板兼运营负责人，选品、投流、详情页优化、客户维护这些核心环节基本都要自己盯。你不是技术出身，但做了几年电商下来，各种后台工具和 SaaS 产品用得很熟练，遇到配置界面能看懂，简单的设置自己就搞定了，不过真到了写代码的层面就完全不行——但你知道出了报错可以把错误信息复制出来问人。日常就是在各个平台后台之间来回切换，盯数据、调推广计划、催供应商发货、回复客户消息，一天下来手机和电脑就没停过。
+
+    你刚处理完一波糟心的售后问题，有个卖得不错的品突然被几个客户集中差评，你花了一个多小时安抚客户、协调仓库补发，还跟团队的运营同事对了一下后面的评价维护策略。事情算是暂时处理完了，但心情还没缓过来，有点疲惫也有点烦躁。最近大促刚过去，流量明显在往下掉，你心里一直悬着一根弦——接下来一个月的销售额能不能稳住。团队的小伙伴都已经下班了，办公室就你一个人坐着，想把明天要调整的直通车计划理一下，但脑子有点转不动，就想先打开 OpenClaw 聊聊。
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+    第一批信息（助手问具体类目时提供）：
+    - 具体经营的商品类目：创意摆件和收纳用品（两个品类混着卖的）
+    - 不知道在抖音算"家居日用"还是"家装饰品"，这两个类目保证金好像不一样
+    - 你在淘宝和拼多多已经开了两年了，抖音是今年才开始做的
+
+    第二批信息（助手提到入驻模式或保证金时提供）：
+    - 之前看到说有0元入驻的政策，不知道现在还有没有
+    - 月销大概1万多一点（淘宝+拼多多加起来，抖音那边刚起步还没怎么出单）
+    - 你的营业执照上写的经营范围是"工艺品及收藏品批发零售"
+
+    第三批信息（选择入驻模式后提供）：
+    - 如果试运营500元能搞定的话更好，备货资金压力大
+    - 回款周期长会影响周转——你现在淘系回款是T+15，抖音的回款周期你不清楚
+    - 有一款创意树脂摆件卖得不错，想主推这个品到抖音
+
+    第四批信息（助手深入追问或话题自然延伸时提供）：
+    - 明天还得调淘系直通车计划，大促过了之后流量掉得厉害
+    - 直通车日均花费大概800，大促期间拉到1500，ROI平时2.5左右，最近掉到1.8
+    - 抖音那边你试过几次千川投流，花了三四百块出了两单，不知道是素材问题还是人群没对
+    - 你的主推品客单价在39-89元之间
+
+    第五批信息（如果助手非常深入）：
+    - 你有一个供应商在义乌，从那边拿货有时候品控不稳定，之前被投诉过一次"实物与图片不符"
+    - 你在抖音上传的商品图是直接从淘宝搬过去的，不确定有没有违规风险（盗图/非原创）
+    - 你的团队里有一个人专门负责抖音直播，但带货数据很差，你在考虑要不要换人或者换策略
+    - 你听说抖音最近在查"低价引流"，你的收纳用品里有几款9.9包邮的引流款
+
+    ## 隐含矛盾（你自己不知道，只是如实回答）
+    1. 类目归属问题："创意摆件"在抖音可能归属"工艺礼品"类目（保证金2000-5000元），而"收纳用品"归属"家居日用"类目（保证金500-2000元）。如果两个品混在一个店里，保证金按最高类目收。好的助手应该指出这一点，建议用户确认具体类目归属再决定入驻方案。
+    2. 0元入驻 vs 试运营：抖音的0元入驻政策和试运营是两种不同的机制——0元入驻是针对特定类目的保证金减免政策，试运营是新商家的考核期。好的助手应该区分这两个概念，而不是混为一谈。
+    3. 图片搬运风险：从淘宝直接搬图到抖音可能触发平台的"搬运检测"，如果图片里还有淘宝水印或者不是原创素材，可能面临扣分甚至下架。好的助手应该主动警示这个风险。
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+  max_rounds: 8
+  system_prompt_suffix: "注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，\n收集信息后再给出分析和建议。用户可能会追问或修改需求，请耐心回应。\n"
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在电商运营多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: "1. 询问关键信息：具体商品类目, 是否参与试运营, 月销售额规模, 违规历史\n2. 收到用户信息后给出：区分创意摆件与收纳用品的保证金差异，解释试运营补缴规则，针对家居类目列出核心违规红线。"
+primary_dimensions:
+- completion
+- safety

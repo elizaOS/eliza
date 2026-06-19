@@ -1,0 +1,155 @@
+PODS:
+  - Capacitor (8.3.1):
+    - CapacitorCordova
+  - CapacitorApp (8.1.0):
+    - Capacitor
+  - CapacitorBarcodeScanner (3.0.2):
+    - Capacitor
+    - OSBarcodeLib (= 2.0.1)
+  - CapacitorBrowser (8.0.3):
+    - Capacitor
+  - CapacitorCordova (8.3.1)
+  - CapacitorHaptics (8.0.2):
+    - Capacitor
+  - CapacitorKeyboard (8.0.3):
+    - Capacitor
+  - CapacitorPreferences (8.0.1):
+    - Capacitor
+  - CapacitorPushNotifications (8.0.3):
+    - Capacitor
+  - ElizaosCapacitorAgent (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorBunRuntime (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorCalendar (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorCamera (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorCanvas (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorGateway (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorLocation (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorMobileAgentBridge (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorMobileSignals (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorScreencapture (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorSwabble (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorTalkmode (2.0.0-beta.5):
+    - Capacitor
+  - ElizaosCapacitorWebsiteblocker (2.0.0-beta.5):
+    - Capacitor
+  - LlamaCppCapacitor (0.1.5):
+    - Capacitor
+  - OSBarcodeLib (2.0.1)
+
+DEPENDENCIES:
+  - "Capacitor (from `/Users/home/swiftun/eliza/node_modules/@capacitor/ios`)"
+  - "CapacitorApp (from `/Users/home/swiftun/eliza/node_modules/@capacitor/app`)"
+  - "CapacitorBarcodeScanner (from `/Users/home/swiftun/eliza/node_modules/.bun/@capacitor+barcode-scanner@3.0.2+2a604cb248d57ff2/node_modules/@capacitor/barcode-scanner`)"
+  - "CapacitorBrowser (from `/Users/home/swiftun/eliza/node_modules/@capacitor/browser`)"
+  - "CapacitorCordova (from `/Users/home/swiftun/eliza/node_modules/@capacitor/ios`)"
+  - "CapacitorHaptics (from `/Users/home/swiftun/eliza/node_modules/.bun/@capacitor+haptics@8.0.2+2a604cb248d57ff2/node_modules/@capacitor/haptics`)"
+  - "CapacitorKeyboard (from `/Users/home/swiftun/eliza/node_modules/.bun/@capacitor+keyboard@8.0.3+2a604cb248d57ff2/node_modules/@capacitor/keyboard`)"
+  - "CapacitorPreferences (from `/Users/home/swiftun/eliza/node_modules/.bun/@capacitor+preferences@8.0.1+2a604cb248d57ff2/node_modules/@capacitor/preferences`)"
+  - "CapacitorPushNotifications (from `/Users/home/swiftun/eliza/node_modules/.bun/@capacitor+push-notifications@8.0.3+2a604cb248d57ff2/node_modules/@capacitor/push-notifications`)"
+  - ElizaosCapacitorAgent (from `/Users/home/swiftun/eliza/plugins/plugin-native-agent`)
+  - ElizaosCapacitorBunRuntime (from `/Users/home/swiftun/eliza/plugins/plugin-native-bun-runtime`)
+  - ElizaosCapacitorCalendar (from `/Users/home/swiftun/eliza/plugins/plugin-native-calendar`)
+  - ElizaosCapacitorCamera (from `/Users/home/swiftun/eliza/plugins/plugin-native-camera`)
+  - ElizaosCapacitorCanvas (from `/Users/home/swiftun/eliza/plugins/plugin-native-canvas`)
+  - ElizaosCapacitorGateway (from `/Users/home/swiftun/eliza/plugins/plugin-native-gateway`)
+  - ElizaosCapacitorLocation (from `/Users/home/swiftun/eliza/plugins/plugin-native-location`)
+  - ElizaosCapacitorMobileAgentBridge (from `/Users/home/swiftun/eliza/plugins/plugin-native-mobile-agent-bridge`)
+  - ElizaosCapacitorMobileSignals (from `/Users/home/swiftun/eliza/plugins/plugin-native-mobile-signals`)
+  - ElizaosCapacitorScreencapture (from `/Users/home/swiftun/eliza/plugins/plugin-native-screencapture`)
+  - ElizaosCapacitorSwabble (from `/Users/home/swiftun/eliza/plugins/plugin-native-swabble`)
+  - ElizaosCapacitorTalkmode (from `/Users/home/swiftun/eliza/plugins/plugin-native-talkmode`)
+  - ElizaosCapacitorWebsiteblocker (from `/Users/home/swiftun/eliza/plugins/plugin-native-websiteblocker`)
+  - LlamaCppCapacitor (from `/Users/home/swiftun/eliza/node_modules/llama-cpp-capacitor`)
+
+SPEC REPOS:
+  trunk:
+    - OSBarcodeLib
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "/Users/home/swiftun/eliza/node_modules/@capacitor/ios"
+  CapacitorApp:
+    :path: "/Users/home/swiftun/eliza/node_modules/@capacitor/app"
+  CapacitorBarcodeScanner:
+    :path: "/Users/home/swiftun/eliza/node_modules/.bun/@capacitor+barcode-scanner@3.0.2+2a604cb248d57ff2/node_modules/@capacitor/barcode-scanner"
+  CapacitorBrowser:
+    :path: "/Users/home/swiftun/eliza/node_modules/@capacitor/browser"
+  CapacitorCordova:
+    :path: "/Users/home/swiftun/eliza/node_modules/@capacitor/ios"
+  CapacitorHaptics:
+    :path: "/Users/home/swiftun/eliza/node_modules/.bun/@capacitor+haptics@8.0.2+2a604cb248d57ff2/node_modules/@capacitor/haptics"
+  CapacitorKeyboard:
+    :path: "/Users/home/swiftun/eliza/node_modules/.bun/@capacitor+keyboard@8.0.3+2a604cb248d57ff2/node_modules/@capacitor/keyboard"
+  CapacitorPreferences:
+    :path: "/Users/home/swiftun/eliza/node_modules/.bun/@capacitor+preferences@8.0.1+2a604cb248d57ff2/node_modules/@capacitor/preferences"
+  CapacitorPushNotifications:
+    :path: "/Users/home/swiftun/eliza/node_modules/.bun/@capacitor+push-notifications@8.0.3+2a604cb248d57ff2/node_modules/@capacitor/push-notifications"
+  ElizaosCapacitorAgent:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-agent"
+  ElizaosCapacitorBunRuntime:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-bun-runtime"
+  ElizaosCapacitorCalendar:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-calendar"
+  ElizaosCapacitorCamera:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-camera"
+  ElizaosCapacitorCanvas:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-canvas"
+  ElizaosCapacitorGateway:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-gateway"
+  ElizaosCapacitorLocation:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-location"
+  ElizaosCapacitorMobileAgentBridge:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-mobile-agent-bridge"
+  ElizaosCapacitorMobileSignals:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-mobile-signals"
+  ElizaosCapacitorScreencapture:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-screencapture"
+  ElizaosCapacitorSwabble:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-swabble"
+  ElizaosCapacitorTalkmode:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-talkmode"
+  ElizaosCapacitorWebsiteblocker:
+    :path: "/Users/home/swiftun/eliza/plugins/plugin-native-websiteblocker"
+  LlamaCppCapacitor:
+    :path: "/Users/home/swiftun/eliza/node_modules/llama-cpp-capacitor"
+
+SPEC CHECKSUMS:
+  Capacitor: 46dbaa89c1d1cd121b9fc2dc839c1f39cc49e326
+  CapacitorApp: 449ffe26375e96f8aaaee625ac6e01e5c57c8650
+  CapacitorBarcodeScanner: 421aa419ac63eeb18c7cb94ce280fa22d34e8b0b
+  CapacitorBrowser: c987c73d09d8bd3b5ec13f06338b1e14d5d2be69
+  CapacitorCordova: 9010447fe25e869705fcf525e5f490facde87608
+  CapacitorHaptics: 296f771ecd89c7a1bd92a7b6826a7d268e2e70f5
+  CapacitorKeyboard: 31c8285d92c9d1410071d52449f16d2c6673b6f4
+  CapacitorPreferences: cca2021f386efb75947c850334447d9ff22b14f1
+  CapacitorPushNotifications: e4437b4ec1b2070685bf032c210f346432214c5f
+  ElizaosCapacitorAgent: 0a9bd14a6b119794546eb7935af1507c25ef52a8
+  ElizaosCapacitorBunRuntime: 6767eac5be297dccdcae87c893f3eb74bcd18e7e
+  ElizaosCapacitorCalendar: 02062c3b84a0a7fc64588de2ad08242ca67f2070
+  ElizaosCapacitorCamera: 64291ea0f1f345253dc2261c23204c76193d45d4
+  ElizaosCapacitorCanvas: 0e25cd94e7c0bf2677dda8e6ab908bac1525baf4
+  ElizaosCapacitorGateway: e67d6274466b507d6064961e0cfe19d98ac91705
+  ElizaosCapacitorLocation: ca388f0d1664a7228e1c42850d5fc0ec4f40dac7
+  ElizaosCapacitorMobileAgentBridge: c95a0b0dd5f6bc9f8ee374e7a84a9f369c312a51
+  ElizaosCapacitorMobileSignals: 77e0cbf349fa899d4b364f40740b4ae40346cee2
+  ElizaosCapacitorScreencapture: 6c6829afea117a78bd88cca70b2f352018a3ed2a
+  ElizaosCapacitorSwabble: d0d807f75c1a9ff31d0b5416eb7b358963b6fd55
+  ElizaosCapacitorTalkmode: 7ade6db1f7d3a8aa601abf59a88a8c200453179d
+  ElizaosCapacitorWebsiteblocker: 178f02ad7769daa5b09ec3b55ea91e2cb8426483
+  LlamaCppCapacitor: e41b57d32700bbe6b61a8f3d051c6edc09152036
+  OSBarcodeLib: 57987d2eb1f916f701f4554e20e349b3cb83f023
+
+PODFILE CHECKSUM: 29f103629cf89617ab400a458fbc1201aa5f19e4
+
+COCOAPODS: 1.16.2

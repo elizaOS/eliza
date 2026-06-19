@@ -1,0 +1,40 @@
+[[!meta title="Ray"]]
+
+Ray is a security consultant and trainer in Africa.
+
+From the 10 journalists that he trained in using Tails at the end of
+2015, he knows of 2 who are still using it actively. They were the
+people with higher risks. For example a blogger with high risks that
+uses Tails as her regular operating system for her blogging activities,
+for example while traveling, and be able to use shared computers.
+
+Things he (and the people he trained) like:
+
+- Tails has low hardware requirements and this is useful when traveling
+  to be able to use it anyway on the computers that are available.
+- The persistent storage.
+- MAC spoofing. Using MAC spoofing in a news room, one of the journalist
+  he trained realized how his activity on the network could be monitored
+  because the IT person, not seeing his computer as being up on the
+  network, came and checked if everything was ok.
+- The Windows camouflage.
+- Having a set of tools already installed in Tails makes it easy for
+  less technical people to get started.
+
+Things he (and the people he trained) dislike:
+
+- Tails doesn't work well on Chromebooks but these are picking up in
+  Africa because they are cheap.
+- Tor often fails to connect on networks with low bandwidth.
+- Looking for applications is hard for people who are use to their
+  proprietary equivalents (*Excel* is *Calc*, *Thunderbird* is
+  *Icedove*, etc.).
+- After the training and the participants had to repeat the process of
+  installing Tails again, some failed to carry out this process on their
+  own and the one running on a Chromebook totally failed even during the
+  training.
+- Removing support for 32-bits computers will be problematic for them
+  because they often rely on old machines.
+- When working with a low bandwidth or connecting through a captive
+  portal, after people started the Unsafe Browser, they tend to trust it
+  more than they should because it's running from Tails.

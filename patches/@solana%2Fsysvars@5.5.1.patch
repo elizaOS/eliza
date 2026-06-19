@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 205b5f0b02db0770eb80e56618ceefddab4b1d43..c1be55f26163b13e19ebf9addcf0de681950c9e7 100644
+--- a/package.json
++++ b/package.json
+@@ -61,7 +61,7 @@
+     "@solana/accounts": "5.5.1"
+   },
+   "peerDependencies": {
+-    "typescript": "^5.0.0"
++    "typescript": ">=5.0.0"
+   },
+   "peerDependenciesMeta": {
+     "typescript": {

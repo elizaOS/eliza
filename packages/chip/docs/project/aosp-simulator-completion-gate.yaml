@@ -1,0 +1,215 @@
+schema: eliza.aosp_simulator_completion_gate.v1
+status: blocked_until_evidence
+claim_allowed: false
+release_claim_allowed: false
+phone_runtime_claim_allowed: false
+android_boot_claim_allowed: false
+simulator_completion_claim_allowed: false
+production_readiness_claim_allowed: false
+claim_boundary: >
+  This gate is the single completion checklist for claiming interactive AOSP on
+  the Eliza simulated chip. Target specs may be compared against the
+  PinePhone Pro baseline, but completion requires archived simulator and Android
+  evidence. This file is not implementation evidence by itself.
+pinephone_pro_baseline:
+  source_url: https://pine64.org/devices/pinephone_pro/
+  source_checked_utc: "2026-05-19T00:00:00Z"
+  soc: Rockchip RK3399S
+  cpu_cores: 6
+  cpu_max_ghz: 1.5
+  gpu: ARM Mali T860 MP4
+  gpu_cores: 4
+  gpu_max_mhz: 500
+  ram_gb: 4
+  storage_gb: 128
+  expandable_storage_tb: 2
+  display_inches: 6.0
+  display_pixels: 1036800
+  rear_camera_mp: 13
+  front_camera_mp: 8
+  wifi_generation: 5
+  bluetooth_version: 4.1
+  cellular_generation: 4
+  battery_mah: 3000
+  charging_watts: 15
+  usb_major_version: 3
+eliza_target_floor:
+  cpu_cores: 8
+  cpu_max_ghz: 2.0
+  gpu_cores: 6
+  gpu_max_mhz: 700
+  ram_gb: 8
+  storage_gb: 256
+  expandable_storage_tb: 2
+  display_inches: 6.1
+  display_pixels: 2073600
+  rear_camera_mp: 48
+  front_camera_mp: 12
+  wifi_generation: 6
+  bluetooth_version: 5.2
+  cellular_generation: 5
+  battery_mah: 4000
+  charging_watts: 18
+  usb_major_version: 3
+required_reports:
+  mvp_simulator: build/reports/mvp_simulator.json
+  android_sim_boot: build/reports/android_sim_boot.json
+required_android_evidence:
+  - docs/evidence/android/eliza_ai_soc_lunch.log
+  - docs/evidence/android/eliza_ai_soc_vendorimage.log
+  - docs/evidence/android/eliza_ai_soc_checkvintf.log
+  - docs/evidence/android/eliza_ai_soc_sepolicy_build.log
+  - docs/evidence/android/eliza_ai_soc_selinux_neverallow.log
+  - docs/evidence/android/eliza_ai_soc_cts_vts_plan.log
+  - docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log
+  - docs/evidence/android/cuttlefish_riscv64_smoke.log
+  - docs/evidence/android/cuttlefish_riscv64_boot.log
+  - docs/evidence/android/eliza_launcher_runtime_evidence.json
+  - docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log
+  - docs/evidence/android/qemu_riscv64_smoke.log
+  - docs/evidence/android/renode_e1_soc_smoke.log
+required_android_marker_evidence:
+  - id: launcher_runtime
+    evidence: docs/evidence/android/eliza_launcher_runtime_evidence.json
+    producer: sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-boot-full
+    operator_recipe: docs/android/cuttlefish-agent-smoke-operator-recipe.md
+    required_markers:
+      - '"claim_boundary": "booted_android_launcher_agent_runtime_evidence_only"'
+      - '"cpu_abi": "riscv64"'
+      - '"package_name": "ai.elizaos.app"'
+      - '"service_component": "ai.elizaos.app/.ElizaAgentService"'
+      - '"health_url": "http://127.0.0.1:31337/api/health"'
+      - '"health_http": 200'
+      - '"health_ready": true'
+      - '"fatal_crash_count": 0'
+      - '"avc_denial_count": 0'
+  - id: cuttlefish_agent_smoke
+    evidence: docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log
+    producer: sw/aosp-device/agent-smoke-riscv64.sh --aosp /path/to/aosp
+    operator_recipe: docs/android/cuttlefish-agent-smoke-operator-recipe.md
+    required_markers:
+      - AGENT_SERVICE=alive
+      - AGENT_HEALTH_HTTP=200
+      - AGENT_HEALTH_ENDPOINT=/api/health
+      - LLAMA_TOKENS_GE_32=true
+      - LLAMA_WALL_S=
+      - TTS_WAV=ok
+      - TTS_SAMPLES=
+      - STT_OVERLAP_GE_0_80=true
+      - STT_OVERLAP=
+      - WAKEWORD_DETECTED=true
+      - VAD_SEGMENTS=
+      - AGENT_HEALTH_FINAL_HTTP=200
+      - AGENT_STATUS_FINAL_PLUGINS_READY=local-inference
+  - id: aosp_checkvintf_compat
+    evidence: docs/evidence/android/eliza_ai_soc_checkvintf.log
+    producer: sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp checkvintf
+    operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
+    required_markers:
+      - VINTF_COMPAT=ok
+      - COMPATIBLE
+  - id: aosp_sepolicy_build
+    evidence: docs/evidence/android/eliza_ai_soc_sepolicy_build.log
+    producer: sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp sepolicy-build
+    operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
+    required_markers:
+      - SEPOLICY_BUILD=ok
+      - hal_e1_npu_default
+  - id: aosp_selinux_neverallow
+    evidence: docs/evidence/android/eliza_ai_soc_selinux_neverallow.log
+    producer: sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp selinux-neverallow
+    operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
+    required_markers:
+      - SEPOLICY_NEVERALLOW=ok
+  - id: cvd_hal_smoke
+    evidence: docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log
+    producer: sw/aosp-device/check-cvd-hal-smoke.sh /path/to/aosp
+    operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
+    required_markers:
+      - HAL_REGISTERED=true
+      - INTERFACE_AVAILABLE=true
+      - vendor.eliza.e1_npu@1.0::IE1Npu/default
+  - id: e1_npu_hal_liveness
+    evidence: docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log
+    producer: sw/aosp-device/capture-e1-npu-hal-liveness.sh
+    operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
+    required_markers:
+      - SYS_BOOT_COMPLETED=1
+      - VENDOR_E1_NPU_READY=1
+      - DEVICE_NODE_PRESENT=true
+      - DEVICE_NODE_LABEL=e1_npu_device
+      - HAL_REGISTERED=true
+      - INTERFACE_AVAILABLE=true
+      - vendor.eliza.e1_npu@1.0::IE1Npu/default
+required_simulated_peripherals:
+  - id: rear_camera
+    evidence: docs/evidence/android/peripherals/rear_camera_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py rear_camera
+    required_markers:
+      - COMPONENT=rear_camera
+      - FRAME_SOURCE=simulated_sensor
+      - CAPTURE_COUNT=2
+  - id: front_camera
+    evidence: docs/evidence/android/peripherals/front_camera_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py front_camera
+    required_markers:
+      - COMPONENT=front_camera
+      - FRAME_SOURCE=simulated_sensor
+      - CAPTURE_COUNT=2
+  - id: microphone
+    evidence: docs/evidence/android/peripherals/microphone_input_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py microphone
+    required_markers:
+      - COMPONENT=microphone
+      - AUDIO_CAPTURE=pcm_s16le
+      - INPUT_RMS_DBFS=
+  - id: speakers
+    evidence: docs/evidence/android/peripherals/speaker_output_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py speakers
+    required_markers:
+      - COMPONENT=speakers
+      - AUDIO_OUTPUT=stereo_pcm
+      - LOOPBACK_VERIFIED=true
+  - id: wifi
+    evidence: docs/evidence/android/peripherals/wifi_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py wifi
+    required_markers:
+      - COMPONENT=wifi
+      - IP_CONNECTIVITY=pass
+      - ANDROID_DUMPSYS_WIFI=pass
+  - id: bluetooth
+    evidence: docs/evidence/android/peripherals/bluetooth_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py bluetooth
+    required_markers:
+      - COMPONENT=bluetooth
+      - HCI_ATTACH=pass
+      - BLE_SCAN=pass
+  - id: cellular_5g_lte
+    evidence: docs/evidence/android/peripherals/cellular_5g_lte_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py cellular_5g_lte
+    required_markers:
+      - COMPONENT=cellular_5g_lte
+      - LTE_REGISTRATION=pass
+      - NR5G_REGISTRATION=pass
+required_npu_tasks:
+  - name: gemm_s8_int8_2x2x3
+    transcript: build/reports/mvp_npu_ml_smoke.log
+    markers:
+      - "eliza-evidence: workload=gemm_s8_int8_2x2x3"
+      - "eliza-evidence: observed_matrix="
+      - "eliza-evidence: expected_matrix="
+      - "eliza-evidence: status=PASS"
+  - name: scale_model_min_real_v1_16mac_128kib
+    report: build/reports/mvp_npu_scale_sim.json
+completion_requires:
+  - mvp_simulator.status is pass
+  - mvp_simulator.on_chip_os_boot_claim is true
+  - mvp_simulator.reference_android_os_boot_claim is true
+  - mvp_simulator.npu_ml_smoke_claim is true
+  - mvp_simulator.integrated_linux_npu_ml_claim is true
+  - mvp_simulator.minimum_linux_npu_target_claim is true
+  - android_sim_boot.status is pass
+  - every Android evidence log has RESULT=0 and eliza-evidence: status=PASS
+  - every simulated peripheral log has RESULT=0 and eliza-evidence: status=PASS
+  - every Android marker evidence log has RESULT=0, eliza-evidence: status=PASS, and every required_markers entry present
+  - every NPU task has golden-output evidence and no CPU-fallback-only claim

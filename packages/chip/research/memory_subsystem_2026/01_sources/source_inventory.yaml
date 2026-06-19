@@ -1,0 +1,687 @@
+schema: eliza.memory_subsystem.source_inventory.v1
+captured_date: "2026-05-19"
+scope:
+  - LPDDR5/5X/5T/6 mobile DRAM specifications and vendor announcements
+  - HBM3, HBM3E, HBM4 stack and controller designs for AI accelerators
+  - DDR5 server DRAM, on-die ECC, RowHammer mitigations
+  - Compute Express Link 1.x/2.x/3.x and memory pooling/fabric semantics
+  - In-memory and near-memory compute (HBM-PIM, AiM, UPMEM, NMC)
+  - Open DRAM/LPDDR PHY and memory IP (OpenROAD, OpenPiton, SiFive)
+  - SRAM macro density at 5 nm / 3 nm / 2 nm / 14A class
+  - MRAM, STT-MRAM, eDRAM, gain-cell SRAM at advanced nodes
+  - Cache coherence protocols (MESI, MOESI, Directory, MESIF, CHI, ACE, TileLink)
+  - Accelerator coherency (CXL.cache, CCIX, IOMMU integration, cache stash)
+  - NoC: Constellation, OpenSoC, ProNoC, OpenNoC, Connect, FlexNoC, NetSpeed
+  - On-chip compression: AFBC, AFBE, DCC, ASTC, ETC, lossless feature-map
+  - DRAM simulators: Ramulator 2, DRAMSim3, USIMM, gem5 mem, ChampSim
+  - DRAM scheduling: PARBS, ATLAS, BLISS, FR-FCFS
+  - Mobile DRAM power: PASR, deep sleep, fine-grained DVFS
+  - TileLink + RISC-V coherence: Rocket/BOOM/Chipyard L2 banks
+  - RowHammer, on-die ECC, repair, RAS, secure refresh
+  - Scratchpad design: Buffets formalism, Halide line-buffering, multi-bank SRAM
+claim_boundary: >
+  Sources below are public specifications, peer-reviewed papers, vendor product
+  briefs, conference proceedings, and open-source project pages. They support
+  target-setting and design exploration. They do not establish E1 implementation
+  status. Numeric targets must be reproduced via local RTL, cycle-accurate
+  models, synthesis, PD, and on-board benchmarks before any E1 claim.
+
+jedec_and_standards:
+  - id: jedec_jesd209_5
+    title: "JESD209-5C: Low Power Double Data Rate 5/5X SDRAM (LPDDR5/5X)"
+    publisher: JEDEC Solid State Technology Association
+    url: "https://www.jedec.org/standards-documents/docs/jesd209-5c"
+    relevance:
+      - LPDDR5 and LPDDR5X channel architecture, x16 with two pseudo-channels
+      - per-pin data rate up to 8533 MT/s in LPDDR5X
+      - link ECC framing, DBI, write-X, DVFSC
+  - id: jedec_jesd209_5d
+    title: "JESD209-5D: LPDDR5/5X Update (LPDDR5T extension)"
+    publisher: JEDEC
+    url: "https://www.jedec.org/document_search?search_api_views_fulltext=JESD209-5"
+    relevance:
+      - LPDDR5T 9600 MT/s update path
+      - refresh and self-refresh power management bits
+      - documented signaling, NT-ODT for high data rates
+  - id: jedec_jesd209_6
+    title: "JESD209-6 LPDDR6 (status: in development as of 2026-Q1)"
+    publisher: JEDEC
+    url: "https://www.jedec.org/news/pressreleases"
+    status: pre_publication_target
+    relevance:
+      - LPDDR6 sub-channel architecture (24-bit sub-channel x4 per device)
+      - per-pin target 10.667-14.4 GT/s
+      - on-die ECC and link error correction integrated by default
+      - new training and command-address bus structure
+  - id: jedec_jesd238
+    title: "JESD238: High Bandwidth Memory (HBM3 / HBM3E) DRAM Specification"
+    publisher: JEDEC
+    url: "https://www.jedec.org/standards-documents/docs/jesd238"
+    relevance:
+      - HBM3 stack architecture, 16 channels, pseudo-channel mode
+      - HBM3E per-pin 9.2-9.6 Gb/s, up to 1.2 TB/s per stack
+      - in-package routing, ECS, on-die ECC, refresh management
+  - id: jedec_hbm4_announce
+    title: "JEDEC Publishes HBM4 Standard (JESD270-4 family)"
+    publisher: JEDEC
+    url: "https://www.jedec.org/news/pressreleases/jedec-publishes-hbm4-standard"
+    status: published_2025
+    relevance:
+      - HBM4 2048-bit per-stack interface, up to 8 Gb/s per pin baseline
+      - directed energy efficiency targets, RAS extensions
+      - per-stack capacity to 64 GB at 16-Hi
+  - id: jedec_jesd79_5
+    title: "JESD79-5C: DDR5 SDRAM Standard"
+    publisher: JEDEC
+    url: "https://www.jedec.org/standards-documents/docs/jesd79-5"
+    relevance:
+      - DDR5 on-die ECC reference for mobile/server lessons
+      - per-DIMM PMIC, two independent 32-bit subchannels
+      - refresh management, RFM, ECS
+
+lpddr_vendor_announcements:
+  - id: samsung_lpddr5x_10_7gbps
+    title: "Samsung Develops Industry's Fastest 10.7Gbps LPDDR5X DRAM"
+    publisher: Samsung Semiconductor
+    url: "https://semiconductor.samsung.com/news-events/news/samsung-develops-industry-s-fastest-10-7gbps-lpddr5x-dram/"
+    relevance:
+      - 10.7 Gb/s per-pin LPDDR5X using 12 nm-class node
+      - 25% power efficiency improvement claim over LPDDR5X 8.5 Gb/s
+      - up to 32 GB/package density target
+  - id: micron_lpddr5x_9600
+    title: "Micron 1-gamma LPDDR5X (9.6 Gb/s)"
+    publisher: Micron Technology
+    url: "https://www.micron.com/products/memory/dram-components/lpddr5x"
+    relevance:
+      - 1-gamma LPDDR5X mobile DRAM with 9.6 Gb/s per pin
+      - EUV-enabled mobile DRAM scaling
+      - power and density targets vs prior 1-beta node
+  - id: skhynix_lpddr5t_9600
+    title: "SK hynix introduces LPDDR5T-9600"
+    publisher: SK Hynix
+    url: "https://news.skhynix.com/sk-hynix-introduces-the-worlds-fastest-mobile-dram-lpddr5t/"
+    relevance:
+      - LPDDR5T 9.6 Gb/s per pin announcement
+      - 77 GB/s package bandwidth at x64 LPDDR5T-9600
+      - JEDEC-aligned timing within JESD209-5 update path
+  - id: samsung_lpddr6_announce
+    title: "Samsung previews LPDDR6 development at Memcon"
+    publisher: Samsung Semiconductor
+    url: "https://semiconductor.samsung.com/news-events/news/"
+    status: announcement_only
+    relevance:
+      - LPDDR6 sub-channel architecture preview
+      - per-pin 10-14.4 Gb/s direction
+      - on-package optical/electrical signaling research thread
+  - id: skhynix_lpddr6_target
+    title: "SK hynix discusses LPDDR6 development plan"
+    publisher: SK Hynix Newsroom
+    url: "https://news.skhynix.com/"
+    status: announcement_only
+    relevance:
+      - LPDDR6 timeline guidance for 2026-2027
+      - power-per-bit reduction targets vs LPDDR5X
+      - integration with on-package PoP and CoWoS-style mobile packaging
+  - id: micron_lpddr6_position
+    title: "Micron 2025-2026 mobile memory planning discussions"
+    publisher: Micron
+    url: "https://www.micron.com/about/blog"
+    status: announcement_only
+    relevance:
+      - LPDDR6 readiness positioning behind 1-gamma LPDDR5X
+      - mobile AI workload bandwidth narrative
+
+hbm_and_advanced_dram:
+  - id: micron_hbm3e
+    title: "Micron HBM3E 24 GB / 36 GB Product Briefs"
+    publisher: Micron
+    url: "https://www.micron.com/products/memory/hbm"
+    relevance:
+      - HBM3E 9.2 Gb/s pin rate, 1.2 TB/s per stack
+      - 12-Hi and 16-Hi stack capacity scaling
+      - 30% lower power-per-bit vs prior HBM3
+  - id: skhynix_hbm3e_16hi
+    title: "SK hynix HBM3E 12-Hi/16-Hi product briefs"
+    publisher: SK Hynix
+    url: "https://www.skhynix.com/products/hbm"
+    relevance:
+      - HBM3E 12-Hi 36 GB stack and 16-Hi 48 GB next-step claim
+      - through-silicon via density and stacking yield
+      - link to NVIDIA Blackwell B100/B200 deployments
+  - id: samsung_hbm3e_shinebolt
+    title: "Samsung HBM3E (Shinebolt)"
+    publisher: Samsung Semiconductor
+    url: "https://semiconductor.samsung.com/dram/hbm/hbm3e-shinebolt/"
+    relevance:
+      - 9.8 Gb/s per pin Shinebolt HBM3E
+      - direct-bond Cu interconnect plan
+  - id: nvidia_blackwell_arch_brief
+    title: "NVIDIA Blackwell Architecture (B100/B200/GB200)"
+    publisher: NVIDIA
+    url: "https://www.nvidia.com/en-us/data-center/technologies/blackwell-architecture/"
+    relevance:
+      - 192 GB HBM3E and 8 TB/s aggregate stack bandwidth (B200)
+      - NVLink 5 at 1.8 TB/s, NVSwitch fabric
+      - lessons for high-bandwidth memory partitioning in tiles
+  - id: amd_mi300x_hbm3
+    title: "AMD Instinct MI300X Architecture Whitepaper"
+    publisher: AMD
+    url: "https://www.amd.com/en/products/accelerators/instinct/mi300/mi300x.html"
+    relevance:
+      - 192 GB HBM3 at 5.3 TB/s
+      - Infinity Cache/Fabric, MI300X coherent chiplet fabric
+      - lessons for shared cache + HBM in accelerators
+  - id: amd_mi325x_hbm3e
+    title: "AMD Instinct MI325X (HBM3E refresh)"
+    publisher: AMD
+    url: "https://www.amd.com/en/products/accelerators/instinct/mi300/mi325x.html"
+    relevance:
+      - 256 GB HBM3E at 6 TB/s
+      - directed memory bandwidth scaling at constant compute
+  - id: nvidia_rubin_plan
+    title: "NVIDIA Rubin / Vera Rubin Plan Discussion"
+    publisher: NVIDIA GTC 2025
+    url: "https://blogs.nvidia.com/blog/gtc-2025-keynote-recap/"
+    status: planning_only
+    relevance:
+      - Rubin generation HBM4 memory claim
+      - chiplet decomposition and per-die bandwidth scaling
+
+cxl_and_fabric:
+  - id: cxl_spec_3_1
+    title: "Compute Express Link Specification 3.1"
+    publisher: CXL Consortium
+    url: "https://www.computeexpresslink.org/spec-landing"
+    relevance:
+      - CXL.io, CXL.cache, CXL.mem protocol semantics
+      - 3.1 fabric features (port-based routing, multi-headed devices)
+      - memory pooling and shared memory regions
+  - id: cxl_white_paper_memory_pool
+    title: "CXL Memory Pooling and Sharing White Paper"
+    publisher: CXL Consortium
+    url: "https://www.computeexpresslink.org/_files/ugd/0c1418_a8713008916044ae9604405d10a7773b.pdf"
+    relevance:
+      - device types 1/2/3, accelerator-with-coherent-cache type 2
+      - host-managed device memory (HDM) ranges
+  - id: micron_cz120_cxl
+    title: "Micron CZ120 CXL Memory Module"
+    publisher: Micron
+    url: "https://www.micron.com/products/memory/cxl-memory"
+    relevance:
+      - CXL Type-3 memory expander reference
+      - bandwidth and latency characteristics at the rack level
+  - id: ccix_consortium_spec
+    title: "CCIX Cache Coherent Interconnect for Accelerators (legacy/merged into CXL)"
+    publisher: CCIX Consortium (archived)
+    url: "https://www.ccixconsortium.com/"
+    relevance:
+      - legacy coherent accelerator interconnect
+      - lessons folded into CXL.cache
+
+in_and_near_memory_compute:
+  - id: samsung_hbm_pim
+    title: "Samsung HBM-PIM (Aquabolt-XL) ISCA 2021"
+    publisher: Samsung / ISCA 2021
+    url: "https://ieeexplore.ieee.org/document/9499894"
+    relevance:
+      - function-in-memory bank-level processing units in HBM2
+      - bank-parallel GEMV throughput and energy benefits
+      - software/runtime exposure model
+  - id: samsung_fimdram_isscc
+    title: "Samsung FIMDRAM ISSCC 2021"
+    publisher: ISSCC 2021
+    url: "https://ieeexplore.ieee.org/document/9365770"
+    relevance:
+      - FP16 multiply-add inside HBM2 banks
+      - 1.2 TFLOPS aggregated function-in-memory headline
+  - id: skhynix_aim_gddr6
+    title: "SK hynix Accelerator-in-Memory (AiM) GDDR6-based PIM"
+    publisher: SK Hynix / Hot Chips 2022
+    url: "https://hc34.hotchips.org/"
+    relevance:
+      - GDDR6-AiM 1 GB device with bank-level MAC arrays
+      - 1 TOPS-class PIM per device, LLM-targeted
+  - id: upmem_pim_ddr
+    title: "UPMEM Processing-in-Memory DDR4 DIMMs"
+    publisher: UPMEM SAS
+    url: "https://www.upmem.com/technology/"
+    relevance:
+      - DPU per DRAM rank model and SDK
+      - massively parallel PIM compute units inside DDR4
+
+open_dram_phy_and_ip:
+  - id: openroad_dram_phy_status
+    title: "OpenROAD Project: DRAM PHY status"
+    publisher: OpenROAD
+    url: "https://theopenroadproject.org/"
+    status: ongoing_research
+    relevance:
+      - status of open-source DDR PHY automation
+      - tool chain for memory controller hardening
+  - id: openpiton_memory_subsystem
+    title: "OpenPiton Memory Subsystem (Princeton)"
+    publisher: Princeton Parallel Group
+    url: "https://parallel.princeton.edu/openpiton/"
+    relevance:
+      - open-source coherence directory and DRAM controller integration
+      - distributed L1.5 / L2 cache implementation
+  - id: blackparrot_memory
+    title: "BlackParrot Multicore: Coherence and Memory System"
+    publisher: BlackParrot Project (UW / NTU)
+    url: "https://github.com/black-parrot/black-parrot"
+    relevance:
+      - open MOESI-style coherence design
+      - BedRock interface to memory and IO
+  - id: sifive_memory_ip
+    title: "SiFive DDR/LPDDR Memory Subsystem IP overview"
+    publisher: SiFive
+    url: "https://www.sifive.com/ip/memory"
+    relevance:
+      - vendor commercial memory subsystem references
+      - TileLink-to-AXI bridge expectations
+
+sram_macro_and_advanced_node:
+  - id: tsmc_n2_sram_isscc_2024
+    title: "TSMC N2 SRAM 38 Mb/mm^2 Macro (ISSCC 2024)"
+    publisher: TSMC / ISSCC 2024
+    url: "https://www.isscc.org/"
+    relevance:
+      - 2 nm nanosheet SRAM density data
+      - low-Vmin SRAM design at 2 nm
+  - id: samsung_2nm_sram_iedm
+    title: "Samsung 2 nm GAA SRAM (IEDM 2024)"
+    publisher: Samsung / IEDM 2024
+    url: "https://www.ieee-iedm.org/"
+    relevance:
+      - GAA SRAM bitcell area at 2 nm
+      - SRAM scaling slope at sub-3 nm
+  - id: imec_sram_scaling_paper
+    title: "imec SRAM scaling for 2 nm and below"
+    publisher: imec
+    url: "https://www.imec-int.com/en"
+    relevance:
+      - device-architecture choices for sub-3 nm SRAM
+      - FinFET vs GAA SRAM density tradeoffs
+  - id: intel_18a_14a_brief
+    title: "Intel Foundry 18A/14A Process Briefs"
+    publisher: Intel Foundry
+    url: "https://www.intel.com/content/www/us/en/foundry/library/ai-hpc.html"
+    relevance:
+      - RibbonFET, PowerVia/PowerDirect impact on cell-level wiring
+      - foundry SRAM density direction at 18A and 14A
+  - id: globalfoundries_mram_overview
+    title: "GlobalFoundries 22FDX eMRAM whitepaper"
+    publisher: GlobalFoundries
+    url: "https://gf.com/technology-platforms/mram/"
+    relevance:
+      - embedded MRAM as eFlash/SRAM replacement
+      - retention, endurance, density tradeoffs at advanced nodes
+  - id: stt_mram_isscc_2023
+    title: "Embedded STT-MRAM at advanced nodes (ISSCC 2023 papers)"
+    publisher: ISSCC 2023
+    url: "https://www.isscc.org/"
+    relevance:
+      - MRAM density, write energy, and bandwidth bounds
+      - whether MRAM can replace L3/L4 SRAM at 14A
+  - id: edram_intel_5gen
+    title: "Intel L4 eDRAM history and modern revival arguments"
+    publisher: IEEE Micro / Intel
+    url: "https://ieeexplore.ieee.org/document/9457145"
+    relevance:
+      - eDRAM bitcell density vs SRAM
+      - refresh and bandwidth penalty discussion
+  - id: gain_cell_sram_paper
+    title: "Gain-cell embedded DRAM/SRAM hybrids"
+    publisher: ISSCC / VLSI Symposium
+    url: "https://ieeexplore.ieee.org/document/9853035"
+    relevance:
+      - gain-cell SRAM concepts and density potential
+      - read-disturb and refresh tradeoffs
+
+cache_coherency_and_amba:
+  - id: arm_chi_e
+    title: "AMBA CHI Architecture Specification (Issue F)"
+    publisher: Arm
+    url: "https://developer.arm.com/documentation/ihi0050/latest"
+    relevance:
+      - CHI-E coherent fabric semantics
+      - request/response/snoop/data channels for AI SoCs
+  - id: arm_amba_ace
+    title: "AMBA ACE Protocol Specification"
+    publisher: Arm
+    url: "https://developer.arm.com/documentation/ihi0022/latest"
+    relevance:
+      - ACE/ACE-Lite snoop semantics for accelerators
+      - bridge to AXI4 coherent regions
+  - id: arm_cci_ccn
+    title: "Arm CCI-500/CCN-512 coherent interconnect overview"
+    publisher: Arm
+    url: "https://developer.arm.com/Processors/CCN-500"
+    relevance:
+      - ring/mesh coherent interconnect IP
+      - last-level cache integration with mobile CPUs
+  - id: tilelink_spec_1_8
+    title: "SiFive TileLink Specification 1.8.x"
+    publisher: SiFive / Chips Alliance
+    url: "https://github.com/chipsalliance/tilelink"
+    relevance:
+      - TL-UL/TL-UH/TL-C channel semantics
+      - coherent permissions, probe/release flows
+      - canonical TileLink for Rocket/BOOM/Chipyard SoCs
+  - id: opensoc_sip_l2
+    title: "OpenSoC and SiFive L2 Cache (UCB)"
+    publisher: UC Berkeley / Chipyard
+    url: "https://chipyard.readthedocs.io/en/stable/Generators/Memory-System.html"
+    relevance:
+      - in-tree banked L2 cache generator
+      - coherent TileLink L2 with directories
+
+cache_coherency_for_accelerators:
+  - id: eyeriss_v2_cache
+    title: "Eyeriss-v2: Flexible Accelerator for Emerging DNNs"
+    publisher: MIT / IEEE JSSC 2019
+    url: "https://ieeexplore.ieee.org/document/8686088"
+    relevance:
+      - sparse PE array memory organization
+      - cluster-level scratchpad sharing
+  - id: buffets_isca_2019
+    title: "Buffets: An Efficient and Composable Storage Idiom for Explicit Decoupled Data Orchestration (ISCA 2019)"
+    publisher: NVIDIA Research
+    url: "https://research.nvidia.com/publication/2019-04_Buffets-Efficient-Composable"
+    relevance:
+      - formal scratchpad/buffet model
+      - explicit decoupled access/execute (EDA-DAE)
+  - id: maeri_asplos_2018
+    title: "MAERI: Enabling Flexible Dataflow Mapping over DNN Accelerators (ASPLOS 2018)"
+    publisher: Georgia Tech
+    url: "https://dl.acm.org/doi/10.1145/3173162.3173176"
+    relevance:
+      - tree-style configurable interconnect for DNN
+      - mapping flexibility for sparse and dense flows
+  - id: cache_stash_for_nn
+    title: "Stash: Have your scratchpad and cache it too (ISCA 2015)"
+    publisher: UIUC / NVIDIA
+    url: "https://dl.acm.org/doi/10.1145/2749469.2750374"
+    relevance:
+      - hybrid scratchpad + coherent cache for accelerators
+      - architecture pattern relevant to NPU local SRAM
+  - id: arm_smmu_v3
+    title: "Arm System Memory Management Unit Architecture Specification (SMMUv3)"
+    publisher: Arm
+    url: "https://developer.arm.com/documentation/ihi0070/latest"
+    relevance:
+      - IOMMU/SMMU translation for accelerator DMA
+      - per-stream isolation, page faults, stage 1/2 translation
+
+noc_and_open_rtl:
+  - id: chipyard_constellation
+    title: "Chipyard Constellation NoC generator"
+    publisher: UC Berkeley / Chipyard
+    url: "https://github.com/ucb-bar/constellation"
+    relevance:
+      - open RTL NoC for SoC integration
+      - virtual channels, multi-topology mesh/torus
+  - id: pronoc_open_rtl
+    title: "ProNoC open RTL NoC"
+    publisher: ProNoC Project
+    url: "https://opencores.org/projects/pronoc"
+    relevance:
+      - open NoC generator with router IP
+      - configurable VC and routing
+  - id: connect_noc
+    title: "CONNECT NoC Generator (CMU)"
+    publisher: CMU
+    url: "https://users.ece.cmu.edu/~mpapamic/connect/"
+    relevance:
+      - FPGA-targeted NoC generator
+      - low-overhead router topology
+  - id: opensoc_noc
+    title: "OpenSoC Fabric (LBNL)"
+    publisher: LBNL
+    url: "https://github.com/LBL-CoDEx/OpenSoC"
+    relevance:
+      - open NoC fabric with parameterized topology
+      - HPC-targeted on-chip fabric
+  - id: arteris_flexnoc_brief
+    title: "Arteris FlexNoC product brief"
+    publisher: Arteris IP
+    url: "https://www.arteris.com/flexnoc-interconnect-ip"
+    relevance:
+      - commercial NoC IP commonly used in mobile APs
+      - QoS, virtual channels, AMBA bridging
+
+compression_and_qos:
+  - id: arm_afbc_afbe
+    title: "Arm Frame Buffer Compression (AFBC, AFBE)"
+    publisher: Arm
+    url: "https://developer.arm.com/documentation/101810/latest"
+    relevance:
+      - lossless framebuffer compression standard for mobile GPUs/displays
+      - bandwidth-saving compressed buffer format
+  - id: amd_dcc
+    title: "AMD Delta Color Compression (DCC) documentation"
+    publisher: AMD
+    url: "https://gpuopen.com/learn/delta-color-compression/"
+    relevance:
+      - GPU framebuffer compression at line/block level
+      - bandwidth savings for color buffers
+  - id: astc_khronos
+    title: "Khronos Adaptive Scalable Texture Compression (ASTC)"
+    publisher: Khronos Group
+    url: "https://www.khronos.org/opengl/wiki/ASTC_Texture_Compression"
+    relevance:
+      - lossy texture compression standard
+      - bandwidth and storage reduction for mobile graphics
+  - id: etc_khronos
+    title: "Khronos Ericsson Texture Compression (ETC1/ETC2)"
+    publisher: Khronos
+    url: "https://www.khronos.org/opengl/wiki/Image_Format"
+    relevance:
+      - older lossy texture compression standard
+      - baseline for mobile GPU memory traffic
+  - id: feature_map_compression_isca
+    title: "DeepN-JPEG and feature-map compression for DNN accelerators"
+    publisher: ISCA / MICRO papers
+    url: "https://dl.acm.org/doi/10.1145/3195970.3196091"
+    relevance:
+      - DNN feature-map lossless/lossy compression for bandwidth
+      - design tradeoffs for compression-aware DMA
+  - id: kv_cache_compression
+    title: "KV cache compression and quantization techniques for LLM serving"
+    publisher: Various ACL / NeurIPS / arXiv
+    url: "https://arxiv.org/abs/2402.02750"
+    relevance:
+      - KV-cache FP8/INT4/SNR-aware techniques
+      - prompt for compression-aware DRAM bandwidth math
+
+dram_simulators_and_scheduling:
+  - id: ramulator_2
+    title: "Ramulator 2: A modern DRAM simulator (SAFARI)"
+    publisher: SAFARI Research Group (ETH/CMU)
+    url: "https://github.com/CMU-SAFARI/ramulator2"
+    relevance:
+      - cycle-accurate DDR/LPDDR/HBM simulator
+      - new DRAM standards modeled (DDR5, LPDDR5, HBM3, GDDR6)
+  - id: dramsim3
+    title: "DRAMsim3: cycle accurate DRAM simulator"
+    publisher: USC SCEA
+    url: "https://github.com/umd-memsys/DRAMsim3"
+    relevance:
+      - DDR4, GDDR, LPDDR, HBM cycle simulator
+      - integrated with gem5 and trace drivers
+  - id: usimm_simulator
+    title: "USIMM: Utah Simulated Memory Module"
+    publisher: University of Utah
+    url: "https://utaharch.blogspot.com/p/usimm.html"
+    relevance:
+      - DRAM scheduling research platform
+      - PARBS/ATLAS/BLISS scheduling testbed
+  - id: champsim
+    title: "ChampSim: trace-driven microarchitecture simulator"
+    publisher: TAMU / GitHub
+    url: "https://github.com/ChampSim/ChampSim"
+    relevance:
+      - cache hierarchy and prefetcher simulator
+      - couples to Ramulator/DRAMsim
+  - id: gem5_mem
+    title: "gem5 Memory Models"
+    publisher: gem5 Project
+    url: "https://www.gem5.org/documentation/general_docs/memory_system/"
+    relevance:
+      - DRAMSim2/3 integration, simple memory, ruby coherence
+      - simulator-level full system memory hierarchy
+  - id: parbs_paper
+    title: "Parallelism-Aware Batch Scheduling (PARBS, ISCA 2008)"
+    publisher: ISCA 2008
+    url: "https://www.cs.cmu.edu/~omutlu/pub/parbs_isca08.pdf"
+    relevance:
+      - DRAM scheduler for fairness and throughput
+  - id: atlas_paper
+    title: "ATLAS: A Scalable and High-Performance Scheduling Algorithm for Multiple Memory Controllers (HPCA 2010)"
+    publisher: HPCA 2010
+    url: "https://users.ece.cmu.edu/~omutlu/pub/atlas_hpca10.pdf"
+    relevance:
+      - latency-aware DRAM scheduling for multicore
+  - id: bliss_paper
+    title: "BLISS: Blacklisting Memory Scheduler (ICCD 2014 / TPDS 2016)"
+    publisher: ICCD 2014
+    url: "https://users.ece.cmu.edu/~omutlu/pub/bliss-memory-scheduler_iccd14.pdf"
+    relevance:
+      - low-cost fair DRAM scheduler
+      - QoS lessons for AI/display sharing
+
+rowhammer_and_reliability:
+  - id: rowhammer_seaborn
+    title: "Project Zero: Exploiting the DRAM rowhammer bug"
+    publisher: Google Project Zero
+    url: "https://googleprojectzero.blogspot.com/2015/03/exploiting-dram-rowhammer-bug-to-gain.html"
+    relevance:
+      - canonical RowHammer attack
+      - implications for refresh policy and ECC
+  - id: rowhammer_revisited
+    title: "RowHammer: A Retrospective"
+    publisher: ETH/CMU SAFARI
+    url: "https://arxiv.org/abs/1904.09724"
+    relevance:
+      - threat model evolution to LPDDR5/DDR5
+      - mitigations (TRR, RFM, PRAC, ECS)
+  - id: ddr5_rfm
+    title: "DDR5 Refresh Management (RFM) and PRAC"
+    publisher: JEDEC / vendor whitepapers
+    url: "https://www.jedec.org/standards-documents/docs/jesd79-5"
+    relevance:
+      - per-bank refresh management for RowHammer mitigation
+      - LPDDR5 same direction (refresh management commands)
+  - id: lpddr5_link_ecc
+    title: "LPDDR5 link ECC and on-die ECC"
+    publisher: Samsung / Micron whitepapers
+    url: "https://www.micron.com/about/blog/2022/february/lpddr5-on-die-ecc"
+    relevance:
+      - LPDDR5/LPDDR5X on-die ECC and link CRC
+      - silent-data-corruption mitigations
+
+power_and_refresh_policies:
+  - id: lpddr5_pasr
+    title: "LPDDR5 Partial Array Self-Refresh and Deep Sleep Power Down"
+    publisher: JEDEC JESD209-5C
+    url: "https://www.jedec.org/standards-documents/docs/jesd209-5c"
+    relevance:
+      - PASR rows for selective refresh
+      - DPDM, deep power-down for mobile idle
+  - id: dvfsm_lpddr5
+    title: "DVFSM / DVFSC dynamic voltage and frequency scaling for LPDDR5"
+    publisher: JEDEC LPDDR5 spec sections
+    url: "https://www.jedec.org/standards-documents/docs/jesd209-5c"
+    relevance:
+      - command-rate and link-rate switching
+      - mobile DRAM PHY power scaling
+  - id: mobile_dram_power_paper
+    title: "A study of mobile DRAM power and bandwidth tradeoffs"
+    publisher: HPCA / DAC
+    url: "https://ieeexplore.ieee.org/document/8980320"
+    relevance:
+      - mobile DRAM power breakdown
+      - workload-aware DVFS for DRAM channel
+
+tilelink_riscv_and_chipyard:
+  - id: chipyard_repo
+    title: "Chipyard: An Open-Source RISC-V SoC Design Framework"
+    publisher: UC Berkeley / Chipyard
+    url: "https://github.com/ucb-bar/chipyard"
+    relevance:
+      - reference RocketChip + BOOM + TileLink memory hierarchy
+      - in-tree InclusiveCache (L2) and DRAM controllers
+  - id: rocketchip_repo
+    title: "rocket-chip SoC generator"
+    publisher: UC Berkeley
+    url: "https://github.com/chipsalliance/rocket-chip"
+    relevance:
+      - TileLink-based coherent fabric
+      - L1D/L1I, MMU, PMP, atomics, coherence
+  - id: inclusive_cache_sifive
+    title: "SiFive InclusiveCache (TileLink Coherent L2)"
+    publisher: SiFive / Chipyard
+    url: "https://github.com/sifive/block-inclusivecache-sifive"
+    relevance:
+      - production TileLink-C inclusive L2
+      - directory bits, ECC, banking
+
+scratchpad_and_dataflow:
+  - id: nvdla_scratchpad
+    title: "NVIDIA Deep Learning Accelerator (NVDLA) memory design"
+    publisher: NVIDIA / NVDLA project
+    url: "http://nvdla.org/"
+    relevance:
+      - convolution buffer, second memory architecture
+      - software-managed scratchpad for DNN
+  - id: halide_line_buffer
+    title: "Halide: Decoupling algorithm from schedule (PLDI 2013)"
+    publisher: MIT
+    url: "https://halide-lang.org/"
+    relevance:
+      - line-buffering schedule for stencil/conv
+      - mapping to scratchpad memory
+  - id: gemmini_isca_2021
+    title: "Gemmini: Enabling Systematic Deep-Learning Architecture Evaluation via Full-Stack Integration (DAC 2021)"
+    publisher: UC Berkeley
+    url: "https://github.com/ucb-bar/gemmini"
+    relevance:
+      - banked accumulator + scratchpad for systolic NPU
+      - decoupled DMA engine and DRAM bandwidth pressure
+  - id: tenstorrent_metalium
+    title: "Tenstorrent Wormhole/Blackhole memory hierarchy"
+    publisher: Tenstorrent
+    url: "https://tenstorrent.com/cards/wormhole"
+    relevance:
+      - per-tile L1 / per-package DRAM banking
+      - explicit DMA programming model
+
+mobile_ap_competitor_anchors:
+  - id: qualcomm_8_elite_gen5_brief
+    title: "Snapdragon 8 Elite Gen 5 Product Brief (memory section)"
+    publisher: Qualcomm
+    url: "https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/Snapdragon-8-Elite-Gen-5-product-brief.pdf"
+    relevance:
+      - 8 Elite Gen 5 LPDDR5X-9600 memory
+      - sustained bandwidth, system-level cache references
+  - id: mediatek_dimensity_9500_brief
+    title: "MediaTek Dimensity 9500 product brief"
+    publisher: MediaTek
+    url: "https://www.mediatek.com/products/smartphones/mediatek-dimensity-9500"
+    relevance:
+      - LPDDR5X-10667 memory subsystem
+      - CIM-based Super Efficient NPU memory implications
+  - id: samsung_exynos_2600_brief
+    title: "Samsung Exynos 2600 product brief"
+    publisher: Samsung
+    url: "https://semiconductor.samsung.com/processor/mobile-processor/exynos-2600/"
+    relevance:
+      - LPDDR5X memory configuration
+      - on-package memory pursued for AI workloads
+  - id: apple_a19_pro_brief
+    title: "Apple A19 Pro press materials"
+    publisher: Apple
+    url: "https://support.apple.com/en-us/125090"
+    relevance:
+      - unified memory architecture for mobile
+      - system cache and Neural Engine memory access

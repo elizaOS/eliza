@@ -1,0 +1,186 @@
+[[!meta title="Improve Tails source code"]]
+
+<div id="intro">
+
+<p>Do you want to fix a bug or implement a new feature in Tails?
+Welcome aboard, and please read on! If you want to quickly get up to
+speed on how to write code for Tails you might want to look at our
+[[Writing code for Tails|HACKING]] introduction first.</p>
+
+[[!toc levels=2]]
+
+</div>
+
+# Foreword
+
+Every Free Software project is a bit different from the others.
+This page is meant to help you understand some basics of the Tails
+project, so that you can more efficiently and joyfully contribute
+to Tails.
+
+## Focus on low-effort maintainability
+
+Many, many Live system projects — including a few ones that aimed at
+enhancing their users' privacy — have lived fast and died young. We
+explain this by their being one wo/man efforts, as well as design
+decisions that made their maintenance much too costly timewise and
+energywise.
+
+We want Tails to live as long as it is needed: Tails is not meant to
+be solely a pet project.
+
+Since the early days of this project (i.e. early 2009), ease of
+maintenance in the long run has been a major factor in every decision
+we have made. Nowadays Tails is more alive and kicking than it has
+ever been, and we feel this would have been impossible without
+this mindset.
+
+Our focus on low-effort maintainability has practical consequences.
+
+First of all, we tend to **carry the smallest possible delta** with
+our upstreams (i.e. upstream software and Debian). For details about
+this, read our [[contribute/relationship_with_upstream]] statement.
+Moreover, we encourage you to improve Tails [[by working on
+Debian|contribute/how/debian]] or
+[[!tails_blueprint GNOME_bugs_that_affect_Tails desc="by working on GNOME"]].
+
+Second, we try **not to reinvent the wheel**, and we flee the
+[[!wikipedia Not_invented_here]] syndrome like the plague. Very little
+code is actually written specifically for Tails: most of what we call
+*code work* on Tails is more similar to system administration than it
+is to programming. We glue existing pieces together. When we need
+a feature that no software provides yet, we tend to pick the best
+existing tool, and do whatever is needed to get the needed feature
+upstream... which sometimes implies to write a patch ourselves.
+
+# How to get started
+
+## Pick up a task
+
+We use [[!tails_gitlab groups/tails/-/issues desc="GitLab"]] to track
+our lists of tasks and bugs, as well as our roadmap.
+If you already know which one of the listed tasks you want to tackle
+and it has the *T:Code* label, then you can probably
+safely skip to the next section.
+
+So you want to contribute code to Tails but do not know where to
+start? Our coding
+[[!tails_gitlab groups/tails/-/issues?label_name%5B%5D=T%3ACode desc="TODO list"]]
+is huge and frightening, but...
+
+*Do not panic!*
+
+Let's see how we can help you picking up a task. A few tips:
+
+* Choose something that matters for you, such as fixing that bug that
+  annoys you so much or implementing this feature you are missing so
+  much.
+
+* Choose something where your singular skills and knowledge are put to
+  work. For example:
+
+   - Python:
+      - *Onion Circuits*
+      - Welcome Screen
+      - *Tails Cloner*
+      - *WhisperBack*
+      - Persistent Storage
+   - Perl:
+      - *Tails Upgrader*
+   - Ruby:
+      - Test suite
+
+* Have a look to the [[!tails_gitlab_starter]]: there is
+  something, in each of these tasks, that one can do right away since
+  it does not require deep knowledge of the Tails internals.
+
+On the one hand, you may want to **start doing practical stuff
+immediately**. In this case, see the
+[[!tails_gitlab groups/tails/-/issues?label_name%5B%5D=T%3ACode desc="list of tasks that have the `T:Code` label"]].
+You probably want to start looking
+at the few ones that are also in the [[!tails_gitlab_starter]]
+first so that you can gain confidence and we can smoothly learn to
+work together.
+
+On the other hand, you may prefer **picking up a task that requires
+some initial thought and discussion** before rushing to your
+`$EDITOR`. In this case, you probably want to look at the [[guidelines
+for providing needed input|contribute/how/input]].
+
+## Get in touch with our past, present and future
+
+So you know what bug you want to fix, what feature you want to
+implement. At this point, we advise you to:
+
+1. **Gather results of previous research and discussions** on the
+   topic you are interested in. Search this website, [[!tails_gitlab
+   groups/tails/-/issues desc="issues on GitLab"]] and the [tails-dev@boum.org mailing list
+   archive](https://lists.autistici.org/list/tails-dev.html).
+
+2. **[[Tell us on tails-dev@boum.org|doc/about/contact#tails-dev]] about your plans** to make sure your
+   idea fits nicely into the [[big picture|contribute/design]], and
+   nobody is currently working on the same task.
+
+# Hack
+
+Tails is developed using a set of [[Git repositories|contribute/git]].
+If unsure, base your work on the `devel` branch, or ask.
+
+Every commit shall implement one change and be labeled with a commit
+message that clearly expresses the rationale of your changes. This is
+needed so that your work can be easily reviewed: explain every
+proposed change to us in the same way you would explain it to someone
+who would not get the background.
+
+<a id="submit"></a>
+
+# Submit your work
+
+Before diving into technical details, please read our
+[[contribute/merge policy]].
+
+You can submit small, easy changes as Git patches (prepared with the
+`git format-patch` command) over email to [[tails-dev@boum.org|doc/about/contact#tails-dev]].
+
+For larger changes that will certainly require a few review/fix cycles
+before being merged, it's better if you:
+
+1. Fork us on [[!tails_gitweb_repo tails desc="our GitLab"]]
+2. Push your work to a dedicated Git topic branch
+3. [[Ask us to review it|contribute/merge policy/submit]].
+
+# Want more?
+
+Still here? Good, please read on.
+
+## Read about Tails design
+
+The [[specification and design document|contribute/design]] will help
+you understand better how Tails works.
+
+## Follow Tails development
+
+You should subscribe to the [[tails-dev mailing
+list|doc/about/contact#tails-dev]].
+
+You can also follow the [[!tails_gitlab dashboard/activity
+desc="recent activity on GitLab"]].
+
+## Build a Tails image
+
+You should test your changes before contributing them back.
+Most often, this requires you to [[build Tails USB and ISO images|contribute/build]].
+
+## Tips & tricks for development
+
+When you are developing, you might enjoy some tricks which allow you a faster development cycle, more useful
+debugging information, and son on.  Here is a collection of [[useful development tricks|contribute/build/developer_tricks]]
+
+# Talk to us
+
+You can subscribe to [[tails-dev@boum.org|doc/about/contact#tails-dev]],
+our development mailing list.
+
+If you need input and don't know who to ask, mention `@anonym` on the
+corresponding GitLab issue. If he cannot outright help you directly, he most
+likely can find someone who is better suited to help.

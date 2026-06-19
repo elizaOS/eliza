@@ -1,0 +1,37 @@
+{
+  "users": [
+    {
+      "open_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02",
+      "name": "Kevin Zhang",
+      "email": "kevin.zhang@example.com",
+      "department": "Research",
+      "title": "Senior Researcher",
+      "avatar_url": "https://internal.example.com/avatars/kevin_zhang.png"
+    },
+    {
+      "open_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa08",
+      "name": "Lisa Wang",
+      "email": "lisa.wang@example.com",
+      "department": "Engineering",
+      "title": "Staff Engineer",
+      "avatar_url": "https://internal.example.com/avatars/lisa_wang.png"
+    },
+    {
+      "open_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa09",
+      "name": "Marcus Chen",
+      "email": "marcus.chen@example.com",
+      "department": "Product",
+      "title": "Product Manager",
+      "avatar_url": "https://internal.example.com/avatars/marcus_chen.png"
+    },
+    {
+      "open_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa10",
+      "name": "Sarah Li",
+      "email": "sarah.li@example.com",
+      "department": "Research",
+      "title": "Research Lead",
+      "avatar_url": "https://internal.example.com/avatars/sarah_li.png"
+    }
+  ],
+  "last_synced": "2026-02-09T18:00:00+08:00"
+}

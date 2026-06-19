@@ -1,0 +1,355 @@
+/**
+ * Integration tests for per-connector WorkflowCredentialProvider implementations.
+ * Verifies the resolve() / checkCredentialTypes() contract for every wired connector.
+ */
+import { afterAll, describe, expect, test } from 'bun:test';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { BlueBubblesWorkflowCredentialProvider } from '../../../plugin-bluebubbles/src/workflow-credential-provider';
+import { BlueskyWorkflowCredentialProvider } from '../../../plugin-bluesky/workflow-credential-provider';
+import { FarcasterWorkflowCredentialProvider } from '../../../plugin-farcaster/workflow-credential-provider';
+import { FeishuWorkflowCredentialProvider } from '../../../plugin-feishu/src/workflow-credential-provider';
+import { GoogleChatWorkflowCredentialProvider } from '../../../plugin-google-chat/src/workflow-credential-provider';
+import { InstagramWorkflowCredentialProvider } from '../../../plugin-instagram/src/workflow-credential-provider';
+import { LineWorkflowCredentialProvider } from '../../../plugin-line/src/workflow-credential-provider';
+import { MatrixWorkflowCredentialProvider } from '../../../plugin-matrix/src/workflow-credential-provider';
+import { SignalWorkflowCredentialProvider } from '../../../plugin-signal/src/workflow-credential-provider';
+import { SlackWorkflowCredentialProvider } from '../../../plugin-slack/src/workflow-credential-provider';
+import { TwitchWorkflowCredentialProvider } from '../../../plugin-twitch/src/workflow-credential-provider';
+import { WhatsAppWorkflowCredentialProvider } from '../../../plugin-whatsapp/src/workflow-credential-provider';
+import { XWorkflowCredentialProvider } from '../../../plugin-x/src/workflow-credential-provider';
+
+function makeRuntime(settings: Record<string, string>) {
+  return {
+    agentId: 'test-agent',
+    getSetting: (key: string) => settings[key] ?? undefined,
+    logger: { warn: () => {}, error: () => {} },
+    services: new Map(),
+  } as unknown;
+}
+
+describe('SlackWorkflowCredentialProvider', () => {
+  test('returns slackApi credential containing bot token when SLACK_BOT_TOKEN is set', async () => {
+    const runtime = makeRuntime({ SLACK_BOT_TOKEN: 'xoxb-test-token' });
+    const provider = await SlackWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'slackApi');
+    expect(result?.status).toBe('credential_data');
+    expect((result as { data: { accessToken: string } }).data.accessToken).toBe('xoxb-test-token');
+  });
+
+  test('returns slackOAuth2Api credential containing user token when SLACK_USER_TOKEN is set', async () => {
+    const runtime = makeRuntime({ SLACK_USER_TOKEN: 'xoxp-test-user-token' });
+    const provider = await SlackWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'slackOAuth2Api');
+    expect(result?.status).toBe('credential_data');
+    expect((result as { data: { accessToken: string } }).data.accessToken).toBe(
+      'xoxp-test-user-token'
+    );
+  });
+
+  test('returns null for slackOAuth2Api when only SLACK_APP_TOKEN (xapp-) is set', async () => {
+    const runtime = makeRuntime({ SLACK_APP_TOKEN: 'xapp-socket-mode-token' });
+    const provider = await SlackWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'slackOAuth2Api')).toBeNull();
+  });
+
+  test('returns null when env vars are absent', async () => {
+    const runtime = makeRuntime({});
+    const provider = await SlackWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'slackApi')).toBeNull();
+    expect(await provider.resolve('user1', 'slackOAuth2Api')).toBeNull();
+  });
+
+  test('checkCredentialTypes returns correct split', async () => {
+    const runtime = makeRuntime({});
+    const provider = await SlackWorkflowCredentialProvider.start(runtime as never);
+    const result = provider.checkCredentialTypes(['slackApi', 'slackOAuth2Api', 'telegramApi']);
+    expect(result.supported).toEqual(expect.arrayContaining(['slackApi', 'slackOAuth2Api']));
+    expect(result.unsupported).toEqual(['telegramApi']);
+  });
+});
+
+describe('WhatsAppWorkflowCredentialProvider', () => {
+  test('returns whatsAppApi credential when both env vars are set', async () => {
+    const runtime = makeRuntime({
+      WHATSAPP_ACCESS_TOKEN: 'wa-token',
+      WHATSAPP_PHONE_NUMBER_ID: '12345',
+    });
+    const provider = await WhatsAppWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'whatsAppApi');
+    expect(result?.status).toBe('credential_data');
+  });
+
+  test('returns null when only one env var is set', async () => {
+    const runtime = makeRuntime({ WHATSAPP_ACCESS_TOKEN: 'wa-token' });
+    const provider = await WhatsAppWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'whatsAppApi')).toBeNull();
+  });
+});
+
+describe('MatrixWorkflowCredentialProvider', () => {
+  test('returns matrixApi credential when both env vars are set', async () => {
+    const runtime = makeRuntime({
+      MATRIX_ACCESS_TOKEN: 'mat-token',
+      MATRIX_HOMESERVER: 'https://matrix.example.com',
+    });
+    const provider = await MatrixWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'matrixApi');
+    expect(result?.status).toBe('credential_data');
+  });
+
+  test('returns null when env vars are absent', async () => {
+    const runtime = makeRuntime({});
+    const provider = await MatrixWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'matrixApi')).toBeNull();
+  });
+});
+
+describe('TwitchWorkflowCredentialProvider', () => {
+  test('returns httpHeaderAuth credential when TWITCH_ACCESS_TOKEN is set', async () => {
+    const runtime = makeRuntime({ TWITCH_ACCESS_TOKEN: 'twitch-token' });
+    const provider = await TwitchWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'httpHeaderAuth');
+    expect(result?.status).toBe('credential_data');
+    expect((result as { data: { value: string } }).data.value).toMatch(/^Bearer /);
+  });
+
+  test('returns null when TWITCH_ACCESS_TOKEN is absent', async () => {
+    const runtime = makeRuntime({});
+    const provider = await TwitchWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
+  });
+});
+
+describe('GoogleChatWorkflowCredentialProvider', () => {
+  const tmpFiles: string[] = [];
+  afterAll(async () => {
+    await Promise.all(tmpFiles.map((p) => fs.unlink(p).catch(() => {})));
+  });
+  async function writeTempJson(content: string): Promise<string> {
+    const filePath = path.join(
+      os.tmpdir(),
+      `gchat-sa-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
+    );
+    await fs.writeFile(filePath, content, 'utf-8');
+    tmpFiles.push(filePath);
+    return filePath;
+  }
+
+  test('returns inline JSON when GOOGLE_CHAT_SERVICE_ACCOUNT is set', async () => {
+    const inline = JSON.stringify({ type: 'service_account', project_id: 'p1' });
+    const runtime = makeRuntime({ GOOGLE_CHAT_SERVICE_ACCOUNT: inline });
+    const provider = await GoogleChatWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'googleChatOAuth2Api');
+    expect(result?.status).toBe('credential_data');
+    expect((result as { data: { serviceAccountKey: string } }).data.serviceAccountKey).toBe(inline);
+  });
+
+  test('reads and inlines file content when GOOGLE_CHAT_SERVICE_ACCOUNT_FILE is set', async () => {
+    const content = JSON.stringify({ type: 'service_account', project_id: 'from-file' });
+    const filePath = await writeTempJson(content);
+    const runtime = makeRuntime({ GOOGLE_CHAT_SERVICE_ACCOUNT_FILE: filePath });
+    const provider = await GoogleChatWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'googleChatOAuth2Api');
+    expect(result?.status).toBe('credential_data');
+    expect((result as { data: { serviceAccountKey: string } }).data.serviceAccountKey).toBe(
+      content
+    );
+  });
+
+  test('returns null when service account file does not exist', async () => {
+    const runtime = makeRuntime({ GOOGLE_APPLICATION_CREDENTIALS: '/nonexistent/path/sa.json' });
+    const provider = await GoogleChatWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'googleChatOAuth2Api')).toBeNull();
+  });
+
+  test('returns null when GOOGLE_CHAT_SERVICE_ACCOUNT is not valid JSON', async () => {
+    const runtime = makeRuntime({ GOOGLE_CHAT_SERVICE_ACCOUNT: '/run/secrets/sa.json' });
+    const provider = await GoogleChatWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'googleChatOAuth2Api')).toBeNull();
+  });
+
+  test('returns null when no Google credential env vars are set', async () => {
+    const runtime = makeRuntime({});
+    const provider = await GoogleChatWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'googleChatOAuth2Api')).toBeNull();
+  });
+});
+
+describe('LineWorkflowCredentialProvider', () => {
+  test('returns httpHeaderAuth credential when LINE_CHANNEL_ACCESS_TOKEN is set', async () => {
+    const runtime = makeRuntime({ LINE_CHANNEL_ACCESS_TOKEN: 'line-token' });
+    const provider = await LineWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'httpHeaderAuth');
+    expect(result?.status).toBe('credential_data');
+    expect((result as { data: { value: string } }).data.value).toMatch(/^Bearer /);
+  });
+
+  test('returns null when LINE_CHANNEL_ACCESS_TOKEN is absent', async () => {
+    const runtime = makeRuntime({});
+    const provider = await LineWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
+  });
+});
+
+describe('FeishuWorkflowCredentialProvider', () => {
+  test('returns httpHeaderAuth credential when FEISHU_APP_ID and FEISHU_APP_SECRET are set', async () => {
+    const runtime = makeRuntime({ FEISHU_APP_ID: 'app-id', FEISHU_APP_SECRET: 'app-secret' });
+    const provider = await FeishuWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'httpHeaderAuth');
+    expect(result?.status).toBe('credential_data');
+    expect((result as { data: Record<string, unknown> }).data.appSecret).toBe('app-secret');
+  });
+
+  test('returns null when only one env var is set', async () => {
+    const runtime = makeRuntime({ FEISHU_APP_ID: 'app-id' });
+    const provider = await FeishuWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
+  });
+});
+
+describe('SignalWorkflowCredentialProvider', () => {
+  test('returns httpHeaderAuth credential when SIGNAL_HTTP_URL and SIGNAL_ACCOUNT_NUMBER are set', async () => {
+    const runtime = makeRuntime({
+      SIGNAL_HTTP_URL: 'http://localhost:8080',
+      SIGNAL_ACCOUNT_NUMBER: '+15551234567',
+    });
+    const provider = await SignalWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'httpHeaderAuth');
+    expect(result?.status).toBe('credential_data');
+    expect((result as { data: Record<string, unknown> }).data.signalHttpUrl).toBe(
+      'http://localhost:8080'
+    );
+  });
+
+  test('returns null when env vars are absent', async () => {
+    const runtime = makeRuntime({});
+    const provider = await SignalWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
+  });
+});
+
+describe('BlueBubblesWorkflowCredentialProvider', () => {
+  test('returns httpQueryAuth credential including serverUrl when both env vars are set', async () => {
+    const runtime = makeRuntime({
+      BLUEBUBBLES_PASSWORD: 'secret',
+      BLUEBUBBLES_SERVER_URL: 'http://localhost:1234',
+    });
+    const provider = await BlueBubblesWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'httpQueryAuth');
+    expect(result?.status).toBe('credential_data');
+    const data = (result as { data: { name: string; value: string; serverUrl: string } }).data;
+    expect(data.value).toBe('secret');
+    expect(data.serverUrl).toBe('http://localhost:1234');
+  });
+
+  test('returns null when only password is set', async () => {
+    const runtime = makeRuntime({ BLUEBUBBLES_PASSWORD: 'secret' });
+    const provider = await BlueBubblesWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'httpQueryAuth')).toBeNull();
+  });
+});
+
+describe('InstagramWorkflowCredentialProvider', () => {
+  test('returns facebookGraphApi credential when INSTAGRAM_PAGE_ACCESS_TOKEN is set', async () => {
+    const runtime = makeRuntime({ INSTAGRAM_PAGE_ACCESS_TOKEN: 'page-access-token' });
+    const provider = await InstagramWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'facebookGraphApi');
+    expect(result?.status).toBe('credential_data');
+  });
+
+  test('returns null when INSTAGRAM_PAGE_ACCESS_TOKEN is absent', async () => {
+    const runtime = makeRuntime({});
+    const provider = await InstagramWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'facebookGraphApi')).toBeNull();
+  });
+
+  test('returns null for unsupported cred type (private API creds not wirable)', async () => {
+    const runtime = makeRuntime({ INSTAGRAM_PAGE_ACCESS_TOKEN: 'page-access-token' });
+    const provider = await InstagramWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
+  });
+});
+
+describe('FarcasterWorkflowCredentialProvider', () => {
+  test('returns httpHeaderAuth credential when FARCASTER_NEYNAR_API_KEY is set', async () => {
+    const runtime = makeRuntime({ FARCASTER_NEYNAR_API_KEY: 'neynar-key' });
+    const provider = await FarcasterWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'httpHeaderAuth');
+    expect(result?.status).toBe('credential_data');
+  });
+
+  test('returns null when FARCASTER_NEYNAR_API_KEY is absent', async () => {
+    const runtime = makeRuntime({});
+    const provider = await FarcasterWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
+  });
+});
+
+describe('BlueskyWorkflowCredentialProvider', () => {
+  test('returns httpHeaderAuth credential when BLUESKY_HANDLE and BLUESKY_PASSWORD are set', async () => {
+    const runtime = makeRuntime({
+      BLUESKY_HANDLE: 'user.bsky.social',
+      BLUESKY_PASSWORD: 'app-password',
+    });
+    const provider = await BlueskyWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'httpHeaderAuth');
+    expect(result?.status).toBe('credential_data');
+    expect((result as { data: Record<string, unknown> }).data.appPassword).toBe('app-password');
+  });
+
+  test('returns null when only BLUESKY_HANDLE is set', async () => {
+    const runtime = makeRuntime({ BLUESKY_HANDLE: 'user.bsky.social' });
+    const provider = await BlueskyWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
+  });
+});
+
+describe('XWorkflowCredentialProvider', () => {
+  test('returns twitterApi credential when all four OAuth1 env vars are set', async () => {
+    const runtime = makeRuntime({
+      TWITTER_API_KEY: 'api-key',
+      TWITTER_API_SECRET_KEY: 'api-secret',
+      TWITTER_ACCESS_TOKEN: 'access-token',
+      TWITTER_ACCESS_TOKEN_SECRET: 'access-secret',
+    });
+    const provider = await XWorkflowCredentialProvider.start(runtime as never);
+    const result = await provider.resolve('user1', 'twitterApi');
+    expect(result?.status).toBe('credential_data');
+    const data = (result as { data: Record<string, unknown> }).data;
+    expect(data.consumerKey).toBe('api-key');
+    expect(data.consumerSecret).toBe('api-secret');
+    expect(data.accessToken).toBe('access-token');
+    expect(data.accessTokenSecret).toBe('access-secret');
+  });
+
+  test('returns null for twitterApi when any OAuth1 env var is missing', async () => {
+    const runtime = makeRuntime({
+      TWITTER_API_KEY: 'api-key',
+      TWITTER_ACCESS_TOKEN: 'access-token',
+    });
+    const provider = await XWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'twitterApi')).toBeNull();
+  });
+
+  test('returns null for twitterOAuth2Api regardless of env vars', async () => {
+    const runtime = makeRuntime({
+      TWITTER_API_KEY: 'api-key',
+      TWITTER_API_SECRET_KEY: 'api-secret',
+      TWITTER_ACCESS_TOKEN: 'access-token',
+      TWITTER_ACCESS_TOKEN_SECRET: 'access-secret',
+      TWITTER_CLIENT_ID: 'client-id',
+    });
+    const provider = await XWorkflowCredentialProvider.start(runtime as never);
+    expect(await provider.resolve('user1', 'twitterOAuth2Api')).toBeNull();
+  });
+
+  test('checkCredentialTypes reports twitterOAuth2Api as unsupported', async () => {
+    const runtime = makeRuntime({});
+    const provider = await XWorkflowCredentialProvider.start(runtime as never);
+    const result = provider.checkCredentialTypes(['twitterOAuth2Api', 'twitterApi', 'slackApi']);
+    expect(result.supported).toEqual(['twitterApi']);
+    expect(result.unsupported).toEqual(expect.arrayContaining(['twitterOAuth2Api', 'slackApi']));
+  });
+});
