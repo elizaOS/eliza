@@ -5,6 +5,7 @@ import { handleConversationRoutes } from "./conversation-routes.ts";
 import { handleDatabaseRoute } from "./database.ts";
 import { handleInboxRoute } from "./inbox-routes.ts";
 import { handleNotificationRoute } from "./notification-routes.ts";
+import { handlePushTokenRoute } from "./push-token-routes.ts";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
 import type { ServerState } from "./server-types.ts";
 import { handleXRelayRoute } from "./x-relay-routes.ts";
@@ -84,6 +85,21 @@ export async function handleInboxAndCloudRelayRouteGroup({
   error,
   readJsonBody,
 }: DispatchRouteContext): Promise<boolean> {
+  // Push-token routes share the /api/notifications namespace but are owned by
+  // the push delivery service, so they must be checked BEFORE the notification
+  // catch-all (otherwise notification-routes' `:id` matchers would swallow
+  // `/api/notifications/push-tokens/<token>`).
+  if (pathname.startsWith("/api/notifications/push-tokens")) {
+    return handlePushTokenRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { runtime: state.runtime ?? null },
+      { json, error, readJsonBody },
+    );
+  }
+
   if (pathname.startsWith("/api/notifications")) {
     return handleNotificationRoute(
       req,

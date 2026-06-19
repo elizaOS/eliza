@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
 import {
   type ApprovalAction,
   type ApprovalChannel,
@@ -540,6 +540,26 @@ function timestampLiteral(date: Date): string {
   return sqlText(date.toISOString());
 }
 
+interface NotificationEmitter {
+  notify: (input: {
+    title: string;
+    body?: string;
+    category?: string;
+    priority?: string;
+    source?: string;
+    deepLink?: string;
+    groupKey?: string;
+    data?: Record<string, unknown>;
+  }) => Promise<unknown>;
+}
+
+function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
+  const svc = runtime.getService(
+    ServiceType.NOTIFICATION,
+  ) as NotificationEmitter | null;
+  return svc && typeof svc.notify === "function" ? svc : null;
+}
+
 export interface ApprovalQueueOptions {
   readonly agentId: string;
 }
@@ -588,6 +608,21 @@ export class PgApprovalQueue implements ApprovalQueue {
     logger.info(
       `[ApprovalQueue] enqueued ${input.action} for ${input.subjectUserId} as ${id}`,
     );
+    // An outbound action now needs the owner's go-ahead. Surface it on the
+    // notification rail so the owner can act without watching the queue
+    // (fire-and-forget; a notify failure must not block the enqueue).
+    void getNotifier(this.runtime)
+      ?.notify({
+        title: "Approval needed",
+        body: input.reason.slice(0, 200),
+        category: "approval",
+        priority: "high",
+        source: "lifeops",
+        deepLink: "/chat",
+        groupKey: `approval:${id}`,
+        data: { requestId: id, kind: input.action },
+      })
+      .catch(() => {});
     return rowToRequest(rows[0]);
   }
 

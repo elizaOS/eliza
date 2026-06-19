@@ -53,6 +53,7 @@ import {
 } from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
+import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 
@@ -119,6 +120,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     services: [
       AgentEventService as ServiceClass,
       NotificationService as ServiceClass,
+      NotificationPushService as ServiceClass,
       ElizaCharacterPersistenceService as ServiceClass,
       AgentMediaGenerationService as ServiceClass,
       PermissionRegistry as ServiceClass,

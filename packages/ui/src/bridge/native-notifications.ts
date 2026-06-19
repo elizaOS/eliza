@@ -32,7 +32,7 @@ interface NativeNotificationRequest {
   urgent?: boolean;
 }
 
-interface LocalNotificationsPluginLike {
+interface LocalNotificationsPluginLike extends Record<string, unknown> {
   schedule: (options: {
     notifications: Array<{
       id: number;
@@ -53,7 +53,7 @@ interface LocalNotificationsPluginLike {
   }) => Promise<void>;
 }
 
-interface ElizaIntentPluginLike {
+interface ElizaIntentPluginLike extends Record<string, unknown> {
   receiveIntent: (intent: {
     kind: "reminder";
     payload: Record<string, unknown>;

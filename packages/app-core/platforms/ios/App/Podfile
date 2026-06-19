@@ -28,6 +28,7 @@ def capacitor_pods
   pod 'CapacitorKeyboard', :path => node_package_path('@capacitor/keyboard')
   pod 'CapacitorPreferences', :path => node_package_path('@capacitor/preferences')
   pod 'LlamaCppCapacitor', :path => node_package_path('llama-cpp-capacitor')
+  pod 'CapacitorLocalNotifications', :path => node_package_path('@capacitor/local-notifications')
   pod 'CapacitorPushNotifications', :path => node_package_path('@capacitor/push-notifications')
   pod 'ElizaosCapacitorAgent', :path => node_package_path('@elizaos/capacitor-agent')
   pod 'ElizaosCapacitorBunRuntime', :path => node_package_path('@elizaos/capacitor-bun-runtime')
