@@ -26,7 +26,7 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 
 ### Services (consumed, not registered as elizaOS services)
 - `LocalInferenceService` / `localInferenceService` (`src/services/service.ts`) — singleton facade for download orchestration, active-model coordination, hardware probe, catalog, and routing preferences.
-- `LocalInferenceEngine` / `localInferenceEngine` (`src/services/engine.ts`) — owns one in-process llama.cpp binding via `node-llama-cpp` FFI; one model loaded at a time (unload-then-load for model swaps).
+- `LocalInferenceEngine` / `localInferenceEngine` (`src/services/engine.ts`) — fronts the in-process FFI llama.cpp backend (fused `libelizainference`, or the libllama + eliza-llama-shim fallback) via the `BackendDispatcher`; one model loaded at a time (unload-then-load for model swaps).
 - `MemoryArbiter` (`src/services/memory-arbiter.ts`) — single arbiter that cross-plugin consumers (vision, image-gen, ASR, TTS) call to acquire a model handle without double-allocating RAM.
 
 ### HTTP routes (mounted by app-core)
@@ -196,7 +196,7 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 
 ## Conventions / gotchas
 
-- **`node-llama-cpp` is an optional dependency.** The engine checks `available()` before using it; missing the package produces a clean `LocalInferenceUnavailableError` rather than a crash.
+- **Text runs through the in-process FFI llama.cpp backend only** (`node-llama-cpp` has been retired). The engine checks the dispatcher's `available()`/FFI probe before using it; an absent/unsupported FFI runtime produces a clean `LocalInferenceUnavailableError` rather than a crash. There is no `node-llama-cpp` fallback.
 - **`TEXT_EMBEDDING` is NOT in the static plugin `models` map.** It is wired by `ensureLocalInferenceHandler()` at boot to avoid claiming the embedding slot before an Eliza-1 bundle is active. Do not add it to the static plugin object.
 - **Native binary deps** (sd.cpp, mflux, whisper.cpp, Kokoro ONNX) must be present on the host or downloaded separately. The plugin does not bundle them; `probe:sd-cpp` checks for sd.cpp.
 - **MemoryArbiter (WS1)** is the coordination point for all modalities on memory-constrained devices. Cross-plugin consumers (vision, image-gen, ASR, TTS) must go through the arbiter — never load models independently.
