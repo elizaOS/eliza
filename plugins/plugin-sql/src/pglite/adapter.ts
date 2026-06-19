@@ -260,7 +260,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
         const result = await this.manager
           .getConnection()
           .query(
-            `SELECT id FROM participants WHERE user_id = $1 AND room_id = $2 AND agent_id = $3 ORDER BY joined_at DESC LIMIT 1`,
+            `SELECT id FROM participants WHERE entity_id = $1 AND room_id = $2 AND agent_id = $3 ORDER BY created_at DESC LIMIT 1`,
             [entityId, roomId, this.agentId]
           );
         const rows = result.rows as Array<{ id: string }>;
@@ -274,7 +274,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
       if (participantId) {
         this.manager.notifyWrite("participants", "insert", {
           id: participantId,
-          user_id: entityId,
+          entity_id: entityId,
           room_id: roomId,
           agent_id: this.agentId,
         });
