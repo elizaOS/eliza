@@ -20,7 +20,7 @@ const HEARTBEAT_SET_TIMEOUT_MS = 5_000;
  *
  * The daemon writes; the cloud-api Worker reads. Both processes already
  * share an Upstash/Redis instance via `buildRedisClient`, so this is
- * cheaper than a Neon round-trip and gives self-healing via TTL.
+ * cheaper than a DB round-trip and gives self-healing via TTL.
  */
 export const PROVISIONING_WORKER_HEARTBEAT_KEY = "provisioning_worker:health";
 

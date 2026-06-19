@@ -28,7 +28,7 @@
  * `CODING_CONTAINER_IMAGE_ALLOWLIST` (default ghcr.io/{dexploarer,elizaos,
  * waifufun}/*) and reject others with 403.
  *
- * DATABASE_URL: provision() injects a per-agent managed (Neon) DB URL, but it
+ * DATABASE_URL: provision() injects a per-agent managed (Railway) DB URL, but it
  * no longer clobbers a caller-supplied DATABASE_URL. A self-contained image
  * that ships its OWN database keeps its `DATABASE_URL`; the managed URL is then
  * exposed under `ELIZA_MANAGED_DATABASE_URL` for opt-in. Only when the caller

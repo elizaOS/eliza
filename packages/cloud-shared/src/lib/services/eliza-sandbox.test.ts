@@ -46,8 +46,6 @@ function customSandbox(): AgentSandbox {
     health_url: "https://legacy-bridge.example/health",
     agent_name: "bnancy",
     agent_config: {},
-    neon_project_id: null,
-    neon_branch_id: null,
     database_uri: "postgres://agent-db.example",
     database_status: "ready",
     database_error: null,

@@ -11,18 +11,26 @@ const workspaceRoot = path.resolve(repoRoot, "..");
 const playwrightArgs = process.argv.slice(2);
 
 function resolvePlaywrightCommand() {
-  const binaryName =
-    process.platform === "win32" ? "playwright.cmd" : "playwright";
-  for (const candidate of [
-    path.join(repoRoot, "node_modules", ".bin", binaryName),
-    path.join(appDir, "node_modules", ".bin", binaryName),
-    path.join(workspaceRoot, "node_modules", ".bin", binaryName),
+  // On Windows the bin shim differs by package manager: bun emits
+  // `playwright.exe` (a real executable), npm emits `playwright.cmd` (a shell
+  // shim). Try both so the runner works regardless of how deps were installed.
+  const binaryNames =
+    process.platform === "win32"
+      ? ["playwright.exe", "playwright.cmd"]
+      : ["playwright"];
+  for (const dir of [
+    path.join(repoRoot, "node_modules", ".bin"),
+    path.join(appDir, "node_modules", ".bin"),
+    path.join(workspaceRoot, "node_modules", ".bin"),
   ]) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
+    for (const binaryName of binaryNames) {
+      const candidate = path.join(dir, binaryName);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     }
   }
-  return binaryName;
+  return binaryNames[0];
 }
 
 function resolveBunCommand() {
@@ -181,10 +189,16 @@ if (
     fs.mkdtempSync(path.join(os.tmpdir(), "eliza-hmr-"));
 }
 
-const child = spawn(resolvePlaywrightCommand(), ["test", ...playwrightArgs], {
+const playwrightCommand = resolvePlaywrightCommand();
+const child = spawn(playwrightCommand, ["test", ...playwrightArgs], {
   cwd: appDir,
   env,
   stdio: "inherit",
+  // A `.cmd` shim (npm on Windows) cannot be spawned without a shell (raises
+  // EINVAL, hardened further by the CVE-2024-27980 fix). A `.exe` shim (bun on
+  // Windows) and the POSIX `playwright` binary are real executables that need
+  // no shell, so scope the shell to the `.cmd` case only.
+  shell: process.platform === "win32" && playwrightCommand.endsWith(".cmd"),
 });
 
 child.on("exit", (code, signal) => {

@@ -99,7 +99,13 @@ afterAll(async () => {
   }
 });
 
-// TODO(mcp): re-enable once the create path is verified against real Railway Postgres.
+// NOTE: the 8 DB-WRITE tests below are `test.skip`'d — they 500 ONLY under the
+// workerd + PGlite-over-TCP e2e harness (a large INSERT...RETURNING trips a
+// PGlite socket). The create path is correct and works on real Postgres/Railway
+// (verified: the exact drizzle insert(userMcps).returning() over node-pg
+// succeeds; create errors are now logged in v1/mcps/route.ts). The read / auth-
+// gate / validation tests run normally. TODO(mcp): drop the skips once the
+// harness handles workerd writes, or run this group against a real Railway DB.
 // The user_mcps table + migration (0147) are correct and the read endpoints
 // work, but every write (create/update/publish/delete) 500s ONLY under the
 // e2e's PGlite-over-TCP harness — the INSERT...RETURNING (48 cols incl.
@@ -108,7 +114,7 @@ afterAll(async () => {
 // not a schema bug. Skipped so it stops blocking the cloud-api Worker deploy
 // (which also carries the public-token-path auth fixes). Create-path errors are
 // now logged (v1/mcps/route.ts) for verification against Railway.
-describe.skip("Group G2 — user MCP registry CRUD", () => {
+describe("Group G2 — user MCP registry CRUD", () => {
   test("auth gate: POST /api/v1/mcps without credentials is rejected", async () => {
     if (!serverReachable) return;
     const res = await api.post("/api/v1/mcps", {
@@ -125,7 +131,7 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     expect([401, 403]).toContain(res.status);
   });
 
-  test("create -> creates a draft MCP with computed revenue split", async () => {
+  test.skip("create -> creates a draft MCP with computed revenue split", async () => {
     if (!shouldRunAuthed()) return;
     const mcp = await createMcp({ creatorSharePercentage: 70 });
     expect(mcp.status).toBe("draft");
@@ -159,7 +165,7 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     expect(res.status).toBe(400);
   });
 
-  test("get one -> returns the MCP with owner stats", async () => {
+  test.skip("get one -> returns the MCP with owner stats", async () => {
     if (!shouldRunAuthed()) return;
     const created = await createMcp();
     const res = await api.get(`/api/v1/mcps/${created.id}`, {
@@ -185,7 +191,7 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     expect(res.status).toBe(404);
   });
 
-  test("list (own) -> includes a created MCP", async () => {
+  test.skip("list (own) -> includes a created MCP", async () => {
     if (!shouldRunAuthed()) return;
     const created = await createMcp();
     const res = await api.get("/api/v1/mcps?scope=own&limit=100", {
@@ -197,7 +203,7 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     expect(body.mcps?.some((m) => m.id === created.id)).toBe(true);
   });
 
-  test("update -> patches fields and recomputes the split", async () => {
+  test.skip("update -> patches fields and recomputes the split", async () => {
     if (!shouldRunAuthed()) return;
     const created = await createMcp();
     const res = await api.put(
@@ -212,7 +218,7 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     expect(body.mcp?.platform_share_percentage).toBe("10.00");
   });
 
-  test("publish -> moves the MCP to live and into the public catalog", async () => {
+  test.skip("publish -> moves the MCP to live and into the public catalog", async () => {
     if (!shouldRunAuthed()) return;
     const created = await createMcp();
     const pubRes = await api.post(
@@ -232,7 +238,7 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     expect(listBody.mcps?.some((m) => m.id === created.id)).toBe(true);
   });
 
-  test("publish -> rejects an MCP with no tools", async () => {
+  test.skip("publish -> rejects an MCP with no tools", async () => {
     if (!shouldRunAuthed()) return;
     const created = await createMcp({ tools: [] });
     const res = await api.post(
@@ -243,7 +249,7 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
-  test("unpublish -> removes the MCP from the public catalog", async () => {
+  test.skip("unpublish -> removes the MCP from the public catalog", async () => {
     if (!shouldRunAuthed()) return;
     const created = await createMcp();
     await api.post(`/api/v1/mcps/${created.id}/publish`, undefined, {
@@ -257,7 +263,7 @@ describe.skip("Group G2 — user MCP registry CRUD", () => {
     expect(body.mcp?.status).toBe("draft");
   });
 
-  test("delete -> removes the MCP and a subsequent get 404s", async () => {
+  test.skip("delete -> removes the MCP and a subsequent get 404s", async () => {
     if (!shouldRunAuthed()) return;
     const created = await createMcp();
     const delRes = await api.delete(`/api/v1/mcps/${created.id}`, {

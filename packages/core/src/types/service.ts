@@ -128,6 +128,7 @@ export const ServiceType = {
 	CONNECTOR_ACCOUNT: "connector_account",
 	CONNECTOR_ACCOUNT_STORAGE: "connector_account_storage",
 	AGENT_EVENT: "agent_event",
+	NOTIFICATION: "notification",
 	MEDIA_GENERATION: "media_generation",
 	VOICE_CACHE: "voice_cache",
 	OPTIMIZED_PROMPT: "optimized_prompt",

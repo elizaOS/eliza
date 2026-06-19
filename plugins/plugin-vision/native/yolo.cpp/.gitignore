@@ -1,0 +1,18 @@
+# CMake / MSVC build tree (self-contained libyolo.* is produced here)
+build/
+
+# Recon / scratch notes from development
+.recon/
+
+# Downloaded Ultralytics checkpoint (AGPL-3.0 — never commit weights)
+*.pt
+
+# Converted GGUF weights (derived from AGPL weights — never commit)
+*.gguf
+
+# Verification fixtures produced by verify/make_ref.py + run_ggml.mjs
+verify/*.bin
+verify/meta.txt
+# Test images (fetched from ultralytics assets by make_ref.py)
+verify/*.jpg
+verify/*.png
