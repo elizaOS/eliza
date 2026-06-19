@@ -93,7 +93,20 @@ const packagesRoot = path.resolve(appCoreRoot, "..");
 const elizaRepoRoot = path.resolve(packagesRoot, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
-const androidDir = path.join(appCoreRoot, "platforms", "android");
+// Android build target. By default this is the canonical elizaOS platform tree
+// (app-core/platforms/android), which the elizaOS app itself builds in. A
+// whitelabel consumer that embeds the elizaOS checkout (e.g. Milady) must NOT
+// build in that shared tree — the identity overlay rewrites it in place, so
+// after a Milady build the tree carries Milady's package and a subsequent
+// elizaOS build (or vice versa) is corrupted. Setting ELIZA_ANDROID_USE_APP_DIR=1
+// builds in the host app's own dir (appDir/android, like iOS already does),
+// treating app-core/platforms/android as a read-only template copied in by
+// overlayAndroid/patchAndroidGradle/syncAndroidAppActionsResources. That keeps
+// the two brands' Android builds fully separate.
+const androidDir =
+  process.env.ELIZA_ANDROID_USE_APP_DIR === "1"
+    ? path.join(appDir, "android")
+    : path.join(appCoreRoot, "platforms", "android");
 const localArtifactsDir = path.join(elizaRepoRoot, ".eliza-local", "artifacts");
 const androidSmsGatewayDebugApkArtifact = path.join(
   localArtifactsDir,
@@ -1732,7 +1745,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `            if (!libDir) {\n` +
     `                if (abi == 'arm64-v8a') {\n` +
     `                    // arm64-v8a is the mandatory baseline ABI; missing it is a hard error.\n` +
-    `                    throw new GradleException("[copyForkLlamaLib] no MTP Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target android-arm64-vulkan or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] no MTP Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.mjs has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")\n` +
     `                }\n` +
     `                logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI \${abi}; skipping")\n` +
     `                return\n` +
