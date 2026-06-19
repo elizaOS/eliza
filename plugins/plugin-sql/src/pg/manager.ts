@@ -11,11 +11,22 @@ export class PostgresConnectionManager {
   private shuttingDown = false;
 
   constructor(connectionString: string, rlsServerId?: string) {
+    // Pool sizing is env-tunable so multi-tenant deployments (e.g. Eliza Cloud,
+    // where many agent containers share one Postgres) can run lean pools and not
+    // exhaust the server's max_connections. Defaults preserve the original
+    // single-agent behavior (max 20 / min 2). Set POSTGRES_POOL_MIN=0 so idle
+    // agents release every connection; a small POSTGRES_POOL_MAX caps bursts.
+    const envInt = (key: string, fallback: number): number => {
+      const raw = process.env[key];
+      if (raw === undefined || raw === "") return fallback;
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 0 ? n : fallback;
+    };
     const poolConfig: PoolConfig = {
       connectionString: normalizePgSslMode(connectionString),
-      max: 20,
-      min: 2,
-      idleTimeoutMillis: 30000,
+      max: envInt("POSTGRES_POOL_MAX", 20),
+      min: envInt("POSTGRES_POOL_MIN", 2),
+      idleTimeoutMillis: envInt("POSTGRES_POOL_IDLE_TIMEOUT_MS", 30000),
       connectionTimeoutMillis: 5000,
       keepAlive: true,
       keepAliveInitialDelayMillis: 10000,
