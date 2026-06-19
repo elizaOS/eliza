@@ -23,6 +23,7 @@ export * from "./memory";
 export * from "./memory-storage";
 export * from "./messaging";
 export * from "./model";
+export * from "./notification";
 export * from "./pairing";
 export * from "./payment";
 export * from "./pipeline-hooks";

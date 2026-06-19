@@ -3,6 +3,7 @@ import {
   type IAgentRuntime,
   logger,
   Service,
+  ServiceType,
   stringToUuid,
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
@@ -1121,6 +1122,24 @@ function resolveAutonomyService(runtime: IAgentRuntime): AutonomyServiceLike | n
     runtime.getService<AutonomyServiceLike>('AUTONOMY') ??
     runtime.getService<AutonomyServiceLike>('autonomy');
   return svc ?? null;
+}
+
+interface NotificationEmitter {
+  notify: (input: {
+    title: string;
+    body?: string;
+    category?: string;
+    priority?: string;
+    source?: string;
+    deepLink?: string;
+    groupKey?: string;
+    data?: Record<string, unknown>;
+  }) => Promise<unknown>;
+}
+
+function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
+  const svc = runtime.getService(ServiceType.NOTIFICATION) as NotificationEmitter | null;
+  return svc && typeof svc.notify === 'function' ? svc : null;
 }
 
 function resolveAutonomyRoomId(svc: AutonomyServiceLike): UUID | null {
@@ -2290,6 +2309,22 @@ export class EmbeddedWorkflowService extends Service {
         runNode: (node, inputData) => this.executeNode(node, inputData, executionId),
       });
       await this.saveExecution(execution, idempotencyKey);
+      void getNotifier(this.runtime)
+        ?.notify({
+          title: `Workflow "${workflowData.name}" completed`,
+          category: 'workflow',
+          priority: 'normal',
+          source: 'workflow',
+          groupKey: `workflow:${executionId}`,
+          data: {
+            executionId,
+            workflowId: workflowData.id ?? '',
+            status: execution.status,
+          },
+        })
+        .catch((err: unknown) => {
+          logger.debug({ src: 'workflow', error: err }, 'Notification emit failed');
+        });
       return cloneJson(execution);
     } catch (error) {
       const stoppedAt = new Date();
@@ -2308,6 +2343,24 @@ export class EmbeddedWorkflowService extends Service {
         },
       };
       await this.saveExecution(execution, idempotencyKey);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      void getNotifier(this.runtime)
+        ?.notify({
+          title: `Workflow "${workflowData.name}" failed`,
+          body: errorMessage.slice(0, 200),
+          category: 'workflow',
+          priority: 'high',
+          source: 'workflow',
+          groupKey: `workflow:${executionId}`,
+          data: {
+            executionId,
+            workflowId: workflowData.id ?? '',
+            error: errorMessage.slice(0, 200),
+          },
+        })
+        .catch((err: unknown) => {
+          logger.debug({ src: 'workflow', error: err }, 'Notification emit failed');
+        });
       throw error;
     }
   }

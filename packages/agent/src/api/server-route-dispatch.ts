@@ -4,6 +4,7 @@ import { handleChatRoutes } from "./chat-routes.ts";
 import { handleConversationRoutes } from "./conversation-routes.ts";
 import { handleDatabaseRoute } from "./database.ts";
 import { handleInboxRoute } from "./inbox-routes.ts";
+import { handleNotificationRoute } from "./notification-routes.ts";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
 import type { ServerState } from "./server-types.ts";
 import { handleXRelayRoute } from "./x-relay-routes.ts";
@@ -83,6 +84,17 @@ export async function handleInboxAndCloudRelayRouteGroup({
   error,
   readJsonBody,
 }: DispatchRouteContext): Promise<boolean> {
+  if (pathname.startsWith("/api/notifications")) {
+    return handleNotificationRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { runtime: state.runtime ?? null },
+      { json, error, readJsonBody },
+    );
+  }
+
   if (pathname.startsWith("/api/inbox")) {
     return handleInboxRoute(
       req,
