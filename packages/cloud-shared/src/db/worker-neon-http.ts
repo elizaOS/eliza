@@ -101,8 +101,7 @@ function createPgPool(env: WorkerNeonEnvSlice): PgPool {
     // `DATABASE_SSL_NO_VERIFY=true` or `?sslmode=no-verify` — the connection
     // stays encrypted; only CA verification is skipped. (Hyperdrive terminates
     // origin TLS itself, so its local endpoint needs no `ssl` option here.)
-    const skipVerify =
-      env.DATABASE_SSL_NO_VERIFY === "true" || /[?&]sslmode=no-verify\b/.test(url);
+    const skipVerify = env.DATABASE_SSL_NO_VERIFY === "true" || /[?&]sslmode=no-verify\b/.test(url);
     options.ssl = { rejectUnauthorized: !skipVerify };
   }
   const pool = new PgPool(options);
