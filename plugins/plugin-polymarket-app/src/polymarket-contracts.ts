@@ -22,11 +22,27 @@ export interface PolymarketTradingReadiness extends PolymarketReadiness {
   missing: readonly PolymarketTradingEnvVar[];
 }
 
+export interface PolymarketAccountReadiness extends PolymarketReadiness {
+  /**
+   * The agent's Polygon wallet address used to read positions, resolved from
+   * env (POLYMARKET_WALLET_ADDRESS / STEWARD_EVM_ADDRESS / managed EVM
+   * address). Null when no address is configured, in which case position reads
+   * require an explicit `user` query param.
+   */
+  address: string | null;
+}
+
 export interface PolymarketStatusResponse {
   publicReads: PolymarketReadiness & {
     gammaApiBase: string;
     dataApiBase: string;
   };
+  /**
+   * Position-read readiness. Readable whenever an account address is resolvable
+   * (public Data API, no credentials needed). The address is surfaced so the
+   * AppView can read the agent's own positions without prompting for a wallet.
+   */
+  account: PolymarketAccountReadiness;
   trading: PolymarketTradingReadiness & {
     clobApiBase: string;
   };
@@ -118,8 +134,42 @@ export interface PolymarketDisabledResponse {
   requiredForTrading: readonly PolymarketTradingEnvVar[];
 }
 
+/**
+ * Account-level aggregate derived from a wallet's open Polymarket positions,
+ * mirroring the waifu patron "account health" strip (total position value +
+ * aggregate cash PnL across markets). All values are stringified USD; null when
+ * the wallet holds no positions or the field is unreadable. This is the
+ * prediction-market analogue of the Hyperliquid account summary surfaced in the
+ * sibling HL app-plugin.
+ */
+export interface PolymarketPositionsSummary {
+  /** Sum of per-position `currentValue`, in USD. Null when no positions. */
+  totalValue: string | null;
+  /** Sum of per-position `cashPnl`, in USD. Null when no positions. */
+  totalCashPnl: string | null;
+  /**
+   * Aggregate return as a fraction of cost basis
+   * (totalCashPnl / (totalValue - totalCashPnl)). Null when the basis is
+   * zero/unreadable.
+   */
+  totalPercentPnl: string | null;
+  /** Count of open positions contributing to the aggregate. */
+  openPositions: number;
+}
+
 export interface PolymarketPositionsResponse {
   positions: readonly PolymarketPosition[];
+  /**
+   * The wallet whose positions were read. Resolved from the request `user`
+   * query param, or from the agent's configured Polygon address when omitted.
+   * Null when no address was resolvable.
+   */
+  user: string | null;
+  /**
+   * Account value/PnL aggregate. Optional for back-compat: older route builds
+   * and the no-position path emit null.
+   */
+  summary: PolymarketPositionsSummary | null;
   source: PolymarketSource;
 }
 

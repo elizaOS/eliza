@@ -99,6 +99,11 @@ const sampleStatus = {
     gammaApiBase: "https://gamma-api.polymarket.com",
     dataApiBase: "https://data-api.polymarket.com",
   },
+  account: {
+    ready: true,
+    reason: null,
+    address: "0x1234567890123456789012345678901234567890",
+  },
   trading: {
     ready: false,
     reason: "Trading and order management are disabled.",
