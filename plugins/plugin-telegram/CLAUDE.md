@@ -48,13 +48,20 @@ src/
   account-auth-service.ts     TelegramAccountAuthSession — GramJS MTProto auth state machine
   accounts.ts                 Multi-account config resolution (resolveTelegramAccount, listEnabledTelegramAccounts)
   connector-account-provider.ts  ConnectorAccountManager bridge (CRUD, no OAuth)
+  interactions.ts             renderTelegramInteractions — inline keyboard / interaction rendering
+  command-registration.ts     buildTelegramCommandDescriptors, registerTelegramCommandHandlers, applyTelegramSetMyCommands
+  local-client.ts             TELEGRAM_LOCAL_MOCK_SESSION_PREFIX — mock session helpers
+  sensitive-request-adapter.ts  telegramDmSensitiveRequestAdapter, registerTelegramDmSensitiveRequestAdapter
   constants.ts                TELEGRAM_SERVICE_NAME = "telegram"; MESSAGE_CONSTANTS
-  environment.ts              telegramEnvSchema (zod), validateTelegramConfig
   types.ts                    TelegramContent, Button, TelegramEventTypes, payload interfaces
   utils.ts                    cleanText, convertMarkdownToTelegram, convertToTelegramButtons
   tests.ts                    TelegramTestSuite (live smoke, requires TELEGRAM_TEST_CHAT_ID)
   messageManager.test.ts      Unit tests for MessageManager (vitest, mocked runtime)
   messageConnector.test.ts    Unit tests for connector registration and send routing (vitest, mocked runtime)
+  command-registration.test.ts  Unit tests for command registration helpers
+  connector-account-provider.test.ts  Unit tests for ConnectorAccountProvider
+  interactions-roundtrip.test.ts  Round-trip tests for interaction rendering
+  interactions.test.ts        Unit tests for interaction rendering
 ```
 
 ## Commands
@@ -78,7 +85,7 @@ bun run --cwd plugins/plugin-telegram clean          # rm dist .turbo
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | Yes (default account) | Bot token from @BotFather; format `<id>:<alphanum>`. Read via `runtime.getSetting()` then `process.env`. |
 | `TELEGRAM_API_ROOT` | No | Override Telegram Bot API base URL (default `https://api.telegram.org`). Allows local Bot API server. |
-| `TELEGRAM_ALLOWED_CHATS` | No | JSON array of chat ID strings that the bot will respond to. If absent, all chats are allowed. |
+| `TELEGRAM_ALLOWED_CHATS` | No | JSON array of chat ID strings that the bot will respond to. If absent, all chats are allowed. Read via `runtime.getSetting()`. |
 | `TELEGRAM_TEST_CHAT_ID` | No | Chat ID used by `TelegramTestSuite` for live smoke tests. |
 
 Multi-account configuration is declared on `character.settings.telegram`:
@@ -120,4 +127,5 @@ Account resolution order (for the `default` account): `character.settings.telegr
 - **Buttons**: send `TelegramContent` with a `buttons` array (`Button[]`). Supported `kind` values: `"login"`, `"url"`.
 - **GramJS (user-account)**: `account-auth-service.ts` uses the `telegram` npm package (GramJS/MTProto) for user-account login, distinct from the bot-API `telegraf` package used for bot accounts.
 - **ConnectorAccountManager**: registered in `init()`. Telegram bot accounts use long-lived bot tokens rather than OAuth, so start/complete OAuth flows are unsupported by design. Single-account env configs are surfaced as a synthetic `"default"` account.
+- **Sensitive request adapter**: `registerTelegramDmSensitiveRequestAdapter` (called in `init()`) wires Telegram DM delivery for secret / OAuth link-out requests, mirroring the Discord DM adapter.
 - See repo root `AGENTS.md` for architecture rules, logging standards, and git workflow.
