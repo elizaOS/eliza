@@ -368,8 +368,7 @@ export async function runViewsShow({
 	if (intentViewId && intentViewId !== target) {
 		const intentResolution = resolveView(intentViewId, views);
 		const intentRegistered =
-			intentResolution.kind !== "none" &&
-			intentResolution.kind !== "ambiguous";
+			intentResolution.kind !== "none" && intentResolution.kind !== "ambiguous";
 		if (intentRegistered || resolution.kind === "none") {
 			resolution = intentResolution;
 			target = intentViewId;
