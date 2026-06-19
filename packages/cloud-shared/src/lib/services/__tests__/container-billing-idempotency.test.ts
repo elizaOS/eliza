@@ -302,4 +302,60 @@ describe("container billing gate + row-lock guard", () => {
     },
     PGLITE_TIMEOUT,
   );
+
+  test(
+    "atomic decrement preserves a concurrent debit that lands after the caller's read (no lost update)",
+    async () => {
+      if (!pgliteReady) return;
+      await dbWrite.execute(`DELETE FROM container_billing_records;`);
+      await dbWrite.execute(`DELETE FROM credit_transactions;`);
+      await dbWrite.execute(`DELETE FROM containers;`);
+      await dbWrite.execute(`DELETE FROM organizations;`);
+      await dbWrite.execute(
+        `INSERT INTO organizations (id, credit_balance) VALUES ('${ORG_ID}', '50');`,
+      );
+      await dbWrite.execute(
+        `INSERT INTO containers (id, name, project_name, organization_id, user_id, status, billing_status, total_billed)
+         VALUES ('${CONTAINER_ID}', 'web', 'proj', '${ORG_ID}', '${USER_ID}', 'running', 'active', '0');`,
+      );
+
+      const now = new Date("2026-06-07T14:30:00.000Z");
+      const { periodStart, periodEnd } = computeContainerBillingPeriod(now);
+
+      // The cron read credit_balance=$50 and computed newBalance=$49.33 for a
+      // $0.67 charge. THEN a concurrent inference debit of $10 lands before the
+      // billing write commits — dropping the LIVE balance to $40.
+      await dbWrite.execute(
+        `UPDATE organizations SET credit_balance = credit_balance - 10 WHERE id = '${ORG_ID}';`,
+      );
+
+      const result = await containerBillingRepository.recordSuccessfulDailyBilling({
+        containerId: CONTAINER_ID,
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        containerName: "web",
+        currentTotalBilled: "0",
+        dailyCost: 0.67,
+        newBalance: 49.33, // STALE: derived from the pre-debit read of $50.
+        fromEarnings: 0,
+        fromCredits: 0.67,
+        now,
+        billingPeriodStart: periodStart,
+        billingPeriodEnd: periodEnd,
+      });
+
+      // An absolute write of the stale newBalance would clobber to $49.33,
+      // silently erasing the $10 concurrent debit. The atomic relative
+      // decrement instead lands at 40 - 0.67 = $39.33 and returns the live value.
+      const org = await dbWrite.execute(
+        `SELECT credit_balance FROM organizations WHERE id = '${ORG_ID}';`,
+      );
+      expect(Number((org.rows[0] as { credit_balance: string }).credit_balance)).toBeCloseTo(
+        39.33,
+        6,
+      );
+      expect(result.newBalance).toBeCloseTo(39.33, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
 });
