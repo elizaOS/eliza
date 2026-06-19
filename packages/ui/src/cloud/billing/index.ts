@@ -23,7 +23,10 @@ export {
 } from "./BillingSection";
 export { default as BillingSuccessPage } from "./BillingSuccessPage";
 export { BillingTab } from "./components/billing-tab";
-export { DirectCryptoCreditCard } from "./components/direct-crypto-credit-card";
+// NOTE: DirectCryptoCreditCard is intentionally NOT re-exported here — a static
+// re-export pulls its @solana/spl-token + @solana/web3.js imports into the boot
+// graph (top-level PublicKey constants → safe-buffer Buffer() → boot crash).
+// It is lazy-loaded inside billing-tab where it is used.
 export { InvoiceDetailClient } from "./components/invoice-detail-client";
 export {
   useBillingUser,
