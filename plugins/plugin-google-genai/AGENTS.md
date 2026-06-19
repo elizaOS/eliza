@@ -73,8 +73,8 @@ Settings are read first from `runtime.getSetting(key)`, then from `process.env`.
 | `GOOGLE_MEDIUM_MODEL` / `MEDIUM_MODEL` | No | falls back to small | |
 | `GOOGLE_LARGE_MODEL` / `LARGE_MODEL` | No | `gemini-2.5-pro-preview-03-25` | |
 | `GOOGLE_MEGA_MODEL` / `MEGA_MODEL` | No | falls back to large | |
-| `GOOGLE_RESPONSE_HANDLER_MODEL` / `GOOGLE_SHOULD_RESPOND_MODEL` | No | falls back to nano | |
-| `GOOGLE_ACTION_PLANNER_MODEL` / `GOOGLE_PLANNER_MODEL` | No | falls back to medium | |
+| `GOOGLE_RESPONSE_HANDLER_MODEL` / `GOOGLE_SHOULD_RESPOND_MODEL` / `RESPONSE_HANDLER_MODEL` / `SHOULD_RESPOND_MODEL` | No | falls back to nano | |
+| `GOOGLE_ACTION_PLANNER_MODEL` / `GOOGLE_PLANNER_MODEL` / `ACTION_PLANNER_MODEL` / `PLANNER_MODEL` | No | falls back to medium | |
 | `GOOGLE_IMAGE_MODEL` / `IMAGE_MODEL` | No | `gemini-2.5-pro-preview-03-25` | |
 | `GOOGLE_EMBEDDING_MODEL` | No | `text-embedding-004` | 768-dimension output |
 
