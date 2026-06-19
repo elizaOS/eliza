@@ -46,6 +46,7 @@ import {
   isAnthropicWebSearchEnabled,
 } from "@/lib/providers/anthropic-web-search";
 import {
+  canonicalizeCerebrasModelId,
   getAiProviderConfigurationError,
   getLanguageModel,
   hasLanguageModelProviderConfigured,
@@ -767,7 +768,10 @@ export async function handleChatCompletionsPOST(
       );
     }
 
-    const model = request.model;
+    // Collapse decorated Cerebras ids (e.g. "openai/gpt-oss-120b:nitro" emitted
+    // by dedicated agents) to the bare Cerebras id so pricing, routing, and
+    // billing all agree and route to cerebras-direct instead of OpenRouter.
+    const model = canonicalizeCerebrasModelId(request.model);
 
     if (!hasLanguageModelProviderConfigured(model)) {
       return addCorsHeaders(

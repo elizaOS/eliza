@@ -45,7 +45,12 @@ import type {
 } from "@elizaos/contracts";
 import { asRecord } from "../type-guards.js";
 
-export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
+// Bare Cerebras id (not the OpenRouter "openai/…:nitro" variant) so the default
+// text model routes to cerebras-direct with the configured Cerebras key instead
+// of leaking to OpenRouter (429 → 26-55s) when an agent falls back to this
+// default. Consistent with DEFAULT_ELIZA_CLOUD_LARGE_MODEL ("zai-glm-4.7"), which
+// is already bare. The :free default below intentionally keeps its free upstream.
+export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "gpt-oss-120b";
 export const DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL = "openai/gpt-oss-120b:free";
 
 const ELIZA_CLOUD_ROUTE_BASE = {

@@ -241,6 +241,14 @@ export async function prepareManagedElizaBaseEnvironment(
         existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
       ELIZAOS_CLOUD_LARGE_MODEL:
         existingEnv.ELIZAOS_CLOUD_LARGE_MODEL ?? CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+      // Lean multi-tenant Postgres pool. Every dedicated agent container pools
+      // against the shared cloud Postgres, so the default per-agent pool
+      // (max 20 / min 2) exhausts the server's max_connections at scale (50
+      // idle agents × min 2 = 100 connections). Cap bursts at 8 and let idle
+      // agents release ALL connections (min 0). plugin-sql reads POSTGRES_POOL_*.
+      POSTGRES_POOL_MAX: existingEnv.POSTGRES_POOL_MAX ?? "8",
+      POSTGRES_POOL_MIN: existingEnv.POSTGRES_POOL_MIN ?? "0",
+      POSTGRES_POOL_IDLE_TIMEOUT_MS: existingEnv.POSTGRES_POOL_IDLE_TIMEOUT_MS ?? "15000",
       ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
       PUBLIC_BASE_URL: mergeManagedPublicBaseUrl(
         existingEnv.PUBLIC_BASE_URL,

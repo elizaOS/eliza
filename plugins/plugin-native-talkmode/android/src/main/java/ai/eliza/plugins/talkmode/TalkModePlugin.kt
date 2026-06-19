@@ -8,7 +8,10 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioRecord
 import android.media.AudioTrack
+import android.media.MediaRecorder
+import android.util.Base64
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -51,6 +54,10 @@ class TalkModePlugin : Plugin() {
         private const val DEFAULT_MODEL_ID = "eleven_flash_v2_5"
         private const val DEFAULT_OUTPUT_FORMAT = "pcm_24000"
         private const val LOCAL_INFERENCE_TTS_URL = "http://127.0.0.1:31337/api/tts/local-inference"
+        // 16 kHz mono is the rate VAD / diarizer / wake-word models expect; 20 ms
+        // (320 samples) is the standard VAD frame size.
+        private const val DEFAULT_FRAME_SAMPLE_RATE = 16000
+        private const val DEFAULT_FRAME_MS = 20
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -109,6 +116,17 @@ class TalkModePlugin : Plugin() {
         AudioManager.STREAM_NOTIFICATION,
     )
     private var earconStreamsMuted = false
+
+    // Raw PCM frame capture (diarization / VAD / wake-word source). Opt-in and
+    // mutually exclusive with SpeechRecognizer on the mic: Android only lets one
+    // capture client own a given input source at a time, so starting frame
+    // capture SUSPENDS any active SpeechRecognizer and stopping it resumes STT.
+    private var audioRecord: AudioRecord? = null
+    private var audioFrameJob: Job? = null
+    private val audioFrameRunning = AtomicBoolean(false)
+    private var sttSuspendedForFrames = false
+    private var lastFrameSampleRate = DEFAULT_FRAME_SAMPLE_RATE
+    private var lastFrameSamples = 0
 
     // Config
     private var apiKey: String? = null
@@ -342,6 +360,10 @@ class TalkModePlugin : Plugin() {
         lastTranscript = ""
         lastHeardAtMs = null
 
+        // Release any raw-PCM capture; `enabled` is already false so this won't
+        // re-arm SpeechRecognizer.
+        stopAudioFramesInternal()
+
         mainHandler.post {
             recognizer?.cancel()
             recognizer?.destroy()
@@ -444,6 +466,279 @@ class TalkModePlugin : Plugin() {
     @PermissionCallback
     private fun handlePermissionResult(call: PluginCall) {
         call.resolve(buildPermissionResult())
+    }
+
+    // ── Raw PCM frame capture (diarization / VAD / wake-word) ────────────
+
+    @PluginMethod
+    fun startAudioFrames(call: PluginCall) {
+        if (getPermissionState("microphone") != PermissionState.GRANTED) {
+            requestPermissionForAlias("microphone", call, "handleStartAudioFramesPermission")
+            return
+        }
+        startAudioFramesInternal(call)
+    }
+
+    @PermissionCallback
+    private fun handleStartAudioFramesPermission(call: PluginCall) {
+        if (getPermissionState("microphone") == PermissionState.GRANTED) {
+            startAudioFramesInternal(call)
+        } else {
+            call.resolve(JSObject().apply {
+                put("started", false)
+                put("error", "Microphone permission denied")
+            })
+        }
+    }
+
+    private fun startAudioFramesInternal(call: PluginCall) {
+        if (audioFrameRunning.get()) {
+            call.resolve(JSObject().apply {
+                put("started", true)
+                put("sampleRate", lastFrameSampleRate)
+                put("frameSamples", lastFrameSamples)
+                put("suspendedStt", sttSuspendedForFrames)
+            })
+            return
+        }
+
+        val requestedRate = call.getInt("sampleRate") ?: DEFAULT_FRAME_SAMPLE_RATE
+        val frameMs = call.getInt("frameMs") ?: DEFAULT_FRAME_MS
+        // SpeechRecognizer (SODA) holds the mic; a parallel AudioRecord on the
+        // same input fails on virtually every device. Suspend it for the
+        // duration of capture and remember to resume on stop.
+        val wasListening = isListening || listeningMode
+        if (wasListening) {
+            suspendSpeechRecognizerForFrames()
+        }
+
+        val record = try {
+            openAudioRecord(requestedRate)
+        } catch (e: Exception) {
+            Log.e(TAG, "AudioRecord open failed", e)
+            if (sttSuspendedForFrames) resumeSpeechRecognizerAfterFrames()
+            call.resolve(JSObject().apply {
+                put("started", false)
+                put("error", e.message ?: "AudioRecord open failed")
+            })
+            return
+        }
+
+        val actualRate = record.sampleRate
+        val frameSamples = max(1, actualRate * frameMs / 1000)
+        audioRecord = record
+        lastFrameSampleRate = actualRate
+        lastFrameSamples = frameSamples
+
+        try {
+            record.startRecording()
+        } catch (e: Exception) {
+            Log.e(TAG, "AudioRecord startRecording failed", e)
+            releaseAudioRecord()
+            if (sttSuspendedForFrames) resumeSpeechRecognizerAfterFrames()
+            call.resolve(JSObject().apply {
+                put("started", false)
+                put("error", e.message ?: "AudioRecord start failed")
+            })
+            return
+        }
+
+        if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+            Log.e(TAG, "AudioRecord did not enter RECORDING state")
+            releaseAudioRecord()
+            if (sttSuspendedForFrames) resumeSpeechRecognizerAfterFrames()
+            call.resolve(JSObject().apply {
+                put("started", false)
+                put("error", "AudioRecord did not start (mic likely held by SpeechRecognizer)")
+            })
+            return
+        }
+
+        audioFrameRunning.set(true)
+        launchFrameLoop(record, frameSamples)
+
+        call.resolve(JSObject().apply {
+            put("started", true)
+            put("sampleRate", actualRate)
+            put("frameSamples", frameSamples)
+            put("suspendedStt", sttSuspendedForFrames)
+        })
+    }
+
+    @PluginMethod
+    fun stopAudioFrames(call: PluginCall) {
+        stopAudioFramesInternal()
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun isCapturingAudioFrames(call: PluginCall) {
+        call.resolve(JSObject().apply {
+            put("capturing", audioFrameRunning.get())
+        })
+    }
+
+    /**
+     * Open a 16 kHz mono 16-bit AudioRecord. Tries VOICE_RECOGNITION first (the
+     * pre-processing-light source diarization wants), then falls back to MIC.
+     */
+    private fun openAudioRecord(sampleRate: Int): AudioRecord {
+        val minBuffer = AudioRecord.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        if (minBuffer <= 0) {
+            throw IllegalStateException("AudioRecord min buffer invalid ($minBuffer) for ${sampleRate}Hz")
+        }
+        val bufferBytes = max(minBuffer * 2, 4 * 1024)
+        val sources = intArrayOf(
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.MIC,
+        )
+        var lastError: Throwable? = null
+        for (source in sources) {
+            try {
+                @Suppress("MissingPermission")
+                val record = AudioRecord(
+                    source,
+                    sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferBytes
+                )
+                if (record.state == AudioRecord.STATE_INITIALIZED) {
+                    return record
+                }
+                record.release()
+                lastError = IllegalStateException("AudioRecord uninitialized for source $source")
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        throw IllegalStateException(
+            "AudioRecord could not initialize at ${sampleRate}Hz",
+            lastError
+        )
+    }
+
+    private fun launchFrameLoop(record: AudioRecord, frameSamples: Int) {
+        audioFrameJob?.cancel()
+        // IO dispatcher: a tight blocking read loop must not sit on the main
+        // thread. Frames are marshalled to JS via notifyListeners (thread-safe).
+        audioFrameJob = scope.launch(Dispatchers.IO) {
+            val buffer = ShortArray(frameSamples)
+            val bytes = ByteArray(frameSamples * 2)
+            var frameIndex = 0L
+            try {
+                while (audioFrameRunning.get() && isActive) {
+                    val read = record.read(buffer, 0, frameSamples)
+                    if (read <= 0) {
+                        // ERROR_INVALID_OPERATION (-3) / ERROR_BAD_VALUE (-2):
+                        // the record was released or the mic was taken; stop.
+                        if (read < 0) break
+                        continue
+                    }
+                    var sumSquares = 0.0
+                    var b = 0
+                    for (i in 0 until read) {
+                        val s = buffer[i].toInt()
+                        bytes[b] = (s and 0xff).toByte()
+                        bytes[b + 1] = ((s shr 8) and 0xff).toByte()
+                        b += 2
+                        sumSquares += (s.toDouble() * s.toDouble())
+                    }
+                    val rms = if (read > 0) {
+                        Math.sqrt(sumSquares / read) / 32768.0
+                    } else 0.0
+                    val pcmBase64 = Base64.encodeToString(
+                        bytes, 0, read * 2, Base64.NO_WRAP
+                    )
+                    val idx = frameIndex
+                    frameIndex += 1
+                    val ts = SystemClock.elapsedRealtime()
+                    notifyListeners("audioFrame", JSObject().apply {
+                        put("pcm16", pcmBase64)
+                        put("sampleRate", record.sampleRate)
+                        put("channels", 1)
+                        put("samples", read)
+                        put("rms", rms)
+                        put("timestamp", ts)
+                        put("frameIndex", idx)
+                    })
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Audio frame loop error", e)
+                notifyListeners("error", JSObject().apply {
+                    put("message", "Audio frame capture stopped: ${e.message}")
+                    put("fatal", false)
+                })
+            }
+        }
+    }
+
+    private fun stopAudioFramesInternal() {
+        if (!audioFrameRunning.getAndSet(false) && audioRecord == null) {
+            return
+        }
+        audioFrameJob?.cancel()
+        audioFrameJob = null
+        releaseAudioRecord()
+        if (sttSuspendedForFrames) {
+            resumeSpeechRecognizerAfterFrames()
+        }
+    }
+
+    private fun releaseAudioRecord() {
+        val record = audioRecord ?: return
+        audioRecord = null
+        try {
+            if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                record.stop()
+            }
+        } catch (_: Throwable) {
+        }
+        try {
+            record.release()
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** Suspend SpeechRecognizer so AudioRecord can own the mic. */
+    private fun suspendSpeechRecognizerForFrames() {
+        sttSuspendedForFrames = true
+        listeningMode = false
+        isListening = false
+        restartJob?.cancel()
+        silenceJob?.cancel()
+        mainHandler.post {
+            try {
+                recognizer?.cancel()
+                recognizer?.destroy()
+            } catch (_: Throwable) {
+            }
+            recognizer = null
+        }
+    }
+
+    /** Re-arm SpeechRecognizer after frame capture ends, if a session is active. */
+    private fun resumeSpeechRecognizerAfterFrames() {
+        sttSuspendedForFrames = false
+        if (!enabled || stopRequested) return
+        listeningMode = true
+        mainHandler.post {
+            try {
+                if (!SpeechRecognizer.isRecognitionAvailable(context)) return@post
+                recognizer?.destroy()
+                recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+                    setRecognitionListener(recognitionListener)
+                }
+                startListeningInternal(markListening = true)
+                startSilenceMonitor()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to resume STT after frames", e)
+            }
+        }
     }
 
     // ── Config ──────────────────────────────────────────────────────────
@@ -1664,6 +1959,9 @@ class TalkModePlugin : Plugin() {
         systemTts?.shutdown()
         systemTts = null
         cleanupPcmTrack()
+        audioFrameRunning.set(false)
+        audioFrameJob?.cancel()
+        releaseAudioRecord()
         silenceJob?.cancel()
         restartJob?.cancel()
         speakingJob?.cancel()

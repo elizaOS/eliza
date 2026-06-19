@@ -247,6 +247,60 @@ export interface TalkModePlaybackStartEvent {
 }
 
 /**
+ * One frame of raw PCM captured by the native AudioRecord diarization path.
+ *
+ * Emitted continuously while {@link TalkModePlugin.startAudioFrames} is active.
+ * `pcm16` is little-endian signed 16-bit mono PCM, base64-encoded — feed it to a
+ * JS/bun VAD / diarizer / wake-word consumer. The native STT (SpeechRecognizer /
+ * SODA) path does NOT produce these; only the explicit audio-frame mode does.
+ */
+export interface TalkModeAudioFrameEvent {
+  /** Base64-encoded little-endian signed 16-bit mono PCM for this frame. */
+  pcm16: string;
+  /** Sample rate of the captured PCM in Hz (e.g. 16000). */
+  sampleRate: number;
+  /** Channel count of the captured PCM (always 1 — mono). */
+  channels: 1;
+  /** Number of PCM samples in this frame (`pcm16` byte length / 2). */
+  samples: number;
+  /** Root-mean-square amplitude of this frame, normalized 0..1. */
+  rms: number;
+  /** Monotonic capture timestamp for this frame, ms (SystemClock.elapsedRealtime). */
+  timestamp: number;
+  /** Running index of this frame since capture started (0-based). */
+  frameIndex: number;
+}
+
+/** Options for {@link TalkModePlugin.startAudioFrames}. */
+export interface AudioFrameOptions {
+  /**
+   * Target capture sample rate in Hz. Default 16000 (16 kHz mono — the rate
+   * VAD/diarizer/wake-word models expect). The device may not support every
+   * rate; the result reports the rate actually opened.
+   */
+  sampleRate?: number;
+  /**
+   * Frames per `audioFrame` event, in milliseconds of audio. Default 20 ms
+   * (320 samples @ 16 kHz) — the standard VAD frame size.
+   */
+  frameMs?: number;
+}
+
+/** Result of {@link TalkModePlugin.startAudioFrames}. */
+export interface AudioFrameResult {
+  /** True when the AudioRecord capture started and frames will stream. */
+  started: boolean;
+  /** The sample rate the native AudioRecord was actually opened at, in Hz. */
+  sampleRate?: number;
+  /** Samples per emitted frame. */
+  frameSamples?: number;
+  /** True when SpeechRecognizer STT was suspended to free the mic for capture. */
+  suspendedStt?: boolean;
+  /** Populated when `started` is false. */
+  error?: string;
+}
+
+/**
  * Permission status for talk mode
  */
 export interface TalkModePermissionStatus {
@@ -339,6 +393,31 @@ export interface TalkModePlugin {
   requestPermissions(): Promise<TalkModePermissionStatus>;
 
   /**
+   * Start raw 16 kHz mono PCM frame capture (the diarization / VAD / wake-word
+   * source). Opt-in and independent of the default {@link start} STT flow.
+   *
+   * Android cannot run a parallel `AudioRecord` while `SpeechRecognizer` (SODA)
+   * holds the mic, so this SUSPENDS any active SpeechRecognizer for the duration
+   * of capture, then runs an `AudioRecord` and streams `audioFrame` events.
+   * Calling {@link stopAudioFrames} releases the `AudioRecord` and resumes STT
+   * if it was running. Native-only (no-op error on web/desktop).
+   *
+   * @returns Promise resolving to the capture result.
+   */
+  startAudioFrames(options?: AudioFrameOptions): Promise<AudioFrameResult>;
+
+  /**
+   * Stop raw PCM frame capture and resume SpeechRecognizer STT if it was
+   * suspended by {@link startAudioFrames}.
+   */
+  stopAudioFrames(): Promise<void>;
+
+  /**
+   * Query whether raw PCM frame capture is currently active.
+   */
+  isCapturingAudioFrames(): Promise<{ capturing: boolean }>;
+
+  /**
    * Add listener for state changes
    */
   addListener(
@@ -381,6 +460,14 @@ export interface TalkModePlugin {
   addListener(
     eventName: "playbackStart",
     listenerFunc: (event: TalkModePlaybackStartEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /**
+   * Add listener for raw PCM audio frames (only while startAudioFrames is active)
+   */
+  addListener(
+    eventName: "audioFrame",
+    listenerFunc: (event: TalkModeAudioFrameEvent) => void,
   ): Promise<PluginListenerHandle>;
 
   /**
