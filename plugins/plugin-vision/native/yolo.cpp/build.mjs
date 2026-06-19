@@ -37,8 +37,15 @@ function hasNinja() {
   return r.status === 0;
 }
 
-const configure = ["-S", HERE, "-B", BUILD, "-Wno-dev",
-  "-DGGML_NATIVE=OFF", "-DGGML_OPENMP=OFF"];
+const configure = [
+  "-S",
+  HERE,
+  "-B",
+  BUILD,
+  "-Wno-dev",
+  "-DGGML_NATIVE=OFF",
+  "-DGGML_OPENMP=OFF",
+];
 if (withMetal) configure.push("-DYOLO_WITH_METAL=ON");
 if (withCuda) configure.push("-DYOLO_WITH_CUDA=ON", "-DGGML_CUDA=ON");
 

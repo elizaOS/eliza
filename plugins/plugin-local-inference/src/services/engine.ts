@@ -22,6 +22,7 @@ import {
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/shared";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import { readEffectiveAssignments } from "./assignments";
 import type {
@@ -32,7 +33,6 @@ import type {
 	LocalRuntimeLoadConfig,
 } from "./backend";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
-import { isMobilePlatform } from "@elizaos/shared";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	type Eliza1TierId,

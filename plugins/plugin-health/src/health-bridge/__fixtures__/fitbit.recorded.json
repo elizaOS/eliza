@@ -62,10 +62,26 @@
             "wake": { "count": 18, "minutes": 30 }
           },
           "data": [
-            { "dateTime": "2026-04-30T22:48:00.000", "level": "light", "seconds": 1800 },
-            { "dateTime": "2026-04-30T23:18:00.000", "level": "deep", "seconds": 2700 },
-            { "dateTime": "2026-05-01T00:03:00.000", "level": "rem", "seconds": 1200 },
-            { "dateTime": "2026-05-01T00:23:00.000", "level": "wake", "seconds": 300 }
+            {
+              "dateTime": "2026-04-30T22:48:00.000",
+              "level": "light",
+              "seconds": 1800
+            },
+            {
+              "dateTime": "2026-04-30T23:18:00.000",
+              "level": "deep",
+              "seconds": 2700
+            },
+            {
+              "dateTime": "2026-05-01T00:03:00.000",
+              "level": "rem",
+              "seconds": 1200
+            },
+            {
+              "dateTime": "2026-05-01T00:23:00.000",
+              "level": "wake",
+              "seconds": 300
+            }
           ]
         }
       }
@@ -78,10 +94,34 @@
         "value": {
           "restingHeartRate": 54,
           "heartRateZones": [
-            { "name": "Out of Range", "min": 30, "max": 109, "minutes": 1200, "caloriesOut": 980.5 },
-            { "name": "Fat Burn", "min": 109, "max": 136, "minutes": 180, "caloriesOut": 620.2 },
-            { "name": "Cardio", "min": 136, "max": 169, "minutes": 42, "caloriesOut": 410.8 },
-            { "name": "Peak", "min": 169, "max": 220, "minutes": 6, "caloriesOut": 88.4 }
+            {
+              "name": "Out of Range",
+              "min": 30,
+              "max": 109,
+              "minutes": 1200,
+              "caloriesOut": 980.5
+            },
+            {
+              "name": "Fat Burn",
+              "min": 109,
+              "max": 136,
+              "minutes": 180,
+              "caloriesOut": 620.2
+            },
+            {
+              "name": "Cardio",
+              "min": 136,
+              "max": 169,
+              "minutes": 42,
+              "caloriesOut": 410.8
+            },
+            {
+              "name": "Peak",
+              "min": 169,
+              "max": 220,
+              "minutes": 6,
+              "caloriesOut": 88.4
+            }
           ]
         }
       }

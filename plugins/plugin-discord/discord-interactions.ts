@@ -41,7 +41,6 @@ import { generateInviteUrl } from "./permissions";
 import { syncDiscordClientProfile } from "./profileSync";
 import type { DiscordService } from "./service";
 import { registerSlashCommands as registerBuiltinSlashCommands } from "./slash-commands";
-import { getMessageService, sendMessageInChunks } from "./utils";
 import {
 	DiscordEventTypes,
 	type DiscordRegisterCommandsPayload,
@@ -49,6 +48,7 @@ import {
 	type DiscordSlashCommand,
 	type DiscordSlashCommandPayload,
 } from "./types";
+import { getMessageService, sendMessageInChunks } from "./utils";
 
 /**
  * Subset of DiscordService fields needed by interaction handling.

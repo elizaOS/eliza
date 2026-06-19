@@ -135,7 +135,9 @@ describe("Fitbit connector — recorded real API contract", () => {
     // genuine syncFitbit behavior (it double-counts the total + per-type rows);
     // the contract test pins it so any future change to that aggregation is
     // caught against the real multi-entry Fitbit distances shape.
-    const distance = payload.samples.find((s) => s.metric === "distance_meters");
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
     expect(distance?.value).toBeCloseTo((8.52 + 8.52 + 4.1) * 1000, 5);
     expect(distance?.unit).toBe("m");
 
