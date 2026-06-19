@@ -548,6 +548,21 @@ export default defineConfig(({ mode }) => {
           codeSplitting: {
             groups: [
               {
+                // Crypto / big-number graph (bn.js, elliptic, secp256k1, the
+                // hash + cipher libs, and the `buffer` polyfill they call into).
+                // Must be its own chunk: Rolldown's recursive dep-inclusion
+                // otherwise non-deterministically folds this graph into an
+                // eagerly-initialized app chunk (e.g. an i18n locale chunk),
+                // where bn.js runs `Buffer.allocUnsafe` at module-init before
+                // the chunk's CJS Buffer wrapper is hoisted — throwing
+                // "Class constructor cannot be invoked without 'new'" and
+                // killing the whole React tree. Extracting it (highest
+                // priority) keeps the graph + its Buffer together and lazy.
+                name: "vendor-crypto",
+                test: /[\\/]node_modules[\\/](bn\.js|elliptic|secp256k1|@noble[\\/][^\\/]+|hash-base|create-hash|create-hmac|create-ecdh|browserify-sign|browserify-aes|browserify-cipher|browserify-rsa|diffie-hellman|asn1\.js|des\.js|ripemd160|sha\.js|md5\.js|hash\.js|cipher-base|evp_bytestokey|pbkdf2|public-encrypt|randombytes|randomfill|miller-rabin|brorand|hmac-drbg|minimalistic-crypto-utils|minimalistic-assert|safe-buffer|buffer)([\\/]|$)/,
+                priority: 40,
+              },
+              {
                 name: "vendor-wallet",
                 test: /[\\/]node_modules[\\/](wagmi|@wagmi[\\/]|viem[\\/]|@rainbow-me[\\/]|@walletconnect[\\/]|@reown[\\/]|@coinbase[\\/]wallet|mipd|eventemitter3)([\\/]|$)/,
                 priority: 30,
