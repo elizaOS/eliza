@@ -20,13 +20,7 @@ packages/cloud-infra/
     docker-compose.yml             # Self-hosted Supabase Storage (Postgres + storage-api)
     AWS_RETIREMENT.md              # AWS → Hetzner/Railway migration status (agent-launch headscale moved off Railway onto the CP VMs)
     RAILWAY.md                     # Canonical map of where each service runs
-    bitrouter/                     # Railway service: OSS bitrouter proxy for model routing
-      auth-proxy.mjs               # Public-facing proxy: requires BITROUTER_PROXY_TOKEN, swaps JWT, forwards to local bitrouter
-      bitrouter.yaml               # BitRouter service catalog / model routing config
-      Dockerfile                   # Container image definition
-      entrypoint.sh                # Startup: initialises SQLite wallet, signs 30-day JWT, launches bitrouter + proxy
-      railway.toml                 # Railway service config
-      README.md                    # Runtime shape, routing policy, env vars, deploy commands
+    bitrouter/                     # RETIRED — only CLOUDFLARE_MIGRATION_PLAN.md remains (the Worker is the model gateway now)
     charts/
       README.md                    # Charts overview (gateway-discord chart is service-local)
     local/                         # kind cluster setup for local development
@@ -87,7 +81,6 @@ packages/cloud-infra/
     local-manifests.test.ts        # Validates K8s manifests (apiVersion/kind/metadata)
     chainsaw-config.test.ts        # Validates cloud/tests/.chainsaw.yaml shape (kind/timeouts/parallelism)
     chainsaw-suites.test.ts        # Static checks for Chainsaw suites (YAML well-formed, local file refs valid)
-    bitrouter-service.test.ts      # Validates bitrouter.yaml service catalog structure
     docker-compose.test.ts         # Static coverage for local docker-compose.yml (env placeholders, service shape)
     terraform-static.test.ts       # Lightweight Terraform file invariants (no provider init required)
 ```
@@ -104,11 +97,9 @@ The `shared-eliza.yaml` manifest is a `eliza.ai/v1alpha1` Server custom resource
 
 Self-hosted Supabase Storage (postgres:18-alpine + supabase/storage-api:v1.58.4) providing an S3-compatible API at `localhost:54321/storage/v1/s3`. Use this to run object-storage paths offline without a real Cloudflare R2 bucket. Requires secrets from `.env` (copy from `.env.example`).
 
-### BitRouter Railway service (`cloud/bitrouter/`)
+### BitRouter Railway service — RETIRED
 
-A Railway-deployed proxy for OSS `bitrouter` model routing. `bitrouter serve` binds to `127.0.0.1:4356` inside the container; `auth-proxy.mjs` is the only public listener (binds to Railway `$PORT`). The proxy requires `Authorization: Bearer $BITROUTER_PROXY_TOKEN`, replaces it with an internal 30-day JWT signed at startup, and forwards to local BitRouter. The Cloud API connects via `BITROUTER_BASE_URL` + `BITROUTER_API_KEY`.
-
-Routing policy: `gpt-oss-120b` routes Cerebras-first with OpenRouter fallback; `openai/gpt-oss-120b` and `openai/gpt-oss-120b:nitro` are legacy aliases that follow the same policy. See `cloud/bitrouter/README.md` for full deploy commands.
+The Railway BitRouter model-router was removed. The Cloudflare Worker (`cloud-api`) is now the model gateway: it calls native providers directly (Cerebras/OpenAI/Anthropic/Groq/Vast) and uses OpenRouter (BYOK, `OPENROUTER_API_KEY`) as the backup for models with no native key. Only `cloud/bitrouter/CLOUDFLARE_MIGRATION_PLAN.md` remains as the record. Operator: stop/delete the Railway `bitrouter` service.
 
 ### Hetzner Terraform (`cloud/terraform/hetzner/`)
 
@@ -162,12 +153,6 @@ Local cluster service env vars (copy from `.env.*.example`):
 - `DATABASE_URL`, `REDIS_URL`, `OPENAI_API_KEY` (`.env.agents.example`)
 - `ELIZA_CLOUD_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `GATEWAY_BOOTSTRAP_SECRET` (`.env.gateway.example`)
 - Telegram / WhatsApp / Twilio / Blooio tokens (`.env.gateway-webhook.example`)
-
-BitRouter Railway service (`cloud/bitrouter/`):
-- `BITROUTER_PROXY_TOKEN` — shared bearer token accepted by the public auth proxy (required)
-- `BITROUTER_API_KEY` — BitRouter Cloud key (`brk_...`) for cloud-managed routing
-- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `BITROUTER_CEREBRAS_API_KEY` — BYOK provider keys
-- `OTEL_EXPORTER_OTLP_ENDPOINT` — optional observability export
 
 ## How to extend
 

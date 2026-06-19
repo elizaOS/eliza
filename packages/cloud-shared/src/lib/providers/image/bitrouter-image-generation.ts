@@ -54,7 +54,7 @@ function extractBitRouterImage(payload: Record<string, unknown>): {
 }
 
 function bitRouterBaseUrl(request: ImageGenRequest): string {
-  const baseUrl = (request.apiKeys.BITROUTER_BASE_URL || "https://api.bitrouter.ai/v1").replace(
+  const baseUrl = (request.apiKeys.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(
     /\/+$/,
     "",
   );
@@ -62,7 +62,7 @@ function bitRouterBaseUrl(request: ImageGenRequest): string {
 }
 
 export async function generateBitRouterImage(request: ImageGenRequest): Promise<GeneratedImage> {
-  const apiKey = request.apiKeys.BITROUTER_API_KEY;
+  const apiKey = request.apiKeys.OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new Error(getAiProviderConfigurationError());
   }
