@@ -170,6 +170,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { androidArm64SimdCmakeFlags } from "../build-helpers/arm64-simd.mjs";
 import {
   fusedCmakeBuildTargets,
   fusedExtraCmakeFlags,
@@ -1223,6 +1224,19 @@ export function buildLibllamaForAbi({
       ? ["-DGGML_AVX=ON", "-DGGML_AVX2=ON", "-DGGML_FMA=ON", "-DGGML_F16C=ON"]
       : [];
 
+  // arm64-v8a: GGML_NATIVE=OFF leaves the cross-build at the bare armv8-a
+  // baseline, which keeps ggml's dotprod/i8mm/fp16 NEON kernels AND the eliza
+  // QJL NEON-dotprod kernel dead. Pin the armv8.2-a+dotprod+fp16+i8mm floor and
+  // flip the QJL dispatch define so the Pixel-class Tensor G4 actually runs the
+  // accelerated paths. See build-helpers/arm64-simd.mjs for the full rationale.
+  const arm64BuildFlags = androidArm64SimdCmakeFlags(abi);
+  if (arm64BuildFlags.length > 0) {
+    log(
+      `[compile-libllama] arm64 SIMD floor: ${arm64BuildFlags.join(" ")} ` +
+        `(dotprod/i8mm/fp16 + QJL NEON-dotprod dispatch)`,
+    );
+  }
+
   // Per-ABI driver scripts that wrap `zig cc --target=<triple>` so cmake's
   // single-binary compiler probe works. See ensureZigDrivers() for why
   // passing `--target=` via CMAKE_C_FLAGS doesn't work on its own. When
@@ -1270,6 +1284,7 @@ export function buildLibllamaForAbi({
       "-DGGML_NATIVE=OFF",
       ...riscv64BuildFlags,
       ...x86_64BuildFlags,
+      ...arm64BuildFlags,
       // Don't bake in an absolute RUNPATH to the build tree. The default
       // CMAKE_BUILD_RPATH points at the per-ABI build dir, which is a
       // path-leak in shipped APKs and adds dead lookup entries at runtime.
@@ -2187,6 +2202,9 @@ export function describeAndroidTargetDryRun({
       ...riscv64CmakeFlagsForPlan({ abi: parsed.androidAbi, plan }),
     );
   }
+  // arm64-v8a SIMD floor (dotprod/i8mm/fp16 + QJL NEON-dotprod dispatch) — the
+  // real buildLibllamaForAbi() emits these too; surface them in the dry-run.
+  cmakeFlags.push(...androidArm64SimdCmakeFlags(parsed.androidAbi));
   cmakeFlags.push(
     "-DCMAKE_SKIP_BUILD_RPATH=TRUE",
     "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",
