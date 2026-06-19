@@ -391,8 +391,13 @@ export function buildStewardProxyEnv(env: NodeJS.ProcessEnv = process.env): Reco
 /** Health-check polling: interval between retries (ms). */
 const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
 
-/** Health-check polling: total timeout (ms). */
-const HEALTH_CHECK_TIMEOUT_MS = 180_000;
+/**
+ * Health-check polling: total timeout (ms). A cold dedicated agent (first image
+ * pull + agent boot + ~20 plugins loading) can take up to ~5 min before
+ * `/api/health` answers over the tailnet; 180s lost that race and failed the
+ * provision even though the agent came up. 6 min gives slow cold boots room.
+ */
+const HEALTH_CHECK_TIMEOUT_MS = 360_000;
 
 /** SSH command timeout for docker pull (can be slow on first pull). */
 const PULL_TIMEOUT_MS = 300_000; // 5 min
