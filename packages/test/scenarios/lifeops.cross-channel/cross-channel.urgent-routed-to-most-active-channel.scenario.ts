@@ -74,7 +74,7 @@ export default scenario({
         const staleGmail = new Date(now - 7 * 24 * 60 * 60_000).toISOString();
         await executeRawSql(
           runtime,
-          `INSERT INTO app_lifeops.life_inbox_triage_entries (
+          `INSERT INTO app_inbox.life_inbox_triage_entries (
              id, agent_id, source, source_message_id, channel_name, channel_type,
              classification, urgency, confidence, snippet, sender_name,
              thread_context, triage_reasoning, auto_replied, resolved,
@@ -100,7 +100,7 @@ export default scenario({
         );
         await executeRawSql(
           runtime,
-          `INSERT INTO app_lifeops.life_inbox_triage_entries (
+          `INSERT INTO app_inbox.life_inbox_triage_entries (
              id, agent_id, source, source_message_id, channel_name, channel_type,
              classification, urgency, confidence, snippet, sender_name,
              thread_context, triage_reasoning, auto_replied, resolved,

@@ -241,7 +241,7 @@ const DEEPSEEK_TEXT_MODEL_IDS = [
   "deepseek/deepseek-v3.2",
   "deepseek/deepseek-r1",
 ] as const;
-const ZAI_TEXT_MODEL_IDS = ["zai/glm-5.1", "zai/glm-5-turbo"] as const;
+const ZAI_TEXT_MODEL_IDS = ["zai/glm-5.2", "zai/glm-5.1", "zai/glm-5-turbo"] as const;
 const MOONSHOT_TEXT_MODEL_IDS = ["moonshotai/kimi-k2.6"] as const;
 const BYTEDANCE_TEXT_MODEL_IDS = ["bytedance/seed-1.8", "bytedance/seed-1.6"] as const;
 const AMAZON_TEXT_MODEL_IDS = [

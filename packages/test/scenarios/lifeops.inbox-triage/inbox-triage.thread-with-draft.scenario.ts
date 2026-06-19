@@ -148,7 +148,7 @@ export default scenario({
         // Triage entry that the agent will pull when asked to "reply to mike".
         await executeRawSql(
           runtime,
-          `INSERT INTO app_lifeops.life_inbox_triage_entries (
+          `INSERT INTO app_inbox.life_inbox_triage_entries (
              id, agent_id, source, source_room_id, source_entity_id, source_message_id,
              channel_name, channel_type, deep_link, classification, urgency, confidence,
              snippet, sender_name, thread_context, triage_reasoning, suggested_response,

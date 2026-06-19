@@ -20,7 +20,7 @@ import type {
 /**
  * Raw-SQL repository for the email-unsubscribe history.
  *
- * Reads/writes `app_lifeops.life_email_unsubscribes`, the table PA still
+ * Reads/writes `app_inbox.life_email_unsubscribes`, the table PA still
  * registers + migrates (no data migration — the table name is preserved). Same
  * pattern as {@link InboxRepository}: a thin raw-SQL wrapper over the runtime DB
  * handle so this plugin carries no `@elizaos/plugin-personal-assistant`
@@ -63,7 +63,7 @@ export class InboxUnsubscribeRepository {
   async createEmailUnsubscribe(record: EmailUnsubscribeRecord): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_email_unsubscribes (
+      `INSERT INTO app_inbox.life_email_unsubscribes (
         id, agent_id, sender_email, sender_display, sender_domain, list_id,
         method, status, http_status_code, http_final_url, filter_created,
         filter_id, threads_trashed, error_message, metadata_json,
@@ -97,7 +97,7 @@ export class InboxUnsubscribeRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_email_unsubscribes
+         FROM app_inbox.life_email_unsubscribes
         WHERE agent_id = ${sqlQuote(this.agentId)}
         ORDER BY created_at DESC
         LIMIT ${limit}`,
@@ -111,7 +111,7 @@ export class InboxUnsubscribeRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_email_unsubscribes
+         FROM app_inbox.life_email_unsubscribes
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND id = ${sqlQuote(id)}
         LIMIT 1`,
@@ -126,7 +126,7 @@ export class InboxUnsubscribeRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_email_unsubscribes
+         FROM app_inbox.life_email_unsubscribes
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND sender_email = ${sqlQuote(senderEmail.trim().toLowerCase())}
         ORDER BY created_at DESC

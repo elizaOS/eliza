@@ -15,6 +15,7 @@ import {
   type BrowserBridgeTabSummary,
   browserBridgeSchema,
 } from "@elizaos/plugin-browser";
+import { inboxDbSchema } from "@elizaos/plugin-inbox";
 import type {
   LifeOpsScheduleMergedState,
   LifeOpsScheduleObservation,
@@ -2392,6 +2393,14 @@ export class LifeOpsRepository {
           name: "@elizaos/plugin-personal-assistant",
           schema: lifeOpsSchema,
         },
+        // Inbox-triage tables were carved to @elizaos/plugin-inbox (app_inbox);
+        // PA auto-registers that plugin in production. Mirror it here so test
+        // harnesses that only call bootstrapSchema still materialize the
+        // app_inbox tables the inbox repositories read.
+        {
+          name: "@elizaos/plugin-inbox",
+          schema: inboxDbSchema,
+        },
         // The knowledge-graph tables are runtime-owned (registered by the
         // agent "eliza" plugin in production). Migrate them under the same
         // plugin name here so test harnesses that only call
@@ -2747,7 +2756,7 @@ export class LifeOpsRepository {
     );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_goal_links
+      `DELETE FROM app_goals.life_goal_links
         WHERE agent_id = ${sqlQuote(agentId)}
           AND linked_type = 'definition'
           AND linked_id = ${sqlQuote(definitionId)}`,
@@ -2981,7 +2990,7 @@ export class LifeOpsRepository {
   async createGoal(goal: LifeOpsGoalDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_goal_definitions (
+      `INSERT INTO app_goals.life_goal_definitions (
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, title, description, cadence_json, support_strategy_json,
         success_criteria_json, status, review_state, metadata_json,
@@ -3011,7 +3020,7 @@ export class LifeOpsRepository {
   async updateGoal(goal: LifeOpsGoalDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_goal_definitions
+      `UPDATE app_goals.life_goal_definitions
           SET domain = ${sqlQuote(goal.domain)},
               subject_type = ${sqlQuote(goal.subjectType)},
               subject_id = ${sqlQuote(goal.subjectId)},
@@ -3038,7 +3047,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_goal_definitions
+         FROM app_goals.life_goal_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(goalId)}
         LIMIT 1`,
@@ -3051,7 +3060,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_goal_definitions
+         FROM app_goals.life_goal_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY created_at ASC`,
     );
@@ -3061,7 +3070,7 @@ export class LifeOpsRepository {
   async deleteGoal(agentId: string, goalId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_goal_links
+      `DELETE FROM app_goals.life_goal_links
         WHERE agent_id = ${sqlQuote(agentId)}
           AND goal_id = ${sqlQuote(goalId)}`,
     );
@@ -3074,7 +3083,7 @@ export class LifeOpsRepository {
     );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_goal_definitions
+      `DELETE FROM app_goals.life_goal_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(goalId)}`,
     );
@@ -3083,7 +3092,7 @@ export class LifeOpsRepository {
   async upsertGoalLink(link: LifeOpsGoalLink): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_goal_links (
+      `INSERT INTO app_goals.life_goal_links (
         id, agent_id, goal_id, linked_type, linked_id, created_at
       ) VALUES (
         ${sqlQuote(link.id)},
@@ -3104,7 +3113,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_goal_links
+      `DELETE FROM app_goals.life_goal_links
         WHERE agent_id = ${sqlQuote(agentId)}
           AND linked_type = ${sqlQuote(linkedType)}
           AND linked_id = ${sqlQuote(linkedId)}`,
@@ -3118,7 +3127,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_goal_links
+         FROM app_goals.life_goal_links
         WHERE agent_id = ${sqlQuote(agentId)}
           AND goal_id = ${sqlQuote(goalId)}
         ORDER BY created_at ASC`,

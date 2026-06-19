@@ -16,6 +16,7 @@ import { ownerRemindersAction } from "./actions/reminders.ts";
 import { ownerRoutinesAction } from "./actions/routines.ts";
 import * as dbSchema from "./db/index.ts";
 import { GoalsCheckinService } from "./services/checkin.ts";
+import { GoalsMigrationService } from "./services/migration.ts";
 
 const GOALS_PLUGIN_NAME = "@elizaos/plugin-goals";
 
@@ -30,7 +31,7 @@ export const goalsPlugin: Plugin = {
     ownerRemindersAction,
     ownerAlarmsAction,
   ],
-  services: [GoalsCheckinService],
+  services: [GoalsCheckinService, GoalsMigrationService],
   schema: dbSchema,
   views: [
     {
