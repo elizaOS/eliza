@@ -18,7 +18,8 @@
     "docker:run": "docker run -p 3001:3000 --env-file ../../.env.local gateway-discord:local",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f gateway-discord"
+    "docker:logs": "docker compose logs -f gateway-discord",
+    "deploy:railway": "bash scripts/deploy-railway.sh"
   },
   "dependencies": {
     "@elizaos/cloud-services-common": "workspace:*",
