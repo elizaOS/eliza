@@ -21791,14 +21791,20 @@
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/components/motion/proxy.mjs
   var motion = /* @__PURE__ */ createMotionProxy(featureBundle, createDomVisualElement);
 
-  // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/value/use-motion-value.mjs
+  // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/use-motion-value-event.mjs
   var import_react27 = __toESM(require_react(), 1);
+  function useMotionValueEvent(value, event, callback) {
+    (0, import_react27.useInsertionEffect)(() => value.on(event, callback), [value, event, callback]);
+  }
+
+  // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/value/use-motion-value.mjs
+  var import_react28 = __toESM(require_react(), 1);
   function useMotionValue(initial) {
     const value = useConstant(() => motionValue(initial));
-    const { isStatic } = (0, import_react27.useContext)(MotionConfigContext);
+    const { isStatic } = (0, import_react28.useContext)(MotionConfigContext);
     if (isStatic) {
-      const [, setLatest] = (0, import_react27.useState)(initial);
-      (0, import_react27.useEffect)(() => value.on("change", setLatest), []);
+      const [, setLatest] = (0, import_react28.useState)(initial);
+      (0, import_react28.useEffect)(() => value.on("change", setLatest), []);
     }
     return value;
   }
@@ -21873,10 +21879,10 @@
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/reduced-motion/use-reduced-motion.mjs
-  var import_react28 = __toESM(require_react(), 1);
+  var import_react29 = __toESM(require_react(), 1);
   function useReducedMotion() {
     !hasReducedMotionListener.current && initPrefersReducedMotion();
-    const [shouldReduceMotion] = (0, import_react28.useState)(prefersReducedMotion.current);
+    const [shouldReduceMotion] = (0, import_react29.useState)(prefersReducedMotion.current);
     if (false) {
       warnOnce(shouldReduceMotion !== true, "You have Reduced Motion enabled on your device. Animations may not appear as expected.", "reduced-motion-disabled");
     }
@@ -26579,8 +26585,19 @@
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
     const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
     const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
-    const chatState = pilled ? "CLOSED" : !sheetOpen ? "INPUT" : maximized ? "MAXIMIZED" : baseH >= halfH - 1 ? "OPEN_HALF_OR_OVER" : "OPEN_UNDER_HALF";
-    const headerVisible = chatState === "OPEN_HALF_OR_OVER" || chatState === "MAXIMIZED";
+    const chatState = pilled ? "CLOSED" : !sheetOpen ? "INPUT" : fullBleed ? "MAXIMIZED" : baseH >= halfH - 1 ? "OPEN_HALF_OR_OVER" : "OPEN_UNDER_HALF";
+    const evalHeaderVisible = React7.useCallback(
+      (h) => !pilled && (fullBleed || h >= halfH - 1),
+      [pilled, fullBleed, halfH]
+    );
+    const [headerVisible, setHeaderVisible] = React7.useState(false);
+    useMotionValueEvent(threadHeight, "change", (h) => {
+      const next = evalHeaderVisible(h);
+      setHeaderVisible((prev) => prev === next ? prev : next);
+    });
+    React7.useEffect(() => {
+      setHeaderVisible(evalHeaderVisible(threadHeight.get()));
+    }, [evalHeaderVisible]);
     const clampHeight = React7.useCallback(
       (raw) => raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
       [openH]
@@ -26642,10 +26659,12 @@
         setMaximized(false);
         return;
       }
+      draggingRef.current = false;
+      openProgress.set(1);
       setFreeH(null);
       setDetent("full");
       setMaximized(true);
-    }, [maximized]);
+    }, [maximized, openProgress]);
     React7.useEffect(() => {
       if (draggingRef.current) return;
       if (reduce) {
@@ -26688,7 +26707,7 @@
       setComposerHasDraft(hasDraft);
     }, [hasDraft, setComposerHasDraft]);
     const slashMenu = useSlashMenu(draft, slash);
-    const isSlashDraft = parseSlashDraft(draft).isSlash;
+    const isSlashDraft = draft.startsWith("/") && parseSlashDraft(draft).isSlash;
     const slashOpen = slashMenu.open && !slashDismissed;
     const comboboxAria = slashProp ? {
       role: "combobox",
@@ -27037,7 +27056,10 @@
                     "data-chat-state": chatState,
                     style: {
                       maxHeight: panelMaxH,
-                      scale: panelScale,
+                      // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
+                      // bottom transform-origin would drop the top edge below the status
+                      // bar (the "gap at the top when maximized" bug).
+                      scale: fullBleed ? 1 : panelScale,
                       // Grow UP out of the pill at the bottom.
                       transformOrigin: "bottom center",
                       // Pilled: span the (invisible) input area but pass taps through to the

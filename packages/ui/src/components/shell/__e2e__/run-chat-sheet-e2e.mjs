@@ -1248,6 +1248,60 @@ try {
     await snap(p, "transition-pill-to-chat-flick");
     await p.close();
   }
+
+  // ── HEADER tracks the LIVE height (bug 1): dragging the panel below half must
+  // HIDE the top buttons MID-DRAG, not keep them on a too-short panel. And the
+  // MAXIMIZED enum can never disagree with the full-bleed layout.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    const vh = await viewportH(p);
+    const halfH = Math.round(vh * 0.46);
+
+    // Open to full so the header is shown and the grabber sits high (a downward
+    // drag stays on-screen).
+    await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await headerButtonCount(p)) > 0,
+      "HEADER-LIVE: header shown at full before the drag",
+    );
+    // Slow-drag DOWN well below half and HOLD (don't release) — the header must
+    // already be gone while the finger is still down.
+    await gesture(p, -Math.round(halfH * 1.3), {
+      pointer: "mouse",
+      slow: true,
+      hold: true,
+      steps: 10,
+    });
+    assert(
+      (await headerButtonCount(p)) === 0,
+      "HEADER-LIVE: header is HIDDEN mid-drag once the panel renders below half",
+    );
+    await snap(p, "state-mid-drag-below-half-no-header");
+    await release(p, "mouse");
+    await p.waitForTimeout(SETTLE);
+
+    // Invariant: data-chat-state==="MAXIMIZED" IFF data-maximized==="true".
+    await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    await p.getByTestId("chat-full-maximize").click();
+    await p.waitForTimeout(SETTLE);
+    {
+      const cs = await chatState(p);
+      const max = await p
+        .getByTestId("chat-sheet")
+        .getAttribute("data-maximized");
+      assert(
+        (cs === "MAXIMIZED") === (max === "true"),
+        `HEADER-LIVE: chat-state MAXIMIZED iff data-maximized (state=${cs}, maximized=${max})`,
+      );
+    }
+    await p.close();
+  }
 } finally {
   await browser.close();
 }

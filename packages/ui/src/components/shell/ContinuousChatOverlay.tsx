@@ -10,6 +10,7 @@ import {
   animate,
   motion,
   useMotionValue,
+  useMotionValueEvent,
   useReducedMotion,
   useTransform,
 } from "motion/react";
@@ -1050,17 +1051,39 @@ export function ContinuousChatOverlay({
   // Transitions: pill tap / flick-up → INPUT; focus·type·flick·send → an OPEN_*
   // state; pull-down → INPUT → CLOSED; maximize toggle ↔ MAXIMIZED; Home/Settings
   // animate out of MAXIMIZED then collapse (see navigateAndClose).
+  // MAXIMIZED is keyed off the SAME `fullBleed` predicate the styles use, so the
+  // enum and the full-bleed layout can never disagree (no "maximized at half"
+  // ghost state).
   const chatState: ChatState = pilled
     ? "CLOSED"
     : !sheetOpen
       ? "INPUT"
-      : maximized
+      : fullBleed
         ? "MAXIMIZED"
         : baseH >= halfH - 1
           ? "OPEN_HALF_OR_OVER"
           : "OPEN_UNDER_HALF";
-  const headerVisible =
-    chatState === "OPEN_HALF_OR_OVER" || chatState === "MAXIMIZED";
+  // Header buttons (maximize/clear/home/settings) are gated on the LIVE rendered
+  // height, NOT the settled enum — otherwise dragging the panel below half keeps
+  // the header mounted on a too-short panel (the "buttons between input and half"
+  // bug). They show only when the panel actually renders at/over half (or is
+  // full-bleed), tracking the finger frame-by-frame; the prev===next guard keeps
+  // re-renders to the two threshold crossings.
+  const evalHeaderVisible = React.useCallback(
+    (h: number) => !pilled && (fullBleed || h >= halfH - 1),
+    [pilled, fullBleed, halfH],
+  );
+  const [headerVisible, setHeaderVisible] = React.useState(false);
+  useMotionValueEvent(threadHeight, "change", (h) => {
+    const next = evalHeaderVisible(h);
+    setHeaderVisible((prev) => (prev === next ? prev : next));
+  });
+  // Re-evaluate on settled-state changes that don't tick the height (programmatic
+  // pill/maximize/open with the spring already at rest).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: threadHeight is a stable motion ref
+  React.useEffect(() => {
+    setHeaderVisible(evalHeaderVisible(threadHeight.get()));
+  }, [evalHeaderVisible]);
   // Map a raw drag height: rubber-band past FULL, hard-clamp the bottom to 0.
   const clampHeight = React.useCallback(
     (raw: number) =>
@@ -1158,10 +1181,14 @@ export function ContinuousChatOverlay({
       setMaximized(false);
       return;
     }
+    // Snap the morph fully open BEFORE flipping to full-bleed so no in-flight
+    // pill-open spring can leak a sub-1 scale into the maximized frame (top gap).
+    draggingRef.current = false;
+    openProgress.set(1);
     setFreeH(null);
     setDetent("full");
     setMaximized(true);
-  }, [maximized]);
+  }, [maximized, openProgress]);
 
   // The single detent→detent animator: whenever the settled detent (or viewport)
   // changes and we're not mid finger-drag, spring the history height to it. The
@@ -1735,7 +1762,10 @@ export function ContinuousChatOverlay({
           // maxHeight keeps it from spilling off the top (thread scrolls instead).
           style={{
             maxHeight: panelMaxH,
-            scale: panelScale,
+            // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
+            // bottom transform-origin would drop the top edge below the status
+            // bar (the "gap at the top when maximized" bug).
+            scale: fullBleed ? 1 : panelScale,
             // Grow UP out of the pill at the bottom.
             transformOrigin: "bottom center",
             // Pilled: span the (invisible) input area but pass taps through to the
