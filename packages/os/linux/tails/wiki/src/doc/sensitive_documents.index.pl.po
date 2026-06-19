@@ -1,0 +1,47 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-26 18:01+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Bullet: '- '
+msgid "[[Removing metadata from files|sensitive_documents/metadata]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Office suite|sensitive_documents/office_suite]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Graphics|sensitive_documents/graphics]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Sound and video|sensitive_documents/sound_and_video]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Editing PDFs|sensitive_documents/pdf]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Printing and scanning|sensitive_documents/printing_and_scanning]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Screenshot and screencast|sensitive_documents/screenshot_and_screencast]]"
+msgstr ""

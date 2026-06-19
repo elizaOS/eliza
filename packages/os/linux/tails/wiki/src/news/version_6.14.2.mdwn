@@ -1,0 +1,53 @@
+[[!meta title="Tails 6.14.2"]]
+[[!meta date="Tue, 15 Apr 2025 11:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release is an emergency release to fix security vulnerabilities in
+the Linux kernel and the implementation of the Perl programming language.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Linux* to 6.1.133, which fixes [multiple security
+  vulnerabilities](https://www.debian.org/security/2025/dsa-5900-1)
+  that may lead to a privilege escalation or information leaks.
+
+- Update *perl* to 5.36.0-7+deb12u2, which fixes a [heap-based buffer overflow
+  vulnerability](https://www.debian.org/security/2025/dsa-5902-1),
+  which may result in denial of service, or potentially the execution
+  of arbitrary code.
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 6.14.2</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.14.2.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.14.2 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.14.2 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

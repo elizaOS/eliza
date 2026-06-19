@@ -1,0 +1,119 @@
+[[!meta title="Tails 5.14"]]
+[[!meta date="Tue, 13 Jun 2023 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="features">New features</h1>
+
+## Automatic migration to LUKS2 and Argon2id
+
+<div class="caution">
+
+<p>The cryptographic parameters of LUKS from Tails 5.12 or earlier are
+weak against a state-sponsored attacker with physical access to your
+device.</p>
+
+</div>
+
+To use stronger encryption parameters, Tails 5.14 automatically converts
+your Persistent Storage to use LUKS2 encryption with Argon2id.
+
+Still, we recommend you change the passphrase of your Persistent Storage
+and other LUKS encrypted volumes unless you use a long passphrase of 5
+random words or more.
+
+[[Read our security advisory and upgrade guide.|security/argon2id]]
+
+## Full backups from Tails Installer
+
+You can now do a backup of your Persistent Storage from *Tails Installer*
+by cloning your Persistent Storage to your backup Tails entirely.
+
+[[!img doc/persistent_storage/backup/clone.png link="no" alt=""]]
+
+You can still use the backup utility to go faster while [[updating your
+backup|doc/persistent_storage/backup#updating]].
+
+## Captive portal detection
+
+Tails now detects if you have to sign in to the network using a captive
+portal if you choose to connect to Tor automatically.
+
+The error screen appears more quickly and recommends you try to sign in to
+the network as the first option.
+
+## Incentive to donate from *Electrum*
+
+Many people use Tails to secure their Bitcoin wallet and donations in
+Bitcoin are key to the survival of our project, so we integrated a way to
+donate from *Electrum* in Tails.
+
+[[!img electrum.png link="no" alt="Popup when starting Electrum with
+button to donate"]]
+
+<h1 id="changes">Changes and updates</h1>
+
+## Included software
+
+- Update *Tor Browser* to [12.0.7](https://blog.torproject.org/new-release-tor-browser-1207).
+
+## Usability improvements to the Persistent Storage
+
+- Change the button to create a Persistent Storage from the Welcome Screen
+  to be a switch. ([[!tails_ticket 19673]])
+
+  [[!img create.png link="no" alt=""]]
+
+- Add back the description of some of the Persistent Storage features and
+  mention *Kleopatra* in the *GnuPG* feature. ([[!tails_ticket 19642]] and
+  [[!tails_ticket 19675]])
+
+  [[!img descriptions.png link="no" alt=""]]
+
+- Hide the duplicated *Persistent* bookmark in the *Files* browser.
+  ([[!tails_ticket 19646]])
+
+<h1 id="fixes">Fixed problems</h1>
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+- Avoid restarting the desktop environment when creating a Persistent
+  Storage. ([[!tails_ticket 19667]])
+
+<h1 id="issues">Known issues</h1>
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 5.14</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 5.0 or later to 5.14.
+
+  You can [[reduce the size of the download|doc/upgrade#reduce]] of future
+  automatic upgrades by doing a manual upgrade to the latest version.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+  - [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 5.14 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]

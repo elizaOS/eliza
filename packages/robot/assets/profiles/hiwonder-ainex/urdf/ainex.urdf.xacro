@@ -1,0 +1,1456 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="ainex" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:property name="M_PI" value="3.1415926535897931" />
+  <xacro:include filename="materials.xacro" />
+  <xacro:include filename="transmissions.xacro" />
+  <xacro:property name="motor_torque" value="6"/>
+  <xacro:property name="motor_vec" value="100"/>
+  <xacro:property name="damping" value="0.02"/>
+  <xacro:property name="friction" value="0.0"/>
+  <xacro:property name="arm_damping" value="0.0"/>
+  <xacro:property name="arm_friction" value="0.2"/>
+
+  <link name="base_link"/>
+  <joint name="base_link_to_body" type="fixed">
+    <parent link="base_link"/>
+    <child link="body_link"/>
+  </joint>
+
+  <link
+    name="body_link">
+    <inertial>
+      <origin
+        xyz="0.00394313682998006 -7.92910841109997E-05 0.0504544952747596"
+        rpy="0 0 0" />
+      <mass
+        value="0.743" />
+      <inertia
+        ixx="0.00121619"
+        ixy="0.00000248"
+        ixz="-0.00005348"
+        iyy="0.00104402"
+        iyz="-0.00000200"
+        izz="0.00108564" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/body_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/body_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="r_hip_yaw_link">
+    <inertial>
+      <origin
+        xyz="-3.08089321559763E-05 0.0012572746209485 -0.00137106654438882"
+        rpy="0 0 0" />
+      <mass
+        value="0.032" />
+      <inertia
+        ixx="0.00001756"
+        ixy="-0.00000028"
+        ixz="-0.00000033"
+        iyy="0.00002270"
+        iyz="0.00000092"
+        izz="0.00000905" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_hip_yaw_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_hip_yaw_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_hip_yaw"
+    type="revolute">
+    <origin
+      xyz="0 -0.029 0"
+      rpy="0 0 0" />
+    <parent
+      link="body_link" />
+    <child
+      link="r_hip_yaw_link" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="r_hip_roll_link">
+    <inertial>
+      <origin
+        xyz="0.00136240189123019 -0.000566876191787073 -0.0134186815024998"
+        rpy="0 0 0" />
+      <mass
+        value="0.120" />
+      <inertia
+        ixx="0.00002918"
+        ixy="-0.00000090"
+        ixz="-0.00000045"
+        iyy="0.00007310"
+        iyz="0.00000000"
+        izz="0.00006050" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_hip_roll_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_hip_roll_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_hip_roll"
+    type="revolute">
+    <origin
+      xyz="-0.01955 0 -0.0255"
+      rpy="0 0 0" />
+    <parent
+      link="r_hip_yaw_link" />
+    <child
+      link="r_hip_roll_link" />
+    <axis
+      xyz="-1 0 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="r_hip_pitch_link">
+    <inertial>
+      <origin
+        xyz="0.0135944229510165 0.0193812364621979 -0.0727053786154678"
+        rpy="0 0 0" />
+      <mass
+        value="0.1065" />
+      <inertia
+        ixx="0.00011009"
+        ixy="0.00000025"
+        ixz="-0.00000822"
+        iyy="0.00011292"
+        iyz="0.00000058"
+        izz="0.00004163" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_hip_pitch_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_hip_pitch_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_hip_pitch"
+    type="revolute">
+    <origin
+      xyz="0.0190366011774447 -0.0200000000007891 0"
+      rpy="0 0 0" />
+    <parent
+      link="r_hip_roll_link" />
+    <child
+      link="r_hip_pitch_link" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="r_knee_link">
+    <inertial>
+      <origin
+        xyz="0.00334266052421815 0.0196473707822286 -0.0425048961212657"
+        rpy="0 0 0" />
+      <mass
+        value="0.045" />
+      <inertia
+        ixx="0.00006733"
+        ixy="0.00000005"
+        ixz="0.00000285"
+        iyy="0.00005500"
+        iyz="0.00000000"
+        izz="0.00002073" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_knee_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_knee_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_knee"
+    type="revolute">
+    <origin
+      xyz="-0.000372039419212393 4.99999999942422E-05 -0.0968862318156413"
+      rpy="0 0 0" />
+    <parent
+      link="r_hip_pitch_link" />
+    <child
+      link="r_knee_link" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="r_ank_pitch_link">
+    <inertial>
+      <origin
+        xyz="-0.0175439564530261 0.0195631980917168 0.0134182145609028"
+        rpy="0 0 0" />
+      <mass
+        value="0.120" />
+      <inertia
+        ixx="0.00002920"
+        ixy="-0.00000122"
+        ixz="0.00000047"
+        iyy="0.00007365"
+        iyz="0.00000002"
+        izz="0.00006107" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_ank_pitch_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_ank_pitch_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_ank_pitch"
+    type="revolute">
+    <origin
+      xyz="0.0010369887037887 0 -0.0890765640232094"
+      rpy="0 0 0" />
+    <parent
+      link="r_knee_link" />
+    <child
+      link="r_ank_pitch_link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="r_ank_roll_link">
+    <inertial>
+      <origin
+        xyz="0.0285084749683582 -0.0128728703698743 -0.0176710108439943"
+        rpy="0 0 0" />
+      <mass
+        value="0.0675" />
+      <inertia
+        ixx="0.00004217"
+        ixy="-0.00000108"
+        ixz="-0.00000226"
+        iyy="0.00009246"
+        iyz="0.00000304"
+        izz="0.00012567" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_ank_roll_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_ank_roll_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_ank_roll"
+    type="revolute">
+    <origin
+      xyz="-0.0190366011761311 0.0199999999998644 0"
+      rpy="0 0 0" />
+    <parent
+      link="r_ank_pitch_link" />
+    <child
+      link="r_ank_roll_link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="l_hip_yaw_link">
+    <inertial>
+      <origin
+        xyz="-3.11405684236766E-05 -0.00125722452663508 -0.00137130106826952"
+        rpy="0 0 0" />
+      <mass
+        value="0.032" />
+      <inertia
+        ixx="0.00001756"
+        ixy="0.000000288"
+        ixz="-0.00000033"
+        iyy="0.00002270"
+        iyz="-0.00000092"
+        izz="0.00000905" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_hip_yaw_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_hip_yaw_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_hip_yaw"
+    type="revolute">
+    <origin
+      xyz="0 0.029 0"
+      rpy="0 0 0" />
+    <parent
+      link="body_link" />
+    <child
+      link="l_hip_yaw_link" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="l_hip_roll_link">
+    <inertial>
+      <origin
+        xyz="0.00136238689917259 0.000566861270169111 -0.0134186827123954"
+        rpy="0 0 0" />
+      <mass
+        value="0.120" />
+      <inertia
+        ixx="0.00002918"
+        ixy="0.00000090"
+        ixz="-0.00000045"
+        iyy="0.00007310"
+        iyz="0.00000000"
+        izz="0.00006050" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_hip_roll_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_hip_roll_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_hip_roll"
+    type="revolute">
+    <origin
+      xyz="-0.01955 0 -0.0255"
+      rpy="0 0 0" />
+    <parent
+      link="l_hip_yaw_link" />
+    <child
+      link="l_hip_roll_link" />
+    <axis
+      xyz="-1 0 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="l_hip_pitch_link">
+    <inertial>
+      <origin
+        xyz="0.0135944002953011 -0.0193811742069665 -0.072705130428188"
+        rpy="0 0 0" />
+      <mass
+        value="0.1065" />
+      <inertia
+        ixx="0.00011009"
+        ixy="-0.00000025"
+        ixz="-0.00000822"
+        iyy="0.00011292"
+        iyz="-0.00000058"
+        izz="0.00004163" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_hip_pitch_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_hip_pitch_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_hip_pitch"
+    type="revolute">
+    <origin
+      xyz="0.019037 0.02 0"
+      rpy="0 0 0" />
+    <parent
+      link="l_hip_roll_link" />
+    <child
+      link="l_hip_pitch_link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="l_knee_link">
+    <inertial>
+      <origin
+        xyz="0.00334255585606658 -0.0196465200672246 -0.0425052792592038"
+        rpy="0 0 0" />
+      <mass
+        value="0.045" />
+      <inertia
+        ixx="0.00006733"
+        ixy="-0.00000004"
+        ixz="0.00000285"
+        iyy="0.00005500"
+        iyz="0.00000000"
+        izz="0.00002073" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_knee_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_knee_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_knee"
+    type="revolute">
+    <origin
+      xyz="-0.00037204 -5E-05 -0.096886"
+      rpy="0 0 0" />
+    <parent
+      link="l_hip_pitch_link" />
+    <child
+      link="l_knee_link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="l_ank_pitch_link">
+    <inertial>
+      <origin
+        xyz="-0.0175439606215995 -0.0195632128037413 0.0134182214254433"
+        rpy="0 0 0" />
+      <mass
+        value="0.120" />
+      <inertia
+        ixx="0.00002920"
+        ixy="0.00000122"
+        ixz="0.00000047"
+        iyy="0.00007365"
+        iyz="-0.00000002"
+        izz="0.00006107" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_ank_pitch_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_ank_pitch_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_ank_pitch"
+    type="revolute">
+    <origin
+      xyz="0.001037 0 -0.089077"
+      rpy="0 0 0" />
+    <parent
+      link="l_knee_link" />
+    <child
+      link="l_ank_pitch_link" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="l_ank_roll_link">
+    <inertial>
+      <origin
+        xyz="0.028508 0.012873 -0.017671"
+        rpy="0 0 0" />
+      <mass
+        value="0.0675" />
+      <inertia
+        ixx="0.00004217"
+        ixy="0.00000108"
+        ixz="-0.00000226"
+        iyy="0.00009246"
+        iyz="-0.00000304"
+        izz="0.00012567" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_ank_roll_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_ank_roll_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_ank_roll"
+    type="revolute">
+    <origin
+      xyz="-0.019037 -0.02 0"
+      rpy="0 0 0" />
+    <parent
+      link="l_ank_pitch_link" />
+    <child
+      link="l_ank_roll_link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+
+  <link
+    name="head_pan_link">
+    <inertial>
+      <origin
+        xyz="0.00549413614691534 0.000156599066327573 0.0141339256886725"
+        rpy="0 0 0" />
+      <mass
+        value="0.00767349443930606" />
+      <inertia
+        ixx="2.11767311265303E-06"
+        ixy="1.34870612877854E-11"
+        ixz="-1.4437789878239E-07"
+        iyy="9.86662751533161E-07"
+        iyz="4.73071759311514E-11"
+        izz="1.8352106338847E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/head_pan_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/head_pan_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="head_pan"
+    type="revolute">
+    <origin
+      xyz="-0.00410029363273529 0 0.107800000000251"
+      rpy="0 0 0" />
+    <parent
+      link="body_link" />
+    <child
+      link="head_pan_link" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="head_tilt_link">
+    <inertial>
+      <origin
+        xyz="0.0113381465890742 0.0189172536781822 0.0221227280632388"
+        rpy="0 0 0" />
+      <mass
+        value="0.026224916296902" />
+      <inertia
+        ixx="6.19728230918923E-06"
+        ixy="5.21591430621001E-09"
+        ixz="8.03962376862465E-07"
+        iyy="6.32347395622384E-06"
+        iyz="-2.0606717121074E-08"
+        izz="6.90141230136629E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/head_tilt_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/head_tilt_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="head_tilt"
+    type="revolute">
+    <origin
+      xyz="0.00904594549071587 -0.0185733521405788 0.0281579437975029"
+      rpy="0 0 0" />
+    <parent
+      link="head_pan_link" />
+    <child
+      link="head_tilt_link" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${damping}"
+      friction="${friction}" />
+  </joint>
+  <link
+    name="camera_link">
+  </link>
+  <joint
+    name="camera"
+    type="fixed">
+    <origin
+      xyz="0.0430140359009206 0 0.152356120938238"
+      rpy="0 0 0" />
+    <parent
+      link="body_link" />
+    <child
+      link="camera_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="imu_link">
+  </link>
+  <joint
+    name="imu"
+    type="fixed">
+    <origin
+      xyz="-0.0459897867959335 -0.0100999999918824 0.0702999210083745"
+      rpy="${M_PI/2} 0 -${M_PI/2}" />
+    <parent
+      link="body_link" />
+    <child
+      link="imu_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="r_sho_pitch_link">
+    <inertial>
+      <origin
+        xyz="0.000375793263921053 -0.0113306723078783 2.09985517302114E-06"
+        rpy="0 0 0" />
+      <mass
+        value="0.0128" />
+      <inertia
+        ixx="0.00000205"
+        ixy="-0.00000005"
+        ixz="0.00000000"
+        iyy="0.00000390"
+        iyz="0.00000000"
+        izz="0.00000503" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_sho_pitch_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_sho_pitch_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_sho_pitch"
+    type="revolute">
+    <origin
+      xyz="-5.46273713767254E-05 -0.0524909514103703 0.0874480463620076"
+      rpy="0 0 0" />
+    <parent
+      link="body_link" />
+    <child
+      link="r_sho_pitch_link" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${arm_damping}"
+      friction="${arm_friction}" />
+  </joint>
+  <link
+    name="r_sho_roll_link">
+    <inertial>
+      <origin
+        xyz="-0.0205037633090526 -0.0278387909859685 -6.10732337563702E-05"
+        rpy="0 0 0" />
+      <mass
+        value="0.121" />
+      <inertia
+        ixx="0.00007300"
+        ixy="0.00000868"
+        ixz="-0.00000005"
+        iyy="0.00002527"
+        iyz="-0.00000018"
+        izz="0.00007539" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_sho_roll_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_sho_roll_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_sho_roll"
+    type="revolute">
+    <origin
+      xyz="0.020003499818653 -0.021505961295104 0"
+      rpy="0 0 0" />
+    <parent
+      link="r_sho_pitch_link" />
+    <child
+      link="r_sho_roll_link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${arm_damping}"
+      friction="${arm_friction}" />
+  </joint>
+  <link
+    name="r_el_pitch_link">
+    <inertial>
+      <origin
+        xyz="-0.00697552928269531 -0.0128963887344756 0.000205170639759389"
+        rpy="0 0 0" />
+      <mass
+        value="0.045" />
+      <inertia
+        ixx="0.00000797"
+        ixy="0.00000065"
+        ixz="-0.00000015"
+        iyy="0.00000830"
+        iyz="-0.00000005"
+        izz="0.00001053" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_el_pitch_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_el_pitch_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_el_pitch"
+    type="revolute">
+    <origin
+      xyz="-0.0200034998200733 -0.0741099367526448 0"
+      rpy="0 0 0" />
+    <parent
+      link="r_sho_roll_link" />
+    <child
+      link="r_el_pitch_link" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${arm_damping}"
+      friction="${arm_friction}" />
+  </joint>
+  <link
+    name="r_el_yaw_link">
+    <inertial>
+      <origin
+        xyz="-0.000228558886795894 -0.0572724286301637 -0.0138716339425995"
+        rpy="0 0 0" />
+      <mass
+        value="0.102" />
+      <inertia
+        ixx="0.00014320"
+        ixy="0.00000030"
+        ixz="-0.00000003"
+        iyy="0.00003101"
+        iyz="-0.00001329"
+        izz="0.00014052" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_el_yaw_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_el_yaw_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_el_yaw"
+    type="revolute">
+    <origin
+      xyz="0.000397813054181526 -0.0170183162715326 0.0190701823981362"
+      rpy="0 0 0" />
+    <parent
+      link="r_el_pitch_link" />
+    <child
+      link="r_el_yaw_link" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${arm_damping}"
+      friction="${arm_friction}" />
+  </joint>
+  <link
+    name="r_gripper_link">
+    <inertial>
+      <origin
+        xyz="-0.0193851146126543 -0.00931114583486287 -0.00543047681687003"
+        rpy="0 0 0" />
+      <mass
+        value="0.0135" />
+      <inertia
+        ixx="0.00000328"
+        ixy="-0.00000003"
+        ixz="-0.00000002"
+        iyy="0.00000451"
+        iyz="0.00000105"
+        izz="0.00000597" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_gripper_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r_gripper_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="r_gripper"
+    type="revolute">
+    <origin
+      xyz="0.0198901817590543 -0.0892355537647637 -0.0190701818667893"
+      rpy="0 0 0" />
+    <parent
+      link="r_el_yaw_link" />
+    <child
+      link="r_gripper_link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${arm_damping}"
+      friction="${arm_friction}" />
+  </joint>
+  <link
+    name="l_sho_pitch_link">
+    <inertial>
+      <origin
+        xyz="0.000375774140906853 0.0113303353403952 1.96336840385669E-06"
+        rpy="0 0 0" />
+      <mass
+        value="0.0128" />
+      <inertia
+        ixx="0.00000205"
+        ixy="0.00000005"
+        ixz="0.00000000"
+        iyy="0.00000390"
+        iyz="0.00000000"
+        izz="0.00000503" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_sho_pitch_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_sho_pitch_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_sho_pitch"
+    type="revolute">
+    <origin
+      xyz="-5.4627E-05 0.052491 0.087448"
+      rpy="0 0 0" />
+    <parent
+      link="body_link" />
+    <child
+      link="l_sho_pitch_link" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${arm_damping}"
+      friction="${arm_friction}" />
+  </joint>
+  <link
+    name="l_sho_roll_link">
+    <inertial>
+      <origin
+        xyz="-0.020504 0.027838 -6.0431E-05"
+        rpy="0 0 0" />
+      <mass
+        value="0.121" />
+      <inertia
+        ixx="0.00007300"
+        ixy="-0.00000868"
+        ixz="-0.00000005"
+        iyy="0.00002527"
+        iyz="0.00000018"
+        izz="0.00007539" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_sho_roll_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_sho_roll_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_sho_roll"
+    type="revolute">
+    <origin
+      xyz="0.020003 0.021507 0"
+      rpy="0 0 0" />
+    <parent
+      link="l_sho_pitch_link" />
+    <child
+      link="l_sho_roll_link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${arm_damping}"
+      friction="${arm_friction}" />
+  </joint>
+  <link
+    name="l_el_pitch_link">
+    <inertial>
+      <origin
+        xyz="-0.0069756 0.012896 0.0002073"
+        rpy="0 0 0" />
+      <mass
+        value="0.045" />
+      <inertia
+        ixx="0.00000797"
+        ixy="-0.00000065"
+        ixz="-0.00000015"
+        iyy="0.00000830"
+        iyz="0.00000005"
+        izz="0.00001053" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_el_pitch_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_el_pitch_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_el_pitch"
+    type="revolute">
+    <origin
+      xyz="-0.020003 0.074109 0"
+      rpy="0 0 0" />
+    <parent
+      link="l_sho_roll_link" />
+    <child
+      link="l_el_pitch_link" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${arm_damping}"
+      friction="${arm_friction}" />
+  </joint>
+  <link
+    name="l_el_yaw_link">
+    <inertial>
+      <origin
+        xyz="-0.000225830045360985 0.0572711814760597 -0.013870295638648"
+        rpy="0 0 0" />
+      <mass
+        value="0.102" />
+      <inertia
+        ixx="0.00014320"
+        ixy="-0.00000030"
+        ixz="-0.00000003"
+        iyy="0.00003101"
+        iyz="0.00001329"
+        izz="0.00014052" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_el_yaw_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_el_yaw_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_el_yaw"
+    type="revolute">
+    <origin
+      xyz="0.00039506 0.017019 0.019072"
+      rpy="0 0 0" />
+    <parent
+      link="l_el_pitch_link" />
+    <child
+      link="l_el_yaw_link" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${arm_damping}"
+      friction="${arm_friction}" />
+  </joint>
+  <link
+    name="l_gripper_link">
+    <inertial>
+      <origin
+        xyz="-0.019384 0.0093137 -0.005426"
+        rpy="0 0 0" />
+      <mass
+        value="0.0135" />
+      <inertia
+        ixx="0.00000328"
+        ixy="0.00000003"
+        ixz="-0.00000002"
+        iyy="0.00000451"
+        iyz="-0.00000105"
+        izz="0.00000597" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_gripper_link.STL" />
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l_gripper_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="l_gripper"
+    type="revolute">
+    <origin
+      xyz="0.019893 0.089232 -0.019072"
+      rpy="0 0 0" />
+    <parent
+      link="l_el_yaw_link" />
+    <child
+      link="l_gripper_link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-2.09"
+      upper="2.09"
+      effort="${motor_torque}"
+      velocity="${motor_vec}" />
+    <dynamics
+      damping="${arm_damping}"
+      friction="${arm_friction}" />
+  </joint>
+</robot>

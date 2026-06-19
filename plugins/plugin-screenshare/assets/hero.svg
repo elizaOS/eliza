@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Screen Share</title>
+  <desc id="desc">A desktop screen with a remote cursor and connection waves.</desc>
+  <defs>
+    <linearGradient id="bg" x1="128" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#15181d"/>
+      <stop offset=".52" stop-color="#263229"/>
+      <stop offset="1" stop-color="#101418"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="214" y1="258" x2="810" y2="678" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0f7f8"/>
+      <stop offset="1" stop-color="#88b9bd"/>
+    </linearGradient>
+    <linearGradient id="cursor" x1="514" y1="462" x2="708" y2="766" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8f2d8"/>
+      <stop offset="1" stop-color="#d2a84a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="216" fill="url(#bg)"/>
+  <path d="M212 276c0-39.8 32.2-72 72-72h456c39.8 0 72 32.2 72 72v296c0 39.8-32.2 72-72 72H284c-39.8 0-72-32.2-72-72V276Z" fill="#06080a" opacity=".82"/>
+  <path d="M252 292c0-24.3 19.7-44 44-44h432c24.3 0 44 19.7 44 44v264c0 24.3-19.7 44-44 44H296c-24.3 0-44-19.7-44-44V292Z" fill="url(#screen)"/>
+  <path d="M302 530c80-90 143-94 226-16 60 57 124 56 194-2v56H302v-38Z" fill="#1d373f" opacity=".34"/>
+  <path d="M352 331h220" stroke="#203238" stroke-width="28" stroke-linecap="round" opacity=".35"/>
+  <path d="M352 390h312" stroke="#203238" stroke-width="20" stroke-linecap="round" opacity=".28"/>
+  <path d="M430 644h164l24 92h74c17.7 0 32 14.3 32 32s-14.3 32-32 32H332c-17.7 0-32-14.3-32-32s14.3-32 32-32h74l24-92Z" fill="#090c0f" opacity=".9"/>
+  <path d="M516 440 736 690l-118 12 59 123-76 36-58-122-82 86 55-385Z" fill="url(#cursor)" stroke="#15120a" stroke-width="22" stroke-linejoin="round"/>
+  <path d="M736 296c92 24 158 107 158 206" fill="none" stroke="#d7c06a" stroke-width="28" stroke-linecap="round" opacity=".92"/>
+  <path d="M752 392c38 23 62 64 62 110" fill="none" stroke="#d7c06a" stroke-width="24" stroke-linecap="round" opacity=".78"/>
+  <circle cx="220" cy="764" r="54" fill="#63c4b4" opacity=".94"/>
+  <path d="M199 765h42M220 744v42" stroke="#0b1516" stroke-width="18" stroke-linecap="round"/>
+</svg>

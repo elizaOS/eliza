@@ -1,0 +1,236 @@
+[
+  {
+    "id": "aries",
+    "name": "Aries",
+    "symbol": "♈",
+    "element": "fire",
+    "modality": "cardinal",
+    "rulingPlanet": "Mars",
+    "dateRange": {
+      "start": { "month": 3, "day": 21 },
+      "end": { "month": 4, "day": 19 }
+    },
+    "traits": ["courageous", "determined", "confident", "enthusiastic", "optimistic"],
+    "shadow": ["impatient", "moody", "short-tempered", "impulsive", "aggressive"],
+    "keywords": ["initiative", "courage", "action", "pioneering", "independence"],
+    "description": "Aries is the first sign of the zodiac, and that's pretty much how those born under this sign see themselves: first. Aries are the leaders of the pack, first in line to get things going. Whether or not everything gets done is another question altogether, for an Aries prefers to initiate rather than to complete. Ruled by Mars, the god of war, Aries natives are bold, ambitious, and driven to action. They possess a fiery energy that fuels their desire to forge ahead into new territory and challenge the status quo.",
+    "houseNatural": 1,
+    "degreesStart": 0,
+    "degreesEnd": 30
+  },
+  {
+    "id": "taurus",
+    "name": "Taurus",
+    "symbol": "♉",
+    "element": "earth",
+    "modality": "fixed",
+    "rulingPlanet": "Venus",
+    "dateRange": {
+      "start": { "month": 4, "day": 20 },
+      "end": { "month": 5, "day": 20 }
+    },
+    "traits": ["reliable", "patient", "practical", "devoted", "responsible"],
+    "shadow": ["stubborn", "possessive", "uncompromising", "materialistic", "lazy"],
+    "keywords": ["stability", "security", "sensuality", "persistence", "value"],
+    "description": "Taurus is the anchor of the zodiac. Grounded in the earth element, Taurus natives seek stability, comfort, and the pleasures of the material world. Ruled by Venus, the planet of love and beauty, they have a deep appreciation for art, nature, and fine things. Taurus is the sign of the builder — patient, methodical, and determined to create something lasting. They move at their own pace and resist being rushed, but once they commit, their dedication is unshakeable.",
+    "houseNatural": 2,
+    "degreesStart": 30,
+    "degreesEnd": 60
+  },
+  {
+    "id": "gemini",
+    "name": "Gemini",
+    "symbol": "♊",
+    "element": "air",
+    "modality": "mutable",
+    "rulingPlanet": "Mercury",
+    "dateRange": {
+      "start": { "month": 5, "day": 21 },
+      "end": { "month": 6, "day": 20 }
+    },
+    "traits": ["gentle", "affectionate", "curious", "adaptable", "quick-witted"],
+    "shadow": ["nervous", "inconsistent", "indecisive", "superficial", "restless"],
+    "keywords": ["communication", "duality", "curiosity", "versatility", "intellect"],
+    "description": "Gemini is the sign of the twins, representing duality, communication, and the restless pursuit of knowledge. Ruled by Mercury, the messenger of the gods, Gemini natives are intellectually curious, socially adept, and endlessly versatile. They thrive on variety and mental stimulation, often juggling multiple interests, conversations, and projects simultaneously. Gemini sees the world through the lens of ideas and connections, weaving together disparate threads into a tapestry of understanding.",
+    "houseNatural": 3,
+    "degreesStart": 60,
+    "degreesEnd": 90
+  },
+  {
+    "id": "cancer",
+    "name": "Cancer",
+    "symbol": "♋",
+    "element": "water",
+    "modality": "cardinal",
+    "rulingPlanet": "Moon",
+    "dateRange": {
+      "start": { "month": 6, "day": 21 },
+      "end": { "month": 7, "day": 22 }
+    },
+    "traits": ["tenacious", "highly imaginative", "loyal", "emotional", "sympathetic"],
+    "shadow": ["moody", "pessimistic", "suspicious", "manipulative", "insecure"],
+    "keywords": ["nurturing", "home", "emotion", "protection", "intuition"],
+    "description": "Cancer is the great nurturer of the zodiac. Ruled by the Moon, Cancer natives are deeply connected to their emotions, their families, and their sense of home. They carry a protective shell that shields their extraordinarily sensitive inner world. Cancer operates through feeling and intuition rather than logic, and possesses a remarkable ability to sense the emotional undercurrents around them. Their memory is long, their loyalty fierce, and their capacity for care seemingly boundless.",
+    "houseNatural": 4,
+    "degreesStart": 90,
+    "degreesEnd": 120
+  },
+  {
+    "id": "leo",
+    "name": "Leo",
+    "symbol": "♌",
+    "element": "fire",
+    "modality": "fixed",
+    "rulingPlanet": "Sun",
+    "dateRange": {
+      "start": { "month": 7, "day": 23 },
+      "end": { "month": 8, "day": 22 }
+    },
+    "traits": ["creative", "passionate", "generous", "warm-hearted", "cheerful"],
+    "shadow": ["arrogant", "stubborn", "self-centered", "inflexible", "dramatic"],
+    "keywords": ["creativity", "pride", "self-expression", "leadership", "romance"],
+    "description": "Leo is the sign of the heart, the stage, and the throne. Ruled by the Sun itself, Leo natives radiate warmth, vitality, and an unmistakable presence that draws others into their orbit. They are natural performers and leaders who live to express their creative vision and inspire others. Leo's generous spirit is matched only by their need for recognition and appreciation. At their best, they illuminate every room they enter; they embody the principle that life itself is meant to be celebrated.",
+    "houseNatural": 5,
+    "degreesStart": 120,
+    "degreesEnd": 150
+  },
+  {
+    "id": "virgo",
+    "name": "Virgo",
+    "symbol": "♍",
+    "element": "earth",
+    "modality": "mutable",
+    "rulingPlanet": "Mercury",
+    "dateRange": {
+      "start": { "month": 8, "day": 23 },
+      "end": { "month": 9, "day": 22 }
+    },
+    "traits": ["loyal", "analytical", "kind", "hardworking", "practical"],
+    "shadow": ["shyness", "worry", "overly critical", "perfectionist", "rigid"],
+    "keywords": ["analysis", "service", "health", "precision", "improvement"],
+    "description": "Virgo is the sign of the analyst, the healer, and the devoted servant. Ruled by Mercury — but expressed through the earth element — Virgo channels intellectual energy into practical, tangible results. Virgo natives possess an extraordinary eye for detail and an innate desire to improve everything they touch. They are the quiet perfectionists of the zodiac, working tirelessly behind the scenes to create order from chaos. Their gift is the ability to see what needs fixing and the skill to actually fix it.",
+    "houseNatural": 6,
+    "degreesStart": 150,
+    "degreesEnd": 180
+  },
+  {
+    "id": "libra",
+    "name": "Libra",
+    "symbol": "♎",
+    "element": "air",
+    "modality": "cardinal",
+    "rulingPlanet": "Venus",
+    "dateRange": {
+      "start": { "month": 9, "day": 23 },
+      "end": { "month": 10, "day": 22 }
+    },
+    "traits": ["cooperative", "diplomatic", "gracious", "fair-minded", "social"],
+    "shadow": [
+      "indecisive",
+      "avoids confrontation",
+      "self-pitying",
+      "grudge-holding",
+      "superficial"
+    ],
+    "keywords": ["balance", "partnership", "harmony", "justice", "beauty"],
+    "description": "Libra is the sign of the scales, the diplomat, and the lover of beauty. Ruled by Venus, Libra natives are driven by a deep need for harmony, fairness, and partnership. They see the world in terms of relationships and are gifted at understanding multiple perspectives. Libra's cardinal air energy makes them initiators of social connection and advocates for justice. They possess an innate aesthetic sense and are often drawn to art, design, and the creation of beautiful environments.",
+    "houseNatural": 7,
+    "degreesStart": 180,
+    "degreesEnd": 210
+  },
+  {
+    "id": "scorpio",
+    "name": "Scorpio",
+    "symbol": "♏",
+    "element": "water",
+    "modality": "fixed",
+    "rulingPlanet": "Pluto",
+    "dateRange": {
+      "start": { "month": 10, "day": 23 },
+      "end": { "month": 11, "day": 21 }
+    },
+    "traits": ["resourceful", "brave", "passionate", "stubborn", "loyal"],
+    "shadow": ["distrusting", "jealous", "secretive", "violent", "manipulative"],
+    "keywords": ["transformation", "power", "depth", "intimacy", "regeneration"],
+    "description": "Scorpio is the sign of transformation, depth, and the unseen forces that shape our lives. Co-ruled by Mars and Pluto, Scorpio natives possess an intensity that penetrates beneath the surface of everything. They are drawn to life's mysteries — death, rebirth, sexuality, and the hidden dynamics of power. Scorpio's fixed water nature gives them an emotional depth and resilience that is unmatched. They experience life at full intensity and demand authenticity from themselves and others.",
+    "houseNatural": 8,
+    "degreesStart": 210,
+    "degreesEnd": 240
+  },
+  {
+    "id": "sagittarius",
+    "name": "Sagittarius",
+    "symbol": "♐",
+    "element": "fire",
+    "modality": "mutable",
+    "rulingPlanet": "Jupiter",
+    "dateRange": {
+      "start": { "month": 11, "day": 22 },
+      "end": { "month": 12, "day": 21 }
+    },
+    "traits": ["generous", "idealistic", "great sense of humor", "adventurous", "philosophical"],
+    "shadow": ["promises more than can deliver", "impatient", "tactless", "restless", "preachy"],
+    "keywords": ["expansion", "philosophy", "adventure", "truth", "freedom"],
+    "description": "Sagittarius is the sign of the explorer, the philosopher, and the eternal optimist. Ruled by Jupiter, the planet of expansion and good fortune, Sagittarius natives are driven by an insatiable hunger for knowledge, experience, and meaning. They are the archers of the zodiac, always aiming their arrows at distant horizons. Sagittarius brings a mutable fire energy that is both inspiring and restless — they seek the big picture, the grand adventure, and the underlying truth that connects all things.",
+    "houseNatural": 9,
+    "degreesStart": 240,
+    "degreesEnd": 270
+  },
+  {
+    "id": "capricorn",
+    "name": "Capricorn",
+    "symbol": "♑",
+    "element": "earth",
+    "modality": "cardinal",
+    "rulingPlanet": "Saturn",
+    "dateRange": {
+      "start": { "month": 12, "day": 22 },
+      "end": { "month": 1, "day": 19 }
+    },
+    "traits": ["responsible", "disciplined", "self-control", "good managers", "ambitious"],
+    "shadow": ["know-it-all", "unforgiving", "condescending", "pessimistic", "cold"],
+    "keywords": ["ambition", "structure", "discipline", "mastery", "legacy"],
+    "description": "Capricorn is the sign of the mountain goat — the ambitious climber who patiently and persistently ascends to the highest peaks. Ruled by Saturn, the planet of time, structure, and responsibility, Capricorn natives understand that lasting achievement requires discipline, planning, and endurance. They are the master builders of the zodiac, capable of turning visions into reality through sheer determination and strategic thinking. Capricorn respects tradition, authority, and the wisdom that comes from experience.",
+    "houseNatural": 10,
+    "degreesStart": 270,
+    "degreesEnd": 300
+  },
+  {
+    "id": "aquarius",
+    "name": "Aquarius",
+    "symbol": "♒",
+    "element": "air",
+    "modality": "fixed",
+    "rulingPlanet": "Uranus",
+    "dateRange": {
+      "start": { "month": 1, "day": 20 },
+      "end": { "month": 2, "day": 18 }
+    },
+    "traits": ["progressive", "original", "independent", "humanitarian", "intellectual"],
+    "shadow": ["runs from emotion", "temperamental", "uncompromising", "aloof", "detached"],
+    "keywords": ["innovation", "humanity", "rebellion", "vision", "community"],
+    "description": "Aquarius is the sign of the visionary, the revolutionary, and the humanitarian. Co-ruled by Saturn and Uranus, Aquarius natives bridge the gap between established structures and radical innovation. They think in terms of systems, communities, and the future of humanity. Aquarius's fixed air nature gives them a powerful intellect and unwavering commitment to their ideals. They are the water bearers, pouring forth the waters of knowledge and progress for the benefit of all, often far ahead of their time.",
+    "houseNatural": 11,
+    "degreesStart": 300,
+    "degreesEnd": 330
+  },
+  {
+    "id": "pisces",
+    "name": "Pisces",
+    "symbol": "♓",
+    "element": "water",
+    "modality": "mutable",
+    "rulingPlanet": "Neptune",
+    "dateRange": {
+      "start": { "month": 2, "day": 19 },
+      "end": { "month": 3, "day": 20 }
+    },
+    "traits": ["compassionate", "artistic", "intuitive", "gentle", "wise"],
+    "shadow": ["fearful", "overly trusting", "sad", "desire to escape reality", "victimhood"],
+    "keywords": ["transcendence", "compassion", "imagination", "spirituality", "dissolution"],
+    "description": "Pisces is the final sign of the zodiac, and it carries within it a piece of every sign that came before. Ruled by Neptune, the planet of dreams, illusion, and transcendence, Pisces natives live between worlds — the material and the spiritual, the real and the imagined. They possess an extraordinary sensitivity and empathy that allows them to feel the joys and sorrows of others as their own. Pisces represents the ocean of consciousness from which all life emerges and to which it returns.",
+    "houseNatural": 12,
+    "degreesStart": 330,
+    "degreesEnd": 360
+  }
+]

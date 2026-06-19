@@ -1,0 +1,29 @@
+---
+title: Desktop App
+description: "Ship Eliza as a native desktop application."
+---
+
+The bundled desktop app uses [Electrobun](https://electrobun.dev) — a small, fast native shell — wrapped around a Vite + React UI from `packages/app/` and an embedded agent runtime.
+
+## Run locally
+
+```bash
+bun run dev:desktop          # Reuses packages/app/dist if fresh
+bun run dev:desktop:watch    # Vite dev + Electrobun HMR
+```
+
+This boots the local API on `ELIZA_API_PORT` (default `31337`), the renderer on `ELIZA_PORT` (default `2138`), and an Electrobun window pointing at the renderer.
+
+## Native modules
+
+Native modules live under `apps/app/electrobun/` and are loaded via Electrobun's IPC bridge. See [Native modules](/apps/desktop/native-modules).
+
+## Packaging
+
+`bun run build` produces signed binaries for the current platform. For multi-OS releases, run the build on each target OS (or in CI). See [Build and Release](/build-and-release).
+
+## See also
+
+- [Local desktop development](/apps/desktop-local-development)
+- [Deep linking](/apps/desktop/deep-linking)
+- [Native modules](/apps/desktop/native-modules)

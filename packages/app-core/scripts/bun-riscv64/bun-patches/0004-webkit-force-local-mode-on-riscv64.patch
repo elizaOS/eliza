@@ -1,0 +1,33 @@
+diff --git a/scripts/build/config.ts b/scripts/build/config.ts
+index 00fea58..64f50f9 100644
+--- a/scripts/build/config.ts
++++ b/scripts/build/config.ts
+@@ -802,7 +802,11 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+     timeTrace: partial.timeTrace ?? false,
+     ci,
+     buildkite,
+-    webkit: partial.webkit ?? "prebuilt",
++    // WebKit mode:
++    //   riscv64: force local (no prebuilt tarball exists for riscv64;
++    //            BUN_WEBKIT_PATH must point at a built WebKitBuild dir).
++    //   else:    prebuilt unless overridden.
++    webkit: partial.webkit ?? (riscv64 ? "local" : "prebuilt"),
+     cwd,
+     buildDir,
+     codegenDir,
+diff --git a/scripts/build/deps/webkit.ts b/scripts/build/deps/webkit.ts
+index c940da8..c5210de 100644
+--- a/scripts/build/deps/webkit.ts
++++ b/scripts/build/deps/webkit.ts
+@@ -70,6 +70,11 @@ function prebuiltSuffix(cfg: Config): string {
+ }
+ 
+ function prebuiltUrl(cfg: Config): string {
++  if (cfg.riscv64) {
++    throw new Error(
++      "deps/webkit: no prebuilt WebKit tarball for riscv64. Use --webkit=local with BUN_WEBKIT_PATH set.",
++    );
++  }
+   const os = cfg.windows ? "windows" : cfg.darwin ? "macos" : cfg.freebsd ? "freebsd" : "linux";
+   const arch = cfg.arm64 ? "arm64" : "amd64";
+   const name = `bun-webkit-${os}-${arch}${prebuiltSuffix(cfg)}`;

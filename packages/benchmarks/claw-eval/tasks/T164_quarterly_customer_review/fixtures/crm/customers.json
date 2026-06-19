@@ -1,0 +1,80 @@
+[
+  {
+    "customer_id": "CUS-1601",
+    "name": "Dingxin Software",
+    "tier": "vip",
+    "status": "active",
+    "industry": "Software Development",
+    "satisfaction": 4.5,
+    "contract_end": "2026-09-30",
+    "sales_owner": "Zhao Lei",
+    "notes": "Core VIP customer, actively expanding purchases, strong renewal intent",
+    "contact_person": "Zhao Lei",
+    "annual_revenue": 0
+  },
+  {
+    "customer_id": "CUS-1602",
+    "name": "Hanhai E-commerce",
+    "tier": "standard",
+    "status": "active",
+    "industry": "E-commerce",
+    "satisfaction": 3.2,
+    "contract_end": "2026-06-30",
+    "sales_owner": "Zhang Wei",
+    "notes": "Recent complaints filed, satisfaction below average, contract expires end of June — needs attention",
+    "contact_person": "Zhang Wei",
+    "annual_revenue": 0
+  },
+  {
+    "customer_id": "CUS-1603",
+    "name": "Wantong Logistics",
+    "tier": "vip",
+    "status": "active",
+    "industry": "Logistics & Transportation",
+    "satisfaction": 4.8,
+    "contract_end": "2026-12-31",
+    "sales_owner": "Zhao Lei",
+    "notes": "Largest customer, extremely high satisfaction, currently discussing expansion plans",
+    "contact_person": "Zhao Lei",
+    "annual_revenue": 0
+  },
+  {
+    "customer_id": "CUS-1604",
+    "name": "Qianfeng Technology",
+    "tier": "standard",
+    "status": "active",
+    "industry": "Technology Manufacturing",
+    "satisfaction": 2.5,
+    "contract_end": "2026-04-15",
+    "sales_owner": "Zhang Wei",
+    "notes": "Low satisfaction, no renewal payment in March, no communication since January, contract expires mid-April — high churn risk",
+    "contact_person": "Zhang Wei",
+    "annual_revenue": 0
+  },
+  {
+    "customer_id": "CUS-1605",
+    "name": "Sunshine Media",
+    "tier": "vip",
+    "status": "active",
+    "industry": "Media & Advertising",
+    "satisfaction": 4.2,
+    "contract_end": "2026-11-30",
+    "sales_owner": "Zhao Lei",
+    "notes": "Newly promoted VIP customer, strong growth momentum, significant AI application results",
+    "contact_person": "Zhao Lei",
+    "annual_revenue": 0
+  },
+  {
+    "customer_id": "CUS-1606",
+    "name": "Public Institution",
+    "tier": "standard",
+    "status": "active",
+    "industry": "Government",
+    "satisfaction": 3.8,
+    "contract_end": "2026-07-31",
+    "sales_owner": "Zhang Wei",
+    "notes": "Stable revenue, no notable growth or risk, operating within budget",
+    "contact_person": "Zhang Wei",
+    "annual_revenue": 0
+  }
+]

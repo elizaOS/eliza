@@ -1,0 +1,69 @@
+---
+title: "Connect Telegram"
+sidebarTitle: "Telegram"
+description: "Create a Telegram bot with BotFather and connect it to Eliza."
+---
+
+## You need
+
+- a Telegram account
+- a working Eliza backend
+
+## 1. Create the bot
+
+1. Open Telegram.
+2. Start a chat with `@BotFather`.
+3. Send `/newbot`.
+4. Pick a display name.
+5. Pick a bot username ending in `bot`.
+6. Copy the token.
+
+<Warning>
+Treat the token like a password.
+</Warning>
+
+## 2. Connect it in Eliza
+
+1. Open the connectors section.
+2. Pick `Telegram`.
+3. Paste the bot token.
+4. Optionally restrict it to specific chat IDs.
+5. Save.
+
+## 3. Test it
+
+Find the bot by username and send:
+
+```text
+hey, are you there?
+```
+
+## Group chats
+
+If the bot is silent in groups, Telegram privacy mode is usually the reason. Use BotFather's `/setprivacy` flow if you want broader group visibility.
+
+## Restrict to specific chats
+
+If you only want the bot in specific chats, fetch updates and read `message.chat.id` after sending it a message:
+
+```text
+https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
+```
+
+## If it fails
+
+### Bot never replies
+
+The token is usually wrong or the connector never came online.
+
+### It works in DMs but not groups
+
+Check privacy mode and group permissions.
+
+### It replies in the wrong places
+
+Use the allowed chat list.
+
+## Next
+
+[Set Up LifeOps](/user/lifeops-setup)

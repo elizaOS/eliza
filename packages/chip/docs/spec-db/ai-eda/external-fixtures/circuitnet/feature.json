@@ -1,0 +1,17 @@
+{
+  "schema": "circuitnet.fixture.feature.v1",
+  "design": "e1_circuitnet_toy",
+  "stage": "placement",
+  "node_features": [
+    {"id": "npu_softmacro", "instance_type": "macro", "area_um2": 14400, "fanout": 2, "is_macro": true},
+    {"id": "dma_softmacro", "instance_type": "macro", "area_um2": 6400, "fanout": 1, "is_macro": true}
+  ],
+  "edge_features": [
+    {"src": "npu_softmacro", "dst": "dma_softmacro", "net_type": "data", "estimated_capacitance": 0.12, "timing_criticality": 0.4}
+  ],
+  "labels": {
+    "label_status": "fixture_unlabeled",
+    "timing_wns_ns": null,
+    "power_mw": null
+  }
+}

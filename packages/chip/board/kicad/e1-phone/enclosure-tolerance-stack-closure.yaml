@@ -1,0 +1,154 @@
+schema: eliza.e1_phone_enclosure_tolerance_stack_closure.v1
+status: blocked_requires_supplier_geometry_routed_step_and_physical_tolerance_evidence
+date: '2026-05-21'
+claim_boundary: Enclosure tolerance-stack closure contract for the selected 78.0 x 153.6 x 11.8 mm flush-back phone envelope.
+  This cross-checks CAD envelope data, display fit, battery window, USB-C aperture, side buttons, camera z-height,
+  speaker and antenna keepouts, and the existing parameterized clearance checks. It is not a final enclosure release,
+  not supplier B-rep validation, not a routed-board STEP clearance run, not a GD&T/FAI result, and not drop/ingress/thermal
+  validation with physical samples.
+source_artifacts:
+  - board/kicad/e1-phone/enclosure-placement-closure.yaml
+  - docs/board/e1-phone-enclosure-interface.yaml
+  - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/mechanical-overlay.yaml
+  - board/kicad/e1-phone/external-interface-design-review.yaml
+  - board/kicad/e1-phone/rf-antenna-coexistence-closure.yaml
+  - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/production-readiness.yaml
+  - mechanical/e1-phone/review/assembly-clearance.json
+  - mechanical/e1-phone/review/manufacturing-readiness.json
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  - mechanical/e1-phone/review/board-step-readiness.json
+  - mechanical/e1-phone/out/assembly-manifest.json
+selected_envelope_mm:
+  width: 78.0
+  height: 153.6
+  max_thickness: 11.8
+  display_anchor: Chenghao_CH550FH01A_CT_5p5_1080x1920_MIPI_CTP_class
+  primary_display_clearance_mm:
+    width_clearance_mm: 0.9
+    height_clearance_mm: 1.83
+concept_cad_status:
+  assembly_clearance_status: pass
+  assembly_clearance_case_count: 14
+  manufacturing_readiness_status: cad_package_pass
+  manufacturing_release_ready: false
+  board_step_readiness_status: blocked_local_routed_step_candidate_not_release
+  routed_board_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
+  tolerance_stack_status: cad_tolerance_stack_pass
+  gdt_release_status: gdt_release_package_ready
+  gdt_fai_results_status: blocked_no_fai_results
+  environmental_results_status: blocked_no_environmental_results
+  mechanical_lifecycle_acceptance_status: blocked_no_lifecycle_results
+  assembly_manifest_part_count: 97
+tolerance_stack_items:
+  - id: display_cover_lens_lcm_stack
+    current_basis: concept_display_fit_and_cad_envelope
+    target_or_limit: 77p1_x_151p77_x_3p39_mm_module_inside_78p0_x_153p6_mm_envelope
+    current_status: blocked_supplier_display_drawing_cover_lens_stack_and_bond_results_missing
+    required_release_evidence:
+      - signed_display_cover_lens_lcm_2d_drawing_with_datums
+      - display_bond_gap_and_adhesive_thickness_measurement
+      - display_fpc_bend_radius_and_stiffener_clearance_report
+      - cover_glass_lcm_step_or_brep_in_routed_assembly
+  - id: battery_swell_and_pcb_islands
+    current_basis: concept_64x87_mm_battery_window_and_clearance_case
+    target_or_limit: no_rigid_components_inside_64x87_mm_pack_cavity_plus_vendor_swelling_envelope
+    current_status: blocked_supplier_pack_swell_pcm_connector_and_pull_tab_drawing_missing
+    required_release_evidence:
+      - signed_battery_pack_drawing_with_pcm_connector_tab_and_swelling_envelope
+      - cavity_insertion_removal_and_pull_tab_clearance_report
+      - battery_to_top_bottom_pcb_island_routed_step_clearance
+      - thermal_expansion_and_gap_pad_compression_review
+  - id: usb_c_saddle_aperture_and_insertion_load
+    current_basis: concept_usb_shell_to_external_aperture_clearance_0p175_mm
+    target_or_limit: connector_shell_supported_by_enclosure_saddle_not_solder_joints
+    current_status: blocked_supplier_usb_c_step_cutout_tolerance_and_cycle_load_test_missing
+    required_release_evidence:
+      - signed_usb_c_connector_drawing_and_step_model
+      - plug_overmold_aperture_sweep_with_routed_board_step
+      - insertion_removal_force_and_cycle_test_log
+      - shell_grounding_chassis_policy_and_esd_gap_review
+  - id: side_power_volume_actuation_stack
+    current_basis: concept_side_key_cap_actuator_keepout
+    target_or_limit: side_button_load_path_into_enclosure_rib_with_recovery_combo_access
+    current_status: blocked_side_key_flex_or_switch_drawing_force_travel_and_cycle_results_missing
+    required_release_evidence:
+      - signed_side_key_flex_or_switch_stack_drawing
+      - power_and_volume_force_travel_measurement_log
+      - side_load_drop_and_lifecycle_cycle_test
+      - wake_and_bootloader_recovery_combo_function_log
+  - id: front_rear_camera_z_and_optical_datums
+    current_basis: concept_front_rear_camera_step_envelopes_and_clearance_cases
+    target_or_limit: camera_lens_axes_and_cover_glass_clearance_locked_to_supplier_modules
+    current_status: blocked_camera_supplier_step_lens_axis_z_height_and_capture_fixture_results_missing
+    required_release_evidence:
+      - signed_rear_and_front_camera_2d_drawings_with_lens_axis_datums
+      - supplier_camera_step_models_loaded_into_routed_assembly
+      - cover_glass_bezel_vignette_and_dust_clearance_report
+      - focus_alignment_and_image_capture_fixture_results
+  - id: acoustic_haptic_and_ingress_paths
+    current_basis: concept_speaker_mic_earpiece_haptic_step_envelopes
+    target_or_limit: acoustic_gaskets_mesh_ports_and_haptic_mass_clearance_validated_in_final_stack
+    current_status: blocked_supplier_acoustic_haptic_drawings_gaskets_and_ingress_results_missing
+    required_release_evidence:
+      - speaker_receiver_microphone_haptic_drawings_and_step_models
+      - acoustic_chamber_mesh_gasket_compression_measurements
+      - haptic_mass_clearance_and_drive_current_lifecycle_log
+      - ingress_dust_water_path_review_and_test_results
+  - id: antenna_plastic_and_midframe_keepouts
+    current_basis: concept_top_bottom_side_antenna_keepouts_and_rf_closure
+    target_or_limit: final_plastic_metal_stack_preserves_cellular_wifi_bt_gnss_antenna_performance
+    current_status: blocked_rf_vendor_enclosure_review_vna_sar_and_antenna_efficiency_missing
+    required_release_evidence:
+      - antenna_vendor_review_of_final_plastic_and_midframe_geometry
+      - routed_board_step_with_rf_feeds_matching_and_conducted_access
+      - vna_s11_s21_antenna_efficiency_and_sar_prescan_results
+      - coexistence_and_thermal_state_validation_during_radio_tx_and_charging
+  - id: routed_board_step_supplier_models_and_boolean_interference
+    current_basis: concept_pcb_step_and_parametric_envelope_cad
+    target_or_limit: routed_kicad_step_with_supplier_3d_models_has_no_boolean_interference
+    current_status: blocked_no_routed_board_step_or_supplier_brep_models
+    required_release_evidence:
+      - routed_kicad_board_step_with_final_component_models
+      - supplier_brep_models_for_edge_connectors_display_camera_battery_radios_and_acoustics
+      - full_cad_boolean_interference_report
+      - gd_t_first_article_cmm_results_for_release_characteristics
+routed_board_clearance_context:
+  status: blocked_waiting_for_physical_routed_board_clearance_result
+  expected_clearance_case_count: 10
+  complete_clearance_result_count: 0
+  production_step_files: []
+  result_cases_all_fail_closed: true
+required_release_outputs:
+  - board/kicad/e1-phone/production/reports/enclosure-tolerance-stack-closure.yaml
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  - mechanical/e1-phone/review/tolerance-stack-release.json
+  - mechanical/e1-phone/review/gdt-fai-results.json
+  - mechanical/e1-phone/review/environmental-validation-results.json
+  - mechanical/e1-phone/review/mechanical-lifecycle-results.json
+cross_checks:
+  selected_envelope_matches_display_fit_and_enclosure_interface: true
+  concept_clearance_passes_but_release_ready_false: true
+  all_tolerance_items_fail_closed: true
+  routed_board_step_required_before_release: true
+  supplier_geometry_required_before_release: true
+  physical_results_required_before_release: true
+  release_outputs_fail_closed: true
+release_blockers:
+  - routed KiCad board STEP with final component 3D models is missing
+  - supplier display, camera, USB-C, side-key, battery, acoustic, haptic, and radio B-rep models are missing
+  - physical tolerance-stack, GD&T FAI, drop, ingress, side-key cycle, USB-C cycle, and environmental results are
+    missing
+  - battery swelling, adhesive compression, gasket compression, and thermal expansion measurements are missing
+  - full CAD boolean interference report using supplier geometry is missing
+  - RF antenna/SAR validation in final enclosure plastics and metal stack is missing
+forbidden_claims:
+  - enclosure_ready
+  - mechanical_release_ready
+  - tolerance_stack_closed
+  - routed_board_step_ready
+  - supplier_geometry_loaded
+  - drop_tested
+  - ingress_ready
+  - end_to_end_phone_ready

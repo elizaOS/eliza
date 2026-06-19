@@ -1,0 +1,601 @@
+model_id,dimension,question_id,difficulty,accuracy,latency_seconds,input_tokens,output_tokens
+M1,Reasoning,Q0001,easy,1,7.03,376,463
+M1,Reasoning,Q0002,easy,1,10.02,1207,2860
+M1,Reasoning,Q0003,easy,1,8.15,237,306
+M1,Reasoning,Q0004,medium,1,16.42,879,346
+M1,Reasoning,Q0005,medium,1,4.0,1297,847
+M1,Reasoning,Q0006,easy,1,3.79,1191,477
+M1,Reasoning,Q0007,medium,1,5.58,456,738
+M1,Reasoning,Q0008,hard,1,13.25,288,1144
+M1,Reasoning,Q0009,hard,1,5.97,123,660
+M1,Reasoning,Q0010,hard,1,6.57,154,3979
+M2,Reasoning,Q0011,easy,1,16.84,468,384
+M2,Reasoning,Q0012,medium,1,7.81,338,1655
+M2,Reasoning,Q0013,medium,1,14.14,230,1775
+M2,Reasoning,Q0014,hard,0,9.9,904,458
+M2,Reasoning,Q0015,hard,0,20.41,505,319
+M2,Reasoning,Q0016,medium,1,7.61,735,3038
+M2,Reasoning,Q0017,hard,0,11.49,446,2217
+M2,Reasoning,Q0018,medium,1,22.34,331,793
+M2,Reasoning,Q0019,medium,1,45.0,501,1204
+M2,Reasoning,Q0020,hard,1,16.47,403,4000
+M3,Reasoning,Q0021,medium,1,6.73,512,686
+M3,Reasoning,Q0022,easy,1,4.89,555,1065
+M3,Reasoning,Q0023,medium,1,14.36,244,157
+M3,Reasoning,Q0024,medium,1,3.99,279,801
+M3,Reasoning,Q0025,medium,1,7.5,363,1736
+M3,Reasoning,Q0026,easy,1,7.02,455,366
+M3,Reasoning,Q0027,medium,1,7.18,150,1437
+M3,Reasoning,Q0028,hard,1,16.73,466,1438
+M3,Reasoning,Q0029,hard,1,8.61,654,988
+M3,Reasoning,Q0030,medium,1,10.97,313,1328
+M4,Reasoning,Q0031,medium,1,6.57,201,960
+M4,Reasoning,Q0032,hard,0,19.52,669,1368
+M4,Reasoning,Q0033,medium,1,11.86,244,1739
+M4,Reasoning,Q0034,medium,1,9.38,377,753
+M4,Reasoning,Q0035,medium,0,7.44,246,427
+M4,Reasoning,Q0036,hard,0,17.79,316,910
+M4,Reasoning,Q0037,hard,1,17.01,474,1812
+M4,Reasoning,Q0038,easy,1,10.9,107,625
+M4,Reasoning,Q0039,hard,1,22.39,1170,1264
+M4,Reasoning,Q0040,hard,0,10.98,347,1020
+M5,Reasoning,Q0041,easy,0,7.26,758,490
+M5,Reasoning,Q0042,hard,0,5.03,538,490
+M5,Reasoning,Q0043,medium,1,17.51,245,810
+M5,Reasoning,Q0044,medium,1,2.0,568,965
+M5,Reasoning,Q0045,medium,1,15.69,240,892
+M5,Reasoning,Q0046,hard,0,7.85,429,2637
+M5,Reasoning,Q0047,medium,1,6.69,833,322
+M5,Reasoning,Q0048,easy,1,2.37,710,2457
+M5,Reasoning,Q0049,easy,0,4.45,688,3004
+M5,Reasoning,Q0050,hard,1,3.71,131,575
+M1,Mathematics,Q0051,hard,0,21.33,655,424
+M1,Mathematics,Q0052,easy,1,11.7,690,373
+M1,Mathematics,Q0053,hard,0,8.65,636,1725
+M1,Mathematics,Q0054,hard,1,8.65,698,843
+M1,Mathematics,Q0055,medium,0,12.72,243,829
+M1,Mathematics,Q0056,medium,1,14.39,623,1239
+M1,Mathematics,Q0057,medium,1,8.72,556,1212
+M1,Mathematics,Q0058,easy,1,14.51,174,506
+M1,Mathematics,Q0059,easy,1,4.51,496,1924
+M1,Mathematics,Q0060,easy,1,16.2,99,956
+M2,Mathematics,Q0061,hard,0,12.4,396,870
+M2,Mathematics,Q0062,easy,1,7.12,307,365
+M2,Mathematics,Q0063,hard,1,22.27,362,1605
+M2,Mathematics,Q0064,easy,1,8.32,429,857
+M2,Mathematics,Q0065,hard,1,9.5,781,1604
+M2,Mathematics,Q0066,medium,1,9.09,355,1762
+M2,Mathematics,Q0067,medium,1,23.1,357,1798
+M2,Mathematics,Q0068,easy,1,5.86,594,362
+M2,Mathematics,Q0069,medium,1,3.46,459,529
+M2,Mathematics,Q0070,medium,0,6.14,301,716
+M3,Mathematics,Q0071,hard,0,9.4,468,901
+M3,Mathematics,Q0072,medium,1,9.91,189,487
+M3,Mathematics,Q0073,medium,1,7.53,179,754
+M3,Mathematics,Q0074,easy,1,7.11,570,356
+M3,Mathematics,Q0075,medium,0,4.92,202,3722
+M3,Mathematics,Q0076,medium,1,11.4,409,887
+M3,Mathematics,Q0077,hard,0,6.35,375,404
+M3,Mathematics,Q0078,medium,1,10.13,241,1913
+M3,Mathematics,Q0079,medium,1,12.26,243,678
+M3,Mathematics,Q0080,easy,1,15.57,541,520
+M4,Mathematics,Q0081,hard,0,16.89,825,644
+M4,Mathematics,Q0082,medium,1,28.48,274,1105
+M4,Mathematics,Q0083,medium,1,7.43,673,645
+M4,Mathematics,Q0084,medium,1,9.14,141,537
+M4,Mathematics,Q0085,easy,1,7.33,964,911
+M4,Mathematics,Q0086,hard,0,17.64,183,365
+M4,Mathematics,Q0087,medium,1,9.87,345,1370
+M4,Mathematics,Q0088,hard,1,45.0,498,225
+M4,Mathematics,Q0089,medium,0,9.97,210,563
+M4,Mathematics,Q0090,medium,1,12.55,283,757
+M5,Mathematics,Q0091,medium,0,9.03,788,930
+M5,Mathematics,Q0092,medium,1,4.94,511,680
+M5,Mathematics,Q0093,medium,0,10.41,398,1948
+M5,Mathematics,Q0094,medium,0,5.54,287,307
+M5,Mathematics,Q0095,easy,1,9.36,602,228
+M5,Mathematics,Q0096,hard,1,8.88,202,2394
+M5,Mathematics,Q0097,easy,1,11.77,341,1328
+M5,Mathematics,Q0098,easy,0,3.68,676,447
+M5,Mathematics,Q0099,hard,0,38.79,279,4000
+M5,Mathematics,Q0100,hard,1,14.8,196,706
+M1,Code Generation,Q0101,easy,1,4.24,446,808
+M1,Code Generation,Q0102,medium,1,6.45,156,272
+M1,Code Generation,Q0103,medium,1,5.56,409,1313
+M1,Code Generation,Q0104,hard,1,17.12,2000,1030
+M1,Code Generation,Q0105,medium,1,28.32,257,908
+M1,Code Generation,Q0106,easy,1,7.07,248,957
+M1,Code Generation,Q0107,hard,0,14.21,388,898
+M1,Code Generation,Q0108,hard,0,5.88,320,1184
+M1,Code Generation,Q0109,medium,1,6.16,376,958
+M1,Code Generation,Q0110,hard,1,12.96,436,1001
+M2,Code Generation,Q0111,easy,1,25.23,260,799
+M2,Code Generation,Q0112,medium,1,15.91,463,1086
+M2,Code Generation,Q0113,easy,1,10.32,273,471
+M2,Code Generation,Q0114,hard,1,16.7,186,625
+M2,Code Generation,Q0115,easy,1,6.46,321,1060
+M2,Code Generation,Q0116,medium,1,7.54,689,1103
+M2,Code Generation,Q0117,medium,1,7.44,600,661
+M2,Code Generation,Q0118,easy,1,6.59,355,572
+M2,Code Generation,Q0119,hard,1,17.19,645,634
+M2,Code Generation,Q0120,easy,1,16.47,319,712
+M3,Code Generation,Q0121,medium,1,6.13,512,474
+M3,Code Generation,Q0122,medium,1,13.17,199,212
+M3,Code Generation,Q0123,medium,0,14.42,381,1557
+M3,Code Generation,Q0124,easy,1,9.29,294,692
+M3,Code Generation,Q0125,easy,1,9.15,363,416
+M3,Code Generation,Q0126,easy,1,6.31,428,672
+M3,Code Generation,Q0127,hard,0,13.61,387,438
+M3,Code Generation,Q0128,hard,1,11.08,346,1480
+M3,Code Generation,Q0129,easy,1,5.56,345,413
+M3,Code Generation,Q0130,medium,1,21.91,735,444
+M4,Code Generation,Q0131,hard,1,8.97,1176,125
+M4,Code Generation,Q0132,easy,1,13.83,131,1016
+M4,Code Generation,Q0133,easy,1,14.58,1003,577
+M4,Code Generation,Q0134,easy,1,6.19,140,731
+M4,Code Generation,Q0135,easy,1,16.16,334,440
+M4,Code Generation,Q0136,medium,1,6.59,200,1686
+M4,Code Generation,Q0137,hard,0,10.59,394,627
+M4,Code Generation,Q0138,medium,1,14.64,962,260
+M4,Code Generation,Q0139,easy,1,10.17,255,236
+M4,Code Generation,Q0140,hard,1,10.21,1066,1861
+M5,Code Generation,Q0141,medium,0,3.74,234,1179
+M5,Code Generation,Q0142,hard,1,10.14,606,1562
+M5,Code Generation,Q0143,easy,1,4.42,1050,524
+M5,Code Generation,Q0144,medium,0,8.63,895,2523
+M5,Code Generation,Q0145,easy,0,3.58,283,422
+M5,Code Generation,Q0146,medium,1,15.16,1179,535
+M5,Code Generation,Q0147,easy,1,8.41,292,1137
+M5,Code Generation,Q0148,medium,0,5.45,314,337
+M5,Code Generation,Q0149,easy,1,20.43,513,728
+M5,Code Generation,Q0150,medium,1,7.06,100,3453
+M1,Reading Comprehension,Q0151,easy,0,15.93,162,273
+M1,Reading Comprehension,Q0152,easy,1,13.84,662,240
+M1,Reading Comprehension,Q0153,medium,1,16.35,181,1551
+M1,Reading Comprehension,Q0154,medium,1,14.1,757,315
+M1,Reading Comprehension,Q0155,hard,1,16.04,146,336
+M1,Reading Comprehension,Q0156,medium,1,10.43,158,656
+M1,Reading Comprehension,Q0157,medium,1,4.44,593,452
+M1,Reading Comprehension,Q0158,medium,1,7.16,186,809
+M1,Reading Comprehension,Q0159,medium,1,2.72,551,489
+M1,Reading Comprehension,Q0160,medium,0,8.3,378,1913
+M2,Reading Comprehension,Q0161,easy,1,9.62,989,1017
+M2,Reading Comprehension,Q0162,easy,1,20.25,271,563
+M2,Reading Comprehension,Q0163,hard,1,13.85,244,818
+M2,Reading Comprehension,Q0164,medium,0,21.16,238,1430
+M2,Reading Comprehension,Q0165,hard,0,6.4,246,1101
+M2,Reading Comprehension,Q0166,easy,0,15.53,449,540
+M2,Reading Comprehension,Q0167,medium,1,8.61,174,910
+M2,Reading Comprehension,Q0168,medium,1,7.37,369,1191
+M2,Reading Comprehension,Q0169,easy,1,24.96,247,229
+M2,Reading Comprehension,Q0170,hard,0,4.14,757,282
+M3,Reading Comprehension,Q0171,easy,0,7.94,659,1095
+M3,Reading Comprehension,Q0172,easy,1,5.12,704,626
+M3,Reading Comprehension,Q0173,medium,1,6.47,576,1478
+M3,Reading Comprehension,Q0174,hard,1,10.92,516,285
+M3,Reading Comprehension,Q0175,hard,1,24.33,498,248
+M3,Reading Comprehension,Q0176,easy,1,7.86,724,845
+M3,Reading Comprehension,Q0177,hard,1,8.38,122,775
+M3,Reading Comprehension,Q0178,hard,1,7.11,198,592
+M3,Reading Comprehension,Q0179,easy,1,4.88,454,407
+M3,Reading Comprehension,Q0180,medium,1,8.5,323,1496
+M4,Reading Comprehension,Q0181,hard,0,7.98,382,557
+M4,Reading Comprehension,Q0182,medium,1,12.53,253,1542
+M4,Reading Comprehension,Q0183,medium,1,11.46,394,298
+M4,Reading Comprehension,Q0184,hard,1,25.92,1554,925
+M4,Reading Comprehension,Q0185,hard,0,8.69,289,682
+M4,Reading Comprehension,Q0186,easy,0,8.43,380,682
+M4,Reading Comprehension,Q0187,hard,1,20.05,949,989
+M4,Reading Comprehension,Q0188,medium,1,6.76,173,408
+M4,Reading Comprehension,Q0189,medium,1,21.1,1296,1509
+M4,Reading Comprehension,Q0190,medium,1,16.27,261,1141
+M5,Reading Comprehension,Q0191,hard,0,14.54,219,762
+M5,Reading Comprehension,Q0192,medium,0,7.11,230,1241
+M5,Reading Comprehension,Q0193,hard,1,4.16,363,340
+M5,Reading Comprehension,Q0194,medium,1,3.16,469,2746
+M5,Reading Comprehension,Q0195,medium,1,8.26,412,2054
+M5,Reading Comprehension,Q0196,hard,1,5.62,517,248
+M5,Reading Comprehension,Q0197,medium,1,6.28,171,1310
+M5,Reading Comprehension,Q0198,hard,1,12.15,430,1401
+M5,Reading Comprehension,Q0199,easy,1,2.0,208,424
+M5,Reading Comprehension,Q0200,medium,0,2.96,128,610
+M1,Common Sense,Q0201,medium,1,6.75,506,1968
+M1,Common Sense,Q0202,hard,1,14.28,1189,1284
+M1,Common Sense,Q0203,easy,1,5.78,171,633
+M1,Common Sense,Q0204,easy,1,16.4,191,1113
+M1,Common Sense,Q0205,hard,0,14.1,428,1064
+M1,Common Sense,Q0206,easy,0,8.02,534,495
+M1,Common Sense,Q0207,medium,1,3.91,326,388
+M1,Common Sense,Q0208,medium,1,9.53,370,734
+M1,Common Sense,Q0209,hard,1,16.23,550,674
+M1,Common Sense,Q0210,medium,1,5.85,499,1328
+M2,Common Sense,Q0211,hard,0,13.98,400,861
+M2,Common Sense,Q0212,medium,1,10.51,125,117
+M2,Common Sense,Q0213,medium,1,10.0,392,986
+M2,Common Sense,Q0214,easy,1,5.28,359,1018
+M2,Common Sense,Q0215,medium,1,7.81,347,953
+M2,Common Sense,Q0216,medium,1,11.63,543,708
+M2,Common Sense,Q0217,easy,1,6.41,344,656
+M2,Common Sense,Q0218,medium,0,12.44,133,1785
+M2,Common Sense,Q0219,medium,1,10.32,661,540
+M2,Common Sense,Q0220,medium,1,9.17,253,937
+M3,Common Sense,Q0221,medium,0,8.51,370,423
+M3,Common Sense,Q0222,medium,1,5.68,1034,316
+M3,Common Sense,Q0223,medium,1,7.05,283,338
+M3,Common Sense,Q0224,medium,1,10.04,348,1640
+M3,Common Sense,Q0225,medium,1,9.84,380,514
+M3,Common Sense,Q0226,medium,1,7.65,393,875
+M3,Common Sense,Q0227,medium,1,11.17,284,1284
+M3,Common Sense,Q0228,hard,0,8.14,749,295
+M3,Common Sense,Q0229,hard,1,12.69,199,595
+M3,Common Sense,Q0230,medium,0,11.01,294,246
+M4,Common Sense,Q0231,medium,1,7.82,737,962
+M4,Common Sense,Q0232,medium,1,13.99,313,987
+M4,Common Sense,Q0233,medium,1,6.89,462,1861
+M4,Common Sense,Q0234,hard,1,16.05,550,2702
+M4,Common Sense,Q0235,easy,1,8.61,430,152
+M4,Common Sense,Q0236,hard,0,19.2,216,1229
+M4,Common Sense,Q0237,hard,0,11.01,488,1710
+M4,Common Sense,Q0238,hard,0,18.83,454,353
+M4,Common Sense,Q0239,medium,1,13.14,292,615
+M4,Common Sense,Q0240,easy,1,8.05,408,1040
+M5,Common Sense,Q0241,medium,0,6.25,370,174
+M5,Common Sense,Q0242,medium,1,5.67,146,346
+M5,Common Sense,Q0243,easy,1,4.38,188,404
+M5,Common Sense,Q0244,medium,1,9.33,285,942
+M5,Common Sense,Q0245,hard,0,9.04,986,524
+M5,Common Sense,Q0246,easy,1,3.67,161,815
+M5,Common Sense,Q0247,hard,1,7.06,665,4000
+M5,Common Sense,Q0248,medium,1,14.64,907,1038
+M5,Common Sense,Q0249,medium,1,4.72,365,1158
+M5,Common Sense,Q0250,medium,0,8.88,417,1349
+M1,Scientific Knowledge,Q0251,easy,1,10.91,387,979
+M1,Scientific Knowledge,Q0252,medium,1,4.31,550,749
+M1,Scientific Knowledge,Q0253,hard,1,17.46,337,417
+M1,Scientific Knowledge,Q0254,hard,0,3.88,783,848
+M1,Scientific Knowledge,Q0255,easy,1,7.05,628,789
+M1,Scientific Knowledge,Q0256,easy,0,7.8,296,1898
+M1,Scientific Knowledge,Q0257,easy,1,10.09,549,703
+M1,Scientific Knowledge,Q0258,medium,0,3.48,157,147
+M1,Scientific Knowledge,Q0259,hard,1,11.94,300,403
+M1,Scientific Knowledge,Q0260,hard,0,30.73,464,567
+M2,Scientific Knowledge,Q0261,hard,0,45.0,414,490
+M2,Scientific Knowledge,Q0262,easy,1,11.38,383,403
+M2,Scientific Knowledge,Q0263,medium,1,5.05,451,1224
+M2,Scientific Knowledge,Q0264,easy,1,12.67,498,238
+M2,Scientific Knowledge,Q0265,medium,1,7.83,318,755
+M2,Scientific Knowledge,Q0266,easy,1,12.68,149,1819
+M2,Scientific Knowledge,Q0267,medium,1,4.6,350,2259
+M2,Scientific Knowledge,Q0268,easy,1,6.82,592,523
+M2,Scientific Knowledge,Q0269,hard,1,8.14,820,1876
+M2,Scientific Knowledge,Q0270,easy,1,8.98,194,326
+M3,Scientific Knowledge,Q0271,easy,1,9.46,400,1130
+M3,Scientific Knowledge,Q0272,easy,1,7.89,338,1280
+M3,Scientific Knowledge,Q0273,hard,0,14.49,237,1201
+M3,Scientific Knowledge,Q0274,hard,1,6.33,645,520
+M3,Scientific Knowledge,Q0275,hard,0,10.47,702,646
+M3,Scientific Knowledge,Q0276,hard,1,12.67,318,1499
+M3,Scientific Knowledge,Q0277,medium,1,6.05,391,723
+M3,Scientific Knowledge,Q0278,hard,1,9.44,252,994
+M3,Scientific Knowledge,Q0279,medium,1,5.43,277,428
+M3,Scientific Knowledge,Q0280,hard,0,21.33,388,782
+M4,Scientific Knowledge,Q0281,easy,1,19.6,327,406
+M4,Scientific Knowledge,Q0282,easy,1,8.48,626,2368
+M4,Scientific Knowledge,Q0283,medium,0,8.11,338,318
+M4,Scientific Knowledge,Q0284,medium,1,25.09,568,648
+M4,Scientific Knowledge,Q0285,medium,1,21.91,190,2174
+M4,Scientific Knowledge,Q0286,medium,1,4.32,861,2656
+M4,Scientific Knowledge,Q0287,medium,1,8.62,1032,807
+M4,Scientific Knowledge,Q0288,medium,0,10.83,1390,375
+M4,Scientific Knowledge,Q0289,medium,1,23.13,370,535
+M4,Scientific Knowledge,Q0290,easy,1,19.44,196,1554
+M5,Scientific Knowledge,Q0291,hard,0,7.8,565,2523
+M5,Scientific Knowledge,Q0292,hard,1,5.88,241,737
+M5,Scientific Knowledge,Q0293,hard,0,9.2,538,672
+M5,Scientific Knowledge,Q0294,medium,0,3.95,244,473
+M5,Scientific Knowledge,Q0295,easy,1,9.46,831,273
+M5,Scientific Knowledge,Q0296,easy,0,4.77,1010,887
+M5,Scientific Knowledge,Q0297,easy,0,2.0,165,585
+M5,Scientific Knowledge,Q0298,easy,1,6.69,336,510
+M5,Scientific Knowledge,Q0299,medium,1,11.92,488,1439
+M5,Scientific Knowledge,Q0300,medium,1,6.51,258,1561
+M1,Language Understanding,Q0301,medium,1,3.6,500,417
+M1,Language Understanding,Q0302,easy,1,6.72,446,295
+M1,Language Understanding,Q0303,hard,0,12.93,665,293
+M1,Language Understanding,Q0304,hard,0,37.28,656,1139
+M1,Language Understanding,Q0305,easy,1,23.2,161,822
+M1,Language Understanding,Q0306,easy,1,7.55,307,1033
+M1,Language Understanding,Q0307,easy,1,3.62,226,1646
+M1,Language Understanding,Q0308,easy,1,12.66,334,1095
+M1,Language Understanding,Q0309,easy,1,9.76,449,298
+M1,Language Understanding,Q0310,medium,0,20.71,268,1152
+M2,Language Understanding,Q0311,medium,0,10.44,2000,1640
+M2,Language Understanding,Q0312,hard,1,7.27,536,1414
+M2,Language Understanding,Q0313,hard,1,26.7,348,170
+M2,Language Understanding,Q0314,medium,0,18.77,266,441
+M2,Language Understanding,Q0315,medium,1,6.61,283,2590
+M2,Language Understanding,Q0316,hard,0,23.64,392,723
+M2,Language Understanding,Q0317,easy,1,10.28,540,319
+M2,Language Understanding,Q0318,easy,1,7.67,731,1124
+M2,Language Understanding,Q0319,hard,1,11.52,360,564
+M2,Language Understanding,Q0320,medium,1,17.01,442,146
+M3,Language Understanding,Q0321,medium,1,6.85,308,1673
+M3,Language Understanding,Q0322,medium,1,6.79,761,1127
+M3,Language Understanding,Q0323,medium,1,12.97,575,489
+M3,Language Understanding,Q0324,medium,1,5.99,463,2307
+M3,Language Understanding,Q0325,medium,1,9.97,193,699
+M3,Language Understanding,Q0326,easy,1,7.44,146,1373
+M3,Language Understanding,Q0327,medium,1,11.04,491,398
+M3,Language Understanding,Q0328,hard,0,10.65,272,477
+M3,Language Understanding,Q0329,hard,1,12.15,493,427
+M3,Language Understanding,Q0330,medium,1,9.16,252,1894
+M4,Language Understanding,Q0331,medium,1,10.66,465,606
+M4,Language Understanding,Q0332,hard,1,14.58,154,981
+M4,Language Understanding,Q0333,hard,1,25.3,1060,809
+M4,Language Understanding,Q0334,medium,1,9.2,328,879
+M4,Language Understanding,Q0335,medium,0,9.73,624,1389
+M4,Language Understanding,Q0336,hard,1,20.62,532,1949
+M4,Language Understanding,Q0337,medium,1,11.17,394,1309
+M4,Language Understanding,Q0338,medium,1,10.88,97,698
+M4,Language Understanding,Q0339,easy,1,11.95,144,345
+M4,Language Understanding,Q0340,hard,1,19.83,360,381
+M5,Language Understanding,Q0341,hard,1,10.19,250,128
+M5,Language Understanding,Q0342,medium,0,9.13,909,1236
+M5,Language Understanding,Q0343,hard,1,13.77,314,345
+M5,Language Understanding,Q0344,medium,0,16.56,566,770
+M5,Language Understanding,Q0345,hard,0,4.94,507,908
+M5,Language Understanding,Q0346,hard,1,4.3,730,553
+M5,Language Understanding,Q0347,hard,0,6.6,871,879
+M5,Language Understanding,Q0348,hard,0,29.84,325,1268
+M5,Language Understanding,Q0349,medium,0,7.19,412,2663
+M5,Language Understanding,Q0350,medium,1,9.89,141,633
+M1,Creative Writing,Q0351,easy,0,3.72,412,425
+M1,Creative Writing,Q0352,medium,0,9.53,231,4000
+M1,Creative Writing,Q0353,medium,1,11.9,925,1992
+M1,Creative Writing,Q0354,hard,1,24.81,418,422
+M1,Creative Writing,Q0355,medium,1,5.89,307,1744
+M1,Creative Writing,Q0356,medium,0,10.81,562,1031
+M1,Creative Writing,Q0357,medium,1,6.37,334,1766
+M1,Creative Writing,Q0358,medium,1,16.02,658,1518
+M1,Creative Writing,Q0359,medium,0,9.86,298,1339
+M1,Creative Writing,Q0360,medium,1,4.67,147,457
+M2,Creative Writing,Q0361,easy,1,21.32,247,2301
+M2,Creative Writing,Q0362,easy,1,13.73,625,1244
+M2,Creative Writing,Q0363,hard,0,7.79,380,1152
+M2,Creative Writing,Q0364,easy,0,11.01,191,717
+M2,Creative Writing,Q0365,medium,0,6.85,473,561
+M2,Creative Writing,Q0366,easy,0,14.75,929,4000
+M2,Creative Writing,Q0367,medium,0,8.09,263,1290
+M2,Creative Writing,Q0368,medium,1,12.42,481,1192
+M2,Creative Writing,Q0369,hard,0,14.21,241,961
+M2,Creative Writing,Q0370,medium,1,8.63,546,246
+M3,Creative Writing,Q0371,medium,1,7.62,391,2338
+M3,Creative Writing,Q0372,hard,0,8.31,408,1611
+M3,Creative Writing,Q0373,medium,1,10.98,587,3206
+M3,Creative Writing,Q0374,medium,1,8.91,649,595
+M3,Creative Writing,Q0375,hard,1,5.8,408,536
+M3,Creative Writing,Q0376,easy,1,13.05,704,1716
+M3,Creative Writing,Q0377,medium,1,9.61,509,1069
+M3,Creative Writing,Q0378,hard,0,4.7,330,747
+M3,Creative Writing,Q0379,easy,1,10.08,208,123
+M3,Creative Writing,Q0380,medium,1,3.48,617,1136
+M4,Creative Writing,Q0381,hard,0,39.97,457,698
+M4,Creative Writing,Q0382,easy,0,24.55,248,1365
+M4,Creative Writing,Q0383,medium,1,20.51,351,219
+M4,Creative Writing,Q0384,medium,0,8.42,149,302
+M4,Creative Writing,Q0385,medium,1,4.04,232,569
+M4,Creative Writing,Q0386,easy,0,10.7,373,1323
+M4,Creative Writing,Q0387,medium,0,10.46,615,671
+M4,Creative Writing,Q0388,medium,1,17.38,1637,3230
+M4,Creative Writing,Q0389,medium,1,28.7,548,783
+M4,Creative Writing,Q0390,hard,1,12.63,416,1191
+M5,Creative Writing,Q0391,medium,1,5.36,435,1348
+M5,Creative Writing,Q0392,hard,0,16.02,637,1128
+M5,Creative Writing,Q0393,hard,0,20.52,353,201
+M5,Creative Writing,Q0394,hard,1,3.0,336,369
+M5,Creative Writing,Q0395,medium,1,9.81,494,769
+M5,Creative Writing,Q0396,hard,1,6.39,314,835
+M5,Creative Writing,Q0397,hard,1,16.65,770,243
+M5,Creative Writing,Q0398,hard,0,7.63,277,614
+M5,Creative Writing,Q0399,hard,1,14.96,899,878
+M5,Creative Writing,Q0400,easy,1,5.16,508,1237
+M1,Logical Deduction,Q0401,medium,0,7.39,598,3037
+M1,Logical Deduction,Q0402,easy,1,5.29,168,2681
+M1,Logical Deduction,Q0403,easy,1,6.49,316,1828
+M1,Logical Deduction,Q0404,easy,1,6.63,126,382
+M1,Logical Deduction,Q0405,easy,1,5.32,695,619
+M1,Logical Deduction,Q0406,medium,1,3.28,198,1156
+M1,Logical Deduction,Q0407,medium,1,2.35,633,4000
+M1,Logical Deduction,Q0408,medium,1,4.0,451,388
+M1,Logical Deduction,Q0409,medium,1,3.01,956,406
+M1,Logical Deduction,Q0410,easy,1,5.43,202,227
+M2,Logical Deduction,Q0411,hard,1,14.92,517,643
+M2,Logical Deduction,Q0412,medium,1,6.28,511,272
+M2,Logical Deduction,Q0413,medium,0,19.28,227,1222
+M2,Logical Deduction,Q0414,easy,1,2.85,196,748
+M2,Logical Deduction,Q0415,medium,1,8.52,424,1291
+M2,Logical Deduction,Q0416,easy,1,18.74,809,100
+M2,Logical Deduction,Q0417,medium,1,7.66,450,1243
+M2,Logical Deduction,Q0418,medium,1,14.26,1362,695
+M2,Logical Deduction,Q0419,medium,1,11.69,401,1371
+M2,Logical Deduction,Q0420,easy,1,12.54,526,2575
+M3,Logical Deduction,Q0421,easy,1,5.51,169,497
+M3,Logical Deduction,Q0422,medium,1,5.37,952,432
+M3,Logical Deduction,Q0423,easy,1,7.99,292,224
+M3,Logical Deduction,Q0424,medium,0,10.07,649,458
+M3,Logical Deduction,Q0425,hard,0,3.88,194,315
+M3,Logical Deduction,Q0426,easy,0,16.23,1265,387
+M3,Logical Deduction,Q0427,medium,1,11.63,449,651
+M3,Logical Deduction,Q0428,medium,0,5.24,439,732
+M3,Logical Deduction,Q0429,medium,0,6.1,551,393
+M3,Logical Deduction,Q0430,easy,1,13.73,665,655
+M4,Logical Deduction,Q0431,easy,1,19.0,738,325
+M4,Logical Deduction,Q0432,easy,1,7.55,437,722
+M4,Logical Deduction,Q0433,hard,0,19.98,328,1350
+M4,Logical Deduction,Q0434,hard,1,42.02,956,322
+M4,Logical Deduction,Q0435,hard,0,45.0,795,568
+M4,Logical Deduction,Q0436,medium,1,7.54,773,1086
+M4,Logical Deduction,Q0437,hard,0,16.29,362,286
+M4,Logical Deduction,Q0438,medium,1,32.42,138,1310
+M4,Logical Deduction,Q0439,medium,1,17.21,462,840
+M4,Logical Deduction,Q0440,hard,1,21.71,682,497
+M5,Logical Deduction,Q0441,medium,1,6.62,402,2030
+M5,Logical Deduction,Q0442,medium,1,6.27,317,202
+M5,Logical Deduction,Q0443,hard,1,18.13,829,1439
+M5,Logical Deduction,Q0444,hard,0,6.64,294,2027
+M5,Logical Deduction,Q0445,medium,1,5.03,353,455
+M5,Logical Deduction,Q0446,medium,1,6.26,726,1105
+M5,Logical Deduction,Q0447,easy,0,5.01,126,1344
+M5,Logical Deduction,Q0448,easy,0,7.86,284,3060
+M5,Logical Deduction,Q0449,easy,0,3.69,790,606
+M5,Logical Deduction,Q0450,medium,1,5.44,417,403
+M1,Data Analysis,Q0451,easy,1,6.13,250,1556
+M1,Data Analysis,Q0452,medium,1,6.54,757,303
+M1,Data Analysis,Q0453,medium,1,7.01,707,1190
+M1,Data Analysis,Q0454,medium,0,7.88,563,474
+M1,Data Analysis,Q0455,easy,1,11.56,558,628
+M1,Data Analysis,Q0456,hard,1,16.93,411,427
+M1,Data Analysis,Q0457,easy,1,10.18,532,1692
+M1,Data Analysis,Q0458,easy,1,14.13,266,1013
+M1,Data Analysis,Q0459,medium,1,6.58,492,2028
+M1,Data Analysis,Q0460,easy,1,9.02,947,1503
+M2,Data Analysis,Q0461,easy,1,8.03,418,318
+M2,Data Analysis,Q0462,medium,0,9.69,359,1483
+M2,Data Analysis,Q0463,medium,1,9.3,290,531
+M2,Data Analysis,Q0464,hard,1,14.4,259,462
+M2,Data Analysis,Q0465,hard,0,40.74,253,1313
+M2,Data Analysis,Q0466,easy,1,9.46,239,1321
+M2,Data Analysis,Q0467,medium,1,10.28,308,2005
+M2,Data Analysis,Q0468,easy,1,9.83,666,4000
+M2,Data Analysis,Q0469,medium,1,6.2,273,3259
+M2,Data Analysis,Q0470,medium,1,10.63,228,725
+M3,Data Analysis,Q0471,easy,1,6.5,674,944
+M3,Data Analysis,Q0472,medium,0,8.38,283,1186
+M3,Data Analysis,Q0473,hard,1,9.29,429,853
+M3,Data Analysis,Q0474,hard,1,6.6,553,476
+M3,Data Analysis,Q0475,medium,1,4.1,290,1136
+M3,Data Analysis,Q0476,hard,0,13.29,220,2417
+M3,Data Analysis,Q0477,medium,1,5.91,188,1678
+M3,Data Analysis,Q0478,medium,1,3.21,1128,685
+M3,Data Analysis,Q0479,medium,1,3.73,297,253
+M3,Data Analysis,Q0480,medium,1,4.16,180,585
+M4,Data Analysis,Q0481,easy,0,9.79,483,810
+M4,Data Analysis,Q0482,medium,1,31.52,391,676
+M4,Data Analysis,Q0483,easy,1,45.0,472,860
+M4,Data Analysis,Q0484,hard,0,8.93,267,365
+M4,Data Analysis,Q0485,hard,1,15.55,493,717
+M4,Data Analysis,Q0486,easy,1,9.35,341,690
+M4,Data Analysis,Q0487,hard,1,13.29,1386,998
+M4,Data Analysis,Q0488,easy,1,7.21,600,364
+M4,Data Analysis,Q0489,medium,1,8.21,289,985
+M4,Data Analysis,Q0490,medium,0,25.4,768,603
+M5,Data Analysis,Q0491,medium,0,4.46,526,680
+M5,Data Analysis,Q0492,hard,1,5.47,128,371
+M5,Data Analysis,Q0493,easy,1,3.34,239,1145
+M5,Data Analysis,Q0494,medium,1,3.57,1966,3176
+M5,Data Analysis,Q0495,easy,1,7.22,507,718
+M5,Data Analysis,Q0496,medium,1,8.69,717,280
+M5,Data Analysis,Q0497,medium,0,7.88,335,300
+M5,Data Analysis,Q0498,hard,0,10.29,674,380
+M5,Data Analysis,Q0499,hard,1,3.0,402,454
+M5,Data Analysis,Q0500,hard,1,9.03,431,434
+M1,Instruction Following,Q0501,hard,1,37.34,1219,409
+M1,Instruction Following,Q0502,medium,1,5.24,293,2153
+M1,Instruction Following,Q0503,easy,1,2.78,897,624
+M1,Instruction Following,Q0504,hard,1,30.12,203,136
+M1,Instruction Following,Q0505,medium,1,3.98,1437,4000
+M1,Instruction Following,Q0506,easy,1,5.47,723,1023
+M1,Instruction Following,Q0507,medium,1,4.91,210,474
+M1,Instruction Following,Q0508,hard,1,11.79,360,2317
+M1,Instruction Following,Q0509,hard,1,9.82,387,2202
+M1,Instruction Following,Q0510,easy,0,6.73,414,266
+M2,Instruction Following,Q0511,medium,1,10.02,273,2085
+M2,Instruction Following,Q0512,easy,1,8.81,1252,840
+M2,Instruction Following,Q0513,medium,1,5.65,727,748
+M2,Instruction Following,Q0514,medium,1,10.65,279,570
+M2,Instruction Following,Q0515,medium,1,10.58,161,4000
+M2,Instruction Following,Q0516,medium,0,8.85,125,643
+M2,Instruction Following,Q0517,medium,1,17.21,230,751
+M2,Instruction Following,Q0518,hard,0,7.56,569,1912
+M2,Instruction Following,Q0519,easy,1,8.81,443,865
+M2,Instruction Following,Q0520,hard,1,18.32,1205,971
+M3,Instruction Following,Q0521,hard,0,5.19,225,420
+M3,Instruction Following,Q0522,medium,1,10.64,311,1360
+M3,Instruction Following,Q0523,medium,1,13.07,357,476
+M3,Instruction Following,Q0524,easy,1,16.97,569,968
+M3,Instruction Following,Q0525,hard,1,7.71,608,100
+M3,Instruction Following,Q0526,medium,1,3.46,451,892
+M3,Instruction Following,Q0527,hard,1,15.55,518,349
+M3,Instruction Following,Q0528,medium,1,11.42,250,1924
+M3,Instruction Following,Q0529,medium,1,4.76,1290,665
+M3,Instruction Following,Q0530,medium,0,14.53,420,985
+M4,Instruction Following,Q0531,easy,1,5.42,313,189
+M4,Instruction Following,Q0532,hard,0,15.02,597,272
+M4,Instruction Following,Q0533,medium,1,9.13,417,1996
+M4,Instruction Following,Q0534,easy,1,13.79,609,311
+M4,Instruction Following,Q0535,hard,1,7.88,763,834
+M4,Instruction Following,Q0536,easy,1,3.84,366,1491
+M4,Instruction Following,Q0537,medium,1,16.44,370,1045
+M4,Instruction Following,Q0538,medium,1,5.02,479,254
+M4,Instruction Following,Q0539,hard,1,17.1,1253,1484
+M4,Instruction Following,Q0540,medium,1,9.6,288,909
+M5,Instruction Following,Q0541,medium,1,9.02,322,1189
+M5,Instruction Following,Q0542,easy,1,4.32,455,1427
+M5,Instruction Following,Q0543,medium,1,8.1,350,1086
+M5,Instruction Following,Q0544,easy,1,11.51,721,1252
+M5,Instruction Following,Q0545,easy,1,12.68,149,1153
+M5,Instruction Following,Q0546,hard,0,9.84,1046,562
+M5,Instruction Following,Q0547,medium,0,6.79,498,3123
+M5,Instruction Following,Q0548,medium,1,4.52,240,272
+M5,Instruction Following,Q0549,medium,0,11.33,117,547
+M5,Instruction Following,Q0550,easy,1,3.13,537,1463
+M1,Summarization,Q0551,easy,1,11.38,423,649
+M1,Summarization,Q0552,easy,1,11.64,351,651
+M1,Summarization,Q0553,hard,0,9.13,288,1637
+M1,Summarization,Q0554,hard,0,6.27,352,2332
+M1,Summarization,Q0555,easy,1,10.26,297,287
+M1,Summarization,Q0556,hard,1,17.96,259,1113
+M1,Summarization,Q0557,hard,1,30.24,178,600
+M1,Summarization,Q0558,hard,0,12.46,856,557
+M1,Summarization,Q0559,medium,1,5.64,537,2368
+M1,Summarization,Q0560,easy,1,6.77,696,954
+M2,Summarization,Q0561,medium,1,5.64,486,233
+M2,Summarization,Q0562,hard,0,20.55,489,957
+M2,Summarization,Q0563,medium,1,17.74,689,1444
+M2,Summarization,Q0564,medium,0,5.47,171,484
+M2,Summarization,Q0565,medium,1,7.11,533,750
+M2,Summarization,Q0566,medium,0,8.57,246,991
+M2,Summarization,Q0567,easy,1,9.16,443,1146
+M2,Summarization,Q0568,easy,0,4.16,238,765
+M2,Summarization,Q0569,medium,1,31.15,422,818
+M2,Summarization,Q0570,easy,1,6.05,206,724
+M3,Summarization,Q0571,medium,1,8.67,208,887
+M3,Summarization,Q0572,hard,1,11.61,416,367
+M3,Summarization,Q0573,medium,1,8.1,334,1722
+M3,Summarization,Q0574,easy,1,5.27,1029,1102
+M3,Summarization,Q0575,medium,1,10.89,990,929
+M3,Summarization,Q0576,medium,1,7.13,123,650
+M3,Summarization,Q0577,easy,1,4.84,346,946
+M3,Summarization,Q0578,easy,1,7.07,708,667
+M3,Summarization,Q0579,hard,1,17.23,305,774
+M3,Summarization,Q0580,easy,1,4.07,860,3450
+M4,Summarization,Q0581,medium,1,16.43,451,1056
+M4,Summarization,Q0582,hard,0,22.53,531,915
+M4,Summarization,Q0583,easy,1,9.97,386,272
+M4,Summarization,Q0584,easy,1,19.81,275,440
+M4,Summarization,Q0585,hard,1,45.0,789,2133
+M4,Summarization,Q0586,medium,1,17.5,290,843
+M4,Summarization,Q0587,medium,1,11.67,641,1137
+M4,Summarization,Q0588,hard,1,7.85,267,1369
+M4,Summarization,Q0589,hard,0,19.29,356,2341
+M4,Summarization,Q0590,easy,1,16.7,162,1691
+M5,Summarization,Q0591,medium,0,13.35,425,3359
+M5,Summarization,Q0592,hard,1,6.74,575,306
+M5,Summarization,Q0593,easy,1,2.86,258,2310
+M5,Summarization,Q0594,easy,1,4.5,310,298
+M5,Summarization,Q0595,medium,1,7.64,742,568
+M5,Summarization,Q0596,easy,1,4.06,343,534
+M5,Summarization,Q0597,easy,1,7.58,575,939
+M5,Summarization,Q0598,medium,0,5.43,270,601
+M5,Summarization,Q0599,medium,1,3.47,275,399
+M5,Summarization,Q0600,easy,1,5.63,198,1095

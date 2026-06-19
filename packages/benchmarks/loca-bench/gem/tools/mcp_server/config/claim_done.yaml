@@ -1,0 +1,17 @@
+# Claim Done MCP Server Configuration
+name: claim_done
+display_name: Claim Done MCP Server
+description: Simple server for signaling task completion
+
+execution:
+  command_type: python
+  script:
+    primary: "gem/tools/mcp_server/claim_done/server.py"
+    fallbacks: []
+
+parameters: {}
+
+workspace:
+  set_cwd: false
+  supports_placeholders: false
+  mkdir_if_needed: false

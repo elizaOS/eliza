@@ -1,0 +1,30 @@
+[[!meta title="IPv6"]]
+
+[[!toc levels=1]]
+
+# Firewall configuration
+
+All incoming and outgoing connections are dropped. Certain local
+(loopback) services that use IPv6 are allowed on a case-by-case basis.
+
+- [[!tails_gitweb config/chroot_local-includes/etc/ferm/ferm.conf]]
+- Also see the IPv6 section of [[the Tor Enforcement
+  design|design/Tor_enforcement/Network_filter]].
+
+# IPv6 address generation
+
+Historically IPv6 used the EUI-64 method for address generation, which
+leaks your MAC address. To prevent this, NetworkManager is configured
+to use the IPv6 Privacy Extensions for SLAAC (see RFC below) for IPv6
+address generation, which ensures completely random addresses (except
+the network prefix obtained from the local router).
+
+These addresses are regenerated every 24 hour period (or on reboot, of
+course) but old addresses are kept in addition to the regenerated one
+until their last connections terminate. This is just the default
+behavior of this option in Linux, we are not interested in this
+property and just let it remain as-is.
+
+- [[!rfc 8981 desc="Temporary Address Extensions for Stateless Address
+Autoconfiguration in IPv6"]]
+- [[!tails_gitweb config/chroot_local-includes/etc/NetworkManager/conf.d/ipv6.conf]]

@@ -1,0 +1,173 @@
+{
+  "id": "bluesky",
+  "name": "Bluesky",
+  "description": "Bluesky connector for ElizaOS",
+  "npmName": "@elizaos/plugin-bluesky",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "social", "social-feed", "bluesky"],
+  "config": {
+    "BLUESKY_HANDLE": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "Handle",
+      "help": "The BlueSky handle (username) for the agent account.",
+      "advanced": false
+    },
+    "BLUESKY_DRY_RUN": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "False",
+      "label": "Dry Run",
+      "help": "Enables or disables dry run mode when interacting with BlueSky; when true, operations are simulated but not executed.",
+      "advanced": false
+    },
+    "BLUESKY_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "True",
+      "label": "Enabled",
+      "help": "Enables or disables the BlueSky plugin.",
+      "advanced": false
+    },
+    "BLUESKY_SERVICE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "https://bsky.social",
+      "label": "Service",
+      "help": "The BlueSky service URL (PDS instance).",
+      "advanced": false
+    },
+    "BLUESKY_PASSWORD": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Password",
+      "help": "The app password for authentication with BlueSky.",
+      "advanced": false
+    },
+    "BLUESKY_ENABLE_DMS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "True",
+      "label": "Enable Dms",
+      "help": "Enable processing of direct messages via the chat.bsky API.",
+      "advanced": false
+    },
+    "BLUESKY_POLL_INTERVAL": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "60",
+      "label": "Poll Interval",
+      "help": "Polling interval in seconds for BlueSky operations such as fetching new notifications.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "BLUESKY_ENABLE_POSTING": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "True",
+      "label": "Enable Posting",
+      "help": "Enables or disables the ability to post to BlueSky.",
+      "advanced": false
+    },
+    "BLUESKY_ACTION_INTERVAL": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "120",
+      "label": "Action Interval",
+      "help": "Interval in seconds between action-processing cycles.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "BLUESKY_MAX_POST_LENGTH": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "300",
+      "label": "Max Post Length",
+      "help": "Maximum number of characters allowed in a BlueSky post.",
+      "advanced": false
+    },
+    "BLUESKY_POST_IMMEDIATELY": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "False",
+      "label": "Post Immediately",
+      "help": "If true, posts are published immediately instead of waiting for a schedule.",
+      "advanced": false
+    },
+    "BLUESKY_POST_INTERVAL_MAX": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "3600",
+      "label": "Post Interval Max",
+      "help": "Maximum interval in seconds between automated posts.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "BLUESKY_POST_INTERVAL_MIN": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "1800",
+      "label": "Post Interval Min",
+      "help": "Minimum interval in seconds between automated posts.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "BLUESKY_MAX_ACTIONS_PROCESSING": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "5",
+      "label": "Max Actions Processing",
+      "help": "Maximum number of BlueSky actions to process in a single batch.",
+      "advanced": false
+    },
+    "BLUESKY_ENABLE_ACTION_PROCESSING": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "True",
+      "label": "Enable Action Processing",
+      "help": "Turns on or off automated action processing for BlueSky events.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Leaf",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/elizaos#readme",
+    "repository": "https://github.com/elizaos/elizaos",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#bluesky"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

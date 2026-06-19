@@ -1,0 +1,279 @@
+schema: eliza.npu_2028_roadmap.v1
+as_of: 2026-05-17
+target_spec: docs/spec-db/npu-2028-target.yaml
+runtime_contract: docs/spec-db/e1-npu-runtime-contract.json
+claim_boundary: roadmap_phase_gates_only_no_android_boot_or_phone_class_accelerator_claim
+android_boot_claim_allowed: false
+android_nnapi_claim_allowed: false
+phone_class_accelerator_claim_allowed: false
+release_claim_allowed: false
+sustained_performance_claim_allowed: false
+silicon_claim_allowed: false
+false_claim_flags:
+  android_boot_claim_allowed: false
+  android_nnapi_claim_allowed: false
+  phone_class_accelerator_claim_allowed: false
+  release_claim_allowed: false
+  sustained_performance_claim_allowed: false
+  silicon_claim_allowed: false
+
+current_phase: L0_MMIO_PROTOTYPE
+phase_order:
+  - L0_MMIO_PROTOTYPE
+  - L1_DESCRIPTOR_DMA_RUNTIME
+  - L2_SINGLE_TILE_ACCELERATOR
+  - L3_TILED_MULTI_CONTEXT_NPU
+  - L4_ANDROID_HAL_DELEGATE
+  - L5_2028_PHONE_CLASS_EVIDENCE
+
+phases:
+  - id: L0_MMIO_PROTOTYPE
+    status: current_limited
+    objective: Keep the tiny e1_npu GEMM/runtime ABI honest and locally testable.
+    required_capabilities:
+      - scalar_mmio_ops
+      - DOT4_S8
+      - DOT8_S4
+      - SDOT4_S4_2_4
+      - DOT16_S2
+      - DOT4_FP8_E4M3
+      - RELU4_S8
+      - bounded_VRELU_S8_len64
+      - bounded_GEMM_S8_m3_n3_k7
+      - bounded_GEMM_S4_m3_n3_k7
+      - 64_byte_mmio_scratchpad
+      - perf_counters_cycles_macs_ops_errors_unsupported_ops
+    measurable_gates:
+      - metric: runtime_contract_checker
+        required: pass
+        evidence: scripts/check_e1_npu_runtime_contract.py
+      - metric: npu_2028_target_checker
+        required: pass
+        evidence: scripts/check_npu_2028_targets.py
+      - metric: verilator_gemm_smoke
+        required: pass
+        evidence: verify/verilator/test_npu_gemm.cpp
+      - metric: scratchpad_bytes
+        required: 64
+        evidence: docs/spec-db/e1-npu-runtime-contract.json
+      - metric: gemm_s8_max_m
+        required: 3
+        evidence: docs/spec-db/e1-npu-runtime-contract.json
+      - metric: gemm_s8_max_n
+        required: 3
+        evidence: docs/spec-db/e1-npu-runtime-contract.json
+      - metric: gemm_s8_max_k
+        required: 7
+        evidence: docs/spec-db/e1-npu-runtime-contract.json
+    blocked_claims:
+      - Android NNAPI acceleration
+      - phone-class TOPS
+      - DMA-backed tensor execution
+      - sustained power or thermal performance
+
+  - id: L1_DESCRIPTOR_DMA_RUNTIME
+    status: planned_blocked
+    objective: Replace ad hoc scratchpad staging with a descriptor-ring ABI and DMA-fed runtime path.
+    required_capabilities:
+      - descriptor_base_head_tail_status
+      - bounded_command_queue
+      - descriptor_valid_ready_completion_semantics
+      - descriptor_timeout_and_fault_reporting
+      - tensor_dma_read_stream
+      - tensor_dma_write_stream
+      - dma_read_write_byte_counters
+      - command_timeout_and_error_status
+      - host_runtime_descriptor_submission
+    measurable_gates:
+      - metric: command_queue_depth_min
+        required: 8
+        evidence: docs/arch/npu.md
+      - metric: descriptor_submission_smoke
+        required: pass
+        evidence: compiler/runtime/test_e1_npu_runtime_sim.py
+      - metric: descriptor_timeout_error_status
+        required: pass
+        evidence: compiler/runtime/test_e1_npu_runtime_sim.py
+      - metric: dma_tensor_streaming_trace
+        required: pass
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: dma_trace_bytes_read
+        required: greater_than_0
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: dma_trace_bytes_written
+        required: greater_than_0
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: perf_counter_dma_bytes_read
+        required: greater_than_0
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: perf_counter_dma_bytes_written
+        required: greater_than_0
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: unsupported_ops_for_descriptor_smoke
+        required: 0
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+    blocked_claims:
+      - NNAPI delegate acceleration
+      - model compiler coverage
+      - phone-class TOPS
+    todo_dma_writeback_generalization:
+      claim_boundary: spec_only_no_rtl_yet_l1_remains_blocked_until_widened_writeback_lands
+      doc_anchor: docs/arch/npu.md "DMA writeback path (planned, L1)"
+      moves_when_writeback_lands:
+        - desc_writeback_cfg_ok currently gates writeback to OP_GEMM_S8/OP_GEMM_S4 only; widens to every opcode that produces a scratchpad result tile
+        - DESC_BYTES_WRITTEN / DESC_WRITE_BEATS go non-zero for the opcodes added to the writeback path
+        - PERF_SCRATCH_BYTES counts the source-read traffic emitted by the writeback master
+        - DESC_STATUS[7] (malformed writeback request) narrows to truly unsupported configurations (unaligned destinations, partial-word writes, vector writeback against scalar opcodes that the spec excludes)
+        - benchmarks/capabilities/e1_npu_nnapi.proof.json populates dma_trace_bytes_written and perf_counter_dma_bytes_written with measured non-zero values
+
+  - id: L2_SINGLE_TILE_ACCELERATOR
+    status: planned_blocked
+    objective: Move from scalar GEMM to one parameterized INT8/INT4 tile with modeled SRAM and bandwidth.
+    required_capabilities:
+      - parameterized_int8_matrix_tile
+      - packed_int4_matrix_path
+      - precision_matrix_int8_int4_int2_fp8_bf16_fp16_status
+      - local_sram_model
+      - cycle_model_for_macs_and_memory
+      - runtime_perf_report_for_tile
+    measurable_gates:
+      - metric: int8_mac_units_per_tile_min
+        required: 256
+        evidence: docs/arch/npu.md
+      - metric: local_sram_kib_min
+        required: 256
+        evidence: docs/arch/npu.md
+      - metric: precision_matrix_complete
+        required: int8_int4_int2_fp8_bf16_fp16_status_recorded
+        evidence: docs/npu/2028-targets.md
+      - metric: observed_macs_per_cycle_min
+        required: 128
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: perf_counter_cycles_macs_ops_errors
+        required: pass
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: cpu_fallback_percent
+        required: 0
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+    blocked_claims:
+      - multi_tile_throughput
+      - sustained_phone_power
+      - CTS_or_VTS_pass
+
+  - id: L3_TILED_MULTI_CONTEXT_NPU
+    status: planned_blocked
+    objective: Scale to tiled execution with context isolation, queueing, memory QoS, and fault containment.
+    required_capabilities:
+      - multi_tile_scheduler
+      - concurrent_context_isolation
+      - iommu_isolated_command_buffers
+      - cache_coherent_cpu_submission
+      - thermal_and_fault_counters
+    measurable_gates:
+      - metric: tile_count_min
+        required: 8
+        evidence: docs/spec-db/npu-2028-target.yaml
+      - metric: command_queue_depth_min
+        required: 1024
+        evidence: docs/spec-db/npu-2028-target.yaml
+      - metric: concurrent_contexts_min
+        required: 8
+        evidence: docs/spec-db/npu-2028-target.yaml
+      - metric: local_sram_mib_min
+        required: 64
+        evidence: docs/spec-db/npu-2028-target.yaml
+      - metric: per_context_fault_isolation
+        required: pass
+        evidence: docs/spec-db/npu-2028-target.yaml
+      - metric: queue_fairness_and_qos_trace
+        required: pass
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: modeled_context_queue_fairness_preflight
+        required: pass
+        evidence: benchmarks/results/npu-context-queue-sim.json
+    blocked_claims:
+      - Android production accelerator
+      - public benchmark leadership
+      - phone thermal compliance
+
+  - id: L4_ANDROID_HAL_DELEGATE
+    status: planned_blocked
+    objective: Add fail-closed Android integration that can run real model graphs without CPU fallback.
+    required_capabilities:
+      - AIDL_HAL
+      - SELinux_fail_closed_policy
+      - TFLite_or_NNAPI_successor_delegate
+      - unsupported_operator_report
+      - CPU_fallback_report
+      - CTS_and_VTS_artifacts
+    measurable_gates:
+      - metric: android_proof_manifest_template
+        required: blocked_template_with_status_and_sha256_fields
+        evidence: docs/benchmarks/capabilities/e1_npu_android_proof_manifest.template.json
+      - metric: vts_result
+        required: pass
+        evidence: docs/evidence/android/e1-npu/vts-result.json
+      - metric: cts_result
+        required: pass
+        evidence: docs/evidence/android/e1-npu/cts-result.json
+      - metric: aidl_hal_service_declared
+        required: pass
+        evidence: docs/benchmarks/capabilities/e1_npu_android_proof_manifest.template.json
+      - metric: selinux_fail_closed_policy
+        required: pass
+        evidence: docs/benchmarks/capabilities/e1_npu_android_proof_manifest.template.json
+      - metric: nnapi_accelerator_query_e1_npu
+        required: pass
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: unsupported_operator_percent_max
+        required: 1
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: cpu_fallback_percent_max
+        required: 1
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+    blocked_claims:
+      - 2028 phone-class performance
+      - MLPerf Mobile result
+      - sustained power efficiency
+
+  - id: L5_2028_PHONE_CLASS_EVIDENCE
+    status: planned_blocked
+    objective: Produce end-to-end 2028 phone-class performance, power, thermal, software, and benchmark evidence.
+    required_capabilities:
+      - dense_int8_peak_tops_evidence
+      - dense_int8_sustained_tops_evidence
+      - sparse_int4_tops_evidence
+      - fp8_int2_bf16_fp16_execution
+      - MLPerf_Mobile_or_equivalent_closed_loop
+      - power_trace
+      - thermal_trace
+    measurable_gates:
+      - metric: dense_int8_peak_tops_min
+        required: 160
+        evidence: docs/spec-db/npu-2028-target.yaml
+      - metric: dense_int8_sustained_tops_min
+        required: 80
+        evidence: docs/spec-db/npu-2028-target.yaml
+      - metric: sparse_int4_peak_tops_min
+        required: 512
+        evidence: docs/spec-db/npu-2028-target.yaml
+      - metric: sustained_perf_per_w_int8_tops_min
+        required: 18
+        evidence: docs/spec-db/npu-2028-target.yaml
+      - metric: external_memory_bandwidth_gbps_min
+        required: 180
+        evidence: docs/spec-db/npu-2028-target.yaml
+      - metric: benchmark_model_hashes_present
+        required: pass
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: benchmark_transcript_hashes_present
+        required: pass
+        evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: power_thermal_manifest_template
+        required: blocked_template_with_status_and_sha256_fields
+        evidence: docs/benchmarks/capabilities/e1_npu_power_thermal_manifest.template.json
+      - metric: power_thermal_trace_present
+        required: pass
+        evidence: docs/benchmarks/capabilities/e1_npu_power_thermal_manifest.template.json
+    blocked_claims:
+      - none_without_all_phase_gates_and_artifacts

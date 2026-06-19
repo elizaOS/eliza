@@ -1,0 +1,73 @@
+#!/usr/bin/python3 -I
+
+import os
+import time
+from argparse import ArgumentParser
+
+import stem
+import stem.connection
+
+TCA_BOOTSTRAP_LOCK_FILE = "/var/lib/tca/bootstrapping.lock"
+
+
+def get_parser():
+    p = ArgumentParser()
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=-1.0,
+        help="A negative value means 'no timeout' (default)",
+    )
+    p.add_argument(
+        "--no-wait",
+        action="store_false",
+        default=True,
+        dest="wait",
+        help="Instead of waiting until it is bootstrapped, run the check exactly once "
+        "(excluding connections error, which are retried instead)",
+    )
+    return p
+
+
+def connect(args):
+    controller = stem.connection.connect(control_port=("127.0.0.1", 9052))
+    if controller is None:
+        raise stem.SocketError
+    controller.authenticate()
+    return controller
+
+
+def is_tor_ok(controller, args):
+    if os.path.isfile(TCA_BOOTSTRAP_LOCK_FILE):
+        return False
+    try:
+        progress = (
+            controller.get_info("status/bootstrap-phase").split()[2].split("=")[1]
+        )
+    except IndexError:
+        progress = "0"
+    enough_dir_info = controller.get_info("status/enough-dir-info")
+    return enough_dir_info == "1" and progress == "100"
+
+
+def main():
+    args = get_parser().parse_args()
+    stop_time = time.monotonic() + args.timeout
+    controller = None
+    while args.timeout < 0.0 or time.monotonic() < stop_time:
+        try:
+            if controller is None:
+                controller = connect(args)
+            if is_tor_ok(controller, args):
+                exit(0)
+            elif not args.wait:
+                exit(1)
+        except (stem.SocketClosed, stem.SocketError):
+            controller = None
+        time.sleep(1)
+
+    exit(1)
+
+
+if __name__ == "__main__":
+    main()

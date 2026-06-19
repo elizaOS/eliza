@@ -1,0 +1,84 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-12-10 00:33+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Why is Tor slow?\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Users often find that the Tor network is slow. This page describes some "
+"reasons that make Tor slow."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Tor circuits lengthen the connections"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tor provides anonymity by building circuits with 3 relays. So, instead of "
+"connecting directly to the destination server, a connection is made between "
+"each relay of the circuit and this takes more time."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Furthermore, Tor tries to build circuits with relays in different countries "
+"which make connection travel more and appear slower."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img tor/tor.png link=\"no\" class=\"svg\" alt=\"A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination\"]]\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Quality of the relays"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The Tor relays are run by volunteers in a decentralized way. So all relays "
+"are not of the same quality. Some are big and fast, while some others are "
+"smaller and slower. As a whole, the network could be faster if it had more "
+"capacity. To improve the capacity of the Tor network, you can either run a "
+"Tor relay yourself or [help existing relays](https://torservers.net/"
+"members/)."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Misuse of the Tor network"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Some people misuse the Tor network, sometimes on purpose or sometimes by\n"
+"lack of knowledge. For instance, Tor is sometimes used to conduct\n"
+"[[!wikipedia Ddos#Distributed_attack desc=\"DDoS attacks\"]]. By\n"
+"doing this, the Tor relays are the ones who actually suffer from the\n"
+"attack, instead of the intended target.  Some people use [[!wikipedia\n"
+"Peer_to_peer desc=\"peer-to-peer software\"]] through Tor which\n"
+"is bad for the network.\n"
+msgstr ""

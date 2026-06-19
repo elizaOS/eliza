@@ -1,0 +1,49 @@
+[[!meta date="Sun, 01 Jul 2012 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.12.1 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.12.1, is out.
+
+This is a [brown paper bag
+release](http://www.catb.org/jargon/html/B/brown-paper-bag-bug.html)
+aimed at fixing two major problems introduced in Tails 0.12. While
+upgrading is recommended, it's not strictly necessary for users that
+haven't experienced any issues with Tails 0.12.
+
+[[!toc levels=1]]
+
+# Changes
+
+* Iceweasel
+  - Upgrade Torbutton to 1.4.6.
+  - Upgrade AdBlock Plus to 2.1.
+  - Update AdBlock patterns.
+
+* Hardware support
+  - Upgrade Linux to 3.2.21-3 (linux-image-3.2.0-3-486).
+
+* Software
+  - Install python-pdfrw to re-add PDF support to the MAT.
+  - Upgrade tails-greeter to 0.7.1, which fixes the race condition that
+    broke administration password and locale settings on some systems.
+
+* Boot
+  - Remove the Tails specific plymouth theme. The theme interferes heavily with
+    the boot process on some hardware.
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+# A glimpse towards the future
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails: no need to be a hardcore developer.

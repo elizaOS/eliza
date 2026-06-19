@@ -1,0 +1,15 @@
+# evidence_class: simulated_first_article_for_evt_planning_not_production_release
+# companion_to: process-control-results-template.csv
+# note: Cpk values for 8 CTQ dims over a 100-unit run; Cpk >= 1.33 target
+build_id,station,control_id,ctq_dimension,units,usl,lsl,nominal,sample_size,xbar,sigma,cp,cpk,pass,operator,gauge_id,linked_evidence,notes
+EVT1-2026-05-12,enclosure_form,enclosure_length_cpk,enclosure_length,mm,153.75,153.45,153.6,100,153.61,0.028,1.79,1.78,true,Lin Wei (IQC-04),IQC-CAL-2025-11-CMM-01,evt-inspection-results-template.csv,Zeiss Contura CMM.
+EVT1-2026-05-12,enclosure_form,enclosure_width_cpk,enclosure_width,mm,78.15,77.85,78.0,100,78.02,0.031,1.61,1.59,true,Lin Wei (IQC-04),IQC-CAL-2025-11-CMM-01,evt-inspection-results-template.csv,
+EVT1-2026-05-12,enclosure_form,enclosure_thickness_cpk,enclosure_thickness,mm,9.7,9.5,9.6,100,9.605,0.022,1.51,1.43,true,Lin Wei (IQC-04),IQC-CAL-2025-11-CMM-01,evt-inspection-results-template.csv,Tight envelope.
+EVT1-2026-05-12,display_bond,display_gap_cpk,display_gap,mm,0.25,0.05,0.15,100,0.151,0.018,1.85,1.83,true,Chen Min (S2-OP-07),CAL-CLAMP-002,display-results-template.csv,Bond ledge to cover glass.
+EVT1-2026-05-12,enclosure_form,corner_radius_cpk,corner_radius,mm,7.55,7.45,7.5,100,7.502,0.011,1.52,1.46,true,Lin Wei (IQC-04),IQC-CAL-2025-11-CMM-01,evt-inspection-results-template.csv,
+EVT1-2026-05-12,side_bottom_io,usb_aperture_cpk,usb_c_aperture_width,mm,9.09,8.94,8.94,100,9.01,0.018,1.39,1.30,false,Liu Yan (S5-OP-09),USB-INS-GAUGE-2025-12,evt-inspection-results-template.csv,Cpk 1.30 below 1.33 target; mold steel tweak needed.
+EVT1-2026-05-12,side_bottom_io,power_button_cutout_cpk,power_button_cutout,mm,2.10,1.90,2.0,100,1.998,0.022,1.52,1.49,true,Liu Yan (S5-OP-09),CALIPER-MITUTOYO-500-196-30,evt-inspection-results-template.csv,
+EVT1-2026-05-12,side_bottom_io,volume_button_cutout_cpk,volume_button_cutout_length,mm,21.15,20.85,21.0,100,21.01,0.029,1.72,1.69,true,Liu Yan (S5-OP-09),CALIPER-MITUTOYO-500-196-30,evt-inspection-results-template.csv,
+EVT1-2026-05-12,optical_audio_stack,rear_camera_aperture_cpk,rear_camera_window_diameter,mm,9.30,9.10,9.2,100,9.198,0.016,2.08,2.04,true,Zhao Qiang (S4-OP-03),CAM-ALIGN-PIN-2025-11,evt-inspection-results-template.csv,
+EVT1-2026-05-12,optical_audio_stack,front_camera_aperture_cpk,front_camera_aperture_diameter,mm,3.50,3.30,3.4,100,3.402,0.014,2.38,2.33,true,Zhao Qiang (S4-OP-03),CAM-ALIGN-PIN-2025-11,evt-inspection-results-template.csv,
+EVT1-2026-05-12,final_mechanical_close,screw_boss_position_cpk,screw_boss_position_tp,mm,0.10,0.0,0.0,100,0.034,0.012,1.39,1.83,true,Yang Lei (S6-OP-05),IQC-CAL-2025-11-CMM-01,evt-inspection-results-template.csv,True-position; 6 boss locations.

@@ -1,0 +1,148 @@
+#!/usr/bin/python3 -I
+
+import os
+import re
+import subprocess
+import sys
+from argparse import ArgumentParser
+
+from tailslib.website import WEBSITE_URL
+
+ALREADY_LOCALIZED = re.compile(r"/index.[a-z][a-z].html$")
+
+
+def sanitize_page_uri(page: str) -> str:
+    """
+    A relative link is passed through
+    >>> sanitize_page_uri("contribute/release_process")
+    'contribute/release_process'
+
+    A link to the website is made relative
+    >>> sanitize_page_uri("https://elizaos.ai/install/")
+    'install'
+
+    Localized links are de-localized
+    >>> sanitize_page_uri("https://elizaos.ai/install/index.de.html")
+    'install'
+    """
+    page = page.removeprefix(WEBSITE_URL + "/")
+    m = ALREADY_LOCALIZED.search(page)
+    if m is not None:
+        page = page.removesuffix(m.group(0))
+
+    return page.removesuffix("/")
+
+
+def get_parser():
+    p = ArgumentParser()
+    p.add_argument("--doctest", default=False, action="store_true")
+    p.add_argument("--dry-run", default=False, action="store_true")
+    p.add_argument("page", default="doc", nargs="?")
+    p.add_argument("anchor", default=None, nargs="?")
+    return p
+
+
+def parse_args(_args=None):
+    """
+
+    >>> parse_args([]).page
+    'doc'
+    >>> parse_args([]).anchor is None
+    True
+
+    >>> parse_args(['foo']).page
+    'foo'
+    >>> parse_args(['foo']).anchor is None
+    True
+
+    >>> parse_args(['foo', 'bar']).page
+    'foo'
+    >>> parse_args(['foo', 'bar']).anchor
+    'bar'
+    """
+    return get_parser().parse_args(_args)
+
+
+def main():
+    args = parse_args()
+
+    if args.doctest:
+        import doctest
+
+        ret = doctest.testmod(verbose=False)
+        print("tails-documentation doctest:", ret)
+        if ret.failed:
+            sys.exit(1)
+        else:
+            sys.exit(0)
+        return
+
+    # Always open the local elizaOS docs page. The inherited Tails docs corpus
+    # is intentionally bypassed so visible help stays on-brand until elizaOS has
+    # complete product documentation.
+    uri = "file:///usr/share/doc/elizaos/website/doc.en.html"
+
+    if args.anchor:
+        uri = f"{uri}#{args.anchor}"
+
+    if args.dry_run:
+        print(uri)
+        return
+
+    # file:// URIs go to the elizaOS WebKit shell, not Tor Browser.
+    #
+    # Tor Browser runs inside a flatpak sandbox that has no read access to
+    # /usr/share/doc/, so routing offline help through it produces a
+    # "Access to the file was denied" error page (reproduced 2026-05-25 in
+    # QEMU: clicking the elizaOS Documentation launcher loads the URI in
+    # Tor Browser and the flatpak sandbox refuses the read). The fix is
+    # not to weaken the Tor Browser sandbox; it is to route local help
+    # through a different WebKit instance. elizaos-webkit-shell is the
+    # same WebKit2GTK widget the main Milady app uses, already runs as
+    # the amnesia user, and has full file:// access.
+    #
+    # Remote https:// URIs continue to go through Tor Browser so external
+    # documentation links keep their privacy guarantee.
+    if uri.startswith("file://"):
+        # Distinguish the docs window from the main agent shell in the
+        # taskbar / Alt-Tab. ELIZAOS_SHELL_TITLE was added in PR #7972
+        # specifically for this — without it, both windows render as
+        # "elizaOS" and users cannot tell them apart (the wm_class stays
+        # "elizaOS" intentionally so GNOME keeps them grouped under the
+        # same .desktop icon). WebKit may replace this title from the
+        # loaded HTML <title> once the page renders; that is expected.
+        env = os.environ.copy()
+        env["ELIZAOS_SHELL_TITLE"] = "elizaOS — Documentation"
+        subprocess.Popen(
+            ["/usr/local/lib/elizaos/elizaos-webkit-shell", uri],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return
+
+    os.environ["TOR_BROWSER_SKIP_OFFLINE_WARNING"] = "yes"
+    # Some of our callers capture the stderr of the
+    # tails-documentation command, which, if we did not use
+    # systemd-cat, would make them block until Tor Browser was closed:
+    # the stderr of tails-documentation would be passed to Tor
+    # Browser, so the stderr file descriptor would be kept open by Tor
+    # Browser until it's closed.
+    #
+    # By using systemd-cat, we avoid passing our stderr to Tor Browser,
+    # and is therefore closed immediately when tails-documentation exits.
+    os.execv(
+        "/usr/bin/systemd-cat",
+        [
+            "/usr/bin/systemd-cat",
+            "/usr/local/bin/gtk-abspath-launch",
+            "/usr/share/applications/org.boum.tails.TorBrowser.desktop",
+            uri,
+        ],
+    )
+
+
+if __name__ == "__main__":
+    main()

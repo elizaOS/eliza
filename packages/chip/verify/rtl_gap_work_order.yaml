@@ -1,0 +1,858 @@
+version: 2
+owner_scope: rtl_verification
+fail_closed_required: true
+last_review: 2026-05-17
+audit_doc: docs/project/rtl-soc-critical-gap-audit.md
+allowed_statuses:
+  - open
+required_gap_fields:
+  - id
+  - status
+  - category
+  - severity
+  - affected_paths
+  - current_evidence
+  - blocking_gate
+  - closure_evidence
+  - work_order
+areas:
+  cpu:
+    current_posture: executable_tiny_riscv_contract_model
+    local_closures:
+      - tiny CPU fetch/execute path drives the AXI-Lite contract wrapper in cocotb
+      - unsupported instructions, fetch errors, and unaligned word memory requests halt locally
+    fail_closed:
+      - unsupported_opcodes_halt
+      - fetch_error_halts
+      - unaligned_lw_sw_halt_before_bus_request
+    checks:
+      - make cocotb-cpu
+    critical_gaps:
+      - id: cpu-real-core-integration
+        status: open
+        category: rtl_stub
+        severity: critical
+        affected_paths:
+          - rtl/cpu/e1_tiny_cpu_contract.sv
+          - rtl/cpu/e1_cpu_subsystem_stub.sv
+          - rtl/interconnect/e1_linux_soc_contract.sv
+          - verify/cocotb/e1_tiny_cpu_contract_tb.sv
+          - verify/cocotb/test_tiny_cpu_execution.py
+          - scripts/check_cpu_ap_scope.py
+          - scripts/check_cpu_ap_completion_gate.py
+          - scripts/check_soc_real_integration.py
+          - scripts/test_soc_real_integration_report.py
+          - build/reports/cpu_ap_scope.json
+          - build/reports/cpu_ap_completion_gate.json
+          - build/reports/soc_integration.json
+        partial_closure_evidence:
+          - docs/rtl/cpu-config-selection.md (Chipyard Rocket RV64GC + SV39 + L1 I/D selection, wrapper layout under rtl/wrappers/, pinned upstream SHA)
+          - docs/architecture-optimization/soc-optimized-operating-point.yaml (modeled recommendation only; machine-checked false flags keep RTL, Linux/AOSP boot, silicon, release, and phone-performance claims blocked)
+          - build/reports/rva23_compliance.json (toolchain profile report only; machine-checked false flags keep Linux/AOSP boot, phone, silicon, release, and certification claims blocked)
+          - build/reports/linux_boot_artifacts.json and build/reports/mvp_npu_ml_smoke.json (artifact/smoke reports keep phone, release, silicon, board/Android/production, and Linux-integrated NPU claims false where applicable)
+          - docs/spec-db/traceability/coverage.json, docs/spec-db/e1-waveform-debug-policy.yaml, and docs/project/product-architecture-security-radio-sensors-optimization-2026-05-17.yaml (structural/policy/work-order artifacts now carry checked false flags for signoff, tapeout, AI-debug, certification, secure-boot, phone, release, silicon, and production-readiness claims)
+          - docs/pd/rail-plan-2028.yaml and docs/evidence/power/rail-plan-evidence.yaml (authoritative rail planning remains hash-bound into the SoC optimized work order and keeps release, PDN signoff, PMIC procurement, measured-silicon, tapeout, and production-readiness claims false)
+        current_evidence: Tiny single-issue RV contract model now lives under the production-neutral module/file name rtl/cpu/e1_tiny_cpu_contract.sv. It supports only a small unprivileged instruction subset and halts on unsupported opcodes, fetch errors, and unaligned word accesses. The legacy rtl/cpu/e1_cpu_subsystem_stub.sv name is a thin compatibility alias only. Selected v0 CPU config is documented in docs/rtl/cpu-config-selection.md. `make cpu-ap-scope-check` now produces build/reports/cpu_ap_scope.json and passes only for generated Chipyard Rocket RV64GC bring-up scope; that report keeps phone_2028_ap_claim_allowed=false and release_claim_allowed=false. `make cpu-ap-boot-readiness-check` now keeps phone, release, Linux boot, Android boot, generated-AP boot, and privileged-boot claims false even when generated AP artifacts and prerequisite Linux artifact inventory are present. The Chipyard payload-path and static AP ABI reports now keep phone, release, RTL boot, Linux boot, Android boot, silicon, and generated-AP completion claims false even if generated-artifact, ABI, or transcript inventory reaches pass. The chip-OS environment preflight, report-freshness, boot-gap inventory, gap keyword inventory, evidence provenance inventory, optimization gap inventory, objective evidence matrix, closure plan, identity contract, cross-fork agent payload, chip-OS bring-up workflow, phone runtime readiness, phone media pipeline scope, radio/sensor/PMIC scope, power/thermal scope, security lifecycle scope, software BSP aggregate and scope, NPU scope, benchmark efficiency scope, Android launcher runtime evidence, Linux multiarch GUI parity, platform contract, minimum Linux target, sim ladder, MVP simulator, manufacturing/tapeout scope, antenna metadata, PD release evidence, PD signoff, package cross-probe, manufacturing artifacts, FPGA release, KiCad artifacts, OpenLane run preflight, PDK access gate, E1 phone fabrication release, E1 phone first-article content, E1 phone release-evidence regeneration, E1 phone release approvals, E1 phone routed-output content, E1 phone factory-output content, E1 phone enclosure mechanical content, AOSP Linux preflight, AOSP product, HAL service, Android system bridge, Android release readiness, Android simulator boot, Android simulated peripheral evidence, Android system APK payload, Android app runtime, evidence-capture, Linux firmware boot-chain, boot security chain, product feature gates, prototype status dashboard, and static AOSP Linux handoff contracts now also carry false flags for phone/release and runtime/boot/secure-boot/compliance/production/tapeout/signoff/readiness claims even when host-side environment readiness, freshness inventory, blocker inventory, source keyword survey, provenance survey, optimization survey, objective matrix, closure planning, static identity consistency, static payload consistency, workflow, phone-runtime inventory, phone-media scope, radio/sensor/PMIC scope, power/thermal scope, security-lifecycle scope, BSP scaffold inventory, BSP scope, NPU scope, benchmark scope, live Android launcher evidence, Linux GUI parity, platform-contract consistency, minimum-target inventory, local simulation ladder, simulator MVP, manufacturing/tapeout scope, antenna metadata validation, PD release manifest check, PD signoff artifact validation, package/vendor cross-probe, manufacturing artifact inventory, FPGA bitstream release validation, KiCad fabrication artifact inventory, OpenLane preflight/release-preflight, advanced-node PDK access gate, E1 phone fabrication/enclosure gate, first-article content validation, release-evidence regeneration drift check, approval-signature gate, routed-output content validation, factory-output content validation, enclosure mechanical content validation, host preflight, product, packaging, bridge, release-manifest, simulator boot, simulator peripheral, HAL, APK payload, firmware-chain, boot-chain, dashboard consistency, product-feature manifest, or capture readiness passes. The software/BSP firmware, hardware-security, power/thermal, and analog automation AI policies now also carry checked false flags for patch/boot/BSP/kernel-performance/vulnerability, security-scanner/fuzzer/trojan/security-readiness, power/thermal/IR/PDN/TOPS-per-watt, and SPICE/layout/IP/analog/SI-PI/tapeout claims while they remain DRAFT_CAPTURE_ONLY contracts. The RoT integration report now carries false flags for secure-boot, hardware-key, attestation, FIPS-entropy, provisioned-identity, silicon, and release claims while remaining BLOCKED on the physical/silicon entropy dependency. The IO-cell contract report now keeps foundry IO-cell release, ESD/latchup signoff, IBIS/SI, padframe tapeout, and board/package release claims false while IO-cell deliverables are blocked. The E1 SoC PD input contract now keeps DRC, LVS, STA, PD release, tapeout, and fabrication claims false while DRC/LVS/STA and external signoff remain required. The CPU/AP stale-evidence report now also keeps phone, release, Linux-capable CPU, Android boot, privileged boot, and generated CPU/AP completion claims false, and reports evidence_current separately from release_ready=false. The OS RV64 chip-boot contract now keeps phone, release, silicon, physical-board, Android/AOSP runtime, and production-readiness claims false even when generated-AP/chip-emulator Linux boot and agent liveness evidence pass. The OpenSBI blocked-regeneration capture report now also keeps phone, release, OpenSBI handoff, Linux/Android boot, generated-AP boot, and privileged-boot claims false when a raw generated-AP attempt reaches only partial OpenSBI markers. `make cva6-boot-report-flags-test` now regression-tests the CVA6 boot report writers so bare-metal CVA6 DRAM execution, OpenSBI banner, and CVA6 Linux marker reports carry explicit false flags for phone, release, silicon, Android, userland, timing/performance, and complete-OS-boot claims as applicable. `make cpu-ap-completion-gate` still writes build/reports/cpu_ap_completion_gate.json with status=blocked because the selected manifest and platform contract keep the real Linux-capable CPU/AP completion claim disabled; the blocked report now carries explicit false flags for phone AP, release, Linux-capable CPU, privileged boot, and generated CPU/AP completion claims. `make soc-real-integration-test` regression-tests that the real-IRQ/real-DRAM SoC composition report keeps phone, release, Linux-boot, production-CPU, and real-CPU-execution claims false even when the CLINT/PLIC/DRAM integration smoke is green.
+        blocking_gate: Linux-capable SoC, bootable firmware, and product claims must remain blocked while this stub is present.
+        closure_evidence: Production RV64 integration with privileged mode, reset/interrupt/timer path, boot ROM handoff, memory map, generated DTS, and executable boot smoke evidence.
+        work_order: Replace the tiny contract model with a production RV64 core integration and privileged boot path.
+      - id: cpu-privileged-boot-contract
+        status: open
+        category: incomplete_subsystem
+        severity: critical
+        affected_paths:
+          - rtl/cpu/e1_tiny_cpu_contract.sv
+          - rtl/cpu/e1_cpu_subsystem_stub.sv
+          - rtl/bootrom/e1_bootrom.sv
+          - scripts/run_qemu.sh
+          - scripts/run_renode.sh
+        partial_closure_evidence:
+          - docs/arch/boot-rom-spec.md (reset vector, OTP layout, secure-boot stub algorithm, OpenSBI handoff ABI, debug-lock policy)
+          - fw/boot-rom/reset.S (executable RV64 reset path: mtvec setup, interrupt masking, secure-boot entrypoint call, fail-closed trap loop)
+          - fw/boot-rom/Makefile (tools-checked build rule producing e1_secure_boot_rom.elf/.bin/.hex)
+          - fw/boot-rom/linker.ld (64 KiB ROM aperture at 0x0000_0000, with architectural handoff/debug word preserved by RTL)
+          - rtl/bootrom/e1_bootrom.sv ($readmemh load of build/boot-rom/e1_secure_boot_rom.hex plus debug identity/header words)
+          - docs/boot-rom/release-evidence.md and build/reports/gate-bootrom-sim-transcript-check.json (QEMU fail-closed reset/vector/verifier transcript evidence)
+          - verify/cocotb/test_clint_timer_irq.py (CLINT timer/software-irq scaffold, skipped until CLINT lands)
+        current_evidence: The RTL boot ROM now loads the generated secure ROM image and preserves debug-visible identity/handoff words; the boot ROM transcript gate proves reset-vector fetch, mtvec setup, secure-boot entrypoint execution, and fail-closed trap behavior in QEMU. The interrupt-controller RTL report now carries checked false flags for Linux boot, AOSP boot, SoC mip wiring, silicon, release, and production-readiness claims while its evidence remains local CLINT/PLIC lint/cocotb gate evidence. Pad-level RTL still has no production CPU wrapper with MMU/cache, no complete CLINT/PLIC-compatible interrupt/timer path in the v0 top, no UART console transcript from the selected AP path, and no positive authenticated OpenSBI/Linux firmware handoff.
+        blocking_gate: QEMU/Renode semantic checks must not be treated as e1-chip boot validation.
+        closure_evidence: Firmware ELF boots through the RTL-equivalent address map in simulation or emulation and emits a checked serial transcript.
+        work_order: Define and verify a bootable CPU, timer, interrupt, memory, and console contract before claiming OS bring-up.
+      - id: cpu-legacy-stub-module-name
+        status: open
+        category: misleading_pass_gate
+        severity: medium
+        affected_paths:
+          - rtl/cpu/e1_tiny_cpu_contract.sv
+          - rtl/cpu/e1_cpu_subsystem_stub.sv
+          - Makefile
+          - scripts/run_rtl_check.sh
+          - scripts/run_verilator.sh
+          - scripts/yosys_e1_soc.ys
+          - scripts/yosys_formal_top.ys
+          - scripts/yosys_formal_top_structural.ys
+          - verify/formal/e1_soc_top.sby
+          - scripts/check_cpu_ap_scope.py
+          - scripts/test_cpu_ap_scope.py
+        partial_closure_evidence:
+          - rtl/cpu/e1_tiny_cpu_contract.sv (primary tiny executable CPU contract implementation)
+          - rtl/cpu/e1_cpu_subsystem_stub.sv (thin compatibility alias wrapping e1_tiny_cpu_contract)
+          - verify/cocotb/e1_tiny_cpu_contract_tb.sv (testbench instantiates e1_tiny_cpu_contract directly)
+        current_evidence: >-
+          The executable tiny CPU contract has been renamed to
+          e1_tiny_cpu_contract and the legacy e1_cpu_subsystem_stub module is
+          only a compatibility wrapper. Normal Make, cocotb, Verilator, Yosys,
+          and e1_soc_top formal source lists now include the primary module
+          before the alias, and `make cpu-ap-scope-test` regression-tests that
+          source-order contract plus the wrapper-only implementation. This
+          resolves the misleading primary module name, but it is still not a
+          production CPU/AP wrapper.
+        blocking_gate: Passing lint/synthesis must not imply that a production CPU subsystem exists; e1_tiny_cpu_contract remains a non-Linux-capable contract model.
+        closure_evidence: Real production CPU/AP wrapper with privileged mode, MMU/cache/timer/interrupt evidence, boot ROM handoff, generated DTS, and executable boot transcript.
+        work_order: Mitigated for the misleading-name risk; keep the legacy e1_cpu_subsystem_stub wrapper as compatibility-only and do not promote e1_tiny_cpu_contract beyond scaffold status. Replace the tiny contract with the selected production CPU/AP wrapper when generated RTL lands.
+  interconnect:
+    current_posture: axi_lite_contract_fabric
+    local_closures:
+      - CPU-side AXI-Lite decode reaches DRAM, interrupt-controller, and DMA-control windows
+      - DMA master shares the DRAM target with CPU-side traffic in the contract wrapper
+    fail_closed:
+      - unmapped_cpu_reads_return_decerr
+      - unmapped_cpu_writes_return_decerr
+      - dma_memory_errors_propagate_to_status
+    checks:
+      - make cocotb-contract
+    critical_gaps:
+      - id: interconnect-full-soc-routing
+        status: open
+        category: incomplete_subsystem
+        severity: critical
+        affected_paths:
+          - rtl/top/e1_soc_top.sv
+          - rtl/interconnect/e1_axi_lite_interconnect.sv
+          - rtl/interconnect/e1_linux_soc_contract.sv
+          - verify/cocotb/test_cpu_mem_intc_contract.py
+          - scripts/check_memory_interconnect_contract.py
+          - scripts/test_memory_interconnect_contract_report.py
+          - scripts/check_soc_integration.py
+          - scripts/test_soc_integration_report.py
+          - Makefile
+        partial_closure_evidence:
+          - verify/cocotb/test_mmio_decode_error.py (unmapped-address DECERR sweep for reads/writes and post-DECERR liveness)
+          - verify/cocotb/test_reset_domain_cleanup.py (post-reset register defaults and handshake-signal idle)
+        current_evidence: Debug-MMIO top routes fixed device windows and a small internal DRAM array; Linux contract fabric routes DRAM, interrupt-controller, DMA MMIO, NPU MMIO, and display MMIO windows. Unmapped-MMIO DECERR sweep, reset-domain idle checks, CPU-side NPU/display MMIO round trips, and DMA-to-NPU/display no-side-effect containment are covered by cocotb contract scaffolds. `make cocotb-contract` now validates build/reports/cpu_mem_intc_cocotb_coverage.json, whose directed AXI-Lite contract artifact carries explicit false flags for phone, release, application-class CPU, Linux/Android boot, MMU, cache, coherency, IOMMU, production-memory-system, and full-SoC-routing claims. `make memory-interconnect-contract-check` now emits build/reports/memory_interconnect_contract.json with explicit phone/release/production-fabric/coherency/IOMMU/QoS/Android/NPU-memory-fabric/display-framebuffer claim denial, checked evidence paths, current 4 KiB SRAM-backed e1-chip debug DRAM capacity, separate 256 MiB Linux scaffold aperture, Linux-contract NPU/display MMIO target bases, fail-closed NPU descriptor traffic, fail-closed display framebuffer reads, and a claim boundary that rejects production routing, ordering, coherency, IOMMU/SMMU, QoS, LPDDR, Android, and phone-class memory evidence. `scripts/check_soc_integration.py` now writes build/reports/soc_cross_domain_integration.json when run, with false flags for phone, release, production fabric, full-SoC routing, coherency, IOMMU, QoS, Linux boot, and production CPU claims around the cross-domain scaffold result. `scripts/check_memory_iommu_qos_sim.py` now regenerates benchmarks/results/memory-iommu-qos-sim.json with checked false flags for phone, release, RTL-IOMMU, LPDDR, Android dma-buf, silicon, and production-readiness claims while preserving deterministic modeled deny-by-default and QoS preflight evidence only. `scripts/check_iopmp_rtl.py` now emits checked false flags for generic, release, SoC-fabric integration, IOMMU-translation, silicon, secure-I/O release, and production-readiness claims while its policy/lint/cocotb evidence remains a local IOPMP RTL boundary, not full fabric integration.
+        blocking_gate: Full SoC routing, ordering, coherency, and multi-master claims remain blocked.
+        closure_evidence: Address map generated from the platform contract with protocol assertions, backpressure coverage, error response tests, and arbitration coverage across all masters.
+        work_order: Add complete SoC address routing, ordering, and arbitration coverage beyond the current contract windows.
+      - id: interconnect-display-npu-linux-mmio
+        status: open
+        category: incomplete_subsystem
+        severity: high
+        affected_paths:
+          - rtl/interconnect/e1_axi_lite_interconnect.sv
+          - rtl/interconnect/e1_linux_soc_contract.sv
+          - rtl/display/e1_display.sv
+          - rtl/npu/e1_npu.sv
+          - verify/cocotb/test_cpu_mem_intc_contract.py
+          - docs/arch/memory-map.md
+          - docs/arch/interconnect.md
+          - scripts/check_platform_contract.py
+          - scripts/test_platform_contract_linux_decode.py
+        current_evidence: Mitigated for Linux-contract MMIO exposure. The AXI-Lite scaffold decodes 0x1002_0000 NPU control and 0x1003_0000 display control windows, instantiates e1_npu/e1_display MMIO target wrappers, and covers both paths in verify/cocotb/test_cpu_mem_intc_contract.py (`linux_contract_npu_mmio`, `linux_contract_display_mmio`, `dma_npu_display_mmio_no_side_effect`). `make cpu-mem-intc-cocotb-coverage-test` regression-tests that this local MMIO coverage report keeps production CPU, boot, coherency, IOMMU, full-SoC-routing, and production-memory claims false. `make platform-contract-check` verifies the Linux AXI-Lite decoder bases against the generated CPU-variant platform contract and carries a stale-NPU-base regression. `make memory-interconnect-contract-test` now regression-tests that build/reports/memory_interconnect_contract.json records the NPU/display MMIO bases, marks the NPU descriptor master as fail_closed_slverr, marks the display framebuffer path as not_routed, and keeps production device-memory-fabric/display-framebuffer claims denied. NPU descriptor-master traffic still fails closed and display framebuffer reads are not routed through production DRAM.
+        blocking_gate: Full Linux device coverage still requires production NPU/display memory-fabric paths, IOMMU/coherency policy, and QoS/bandwidth evidence.
+        closure_evidence: NPU and display AXI-Lite target wrappers are routed, tested for decode errors, and checked against generated software headers.
+        work_order: Mitigated for AXI-Lite MMIO routing and generated-artifact address drift; keep production device coverage blocked until memory-fabric and IOMMU/coherency evidence lands.
+      - id: interconnect-axi-lite-proof-coverage
+        status: open
+        category: proof_gap
+        severity: high
+        affected_paths:
+          - verify/formal/e1_soc_top_formal.sv
+          - scripts/yosys_formal_top_structural.ys
+          - scripts/run_formal.sh
+          - verify/formal/e1_axi_lite_dram.sby
+          - verify/formal/e1_axi_lite_dram_bind.sv
+          - verify/formal/e1_axi_lite_interconnect.sby
+          - verify/formal/e1_axi_lite_interconnect_bind.sv
+          - verify/formal/e1_interrupt_controller.sby
+          - verify/formal/e1_interrupt_controller_bind.sv
+          - scripts/check_axil_formal_coverage.py
+          - scripts/test_axil_formal_coverage.py
+        partial_closure_evidence:
+          - verify/properties/axi_lite_protocol.sv (parametric AXI-Lite property pack ready for bind to debug bridge, interconnect, DRAM, DMA master, and interrupt-controller paths)
+          - verify/properties/README.md (bind usage and SymbiYosys harness instructions)
+          - verify/properties/dma_axil_bind.sv + verify/properties/dma_axil.sby (first concrete bind targeting the DMA master)
+          - verify/formal/e1_axi_lite_dram_bind.sv + verify/formal/e1_axi_lite_dram.sby (AXI-Lite property bind for the DRAM target)
+          - verify/formal/e1_axi_lite_interconnect_bind.sv + verify/formal/e1_axi_lite_interconnect.sby (AXI-Lite property binds for every master-facing interconnect ingress port: CPU, DMA, and debug; focused bmc depth 24 and prove depth 12 pass with deterministic bitwuzla logs)
+          - verify/formal/e1_interrupt_controller_bind.sv + verify/formal/e1_interrupt_controller.sby (AXI-Lite property bind for the interrupt-controller MMIO slave; focused run passed bmc depth 24 on z3 and prove depth 16 by k-induction on bitwuzla)
+        current_evidence: Top formal still proves a few structural facts with shallow BMC or Yosys check fallback. `make formal` now includes SBY AXI-Lite property tasks for the debug bridge, DMA master, DRAM target, CPU/DMA/debug master-facing interconnect ingress ports, and the interrupt-controller MMIO slave when SymbiYosys is available; the formal manifest records solver, task depth, covered files, status/log hashes, and fallback manifests label the AXI-Lite SBY jobs as blocked rather than equivalent. `make axil-formal-coverage-check` now emits build/reports/axil_formal_coverage.json and independently verifies the expected AXI-Lite formal targets, SBY specs, covered files, task depths, status/log hashes, and strict non-release manifest flags while keeping phone, release, full-SoC-routing, unbounded-protocol, and coherency claims false.
+        blocking_gate: Formal pass must be reported as shallow structural coverage only.
+        closure_evidence: AXI-Lite assume/assert coverage for valid-ready stability, response liveness under bounded fairness, unmapped DECERR paths, and independent read/write channel stalls.
+        work_order: Add reusable AXI-Lite properties and bind them to debug bridge, interconnect, DRAM, DMA master, and interrupt-controller paths.
+  dma:
+    current_posture: word_copy_engine_with_error_status
+    fail_closed:
+      - unaligned_programming_sets_error
+      - memory_response_errors_set_error
+    checks:
+      - make cocotb-contract
+      - make formal
+    critical_gaps:
+      - id: dma-real-memory-system
+        status: open
+        category: incomplete_subsystem
+        severity: critical
+        affected_paths:
+          - rtl/dma/e1_dma.sv
+          - rtl/dma/e1_dma_sg.sv
+          - rtl/top/e1_soc_top.sv
+          - rtl/interconnect/e1_linux_soc_contract.sv
+          - verify/cocotb/test_cpu_mem_intc_contract.py
+          - verify/cocotb/dma/test_dma_long_transfer.py
+          - verify/cocotb/dma_sg/test_dma_sg.py
+          - verify/cocotb/dma_sg/Makefile
+          - verify/cocotb/dma/Makefile
+          - verify/cocotb/aia_sg_top/test_aia_sg_top.py
+          - verify/cocotb/aia_sg_top/e1_aia_sg_harness.sv
+          - verify/cocotb/aia_sg_top/Makefile
+          - scripts/check_dma_engine.py
+          - scripts/test_dma_engine_gate.py
+          - scripts/check_dma_long_transfer_coverage.py
+          - scripts/test_dma_long_transfer_coverage.py
+          - Makefile
+          - verify/formal/e1_dma_formal.sv
+        partial_closure_evidence:
+          - verify/cocotb/dma/test_dma_long_transfer.py (1 KiB transfer, partial-tail byte strobes, unaligned-programming error, completion IRQ, SLVERR propagation; now wired into make cocotb-dma)
+          - scripts/check_dma_long_transfer_coverage.py (fails closed unless the machine-readable long-transfer coverage artifact includes every required contract and its non-production boundary)
+          - build/reports/dma_long_transfer_cocotb_coverage.json (machine-readable long-transfer coverage contracts)
+          - scripts/check_dma_engine.py (descriptor scatter-gather DMA gate for rtl/dma/e1_dma_sg.sv; lints full-AXI4 SG RTL, runs the dma_sg cocotb KATs, and emits explicit false production-claim flags)
+          - verify/cocotb/aia_sg_top/test_aia_sg_top.py (integrated-top KAT; e1_soc_top compiled with +define+E1_SOC_AIA_SG drives the SG-DMA register port over the shared MMIO fabric and its exported AXI4 master against a burst DRAM model, proving fabric reachability + byte-exact descriptor copy + status writeback through the synthesizable hierarchy)
+        current_evidence: >-
+          DMA local evidence now has three explicit tiers. The pad-level
+          integrated path remains the e1_dma AXI-Lite word-copy master with
+          status/error counters: `make cocotb-dma` runs both the randomized
+          standalone suite and the long-transfer suite, then validates both
+          machine-readable coverage artifacts for byte-copy/backpressure/status/
+          error handling, 1 KiB transfers, partial-tail byte strobes,
+          unaligned-programming error, completion IRQ, and read-SLVERR
+          propagation. Those pad-level coverage reports carry explicit false
+          flags for phone, release, production-memory-system, SoC-fabric,
+          coherent-DMA/cache-coherency, IOMMU, Linux dmaengine-driver, and
+          throughput claims. Separately, `make dma-engine-check` exercises
+          rtl/dma/e1_dma_sg.sv as a descriptor scatter-gather full-AXI4 engine
+          with memory-resident descriptor fetch, INCR bursts, unaligned head/
+          tail strobes, completion writeback/IRQ, AXCACHE propagation, and DECERR
+          fail-closed behavior. Third, the SG engine is now instantiated in the
+          synthesizable SoC top: e1_soc_top compiled with +define+E1_SOC_AIA_SG
+          hangs e1_dma_sg's register port off the shared MMIO fabric (window
+          0x1005_0xxx) and exports its full-AXI4 data-mover master to the system-
+          memory port. verify/cocotb/aia_sg_top/test_aia_sg_top.py drives the SG
+          engine through the integrated top's external MMIO port and proves a
+          byte-exact descriptor copy + DONE status writeback against a burst-
+          capable DRAM model attached to the exported master. This closes the
+          "SG engine is not wired through the SoC fabric" portion of the gap; the
+          remaining production-memory-hierarchy, IOMMU/IOPMP isolation, Linux
+          dmaengine-driver, coherency, and throughput claims stay explicitly
+          false (no LPDDR controller, no IOMMU on the SG path, no driver, no
+          benchmark). The simulation memory remains a behavioural burst model,
+          not a production memory hierarchy.
+        blocking_gate: >-
+          DMA throughput, coherency, burst-system integration, cache interaction,
+          IOMMU/IOPMP isolation, and software-driver performance claims remain
+          blocked until the SG engine or successor is wired into the production
+          SoC fabric and validated with memory hierarchy, driver, and benchmark
+          evidence.
+        closure_evidence: Verified production memory target, long transfer tests, partial-beat behavior, backpressure permutations, coherency policy, interrupt completion, and error injection coverage.
+        work_order: Verify DMA against the production memory hierarchy, coherency policy, and long burst behavior.
+      - id: dma-proof-depth-and-protocol
+        status: open
+        category: proof_gap
+        severity: high
+        affected_paths:
+          - verify/formal/e1_dma_formal.sv
+          - verify/formal/e1_dma.sby
+          - verify/formal/e1_dma_axil.sby
+          - scripts/yosys_formal_dma.ys
+          - scripts/check_dma_formal_coverage.py
+          - scripts/test_dma_formal_coverage.py
+        partial_closure_evidence:
+          - verify/properties/axi_lite_protocol.sv (reusable AXI-Lite property pack: VALID/payload stability, response legality, bounded liveness, outstanding-transaction balance)
+          - verify/properties/dma_axil_bind.sv (bind harness wrapping e1_dma master ports)
+          - verify/properties/dma_axil.sby (SymbiYosys bmc depth 32 + prove depth 16 tasks)
+          - verify/formal/e1_dma_axil.sby (routine make formal target for the same DMA AXI-Lite master property bind, manifest-tracked separately from the legacy e1_dma status proof)
+          - verify/formal/e1_dma_formal.sv + rtl/dma/e1_dma.sv FORMAL observability ports (bounded status/accounting proof checks transfer acceptance, read/write beat matching, single issue accounting, byte progress on successful write responses, error propagation, aligned active addresses, and clear behavior)
+        current_evidence: >-
+          `make formal` now runs the legacy e1_dma status/signal proof and the
+          manifest-tracked e1_dma_axil AXI-Lite master protocol proof
+          separately. The DMA protocol target covers master VALID/payload
+          stability, response legality, bounded liveness under assumed slave
+          fairness, and outstanding-transaction balance at bmc depth 32 plus
+          prove depth 16. The e1_dma status/accounting target also checks the
+          bounded internal transfer contract through formal-only observability
+          ports: accepted-transfer length tracking, read/write beat balance,
+          no double issue beyond one write issue per pulse, byte-count progress
+          on OKAY write responses, aligned active addresses, response-error
+          status/error-count propagation, and clear/restart status behavior.
+          It still does not prove full transfer completion across all memory
+          backpressure/error interleavings or production coherency/cache
+          interactions.
+          `make dma-formal-coverage-check` now emits
+          build/reports/dma_formal_coverage.json and independently validates
+          that the formal manifest records passing e1_dma and e1_dma_axil SBY
+          evidence, expected covered files, smtbmc bitwuzla engine metadata,
+          e1_dma_axil bmc depth 32 plus prove depth 16 tasks, and strict
+          non-release manifest flags. That report keeps phone, release,
+          full-DMA-correctness, coherent-DMA, and Linux dmaengine claims false.
+        blocking_gate: Formal pass must not be described as full DMA correctness.
+        closure_evidence: Bounded and induction-style proofs or exhaustive constrained tests for transfer progress, no double issue, response matching, error propagation, and clear/restart sequencing.
+        work_order: Extend DMA formal coverage with protocol properties and longer transfer invariants.
+  npu:
+    current_posture: mmio_datapath_and_small_scratch_gemm
+    fail_closed:
+      - unsupported_opcode_sets_error
+      - invalid_gemm_config_sets_error
+    checks:
+      - make cocotb
+      - make verilator
+      - make formal
+    critical_gaps:
+      - id: npu-production-accelerator
+        status: open
+        category: rtl_stub
+        severity: critical
+        affected_paths:
+          - rtl/npu/e1_npu.sv
+          - verify/cocotb/test_e1_npu.py
+          - verify/verilator/test_npu_gemm.cpp
+          - verify/formal/e1_npu_formal.sv
+          - scripts/check_npu_accelerator.py
+          - scripts/test_npu_accelerator_gate.py
+          - Makefile
+          - build/reports/npu_accelerator.json
+        partial_closure_evidence:
+          - docs/arch/npu-microarch.md (Gemmini v0 selection, MMIO map, 64-byte descriptor format, tensor memory ABI, v0 op set, IRQ/error registers, CPU fallback contract, validated envelope)
+          - verify/cocotb/npu/test_npu_queue_stress.py (skipped scaffolds for descriptor queue stress, completion IRQ, unsupported-op status pending e1_npu_gemmini_wrapper RTL)
+        current_evidence: >-
+          `make npu-accelerator-check` now writes `build/reports/npu_accelerator.json`
+          for the local descriptor-queue accelerator gate, and `make
+          npu-accelerator-gate-test` regression-tests that the report keeps
+          explicit false flags for phone, release, production-accelerator
+          release, NNAPI, and performance claims. The gate covers lint and local
+          cocotb accelerator suites when tools are present, but its claim
+          boundary explicitly excludes SoC-fabric/IOMMU wiring, NNAPI/VTS,
+          Linux/Android driver evidence, and phone-class throughput.
+          The 14A process-effects contract, SoC thermal sweep, SoC
+          operating-point optimization, CPU/NPU 2028 modeled benchmark
+          evaluation, design-space frontier, manual review, burst/sustained
+          policy, burst thermal transient, AOSP governor trace, 14A process
+          evaluation, and competitive-envelope reports now also keep
+          release, phone-class release, AOSP runtime/scheduler/thermal, RTL
+          implementation, PDK and physical signoff, measured
+          benchmark/power-thermal/skin/rail/package, silicon, manufacturing,
+          tapeout, reliability qualification, benchmark-leadership,
+          named-product, and purchasing-comparison claims false while their
+          status remains modeled or release-blocked.
+          The minimum Linux+NPU target report preserves only the narrow
+          integrated Linux NPU ML smoke claim and now explicitly keeps
+          phone-class performance, release, Android boot, Android NNAPI,
+          sustained performance, silicon, and production-readiness claims false
+          even when the accepted generated-AP transcript bundle and local NPU
+          smoke evidence make the aggregate status pass.
+          The NPU 2028 target checker now also requires the Android proof and
+          power/thermal template manifests to carry false flags for phone,
+          release, Android boot, Android NNAPI, sustained-performance, and
+          silicon claims while they remain template-only evidence.
+          The E1 NPU runtime contract now carries checked false flags for
+          Android NNAPI, phone-class accelerator, production compiler,
+          production DMA tensor execution, release, and sustained-performance
+          claims while it remains a prototype MMIO runtime contract.
+          The NPU roadmap contract now carries checked false flags for Android
+          boot, Android NNAPI, phone-class accelerator, release,
+          sustained-performance, and silicon claims while current_phase remains
+          L0_MMIO_PROTOTYPE, and the Android proof-bundle preflight report now
+          keeps runtime NNAPI, Android boot, release, phone, silicon, and
+          production-readiness claims false when local CTS/VTS/ADB readiness is
+          only a blocked environment preflight.
+          The deterministic NPU scale simulator output now carries false flags
+          for RTL DMA, Android NNAPI, silicon performance, phone-class
+          throughput, PDK signoff, and release claims while preserving the
+          architecture-model metrics and process-corner derates as planning
+          evidence only.
+          The modeled MLPerf inference harness now also keeps official
+          MLCommons submission, measured power, silicon performance,
+          phone-class throughput, production-readiness, release, and generic
+          claim flags false while its report remains host simulator evidence.
+          The E1X evidence bundle, execution coverage ladder, window-repair linkage,
+          window-route validation, vector-window fabric checksum, E1X3D benchmark,
+          E1X3D stacked-thermal, and E1X3D PD-signoff reports now also carry
+          explicit false flags for release, silicon, production accelerator,
+          full-output execution, package, PD/3D/electrothermal/SI/PI/foundry
+          signoff, foundry/wafer-sort/DFT, unbounded NoC liveness, physical
+          routing signoff, full-wafer execution, and performance/full-graph
+          claims even when their bounded architecture evidence reports PASS.
+          The E1X RTL contract, tile cocotb, and repair fuse-reader reports
+          now also keep full RISC-V compliance, wafer/full-wafer scale, PD, DFT,
+          package, silicon/foundry OTP/wafer-sort, measured-silicon, and release
+          claims false while their evidence remains bounded RTL/cocotb/stream
+          contract coverage.
+        blocking_gate: >-
+          AI accelerator release, NNAPI, throughput, model execution, and
+          software fallback percentage claims remain blocked unless the
+          accelerator gate is PASS and the downstream SoC-fabric, Android/Linux
+          driver, benchmark, power, and formal gaps are independently closed.
+        closure_evidence: Selected accelerator microarchitecture or wrapped IP with descriptor ABI, memory interface, tensor layout, interrupts, driver contract, performance counters, and coverage reports.
+        work_order: Replace the bounded scratch GEMM path with the selected accelerator microarchitecture and system memory interface.
+      - id: npu-test-coverage-accounting
+        status: open
+        category: test_gap
+        severity: high
+        affected_paths:
+          - verify/cocotb/test_e1_npu.py
+          - verify/verilator/test_npu_gemm.cpp
+          - docs/three-week-prototype-workstreams.md
+          - scripts/check_npu_coverage_summary.py
+          - scripts/test_npu_coverage_summary.py
+          - Makefile
+          - build/reports/npu_cocotb_coverage.json
+          - build/reports/npu_coverage_summary.json
+        current_evidence: >-
+          `make cocotb-npu` now runs 21 directed RTL tests, the focused
+          runtime fallback pytest, and `scripts/check_npu_coverage_summary.py`;
+          `make npu-coverage-summary-test` regression-tests the summary schema
+          and failure modes. The generated summary records all exposed opcode IDs,
+          GEMM_S8/GEMM_S4/vector shapes, status/error bits, IRQ clear/assert
+          paths, invalid-programming bins, descriptor read/write accounting,
+          counter bins, and software fallback boundary coverage, while carrying
+          explicit top-level false flags for phone, release, production
+          accelerator, NNAPI, and performance claims. The raw
+          build/reports/npu_cocotb_coverage.json artifact is also required to
+          carry matching false flags for phone, release, production accelerator,
+          NNAPI, performance, Android-driver, power, thermal, and DMA-backed
+          tensor-execution claims before the summary can pass.
+        blocking_gate: >-
+          Passing cocotb/verilator is still only directed local RTL/runtime
+          coverage; NPU production accelerator, NNAPI, model throughput, power,
+          and phone-class claims remain blocked by `npu-production-accelerator`
+          and `npu-formal-engine-coverage`.
+        closure_evidence: >-
+          Machine-readable coverage summary for all exposed opcodes,
+          dimensions, status bits, IRQ paths, invalid configs, and software
+          fallback cases at `build/reports/npu_coverage_summary.json`.
+        work_order: Mitigated for coverage accounting; keep production accelerator claims blocked until the microarchitecture/formal gaps close.
+      - id: npu-formal-engine-coverage
+        status: open
+        category: proof_gap
+        severity: high
+        affected_paths:
+          - verify/formal/e1_npu_formal.sv
+          - verify/formal/e1_npu.sby
+          - verify/properties/npu_axil_bind.sv
+          - rtl/npu/e1_npu.sv
+          - scripts/check_npu_formal_coverage.py
+          - scripts/test_npu_formal_coverage.py
+        current_evidence: >-
+          The addr<8 ceiling and the assume(!start) constraint are removed
+          (dossier §5.6.5). The harness now drives the full MMIO map and free
+          AXI-Lite slave responses, so the GEMM tile loop, the vector engine,
+          the packed scalar datapath, and the descriptor-ring FSM all run under
+          BMC depth 12, converging to PASS on smtbmc z3 (and independently on
+          bitwuzla) with the engine-agreement gate green. Proven, non-vacuous,
+          port-observable properties (reachability confirmed by anti-cover BMC
+          on the rdata interface): descriptor empty-flag soundness and
+          empty/busy exclusivity and reserved-bit zeroing via DESC_STATUS
+          (6'h13); monotonicity of DESC_BYTES_READ/WRITTEN (6'h19/6'h1a),
+          PERF_STALL_CYCLES (6'h1d) and PERF_SCRATCH_BYTES (6'h1e) absent the
+          documented clears; thermal-throttle no-downward-step (6'h1f) absent a
+          clear; STATUS_AUX reserved-bit zeroing; scalar mirror coverage; and
+          the AXI-Lite protocol property pack bound to the NPU master port
+          (verify/properties/npu_axil_bind.sv, master-side proof with
+          AXIL_PROTO_ASSUME_LIVENESS). `rtl/npu/e1_npu.sv` now exposes
+          `FORMAL`-only observability ports wired directly to the internal
+          GEMM/vector/descriptor state, and `verify/formal/e1_npu_formal.sv`
+          proves the non-MMIO tile-window contract through those ports: valid
+          GEMM dimensions, S8/S4 A/B bounds, aligned in-scratch C writeback
+          bounds, busy-loop i/j/l windows, vector source/destination window
+          bounds, vector address calculation from base+i, and descriptor
+          timeout prelimit. The RTL GEMM configuration predicate now validates
+          the whole configured A/B/C tile window before launch instead of only
+          the current address, preventing a formally found mid-loop out-of-bounds
+          launch case. Focused `e1_npu.sby` passed at BMC depth 12 on smtbmc z3.
+          `make npu-formal-coverage-check` now emits
+          build/reports/npu_formal_coverage.json and independently verifies the
+          formal manifest target, covered files, bitwuzla engine metadata,
+          depth-12 BMC task, status/log hashes, strict non-release manifest
+          flags, and the FORMAL-only GEMM/vector/descriptor observability tokens
+          used by the harness. That report keeps phone, release,
+          production-accelerator, NNAPI, performance, and full-NPU-correctness
+          claims false.
+        blocking_gate: >-
+          NPU formal pass now covers the software-visible (rdata-port and
+          AXI-master) contract plus bounded internal GEMM/vector scratch-window
+          safety through `FORMAL`-only ports. It must not be read as full NPU
+          production-accelerator closure.
+        remaining_gap: >-
+          Internal tile-address and vector-cursor properties are no longer
+          blocked on unsound Yosys hierarchical/bind taps because the RTL exposes
+          dedicated formal-only observation ports. Remaining formal depth gaps:
+          accumulator arithmetic overflow is not separately proven, the
+          desc_timeout>=128 exit edge requires depth>=128 or induction, and the
+          thermal wrap at 2^32 needs a count-near-wrap witness. The production
+          accelerator, tensor-memory hierarchy, driver ABI, and performance/power
+          claims remain blocked by `npu-production-accelerator`.
+        closure_evidence: >-
+          Dedicated formal-only observation ports in rtl/npu/e1_npu.sv plus
+          internal GEMM/vector bounds in verify/formal/e1_npu_formal.sv with a
+          verified converging PASS. Add k-induction (mode prove) or depth>=128
+          to witness the desc_timeout firing edge, add an accumulator overflow
+          proof if the arithmetic envelope expands, and add a near-2^32 thermal
+          saturation case.
+        work_order: >-
+          Follow-up to dossier §5.6.5. The MMIO/AXI-observable engine contract
+          is closed at depth 12 with engine agreement, and the internal
+          GEMM/vector scratch-window proof is now closed through formal-only
+          observability ports. Routine make formal runs e1_npu.sby single-engine
+          (z3) so the agreement gate stays green and the run_formal.sh
+          status/logfile copy contract is preserved; bitwuzla parity was
+          verified out of band. Keep the gap open until the remaining timeout,
+          accumulator-envelope, thermal-wrap, and production-accelerator evidence
+          lands.
+  display:
+    current_posture: timing_generator_with_top_level_sram_framebuffer_fetch
+    local_closures:
+      - e1_soc_top connects display scanout reads to the debug-visible SRAM-backed DRAM aperture
+      - out-of-aperture framebuffer addresses deassert ready and increment display underflow status
+    fail_closed:
+      - disabled_display_keeps_vsync_low
+      - unsupported_pixel_format_write_is_ignored
+      - out_of_aperture_framebuffer_reads_underflow
+    checks:
+      - make cocotb
+    critical_gaps:
+      - id: display-real-framebuffer-path
+        status: open
+        category: incomplete_subsystem
+        severity: critical
+        affected_paths:
+          - rtl/display/e1_display.sv
+          - rtl/display/e1_display_scanout.sv
+          - rtl/top/e1_soc_top.sv
+          - verify/cocotb/test_e1_display.py
+          - verify/cocotb/display/test_display_scanout.py
+          - sw/linux/dts/eliza-e1.dts
+          - sw/linux/dts/eliza-e1-soc.dtsi
+          - sw/linux/Documentation/devicetree/bindings/eliza/eliza,e1-display.yaml
+          - scripts/check_linux_bsp_contract.py
+          - scripts/test_linux_bsp_contract.py
+          - scripts/check_display_scanout.py
+          - scripts/test_display_scanout_gate.py
+          - Makefile
+        partial_closure_evidence:
+          - arch/display.md "v0 reference panel" section (720x1280 MIPI-DSI selection and DCS init sequence summary)
+          - rtl/display/e1_display_scanout.sv (production AXI4 read master + line FIFO + byte-assembly format unpack + register-programmed mode timing + DPI/DSI boundary, lint-clean under verilator --lint-only)
+          - verify/cocotb/display/test_display_scanout.py (XR24/RGB565/packed-RGB888 framebuffer scanout matches backing DRAM; mode timing matches programmed porches; forced underflow sets the status bit and recovers; disabled state, unsupported formats, AR stride monotonicity, AXI error status, and DCS/IRQ vsync cadence are property-checked) via scripts/check_display_scanout.py
+          - scripts/check_linux_bsp_contract.py (fails closed if the active display DTS node lacks IRQ_VSYNC, 720x1280 mode, XR24 format, or framebuffer base properties consumed by the Linux display glue)
+        current_evidence: >-
+          A production scanout controller (rtl/display/e1_display_scanout.sv)
+          models the buildable subset — AXI4 read master with QoS=DISPLAY_RT,
+          INCR bursts, multiple outstanding reads, a line FIFO with
+          backpressure, a fail-closed underflow policy (defined fill colour +
+          sticky status + counter), byte-assembly pixel-format unpack
+          (RGB565/packed RGB888/XRGB8888), register-programmed H/V mode
+          timing, and the digital controller->PHY DPI/DSI boundary. It is now
+          wired into e1_soc_integrated at the 0x1003_0000 display aperture:
+          its 32-bit AXI4 read master is upsized to the 128-bit fabric and
+          attached as fabric master[11], with display_scanout_reads_fabric_dram
+          proving reads through e1_axi4_interconnect into e1_dram_ctrl. The
+          legacy e1_soc_top path still uses e1_display.sv for v0 smoke
+          compatibility. `make display-scanout-check` runs the scanout lint +
+          cocotb evidence gate and writes build/reports/display_scanout.json
+          with explicit false flags for phone, release, panel-bringup, DSI-PHY,
+          DRM/KMS, DTS binding, panel DCS init, async pixel-clock CDC,
+          HIL/bandwidth trace, production-framebuffer, and e1_soc_top
+          replacement claims. The older directed e1_display cocotb
+          coverage artifact now carries checked false flags for phone, release,
+          production-framebuffer, Linux display-driver, DRM/KMS, panel-bringup,
+          DSI-PHY, compositor, and display-PHY claims, so MMIO/XR24 scanout
+          tests cannot be promoted to system display evidence. The DSI analog
+          PHY, D-PHY serializers, panel DCS init, DTS/software binding, async
+          pixel-clock CDC, e1_soc_top replacement/deprecation, and
+          HIL/bandwidth trace evidence remain
+          physical/product dependencies. `make
+          linux-bsp-contract-test` now regression-tests that static DTS/BSP
+          alignment still carries false flags for phone, release, Linux-boot,
+          Android-BSP, display-driver, DRM/KMS, display runtime binding,
+          simple-framebuffer runtime, panel DCS init, and DSI-host claims.
+        blocking_gate: Display subsystem pass must not imply real panel bring-up, the DSI analog PHY, DTS/software integration, or e1_soc_top v0-path replacement.
+        closure_evidence: DTS binding, panel DCS init at the DSI-host boundary, async pixel-clock CDC, e1_soc_top v0-path replacement or formal deprecation of that path, and hardware-in-loop or cycle-accurate scanout-bandwidth trace evidence.
+        work_order: Add the DTS node + DSI-host command boundary, close the async pixel-clock CDC, and either replace e1_soc_top's legacy SRAM-backed display path or formally deprecate that top in favor of e1_soc_integrated.
+      - id: display-proof-gap
+        status: open
+        category: proof_gap
+        severity: high
+        affected_paths:
+          - rtl/display/e1_display.sv
+          - rtl/display/e1_display_scanout.sv
+          - verify/formal/e1_display_scanout.sby
+          - verify/formal/e1_display_scanout_formal.sv
+          - verify/formal/e1_soc_top_formal.sv
+          - scripts/check_display_formal_coverage.py
+          - scripts/test_display_formal_coverage.py
+          - scripts/run_formal.sh
+        partial_closure_evidence:
+          - verify/cocotb/display/test_display_scanout.py (property-driven cocotb coverage — framebuffer-match per format, programmed-mode hsync/vsync/de cadence, DCS/IRQ vsync cadence, disabled-state quiescence, unsupported-format rejection, AR address monotonicity/stride alignment, AXI error status accounting, and forced-underflow status+recovery) via scripts/check_display_scanout.py
+          - scripts/check_display_scanout.py (requires the 10 named scanout/property tests and resolves the vendored OSS CAD Suite Verilator when it is not on PATH)
+          - verify/formal/e1_display_scanout_formal.sv + verify/formal/e1_display_scanout.sby (bounded 80-cycle SBY harness programs a 2x2 XR24 mode through MMIO, holds the AXI R channel empty, rejects an unsupported format write, clears underflow status through W1C, and checks port-visible DPI/DSI timing sidebands, active-window equivalence, fail-closed underflow fill/status, read-ready backpressure, fetch/stride address bounds, outstanding/FIFO/byte-buffer bounds, prefetch-arm alignment, and AXI read-master attributes)
+          - scripts/check_display_formal_coverage.py (requires the formal manifest to record e1_display_scanout as a passing depth-80 SBY BMC with z3, expected covered files, status/log hashes, strict non-release manifest flags, and harness/RTL tokens for the bounded scanout assertions) via make display-formal-coverage-check
+        current_evidence: >-
+          The scanout controller now has property-driven cocotb coverage in
+          addition to directed KATs. The standalone display gate requires 10
+          tests: format-correct framebuffer match for XR24/RGB565/packed
+          RGB888, programmed hsync/vsync/de timing, forced underflow
+          status+recovery, disabled-state quiescence, unsupported-format
+          rejection, framebuffer AR monotonicity and stride alignment, AXI
+          SLVERR/DECERR status accounting, and DCS/IRQ vsync cadence.
+          A focused SymbiYosys display task is now wired into make formal and
+          the formal manifest; it proves bounded, port-observable digital
+          controller properties for a programmed 2x2 mode. The RTL exposes
+          FORMAL-only observability for real internal scanout state, and the
+          harness checks disabled/pre-enable quiescence, programmed register
+          retention after an unsupported format write, DCS vsync mirroring,
+          IRQ-vsync containment, active-window/de equivalence, AXI read
+          attribute legality, FIFO/read-ready backpressure bounds,
+          outstanding/byte-buffer bounds, framebuffer fetch address bounds
+          against the active line and stride-derived words-per-line, prefetch
+          alignment, W1C underflow clear behavior, and fail-closed underflow
+          pixels/status when no read data arrives. `make
+          display-formal-coverage-check` now turns that bounded SBY evidence
+          into a standalone fail-closed report with explicit false flags for
+          phone, release, panel bring-up, DSI PHY, DRM/KMS, full-display
+          correctness, and production-framebuffer claims.
+        blocking_gate: Formal pass is bounded controller evidence only; it still does not prove the DSI PHY/panel integration, async pixel-clock CDC, all modes/formats, or end-to-end e1_soc_top display replacement.
+        closure_evidence: Optional SVA/formal assertions for the same hsync/vsync cadence, active window bounds, framebuffer address monotonicity, disabled-state behavior, unsupported formats, read-ready stalls, and AXI error accounting.
+        work_order: Add display-specific SVA/formal coverage if this subsystem needs formal signoff beyond the current property-driven cocotb gate.
+  bootrom:
+    current_posture: executable_secure_rom_wired_with_debug_identity_header
+    local_closures:
+      - RTL boot ROM loads the generated secure ROM hex with $readmemh while preserving debug-visible magic, contract version, and current handoff words
+      - fw/boot-rom contains an RV64 reset vector that sets mtvec, disables machine interrupts, calls the secure-boot entrypoint, and fails closed into the trap loop when verification fails
+      - boot ROM simulator transcript gate checks reset-vector fetch, mtvec setup, verifier call, verifier entrypoint execution, and fail-closed trap markers
+    fail_closed:
+      - unmapped_bootrom_words_read_zero
+      - bootrom_check_blocks_or_builds_reset_artifact
+      - bootrom_sim_transcript_missing_or_missing_markers
+    checks:
+      - make bootrom-check
+      - python3 scripts/check_bootrom_sim_transcript.py
+      - python3 scripts/check_secure_boot_negative_evidence.py
+      - python3 scripts/check_boot_security_chain_contract.py
+      - make cocotb
+      - make platform-contract-check
+    critical_gaps:
+      - id: bootrom-firmware-handoff
+        status: open
+        category: incomplete_subsystem
+        severity: critical
+        affected_paths:
+          - fw/boot-rom/reset.S
+          - fw/boot-rom/linker.ld
+          - fw/boot-rom/check_boot_rom.py
+          - rtl/bootrom/e1_bootrom.sv
+          - scripts/check_bootrom_sim_transcript.py
+          - scripts/check_bootrom_positive_handoff.py
+          - scripts/test_bootrom_positive_handoff.py
+          - scripts/check_boot_security_chain_contract.py
+          - sw/bootrom/e1_qemu_firmware.S
+          - scripts/run_qemu.sh
+        partial_closure_evidence:
+          - docs/arch/boot-rom-spec.md (reset vector, OTP layout, signature-verification stub algorithm, OpenSBI handoff ABI, debug-lock policy)
+          - fw/boot-rom/reset.S (executable RV64 reset path: hart parking, mtvec setup, CSR cleanup, secure-boot entrypoint call, fail-closed trap loop)
+          - fw/boot-rom/linker.ld (ROM aperture at architectural reset vector 0x0000_1000)
+          - fw/boot-rom/Makefile (riscv64 cross-build with fail-closed tools-check)
+          - rtl/bootrom/e1_bootrom.sv ($readmemh load of build/boot-rom/e1_secure_boot_rom.hex plus debug identity header)
+          - docs/boot-rom/release-evidence.md (simulator transcript claim boundary and reproduction gate)
+          - build/reports/gate-bootrom-sim-transcript-check.json (PASS with 5 required reset/verifier/fail-closed markers)
+          - scripts/check_bootrom_positive_handoff.py (generates the positive authenticated handoff report and fails closed until the signed-image/OpenSBI transcript exists)
+          - scripts/check_boot_security_chain_contract.py (static chain gate consumes the fail-closed transcript report, requires a separate positive authenticated handoff report, and remains blocked on the manufacturing key-ceremony document)
+          - docs/security/avb-a-b-ota.md (mixed implementation status for the firmware AVB verifier and A/B OTA state-machine evidence, while retaining explicit non-claims for AOSP runtime enforcement and physical OTA paths)
+        current_evidence: >-
+          The RTL boot ROM now loads the generated secure ROM image and the QEMU
+          transcript gate passes the reset/vector/verifier/fail-closed marker
+          set. The fail-closed boot ROM simulator report and secure-boot
+          negative-evidence report now carry explicit false flags for phone,
+          release, provisioned-root, signed-image handoff, Linux boot, Android
+          boot, and silicon secure-boot claims. The OTP controller RTL
+          lint/cocotb report now also keeps silicon OTP, eFuse macro,
+          provisioning, secure-boot, production-readiness, release, and generic
+          claim flags false while its evidence remains RTL simulation only. The
+          DICE measurement-chain report now also keeps hardware UDS, silicon
+          entropy, provisioned identity, secure-boot release,
+          production-readiness, and release claims false while its passing
+          evidence remains software KAT and freestanding build evidence only.
+          The
+          broader boot security-chain contract now machine-checks that fail-closed negative evidence is not
+          enough for firmware/OS readiness:
+          scripts/check_bootrom_positive_handoff.py now generates
+          build/reports/gate-bootrom-positive-handoff-check.json with explicit
+          false flags for phone, release, Linux boot, Android boot, and silicon
+          secure-boot claims, and fails closed until
+          docs/boot-rom/transcripts/e1_secure_bootrom_positive_handoff_qemu_rv64.txt
+          contains reset, verifier, authenticated-image, manifest-target, and
+          OpenSBI-entry markers. scripts/check_boot_security_chain_contract.py
+          now blocks if that positive report is missing those explicit denial
+          flags, so simulator handoff evidence cannot be promoted to release or
+          silicon secure-boot readiness. That positive authenticated handoff
+          evidence is still missing, and the contract also blocks on
+          manufacturing key-ceremony evidence.
+        blocking_gate: Firmware and OS boot gates remain blocked until a positive authenticated handoff transcript and closed secure-boot lifecycle evidence exist.
+        closure_evidence: Executable reset ROM initializes machine state, validates/authenticates a signed handoff image, and is covered by RTL or emulator boot transcript checks that include the positive OpenSBI/Linux handoff path.
+        work_order: >-
+          Extend the executable secure ROM path from fail-closed negative
+          evidence to an authenticated first-stage/OpenSBI handoff with checked
+          transcript and closed lifecycle/key evidence; the gate now names the
+          exact positive handoff checker/report/transcript contract that must be
+          supplied before this gap can close.
+  dram:
+    current_posture: small_sram_backed_dram_aperture
+    local_closures:
+      - word-aligned byte-strobed reads and writes are exercised through debug MMIO, DMA, CPU contract, and display scanout paths
+    fail_closed:
+      - unaligned_axi_lite_accesses_return_slverr
+      - out_of_model_axi_lite_accesses_return_slverr
+    checks:
+      - make cocotb-contract
+      - make cocotb-cpu
+      - make cocotb
+    critical_gaps:
+      - id: dram-controller-and-capacity
+        status: open
+        category: incomplete_subsystem
+        severity: critical
+        affected_paths:
+          - rtl/memory/e1_axi_lite_dram.sv
+          - rtl/memory/dram_ctrl/e1_dram_ctrl.sv
+          - rtl/top/e1_soc_top.sv
+          - rtl/interconnect/e1_linux_soc_contract.sv
+          - scripts/check_dram_controller.py
+          - scripts/test_dram_controller_gate.py
+          - scripts/test_dram_controller_make_target.py
+          - Makefile
+        current_evidence: >-
+          rtl/memory/dram_ctrl/e1_dram_ctrl.sv now presents a full AXI4 slave
+          with burst/outstanding/row-hit-miss scheduling backed by a sim-only
+          behavioural array behind a modelled DFI 5.0 boundary, replacing the
+          small AXI-Lite SRAM aperture for the local controller evidence path.
+          The documented `make dram-controller-check` command is now wired to
+          scripts/check_dram_controller.py and `make memory-axi4-check` invokes
+          that gate before the AXI4 cocotb suite, so the 2 GiB geometry,
+          row-latency model, DECERR fail-closed path, and required cocotb tests
+          have a reproducible Make entry point. The report carries explicit
+          false flags for phone, release, Linux-memory, bandwidth, LPDDR-PHY,
+          silicon-capacity, and UMA claims, regression-tested by
+          `make dram-controller-gate-test`. DRAMSim3 sweep records are also
+          required to carry matching false flags for Linux-memory, bandwidth,
+          LPDDR-PHY, silicon-capacity, and UMA claims, so behavioural
+          bandwidth/latency numbers cannot be promoted into product memory
+          evidence. The LPDDR5X analog PHY and DFI 5.0 training remain
+          closed-IP physical dependencies
+          (docs/evidence/memory/lpddr-phy-procurement.yaml), so this is a
+          verified large-memory model, not a silicon-ready PHY-attached
+          controller; the legacy rtl/memory/e1_axi_lite_dram.sv aperture is
+          still wired into the v0 tops. `scripts/check_mcie.py` now writes
+          build/reports/mcie.json with explicit false flags for generic,
+          release, LPDDR-PHY, silicon, side-channel lab, AXI4 integration, and
+          production-readiness claims, so local memory crypto/integrity RTL
+          evidence cannot be promoted to PHY-attached or silicon DRAM evidence.
+        blocking_gate: Memory bandwidth, Linux memory sizing, and production DRAM claims remain blocked.
+        closure_evidence: Real controller boundary or verified external memory model, capacity discovery, latency/backpressure coverage, error policy, and boot-time memory tests.
+        work_order: Replace the SRAM model with a real DRAM controller boundary, larger capacity, latency/backpressure modeling, and boot-time memory discovery.
+  pass_gates:
+    current_posture: scaffold_checks_are_named_but_some_pass_without_real_tools_or_boot
+    fail_closed:
+      - stub_audit_requires_open_gap_manifest
+      - qemu_and_renode_report_blocked_without_executable_smoke
+      - formal_can_require_sby_with_REQUIRE_SBY
+    checks:
+      - make stub-audit
+      - make formal
+      - make qemu-check
+      - make renode-check
+    critical_gaps:
+      - id: formal-yosys-fallback-is-not-equivalent
+        status: open
+        category: misleading_pass_gate
+        severity: high
+        affected_paths:
+          - scripts/run_formal.sh
+          - verify/check_formal_engine_agreement.py
+          - verify/formal/*.sby
+          - scripts/yosys_formal_top_structural.ys
+          - scripts/yosys_formal_npu_structural.ys
+          - scripts/yosys_formal_dma.ys
+          - scripts/check_mvp_status.py
+          - scripts/pipeline_check.py
+          - scripts/test_pipeline_formal_manifest.py
+        current_evidence: >-
+          `run_formal.sh` writes `build/reports/formal_manifest.json` with an
+          explicit evidence_class per target (`fallback_structural_only`,
+          `fallback_yosys_sat`, `blocked_requires_sby`, `sby_bmc`, or
+          `sby_bmc_deep`) and a strict-release boundary. `pipeline_check.py`
+          rejects non-SBY evidence when `--strict-formal` is set, requires
+          `mode=sby-deep-top` for strict signoff, and
+          `scripts/test_pipeline_formal_manifest.py` now regression-tests that
+          labeled fallback passes only non-strict scaffold validation and fails
+          strict formal validation. Routine SymbiYosys tasks now use one
+          deterministic engine per task and `run_formal.sh` runs
+          `verify/check_formal_engine_agreement.py` over each canonical SBY log
+          before accepting the formal gate, so a PASS cannot hide a configured
+          solver that timed out, errored, or was terminated before returning a
+          status. Multi-task SBY targets aggregate all task statuses/logs into
+          the canonical evidence path, so bmc and prove tasks are both visible
+          to the agreement gate and manifest hash checks. The manifest also
+          records each SBY target's solver list, task mode/depth, and covered
+          files plus explicit `fallback_equivalent_to_sby=false`,
+          `deep_top_required_for_release=true`, and
+          `strict_release_claim_allowed` fields; `pipeline_check.py` rejects SBY
+          evidence that omits that metadata or lets strict release status drift
+          away from `mode=sby-deep-top`.
+        blocking_gate: Release or signoff CI must set REQUIRE_SBY=1 and, where needed, REQUIRE_DEEP_FORMAL=1.
+        closure_evidence: CI distinguishes structural checks from property proofs and records solver, depth, status, and covered modules per proof.
+        work_order: Mitigated for strict formal signoff separation; keep fallback labeled as fallback and prevent it from satisfying deep formal signoff gates.
+      - id: qemu-renode-scaffold-pass-risk
+        status: open
+        category: misleading_pass_gate
+        severity: high
+        affected_paths:
+          - scripts/run_qemu.sh
+          - scripts/run_renode.sh
+          - scripts/archive_release.sh
+          - scripts/check_release_archive.py
+          - scripts/test_release_archive_simulator_evidence.py
+          - docs/three-week-prototype-workstreams.md
+        current_evidence: >-
+          QEMU and Renode checks are split from e1-chip boot validation:
+          `scripts/run_qemu.sh --check` archives `qemu_smoke.log` plus
+          `qemu_smoke.manifest` as qemu-virt executable-transcript evidence
+          with an explicit qemu-virt-only claim boundary and PASS status token,
+          `scripts/run_renode.sh --check` emits
+          `build/renode/eliza_e1_status.json` with a qemu-virt-only claim
+          boundary, and release archives now copy `build/renode` alongside
+          `build/reports`. `scripts/check_release_archive.py` requires both
+          the QEMU smoke manifest and the Renode status report, rejects a QEMU
+          smoke manifest that lacks `status=PASS` or the qemu-virt-only claim
+          boundary, while `scripts/test_release_archive_simulator_evidence.py`
+          proves archives block if either simulator evidence boundary artifact
+          is missing, if the QEMU manifest boundary/status tokens are absent,
+          or if the simulator artifacts omit explicit false claim flags. The
+          QEMU smoke manifest, QEMU OS-attempt manifest, and Renode status
+          report now carry false flags for phone, release, hardware-boot,
+          silicon-evidence, and Linux-boot claims. The release-archive report now separates
+          `archive_validation_passed` from `release_ready=false` and carries
+          explicit false flags for phone, release, hardware-boot,
+          silicon-evidence, and simulator-pass-as-release-evidence claims.
+          `scripts/check_fpga_sim_alignment.py` now also emits false flags for
+          generic, release, FPGA bitstream release, e1 RTL alignment,
+          hardware-boot, silicon, and production-readiness claims, and fails
+          closed if the FPGA and QEMU/Renode evidence streams are absent or
+          misaligned.
+        blocking_gate: Boot/OS readiness must remain blocked without checked firmware image and serial transcript evidence.
+        closure_evidence: Status reporting and release archives distinguish scaffold/preflight checks from real boot transcript evidence; real e1-chip boot closure still requires a contract-compatible model, firmware image, DTB, serial transcript, and exit-status checks.
+        work_order: Mitigated for qemu-virt/Renode scaffold pass risk; keep e1-chip boot/OS readiness blocked until the real boot evidence exists.

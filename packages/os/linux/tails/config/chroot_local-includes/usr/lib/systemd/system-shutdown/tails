@@ -1,0 +1,14 @@
+#!/bin/sh
+
+set -x
+
+# This script is only run by the instance of systemd-shutdown that's
+# run outside of the initramfs, and not by the other instance of
+# systemd-shutdown that's run (as /shutdown) after returning to the
+# initramfs during shutdown: in the initramfs, this script is
+# overwritten with /usr/local/lib/initramfs-pre-shutdown-hook.
+
+# Debugging
+/bin/ls -l /run/initramfs
+
+echo 3 > /proc/sys/vm/drop_caches

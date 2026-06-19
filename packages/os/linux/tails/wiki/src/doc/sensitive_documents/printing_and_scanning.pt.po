@@ -1,0 +1,137 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:08+0000\n"
+"PO-Revision-Date: 2021-09-26 18:24+0000\n"
+"Last-Translator: Halley Pacheco de Oliveira "
+"<halley.oliveira@protonmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Printing and scanning\"]]\n"
+msgstr "[[!meta title=\"Imprimir e digitalizar\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Printing"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To start *Simple Scan* choose\n"
+#| "<span class=\"menuchoice\">\n"
+#| "  **Applications**&nbsp;▸\n"
+#| "  **Graphics**&nbsp;▸\n"
+#| "  **Simple Scan**</span>.\n"
+msgid ""
+"To configure a printer or manage your printing jobs, choose **Apps&nbsp;▸ "
+"System Tools&nbsp;▸ Settings&nbsp;▸ Printers**."
+msgstr ""
+"Para iniciar a *Digitalização Simples* escolha\n"
+"<span class=\"menuchoice\">\n"
+"  **Aplicativos**&nbsp;▸\n"
+"  **Gráficos**&nbsp;▸\n"
+"  **Digitalização simples**</span>.\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To check the compatibility of your printer with Linux and Tails, consult "
+#| "the [OpenPrinting database](https://www.openprinting.org/printers) of the "
+#| "Linux Foundation."
+msgid ""
+"To check the compatibility of your printer with Linux and Tails, consult the "
+"[OpenPrinting database](https://openprinting.github.io/printers/) of the "
+"Linux Foundation."
+msgstr ""
+"Para verificar a compatibilidade da sua  impressora com o Linux e o Tails, "
+"consulte a [base de dados OpenPrinting](https://www.openprinting.org/"
+"printers) da Linux Foundation."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"tip\">\n"
+"<p>To reuse the configuration of your printers across different working\n"
+"sessions, turn on the [[Printers|persistent_storage/configure#printers]]\n"
+"feature of the Persistent Storage.</p>\n"
+"</div>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Printing PDFs"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Before printing PDFs, you can use [*BookletImposer*](https://"
+"kjo.herbesfolles.org/bookletimposer/) to:"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Reduce the number of pages in a PDF by putting several pages on every sheet."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid "Produce a PDF booklet that can be folded after printing."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Scanning"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Tails includes <span class=\"application\">[Simple\n"
+#| "Scan](https://launchpad.net/simple-scan)</span>, a tool to scan both\n"
+#| "documents and photos.\n"
+msgid ""
+"Tails includes the [*Document Scanner*](https://apps.gnome.org//"
+"SimpleScan/)  utility to scan documents and photos."
+msgstr ""
+"O Tails inclui a ferramenta <span class=\"application\">[Digitalização\n"
+"Simples](https://launchpad.net/simple-scan)</span>, para digitalizar tanto\n"
+"documentos quanto fotos.\n"
+
+#. type: Plain text
+msgid ""
+"To open *Document Scanner*, choose **Apps&nbsp;▸ Utilities&nbsp;▸ Document "
+"Scanner**."
+msgstr ""
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "To start *Simple Scan* choose\n"
+#~| "<span class=\"menuchoice\">\n"
+#~| "  **Applications**&nbsp;▸\n"
+#~| "  **Graphics**&nbsp;▸\n"
+#~| "  **Simple Scan**</span>.\n"
+#~ msgid ""
+#~ "To start *Simple Scan* choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Graphics**&nbsp;▸\n"
+#~ "  **Simple Scan**</span>.\n"
+#~ msgstr ""
+#~ "Para iniciar a *Digitalização Simples* escolha\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Aplicativos**&nbsp;▸\n"
+#~ "  **Gráficos**&nbsp;▸\n"
+#~ "  **Digitalização simples**</span>.\n"

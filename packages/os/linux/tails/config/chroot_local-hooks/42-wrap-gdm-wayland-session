@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -eu
+
+echo "Wrapping gdm-wayland-session to give feedback to the user when GDM cannot start"
+
+for sessiontype in wayland x; do
+    sessionfile=/usr/libexec/gdm-${sessiontype}-session
+
+    dpkg-divert --add --rename --divert \
+                ${sessionfile}.real \
+                ${sessionfile}
+
+    ln -s ${sessionfile}.tails ${sessionfile}
+done

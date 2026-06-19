@@ -1,0 +1,191 @@
+schema: eliza.e1_phone_display_camera_acceptance_checklist.v1
+status: blocked_display_camera_acceptance_requires_supplier_route_bringup_capture_and_clearance
+date: '2026-05-21'
+claim_boundary: Acceptance checklist for the selected display/touch stack and front/rear MIPI camera modules. It
+  is not a supplier-approved drawing pack, not a pinout or footprint freeze, not routed MIPI signoff, not display/touch
+  bring-up, not camera capture evidence, and not enclosure release.
+source_artifacts:
+  - board/kicad/e1-phone/display-camera-oem-integration.yaml
+  - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
+  - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
+  - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml
+  - package/display/v0-dsi-720x1280.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+interface_summary:
+  display_part: CH550FH01A-CT
+  display_resolution: 1080x1920
+  display_outline_mm:
+    width: 77.1
+    height: 151.77
+    thickness: 3.39
+  device_envelope_mm:
+    width: 78.0
+    height: 153.6
+    max_thickness: 11.8
+  display_clearance_mm:
+    width_clearance_mm: 0.9
+    height_clearance_mm: 1.83
+  display_fits_current_envelope: true
+  rear_camera_module: SF-XR3855A-A0
+  rear_camera_sensor: OV13855_or_OV13850
+  rear_camera_pin_count: 24
+  front_camera_module: SF-G5035S60FY
+  front_camera_sensor: GC5035
+  front_camera_pin_count: 30
+  dsi_pair_count: 5
+  csi_clock_pair_count: 8
+  height_models_required:
+    - display_fpc_connector
+    - rear_camera_module
+    - front_camera_module
+  connector_pinout_execution_status: blocked_requires_supplier_display_camera_pinouts_connector_mpn_footprints_and_step
+  connector_pinout_execution_record_count: 3
+  connector_alternate_display_branch_count: 2
+  integration_status: blocked_requires_display_camera_supplier_pack_routed_mipi_and_capture_evidence
+  verified_display_source_count: 5
+  parseable_display_alternate_count: 2
+  parseable_display_alternates:
+    - branch_id: meta_055wu01_40pin
+      source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      marketplace: Alibaba
+      observed_active_area_mm:
+        width: 68.04
+        height: 120.96
+      connector_release_status: blocked_shortlist_only_until_signed_40pin_fpc_pinout_mating_connector_land_pattern_step_and_sample
+    - branch_id: e549_rm67191_amoled
+      source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      marketplace: Made-in-China
+      observed_outline_mm:
+        width: 70.66
+        height: 128.36
+        thickness: 0.82
+      observed_active_area_mm:
+        width: 68.299
+        height: 121.421
+      connector_release_status: blocked_shortlist_only_until_signed_amoled_touch_stack_power_sequence_fpc_pinout_connector_step_and_sample
+supplier_draft_links:
+  display_touch: board/kicad/e1-phone/sourcing-drafts/display_touch/rfq-transmittal.yaml
+  rear_camera: board/kicad/e1-phone/sourcing-drafts/rear_camera/rfq-transmittal.yaml
+  front_camera: board/kicad/e1-phone/sourcing-drafts/front_camera/rfq-transmittal.yaml
+acceptance_items:
+  - id: display_supplier_pack_and_sample
+    owner: sourcing_display
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - supplier-signed LCM plus CTP 2D drawing with pin-1, FPC exit, and cover-lens datums
+      - orderable display/touch MPN and mating connector MPN
+      - display stack STEP model and incoming sample inspection report
+    blocker: Display/touch supplier drawing, exact variant, connector, STEP, and sample evidence are missing.
+  - id: display_fpc_pinout_symbol_footprint
+    owner: ee_layout
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - exact display/touch FPC pinout with DSI lanes, touch I2C, TE, reset, bias, backlight, and grounds
+      - display-camera-connector-pinout-execution.yaml display_touch_fpc record completed with supplier pinout
+      - reviewed KiCad connector symbol and land pattern
+      - connector height, stiffener keepout, and FPC bend model in routed-board STEP
+    blocker: Display connector pinout and footprint are not supplier-approved or frozen.
+  - id: mipi_dsi_route_si_and_return_path
+    owner: signal_integrity
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - routed 100 ohm MIPI D-PHY clock and four data pairs
+      - length-skew, impedance, via count, and return-path report
+      - ESD and common-mode placement review at the display connector
+    blocker: Display MIPI DSI is represented as constraints only, not routed signoff.
+  - id: display_touch_power_sequence_and_bringup
+    owner: validation
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - panel init sequence and touch-controller datasheet or register pack
+      - bias, backlight, reset, TE, and touch I2C power-sequence oscilloscope log
+      - display image, touch probe, brightness, and inrush-current bring-up report
+    blocker: Display/touch electrical bring-up and power sequencing are not measured.
+  - id: display_alternate_screen_branch_release_gate
+    owner: sourcing_display
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - 055WU01 signed 40-pin FPC pinout, mating connector MPN, land pattern, STEP, panel init data, and sample
+      - E549/RM67191 AMOLED signed FPC pinout, touch stack, power sequence, mating connector, STEP, and sample
+      - side-by-side envelope, thickness, brightness, touch, and connector risk review against CH550FH01A-CT
+      - explicit promotion decision before any alternate display symbol, footprint, or enclosure branch is released
+    blocker: Parseable display alternates are shortlist-only and cannot replace the primary display without supplier packs.
+  - id: rear_camera_supplier_pack_and_sample
+    owner: sourcing_camera
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - rear camera signed 2D drawing with lens center, barrel height, FPC exit, and keepout
+      - display-camera-connector-pinout-execution.yaml rear_camera_fpc record completed with supplier pinout
+      - rear camera FPC pinout, mating connector MPN, and land pattern
+      - rear camera STEP model, sample inspection report, and sensor driver notes
+    blocker: Rear camera supplier drawing, pinout, connector, STEP, and sample evidence are missing.
+  - id: front_camera_supplier_pack_and_sample
+    owner: sourcing_camera
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - front camera signed 2D drawing with optical center, FPC exit, stiffener, and keepout
+      - display-camera-connector-pinout-execution.yaml front_camera_fpc record completed with supplier pinout
+      - front camera FPC pinout, mating connector MPN, and land pattern
+      - front camera STEP model, sample inspection report, and driver notes
+    blocker: Front camera supplier drawing, pinout, connector, STEP, and sample evidence are missing.
+  - id: mipi_csi_route_power_and_clocking
+    owner: signal_integrity
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - routed MIPI CSI clock/data lane constraints for rear and front cameras
+      - MCLK, I2C, reset, PWDN, AF/VCM, and AVDD/DVDD rail sequence review
+      - length-skew, impedance, return-path, and ESD placement report
+    blocker: Camera MIPI CSI, control, and rail routing are not signed off.
+  - id: camera_capture_iq_and_calibration
+    owner: camera_validation
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - rear and front sensor register packs or Android/Linux driver notes
+      - V4L2 or Android Camera HAL capture log for both cameras
+      - autofocus/VCM, OTP/calibration, exposure, color, and image-quality report
+    blocker: Camera software bring-up, capture, and image-quality evidence are missing.
+  - id: display_camera_z_stack_and_enclosure_clearance
+    owner: mechanical
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - routed board STEP with final display connector and camera modules
+      - display FPC bend, camera lens window, black mask, earpiece, and cover-glass clearance report
+      - tolerance stack proving the selected 5.5 inch display fits the 78.0 x 153.6 x 11.8 mm flush-back envelope
+    blocker: Display/camera z-stack and enclosure clearances are still based on planning geometry.
+cross_checks:
+  display_part_matches_integration_and_fit: true
+  display_fits_current_envelope: true
+  display_camera_rfq_drafts_exist: true
+  display_has_five_dsi_pairs_tracked: true
+  camera_clock_pairs_tracked: true
+  height_models_include_display_and_cameras: true
+  connector_pinout_execution_fail_closed: true
+  display_alternate_sources_tracked_fail_closed: true
+  connector_alternate_branches_match_integration: true
+  release_outputs_fail_closed: true
+  all_acceptance_items_blocked: true
+release_blockers:
+  - Display/touch and camera supplier drawings, pinouts, connector land patterns, STEP models, and samples missing
+  - Parseable 055WU01 and E549/RM67191 display alternates require signed supplier packs, samples, and promotion review before use
+  - Display/camera connector pinout execution package is blocked until supplier pinouts and connector MPNs arrive
+  - Routed MIPI DSI/CSI length-skew, impedance, return-path, and DRC/SI evidence missing
+  - Display touch bring-up, camera capture, image-quality, and calibration evidence missing
+  - Routed-board STEP z-stack and enclosure clearance report missing for display and camera modules
+forbidden_claims:
+  - display_camera_oem_ready
+  - display_touch_ready
+  - camera_ready
+  - mipi_routed
+  - supplier_pack_received
+  - pinouts_frozen
+  - footprints_frozen
+  - step_models_bound
+  - display_bringup_ready
+  - camera_capture_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

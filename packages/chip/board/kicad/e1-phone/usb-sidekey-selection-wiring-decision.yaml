@@ -1,0 +1,207 @@
+schema: eliza.e1_phone_usb_sidekey_selection_wiring_decision.v1
+status: blocked_usb_sidekey_selection_requires_supplier_drawings_real_schematic_route_measurements_and_enclosure_load_path
+date: '2026-05-21'
+claim_boundary: Explicit USB-C, USB-PD, charger, power-button, and volume-button selection and wiring decision
+  for the E1 phone planning package. It records the selected EVT0 connector, conditional production alternate,
+  side-key switch family, power/PD/charger contracts, required nets, route classes, factory probes, and mechanical
+  load paths. It is not a supplier drawing pack, not a KiCad footprint freeze, not routed PCB evidence, not
+  PD/charger bring-up, not button force/travel validation, and not enclosure-ready evidence.
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - package/usb-c/e1-phone-usb-c-port.yaml
+  - package/usb-pd/tps65987.yaml
+  - package/charger/max77860.yaml
+  - package/human-interface/side-buttons.yaml
+  - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
+  - board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+  - board/kicad/e1-phone/usb-sidekey-integration.yaml
+  - board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
+  - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+upstream_status:
+  usb_c_package: planning_binding_no_schematic_no_fabricated_board
+  usb_pd_package: planning_binding_no_bonded_pins_no_fabricated_board
+  charger_package: planning_binding_no_bonded_pins_no_fabricated_board
+  side_buttons_package: planning_binding_no_schematic_no_fabricated_board
+  usb_sidekey_source_revalidation: public_sources_revalidated_usb_sidekey_not_supplier_approved
+  usb_sidekey_mechanical_decision: blocked_usb_sidekey_mechanical_decision_requires_supplier_drawings_routed_step_and_measurements
+  usb_sidekey_integration: blocked_requires_usb_c_pd_charger_sidekey_routed_and_measured_evidence
+  usb_sidekey_schematic_net_binding: blocked_usb_sidekey_net_binding_requires_real_schematic_footprints_route_and_measurements
+  usb_sidekey_acceptance: blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements
+  placement_interface_matrix: concept_constraints_not_routed_pcb
+  supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
+selected_hardware_stack:
+  usb_c_evt0_connector:
+    vendor: GCT
+    family: USB4105
+    type: USB_Type_C_USB2_receptacle
+    active_contacts: 16
+    current_rating: VBUS_5A_collective
+    board_decision: keep_for_evt0_usb2_pd_charge_adb_fastboot_debug
+    rationale: USB2-only Type-C reduces first-route density while retaining charging, ADB, fastboot, debug, and PD CC paths.
+  usb_c_conditional_alternate:
+    vendor: Molex
+    family: 221632_or_217804_Port_On
+    type: USB_Type_C_24_pin_waterproof_receptacle
+    board_decision: hold_for_waterproof_or_superspeed_revision_only
+    promote_only_if:
+      - waterproof MPN, gasket, aperture, drain, shell datum, and cable-overmold clearance are selected
+      - USB3 or DisplayPort lanes are bonded, muxed, routed, simulated, and validated
+      - routed board STEP and enclosure aperture are cleared with final connector model
+  usb_pd_controller:
+    vendor: Texas Instruments
+    part: TPS65987DDH
+    role: USB_PD_sink_policy_CC_controller_and_Type_C_state_machine
+    board_decision: keep_for_mainline_typec_driver_and_dead_battery_boot_path_pending_firmware_and_attach_logs
+  charger_power_path:
+    vendor: Analog Devices
+    part: MAX77860
+    role: one_cell_li_ion_charger_and_system_power_path
+    charge_current_max_a: 3.0
+    board_decision: keep_for_first_phone_charge_path_pending_i2c_ntc_id_cc_cv_and_jeita_logs
+  side_key_primary:
+    vendor: Panasonic
+    family: EVQ-P7_EVQ-P3_EVQ-9P7
+    type: SMD_side_push_tactile
+    dimensions_mm: {length: 3.5, width: 2.9, height: 1.35}
+    travel_mm: 0.2
+    board_decision: keep_as_primary_phone_edge_side_push_family
+  side_key_conditional_alternate:
+    vendor: Littelfuse_CK
+    family: KMR2
+    type: micro_miniature_SMT_tactile_top_actuated
+    dimensions_mm: {length: 4.2, width: 2.2, height: 1.9}
+    board_decision: hold_for_plunger_or_subassembly_revision_only
+placement_and_mechanical_policy:
+  usb_c:
+    active_region_refdes: J_USB_C
+    board_region_mm: {x: 26.0, y: 126.0, width: 16.0, height: 6.0}
+    board_edge: bottom_center
+    shell_load_path: through_hole_stakes_or_enclosure_saddle_must_carry_plug_load
+    release_decision: blocked_until_signed_connector_drawing_step_shell_load_path_plug_overmold_sweep_and_routed_board_step_exist
+  side_keys:
+    active_connector_refdes: SW_POWER_VOL
+    connector_region_mm: {x: 18.0, y: 26.0, width: 12.0, height: 3.0}
+    actuator_spine_region_mm: {x: 4.0, y: 50.0, width: 7.0, height: 46.0}
+    external_buttons:
+      - power
+      - volume_up
+      - volume_down
+    load_path: external_caps_push_enclosure_rib_elastomer_or_flex_stiffener_not_switch_solder_joints
+    release_decision: blocked_until_switch_or_flex_drawing_force_travel_stack_wake_recovery_and_routed_step_clearance_exist
+wiring_contract:
+  usb_c_required_nets:
+    - GND
+    - SHIELD_GND
+    - USBPD_I2C_SCL
+    - USBPD_I2C_SDA
+    - USBPD_IRQ_N
+    - USBPD_RESET
+    - USB_CC1
+    - USB_CC2
+    - USB_DN
+    - USB_DP
+    - VBUS
+  pd_required_nets:
+    - USBPD_I2C_SCL
+    - USBPD_I2C_SDA
+    - USBPD_IRQ_N
+    - USBPD_RESET
+    - USB_CC1
+    - USB_CC2
+    - USB_DN
+    - USB_DP
+    - VBUS
+  charger_required_nets:
+    - BAT_ID
+    - BAT_NTC
+    - CHG_CE_N
+    - CHG_I2C_SCL
+    - CHG_I2C_SDA
+    - CHG_IRQ_N
+    - CHG_OTG_EN
+    - CHG_TS
+    - GND
+    - SYS
+    - VBAT
+    - VBUS
+  side_key_required_nets:
+    - PWR_KEY_N
+    - VOL_UP_N
+    - VOL_DOWN_N
+    - AON_1V8
+    - GND
+  side_key_recommended_min_contacts: 8
+route_and_probe_contract:
+  usb2_diff_pair:
+    routing_constraint: USB_DP_DN
+    nets: [USB_DP, USB_DN]
+    impedance_ohm_diff: 90
+    max_length_mm: 90
+    intra_pair_skew_mm_max: 0.5
+  side_key_bus:
+    routing_constraint: SIDE_KEYS
+    nets: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N]
+    max_length_mm: 80
+    debounce_ms: 20
+  factory_probe_required_nets:
+    - USB_CC1
+    - USB_CC2
+    - USB_DP
+    - USB_DN
+    - VBUS
+    - SHIELD_GND
+    - PWR_KEY_N
+    - VOL_UP_N
+    - VOL_DOWN_N
+    - AON_1V8
+    - VBAT
+    - SYS
+bringup_and_release_policy:
+  supplier_response_packs_received: 0
+  release_allowed_without_supplier_response_packs: false
+  required_before_layout_release:
+    - signed USB-C drawing, land pattern, shell stake datum, STEP, lifecycle, insertion-force data, ESD/TVS choice, and shell-ground policy
+    - TPS65987 pinout/configuration, firmware/provisioning path, CC attach on both plug flips, dead-battery boot, PPS transcript, and Type-C HAL evidence
+    - MAX77860 symbol/footprint, I2C readback, NTC/ID readback, CC/CV charge cycle, JEITA hot/cold, OTG policy, and thermal copper review
+    - side-key switch or flex signed drawing, force/travel sample CSV, solder-load path, wake/recovery firmware logs, debounce/leakage, and fixture access
+    - routed board STEP with USB-C shell, plug overmold, side-key load path, and approved enclosure release clearance
+cross_checks:
+  usb_evt0_connector_matches_package_binding: true
+  usb_waterproof_superspeed_alternate_not_promoted: true
+  pd_controller_matches_package_binding: true
+  charger_matches_package_binding: true
+  side_key_primary_matches_package_binding: true
+  usb_region_matches_active_matrix: true
+  side_key_regions_match_active_matrix_and_package: true
+  usb_required_nets_present_in_block_netlist: true
+  pd_charger_required_nets_present_in_block_netlist: true
+  side_key_required_nets_present_in_block_netlist: true
+  route_constraints_cover_usb2_and_side_keys: true
+  factory_probe_covers_usb_charger_and_side_key_nets: true
+  supplier_response_packs_absent_and_required: true
+  all_release_claims_fail_closed: true
+release_blockers:
+  - USB-C connector signed drawing, land pattern, STEP, shell stake datum, insertion-force data, and plug overmold sweep are missing.
+  - USB-PD controller firmware/configuration, CC attach, dead-battery boot, PPS/EPR, Type-C class, and HAL evidence are missing.
+  - Charger schematic, I2C readback, NTC/ID readback, CC/CV cycle, JEITA hot/cold, current-limit, and thermal validation are missing.
+  - Side-key switch/flex drawing, force/travel sample data, enclosure load path, wake/recovery combo logs, and debounce/leakage review are missing.
+  - Routed USB2/CC/VBUS/charger/side-key copper, DRC/ERC/SI/PI evidence, routed STEP, and approved enclosure release clearance are missing.
+forbidden_claims:
+  - usb_sidekey_selection_final
+  - usb_c_ready
+  - pd_ready
+  - charging_ready
+  - side_buttons_ready
+  - power_key_wake_ready
+  - recovery_key_combo_ready
+  - waterproof_ready
+  - superspeed_ready
+  - routed_pcb_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

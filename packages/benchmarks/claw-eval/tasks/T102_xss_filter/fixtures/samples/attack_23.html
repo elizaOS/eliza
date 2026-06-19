@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html><head><title>Iframe</title></head>
+<body>
+<iframe src="javascript:alert('XSS via iframe')"></iframe>
+<iframe srcdoc="<script>alert('XSS via srcdoc')</script>"></iframe>
+<p>Iframe attacks.</p>
+</body></html>

@@ -1,0 +1,202 @@
+name: Build elizaOS VM Image
+
+on:
+  workflow_call:
+    inputs:
+      format:
+        type: string
+        default: ova
+      publish:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      format:
+        description: Output format
+        type: choice
+        options: [qcow2, ova, vmdk, all]
+        default: ova
+      publish:
+        description: Upload to GitHub Release
+        type: boolean
+        default: false
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  build-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    permissions:
+      # contents: write covers the existing softprops/action-gh-release
+      # release upload + checkout.
+      # id-token + attestations are required by
+      # actions/attest-build-provenance@v4 to mint a Sigstore-signed
+      # SLSA build provenance for the .ova via GitHub OIDC.
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install QEMU and tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 \
+            qemu-utils \
+            ovmf \
+            cloud-image-utils \
+            libguestfs-tools \
+            python3 \
+            just \
+            curl
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
+
+      - name: Cache upstream Debian image
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: packages/os/linux/vm/disk-base/.cache
+          key: elizaos-vm-upstream-${{ hashFiles('packages/os/linux/vm/disk-base/mmdebstrap.recipe') }}
+          restore-keys: elizaos-vm-upstream-
+
+      - name: Build VM base image
+        working-directory: packages/os/linux
+        run: sudo bash vm/scripts/build-base.sh
+        timeout-minutes: 60
+
+      - name: Deploy elizaOS to VM
+        working-directory: packages/os/linux
+        run: bash vm/scripts/deploy.sh
+
+      - name: Run VM integration tests
+        working-directory: packages/os/linux
+        timeout-minutes: 20
+        run: bash vm/scripts/run-tests.sh
+
+      - name: Generate VM bundle metadata
+        working-directory: packages/os/linux
+        run: |
+          mkdir -p vm/output
+          python3 vm/scripts/generate-bundle-metadata.py \
+            --output-dir vm/output/bundle-metadata
+
+      - name: Convert to OVA (for VirtualBox / VMware)
+        id: ova
+        if: inputs.format == 'ova' || inputs.format == 'all' || inputs.format == 'vmdk' || inputs.format == ''
+        run: |
+          set -euo pipefail
+          BASE_QCOW=$(find packages/os/linux -maxdepth 3 -name "*.qcow2" | head -1)
+          if [ -z "$BASE_QCOW" ]; then
+            echo "ERROR: no qcow2 image found after VM build — OVA conversion cannot proceed"
+            exit 1
+          fi
+          DATE=$(date +%Y.%m.%d)
+          VMDK="elizaos-vm-${DATE}.vmdk"
+          OVA="elizaos-vm-${DATE}.ova"
+          OVF="elizaos-vm-${DATE}.ovf"
+
+          echo "Converting qcow2 to vmdk..."
+          qemu-img convert -f qcow2 -O vmdk "$BASE_QCOW" "$VMDK"
+
+          # Minimal OVF descriptor
+          cat > "$OVF" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Envelope xmlns="http://schemas.dmtf.org/ovf/envelope/1"
+                    xmlns:ovf="http://schemas.dmtf.org/ovf/envelope/1"
+                    xmlns:rasd="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_ResourceAllocationSettingData">
+            <References>
+              <File ovf:href="${VMDK}" ovf:id="file1"/>
+            </References>
+            <VirtualSystem ovf:id="elizaOS">
+              <Name>elizaOS</Name>
+              <VirtualHardwareSection>
+                <Item>
+                  <rasd:ElementName>4 virtual CPUs</rasd:ElementName>
+                  <rasd:InstanceID>1</rasd:InstanceID>
+                  <rasd:ResourceType>3</rasd:ResourceType>
+                  <rasd:VirtualQuantity>4</rasd:VirtualQuantity>
+                </Item>
+                <Item>
+                  <rasd:ElementName>4096 MB RAM</rasd:ElementName>
+                  <rasd:InstanceID>2</rasd:InstanceID>
+                  <rasd:ResourceType>4</rasd:ResourceType>
+                  <rasd:VirtualQuantity>4096</rasd:VirtualQuantity>
+                </Item>
+              </VirtualHardwareSection>
+            </VirtualSystem>
+          </Envelope>
+          EOF
+
+          tar -cvf "$OVA" "$OVF" "$VMDK"
+          sha256sum "$OVA" > "${OVA}.sha256"
+          OVA_SHA256=$(cut -d' ' -f1 "${OVA}.sha256")
+          OVA_SIZE=$(stat --format="%s" "$OVA")
+
+          echo "ova_path=$OVA" >> "$GITHUB_OUTPUT"
+          echo "ova_sha256=$OVA_SHA256" >> "$GITHUB_OUTPUT"
+          echo "ova_size=$OVA_SIZE" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+
+      - name: Attest SLSA build provenance for VM image
+        # Mints a Sigstore-signed in-toto/SLSA provenance attestation
+        # tied to this repo + workflow + commit, via GitHub OIDC.
+        # No long-lived secrets. Users verify with:
+        #   gh attestation verify <ova-file> --owner elizaOS
+        # Only fires when an OVA was actually produced (the convert
+        # step is gated on the format input).
+        if: steps.ova.outputs.ova_path != ''
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        with:
+          subject-path: ${{ steps.ova.outputs.ova_path }}
+
+      - name: Upload VM artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: elizaos-vm-image
+          path: |
+            elizaos-vm-*.ova
+            elizaos-vm-*.ova.sha256
+            elizaos-vm-*.qcow2
+            packages/os/linux/vm/output/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'workflow_call' && inputs.publish == true)
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
+        with:
+          files: |
+            elizaos-vm-*.ova
+            elizaos-vm-*.ova.sha256
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write VM metadata to summary
+        run: |
+          {
+            echo "## elizaOS VM Image"
+            echo "| Field | Value |"
+            echo "| ----- | ----- |"
+            if [ -n "${{ steps.ova.outputs.ova_path }}" ]; then
+              echo "| OVA | \`${{ steps.ova.outputs.ova_path }}\` |"
+              echo "| SHA-256 | \`${{ steps.ova.outputs.ova_sha256 }}\` |"
+              echo "| Size | ${{ steps.ova.outputs.ova_size }} bytes |"
+            else
+              echo "| OVA | not produced |"
+            fi
+            echo "| Format | ${{ inputs.format || 'ova' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

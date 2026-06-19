@@ -1,0 +1,618 @@
+[
+  {
+    "id": "contacts.add_new_vendor",
+    "name": "Add a new vendor contact",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Add a new contact: GreenTech Supplies, vendor, greentech@example.test, +14155551234. Tag as work.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "add",
+          "name": "GreenTech Supplies",
+          "email": "greentech@example.test",
+          "phone": "+14155551234",
+          "channel": "email",
+          "handle": "greentech@example.test",
+          "notes": "vendor; tag work"
+        }
+      }
+    ],
+    "required_outputs": ["GreenTech"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Add a vendor contact with email and phone."
+  },
+  {
+    "id": "contacts.update_email_john_doe",
+    "name": "Update John Doe's email address",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "John Doe's email changed to john.doe2026@example.test (contact_00003). Update it.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "set_identity",
+          "entityId": "contact_00003",
+          "platform": "email",
+          "handle": "john.doe2026@example.test",
+          "displayName": "John Doe",
+          "evidence": "owner provided new email directly"
+        }
+      }
+    ],
+    "required_outputs": ["John"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Update the email field of an existing contact."
+  },
+  {
+    "id": "contacts.find_contact_by_company_acme",
+    "name": "Find contacts for company 'Acme'",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Who do I have in my contacts from Acme Corp?",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "list",
+          "intent": "list contacts where company contains Acme",
+          "name": "Acme"
+        }
+      }
+    ],
+    "required_outputs": ["Acme"],
+    "first_question_fallback": {
+      "canned_answer": "Acme Corp contacts.",
+      "applies_when": "agent asks which company"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Search contacts by partial company name."
+  },
+  {
+    "id": "contacts.list_work_tag",
+    "name": "List contacts tagged work",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "List all contacts that are tagged as work.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "list",
+          "intent": "list contacts where tag is work"
+        }
+      }
+    ],
+    "required_outputs": ["work"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read\u2011only filter for contacts with a specific tag."
+  },
+  {
+    "id": "contacts.log_meeting_alex",
+    "name": "Log meeting with Alex Tran",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Log that I had a 45-minute strategy meeting with Alex Tran (contact_00000) today; discussed Q2 roadmap.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "log_interaction",
+          "entityId": "contact_00000",
+          "name": "Alex Tran",
+          "notes": "45-minute strategy meeting; discussed Q2 roadmap"
+        }
+      }
+    ],
+    "required_outputs": ["Alex"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Add a log entry for a recent meeting."
+  },
+  {
+    "id": "contacts.add_emergency_contact",
+    "name": "Add emergency contact",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Add emergency contact: Mom, +14155554321, tag family.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "add",
+          "name": "Mom",
+          "phone": "+14155554321",
+          "channel": "phone",
+          "handle": "+14155554321",
+          "notes": "emergency contact; tag family"
+        }
+      }
+    ],
+    "required_outputs": ["Mom"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Create a contact used for emergencies."
+  },
+  {
+    "id": "contacts.update_phone_mom",
+    "name": "Update Mom's phone number",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "My mom (contact_00004) got a new number: +14155559876. Please update.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "set_identity",
+          "entityId": "contact_00004",
+          "platform": "phone",
+          "handle": "+14155559876",
+          "displayName": "Mom",
+          "evidence": "owner provided new number directly"
+        }
+      }
+    ],
+    "required_outputs": ["Mom"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Update a phone number for an existing contact."
+  },
+  {
+    "id": "contacts.list_all",
+    "name": "List all contacts",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "Show me all my contacts.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "list",
+          "intent": "list all contacts"
+        }
+      }
+    ],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Retrieve the full contact list without filters."
+  },
+  {
+    "id": "contacts.find_partial_name_lee",
+    "name": "Find contacts with name 'Lee'",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Find any contacts named Lee.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "list",
+          "intent": "list contacts where name contains Lee",
+          "name": "Lee"
+        }
+      }
+    ],
+    "required_outputs": ["Lee"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Partial name lookup."
+  },
+  {
+    "id": "contacts.add_multi_phone",
+    "name": "Add contact with two phone numbers",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Add new contact: Samir Khan, email samir.khan@example.test, phones +14155551111 and +14155552222, tag work.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "add",
+          "name": "Samir Khan",
+          "email": "samir.khan@example.test",
+          "phone": "+14155551111",
+          "channel": "email",
+          "handle": "samir.khan@example.test",
+          "notes": "additional phone +14155552222; tag work"
+        }
+      }
+    ],
+    "required_outputs": ["Samir"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Create a contact that has multiple phone numbers (captured in notes)."
+  },
+  {
+    "id": "contacts.update_relationship_julia",
+    "name": "Update Julia Mitchell's relationship to colleague",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Change Julia Mitchell (contact_00002) relationship to colleague.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "set_identity",
+          "entityId": "contact_00002",
+          "platform": "relationship",
+          "handle": "colleague",
+          "displayName": "Julia Mitchell",
+          "evidence": "owner request"
+        }
+      }
+    ],
+    "required_outputs": ["Julia"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Modify the relationship tag of an existing contact."
+  },
+  {
+    "id": "contacts.search_by_location_ny",
+    "name": "Find contacts in New York",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Who in my contacts are located in New York?",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "list",
+          "intent": "list contacts where location is New York"
+        }
+      }
+    ],
+    "required_outputs": ["New York"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Geographic filter for contacts."
+  },
+  {
+    "id": "contacts.add_phone_only_contact",
+    "name": "Add phone\u2011only contact",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Add a contact: Delivery Driver, phone +14155553333. No email.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "add",
+          "name": "Delivery Driver",
+          "phone": "+14155553333",
+          "channel": "phone",
+          "handle": "+14155553333",
+          "notes": "no email"
+        }
+      }
+    ],
+    "required_outputs": ["Delivery"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Create a contact that only has a phone number."
+  },
+  {
+    "id": "contacts.update_notes_julia",
+    "name": "Update notes for Julia Mitchell",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Add to Julia Mitchell's notes that she sent the contract on 2026-05-09.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "set_identity",
+          "entityId": "contact_00002",
+          "platform": "notes",
+          "handle": "sent contract on 2026-05-09",
+          "displayName": "Julia Mitchell",
+          "evidence": "owner added note"
+        }
+      }
+    ],
+    "required_outputs": ["Julia"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Append a note to an existing contact."
+  },
+  {
+    "id": "contacts.list_no_phone",
+    "name": "List contacts without phone numbers",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "List contacts that don't have a phone number.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "list",
+          "intent": "list contacts where phone is missing"
+        }
+      }
+    ],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Filter contacts lacking a phone field."
+  },
+  {
+    "id": "contacts.find_partial_name_smith",
+    "name": "Find contacts with last name Smith",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Find contacts named Smith.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "list",
+          "intent": "list contacts where name contains Smith",
+          "name": "Smith"
+        }
+      }
+    ],
+    "required_outputs": ["Smith"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Partial surname search."
+  },
+  {
+    "id": "contacts.add_new_client",
+    "name": "Add new client contact",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Add client contact: Acme Industries, contact person: Laura Chen, email laura.chen@acme.example.test, phone +14155554444, tag client.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "add",
+          "name": "Laura Chen",
+          "email": "laura.chen@acme.example.test",
+          "phone": "+14155554444",
+          "channel": "email",
+          "handle": "laura.chen@acme.example.test",
+          "notes": "client Acme Industries"
+        }
+      }
+    ],
+    "required_outputs": ["Laura"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Add a contact representing a client representative."
+  },
+  {
+    "id": "contacts.log_call_supplier",
+    "name": "Log call with supplier Omega Supplies",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Log a 20-minute call with supplier Omega Supplies (contact_00005) on 2026-05-10; discussed pricing.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "log_interaction",
+          "entityId": "contact_00005",
+          "name": "Omega Supplies",
+          "notes": "20-minute call; discussed pricing"
+        }
+      }
+    ],
+    "required_outputs": ["Omega"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Record a brief supplier call."
+  },
+  {
+    "id": "contacts.add_contact_custom_field",
+    "name": "Add contact with custom field",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Add contact: Dr. Elena Ruiz, email elena.ruiz@example.test, note: 'preferred_contact_time=morning', tag health.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "add",
+          "name": "Elena Ruiz",
+          "email": "elena.ruiz@example.test",
+          "channel": "email",
+          "handle": "elena.ruiz@example.test",
+          "notes": "preferred_contact_time=morning; health"
+        }
+      }
+    ],
+    "required_outputs": ["Elena"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Add a contact with a custom note field."
+  },
+  {
+    "id": "contacts.update_display_name_julia",
+    "name": "Update display name for Julia Mitchell",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Change Julia Mitchell's display name to Julia M. (contact_00002).",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "set_identity",
+          "entityId": "contact_00002",
+          "platform": "displayName",
+          "handle": "Julia M.",
+          "evidence": "owner request"
+        }
+      }
+    ],
+    "required_outputs": ["Julia"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Modify the display name of a contact."
+  },
+  {
+    "id": "contacts.find_by_email_domain_example",
+    "name": "Find contacts with email domain example.test",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Show me contacts whose email ends with @example.test.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "list",
+          "intent": "list contacts where email domain is example.test"
+        }
+      }
+    ],
+    "required_outputs": ["example.test"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Domain\u2011based email filter."
+  },
+  {
+    "id": "contacts.list_friend_tag",
+    "name": "List contacts tagged friend",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "List all contacts tagged as friend.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "list",
+          "intent": "list contacts where tag is friend"
+        }
+      }
+    ],
+    "required_outputs": ["friend"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Tag\u2011based retrieval."
+  },
+  {
+    "id": "contacts.add_volunteer_contact",
+    "name": "Add volunteer contact",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Add volunteer: Carlos Mendes, email carlos.mendes@example.test, phone +14155556666, tag volunteer.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "add",
+          "name": "Carlos Mendes",
+          "email": "carlos.mendes@example.test",
+          "phone": "+14155556666",
+          "channel": "email",
+          "handle": "carlos.mendes@example.test",
+          "notes": "volunteer"
+        }
+      }
+    ],
+    "required_outputs": ["Carlos"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Create a contact for a volunteer."
+  },
+  {
+    "id": "contacts.log_interaction_coach",
+    "name": "Log interaction with personal coach",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Note that I had a 30-minute session with my personal coach, Jamie Lee (contact_00006) today; we discussed stress management.",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "log_interaction",
+          "entityId": "contact_00006",
+          "name": "Jamie Lee",
+          "notes": "30-minute session; stress management"
+        }
+      }
+    ],
+    "required_outputs": ["Jamie"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Log a personal coaching session."
+  },
+  {
+    "id": "contacts.update_linkedin_john",
+    "name": "Add LinkedIn profile for John Doe",
+    "domain": "contacts",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Add LinkedIn profile https://linkedin.com/in/johndoe for John Doe (contact_00003).",
+    "ground_truth_actions": [
+      {
+        "name": "ENTITY",
+        "kwargs": {
+          "subaction": "set_identity",
+          "entityId": "contact_00003",
+          "platform": "linkedin",
+          "handle": "https://linkedin.com/in/johndoe",
+          "evidence": "owner provided"
+        }
+      }
+    ],
+    "required_outputs": ["John"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Add a social profile link to an existing contact."
+  }
+]

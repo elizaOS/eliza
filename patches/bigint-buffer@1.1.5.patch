@@ -1,0 +1,20 @@
+diff --git a/dist/node.js b/dist/node.js
+index 513168c89e387668a79b6beb109587b3eb41a7d0..2ff3562c29b15af62c1ed26ce29bcfbf3b610238 100644
+--- a/dist/node.js
++++ b/dist/node.js
+@@ -4,7 +4,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
+ let converter;
+ {
+     try {
+-        converter = require('bindings')('bigint_buffer');
++        // Bun's NAPI loader HARD-CRASHES the process when it loads this package's
++        // prebuilt native binary (it aborts instead of throwing), so the catch
++        // below never runs and the whole agent dies on import. Skip the native
++        // module under Bun and use the pure-JS implementation; native is still
++        // used on Node, where it loads fine.
++        if (typeof Bun === 'undefined') {
++            converter = require('bindings')('bigint_buffer');
++        }
+     }
+     catch (e) {
+         console.warn('bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)');

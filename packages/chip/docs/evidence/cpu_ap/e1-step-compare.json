@@ -1,0 +1,326 @@
+{
+  "alignment_note": "RTL bootrom and Spike both reset to 0x10000 and jump to the DRAM entry 0x80000000, so streams align from instruction 0. Comparison runs over the common retired prefix of each test (capped at max_insns).",
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
+  "claim_level": "L1_RTL_FULL_SOC",
+  "comparison_fields": [
+    "retired_pc",
+    "instruction_word",
+    "rd_addr",
+    "rd_wdata"
+  ],
+  "core": "cva6",
+  "core_role": "little_core_e1_pro",
+  "excluded_from_rd_wdata": {
+    "csrs": [
+      "mcycle",
+      "minstret",
+      "cycle",
+      "time",
+      "instret",
+      "+ high halves"
+    ],
+    "reason": "performance counters are non-deterministic between cycle-accurate RTL and a functional ISS; core-v-verif's Spike tandem scoreboard excludes them",
+    "taint_policy": "registers written from a perf-counter CSR read, and any GPR/memory value transitively derived from them, are excluded from rd_wdata comparison; retired PC and instruction word are NEVER excluded"
+  },
+  "generated_utc": "2026-05-22T17:05:02Z",
+  "instructions_compared": 16880,
+  "isa": "rv64imafdc",
+  "iss_golden": {
+    "simulator": "spike",
+    "source": "external/cva6/cva6/tools/spike (CVA6 pinned, commitlog)",
+    "version": "1.1.1-dev b3149ab"
+  },
+  "methodology": "spike_step_and_compare_tandem",
+  "methodology_origin": "openhwgroup core-v-verif (verif/regress/dv-riscv-tests.sh); adopted, not reinvented",
+  "mismatches": 0,
+  "priv": "msu",
+  "provenance": "simulator",
+  "result_recorded_at": "2026-05-22T17:05:02Z",
+  "rtl_dut": {
+    "cva6_commit": "9c2cf60a83a0a6a7fc5dcd973a5a5f6c0f42cb75",
+    "model": "external/cva6/cva6/work-ver/Variane_testharness (corev_apu ariane_testharness, RVFI)",
+    "simulator": "verilator",
+    "version": "Verilator 5.049 devel rev v5.048-46-g7c5069c7d (mod)"
+  },
+  "rvfi_wiring": "rtl/cpu/e1_cva6_wrapper.sv exposes the cva6_rvfi-decoded retired-instruction surface (+define+E1_RVFI); this lane verifies that same RVFI retired stream against Spike",
+  "schema": "eliza.cpu_step_compare.v1",
+  "status": "passed",
+  "target_config": "cv64a6_imafdc_sv39",
+  "tests": [
+    {
+      "instructions_compared": 508,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-add",
+      "rtl_retired": 509,
+      "spike_retired": 508,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 283,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-addi",
+      "rtl_retired": 284,
+      "spike_retired": 283,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 583,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-and",
+      "rtl_retired": 584,
+      "spike_retired": 583,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 616,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-or",
+      "rtl_retired": 617,
+      "spike_retired": 616,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 611,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-xor",
+      "rtl_retired": 612,
+      "spike_retired": 611,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 578,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-sll",
+      "rtl_retired": 579,
+      "spike_retired": 578,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 592,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-srl",
+      "rtl_retired": 594,
+      "spike_retired": 592,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 550,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-sra",
+      "rtl_retired": 552,
+      "spike_retired": 550,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 497,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-slt",
+      "rtl_retired": 497,
+      "spike_retired": 497,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 514,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-sltu",
+      "rtl_retired": 516,
+      "spike_retired": 514,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 305,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-lw",
+      "rtl_retired": 307,
+      "spike_retired": 305,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 417,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-ld",
+      "rtl_retired": 419,
+      "spike_retired": 417,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 528,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-sw",
+      "rtl_retired": 528,
+      "spike_retired": 528,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 640,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-sd",
+      "rtl_retired": 640,
+      "spike_retired": 640,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 103,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-lui",
+      "rtl_retired": 105,
+      "spike_retired": 103,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 99,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-auipc",
+      "rtl_retired": 100,
+      "spike_retired": 99,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 329,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-beq",
+      "rtl_retired": 331,
+      "spike_retired": 329,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 329,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-bne",
+      "rtl_retired": 331,
+      "spike_retired": 329,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 329,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-blt",
+      "rtl_retired": 331,
+      "spike_retired": 329,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 93,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-jal",
+      "rtl_retired": 95,
+      "spike_retired": 93,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 153,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ui-p-jalr",
+      "rtl_retired": 154,
+      "spike_retired": 153,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 498,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64um-p-mul",
+      "rtl_retired": 499,
+      "spike_retired": 498,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 506,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64um-p-mulh",
+      "rtl_retired": 508,
+      "spike_retired": 506,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 139,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64um-p-div",
+      "rtl_retired": 141,
+      "spike_retired": 139,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 145,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64um-p-divu",
+      "rtl_retired": 146,
+      "spike_retired": 145,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 138,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64um-p-rem",
+      "rtl_retired": 140,
+      "spike_retired": 138,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 298,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64uc-p-rvc",
+      "rtl_retired": 299,
+      "spike_retired": 298,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 104,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ua-p-amoadd_w",
+      "rtl_retired": 105,
+      "spike_retired": 104,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 107,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ua-p-amoadd_d",
+      "rtl_retired": 108,
+      "spike_retired": 107,
+      "status": "passed"
+    },
+    {
+      "instructions_compared": 6288,
+      "mismatch_detail": [],
+      "mismatches": 0,
+      "name": "rv64ua-p-lrsc",
+      "rtl_retired": 6290,
+      "spike_retired": 6288,
+      "status": "passed"
+    }
+  ],
+  "tests_blocked": 0,
+  "tests_failed": 0,
+  "tests_passed": 30,
+  "tests_total": 30,
+  "workload": "riscv-tests ISA conformance suite (p-mode: physical addressing, machine mode), self-checking and I/O-free"
+}

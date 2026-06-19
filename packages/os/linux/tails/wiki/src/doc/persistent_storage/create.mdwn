@@ -1,0 +1,54 @@
+[[!meta title="Creating the Persistent Storage"]]
+
+To create the Persistent Storage, choose **Apps&nbsp;▸ Tails&nbsp;▸
+Persistent Storage**.
+
+When run for the first time, or after [[deleting a previous Persistent
+Storage|delete]], an assistant allows you to create a Persistent Storage in the
+free space left on the USB stick.
+
+<div class="note">
+
+<p>If you get the error message <i>Sorry, impossible to create a Persistent
+Storage on this device</i>, you need to follow our instructions on [[installing
+Tails on a USB stick|install]].</p>
+
+<p>If you receive the error message while running Tails using
+<i>virt-manager</i>, then you need to
+[[run Tails from our USB image|doc/advanced_topics/virtualization/virt-manager#usb_image]]
+instead of our ISO image.</p>
+
+</div>
+
+[[!img creation.png class="screenshot" alt=""]]
+
+1. Click **Continue** to start the creation assistant.
+
+1. Type a passphrase of your choice in the **Passphrase** text box.
+
+   <p>We recommend choosing a long passphrase made of 5 to 7 random words.
+   <a href="https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/">Learn
+   about the maths behind memorizable and secure passphrases.</a></p>
+
+   <!-- Consider removing after #18736. -->
+
+   <div class="caution">
+   <p>It is impossible to recover your passphrase if you forget it!</p>
+
+   <p>To help you remember your passphrase, you can write it on a piece of
+   paper, store it in your wallet for a few days, and destroy it once
+   you know it well.</p>
+   </div>
+
+1. Type again the same passphrase in the **Confirm** text box.
+
+1. Click **Create Persistent Storage**.
+
+   The creation process takes a few seconds.
+
+<div class="next">
+
+<p>After the creation is finished, you can start [[configuring your Persistent
+Storage|configure]].</p>
+
+</div>

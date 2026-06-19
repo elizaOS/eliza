@@ -1,0 +1,56 @@
+---
+title: Eliza Cloud
+description: "Managed backend for agents and apps — auth, hosting, inference, billing, domains."
+---
+
+**Eliza Cloud** is the managed backend for Eliza agents and apps. It runs on Cloudflare Workers and exposes a categorized HTTP API (50+ endpoint families) plus a React dashboard.
+
+Cloud is **optional**. Agents and apps run fully local-only without it. Cloud is what you use when you want managed auth, hosted inference, billing, custom domains, container deploys, or multi-tenant isolation.
+
+## What Cloud handles
+
+| Surface       | What it gives you                                                              |
+| ------------- | ------------------------------------------------------------------------------ |
+| **Auth**      | Browser sessions, API keys, SIWE, wallet signatures, and x402 payments.        |
+| **Apps**      | Cloud app records for chat routing, hosting metadata, domains, and monetization. |
+| **Inference** | Routed model calls with markup, rate limits, fallback chains.                  |
+| **Containers**| Hosted Docker containers with logs, metrics, health checks, and lifecycle.     |
+| **Billing**   | Credits, Stripe checkout, x402 topups, auto top-up, and creator earnings.      |
+| **Domains**   | Bind custom domains to deployed apps and agents.                               |
+| **MCP / A2A** | Hosted Model Context Protocol and agent-to-agent endpoints.                    |
+
+## Track contents
+
+<CardGroup cols={2}>
+  <Card title="Auth" icon="key" href="/tracks/cloud/auth">
+    Sessions, API keys, wallet auth, and x402.
+  </Card>
+  <Card title="Apps" icon="grid" href="/tracks/cloud/apps">
+    Register an app, route chat, monetize usage.
+  </Card>
+  <Card title="Inference" icon="bolt" href="/tracks/cloud/inference">
+    Routed model calls, gateways, fallback.
+  </Card>
+  <Card title="Containers" icon="cube" href="/tracks/cloud/containers">
+    Hosted container deploys for server-side agents.
+  </Card>
+  <Card title="Billing" icon="credit-card" href="/tracks/cloud/billing">
+    Credits, Stripe, creator earnings.
+  </Card>
+  <Card title="Domains" icon="globe" href="/tracks/cloud/domains">
+    Bind custom domains and TLS.
+  </Card>
+</CardGroup>
+
+## Where this comes from
+
+- API: [`packages/cloud-api/`](https://github.com/elizaOS/eliza/tree/develop/packages/cloud-api) — Cloudflare Workers + Hono
+- Dashboard: [`packages/cloud-frontend/`](https://github.com/elizaOS/eliza/tree/develop/packages/cloud-frontend)
+- Shared schemas: [`packages/cloud-shared/`](https://github.com/elizaOS/eliza/tree/develop/packages/cloud-shared)
+- SDK: [`packages/cloud-sdk/`](https://github.com/elizaOS/eliza/tree/develop/packages/cloud-sdk)
+
+## Deeper material
+
+- [Cloud quickstart](/cloud/quickstart)
+- [Cloud API reference](/cloud/api)
+- [Deployment](/eliza-cloud-deployment)

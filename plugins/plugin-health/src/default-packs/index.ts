@@ -1,0 +1,50 @@
+/**
+ * Default-pack registration for plugin-health.
+ *
+ * Registers `bedtime`, `wake-up`, and `sleep-recap` packs with the
+ * `DefaultPackRegistry` when it is available on the runtime. If the registry
+ * is absent, logs a one-line skip and continues.
+ */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { bedtimeDefaultPack } from "./bedtime.js";
+import type { DefaultPack, DefaultPackRegistry } from "./contract-types.js";
+import { sleepRecapDefaultPack } from "./sleep-recap.js";
+import { wakeUpDefaultPack } from "./wake-up.js";
+
+export * from "./contract-types.js";
+export { bedtimeDefaultPack, sleepRecapDefaultPack, wakeUpDefaultPack };
+
+export const HEALTH_DEFAULT_PACKS: readonly DefaultPack[] = [
+  bedtimeDefaultPack,
+  wakeUpDefaultPack,
+  sleepRecapDefaultPack,
+];
+
+interface RuntimeWithDefaultPackRegistry {
+  defaultPackRegistry?: DefaultPackRegistry;
+}
+
+export function registerHealthDefaultPacks(runtime: IAgentRuntime): void {
+  const registry = (runtime as IAgentRuntime & RuntimeWithDefaultPackRegistry)
+    .defaultPackRegistry;
+  if (!registry) {
+    logger.info(
+      { src: "plugin:health" },
+      "Skipping plugin-health default-pack registration (registry unavailable)",
+    );
+    return;
+  }
+  for (const pack of HEALTH_DEFAULT_PACKS) {
+    registry.register(pack);
+  }
+  logger.info(
+    {
+      src: "plugin:health",
+      registered: HEALTH_DEFAULT_PACKS.length,
+      keys: HEALTH_DEFAULT_PACKS.map((p) => p.key),
+    },
+    "Registered plugin-health default packs",
+  );
+}

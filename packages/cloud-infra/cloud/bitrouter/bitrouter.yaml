@@ -1,0 +1,67 @@
+server:
+  listen: "127.0.0.1:4356"
+
+database:
+  url: "sqlite:/data/bitrouter.db"
+
+# Only declare providers we credential. Empty body + inherit_defaults: true
+# lets the built-in catalog fill api_base, api_protocol, env-resolved api_key.
+# - openrouter: built-in, uses OPENROUTER_API_KEY (exported by entrypoint.sh from BITROUTER_OPENROUTER_API_KEY)
+# - cerebras: NOT a built-in, so we must declare api_base, api_protocol, AND
+#   api_key explicitly (inherit_defaults only fills these for built-in providers).
+#   Omitting api_protocol makes bitrouter 500 with "provider 'cerebras' has no
+#   api_protocol configured" the moment an alias actually routes to it. Cerebras
+#   is OpenAI Chat Completions compatible → "openai" (bitrouter's protocol-family
+#   value; the valid set is {anthropic, google, mcp, openai, rest} — NOT
+#   "chat_completions"; matches the built-in openrouter/openai catalog entries).
+#
+# Crucially: do NOT declare `bitrouter: {}` — that enables BitRouter Cloud
+# (api.bitrouter.ai/v1) which 402s without a brk_* API key.
+providers:
+  openrouter: {}
+  cerebras:
+    api_base: "https://api.cerebras.ai/v1"
+    api_protocol: openai
+    api_key: "${BITROUTER_CEREBRAS_API_KEY}"
+    auto_discover: true
+
+# Virtual model aliases. Strategy 2 (per docs): explicit `models:` block
+# routes the bare id to the declared endpoint chain. Without this,
+# Strategy 3 auto-cascade scans every active provider; with openrouter
+# being the only provider that declares these ids in the published catalog,
+# Strategy 3 SHOULD also route them via openrouter — but the explicit form
+# is more deterministic for the models our agent actually uses.
+#
+# gpt-oss-120b is Cerebras-ONLY — no fallback. We use this model purely for
+# Cerebras' ~2000 tok/s speed (interactively fast; no other provider is), so a
+# slower OpenRouter fallback would defeat the point — if it can't be fast, we'd
+# rather it fail than silently degrade. (Owner decision, 2026-06-16.) Previously
+# these aliases pointed at OpenRouter, and the gateway/`:nitro` variants returned
+# 503 ("Failed after 3 attempts: Bad Gateway") on every new-user default — the
+# `:nitro` suffix is an OpenRouter convention with no healthy upstream here, so
+# it 502s and we surface 503. All three spellings now resolve to Cerebras. The
+# bare `gpt-oss-120b` alias covers raw-provider callers (apps chat); the Worker's
+# own cerebras-direct path handles the dashboard default before BitRouter is ever
+# reached.
+models:
+  "gpt-oss-120b":
+    endpoints:
+      - { provider: cerebras, service_id: "gpt-oss-120b" }
+  "openai/gpt-oss-120b":
+    endpoints:
+      - { provider: cerebras, service_id: "gpt-oss-120b" }
+  "openai/gpt-oss-120b:nitro":
+    endpoints:
+      - { provider: cerebras, service_id: "gpt-oss-120b" }
+  "anthropic/claude-haiku-4.5":
+    endpoints:
+      - { provider: openrouter, service_id: "anthropic/claude-haiku-4.5" }
+  "anthropic/claude-sonnet-4.6":
+    endpoints:
+      - { provider: openrouter, service_id: "anthropic/claude-sonnet-4.6" }
+  "x-ai/grok-4.20":
+    endpoints:
+      - { provider: openrouter, service_id: "x-ai/grok-4.20" }
+
+# Default: true. Required for openrouter: {} empty body to inherit api_base / protocol / OPENROUTER_API_KEY mapping.
+inherit_defaults: true

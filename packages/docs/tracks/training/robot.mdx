@@ -1,0 +1,33 @@
+---
+title: Robot
+description: "MuJoCo embodiment, RL training, real-hardware bridge."
+---
+
+The **Robot** stack gives Eliza agents a physical body. MuJoCo simulation for training, Brax-PPO for policy learning, a perception stack for sensors, and a websocket bridge to real hardware for deployment.
+
+## Subsystems
+
+- **Sim** — MuJoCo scenes with per-robot profiles. Default profile: Hiwonder AiNex humanoid.
+- **RL** — Brax-PPO policies, skill-conditioned and text-conditioned. Multi-task training.
+- **Perception** — camera, ASR, embeddings. Fused into the agent's runtime context.
+- **Bridge** — websocket protocol between trained policies and real-hardware controllers.
+- **Trajectory DB** — captured runs feed back into Eliza-1 training.
+
+## Profiles
+
+Robot configurations live under `packages/robot/profiles/`. Each profile pins the URDF/XML, sensor topology, action space, and safety constraints.
+
+## Source
+
+- Robot package: [`packages/robot/`](https://github.com/elizaOS/eliza/tree/develop/packages/robot)
+- RL trainers: `packages/robot/rl/`
+- Default profile: `packages/robot/profiles/hiwonder-ainex/`
+
+## Status
+
+Robot is in active development. CLI surfaces for capture, training, and deployment are landing incrementally.
+
+## See also
+
+- [Eliza-1](/tracks/training/eliza-1)
+- [Benchmarks](/tracks/training/benchmarks)

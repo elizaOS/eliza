@@ -1,0 +1,200 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { client } from "../../api/client";
+import { isApiError } from "../../api/client-types-core";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { getBootConfig } from "../../config/boot-config";
+import { getCached, setCached } from "../../hooks/resource-cache";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
+import { useApp } from "../../state/useApp";
+import { formatUptime } from "../../utils/format";
+import { IS_POPOUT } from "../stream/helpers";
+import { openStreamPopout } from "../stream/popout-url";
+import { StatusBar } from "../stream/StatusBar";
+import { DetailSkeleton } from "../ui/skeleton-layouts";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+
+type StreamStatus = Awaited<ReturnType<typeof client.streamStatus>>;
+
+const STREAM_STATUS_CACHE_KEY = "stream:status";
+
+export function StreamView({ inModal }: { inModal?: boolean } = {}) {
+  const { agentStatus, t } = useApp();
+  const { branding } = getBootConfig();
+  const agentName = agentStatus?.agentName ?? branding.appName ?? "Eliza";
+  const isElectrobun = isElectrobunRuntime();
+
+  // Seed from the shared cache so a revisit paints the last-known status
+  // instantly and revalidates silently, instead of flashing a spinner.
+  const cachedStatus = getCached<StreamStatus>(STREAM_STATUS_CACHE_KEY);
+  const [streamLive, setStreamLive] = useState(
+    cachedStatus
+      ? cachedStatus.data.running && cachedStatus.data.ffmpegAlive
+      : false,
+  );
+  const [streamLoading, setStreamLoading] = useState(false);
+  const loadingRef = useRef(false);
+  const [streamAvailable, setStreamAvailable] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(!cachedStatus);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [uptime, setUptime] = useState(cachedStatus?.data.uptime ?? 0);
+  const [frameCount, setFrameCount] = useState(
+    cachedStatus?.data.frameCount ?? 0,
+  );
+
+  const pollStatus = useCallback(async () => {
+    if (loadingRef.current || !streamAvailable) return;
+    try {
+      const status = await client.streamStatus();
+      if (loadingRef.current) return;
+      setStreamLive(status.running && status.ffmpegAlive);
+      setUptime(status.uptime);
+      setFrameCount(status.frameCount);
+      setStatusError(null);
+      setCached(STREAM_STATUS_CACHE_KEY, status);
+    } catch (err: unknown) {
+      // A 404 means the streaming plugin isn't installed — switch to the
+      // "unavailable" panel. Any other error is surfaced so a broken status
+      // endpoint doesn't masquerade as a healthy idle stream.
+      if (isApiError(err) && err.status === 404) {
+        setStreamAvailable(false);
+        return;
+      }
+      setStatusError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInitialLoading(false);
+    }
+  }, [streamAvailable]);
+
+  // Fire one status read on mount, then poll while the tab is visible.
+  useEffect(() => {
+    void pollStatus();
+  }, [pollStatus]);
+
+  useIntervalWhenDocumentVisible(
+    () => void pollStatus(),
+    5_000,
+    streamAvailable,
+  );
+
+  const toggleStream = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setStreamLoading(true);
+    try {
+      if (streamLive) {
+        await client.streamGoOffline();
+        setStreamLive(false);
+      } else {
+        const result = await client.streamGoLive();
+        setStreamLive(result.live);
+
+        if (result.live && !IS_POPOUT && !isElectrobun) {
+          openStreamPopout(getBootConfig().apiBase);
+        }
+      }
+    } catch {
+      try {
+        const status = await client.streamStatus();
+        setStreamLive(status.running && status.ffmpegAlive);
+      } catch {
+        /* poll will recover within 5s */
+      }
+    } finally {
+      loadingRef.current = false;
+      setStreamLoading(false);
+    }
+  }, [isElectrobun, streamLive]);
+
+  return (
+    <ShellViewAgentSurface viewId="stream">
+      <div
+        data-stream-view
+        className={`flex flex-col text-txt font-body ${
+          inModal ? "bg-transparent" : "bg-bg"
+        } h-full w-full`}
+      >
+        <StatusBar
+          agentName={agentName}
+          streamAvailable={streamAvailable}
+          streamLive={streamLive}
+          streamLoading={streamLoading}
+          onToggleStream={toggleStream}
+          uptime={uptime}
+          frameCount={frameCount}
+        />
+
+        <div className="flex flex-1 min-h-0 items-center justify-center">
+          {initialLoading && streamAvailable && !statusError ? (
+            <div className="w-full max-w-md rounded-sm border border-border/60 bg-card/94 p-6 backdrop-blur-xl">
+              <DetailSkeleton />
+            </div>
+          ) : statusError && streamAvailable ? (
+            <div
+              role="alert"
+              className="max-w-lg rounded-sm border border-danger/45 bg-danger/8 p-6 text-center backdrop-blur-xl"
+            >
+              <p className="text-xs-tight uppercase tracking-[0.24em] text-danger">
+                {t("streamview.StatusError", {
+                  defaultValue: "Stream status error",
+                })}
+              </p>
+              <p className="mt-3 text-sm leading-6 text-danger">
+                {statusError}
+              </p>
+            </div>
+          ) : !streamAvailable ? (
+            <div className="max-w-lg rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
+              <p className="text-xs-tight uppercase tracking-[0.24em] text-muted">
+                {t("streamview.StreamingUnavailabl")}
+              </p>
+              <h2 className="mt-2 text-xl font-semibold text-txt">
+                {t("streamview.EnableTheStreaming")}
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-muted">
+                {t("streamview.CouldNotRea")}{" "}
+                <code className="rounded-sm border border-border/45 bg-bg-hover px-1.5 py-0.5 text-xs text-txt-strong">
+                  {t("streamview.streamingBase")}
+                </code>{" "}
+                {t("streamview.pluginThenReload")}
+              </p>
+              <p className="mt-4 text-xs text-muted">
+                {t("streamview.IfThePluginIsAlr")}
+              </p>
+            </div>
+          ) : (
+            <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
+              <div
+                className={`mx-auto mb-4 h-3 w-3 rounded-full ${
+                  streamLive
+                    ? "bg-danger ring-4 ring-danger/20 animate-pulse"
+                    : "bg-muted"
+                }`}
+              />
+              <h2 className="text-lg font-semibold text-txt">
+                {streamLive
+                  ? t("streamview.StreamIsLive", {
+                      defaultValue: "Stream is Live",
+                    })
+                  : t("streamview.StreamReady", {
+                      defaultValue: "Stream Ready",
+                    })}
+              </h2>
+              <p className="mt-2 text-sm text-muted">
+                {streamLive
+                  ? t("streamview.StreamLiveStatus", {
+                      uptime: formatUptime(uptime),
+                      frameCount: frameCount.toLocaleString(),
+                      defaultValue:
+                        "Uptime: {{uptime}} · {{frameCount}} frames",
+                    })
+                  : t("streamview.GoLiveHint", {
+                      defaultValue: "Press Go Live to start streaming.",
+                    })}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </ShellViewAgentSurface>
+  );
+}

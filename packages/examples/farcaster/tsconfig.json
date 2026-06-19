@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@elizaos/plugin-farcaster": [
+        "../../../plugins/plugin-farcaster/index.ts"
+      ]
+    }
+  },
+  "include": ["*.ts"],
+  "exclude": ["node_modules"],
+  "extends": "../../../tsconfig.dist-paths.json"
+}

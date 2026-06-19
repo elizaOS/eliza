@@ -1,0 +1,29 @@
+{
+  "current_session": {
+    "session_id": "sess_a8f3c2d1e4b5",
+    "started_at": "2026-02-10T08:50:00+08:00",
+    "channel": "feishu",
+    "user_open_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02",
+    "last_message_id": "om_x100b579c018924b4b4a0ecae09e41cb",
+    "message_count": 3,
+    "context": "Kevin Zhang checking on literature review progress, then requesting new session"
+  },
+  "previous_sessions": [
+    {
+      "session_id": "sess_7b2e9f0d3c6a",
+      "started_at": "2026-02-09T14:20:00+08:00",
+      "ended_at": "2026-02-09T18:30:00+08:00",
+      "channel": "feishu",
+      "user_open_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02",
+      "summary": "Literature review kickoff — arXiv paper collection and initial categorization"
+    },
+    {
+      "session_id": "sess_1d4a8c3f5e72",
+      "started_at": "2026-02-08T10:00:00+08:00",
+      "ended_at": "2026-02-08T16:30:00+08:00",
+      "channel": "feishu",
+      "user_open_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02",
+      "summary": "Routine maintenance and brief interactions"
+    }
+  ]
+}

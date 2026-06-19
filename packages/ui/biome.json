@@ -1,0 +1,26 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "root": false,
+  "extends": ["../../biome.json"],
+  "files": {
+    "includes": [
+      "src/**",
+      "!src/**/*.d.ts",
+      "!src/**/*.d.ts.map",
+      "!src/**/__e2e__"
+    ]
+  },
+  "linter": {
+    "rules": {
+      "style": {
+        "noDescendingSpecificity": "warn"
+      },
+      "a11y": {
+        "useSemanticElements": "warn"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "warn"
+      }
+    }
+  }
+}

@@ -1,0 +1,113 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-14 16:04+0000\n"
+"PO-Revision-Date: 2024-05-17 14:54+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Welcome to Tails!\"]]"
+msgstr ""
+
+#. type: Content of: outside any tag (error?)
+#, fuzzy
+msgid ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"robots=\"noindex\"]] [[!meta script=\"home\"]]"
+msgstr ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"stylesheet=\"hide-donate-banner\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"robots=\"noindex\"]] [[!meta script=\"home\"]] [[!inline pages=\"home/"
+"donate.inline.tr\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div>
+#, fuzzy
+msgid "<a href=\"https://check.torproject.org/\">Tor check</a>"
+msgstr ""
+"<a href=\"https://check.torproject.org/\"> [[!img \"lib/onion.png\" "
+"link=\"no\"]] <span class=\"twolines\">Tor überprüfen</span> </a>"
+
+#. type: Content of: <div>
+msgid "[[!inline pages=\"news\" raw=\"yes\" sort=\"age\"]]"
+msgstr "[[!inline pages=\"news.tr\" raw=\"yes\" sort=\"age\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "<a id=\"tor_check\" href=\"https://check.torproject.org/\"> [[!img lib/"
+#~ "onion.png link=\"no\" alt=\"\"]] <span>Tor check</span> </a>"
+#~ msgstr ""
+#~ "<a href=\"https://check.torproject.org/\"> [[!img \"lib/onion.png\" "
+#~ "link=\"no\"]] <span class=\"twolines\">Tor überprüfen</span> </a>"
+
+#, fuzzy
+#~ msgid "[[!inline pages=\"home/donate.inline\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr "[[!inline pages=\"news.tr\" raw=\"yes\" sort=\"age\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "Today, we are asking you to help Tails. Everybody can get Tails for free "
+#~ "because we believe that nobody should have to pay to be safe while using "
+#~ "computers. And we will keep it this way, with your support."
+#~ msgstr ""
+#~ "Heute bitten wir dich darum Tails zu unterstützen. Du kannst Tails "
+#~ "umsonst herunterladen, weil wir glauben, dass niemand dafür bezahlen "
+#~ "sollte, um Computer sicher benutzen zu können. Und wir möchten, dass das "
+#~ "so bleibt. <span class=\"highlight\">Wenn alle, die das hier lesen, 5€ "
+#~ "spenden, wäre unsere Spendenkampagne an einem Tag schon beendet.</span> "
+#~ "Der Preis von einem USB-Stick ist bereits alles was wir brauchen."
+
+#, fuzzy
+#~ msgid ""
+#~ "But, not everyone can donate. So when you do, you are offering to many "
+#~ "others who need it, this precious tool that is Tails."
+#~ msgstr ""
+#~ "<span class=\"underlined\">Allerdings kann nicht jede spenden.</span> "
+#~ "Falls du es tust, dann bietest du vielen anderen, die es vielleicht "
+#~ "dringend brauchen, Tails als Wertvolles Werkzeug an."
+
+#, fuzzy
+#~ msgid "[[!img \"lib/onion.png\" link=\"no\"]]"
+#~ msgstr "[[!img \"lib/onion.png\" link=\"no\"]]\n"
+
+#, fuzzy
+#~ msgid "<a href=\"https://tails.boum.org/donate?r=home\">Donate</a>"
+#~ msgstr "<a href=\"https://tails.boum.org/donate/?r=home\">Spenden</a>"
+
+#, fuzzy
+#~ msgid "[[!inline pages=\"home/tor_check\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr "[[!inline pages=\"news.tr\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid "[[!meta title=\"News\"]] [[!meta robots=\"noindex\"]]"
+#~ msgstr "[[!meta title=\"Neuigkeiten\"]] [[!meta robots=\"noindex\"]]"
+
+#~ msgid ""
+#~ "<!-- Note for translators: You can use <span class=\"twolines\"> if your\n"
+#~ "translation of the label below is long and gets split into two lines. --"
+#~ ">\n"
+#~ "<span>Tor check</span>\n"
+#~ "</a>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<span class=\"twolines\">Verbindung testen</span>\n"
+#~ "</a>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "<div id=\"tor_check\">\n"
+#~ "<a href=\"https://check.torproject.org/\">\n"
+#~ msgstr ""
+#~ "<div id=\"tor_check\">\n"
+#~ "<a href=\"https://check.torproject.org/\">\n"

@@ -1,0 +1,56 @@
+---
+title: Connect Channels
+description: "Wire an Eliza agent into messaging platforms."
+---
+
+Channels are plugins. To bring an agent into a platform, install the relevant `@elizaos/plugin-*` package, add it to your character's `plugins` array, and set the required environment variables.
+
+## Pick a channel
+
+The full list of supported channels lives under [Connectors](/guides/connectors). The most common:
+
+<CardGroup cols={2}>
+  <Card title="Discord" href="/connectors/discord" icon="discord" />
+  <Card title="Telegram" href="/connectors/telegram" icon="telegram" />
+  <Card title="Slack" href="/connectors/slack" icon="slack" />
+  <Card title="X (Twitter)" href="/connectors/twitter" icon="x-twitter" />
+  <Card title="WhatsApp" href="/connectors/whatsapp" icon="whatsapp" />
+  <Card title="iMessage" href="/connectors/imessage" icon="message" />
+  <Card title="Farcaster" href="/connectors/farcaster" icon="hashtag" />
+  <Card title="Bluesky" href="/connectors/bluesky" icon="cloud" />
+</CardGroup>
+
+## Pattern
+
+Every connector follows the same shape:
+
+```ts
+// character.ts
+export const character: Character = {
+  name: 'Eliza',
+  plugins: [
+    '@elizaos/plugin-sql',
+    '@elizaos/plugin-anthropic',
+    '@elizaos/plugin-discord',  // <- add the channel plugin
+  ],
+  settings: {
+    // optional per-plugin overrides
+  },
+};
+```
+
+```bash
+# .env — credentials per channel
+DISCORD_API_TOKEN=...
+DISCORD_APPLICATION_ID=...
+```
+
+Restart the agent. The connector registers a service, opens its websocket / webhook / poll loop, and starts forwarding messages into the runtime.
+
+## Owner vs. agent
+
+Most connectors distinguish the **owner** (the human who configured the agent) from the **agent** itself. Owner DMs can trigger privileged actions; non-owner traffic is treated as public. See per-connector docs for owner-detection details.
+
+## Multiple channels at once
+
+An agent can listen on as many channels as you load. Each connector contributes to the same memory store, so context follows the user across channels.

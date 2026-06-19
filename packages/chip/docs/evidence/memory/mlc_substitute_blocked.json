@@ -1,0 +1,7 @@
+{
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
+  "generated_utc": "2026-05-20T10:12:30Z",
+  "reason": "RV64 cross toolchain (riscv64-unknown-linux-gnu-gcc) not available",
+  "schema": "eliza.memory.mlc_substitute_blocked.v1",
+  "status": "blocked_no_toolchain"
+}

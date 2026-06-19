@@ -1,0 +1,62 @@
+---
+title: Plugin Anatomy
+description: "Actions, providers, evaluators, services, schemas, routes."
+---
+
+A plugin can register any subset of the surfaces below. Pick what you need.
+
+## Action
+
+A capability the agent can choose to invoke. Actions have a name, description, validator, examples, and a handler.
+
+```ts
+const sendDm: Action = {
+  name: 'SEND_DM',
+  description: 'Send a direct message to a user.',
+  examples: [/* few-shot */],
+  validate: async (runtime, message) => Boolean(message.content.userId),
+  handler: async (runtime, message, state, options, callback) => {
+    // do the work; call `callback({ text })` to stream a response
+  },
+};
+```
+
+## Provider
+
+Injects context into the agent's prompt on every turn. Providers return a string (or `ProviderResult`) and have a `position` to control ordering.
+
+```ts
+const facts: Provider = {
+  name: 'facts',
+  position: 100,
+  get: async (runtime, message) => ({ text: '...' }),
+};
+```
+
+## Evaluator
+
+Post-turn analysis. Reflection, fact extraction, goal tracking, trust scoring. Runs after the response is sent.
+
+## Service
+
+Long-lived stateful subsystem. Database adapters, connector pollers, schedulers, native bridges. Services have lifecycle methods (`start`, `stop`).
+
+## Model adapter
+
+Maps a `ModelType` (`TEXT_LARGE`, `TEXT_SMALL`, `EMBEDDING`, `IMAGE`, etc.) to a concrete provider. This is how `@elizaos/plugin-anthropic`, `@elizaos/plugin-openai`, and friends register themselves.
+
+## Route
+
+HTTP routes mounted on the agent's API server. Use for plugin-specific webhooks, OAuth callbacks, or admin UIs.
+
+## Schema
+
+Drizzle table definitions the SQL plugin should create. Lets a plugin own its own persistent state.
+
+## Reference
+
+- [`packages/core/src/types/plugin.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/types/plugin.ts) — full type
+- [Architecture](/plugins/architecture)
+- [Schemas](/plugins/schemas)
+- [Patterns](/plugins/patterns)
+- [Decision guide](/plugins/decision-guide)

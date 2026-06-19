@@ -1,0 +1,86 @@
+{
+  "schema": "eliza.cpu_ap_generator_manifest.v1",
+  "status": "selected_not_generated",
+  "chipyard": {
+    "repo": "https://github.com/ucb-bar/chipyard.git",
+    "tag": "main-2026-05-20",
+    "commit": "48f904aefbb3903dce6efa7901982642853ae6a7",
+    "previous_tag": "1.13.0",
+    "previous_commit": "69eba860a352343e4ac6b6df0f3638a79a86ec78",
+    "last_audited": "2026-05-20",
+    "bump_rationale": "661 commits since 1.13.0; Saturn RVV1.0 OoO vector unit, modularisation (separate generator submodules), Chisel 7 experimental, Spike RVV/Zicbom/Zacas bumps, Tacit branch-predictor / instr tracing, SRAM depth/width-list support (PR #2303), BOOM v3 RoCC fix, CTC chip-to-chip bridge work."
+  },
+  "selected_path": {
+    "generator": "Chipyard",
+    "chipyard_tag": "main-2026-05-20",
+    "chipyard_release_commit": "48f904ae",
+    "core": "Rocket",
+    "isa": "RV64GC",
+    "harts": 1,
+    "config_name": "ElizaRocketConfig",
+    "package_name": "eliza",
+    "top_wrapper": "eliza_rocket_ap",
+    "config_sources": [
+      {
+        "source": "docs/generators/chipyard/eliza/src/main/scala/eliza/ElizaRocketConfig.scala",
+        "checkout_destination": "generators/chipyard/src/main/scala/eliza/ElizaRocketConfig.scala"
+      },
+      {
+        "source": "docs/generators/chipyard/eliza/src/main/scala/eliza/ElizaE1Periphery.scala",
+        "checkout_destination": "generators/chipyard/src/main/scala/eliza/ElizaE1Periphery.scala"
+      }
+    ],
+    "claim_level": "initial_linux_bringup_only",
+    "not_phone_class_reason": "A single Rocket RV64GC hart is a boot and integration stepping stone; it is not competitive with a 2028 phone application processor without separate multi-hart, cache, MMU, benchmark, power, thermal, Android, and silicon evidence."
+  },
+  "phone_2028_target_boundary": {
+    "status": "blocked_not_selected_for_product_claims",
+    "minimum_claim_evidence": [
+      "documented application CPU topology and frequency/voltage targets",
+      "RISC-V application profile and extension matrix with ISA compliance results",
+      "cache hierarchy, coherency, cache-maintenance, TLB, and MMU validation",
+      "OpenSBI, U-Boot, Linux, and Android boot transcripts on the selected target",
+      "CoreMark, STREAM, lmbench, fio, and selected SPEC-like workload results",
+      "sustained thermal and power measurement method with raw artifacts",
+      "CTS/VTS/userspace evidence before Android compatibility claims"
+    ],
+    "forbidden_without_evidence": [
+      "phone-class AP",
+      "2028 phone competitive",
+      "Android compatible",
+      "production silicon"
+    ]
+  },
+  "required_platform_blocks": {
+    "reset": "Boot ROM or firmware entry at the e1-chip reset vector",
+    "timer_software_interrupts": "CLINT or ACLINT-compatible mtime/mtimecmp/msip",
+    "external_interrupts": "PLIC-compatible external interrupt controller",
+    "console": "UART with Linux earlycon binding",
+    "dram": "DRAM model sized for OpenSBI plus Linux initramfs smoke",
+    "mmio": ["e1 DMA", "e1 NPU", "e1 display", "e1 peripherals"]
+  },
+  "expected_generated_artifacts": [
+    "build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json",
+    "build/chipyard/eliza_rocket/generated-src",
+    "build/chipyard/eliza_rocket/eliza-e1.dts",
+    "build/chipyard/eliza_rocket/eliza_rocket_ap.v",
+    "build/chipyard/eliza_rocket/simulator"
+  ],
+  "required_evidence": [
+    "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log",
+    "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+    "build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log",
+    "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
+    "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
+  ],
+  "target_delta_manifest": "docs/evidence/cpu-ap-2028-target-deltas.json",
+  "roadmap_manifest": "docs/evidence/cpu-ap-roadmap.json",
+  "rva23_profile_plan": "docs/evidence/cpu-ap-rva23-profile-plan.json",
+  "evidence_manifest": "docs/evidence/cpu-ap-evidence-manifest.json",
+  "capture_helper": "scripts/capture_cpu_ap_evidence.py",
+  "claim_policy": {
+    "linux_capable_cpu_claim": false,
+    "platform_contract_has_cpu_may_flip_to_true": false,
+    "reason": "Chipyard/Rocket RV64GC is the selected generated-AP path, but clean repository and CI runs do not carry the generated import manifest or required OpenSBI/Linux/trap/ISA/benchmark transcripts. The Linux-capable CPU claim remains blocked until those artifacts are regenerated and archived; phone-class AP, Android compatibility, production silicon, and release claims remain blocked by phone_2028_target_boundary."
+  }
+}

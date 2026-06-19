@@ -1,0 +1,29 @@
+# evidence_class: simulated_first_article_for_evt_planning_not_production_release
+# companion_to: cmf-results-template.csv
+# anchored to: PC+ABS molded orange; Pantone 165C; 60deg gloss 80+/-5 GU; pencil hardness >=2H; ASTM G155 UV
+criterion_id,sample_id,lot_id,artifact,measured_value,units,target,accepted,reviewer,notes
+orange_resin_color_plaque_delta_e,EVT1-CMF-L01-01,PCABS-ORG-PNT165C-L01,molded plaque vs Pantone 165C,1.42,deltaE,<=2.0,true,Sun Min (QC-FA-02),D65 lightbox ISO 3664 P2.
+orange_resin_color_plaque_delta_e,EVT1-CMF-L01-02,PCABS-ORG-PNT165C-L01,molded plaque vs Pantone 165C,1.68,deltaE,<=2.0,true,Sun Min (QC-FA-02),
+orange_resin_color_plaque_delta_e,EVT1-CMF-L02-01,PCABS-ORG-PNT165C-L02,molded plaque vs Pantone 165C,1.85,deltaE,<=2.0,true,Sun Min (QC-FA-02),
+orange_resin_color_plaque_delta_e,EVT1-CMF-L03-01,PCABS-ORG-PNT165C-L03,molded plaque vs Pantone 165C,1.31,deltaE,<=2.0,true,Sun Min (QC-FA-02),
+orange_resin_color_plaque_delta_e,EVT1-CMF-L04-01,PCABS-ORG-PNT165C-L04,molded plaque vs Pantone 165C,1.95,deltaE,<=2.0,true,Sun Min (QC-FA-02),
+orange_resin_color_plaque_delta_e,EVT1-CMF-L05-01,PCABS-ORG-PNT165C-L05,molded plaque vs Pantone 165C,1.59,deltaE,<=2.0,true,Sun Min (QC-FA-02),
+hard_touch_gloss_texture,EVT1-CMF-L01-G01,PCABS-ORG-PNT165C-L01,60deg gloss meter back hero,79.4,GU 60deg,80+/-5,true,Sun Min (QC-FA-02),BYK micro-gloss.
+hard_touch_gloss_texture,EVT1-CMF-L02-G01,PCABS-ORG-PNT165C-L02,60deg gloss meter back hero,81.7,GU 60deg,80+/-5,true,Sun Min (QC-FA-02),
+hard_touch_gloss_texture,EVT1-CMF-L03-G01,PCABS-ORG-PNT165C-L03,60deg gloss meter back hero,83.2,GU 60deg,80+/-5,true,Sun Min (QC-FA-02),
+hard_touch_gloss_texture,EVT1-CMF-L04-G01,PCABS-ORG-PNT165C-L04,60deg gloss meter back hero,78.9,GU 60deg,80+/-5,true,Sun Min (QC-FA-02),
+hard_touch_gloss_texture,EVT1-CMF-L05-G01,PCABS-ORG-PNT165C-L05,60deg gloss meter back hero,80.5,GU 60deg,80+/-5,true,Sun Min (QC-FA-02),
+scratch_and_hand_oil_visibility,EVT1-CMF-L01-S01,PCABS-ORG-PNT165C-L01,pencil hardness scratch,2H,pencil hardness,>=2H,true,Sun Min (QC-FA-02),ASTM D3363.
+scratch_and_hand_oil_visibility,EVT1-CMF-L02-S01,PCABS-ORG-PNT165C-L02,pencil hardness scratch,2H,pencil hardness,>=2H,true,Sun Min (QC-FA-02),
+scratch_and_hand_oil_visibility,EVT1-CMF-L03-S01,PCABS-ORG-PNT165C-L03,pencil hardness scratch,3H,pencil hardness,>=2H,true,Sun Min (QC-FA-02),
+scratch_and_hand_oil_visibility,EVT1-CMF-L04-S01,PCABS-ORG-PNT165C-L04,pencil hardness scratch,2H,pencil hardness,>=2H,true,Sun Min (QC-FA-02),
+scratch_and_hand_oil_visibility,EVT1-CMF-L05-S01,PCABS-ORG-PNT165C-L05,pencil hardness scratch,2H,pencil hardness,>=2H,true,Sun Min (QC-FA-02),
+uv_fade_500hr_delta_e,EVT1-CMF-L01-UV01,PCABS-ORG-PNT165C-L01,xenon arc 500hr,1.82,deltaE,<3.0,true,Sun Min (QC-FA-02),ASTM G155 xenon arc.
+uv_fade_500hr_delta_e,EVT1-CMF-L02-UV01,PCABS-ORG-PNT165C-L02,xenon arc 500hr,2.14,deltaE,<3.0,true,Sun Min (QC-FA-02),
+uv_fade_500hr_delta_e,EVT1-CMF-L03-UV01,PCABS-ORG-PNT165C-L03,xenon arc 500hr,1.96,deltaE,<3.0,true,Sun Min (QC-FA-02),
+uv_fade_500hr_delta_e,EVT1-CMF-L04-UV01,PCABS-ORG-PNT165C-L04,xenon arc 500hr,2.31,deltaE,<3.0,true,Sun Min (QC-FA-02),
+uv_fade_500hr_delta_e,EVT1-CMF-L05-UV01,PCABS-ORG-PNT165C-L05,xenon arc 500hr,2.05,deltaE,<3.0,true,Sun Min (QC-FA-02),
+gate_blush_vestige_and_weld_line_visibility,EVT1-CMF-L01-V01,PCABS-ORG-PNT165C-L01,visual inspection A-surfaces,pass,visual,no objectionable defects,true,Sun Min (QC-FA-02),Gate vestige off A-surface.
+gate_blush_vestige_and_weld_line_visibility,EVT1-CMF-L02-V01,PCABS-ORG-PNT165C-L02,visual inspection A-surfaces,pass,visual,no objectionable defects,true,Sun Min (QC-FA-02),
+gate_blush_vestige_and_weld_line_visibility,EVT1-CMF-L03-V01,PCABS-ORG-PNT165C-L03,visual inspection A-surfaces,pass,visual,no objectionable defects,true,Sun Min (QC-FA-02),
+rendered_orange_identity_locked,EVT1-CMF-L01-R01,PCABS-ORG-PNT165C-L01,CAD render vs lock,pass,visual,orange shell dominant,true,Sun Min (QC-FA-02),Compactness review pass.

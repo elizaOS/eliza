@@ -1,0 +1,16 @@
+{
+  "schema": "eliza.secure_boot_negative_transcript.v1",
+  "case": "debug_wrong_auth_key",
+  "description": "RMA debug-auth challenge signed by an unauthorized key is rejected.",
+  "mitigation": "M8",
+  "expect_accept": false,
+  "expect_halt_code": 17,
+  "expect_halt_name": "DEBUG_AUTH_SIGNATURE_FAILURE",
+  "observed_accept": false,
+  "observed_halt_code": 17,
+  "observed_halt_name": "DEBUG_AUTH_SIGNATURE_FAILURE",
+  "halt_record_hex": "48414c5401001100000000000700000000000000000000000000000000000000",
+  "halt_record_len": 32,
+  "result": "PASS",
+  "as_of": "2026-05-21T14:03:44.451020+00:00"
+}

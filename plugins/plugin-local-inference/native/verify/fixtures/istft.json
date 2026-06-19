@@ -1,0 +1,16 @@
+{
+  "description": "GGML_OP_ISTFT verification fixture — Kokoro iSTFTNet parameters.",
+  "n_fft": 20,
+  "hop_length": 5,
+  "win_length": 20,
+  "cases": [
+    {
+      "n_frames": 24,
+      "note": "Kokoro-82M default: n_fft=20, hop=5, win=20, 24 frames → 135 PCM samples",
+      "mag": [],
+      "phase": [],
+      "expected_pcm": [],
+      "_status": "placeholder — populated at verify time by istft-verify.cpp which generates random inputs and checks CPU == backend within tol=1e-3"
+    }
+  ]
+}

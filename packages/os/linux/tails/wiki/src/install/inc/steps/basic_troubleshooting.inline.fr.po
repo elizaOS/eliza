@@ -1,0 +1,150 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-04-17 19:39-0600\n"
+"PO-Revision-Date: 2026-04-01 22:22+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr "[[!meta robots=\"noindex\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Wait 2&ndash;3 minutes and try again. Some USB sticks need some rest after "
+"installing."
+msgstr ""
+"Attendez 2&ndash;3 minutes et réessayez. Certaines clés USB ont besoin d'un "
+"peu de repos après l'installation."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Try all other USB ports on the computer. Some USB ports cannot be used to "
+"start from."
+msgstr ""
+"Essayez tous les autres ports USB de l'ordinateur. Certains ports USB ne "
+"peuvent pas être utilisés pour démarrer."
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have installed Tails using either:"
+msgstr ""
+"Assurez-vous d'avoir installé Tails à l'aide de l'une des méthodes suivantes "
+":"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>Rufus</i> from Windows|install/windows#rufus]]"
+msgstr "[[<i>Rufus</i> depuis Windows|install/windows#Rufus]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]"
+msgstr "[[<i>balenaEtcher</i> depuis macOS|install/mac#etcher]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>GNOME Disks</i> from Linux|install/linux#install]]"
+msgstr "[[<i>GNOME Disques</i> depuis Linux|install/linux#install]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[the Linux command line|install/expert#install]]"
+msgstr "[[la ligne de commande Linux|install/expert#install]]"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Make sure that you have [[verified your download of Tails|install/download]]."
+msgstr ""
+"Assurez-vous d'avoir "
+"[[vérifié votre téléchargement de Tails|install/download]]."
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have <a href=\"#verify\">verified your download</a>."
+msgstr ""
+"Assurez-vous d'avoir <a href=\"#verify\">vérifié votre téléchargement</a>."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|install/windows#install]] on the same USB stick."
+msgstr ""
+"Essayez [[à nouveau d'installer|install/windows#install]] sur la même clé "
+"USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|install/mac#install]] on the same USB stick."
+msgstr ""
+"Essayez [[à nouveau d'installer|install/mac#install] sur la même clé USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|install/linux#install]] on the same USB stick."
+msgstr ""
+"Essayez [[à nouveau d'installer|install/linux#install]] sur la même clé USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|install/expert#install]] on the same USB stick."
+msgstr ""
+"Essayez [[à nouveau d'installer|install/expert#install]] sur la même clé USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|clone/pc#install]] on the same USB stick."
+msgstr ""
+"Essayez [[à nouveau d'installer|clone/pc#install]] sur la même clé USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|clone/mac#install]] on the same USB stick."
+msgstr ""
+"Essayez [[à nouveau d'installer|clone/mac#install]] sur la même clé USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|install]] on the same USB stick."
+msgstr "Essayez [[à nouveau d'installer|install]] sur la même clé USB."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Try to [[install again|doc/upgrade/tails#install]] on the same USB stick."
+msgstr ""
+"Essayez [[à nouveau d'installer|doc/upgrade/tails#install]] sur la même clé "
+"USB."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Try to [[install again|doc/upgrade/windows#install]] on the same USB stick."
+msgstr ""
+"Essayez [[à nouveau d'installer|doc/upgrade/windows#install]] sur la même "
+"clé USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|doc/upgrade/mac#install]] on the same USB stick."
+msgstr ""
+"Essayez [[à nouveau d'installer|doc/upgrade/mac#install]] sur la même clé "
+"USB."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Try to [[install again|doc/upgrade/linux#install]] on the same USB stick."
+msgstr ""
+"Essayez [[à nouveau d'installer|doc/upgrade/linux#install]] sur la même clé "
+"USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to install on a different USB stick."
+msgstr "Essayez d'installer sur une clé USB différente."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to use the same USB stick to start on a different computer."
+msgstr ""
+"Essayez d'utiliser la même clé USB pour démarrer sur un autre ordinateur."
+
+#, fuzzy
+#~| msgid "Make sure that you have installed Tails using either:"
+#~ msgid "Make sure that you are running the latest version of macOS."
+#~ msgstr ""
+#~ "S'assurer d'avoir installé Tails à l'aide de l'une des méthodes "
+#~ "suivantes :"

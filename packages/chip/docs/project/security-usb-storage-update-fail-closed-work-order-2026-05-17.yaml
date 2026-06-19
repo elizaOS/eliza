@@ -1,0 +1,96 @@
+schema: eliza.security_usb_storage_update_fail_closed_work_order.v1
+status: fail_closed_work_order
+date: 2026-05-17
+secure_boot_claim_allowed: false
+usb_c_pd_claim_allowed: false
+storage_claim_allowed: false
+avb_claim_allowed: false
+ab_ota_claim_allowed: false
+recovery_claim_allowed: false
+fastboot_security_claim_allowed: false
+release_claim_allowed: false
+claim_boundary: >
+  This work order is not implementation evidence. Secure boot, USB-C/PD,
+  storage, AVB, A/B updates, recovery, fastboot, and OTA flows are not
+  implemented until the required hardware, target-OS, signer, and lab
+  transcripts are archived and reviewed.
+source_files:
+  - docs/arch/security.md
+  - docs/arch/boot.md
+  - rtl/bootrom/e1_bootrom.sv
+  - sw/bootrom/e1_qemu_firmware.S
+  - sw/aosp-device/device/eliza/eliza_ai_soc/fstab.eliza
+  - docs/sw/aosp-device/README.md
+  - docs/manufacturing/real-world-verification-gaps.yaml
+domains:
+  - id: secure_boot_key_debug_policy
+    status: blocked_not_implemented
+    release_gap_id: secure_boot_key_debug_policy
+    local_check: scripts/check_security_usb_update_work_order.py
+    evidence_paths:
+      - docs/manufacturing/evidence/security/
+      - docs/evidence/android/
+    required_work_orders:
+      - Write and review a threat model for ROM, bootloader, recovery, OTA, AVB, debug, manufacturing provisioning, RMA, and signer operations.
+      - Define signed image format, signature algorithm, hash algorithm, key ladder, key revocation, rollback index storage, lifecycle states, and halt behavior.
+      - Define debug policy for development, manufacturing, locked production, authorized RMA, and scrap states.
+      - Define manufacturing key ceremony, HSM or signer logs, board identity, audit trail, and vulnerability-response owner.
+    required_negative_evidence:
+      - Unsigned image rejection transcript.
+      - Tampered image rejection transcript.
+      - Wrong-key image rejection transcript.
+      - Rollback image rejection transcript.
+      - Corrupt image metadata rejection transcript.
+      - Debug unlock denied in locked-production transcript.
+      - Missing or erased key material halts before mutable firmware transcript.
+    required_positive_evidence:
+      - Signed image acceptance transcript.
+      - Locked-production boot transcript with verified boot state.
+      - Authorized service or RMA unlock transcript with audit record.
+      - OTP/fuse or secure-storage programming and readback record.
+    forbidden_claims:
+      - Secure boot enabled.
+      - Verified boot complete.
+      - Debug locked.
+      - Rollback protected.
+      - KeyMint or attestation ready.
+  - id: usb_storage_update_stack
+    status: blocked_not_implemented
+    release_gap_id: usb_storage_update_stack
+    local_check: scripts/check_security_usb_update_work_order.py
+    evidence_paths:
+      - docs/manufacturing/evidence/usb-storage-update/
+      - docs/evidence/android/
+    required_work_orders:
+      - Select USB controller or PHY, Type-C/PD controller, CC policy, data-role policy, current limits, ESD protection, and compliance owner.
+      - Select boot storage, partition map, AVB chain, A/B slot metadata, recovery partition or ramdisk policy, and factory reset or secure wipe policy.
+      - Define fastboot, fastbootd, ADB, recovery, sideload, and production-lock behavior for development and locked devices.
+      - Define OTA failure-mode matrix for interrupted download, interrupted install, power loss, full storage, low battery, bad signature, wrong key, rollback, and unbootable slot.
+    required_negative_evidence:
+      - Bad OTA payload signature rejection transcript.
+      - Rollback OTA rejection transcript.
+      - Interrupted install recovery transcript.
+      - Full-storage OTA failure transcript.
+      - Low-battery OTA refusal transcript.
+      - Unauthorized fastboot flashing denied transcript.
+      - Corrupt slot metadata recovery transcript.
+    required_positive_evidence:
+      - USB enumeration and role-switch transcript.
+      - ADB and fastboot or fastbootd transcript with lock state.
+      - Storage enumeration, read/write integrity, filesystem recovery, and secure wipe transcript.
+      - AVB chain and A/B successful OTA transcript.
+      - Recovery boot transcript.
+      - USB-IF or Type-C/PD pre-scan, certification, or explicit no-logo/no-PD claim record.
+    forbidden_claims:
+      - USB-C ready.
+      - USB compliant.
+      - Storage ready.
+      - AVB enabled.
+      - A/B OTA ready.
+      - Recovery ready.
+      - Fastboot secure.
+global_fail_closed_checks:
+  - Identity ROM remains non-secure until executable authentication logic exists.
+  - AOSP fstab AVB flags are scaffold markers only; they are not AVB evidence.
+  - BoardConfig must not imply AVB, A/B, recovery, or OTA support without the evidence above.
+  - Product checks must fail if this work order drops required rejection evidence or forbidden-claim text.

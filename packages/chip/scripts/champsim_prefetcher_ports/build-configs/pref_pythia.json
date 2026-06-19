@@ -1,0 +1,6 @@
+{
+    "executable_name": "champsim_pref_pythia",
+    "LLC": { "prefetcher": "no",  "replacement": "lru" },
+    "L2C": { "prefetcher": "pythia" },
+    "L1D": { "prefetcher": "no" }
+}

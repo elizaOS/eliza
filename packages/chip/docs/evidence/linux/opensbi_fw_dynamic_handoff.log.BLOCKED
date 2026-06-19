@@ -1,0 +1,3 @@
+reason: no accepted generated-AP OpenSBI fw_dynamic handoff transcript has been captured for the Eliza E1 Linux smoke path.
+required: capture OpenSBI UART output showing fw_dynamic handoff, Domain0 Next Address 0x80200000, Domain0 Next Arg1 0x0000000080b00000, next-mode, command line, and PASS provenance markers.
+producer: ELIZA_OPENSBI_BOOT_CMD='/exact generated-AP boot command' python3 scripts/capture_cpu_ap_evidence.py intake opensbi-boot --source /path/to/opensbi.log --command "$ELIZA_OPENSBI_BOOT_CMD"

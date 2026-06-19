@@ -1,0 +1,226 @@
+schema: eliza.e1_phone_production_readiness.v1
+status: blocked_requires_routed_board_supplier_data_and_factory_quotes
+date: 2026-05-20
+claim_boundary: >
+  Production handoff contract only. This records the stackup, impedance,
+  fabrication-output, assembly, and factory-test evidence required before the
+  E1 phone PCB can be called finished or enclosure-ready. It is not a routed
+  board, fab quote, DFM approval, production BOM, or test release.
+
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml
+  - board/kicad/e1-phone/supplier-rfq-intake.yaml
+  - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/manufacturing-closure.yaml
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+
+board_revision_policy:
+  current_revision: EVT0-concept
+  release_revision_required_before_fab: EVT1-routed
+  revision_lock_requires:
+    - RFQs sent and supplier response packs archived for every high-risk function
+    - supplier pinouts and 2D drawings for display, cameras, USB-C, battery, side keys, audio, antennas, SIM/eSIM, and radio modules
+    - KiCad schematic ERC clean or signed waivers
+    - KiCad PCB DRC clean or signed waivers
+    - production BOM and approved vendor list
+    - enclosure STEP fit review using routed board STEP
+
+stackup_request:
+  target: 10_layer_0p8_mm_hdi
+  evt0_minimum: 8_layer_0p8_mm_hdi
+  copper_finish: ENIG_or_equivalent_mobile_fab_finish
+  board_thickness_mm: 0.8
+  hdi_features_required:
+    - microvias_or_via_in_pad_if_required_by_soc_memory_or_modules
+    - controlled_impedance_outer_and_inner_signal_layers
+    - continuous_ground_reference_planes_for_mipi_usb_pcie_rf
+  required_from_fabricator:
+    - stackup drawing with dielectric constants and loss tangent
+    - impedance table and coupon geometry
+    - minimum drill, annular ring, trace, space, solder mask web, and via-in-pad capability
+    - warpage and flatness limits compatible with phone enclosure stack
+
+impedance_coupon_plan:
+  usb2_90_ohm:
+    nets: [USB_DP, USB_DN, CELL_USB2_DP, CELL_USB2_DN]
+    coupon_required: true
+    final_width_gap_source: fabricator_field_solver
+  mipi_dphy_100_ohm:
+    nets: [DSI_CLK_P, DSI_D0_P, CAM0_CSI_CLK_P, CAM1_CSI_CLK_P]
+    coupon_required: true
+    final_width_gap_source: fabricator_field_solver
+  pcie_85_ohm:
+    nets: [WIFI_PCIE_TX_P, WIFI_PCIE_RX_P, CELL_PCIE_TX_P, CELL_PCIE_RX_P]
+    coupon_required: true
+    final_width_gap_source: fabricator_field_solver
+  rf_50_ohm:
+    nets: [CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF, WIFI_BT_RF0, WIFI_BT_RF1]
+    coupon_required: true
+    final_width_gap_source: rf_fabricator_stackup_and_module_reference_layout
+  memory_storage:
+    nets: [LPDDR_CK_P, LPDDR_DQS_P, UFS_REFCLK_P, UFS_TX_P, UFS_RX_P]
+    coupon_required: true
+    final_width_gap_source: ap_package_and_memory_vendor_signoff
+  split_board_flex_usb2_audio:
+    nets: [USB_DP, USB_DN, I2S_BCLK, PDM_CLK, AUDIO_I2C_SCL, HAPTIC_OUT]
+    coupon_required: true
+    final_width_gap_source: connector_vendor_fpc_stackup_and_usb2_audio_si_review
+
+factory_test_coverage_required:
+  power_rails: [VBUS, VBAT, SYS, AON_1V8, IO_1V8, RF_VBAT, CAM_AVDD_2V8, DISP_AVDD_5V5]
+  usb_c: [USB_CC1, USB_CC2, USB_DP, USB_DN, VBUS, SHIELD_GND]
+  display_touch: [DSI_CLK_P, DSI_D0_P, TOUCH_I2C_SCL, TOUCH_I2C_SDA, DISP_RESET_N, DISP_BL_EN, DISP_BL_PWM]
+  cameras: [CAM0_CSI_CLK_P, CAM1_CSI_CLK_P, CAM0_I2C_SCL, CAM1_I2C_SCL, CAM0_RESET_N, CAM1_RESET_N, CAM_AVDD_2V8, CAM_DVDD_1V2]
+  radios: [CELL_GNSS_RF, CELL_RF_DIV, CELL_RF_MAIN, WIFI_BT_RF0, WIFI_BT_RF1, USIM_IO, ESIM_IO]
+  audio_haptics: [I2S_BCLK, PDM_CLK, SPK_P, SPK_N, HAPTIC_OUT, VDD_AUDIO_3V3, VDD_AMP_3V3]
+  split_board_interconnect: [USB_DP, USB_DN, VBUS, SYS, I2S_BCLK, PDM_CLK, HAPTIC_OUT, AON_1V8, IO_1V8, VDD_AUDIO_3V3, VDD_AMP_3V3]
+  buttons_sensors_nfc: [PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, NFC_I2C_SCL, SENSOR_I2C_SCL, IMU_INT, AON_1V8]
+  compute_storage_debug: [LPDDR_CK_P, UFS_TX_P, UFS_RX_P, JTAG_TCK, BOOT_MODE0, SOC_RESET_N]
+
+production_output_requirements:
+  - Gerber X2 or IPC-2581 with stackup notes
+  - NC drill and slot files
+  - ODB++ or IPC-2581 if requested by selected assembler
+  - pick-and-place with side, rotation, and centroid convention documented
+  - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+  - assembly drawing with polarity, shield, keepout, do-not-populate, and inspection notes
+  - split-board interconnect assembly drawing with mating order, stiffener, strain relief, and inspection notes
+  - board STEP exported from routed KiCad with supplier 3D models
+  - stencil design and paste aperture exceptions
+  - DFM/DFA report from selected fab and assembler
+  - first-article traveler, current-limit table, and stop-on-fail instructions
+
+selected_supplier_response_production_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_define_avl_bom_factory_and_production_release_inputs
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_production_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  required_response_fields:
+    - orderable_manufacturer_part_number
+    - lifecycle_status
+    - MOQ
+    - unit_price_10
+    - unit_price_100
+    - unit_price_1000
+    - lead_time_days_10
+    - lead_time_days_100
+    - lead_time_days_1000
+    - signed_2d_drawing_path
+    - pinout_or_pad_map_path
+    - recommended_land_pattern_path
+    - step_or_brep_model_path
+    - compliance_pack_index_path
+    - sample_lot_tracking
+    - approved_by_ee
+    - approved_by_me
+    - approved_by_ops
+  production_inputs_blocked:
+    - production BOM and AVL cannot name approved orderable MPNs, substitutes, lifecycle, MOQ, price breaks, or lead times
+    - assembly drawings cannot bind supplier pad maps, recommended land patterns, courtyards, STEP models, or inspection datums
+    - factory limits cannot be derived from supplier samples, electrical specs, compliance packs, RF modular grants, or first-article measurements
+    - DFM/DFA and stackup release cannot close without supplier reference layouts, keepouts, and enclosure datum packs
+    - EVT1 buy release cannot proceed until EE, ME, and Ops approve the normalized selected response packs
+  required_production_outputs_blocked:
+    - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+    - assembly drawing with polarity, shield, keepout, do-not-populate, and inspection notes
+    - board STEP exported from routed KiCad with supplier 3D models
+    - DFM/DFA report from selected fab and assembler
+    - first-article traveler, current-limit table, and stop-on-fail instructions
+  all_selected_supplier_response_packs_absent: true
+  production_release_allowed_without_selected_supplier_packs: false
+
+selected_hardware_production_constraints:
+  status: blocked_until_selected_hardware_stackup_coupon_factory_and_avl_evidence_exist
+  function_count: 5
+  functions:
+    - function: display_touch
+      selected_hardware: CH550FH01A-CT
+      source_artifact: board/kicad/e1-phone/display-envelope-downselect.yaml
+      required_coupon_groups: [mipi_dphy_100_ohm]
+      required_factory_coverage: [display_touch, power_rails]
+      required_production_outputs:
+        - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+        - board STEP exported from routed KiCad with supplier 3D models
+        - first-article traveler, current-limit table, and stop-on-fail instructions
+      status: blocked_missing_display_supplier_avl_mipi_coupon_factory_and_step_evidence
+    - function: rear_front_cameras
+      selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+      source_artifact: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+      required_coupon_groups: [mipi_dphy_100_ohm]
+      required_factory_coverage: [cameras, power_rails]
+      required_production_outputs:
+        - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+        - board STEP exported from routed KiCad with supplier 3D models
+        - first-article traveler, current-limit table, and stop-on-fail instructions
+      status: blocked_missing_camera_supplier_avl_mipi_coupon_factory_and_step_evidence
+    - function: usb_c_power_sidekeys
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      source_artifact: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+      required_coupon_groups: [usb2_90_ohm]
+      required_factory_coverage: [usb_c, buttons_sensors_nfc, power_rails]
+      required_production_outputs:
+        - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+        - assembly drawing with polarity, shield, keepout, do-not-populate, and inspection notes
+        - first-article traveler, current-limit table, and stop-on-fail instructions
+      status: blocked_missing_usb_power_sidekey_avl_usb_coupon_factory_and_step_evidence
+    - function: cellular
+      selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      required_coupon_groups: [usb2_90_ohm, pcie_85_ohm, rf_50_ohm]
+      required_factory_coverage: [radios, power_rails]
+      required_production_outputs:
+        - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+        - board STEP exported from routed KiCad with supplier 3D models
+        - first-article traveler, current-limit table, and stop-on-fail instructions
+      status: blocked_missing_cellular_sku_avl_usb_pcie_rf_coupon_factory_and_step_evidence
+    - function: wifi_bluetooth
+      selected_hardware: Murata_LBEE5XV2EA-802
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      required_coupon_groups: [pcie_85_ohm, rf_50_ohm]
+      required_factory_coverage: [radios, power_rails]
+      required_production_outputs:
+        - production BOM/AVL with MPN, lifecycle, MOQ, lead time, and substitutes
+        - board STEP exported from routed KiCad with supplier 3D models
+        - first-article traveler, current-limit table, and stop-on-fail instructions
+      status: blocked_missing_wifi_bt_avl_pcie_rf_coupon_factory_and_step_evidence
+
+release_blockers:
+  - real supplier footprints and pinouts missing
+  - selected supplier response packs with orderable MPNs, AVL/BOM fields, supplier drawings, land patterns, STEP/B-rep models, samples, and approvals are missing
+  - routed copper and filled zones missing
+  - ERC/DRC evidence missing
+  - stackup and impedance coupon quote missing
+  - assembly DFM/DFA missing
+  - factory test fixture and probe map missing
+  - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth production constraints are not evidenced
+  - first article and measurement evidence missing
+
+forbidden_claims:
+  - production_ready
+  - enclosure_ready
+  - fabrication_ready
+  - assembly_ready
+  - factory_test_ready
+  - impedance_closed

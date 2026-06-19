@@ -1,0 +1,20 @@
+#! /bin/sh
+
+# Wrapper to run gitlab-triage (https://gitlab.com/gitlab-org/gitlab-triage)
+# in a container
+
+set -e
+set -u
+set -x
+
+GITLAB_TRIAGE_POLICIES_DIR="$(readlink -f "$(dirname "$0")"/../policies)"
+
+# shellcheck disable=SC2086
+podman run \
+    --name tails-gitlab-triage \
+     --oom-score-adj=200 \
+    --rm \
+    --volume "${GITLAB_TRIAGE_POLICIES_DIR}":/etc/gitlab-triage-policies \
+    ${PODMAN_ARGS:-} \
+    tails:gitlab-triage-stable \
+    /usr/local/bin/gitlab-triage "${@}"

@@ -1,0 +1,165 @@
+task_id: T124_todo_calendar_conflict
+task_name: Todo and Calendar Conflict Detection
+version: "1.0"
+category: workflow
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: todo
+    command: python mock_services/todo/server.py
+    port: 9102
+    health_check: http://localhost:9102/todo/tasks
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9102/todo/reset
+    env:
+      TODO_FIXTURES: tasks/T124_todo_calendar_conflict/fixtures/todo/tasks.json
+  - name: calendar
+    command: python mock_services/calendar/server.py
+    port: 9101
+    health_check: http://localhost:9101/calendar/events
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9101/calendar/reset
+    env:
+      CALENDAR_FIXTURES: tasks/T124_todo_calendar_conflict/fixtures/calendar/events.json
+
+prompt:
+  text: |
+    My to-do items and calendar schedule often conflict. Please help me:
+    1. Review all to-do items and their due dates
+    2. Review this week's calendar schedule
+    3. Identify to-do items whose due dates fall on days with large blocks of meetings preventing work
+    4. Provide rescheduling suggestions: which to-do items need to be moved earlier or later
+    5. Output a conflict analysis and rescheduling plan
+  language: en
+
+tools:
+  - name: todo_list_tasks
+    description: View to-do list
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Filter by status (pending/completed/all)"
+          default: pending
+      required: []
+
+  - name: todo_get_task
+    description: Get to-do item details
+    input_schema:
+      type: object
+      properties:
+        task_id:
+          type: string
+          description: Task ID
+      required: [task_id]
+
+  - name: calendar_list_events
+    description: View calendar events
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "Start date (YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "End date (YYYY-MM-DD)"
+      required: []
+
+  - name: calendar_get_event
+    description: Get event details
+    input_schema:
+      type: object
+      properties:
+        event_id:
+          type: string
+          description: Event ID
+      required: [event_id]
+
+tool_endpoints:
+  - tool_name: todo_list_tasks
+    url: http://localhost:9102/todo/tasks
+    method: POST
+  - tool_name: todo_get_task
+    url: http://localhost:9102/todo/tasks/get
+    method: POST
+  - tool_name: calendar_list_events
+    url: http://localhost:9101/calendar/events
+    method: POST
+  - tool_name: calendar_get_event
+    url: http://localhost:9101/calendar/events/get
+    method: POST
+
+environment:
+  mock_today: "2026-03-27"
+  timeout_seconds: 300
+  max_turns: 20
+
+scoring_components:
+  - name: conflict_detection
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether all 3 conflict groups are correctly identified (3/27 full-day training, 3/28 afternoon assembly, 3/30 full-day business trip)"
+  - name: resolution_plan
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether rescheduling suggestions consider priority and feasibility"
+  - name: plan_completeness
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "Whether suggestions cover all conflicts and are logically consistent"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the quality of the assistant's conflict analysis and rescheduling suggestions.
+
+  ## Correct conflict analysis
+
+  Conflict 1 -- March 27 (full-day training 9:00-17:00):
+  - TODO-301 (Q1 report, high, due 3/27) -- full-day training prevents completion
+  - TODO-304 (supplier quote reply, medium, due 3/27) -- also cannot be completed
+  -> Suggestion: complete by 3/26, or coordinate extension to 3/28 morning
+
+  Conflict 2 -- March 28 (all-hands meeting 14:00-17:00):
+  - TODO-302 (budget approval form, high, due 3/28) -- afternoon occupied, only morning available
+  - TODO-307 (technical articles, low, due 3/28) -- minor conflict
+  -> Suggestion: prioritize completing budget approval form in the morning (high priority)
+
+  Conflict 3 -- March 30 (client visit, full-day business trip):
+  - TODO-303 (client PPT, high, due 3/30) -- full-day trip prevents focused PPT work
+  -> Suggestion: PPT must be completed before 3/29 (note: 3/29 afternoon has tech sharing session)
+
+  ## No conflict / low conflict
+  - TODO-305 (documentation, medium, due 3/29) -- 3/29 morning available + after tech sharing
+  - TODO-306 (weekly report, medium, due 3/31) -- 3/31 is relatively free
+
+  Scoring:
+  - 0.8-1.0: All 3 conflict groups identified, suggestions reasonable and feasible
+  - 0.5-0.7: At least 2 conflict groups identified, basic suggestions provided
+  - 0.2-0.4: Conflict identification incomplete
+  - 0.0-0.1: Analysis not completed
+
+reference_solution: |
+  1. todo_list_tasks() -> 7 to-do items
+  2. calendar_list_events(start_date="2026-03-27", end_date="2026-03-31") -> 5 events
+  3. Cross-reference by date:
+     - 3/27: full-day training vs TODO-301 (high) + TODO-304 (medium) -> conflict
+     - 3/28: afternoon meeting vs TODO-302 (high) + TODO-307 (low) -> partial conflict
+     - 3/30: full-day trip vs TODO-303 (high) -> conflict
+  4. Rescheduling suggestions:
+     - TODO-301 -> move to 3/26
+     - TODO-304 -> move to 3/28 morning or 3/26
+     - TODO-302 -> complete on 3/28 morning
+     - TODO-303 -> move to 3/29 (note afternoon tech sharing session)
+
+primary_dimensions: [completion, robustness, communication]

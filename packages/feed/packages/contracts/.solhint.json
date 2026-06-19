@@ -1,0 +1,8 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "func-visibility": ["warn", { "ignoreConstructors": true }],
+    "import-path-check": "off",
+    "function-max-lines": ["warn", 60]
+  }
+}

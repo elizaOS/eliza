@@ -1,0 +1,949 @@
+schema: eliza.research.bench_sim_formal.source_inventory.v1
+generated: 2026-05-19
+scope: >
+  Cutting-edge benchmarks, simulators, and verification frameworks relevant to
+  the Eliza E1 L0_RTL_UNIT -> L6_COMPLETE_PHONE evidence ladder. Each entry
+  cites a primary source (official site, MLCommons, GitHub repo, or refereed
+  paper) and the role it would play in the E1 verification path.
+note: >
+  No fabrication. Versions listed are the latest publicly observable as of
+  2026-05-19; if upstream has cut a newer release after that date, prefer the
+  upstream tag and update this file. Closed-tool entries are tagged
+  proprietary: true and are referenced for positioning only.
+
+entries:
+
+  # ------------------------------------------------------------------
+  # 1. MLPerf and laptop-class AI benchmarks
+  # ------------------------------------------------------------------
+  - id: mlperf_inference
+    name: MLPerf Inference (Datacenter + Edge)
+    org: MLCommons
+    url: https://mlcommons.org/benchmarks/inference-datacenter/
+    repo: https://github.com/mlcommons/inference
+    latest_round: v5.0 (Spring 2025) and v5.1 (Fall 2025) results published on mlcommons.org
+    category: benchmark
+    role_for_e1: >
+      Reference for closed-loop scenarios (SingleStream, MultiStream, Server,
+      Offline) and accuracy targets that the L4 silicon-Android lane should
+      adopt; not a phone-tier benchmark in itself.
+
+  - id: mlperf_mobile_app_open
+    name: MLPerf Mobile App Open
+    org: MLCommons Mobile WG
+    url: https://mlcommons.org/benchmarks/inference-mobile/
+    repo: https://github.com/mlcommons/mobile_app_open
+    latest_round: v4.x cycle (MLPerf Mobile v4 results published 2024-2025)
+    workloads:
+      - MobileBERT-tiny (NLP)
+      - MobileNetEdgeTPU (image classification)
+      - MobileDet / SSD-MobileNet (object detection)
+      - DeepLabv3 (semantic segmentation)
+      - Stable Diffusion XS (generative, v4 addition)
+    category: benchmark
+    role_for_e1: >
+      Named as required evidence in npu-2028-target.yaml. App requires Android
+      NNAPI / TFLite delegate or vendor SDK and a controllable thermal state.
+      First viable use is L4_SILICON_ANDROID; pre-silicon use is limited to
+      operator-level golden references.
+
+  - id: mlperf_mobile_v4_spec
+    name: MLPerf Mobile v4 results methodology
+    org: MLCommons
+    url: https://mlcommons.org/benchmarks/inference-mobile/
+    category: benchmark_method
+    role_for_e1: >
+      Defines accuracy thresholds, run protocol, and the v4 generative-model
+      additions (Stable Diffusion XS) that an E1 phone-class claim would need
+      to clear.
+
+  - id: mlperf_tiny
+    name: MLPerf Tiny
+    org: MLCommons
+    url: https://mlcommons.org/benchmarks/inference-tiny/
+    repo: https://github.com/mlcommons/tiny
+    latest_round: v1.2 (2024) and v1.3 cycle published 2025
+    category: benchmark
+    role_for_e1: >
+      Reference for always-on / micro-NPU operating point
+      (always_on_micro_npu_power_mw_max: 20 in the 2028 target). Workloads
+      (keyword spotting, visual wake words, anomaly detection, image
+      classification) match the always-on tier rather than the main NPU.
+
+  - id: mlperf_client
+    name: MLPerf Client
+    org: MLCommons Client WG
+    url: https://mlcommons.org/benchmarks/client/
+    repo: https://github.com/mlcommons/client
+    latest_round: v0.6 (2025) Llama-2-7B / Phi-3.5-mini class workloads
+    category: benchmark
+    role_for_e1: >
+      Laptop NPU benchmark; informs the LLM 3B / 7B token-per-second numeric
+      targets in npu-2028-target.yaml and is the closest open precedent for
+      llm_*_int4_tokens_per_second_sustained_min reporting.
+
+  - id: mlperf_power
+    name: MLPerf Power (Datacenter + Mobile)
+    org: MLCommons Power WG
+    url: https://mlcommons.org/benchmarks/inference-power/
+    repo: https://github.com/mlcommons/power
+    category: power_method
+    role_for_e1: >
+      Reference power measurement method (PTDaemon, mobile rail integration)
+      that the project should imitate for power_trace and thermal_trace
+      evidence required by npu-2028-target.yaml.
+
+  - id: mlperf_storage
+    name: MLPerf Storage
+    org: MLCommons
+    url: https://mlcommons.org/benchmarks/storage/
+    repo: https://github.com/mlcommons/storage
+    category: benchmark
+    role_for_e1: >
+      Informs fio profile choice for the storage row of benchmark-matrix.md;
+      out of v0 scope but useful when the L4 dev-board claim is widened.
+
+  - id: ai_benchmark_eth
+    name: AI-Benchmark
+    org: ETH Zurich Computer Vision Lab (Andrey Ignatov et al.)
+    url: https://ai-benchmark.com/
+    repo: https://github.com/aiff22/AI-Benchmark
+    latest_release: AI-Benchmark v6 (Android app, 2024-2025 cycle)
+    category: benchmark
+    role_for_e1: >
+      Operator-rich Android phone NPU benchmark covering ~60 sub-tests across
+      MobileNet, SRGAN, U-Net, transformer, and INT8/FP16 mixes. Complements
+      MLPerf Mobile with broader operator coverage but weaker rules.
+
+  - id: geekbench_ai
+    name: Geekbench AI
+    org: Primate Labs
+    url: https://www.geekbench.com/ai/
+    latest_release: Geekbench AI 1.x (formerly Geekbench ML)
+    category: benchmark
+    proprietary: true
+    role_for_e1: >
+      Cross-platform AI inference scoring (CPU / GPU / NNAPI / Core ML).
+      Useful as an L6 product comparison; not for pre-silicon evidence.
+
+  - id: procyon_ai
+    name: UL Procyon AI Inference / AI Computer Vision
+    org: UL Solutions
+    url: https://benchmarks.ul.com/procyon/ai-inference-benchmark
+    category: benchmark
+    proprietary: true
+    role_for_e1: >
+      Windows NPU benchmark (DirectML / OpenVINO / WinML); not relevant until
+      the project ships a Windows-on-RISC-V or laptop path.
+
+  - id: passmark_ai
+    name: PassMark AI Benchmark
+    org: PassMark Software
+    url: https://www.passmark.com/ai/
+    category: benchmark
+    proprietary: true
+    role_for_e1: >
+      Reference for desktop / laptop NPU positioning only; not part of any
+      evidence gate in this repo.
+
+  # ------------------------------------------------------------------
+  # 2. CPU and system benchmarks
+  # ------------------------------------------------------------------
+  - id: spec_cpu_2017
+    name: SPEC CPU 2017
+    org: SPEC
+    url: https://www.spec.org/cpu2017/
+    proprietary: true
+    category: benchmark
+    role_for_e1: >
+      Already named in docs/benchmarks/benchmark-matrix.md as the phone-class
+      CPU gate. Licensed; usable only when the silicon-Android lane has a
+      Linux/Android userspace plus reproducible compiler/flags evidence.
+
+  - id: coremark
+    name: EEMBC CoreMark 1.0
+    org: EEMBC
+    url: https://www.eembc.org/coremark/
+    repo: https://github.com/eembc/coremark
+    category: benchmark
+    role_for_e1: >
+      v0 CPU/AP gate; already wired into benchmarks/run_benchmarks.py and
+      parsers/parse_coremark.py. Strict mode rejects the host smoke shim.
+
+  - id: coremark_pro
+    name: EEMBC CoreMark-PRO
+    org: EEMBC
+    url: https://www.eembc.org/coremark-pro/
+    repo: https://github.com/eembc/coremark-pro
+    category: benchmark
+    role_for_e1: >
+      Successor to CoreMark for multi-core, INT/FP-mixed workloads. Suitable
+      L2/L3 once an SMP Linux CPU/AP exists.
+
+  - id: dhrystone
+    name: Dhrystone 2.1
+    org: legacy reference
+    url: https://www.netlib.org/benchmark/dhry-c
+    category: benchmark
+    role_for_e1: >
+      Legacy reference only; never report DMIPS as a product claim. Listed so
+      that any incoming evidence using Dhrystone is treated as informational.
+
+  - id: geekbench_6
+    name: Geekbench 6
+    org: Primate Labs
+    url: https://www.geekbench.com/
+    category: benchmark
+    proprietary: true
+    role_for_e1: >
+      Named in benchmark-matrix.md as the phone-class CPU gate alongside
+      SPEC. Only valid at L6_COMPLETE_PHONE.
+
+  - id: stream
+    name: McCalpin STREAM
+    org: Univ. of Virginia (John D. McCalpin)
+    url: https://www.cs.virginia.edu/stream/
+    category: benchmark
+    role_for_e1: >
+      Already wired into the harness; primary memory-bandwidth gate.
+
+  - id: lmbench
+    name: lmbench (bw_mem, lat_mem_rd)
+    org: Larry McVoy / community
+    url: http://lmbench.sourceforge.net/
+    repo: https://github.com/intel/lmbench
+    category: benchmark
+    role_for_e1: >
+      Already wired into the harness via parsers/parse_lmbench.py.
+
+  - id: fio
+    name: Flexible I/O Tester (fio)
+    org: Jens Axboe et al.
+    url: https://fio.readthedocs.io/
+    repo: https://github.com/axboe/fio
+    category: benchmark
+    role_for_e1: >
+      Storage gate; passing locally per docs/three-week-prototype-workstreams.md.
+
+  # ------------------------------------------------------------------
+  # 3. Power / thermal measurement methodologies
+  # ------------------------------------------------------------------
+  - id: monsoon_hvpm
+    name: Monsoon High Voltage Power Monitor (HVPM)
+    org: Monsoon Solutions
+    url: https://www.msoon.com/high-voltage-power-monitor
+    category: power_method
+    role_for_e1: >
+      Reference external power meter for L3/L4 silicon evidence. Replaceable
+      by Joulescope JS220 for lower voltages.
+
+  - id: monsoon_lvpm
+    name: Monsoon Low Voltage Power Monitor (LVPM)
+    org: Monsoon Solutions
+    url: https://www.msoon.com/low-voltage-power-monitor
+    category: power_method
+    role_for_e1: >
+      Same role as HVPM at <=4.5V rails; used by MLPerf Mobile reference rigs.
+
+  - id: joulescope_js220
+    name: Joulescope JS220
+    org: Jetperch
+    url: https://www.joulescope.com/products/js220-joulescope-precision-energy-analyzer
+    category: power_method
+    role_for_e1: >
+      High-dynamic-range (sub-uA to ~3A) USB energy analyzer; practical
+      replacement for Monsoon at a fraction of the cost.
+
+  - id: perfetto
+    name: Perfetto
+    org: Google
+    url: https://perfetto.dev/
+    repo: https://github.com/google/perfetto
+    category: tracing
+    role_for_e1: >
+      Required tracing harness for Android power and thermal evidence; pairs
+      with battery_stats and Energy API.
+
+  - id: android_energy_api
+    name: Android Energy / Battery APIs
+    org: Google
+    url: https://developer.android.com/reference/android/os/BatteryUsageStats
+    category: power_method
+    role_for_e1: >
+      Software-side energy attribution; supplementary to Monsoon / Joulescope
+      rail readings.
+
+  - id: intel_socwatch
+    name: Intel SoC Watch
+    org: Intel
+    url: https://www.intel.com/content/www/us/en/developer/articles/tool/socwatch.html
+    category: power_method
+    proprietary: true
+    role_for_e1: >
+      Reference for SoC-level C-state / package-state instrumentation; not
+      directly usable on RISC-V but informs counter design.
+
+  - id: arm_streamline
+    name: ARM Streamline (Arm Performance Studio)
+    org: Arm
+    url: https://developer.arm.com/Tools%20and%20Software/Streamline%20Performance%20Analyzer
+    category: profiling
+    proprietary: true
+    role_for_e1: >
+      Reference for CPU/GPU performance counter + power overlay UI; informs
+      what the open Perfetto-plus-rail-shunt rig should expose.
+
+  # ------------------------------------------------------------------
+  # 4. Architectural / system simulators
+  # ------------------------------------------------------------------
+  - id: gem5
+    name: gem5
+    org: gem5 community
+    url: https://www.gem5.org/
+    repo: https://github.com/gem5/gem5
+    latest_release: gem5 24.x (rolling 2024-2025 minor releases)
+    category: simulator
+    role_for_e1: >
+      Primary L2_ARCH_SIM candidate. Has RISC-V ISA + Ruby/MOESI + classic
+      memory + Garnet NoC + ARM/RISC-V full-system. The right vehicle for
+      Workstream A target-cycle and MPKI evidence.
+
+  - id: gem5_aladdin
+    name: gem5-Aladdin
+    org: Harvard / gem5 community
+    url: https://github.com/harvard-acc/gem5-aladdin
+    category: simulator
+    role_for_e1: >
+      Pre-RTL accelerator perf+power model in gem5; relevant for NPU
+      what-if studies before locking the tile geometry.
+
+  - id: firesim
+    name: FireSim
+    org: UC Berkeley
+    url: https://fires.im/
+    repo: https://github.com/firesim/firesim
+    latest_release: FireSim 1.20+ (AWS F1 with F2 migration in progress)
+    category: simulator
+    role_for_e1: >
+      FPGA-accelerated cycle-exact RTL simulation; matches the L3_FPGA band
+      in claim-ladder.md. Integrates with Chipyard generators.
+
+  - id: chipyard
+    name: Chipyard
+    org: UC Berkeley
+    url: https://chipyard.readthedocs.io/
+    repo: https://github.com/ucb-bar/chipyard
+    latest_release: Chipyard 1.13+ (2024-2025 tags)
+    category: framework
+    role_for_e1: >
+      Existing repo dependency (Workstream B selects Chipyard Rocket as the
+      Linux-capable CPU/AP path). Bundles VCS/Verilator simulators, Rocket,
+      BOOM, Hwacha, Gemmini.
+
+  - id: chipyard_sodor
+    name: Sodor (Chipyard educational RV cores)
+    org: UC Berkeley
+    url: https://github.com/ucb-bar/riscv-sodor
+    category: simulator
+    role_for_e1: >
+      1/2/3/5-stage cores; only useful as a reference for tiny CPU stub
+      validation, not as the production CPU/AP path.
+
+  - id: gemmini
+    name: Gemmini
+    org: UC Berkeley
+    url: https://github.com/ucb-bar/gemmini
+    category: accelerator_generator
+    role_for_e1: >
+      RTL+sim+toolchain for a systolic-array NPU; the closest open analogue
+      to the tiled_matrix_vector_npu target. Worth wiring into the L2_ARCH_SIM
+      lane to compare against E1.
+
+  - id: sniper
+    name: Sniper Multi-Core Simulator
+    org: Ghent University
+    url: https://snipersim.org/
+    repo: https://github.com/snipersim/snipersim
+    category: simulator
+    role_for_e1: >
+      Interval-simulation-based multicore model; faster than gem5 but
+      x86-leaning. Reference only.
+
+  - id: champsim
+    name: ChampSim
+    org: ChampSim community (originated UT Austin)
+    url: https://github.com/ChampSim/ChampSim
+    category: simulator
+    role_for_e1: >
+      Trace-driven core+cache+prefetcher simulator used in academic
+      contests. Useful for L2 cache-policy what-ifs.
+
+  - id: zsim
+    name: zsim
+    org: MIT / Stanford
+    url: https://github.com/s5z/zsim
+    category: simulator
+    role_for_e1: >
+      Fast x86 timing simulator; not directly applicable to RISC-V but
+      referenced for memory-system techniques.
+
+  - id: marssx86
+    name: MARSSx86
+    org: SUNY Binghamton / academic
+    url: http://marss86.org/
+    category: simulator
+    role_for_e1: >
+      Legacy x86 cycle-accurate simulator; reference only.
+
+  - id: qflex
+    name: QFlex
+    org: EPFL PARSA
+    url: https://qflex.epfl.ch/
+    repo: https://github.com/parsa-epfl/qflex
+    category: simulator
+    role_for_e1: >
+      QEMU-based timing simulator (FLEXUS lineage); reference for server-class
+      systems, optional for E1.
+
+  # ------------------------------------------------------------------
+  # 5. NPU / accelerator simulators and mapping tools
+  # ------------------------------------------------------------------
+  - id: scale_sim_v2
+    name: SCALE-Sim v2
+    org: ARM Research / Georgia Tech
+    url: https://github.com/scalesim-project/scale-sim-v2
+    paper: https://arxiv.org/abs/2009.06530
+    category: simulator
+    role_for_e1: >
+      Already referenced by benchmarks/sim/run_npu_scale_sim.py. Cycle-level
+      systolic-array perf+SRAM bandwidth model parameterized by tile geometry
+      and dataflow.
+
+  - id: timeloop_accelergy
+    name: Timeloop + Accelergy
+    org: MIT / NVIDIA
+    url: https://timeloop.csail.mit.edu/
+    repo: https://github.com/NVlabs/timeloop
+    accelergy_repo: https://github.com/Accelergy-Project/accelergy
+    category: simulator
+    role_for_e1: >
+      Best-in-class open mapper + analytical perf/energy estimator for tile
+      and dataflow exploration; pairs with Accelergy for energy and a CACTI
+      backend for memory.
+
+  - id: stonne
+    name: STONNE
+    org: Universidad de Murcia
+    url: https://github.com/stonne-simulator/stonne
+    paper: https://arxiv.org/abs/2006.07137
+    category: simulator
+    role_for_e1: >
+      Cycle-level flexible-dataflow accelerator simulator; useful for
+      sparsity_decode and INT4 streaming experiments.
+
+  - id: gamma
+    name: GAMMA
+    org: Georgia Tech (MAERI / MAESTRO authors)
+    url: https://github.com/maestro-project/gamma
+    paper: https://arxiv.org/abs/2010.08035
+    category: mapper
+    role_for_e1: >
+      Genetic-algorithm based mapping search; pairs with MAESTRO for
+      dataflow optimization.
+
+  - id: maestro
+    name: MAESTRO
+    org: Georgia Tech / Intel
+    url: http://maestro.ece.gatech.edu/
+    repo: https://github.com/maestro-project/maestro
+    category: simulator
+    role_for_e1: >
+      Analytical accelerator dataflow cost model; faster than Timeloop for
+      sweeps.
+
+  - id: mind_mappings
+    name: Mind Mappings
+    org: Stanford / FB AI Research
+    url: https://github.com/kartik-hegde/mindMappings
+    paper: https://arxiv.org/abs/2103.01489
+    category: mapper
+    role_for_e1: >
+      Differentiable surrogate model for accelerator mapping; reference for
+      compiler scheduler validation.
+
+  - id: dmazerunner
+    name: dMazeRunner
+    org: Arizona State University
+    url: https://github.com/MPSLab-ASU/dMazeRunner
+    category: mapper
+    role_for_e1: >
+      Compile-time DNN dataflow search; reference for compiler back end.
+
+  - id: interstellar
+    name: Interstellar
+    org: Stanford
+    url: https://github.com/stanford-mast/interstellar
+    paper: https://dl.acm.org/doi/10.1145/3373376.3378514
+    category: mapper
+    role_for_e1: >
+      Halide-language-based DNN scheduling explorer; reference.
+
+  - id: neurosim
+    name: NeuroSim / DNN+NeuroSim
+    org: Georgia Tech / ASU
+    url: https://github.com/neurosim/DNN_NeuroSim_V1.4
+    category: simulator
+    role_for_e1: >
+      Device-to-architecture simulator for compute-in-memory (CIM) NPUs;
+      relevant because Dimensity 9500 / Exynos 2600 cite CIM-class NPUs in
+      npu-2028-target.yaml.
+
+  - id: astra_sim
+    name: ASTRA-sim 2.0
+    org: Georgia Tech / Meta / Intel
+    url: https://github.com/astra-sim/astra-sim
+    paper: https://arxiv.org/abs/2303.14006
+    category: simulator
+    role_for_e1: >
+      Distributed-training/inference simulator; relevant only if multi-chip
+      / NoC modeling is added. Reference.
+
+  - id: eyexam
+    name: Eyexam (Eyeriss simulator)
+    org: MIT
+    url: https://eyeriss.mit.edu/
+    category: simulator
+    role_for_e1: >
+      Reference for row-stationary dataflow performance analysis; pairs with
+      Timeloop.
+
+  - id: scale_sim_paper
+    name: SCALE-Sim original paper
+    org: ARM Research
+    url: https://arxiv.org/abs/1811.02883
+    category: paper
+    role_for_e1: >
+      Foundational citation for the analytical model in
+      compiler/runtime/e1_npu_scale_model.py.
+
+  - id: deepbench
+    name: DeepBench
+    org: Baidu Research
+    url: https://github.com/baidu-research/DeepBench
+    category: benchmark
+    role_for_e1: >
+      Operator-level GEMM/conv benchmark; useful for kernel-level NPU
+      regression on Verilator.
+
+  # ------------------------------------------------------------------
+  # 6. RISC-V ISA simulators
+  # ------------------------------------------------------------------
+  - id: spike
+    name: Spike (riscv-isa-sim)
+    org: RISC-V International
+    url: https://github.com/riscv-software-src/riscv-isa-sim
+    category: simulator
+    role_for_e1: >
+      Reference RISC-V ISA simulator; should be used as golden model for
+      cocotb co-simulation of the CVA6 / Rocket lane.
+
+  - id: sail_riscv
+    name: Sail RISC-V
+    org: RISC-V International / Cambridge / Princeton
+    url: https://github.com/riscv/sail-riscv
+    category: golden_model
+    role_for_e1: >
+      Formal-quality executable RISC-V ISA spec; usable as the golden
+      reference for trap/CSR formal properties.
+
+  - id: qemu_riscv
+    name: QEMU TCG (riscv64)
+    org: QEMU community
+    url: https://www.qemu.org/
+    category: simulator
+    role_for_e1: >
+      Already used (qemu-virt). Per docs/toolchain audit, must be labeled as
+      software-reference only, not e1-chip boot proof.
+
+  - id: renode
+    name: Renode
+    org: Antmicro
+    url: https://renode.io/
+    repo: https://github.com/renode/renode
+    category: simulator
+    role_for_e1: >
+      Already in use as semantic scaffold; needs an e1 hardware map model
+      (Workstream B blocker).
+
+  - id: imperas_open
+    name: Imperas open-source RISC-V models
+    org: Imperas / Open ISA
+    url: https://github.com/riscv-ovpsim/imperas-riscv-tests
+    category: simulator
+    role_for_e1: >
+      Reference open conformance test suite from Imperas; complements
+      riscv-tests for ISA correctness regressions.
+
+  - id: rv8
+    name: rv8
+    org: Michael Clark et al.
+    url: https://github.com/rv8-io/rv8
+    category: simulator
+    role_for_e1: >
+      Historical RISC-V x86_64 JIT simulator; reference only.
+
+  # ------------------------------------------------------------------
+  # 7. HDL simulators
+  # ------------------------------------------------------------------
+  - id: verilator
+    name: Verilator
+    org: Veripool / Wilson Snyder
+    url: https://www.veripool.org/verilator/
+    repo: https://github.com/verilator/verilator
+    latest_release: Verilator 5.x (5.026+ during 2024-2025)
+    category: hdl_simulator
+    role_for_e1: >
+      Primary HDL simulator (cocotb backend). Workstream A protocol-property
+      and coverage expansion lives here.
+
+  - id: icarus
+    name: Icarus Verilog
+    org: Stephen Williams
+    url: https://github.com/steveicarus/iverilog
+    category: hdl_simulator
+    role_for_e1: >
+      Secondary HDL simulator; useful for cross-checking small testbenches.
+
+  - id: yosys
+    name: Yosys
+    org: YosysHQ / Claire Wolf
+    url: https://github.com/YosysHQ/yosys
+    latest_release: Yosys 0.46+ (2024-2025)
+    category: synthesis
+    role_for_e1: >
+      Synthesis front end and formal pre-processor (read -formal in the .sby
+      files).
+
+  - id: vcs
+    name: Synopsys VCS
+    org: Synopsys
+    url: https://www.synopsys.com/verification/simulation/vcs.html
+    category: hdl_simulator
+    proprietary: true
+    role_for_e1: positioning_only
+
+  - id: xcelium
+    name: Cadence Xcelium
+    org: Cadence
+    url: https://www.cadence.com/en_US/home/tools/system-design-and-verification/simulation-and-testbench-verification/xcelium-simulator.html
+    category: hdl_simulator
+    proprietary: true
+    role_for_e1: positioning_only
+
+  # ------------------------------------------------------------------
+  # 8. Formal verification
+  # ------------------------------------------------------------------
+  - id: symbiyosys
+    name: SymbiYosys (sby)
+    org: YosysHQ
+    url: https://symbiyosys.readthedocs.io/
+    repo: https://github.com/YosysHQ/sby
+    category: formal
+    role_for_e1: >
+      In-use formal driver; verify/formal/*.sby uses smtbmc z3 with depth
+      4-12. Migration target for Bitwuzla and deeper k-induction.
+
+  - id: yosys_smtbmc
+    name: yosys-smtbmc
+    org: YosysHQ
+    url: https://yosyshq.readthedocs.io/projects/yosys/en/latest/cmd/smt2.html
+    category: formal
+    role_for_e1: >
+      SMT backend driver used by the .sby scripts.
+
+  - id: bitwuzla
+    name: Bitwuzla
+    org: Stanford / Aina Niemetz et al.
+    url: https://bitwuzla.github.io/
+    repo: https://github.com/bitwuzla/bitwuzla
+    category: smt_solver
+    role_for_e1: >
+      Direct Boolector replacement (per docs/three-week-prototype-workstreams.md
+      Workstream E). Modern QF_BV / QF_ABV / QF_FP backend. Switching the
+      .sby engine line to `smtbmc bitwuzla` is the explicit migration step.
+
+  - id: boolector
+    name: Boolector
+    org: JKU / Stanford (historical)
+    url: https://github.com/Boolector/boolector
+    category: smt_solver
+    role_for_e1: >
+      End-of-maintenance per upstream README. Listed only to explain why the
+      Bitwuzla switch is necessary.
+
+  - id: z3
+    name: Z3
+    org: Microsoft Research
+    url: https://github.com/Z3Prover/z3
+    category: smt_solver
+    role_for_e1: >
+      Currently the only solver in the .sby files. Robust general-purpose
+      SMT; less specialized for QF_BV bit-blasting than Bitwuzla.
+
+  - id: cvc5
+    name: cvc5
+    org: Stanford / Univ. of Iowa
+    url: https://cvc5.github.io/
+    repo: https://github.com/cvc5/cvc5
+    category: smt_solver
+    role_for_e1: >
+      Alternative SMT backend; useful as a co-checker when a property is
+      unstable between solvers.
+
+  - id: ebmc
+    name: EBMC
+    org: Univ. of Oxford / Diffblue
+    url: https://www.cprover.org/ebmc/
+    repo: https://github.com/diffblue/hw-cbmc
+    category: formal
+    role_for_e1: >
+      Open BMC for SystemVerilog with SVA support; complementary to SBY for
+      properties that need richer SVA semantics.
+
+  - id: jaspergold
+    name: JasperGold (Cadence)
+    org: Cadence
+    url: https://www.cadence.com/en_US/home/tools/system-design-and-verification/formal-and-static-verification/jasper-verification-platform.html
+    category: formal
+    proprietary: true
+    role_for_e1: positioning_only
+
+  - id: vcformal
+    name: VC Formal (Synopsys)
+    org: Synopsys
+    url: https://www.synopsys.com/verification/static-and-formal-verification/vc-formal.html
+    category: formal
+    proprietary: true
+    role_for_e1: positioning_only
+
+  # ------------------------------------------------------------------
+  # 9. RTL fuzzing and property-based testing
+  # ------------------------------------------------------------------
+  - id: rfuzz
+    name: RFUZZ
+    org: UC Berkeley
+    paper: https://kevinlaeufer.com/publication/laeufer-2018-rfuzz/
+    url: https://github.com/ekiwi/rfuzz
+    category: fuzz
+    role_for_e1: >
+      FIRRTL/Chisel RTL coverage-guided fuzzer; baseline for any Chipyard /
+      Gemmini-derived blocks.
+
+  - id: difuzzrtl
+    name: DifuzzRTL
+    org: KAIST
+    url: https://github.com/compsec-snu/difuzz-rtl
+    paper: https://dl.acm.org/doi/10.1145/3477132.3483569
+    category: fuzz
+    role_for_e1: >
+      Differential coverage-guided fuzzer for RTL CPU cores; relevant for
+      the Rocket / CVA6 lane.
+
+  - id: thehuzz
+    name: TheHuzz
+    org: Texas A&M
+    paper: https://www.usenix.org/conference/usenixsecurity22/presentation/kabir
+    url: https://github.com/Texas-A-M-CESG/TheHuzz
+    category: fuzz
+    role_for_e1: >
+      Instruction-fuzzing for processor RTL; complements DifuzzRTL.
+
+  - id: processorfuzz
+    name: ProcessorFuzz
+    org: UC Davis / NYU
+    url: https://github.com/SatishLab/ProcessorFuzz
+    paper: https://arxiv.org/abs/2209.01789
+    category: fuzz
+    role_for_e1: reference
+
+  - id: cocotb
+    name: cocotb
+    org: cocotb community / FOSSi
+    url: https://www.cocotb.org/
+    repo: https://github.com/cocotb/cocotb
+    latest_release: cocotb 1.9.x / 2.0 in development
+    category: framework
+    role_for_e1: >
+      Already in use under verify/cocotb/. Test runner of record.
+
+  - id: cocotb_coverage
+    name: cocotb-coverage
+    org: Marek Cieplucha
+    url: https://github.com/mciepluc/cocotb-coverage
+    category: coverage
+    role_for_e1: >
+      Functional coverage in Python for cocotb; addresses the
+      "no coverage report" gap in Workstream A.
+
+  - id: forastero
+    name: Forastero
+    org: nanoElectronicsLab / Antmicro
+    url: https://github.com/antmicro/forastero
+    category: coverage
+    role_for_e1: >
+      Open UVM-style functional-coverage framework on top of cocotb.
+
+  - id: pyuvm
+    name: pyuvm
+    org: pyuvm community / Ray Salemi
+    url: https://github.com/pyuvm/pyuvm
+    category: framework
+    role_for_e1: >
+      Open Python UVM 1.2 reimplementation usable with cocotb.
+
+  - id: hypothesis
+    name: Hypothesis
+    org: Hypothesis Works / David MacIver
+    url: https://hypothesis.works/
+    repo: https://github.com/HypothesisWorks/hypothesis
+    category: pbt
+    role_for_e1: >
+      Property-based testing for the Python parser / runtime layers in
+      benchmarks/parsers/ and compiler/runtime/.
+
+  - id: hedgehog
+    name: Hedgehog
+    org: Haskell community
+    url: https://hedgehog.qa/
+    category: pbt
+    role_for_e1: reference
+
+  # ------------------------------------------------------------------
+  # 10. Power simulation (pre-silicon)
+  # ------------------------------------------------------------------
+  - id: mcpat
+    name: McPAT
+    org: HP Labs / UC Davis
+    url: https://github.com/HewlettPackard/mcpat
+    paper: https://dl.acm.org/doi/10.1145/1669112.1669172
+    category: power_sim
+    role_for_e1: >
+      Architecture-level area+power model; pairs with gem5 for L2 evidence.
+
+  - id: wattch
+    name: Wattch
+    org: Princeton
+    url: https://www.princeton.edu/~mrm/wattch.html
+    category: power_sim
+    role_for_e1: reference
+
+  - id: gpuwattch
+    name: GPUWattch
+    org: Penn State
+    url: https://github.com/gpgpu-sim/gpgpu-sim_distribution
+    category: power_sim
+    role_for_e1: reference
+
+  - id: accelwattch
+    name: AccelWattch
+    org: Univ. of British Columbia / Penn State
+    url: https://github.com/accel-sim/accel-sim-framework
+    paper: https://dl.acm.org/doi/10.1145/3466752.3480063
+    category: power_sim
+    role_for_e1: reference
+
+  - id: powernet
+    name: PowerNet
+    org: UCSD
+    paper: https://dl.acm.org/doi/10.1145/3470454.3486968
+    category: power_sim
+    role_for_e1: reference
+
+  - id: aladdin
+    name: Aladdin
+    org: Harvard
+    paper: https://www.eecs.harvard.edu/~shao/papers/shao2014-isca.pdf
+    url: https://github.com/ysshao/aladdin
+    category: power_sim
+    role_for_e1: >
+      Pre-RTL accelerator power+area model; used inside gem5-Aladdin.
+
+  # ------------------------------------------------------------------
+  # 11. FPGA emulation
+  # ------------------------------------------------------------------
+  - id: chipyard_firesim
+    name: Chipyard + FireSim integration
+    org: UC Berkeley
+    url: https://chipyard.readthedocs.io/en/stable/Simulation/FireSim.html
+    category: emulation
+    role_for_e1: >
+      Documented path to lift the Chipyard Rocket build into AWS F1/F2 for
+      Linux-boot evidence at L3_FPGA.
+
+  - id: synopsys_haps
+    name: Synopsys HAPS
+    org: Synopsys
+    url: https://www.synopsys.com/verification/prototyping/haps.html
+    category: emulation
+    proprietary: true
+    role_for_e1: positioning_only
+
+  - id: cadence_palladium
+    name: Cadence Palladium Z3
+    org: Cadence
+    url: https://www.cadence.com/en_US/home/tools/system-design-and-verification/emulation-and-prototyping/palladium.html
+    category: emulation
+    proprietary: true
+    role_for_e1: positioning_only
+
+  # ------------------------------------------------------------------
+  # 12. AI workload corpora referenced by MLPerf and AI-Benchmark
+  # ------------------------------------------------------------------
+  - id: stable_diffusion_xs
+    name: Stable Diffusion XS reference (MLPerf Mobile v4)
+    org: MLCommons / Stability AI
+    url: https://github.com/mlcommons/mobile_models
+    category: model
+    role_for_e1: reference
+
+  - id: mobilebert
+    name: MobileBERT
+    org: Google
+    url: https://github.com/google-research/google-research/tree/master/mobilebert
+    category: model
+    role_for_e1: reference
+
+  - id: mobilenet_edgetpu
+    name: MobileNet-EdgeTPU
+    org: Google
+    url: https://github.com/google-research/google-research/tree/master/mobilenet_edgetpu
+    category: model
+    role_for_e1: reference
+
+  - id: llama_3_class
+    name: Llama 3 7B / 3B class reference
+    org: Meta
+    url: https://ai.meta.com/llama/
+    category: model
+    role_for_e1: >
+      Reference for the llm_3b_int4 / llm_7b_int4 tokens-per-second targets
+      in npu-2028-target.yaml. Use redistributable open weights only.
+
+  # ------------------------------------------------------------------
+  # 13. Misc references explicitly named in repo docs
+  # ------------------------------------------------------------------
+  - id: openlane2
+    name: OpenLane 2
+    org: ChipFoundry / Efabless
+    url: https://github.com/chipfoundry/openlane2
+    category: pd
+    role_for_e1: >
+      Workstream E pinning target; relevant here only because PD signoff
+      feeds the L3_FPGA -> L5_PROTOTYPE_SILICON transition.
+
+  - id: openroad
+    name: OpenROAD
+    org: The OpenROAD Project
+    url: https://github.com/The-OpenROAD-Project/OpenROAD
+    category: pd
+    role_for_e1: same as openlane2

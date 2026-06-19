@@ -1,0 +1,58 @@
+[[!meta date="Tue, 15 Nov 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.7 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_2.6]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+  - Upgrade *Tor* to [0.2.8.9](https://blog.torproject.org/blog/tor-0289-released-important-fixes).
+
+  - Upgrade *Tor Browser* to [6.0.6](https://blog.torproject.org/blog/tor-browser-606-released).
+
+  - Upgrade *Icedove* to [45.4.0](https://www.mozilla.org/en-US/thunderbird/45.4.0/releasenotes/).
+
+## Fixed problems
+
+  - Fix multi-architecture support in *Synaptic*. This should fix
+    broken installations of additional packages from *Synaptic*.
+    ([[!tails_ticket 11820]])
+
+  - Set default spell checking language of *Icedove* to English instead of
+    French. ([[!tails_ticket 11037]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+# Known issues
+
+  - Users setting their Tor Browser security slider to High will have to click
+    on a link to see the result of the search they done with the search box.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 2.7
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, an automatic upgrade is available from 2.6 to 2.7.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 2.7.|install/download]]
+
+# What's coming up?
+
+Tails 2.8 is [[scheduled|contribute/calendar]] for December 13.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=2.7">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

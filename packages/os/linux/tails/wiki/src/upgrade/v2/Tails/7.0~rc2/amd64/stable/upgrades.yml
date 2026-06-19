@@ -1,0 +1,20 @@
+---
+build-target: amd64
+channel: stable
+initial-install-version: 7.0~rc2
+product-name: Tails
+upgrades:
+- details-url: https://tails.net/news/version_7.7.2/
+  type: major
+  upgrade-paths:
+  - target-files:
+    - sha256: ff2dec3208d4bc7a4f6c1814bde9f327b600bb029fcd4f4cdf95f9da4da7e3d1
+      size: 2025277440
+      url: https://download.tails.net/tails/stable/tails-amd64-7.7.2/tails-amd64-7.7.2.iso
+    type: full
+  - target-files:
+    - sha256: e1e3feda38231d235135a38e5a47372652f44c2fd8e738cd0ae41ea15319a9eb
+      size: 1108099072
+      url: https://download.tails.net/tails/stable/iuk/v2/Tails_amd64_7.0~rc2_to_7.7.2.iuk
+    type: incremental
+  version: 7.7.2

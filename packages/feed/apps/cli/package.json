@@ -1,0 +1,50 @@
+{
+  "name": "@feed/cli",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Feed CLI - Unified command-line interface for db, training, models, games, and agents",
+  "type": "module",
+  "bin": {
+    "feed": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "cli": "bun run src/index.ts",
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/cli/package.json apps/cli/tsconfig.json apps/cli/src",
+    "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts apps/cli",
+    "db": "bun run src/index.ts db",
+    "admin": "bun run src/index.ts admin",
+    "status": "bun run src/index.ts status",
+    "train": "bun run src/index.ts train",
+    "model": "bun run src/index.ts model",
+    "game": "bun run src/index.ts game",
+    "agent": "bun run src/index.ts agent",
+    "generate": "bun run src/index.ts game generate",
+    "generate:verbose": "bun run src/index.ts game generate --verbose",
+    "world": "bun run src/generate-world.ts",
+    "world:verbose": "bun run src/generate-world.ts --verbose",
+    "validate": "bun run src/index.ts game validate",
+    "images": "bun run src/generate-actor-images.ts",
+    "images:migrate": "bun run src/migrate-images-to-blob.ts"
+  },
+  "dependencies": {
+    "@feed/agents": "workspace:*",
+    "@feed/api": "workspace:*",
+    "@feed/db": "workspace:*",
+    "@feed/engine": "workspace:*",
+    "@feed/testing": "workspace:*",
+    "@fal-ai/client": "^1.7.2",
+    "openai": "^6.8.1",
+    "@sentry/bun": "^10.29.0",
+    "@vercel/blob": "2.3.2",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.14.4",
+    "nanoid": "5.1.7",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "bun-types": "^1.3.2",
+    "typescript": "^5.9.3"
+  }
+}

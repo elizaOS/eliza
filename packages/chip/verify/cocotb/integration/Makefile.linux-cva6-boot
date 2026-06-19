@@ -1,0 +1,128 @@
+# Cocotb Makefile — OpenSBI hands off to a real riscv64 Linux kernel on the
+# REAL CVA6 from REAL DRAM.
+#
+# Same DUT as Makefile.opensbi-cva6-boot (rtl/top/e1_cva6_dram_boot_top.sv) with
+# the vendored axi_riscv_atomics filter, but the preload image is the Linux boot
+# image (OpenSBI fw_jump -> kernel Image @0x80200000 + initramfs, assembled by
+# fw/linux-cva6-boot/build_linux_boot_image.py) and the DRAM-controller preload
+# window is grown to hold the ~24 MiB kernel.  cocotb scrapes the ns16550a UART
+# TX stream and records the furthest Linux boot marker reached.
+
+TOPLEVEL_LANG ?= verilog
+SIM           ?= verilator
+
+PWD  := $(shell pwd)
+REPO := $(abspath ../../..)
+
+CVA6_REPO_DIR ?= $(REPO)/external/cva6/cva6
+HPDCACHE_DIR  ?= $(CVA6_REPO_DIR)/core/cache_subsystem/hpdcache
+TARGET_CFG    ?= cv64a6_imafdc_sv39
+
+CVA6_VERILATOR_FULL_OK ?= 1
+export CVA6_VERILATOR_FULL_OK
+
+ifeq ($(CVA6_COCOTB_TRACE),1)
+VERILATOR_TRACE := 1
+export VERILATOR_TRACE
+PLUSARGS += +trace
+endif
+
+ifeq ($(CVA6_SKIP_LOCAL_PATCHES),)
+CVA6_PATCH_RC := $(shell $(REPO)/scripts/apply_cva6_patches.sh >&2 && echo OK || echo FAIL)
+ifneq ($(CVA6_PATCH_RC),OK)
+$(error scripts/apply_cva6_patches.sh failed — CVA6 sources cannot be Verilator-lowered without local patches)
+endif
+endif
+
+CVA6_FLIST_OUT  := $(PWD)/.cva6_flist.txt
+CVA6_INCDIR_OUT := $(PWD)/.cva6_incdir.txt
+
+CVA6_EXPAND_RC := $(shell \
+  CVA6_REPO_DIR=$(CVA6_REPO_DIR) \
+  HPDCACHE_DIR=$(HPDCACHE_DIR) \
+  TARGET_CFG=$(TARGET_CFG) \
+  python3 $(REPO)/scripts/expand_cva6_flist.py \
+    --flist $(CVA6_REPO_DIR)/core/Flist.cva6 \
+    --files-out $(CVA6_FLIST_OUT) \
+    --incdir-out $(CVA6_INCDIR_OUT) >&2 && echo OK || echo FAIL)
+
+ifneq ($(CVA6_EXPAND_RC),OK)
+$(error CVA6 flist expansion failed; check CVA6_REPO_DIR=$(CVA6_REPO_DIR))
+endif
+
+CVA6_INCDIRS := $(shell cat $(CVA6_INCDIR_OUT) | tr '\n' ' ')
+CVA6_FILES   := $(shell cat $(CVA6_FLIST_OUT))
+
+# Vendored pulp-platform axi_riscv_atomics filter (CVA6's own vendor tree); its
+# common_cells / axi_pkg deps are already compiled by the CVA6 flist.
+CVA6_ATOMICS_DIR := $(CVA6_REPO_DIR)/vendor/pulp-platform/axi_riscv_atomics/src
+ATOMICS_SOURCES := \
+	$(CVA6_ATOMICS_DIR)/axi_res_tbl.sv \
+	$(CVA6_ATOMICS_DIR)/axi_riscv_amos_alu.sv \
+	$(CVA6_ATOMICS_DIR)/axi_riscv_amos.sv \
+	$(CVA6_ATOMICS_DIR)/axi_riscv_lrsc.sv \
+	$(CVA6_ATOMICS_DIR)/axi_riscv_atomics.sv
+
+E1_SOURCES := \
+	$(REPO)/rtl/interconnect/axi4/e1_axi4_pkg.sv \
+	$(REPO)/rtl/interconnect/axi4/e1_axi4_interconnect.sv \
+	$(REPO)/rtl/memory/dram_ctrl/e1_dram_ctrl.sv \
+	$(REPO)/rtl/interrupts/e1_clint.sv \
+	$(REPO)/rtl/interrupts/e1_plic.sv \
+	$(REPO)/rtl/peripherals/e1_uart_ns16550.sv \
+	$(REPO)/rtl/security/rot/e1_rot_reset_seq.sv \
+	$(ATOMICS_SOURCES) \
+	$(REPO)/rtl/top/adapters/e1_axi4_riscv_atomics.sv \
+	$(REPO)/rtl/top/adapters/e1_axi4_width_converter.sv \
+	$(REPO)/rtl/top/adapters/e1_cva6_to_e1axi4.sv \
+	$(REPO)/rtl/cpu/e1_cva6_wrapper.sv \
+	$(REPO)/rtl/top/e1_cva6_dram_boot_top.sv
+
+VERILOG_SOURCES := $(CVA6_FILES) $(E1_SOURCES)
+
+TOPLEVEL ?= e1_cva6_dram_boot_top
+MODULE   ?= test_linux_boot_cva6
+PYTHON   ?= python3
+
+COMPILE_ARGS += +define+E1_HAVE_CVA6 +define+WT_DCACHE
+# Preload window: the assembled image is OpenSBI @0x80000000 .. shim @0x81000000
+# (build_linux_boot_image.py SHIM_ADDR), i.e. <= 16 MiB = ~1.05M beats with the
+# trimmed kernel.  Must stay >= the builder's image_beats.
+DRAM_PRELOAD_BEATS ?= 1100000
+COMPILE_ARGS += -GDRAM_PRELOAD_BEATS=$(DRAM_PRELOAD_BEATS)
+# CVA6 reset vector = the boot shim at the FIXED SHIM_ADDR in
+# build_linux_boot_image.py (full 64-bit literal so it is not sign-extended);
+# the shim jumps to OpenSBI _fw_start.  These two MUST stay equal.
+LINUX_SHIM_ADDR ?= 64\'h0000000081000000
+COMPILE_ARGS += -GCVA6_BOOT_ADDR=$(LINUX_SHIM_ADDR)
+
+# --- FAST FUNCTIONAL BOOT CONFIG (E1_BOOT_FAST=1) --------------------------
+# Sim-only performance config that lets the full OpenSBI -> Linux -> userland
+# boot fit a bounded Verilator wall-time.  This is a BOOT-FUNCTIONALITY proof,
+# NOT a timing/perf claim:
+#   * +E1_DRAM_FAST collapses the behavioural DRAM open-row/refresh latency to
+#     one cycle (the kernel mem-init phase is latency-bound), with the AXI4
+#     protocol / ordering / data path left intact.
+#   * Verilator builds the model C++ at -O2 with x-assign/x-initial fast
+#     (deterministic zero-fill, no random X) and multi-threaded evaluation,
+#     raising cycles/s.
+# The realistic-latency path (no E1_BOOT_FAST) stays the fidelity reference.
+ifeq ($(E1_BOOT_FAST),1)
+PLUSARGS += +E1_DRAM_FAST
+EXTRA_ARGS += --x-assign fast --x-initial fast
+E1_VERILATOR_THREADS ?= 4
+EXTRA_ARGS += --threads $(E1_VERILATOR_THREADS)
+BUILD_ARGS += OPT_FAST="-O2" OPT_SLOW="-O1"
+endif
+
+EXTRA_ARGS += $(CVA6_INCDIRS)
+EXTRA_ARGS += \
+	-Wno-fatal -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM \
+	-Wno-WIDTH -Wno-UNOPTFLAT -Wno-CASEINCOMPLETE -Wno-IMPLICITSTATIC \
+	-Wno-PINCONNECTEMPTY -Wno-SYNCASYNCNET -Wno-WIDTHEXPAND \
+	-Wno-WIDTHTRUNC -Wno-COMBDLY -Wno-ALWCOMBORDER -Wno-LATCH \
+	-Wno-VARHIDDEN -Wno-UNUSED -Wno-LITENDIAN -Wno-TIMESCALEMOD \
+	-Wno-MULTITOP -Wno-MODDUP -Wno-STMTDLY -Wno-CASEX -Wno-SELRANGE \
+	-Wno-UNSIGNED -Wno-SYMRSVDWORD
+
+include $(shell $(PYTHON) -m cocotb.config --makefiles)/Makefile.sim

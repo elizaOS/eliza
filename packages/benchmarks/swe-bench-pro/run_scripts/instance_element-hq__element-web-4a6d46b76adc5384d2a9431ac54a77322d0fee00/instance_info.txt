@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-4a6d46b76adc5384d2a9431ac54a77322d0fee00
+Repository: element-hq/element-web
+Base Commit: 757d473971017e914f4bf4aad5bba697abb35728
+Test Files: ["/app/test/components/views/elements/InteractiveTooltip-test.ts", "test/components/views/elements/InteractiveTooltip-test.ts"]
+FAIL_TO_PASS: ["/app/test/components/views/elements/InteractiveTooltip-test.ts | InteractiveTooltip | mouseWithinRegion | direction=left", "/app/test/components/views/elements/InteractiveTooltip-test.ts | InteractiveTooltip | mouseWithinRegion | direction=right", "/app/test/components/views/elements/InteractiveTooltip-test.ts | InteractiveTooltip | mouseWithinRegion | direction=top", "/app/test/components/views/elements/InteractiveTooltip-test.ts | InteractiveTooltip | mouseWithinRegion | direction=bottom"]
+PASS_TO_PASS: []

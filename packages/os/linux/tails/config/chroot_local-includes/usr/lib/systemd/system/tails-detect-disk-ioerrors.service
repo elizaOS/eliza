@@ -1,0 +1,11 @@
+[Unit]
+Description=Detect Squashfs and I/O errors
+After=systemd-journald.target
+Before=gdm.service
+
+[Service]
+Type=notify
+ExecStart=/usr/local/sbin/tails-detect-disk-ioerrors
+
+[Install]
+WantedBy=multi-user.target

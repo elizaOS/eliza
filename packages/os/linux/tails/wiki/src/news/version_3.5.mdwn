@@ -1,0 +1,90 @@
+[[!meta date="Tue, 22 Jan 2018 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.5 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_3.4]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+- Tor redesigned *Tor Launcher*, the application to configure a Tor
+  bridge or a local proxy.
+
+  [[!img tor-launcher.png link="no"]]
+
+## Upgrades and changes
+
+- Update *Tor Browser* to 7.5.
+
+- Update *Linux* to 4.14.13 and the microcode firmware for AMD to
+  mitigate Spectre.
+
+- Update *Thunderbird* to 52.5.
+
+## Fixed problems
+
+- Fix printing to a PDF in *Tor Browser*. ([[!tails_ticket 13403]]
+  and [[!tails_ticket 15024]])
+
+- Fix the opening of the **Applications** menu when the time
+  synchronization changed the clock in the past. ([[!tails_ticket 14250]])
+
+- Fix the opening of the documentation included in Tails for many
+  non-English languages. ([[!tails_ticket 15160]])
+
+- Fix translations of the time synchronization and "*Tor is ready*"
+  notifications. ([[!tails_ticket 13437]])
+
+- Remove the code to migrate from *Claws Mail* that was preventing
+  *Thunderbird* to start in some cases. ([[!tails_ticket 12734]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+- Debug and error messages appear when starting Tails, including an
+  alarming message about a *kernel BUG*.
+
+  These messages do not affect the safety of Tails.
+
+  [[!img logs.png link="no"]]
+
+- In *Tails Installer*, it is only possible to select an ISO image when
+  choose **Use a downloaded Tails ISO image** when running Tails in
+  English. For other language, the file chooser button remains inactive:
+
+  [[!img broken-file-chooser.png link="no"]]
+
+- The documentation shipped in Tails doesn't open in *Tor Browser*
+  anymore. The warning page of the *Unsafe Browser* also lacks graphical
+  design. ([[!tails_ticket 14962]] and [[!tor_bug 24243 desc="Tor #24243"]])
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.5
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.3 and 3.4 to 3.5.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.5.|install/download]]
+
+# What's coming up?
+
+Tails 3.6 is [[scheduled|contribute/calendar]] for March 13.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.5">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

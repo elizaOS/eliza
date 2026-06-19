@@ -1,0 +1,64 @@
+schema: eliza.pdn_current_local_budget.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+scope: local_openlane_power_ir_budget_for_blocker_triage
+selected_run: pd/openlane/runs/RUN_2026-05-19_05-01-02
+selected_run_design: e1_pd_smoke_top
+selected_run_pdk: sky130A
+source_artifacts:
+  - pd/openlane/runs/RUN_2026-05-19_05-01-02/final/metrics.json
+  - pd/openlane/runs/RUN_2026-05-19_05-01-02/final/metrics.csv
+  - pd/openlane/runs/RUN_2026-05-19_05-01-02/56-openroad-irdropreport/irdrop.rpt
+  - pd/openlane/runs/RUN_2026-05-19_05-01-02/20-openroad-generatepdn/openroad-generatepdn.log
+  - pd/openlane/runs/RUN_2026-05-19_05-01-02/signoff-run.yaml
+  - benchmarks/power/local-estimates/e1-npu-openlane-npu-estimates.json
+derived_values:
+  - name: vddcore_voltage
+    value: 1.8 V
+    source: pd/openlane/runs/RUN_2026-05-19_05-01-02/resolved.json VDD_PIN_VOLTAGE
+  - name: post_route_total_power_nom_tt_025C_1v80
+    value: 0.00011102305143140256 W
+    source: pd/openlane/runs/RUN_2026-05-19_05-01-02/final/metrics.json power__total
+  - name: post_route_core_current_nominal
+    value: 6.167947301744587e-05 A
+    source: power__total / 1.8 V
+  - name: local_2x_margin_core_current
+    value: 0.00012335894603489173 A
+    source: post_route_core_current_nominal * 2
+  - name: vpwr_worst_ir_drop_nom_tt_025C_1v80
+    value: 0.000218639 V
+    source: pd/openlane/runs/RUN_2026-05-19_05-01-02/final/metrics.json design_powergrid__drop__worst__net:VPWR
+  - name: vgnd_worst_bounce_nom_tt_025C_1v80
+    value: 0.000155788 V
+    source: pd/openlane/runs/RUN_2026-05-19_05-01-02/final/metrics.json design_powergrid__drop__worst__net:VGND
+  - name: power_grid_violation_count
+    value: 0
+    source: pd/openlane/runs/RUN_2026-05-19_05-01-02/final/metrics.json design__power_grid_violation__count
+  - name: npu_arch_model_min_observed_tops_reference_only
+    value: 47.66254545454546 TOPS
+    source: benchmarks/power/local-estimates/e1-npu-openlane-npu-estimates.json npu_architecture_model.min_observed_tops
+  - name: invalid_cross_substrate_tops_per_w_reference_only
+    value: 8581.556130253872 to 8849.729759324306 TOPS/W
+    source: benchmarks/power/local-estimates/e1-npu-openlane-npu-estimates.json cross_substrate_arithmetic; prohibited for release use
+rails:
+  - name: VDDCORE
+    board_net: +1V8
+    voltage: 1.8 V
+    local_post_route_current_nominal: 0.062 mA
+    local_budget_with_2x_margin: 0.123 mA
+    first_article_current_limit_recommendation: 25 mA until bench characterization replaces local estimate
+    status: local_estimate_only
+  - name: VDDIO
+    board_net: +3V3
+    voltage: 3.3 V
+    local_post_route_current_nominal: unavailable
+    first_article_current_limit_recommendation: 25 mA until IO pad model and board load are released
+    status: missing_io_power_model
+release_blockers:
+  - Power is from OpenLane metrics only, not workload-calibrated vector or silicon data.
+  - This budget is re-pointed to the present e1_pd_smoke_top local smoke run after the prior e1_chip_top run RUN_2026-05-18_05-41-42 and its archive were deleted; the smoke top is a reduced design, so this current basis is a lower bound and must be replaced by a present full e1_chip_top post-route IR/power run before any chip-level reading.
+  - OpenLane power and modeled NPU TOPS do not share a substrate, workload, or measurement window; any TOPS/W arithmetic is invalid for release.
+  - IR-drop evidence covers only local OpenROAD nominal analysis, not release corners.
+  - EM evidence is not archived.
+  - VDDIO current is not derived because IO pad and board load models are missing.
+  - Board regulator, fuse, thermal, sustained-run, and first-article current-limit review is not archived.

@@ -1,0 +1,151 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-21 10:19+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Office suite\"]]\n"
+msgstr "[[!meta title=\"Suite bureautique\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails includes *[LibreOffice](https://www.libreoffice.org/)*, a powerful "
+"office suite which embeds several tools:"
+msgstr ""
+"Tails inclut *[LibreOffice](https://fr.libreoffice.org/)*, une suite "
+"bureautique puissante qui comprend plusieurs outils :"
+
+#. type: Bullet: '- '
+msgid "*Writer*, a word processor"
+msgstr "*Writer*, un traitement de texte"
+
+#. type: Bullet: '- '
+msgid "*Calc*, a spreadsheet application"
+msgstr "*Calc*, un tableur"
+
+#. type: Bullet: '- '
+msgid "*Impress*, a presentation engine"
+msgstr "*Impress*, un créateur de présentations"
+
+#. type: Bullet: '- '
+msgid "*Draw*, a drawing and flowcharting application"
+msgstr "*Draw*, une application de dessin et de création d'organigrammes"
+
+#. type: Plain text
+msgid ""
+"To open *LibreOffice*, choose **Apps&nbsp;▸ Office&nbsp;▸ LibreOffice**."
+msgstr ""
+"Pour ouvrir *LibreOffice*, choisissez **Applications&nbsp;▸ "
+"Bureautique&nbsp;▸ LibreOffice**."
+
+#. type: Plain text
+msgid ""
+"The *LibreOffice* website provides complete [user guides](https://"
+"wiki.documentfoundation.org/Documentation/Publications) for each of these "
+"tools, translated into several languages."
+msgstr ""
+"Le site web de *LibreOffice* offre des [guides d'utilisation](https://"
+"wiki.documentfoundation.org/FR/Documentation/Publications) complets pour "
+"chacun de ces outils, traduits en plusieurs langues."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"To use *LibreOffice* in your language, you can\n"
+"install the <code>libreoffice-l10n-<span class=\"command-placeholder\">lang</span></code>\n"
+"package using the [[Additional Software|persistent_storage/additional_software]]\n"
+"feature. Replace <span class=\"command-placeholder\">lang</span> with the code\n"
+"for your language. For example, `vi` for Vietnamese.\n"
+msgstr ""
+"Pour utiliser *LibreOffice* dans votre langue, vous pouvez\n"
+"installer le paquet <code>libreoffice-l10n<span class=\"command-placeholder\">lang</span></code>\n"
+"en utilisant la fonctionnalité [[Logiciels supplémentaires|persistent_storage/additional_software]].\n"
+"Remplacez <span class=\"command-placeholder\">lang</span> par le code\n"
+"de votre langue. Par exemple, `vi` pour le vietnamien.\n"
+
+#. type: Plain text
+msgid ""
+"Tails already includes language packages for Arabic, German, Spanish, Farsi, "
+"French, Hindi, Bahasa Indonesia, Italian, Portuguese, Russian, Turkish, and "
+"Simplified Chinese."
+msgstr ""
+"Tails inclut déjà les paquets de langue pour l'arabe, l'allemand, "
+"l'espagnol, le persan, le français, l'hindi, l'indonésien, l'italien, le "
+"portugais, le russe, le turc et le chinois simplifié."
+
+#. type: Plain text
+msgid ""
+"[List of available *LibreOffice* language packages](https://"
+"packages.debian.org/search?keywords=libreoffice-"
+"l10n&searchon=names&suite=stable&section=all)"
+msgstr ""
+"[Liste des paquets de langue disponibles pour *LibreOffice*](https://"
+"packages.debian.org/search?keywords=libreoffice-"
+"l10n&searchon=names&suite=stable&section=all)"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/persistence.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/metadata.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "To start <span class=\"application\">LibreOffice</span> choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  <span class=\"guimenu\">Applications</span>&nbsp;▸\n"
+#~ "  <span class=\"guisubmenu\">Office</span>&nbsp;▸\n"
+#~ "  <span class=\"guimenuitem\">LibreOffice</span></span>.\n"
+#~ msgstr ""
+#~ "Pour démarrer <span class=\"application\">LibreOffice</span> choisir\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  <span class=\"guimenu\">Applications</span>&nbsp;▸\n"
+#~ "  <span class=\"guisubmenu\">Bureautique</span>&nbsp;▸\n"
+#~ "  <span class=\"guimenuitem\">LibreOffice</span></span>.\n"
+
+#~ msgid "**<span class=\"application\">Writer</span>**, a word processor"
+#~ msgstr ""
+#~ "**<span class=\"application\">Writer</span>**, un traitement de texte"
+
+#~ msgid "**<span class=\"application\">Math</span>**, for editing mathematics"
+#~ msgstr ""
+#~ "**<span class=\"application\">Math</span>**, pour éditer des mathématiques"
+
+#~ msgid ""
+#~ "Tails includes [LibreOffice](http://www.libreoffice.org/), which is a "
+#~ "full-featured office productivity suite that provides a near drop-in "
+#~ "replacement for Microsoft(R) Office."
+#~ msgstr ""
+#~ "Tails contient [LibreOffice](https://fr.libreoffice.org/), qui est une "
+#~ "solution bureautique complète et multi–fonction. Il est un substitut très "
+#~ "proche de Microsoft(R) Office."
+
+#~ msgid ""
+#~ "It includes a word processor, a spreadsheet and a presentation "
+#~ "application."
+#~ msgstr ""
+#~ "Cette suite inclut un traitement de texte, un tableur et un gestionnaire "
+#~ "de présentation et de création de diaporamas."
+
+#~ msgid "You can launch them from the *Applications*&nbsp;▸ *Office*"
+#~ msgstr "Vous pouvez les lancer via *Applications*&nbsp;▸ *Bureautique*"

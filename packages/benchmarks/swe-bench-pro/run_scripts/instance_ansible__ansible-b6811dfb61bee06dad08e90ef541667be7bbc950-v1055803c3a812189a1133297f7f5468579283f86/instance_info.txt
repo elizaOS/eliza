@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-b6811dfb61bee06dad08e90ef541667be7bbc950-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: 2b227203a277ae8f3592547db6c5109b90e6dfae
+Test Files: ["test/units/module_utils/common/arg_spec/test_validate_failures.py", "test/units/module_utils/common/arg_spec/test_validate_aliases.py", "test/units/module_utils/common/arg_spec/test_sub_spec.py", "test/units/module_utils/common/arg_spec/test_validate_basic.py", "test/units/module_utils/common/arg_spec/__init__.py"]
+FAIL_TO_PASS: ["test/units/module_utils/common/arg_spec/test_validate_failures.py::test_required_and_default", "test/units/module_utils/common/arg_spec/test_validate_aliases.py::test_spec_with_aliases", "test/units/module_utils/common/arg_spec/test_validate_aliases.py::test_alias_deprecation", "test/units/module_utils/common/arg_spec/test_sub_spec.py::test_nested_sub_spec", "test/units/module_utils/common/arg_spec/test_sub_spec.py::test_sub_spec", "test/units/module_utils/common/arg_spec/test_validate_basic.py::test_spec_with_elements", "test/units/module_utils/common/arg_spec/test_validate_basic.py::test_spec_with_defaults", "test/units/module_utils/common/arg_spec/test_validate_basic.py::test_basic_spec"]
+PASS_TO_PASS: []

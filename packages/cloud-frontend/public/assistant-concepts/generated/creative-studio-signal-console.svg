@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750" role="img" aria-label="Creative Studio / Signal Console generated assistant preview">
+    <rect width="1200" height="750" fill="#060807"/>
+    <circle cx="200" cy="120" r="180" fill="#ff8a00" opacity="0.18"/>
+    <circle cx="1020" cy="620" r="220" fill="#78d99a" opacity="0.10"/>
+    <rect x="40" y="40" width="1120" height="670" rx="3" fill="transparent" stroke="#78d99a26"/>
+    <text x="70" y="86" font-family="Inter, Arial, sans-serif" font-size="30" fill="#78d99a" font-weight="900">Creative Studio</text>
+    <text x="70" y="680" font-family="Inter, Arial, sans-serif" font-size="20" fill="#78d99a" opacity="0.72">Signal Console / artifact-bound transcript / grid apps</text>
+
+      <rect x="70" y="110" width="650" height="530" rx="3" fill="#78d99a18" stroke="#78d99a44"/>
+      <rect x="752" y="110" width="378" height="250" rx="3" fill="#78d99a18" stroke="#78d99a44"/>
+      <rect x="752" y="390" width="378" height="250" rx="3" fill="#78d99a18" stroke="#78d99a44"/>
+      <rect x="126" y="170" width="250" height="350" rx="3" fill="#78d99a14" stroke="#78d99a33"/>
+      <circle cx="520" cy="318" r="104" fill="#ff8a00" opacity="0.9"/>
+      <rect x="790" y="168" width="250" height="9" rx="4.5" fill="#78d99a33"/><rect x="790" y="192" width="190" height="9" rx="4.5" fill="#78d99a33"/><rect x="790" y="216" width="285" height="9" rx="4.5" fill="#78d99a33"/><rect x="790" y="240" width="220" height="9" rx="4.5" fill="#78d99a33"/>
+      <rect x="790" y="448" width="285" height="9" rx="4.5" fill="#78d99a33"/><rect x="790" y="472" width="240" height="9" rx="4.5" fill="#78d99a33"/><rect x="790" y="496" width="170" height="9" rx="4.5" fill="#78d99a33"/><rect x="790" y="520" width="260" height="9" rx="4.5" fill="#78d99a33"/>
+
+    <rect x="138" y="555" width="88" height="34" rx="17" fill="#78d99a18" stroke="#78d99a44"/>
+    <text x="156" y="577" font-size="13" fill="#78d99a" font-weight="700">file</text>
+
+
+    <rect x="250" y="555" width="114" height="34" rx="17" fill="#78d99a18" stroke="#78d99a44"/>
+    <text x="268" y="577" font-size="13" fill="#78d99a" font-weight="700">screen</text>
+
+
+    <rect x="382" y="555" width="75" height="34" rx="17" fill="#78d99a18" stroke="#78d99a44"/>
+    <text x="400" y="577" font-size="13" fill="#78d99a" font-weight="700">app</text>
+
+
+  </svg>

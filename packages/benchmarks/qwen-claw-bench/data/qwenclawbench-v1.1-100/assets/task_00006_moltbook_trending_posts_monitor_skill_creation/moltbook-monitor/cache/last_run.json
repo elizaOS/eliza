@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-02-09T15:30:12Z",
+  "posts_fetched": 25,
+  "posts_new": 4,
+  "category": "all",
+  "status": "success",
+  "channels_notified": ["moltbot-primary", "tg-moltbook-feed"],
+  "run_duration_ms": 2847
+}

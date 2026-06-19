@@ -1,0 +1,2 @@
+# Site-specific additions and overrides for usr.bin.onionshare-cli.
+# For more details, please see /etc/apparmor.d/local/README.

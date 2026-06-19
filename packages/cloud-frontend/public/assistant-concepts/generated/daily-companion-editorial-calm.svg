@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750" role="img" aria-label="Daily Companion / Editorial Calm generated assistant preview">
+    <rect width="1200" height="750" fill="#f4f1ea"/>
+    <circle cx="200" cy="120" r="180" fill="#ff8a00" opacity="0.18"/>
+    <circle cx="1020" cy="620" r="220" fill="#111111" opacity="0.10"/>
+    <rect x="40" y="40" width="1120" height="670" rx="3" fill="transparent" stroke="#11111126"/>
+    <text x="70" y="86" font-family="Inter, Arial, sans-serif" font-size="30" fill="#111111" font-weight="900">Daily Companion</text>
+    <text x="70" y="680" font-family="Inter, Arial, sans-serif" font-size="20" fill="#111111" opacity="0.72">Editorial Calm / hidden-drawer transcript / grid apps</text>
+
+
+            <rect x="75" y="120" width="235" height="150" rx="3" fill="#11111118" stroke="#11111144"/>
+            <text x="105" y="164" font-size="24" fill="#111111" font-weight="800">Now</text>
+            <rect x="105" y="192" width="155" height="9" rx="4.5" fill="#11111133"/><rect x="105" y="216" width="112" height="9" rx="4.5" fill="#11111133"/><rect x="105" y="240" width="180" height="9" rx="4.5" fill="#11111133"/>
+
+            <rect x="345" y="120" width="235" height="150" rx="3" fill="#11111118" stroke="#11111144"/>
+            <text x="375" y="164" font-size="24" fill="#ff8a00" font-weight="800">Next</text>
+            <rect x="375" y="192" width="155" height="9" rx="4.5" fill="#11111133"/><rect x="375" y="216" width="112" height="9" rx="4.5" fill="#11111133"/><rect x="375" y="240" width="180" height="9" rx="4.5" fill="#11111133"/>
+
+            <rect x="615" y="120" width="235" height="150" rx="3" fill="#11111118" stroke="#11111144"/>
+            <text x="645" y="164" font-size="24" fill="#111111" font-weight="800">Later</text>
+            <rect x="645" y="192" width="155" height="9" rx="4.5" fill="#11111133"/><rect x="645" y="216" width="112" height="9" rx="4.5" fill="#11111133"/><rect x="645" y="240" width="180" height="9" rx="4.5" fill="#11111133"/>
+
+            <rect x="885" y="120" width="235" height="150" rx="3" fill="#11111118" stroke="#11111144"/>
+            <text x="915" y="164" font-size="24" fill="#111111" font-weight="800">Recap</text>
+            <rect x="915" y="192" width="155" height="9" rx="4.5" fill="#11111133"/><rect x="915" y="216" width="112" height="9" rx="4.5" fill="#11111133"/><rect x="915" y="240" width="180" height="9" rx="4.5" fill="#11111133"/>
+
+      <rect x="75" y="320" width="1050" height="260" rx="3" fill="#11111118" stroke="#11111144"/>
+      <circle cx="600" cy="450" r="76" fill="#ff8a00"/>
+      <path d="M180 450h300M720 450h300" stroke="#11111155" stroke-width="8" stroke-linecap="round"/>
+      <rect x="130" y="360" width="230" height="9" rx="4.5" fill="#11111133"/><rect x="130" y="384" width="180" height="9" rx="4.5" fill="#11111133"/><rect x="130" y="408" width="260" height="9" rx="4.5" fill="#11111133"/>
+      <rect x="810" y="360" width="240" height="9" rx="4.5" fill="#11111133"/><rect x="810" y="384" width="170" height="9" rx="4.5" fill="#11111133"/><rect x="810" y="408" width="220" height="9" rx="4.5" fill="#11111133"/>
+
+  </svg>

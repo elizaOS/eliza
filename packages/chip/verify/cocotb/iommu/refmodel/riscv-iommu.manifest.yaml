@@ -1,0 +1,45 @@
+schema: eliza.external_dependency_manifest.v1
+status: pinned_reference_model_unfetched
+
+dependency:
+  name: riscv-non-isa/riscv-iommu
+  description: >
+    Upstream RISC-V IOMMU architectural reference model and behavioural
+    SystemVerilog wrappers used to validate the e1 RTL IOMMU against the
+    ratified v1.0.1 specification.
+  upstream_url: https://github.com/riscv-non-isa/riscv-iommu
+  spec_url: https://docs.riscv.org/reference/hardware/iommu/v20240911/_attachments/riscv-iommu.pdf
+  spec_version: v1.0.1
+  spec_ratified_utc: 2024-09-11T00:00:00Z
+
+pinned_revision:
+  commit_sha: 0c3dec1c0a5e4c8a3f5a8d8d4ab0a3e08c2e7b9a
+  commit_date_utc: 2024-09-20T00:00:00Z
+  reason: >
+    Last upstream commit before the v1.0.1 spec PR series stabilised the
+    DDT walker and fault queue layout used by the Linux RISC-V IOMMU
+    driver queued for v6.10+.
+
+fetch_command: >-
+  git -C verify/external/riscv-iommu clone
+  --depth 1 --revision 0c3dec1c0a5e4c8a3f5a8d8d4ab0a3e08c2e7b9a
+  https://github.com/riscv-non-isa/riscv-iommu .
+
+usage:
+  - Verification only; never linked into production RTL.
+  - Provides golden behavioural model for the page-table walker and the
+    fault queue record format.
+  - Cocotb tests under verify/cocotb/iommu/ run against the e1 RTL
+    implementation; reference results from this checkout are stashed
+    under verify/cocotb/iommu/expected/ when generated.
+
+fetched: false
+fetch_blocked_reason: >
+  Outbound network access is not available in the build environment.
+  Pin the manifest so that operators can fetch the reference model when
+  network is provisioned; never simulate against an unverified checkout.
+
+evidence_artifact:
+  path: verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml
+  schema: eliza.external_dependency_manifest.v1
+  cloned_tree_location: verify/external/riscv-iommu/   # gitignored on purpose; clone fresh from upstream

@@ -1,0 +1,33 @@
+# gitleaks fingerprint ignore-list
+#
+# Each line: <commit-sha>:<path>:<rule-id>:<line>
+# Entries here are reviewed false positives. Add a comment above each
+# fingerprint explaining why it is safe.
+
+# PEM envelope template wrapper in normalizePem(). The wrapper shapes
+# operator-provided env content into canonical PEM markers; no key
+# material is committed. A later commit splits the markers across string
+# concatenation and adds a path-scoped .gitleaks.toml allowlist, but the
+# fork CI workflow scans the full PR commit range, so the original
+# commit fingerprint must be explicitly suppressed here.
+3f807bbe1d0272cc1edcff3692f6617daf8e7159:packages/cloud-shared/src/lib/auth/agent-token.ts:private-key:32
+
+# ANSI terminal escape sequences (bold+italic formatting codes `^[[1;3;m...^[[0m`)
+# in mock/test data files. These are CI terminal output captured in test fixtures,
+# not real secrets. Confirmed false positives — no key material present.
+6e5a9ae9d7ea4fabdafb4d87d993927f48393110:packages/app-core/scripts/playwright-ui-smoke-api-stub.mjs:generic-api-key:2812
+6e5a9ae9d7ea4fabdafb4d87d993927f48393110:packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts:generic-api-key:1131
+f9184d51cc60210ad6be388f3b1f1eae529a9904:packages/chip/scripts/test_release_archive_simulator_evidence.py:generic-api-key:129
+
+# Pre-built OS agent bundle (agent-bundle.js) committed as a distribution
+# artifact for elizaOS Linux. The gitleaks finding is a base64-encoded string
+# fragment inside the compiled JS bundle that matches the generic-api-key
+# entropy pattern. This is a minified/bundled third-party library artifact,
+# not a credential. The file path (elizaos-artifacts/elizaos-app/) and
+# extension (.js) confirm it is a build artifact, not source with secrets.
+20feed95fdf57b801635ef1dc69524b5184cdfc3:packages/os/linux/elizaos/config/includes.chroot/opt/elizaos-artifacts/elizaos-app/agent-bundle.js:generic-api-key:325543
+
+# Fake fixture value in a unit test asserting the containers route REDACTS
+# infra columns (deployment_log_key is a storage path, not a credential).
+# The test exists precisely to prove this field never reaches API responses.
+69e4235edffd5a526c7ff4b920d1c6b3d9a429f9:packages/cloud-api/v1/containers/route.test.ts:generic-api-key:148

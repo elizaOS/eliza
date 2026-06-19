@@ -1,0 +1,69 @@
+{
+  "document_info": {
+    "title": "Electric Hoist and Track System Specification",
+    "document_number": "APC-2024-0087-MECH-003",
+    "revision": "B1",
+    "date": "2024-02-10",
+    "status": "Approved"
+  },
+  "hoist_specification": {
+    "manufacturer": "Konecranes",
+    "model": "CLX02-06-18",
+    "type": "wire_rope_electric_hoist",
+    "rated_capacity_t": 2.0,
+    "rated_capacity_kN": 19.62,
+    "lift_height_m": 18,
+    "hoisting_speed_m_per_min": {
+      "fine": 1.0,
+      "coarse": 5.0
+    },
+    "motor_power_kW": 3.7,
+    "duty_class": "M5",
+    "rope_diameter_mm": 8,
+    "rope_reeving": "2/1",
+    "hook_type": "swivel_safety_hook",
+    "self_weight_kg": 385
+  },
+  "track_system": {
+    "track_type": "I-beam",
+    "track_section": "HW200x200x8x12",
+    "track_material_grade": "Q235B",
+    "track_total_length_m": 20,
+    "track_span_between_supports_m": 6,
+    "number_of_support_points": 4,
+    "track_centerline_y_m": 8.0,
+    "track_start_x_m": 2.0,
+    "track_end_x_m": 22.0,
+    "mounting_note": "Track is mounted directly below roof truss bottom chord via welded bracket assemblies. Bracket design must maintain shielding RF continuity.",
+    "travel_speed_m_per_min": 20,
+    "travel_motor_power_kW": 0.75,
+    "end_stops": "rubber_buffer",
+    "deflection_limit": "L/500"
+  },
+  "electrical": {
+    "power_supply_voltage_V": 380,
+    "power_supply_phases": 3,
+    "power_supply_frequency_Hz": 50,
+    "control_voltage_V": 48,
+    "control_type": ["pendant", "wireless_remote"],
+    "pendant_cable_length_m": 20,
+    "wireless_remote_range_m": 50,
+    "protection_class": "IP55",
+    "insulation_class": "F",
+    "power_feed_type": "festoon_cable_system"
+  },
+  "safety_features": {
+    "overload_protection": true,
+    "overload_cutoff_percent": 110,
+    "upper_limit_switch": true,
+    "lower_limit_switch": true,
+    "emergency_stop": true,
+    "slack_rope_detection": true,
+    "anti_collision": false
+  },
+  "applicable_standards": [
+    "GB/T 3811-2008 Design Rules for Cranes",
+    "GB 6067.1-2010 Safety Rules for Lifting Appliances",
+    "GB/T 14405-2011 General Overhead Travelling Cranes"
+  ]
+}

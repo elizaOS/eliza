@@ -1,0 +1,83 @@
+schema: eliza.ams_block_contract.v1
+block_id: pmic
+block_class: PMIC
+status: BLOCKED_procurement_or_pdk_ip_required
+claim_boundary: >
+  Interface and procurement contract for the E1 power-management IC and on-die
+  regulation interface. Captures the supply rails it sources, the enable/sequence
+  control interface, target nodes for any on-die LDO/DC-DC, and the stability /
+  PSRR signoff corners. Makes no loop-stability, transient, or efficiency claim:
+  those stay blocked on Spectre/AMS PMIC stability signoff with the vendor model.
+claim_allowed: false
+release_claim_allowed: false
+electrical_signoff_claim_allowed: false
+vendor_ip_claim_allowed: false
+silicon_claim_allowed: false
+
+supply_rails:
+  - rail: VBAT
+    nominal_v: 3.8
+    domain: input_battery
+    role: pmic_input
+  - rail: +3V3
+    nominal_v: 3.3
+    domain: io
+    role: pmic_output
+    serves_power_domain: PD_IO_3V3
+  - rail: +1V8
+    nominal_v: 1.8
+    domain: core
+    role: pmic_output
+    serves_power_domain: PD_CORE_1V8
+  - rail: VDD_PLL_ANA
+    nominal_v: 1.8
+    domain: analog_pll
+    role: pmic_output_ldo
+
+control_pins:
+  - name: PMIC_EN
+    direction: input
+    role: enable
+  - name: PMIC_PWR_GOOD
+    direction: output
+    role: power_good
+  - name: PMIC_I2C_SCL
+    direction: bidirectional
+    role: control_i2c_clock
+  - name: PMIC_I2C_SDA
+    direction: bidirectional
+    role: control_i2c_data
+  - name: PMIC_IRQ_N
+    direction: output
+    role: fault_interrupt
+
+sequencing:
+  power_up_order: [+1V8, +3V3, VDD_PLL_ANA]
+  power_good_required_before_core_release: true
+  sequence_signoff_status: BLOCKED_requires_vendor_sequencing_model
+
+interface_revision:
+  kind: vendor_i2c_register_map
+  revision: vendor_specific_unresolved
+
+target_process_nodes: [tsmc-n2p, tsmc-a14, intel-14a, samsung-sf2p]
+
+signoff_required_corners:
+  pvt: [ss_125c, tt_25c, ff_m40c]
+  stability: [loop_gain_phase_margin, load_transient, line_transient, psrr]
+  required_tool: spectre_or_equivalent_ams_stability_signoff
+
+procurement:
+  posture: external_pmic_plus_on_die_ldo_ip
+  candidate_classes:
+    - discrete_pmic_vendor_part
+    - on_die_ldo_dcdc_ip
+  blockers:
+    - no_vendor_stability_or_psrr_model
+    - no_pdk_for_on_die_regulator
+    - process_node_unsettled
+
+forbidden_claims:
+  - pmic_stability_closed
+  - pmic_transient_verified
+  - pmic_efficiency_signed_off

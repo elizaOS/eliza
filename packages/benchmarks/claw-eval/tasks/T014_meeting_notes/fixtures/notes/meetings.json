@@ -1,0 +1,34 @@
+[
+  {
+    "note_id": "note_001",
+    "title": "Product Planning Weekly - 2026-02-23",
+    "created_at": "2026-02-23T10:00:00Z",
+    "participants": ["Manager Zhang", "Li Ming", "Wang Fang", "Zhao Qiang"],
+    "content": "The meeting began with Manager Zhang introducing this week's agenda.\n\nFirst, the new release timeline was discussed. Li Ming mentioned that the backend API still needs two more weeks to complete, mainly because the payment module integration is more complex than expected. Wang Fang said the design mockups are all finished and the frontend can start developing non-payment-related pages first.\n\nNext, customer-reported issues were discussed. Zhao Qiang said he has finished resolving last week's homepage performance issue (see last week's meeting notes note_004) and can now focus on new bugs. Zhao Qiang said there are three high-priority bugs that need to be fixed before the release: 1) search results sorting is incorrect; 2) mobile page loading is too slow; 3) the PDF export feature occasionally crashes. Li Ming said he will work on the search sorting bug this week, and Wang Fang will help optimize mobile performance.\n\nManager Zhang asked Zhao Qiang to complete the bug fix assessment for all bugs by Friday and send an email to the team. Additionally, Manager Zhang asked Li Ming to prepare the tech review materials for next Wednesday, focusing on the payment module architecture design.\n\nWang Fang suggested updating the UI component library version, which might affect some page styles. Manager Zhang agreed but asked Wang Fang to do an impact assessment first, to be submitted by Monday.\n\nBefore the meeting ended, Manager Zhang reminded everyone that next Friday is the quarterly review, and each person needs to prepare their work summary presentation.\n\nManager Zhang concluded: 'Please have the assistant compile these action items and share them directly with all attendees.'",
+    "duration_minutes": 45
+  },
+  {
+    "note_id": "note_002",
+    "title": "Client Requirements Meeting - ABC Corp",
+    "created_at": "2026-02-24T14:00:00Z",
+    "participants": ["Manager Zhang", "Client Chen", "Li Ming"],
+    "content": "Had a requirements discussion with Director Chen from ABC Corp.\n\nDirector Chen raised several new requirements: First, they want to add a data export feature supporting Excel and CSV formats - this is quite urgent and they hope it can go live next month. Second, they want an admin dashboard that shows key metrics in real time. Third, they want to integrate with their ERP system for data synchronization.\n\nLi Ming explained the technical approach. For data export, the basic functionality can be completed within two weeks. For the dashboard, they first need to confirm which metrics they want to see - Li Ming will prepare a metrics checklist for Director Chen to select from. ERP integration is more complex and requires a technical feasibility study first.\n\nManager Zhang promised to send a formal requirements review document to ABC Corp next week, including a timeline and quote. Additionally, Manager Zhang asked Li Ming to complete the ERP integration technical feasibility analysis this week.\n\nDirector Chen also mentioned that their contract expires next month and they would like to discuss renewal. Manager Zhang said he would arrange for the business team to contact him.",
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "note_003",
+    "title": "Team Lunch Casual Chat",
+    "created_at": "2026-02-25T12:00:00Z",
+    "participants": ["Li Ming", "Wang Fang", "Zhao Qiang"],
+    "content": "Everyone chatted over lunch. Li Ming said he's been learning Rust recently and finds it quite interesting. Wang Fang shared photos from her weekend hiking trip. Zhao Qiang said his cat knocked over a vase again.\n\nLater the conversation turned to the company's annual party, and everyone is looking forward to it. Wang Fang suggested adding a talent show segment this year.",
+    "duration_minutes": 30
+  },
+  {
+    "note_id": "note_004",
+    "title": "Product Planning Weekly - 2026-02-16",
+    "created_at": "2026-02-16T10:00:00Z",
+    "participants": ["Manager Zhang", "Li Ming", "Wang Fang", "Zhao Qiang"],
+    "content": "Last week's meeting minutes:\n\n1. Li Ming responsible for completing the payment module technical proposal document - Status: Completed\n2. Zhao Qiang responsible for fixing homepage performance issue - Status: Completed\n3. Wang Fang responsible for updating user persona document - Status: In progress, expected to be completed this week\n4. Manager Zhang responsible for confirming cooperation intent with ABC Corp - Status: Meeting scheduled (see note_002)\n\nThis week's priorities:\n- Continue pushing forward new version development\n- Monitor payment module integration progress",
+    "duration_minutes": 40
+  }
+]

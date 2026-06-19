@@ -1,0 +1,141 @@
+schema: eliza.e1_phone_display_envelope_downselect.v1
+status: blocked_display_envelope_downselect_requires_signed_display_stack_connector_and_routed_clearance
+date: '2026-05-21'
+claim_boundary: Explicit display-size and device-envelope decision for the E1 phone planning package. Public marketplace/PDF data
+  may anchor the concept envelope, but this is not a supplier-approved display stack, not an FPC/connector freeze, not routed
+  MIPI signoff, not a cover-glass or adhesive stack release, and not enclosure-ready evidence.
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/display-fit.yaml
+  - package/display/v0-dsi-720x1280.yaml
+  - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
+  - board/kicad/e1-phone/display-camera-oem-integration.yaml
+  - board/kicad/e1-phone/layout-optimization-execution.yaml
+upstream_status:
+  display_fit: mechanical_fit_baseline_not_step_not_fabrication_ready
+  display_package: planning_binding_no_bonded_pins_no_fabricated_board
+  display_camera_source_revalidation: public_sources_revalidated_screen_camera_not_supplier_approved
+  display_camera_oem_integration: blocked_requires_display_camera_supplier_pack_routed_mipi_and_capture_evidence
+  layout_optimization_execution: blocked_concept_layout_optimized_requires_supplier_footprints_trial_route_measurements_and_routed_step
+selected_screen_decision:
+  selected_primary_id: chenghao_ch550fh01a_ct
+  vendor: Chenghao Optoelectronic
+  part: CH550FH01A-CT
+  resolution: 1080x1920
+  interface: MIPI-DSI
+  board_use: primary_display_and_device_envelope_anchor
+  decision: keep_5p5_in_1080x1920_chenghao_class_module_as_evt0_size_anchor
+  public_evidence_class: public_marketplace_listing_plus_public_pdf_not_signed_supplier_pack
+  rationale:
+    - popular 5.5 inch FHD MIPI-DSI CTP class with public outline and active-area data
+    - current 78.0 x 153.6 mm device envelope has only 0.9 mm width and 1.83 mm height clearance around the selected module
+    - 64.0 x 132.0 mm rigid board remains behind the display outline with 13.1 mm width and 19.77 mm height margin
+    - smaller AMOLED alternate can reduce envelope pressure only after supplier drawing, touch stack, FPC, connector, and sample data
+mechanical_fit_decision:
+  current_device_envelope_mm:
+    width: 78.0
+    height: 153.6
+    max_thickness: 11.8
+  primary_module_outline_mm:
+    width: 77.1
+    height: 151.77
+    thickness: 3.39
+  primary_active_area_mm:
+    width: 68.04
+    height: 120.96
+  minimum_envelope_for_primary_with_margin_mm:
+    width: 77.7
+    height: 153.57
+    side_margin_each_mm: 0.3
+    top_bottom_margin_each_mm: 0.9
+  clearance_in_current_envelope_mm:
+    width_clearance_mm: 0.9
+    height_clearance_mm: 1.83
+  primary_fits_current_envelope: true
+  board_fit_behind_primary_display:
+    board_width_mm: 64.0
+    board_height_mm: 132.0
+    width_margin_from_display_outline_mm: 13.1
+    height_margin_from_display_outline_mm: 19.77
+    interpretation: The rigid board remains narrower than the selected display assembly;
+      the earlier 72 x 148 mm device envelope was the inconsistent item.
+  envelope_policy: keep_current_78p0_x_153p6_x_11p8_mm_until_signed_display_stack_or_smaller_supplier_pack_changes_the_anchor
+alternate_policy:
+  forfuture_fet_e549_hco1_amoled_class:
+    part: E549-HCO1 or pin-compatible AMOLED class
+    known_outline_mm:
+      width: 70.66
+      height: 128.36
+      thickness: 0.82
+    fits_current_envelope: true
+    board_decision: not_promoted_supplier_request_only_until_signed_stack_pinout_connector_and_samples
+  meta_display_055wu01_class:
+    part: 055WU01
+    observed_active_area_mm:
+      width: 68.04
+      height: 120.96
+    observed_signal_interface: MIPI_40_pins
+    observed_brightness_typ_cd_m2: 1000
+    board_decision: not_promoted_active_area_matches_primary_but_outline_fpc_exit_connector_step_and_supplier_pack_missing
+  alibaba_ili7807d_5p5_1200nit_class:
+    part: 5p5_1080x1920_MIPI_40pin_1200nit_class
+    board_decision: not_promoted_missing_public_mechanical_outline_signed_supplier_pack_and_parseable_source_evidence
+  made_in_china_e549_amoled_parseable_class:
+    part: E549-HC01_RM67191_AMOLED_class
+    observed_outline_mm:
+      width: 70.66
+      height: 128.36
+      thickness: 0.82
+    observed_active_area_mm:
+      width: 68.299
+      height: 121.421
+    envelope_delta_vs_primary_outline_mm:
+      width_reduction_mm: 6.44
+      height_reduction_mm: 23.41
+      thickness_reduction_mm: 2.57
+    fits_current_envelope: true
+    board_decision: not_promoted_thinner_smaller_outline_but_touch_stack_power_sequence_fpc_connector_step_and_supplier_pack_missing
+  lower_resolution_open_driver_alternates:
+    parts:
+      - BOE TV050QDM-N00
+      - Truly TFT3P1761E
+      - PinePhone Pro display assembly
+    board_decision: not_promoted_for_evt0_size_anchor_because_resolution_or_mechanical_pack_differs_from_selected_fhd_ctp_target
+release_gate:
+  allowed_planning_claims:
+    - selected display size anchor is CH550FH01A-CT-class 5.5 inch 1080x1920 MIPI CTP
+    - current concept envelope is 78.0 x 153.6 x 11.8 mm with 0.9 x 1.83 mm outline clearance
+    - current rigid board is 64.0 x 132.0 mm and fits behind the selected display outline
+  blocked_until:
+    - supplier-signed LCM plus CTP drawing with outline, active area, cover lens, FPC exit, pin-1, stiffener, and datum stack
+    - exact FPC pinout, mating connector MPN, land pattern, height, and STEP model
+    - cover glass, adhesive, midframe, display FPC bend, and connector clearance model in routed-board STEP
+    - routed MIPI DSI length-skew, impedance, return-path, DRC/SI, and display power-sequence evidence
+    - display bring-up, touch probe, brightness, inrush, and first-article sample inspection logs
+cross_checks:
+  primary_matches_display_package_first_candidate: true
+  primary_matches_display_fit_selected_primary: true
+  current_envelope_matches_manifest_design_target: true
+  current_envelope_preserved_as_minimum_practical_concept: true
+  board_bbox_fits_behind_primary_display_outline: true
+  smaller_amoled_alternate_not_promoted_without_supplier_pack: true
+  parseable_alibaba_055wu01_active_area_matches_primary_but_missing_outline: true
+  parseable_e549_amoled_smaller_outline_not_promoted_without_supplier_pack: true
+  missing_outline_alternates_not_promoted: true
+  release_outputs_fail_closed: true
+release_blockers:
+  - Signed display/touch 2D drawing, cover-lens stack, FPC exit datum, pinout, connector, STEP, and samples are missing.
+  - MIPI DSI route, length/skew, impedance, return-path, and DRC/SI evidence is missing.
+  - Display power sequence, touch probe, brightness, inrush, and bring-up logs are missing.
+  - Routed-board STEP does not yet prove display FPC bend, connector height, camera/top-speaker clearance, or enclosure tolerance.
+forbidden_claims:
+  - display_size_final
+  - display_supplier_approved
+  - display_connector_ready
+  - display_pinout_frozen
+  - cover_glass_stack_ready
+  - mipi_dsi_routed
+  - display_bringup_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

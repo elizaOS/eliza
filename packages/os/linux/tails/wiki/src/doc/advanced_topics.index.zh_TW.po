@@ -1,0 +1,86 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2018-11-02 09:24+0000\n"
+"Last-Translator: emmapeel <emma.peel@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.19.1\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Running Tails in a virtual machine|advanced_topics/virtualization]]"
+msgstr "[[!traillink 防護冷開機攻擊|advanced_topics/cold_boot_attacks]]"
+
+#. type: Bullet: '  * '
+msgid "[[*GNOME Boxes*|advanced_topics/virtualization/boxes]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[*virt-manager*|advanced_topics/virtualization/virt-manager]]"
+msgstr "[[!traillink 防護冷開機攻擊|advanced_topics/cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Modifying the boot options using the Boot Loader|advanced_topics/"
+"boot_options]]"
+msgstr "[[!traillink 防護冷開機攻擊|advanced_topics/cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Starting Tails from an external hard disk or problematic USB stick|"
+"advanced_topics/external_hard_disk]]"
+msgstr "[[!traillink 防護冷開機攻擊|advanced_topics/cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Accessing the internal hard disk|advanced_topics/internal_hard_disk]]"
+msgstr "[[!traillink 防護冷開機攻擊|advanced_topics/cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Protection against cold boot attacks|advanced_topics/cold_boot_attacks]]"
+msgstr "[[!traillink 防護冷開機攻擊|advanced_topics/cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Accessing resources on the local network|advanced_topics/lan]]"
+msgstr "[[!traillink 防護冷開機攻擊|advanced_topics/cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Enabling a wireless device|advanced_topics/wireless_devices]]"
+msgstr "[[!traillink 防護冷開機攻擊|advanced_topics/cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Chatting with *Dino* and OMEMO|advanced_topics/dino]]"
+msgstr "[[!traillink 防護冷開機攻擊|advanced_topics/cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Exchanging Monero with *Feather*|advanced_topics/feather]]"
+msgstr "[[!traillink 防護冷開機攻擊|advanced_topics/cold_boot_attacks]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!traillink Installing_additional_software|first_steps/"
+#~ "additional_software]]"
+#~ msgstr ""
+#~ "[[!traillink Zusätzliche_Software_installieren|first_steps/"
+#~ "additional_software]]"

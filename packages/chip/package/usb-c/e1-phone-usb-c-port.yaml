@@ -1,0 +1,91 @@
+schema: eliza.phone_usb_c_port_binding.v1
+as_of: 2026-05-20
+status: planning_binding_no_schematic_no_fabricated_board
+claim_boundary: >
+  Planning binding only. No USB-C receptacle, ESD, CC/PD path, charger path,
+  or mechanical reinforcement has been placed or validated.
+
+port_count: 1
+placement:
+  board_edge: bottom_center
+  board_region_mm: {x: 26.0, y: 126.0, width: 16.0, height: 6.0}
+  enclosure_requirements:
+    - connector_shell_captured_by_enclosure_not_only_solder_joints
+    - chamfered_or_radiused_port_opening
+    - minimum_plug_keepout_verified_with_cable_overmold
+    - local_ground_stitching_and_chassis_ground_policy
+
+connector_strategy:
+  evt0_low_risk:
+    vendor: GCT
+    family: USB4105
+    type: USB_Type_C_USB2_receptacle
+    active_contacts: 16
+    mechanical_contacts: 24_position_with_dummy_pins
+    current_rating: VBUS_5A_collective
+    temperature_c: {min: -40, max: 85}
+    rationale: >
+      Easier routing for first prototype when the SoC/package has no proven
+      USB3/DP lane bonding. Supports charging, USB2 data, ADB/fastboot/debug,
+      and PD controller CC lines.
+    source_url: https://gct.co/files/specs/usb4105-spec.pdf
+  production_superspeed:
+    vendor: Molex
+    family: 221632_or_217804_Port_On
+    type: USB_Type_C_24_pin_waterproof_receptacle
+    features: [USB_3_2_Gen_2, mid_mount_or_top_mount_options, IPX5_IPX8_options]
+    current_rating: up_to_5A_or_6A_family_dependent
+    rationale: >
+      Use if the final E1 package bonds USB3/DP lanes and the enclosure needs a
+      waterproof Type-C opening. This increases routing density and SI burden.
+    source_url: https://www.molex.com/content/dam/molex/molex-dot-com/en_us/pdf/datasheets/987651-4081.pdf
+
+electrical_topology:
+  pd_controller: package/usb-pd/tps65987.yaml
+  charger: package/charger/max77860.yaml
+  required_blocks:
+    - usb_c_receptacle
+    - cc_esd_and_usb_pd_controller
+    - usb2_esd_close_to_connector
+    - vbus_tv_s_or_surge_protection
+    - vbus_current_sense_or_charger_input_monitor
+    - connector_shell_ground_network
+  usb2_signals:
+    - {contract: USB_DP, impedance_ohm_diff: 90, route_class: usb2_diff_pair}
+    - {contract: USB_DN, impedance_ohm_diff: 90, route_class: usb2_diff_pair}
+  cc_signals:
+    - {contract: USB_CC1, owner: TPS65987}
+    - {contract: USB_CC2, owner: TPS65987}
+  optional_superspeed_signals:
+    status: blocked_until_package_phy_decision
+    route_class: 85_ohm_diff_pair
+    notes:
+      - Requires high-speed mux/orientation handling if routed to USB3 PHY.
+      - Requires SI simulation and connector footprint escape review.
+
+layout_closure_requirements:
+  connector_escape:
+    - Keep USB_DP/USB_DN as a 90 ohm differential pair from receptacle to ESD and across the split-board
+      interconnect.
+    - Place USB2 ESD on the bottom island before the flex transition; no stubs longer than the selected
+      ESD package escape permits.
+    - Place CC ESD and PD-controller CC path close enough to avoid an exposed side-rail flex antenna.
+  power_path:
+    - VBUS copper and vias must be sized for 5 A connector rating even when EVT0 charge policy limits lower.
+    - VBUS TVS/surge part must sit between connector and charger/PD power-path entry.
+    - SHIELD_GND must have a defined chassis/logic ground network before enclosure ESD testing.
+  bringup_test_access:
+    - bottom-island test pads: VBUS, USB_CC1, USB_CC2, USB_DP, USB_DN, SHIELD_GND
+    - fixture access must remain reachable after the orange back shell is removed
+
+manufacturing_requirements:
+  - Use through-hole shell stakes or enclosure-captured connector for plug loads.
+  - Add paste aperture and reflow profile review for mid-mount connector.
+  - Add test pads for VBUS, CC1, CC2, USB_DP, USB_DN before first article.
+  - Verify cable insertion/removal clearance in STEP with plug overmold.
+
+forbidden_claims:
+  - usb_c_ready
+  - pd_ready
+  - waterproof_ready
+  - superspeed_ready

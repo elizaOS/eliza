@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "packages/os/android/vendor/eliza/tee/tee-policy.json (AOSP bring-up track)",
+  "summary": "AOSP TEE evidence policy for the protected-agent profile. Same TeeEvidencePolicy shape the agent's evaluateTeeEvidencePolicy consumes. CONFIDENTIALITY IS BLOCKED on the riscv64 Cuttlefish/qemu-virt bring-up track (no CoVE-capable KVM/crosvm, 16KB-page validation pending); this policy validates the management/export contract, not a confidential boot.",
+  "claimBoundary": "aosp_tee_contract_bringup_only_not_confidential_boot",
+  "confidentialityBlocked": true,
+  "policy": {
+    "required": true,
+    "allowedKinds": ["pkvm", "avf", "tdx", "sev-snp"],
+    "allowedProviders": ["eliza-pvm-mgr"],
+    "requiredMeasurements": {
+      "boot": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "os": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "agent": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "policy": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "minSecurityVersion": 1,
+    "requiredClaims": {
+      "debugDisabled": true,
+      "secureBoot": true
+    },
+    "rejectSimulatedEvidence": true
+  },
+  "blockedClaims": {
+    "memoryEncrypted": "BLOCKED: riscv64 CoVE TVM memory confidentiality not available on bring-up host.",
+    "ioProtected": "BLOCKED: IOPMP source-ID policy not validated at 4KB+16KB page sizes.",
+    "npuProtected": "BLOCKED: measured NPU firmware + TSM monitor fold not available on bring-up host."
+  }
+}

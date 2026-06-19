@@ -1,0 +1,15 @@
+[[!meta date="Wed, 07 Apr 2010 18:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+*amnesia* is now to be called *The (Amnesic) Incognito Live System*.
+
+The Incognito author has declared it to be
+dead on March 23, 2010,
+and written that *amnesia* "should be considered as its spiritual
+successor". He adds that "there's been some talk of making it the new
+Incognito even by name". It did happen.
+
+A new release will happen soon, that will not only reflect the name
+change, but also fix a bunch of annoying bugs and bring a few
+new features.

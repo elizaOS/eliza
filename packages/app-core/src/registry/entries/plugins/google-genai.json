@@ -1,0 +1,106 @@
+{
+  "id": "google-genai",
+  "name": "Google Genai",
+  "description": "LLM ElizaOS plugin for google genai",
+  "npmName": "@elizaos/plugin-google-genai",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["ai-provider", "llm", "google-genai", "google", "genai"],
+  "config": {
+    "GOOGLE_GENERATIVE_AI_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Generative Ai Api Key",
+      "help": "API key for Google Generative AI (Gemini) obtained from Google AI Studio.",
+      "advanced": false
+    },
+    "GOOGLE_EMBEDDING_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "text-embedding-004",
+      "label": "Embedding Model",
+      "help": "Overrides the default text embedding model used by Google Generative AI.",
+      "placeholder": "e.g., text-embedding-3-small",
+      "advanced": false
+    },
+    "GOOGLE_IMAGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gemini-2.0-flash-001",
+      "label": "Image Model",
+      "help": "Overrides the default image analysis model used by Google Generative AI.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "GOOGLE_SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gemini-2.0-flash-001",
+      "label": "Small Model",
+      "help": "Overrides the default small language model used for fast text/object generation.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "GOOGLE_LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gemini-2.0-flash-001",
+      "label": "Large Model",
+      "help": "Overrides the default large language model used for complex text/object generation.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gemini-2.0-flash-001",
+      "label": "Model",
+      "help": "General fallback environment variable for the small model name when GOOGLE_SMALL_MODEL is not set.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gemini-2.0-flash-001",
+      "label": "Model",
+      "help": "General fallback environment variable for the large model name when GOOGLE_LARGE_MODEL is not set.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "IMAGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "gemini-2.0-flash-001",
+      "label": "Model",
+      "help": "General fallback environment variable for the image model name when GOOGLE_IMAGE_MODEL is not set.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Sparkles",
+    "group": "ai-provider",
+    "groupOrder": 0,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-google-genai#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-google-genai",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#google-gemini"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "ai-provider"
+}

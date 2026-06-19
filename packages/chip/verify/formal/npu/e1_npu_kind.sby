@@ -1,0 +1,33 @@
+[options]
+# Unbounded k-induction proof of the NPU's bounded-safety invariants that the
+# routine depth-12 BMC (verify/formal/e1_npu.sby) can only witness vacuously.
+# `mode prove` runs the SymbiYosys basecase + induction passes; a PASS here is
+# an unbounded guarantee, not a depth-bounded one. The induction depth is kept
+# modest because each target invariant is local to one always_ff step plus the
+# loop-window relations already asserted in the harness.
+mode prove
+depth 16
+
+[engines]
+# Single engine so the proof concludes deterministically and the
+# engine-agreement gate (verify/check_formal_engine_agreement.py) sees every
+# configured engine return pass-for-basecase and pass-for-induction. bitwuzla
+# discharges these inductive obligations quickly.
+smtbmc bitwuzla
+
+[script]
+read -define AXIL_PROTO_ASSUME_LIVENESS
+read -formal -sv axi_lite_protocol.sv
+read -formal e1_npu.sv e1_npu_formal.sv
+read -formal -sv npu_axil_bind.sv
+read -formal -sv reset_properties.sv
+read -formal -sv cdc_properties.sv
+prep -top e1_npu_formal
+
+[files]
+rtl/npu/e1_npu.sv
+verify/formal/e1_npu_formal.sv
+verify/properties/axi_lite_protocol.sv
+verify/properties/npu_axil_bind.sv
+verify/properties/reset_properties.sv
+verify/properties/cdc_properties.sv

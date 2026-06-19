@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# refs: #10553
+
+set -eu -o pipefail
+
+NOSYMFOLLOW_MOUNTPOINT='/run/nosymfollow'
+OLD_DIR="${NOSYMFOLLOW_MOUNTPOINT}/live/persistence/TailsData_unlocked/dont-ask-again"
+NEW_DIR="${NOSYMFOLLOW_MOUNTPOINT}/live/persistence/TailsData_unlocked/.tails/dont-ask-again"
+
+if [ -d "$OLD_DIR" ] && ! [ -d "$NEW_DIR" ]; then
+    mv "$OLD_DIR" "$NEW_DIR"
+fi
+
+install --directory --owner amnesia --group amnesia --mode 700 "${NEW_DIR}"

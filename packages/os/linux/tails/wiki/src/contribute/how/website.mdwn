@@ -1,0 +1,56 @@
+[[!meta title="Improve the Tails website"]]
+
+<div id="intro">
+
+<p>You can improve the Tails website.</p>
+
+[[!toc levels=1]]
+
+</div>
+
+# Known tasks
+
+We have identified some things that we would like to see improved on
+our website: see the [[!tails_gitlab
+groups/tails/-/issues?label_name%5B%5D=T%3AWebsite
+desc="website-related issues"]]
+on GitLab.
+
+# Other ideas
+
+Nevertheless, if you are a web or graphics person, you can surely
+find other ideas to improve the Tails website! Even if you don't plan
+to implement every suggested enhancement yourself, it may be worth
+[[!tails_gitlab
+tails/tails/-/issues/new?issue%5Bassignee_id%5D=&issue%5Bmilestone_id%5D=
+desc="creating issues"]]
+with your ideas so that others can benefit from your insight.
+
+# Working on the website
+
+The website [[https://tails.net/]] is built using
+[ikiwiki](https://ikiwiki.info) from source code that is available in
+our main Git repository, along with the rest of the Tails code.
+
+You can build a local copy of the website on your computer. Building the
+website produces a set a HTML pages stored on your system that you can
+open in your usual web browser even while working offline. Doing so is
+useful for writers and designers to see how their
+changes will apply on the website.
+
+[[Learn how to build a local copy of the website.|contribute/build/website]]
+
+# Related pages
+
+[[!map pages="page(contribute/how/website/*)" show="title"]]
+
+# Talk to us
+
+You can subscribe to [[tails-dev@boum.org|doc/about/contact#tails-dev]],
+our development mailing list.
+
+# Resources
+
+- [[Checklist for updating `po_translatable_pages`|po_translatable_pages]]
+
+- [WebAIM: Alternative Text](http://webaim.org/techniques/alttext/): how to write good `alt` attributes for images

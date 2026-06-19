@@ -1,0 +1,10 @@
+{"id":"greeting_short","text":"Hello there. This is a short voice benchmark sample."}
+{"id":"weather_city","text":"Today in Austin, skies are clear and temperatures are mild."}
+{"id":"finance_brief","text":"The quarterly report shows revenue growth and improving margins."}
+{"id":"support_reset","text":"To reset your password, open settings, choose security, then tap reset."}
+{"id":"calendar_note","text":"Your next meeting starts at three fifteen PM and lasts forty five minutes."}
+{"id":"navigation_turn","text":"In five hundred feet, turn right and continue for two miles."}
+{"id":"medical_disclaimer","text":"This information is educational and does not replace medical advice from a clinician."}
+{"id":"multisentence_long","text":"Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay."}
+{"id":"list_format","text":"Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech."}
+{"id":"numbers_dates","text":"On January fifteenth twenty twenty six, the average response time was one point four seconds."}

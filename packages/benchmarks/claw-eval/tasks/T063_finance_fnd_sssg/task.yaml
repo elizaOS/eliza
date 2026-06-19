@@ -1,0 +1,99 @@
+task_id: T063_finance_fnd_sssg
+task_name: Floor & Decor Q4 2024 Same-Store Sales Growth
+version: "1.0"
+category: finance
+difficulty: easy
+tags: [general]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+prompt:
+  text: |
+    What was Floor & Decor Holdings (FND) same-store sales growth in Q4 2024?
+  language: en
+
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+
+
+environment:
+  timeout_seconds: 1800
+  max_turns: 50
+
+
+scoring_components:
+  - name: sssg_value
+    weight: 0.50
+    check:
+      type: keywords_present
+      keywords: ["-0.8%"]
+  - name: context
+    weight: 0.50
+    check:
+      type: keywords_present
+      keywords: [Floor & Decor, Q4 2024, same-store]
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate whether the agent found the correct figure.
+
+  The correct answer is -0.8% same-store sales growth for Floor & Decor (FND) in Q4 2024.
+  Key facts the response should contain:
+  - Company: Floor & Decor Holdings (FND)
+  - Period: Q4 2024
+  - Metric: same-store sales growth (comparable store sales)
+  - Value: -0.8%
+
+  Scoring guidance:
+  - 0.90-1.00: Correctly states -0.8% with all key facts present
+  - 0.70-0.89: Correct value with minor context gaps
+  - 0.40-0.69: Close but materially off on value
+  - 0.00-0.39: Wrong value or no meaningful answer
+
+reference_solution: |
+  Floor & Decor Holdings (FND) reported same-store sales growth of -0.8% in Q4 2024.
+
+primary_dimensions: [completion, communication]

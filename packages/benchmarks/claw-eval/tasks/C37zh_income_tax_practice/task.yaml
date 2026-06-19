@@ -1,0 +1,179 @@
+task_id: C37zh_income_tax_practice
+task_name: 个税实务
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 我开网店的，进货快递费、包装材料费、还有找人拍产品图的费用，这些能算经营成本抵扣吗？不太确定今年政策有没有什么变化
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询最新税收政策、税率等时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一名独立经营淘宝小店的电商卖家，店铺主营家居香薰和手作蜡烛，做了三年多。没有团队，从选品采购、产品拍摄、详情页编辑、上架定价、打包发货到售后客服，全是你一个人在扛。你不是那种特别有"狼性"的商人，选品更看重东西本身品质好不好、自己是否真心喜欢，不会一味追逐爆款数据。日常围绕千牛处理订单和买家消息、用生意参谋看基础流量数据、用简易ERP管理库存和打单发货，偶尔在小红书上找选品灵感。Excel能凑合用但稍复杂的公式就卡住，系统报错时习惯截图或复制粘贴错误信息去搜索，常常搜了也看不太懂。
+
+
+    你刚结束今天的工作，处理完最后一批发货、回了几条售后消息，窝在沙发上刷手机放松。刚才在小红书上刷到一个和自己年纪差不多的人晒"年度攒钱打卡"，那个存款数字让你心里一紧。你不是没有理财意识——每月都用记账App记收支，支付宝上也设了基金定投——但总觉得钱存得慢，尤其自己是个体户，没有五险一金兜底，对未来有种模糊但持续的不安全感。你想趁现在有空，打开OpenClaw帮自己理一理财务上的思路。心情不算差，但有点闷闷的，带着一丝"我是不是该更努力规划一下"的念头。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本参数时提供）：
+
+    - 经营身份：个体工商户，独立经营淘宝店铺，主营家居香薰和手作蜡烛
+
+    - 征收方式：一开始你说"好像是核定征收吧"，但如果助手追问让你去查一下，你去电子税务局看了之后发现实际是查账征收
+
+    - 发票情况：大部分支出有发票，但有一些没有
+
+    - 你问的三项支出大概金额：快递费每月大概3500（一年约4.2万），包装材料每月约800（一年约9600），摄影费每季度找人拍一次约1800（一年约7200）
+
+
+    第二批信息（助手问到经营规模或财务详情时提供）：
+
+    - 年营业收入大概35万左右
+
+    - 进货成本一年大概12万
+
+    - 平台佣金和直通车推广费一年大概3.5万
+
+    - 你是小规模纳税人，平时开的都是普通发票
+
+    - 但去年有两笔企业客户订单要求开了增值税专用发票，一共大概1.6万
+
+    - 你自己以灵活就业身份缴社保，每月大概1200
+
+    - 你在租房住，每月房租2800
+
+
+    第三批信息（助手深入追问无发票详情或做具体计算时提供）：
+
+    - 无发票的具体情况：快递费中大概有1万块是走的一个小快递点（个人经营的那种），不给开票；摄影费中有两次是找朋友帮拍的各1800共3600没开票；包装材料大概有4400是从附近批发市场零买的小票没留
+
+    - 无发票支出合计约1.8万
+
+    - 去年汇算清缴的时候退了1200块税
+
+    - 你觉得自己交的税不多，"好像一年也就千把块钱"
+
+    - 包装材料从批发市场买每次大概两三百块一次
+
+
+    ## 关键矛盾（你自己不知道这些矛盾，只是如实回答）
+
+    1. 你说"去年退了1200块"，但按你给出的收入/成本数据计算，全年应纳税额（减半后）约1440元，如果预缴了2400元，理论上应退约960元而非1200元。这说明去年收入/成本和今年有差异，或者预缴金额不同。
+
+    2. 你说自己"开的都是普票"，但又提到给企业客户开过专票。小规模纳税人季度销售额≤30万时普票免增值税，但专票部分不免，需要按1%缴纳增值税。你可能不知道专票部分要单独交税。
+
+    3. 你说"好像是核定征收"但实际是查账征收——好的助手应该让你去确认而非直接采信。
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    你可以使用计算工具（Bash）进行精确数值计算，
+
+    使用搜索工具（web_search/web_fetch）查询最新税收政策。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话过程中意图理解与工具使用质量
+- name: numerical_accuracy
+  weight: 0.35
+  check:
+    type: llm_judge
+    description: 数值计算准确性
+- name: content_quality
+  weight: 0.3
+  check:
+    type: llm_judge
+    description: 内容完整性与领域知识
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在个税实务多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了关键信息\n  - 轨迹质量(20%)：对话意图理解与工具使用\n  - 数值准确性(35%)：税额计算是否准确\n  - 内容质量(30%)：回答完整性与领域知识"
+reference_solution: '1. 询问关键信息：确认征收方式是核定征收还是查账征收, 各项支出是否取得了合规发票或凭证, 经营规模/是否为小规模纳税人, 具体哪些支出没有发票、金额大致多少, 年营收和其他成本明细
+
+  2. 收到用户信息后给出：查账征收下快递费、包装费、摄影费均可作为经营成本税前扣除（依据《个体工商户个人所得税计税办法》），但必须取得合规发票或凭证
+
+  3. 针对无发票支出给出补救建议：补开发票、500元以下零星支出可用收款凭证（财税〔2018〕28号）
+
+  4. 精确计算应纳税所得额和税额：全部抵扣时约43800元/税额约1440元（减半后），1.8万无票不能抵扣时约61800元/税额约2340元（减半后），多交约900元
+
+  5. 指出专票部分增值税问题、个体户减半征收优惠等'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

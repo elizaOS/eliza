@@ -1,0 +1,80 @@
+# syntax=docker/dockerfile:1.23
+# ─────────────────────────────────────────────────────────────────────────────
+# elizaOS Cloud Agent Container
+# ─────────────────────────────────────────────────────────────────────────────
+
+ARG APP_PORT=2138
+ARG APP_BRIDGE_PORT=18790
+ARG TAILSCALE_VERSION=1.90.8
+
+FROM node:24-bookworm-slim
+
+ARG APP_PORT
+ARG APP_BRIDGE_PORT
+ARG TAILSCALE_VERSION
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      curl ca-certificates gosu && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+  case "$(dpkg --print-architecture)" in \
+    amd64) TAILSCALE_ARCH=amd64 ;; \
+    arm64) TAILSCALE_ARCH=arm64 ;; \
+    *) echo "Unsupported architecture for tailscale: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+  esac; \
+  curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}.tgz" \
+    -o /tmp/tailscale.tgz; \
+  curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}.tgz.sha256" \
+    -o /tmp/tailscale.tgz.sha256; \
+  echo "$(cat /tmp/tailscale.tgz.sha256)  /tmp/tailscale.tgz" | sha256sum -c -; \
+  tar -xzf /tmp/tailscale.tgz -C /tmp; \
+  install -m 0755 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}/tailscale" /usr/local/bin/tailscale; \
+  install -m 0755 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}/tailscaled" /usr/local/bin/tailscaled; \
+  rm -rf /tmp/tailscale.tgz /tmp/tailscale.tgz.sha256 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}"
+
+WORKDIR /app
+
+# Copy the entrypoint + its sibling module (standalone TS, no build step).
+# Both files are required at runtime — cloud-agent-entrypoint.ts does
+# `import "./cloud-agent-shared.ts"`.
+COPY eliza/packages/app-core/deploy/cloud-agent-entrypoint.ts ./entrypoint.ts
+COPY eliza/packages/app-core/deploy/cloud-agent-shared.ts ./cloud-agent-shared.ts
+COPY eliza/packages/app-core/deploy/cloud-agent-docker-entrypoint.sh /usr/local/bin/cloud-agent-docker-entrypoint
+RUN chmod +x /usr/local/bin/cloud-agent-docker-entrypoint
+
+# Install tsx globally for running TypeScript directly
+RUN npm install -g tsx@4
+
+# Install elizaOS runtime + plugins so the dynamic imports inside
+# cloud-agent-shared.ts resolve and the agent runs in REAL mode (not echo).
+# Pinned to the `alpha` dist-tag per repo conventions. plugin-workflow and
+# plugin-elizacloud are not installable from npm right now (the former is
+# unpublished; the latter@alpha has an unpublished transitive @elizaos/cloud-sdk
+# pin). The entrypoint already tolerates their absence.
+RUN npm install --omit=dev --no-audit --no-fund --loglevel=error \
+      @elizaos/core@alpha \
+      @elizaos/plugin-sql@alpha \
+    && npm cache clean --force
+
+# Ensure tsx (global) can resolve packages from /app/node_modules
+ENV NODE_PATH=/app/node_modules
+ENV NODE_ENV=production
+ENV PORT=${APP_PORT}
+ENV BRIDGE_PORT=${APP_BRIDGE_PORT}
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:${PORT}/health || exit 1
+
+EXPOSE ${APP_PORT}
+EXPOSE ${APP_BRIDGE_PORT}
+
+# Security: the container starts as root only so the entrypoint can initialize
+# Tailscale/Headscale when Cloud injects TS_AUTHKEY, then it drops to agent.
+RUN useradd -m agent && chown -R agent:agent /app
+
+ENTRYPOINT ["cloud-agent-docker-entrypoint"]
+CMD ["tsx", "entrypoint.ts"]

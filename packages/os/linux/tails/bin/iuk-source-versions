@@ -1,0 +1,49 @@
+#!/bin/sh
+
+set -e
+set -u
+
+IGNORED_TAGS="7.3"
+
+major_version() {
+    local version="$1"
+    echo "$version" | perl -p -E 's,[.].*,,'
+}
+
+member() {
+    local item="$1"
+    shift
+    local found=no
+    for i in "$@"; do
+        if [ "$i" = "$item" ]; then
+            found=yes
+            break
+        fi
+    done
+
+    [ "$found" = 'yes' ]
+}
+
+RELEASING_VERSION="$1"
+RELEASING_MAJOR_VERSION=$(major_version "$RELEASING_VERSION")
+
+tags() {
+    # While a simple "git tag" might seem equally effective, it will misbehave
+    # if you have third-party remotes that have tags. See tails#21295
+    git ls-remote --tags origin | grep --perl-regexp --only-matching '\trefs/tags/\K[0-9][^^]*$'
+}
+
+(
+    tags | while read -r tag; do
+        # shellcheck disable=SC2086
+        if member "$tag" $IGNORED_TAGS; then
+            continue
+        fi
+        version=$(echo "$tag" | perl -p -E 's,-,~,')
+        major_version=$(major_version "$version")
+        if [ "$major_version" = "$RELEASING_MAJOR_VERSION" ] &&
+            dpkg --compare-versions "$version" lt "$RELEASING_VERSION"; then
+            echo "$version"
+        fi
+    done
+) | sort --version-sort | xargs | tr -d '\n'

@@ -1,0 +1,224 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-18 09:16+0000\n"
+"PO-Revision-Date: 2023-08-02 10:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Manually upgrade from your Tails\"]]\n"
+msgstr "[[!meta title=\"Tails 手动更新\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/upgrade-tails\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/upgrade-tails\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/download\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/download\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/forge.sha256.min\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/overview\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/overview.zh\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/download.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/download.inline.zh\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/verify.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/verify.inline.zh\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"install\" class=\"step\">Install an intermediary Tails using <em>GNOME Disks</em></h1>\n"
+msgstr "安装过渡 Tails 系统\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">[[!img install/inc/infography/install-upgrade-usb.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image\">[[!img install/inc/infography/install-upgrade-usb.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"In this step, you will install an intermediary Tails using the Tails USB "
+"image that you downloaded earlier."
+msgstr "在这一步中，您将使用您之前下载的 ISO 映像安装过渡 Tails。"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/install_with_gnome_disks.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/install_with_gnome_disks.inline.zh\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/restart_first_time.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/restart_first_time.inline.zh\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/clone.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/clone.inline.zh\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta robots=\"noindex\"]]\n"
+#~ msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta stylesheet=\"bootstrap.min\" rel=\"stylesheet\" title=\"\"]]\n"
+#~ msgstr "[[!meta stylesheet=\"bootstrap.min\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta stylesheet=\"install/inc/stylesheets/assistant\" rel=\"stylesheet\" title=\"\"]]\n"
+#~ msgstr "[[!meta stylesheet=\"install/inc/stylesheets/assistant\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "<div class=\"hidden-step-1\"></div>\n"
+#~ msgstr "<div class=\"hidden-step-1\"></div>\n"
+
+#~ msgid ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/os-tails.png "
+#~ "link=\"no\" alt=\"\"]]</div>\n"
+#~ msgstr ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/os-tails.png "
+#~ "link=\"no\" alt=\"\"]]</div>\n"
+
+#, fuzzy
+#~ msgid "<p class=\"start\">Start in Tails.</p>\n"
+#~ msgstr "<p class=\"start\">启动 Tails 系统。</p>\n"
+
+#, fuzzy
+#~ msgid "Install an intermediary Tails"
+#~ msgstr "安装过渡 Tails 系统\n"
+
+#~ msgid "<div class=\"note\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#~ msgid ""
+#~ "<p>The persistent storage of your Tails USB stick will not be\n"
+#~ "copied.</p>\n"
+#~ msgstr "<p>您的 Tails 记忆棒下的持久存储数据将不会被复制。</p>\n"
+
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"
+
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#~ msgid "<p>All the data on this USB stick will be lost.</p>\n"
+#~ msgstr ""
+#~ "<p>该 USB 记忆棒下所有数据将会丢失。</p>\n"
+#~ "\n"
+
+#~ msgid ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/plug-upgrade-"
+#~ "usb.png link=\"no\" alt=\"\"]]</div>\n"
+#~ msgstr ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/plug-upgrade-"
+#~ "usb.png link=\"no\" alt=\"\"]]</div>\n"
+
+#~ msgid "Plug the intermediary USB stick in the computer."
+#~ msgstr "将过渡 USB 记忆棒插入您的电脑。"
+
+#~ msgid ""
+#~ "1. Choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applications**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Tails Installer**\n"
+#~ "   </span>\n"
+#~ "   to start *Tails Installer*.\n"
+#~ msgstr ""
+#~ "1. 请选择\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **应用**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Tails 安装程序**\n"
+#~ "   </span>\n"
+#~ "   以运行 *Tails 安装程序*.\n"
+
+#~ msgid "Choose **Use a downloaded Tails ISO image**."
+#~ msgstr "请选择 **使用已下载的 Tails ISO 映像**."
+
+#~ msgid ""
+#~ "To start the installation, click on the <span class=\"bold\">Install "
+#~ "Tails</span> button."
+#~ msgstr "请点击**安装 Tails**按钮以开始安装。"
+
+#~ msgid ""
+#~ "Read the warning message in the confirmation dialog. Click on <span "
+#~ "class=\"bold\">Yes</span> to confirm."
+#~ msgstr "阅读确认对话框中的警告信息。点击**是**确认。"
+
+#~ msgid "   The installation takes a few minutes.\n"
+#~ msgstr "   安装将在几分钟后完成。\n"
+
+#~ msgid ""
+#~ "   <div class=\"bug\">\n"
+#~ "   <p>The progress bar usually freezes for some time around 95 percent\n"
+#~ "   while synchronizing data on disk.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug\">\n"
+#~ "   <p>进度条通常会在95%时冻结一段时间，\n"
+#~ "   此时程序正在同步磁盘上的数据。</p>\n"
+#~ "   </div>\n"
+
+#~ msgid "Close *Tails Installer*."
+#~ msgstr "关闭*Tails 安装程序*。"
+
+#~ msgid "   <a id=\"3.5\"></a>\n"
+#~ msgstr "   <a id=\"3.5\"></a>\n"
+
+#~ msgid "   <div class=\"bug\">\n"
+#~ msgstr "   <div class=\"bug\">\n"
+
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"
+
+#~ msgid ""
+#~ "   [[!inline pages=\"news/version_3.5/manual_upgrade.inline\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "   [[!inline pages=\"news/version_3.5/manual_upgrade.inline.zh\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"

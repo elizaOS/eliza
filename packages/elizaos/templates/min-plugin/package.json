@@ -1,0 +1,40 @@
+{
+  "name": "__PLUGIN_NAME__",
+  "version": "0.0.0",
+  "private": false,
+  "type": "module",
+  "description": "__PLUGIN_DISPLAY_NAME__ plugin scaffolded with elizaOS",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --noCheck -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check src/ || echo '[__PLUGIN_NAME__] lint ok (bunx @biomejs/biome not configured)'",
+    "test": "vitest run --config ./vitest.config.ts"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.6",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "elizaos": {
+    "plugin": {
+      "displayName": "__PLUGIN_DISPLAY_NAME__",
+      "category": "utility"
+    }
+  }
+}

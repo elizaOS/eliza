@@ -1,0 +1,162 @@
+name: Windows CI
+
+# Protect the Windows compatibility work documented in WINDOWS.md from
+# regression. Runs the install + typecheck + the core/shared/app-core unit
+# test suites that have been verified to pass on Windows.
+#
+# Scope is deliberately a subset of the Linux lanes: this guards the
+# critical-path TypeScript packages (runtime/core, dashboard host, shared)
+# and the helpers under `packages/scripts/`. iOS/macOS/RISC-V/cloud-e2e
+# paths run on their existing dedicated workflows.
+
+concurrency:
+  group: windows-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "package.json"
+      - "bun.lock"
+      - "packages/core/**"
+      - "packages/shared/**"
+      - "packages/app-core/**"
+      - "packages/agent/**"
+      - "packages/ui/**"
+      - "packages/scripts/**"
+      - "WINDOWS.md"
+      - ".github/workflows/windows-ci.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "package.json"
+      - "bun.lock"
+      - "packages/core/**"
+      - "packages/shared/**"
+      - "packages/app-core/**"
+      - "packages/agent/**"
+      - "packages/ui/**"
+      - "packages/scripts/**"
+      - "WINDOWS.md"
+      - ".github/workflows/windows-ci.yml"
+  workflow_dispatch:
+
+env:
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: "--max-old-space-size=8192"
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: ${{ matrix.timeout || 45 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: typecheck-core
+            command: |
+              node packages/scripts/run-turbo.mjs run typecheck --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-shared --concurrency=4
+          - lane: test-core
+            command: bun run --cwd packages/core test
+          - lane: test-shared
+            command: bun run --cwd packages/shared test
+          - lane: test-app-core
+            command: bun run --cwd packages/app-core test
+          - lane: test-elizaos-cli
+            command: bun run --cwd packages/elizaos test
+          - lane: test-cloud-shared
+            command: bun run --cwd packages/cloud-shared test
+          - lane: test-plugin-coding-tools
+            command: bun run --cwd plugins/plugin-coding-tools test
+          - lane: test-scenario-runner
+            command: bun run --cwd packages/scenario-runner test
+          - lane: test-vault
+            command: bun run --cwd packages/vault test
+          - lane: test-security
+            command: bun run --cwd packages/security test
+          - lane: test-elizaos-cli-full
+            command: bun run --cwd packages/elizaos test
+          - lane: test-plugin-elizacloud
+            command: bun run --cwd plugins/plugin-elizacloud test
+          - lane: test-plugin-discord
+            command: bun run --cwd plugins/plugin-discord test
+          - lane: test-plugin-anthropic
+            command: bun run --cwd plugins/plugin-anthropic test
+          - lane: test-plugin-openai
+            command: bun run --cwd plugins/plugin-openai test
+          - lane: test-plugin-app-control
+            command: bun run --cwd plugins/plugin-app-control test
+          - lane: test-plugin-task-coordinator
+            command: bun run --cwd plugins/plugin-task-coordinator test
+          - lane: test-plugin-browser
+            command: bun run --cwd plugins/plugin-browser test
+          - lane: build-agent-cascade
+            timeout: 75
+            command: |
+              node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=4
+          - lane: helper-smokes
+            command: |
+              node packages/scripts/run-bash-linux-only.mjs scripts/verify-riscv64-buildpaths.sh
+              node packages/scripts/run-python.mjs --version
+              node packages/scripts/test-cloud-run.mjs
+              node packages/scripts/clean-stray-dts.mjs
+
+    steps:
+      - name: Enable long paths
+        shell: pwsh
+        run: |
+          New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
+            -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force | Out-Null
+
+      - uses: actions/checkout@v4
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          # Match the repo-wide pin (packageManager: bun@1.4.0-canary.1). `latest`
+          # (stable) cannot parse the canary-written lockfile (`lockfileVersion: 2`)
+          # and aborts install with "Unknown lockfile version". canary is exercised
+          # on Windows by windows-dev-smoke, so it is known-good here.
+          bun-version: canary
+
+      - name: Configure Windows Defender exclusions
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath "$PWD\node_modules" -ErrorAction SilentlyContinue
+          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\.bun" -ErrorAction SilentlyContinue
+
+      - name: Install dependencies
+        shell: pwsh
+        # bun's `patchedDependencies` step occasionally races against the
+        # Windows file indexer and hits ENOTEMPTY on directory rename. Retry
+        # once with the cache warm; usually the second pass clears it.
+        run: |
+          $ErrorActionPreference = "Continue"
+          bun install --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Install failed; retrying with cache warm."
+            bun install --no-progress
+          }
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Prepare generated workspace artifacts
+        shell: pwsh
+        run: |
+          node packages/scripts/ensure-workspace-symlinks.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node packages/scripts/ensure-native-plugins-linked.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/logger --filter=@elizaos/contracts --filter=@elizaos/prompts --filter=@elizaos/core --filter=@elizaos/shared --concurrency=4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run lane "${{ matrix.lane }}"
+        shell: pwsh
+        run: ${{ matrix.command }}

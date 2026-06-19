@@ -1,0 +1,36 @@
+schema: eda.tool_action.v1
+id: e1-openlane-metrics-parse-dry-run
+action_type: metrics_parse
+tool: python_script
+mode: dry_run
+claim_boundary: tool_action_fixture_only_no_tool_execution_source_change_or_release_claim
+command:
+  argv:
+    - python3
+    - scripts/ai_eda/parse_openlane_metrics_to_flow_run.py
+    - --run-id
+    - validation
+  cwd: packages/chip
+read_scope:
+  - docs/spec-db/ai-eda/openlane-metrics-fixtures/e1_final_metrics.clean.json
+  - build/ai_eda/e1_openlane_conversion/validation/records/flow-run.json
+write_scope:
+  - build/ai_eda/openlane_flow_labels/validation/
+input_artifacts:
+  - path: docs/spec-db/ai-eda/openlane-metrics-fixtures/e1_final_metrics.clean.json
+    sha256: fixture_hash_resolved_by_action_runner
+generated_artifacts:
+  - path: build/ai_eda/openlane_flow_labels/validation/label-parse-report.json
+    kind: report
+approval:
+  required: false
+  status: not_required_dry_run
+execution:
+  dry_run_only: true
+  archived_stdout: build/ai_eda/tool_actions/validation/stdout.txt
+  archived_stderr: build/ai_eda/tool_actions/validation/stderr.txt
+status:
+  result: PROPOSED_DRY_RUN_ONLY
+  blockers:
+    - source writes are forbidden by this fixture
+    - release use requires deterministic replay and human review

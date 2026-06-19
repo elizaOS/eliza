@@ -1,0 +1,84 @@
+schema: eliza.minimum_linux_npu_gap_matrix.v1
+last_verified_local: "2026-05-18"
+verification_scope:
+  owner: worker_d_integration_verification
+  target: minimum_linux_plus_npu_ml
+  note: >
+    Local integration verification only. External generated-AP Linux, OpenSBI,
+    Buildroot, and target-side runtime transcripts remain required before the
+    minimum Linux+NPU ML target can be claimed.
+
+commands:
+  - command: make rtl-check
+    result: pass
+    evidence: Verilator lint/elaboration completed for checked RTL sources.
+  - command: make cocotb-npu
+    result: pass
+    evidence: 9 cocotb NPU tests passed, including descriptor fetch and GEMM paths.
+  - command: scripts/run_verilator.sh
+    result: pass
+    evidence:
+      - e1_chip Verilator smoke passed
+      - GEMM_S8 2x2x3 passed
+  - command: make npu-runtime-contract-check
+    result: pass
+    evidence: e1 NPU runtime contract check passed.
+  - command: make linux-boot-artifacts-check
+    result: blocked
+    evidence: >
+      Current Makefile does not expose this target during verification. Running
+      python3 scripts/check_linux_boot_artifacts.py directly reports BLOCKED.
+  - command: python3 scripts/check_linux_boot_artifacts.py
+    result: blocked
+    evidence:
+      - ELIZA_LINUX_TREE is unset.
+      - ELIZA_BUILDROOT_TREE is unset.
+      - ELIZA_OPENSBI_TREE is unset.
+      - Required kernel, DTB, OpenSBI handoff, serial boot, rootfs, and MMIO smoke logs are missing with BLOCKED notes.
+      - Payload locator found external/chipyard/software/firemarshal/images/firechip/linux-poweroff/linux-poweroff-bin-nodisk.
+  - command: make software-bsp-test
+    result: pass
+    evidence: software BSP parser and evidence tests passed.
+  - command: make linux-bsp-check
+    result: blocked
+    evidence: >
+      Repo-local Linux BSP scaffold check passed, but external Linux kernel
+      build, DTB validation, and runtime MMIO smoke evidence remain BLOCKED.
+
+gap_matrix:
+  - area: rtl_npu_local
+    status: pass
+    blocker: none_observed
+    closing_command: make rtl-check && make cocotb-npu && scripts/run_verilator.sh
+  - area: runtime_contract_local
+    status: pass
+    blocker: none_observed
+    closing_command: make npu-runtime-contract-check
+  - area: linux_bsp_source_scaffold
+    status: pass_with_external_evidence_blocked
+    blocker: External Linux build and runtime transcripts are not captured.
+    closing_command: make linux-bsp-check
+  - area: linux_boot_artifacts
+    status: blocked
+    blocker: >
+      External Linux, Buildroot, and OpenSBI trees are unset; required evidence
+      logs are missing and represented only by .BLOCKED notes.
+    closing_command: python3 scripts/check_linux_boot_artifacts.py --require-pass
+  - area: make_target_wiring
+    status: blocked
+    blocker: make linux-boot-artifacts-check is currently not available in Makefile.
+    closing_command: make linux-boot-artifacts-check
+  - area: target_side_ml_smoke
+    status: blocked
+    blocker: >
+      No generated-AP Linux transcript shows /dev/e1-npu or documented
+      /dev/mem fallback running deterministic GEMM_S8 with PASS markers.
+    closing_command: make minimum-linux-npu-target-check
+
+remaining_blockers:
+  - Restore or add Makefile wiring for linux-boot-artifacts-check.
+  - Set ELIZA_LINUX_TREE, ELIZA_BUILDROOT_TREE, and ELIZA_OPENSBI_TREE.
+  - Capture external kernel build and DTB validation logs.
+  - Capture OpenSBI handoff and generated-AP serial Linux boot transcript.
+  - Capture target-side e1-mmio-smoke and e1-npu ML smoke PASS logs.
+  - Run the aggregate minimum Linux+NPU target gate after evidence capture.

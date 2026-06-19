@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#000000" />
+    <!--
+      no-referrer prevents any outbound request (analytics, image CDNs,
+      third-party scripts) from carrying a Referer header. The Steward OAuth
+      callback briefly carries tokens or OAuth codes in the URL hash during the
+      rollout window; while #fragments are not sent in Referer per spec, this
+      is belt-and-suspenders against legacy browsers / extensions that leak
+      the full URL.
+    -->
+    <meta name="referrer" content="no-referrer" />
+    <!--
+      Snapshot then strip any `#token=...` or `#code=...` from the URL before
+      any other JS runs (React, analytics, Sentry, etc.) so the access token never reaches
+      anything that might log `location.href`. Tokens are then read by
+      consumeStewardTokensFromHash() from `__stewardOAuthHash`.
+    -->
+    <script>
+      (() => {
+        try {
+          const h = window.location.hash;
+          if (
+            h &&
+            (h.indexOf("token=") !== -1 || h.indexOf("code=") !== -1)
+          ) {
+            window.__stewardOAuthHash = h;
+            history.replaceState(
+              null,
+              "",
+              window.location.pathname + window.location.search
+            );
+          }
+        } catch (_e) {}
+      })();
+    </script>
+
+    <!-- Primary SEO. These are duplicated at runtime by react-helmet-async
+         once the SPA mounts; they live here so server-side crawlers and the
+         pre-hydration paint see real metadata. -->
+    <title>Eliza Cloud — your agent, always on</title>
+    <meta name="description" content="Run Eliza in Cloud. Always on." />
+    <meta name="author" content="Eliza Cloud" />
+    <meta name="creator" content="Eliza Cloud" />
+    <meta name="publisher" content="Eliza Cloud" />
+    <meta
+      name="keywords"
+      content="AI,agents,elizaOS,Eliza Cloud,cloud agents,agent hosting"
+    />
+    <meta name="robots" content="index, follow" />
+    <meta
+      name="googlebot"
+      content="index, follow, max-video-preview:-1, max-image-preview:large, max-snippet:-1"
+    />
+    <link rel="canonical" href="https://www.elizacloud.ai" />
+
+    <!-- OpenGraph -->
+    <meta property="og:title" content="Eliza Cloud — your agent, always on" />
+    <meta property="og:description" content="Run Eliza in Cloud. Always on." />
+    <meta property="og:url" content="https://www.elizacloud.ai" />
+    <meta property="og:site_name" content="Eliza Cloud" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:image"
+      content="https://www.elizacloud.ai/brand/ogembeds/elizacloud_ogembed.png"
+    />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Eliza Cloud" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Eliza Cloud" />
+    <meta name="twitter:description" content="Run Eliza in Cloud. Always on." />
+    <meta
+      name="twitter:image"
+      content="https://www.elizacloud.ai/brand/ogembeds/elizacloud_ogembed.png"
+    />
+
+    <!-- Icons / manifest -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/brand/favicons/favicon.svg"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/brand/favicons/favicon-32x32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="/brand/favicons/favicon-16x16.png"
+    />
+    <link rel="icon" type="image/x-icon" href="/brand/favicons/favicon.ico" />
+    <link rel="alternate icon" href="/brand/favicons/favicon.ico" />
+    <link rel="shortcut icon" href="/brand/favicons/favicon.ico" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/brand/favicons/apple-touch-icon.png"
+    />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- JSON-LD structured data. Mirrors what app/page.tsx emits via Helmet,
+         but inlined so crawlers see it without executing JS. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Eliza Cloud",
+        "description": "Run Eliza in Cloud. Always on.",
+        "url": "https://www.elizacloud.ai",
+        "logo": "https://www.elizacloud.ai/brand/logos/logo_white_blackbg.svg",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "Customer Support",
+          "url": "https://www.elizacloud.ai/dashboard/account"
+        }
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Eliza Cloud",
+        "description": "Run Eliza in Cloud. Always on.",
+        "url": "https://www.elizacloud.ai",
+        "applicationCategory": "LifestyleApplication",
+        "operatingSystem": "Web",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "description": "Cloud agent account"
+        },
+        "featureList": [
+          "Cloud agent hosting",
+          "Agent dashboard",
+          "Developer dashboard"
+        ]
+      }
+    </script>
+  </head>
+  <body
+    class="theme-cloud antialiased selection:bg-[#FF5800] selection:text-white"
+    style="
+      background-color: #000000;
+      color: #ffffff;
+      font-family: &quot;Poppins&quot;, system-ui, sans-serif;
+    "
+  >
+    <div id="root"></div>
+    <script>
+      (() => {
+        try {
+          // Some browser-bundled Node packages still read the bare `global`
+          // identifier during module init. Install it before Vite evaluates
+          // the entry graph; use a shadow instead of `window` so libraries
+          // can assign Node-ish fields without mutating read-only DOM globals.
+          const safeGlobal = Object.create(globalThis);
+          for (const key of [
+            "close",
+            "open",
+            "name",
+            "status",
+            "self",
+            "top",
+            "parent",
+            "frames",
+            "window",
+            "document",
+          ]) {
+            Object.defineProperty(safeGlobal, key, {
+              configurable: true,
+              enumerable: false,
+              get: () => globalThis[key],
+              set: () => {},
+            });
+          }
+          if (!safeGlobal.process) {
+            safeGlobal.process = {
+              env: {},
+              browser: true,
+              cwd: () => "/",
+              nextTick: (fn) =>
+                typeof queueMicrotask === "function"
+                  ? queueMicrotask(fn)
+                  : Promise.resolve().then(fn),
+            };
+          }
+          if (!globalThis.process || typeof globalThis.process !== "object") {
+            globalThis.process = safeGlobal.process;
+          } else if (typeof globalThis.process.cwd !== "function") {
+            globalThis.process.cwd = safeGlobal.process.cwd;
+          }
+          safeGlobal.global = safeGlobal;
+          globalThis.global = safeGlobal;
+        } catch (_e) {}
+      })();
+    </script>
+    <script>
+      (() => {
+        const root = document.getElementById("root");
+        if (!root) return;
+
+        const prerenderPath = root.dataset.prerenderPath;
+        if (!prerenderPath) return;
+
+        const currentPath = window.location.pathname.replace(/\/$/, "") || "/";
+        if (currentPath === prerenderPath) return;
+
+        root.dataset.prerenderMismatch = "true";
+        if (!currentPath.startsWith("/dashboard")) {
+          root.innerHTML = `
+            <div style="min-height:100vh;background:#000;color:#fff;font-family:'Poppins',system-ui,sans-serif;padding:1.5rem;display:grid;gap:1.5rem;align-content:start;">
+              <div style="height:4rem;border-bottom:1px solid rgba(255,255,255,.14);"></div>
+              <main style="display:grid;gap:1.5rem;max-width:72rem;width:100%;margin:0 auto;">
+                <div style="display:grid;gap:.5rem;">
+                  <div style="height:2rem;width:16rem;max-width:70%;background:rgba(255,255,255,.18);"></div>
+                  <div style="height:1rem;width:26rem;max-width:100%;background:rgba(255,255,255,.1);"></div>
+                </div>
+                <div style="height:18rem;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);"></div>
+              </main>
+            </div>
+          `;
+          return;
+        }
+
+        root.innerHTML = `
+          <style>
+            @media (max-width: 767px) {
+              .ec-preload-sidebar { display: none !important; }
+              .ec-preload-shell { padding: .75rem !important; }
+              .ec-preload-grid { grid-template-columns: 1fr !important; }
+            }
+          </style>
+          <div style="display:flex;height:100vh;width:100%;background:#0a0a0a;color:#fafafa;font-family:'Poppins',system-ui,sans-serif;">
+            <div class="ec-preload-sidebar" style="width:18rem;border-right:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.45);padding:.375rem;flex:0 0 18rem;">
+              <div style="height:3.5rem;margin:0 .75rem 1rem;border-bottom:1px solid rgba(255,255,255,.08);"></div>
+              <div style="padding:1rem;display:grid;gap:.75rem;">
+                <div style="height:2.5rem;background:rgba(255,255,255,.08);"></div>
+                <div style="height:2.5rem;background:rgba(255,255,255,.05);"></div>
+                <div style="height:2.5rem;background:rgba(255,255,255,.05);"></div>
+                <div style="height:2.5rem;background:rgba(255,255,255,.05);"></div>
+              </div>
+            </div>
+            <div class="ec-preload-shell" style="flex:1;padding:.75rem;display:flex;flex-direction:column;gap:.75rem;min-width:0;">
+              <div style="height:4rem;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.65);"></div>
+              <main style="flex:1;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.8);padding:1.5rem;display:grid;gap:1.5rem;align-content:start;">
+                <div style="display:grid;gap:.5rem;">
+                  <div style="height:1.75rem;width:14rem;background:rgba(255,255,255,.08);"></div>
+                  <div style="height:1rem;width:20rem;max-width:100%;background:rgba(255,255,255,.05);"></div>
+                </div>
+                <div class="ec-preload-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;">
+                  <div style="height:6rem;background:rgba(255,255,255,.05);"></div>
+                  <div style="height:6rem;background:rgba(255,255,255,.05);"></div>
+                  <div style="height:6rem;background:rgba(255,255,255,.05);"></div>
+                  <div style="height:6rem;background:rgba(255,255,255,.05);"></div>
+                </div>
+                <div style="display:grid;gap:.5rem;">
+                  <div style="height:3rem;background:rgba(255,255,255,.05);"></div>
+                  <div style="height:3rem;background:rgba(255,255,255,.04);"></div>
+                  <div style="height:3rem;background:rgba(255,255,255,.04);"></div>
+                </div>
+              </main>
+            </div>
+          </div>
+        `;
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

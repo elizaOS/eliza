@@ -1,0 +1,1588 @@
+"""Tests for the Eliza-1 publish orchestrator.
+
+Coverage map (matches the brief):
+
+- (a) dry-run on a fixture bundle dir succeeds
+- (b) missing license file fails (EXIT_MISSING_FILE)
+- (c) failing eval gate causes orchestrator to exit non-zero (EXIT_EVAL_GATE_FAIL)
+- (d) failing kernel verification fails (EXIT_KERNEL_VERIFY_FAIL)
+- (e) manifest with red gate not flagged ``defaultEligible: true``
+- (f) tags are emitted in dry-run mode (printed, not actually executed)
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+# Ensure the `scripts/` parent (training/) is importable as ``scripts``.
+_TRAINING_ROOT = Path(__file__).resolve().parents[2]
+if str(_TRAINING_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAINING_ROOT))
+
+from scripts.publish.orchestrator import (  # noqa: E402
+    ELIZA_1_HF_REPO,
+    EXIT_BUNDLE_LAYOUT_FAIL,
+    EXIT_EVAL_GATE_FAIL,
+    EXIT_KERNEL_VERIFY_FAIL,
+    EXIT_MISSING_FILE,
+    EXIT_OK,
+    EXIT_RELEASE_EVIDENCE_FAIL,
+    EXIT_USAGE,
+    OrchestratorError,
+    PublishContext,
+    run,
+    validate_bundle_layout,
+)
+
+
+# ---------------------------------------------------------------------------
+# Fixture builder
+# ---------------------------------------------------------------------------
+
+
+def _write(p: Path, content: str | bytes) -> Path:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(content, str):
+        p.write_text(content)
+    else:
+        p.write_bytes(content)
+    return p
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    h.update(path.read_bytes())
+    return h.hexdigest()
+
+
+def _passing_eval_blob(tier: str = "4b") -> dict[str, Any]:
+    """Eval blob whose results pass every 4b gate.
+
+    Carries both ``thirty_turn_ok`` and ``e2e_loop_ok`` because
+    AGENTS.md §6 declares them as independent contract gates. The
+    orchestrator now refuses to silently alias one to the other.
+    """
+    return {
+        "tier": tier,
+        "results": {
+            "text_eval": 0.71,
+            "voice_rtf": 0.32,
+            "asr_wer": 0.05,
+            "vad_latency_ms": 14.0,
+            "vad_boundary_mae_ms": 30.0,
+            "vad_endpoint_p95_ms": 500.0,
+            "vad_false_bargein_per_hour": 0.05,
+            "first_token_latency_ms": 145,
+            "first_audio_latency_ms": 280,
+            "barge_in_cancel_ms": 55,
+            "thirty_turn_ok": True,
+            "e2e_loop_ok": True,
+            "format_ok": True,
+            "mtp_acceptance": 0.71,
+            "mtp_speedup": 1.8,
+            "expressive_tag_faithfulness": 0.90,
+            "expressive_mos": 4.10,
+            "expressive_tag_leakage": 0.01,
+        },
+    }
+
+
+def _build_fixture_bundle(
+    tmp_path: Path,
+    tier: str = "4b",
+    *,
+    eval_blob: dict[str, Any] | None = None,
+    skip_license: str | None = None,
+    release_state: str = "upload-candidate",
+) -> Path:
+    bundle = tmp_path / f"bundle-{tier}"
+
+    # Weight files — content irrelevant; sha256 is the contract.
+    _write(bundle / "text" / f"eliza-1-{tier}-128k.gguf", b"\x00text-128k\x00")
+    _write(bundle / "text" / f"eliza-1-{tier}-256k.gguf", b"\x00text-256k\x00")
+    _write(bundle / "tts" / "omnivoice-base-Q4_K_M.gguf", b"\x00tts\x00")
+    _write(bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"\x00tts-tok\x00")
+    _write(
+        bundle / "tts" / "kokoro" / "kokoro-82m-v1_0-Q4_K_M.gguf",
+        b"\x00kokoro\x00",
+    )
+    _write(bundle / "tts" / "kokoro" / "tokenizer.json", b"{}")
+    _write(
+        bundle / "tts" / "kokoro" / "voices" / "af_bella.bin",
+        b"\x00kokoro-voice\x00",
+    )
+    _write(bundle / "asr" / "eliza-1-asr.gguf", b"\x00asr\x00")
+    _write(bundle / "asr" / "eliza-1-asr-mmproj.gguf", b"\x00asr-mmproj\x00")
+    _write(bundle / "vad" / "silero-vad-v5.gguf", b"\x00vad\x00")
+    _write(bundle / "imagegen" / "sd-1.5-Q5_0.gguf", b"\x00imagegen\x00")
+    _write(bundle / "vision" / f"mmproj-{tier}.gguf", b"\x00mmproj\x00")
+    _write(bundle / "mtp" / f"drafter-{tier}.gguf", b"\x00drafter\x00")
+    text_sha = _sha256(bundle / "text" / f"eliza-1-{tier}-256k.gguf")
+    drafter_sha = _sha256(bundle / "mtp" / f"drafter-{tier}.gguf")
+    _write(
+        bundle / "mtp" / "target-meta.json",
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "tier": tier,
+                "status": "upload-candidate",
+                "publishEligible": True,
+                "targetText": {
+                    "path": f"text/eliza-1-{tier}-256k.gguf",
+                    "sha256": text_sha,
+                    "finalElizaWeights": True,
+                },
+                "drafter": {
+                    "path": f"mtp/drafter-{tier}.gguf",
+                    "sha256": drafter_sha,
+                    "targetCheckpointSha256": text_sha,
+                    "matchesTargetCheckpoint": True,
+                    "architecture": "qwen35",
+                    "finalElizaWeights": True,
+                },
+                "tokenizerCompatibility": {
+                    "compatible": True,
+                    "mismatches": [],
+                },
+                "acceptanceWindow": [2, 6],
+                "acceptanceRate": 0.71,
+            }
+        ),
+    )
+    _write(bundle / "cache" / "voice-preset-default.bin", b"\x00cache\x00")
+
+    def kernel_manifest(*targets: str) -> dict[str, Any]:
+        return {
+            "kernel_target": list(targets),
+            "block_layout_version": {target: "v1" for target in targets},
+            "codebook_hash": {target: f"{target}-hash" for target in targets},
+            "per_block_tolerance": {target: 0.01 for target in targets},
+        }
+
+    _write(
+        bundle / "quantization" / "turboquant.json",
+        json.dumps(
+            {
+                "method": "turboquant",
+                "kernel_manifest": kernel_manifest("turbo3", "turbo4", "turbo3_tcq"),
+            }
+        ),
+    )
+    _write(
+        bundle / "quantization" / "fused_turboquant.json",
+        json.dumps(
+            {
+                "method": "fused-turboquant",
+                "kernel_manifest": kernel_manifest("turbo3", "turbo4", "turbo3_tcq"),
+            }
+        ),
+    )
+    _write(
+        bundle / "quantization" / "qjl_config.json",
+        json.dumps({"method": "qjl", "kernel_manifest": kernel_manifest("qjl1_256")}),
+    )
+    _write(
+        bundle / "quantization" / "polarquant_config.json",
+        json.dumps(
+            {"method": "polarquant", "kernel_manifest": kernel_manifest("polar_q4")}
+        ),
+    )
+
+    # Licenses — written with the real attestation generator so the
+    # bundle ships verbatim upstream SPDX text + the license-manifest.json
+    # sidecar (the orchestrator refuses anything less).
+    from scripts.manifest.eliza1_licenses import write_bundle_licenses
+
+    write_bundle_licenses(
+        bundle / "licenses",
+        ["text", "voice", "asr", "vad", "mtp", "vision"],
+    )
+    if skip_license is not None:
+        (bundle / "licenses" / skip_license).unlink(missing_ok=True)
+
+    # Evals — aggregate.json (gates input) + per-backend verify reports.
+    blob = eval_blob if eval_blob is not None else _passing_eval_blob(tier)
+    _write(
+        bundle / "evals" / "aggregate.json",
+        json.dumps(blob, indent=2),
+    )
+    _write(
+        bundle / "evals" / "mtp-accept.json",
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "metric": "mtp_acceptance",
+                "status": "ok",
+                "acceptanceRate": 0.71,
+                "speedup": 1.8,
+                "passed": True,
+            },
+            indent=2,
+        ),
+    )
+    _write(
+        bundle / "mtp" / "validation-real.json",
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "mtp-drafter-validation",
+                "tier": tier,
+                "pass": True,
+                "checks": {
+                    "hashMatch": {"pass": True},
+                    "vocabMatch": {"pass": True},
+                    "tokenizerMetadataMatch": {"pass": True},
+                    "architectureLoadable": {"pass": True},
+                    "drafterSmaller": {"pass": True},
+                    "acceptanceRollout": {
+                        "pass": True,
+                        "acceptanceRate": 0.71,
+                        "gate": 0.48,
+                    },
+                },
+            },
+            indent=2,
+        ),
+    )
+    _write(
+        bundle / "mtp" / "runtime-smoke-native.json",
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "tier": tier,
+                "metadataStatus": "metadata_loadable",
+                "metadataFailures": [],
+                "checks": {
+                    "drafterShape": "plain-ar",
+                    "targetCheckpointMatchesTarget": True,
+                    "targetDrafterTokenizerCompatible": True,
+                },
+                "runtime": [
+                    {
+                        "status": 0,
+                        "mtp": {
+                            "requiresTrueDrafting": True,
+                            "drafted": 2,
+                            "accepted": 1,
+                            "acceptanceRate": 0.5,
+                            "draftingActive": True,
+                        },
+                    }
+                ],
+                "bench": {
+                    "available": True,
+                    "status": "pass",
+                    "drafted": 2,
+                    "accepted": 1,
+                    "acceptanceRate": 0.71,
+                    "speedup": 1.2,
+                    "summary": {
+                        "status": "pass",
+                        "mtpDraftingActive": True,
+                    },
+                },
+            },
+            indent=2,
+        ),
+    )
+    _write(
+        bundle / "evals" / "mtp-tuning-report.json",
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "mtp-tuning-report",
+                "tier": tier,
+                "status": "publishable",
+                "publishEligible": True,
+                "acceptanceGate": 0.48,
+                "runtimeSmoke": {
+                    "metadataStatus": "metadata_loadable",
+                    "drafted": 2,
+                    "accepted": 1,
+                    "acceptanceRate": 0.5,
+                    "draftingActive": True,
+                },
+                "releaseBench": {
+                    "status": "pass",
+                    "acceptanceRate": 0.71,
+                    "speedup": 1.2,
+                    "drafted": 2,
+                    "accepted": 1,
+                },
+                "blockers": [],
+            },
+            indent=2,
+        ),
+    )
+    _write(
+        bundle / "evals" / "metal_verify.json",
+        json.dumps(
+            {
+                "backend": "metal",
+                "status": "pass",
+                "atCommit": "deadbee",
+                "report": "metal_verify.txt",
+            }
+        ),
+    )
+    _write(
+        bundle / "evals" / "cpu_reference.json",
+        json.dumps(
+            {
+                "backend": "cpu",
+                "status": "pass",
+                "atCommit": "deadbee",
+                "report": "cpu_reference.txt",
+            }
+        ),
+    )
+    _write(
+        bundle / "evals" / "vulkan_verify.json",
+        json.dumps(
+            {
+                "backend": "vulkan",
+                "status": "pass",
+                "atCommit": "deadbee",
+                "report": "vulkan_verify.txt",
+            }
+        ),
+    )
+    _write(
+        bundle / "evals" / "cuda_verify.json",
+        json.dumps(
+            {
+                "backend": "cuda",
+                "status": "pass",
+                "atCommit": "deadbee",
+                "report": "cuda_verify.txt",
+            }
+        ),
+    )
+    _write(
+        bundle / "evals" / "rocm_verify.json",
+        json.dumps(
+            {
+                "backend": "rocm",
+                "status": "pass",
+                "atCommit": "deadbee",
+                "report": "rocm_verify.txt",
+            }
+        ),
+    )
+    graph_kernel_set = ["turbo3", "turbo4", "turbo3_tcq", "qjl", "polar"]
+    for backend in ("metal", "vulkan", "cuda", "rocm", "cpu"):
+        _write(
+            bundle / "evals" / f"{backend}_dispatch.json",
+            json.dumps(
+                {
+                    "backend": backend,
+                    "status": "pass",
+                    "runtimeReady": True,
+                    "atCommit": "deadbee",
+                    "modelSha256": text_sha,
+                    "kernelSet": graph_kernel_set,
+                    "graphDispatch": {
+                        "cacheFamilies": graph_kernel_set,
+                        "command": "llama-cli --cache-type-k <family>",
+                        "logs": [f"evals/{backend}_dispatch.log"],
+                    },
+                    "device": f"fixture-{backend}",
+                    "report": f"{backend}_dispatch.txt",
+                }
+            ),
+        )
+        _write(bundle / "evals" / f"{backend}_dispatch.log", "backend ok\n")
+        _write(
+            bundle / "evals" / f"{backend}_platform.json",
+            json.dumps(
+                {
+                    "backend": backend,
+                    "status": "pass",
+                    "platform": f"fixture-{backend}",
+                    "report": f"{backend}_platform.txt",
+                }
+            ),
+        )
+
+    for target in (
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-aarch64-cuda",
+        "linux-x64-cuda",
+        "linux-x64-rocm",
+        "windows-x64-cuda",
+        "windows-x64-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+        "windows-arm64-cpu",
+        "windows-arm64-vulkan",
+    ):
+        backend = target.rsplit("-", 1)[-1]
+        _write(
+            bundle / "evidence" / "platform" / f"{target}.json",
+            json.dumps(
+                {
+                    "backend": backend,
+                    "target": target,
+                    "status": "pass",
+                    "device": f"fixture-{target}",
+                    "atCommit": "deadbee",
+                    "voiceAbi": (
+                        True if target == "ios-arm64-metal" else "not-applicable"
+                    ),
+                    "report": f"{target}.txt",
+                }
+            ),
+        )
+
+    # Optional sidecars.
+    _write(
+        bundle / "lineage.json",
+        json.dumps(
+            {
+                "text": {"base": "eliza-1-4b", "license": "apache-2.0"},
+                "voice": {"base": "kokoro-82m", "license": "apache-2.0"},
+                "drafter": {
+                    "base": "mtp-4b-drafter",
+                    "license": "apache-2.0",
+                },
+            }
+        ),
+    )
+    _write(
+        bundle / "ram_budget.json",
+        json.dumps({"min": 7000, "recommended": 9500}),
+    )
+    _write(bundle / "VERSION", "1.0.0\n")
+    _write_release_evidence(bundle, tier, release_state=release_state)
+    _write_checksums(bundle)
+
+    return bundle
+
+
+def _source_models() -> dict[str, dict[str, str]]:
+    return {
+        "text": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "text.gguf"},
+        "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
+        "drafter": {
+            "repo": ELIZA_1_HF_REPO,
+            "file": "bundles/4b/mtp/drafter-4b.gguf",
+        },
+        "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
+        "vad": {"repo": "ggml-org/whisper-vad"},
+        "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj.gguf"},
+    }
+
+
+def _write_release_evidence(
+    bundle: Path,
+    tier: str = "4b",
+    *,
+    release_state: str = "upload-candidate",
+) -> None:
+    def rels(subdir: str) -> list[str]:
+        base = bundle / subdir
+        return sorted(
+            str(p.relative_to(bundle)) for p in base.rglob("*") if p.is_file()
+        )
+
+    evidence: dict[str, Any] = {
+        "schemaVersion": 1,
+        "tier": tier,
+        "repoId": ELIZA_1_HF_REPO,
+        "releaseState": release_state,
+        "final": {
+            "weights": True,
+            "hashes": True,
+            "evals": True,
+            "licenses": True,
+            "kernelDispatchReports": True,
+            "platformEvidence": True,
+            "sizeFirstRepoIds": True,
+        },
+        "weights": [
+            *rels("text"),
+            *rels("tts"),
+            *rels("asr"),
+            *rels("vad"),
+            *rels("vision"),
+            *rels("mtp"),
+        ],
+        "checksumManifest": "checksums/SHA256SUMS",
+        "evalReports": rels("evals"),
+        "licenseFiles": [
+            "licenses/LICENSE.text",
+            "licenses/LICENSE.voice",
+            "licenses/LICENSE.mtp",
+            "licenses/LICENSE.eliza-1",
+            "licenses/LICENSE.asr",
+            "licenses/LICENSE.vision",
+            "licenses/LICENSE.vad",
+        ],
+        "kernelDispatchReports": {
+            "metal": "evals/metal_dispatch.json",
+            "vulkan": "evals/vulkan_dispatch.json",
+            "cuda": "evals/cuda_dispatch.json",
+            "rocm": "evals/rocm_dispatch.json",
+            "cpu": "evals/cpu_dispatch.json",
+        },
+        "platformEvidence": {
+            "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json",
+            "ios-arm64-metal": "evidence/platform/ios-arm64-metal.json",
+            "linux-x64-vulkan": "evidence/platform/linux-x64-vulkan.json",
+            "android-adreno-vulkan": "evidence/platform/android-adreno-vulkan.json",
+            "android-mali-vulkan": "evidence/platform/android-mali-vulkan.json",
+            "linux-aarch64-cuda": "evidence/platform/linux-aarch64-cuda.json",
+            "linux-x64-cuda": "evidence/platform/linux-x64-cuda.json",
+            "linux-x64-rocm": "evidence/platform/linux-x64-rocm.json",
+            "windows-x64-cuda": "evidence/platform/windows-x64-cuda.json",
+            "windows-x64-vulkan": "evidence/platform/windows-x64-vulkan.json",
+            "linux-x64-cpu": "evidence/platform/linux-x64-cpu.json",
+            "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json",
+            "windows-arm64-cpu": "evidence/platform/windows-arm64-cpu.json",
+            "windows-arm64-vulkan": "evidence/platform/windows-arm64-vulkan.json",
+        },
+        "hf": {
+            "repoId": ELIZA_1_HF_REPO,
+            "status": "pending-upload",
+        },
+    }
+    if release_state == "base-v1":
+        evidence["finetuned"] = False
+        evidence["sourceModels"] = _source_models()
+
+    _write(
+        bundle / "evidence" / "release.json",
+        json.dumps(evidence, indent=2),
+    )
+
+
+def _write_checksums(bundle: Path) -> None:
+    entries: list[str] = []
+    for p in sorted(bundle.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = str(p.relative_to(bundle))
+        if rel in {
+            "checksums/SHA256SUMS",
+            "README.md",
+            "eliza-1.manifest.json",
+        }:
+            continue
+        entries.append(f"{_sha256(p)}  {rel}")
+    _write(bundle / "checksums" / "SHA256SUMS", "\n".join(entries) + "\n")
+
+
+def _rewrite_mtp_target_meta(bundle: Path, **updates: Any) -> None:
+    path = bundle / "mtp" / "target-meta.json"
+    data = json.loads(path.read_text())
+    data.update(updates)
+    path.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def _metal_report(tmp_path: Path, status: str = "pass") -> Path:
+    p = tmp_path / "metal_verify.json"
+    p.write_text(
+        json.dumps(
+            {
+                "backend": "metal",
+                "status": status,
+                "atCommit": "cafef00",
+                "report": "metal_verify.txt",
+            }
+        )
+    )
+    return p
+
+
+def _ctx(
+    tier: str,
+    bundle: Path,
+    *,
+    metal: Path | None = None,
+    dry_run: bool = True,
+    training_root: Path | None = None,
+) -> PublishContext:
+    return PublishContext(
+        tier=tier,
+        bundle_dir=bundle,
+        dry_run=dry_run,
+        metal_verification=metal,
+        repo_id=ELIZA_1_HF_REPO,
+        public=False,
+        training_repo_root=training_root or _TRAINING_ROOT,
+        template_path=(Path(__file__).resolve().parent / "templates" / "README.md.j2"),
+    )
+
+
+def _disable_mtp_for_tier(bundle: Path, tier: str) -> None:
+    from scripts.manifest.eliza1_licenses import write_bundle_licenses
+
+    drafter = bundle / "mtp" / f"drafter-{tier}.gguf"
+    drafter.unlink(missing_ok=True)
+    policy_rel = f"mtp/mtp-disabled-{tier}.release-policy.json"
+    _write(
+        bundle / policy_rel,
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "mtp-release-policy",
+                "tier": tier,
+                "status": "disabled",
+                "releaseMode": "fail-open-no-drafter",
+                "requiresDrafter": False,
+                "releaseEligibleWithoutDrafter": True,
+            }
+        ),
+    )
+    write_bundle_licenses(
+        bundle / "licenses",
+        ["text", "voice", "asr", "vad", "mtp", "vision"],
+    )
+    text_rel = f"text/eliza-1-{tier}-128k.gguf"
+    text_sha = _sha256(bundle / text_rel)
+    policy_sha = _sha256(bundle / policy_rel)
+    _write(
+        bundle / "mtp" / "target-meta.json",
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "tier": tier,
+                "status": "disabled",
+                "mtpEnabled": False,
+                "publishEligible": False,
+                "releaseMode": "fail-open-no-drafter",
+                "reason": "MTP is disabled for this tier.",
+                "acceptanceRate": None,
+                "acceptanceWindow": None,
+                "drafter": None,
+                "disabledPolicy": {
+                    "path": policy_rel,
+                    "sha256": policy_sha,
+                    "releaseMode": "fail-open-no-drafter",
+                    "requiresDrafter": False,
+                },
+                "targetText": {
+                    "path": text_rel,
+                    "sha256": text_sha,
+                    "finalElizaWeights": True,
+                },
+            },
+            indent=2,
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# (a) Dry-run happy path
+# ---------------------------------------------------------------------------
+
+
+def test_layout_accepts_0_8b_mtp_disabled_policy(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(
+        tmp_path,
+        tier="0_8b",
+        eval_blob=_passing_eval_blob("0_8b"),
+    )
+    _disable_mtp_for_tier(bundle, "0_8b")
+
+    with pytest.raises(OrchestratorError) as exc:
+        validate_bundle_layout(_ctx("0_8b", bundle))
+
+    assert exc.value.exit_code == EXIT_BUNDLE_LAYOUT_FAIL
+    assert "mtp/ must contain at least one .gguf" in str(exc.value)
+
+
+def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    metal = _metal_report(tmp_path)
+
+    with caplog.at_level(logging.INFO, logger="publish.orchestrator"):
+        rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_OK
+
+    # Manifest written + valid.
+    manifest_path = bundle / "eliza-1.manifest.json"
+    assert manifest_path.is_file()
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["tier"] == "4b"
+    assert manifest["defaultEligible"] is True
+    assert manifest["evals"]["mtp"] == {
+        "acceptanceRate": 0.71,
+        "speedup": 1.8,
+        "passed": True,
+    }
+    assert manifest["voice"]["frozen"] is True
+    assert manifest["voice"]["capabilities"] == ["tts", "emotion-tags", "singing"]
+    assert (
+        manifest["voice"]["cache"]["speakerPreset"] == "cache/voice-preset-default.bin"
+    )
+    assert (
+        manifest["voice"]["cache"]["phraseCacheSeed"]
+        == "cache/voice-preset-default.bin"
+    )
+
+    # README written + non-empty.
+    readme = bundle / "README.md"
+    assert readme.is_file()
+    text = readme.read_text()
+    assert "# eliza-1-4b" in text
+    assert "Q" + "wen" not in text
+    assert "L" + "lama" not in text
+
+    # Manifest preview was printed in dry-run.
+    log_text = caplog.text
+    assert "manifest preview" in log_text
+
+
+def test_mtp_eval_can_read_speedup_from_bench_report(tmp_path: Path) -> None:
+    blob = _passing_eval_blob()
+    blob["results"].pop("mtp_speedup")
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_OK
+    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
+    assert manifest["defaultEligible"] is True
+    assert manifest["evals"]["mtp"] == {
+        "acceptanceRate": 0.71,
+        "speedup": 1.8,
+        "passed": True,
+    }
+
+
+def test_mtp_target_meta_tokenizer_mismatch_fails_release(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    _rewrite_mtp_target_meta(
+        bundle,
+        tokenizerCompatibility={
+            "compatible": False,
+            "mismatches": [{"key": "tokenizer.ggml.tokens"}],
+        },
+    )
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_mtp_target_meta_rejects_unloadable_mtp_draft_architecture(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    data = json.loads((bundle / "mtp" / "target-meta.json").read_text())
+    data["drafter"]["architecture"] = "mtp-draft"
+    (bundle / "mtp" / "target-meta.json").write_text(json.dumps(data) + "\n")
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_mtp_target_meta_rejects_same_weight_drafter(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    target = bundle / "text" / "eliza-1-4b-128k.gguf"
+    drafter = bundle / "mtp" / "drafter-4b.gguf"
+    drafter.write_bytes(target.read_bytes())
+    data = json.loads((bundle / "mtp" / "target-meta.json").read_text())
+    data["drafter"]["sha256"] = _sha256(drafter)
+    (bundle / "mtp" / "target-meta.json").write_text(json.dumps(data) + "\n")
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_mtp_release_requires_real_validation_report(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "mtp" / "validation-real.json").unlink()
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_mtp_release_rejects_failed_real_validation_report(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "mtp" / "validation-real.json"
+    report = json.loads(report_path.read_text())
+    report["pass"] = False
+    report["checks"]["acceptanceRollout"]["pass"] = False
+    report["checks"]["acceptanceRollout"]["acceptanceRate"] = 0.041666666666666664
+    report_path.write_text(json.dumps(report) + "\n")
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_mtp_release_requires_native_runtime_smoke_report(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "mtp" / "runtime-smoke-native.json").unlink()
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_mtp_release_rejects_failed_native_runtime_smoke_report(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "mtp" / "runtime-smoke-native.json"
+    report = json.loads(report_path.read_text())
+    report["metadataStatus"] = "metadata_invalid"
+    report["metadataFailures"] = ["drafter.matchesTargetCheckpoint=false"]
+    report["runtime"][0]["mtp"]["accepted"] = 0
+    report["bench"]["acceptanceRate"] = 0.1
+    report["bench"]["speedup"] = 0.95
+    report_path.write_text(json.dumps(report) + "\n")
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_mtp_release_allows_structural_validation_with_native_acceptance_report(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "mtp" / "validation-real.json"
+    report = json.loads(report_path.read_text())
+    report["checks"]["acceptanceRollout"] = {
+        "pass": True,
+        "acceptanceRate": None,
+        "gate": 0.48,
+        "detail": "skipped (--skip-acceptance-rollout); native acceptance is in evals/mtp-accept.json",
+    }
+    report_path.write_text(json.dumps(report) + "\n")
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# (b) Missing license fails
+# ---------------------------------------------------------------------------
+
+
+def test_missing_license_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path, skip_license="LICENSE.mtp")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_missing_component_license_fails_when_component_ships(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path, skip_license="LICENSE.vad")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    metal = _metal_report(tmp_path)
+    ctx = _ctx("4b", bundle, metal=metal, dry_run=True)
+    bad = PublishContext(**{**ctx.__dict__, "repo_id": "someoneelse/eliza-1-4b"})
+    rc = run(bad)
+    assert rc == EXIT_USAGE
+
+
+def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "quantization" / "qjl_config.json").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_missing_fused_turboquant_sidecar_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "quantization" / "fused_turboquant.json").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_quantization_sidecar_must_target_expected_kernel_family(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    sidecar = bundle / "quantization" / "polarquant_config.json"
+    data = json.loads(sidecar.read_text())
+    data["kernel_manifest"]["kernel_target"] = ["turbo3"]
+    sidecar.write_text(json.dumps(data))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_BUNDLE_LAYOUT_FAIL
+
+
+def test_quantization_sidecar_must_record_metadata_for_every_target(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    sidecar = bundle / "quantization" / "fused_turboquant.json"
+    data = json.loads(sidecar.read_text())
+    del data["kernel_manifest"]["codebook_hash"]["turbo3_tcq"]
+    sidecar.write_text(json.dumps(data))
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_BUNDLE_LAYOUT_FAIL
+
+
+def test_quantization_sidecar_method_must_match_filename(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    sidecar = bundle / "quantization" / "qjl_config.json"
+    data = json.loads(sidecar.read_text())
+    data["method"] = "turboquant"
+    sidecar.write_text(json.dumps(data))
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_BUNDLE_LAYOUT_FAIL
+
+
+def test_missing_voice_cache_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "cache" / "voice-preset-default.bin").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_missing_vad_model_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "vad" / "silero-vad-v5.gguf").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc != EXIT_OK
+
+
+def test_stale_omnivoice_checksum_fails_release_evidence(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    checksum_path = bundle / "checksums" / "SHA256SUMS"
+    lines = checksum_path.read_text().splitlines()
+    target_i = next(
+        i
+        for i, line in enumerate(lines)
+        if "tts/omnivoice-tokenizer-Q4_K_M.gguf" in line
+    )
+    _, rel_path = lines[target_i].split(None, 1)
+    lines[target_i] = f"{'f' * 64}  {rel_path}"
+    checksum_path.write_text("\n".join(lines) + "\n")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_missing_release_evidence_fails_in_dry_run(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "evidence" / "release.json").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_final_release_state_requires_hf_upload_evidence(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["releaseState"] = "final"
+    release["hf"]["status"] = "uploaded"
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_base_v1_release_evidence_is_allowed_and_writes_manifest_provenance(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["final"]["weights"] = False
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_OK
+    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
+    assert manifest["provenance"]["releaseState"] == "base-v1"
+    assert manifest["provenance"]["finetuned"] is False
+    assert manifest["provenance"]["sourceModels"]["text"]["repo"] == (
+        "unsloth/Qwen3.5-4B-GGUF"
+    )
+    assert manifest["provenance"]["sourceModels"]["vision"]["repo"] == (
+        "unsloth/Qwen3.5-4B-GGUF"
+    )
+
+
+def test_base_v1_release_evidence_requires_source_models(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    del release["sourceModels"]["vision"]
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_base_v1_release_evidence_rejects_fake_qwen_component_repos(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["sourceModels"]["asr"] = {"repo": "ggml-org/Qwen3-ASR-2B-GGUF"}
+    release["sourceModels"]["embedding"] = {"repo": "Qwen/Qwen3-Embedding-0.8B-GGUF"}
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_bad_checksum_manifest_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    checksum_path = bundle / "checksums" / "SHA256SUMS"
+    lines = checksum_path.read_text().splitlines()
+    target_i = next(i for i, line in enumerate(lines) if "  text/" in line)
+    first_sha, first_path = lines[target_i].split(None, 1)
+    lines[target_i] = f"{'f' * 64}  {first_path}"
+    assert first_sha != "f" * 64
+    checksum_path.write_text("\n".join(lines) + "\n")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_release_evidence_weights_must_include_vad_payload(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["weights"] = [
+        rel for rel in release["weights"] if not rel.startswith("vad/")
+    ]
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_missing_runtime_dispatch_evidence_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "evals" / "metal_dispatch.json").unlink()
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_symbol_only_dispatch_evidence_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "evals" / "metal_dispatch.json").write_text(
+        json.dumps({"backend": "metal", "status": "pass", "runtimeReady": False})
+    )
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_runtime_dispatch_report_requires_graph_evidence(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "evals" / "metal_dispatch.json").write_text(
+        json.dumps(
+            {
+                "backend": "metal",
+                "status": "pass",
+                "runtimeReady": True,
+                "atCommit": "deadbee",
+                "report": "metal_dispatch.txt",
+            }
+        )
+    )
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_runtime_dispatch_report_must_match_staged_text_sha(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "evals" / "metal_dispatch.json"
+    report = json.loads(report_path.read_text())
+    report["modelSha256"] = "f" * 64
+    report_path.write_text(json.dumps(report, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_platform_evidence_is_target_keyed(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["platformEvidence"][
+        "ios-arm64-metal"
+    ] = "evidence/platform/darwin-arm64-metal.json"
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_ios_skipped_voice_abi_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    ios_path = bundle / "evidence" / "platform" / "ios-arm64-metal.json"
+    ios_report = json.loads(ios_path.read_text())
+    ios_report["skippedVoiceAbi"] = True
+    ios_report["voiceAbi"] = False
+    ios_path.write_text(json.dumps(ios_report, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_evidence_sidecars_must_be_checksummed(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    checksum_path = bundle / "checksums" / "SHA256SUMS"
+    lines = checksum_path.read_text().splitlines()
+    lines = [
+        line for line in lines if "  evidence/platform/ios-arm64-metal.json" not in line
+    ]
+    checksum_path.write_text("\n".join(lines) + "\n")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_eval_reports_must_cover_all_shipped_eval_files(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["evalReports"] = ["evals/aggregate.json"]
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_upload_evidence_paths_must_cover_payload_commit(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["releaseState"] = "final"
+    release["hf"]["status"] = "uploaded"
+    release["hf"]["uploadEvidence"] = {
+        "repoId": ELIZA_1_HF_REPO,
+        "status": "uploaded",
+        "commit": "abc123",
+        "url": f"https://huggingface.co/{ELIZA_1_HF_REPO}/commit/abc123",
+        "uploadedPaths": ["eliza-1.manifest.json", "README.md"],
+    }
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_upload_list_includes_nested_evidence(tmp_path: Path) -> None:
+    from scripts.publish.orchestrator import (  # noqa: PLC0415
+        _build_upload_list,
+        validate_bundle_layout,
+    )
+
+    bundle = _build_fixture_bundle(tmp_path)
+    ctx = _ctx("4b", bundle, metal=_metal_report(tmp_path), dry_run=True)
+    layout = validate_bundle_layout(ctx)
+    upload_targets = {target for _, target in _build_upload_list(ctx, layout)}
+    assert "bundles/4b/evidence/platform/ios-arm64-metal.json" in upload_targets
+    assert "bundles/4b/checksums/SHA256SUMS" in upload_targets
+
+
+def test_real_publish_finalizes_and_uploads_hf_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
+
+    bundle = _build_fixture_bundle(tmp_path)
+    metal = _metal_report(tmp_path)
+    final_uploads: list[tuple[str, str]] = []
+
+    def fake_push_to_hf(
+        ctx: PublishContext,
+        manifest_path: Path,
+        readme_path: Path,
+        upload_pairs: list[tuple[Path, str]],
+    ) -> dict[str, Any]:
+        uploaded_paths = [
+            "bundles/4b/eliza-1.manifest.json",
+            "bundles/4b/README.md",
+            *(target for _, target in upload_pairs),
+        ]
+        return {
+            "repoId": ctx.repo_id,
+            "status": "uploaded",
+            "commit": "payload123",
+            "url": f"https://huggingface.co/{ctx.repo_id}/commit/payload123",
+            "uploadedPaths": uploaded_paths,
+        }
+
+    def fake_push_final_release_evidence(
+        ctx: PublishContext, release_path: Path, checksum_path: Path
+    ) -> None:
+        final_uploads.append(
+            (
+                str(release_path.relative_to(ctx.bundle_dir)),
+                str(checksum_path.relative_to(ctx.bundle_dir)),
+            )
+        )
+
+    monkeypatch.setattr(orchestrator, "push_to_hf", fake_push_to_hf)
+    monkeypatch.setattr(
+        orchestrator,
+        "push_final_release_evidence",
+        fake_push_final_release_evidence,
+    )
+    monkeypatch.setattr(orchestrator, "tag_training_repo", lambda *args: "tagged")
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
+
+    assert rc == EXIT_OK
+    assert final_uploads == [("evidence/release.json", "checksums/SHA256SUMS")]
+    release = json.loads((bundle / "evidence" / "release.json").read_text())
+    assert release["releaseState"] == "final"
+    assert release["hf"]["status"] == "uploaded"
+    assert release["hf"]["uploadEvidence"]["commit"] == "payload123"
+    assert release["hf"]["uploadEvidence"]["repoId"] == ELIZA_1_HF_REPO
+    checksum_lines = (bundle / "checksums" / "SHA256SUMS").read_text().splitlines()
+    release_line = next(
+        line for line in checksum_lines if "  evidence/release.json" in line
+    )
+    assert release_line.startswith(_sha256(bundle / "evidence" / "release.json"))
+
+
+def test_finalize_release_evidence_sets_size_first_from_upload_evidence(
+    tmp_path: Path,
+) -> None:
+    from scripts.publish.orchestrator import (  # noqa: PLC0415
+        _build_upload_list,
+        finalize_release_evidence,
+        validate_bundle_layout,
+    )
+
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["final"]["sizeFirstRepoIds"] = False
+    release_path.write_text(json.dumps(release, indent=2), encoding="utf-8")
+    _write_checksums(bundle)
+
+    ctx = _ctx("4b", bundle, metal=_metal_report(tmp_path), dry_run=False)
+    layout = validate_bundle_layout(ctx)
+    finalize_release_evidence(
+        ctx,
+        layout,
+        {
+            "repoId": ctx.repo_id,
+            "status": "uploaded",
+            "commit": "payload123",
+            "url": f"https://huggingface.co/{ctx.repo_id}/commit/payload123",
+            "uploadedPaths": [
+                "bundles/4b/eliza-1.manifest.json",
+                "bundles/4b/README.md",
+                *[target for _, target in _build_upload_list(ctx, layout)],
+            ],
+        },
+    )
+
+    release = json.loads(release_path.read_text())
+    assert release["final"]["sizeFirstRepoIds"] is True
+
+
+def test_real_base_v1_publish_preserves_release_state(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
+
+    bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
+    metal = _metal_report(tmp_path)
+
+    def fake_push_to_hf(
+        ctx: PublishContext,
+        manifest_path: Path,
+        readme_path: Path,
+        upload_pairs: list[tuple[Path, str]],
+    ) -> dict[str, Any]:
+        return {
+            "repoId": ctx.repo_id,
+            "status": "uploaded",
+            "commit": "basev1",
+            "url": f"https://huggingface.co/{ctx.repo_id}/commit/basev1",
+            "uploadedPaths": [
+                "bundles/4b/eliza-1.manifest.json",
+                "bundles/4b/README.md",
+                *(target for _, target in upload_pairs),
+            ],
+        }
+
+    monkeypatch.setattr(orchestrator, "push_to_hf", fake_push_to_hf)
+    monkeypatch.setattr(
+        orchestrator,
+        "push_final_release_evidence",
+        lambda *args: None,
+    )
+    monkeypatch.setattr(orchestrator, "tag_training_repo", lambda *args: "tagged")
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
+
+    assert rc == EXIT_OK
+    release = json.loads((bundle / "evidence" / "release.json").read_text())
+    assert release["releaseState"] == "base-v1"
+    assert release["hf"]["status"] == "uploaded"
+    assert release["hf"]["uploadEvidence"]["commit"] == "basev1"
+
+
+# ---------------------------------------------------------------------------
+# (c) Failing eval gate
+# ---------------------------------------------------------------------------
+
+
+def test_failing_eval_gate_blocks_publish(tmp_path: Path) -> None:
+    blob = _passing_eval_blob()
+    blob["results"]["text_eval"] = 0.10  # below 0.55 threshold
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_EVAL_GATE_FAIL
+
+    # Manifest must NOT have been written when eval gate fails.
+    assert not (bundle / "eliza-1.manifest.json").is_file()
+
+
+# ---------------------------------------------------------------------------
+# (d) Failing kernel verification
+# ---------------------------------------------------------------------------
+
+
+def test_failing_kernel_verification_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+
+    # Stomp the recorded vulkan report with a fail status.
+    (bundle / "evals" / "vulkan_verify.json").write_text(
+        json.dumps(
+            {
+                "backend": "vulkan",
+                "status": "fail",
+                "atCommit": "deadbee",
+                "report": "vulkan_verify.txt",
+            }
+        )
+    )
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_KERNEL_VERIFY_FAIL
+
+
+def test_metal_required_but_missing_fails(tmp_path: Path) -> None:
+    """Tier supports metal; without --metal-verification the run aborts."""
+    bundle = _build_fixture_bundle(tmp_path)
+    rc = run(_ctx("4b", bundle, metal=None, dry_run=True))
+    assert rc == EXIT_KERNEL_VERIFY_FAIL
+
+
+# ---------------------------------------------------------------------------
+# (e) Red gate ⇒ defaultEligible cannot be true
+# ---------------------------------------------------------------------------
+
+
+def test_red_gate_prevents_default_eligible(tmp_path: Path) -> None:
+    """A red gate inside the manifest builder forces defaultEligible=false.
+
+    We exercise this directly via ``assemble_manifest`` so the test
+    fails on the *manifest* contract independently of stage 3 raising.
+    """
+    from scripts.publish.orchestrator import (  # noqa: PLC0415
+        assemble_manifest,
+        validate_bundle_layout,
+    )
+    from benchmarks.eliza1_gates import apply_gates  # noqa: PLC0415
+    from scripts.manifest.eliza1_manifest import (  # noqa: PLC0415
+        KernelVerification,
+    )
+
+    blob = _passing_eval_blob()
+    blob["results"]["text_eval"] = 0.10  # blow the required quality gate
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    metal = _metal_report(tmp_path)
+    ctx = _ctx("4b", bundle, metal=metal, dry_run=True)
+    layout = validate_bundle_layout(ctx)
+
+    backends = {
+        "metal": KernelVerification(
+            status="pass", at_commit="x", report="metal_verify.txt"
+        ),
+        "vulkan": KernelVerification(
+            status="pass", at_commit="x", report="vulkan_verify.txt"
+        ),
+        "cuda": KernelVerification(
+            status="pass", at_commit="x", report="cuda_verify.txt"
+        ),
+        "rocm": KernelVerification(
+            status="pass", at_commit="x", report="rocm_verify.txt"
+        ),
+        "cpu": KernelVerification(
+            status="pass", at_commit="x", report="reference-test"
+        ),
+    }
+    report = apply_gates(blob)
+    assert not report.passed
+
+    # The manifest module's validator refuses to emit a self-consistent
+    # manifest with red eval data — so assemble_manifest must raise. The
+    # contract guarantees: "defaultEligible: true requires all required
+    # kernels, supported backends, and evals to pass."
+    with pytest.raises(Exception):
+        assemble_manifest(
+            ctx,
+            layout=layout,
+            backends=backends,
+            gate_report=report,
+            eval_blob=blob,
+            version="1.0.0",
+        )
+
+
+# ---------------------------------------------------------------------------
+# (f) Tag is emitted in dry-run (printed, not executed)
+# ---------------------------------------------------------------------------
+
+
+def test_dry_run_tag_is_printed_not_executed(tmp_path: Path, caplog) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    metal = _metal_report(tmp_path)
+
+    with caplog.at_level(logging.INFO, logger="publish.orchestrator"):
+        rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_OK
+    # The dry-run tag log line names the tag explicitly.
+    assert "dry-run: would run `git tag -a eliza-1-4b-v1.0.0" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# CLI smoke — --help should not crash and should mention the choice set.
+# ---------------------------------------------------------------------------
+
+
+def test_missing_e2e_loop_ok_blocks_publish_without_opt_in(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The orchestrator refuses to silently alias e2e_loop_ok ← thirty_turn_ok.
+
+    AGENTS.md §6 declares the two manifest fields as independent
+    contract gates; without the explicit ``ELIZA_PUBLISH_ALLOW_GATE_ALIAS``
+    opt-in, a missing ``e2e_loop_ok`` is publish-blocking.
+    """
+    blob = _passing_eval_blob()
+    blob["results"].pop("e2e_loop_ok")
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    metal = _metal_report(tmp_path)
+    monkeypatch.delenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", raising=False)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_EVAL_GATE_FAIL
+    assert not (bundle / "eliza-1.manifest.json").is_file()
+
+
+def test_alias_opt_in_allows_publish_with_warning(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    """With the opt-in env var, e2e_loop_ok aliases thirty_turn_ok and warns."""
+    blob = _passing_eval_blob()
+    blob["results"].pop("e2e_loop_ok")
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    metal = _metal_report(tmp_path)
+    monkeypatch.setenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", "1")
+
+    with caplog.at_level(logging.WARNING, logger="publish.orchestrator"):
+        rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_OK
+    assert "aliasing results.e2e_loop_ok" in caplog.text
+    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
+    assert manifest["evals"]["e2eLoopOk"] is True
+    assert manifest["evals"]["thirtyTurnOk"] is True
+
+
+def test_cli_help(monkeypatch, capsys) -> None:
+    from scripts.publish.orchestrator import main  # noqa: PLC0415
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--help"])
+    assert excinfo.value.code == 0
+    captured = capsys.readouterr()
+    assert "--tier" in captured.out
+    assert "4b" in captured.out

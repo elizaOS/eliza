@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750" role="img" aria-label="Command Center / Soft Sci-Fi generated assistant preview">
+    <rect width="1200" height="750" fill="#080607"/>
+    <circle cx="200" cy="120" r="180" fill="#ff8a00" opacity="0.18"/>
+    <circle cx="1020" cy="620" r="220" fill="#78d99a" opacity="0.10"/>
+    <rect x="40" y="40" width="1120" height="670" rx="3" fill="transparent" stroke="#78d99a26"/>
+    <text x="70" y="86" font-family="Inter, Arial, sans-serif" font-size="30" fill="#78d99a" font-weight="900">Command Center</text>
+    <text x="70" y="680" font-family="Inter, Arial, sans-serif" font-size="20" fill="#78d99a" opacity="0.72">Soft Sci-Fi / rail transcript / side-pane apps</text>
+
+      <rect x="70" y="116" width="250" height="510" rx="3" fill="#78d99a18" stroke="#78d99a44"/>
+      <rect x="350" y="116" width="450" height="510" rx="3" fill="#78d99a18" stroke="#78d99a44"/>
+      <rect x="830" y="116" width="300" height="510" rx="3" fill="#78d99a18" stroke="#78d99a44"/>
+      <rect x="100" y="170" width="160" height="9" rx="4.5" fill="#78d99a33"/><rect x="100" y="194" width="126" height="9" rx="4.5" fill="#78d99a33"/><rect x="100" y="218" width="190" height="9" rx="4.5" fill="#78d99a33"/><rect x="100" y="242" width="104" height="9" rx="4.5" fill="#78d99a33"/><rect x="100" y="266" width="150" height="9" rx="4.5" fill="#78d99a33"/>
+      <rect x="390" y="172" width="340" height="9" rx="4.5" fill="#78d99a33"/><rect x="390" y="196" width="280" height="9" rx="4.5" fill="#78d99a33"/><rect x="390" y="220" width="360" height="9" rx="4.5" fill="#78d99a33"/><rect x="390" y="244" width="220" height="9" rx="4.5" fill="#78d99a33"/><rect x="390" y="268" width="310" height="9" rx="4.5" fill="#78d99a33"/><rect x="390" y="292" width="260" height="9" rx="4.5" fill="#78d99a33"/>
+      <rect x="865" y="172" width="190" height="9" rx="4.5" fill="#78d99a33"/><rect x="865" y="196" width="230" height="9" rx="4.5" fill="#78d99a33"/><rect x="865" y="220" width="150" height="9" rx="4.5" fill="#78d99a33"/><rect x="865" y="244" width="205" height="9" rx="4.5" fill="#78d99a33"/>
+      <circle cx="575" cy="390" r="92" fill="#ff8a00" opacity="0.92"/>
+      <path d="M500 392h150M575 316v150" stroke="#000" stroke-width="10" stroke-linecap="round" opacity="0.45"/>
+
+  </svg>

@@ -1,0 +1,47 @@
+[
+  {
+    "article_id": "KB-201",
+    "title": "API Performance Optimization Guide",
+    "category": "Technical Documentation",
+    "tags": ["API", "performance", "optimization", "timeout"],
+    "content": "## API Performance Troubleshooting Guide\n\n### Common Causes\n1. Database queries not using indexes — check slow query logs\n2. Connection pool exhausted — check if current connections exceed max_connections\n3. Third-party dependency timeout — check downstream service response times\n\n### Emergency Measures\n- Increase API gateway timeout threshold to 30 seconds\n- Enable query cache (Redis)\n- Contact DBA to check database load\n\n### Escalation Criteria\n- If VIP customer and core business impacted, escalate directly to P1 and notify tech director\n- If scope of impact exceeds 10 customers, initiate incident response process",
+    "last_updated": "2026-03-10",
+    "views": 892
+  },
+  {
+    "article_id": "KB-202",
+    "title": "Data Export Fault Troubleshooting",
+    "category": "Technical Documentation",
+    "tags": ["export", "data", "timeout", "error"],
+    "content": "## Data Export Fault Troubleshooting\n\n### Problem Description\nTimeout or 500 error when exporting large amounts of data.\n\n### Troubleshooting Steps\n1. Check export data volume — over 500K rows requires batch export\n2. Check database temporary tablespace — large queries need temporary space\n3. Check export queue backlog — too many concurrent export tasks\n\n### Temporary Solutions\n- Advise customer to narrow time range and export in batches\n- Backend can manually trigger offline export task\n\n### Escalation Criteria\n- If a paid feature is erroring, must fix within 24 hours",
+    "last_updated": "2026-02-20",
+    "views": 456
+  },
+  {
+    "article_id": "KB-203",
+    "title": "User Permission Batch Management Manual",
+    "category": "User Guide",
+    "tags": ["permissions", "batch", "management", "users"],
+    "content": "## Batch Permission Management\n\n### Method 1: Admin Console Batch Operation\n1. Go to Admin Console -> User Management -> Batch Operations\n2. Select user group or filter by criteria\n3. Click 'Batch Modify Permissions'\n4. Select target permission template\n\n### Method 2: API Batch Operation\n- Endpoint: POST /api/v2/users/batch-update\n- Parameters: user_ids[], role_id\n- Limit: maximum 500 users per request\n\n### Notes\n- Batch operations are irreversible, recommend testing in staging environment first\n- Admin permissions cannot be batch modified",
+    "last_updated": "2026-01-15",
+    "views": 1203
+  },
+  {
+    "article_id": "KB-204",
+    "title": "Data Sync Fault Troubleshooting and Recovery",
+    "category": "Technical Documentation",
+    "tags": ["data sync", "delay", "fault", "recovery"],
+    "content": "## Data Sync Fault Troubleshooting\n\n### Common Causes\n1. Message queue backlog — Kafka consumer lag too high\n2. Network partition — cross-region sync affected by network\n3. Target system unavailable — check downstream service health\n\n### Emergency Measures\n- Check Kafka consumer group status\n- Restart data sync worker\n- If not recovered after 1 hour, initiate manual data reconciliation\n\n### Escalation Criteria\n- VIP customer data sync delay over 30 minutes -> escalate to P1\n- Financial data involved -> escalate to P0 and notify risk control team",
+    "last_updated": "2026-03-05",
+    "views": 678
+  },
+  {
+    "article_id": "KB-205",
+    "title": "Ticket Priority and SLA Standards",
+    "category": "Process Standards",
+    "tags": ["SLA", "priority", "process", "VIP"],
+    "content": "## Ticket Priority Definitions\n\n| Level | Response Time | Resolution Time | Applicable Scenarios |\n|-------|--------------|----------------|---------------------|\n| P0-Critical | 15 minutes | 2 hours | System completely unavailable |\n| P1-High | 1 hour | 8 hours | Core functionality affected |\n| P2-Medium | 4 hours | 24 hours | Non-core functionality issues |\n| P3-Low | 24 hours | 72 hours | Usage inquiries / minor issues |\n\n## VIP Customer Acceleration Rules\n- VIP customer tickets are automatically escalated one priority level\n- VIP customer P1 and above issues require sync-notification to customer success manager\n\n## Renewal Period Customer Special Handling\n- Customers within 60 days of contract expiration have ticket priority automatically escalated one level\n- Must sync-notify sales team for attention",
+    "last_updated": "2026-03-01",
+    "views": 2341
+  }
+]

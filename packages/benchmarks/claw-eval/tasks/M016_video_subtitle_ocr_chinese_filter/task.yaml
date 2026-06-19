@@ -1,0 +1,36 @@
+task_id: M016_video_subtitle_ocr_chinese_filter
+task_name: Video Subtitle OCR - Chinese Sentence Filter
+version: "1.0"
+category: video_ocr
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    我正在分析黄金，请你帮我把视频中讲解问题二"为什么白银涨得比黄金猛"的视频片段中所有出现了"黄金"的句子找出来（每一条字幕算一个句子），放进一个列表里。最后答案写在一个txt文件 /workspace/output.txt 里，一行一句话，不要加任何标点符号。
+  language: zh
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.webm
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/output.txt
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Extract video subtitles via OCR, locate the section about "为什么白银涨得比黄金猛",
+  filter sentences containing "黄金", output one per line without punctuation.
+primary_dimensions:
+  - completion
+  - robustness

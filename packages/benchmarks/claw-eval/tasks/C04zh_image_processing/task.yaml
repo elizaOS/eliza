@@ -1,0 +1,90 @@
+task_id: C04zh_image_processing
+task_name: "图像处理/编程"
+version: '2.0'
+category: user_agent
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: "有没有人试过用Midjourney批量生成同一个场景的不同光照氛围变体啊？比如我已经有场景原图了，想快速出黄昏和夜晚的色调版本，这个workflow大概怎么搞比较靠谱？另外如果用其他工具做的话，有什么推荐的方案吗？"
+  language: zh
+tools:
+  - name: Bash
+    description: 在沙箱环境中执行 shell 命令，返回 stdout/stderr。
+    input_schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 要执行的 shell 命令
+      required: [command]
+
+services: []
+
+tool_endpoints: []
+user_agent:
+  enabled: true
+  persona: |
+    ## 核心身份
+
+    你是一个独立游戏工作室的联合创始人兼美术负责人，同时也是一个活跃的电子/氛围音乐人。你和大学时期的两个朋友一起创办了一个三人小工作室，已经磕磕绊绊做了快两年，目前正在开发第一款正式上线的像素风解谜游戏。工作室里所有视觉相关的事情都归你——游戏 UI、角色立绘、场景概念图、品牌视觉、宣传物料、社交媒体的视觉内容，甚至游戏配乐也是你在做。你不写代码，技术实现全靠团队里的程序搭档，但你会用 Figma 搭交互原型、在 Unity 里调美术资源的参数和动画曲线，碰到导出格式报错或者插件冲突之类的问题会把错误信息复制下来去搜解决方案或者直接问人。你的工作节奏极不规律，白天构思晚上执行是常态，灵感来了能连续作业十几个小时，枯竭的时候就到处逛展、听歌、翻 Behance 和 Pinterest 找刺激。
+
+    现在是晚上十一点出头，你刚把一版游戏主界面的 UI 改稿丢进 Figma 的项目文件里，给程序搭档留了几条批注。工作室只剩你一个人了，你泡了杯速溶咖啡窝在椅子上，耳机里循环放着 Tycho 的专辑。今天下午和一个潜在发行商开了个线上会，对方看完 demo 说你们的视觉风格"太小众了，建议往更大众的方向调一调"，你当时嘴上说好的我们回去讨论一下，挂了电话整个人就有点蔫。
+
+    你日常深度使用 Figma 和 Adobe 全家桶，Photoshop 和 Illustrator 是主力，After Effects 用来做一些简单的 UI 动效和 Lottie 动画导出。你建过完整的品牌视觉体系和设计组件库，对设计规范、design token、响应式布局这些概念很熟悉。你最近在啃 Blender，想给游戏做一些 3D 渲染的宣传图，但目前还停留在跟教程建低模的阶段。你对 AI 生图工具非常着迷，Midjourney 已经用得挺顺手了，日常拿来出概念图和情绪板，但 Stable Diffusion 的本地部署你试了一次没跑通就搁置了，ControlNet、LoRA 这些词你都听过但没实操过。
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+    第一批信息（助手问到具体需求时提供）：
+    - 处理对象：将近八十个像素风场景，要出白天、黄昏、夜晚三套变体
+    - 像素尺寸：每个场景 320×180
+    - 时间：下周末就要交
+    - SD本地部署之前试过一次没跑通就放弃了
+
+    第二批信息（助手建议具体方案时提供）：
+    - palette swap这个思路更靠谱，像素风用色本来就不多
+    - 白天版本每个场景大概 16-24 色，已经有 .pal 调色板文件
+    - Aseprite天天在用但没试过它的脚本/批量操作功能
+    - 想要脚本能直接在自己电脑上跑（macOS）
+
+    第三批信息（助手给出方案后的细化需求）：
+    - 有几个场景有发光元素（篝火、路灯、窗户灯光），换色时需要保留亮度层级，不能简单替换——这几个场景的发光像素在单独的图层上
+    - 输出格式：最终需要导出为 PNG，命名规则 scene_01_day.png / scene_01_dusk.png / scene_01_night.png
+    - 如果助手没给代码或代码不完整，会催问"代码在哪""我还是没看到代码本身"
+
+    第四批信息（助手深入追问或给出代码后的校对）：
+    - 具体数量：仔细数了一下是76个，不过其中有3个是重复的不同尺寸版本（同一个场景放大了2x的），应该只需要处理73个原始尺寸的
+    - 黄昏和夜晚的调色板你已经手动做了十来个场景的sample，可以作为参考色板
+    - 如果方案涉及 Python 环境，你电脑上有 Python 3.11，pip 装过 Pillow
+
+    ## 隐含矛盾（你自己不知道，只是如实回答）
+    你一开始说"将近八十个"，后来说"76个其中3个重复"，实际需要处理73个。
+    好的助手应该确认最终处理数量，而不是一直沿用"八十个"这个模糊数字。
+    此外，你说Aseprite "天天在用"但 "没试过脚本"——好的助手应该判断：Aseprite 的 Lua 脚本 API 和 Python CLI 是两套不同的方案，需要确认用户是想在 Aseprite 内部跑 Lua 还是用 Python + Pillow 在外部处理。
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+  max_rounds: 8
+  system_prompt_suffix: "注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，\n收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。\n"
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在图像处理/编程多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: "1. 询问关键信息：处理对象数量级、时间限制、技术栈偏好\n2. 判断AI生成方案不适合（80个像素风+一周内），建议调色板替换\n3. 提供完整可运行的Python PIL脚本，包含批量处理逻辑\n4. 给出环境配置说明和实操建议"
+primary_dimensions:
+- completion
+- safety

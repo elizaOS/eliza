@@ -1,0 +1,77 @@
+[[!meta title="Reproducible builds"]]
+
+[[!toc levels=2]]
+
+# Verification during release process
+
+How is something verified to be reproducible? It is a matter of
+definition, which ideally requires that every conceivable compatible
+system should get the same result. As you'll see below we'll lower
+this requirement slightly for practical purposes. :)
+
+## Assumptions
+
+1. The Release Manager (RM) is not evil! ♥
+
+2. RM's computer is trusted.
+
+3. RMs don't plug their smartcard in a computer outside of the release
+   process.
+
+4. Our web site and the webserver that runs is is trusted (so much of
+   other Tails stuff relies on this that we can't reasonably set the
+   bar higher).
+
+5. The attacker can push to tails.git but cannot force-push
+
+6. The attacker has write access to rsync.lizard
+
+7. An attacker publishing a compromised Tails needs to update the image description file,
+   UDFs and/or detached signatures to our website, and possibly replace
+   a Git tag. If this is done through Git, there's a much greater
+   chance we notice it after of our release process than during it. (If
+   this is done directly on the web server, chances are that we don't
+   notice it and it could even survive Git push and web site refresh,
+   but it's out of scope here as said above.)
+
+## Goals
+
+Here are our high-level goals and their rationales.
+
+1. Identify reproducibility bugs (ideally before releasing)
+
+   * We are claiming that we release reproducible products. We don't
+     want to lie to the world.
+
+   * We will hopefully involve third-parties in the reproducibility
+     verification process at some point; they'll need confidence that
+     our products are reliably reproducible, otherwise they might be
+     discouraged and stop even trying.
+
+   * A reproducibility bug can be a symptom of another bug.
+
+2. Ensure what we've tested (QA) and reproduced matches what is
+   published
+
+Furthermore, let's make the process _not_ depend on a few key persons
+in a tight, not well defined time frame (e.g. during release
+process). Availability is a serious constraint, and if e.g. the
+architects of the reproducibility efforts are the only ones able to
+follow the process it is an indication that the process probably is
+too complex, which makes it prone for errors.
+
+## Design and implementation
+
+We do two reproducibility checks:
+
+* For Goal 1, we do a sanity check that is only about identifying
+  non-malicious bugs as soon as possible.
+
+  - [[ISO|contribute/release_process#reproducibility-sanity-check-iso]]
+  - [[IUKs|contribute/release_process#reproducibility-sanity-check-iuk]]
+    (not very useful at the moment since Jenkins doesn't build IUKs)
+
+* For Goal 2, we consistently monitor that image description files and UDFs are legitimate:
+
+  - via automatic montitoring ([[!tails_ticket 20825 desc="not implemented yet"]])
+  - manually checking [[on a monthly basis|contribute/release_process/test]]

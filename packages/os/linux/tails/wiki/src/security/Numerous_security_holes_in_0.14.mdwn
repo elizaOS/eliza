@@ -1,0 +1,16 @@
+[[!meta date="Sun, 25 Nov 2012 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.14"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.14.
+
+We **strongly** urge you to [[upgrade to Tails 0.15|news/version_0.15]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - iceweasel ([MFSA 2012-91](https://www.mozilla.org/security/announce/2012/mfsa2012-91.html), [MFSA 2012-92](https://www.mozilla.org/security/announce/2012/mfsa2012-92.html), [MFSA 2012-93](https://www.mozilla.org/security/announce/2012/mfsa2012-93.html), [MFSA 2012-98](https://www.mozilla.org/security/announce/2012/mfsa2012-98.html), [MFSA 2012-100](https://www.mozilla.org/security/announce/2012/mfsa2012-100.html), [MFSA 2012-101](https://www.mozilla.org/security/announce/2012/mfsa2012-101.html), [MFSA 2012-103](https://www.mozilla.org/security/announce/2012/mfsa2012-103.html), [MFSA 2012-104](https://www.mozilla.org/security/announce/2012/mfsa2012-104.html), [MFSA 2012-105](https://www.mozilla.org/security/announce/2012/mfsa2012-105.html), [MFSA 2012-106](https://www.mozilla.org/security/announce/2012/mfsa2012-106.html))
+ - tiff ([[!debsa2012 2575]])

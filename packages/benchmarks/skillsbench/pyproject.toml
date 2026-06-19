@@ -1,0 +1,63 @@
+[project]
+name = "skillsbench"
+version = "0.1.0"
+description = "A benchmark that evaluate both skill effectiveness and agent behavior through gym-style benchmarking"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "benchflow",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 144
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "RUF",    # ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "E722",   # bare except (common in scripts)
+    "B008",   # function call in default argument
+    "B905",   # zip without strict
+    "UP038",  # isinstance with tuple (use X | Y in 3.10+)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["skillsbench"]
+force-single-line = false
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.uv.sources]
+skills-ref = { git = "https://github.com/agentskills/agentskills.git", subdirectory = "skills-ref", rev = "main" }
+# Keep SkillsBench experiments on the latest BenchFlow SDK from GitHub main.
+benchflow = { git = "https://github.com/benchflow-ai/benchflow.git", rev = "main" }
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13.0",
+    "pre-commit>=4.0.0",
+    "ruff>=0.8.0",
+    "skills-ref>=0.1.0",
+]

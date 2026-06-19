@@ -1,0 +1,1050 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-02-25 11:55+0100\n"
+"PO-Revision-Date: 2026-03-26 15:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Emailing and reading news with Thunderbird\"]]\n"
+msgstr "[[!meta title=\"E-Mails versenden und Nachrichten lesen mit Thunderbird\"]]\n"
+
+#. type: Plain text
+msgid "Tails includes *Thunderbird* for:"
+msgstr "Tails beinhaltet *Thunderbird* für:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Reading and writing emails"
+msgid "Reading and writing emails"
+msgstr "- Lesen und Schreiben von E-Mails"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- Reading [[!wikipedia RSS]] and [[!wikipedia Atom_(Web_standard) "
+#| "desc=\"Atom\"]] feeds for news and blogs"
+msgid ""
+"Reading [[!wikipedia RSS]] and [[!wikipedia Atom_(Web_standard) "
+"desc=\"Atom\"]] feeds for news and blogs"
+msgstr ""
+"- Lesen von [[!wikipedia_de RSS_(Web-Feed) desc=\"RSS\"]] und [[!"
+"wikipedia_de Atom_(Format) desc=\"Atom\"]] Feeds für Nachrichten und Blogs"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To start *Thunderbird* choose **Applications&nbsp;▸ Internet&nbsp;▸ "
+#| "Thunderbird**."
+msgid ""
+"To open *Thunderbird*, choose **Apps&nbsp;▸ Internet&nbsp;▸ Thunderbird**."
+msgstr ""
+"Um *Thunderbird* zu starten, wählen Sie **Anwendungen&nbsp;▸ Internet&nbsp;▸ "
+"Thunderbird**."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To store your\n"
+"emails, feeds, and settings across different working sessions,\n"
+"turn on the [[Thunderbird Email Client|persistent_storage/configure#thunderbird]]\n"
+"feature of the Persistent Storage.</p>\n"
+msgstr ""
+"<p>Um Ihre \n"
+"E-Mails, Feeds und Einstellungen über verschiedene Arbeitssitzungen \n"
+"hinweg zu speichern, aktivieren Sie die [[Thunderbird-E-Mail-Client|persistent_storage/configure#thunderbird]]-Funktion \n"
+"des persistenten Speichers.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p><i>Thunderbird</i> will not be included by default anymore in Tails 7.8\n"
+"(May 2026) and later.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you have the [[Thunderbird Email\n"
+"Client|persistent_storage/configure#thunderbird]] feature of the Persistent\n"
+"Storage turned on, Tails automatically adds <i>Thunderbird</i> to your list of\n"
+"[[Additional Software|persistent_storage/additional_software]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>[[Why is Tails installing <i>Thunderbird</i> as Additional Software?|thunderbird/additional_software]]</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"For more documentation, visit the official [*Thunderbird* Support](https://"
+"support.mozilla.org/en-US/products/thunderbird) website."
+msgstr ""
+"Für weitere Dokumentation besuchen Sie die offizielle Website des "
+"[*Thunderbird*-Supports](https://support.mozilla.org/de/products/"
+"thunderbird)."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The <a href=\"https://support.mozilla.org/en-US/kb/instant-messaging-and-chat\">chat\n"
+"features of <i>Thunderbird</i></a> don't work in Tails.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"account\">Configuring an email account</h1>\n"
+msgstr "<h1 id=\"account\">Konfigurieren Sie einen E-Mail Account</h1>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "When starting *Thunderbird* for the first time, an assistant appears to "
+#| "guide you through the process of configuring *Thunderbird* to access your "
+#| "email account."
+msgid ""
+"When opening *Thunderbird* for the first time, an assistant appears to help "
+"you configure and access your email account."
+msgstr ""
+"Wenn *Thunderbird* zum ersten Mal gestartet wird, erscheint ein Assistent, "
+"um Sie durch den Vorgang der Konfiguration von *Thunderbird* zu führen, "
+"damit Sie auf Ihr E-Mailkonto zugreifen können."
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter your name, email address, and password into the corresponding fields."
+msgstr ""
+"Geben Sie Ihren Namen, Ihre E-Mail-Adresse und Ihr Kennwort in die "
+"entsprechenden Textfelder ein."
+
+#. type: Bullet: '1. '
+msgid "Click **Continue**."
+msgstr "Klicken Sie auf **Weiter**."
+
+#. type: Bullet: '1. '
+msgid ""
+"The assistant tries to configure automatically the correct settings to "
+"connect to your email provider based on your email address."
+msgstr ""
+"Der Assistent versucht, anhand Ihrer E-Mail-Adresse automatisch die "
+"richtigen Einstellungen für die Verbindung mit Ihrem E-Mail-Anbieter zu "
+"konfigurieren."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If the automatic configuration fails, consult your email provider\n"
+"   about how to configure your email account manually.\n"
+msgstr ""
+"   Falls die automatische Konfiguration fehl schlägt, fragen Sie sich Ihren Email-Provider,\n"
+"   wie Ihr Email-Account manuell konfiguriert werden muss.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"If the automatic configuration succeeds, you might have to specify which "
+"protocol to use to connect to your email provider, either **IMAP** or "
+"**POP**."
+msgstr ""
+"Wenn die automatische Konfiguration erfolgreich ist, müssen Sie "
+"möglicherweise angeben, welches Protokoll Sie verwenden möchten, um sich mit "
+"Ihrem E-Mail-Anbieter zu verbinden, entweder <span class=\"guilabel\">IMAP</"
+"span> oder **POP**."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"      - With **IMAP**,\n"
+"        *Thunderbird* constantly synchronizes\n"
+"        with the server and displays the emails and folders that are\n"
+"\tcurrently stored on the server. IMAP is better suited if you access\n"
+"        your emails from different operating systems.\n"
+msgstr ""
+"      - Mit **IMAP** synchronisiert\n"
+"        *Thunderbird* sich immer wieder mit\n"
+"        dem Server und zeigt die E-Mails und Ordner an,\n"
+"\tdie momentan auf dem Server gespeichert sind. IMAP bietet sich an, wenn\n"
+"        Sie von verschiedenen Betriebssystemen aus auf Ihre E-Mails zugreifen.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"      - With **POP**,\n"
+"        *Thunderbird* downloads the emails that\n"
+"        are in the inbox on the server and possibly deletes them from the\n"
+"\tserver. POP is better suited if you access your emails from Tails only\n"
+"        and store them in the Persistent Storage.\n"
+msgstr ""
+"      - Mit **POP** lädt\n"
+"        *Thunderbird* die E-Mails, die sich\n"
+"        im Posteingang des Servers befinden, herunter und löscht diese möglicherweise vom\n"
+"\tServer. POP ist besser geeignet, wenn Sie nur von Tails aus auf Ihre E-Mails zugreifen\n"
+"        und diese im beständigen Speicherbereich speichern.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   To know more, see also this [comparison between POP and\n"
+"   IMAP](https://help.riseup.net/en/email/clients/#choose-imap-or-pop) by\n"
+"   Riseup.\n"
+msgstr ""
+"   Um mehr zu erfahren, können Sie auch diesen [Vergleich zwischen POP und\n"
+"   IMAP](https://help.riseup.net/de/email/clients#imap-oder-pop) von\n"
+"   Riseup lesen.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\" id=\"gmail\">\n"
+msgstr "<div class=\"tip\" id=\"gmail\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2>Gmail</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>You can use your Gmail account with <i>Thunderbird</i> in Tails.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<ol>\n"
+"  <li>\n"
+"    <p>Make sure that you have 2-Step Verification turned on in your Gmail account.</p>\n"
+"    <p>See <a href=\"https://support.google.com/accounts/answer/185839\">Google Account Help: 2-Step Verification</a>.</p>\n"
+"  </li>\n"
+"  <li>\n"
+"    <p>Configure the new account as IMAP when <i>Thunderbird</i> asks you to\n"
+"    choose between POP and IMAP.</p>\n"
+"  </li>\n"
+"</ol>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"news\">Reading RSS and Atom news feeds</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"On top of reading emails, you can read news feeds that use the RSS and Atom "
+"standards in *Thunderbird*."
+msgstr ""
+
+#. type: Plain text
+msgid "To create a feed account:"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Choose **[[!img lib/open-menu.png alt=\"Menu\" class=\"symbolic\" "
+#| "link=\"no\"]]&nbsp;▸ Account Settings**."
+msgid ""
+"Choose **[[!img lib/open-menu.png link=\"no\" class=\"symbolic\" "
+"alt=\"Menu\"]]&nbsp;▸ Account Settings** from the main window of "
+"*Thunderbird*."
+msgstr ""
+"Wählen Sie **[[!img lib/open-menu.png alt=\"Menü\" class=\"symbolic\" "
+"link=\"no\"]]&nbsp;▸ Kontoeinstellungen** aus."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Account Settings** tab, select the **New Account** button, and then "
+"**Feed Account**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the **Feed Account Wizard**, click **Next** and **Finish**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   A new feed account named **Blogs & News Feeds** appears in the sidebar.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click on the **Manage Subscriptions** button in the right pane."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Feed Subscriptions** dialog, enter the URL of the news feed that "
+"you want to follow in the **Feed URL** field."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   For example, to subscribe to the Tails news feed, enter the following URL.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "       https://tails.net/news/index.en.rss\n"
+msgstr "       https://tails.net/news/index.en.rss\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Sites often have a feed icon <i class=\"fa fa-rss\"></i> that points to their\n"
+"   RSS or Atom feed.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If a site has no feed icon, right-click on the home or news page of the site in *Tor Browser*\n"
+"   and select **View Page Source** in the shortcut menu. In the source of the\n"
+"   page look for a link of type *application/rss+xml* or\n"
+"   *application/atom+xml*. Not all sites have a news feed.\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "- Reading [[!wikipedia RSS]] and [[!wikipedia Atom_(Web_standard) desc=\"Atom\"]] feeds for news and blogs"
+msgid ""
+"   [[!wikipedia RSS]] and [[!wikipedia Atom (web standard) desc=\"Atom\"]] are\n"
+"   similar standards and their differences don't really matter to readers.\n"
+msgstr "- Lesen von [[!wikipedia_de RSS_(Web-Feed) desc=\"RSS\"]] und [[!wikipedia_de Atom_(Format) desc=\"Atom\"]] Feeds für Nachrichten und Blogs"
+
+#. type: Bullet: '1. '
+msgid "Click **Add**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   *Thunderbird* verifies and downloads the content of the feed.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Close the **Feed Subscriptions** dialog and the **Account Settings** tab."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"A new feed account named **Blogs & News Feeds** appears in the sidebar of "
+"the main window of *Thunderbird*."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"privacy\">Enhanced privacy</h1>\n"
+msgstr "<h1 id=\"privacy\">Verbesserter Datenschutz</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Thunderbird* in Tails is configured\n"
+"for additional privacy and anonymity.\n"
+msgstr ""
+"*Thunderbird* in Tails ist für zusätzliche \n"
+"Privatsphäre und Anonymität konfiguriert.\n"
+
+#. type: Plain text
+#, fuzzy
+msgid "For example, *Thunderbird* in Tails:"
+msgstr ""
+"Zum Lesen und Schreiben von E-Mails enthält Tails\n"
+"*Thunderbird*.\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Removes information about the language of your session or spellchecker from "
+"the headers of the emails that you send."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Removes information that could identify you as a Tails user from the headers "
+"of your emails."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Only allows secure protocols and disables insecure protocols, like SSLv3."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Disables tracking technologies, like cookies and JavaScript, when viewing "
+"emails or feeds in HTML."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"These enhancements are inherited from the former [*TorBirdy*](https://"
+"gitlab.torproject.org/legacy/trac/-/wikis/torbirdy)  extension."
+msgstr ""
+"Diese Verbesserungen stammen von der ehemaligen [*TorBirdy*](https://"
+"gitlab.torproject.org/legacy/trac/-/wikis/torbirdy) Erweiterung."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The email addresses that you write to are stored in your address book by\n"
+"default.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To stop collecting outgoing email addresses automatically, open\n"
+"<b>Settings&nbsp;▸ Composition</b> and turn off the option <b>Automatically add\n"
+"outgoing email addresses to my collected addresses</b>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"language\">Using Thunderbird in your language</h1>\n"
+msgid "<h1 id=\"language\">Using Thunderbird in another language</h1>\n"
+msgstr "<h1 id=\"language\">Thunderbird in Ihrer Sprache verwenden</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"To use *Thunderbird* in another language, you can\n"
+"install the <code>thunderbird-l10n-<span class=\"command-placeholder\">lang</span></code>\n"
+"package using the [[Additional Software|persistent_storage/additional_software]]\n"
+"feature. Replace <span class=\"command-placeholder\">lang</span> with the code\n"
+"for your language. For example, `vi` for Vietnamese.\n"
+msgstr "Um *Thunderbird* in einer anderen Sprache zu verwenden, können Sie das <code>thunderbird-l10n-<span class=\"command-placeholder\">lang</span></code>-Paket mit der [[Zusätzliche Software|persistent_storage/additional_software]]-Funktion installieren. Ersetzen Sie <span class=\"command-placeholder\">lang</span> durch den Code für Ihre Sprache. Zum Beispiel `vi` für Vietnamesisch.\n"
+
+#. type: Plain text
+msgid ""
+"Tails already includes language packages for Arabic, German, Spanish, Farsi, "
+"French, Hindi, Bahasa Indonesia, Italian, Portuguese, Russian, Turkish, and "
+"Simplified Chinese."
+msgstr ""
+"Tails enthält bereits Sprachpakete für Arabisch, Deutsch, Spanisch, Farsi, "
+"Französisch, Hindi, Bahasa Indonesia, Italienisch, Portugiesisch, Russisch, "
+"Türkisch und vereinfachtes Chinesisch."
+
+#. type: Plain text
+msgid ""
+"[List of available *Thunderbird* language packages](https://"
+"packages.debian.org/search?keywords=thunderbird-"
+"l10n&searchon=names&suite=stable&section=all)"
+msgstr ""
+"[Liste der verfügbaren *Thunderbird*-Sprachpakete](https://"
+"packages.debian.org/search?keywords=thunderbird-"
+"l10n&searchon=names&suite=stable&section=all)"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"openpgp\">OpenPGP encryption</h1>\n"
+msgstr "<h1 id=\"openpgp\">OpenPGP-Verschlüsselung</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p><i>GnuPG</i> and <i>[[Kleopatra|encryption_and_privacy/kleopatra]]</i>\n"
+"allow you to work with OpenPGP encrypted text and files. Consider using\n"
+"<i>Kleopatra</i> instead of <i>Thunderbird</i> if you want to exchange encrypted text and files, but\n"
+"not by email.</p>\n"
+msgstr ""
+"<p><i>GnuPG</i> und <i>[[Kleopatra|encryption_and_privacy/kleopatra]]</i>\n"
+" ermöglichen Ihnen die Arbeit mit OpenPGP-verschlüsseltem Text und Dateien. Erwägen Sie die Verwendung von\n"
+"<i>Kleopatra</i> anstelle von <i>Thunderbird</i>, wenn Sie verschlüsselten Text und Dateien austauschen möchten,\n"
+"jedoch nicht per E-Mail.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The OpenPGP keys stored in <i>GnuPG</i> and <i>Kleopatra</i> are separate from the keys\n"
+"stored in <i>Thunderbird</i>.</p>\n"
+msgstr ""
+"<p>Die in <i>GnuPG</i> und <i>Kleopatra</i> gespeicherten OpenPGP-Schlüssel sind getrennt von den\n"
+"in <i>Thunderbird</i> gespeicherten Schlüsseln.</p>\n"
+
+#. type: Plain text
+msgid ""
+"See also the official [OpenPGP in Thunderbird - HOWTO and FAQ](https://"
+"support.mozilla.org/kb/openpgp-thunderbird-howto-and-faq)."
+msgstr ""
+"Mehr zu lesen gibt es auch im offiziellen [OpenPGP in Thunderbird - "
+"Leitfaden und häufig gestellte Fragen](https://support.mozilla.org/de/kb/"
+"openpgp-in-thunderbird-leitfaden-und-faqs)."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"primary-password\">Setting up a Primary Password (recommended)</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In *Thunderbird*, OpenPGP private keys are not protected by a passphrase.  "
+"That's why we recommend that you set up a Primary Password."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"With a Primary Password, your private key is encrypted in your *Thunderbird* "
+"profile and is only unlocked while *Thunderbird* is running.  If your "
+"*Thunderbird* profile is stored in your Persistent Storage, then your "
+"private key is encrypted twice: once by *Thunderbird* in your profile and a "
+"second time by the encryption of the Persistent Storage."
+msgstr ""
+"Mit einem Primärpasswort ist Ihr privater Schlüssel in Ihrem *Thunderbird*-"
+"Profil verschlüsselt und wird nur entsperrt, solange *Thunderbird* läuft. "
+"Wenn Ihr *Thunderbird*-Profil im beständigen Datenspeicher gespeichert ist, "
+"ist Ihr privater Schlüssel zweimal verschlüsselt: einmal von *Thunderbird* "
+"in Ihrem Profil und ein zweites Mal durch die Verschlüsselung des "
+"beständigen Datenspeichers."
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **[[!img lib/open-menu.png alt=\"Menu\" class=\"symbolic\" "
+"link=\"no\"]]&nbsp;▸ Settings**."
+msgstr ""
+"Wählen Sie **[[!img lib/open-menu.png alt=\"Menü\" class=\"symbolic\" "
+"link=\"no\"]]&nbsp;▸ Einstellungen** aus."
+
+#. type: Bullet: '1. '
+msgid "Choose **Privacy & Security**."
+msgstr "**Datenschutz& Sicherheit** auswählen."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Passwords** section, select the option **Use a Primary Password**."
+msgstr ""
+"Wählen Sie im Abschnitt **Passwörter** die Option **Ein primäres Passwort "
+"verwenden** aus."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "In the **Change Master Password** dialog, enter your Master Password and "
+#| "click **Ok**."
+msgid ""
+"In the **Primary Password** dialog, enter your Primary Password and click "
+"**OK**."
+msgstr ""
+"Im **Master Passwort ändern** Dialog dein Master Passwort eingeben und auf "
+"**Ok** klicken."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"import-private\">Importing an existing private key</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "*Thunderbird* uses a different keyring than *GnuPG*.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you already have an OpenPGP private key outside of *Thunderbird*, follow "
+"the instructions below to export it from *GnuPG* and import it into "
+"*Thunderbird*."
+msgstr ""
+"Wenn Sie bereits einen OpenPGP-Privatschlüssel außerhalb von *Thunderbird* "
+"haben, folgen Sie bitte den Anweisungen unten, um ihn aus *GnuPG* zu "
+"exportieren und in *Thunderbird* zu importieren."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3>Export your private key using <em>Kleopatra</em></h3>\n"
+msgstr "<h3>Exportieren Sie Ihren privaten Schlüssel mit <em>Kleopatra</em></h3>\n"
+
+#. type: Plain text
+msgid "From the desktop:"
+msgstr "Vom Desktop:"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Choose **Applications&nbsp;▸ Accessories&nbsp;▸ Kleopatra**."
+msgid "Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Kleopatra**."
+msgstr "Wählen Sie **Anwendungen&nbsp;▸ Zubehör&nbsp;▸ Kleopatra**."
+
+#. type: Bullet: '1. '
+msgid "Select the private key that you want to migrate to *Thunderbird*."
+msgstr ""
+"Die privaten Schlüssel, die du zu *Thunderbird* übertragen möchtest, "
+"auswählen."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Choose **File&nbsp;▸ Backup Secret Keys…** and save this private key to "
+#| "your *Home* directory."
+msgid ""
+"Choose **File&nbsp;▸ Backup Secret Keys…** and save this private key to your "
+"*Home* folder."
+msgstr ""
+"Wählen Sie **Datei&nbsp;▸ Geheimschlüssel sichern…** und speichern Sie "
+"diesen privaten Schlüssel in Ihrem *Home*-Verzeichnis."
+
+#. type: Bullet: '1. '
+msgid "Close *Kleopatra*."
+msgstr "Schließe *Kleopatra*."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3>Import your private key in <em>Thunderbird</em></h3>\n"
+msgstr "<h3>Importieren Sie Ihren privaten Schlüssel in <em>Thunderbird</em></h3>\n"
+
+#. type: Plain text
+msgid "In *Thunderbird*:"
+msgstr "In *Thunderbird*:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **[[!img lib/open-menu.png alt=\"Menu\" class=\"symbolic\" "
+"link=\"no\"]]&nbsp;▸ Account Settings**."
+msgstr ""
+"Wählen Sie **[[!img lib/open-menu.png alt=\"Menü\" class=\"symbolic\" "
+"link=\"no\"]]&nbsp;▸ Kontoeinstellungen** aus."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane, identify the account that corresponds to the private key "
+"that you want to import and choose **End-to-End Encryption**."
+msgstr ""
+"Im linken Panel den Account finden der zum privaten Schlüssel den du "
+"importeiren möchtest gehört und **Ende-zu-Ende-Verschlüsselung** auswählen."
+
+#. type: Bullet: '1. '
+msgid "In the right pane, click the **Add Key…** button."
+msgstr ""
+"Klicken Sie im rechten Fensterbereich auf die Schaltfläche **Schlüssel "
+"hinzufügen...**."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "In the **Add a Personal OpenPGP Key** dialog, choose **Import an existing "
+#| "OpenPGP Key** and click **Continue**."
+msgid ""
+"In the dialog that appears, select the option **Import an existing OpenPGP "
+"Key** and **Continue**."
+msgstr ""
+"Im **Persönlichen OpenPGP-Schlüssel hinzufügen** Dialog, **Bestehenden "
+"OpenPGP-Schlüssel importieren** auswählen und auf **Weiter** klicken."
+
+#. type: Bullet: '1. '
+msgid ""
+"Click the **Select File to Import…** button and choose the private key that "
+"your exported from *Kleopatra*."
+msgstr ""
+"Klicken Sie auf die Schaltfläche **Datei zum Importieren auswählen...** und "
+"wählen Sie den privaten Schlüssel aus, den Sie aus *Kleopatra* exportiert "
+"haben."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the next dialog, make sure that your private key is listed and that the "
+"option **Treat this key as a Personal Key** is selected."
+msgstr ""
+"Im nächsten Dialog sicherstellen, dass der private Schlüssel in der Liste "
+"geführt ist und die Option **Diesen Schüssel als persönlichen Schlüssel "
+"verwenden** ausgewählt ist."
+
+#. type: Bullet: '1. '
+msgid ""
+"Click **Continue**, enter the passphrase for your private key (if any), and "
+"click **Continue** again."
+msgstr ""
+"Auf **Weiter** klicken, die Passphrase (wenn existent) für den privaten "
+"Schlüssel eingeben und nochmal auf **weiter** klicken."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Your private key should now be listed in the **End-to-End\n"
+"   Encryption** settings of your account.\n"
+msgstr "   Dein privater Schlüssel sollte jetzt unter den **Ende-zu-Ende-Verschlüsselung** Einstellungen deines Kontos erscheinen.\n"
+
+#. type: Bullet: '1. '
+msgid "Select your private key to enable OpenPGP encryption for this account."
+msgstr ""
+"Den privaten Schlüssel auswählen um OpenPGP Verschlüsselung für dieses Konto "
+"zu aktivieren."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"generate-private\">Generating a new OpenPGP private key</h2>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane, identify the account for which you want to create a new "
+"OpenPGP private key and choose **End-to-End Encryption**."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "In the **Add a Personal OpenPGP Key** dialog, choose **Import an existing "
+#| "OpenPGP Key** and click **Continue**."
+msgid ""
+"In the **Add a Personal OpenPGP Key** dialog, choose **Create a new OpenPGP "
+"Key**."
+msgstr ""
+"Im **Persönlichen OpenPGP-Schlüssel hinzufügen** Dialog, **Bestehenden "
+"OpenPGP-Schlüssel importieren** auswählen und auf **Weiter** klicken."
+
+#. type: Bullet: '1. '
+msgid ""
+"Review the settings in the next dialog, click the **Generate key** button, "
+"and then click **Confirm**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"encrypting\">Encrypting an email</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To prevent you from sending unencrypted emails by mistake, *Thunderbird* in "
+"Tails is configured with the option **Enable encryption for new messages** "
+"turned on by default in the account settings."
+msgstr ""
+
+#. type: Plain text
+msgid "When composing an email:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If the **Encrypt** toggle button is on, *Thunderbird* will encrypt the email "
+"before sending."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  *Thunderbird* warns you if you miss the key of some of the recipients\n"
+"  or if you still have to accept some of their keys.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Choose **Security**&nbsp;▸ **Key Assistant** to see the keys of the\n"
+"  receipts and solve any issue.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "To send an unencrypted email, turn off the **Encrypt** toggle button."
+msgstr ""
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "<p>Emails and feeds in HTML format are displayed in plain text by\n"
+#~| "default and can become harder to read.</p>\n"
+#~ msgid ""
+#~ "<p>For added security, emails and feeds in HTML format are displayed in plain\n"
+#~ "text and can become harder to read.</p>\n"
+#~ msgstr ""
+#~ "<p>Emails und Feeds im HTML-Format werden standardmäßig als Klartext \n"
+#~ "angezeigt und können dadurch schwerer lesbar sein.</p>\n"
+
+#, no-wrap
+#~ msgid "   <div class=\"tip\">\n"
+#~ msgstr "   <div class=\"tip\">\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "   <p>To start this assistant again in the future from the main window of\n"
+#~| "   <i>Thunderbird</i>, choose\n"
+#~| "   <b>[[!img lib/open-menu.png alt=\"Menu\" class=symbolic link=no]]&nbsp;▸ Account Settings</b>\n"
+#~| "   and then, from the <b>Account Settings</b>\n"
+#~| "   dialog, choose <b>Account Actions</b>&nbsp;▸\n"
+#~| "   <b>Add Mail Account&hellip;</b>.</p>\n"
+#~ msgid ""
+#~ "   <p>To open this assistant again in the future from the main window of\n"
+#~ "   <i>Thunderbird</i>, choose\n"
+#~ "   <b>[[!img lib/open-menu.png link=\"no\" class=\"symbolic\" alt=\"Menu\"]]&nbsp;▸ Account Settings</b>\n"
+#~ "   and then, from the <b>Account Settings</b>\n"
+#~ "   dialog, choose <b>Account Actions</b>&nbsp;▸\n"
+#~ "   <b>Add Mail Account</b>.</p>\n"
+#~ msgstr ""
+#~ "   <p>Um diesen Assistenten in Zukunft vom Hauptfenster von\n"
+#~ "   <i>Thunderbird</i> erneut zu starten, wählen Sie\n"
+#~ "   <b>[[!img lib/open-menu.png alt=\"Menü\" class=symbolic link=no]]&nbsp;▸ Kontoeinstellungen</b>\n"
+#~ "   und dann im Dialog <b>Kontoeinstellungen</b>\n"
+#~ "   wählen Sie <b>Kontoaktionen&nbsp;▸ Mail-Konto hinzufügen&hellip;</b>.</p>\n"
+
+#, no-wrap
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Since Tails 4.13 (November 2020), <em>Thunderbird</em> 78 replaces the\n"
+#~ "<em>Enigmail</em> extension with built-in support for OpenPGP encryption. If\n"
+#~ "you used <em>Enigmail</em> before Tails 4.13, follow our [[migration\n"
+#~ "instructions|openpgp_migration]].</p>\n"
+#~ msgstr ""
+#~ "<p>Seit Tails 4.13 (November 2020) ersetzt <em>Thunderbird</em> 78 die  \n"
+#~ "<em>Enigmail</em>-Erweiterung durch eine integrierte Unterstützung für OpenPGP-Verschlüsselung. Wenn  \n"
+#~ "Sie <em>Enigmail</em> vor Tails 4.13 verwendet haben, folgen Sie unseren [[Migrationsanweisungen|openpgp_migration]].</p>\n"
+
+#, no-wrap
+#~ msgid "   <h2>Configuring a Gmail account</h2>\n"
+#~ msgstr "   <h2>Konfigurieren Sie einen Gmail-Account</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <p>To configure your Gmail account to allow access from\n"
+#~ "   *Thunderbird*, you need to:</p>\n"
+#~ msgstr ""
+#~ "   <p>Um Ihr Gmail-Konto so zu konfigurieren, dass der Zugriff von\n"
+#~ "   *Thunderbird* erlaubt ist, müssen Sie:</p>\n"
+
+#~ msgid "In the left pane, choose **GnuPG keys**."
+#~ msgstr "Im linken Panel **GnuPG Schlüssel** auswählen."
+
+#~ msgid "Save your private key in your *Home* directory."
+#~ msgstr "Den eigenen privaten Schlüssel im *Persönlichen Ordner* speichern."
+
+#~ msgid ""
+#~ "In the **Your Acceptance** tab of the **Key Properties** dialog, select "
+#~ "the option that applies to how much you verified the public key."
+#~ msgstr ""
+#~ "Im Reiter **Ihre Akzeptanz** des **Schlüsseleigenschaften** Dialogs die "
+#~ "Option auswählen, die angibt, wie sehr du den öffentlichen Schlüssel "
+#~ "verifiziert hast."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "These enhancements are inherited\n"
+#~ "from the former\n"
+#~ "*[TorBirdy](https://trac.torproject.org/projects/tor/wiki/torbirdy)*\n"
+#~ "extension.\n"
+#~ "To learn more about the security properties provided by this configuration,\n"
+#~ "you can read the [*TorBirdy* design document](https://trac.torproject.org/projects/tor/raw-attachment/wiki/doc/TorifyHOWTO/EMail/Thunderbird/Thunderbird%2BTor.pdf).\n"
+#~ msgstr ""
+#~ "Um mehr über die Sicherheitseigenschaften von *TorBirdy* zu erfahren,\n"
+#~ "können Sie das entsprechende [Designdokument](https://trac.torproject.org/projects/tor/attachment/wiki/doc/TorifyHOWTO/EMail/Thunderbird/Thunderbird%2BTor.pdf) lesen.\n"
+
+#, fuzzy
+#~| msgid "Configure an email account\n"
+#~ msgid "Configure an email account"
+#~ msgstr "Konfigurieren Sie einen E-Mail Account\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/anonymous_internet/thunderbird/"
+#~ "account_creation.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/anonymous_internet/thunderbird/"
+#~ "account_creation.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy
+#~| msgid "OpenPGP encryption with Enigmail\n"
+#~ msgid "OpenPGP encryption with Enigmail"
+#~ msgstr "OpenPGP Verschlüsselung mit Enigmail\n"
+
+#~ msgid ""
+#~ "*Thunderbird* in Tails includes the\n"
+#~ "*[Enigmail](https://www.enigmail.net/)*\n"
+#~ "extension to encrypt and authenticate emails using OpenPGP.\n"
+#~ msgstr ""
+#~ "*Thunderbird* in Tails enthält die\n"
+#~ "*[Enigmail](https://www.enigmail.net/)*-Erweiterung,\n"
+#~ "um E-Mails mit OpenPGP zu verschlüsseln und authentifizieren.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "To configure *Enigmail* for your email account, you can start the\n"
+#~ "*Enigmail Setup Wizard* by choosing\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  <span class=\"guimenu\">[[!img lib/open-menu.png alt=\"Menu\" "
+#~ "class=symbolic link=no]]</span>&nbsp;▸\n"
+#~ "  **Enigmail**&nbsp;▸\n"
+#~ "  **Setup Wizard**</span>.\n"
+#~ msgstr ""
+#~ "Um *Enigmail* für Ihren E-Mail Account einzurichten, können Sie den\n"
+#~ "*Enigmail-Assistenten* starten, in dem Sie\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  <span class=\"guimenu\">[[!img menu.png alt=\"Menu\" class=symbolic "
+#~ "link=no]]</span>&nbsp;▸\n"
+#~ "  **Enigmail**&nbsp;▸\n"
+#~ "  **Enigmail-Assistent**</span> wählen.\n"
+
+#~ msgid ""
+#~ "You can also create an OpenPGP key associated with your email address as\n"
+#~ "part of the *Enigmail Setup Wizard*.\n"
+#~ msgstr ""
+#~ "Sie können mit dem <span class=\"application\">Enigmail-Assistenten</"
+#~ "span> auch \n"
+#~ "einen zu Ihrer E-Mail-Adresse zugehörigen OpenPGP Schlüssel erstellen.\n"
+
+#~ msgid ""
+#~ "If you are new to OpenPGP, you can read the following guides on getting\n"
+#~ "started with encrypting emails using\n"
+#~ "*Thunderbird* and\n"
+#~ "*Enigmail*:\n"
+#~ msgstr ""
+#~ "Wenn OpenPGP neu für Sie ist, können Sie die folgenden Anleitungen\n"
+#~ "lesen, um mit dem Verschlüsseln von E-Mails mit\n"
+#~ "*Thunderbird* und\n"
+#~ "*Enigmail* zu beginnen:\n"
+
+#~ msgid ""
+#~ "[Security-in-a-Box: Thunderbird & OpenPGP - secure email](https://"
+#~ "securityinabox.org/en/guide/thunderbird/linux/)"
+#~ msgstr ""
+#~ "[Security-in-a-Box: Thunderbird & OpenPGP - secure email (englisch)]"
+#~ "(https://securityinabox.org/en/guide/thunderbird/linux)"
+
+#~ msgid ""
+#~ "[Enigmail: Enigmail Quick Start Guide](https://www.enigmail.net/index.php/"
+#~ "en/user-manual/quick-start)"
+#~ msgstr ""
+#~ "[Enigmail: Enigmail Quick Start Guide (englisch)](https://"
+#~ "www.enigmail.net/index.php/en/user-manual/quick-start)"
+
+#~ msgid "<a id=\"torbirdy\"></a>\n"
+#~ msgstr "<a id=\"torbirdy\"></a>\n"
+
+#, fuzzy
+#~| msgid "Enhanced privacy with TorBirdy\n"
+#~ msgid "Enhanced privacy"
+#~ msgstr "Verbesserte Privatsphäre mit TorBirdy\n"
+
+#, fuzzy
+#~| msgid "<a id=\"torbirdy\"></a>\n"
+#~ msgid "<a id=\"language\"></a>\n"
+#~ msgstr "<a id=\"torbirdy\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>You can activate the [[<strong>Thunderbird</strong> persistence\n"
+#~ "feature|doc/first_steps/persistence/configure#thunderbird]] to store "
+#~ "your\n"
+#~ "emails, feeds, and settings across separate working sessions.</p>\n"
+#~ msgstr ""
+#~ "<p>Sie können die [[Funktion für den beständigen Speicherbereich für "
+#~ "<strong>Thunderbird</strong>\n"
+#~ "|doc/first_steps/persistence/configure#thunderbird]] aktivieren, um Ihre\n"
+#~ "E-Mails und Einstellungen über mehrere Arbeitssitzungen hinweg zu "
+#~ "speichern.</p>\n"
+
+#~ msgid "OpenPGP encryption with Enigmail\n"
+#~ msgstr "OpenPGP Verschlüsselung mit Enigmail\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>For more security,\n"
+#~ "*TorBirdy* disables some features of\n"
+#~ "*Thunderbird*:\n"
+#~ msgstr ""
+#~ "Zum Lesen und Schreiben von E-Mails enthält Tails\n"
+#~ "*Thunderbird*.\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/anonymous_internet/thunderbird/name.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/anonymous_internet/thunderbird/name.inline.de\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/anonymous_internet/thunderbird/replacement.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/anonymous_internet/thunderbird/"
+#~ "replacement.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "   [[!img thunderbird/assistant.png link=\"no\"]]\n"
+#~ msgstr "   [[!img thunderbird/assistant.png link=\"no\"]]\n"
+
+#~ msgid "   <a id=\"protocol\"></a>\n"
+#~ msgstr "   <a id=\"protocol\"></a>\n"
+
+#~ msgid "Specify which protocol to use to connect to your email provider."
+#~ msgstr ""
+#~ "Geben Sie an, welches Protokoll Sie für die Verbindung zu Ihrem Anbieter "
+#~ "benutzen möchten."
+
+#~ msgid ""
+#~ "   <div class=\"bug\">\n"
+#~ "   <p>After this first screen, the <a href=\"https://support.mozilla.org/"
+#~ "en-US/kb/automatic-account-configuration\">automatic\n"
+#~ "   account configuration</a> of <span class=\"application\">Thunderbird</"
+#~ "span>\n"
+#~ "   is currently disabled in Tails for security reasons. You should "
+#~ "consult\n"
+#~ "   the documentation of your email provider to finish configuring your\n"
+#~ "   email account manually.</p>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug\">\n"
+#~ "   <p>Nach diesem ersten Bildschirm ist die <a href=\"https://"
+#~ "support.mozilla.org/en-US/kb/automatic-account-"
+#~ "configuration\">automatische\n"
+#~ "   Konten-Einrichtung</a> von <span class=\"application\">Thunderbird</"
+#~ "span>\n"
+#~ "   momentan aus Sicherheitsgründen in Tails deaktiviert. Sie sollten sich "
+#~ "auf die\n"
+#~ "   Dokumentation Ihres E-Mail Anbieters beziehen, um die Einrichtung "
+#~ "Ihres\n"
+#~ "   E-Mail-Kontos händisch zu beenden.</p>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "   <p>We will enable again the automatic account configuration in Tails\n"
+#~| "   2.0.</p>\n"
+#~| "   </div>\n"
+#~ msgid ""
+#~ "   <p>We will enable again the automatic account configuration in Tails\n"
+#~ "   in the future. See [[!tails_ticket 6154]].</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <p>Wir werden die automatische Konfiguration von Konten in Tails\n"
+#~ "   2.0 wieder aktivieren.</p>\n"
+#~ "   </div>\n"

@@ -1,0 +1,24 @@
+[Unit]
+Description=Guide the user when GDM fails to start
+# GDM normally runs "plymouth --quit" when it fails to start GNOME Shell
+# (see on_display_status_changed that calls plymouth_quit_without_transition).
+# But when this happens we kill -9 GDM in our gdm-wayland-session wrapper, so it
+# might not have time to quit plymouth yet. Therefore we ensure plymouth
+# has quit before we start: we run after plymouth-quit.service (which is started
+# by gdm.service's default OnFailure=), we have plymouth-quit-wait.service start,
+# and we wait for it to complete.
+After=plymouth-quit.service
+Requires=plymouth-quit-wait.service
+After=plymouth-quit-wait.service
+
+# for instructions on how to test this unit, see config/chroot_local-includes/usr/libexec/gdm-wayland-session.tails
+
+[Service]
+Type=oneshot
+# We use VT5 that is clean of boot messages and does not get a getty started
+# when we switch there, thanks to our custom NAutoVTs=4 logind.conf setting
+ExecStart=/sbin/plymouthd --mode=shutdown --tty=tty5
+ExecStart=/bin/chvt 5
+ExecStart=/bin/plymouth show-splash
+ExecStart=/usr/local/lib/tails-gdm-error-message
+ExecStart=/bin/plymouth quit --retain-splash

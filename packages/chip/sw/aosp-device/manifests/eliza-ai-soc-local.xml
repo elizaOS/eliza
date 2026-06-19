@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <!--
+    Local-manifest seed for AOSP repo workspaces that mirror this repository.
+    Replace the remote fetch URL with the parent directory or Git remote for
+    this repository before use. For a plain local checkout, prefer
+    sw/aosp-device/import-aosp-device.sh.
+  -->
+  <remote name="eliza-local" fetch="file:///REPLACE_WITH_ELIZA_REPO_PARENT" />
+  <project name="eliza-e1-chip"
+           path="external/eliza-ai-soc"
+           remote="eliza-local"
+           revision="HEAD">
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/AndroidProducts.mk"
+              dest="device/eliza/eliza_ai_soc/AndroidProducts.mk" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/BoardConfig.mk"
+              dest="device/eliza/eliza_ai_soc/BoardConfig.mk" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/device.mk"
+              dest="device/eliza/eliza_ai_soc/device.mk" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/eliza_ai_soc.mk"
+              dest="device/eliza/eliza_ai_soc/eliza_ai_soc.mk" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/init.eliza.rc"
+              dest="device/eliza/eliza_ai_soc/init.eliza.rc" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/fstab.eliza"
+              dest="device/eliza/eliza_ai_soc/fstab.eliza" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/manifest.xml"
+              dest="device/eliza/eliza_ai_soc/manifest.xml" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/kernel/eliza_ai_soc.fragment"
+              dest="device/eliza/eliza_ai_soc/kernel/eliza_ai_soc.fragment" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/dts/eliza-e1-android.dts"
+              dest="device/eliza/eliza_ai_soc/dts/eliza-e1-android.dts" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/file_contexts"
+              dest="device/eliza/eliza_ai_soc/sepolicy/file_contexts" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/e1_npu.te"
+              dest="device/eliza/eliza_ai_soc/sepolicy/e1_npu.te" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/property_contexts"
+              dest="device/eliza/eliza_ai_soc/sepolicy/property_contexts" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/hwservice_contexts"
+              dest="device/eliza/eliza_ai_soc/sepolicy/hwservice_contexts" />
+    <linkfile src="packages/os/android/vendor/eliza/AndroidProducts.mk"
+              dest="vendor/eliza/AndroidProducts.mk" />
+    <linkfile src="packages/os/android/vendor/eliza/eliza_common.mk"
+              dest="vendor/eliza/eliza_common.mk" />
+    <linkfile src="packages/os/android/vendor/eliza/products/eliza_openagent_ai_soc_phone.mk"
+              dest="vendor/eliza/products/eliza_openagent_ai_soc_phone.mk" />
+  </project>
+</manifest>

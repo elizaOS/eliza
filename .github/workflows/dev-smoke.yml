@@ -1,0 +1,129 @@
+name: Dev Smoke
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/dev-smoke.yml"
+      - "package.json"
+      - "bun.lock"
+      - "packages/app/**"
+      - "packages/app-core/**"
+      - "packages/core/**"
+      - "packages/shared/**"
+      - "packages/ui/**"
+  workflow_dispatch:
+
+concurrency:
+  group: dev-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+  NODE_NO_WARNINGS: "1"
+  # WHY: the dev smoke needs a real model when one is available, but forcing the
+  # lane through one provider makes develop red when that provider hits daily
+  # quota. The shared live-provider selector chooses from these keys in order and
+  # skips the Playwright spec cleanly when no usable provider is configured.
+  # Cerebras remains available to local/manual runs through the harness, but the
+  # scheduled CI lane does not force it after repeated daily-quota exhaustion.
+  # OpenAI is also intentionally omitted here: the live app currently sends a
+  # memory-response schema that OpenAI rejects strictly, which tests that
+  # provider contract rather than the dev/onboarding plumbing this lane owns.
+  CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+
+jobs:
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-24.04
+    outputs:
+      dev_smoke: ${{ steps.filter.outputs.dev_smoke }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Determine affected dev smoke surface
+        id: filter
+        shell: bash
+        env:
+          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/ci-path-gate.mjs \
+            --config dev-smoke \
+            --event "${{ github.event_name }}" \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --labels "$PR_LABELS" \
+            --output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+  dev-smoke:
+    name: bun run dev onboarding chat
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.dev_smoke == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
+      PGLITE_WASM_MODE: node
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Free disk space for browser smoke
+        run: |
+          set -euxo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+          df -h /
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Generate shared i18n assets
+        run: bun run --cwd packages/shared build:i18n
+
+      # Without a prebuilt dist/, the renderer's vite dev server serves
+      # @elizaos/core from its source graph (400+ on-demand module transforms),
+      # which is too slow on CI for the chat composer to mount inside the test's
+      # 90s window. Prebuilding core (and its workspace deps) makes the dev server
+      # serve the compiled browser bundle instead. See resolveElizaCoreBundlePath
+      # in packages/app/vite.config.ts.
+      - name: Build @elizaos/core browser bundle
+        run: bunx turbo run build --filter=@elizaos/core
+
+      - name: Run bun dev onboarding chat smoke
+        run: bun run --cwd packages/app test:dev-smoke

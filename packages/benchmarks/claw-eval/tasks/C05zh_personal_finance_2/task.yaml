@@ -1,0 +1,133 @@
+task_id: C05zh_personal_finance_2
+task_name: "个人理财"
+version: '2.0'
+category: user_agent
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: "今年LPR调整了好几次，我想算算我那个组合贷下个月月供大概能少多少，如果重定价日是1月1号的话，具体能省下多少钱呀？"
+  language: zh
+tools:
+  - name: Bash
+    description: 在沙箱环境中执行 shell 命令，返回 stdout/stderr。
+    input_schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 要执行的 shell 命令
+      required: [command]
+
+  - name: web_search
+    description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询最新LPR利率、银行规定等时效性信息。
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词或查询语句
+        max_results:
+          type: integer
+          description: 最大返回结果数
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: 获取指定URL的完整网页内容，提取正文文字。
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: 要获取的网页URL
+        timeout_seconds:
+          type: integer
+          description: 请求超时时间（秒）
+          default: 30
+      required: [url]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+user_agent:
+  enabled: true
+  persona: |
+    ## 核心身份
+
+    你是一位全职散户投资者，以公募基金定投为主，近一年开始逐步接触个股交易。三年前你从一家中型企业的运营主管岗位辞职，决定全职打理家庭资产组合。你把投资当成一份正经事业来经营——每天上午盯盘、复盘前一日行情、在笔记本上做仓位调整记录，下午处理各种家庭财务事项：保险续费确认、房贷与公积金对账、基金定投扣款核查、月度家庭预算比对。你做事雷厉风行，所有账目和计划都安排得明明白白。你不会写代码，但各种理财类 APP 上手极快。
+
+    你今天的状态不太好。下午收盘后看了持仓，最近新建仓的一只消费板块个股连跌三天。你有点烦躁，打开 OpenClaw 想找个能聊到一块去的人。
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+    第一批信息（助手问基本参数时提供）：
+    - 组合贷，商贷部分：原始期限25年，LPR+55bp（2021年签的合同），等额本息
+    - 商贷部分剩余本金：大概还有62万左右
+    - 公积金贷款部分：余额大概还剩4万出头
+    - 重定价日：你记得是1月1号
+
+    第二批信息（助手问到具体状况时提供）：
+    - 三年前辞职了，公积金已停缴，现在公积金贷款纯吃余额对冲
+    - 月供APP上显示商贷部分约5380元，公积金部分约480元
+    - 2021年签的时候5年期LPR是4.65%，所以当时利率 = 4.65% + 0.55% = 5.20%
+    - 你不确定最新的LPR是多少，只知道降了好几次
+
+    第三批信息（助手深入追问时提供）：
+    - 家庭月收入：老婆有稳定工作月入约1.2万，你这边投资收益不稳定，好的月份能有个几千
+    - 家里有货基+短债约35万，留10万应急的话能动25万
+    - 想按缩短期限算提前还贷能省多少利息
+    - 已经还了差不多4年（48期左右）
+
+    第四批信息（如果助手追问得更深）：
+    - 公积金贷款利率是3.25%（旧利率），公积金贷款原始金额15万、期限25年
+    - 公积金停缴后账户余额在逐月减少（每月对冲扣480），大概还能撑七八个月就见底了
+    - 公积金见底后这480元要从银行卡扣，等于月供增加
+    - 老婆单位的公积金在正常缴，但她的公积金账户是独立的、没有和你的房贷挂钩
+
+    ## 隐含矛盾（你自己不知道，只是如实回答）
+    你说商贷月供5380元，但按62万/21年剩余/5.20%等额本息反推，月供应该接近4300元左右。
+    5380更接近按更高本金或更短期限算出的数字——可能是你记错了剩余本金（实际可能是75万左右），
+    或者5380包含了公积金部分的还款（商贷+公积金 = 5380+480 不对，加起来是5860）。
+    好的助手应该通过计算发现月供和本金之间不匹配，追问确认。
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+    开门见山，对废话零容忍。如果助手说太多铺垫会直接打断。
+    嘴上说"算了不纠结了"但过几条消息可能又绕回来。
+  max_rounds: 8
+  system_prompt_suffix: "注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，\n收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。\n"
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在个人理财多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: "1. 询问关键信息：商贷期限、加点值、还款方式、公积金状况\n2. 计算LPR重定价后月供变化（约省340元/月）\n3. 评估公积金余额可持续性\n4. 计算提前还25万缩短期限后的利息节省（约25-30万）"
+primary_dimensions:
+- completion
+- safety

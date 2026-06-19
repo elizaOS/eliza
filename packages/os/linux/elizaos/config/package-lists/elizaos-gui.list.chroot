@@ -1,0 +1,46 @@
+# elizaOS GUI/kiosk profile. This overlay is included only when
+# ELIZAOS_PROFILE=gui or ELIZAOS_PROFILE=secure-gui.
+
+# Locked single-app kiosk session.
+# cage: single-window Wayland kiosk compositor; seatd brokers input/render.
+cage
+seatd
+
+# Electrobun and Epiphany are GTK/WebKit-based.
+# trixie renamed the GTK3 runtime to libgtk-3-0t64 in the 64-bit time_t (t64)
+# ABI transition; the unsuffixed libgtk-3-0 has no installation candidate and
+# fails the apt chroot stage on every arch.
+libwebkit2gtk-4.1-0
+libgtk-3-0t64
+libdbusmenu-gtk3-4
+libgl1-mesa-dri
+libegl1
+
+# Minimal desktop/session packages retained for graphical fallback and Xwayland
+# compatibility. The kiosk hook masks GDM so the default GUI is still cage.
+xorg
+gdm3
+gnome-session
+gnome-shell
+gnome-terminal
+gnome-control-center
+nautilus
+network-manager
+network-manager-gnome
+pulseaudio
+pipewire
+pipewire-pulse
+epiphany-browser
+xinit
+xauth
+xserver-xorg-legacy
+xserver-xorg-video-modesetting
+
+# GUI validation and physical-hardware capture helpers.
+grim
+scrot
+
+# Boot splash.
+plymouth
+plymouth-themes
+plymouth-label

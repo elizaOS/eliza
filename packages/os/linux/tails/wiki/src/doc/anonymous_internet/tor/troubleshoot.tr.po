@@ -1,0 +1,211 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-03-26 08:18+0100\n"
+"PO-Revision-Date: 2024-11-02 13:28+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Troubleshooting connecting to Tor\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The sections below summarize the most common problems when [[connecting to "
+"Tor|tor]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc startlevel=2]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"clock\">The computer clock is set to an incorrect time zone</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "The clock of the computer needs to be correct to connect to Tor."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you choose to [[hide that you are connecting to Tor|tor#hiding]], you "
+"might have to fix the clock manually if Tails fails to connect to Tor."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Choose **Fix Clock** in the error screen of the *Tor Connection* assistant "
+"to set the clock and time zone of your computer."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you have problems fixing the clock, you can instead try to restart Tails "
+"and choose to [[connect to Tor automatically|tor#automatic]]. When "
+"connecting to Tor automatically, Tails fixes the clock automatically by "
+"connecting to the captive portal detection service of [Fedora](http://"
+"fedoraproject.org/static/hotspot.txt) before connecting to Tor."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"portal\">You need to sign in to the network</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline.tr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+msgid "To sign in to a network using a captive portal:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the error screen of the *Tor Connection* assistant, choose **Try Signing "
+"in to the Network**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Wait until the *Unsafe Browser* starts."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Follow the instructions on the home page of the *Unsafe Browser*."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"bridge\">You need to configure a Tor bridge</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/tor/bridge.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"stuck\">The progress bar gets stuck around 50%</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When using a custom Tor *obfs4* bridge, the progress bar of *Tor Connection* "
+"sometimes gets stuck halfway through and becomes extremely slow."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img stuck.png link=\"no\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To fix this, you can either:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Close and reopen *Tor Connection* to speed up the initial connection."
+msgstr ""
+
+#. type: Plain text
+msgid "Try with [[another bridge|troubleshoot#bridge]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"On 2025-09-04, the Anticensorship Team believed that there were still many "
+"bridges with an obfs4 version earlier than 0.0.12."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Their \"transport-info\" info in cached-extrainfo is too new to give us "
+"reliable information."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>This issue only affects outdated <i>obfs4</i> bridges and does not happen with\n"
+"<i>obfs4</i> bridges that run version 0.0.12 or later.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"broken\">The bridge is no longer operational</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "It is possible that the bridge that you entered is no longer working."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"incorrect\">You did not enter the bridge correctly</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "You can use *obfs4* and *WebTunnel* bridges in Tails right now."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "An *obfs4* bridge looks like:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "      obfs4 1.2.3.4:1234 B0E566C9031657EA7ED3FC9D248E8AC4F37635A4 cert=OYWq67L7MDApdJCctUAF7rX8LHvMxvIBPHOoAp0+YXzlQdsxhw6EapaMNwbbGICkpY8CPQ iat-mode=0\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "A *WebTunnel* bridge looks like:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "      webtunnel [1234:567:890a:bcde:f123:4567:890a:bcde]:443 5F55B60FF2AEA996B5109BC338FC5F2BCA696F52 url=https://example.com/webtunnel ver=0.0.1\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You need to enter the entire line, not just the IP address and port "
+"combination."
+msgstr ""

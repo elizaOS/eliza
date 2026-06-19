@@ -1,0 +1,69 @@
+{
+  "name": "@elizaos/capacitor-desktop",
+  "version": "2.0.3-beta.14",
+  "description": "Adds tray icons, global shortcuts, notifications, and other desktop-only controls.",
+  "keywords": [
+    "desktop",
+    "electrobun",
+    "shortcuts",
+    "notifications"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "bun": "./src/index.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "dist/",
+    "dist"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza"
+  },
+  "scripts": {
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-desktop -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run",
+    "prepublishOnly": "bun run build",
+    "watch": "tsc --watch",
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "rollup": "^4.60.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Limited support with graceful fallbacks (notifications via Web API, clipboard, basic window ops). System tray, global shortcuts, and auto-launch unavailable.",
+      "node": "Full support via Electrobun (system tray, global shortcuts, auto-launch, window management, power monitoring, native notifications)",
+      "ios": false,
+      "android": false
+    }
+  }
+}

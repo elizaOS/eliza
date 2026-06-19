@@ -1,0 +1,106 @@
+name: Hetzner Sleep-Wake Smoke
+
+# Real-infrastructure proof of the sleep -> back up -> de-provision the Hetzner
+# box -> wake -> re-provision from backup -> restore lifecycle. Uses real
+# Hetzner boxes via HCLOUD_TOKEN_CI + SSH; independent of the Eliza Cloud
+# staging API (which is currently degraded). The backup transport here is the
+# runner filesystem standing in for S3/R2 (CI has HCLOUD + SSH, not R2) — the
+# point is to authentically exercise the provision -> capture state ->
+# DESTROY THE BOX -> provision a NEW box -> restore -> verify cycle end to end.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/hetzner-provision-smoke]
+
+concurrency:
+  group: hetzner-e2e
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sleep-wake:
+    name: provision -> sleep(backup+destroy) -> wake(reprovision+restore)
+    runs-on: ubuntu-latest
+    environment: ci-hetzner-e2e
+    timeout-minutes: 30
+    env:
+      HCLOUD_TOKEN_CI: ${{ secrets.HCLOUD_TOKEN_CI }}
+      CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
+      CI_SSH_PUBLIC_KEY_ID: ${{ secrets.CI_SSH_PUBLIC_KEY_ID }}
+      HETZNER_E2E_STATE_FILE: /tmp/hetzner-e2e-state.json
+      HETZNER_E2E_SERVER_TYPE: cpx22
+      HETZNER_E2E_LOCATION: nbg1
+      SSH_OPTS: -i /tmp/ci_ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o BatchMode=yes
+    steps:
+      - name: Check secrets
+        run: |
+          for s in HCLOUD_TOKEN_CI CI_SSH_PRIVATE_KEY CI_SSH_PUBLIC_KEY_ID; do
+            [ -z "${!s}" ] && { echo "::error::missing $s"; exit 1; }
+          done; echo ok
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+      - name: Install deps
+        run: bun install --no-save --ignore-scripts
+
+      - name: Write SSH key
+        run: |
+          printf '%s\n' "$CI_SSH_PRIVATE_KEY" > /tmp/ci_ssh_key
+          chmod 600 /tmp/ci_ssh_key
+
+      # ── Provision box A + boot ──────────────────────────────────────────
+      - name: Provision box A
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts
+      - name: Wait A ready
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
+
+      # ── Write agent state on A, then BACK IT UP off-box ─────────────────
+      - name: Write + back up agent state from A
+        run: |
+          IP_A=$(jq -r .ip "$HETZNER_E2E_STATE_FILE"); ID_A=$(jq -r .id "$HETZNER_E2E_STATE_FILE")
+          echo "box A: id=$ID_A ip=$IP_A"
+          echo "$ID_A" > /tmp/box-a-id
+          # Simulate agent state (mirrors AgentBackupStateData shape).
+          STATE='{"memories":[{"role":"user","text":"remember: orbital-mango-4417","timestamp":1},{"role":"assistant","text":"noted","timestamp":2}],"config":{"name":"sleepwake-probe"},"workspaceFiles":{"note.md":"survive the sleep"}}'
+          ssh $SSH_OPTS root@"$IP_A" "mkdir -p /root/agent && cat > /root/agent/state.json" <<< "$STATE"
+          # "Snapshot to S3" — here the runner FS stands in for R2.
+          scp $SSH_OPTS root@"$IP_A":/root/agent/state.json /tmp/backup-A.json
+          sha256sum /tmp/backup-A.json | awk '{print $1}' > /tmp/backup-A.sha
+          echo "backup sha: $(cat /tmp/backup-A.sha)"
+          test -s /tmp/backup-A.json
+
+      # ── SLEEP: de-provision (destroy) box A ─────────────────────────────
+      - name: Sleep — de-provision (destroy) box A
+        run: |
+          bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-teardown.ts
+          ID_A=$(cat /tmp/box-a-id)
+          code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $HCLOUD_TOKEN_CI" "https://api.hetzner.cloud/v1/servers/$ID_A")
+          echo "GET server $ID_A after teardown -> $code (expect 404)"
+          [ "$code" = "404" ] || { echo "::error::box A not destroyed"; exit 1; }
+
+      # ── WAKE: re-provision a NEW box B + restore from backup ────────────
+      - name: Wake — re-provision box B
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts
+      - name: Wait B ready
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
+      - name: Restore backup onto B + verify state survived
+        run: |
+          IP_B=$(jq -r .ip "$HETZNER_E2E_STATE_FILE"); ID_B=$(jq -r .id "$HETZNER_E2E_STATE_FILE")
+          ID_A=$(cat /tmp/box-a-id)
+          echo "box B: id=$ID_B ip=$IP_B (was A id=$ID_A)"
+          [ "$ID_B" != "$ID_A" ] || { echo "::error::wake did not create a NEW box"; exit 1; }
+          scp $SSH_OPTS /tmp/backup-A.json root@"$IP_B":/root/agent-state-restored.json
+          REMOTE_SHA=$(ssh $SSH_OPTS root@"$IP_B" "sha256sum /root/agent-state-restored.json | awk '{print \$1}'")
+          echo "restored sha on B: $REMOTE_SHA ; backup sha: $(cat /tmp/backup-A.sha)"
+          [ "$REMOTE_SHA" = "$(cat /tmp/backup-A.sha)" ] || { echo "::error::restored state mismatch"; exit 1; }
+          ssh $SSH_OPTS root@"$IP_B" "grep -q orbital-mango-4417 /root/agent-state-restored.json" \
+            && echo "PASS: agent state survived sleep(destroy A) -> wake(new box B) -> restore"
+
+      - name: Teardown box B (always)
+        if: always()
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-teardown.ts

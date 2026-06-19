@@ -1,0 +1,273 @@
+schema: eliza.benchmarks_die_shot_calibration.v1
+status: published_die_shot_calibration_used_as_envelope_input
+scope:
+  - Maps projected per-block area (open-PDK / ASAP7 / N2-projection) against
+    independent third-party die-shot analyses of 2025-2026 flagships.
+  - Sanity-checks the 100-130 mm² envelope and per-block sub-budgets in
+    docs/evidence/process/die-area-budget.yaml.
+
+claim_boundary:
+  allowed:
+    - Use as die-area envelope cross-check.
+    - Use as input to scripts/check_die_area_budget.py.
+  blocked:
+    - Use as measured silicon evidence for our own design.
+    - Use to claim flagship parity without commercial-foundry signoff.
+
+reference_die_shots:
+  - chip: Apple A19 Pro
+    process: TSMC N3P
+    die_area_mm2: 98.68
+    sources:
+      - id: techpowerup_a19_pro
+        url: https://www.techpowerup.com/344025/apple-a19-pro-a19-die-size-analysis-indicates-9-10-smaller-than-a18-models
+      - id: cardyak_die_shot
+        url: https://x.com/Cardyak  # die-shot annotation thread
+    annotated_blocks:
+      p_core_n3p_mm2: 2.97
+      p_core_with_l2_n3p_mm2: 5.49
+      e_core_n3p_mm2: 0.78
+      e_core_with_l2_n3p_mm2: 2.22
+      slc_n3p_mm2: 11.03
+
+  - chip: Apple A19
+    process: TSMC N3P
+    die_area_mm2: 81.9
+    sources:
+      - id: techpowerup_a19
+        url: https://www.techpowerup.com/344025/apple-a19-pro-a19-die-size-analysis-indicates-9-10-smaller-than-a18-models
+
+  - chip: Snapdragon 8 Elite Gen 5
+    process: TSMC N3P
+    die_area_mm2: 126.2
+    sources:
+      - id: notebookcheck_s8e5
+        url: https://www.notebookcheck.net/Snapdragon-8-Elite-Gen-5-die-shot-highlights-minor-upgrades-and-GPU-improvements.1124373.0.html
+
+  - chip: Dimensity 9500
+    process: TSMC N3P
+    die_area_mm2: unpublished_specific_value
+    sources:
+      - id: anandtech_archive
+        url: https://www.anandtech.com/
+      - id: chipsandcheese_die_shots
+        url: https://chipsandcheese.com/
+
+  - chip: Exynos 2600
+    process: Samsung SF2
+    die_area_mm2: unpublished_specific_value
+    sources:
+      - id: samsung_foundry_sf2
+        url: https://www.tomshardware.com/tech-industry/samsungs-new-roadmap-unveils-its-2nm-process-nodes-and-outlines-backside-power-delivery-plans
+
+  - chip: Tensor G5
+    process: TSMC N3
+    die_area_mm2: unpublished_specific_value
+    sources:
+      - id: anandtech_archive
+        url: https://www.anandtech.com/
+
+density_scaling_factors:
+  n3p_to_n2_logic_density_ratio: 1.45
+  n2_to_a14_logic_density_ratio: 1.20
+  n3_sram_macro_mb_per_mm2: 28.5
+  n2_sram_macro_mb_per_mm2: 38.1
+  basis:
+    - TSMC Tech Symposium 2025
+    - WikiChip N3 / N3E variant breakdown
+    - TSMC Research 2 nm 38.1 Mb/mm² SRAM macro paper
+
+derived_block_envelope_at_n2:
+  apple_p_core_class_at_n2_mm2:
+    low: 2.0
+    high: 2.5
+    basis: A19_Pro_P_core_2_97_mm2_at_N3P_divided_by_density_ratio_1_45
+  apple_p_core_with_l2_at_n2_mm2:
+    low: 3.5
+    high: 4.5
+    basis: A19_Pro_P_core_with_L2_5_49_mm2_at_N3P_scaled
+  rv64gc_ooo_8wide_with_l2_at_n2_mm2:
+    low: 2.5
+    high: 3.5
+    basis: Kunminghu_class_RV64GC_OoO_8wide
+  apple_slc_class_at_n2_mm2:
+    low: 8.0
+    high: 12.0
+    basis: A19_Pro_SLC_11_03_mm2_at_N3P_uses_macro_density_not_bitcell_shrink
+
+# Per-block budgets per the integrated 2028-SOTA report Section 2.4.
+# These are the explicit blocks the floorplan must place inside the 100-130 mm²
+# envelope. Cross-checked against scripts/check_die_area_budget.py and
+# docs/evidence/process/die-area-budget.yaml.
+per_block_budget_section_2_4:
+  big_core_with_l2_mm2:
+    low: 2.0
+    high: 3.5
+    basis: A19_Pro_P_core_with_L2_at_N3P_scaled_to_N2_density_1_45
+    instances_in_e1: 2
+  premium_mid_core_with_l2_mm2:
+    low: 0.7
+    high: 1.0
+    point_estimate: 0.85
+    basis: C1_Premium_class_scaled_to_N2_density
+    instances_in_e1: 4
+  pro_little_core_with_l2_mm2:
+    low: 0.20
+    high: 0.30
+    point_estimate: 0.25
+    basis: C1_Pro_class_scaled_to_N2_density
+    instances_in_e1: 2
+  npu_compute_plus_local_sram_mm2:
+    low: 4.0
+    high: 6.0
+    basis: scaled_C1_NPU_class_with_8_MiB_local_SRAM_macro_density_38_1_Mb_per_mm2
+    instances_in_e1: 1
+  slc_16_to_32_MB_mm2:
+    low: 8.0
+    high: 12.0
+    basis: macro_density_38_1_Mb_per_mm2_HD_at_N2
+    instances_in_e1: 1
+  lpddr_phy_4x16bit_mm2:
+    low: 6.0
+    high: 10.0
+    basis: PHY_does_not_scale_with_logic_node
+    instances_in_e1: 1
+  gpu_mm2:
+    low: 6.0
+    high: 10.0
+    basis: Imagination_or_RISCV_SIMT_scaled_to_N2
+    instances_in_e1: 1
+  modem_isp_codecs_aon_mm2:
+    low: 6.0
+    high: 12.0
+    basis: aggregated_from_2025_flagship_die_shots
+    instances_in_e1: 1
+
+# Top-level sum across instance counts.
+e1_floorplan_sum_at_n2_mm2:
+  low: 32.6
+  high: 53.5
+  composition:
+    - 2x_big_core_with_l2: "2 × 2.0..3.5 mm² = 4.0..7.0 mm²"
+    - 4x_premium_mid: "4 × 0.85 mm² = 3.4 mm²"
+    - 2x_pro_little: "2 × 0.25 mm² = 0.5 mm²"
+    - npu_block: "1 × 4..6 mm²"
+    - slc: "1 × 8..12 mm²"
+    - lpddr_phy: "1 × 6..10 mm²"
+    - gpu: "1 × 6..10 mm²"
+    - modem_isp_codecs_aon: "1 × 6..12 mm²"
+  headroom_to_envelope_low_mm2: 46.5   # 100 - 53.5 worst-case sum
+  headroom_to_envelope_high_mm2: 97.4  # 130 - 32.6 best-case sum
+  basis: section_2_4_of_2028_sota_integrated_report
+
+# Bring-up calibration cross-check: total integer-pad budget against published
+# flagship die areas. The e1 budget must remain demonstrably below the cohort
+# floor (Apple A19 at 81.9 mm²) before flagship-density claims are made.
+calibration_cross_check:
+  cohort_minimum_mm2: 81.9         # Apple A19 N3P
+  cohort_envelope_target_mm2: 110  # midpoint of 100-130 mm² N2 envelope
+  e1_floorplan_high_mm2: 53.5      # see e1_floorplan_sum_at_n2_mm2.high
+  headroom_above_e1_floorplan_high_mm2: 56.5  # 110 - 53.5
+  interpretation: >
+    The 53.5 mm² high-side floorplan sum from Section 2.4 leaves ~56 mm² of
+    headroom against the midpoint envelope (110 mm²) for routing channels,
+    decap, antenna fill, power switches, AON islands, and PHY analog content
+    not enumerated as a top-level block. This is the area engineer-budget,
+    not signoff.
+
+usage:
+  consumer: scripts/check_die_area_budget.py
+  evidence_file: docs/evidence/process/die-area-budget.yaml
+
+forbidden_uses:
+  - cite_a19_pro_die_shot_as_our_design_area
+  - cite_competitor_die_shots_as_signoff_evidence
+
+calibration_notes:
+  - "P-core 2.97 mm² at N3P -> 2.04 mm² at N2 (313/215 ≈ 1.45×). RV64GC OoO with vector should land 2.5-3.5 mm² depending on issue width and L2 — TAGE-SC-L + ITTAGE BPU, 8-wide decode, larger ROB/PRF widen vs A19 P-core."
+  - "SLC at N2 uses macro-level density (38.1 Mb/mm²), not bitcell shrink (0.021 µm² ≈ N5). Cache/NPU-SRAM area at N2/A14 must use macro density or will under-budget area by 10-20%."
+  - "LPDDR5X / LPDDR6 PHY at 4×16-bit ≈ 6-10 mm² and does not scale with logic node; PHY is layout-locked by analog content."
+
+# ---------------------------------------------------------------------------
+# Per-block ASAP7 -> N2P/A14/14A/SF2P p50 area (Monte Carlo, projection_only)
+# ---------------------------------------------------------------------------
+# These are the measured-not-modeled p50 std-cell-area bands emitted by
+# scripts/project_ppa_to_n2p.py for each captured ASAP7 leaf shape. They are
+# logic-only (no SRAM macro) and exclude PHY/AON/IP block budget. Used to
+# cross-check that the synth-only leaf shapes stay inside the per-block
+# budgets in `per_block_budget_section_2_4` above.
+#
+# Source ASAP7 shape JSONs live under
+#   docs/evidence/process/asap7/<block>_shape.json
+# Source projection JSONs live under
+#   docs/evidence/process/asap7/<block>_projection_n2p.json
+# Aggregated projection report at
+#   docs/evidence/process/ppa-projection.json
+#
+# evidence_class: projection_only_never_signoff
+# Always cite alongside the source ASAP7 shape; never as standalone evidence.
+per_block_asap7_projection_p50_mm2:
+  evidence_class: projection_only_never_signoff
+  monte_carlo_samples: 4096
+  monte_carlo_seed: 20260519
+  basis: >
+    docs/evidence/process/ppa-projection.json aggregated report;
+    per-block bands co-located at docs/evidence/process/asap7/<block>_projection_n2p.json
+  blocks:
+    tage_table:
+      asap7_baseline_mm2: 0.003125
+      n2p_p50_mm2: 0.002161
+      a14_p50_mm2: 0.001809
+      intel_14a_p50_mm2: 0.002183
+      samsung_sf2p_p50_mm2: 0.002424
+      production_geometry_note: >
+        Leaf is 128 entries; production is 4096 entries. Storage cost scales
+        linearly with entry count; combinational cost is entry-count invariant.
+    npu_tile_rf_leaf:
+      asap7_baseline_mm2: 0.017889
+      n2p_p50_mm2: 0.012425
+      a14_p50_mm2: 0.010350
+      intel_14a_p50_mm2: 0.012471
+      samsung_sf2p_p50_mm2: 0.013929
+      production_geometry_note: >
+        Leaf is the behavioral 512x32-bit + write-mask weight-buffer SRAM
+        (16384 flop bits + 64 output flops). Production replaces the
+        behavioral path with a hard SRAM macro under E1_HAVE_HARD_SRAM;
+        macro area at vendor density (38.1 Mb/mm^2 HD at N2) is ~0.0005
+        mm^2 for 16 Kib, an order of magnitude denser than the flat-flop
+        shape captured here.
+    big_core_shell:
+      asap7_baseline_mm2: 0.006565
+      n2p_p50_mm2: 0.004536
+      a14_p50_mm2: 0.003798
+      intel_14a_p50_mm2: 0.004566
+      samsung_sf2p_p50_mm2: 0.005111
+      production_geometry_note: >
+        Leaf is the e1_cpu_subsystem_stub RV64I subset (~32x64-bit RF +
+        decoder + ALU + AXI-Lite master FSM). A real 8-wide OoO big core
+        (Kunminghu class) is 100-500x larger; this shape is the
+        smallest non-trivial CPU leaf available without external/cva6 or
+        the upstream big-core submodule.
+    npu_tile:
+      asap7_baseline_mm2: 0.010381
+      n2p_p50_mm2: 0.007180
+      a14_p50_mm2: 0.006030
+      intel_14a_p50_mm2: 0.007221
+      samsung_sf2p_p50_mm2: 0.008089
+      production_geometry_note: >
+        Leaf is the full current e1_npu monolithic tile at production
+        geometry (16x32-bit scratch RF; 16 opcodes). Weight buffer SRAM
+        and tile-local L1 are excluded; add at vendor SRAM macro density.
+    slc_slice:
+      asap7_baseline_mm2: 0.033838
+      n2p_p50_mm2: 0.023391
+      a14_p50_mm2: 0.019583
+      intel_14a_p50_mm2: 0.023635
+      samsung_sf2p_p50_mm2: 0.026243
+      production_geometry_note: >
+        Leaf is a shrunk e1_slc geometry (2 KiB / 2-way / 2-bank) covering
+        the cache FSM + BDI compression + QoS arbitration logic. The flat-
+        flop storage cost dominates this leaf shape and scales linearly with
+        SIZE_BYTES x WAYS; production geometry (16 MiB / 16-way / 4-bank)
+        must be cited via vendor SRAM macro density, not by extrapolating
+        flat-flop area.

@@ -1,0 +1,52 @@
+# End-to-end Electric Sync integration test stack.
+# Start with: docker compose -f docker-compose.electric-test.yml up -d
+# Stop with:  docker compose -f docker-compose.electric-test.yml down -v
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: electric-test-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: electric_test
+    ports:
+      - "5433:5432"
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=5
+      - -c
+      - max_wal_senders=5
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d electric_test"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - electric_test_pgdata:/var/lib/postgresql/data
+
+  electric:
+    image: electricsql/electric:secure
+    container_name: electric-test-electric
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/electric_test
+      ELECTRIC_HOST: 0.0.0.0
+      ELECTRIC_PORT: "3000"
+      ELECTRIC_WRITE_MODE: direct_writes
+      ELECTRIC_INSECURE: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/v1/health || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  electric_test_pgdata:

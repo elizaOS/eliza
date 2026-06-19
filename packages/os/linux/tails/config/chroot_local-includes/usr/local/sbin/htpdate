@@ -1,0 +1,328 @@
+#!/usr/bin/perl
+#
+# htpdate time poller version 0.9.3
+# Copyright (C) 2005 Eddy Vervest
+# Copyright (C) 2010-2011 Tails developers <foundations@tails.net>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# http://www.gnu.org/copyleft/gpl.html
+
+use strict;
+use warnings;
+
+use version; our $VERSION = qv('0.9.3');
+
+use Carp;
+use Cwd;
+use Data::Dumper;
+use DateTime;
+use DateTime::Format::DateParse;
+use English qw( -no_match_vars );
+use File::Path qw(rmtree);
+use File::Spec::Functions;
+use File::Temp qw/tempdir/;
+use Getopt::Long::Descriptive;
+use IPC::Run;
+use IPC::System::Simple qw(capturex);
+use List::Util qw( shuffle );
+use open qw{:utf8 :std};
+use String::Errf qw{errf};
+use threads;
+use Try::Tiny;
+
+my $datecommand = '/bin/date';  # "date" command to set time
+my $dateparam   = '-s';         # "date" parameter to set time
+my $maxadjust   = 0;            # maximum time step in seconds (0 means no max.)
+my $minadjust   = 1;            # minimum time step in seconds
+my (
+    $debug, $useragent, $log, $quiet, $set_date,
+    $done_file, $res_file, $usage, $opt, $runas,
+    $allowed_per_pool_failure_ratio, $proxy, @pools,
+);
+
+sub done {
+    if (defined $done_file) {
+	$> = 0 if $runas;
+	open my $f, '>', $done_file or
+	    print STDERR "Couldn't write done file: $done_file\n";
+	close $f;
+	$> = getpwnam($runas) if $runas;
+    }
+}
+
+$SIG{__DIE__} = sub {
+    # Avoid the "done" file to be created by a caught exception.
+    # When a eval block is being run, e.g. for exception catching, $^S is true.
+    # It is false otherwise.
+    done unless $^S;
+    die(@_);
+};
+
+sub message {
+    my @msg = @_;
+
+    print "@msg\n" unless $quiet;
+
+    if ($log) {
+        open my $h, '>>', $log or die "Cannot open log file $log: $!";
+        print $h "@msg\n";
+        close $h;
+    }
+}
+
+sub debug {
+    message(@_) if $debug;
+}
+
+sub error {
+    debug(@_);
+    croak @_;
+}
+
+sub parseCommandLine () {
+    # specify valid switches
+    ($opt, $usage) = describe_options(
+        'htpdate %o',
+        [ 'debug|d', "debug", { default => 0 } ],
+        [ 'help', "print usage message and exit" ],
+        [ 'quiet|q', "quiet", { default => 0 } ],
+        [ 'user|u:s', "userid to run as" ],
+        [ 'dont_set_date|x', "do not set the time (only show)", { default => 0 } ],
+        [ 'user_agent|a:s', "http user agent to use", { default => "htpdate/$VERSION" } ],
+        [ 'log_file|l:s', "log to this file on top of STDOUT" ],
+        [ 'done_file|D:s', "create this file after quitting in any way" ],
+        [ 'success_file|T:s', "create this file after setting time successfully" ],
+        [ 'pool1=s@', "first pool of hostnames" ],
+        [ 'pool2=s@', "second pool of hostnames" ],
+        [ 'pool3=s@', "third pool of hostnames" ],
+        [ 'allowed_per_pool_failure_ratio:f', "ratio (0.0-1.0) of allowed per-pool failure", { default => 1.0 } ],
+        [ 'proxy|p:s', "what to pass to curl's --socks5-hostname (if unset, environment variables may affect curl's behavior -- see curl(1) for details)" ],
+    );
+
+    usage() if $opt->help;
+    usage() unless $opt->pool1 && $opt->pool2 && $opt->pool3;
+
+    $runas       = $opt->user if $opt->user;
+    $>           = getpwnam($runas) if $runas;
+    $useragent   = $opt->user_agent;
+    $debug       = $opt->debug;
+    $log         = $opt->log_file if $opt->log_file;
+    $quiet       = $opt->quiet;
+    $set_date    = ! $opt->dont_set_date;
+    $done_file   = $opt->done_file if $opt->done_file;
+    $res_file    = $opt->success_file if $opt->success_file;
+    $allowed_per_pool_failure_ratio = $opt->allowed_per_pool_failure_ratio;
+    $proxy       = $opt->proxy if $opt->proxy;
+    @pools = map {
+        [
+            map {
+                $_ = 'https://'.$_ unless $_ =~ /^http/i;
+            } split(/,/, join(',', @{$_}))
+        ]
+    } ($opt->pool1, $opt->pool2, $opt->pool3);
+}
+
+sub usage () {
+    print STDERR $usage->text;
+    exit;
+}
+
+sub newestDateHeader {
+    my ($dir) = @_;
+
+    my @files = grep { ! ( $_ =~ m|/?\.{1,2}$| ) } glob("$dir/.* $dir/*");
+    @files or error "No downloaded files can be found";
+
+    my $newestdt;
+
+    foreach my $file (@files) {
+        next if -l $file || -d _;
+        my $date;
+        open(my $file_h, '<', $file) or die "Can not read file $file: $!";
+        while (my $line = <$file_h>) {
+            chomp $line;
+            # empty line == we leave the headers to go into the content
+            last if $line eq '';
+            last if ($date) = ($line =~ m/^\s*[Dd]ate:\s+(.*)$/m);
+        }
+        close $file_h;
+        if (defined $date) {
+            # RFC 2616 (3.3.1) says Date headers MUST be represented in GMT
+            my $dt = DateTime::Format::DateParse->parse_datetime( $date, 'GMT' );
+            if (! defined $newestdt || DateTime->compare($dt, $newestdt) > 0) {
+                $newestdt = $dt;
+            }
+        }
+    }
+
+    return $newestdt;
+}
+
+=head2 random_first_with_allowed_failure_ratio
+
+Returns the result of the first successful application of
+$args->{code} on a random element of $args->{list}.
+Success is tested using the $args->{is_success} predicate,
+called on the value returned by $args->{code}.
+
+$args->{allowed_failure_ratio} caps the maximum failure ratio before
+giving up.
+
+$args->{code} is called with two arguments: the currently (randomly
+picked) considered element, and $args->{args}.
+
+Any exceptions thrown by $args->{code} is caught.
+
+=cut
+sub random_first_with_allowed_failure_ratio {
+    my $args = shift;
+
+    my %tried;
+    $tried{$_} = 0 for (@{$args->{list}});
+    my $failures = 0;
+    my $total = keys %tried;
+
+    while ( $failures / $total <= $args->{allowed_failure_ratio} ) {
+        my @randomized_left = shuffle grep { ! $tried{$_} } keys(%tried);
+        my $picked = $randomized_left[0];
+        $tried{$picked}++;
+        my $res;
+        try {
+            $res = $args->{code}->($picked, $args->{args})
+        };
+        return $res if $args->{is_success}->($res);
+        $failures++;
+    }
+
+    return;
+}
+
+sub getPoolDateDiff {
+    my $args = shift;
+
+    random_first_with_allowed_failure_ratio({
+        list => $args->{urls},
+        code => \&getUrlDateDiff,
+        is_success => sub { defined shift },
+        allowed_failure_ratio => $allowed_per_pool_failure_ratio,
+    });
+}
+
+sub getUrlDateDiff {
+    my $url = shift;
+    my $args = shift;
+
+    defined $url or error "getUrlDateDiff must be passed an URL";
+    debug("getUrlDateDiff: $url");
+
+    my $tmpdir = tempdir("XXXXXXXXXX", TMPDIR => 1);
+
+    my @curl_options = (
+        '-user-agent', $useragent,
+        '-reject-expired',
+        '-output', catfile($tmpdir, 'headers'),
+    );
+    # Resolve the host name "locally" rather than via the SOCKS proxy,
+    # in order to get a "curl: (6) Could not resolve host" error upon
+    # name resolution, instead of the unhelpful "curl: (7) Can't
+    # complete SOCKS5 connection".
+    push @curl_options, ('-proxy', "socks5://$proxy") if defined $proxy;
+
+    my @cmdline = ('/usr/local/lib/https-get-expired', @curl_options, $url);
+
+    my $before = DateTime->now->epoch();
+    my ($stdout, $stderr, $exit_code);
+    my $success = 1;
+    IPC::Run::run \@cmdline, '>', \$stdout, '2>', \$stderr or $success = 0;
+    $exit_code = $?;
+    $success or error errf(
+        "Failed to fetch content from $url:\n".
+        "exit code: %{exit_code}i\n\n".
+        "stdout:\n%{stdout}s\n\n".
+        "stderr:\n%{stderr}s",
+        { exit_code => $exit_code, stdout => $stdout, stderr => $stderr }
+    );
+    my $local = DateTime->now->epoch();
+    my $newestdt;
+    eval { $newestdt = newestDateHeader($tmpdir) };
+    if ($EVAL_ERROR =~ m/No downloaded files can be found/) {
+        rmtree($tmpdir);
+        error "No file could be downloaded from $url.";
+    }
+
+    rmtree($tmpdir);
+
+    defined $newestdt or error "Could not get any Date header from $url";
+    my $newest_epoch = $newestdt->epoch();
+
+    my $diff = $newest_epoch - $local;
+    my $took = $local - $before;
+
+    debug("$url (took ${took}s) => diff = $diff second(s)");
+
+    return $diff;
+}
+
+sub adjustDate {
+    my ($diff) = @_;
+
+    defined $diff or error "adjustDate was passed an undefined diff";
+
+    my $local = DateTime->now->epoch();
+    my $absdiff = abs($diff);
+
+    debug("Median diff: $diff second(s)");
+
+    if ( $maxadjust && $absdiff gt $maxadjust ) {
+        message("Not setting clock as diff ($diff seconds) is too large.");
+    }
+    elsif ( $absdiff lt $minadjust) {
+        message("Not setting clock as diff ($diff seconds) is too small.");
+    }
+    else {
+        my $newtime = DateTime->now->epoch + $diff;
+        message("Setting time to $newtime...");
+        if ($set_date) {
+            $> = 0 if $runas;
+            my $output;
+            try {
+                $output = capturex($datecommand, $dateparam, '@' . $newtime);
+            } catch {
+                error "An error occurred setting the time\n$output";
+            };
+            $> = getpwnam($runas) if $runas;
+        }
+    }
+    if (defined $res_file) {
+        $> = 0 if $runas;
+        open my $res_h, '>>', $res_file or die "Cannot open res file $res_file: $!";
+        print $res_h "$diff\n";
+        close $res_h;
+        $> = getpwnam($runas) if $runas;
+    }
+}
+
+sub median {
+    my @a = sort {$a <=> $b} @_;
+    return ($a[$#a/2] + $a[@a/2]) / 2;
+}
+
+parseCommandLine();
+message("Running htpdate.");
+my @diffs = grep {
+    defined $_
+} map {
+    my $diff = $_->join();
+    if (! defined $diff) {
+        error('Aborting as one pool could not be reached');
+    }
+    $diff;
+} map {
+    threads->create(\&getPoolDateDiff, { urls => $_ })
+} @pools
+    or error "No Date header could be received.";
+adjustDate(median(@diffs));
+done;

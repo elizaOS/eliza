@@ -1,0 +1,14 @@
+name = "docs-elizacloud-redirect"
+main = "src/worker.ts"
+compatibility_date = "2025-09-01"
+workers_dev = false
+
+# Owns the legacy Eliza Cloud docs hostname. Every request is 301'd to the
+# unified docs site at docs.elizaos.ai/cloud/<path>. Path and query are
+# preserved so deep links keep working.
+[env.production]
+name = "docs-elizacloud-redirect-prod"
+workers_dev = false
+routes = [
+  { pattern = "docs.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+]

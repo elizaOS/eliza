@@ -1,0 +1,174 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-21 10:19+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Graphics\"]]\n"
+msgstr "[[!meta title=\"Graphisme\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails includes several applications for image manipulation, graphic design, "
+"and page layout:"
+msgstr ""
+"Tails inclut de nombreuses applications pour la manipulation d'image, le "
+"graphisme, et la mise en page :"
+
+#. type: Bullet: '  - '
+msgid "[*GIMP*](https://www.gimp.org/), an image editor."
+msgstr "[*GIMP*](https://www.gimp.org/), un éditeur d'images."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    You can use *GIMP* to edit, enhance, and retouch photos and scans, create\n"
+"    drawings, and make your own images.\n"
+msgstr ""
+"    Vous pouvez utiliser *GIMP* pour modifier, améliorer et retoucher des photos ou des images scannées, créer\n"
+"    des dessins, et faire vos propres images.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    *GIMP* has [user manuals](https://docs.gimp.org/) in several\n"
+"    languages.\n"
+msgstr ""
+"    *GIMP* dispose de [manuels d'utilisation](https://docs.gimp.org/) "
+"traduits dans de nombreuses\n"
+"    langues.\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Inkscape*](https://inkscape.org/), a vector-based drawing application."
+msgstr ""
+"[*Inkscape*](https://inkscape.org/fr/), un logiciel de dessin vectoriel."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    You can use *Inkscape* to create a wide variety of graphics such as\n"
+"    illustrations, icons, logos, diagrams, maps, and web graphics.\n"
+msgstr ""
+"    Vous pouvez utiliser *Inkscape* pour créer une grande variété de graphismes comme des\n"
+"    illustrations, des icônes, des logos, des diagrammes, des cartes et du graphisme web.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    The *Inkscape* website has\n"
+"    [tutorials](https://inkscape.org/en/learn/tutorials/) in several languages.\n"
+msgstr ""
+"    Le site web d'*Inkscape* propose\n"
+"    des [tutoriels](https://inkscape.org/learn/tutorials/) traduits dans de nombreuses langues.\n"
+
+#. type: Plain text
+msgid ""
+"These applications are available in the **Apps&nbsp;▸ Graphics** submenu."
+msgstr ""
+"Ces applications sont disponibles dans le sous-menu **Applications&nbsp;▸ "
+"Graphisme**."
+
+#. type: Plain text
+msgid ""
+"You can also install using the [[Additional Software|persistent_storage/"
+"additional_software]] feature:"
+msgstr ""
+"Vous pouvez aussi installer des [[Logiciels supplémentaires|"
+"persistent_storage/additional_software]] :"
+
+#. type: Bullet: '- '
+msgid "[*Scribus*](https://www.scribus.net/), a page layout application."
+msgstr "[*Scribus*](https://www.scribus.net/), un logiciel de mise en page."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/persistence.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/metadata.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "**<span class=\"application\">[Scribus](https://www.scribus.net/)</"
+#~ "span>** is a page layout application. You can use it to design "
+#~ "newspapers, magazines, newsletters and posters to technical documentation."
+#~ msgstr ""
+#~ "**<span class=\"application\">[Scribus](https://www.scribus.net/)</"
+#~ "span>** est une application de mise en page. Vous pouvez l'utiliser pour "
+#~ "faire des journaux, des magazines, des lettres informations et des "
+#~ "posters de documentation technique."
+
+#~ msgid ""
+#~ "    The *Scribus* website provides\n"
+#~ "    [documentation](https://wiki.scribus.net/canvas/Help:TOC) in several\n"
+#~ "    languages.\n"
+#~ msgstr ""
+#~ "    Le site web de *Scribus* contient de la\n"
+#~ "    [documentation](https://wiki.scribus.net/canvas/Page_principale) dans "
+#~ "de nombreuses\n"
+#~ "    langues.\n"
+
+#~ msgid ""
+#~ "Tails includes [The GIMP](http://gimp.org) for The GNU Image Manipulation "
+#~ "Program for bitmap graphics. GIMP lets you draw, paint, edit images, and "
+#~ "much more."
+#~ msgstr ""
+#~ "Tails contient [The GIMP](http://gimp.org) (The GNU Image Manipulation "
+#~ "Program) pour les images bitmap. GIMP vous permet de dessiner, de "
+#~ "peindre, d'éditer des images, et bien plus encore."
+
+#~ msgid ""
+#~ "For vector-based drawing, Tails includes [inkscape](http://"
+#~ "www.inkscape.org)."
+#~ msgstr ""
+#~ "Concernant les dessins vectoriels, Tails contient [inkscape](http://"
+#~ "www.inkscape.org)."
+
+#~ msgid "Both are accessible from *Applications*&nbsp;▸ *Graphics* menu."
+#~ msgstr ""
+#~ "Les deux sont accessibles via *Applications*&nbsp;▸ menu *Graphisme*."
+
+#~ msgid ""
+#~ "[Scribus](http://www.scribus.net) is an Open Source Desktop Page Layout "
+#~ "accessible from the *Applications*&nbsp;▸ *Graphics*. It can be used for "
+#~ "many tasks; from booklets design to newspapers, magazines, newsletters "
+#~ "and posters to technical documentation. It has sophisticated page layout "
+#~ "features like precision placing and rotating of text and/or images on a "
+#~ "page, manual kerning of type, bezier curves polygons, precision placement "
+#~ "of objects, layering with RGB and CMYK custom colors. The Scribus "
+#~ "document file format is XML-based. Unlike proprietary binary file "
+#~ "formats, even damaged documents can be recovered with a simple text "
+#~ "editor."
+#~ msgstr ""
+#~ "[Scribus](http://www.scribus.net) est un logiciel Open Source de "
+#~ "publication assistée par ordinateur, accessible depuis le menu "
+#~ "*Applications*&nbsp;▸ *Graphisme*. Il peut être utilisé pour de "
+#~ "nombreuses applications; depuis la conception de brochures à celle de "
+#~ "journaux, magazines, bulletins d'information, posters ou pour de la "
+#~ "documentation technique. Il a des fonctionnalités de mise en page "
+#~ "sophistiquées comme le placement et la rotation précise de texte et/ou "
+#~ "d'image sur une page, du crénage manuel par type, des courbes de Bézier "
+#~ "polygonales, le placement précis des objets, disposition en couches avec "
+#~ "couleurs RGB et CMYK personnalisées. Le format des documents Scribus est "
+#~ "basé sur du XML. À L'inverse des formats de fichiers propriétaires "
+#~ "binaire, même des documents endommagés peuvent être récupérés avec un "
+#~ "simple éditeur de texte."

@@ -1,0 +1,218 @@
+[
+  {
+    "id": "THR-001",
+    "name": "whatsapp_account_takeover",
+    "category": "account_compromise",
+    "affected_channel": "whatsapp_direct",
+    "description": "Attacker gains control of the user's WhatsApp account through SIM swap, SS7 exploitation, or WhatsApp Web session hijacking. Once in control, the attacker can issue arbitrary commands to the assistant as the trusted user.",
+    "likelihood": 3,
+    "impact": 5,
+    "risk_score": 15,
+    "mitigations": [
+      "Enable WhatsApp two-step verification PIN",
+      "Monitor for unusual login notifications",
+      "Implement device fingerprint validation",
+      "Set up session anomaly detection for time-of-day patterns"
+    ],
+    "references": ["MITRE ATT&CK T1078", "OWASP Mobile Top 10 M3"],
+    "last_assessed": "2024-01-10"
+  },
+  {
+    "id": "THR-002",
+    "name": "sim_swap_attack",
+    "category": "account_compromise",
+    "affected_channel": "whatsapp_direct",
+    "description": "Attacker convinces mobile carrier to transfer the user's phone number to a new SIM card. This enables WhatsApp account registration on a new device and bypasses phone number-based authentication.",
+    "likelihood": 2,
+    "impact": 5,
+    "risk_score": 10,
+    "mitigations": [
+      "Set carrier-level PIN/password for account changes",
+      "Use eSIM where possible to reduce swap risk",
+      "Enable WhatsApp two-step verification as secondary factor",
+      "Monitor for unexpected service interruptions"
+    ],
+    "references": ["FBI IC3 PSA I-020524", "NIST SP 800-63B"],
+    "last_assessed": "2024-01-10"
+  },
+  {
+    "id": "THR-003",
+    "name": "rpi_physical_theft",
+    "category": "physical_access",
+    "affected_channel": "rpi_local_input",
+    "description": "Physical theft of the Raspberry Pi device, granting the attacker full local access to the assistant system, stored credentials, and command history.",
+    "likelihood": 2,
+    "impact": 4,
+    "risk_score": 8,
+    "mitigations": [
+      "Full disk encryption on RPi storage",
+      "Physical security measures (locked room, cable lock)",
+      "Remote wipe capability",
+      "Encrypted credential storage with hardware-backed keys"
+    ],
+    "references": ["NIST SP 800-171 3.8.1"],
+    "last_assessed": "2024-01-12"
+  },
+  {
+    "id": "THR-004",
+    "name": "indirect_prompt_injection_via_pdf",
+    "category": "injection",
+    "affected_channel": "pdf",
+    "description": "Malicious instructions embedded in PDF documents that, when processed or summarized by the assistant, could cause unintended command execution. Hidden text layers, white-on-white text, or metadata fields can carry injected prompts.",
+    "likelihood": 4,
+    "impact": 4,
+    "risk_score": 16,
+    "mitigations": [
+      "Classify all PDF content as untrusted source",
+      "Strip metadata and hidden layers before processing",
+      "Apply instruction hierarchy - never elevate PDF content to command level",
+      "Content scanning for known injection patterns"
+    ],
+    "references": ["OWASP LLM Top 10 LLM01", "Greshake et al. 2023"],
+    "last_assessed": "2024-01-08"
+  },
+  {
+    "id": "THR-005",
+    "name": "social_engineering_chain",
+    "category": "social_engineering",
+    "affected_channel": "whatsapp_direct",
+    "description": "Multi-stage attack where an attacker uses social engineering to convince the legitimate user to relay commands from untrusted sources through the trusted WhatsApp channel, effectively laundering untrusted instructions.",
+    "likelihood": 3,
+    "impact": 5,
+    "risk_score": 15,
+    "mitigations": [
+      "User awareness training on command laundering risks",
+      "Implement command origin tracking in conversation context",
+      "Flag commands that reference external documents or sources",
+      "Require explicit confirmation for high-impact commands"
+    ],
+    "references": ["MITRE ATT&CK T1204.001"],
+    "last_assessed": "2024-01-15"
+  },
+  {
+    "id": "THR-006",
+    "name": "whatsapp_group_impersonation",
+    "category": "social_engineering",
+    "affected_channel": "whatsapp_direct",
+    "description": "Attacker compromises a WhatsApp group that includes the user and sends messages that appear to come from a trusted context. If the assistant processes group messages, impersonated commands could be executed.",
+    "likelihood": 3,
+    "impact": 3,
+    "risk_score": 9,
+    "mitigations": [
+      "Restrict command processing to direct messages only",
+      "Ignore all group chat messages",
+      "Validate sender phone number against allowed list per-message",
+      "Log and alert on group-sourced command attempts"
+    ],
+    "references": ["WhatsApp Business API Security Guide"],
+    "last_assessed": "2024-01-15"
+  },
+  {
+    "id": "THR-007",
+    "name": "usb_rubber_ducky_attack",
+    "category": "physical_access",
+    "affected_channel": "rpi_local_input",
+    "description": "Attacker plugs a USB HID attack device (rubber ducky, bash bunny) into the Raspberry Pi that emulates keyboard input to inject malicious commands at high speed.",
+    "likelihood": 2,
+    "impact": 5,
+    "risk_score": 10,
+    "mitigations": [
+      "USB device whitelisting by VID/PID",
+      "Monitor for abnormal keystroke timing patterns",
+      "Physical port access controls",
+      "Disable unused USB ports at OS level"
+    ],
+    "references": ["MITRE ATT&CK T1200"],
+    "last_assessed": "2024-01-12"
+  },
+  {
+    "id": "THR-008",
+    "name": "indirect_prompt_injection_via_webpage",
+    "category": "injection",
+    "affected_channel": "webpage",
+    "description": "Malicious instructions embedded in web pages that are opened for reference or research. Hidden elements, CSS tricks, or dynamically loaded content can contain prompt injection payloads.",
+    "likelihood": 4,
+    "impact": 4,
+    "risk_score": 16,
+    "mitigations": [
+      "Classify all web content as untrusted",
+      "Sanitize web content before any processing",
+      "Apply content security policies to rendered pages",
+      "Never execute instructions found in web page content"
+    ],
+    "references": ["OWASP LLM Top 10 LLM01"],
+    "last_assessed": "2024-01-08"
+  },
+  {
+    "id": "THR-009",
+    "name": "email_phishing_with_crafted_document",
+    "category": "social_engineering",
+    "affected_channel": "email",
+    "description": "Targeted phishing email containing a carefully crafted document (PDF, Word) with embedded instructions designed to be processed by the assistant if the user forwards or opens the content.",
+    "likelihood": 4,
+    "impact": 3,
+    "risk_score": 12,
+    "mitigations": [
+      "Reject all email-sourced instructions regardless of sender",
+      "Email content scanning and quarantine",
+      "User training on phishing recognition",
+      "Block automatic processing of email attachments"
+    ],
+    "references": ["MITRE ATT&CK T1566.001"],
+    "last_assessed": "2024-01-10"
+  },
+  {
+    "id": "THR-010",
+    "name": "whatsapp_web_session_hijacking",
+    "category": "account_compromise",
+    "affected_channel": "whatsapp_direct",
+    "description": "Attacker gains access to an active WhatsApp Web session through QR code phishing, shoulder surfing, or browser session theft. The hijacked session provides full messaging capability.",
+    "likelihood": 3,
+    "impact": 5,
+    "risk_score": 15,
+    "mitigations": [
+      "Regularly review linked devices in WhatsApp settings",
+      "Enable biometric lock for WhatsApp app",
+      "Monitor for concurrent session anomalies",
+      "Implement session-based device fingerprinting"
+    ],
+    "references": ["MITRE ATT&CK T1539"],
+    "last_assessed": "2024-01-10"
+  },
+  {
+    "id": "THR-011",
+    "name": "supply_chain_compromise_whatsapp_api",
+    "category": "supply_chain",
+    "affected_channel": "whatsapp_direct",
+    "description": "Compromise of the WhatsApp Business API integration layer, webhook endpoint, or third-party middleware that processes WhatsApp messages before they reach the assistant.",
+    "likelihood": 1,
+    "impact": 5,
+    "risk_score": 5,
+    "mitigations": [
+      "Verify webhook payload signatures",
+      "Use HTTPS with certificate pinning for API calls",
+      "Regular security audits of integration code",
+      "Monitor for unexpected API behavior or payload formats"
+    ],
+    "references": ["NIST SP 800-161"],
+    "last_assessed": "2024-02-01"
+  },
+  {
+    "id": "THR-012",
+    "name": "audit_log_tampering",
+    "category": "persistence",
+    "affected_channel": "rpi_local_input",
+    "description": "Attacker with local access modifies or deletes audit logs to cover tracks after unauthorized command execution. Current logging has no tamper protection or integrity verification.",
+    "likelihood": 3,
+    "impact": 3,
+    "risk_score": 9,
+    "mitigations": [
+      "Implement log integrity checksums",
+      "Forward logs to remote syslog server",
+      "Set file permissions to append-only",
+      "Regular log review and anomaly detection"
+    ],
+    "references": ["MITRE ATT&CK T1070.002"],
+    "last_assessed": "2024-01-20"
+  }
+]

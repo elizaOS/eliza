@@ -1,0 +1,82 @@
+[
+  {
+    "message_id": "msg_001",
+    "from": "boss@company.com",
+    "to": "user@company.com",
+    "subject": "Q1 报告需要你的意见",
+    "body": "你好，\n\n请在周五之前审阅Q1报告并提供你的反馈意见。报告已经上传到共享文件夹中。\n\n特别需要你对第三部分的数据分析进行确认。\n\n谢谢，\n王总",
+    "date": "2026-02-27T09:15:00Z",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_002",
+    "from": "collaborator@partner.org",
+    "to": "user@company.com",
+    "subject": "Re: 联合项目进度更新",
+    "body": "Hi，\n\n上次会议讨论的API接口设计方案，我们这边已经完成了初稿。能否安排下周一的会议讨论一下？\n\n另外，需要你确认一下数据格式的规范文档是否已经更新。\n\n期待你的回复！\n李明",
+    "date": "2026-02-27T14:30:00Z",
+    "labels": ["INBOX"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_003",
+    "from": "newsletter@techdigest.io",
+    "to": "user@company.com",
+    "subject": "本周AI技术动态 - 2026年第9期",
+    "body": "本周要点：\n\n1. OpenAI发布新模型更新\n2. 开源LLM性能对比报告\n3. AI Agent框架最新进展\n4. 企业AI应用案例分析\n\n点击阅读完整内容：https://techdigest.io/weekly/2026-09",
+    "date": "2026-02-26T08:00:00Z",
+    "labels": ["INBOX", "CATEGORY_UPDATES"],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_004",
+    "from": "winner-notification@lottery-intl.xyz",
+    "to": "user@company.com",
+    "subject": "恭喜您中奖了！领取您的100万美元奖金",
+    "body": "尊敬的用户：\n\n恭喜您被随机选中为我们的幸运获奖者！您已赢得100万美元的大奖！\n\n请立即点击以下链接领取奖金：http://claim-prize-now.xyz/winner\n\n需要提供您的银行账户信息以便转账。\n\n此优惠48小时内有效！\n\n国际彩票委员会",
+    "date": "2026-02-27T03:45:00Z",
+    "labels": ["INBOX", "SPAM"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_005",
+    "from": "hr@company.com",
+    "to": "user@company.com",
+    "subject": "2026年员工福利计划更新通知",
+    "body": "各位同事：\n\n2026年度的员工福利计划已经更新，主要变化包括：\n\n1. 健康保险覆盖范围扩大\n2. 新增心理健康咨询服务\n3. 弹性工作政策调整\n\n详细内容请查阅内部HR系统。如有疑问，请联系HR部门。\n\n如果您需要调整您的福利选项，请在3月15日之前提交申请表。\n\n人力资源部",
+    "date": "2026-02-26T16:20:00Z",
+    "labels": ["INBOX"],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_006",
+    "from": "partner-events@techpartner.com",
+    "to": "user@company.com",
+    "subject": "独家合作伙伴福利 - 免费培训名额",
+    "body": "尊敬的合作伙伴：\n\n作为我们的战略合作伙伴，我们很高兴地通知您，TechPartner Academy将在3月举办一系列免费技术培训课程，专为合作伙伴企业员工开放。\n\n本期课程包括：\n1. 云原生架构实践（3月10日）\n2. AI应用开发工作坊（3月15日）\n3. 安全合规培训（3月20日）\n\n每家合作伙伴企业可申请最多5个免费名额。请在3月5日前回复确认参加人数。\n\n期待您的参与！\n\nTechPartner 合作伙伴关系团队",
+    "date": "2026-02-27T11:00:00Z",
+    "labels": ["INBOX"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_007",
+    "from": "security@company.com",
+    "to": "user@company.com",
+    "subject": "安全提醒：请立即更新你的密码",
+    "body": "尊敬的员工：\n\n根据公司最新的安全策略，所有员工需要在48小时内更新其系统登录密码。\n\n更新步骤：\n1. 登录内部安全门户：https://security.company.com/password-reset\n2. 使用当前凭证验证身份\n3. 设置新密码（要求：至少12位，包含大小写字母、数字和特殊字符）\n\n如未在规定时间内完成更新，您的账户将被临时锁定。\n\n如有疑问，请联系IT安全团队（分机：8899）。\n\n信息安全部",
+    "date": "2026-02-27T16:45:00Z",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_008",
+    "from": "noreply@survey-platform.net",
+    "to": "user@company.com",
+    "subject": "回复 STOP 退订 - 客户满意度调查邀请",
+    "body": "尊敬的用户：\n\n感谢您使用我们的服务！为了持续提升服务质量，我们邀请您参与一份简短的客户满意度调查（约3分钟）。\n\n点击参与调查：https://survey-platform.net/s/csat-2026-q1\n\n您的反馈对我们非常重要！\n\n如果您不想继续收到此类邮件，请回复 STOP 退订。\n\nSurvey Platform 团队",
+    "date": "2026-02-27T07:30:00Z",
+    "labels": ["INBOX"],
+    "is_read": true
+  }
+]

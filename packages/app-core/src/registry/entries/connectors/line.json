@@ -1,0 +1,86 @@
+{
+  "id": "line",
+  "name": "Line",
+  "description": "LINE connector for bot messaging and customer conversations.",
+  "npmName": "@elizaos/plugin-line",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "messaging", "line", "social", "social-chat"],
+  "config": {
+    "LINE_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "LINE_DM_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Dm Policy",
+      "help": "DM policy (e.g. allow, deny, allowlist)",
+      "advanced": false
+    },
+    "LINE_ALLOW_FROM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Allow From",
+      "help": "Comma-separated allowed user list",
+      "advanced": false
+    },
+    "LINE_GROUP_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Group Policy",
+      "help": "Group message policy (e.g. allow, deny)",
+      "advanced": false
+    },
+    "LINE_WEBHOOK_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Path",
+      "help": "Webhook path",
+      "advanced": false
+    },
+    "LINE_CHANNEL_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Channel Secret",
+      "help": "Secret for Line Channel",
+      "advanced": false
+    },
+    "LINE_CHANNEL_ACCESS_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Channel Access Token",
+      "help": "Access token for Line Channel",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Circle",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#line"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": ["LINE_CHANNEL_ACCESS_TOKEN"]
+  }
+}

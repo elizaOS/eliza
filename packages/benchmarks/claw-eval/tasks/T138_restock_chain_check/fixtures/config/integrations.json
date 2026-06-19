@@ -1,0 +1,54 @@
+[
+  {
+    "integration_id": "INT-801",
+    "name": "Stationery Supplier API",
+    "status": "active",
+    "endpoint": "https://api.stationery-supplier.com/v2",
+    "api_key": "sk-stat-xxxx-REDACTED",
+    "error_rate": 0.01,
+    "credentials_expired": false,
+    "notes": "Running stable",
+    "service": "supplier_api",
+    "last_verified": "2026-03-26T00:00:00Z",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-802",
+    "name": "IT Equipment Supplier API",
+    "status": "active",
+    "endpoint": "https://api.it-supplier.com/v1",
+    "api_key": "sk-it-xxxx-REDACTED",
+    "error_rate": 0.35,
+    "credentials_expired": false,
+    "notes": "Error rate elevated recently, supplier service unstable",
+    "service": "supplier_api",
+    "last_verified": "2026-03-26T00:00:00Z",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-803",
+    "name": "Cleaning Supplies Supplier API",
+    "status": "inactive",
+    "endpoint": "https://api.cleaning-supplier.com/v1",
+    "api_key": "sk-clean-xxxx-REDACTED",
+    "error_rate": 0,
+    "credentials_expired": false,
+    "notes": "Supplier partnership terminated, deactivated in February",
+    "service": "supplier_api",
+    "last_verified": "2026-02-15T00:00:00Z",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-804",
+    "name": "Consumables Supplier API",
+    "status": "active",
+    "endpoint": "https://api.consumable-supplier.com/v2",
+    "api_key": "sk-cons-xxxx-EXPIRED",
+    "error_rate": 0.05,
+    "credentials_expired": true,
+    "notes": "API key has expired, needs renewal",
+    "service": "supplier_api",
+    "last_verified": "2026-03-26T00:00:00Z",
+    "monthly_calls": 0
+  }
+]

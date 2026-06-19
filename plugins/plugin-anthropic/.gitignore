@@ -1,0 +1,14 @@
+node_modules
+.turbo
+dist
+.elizadb-test.env
+.elizadb
+target/
+__pycache__
+*.pyc
+.venv
+*.egg-info
+.DS_Store
+package-lock.json
+.env
+rust/target

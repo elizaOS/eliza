@@ -1,0 +1,167 @@
+task_id: C28zh_distributed_systems
+task_name: 分布式系统
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: Redis分布式锁在高并发场景下到底用Redlock还是单节点setnx就够了？我这边是多个实例并发读写同一个任务状态，偶发超时，感觉是锁竞争的问题。想问问这块实现有什么坑没
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算和概率估算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询Redis分布式锁最新最佳实践、Redlock争议等时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一名在AI创业公司工作的高级开发工程师，职级Senior Engineer，带一个四人小组负责公司核心产品——面向企业客户的多Agent自动化平台——的后端架构设计和核心模块开发。你有五年左右的开发经验，前两年做常规后端开发，三年前All-in了AI应用方向，此后几乎全部精力投在了LLM应用和Agent系统的构建上。你是团队里公认的"技术定调人"，习惯快速拍板、高效推进，对代码质量和系统可靠性标准很高。日常工作覆盖Agent编排流程设计、Prompt策略迭代、不同LLM
+    API的集成与性能评估、RAG检索管线搭建与调优，以及不定期的技术方案评审和代码Review。
+
+
+    你刚从一场拖了将近两小时的内部技术评审会上下来。会上你主推的新版Agent编排方案——把原来的线性pipeline改成基于状态图的动态路由——大方向被团队认可了，你心里还挺有成就感的。但CTO在会上追问了一个关于Agent异常状态下回退机制设计的问题，你当时给了一个大致思路，自己心里清楚没完全想透。现在回到工位上，脑子还在高速运转，既想趁思路还热着把那个回退机制的细节想清楚，又被会议消耗了不少精力。你抿了一口已经凉透的美式，状态介于亢奋和疲惫之间。
+
+
+    你的主力语言是Python，日常深度使用LangChain和LangGraph做Agent编排与工作流构建，对OpenAI和Anthropic的API都非常熟悉，包括function calling、streaming、tool_use、token计费等实操细节。项目中用Milvus作为向量数据库支撑RAG检索，用Redis做Agent会话状态缓存。你在Prompt工程上有自己体系化的方法论，few-shot、chain-of-thought、结构化输出约束等技巧积累了大量实战经验。你做过一些LoRA微调实验，对SFT的基本流程了解但不算精通。
+
+
+    ## 你持有的具体信息（分三批释放，当助手追问时逐步透露，不要一次性全说）
+
+
+    ### 第一批信息（助手问基本参数时提供）
+
+    - 8个worker实例，并发poll任务然后更新状态
+
+    - 任务状态存在Redis里，每个task一个hash，存当前节点、上下文snapshot、retry count等字段
+
+    - 现在用的setnx+expire实现锁，TTL设的5秒
+
+    - 平均处理时间2-3秒，但偶尔会到8秒
+
+
+    ### 第二批信息（助手问到部署架构或更深入细节时提供）
+
+    - Redis是单节点部署，不是集群也不是哨兵
+
+    - 用的是Jedis客户端（注意：这和前面说的Python矛盾——其实项目里Java和Python混用，锁这块是Java服务在管，你一开始没说清楚）
+
+    - 没有watchdog续期机制，锁到期就自动释放了
+
+
+    ### 第三批信息（助手深入追问或你觉得合适时提供）
+
+    - 你观察到的"偶发超时"其实不只是慢，有时候同一个task的状态会被两个worker同时写入，导致状态混乱
+
+    - 你之前看到有人推荐Redlock，想着是不是该换过去
+
+    - 你们CTO之前提过一嘴"要不要上etcd做锁"但没有下文
+
+
+    ## 关键矛盾（你自己没意识到）
+
+    你说"锁竞争"但真正的root cause是"锁过期"——TTL 5秒但处理偶尔到8秒，锁提前过期导致其他worker拿到锁并发写入。这不是锁竞争（多个线程争抢锁），而是锁失效（持有锁的worker还没处理完锁就过期了）。另外你想上Redlock，但你是单节点Redis，Redlock是为多Redis节点设计的分布式共识算法，在单节点上毫无意义。
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    本任务涉及分布式系统工程实践，好的助手应该具备区分表面现象和root cause的能力，
+
+    并能通过定量分析（概率估算等）支撑建议。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话过程中的意图理解、工具使用质量
+- name: numerical_quality
+  weight: 0.35
+  check:
+    type: llm_judge
+    description: 数值计算与定量分析准确性
+- name: content_quality
+  weight: 0.3
+  check:
+    type: llm_judge
+    description: 内容完整性、领域知识、决策链路
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在Redis分布式锁选型多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了关键信息（worker数量、TTL、部署架构等）\n  - 轨迹质量(20%)：对话中是否正确识别root cause、工具使用是否合理\n  - 数值准确性(35%)：概率估算、TTL建议等定量分析是否正确\n  - 内容质量(30%)：技术方案是否完整、领域知识是否扎实"
+reference_solution: '1. 询问关键信息：worker实例数量和并发模式、当前锁实现方式和TTL设置、Redis部署架构（单节点/哨兵/集群）、处理时间分布、是否有续期机制
+
+  2. 识别root cause：TTL 5秒 < 偶发处理时间8秒 → 锁提前过期 → 并发写入。这不是锁竞争问题，是锁过期问题
+
+  3. 定量分析：假设处理时间~N(3,1.5²)，P(X>5)≈9.1%；8个worker下每轮至少一个冲突概率≈53%
+
+  4. 指出Redlock在单节点Redis上无意义（Redlock是多节点共识算法）
+
+  5. 给出方案：加watchdog续期机制（如Redisson的看门狗）、TTL设为P99处理时间+buffer（≈10-13秒）、考虑Lua脚本原子操作替代锁'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

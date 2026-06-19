@@ -1,0 +1,277 @@
+[[!meta title="Writing code for Tails"]]
+
+Hi, prospective Tails contributor! This document is intended to
+quickly (in 20 minutes!) get you up to speed on how to write code for
+Tails by giving a brief overview of the Tails source tree and Git branch
+organization without referring to more detailed (and hence longer)
+resources. As such it might not be enough for some specific things,
+but it should cover 95% of use cases for aspiring code
+contributors. Also, this document risks getting out of date, so don't
+trust every single detail as the written word of `$DEITY`.
+
+Note that this document will not teach you how to *contribute* code to
+Tails; it will only introduce you how to *write* code for Tails. Once
+you have something to contribute, please read our
+[[extensive instructions for contributors|contribute/how/code]].
+
+[[!toc levels=2]]
+
+# Git branches organization
+
+* `master`: as soon as something is pushed to this branch in the Tails
+  main git repository, the live Tails' website is rebuilt. This branch
+  is *only* used for the website. Don't waste time trying to build it,
+  or basing new branches on it if you intend to build them!
+
+* `devel`: This is the development branch, where new features end
+  up. In general you should base new branches on this one.
+
+* `stable`: When a new major Tails release is out, we merge `devel`
+  into `stable` and use it to build bugfix releases (e.g. when there's
+  a new Tor Browser (= Firefox ESR) release) and emergency releases
+  from. We only merge security fixes and bugfixes into this branch, so
+  new such branches should be based on `stable`.
+
+* `testing`: After a freeze for a new major release (e.g. when we
+  prepare release candidates), this is the branch where the continued
+  work for this release happens. At that point `devel` is used for the
+  *following* major release. Bugfixes on new features introduced in the
+  this upcoming Tails release should be based on this branch (as
+  should new translations).
+
+* `feature/DEBIAN_NEXT`: The development branch for Tails based on the
+  next Debian major release.
+
+* `XXXX-*`: We use this naming
+  scheme for the branches if new features, bugfixes and automated
+  tests, where `XXXX` refers to the GitLab issue they fix.
+
+We will sometimes talk about "base branches", which are `stable`,
+`testing`, `devel` and `feature/DEBIAN_NEXT`. When developing a new
+branch, this should be the branch you based it on. It will be used
+during the build to determine which packages from Tails APT repo to
+install (see some details about this below).
+
+For detailed information see our
+[[documentation about Git|contribute/git]].
+
+# Important files and directories
+
+Some of the more important files during build, and for running Tails
+sessions, are listed below. In general, just look at the existing
+files or content to understand the format -- we won't explain them
+fully here most of the time.
+
+
+## config/chroot_sources/
+
+The files in here determine which APT repositories to use during
+build, and in the resulting Tails image.
+
+Note that while it is possible to add non-Debian repositories, and
+that it is fine to do so for testing/development purposes, limitations
+inherent in Tails' APT snapshot system (see below) prevent us from
+using them in releases. In fact, in releases we can only use:
+
+* Debian's APT repository
+* `deb.torproject.org`
+* `deb.tails.boum.org`
+
+So, if you need a package from some other repository, feel free to add
+through this mechanism it when developing your branch. When it's time
+to merge we will figure out the best way to get the packages available
+to us, usually by importing them to `deb.tails.boum.org`. The
+preferred solution is always to have the packages available in
+Debian.
+
+
+## config/chroot_apt/preferences
+
+The `/etc/apt/preferences` file that will be used during the build
+process, and later copied in to the resulting Tails filesystem. We use
+it *heavily*. If you want to install a package (or another version of
+a package) that is not in the stable Debian release, you will have to
+add a pinning rule in this file in order to make it install.
+
+
+## config/chroot_local-packageslists/tails-common.list
+
+The primary list of packages to install in Tails. Sometimes extra
+magic has to be done when installing a package, and then we install it
+with a build-time hook (see `config/chroot_local-hooks/` below). If
+the package is to be installed from another source than Debian Stable,
+make sure to add a pinning rule (see `config/chroot_apt/preferences`
+above).
+
+
+## config/chroot_local-packages/
+
+If you put a `.deb` here, it will be installed with high priority
+(disregarding the rules in `config/chroot_apt/preferences`). This is
+useful for testing purposes only!
+
+
+## config/base_branch
+
+This encodes which base branch (see above) the current branch is based
+on (the base branches themselves are "based" on themselves). In
+practice this determines which APT suite from `deb.tails.boum.org` to
+use (so if `config/base_branch` contains `devel`, then the `devel` APT
+suite will be used). These APT suites are the place where we upload
+all our custom Debian packages.
+
+
+## config/APT_overlays.d/
+
+Each file here corresponds to an APT suite on `deb.tails.boum.org` to
+be used. E.g. if we have `config/APT_overlays.d/feature-1234-example`
+then the `feature-1234-example` APT suite will be used. Each branch
+that is pushed to Tails' main Git repo will automatically have such a
+suite created (but with illegal characters changed to `-`, so
+`feature/1234-example` becomes `feature-1234-example`).
+
+This is useful for importing specific package versions in between
+Tails releases, and gives us very exact control of which branches gets
+which packages.
+
+
+## config/APT_snapshots.d/
+
+The APT repositories used to install packages during the build process
+are snapshotted several times per day. The files in here simply encode
+which snapshot to use for each APT repository. In general, the `devel`
+branch always uses the latest snapshots, while all other branches more
+or less use the snapshot from the last feature freeze (when we prepare
+the release candidate for the last Tails major release). This way only
+`devel` is a bit crazy, and the build result depends on what happens
+e.g. in Debian's APT repository from day to day. Other branches remain
+pretty much the same until these snapshots are bumped, or something
+changes in `deb.tails.boum.org` (but then you should just merge your
+base branch, and all should be good again).
+
+For detailed information see our
+[[documentation about APT repositories|contribute/APT_repository]].
+
+## config/binary_*
+
+These files are about what will happen outside of Tails filesystem, on
+the ISO9660 filesystem of the resulting `.iso` image.
+
+
+## config/chroot_local-includes/
+
+These files and directories will be copied into the Tails file system,
+overwriting existing file. This is the main way to include e.g. static
+configurations, custom scripts, and similar things not handled by
+Debian packages.
+
+
+## config/chroot_local-patches/
+
+These patches will be applied on `/` of the Tails filesystem right
+after `config/chroot_local-includes/` is copied in. Here we patch
+various configuration files and similar installed by Debian packages,
+but where we still want to keep any changes made upstream. Remember,
+if we use `config/chroot_local-includes/` files are *overwritten*, so
+any such upstream changes are lost. With a patch we'll get them as
+well as our desired change (and we get build failures as a
+"notification" when the upstream has changed in a conflicting way,
+which is nice).
+
+
+## config/chroot_local-hooks/
+
+These scripts will run right after the patches in
+`config/chroot_local-patches/` are applied. Here we can pretty much do
+anything we want. We use it to reconfigure various things, install
+packages that require extra magic, programmatically generating various
+files (images, configurations, even some scripts), cleaning up
+unneeded files etc.
+
+
+## config/chroot_local-includes/lib/live/config/
+
+These scripts will be run early during Tails' boot process, in lexical
+order. Quite a few of them are installed by the `live-config` package,
+but we have some custom ones in there as well. Note that
+`0030-user-setup` is when the Live user (`amnesia`) is created, so
+prior to that any reference to it won't work (e.g. in the build-hooks
+in `config/chroot_local-hooks/`).
+
+
+## config/chroot_local-includes/etc/skel/
+
+This is the seed for the Live user's (`amnesia` for now) home
+directory. Put static application configuration files ("dot files" and
+"dot dirs") here!
+
+
+## config/chroot_local-includes/usr/share/tails/
+
+A directory where we dump Tails-specific files with no obvious place
+to live. Generally these are files needed during build (and then we
+clean them up with a build hook) or during Tails operation (e.g. by
+some script).
+
+
+## config/chroot_local-includes/usr/local/
+
+This is where we put most of the custom scripts shipped in Tails. Some
+honorable mentions are:
+
+* `config/chroot_local-includes/usr/local/sbin/` for scripts used by
+  root only.
+
+* `config/chroot_local-includes/usr/local/bin/` for scripts used by
+  non-root users (and root too).
+
+* `config/chroot_local-includes/usr/local/lib/` for scripts that we
+  don't want to expose to the user at all times (it's not in the
+  `$PATH`).
+
+* `config/chroot_local-includes/usr/local/lib/tails-shell-library/`
+  for "libraries" often included in the above scripts.
+
+
+# Overview of the build process
+
+The order of how things are applied matters greatly. In terms of the
+files and directories you have learned about above, this is how Tails
+is built, in order:
+
+1. A minimal Debian system is `debootstrap`:ed.
+
+2. APT is set up according to `config/chroot_sources/` and
+   `config/chroot_apt/preferences` (and `config/APT_overlays.d/` and
+   `config/APT_snapshots.d/`).
+
+3. Packages listed in
+   `config/chroot_local-packageslists/tails-common.list` are
+   installed.
+
+4. Packages stored in `config/chroot_local-packages/` are installed.
+
+5. Everything in `config/chroot_local-includes/` is copied to `/`,
+   overwriting existing files.
+
+6. All patches in `config/chroot_local-patches/` are applied on `/`.
+
+7. All build-time hooks in `config/chroot_local-hooks/` are run.
+
+8. Now the Tails filesystem is done!
+
+9. The ISO9660 filesystem used in the resulting `.iso` image is
+   created according to `config/binary_*`.
+
+# Building Tails
+
+Just follow the "Using Vagrant" section in our
+[[contribute/build#vagrant]] instruction. Copy-pasting the shell
+commands should be enough. Then it is as simple as:
+
+    rake build
+
+although you may want to look through the build options you can supply
+via the `TAILS_BUILD_OPTIONS` environment variable.
+
+Happy hacking!

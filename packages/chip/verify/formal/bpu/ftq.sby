@@ -1,0 +1,18 @@
+[options]
+mode bmc
+depth 12
+
+[engines]
+smtbmc z3
+smtbmc bitwuzla
+
+[script]
+plugin -i slang
+read_slang --std 1800-2017 --top ftq_formal bpu_pkg.sv ftq.sv ftq_tb.sv ftq_formal.sv
+prep -top ftq_formal
+
+[files]
+rtl/cpu/bpu/bpu_pkg.sv
+rtl/cpu/bpu/ftq.sv
+verify/cocotb/bpu/ftq_tb.sv
+verify/formal/bpu/ftq_formal.sv

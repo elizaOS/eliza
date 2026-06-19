@@ -1,0 +1,215 @@
+{
+  "claim_boundary": "Fail-closed mechanical lifecycle acceptance for side-key pressure/travel, USB-C insertion cycling, and screen bond/FPC retention. CAD fixture readiness and blank EVT templates are not physical lifecycle evidence.",
+  "status": "blocked_no_lifecycle_results",
+  "source_reviews": {
+    "evt_inspection_status": "evt_inspection_plan_ready",
+    "evt_results_status": "blocked_no_physical_results",
+    "fixture_calibration_status": "blocked_no_fixture_calibration_results"
+  },
+  "results_template": "mechanical/e1-phone/review/mechanical-lifecycle-results-template.csv",
+  "expected_criterion_count": 4,
+  "complete_criterion_count": 0,
+  "lifecycle_measurements": [
+    {
+      "id": "volume_button_travel",
+      "fixture": "evt_fixture_button_force_probe",
+      "units": "mm",
+      "min": 0.25,
+      "max": 0.55,
+      "cycles_required": 100000,
+      "method": "Measure volume cap center and both ends after cycle exposure."
+    },
+    {
+      "id": "power_button_cycle_failures",
+      "fixture": "evt_fixture_button_force_probe",
+      "units": "count",
+      "min": 0,
+      "max": 0,
+      "cycles_required": 100000,
+      "method": "Count stuck, rattle, crack, missed tactile, or electrical event failures."
+    },
+    {
+      "id": "volume_button_cycle_failures",
+      "fixture": "evt_fixture_button_force_probe",
+      "units": "count",
+      "min": 0,
+      "max": 0,
+      "cycles_required": 100000,
+      "method": "Count stuck, rattle, crack, missed tactile, or electrical event failures."
+    },
+    {
+      "id": "usb_c_post_cycle_insertion_force",
+      "fixture": "evt_fixture_usb_c_insertion_gauge",
+      "units": "N",
+      "min": 0,
+      "max": 40,
+      "cycles_required": 2000,
+      "method": "Measure peak insertion force after USB-C plug cycling."
+    },
+    {
+      "id": "usb_c_post_cycle_continuity_failures",
+      "fixture": "evt_fixture_usb_c_insertion_gauge",
+      "units": "count",
+      "min": 0,
+      "max": 0,
+      "cycles_required": 2000,
+      "method": "Count VBUS, CC, D+/D-, shell-ground, or retention failures after cycling."
+    },
+    {
+      "id": "screen_post_cycle_lift_or_fpc_faults",
+      "fixture": "evt_fixture_screen_bond_clamp_frame",
+      "units": "count",
+      "min": 0,
+      "max": 0,
+      "cycles_required": 500,
+      "method": "Count screen lift, touch/display bring-up faults, or FPC connector faults after handling cycles."
+    }
+  ],
+  "lifecycle_result_cases": [
+    {
+      "measurement_id": "volume_button_travel",
+      "planned_lifecycle_measurement": true,
+      "fixture": "evt_fixture_button_force_probe",
+      "cycles_required": "100000",
+      "populated": false,
+      "numeric_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "power_button_cycle_failures",
+      "planned_lifecycle_measurement": true,
+      "fixture": "evt_fixture_button_force_probe",
+      "cycles_required": "100000",
+      "populated": false,
+      "numeric_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "volume_button_cycle_failures",
+      "planned_lifecycle_measurement": true,
+      "fixture": "evt_fixture_button_force_probe",
+      "cycles_required": "100000",
+      "populated": false,
+      "numeric_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "usb_c_post_cycle_insertion_force",
+      "planned_lifecycle_measurement": true,
+      "fixture": "evt_fixture_usb_c_insertion_gauge",
+      "cycles_required": "2000",
+      "populated": false,
+      "numeric_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "usb_c_post_cycle_continuity_failures",
+      "planned_lifecycle_measurement": true,
+      "fixture": "evt_fixture_usb_c_insertion_gauge",
+      "cycles_required": "2000",
+      "populated": false,
+      "numeric_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "screen_post_cycle_lift_or_fpc_faults",
+      "planned_lifecycle_measurement": true,
+      "fixture": "evt_fixture_screen_bond_clamp_frame",
+      "cycles_required": "500",
+      "populated": false,
+      "numeric_pass": false,
+      "explicit_pass": false,
+      "pass": false
+    }
+  ],
+  "cases": [
+    {
+      "id": "power_button_pressure_travel_lifecycle",
+      "subsystem": "power_button",
+      "required_measurement_ids": [
+        "power_button_actuation_force",
+        "power_button_travel",
+        "power_button_cycle_failures"
+      ],
+      "release_target": "power key force/travel stays in range with zero stuck, rattle, crack, or missed tactile events after 100k cycles",
+      "missing_from_evt_plan": [],
+      "missing_results": [],
+      "incomplete_or_failed_results": [
+        "power_button_actuation_force",
+        "power_button_travel",
+        "power_button_cycle_failures"
+      ],
+      "fixture_calibration_pass": false,
+      "pass": false
+    },
+    {
+      "id": "volume_button_pressure_travel_lifecycle",
+      "subsystem": "volume_button",
+      "required_measurement_ids": [
+        "volume_button_actuation_force",
+        "volume_button_travel",
+        "volume_button_cycle_failures"
+      ],
+      "release_target": "volume key force/travel stays in range at center and both ends with zero cycle failures after 100k cycles",
+      "missing_from_evt_plan": [],
+      "missing_results": [],
+      "incomplete_or_failed_results": [
+        "volume_button_actuation_force",
+        "volume_button_travel",
+        "volume_button_cycle_failures"
+      ],
+      "fixture_calibration_pass": false,
+      "pass": false
+    },
+    {
+      "id": "usb_c_insertion_cycle_capture",
+      "subsystem": "usb_c",
+      "required_measurement_ids": [
+        "usb_c_insertion_force_no_rub",
+        "usb_c_post_cycle_insertion_force",
+        "usb_c_post_cycle_continuity_failures"
+      ],
+      "release_target": "USB-C plug inserts without aperture rub, remains <=40 N after 2k cycles, and has zero continuity failures",
+      "missing_from_evt_plan": [],
+      "missing_results": [],
+      "incomplete_or_failed_results": [
+        "usb_c_insertion_force_no_rub",
+        "usb_c_post_cycle_insertion_force",
+        "usb_c_post_cycle_continuity_failures"
+      ],
+      "fixture_calibration_pass": false,
+      "pass": false
+    },
+    {
+      "id": "screen_bond_fpc_lifecycle",
+      "subsystem": "screen_stack",
+      "required_measurement_ids": [
+        "screen_adhesive_compression",
+        "display_fpc_bend_radius",
+        "screen_post_cycle_lift_or_fpc_faults"
+      ],
+      "release_target": "screen adhesive compression and FPC bend stay in range with zero screen lift, touch/display fault, or connector fault after handling cycles",
+      "missing_from_evt_plan": [],
+      "missing_results": [],
+      "incomplete_or_failed_results": [
+        "screen_adhesive_compression",
+        "display_fpc_bend_radius",
+        "screen_post_cycle_lift_or_fpc_faults"
+      ],
+      "fixture_calibration_pass": false,
+      "pass": false
+    }
+  ],
+  "missing_or_incomplete_criteria": [
+    "power_button_pressure_travel_lifecycle",
+    "volume_button_pressure_travel_lifecycle",
+    "usb_c_insertion_cycle_capture",
+    "screen_bond_fpc_lifecycle"
+  ],
+  "release_rule": "Every mechanical lifecycle criterion must have all fixture-backed EVT rows populated, numerically passing, and explicitly passed before claiming buttons, USB-C insertion, or screen mounting are production-ready."
+}

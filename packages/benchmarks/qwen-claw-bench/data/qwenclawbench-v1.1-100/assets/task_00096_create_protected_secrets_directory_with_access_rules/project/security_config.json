@@ -1,0 +1,33 @@
+{
+  "encryption": {
+    "algorithm": "AES-256-GCM",
+    "key_derivation": "PBKDF2",
+    "iterations": 600000,
+    "salt_length": 32
+  },
+  "password_policy": {
+    "min_length": 12,
+    "require_uppercase": true,
+    "require_lowercase": true,
+    "require_digits": true,
+    "require_special": true,
+    "max_age_days": 90,
+    "history_count": 12
+  },
+  "tls": {
+    "min_version": "1.2",
+    "preferred_ciphers": [
+      "TLS_AES_256_GCM_SHA384",
+      "TLS_CHACHA20_POLY1305_SHA256",
+      "TLS_AES_128_GCM_SHA256"
+    ],
+    "certificate_path": "/etc/ssl/certs/app.crt",
+    "key_path": "/etc/ssl/private/app.key"
+  },
+  "session": {
+    "timeout_minutes": 30,
+    "max_concurrent": 5,
+    "secure_cookie": true,
+    "same_site": "strict"
+  }
+}

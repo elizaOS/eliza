@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -eu
+
+A11Y_BUS_PROXY_PATH=/run/user/1000/.dbus-proxy/a11y-bus-proxy.sock
+IBUS_PROXY_PATH=/run/user/1000/.dbus-proxy/ibus-proxy.sock
+A11Y_BUS_SANDBOX_PATH=/run/user/1000/tails-sandbox/a11y-bus-proxy.sock
+IBUS_SANDBOX_PATH=/run/user/1000/tails-sandbox/ibus-proxy.sock
+
+# Remove '--' from the command line arguments, if any.
+if [ "$1" = "--" ]; then
+  shift
+fi
+
+# Make sure that the tails-a11y-bus-proxy.service and tails-ibus-proxy.service
+# units are running.
+systemctl --user start tails-a11y-bus-proxy.service
+systemctl --user start tails-ibus-proxy.service
+
+bwrap --bind / / --proc /proc --dev /dev \
+  --bind "${A11Y_BUS_PROXY_PATH}" "${A11Y_BUS_SANDBOX_PATH}" \
+  --bind "${IBUS_PROXY_PATH}" "${IBUS_SANDBOX_PATH}" \
+  --setenv AT_SPI_BUS_ADDRESS "unix:path=${A11Y_BUS_SANDBOX_PATH}" \
+  --setenv IBUS_ADDRESS "unix:path=${IBUS_SANDBOX_PATH}" \
+  "$@"

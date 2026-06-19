@@ -1,0 +1,217 @@
+[
+  {
+    "number": 1,
+    "name": "First House",
+    "alias": "House of Self",
+    "keywords": ["self", "appearance", "identity", "beginnings", "first impressions"],
+    "naturalSign": "aries",
+    "naturalRuler": "Mars",
+    "description": "The First House represents the self, physical appearance, and how others perceive you. It is the house of new beginnings, personal identity, and your approach to life. The Ascendant, or rising sign, marks the cusp of this house and is one of the most important points in the natal chart. It shapes your outward personality, your instinctive reactions, and the mask you present to the world.",
+    "lifeAreas": [
+      "physical body",
+      "personality",
+      "self-image",
+      "early environment",
+      "personal initiative",
+      "outward demeanor"
+    ]
+  },
+  {
+    "number": 2,
+    "name": "Second House",
+    "alias": "House of Value",
+    "keywords": ["money", "possessions", "values", "self-worth", "resources"],
+    "naturalSign": "taurus",
+    "naturalRuler": "Venus",
+    "description": "The Second House governs your material resources, personal finances, and sense of self-worth. It reveals how you earn money, what you value most deeply, and your relationship with the physical world. Beyond material wealth, this house speaks to your inner resources — your talents, skills, and the intrinsic sense of value you bring to everything you do.",
+    "lifeAreas": [
+      "income",
+      "material possessions",
+      "personal values",
+      "self-esteem",
+      "earning capacity",
+      "movable property"
+    ]
+  },
+  {
+    "number": 3,
+    "name": "Third House",
+    "alias": "House of Communication",
+    "keywords": ["communication", "siblings", "short trips", "learning", "local environment"],
+    "naturalSign": "gemini",
+    "naturalRuler": "Mercury",
+    "description": "The Third House rules communication, the immediate environment, and the mind's ability to process and share information. It governs siblings, neighbors, short-distance travel, and early education. This house reveals how you think, speak, write, and interact with your local community. It is the house of curiosity, adaptability, and the everyday exchanges that shape your intellectual world.",
+    "lifeAreas": [
+      "siblings",
+      "neighbors",
+      "short journeys",
+      "writing",
+      "early education",
+      "communication style",
+      "local community"
+    ]
+  },
+  {
+    "number": 4,
+    "name": "Fourth House",
+    "alias": "House of Home",
+    "keywords": ["home", "family", "roots", "foundations", "inner world"],
+    "naturalSign": "cancer",
+    "naturalRuler": "Moon",
+    "description": "The Fourth House is the foundation of the chart, representing home, family, roots, and your deepest emotional core. It governs your relationship with your parents (particularly the nurturing parent), your ancestry, and the private inner life you share with no one. The IC (Imum Coeli) at the cusp of this house represents your psychological foundation and the conditions of the latter part of life.",
+    "lifeAreas": [
+      "home",
+      "family",
+      "ancestry",
+      "real estate",
+      "emotional foundations",
+      "private life",
+      "end of life"
+    ]
+  },
+  {
+    "number": 5,
+    "name": "Fifth House",
+    "alias": "House of Pleasure",
+    "keywords": ["creativity", "romance", "children", "play", "self-expression"],
+    "naturalSign": "leo",
+    "naturalRuler": "Sun",
+    "description": "The Fifth House is the house of creative self-expression, romance, pleasure, and children. It governs everything you create — from artistic works to offspring — and the joy you experience in the process. This house reveals your capacity for fun, your approach to love affairs (as distinct from committed partnerships), and the ways you express your unique creative spark. It is where the inner child lives and plays.",
+    "lifeAreas": [
+      "creative expression",
+      "romance",
+      "children",
+      "hobbies",
+      "gambling",
+      "entertainment",
+      "artistic pursuits"
+    ]
+  },
+  {
+    "number": 6,
+    "name": "Sixth House",
+    "alias": "House of Health",
+    "keywords": ["health", "work", "service", "daily routine", "self-improvement"],
+    "naturalSign": "virgo",
+    "naturalRuler": "Mercury",
+    "description": "The Sixth House governs health, daily work, routines, and service to others. It reveals your approach to maintaining physical well-being, your work habits, and your relationship with coworkers and employees. This is the house of self-improvement and the practical adjustments you make to live a better life. It speaks to the humble, essential tasks that sustain daily existence and the ways you refine your craft.",
+    "lifeAreas": [
+      "physical health",
+      "daily work",
+      "routines",
+      "service",
+      "pets",
+      "coworkers",
+      "diet and nutrition"
+    ]
+  },
+  {
+    "number": 7,
+    "name": "Seventh House",
+    "alias": "House of Partnership",
+    "keywords": ["partnerships", "marriage", "contracts", "open enemies", "cooperation"],
+    "naturalSign": "libra",
+    "naturalRuler": "Venus",
+    "description": "The Seventh House is the house of committed partnerships, marriage, and one-on-one relationships. It sits directly opposite the First House of Self, representing the mirror through which you see yourself in others. This house governs business partnerships, legal contracts, and open enemies as well as romantic commitments. The Descendant at its cusp reveals the qualities you seek in a partner and the dynamics of your closest bonds.",
+    "lifeAreas": [
+      "marriage",
+      "business partnerships",
+      "contracts",
+      "legal matters",
+      "open adversaries",
+      "significant others",
+      "negotiations"
+    ]
+  },
+  {
+    "number": 8,
+    "name": "Eighth House",
+    "alias": "House of Transformation",
+    "keywords": ["transformation", "shared resources", "death", "rebirth", "intimacy"],
+    "naturalSign": "scorpio",
+    "naturalRuler": "Pluto",
+    "description": "The Eighth House governs transformation, shared resources, death, rebirth, and the deep merging that occurs in intimate bonds. It rules inheritances, taxes, debts, and the resources you share with others. On a deeper level, this house reveals your relationship with life's profound mysteries — sexuality, psychological transformation, and the cycles of death and regeneration. It is where you confront what lies beneath the surface.",
+    "lifeAreas": [
+      "shared finances",
+      "inheritance",
+      "taxes",
+      "death and rebirth",
+      "sexuality",
+      "psychological transformation",
+      "occult knowledge"
+    ]
+  },
+  {
+    "number": 9,
+    "name": "Ninth House",
+    "alias": "House of Philosophy",
+    "keywords": ["philosophy", "higher education", "travel", "religion", "expansion"],
+    "naturalSign": "sagittarius",
+    "naturalRuler": "Jupiter",
+    "description": "The Ninth House is the house of higher learning, long-distance travel, philosophy, and the search for meaning. It governs your worldview, religious or spiritual beliefs, and the quest for truth that takes you beyond your immediate environment. This house rules universities, publishing, foreign cultures, and the legal system. It represents the expansion of consciousness through experience, education, and the exploration of ideas that transcend the everyday.",
+    "lifeAreas": [
+      "higher education",
+      "long-distance travel",
+      "philosophy",
+      "religion",
+      "publishing",
+      "foreign cultures",
+      "legal system"
+    ]
+  },
+  {
+    "number": 10,
+    "name": "Tenth House",
+    "alias": "House of Career",
+    "keywords": ["career", "public image", "authority", "achievement", "legacy"],
+    "naturalSign": "capricorn",
+    "naturalRuler": "Saturn",
+    "description": "The Tenth House is the highest point in the chart, representing career, public reputation, authority, and your contribution to society. The Midheaven (MC) at its cusp is one of the most visible points in the natal chart, revealing your vocational calling and the legacy you build over a lifetime. This house governs your relationship with authority figures, your professional ambitions, and the public role you are destined to play.",
+    "lifeAreas": [
+      "career",
+      "public reputation",
+      "professional status",
+      "authority figures",
+      "achievements",
+      "social standing",
+      "life direction"
+    ]
+  },
+  {
+    "number": 11,
+    "name": "Eleventh House",
+    "alias": "House of Friendship",
+    "keywords": ["friendships", "groups", "hopes", "wishes", "social causes"],
+    "naturalSign": "aquarius",
+    "naturalRuler": "Uranus",
+    "description": "The Eleventh House governs friendships, groups, social networks, and your hopes and wishes for the future. It represents your connection to the collective — the communities, organizations, and social causes that give your life broader meaning. This house reveals the kinds of friends you attract, your role within groups, and the ideals that inspire you to work toward a better world. It is where personal creativity meets collective purpose.",
+    "lifeAreas": [
+      "friendships",
+      "social groups",
+      "organizations",
+      "hopes and dreams",
+      "humanitarian causes",
+      "social networks",
+      "collective goals"
+    ]
+  },
+  {
+    "number": 12,
+    "name": "Twelfth House",
+    "alias": "House of the Unconscious",
+    "keywords": ["unconscious", "spirituality", "isolation", "hidden enemies", "transcendence"],
+    "naturalSign": "pisces",
+    "naturalRuler": "Neptune",
+    "description": "The Twelfth House is the most mysterious house in the zodiac, governing the unconscious mind, hidden forces, spirituality, and the dissolution of boundaries. It rules hospitals, prisons, monasteries — all places of retreat and confinement. This house reveals your relationship with the invisible dimensions of life: dreams, karma, self-undoing, and the connection to something greater than the individual self. It is where the soul prepares for renewal before the cycle begins again at the First House.",
+    "lifeAreas": [
+      "unconscious mind",
+      "dreams",
+      "spirituality",
+      "hidden enemies",
+      "institutions",
+      "karmic patterns",
+      "self-undoing",
+      "solitude"
+    ]
+  }
+]

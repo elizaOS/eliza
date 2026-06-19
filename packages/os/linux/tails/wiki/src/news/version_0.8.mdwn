@@ -1,0 +1,48 @@
+[[!meta date="Wed, 21 Sep 2011 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.8 is out"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.8, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Tor 0.2.2.33
+* I2P 0.8.8
+* Linux 3.0.0
+* Iceweasel 3.5.16-9
+* Torbutton 1.4.3-1
+* HTTPS Everywhere 1.0.1-1
+* More random looking nicks in Pidgin.
+* Replace the onBoard virtual keyboard with Florence.
+* PiTIVi non-linear audio/video editor.
+* Support arbitrary DNS queries.
+* Use XZ compression to get much smaller ISO images and a bit faster boot.
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+# Known issue
+
+The "erase memory on boot medium removal" feature works when booting
+from USB, but does not work (i.e. the CD is not ejected) on some
+hardware. Your mileage may vary.
+
+# A glimpse towards the future
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails: no need to be a hardcore developer.

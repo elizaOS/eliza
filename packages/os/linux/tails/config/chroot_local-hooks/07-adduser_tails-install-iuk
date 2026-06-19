@@ -1,0 +1,14 @@
+#!/bin/sh
+
+set -e
+
+# Create the tails-install-iuk user.
+#
+# The tails-install-iuk program may be run as this user,
+# which is granted some passwordless sudo credentials.
+
+echo "Creating the tails-install-iuk user"
+
+addgroup --system --quiet --gid 128 tails-install-iuk
+adduser --system --quiet --uid 120 --gid 128 --no-create-home tails-install-iuk
+adduser tails-install-iuk tails-iuk-get-target-file

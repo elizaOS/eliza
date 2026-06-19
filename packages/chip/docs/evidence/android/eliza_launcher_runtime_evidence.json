@@ -1,0 +1,336 @@
+{
+  "adb_serial": "default",
+  "agent": {
+    "health_http": 0,
+    "health_ready": false,
+    "health_url": "http://127.0.0.1:31337/api/health"
+  },
+  "app": {
+    "foreground_activity": "",
+    "home_resolve_activity": "adb: no devices/emulators found",
+    "package_name": "ai.elizaos.app",
+    "permission_file_probes": {
+      "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml": "adb: no devices/emulators found",
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml": "adb: no devices/emulators found",
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": "adb: no devices/emulators found"
+    },
+    "permission_file_symlink_targets": {
+      "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml": {
+        "readlink": "",
+        "readlink_f": "",
+        "readlink_f_ok": "false",
+        "readlink_ok": "false"
+      },
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml": {
+        "readlink": "",
+        "readlink_f": "",
+        "readlink_f_ok": "false",
+        "readlink_ok": "false"
+      },
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": {
+        "readlink": "",
+        "readlink_f": "",
+        "readlink_f_ok": "false",
+        "readlink_ok": "false"
+      }
+    },
+    "pm_list_eliza": "adb: no devices/emulators found",
+    "pm_path": "adb: no devices/emulators found",
+    "role_holders": {
+      "android.app.role.ASSISTANT": [
+        "adb: no devices/emulators found"
+      ],
+      "android.app.role.BROWSER": [
+        "adb: no devices/emulators found"
+      ],
+      "android.app.role.DIALER": [
+        "adb: no devices/emulators found"
+      ],
+      "android.app.role.HOME": [
+        "adb: no devices/emulators found"
+      ],
+      "android.app.role.SMS": [
+        "adb: no devices/emulators found"
+      ]
+    },
+    "service_component": "ai.elizaos.app/.ElizaAgentService",
+    "service_pid": 0,
+    "system_apk_path": "/system/priv-app/Eliza/Eliza.apk",
+    "system_apk_present": "missing",
+    "system_apk_probe": "adb: no devices/emulators found"
+  },
+  "artifacts": {
+    "transcript_path": "docs/evidence/android/eliza_launcher_runtime_transcript.log"
+  },
+  "claim_boundary": "booted_android_launcher_agent_runtime_evidence_only",
+  "device": {
+    "build_id": "adb: no devices/emulators found",
+    "cpu_abi": "adb: no devices/emulators found",
+    "cpu_abilist": "adb: no devices/emulators found",
+    "sdk": "adb: no devices/emulators found",
+    "sys_boot_completed": "adb: no devices/emulators found",
+    "uname_m": "adb: no devices/emulators found"
+  },
+  "ended_utc": "2026-06-02T05:43:01Z",
+  "generated_utc": "2026-06-02T05:43:01Z",
+  "logs": {
+    "avc_denial_count": 0,
+    "fatal_crash_count": 0,
+    "logcat_path": "docs/evidence/android/eliza_launcher_runtime_logcat.txt",
+    "package_scan_excerpt": []
+  },
+  "observations": {
+    "adb_devices": "List of devices attached",
+    "adb_get_state": "error: no devices/emulators found",
+    "adb_get_state_available": false,
+    "host_runtime": {
+      "adb_blocker": "no_ready_adb_device",
+      "adb_ready_target_count": 0,
+      "adb_targets": [],
+      "aosp_build_only": {
+        "active_processes": "",
+        "artifact_inventory": {
+          "blocker_dependency": "repo_artifact_generation",
+          "missing": [
+            "vendor.img",
+            "system.img",
+            "product.img",
+            "system_ext.img"
+          ],
+          "next_step": "Finish the eliza_ai_soc AOSP build and produce every required image before staging a release archive.",
+          "present": [],
+          "product_out": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc",
+          "records": [
+            {
+              "exists": false,
+              "name": "vendor.img",
+              "path": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/vendor.img",
+              "required_for_bootable_chip_archive": true
+            },
+            {
+              "exists": false,
+              "name": "system.img",
+              "path": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/system.img",
+              "required_for_bootable_chip_archive": true
+            },
+            {
+              "exists": false,
+              "name": "product.img",
+              "path": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/product.img",
+              "required_for_bootable_chip_archive": true
+            },
+            {
+              "exists": false,
+              "name": "system_ext.img",
+              "path": "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/system_ext.img",
+              "required_for_bootable_chip_archive": true
+            }
+          ],
+          "status": "missing"
+        },
+        "expected_command": "test -n \"$AOSP_WORKSPACE\" && python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
+        "expected_evidence_logs": [
+          {
+            "exists": true,
+            "mtime_utc": "2026-06-02T02:13:38Z",
+            "path": "docs/evidence/android/eliza_ai_soc_lunch.log",
+            "size_bytes": 938,
+            "tail": [
+              "",
+              "============================================",
+              "PLATFORM_VERSION_CODENAME=Baklava",
+              "PLATFORM_VERSION=Baklava",
+              "TARGET_PRODUCT=eliza_openagent_ai_soc_phone",
+              "TARGET_BUILD_VARIANT=userdebug",
+              "TARGET_ARCH=riscv64",
+              "TARGET_ARCH_VARIANT=riscv64",
+              "TARGET_CPU_VARIANT=generic",
+              "HOST_OS=linux",
+              "HOST_OS_EXTRA=Linux-6.17.0-29-generic-x86_64-Ubuntu-24.04.4-LTS",
+              "HOST_CROSS_OS=linux_musl",
+              "BUILD_ID=MAIN",
+              "OUT_DIR=out",
+              "SOONG_ONLY=false",
+              "============================================",
+              "eliza-evidence: ended_utc=2026-06-02T02:13:38Z",
+              "eliza-evidence: status=PASS",
+              "END_UTC=2026-06-02T02:13:38Z",
+              "RESULT=0"
+            ]
+          },
+          {
+            "exists": true,
+            "mtime_utc": "2026-06-02T02:13:48Z",
+            "path": "docs/evidence/android/eliza_ai_soc_vendorimage.log",
+            "size_bytes": 2225,
+            "tail": [
+              "No need to regenerate ninja file",
+              "No need to regenerate ninja file",
+              "Starting ninja...",
+              "ninja: no work to do.",
+              "",
+              "#### build completed successfully (8 seconds) ####",
+              "",
+              "out/target/product/eliza_ai_soc/vendor.img",
+              "out/target/product/eliza_ai_soc/installed-files-vendor.txt",
+              "device/eliza/cuttlefish_e1/eliza_e1_cuttlefish.mk:30:# The shared eliza_e1.xml is the single VINTF declaration for",
+              "device/eliza/eliza_ai_soc/README.md:29:out/target/product/eliza_ai_soc/vendor/etc/vintf/manifest/eliza_e1.xml",
+              "device/eliza/eliza_ai_soc/README.md:78:| `manifest.xml` / `eliza_e1.xml` | Legacy device-manifest fragments. The e1_npu and composer HALs are now declared solely by the per-service `vintf_fragments` in their `hal/*/Android.bp`; these files are no longer wired into `DEVICE_MANIFEST_FILE` (doing so makes libvintf reject the merged manifest with a conflicting-FqInstance error). |",
+              "device/eliza/eliza_ai_soc/device.mk:34:    vendor.e1_npu.ready=0",
+              "device/eliza/eliza_ai_soc/hal/e1_npu/vendor.eliza.e1_npu@1.0-service.rc:10:on property:vendor.e1_npu.ready=0",
+              "out/target/product/eliza_ai_soc/vendor/build.prop:133:vendor.e1_npu.ready=0",
+              "out/target/product/eliza_ai_soc/vendor/etc/init/vendor.eliza.e1_npu@1.0-service.rc:10:on property:vendor.e1_npu.ready=0",
+              "eliza-evidence: ended_utc=2026-06-02T02:13:48Z",
+              "eliza-evidence: status=PASS",
+              "END_UTC=2026-06-02T02:13:48Z",
+              "RESULT=0"
+            ]
+          },
+          {
+            "exists": true,
+            "mtime_utc": "2026-06-02T02:13:59Z",
+            "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
+            "size_bytes": 10696,
+            "tail": [
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.202404.xml': OK",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.5.xml': OK",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.8.xml': OK",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.device.xml': OK",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.202504.xml': OK",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.6.xml': OK",
+              "[INFO] List 'out/target/product/eliza_ai_soc/system_ext/etc/vintf/': NAME_NOT_FOUND",
+              "[INFO] List 'out/target/product/eliza_ai_soc/product/etc/vintf/': NAME_NOT_FOUND",
+              "[INFO] Sysprop apex.all.ready is missing, default to ''",
+              "[INFO] Get modified time 'out/target/product/eliza_ai_soc/apex/apex-info-list.xml': NAME_NOT_FOUND",
+              "[INFO] Sysprop apex.all.ready is missing, default to ''",
+              "[INFO] Get modified time 'out/target/product/eliza_ai_soc/apex/apex-info-list.xml': NAME_NOT_FOUND",
+              "[INFO] Sysprop apex.all.ready is missing, default to ''",
+              "[INFO] Get modified time 'out/target/product/eliza_ai_soc/apex/apex-info-list.xml': NAME_NOT_FOUND",
+              "COMPATIBLE",
+              "VINTF_COMPAT=ok",
+              "eliza-evidence: ended_utc=2026-06-02T02:13:59Z",
+              "eliza-evidence: status=PASS",
+              "END_UTC=2026-06-02T02:13:59Z",
+              "RESULT=0"
+            ]
+          },
+          {
+            "exists": true,
+            "mtime_utc": "2026-06-02T02:14:07Z",
+            "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
+            "size_bytes": 67231,
+            "tail": [
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:758:(type hal_e1_npu_default)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:759:(roletype object_r hal_e1_npu_default)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:760:(type hal_e1_npu_default_exec)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:761:(roletype object_r hal_e1_npu_default_exec)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2082:(allow init_202604 hal_e1_npu_default_exec (file (read getattr map execute open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2083:(allow init_202604 hal_e1_npu_default (process (transition)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2084:(allow hal_e1_npu_default hal_e1_npu_default_exec (file (read getattr map execute open entrypoint)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2085:(dontaudit init_202604 hal_e1_npu_default (process (noatsecure)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2086:(allow init_202604 hal_e1_npu_default (process (siginh rlimitinh)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2087:(typetransition init_202604 hal_e1_npu_default_exec process hal_e1_npu_default)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2088:(allow hal_e1_npu_default e1_npu_device (chr_file (ioctl read write getattr open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2091:(allow hal_e1_npu_default vendor_e1_npu_prop (file (read getattr map open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2092:(allow hal_e1_npu_default hal_e1_npu_hwservice (hwservice_manager (add find)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2093:(allow hal_e1_npu_default hidl_base_hwservice_202604 (hwservice_manager (add)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2098:(typeattributeset base_typeattr_250_202604 (and (domain) (not (hal_e1_npu_default))))",
+              "SEPOLICY_BUILD=ok",
+              "eliza-evidence: ended_utc=2026-06-02T02:14:07Z",
+              "eliza-evidence: status=PASS",
+              "END_UTC=2026-06-02T02:14:07Z",
+              "RESULT=0"
+            ]
+          },
+          {
+            "exists": true,
+            "mtime_utc": "2026-06-02T02:14:14Z",
+            "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
+            "size_bytes": 107603,
+            "tail": [
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2081:(neverallow base_typeattr_234_202604 vendor_e1_npu_prop (file (ioctl read write create setattr lock relabelfrom append unlink link rename open watch watch_mount watch_sb watch_with_perm watch_reads)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2082:(allow init_202604 hal_e1_npu_default_exec (file (read getattr map execute open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2083:(allow init_202604 hal_e1_npu_default (process (transition)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2084:(allow hal_e1_npu_default hal_e1_npu_default_exec (file (read getattr map execute open entrypoint)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2085:(dontaudit init_202604 hal_e1_npu_default (process (noatsecure)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2086:(allow init_202604 hal_e1_npu_default (process (siginh rlimitinh)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2087:(typetransition init_202604 hal_e1_npu_default_exec process hal_e1_npu_default)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2088:(allow hal_e1_npu_default e1_npu_device (chr_file (ioctl read write getattr open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2089:(allow vendor_init_202604 vendor_e1_npu_prop (property_service (set)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2090:(allow vendor_init_202604 vendor_e1_npu_prop (file (read getattr map open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2091:(allow hal_e1_npu_default vendor_e1_npu_prop (file (read getattr map open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2092:(allow hal_e1_npu_default hal_e1_npu_hwservice (hwservice_manager (add find)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2093:(allow hal_e1_npu_default hidl_base_hwservice_202604 (hwservice_manager (add)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2094:(neverallow base_typeattr_250_202604 hal_e1_npu_hwservice (hwservice_manager (add)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2098:(typeattributeset base_typeattr_250_202604 (and (domain) (not (hal_e1_npu_default))))",
+              "SEPOLICY_NEVERALLOW=ok",
+              "eliza-evidence: ended_utc=2026-06-02T02:14:14Z",
+              "eliza-evidence: status=PASS",
+              "END_UTC=2026-06-02T02:14:14Z",
+              "RESULT=0"
+            ]
+          }
+        ],
+        "expected_report": {
+          "exists": true,
+          "mtime_utc": "2026-06-02T02:24:33Z",
+          "path": "build/reports/android_sim_boot.json",
+          "size_bytes": 4677
+        },
+        "full_runtime_command_after_build_only": "test -n \"$AOSP_WORKSPACE\" && packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+        "purpose": "fail_closed_context_for_concurrent_android_build_only_attempt",
+        "stdout_stderr_access": "run_with_timeout stdout/stderr are inherited pipes; use the evidence logs and android_sim_boot report below as durable artifacts",
+        "validation_commands": [
+          "python3 packages/chip/scripts/check_android_sim_boot.py",
+          "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py",
+          "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
+          "python3 packages/chip/scripts/check_android_system_bridge_contract.py",
+          "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"
+        ]
+      },
+      "cuttlefish_runtime": "latest_instance=",
+      "runtime_processes": "3000       1    04:48:41 /usr/lib/cuttlefish-common/bin/operator --log_file=/run/cuttlefish/operator.log --https_port=1443 --tls_cert_dir=/etc/cuttlefish-common/operator/cert --socket_path=/run/cuttlefish/operator --listen_addr=0.0.0.0\n   3096       1    04:48:41 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-ebr --listen-address=192.168.98.1 --bind-interfaces --dhcp-range=192.168.98.2,192.168.98.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-ebr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-ebr.leases --dhcp-no-override\n   3254       1    04:48:41 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-wbr --listen-address=192.168.96.1 --bind-interfaces --dhcp-range=192.168.96.2,192.168.96.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-wbr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-wbr.leases --dhcp-no-override\n 203762    1859    04:17:29 adb -L tcp:5037 fork-server server --reply-fd 4",
+      "tcp_listeners": "LISTEN 0      128        127.0.0.1:5037      0.0.0.0:*    users:((\"adb\",pid=203762,fd=11))\nLISTEN 0      4096               *:1443            *:*"
+    },
+    "missing_or_false": [
+      "adb_forward_ready",
+      "agent_health_http_200",
+      "agent_health_ready",
+      "cpu_abi_riscv64",
+      "foreground_is_package",
+      "home_resolves_to_package",
+      "package_installed",
+      "role_holders_include_package",
+      "service_process_running",
+      "sys_boot_completed",
+      "system_privapp_apk_present"
+    ],
+    "next_operator_commands": [
+      "test -n \"$AOSP_WORKSPACE\" && python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
+      "test -n \"$AOSP_WORKSPACE\" && packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+      "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py",
+      "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"
+    ],
+    "required": {
+      "adb_forward_ready": false,
+      "agent_health_http_200": false,
+      "agent_health_ready": false,
+      "cpu_abi_riscv64": false,
+      "fatal_crash_count_zero": true,
+      "foreground_is_package": false,
+      "home_resolves_to_package": false,
+      "package_installed": false,
+      "role_holders_include_package": false,
+      "selinux_denial_count_zero": true,
+      "service_component_recorded": true,
+      "service_process_running": false,
+      "sys_boot_completed": false,
+      "system_privapp_apk_present": false
+    }
+  },
+  "result": 2,
+  "schema": "eliza.android_launcher_runtime_evidence.v1",
+  "started_utc": "2026-06-02T05:43:01Z",
+  "status": "BLOCKED",
+  "target_label": "chip-riscv64"
+}

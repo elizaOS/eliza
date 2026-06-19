@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <!-- Customize your theme here. -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
+
+    <!-- Transparent system bars so the edge-to-edge WebView (the live ambient
+         orange home) draws all the way under the status bar — no flat orange
+         band above the clock. MainActivity sets light (white) status-bar icons
+         and edge-to-edge layout to match. -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:background">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- White status-bar icons (light=false) from the first frame, matching
+             MainActivity.setAppearanceLightStatusBars(false) — the home is the
+             dark orange ambient surface, so no dark→white icon flip. -->
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:statusBarColor">@color/eliza_orange</item>
+        <!-- After the launch splash, swap to the no-action-bar app theme so the
+             Capacitor WebView fills the window. Without this (paired with the
+             installSplashScreen() call in MainActivity) the activity keeps this
+             Theme.SplashScreen theme, which renders a native AppCompat action
+             bar — the orange "Eliza" top bar with splash.png stretched across
+             it — above the WebView. Also suppress the action bar directly so it
+             never appears even before the post-splash swap. -->
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

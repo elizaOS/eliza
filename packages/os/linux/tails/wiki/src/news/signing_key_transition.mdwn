@@ -1,0 +1,104 @@
+[[!meta date="Mon, 16 Mar 2015 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Transition to a new OpenPGP signing key"]]
+[[!tag announce]]
+
+Tails is transitioning to a new OpenPGP signing key.
+
+The signing key is the key that we use to:
+
+  - Sign our official ISO images.
+  - Certify the other [[OpenPGP keys|doc/about/openpgp_keys]] used by the project.
+
+<div class="note">
+
+<p>The previous signing key is safe and, to the best of our knowledge, it
+has not been compromised.</p>
+
+<p>We are doing this change to improve our security practices when
+manipulating such a critical piece of data.</p>
+
+</div>
+
+<div class="tip">
+
+<ul>
+  <li>The old key can still be used to verify Tails 1.3 ISO images.</li>
+  <li>The new key will be used to sign ISO images starting from Tails 1.3.1.</li>
+</ul>
+
+</div>
+
+[[!toc]]
+
+Import and verify the new signing key
+=====================================
+
+Click on the following button to download and import the new signing
+key:
+
+<a class="download-key" href="https://tails.net/tails-signing.key">new Tails signing key</a>
+
+The new signing key is itself signed by the old signing key. So you can
+transitively trust this new key if you had trusted the old signing key.
+
+To verify that the new key is correctly signed by the old key, you can
+execute the following command:
+
+    gpg --check-sigs A490D0F4D311A4153E2BB7CADBB802B258ACD84F
+
+The output should include a signature of the new key by the old key such
+as:
+
+    sig!         0x1202821CBE2CD9C1 2015-01-19  Tails developers (signing key) <tails@boum.org>
+
+In this output, the status of the verification is indicated by a flag
+directly following the "`sig`" tag. A "`!`" indicates that the signature
+has been successfully verified.
+
+Security policy for the new signing key
+=======================================
+
+Here is the full description of the new signing key:
+
+<pre>
+    pub   4096R/0xDBB802B258ACD84F 2015-01-18 [expires: 2017-01-11]
+          Key fingerprint = A490 D0F4 D311 A415 3E2B  B7CA DBB8 02B2 58AC D84F
+    uid                 [ unknown] Tails developers (offline long-term identity key) <tails@boum.org>
+    uid                 [ unknown] Tails developers <tails@boum.org>
+    sub   4096R/0x98FEC6BC752A3DB6 2015-01-18 [expires: 2017-01-11]
+    sub   4096R/0x3C83DCB52F699C56 2015-01-18 [expires: 2017-01-11]
+</pre>
+
+You can see that it has:
+
+  - A primary key (marked as `pub`) with ID `0xDBB802B258ACD84F`. This primary key:
+
+    - Is not owned in a usable format by any single individual. It is
+      split cryptographically using
+      gfshare.
+    - Is only used offline, in an air-gapped Tails.
+    - Expires in less than one year. We will extend its validity as many
+      times as we find reasonable.
+
+ - Two subkeys (marked as `sub`) with IDs `0x98FEC6BC752A3DB6` and
+   `0x3C83DCB52F699C56` which are stored on OpenPGP smartcards and owned
+   by our release managers.  Smartcards ensure that the cryptographic
+   operations are done on the smartcard itself and that the secret
+   cryptographic material is not directly available to the operating
+   system using it.
+
+Web-of-Trust with the Debian keyring
+====================================
+
+This new signing key has already been signed by various Debian
+developers, namely:
+
+   - gregor herrmann <gregoa@debian.org>, with key `0xBB3A68018649AA06`
+   - Holger Levsen <holger@debian.org>, with key `0x091AB856069AAA1C`
+   - Stefano Zacchiroli <zack@debian.org>, with key `0x9C31503C6D866396`
+
+So you can use the technique described in our documentation to further
+verify the Tails signing key against the Debian
+keyring using any of those
+three keys.

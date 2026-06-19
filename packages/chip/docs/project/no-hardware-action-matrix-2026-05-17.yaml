@@ -1,0 +1,108 @@
+schema: eliza.no_hardware_action_matrix.v1
+as_of: 2026-05-17
+purpose: >
+  Exhaustive local work queue for useful work that can be advanced before
+  custom boards, FPGA boards, calibrated lab instruments, or prototype silicon
+  are available. Every item must either produce a repo artifact or strengthen a
+  fail-closed gate. This is not a claim that Android or silicon works.
+status_terms:
+  doable_now: Work can be completed with repo files, host tools, public upstreams, or generated local artifacts.
+  external_tool_blocked: Work is locally specified but cannot produce proof until a missing CLI tool is installed.
+  external_tree_blocked: Work needs a user-supplied upstream checkout such as AOSP, Linux, Buildroot, CVA6, or Chipyard.
+  hardware_blocked: Work needs board, FPGA, lab equipment, package, silicon, modem, RF, or certification evidence.
+claim_policy:
+  - QEMU and Renode are software/simulator evidence only.
+  - Scaffold checks can pass while release evidence remains blocked.
+  - No benchmark passes unless a parser extracts metrics and calibration metadata is complete.
+  - No Android support is claimed until external AOSP build logs and boot transcripts exist.
+  - No silicon/board/product claim is made until release gates pass with real artifacts.
+workstreams:
+  - id: cpu_ap
+    owner_scope: RTL CPU, MMU/cache contract, boot/trap evidence
+    doable_now:
+      - Add more tiny CPU negative tests for unsupported privileged, CSR, atomics, fence, and exception paths.
+      - Import or pin CVA6/Chipyard/Rocket as an external-tree experiment behind a fail-closed import gate.
+      - Generate a wrapper contract mapping AP reset, CLINT/PLIC-equivalent interrupts, timer, UART, DRAM, and MMIO windows.
+      - Add OpenSBI/Linux evidence schemas before any boot log exists.
+    local_commands:
+      - make cocotb-cpu
+      - make cpu-ap-scaffold-check
+      - make cpu-ap-evidence-check
+    current_blocker: No production RV64GC AP, MMU/cache subsystem, interrupt controller proof, OpenSBI log, Linux log, or trap/timer IRQ transcript.
+    next_artifact: docs/project/cpu-ap-integration-work-order-2026-05-17.yaml
+
+  - id: android_bsp
+    owner_scope: Buildroot, Linux, AOSP, HAL/VINTF, boot image evidence
+    doable_now:
+      - Keep device-tree, BoardConfig, VINTF, fstab, init, SELinux, and HAL declarations syntactically checkable.
+      - Add import-checks that reject missing source/prebuilt HALs and separate import success from build evidence.
+      - Define exact evidence logs for lunch, vendorimage, checkvintf, Cuttlefish or equivalent boot, and e1 MMIO smoke.
+    local_commands:
+      - make software-bsp-test
+      - make software-bsp-check
+      - make software-bsp-evidence-check
+    current_blocker: No external AOSP/Linux/Buildroot build logs, no boot transcript, no HAL binaries, no CTS/VTS evidence.
+    next_artifact: docs/evidence/software-bsp-capture.md
+
+  - id: simulators
+    owner_scope: QEMU, Renode, architecture metrics, equivalence proof
+    doable_now:
+      - Keep QEMU qemu-virt smoke working as software-reference evidence.
+      - Require Renode transcript and manifest equivalence against QEMU before Renode PASS.
+      - Generate liveness-only simulator metrics that are impossible to misreport as performance.
+    local_commands:
+      - make qemu-check
+      - make renode-status-test
+      - make benchmark-sim-metrics-test
+    current_blocker: No Renode CLI, no real Renode transcript/manifest, and no cycle-accurate phone SoC simulator exists.
+    next_artifact: sim/renode/eliza_e1_smoke.schema.json
+
+  - id: benchmarks
+    owner_scope: Benchmark corpus, parsers, calibration, SOTA comparison
+    doable_now:
+      - Keep parsers strict for CoreMark, STREAM, lmbench, fio, TFLite benchmark_model, and simulator metrics.
+      - Add target metadata templates and calibrated-asset requirements before scores can pass.
+      - Maintain Snapdragon/Dimensity/Tensor/Apple/XRing references as planning anchors only.
+      - Add redistributable TFLite smoke-model generation path if TensorFlow is available.
+    local_commands:
+      - make benchmark-calibration-test
+      - python3 benchmarks/run_benchmarks.py plan --report-id dry-run
+      - python3 benchmarks/run_benchmarks.py run --metadata benchmarks/metadata/strict-blocked-template.json --strict-missing
+    current_blocker: No target benchmark binaries, calibrated clock/power metadata, model artifact, simulator counter export, or real target logs.
+    next_artifact: benchmarks/configs/target-metadata.example.json
+
+  - id: physical_package_board
+    owner_scope: Package, pinout, FPGA, KiCad, PD, manufacturing release
+    doable_now:
+      - Keep manifests for required package, KiCad, FPGA, OpenLane/OpenROAD, SI/PI, current, thermal, and DFM evidence.
+      - Validate scaffold artifacts and make release gates fail when real fabrication evidence is absent.
+      - Prepare scripts for headless KiCad/OpenLane/nextpnr/ecppack once source projects and toolchains exist.
+    local_commands:
+      - make physical-gates-test
+      - make product-check
+      - make product-release-check
+    current_blocker: No real package drawing, KiCad schematic/PCB, Gerbers, DRC/ERC, FPGA bitstream, timing, GDS/DEF/STA/DRC/LVS, SI/PI, or thermal evidence.
+    next_artifact: board/fpga/artifact-manifest.yaml
+
+  - id: product_features_compliance
+    owner_scope: Radios, camera, audio, sensors, USB/storage/update, PMIC, security, privacy, certification, factory test
+    doable_now:
+      - Keep a product feature evidence manifest naming every required transcript, lab report, certification record, and factory artifact.
+      - Define privacy/debug/security policy gates before product claims.
+      - Keep release blocked for modem/RF/camera/audio/power/security/compliance until real evidence exists.
+    local_commands:
+      - make product-feature-gates-check
+      - make real-world-gates-check
+    current_blocker: No modem integration, RF tuning, camera/ISP, audio codec path, sensor stack, battery/PMIC/thermal validation, secure boot/TEE, privacy review, FCC/PTCRB/SAR, or factory provisioning.
+    next_artifact: docs/manufacturing/product-feature-evidence-manifest.yaml
+
+aggregate_commands:
+  local_scaffold_regression: make evidence-regression-test
+  status_snapshot: make mvp-status
+  release_archive: make archive-release
+  intentionally_blocking_release_checks:
+    - make cpu-ap-evidence-check
+    - make software-bsp-evidence-check
+    - make renode-check-strict
+    - make product-release-check
+    - python3 benchmarks/run_benchmarks.py run --metadata benchmarks/metadata/strict-blocked-template.json --strict-missing

@@ -1,0 +1,52 @@
+[[!meta title="Jeanne, February 2017"]]
+
+Jeanne has been working as an independent journalist for 5-6 years in Western Europe. She
+writes stories that she sells to many different newspapers. She is also
+active in a nonprofit resource center and coworking space for
+independent journalists in her city where she advocates for privacy to
+the local press. She runs Ubuntu on her PC and can handle it all-right
+with some help from her geek friends.
+
+She started using Tails about one year ago, helped out by a local
+privacy and free software advocate from which she cloned a USB stick.
+One of her colleague got his computer seized and she realized that
+having at least her hard disk encrypted was a way of guaranteeing her
+rights to privacy as a journalists in front of the police. Some of her
+sources were also scared of being monitored and explicitly asked for
+security protocols. She decided to get herself trained in privacy tools
+to be able to "lead the dance" and propose reasonable protocols
+to sources in the future herself.
+
+She uses Tails occasionally when the story or the source requires it.
+She is not using Tails outside of her work.
+
+Things she likes:
+
+- Tails comes as a package of privacy tools with no need to configure
+  things manually. She had bad experiences and misconfigured some
+  privacy tools on her computer in the past. Tails is like a "paranoid
+  mode" by default.
+- MAT
+- She hopes that she could could do better at segmenting her time and
+  use Tails to help her focus on a specific task.
+
+Things she dislikes:
+
+- The terminology around "persistence" was difficult to understand. She
+  talks about "storage area" ("zone de stockage" in French).
+- She had trouble learning how to start Tails from her PC.
+- She finds it very hard to combine the use of Tails with the heavy
+  multitasking implied by her work: during a single day she works in
+  parallel on many different stories with many different clients and
+  sources. She runs on a very short budget and cannot afford having a
+  second computer dedicated to Tails.
+- Once, she had troubles opening her persistence because the keyboard
+  layout was different than when she configured it.
+- Once, she lost the draft of a story because she had no persistence.
+- Once, she tried to use Tails for communicating with a source but
+  failed in doing so.
+- When getting started she found the documentation on the desktop hard
+  to apprehend because it was using too technical terms (like "ISO").
+  She thinks that the documentation should be more accessible to less
+  technical people as a pedagogical tool: since she is making the effort
+  to getting into Tails, she is ready to read and learn.

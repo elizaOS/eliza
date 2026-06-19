@@ -1,0 +1,119 @@
+name: Publish Package
+
+on:
+  push:
+    branches:
+      - 1.x
+  workflow_dispatch:
+
+jobs:
+  verify_version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check if typescript/package.json version changed
+        id: check
+        run: |
+          echo "Current branch: ${{ github.ref }}"
+
+          # npm release version lives in the package we publish (typescript/)
+          CURRENT_VERSION=$(jq -r .version typescript/package.json)
+          echo "Current version: $CURRENT_VERSION"
+
+          # Use the push event's base SHA so version bumps in multi-commit
+          # pushes are still detected (HEAD~1 only checks the last commit).
+          # Fall back to the root commit for workflow_dispatch or when the
+          # base is 0000... (branch created in this push).
+          BASE_COMMIT="${{ github.event.before }}"
+          if [ -z "$BASE_COMMIT" ] \
+              || [ "$BASE_COMMIT" = "0000000000000000000000000000000000000000" ] \
+              || ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            BASE_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || git rev-list --max-parents=0 HEAD | tail -n1)
+          fi
+          echo "Base commit: $BASE_COMMIT"
+
+          # Only typescript/ is published by this workflow
+          if git diff --name-only "$BASE_COMMIT" HEAD -- typescript/package.json | grep -q .; then
+            echo "typescript/package.json was changed in this push"
+
+            if git show "$BASE_COMMIT:typescript/package.json" 2>/dev/null | jq -e .version >/dev/null 2>&1; then
+              PREV_VERSION=$(git show "$BASE_COMMIT:typescript/package.json" | jq -r .version)
+              echo "Previous version: $PREV_VERSION"
+
+              if [ "$CURRENT_VERSION" != "$PREV_VERSION" ]; then
+                echo "Version changed from $PREV_VERSION to $CURRENT_VERSION"
+                echo "should_publish=true" >> $GITHUB_OUTPUT
+              else
+                echo "Version unchanged"
+                echo "should_publish=false" >> $GITHUB_OUTPUT
+              fi
+            else
+              echo "No prior typescript/package.json; will publish"
+              echo "should_publish=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "typescript/package.json not changed in this push"
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+  publish:
+    needs: verify_version
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ needs.verify_version.outputs.version }}" -m "Release v${{ needs.verify_version.outputs.version }}"
+          git push origin "v${{ needs.verify_version.outputs.version }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: cd typescript && bun install
+
+      - name: Build package
+        run: cd typescript && bun run build
+
+      - name: Publish to npm
+        run: cd typescript && bun publish
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  create_release:
+    needs: [verify_version, publish]
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "v${{ needs.verify_version.outputs.version }}"
+          release_name: "v${{ needs.verify_version.outputs.version }}"
+          body: "Release v${{ needs.verify_version.outputs.version }}"
+          draft: false
+          prerelease: false

@@ -1,0 +1,84 @@
+name: External API Live Drift
+
+# Runs the external-API LIVE-DRIFT tests against the real provider APIs so the
+# keyless mocks/parsers are continuously verified to still match reality. These
+# *.real.test.ts files self-skip in the PR lane (their LIVE gate is off) and ran
+# in NO workflow until now — they were dark. This lane turns the LIVE gate on and
+# injects the optional provider secrets.
+#
+# Public APIs (Polymarket, Hyperliquid, CoinGecko) run with no secret. Key-gated
+# ones (Calendly, Tavily) self-skip unless their secret is present, so a missing
+# secret is a clean no-op, not a failure. continue-on-error keeps a provider
+# outage / drift from red-X'ing the branch — a failure here is a real signal that
+# a mock has drifted from the live API.
+#
+# Nightly + on-demand; never on pull_request.
+
+on:
+  schedule:
+    # 09:30 UTC daily — after the other nightly live lanes settle.
+    - cron: "30 9 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: external-api-live-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  NODE_VERSION: "24"
+  BUN_VERSION: "canary"
+  NODE_OPTIONS: "--experimental-sqlite"
+  # Turn the LIVE gate on for every external-API drift test.
+  POLYMARKET_LIVE_TEST: "1"
+  HYPERLIQUID_LIVE_TEST: "1"
+  COINGECKO_LIVE_TEST: "1"
+  CALENDLY_LIVE_TEST: "1"
+  TAVILY_LIVE_TEST: "1"
+  # Key-gated providers (tests self-skip when absent).
+  CALENDLY_ACCESS_TOKEN: ${{ secrets.CALENDLY_ACCESS_TOKEN }}
+  TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+
+jobs:
+  live-drift:
+    name: External-API mocks vs live APIs (nightly)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Polymarket live drift (public)
+        run: bunx vitest run --root plugins/plugin-polymarket-app src/routes.real.test.ts
+
+      - name: Hyperliquid live drift (public)
+        run: bunx vitest run --root plugins/plugin-hyperliquid-app src/routes.real.test.ts
+
+      - name: CoinGecko live drift (public)
+        run: bunx vitest run --root plugins/plugin-wallet src/routes/wallet-market-overview.real.test.ts
+
+      - name: Calendly live drift (token-gated, self-skips)
+        run: bunx vitest run --root plugins/plugin-calendly src/calendly-client.real.test.ts
+
+      - name: Tavily web-search live drift (key-gated, self-skips)
+        run: bunx vitest run --root plugins/plugin-web-search src/services/webSearchService.real.test.ts

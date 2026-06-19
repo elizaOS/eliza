@@ -1,0 +1,157 @@
+[[!meta title="Tails report for August, 2017"]]
+[[!meta date="Thu, 21 Sep 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 3.1 was released on August 8|news/version_3.1]] (minor release).
+
+* Tails 3.2 is [[scheduled for September 26|contribute/calendar]].
+
+The following changes were introduced in Tails 3.1:
+
+## Fixed problems
+
+  - Make sure that *Thunderbird* erases its temporary directory,
+    containing for example attachments opened in the past. [[!tails_ticket 13340]]
+
+  - Fix translations of the time synchronization and "*Tor is ready*"
+    notifications. [[!tails_ticket 13437]]
+
+Code
+====
+
+* intrigeri
+  [started a discussion](https://lists.debian.org/debian-devel/2017/08/msg00090.html)
+  about enabling AppArmor by default in Debian. So far the feedback
+  has been good.
+* We decided to evaluate this year
+  whether we can base Tails on quarterly snapshots of Debian testing.
+  If we end up answering this question favorably, then the first such
+  release would happen early in 2018 (January or April).
+* We worked on regressions introduced in Tails 3.0 that our Help Desk
+  and Foundations Team deems high-priority, such as
+  [[!tails_ticket 12733]] and [[!tails_ticket 13437]].
+* We [[!tails_ticket 12707 desc="worked on Tails Installer"]] to make
+  it create larger system partitions so that users can benefit more
+  often from automatic upgrades, instead of having to perform
+  a manual upgrade.
+* We are in the process of [[!tails_ticket 8281 desc="evaluating"]]
+  whether GNOME's on-screen keyboard could fully replace _Florence_.
+* We started [[!tails_ticket 12732 desc="porting"]] Tails to Linux 4.12.
+* We started organizing teams, work, timeline and workflow for our
+  upcoming OTF contract:
+  - [[!tails_ticket 14468 desc="VeraCrypt support in GNOME: make it easier to integrate Tails into workflows with other users and operating systems"]]
+  - Additional software: make it easier to tailor Tails to specific
+    needs for sensitive data manipulation ([[!tails_ticket 14568]],
+    [[!tails_ticket 5551]] and friends)
+
+Documentation and website
+=========================
+
+- We renamed our "*Easy*" tasks for new contributors as "[[*Starter*
+  tasks|contribute/working_together/criteria_for_starter_tasks]]".
+
+User experience
+===============
+
+- We helped Tor redesign and rephrase Tor
+  Launcher,
+  the configuration screens of Tor Browser that are also used in Tails.
+
+- We held a collective workshop to identify personas with 12 core
+  contributors. We started with a brainstorming of Tails users and their
+  goals, followed by a collective grouping of all the identified use
+  cases into categories based on *type of users* and *user goals*.
+
+  After that, a smaller team started drafting persona skeletons based on
+  this output, including holistic security and threat modeling aspects
+  for each persona.
+
+  The process and output are documented in our blueprint on
+  personas.
+
+Hot topics on our help desk
+===========================
+
+1. A few users reported that during some sessions, [[!tails_ticket 14250 desc="the *Applications* menu button stops working moments after Tails finishes to start"]]
+
+1. A few users were asking about shipping Tails with software for additional cryptocurrencies ([[!tails_ticket 14390 desc="i.e. Monero"]])
+
+1. There was some input on [[!tails_ticket 13206 desc="a problem with *Install by cloning*"]], which sometimes fails silently on specific installations.
+
+1. Users are still struggling with hardware support.
+
+Funding
+=======
+
+- sajolida sent an analysis of the donation campaign from last year,
+  with insights and actionable items to make it even better this year.
+
+
+Outreach
+========
+
+Past events
+-----------
+
+* A few Tails contributors attended
+  [DebConf17](https://debconf17.debconf.org/), the annual conference
+  for Debian contributors and users interested in improving Debian.
+  Among other things we had discussions and hacking sessions about
+  enabling AppArmor by default in Debian (see above),
+  [[!debpts openpgp-applet desc="OpenPGP Applet"]], Debian Perl Group
+  open tasks, and how to bring the benefits of
+  [Flatpak](http://flatpak.org/) to our users.
+* Alan attended [GUADEC](https://2017.guadec.org/) and sent a
+  comprehensive report
+
+Upcoming events
+---------------
+
+* From October 31st to November 2nd the [reproducible summit will happen in Berlin](https://reproducible-builds.org/events/berlin2017/)
+* From November 14th to November 16th is the OTF summit
+* From December 27th to December 30th the [34th Chaos Communication Congress, 34C3, will happen in Leipzig](https://www.ccc.de/en/updates/2017/34C3-in-leipzig)
+
+
+On-going discussions
+====================
+
+* There was a call to help us build Tails reproducibly
+* Iry restarted the discussion about substituting Tor-launcher with Anon-Connection-Wizard
+
+Translation
+===========
+
+All website PO files
+--------------------
+
+  - de: 56% (2821) strings translated, 7% strings fuzzy, 49% words translated
+  - fa: 42% (2115) strings translated, 10% strings fuzzy, 44% words translated
+  - fr: 89% (4466) strings translated, 1% strings fuzzy, 87% words translated
+  - it: 41% (2050) strings translated, 5% strings fuzzy, 36% words translated
+  - pt: 25% (1295) strings translated, 9% strings fuzzy, 22% words translated
+
+Total original words: 53366
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+----------------------------------------------------------
+
+  - de: 77% (1471) strings translated, 12% strings fuzzy, 78% words translated
+  - fa: 34% (656) strings translated, 11% strings fuzzy, 35% words translated
+  - fr: 98% (1866) strings translated, 1% strings fuzzy, 99% words translated
+  - it: 77% (1459) strings translated, 13% strings fuzzy, 77% words translated
+  - pt: 45% (853) strings translated, 15% strings fuzzy, 45% words translated
+
+Total original words: 17252
+
+
+Metrics
+=======
+
+* Tails has been started more than 674.373 times this month. This makes 21.754 boots a day on average.
+* 13.545 downloads of the OpenPGP signature of Tails ISO from our website.
+* 105 bug reports were received through WhisperBack.

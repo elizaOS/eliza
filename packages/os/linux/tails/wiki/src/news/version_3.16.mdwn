@@ -1,0 +1,85 @@
+[[!meta date="Wed, 4 Sep 2019 23:00:00 +0000"]]
+[[!meta title="Tails 3.16 is out"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_3.15]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes and upgrades
+
+- Remove *LibreOffice Math*
+
+  You can install *LibreOffice Math* again using the
+  *Additional Software* feature.
+
+- Remove our predefined bookmarks in *Tor Browser*.
+
+- Remove the predefined I2P and IRC accounts in *Pidgin*.
+
+- Update *Tor Browser* to 8.5.5.
+
+- Update *Linux* to 4.19.37-5+deb10u2, which fixes the [SWAPGS variant of the
+  Spectre vulnerability](https://access.redhat.com/articles/4329821).
+
+- Update most firmware packages. This should improve the support for
+  newer hardware (graphics, Wi-Fi, etc.).
+
+# Fixed problems
+
+- Fix opening the persistent storage of another Tails USB stick from the
+  *Files* browser. ([[!tails_ticket 16789]])
+
+- Fix the translation of *Additional Software*. ([[!tails_ticket 16601]])
+
+- Remove the security level indicator in the *Unsafe Browser*.
+  ([[!tails_ticket 16735]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.16
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 3.14, 3.14.1, 3.14.2, and 3.15
+  to 3.16.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can directly download
+Tails 3.16:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.0 is [[scheduled|contribute/calendar]] for October 22.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.16">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -1,0 +1,116 @@
+[[!meta title="Call for testing: 0.22~rc1"]]
+
+[[!meta date="Mon, 02 Dec 2013 13:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+<p>You can help Tails! The first (and hopefully only) release candidate for the
+upcoming version 0.22 is out. Please test it and see if all works for you.</p>
+
+[[!toc levels=1]]
+
+<h1>How to test Tails 0.22~rc1?</h1>
+
+<ol>
+  <li>
+    <p>
+      <strong>Keep in mind that this is a test image.</strong> We have made sure
+      that it is not broken in an obvious way, but it might still contain
+      undiscovered issues.
+    </p>
+  </li>
+  <li>
+    <p>Download the ISO image and its signature:</p>
+    <p>
+      Tails 0.22~rc1 ISO image
+    </p>
+    <p>
+      Tails 0.22~rc1 signature
+    </p>
+  </li>
+  <li>
+    <p>
+      Verify the ISO image.
+    </p>
+  </li>
+  <li>
+    <p>
+      Have a look at the list of <a href="#known_issues">known issues
+      of this release</a> and the list of [[longstanding known
+      issues|support/known_issues]].
+    </p>
+  </li>
+  <li>
+    <p>
+      Test wildly!
+    </p>
+  </li>
+</ol>
+
+<p>If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you check that it is not a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].</p>
+
+<h1>What's new since 0.21?</h1>
+
+<ul>
+
+<li>Security fixes</li>
+<ul>
+  <li>
+    <p>Stop migrating persistence configuration and access rights. Instead,
+    disable all persistence configuration files if the mountpoint has wrong
+    access rights.</p>
+  </li>
+  <li>
+    <p>Upgrade to NSS 3.15.3 that fixes a few serious security issues affecting
+     the browser.</p>
+  </li>
+</ul>
+
+<li>Major improvements</li>
+<ul>
+  <li><p>Switch to Iceweasel 24 and Torbutton 1.6.</p></li>
+  <li><p>Install Linux 3.11-2 (3.11.8-1).</p></li>
+  <li><p>Incremental upgrades are ready for beta-testing, stay tuned.</p></li>
+</ul>
+
+<li><p>Bugfixes</p></li>
+<ul>
+  <li><p>Fix Vidalia startup.</p></li>
+  <li><p>Disable DPMS screen blanking.</p></li>
+  <li><p>Fix checking of the persistent volume's ACL.</p></li>
+  <li><p>Sanitize more IP and MAC addresses in bug reports.</p></li>
+  <li><p>Do not fail USB upgrade when the "tmp" directory exists on the
+  destination device.</p></li>
+</ul>
+
+<li><p>Minor improvements</p></li>
+<ul>
+  <li><p>Clearer warning when deleting persistent volume.</p></li>
+  <li><p>Use IBus instead of SCIM.</p></li>
+  <li><p>Always list optimal keyboard layout in the greeter.</p></li>
+  <li><p>Fix on-the-fly translation of the greeter in various languages.</p></li>
+  <li><p>Update I2P to 0.9.8.1 and rework its configuration.</p></li>
+</ul>
+
+</ul>
+
+<h1><a id="known_issues"></a>Known issues in 0.22~rc1</h1>
+
+<ul>
+  <li>
+    <p>The memory erasure on shutdown [[!tails_ticket 6460 desc="does not work on
+    some hardware"]], most notably systems with Intel graphics.</p>
+  </li>
+  <li>
+    <p>Tails Installer [[!tails_ticket 6462 desc="fails to list USB stick with
+    isohybrid Tails installed"]].</p>
+  </li>
+  <li>
+    <p>The browser may [[!tails_ticket 6468 desc="leak the IP on the local
+    network via WebRTC"]].</p>
+  </li>
+</ul>
+
+<p>All these issues are being worked on and will hopefully be fixed in Tails 0.22.</p>

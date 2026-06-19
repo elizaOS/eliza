@@ -1,0 +1,105 @@
+{
+  "blocked_archives": [
+    {
+      "archive": "media.tar.xz",
+      "compressed_size": "1.3 GB",
+      "drive_id": "1c0914RMqTpKwtKG2vU3fCgiaNXQ5xx6n",
+      "expected_traces": 4,
+      "uncompressed_size": "~12 GB",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/media.tar.xz?download=1"
+    },
+    {
+      "archive": "fp.tar.xz",
+      "compressed_size": "9.4 GB",
+      "drive_id": "1TA1n-6U2aoBUoPpCEGyberAKYIYhi3I3",
+      "expected_traces": 14,
+      "uncompressed_size": "~80 GB",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/fp.tar.xz?download=1"
+    },
+    {
+      "archive": "infra.tar.xz",
+      "compressed_size": "9.4 GB",
+      "drive_id": "15lDyv-PH_bfnPXweIHwS97ZATX_T94hj",
+      "expected_traces": 16,
+      "uncompressed_size": "~80 GB",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/infra.tar.xz?download=1"
+    },
+    {
+      "archive": "compress.tar.xz",
+      "compressed_size": "13.4 GB",
+      "drive_id": "1YDfitnG4bRX2nOFh5X4o0QePAF8vZCg_",
+      "expected_traces": 8,
+      "uncompressed_size": "~120 GB",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/compress.tar.xz?download=1"
+    },
+    {
+      "archive": "web.tar.xz",
+      "compressed_size": "16.3 GB",
+      "drive_id": "18P3ndXZKSwpxNVjoUB7TWUIq0PJfSljf",
+      "expected_traces": 26,
+      "uncompressed_size": "~140 GB",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/web.tar.xz?download=1"
+    },
+    {
+      "archive": "int.tar.xz",
+      "compressed_size": "28.2 GB",
+      "drive_id": "1R9eJg5pUaE4FNq1k1Xv3DfnE93CzYROi",
+      "expected_traces": 37,
+      "uncompressed_size": "~250 GB",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/int.tar.xz?download=1"
+    }
+  ],
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
+  "consumed_by": [
+    "benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
+    "make mpki-eval-rtl  (cocotb harness auto-discovers external/cbp5-traces/*.gz)"
+  ],
+  "evidence_class": "cbp5_train_traces_only",
+  "format_notes": {
+    "branches_per_record": "0 or 1 (branches only when InstClass is condBranch/uncondDirBr/uncondIndBr/callDir/callInd/ret)",
+    "container": "gzip-compressed binary stream",
+    "endianness": "little-endian",
+    "instructions_per_record": 1,
+    "isa": "RV64 / ARM64; 4-byte fixed-width instructions",
+    "record": "variable-length per instruction (PC + InstClass + optional mem/branch fields + register operands + register values)"
+  },
+  "generated_utc": "2026-05-24T02:03:00Z",
+  "produces": [
+    "docs/evidence/cpu_ap/mpki_results_cbp5.json (model backend)",
+    "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json (RTL backend)",
+    "docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md (comparison table)"
+  ],
+  "retry_command": "for a in media fp infra compress web int; do curl -L -o external/cbp5-traces/${a}.tar.xz \"https://zenodo.org/records/15883615/files/${a}.tar.xz?download=1\"; tar -xJf external/cbp5-traces/${a}.tar.xz -C external/cbp5-traces/; done",
+  "schema": "eliza.cbp5_trace_manifest.v1",
+  "source": {
+    "reference_results_csv": "reference_results_training_set.csv (in the simulator repo)",
+    "simulator_framework_commit": "607496629452740887dc1b90a46834cc90dda1e0",
+    "simulator_framework_repo": "https://github.com/ramisheikh/cbp2025",
+    "trace_format_header": "lib/trace_reader.h",
+    "training_set_drive_folder": "https://drive.google.com/drive/folders/10CL13RGDW3zn-Dx7L0ineRvl7EpRsZDW",
+    "training_set_zenodo": "https://zenodo.org/records/15883615"
+  },
+  "stage_dir": "external/cbp5-traces",
+  "staged_traces": [
+    {
+      "branches": 181877,
+      "compressed_bytes": 1398973,
+      "compressed_sha256": "b0f1389085ff737b813b58e03950e45060df29e58cf1433b07f9556800edd810",
+      "filename": "sample_int_trace.gz",
+      "license": "public domain (per trace_reader.h header)",
+      "source_path_in_repo": "sample_traces/int/sample_int_trace.gz",
+      "uncompressed_instructions": 997301,
+      "workload_class": "int"
+    },
+    {
+      "branches": 148723,
+      "compressed_bytes": 1235871,
+      "compressed_sha256": "2bb41fdbd05e67c4f2cc40edfab9a963d2d1c101b4492e7771bb5cc085d2ce2c",
+      "filename": "sample_fp_trace.gz",
+      "license": "public domain (per trace_reader.h header)",
+      "source_path_in_repo": "sample_traces/fp/sample_fp_trace.gz",
+      "uncompressed_instructions": 997741,
+      "workload_class": "fp"
+    }
+  ]
+}

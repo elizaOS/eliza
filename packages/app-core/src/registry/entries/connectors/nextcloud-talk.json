@@ -1,0 +1,104 @@
+{
+  "id": "nextcloud-talk",
+  "name": "Nextcloud Talk",
+  "description": "Nextcloud Talk plugin for elizaOS - TypeScript implementation",
+  "npmName": "@elizaos/plugin-nextcloud-talk",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "connector",
+    "social",
+    "social-chat",
+    "messaging",
+    "nextcloud-talk",
+    "nextcloud",
+    "talk"
+  ],
+  "config": {
+    "NEXTCLOUD_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Url",
+      "help": "URL for Nextcloud",
+      "advanced": false
+    },
+    "NEXTCLOUD_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "NEXTCLOUD_BOT_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Bot Secret",
+      "help": "Secret for Nextcloud Bot",
+      "advanced": false
+    },
+    "NEXTCLOUD_WEBHOOK_HOST": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Host",
+      "help": "Host address",
+      "advanced": false
+    },
+    "NEXTCLOUD_WEBHOOK_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Path",
+      "help": "Webhook path",
+      "advanced": false
+    },
+    "NEXTCLOUD_WEBHOOK_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Port",
+      "help": "Port number",
+      "advanced": false,
+      "min": 1,
+      "max": 65535
+    },
+    "NEXTCLOUD_ALLOWED_ROOMS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Allowed Rooms",
+      "help": "Comma-separated room/channel list",
+      "advanced": false
+    },
+    "NEXTCLOUD_WEBHOOK_PUBLIC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Public Url",
+      "help": "Public-facing webhook URL",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Cloud",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#nextcloud-talk"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

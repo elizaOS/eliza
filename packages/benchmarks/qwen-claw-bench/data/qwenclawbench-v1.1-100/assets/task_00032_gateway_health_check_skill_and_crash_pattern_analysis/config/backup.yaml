@@ -1,0 +1,33 @@
+# OpenClaw Gateway Backup Configuration
+# This handles config and data backups — NOT related to health checks
+
+backup:
+  enabled: true
+  schedule: "0 4 * * *"   # 4 AM daily
+  retention_days: 14
+  
+  targets:
+    - name: config
+      paths:
+        - /opt/openclaw/config.yaml
+        - /opt/openclaw/plugins/
+      destination: /backup/openclaw/config/
+      
+    - name: data
+      paths:
+        - /opt/openclaw/data/sessions/
+        - /opt/openclaw/data/memory/
+      destination: /backup/openclaw/data/
+      compress: true
+      
+    - name: logs
+      paths:
+        - /var/log/openclaw/
+      destination: /backup/openclaw/logs/
+      compress: true
+      max_size_mb: 500
+
+  notifications:
+    on_success: false
+    on_failure: true
+    channel: system

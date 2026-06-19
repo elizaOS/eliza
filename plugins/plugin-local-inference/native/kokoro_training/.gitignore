@@ -1,0 +1,95 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Dataset files
+LJSpeech-1.1/
+*.tar.bz2
+*.tar.gz
+*.zip
+
+# Model checkpoints and outputs
+kokoro_english_model/
+*.pth
+*.pkl
+*.ckpt
+
+# Audio files (not the audio/ module directory)
+*.wav
+*.mp3
+*.flac
+
+# Weights & Biases
+wandb/
+
+# Vocoder models
+vocoder_models/
+
+# Training artifacts
+data/processed/
+data/cache/
+training/logs/
+training/checkpoints/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Profiling
+*.prof
+*.lprof
+
+
+*.sh
+*.dict

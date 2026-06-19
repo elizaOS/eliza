@@ -1,0 +1,154 @@
+A lot of security features have been implemented upstream at the
+kernel level (ASLR, removal of `/dev/kmem`, `/dev/mem` protections,
+various stack and heap hardening features, `/proc` or `/sys` not leaking
+sensitive information, etc.), most of them being slowly integrated
+into Debian. This is the reason why the Tails kernel has only a few
+more security features enabled than the stock Debian kernel.
+
+We pass a few kernel parameters on the boot command line and /proc/sys
+to increase security at little to no cost.
+
+See [[!tails_ticket 11143]] and [[!tails_ticket 10951]] for the
+discussion that lead to this choice of parameters. Most of what
+follows come straight from what "cypherpunks" wrote there.
+
+### `init_on_free=1`
+
+Fill freed pages and heap objects with zeroes.
+
+Also enables poisoning for some freed memory. Poisoning writes an arbitrary
+value to freed objects, so any modification or reference to that object after
+being freed or before being initialized will be detected and prevented.
+This prevents many types of use-after-free vulnerabilities at little
+performance cost.
+
+### `slab_nomerge`
+
+Disables the merging of slabs of similar sizes. Many times some
+obscure slab will be used in a vulnerable way, allowing an attacker to
+mess with it more or less arbitrarily. Most slabs are not usable even
+when exploited, so this isn't too big of a deal. Unfortunately the
+kernel will merge similar slabs to save a tiny bit of space, and if
+a vulnerable and useless slab is merged with a safe but useful slab,
+an attacker can leverage that aliasing to do far more harm than they
+could have otherwise. In effect, this reduces kernel attack surface
+area by isolating slabs from each other. The trade-off is a very
+slight increase in kernel memory utilization. `slabinfo -a` can be
+used to tell what the memory footprint increase would be on
+a given system.
+
+### `slub_debug=FZ`
+
+Enables sanity checks (F) and redzoning (Z). Sanity checks are
+self-evident and come with a modest performance impact, but this is
+unlikely to be significant on an average Tails system. The checks are
+basic but are still useful both for security and as a debugging
+measure. Redzoning adds extra areas around slabs that detect when
+a slab is overwritten past its real size, which can help detect
+overflows. Its performance impact is negligible.
+
+An additional note: any time `slub_debug=` is put in the kernel
+command line, `slab_nomerge` is implied. But having `slab_nomerge`
+explicitly declared can help prevent regressions where disabling of
+debugging features is desired but re-enabling of merging is not.
+
+### `vsyscall=none`
+
+Virtual syscalls are the obsolete predecessor of vDSO calls.
+Unfortunately, both `vsyscall=native` and `vsyscall=emulate` (the
+default) have a negative security impact, with the latter a little
+less so. Namely, they provide a target for any attacker who has
+control of the return instruction pointer, which is increasingly
+common these days now that attackers need to resort to ROP and similar
+attacks which target a process' control flow. The impact of this is
+with reduced compatibility, however only legacy statically compiled
+binaries and old versions of glibc used vsyscalls. All software on
+modern Tails uses vDSO instead. If for some reason a program does try
+to use a vsyscall, the process will crash with a memory access
+violation, and won't bring the whole system down.
+
+### `mce=0`
+
+Mostly useful for systems with ECC memory, setting `mce` to 0 will
+cause the kernel to panic on any uncorrectable errors detected by the
+machine check exception system. Corrected errors will just be logged.
+The default is `mce=1`, which will SIGBUS on many uncorrected errors.
+Unfortunately this means malicious processes which try to exploit
+hardware bugginess (such as rowhammer) will be able to try over and
+over, suffering only a SIGBUS at failure. Setting `mce=0` should have
+no impact. Any hardware which regularly triggers a memory-based MCE is
+unlikely to even boot, and the default is 1 only for
+long-lived servers.
+
+### `page_alloc.shuffle=1`
+
+Enables page allocator freelist randomization.
+
+### kASLR
+
+Linux kASLR is known as not being particularly strong, but one has to
+start somewhere.
+See [self-protection.txt](https://github.com/torvalds/linux/blob/master/Documentation/security/self-protection.rst)
+for details.
+
+kASLR is enabled by default in the Debian kernel since 4.7~rc7-1~exp1
+(`CONFIG_RANDOMIZE_BASE` and `CONFIG_RANDOMIZE_MEMORY`) so there is no
+need to enable it with a specific kernel parameter.
+
+#### `kernel.kptr_restrict=2`
+
+Some off-the-shelf malware exploit kernel addresses exposed via
+`/proc/kallsyms` so by not making these addresses easily available we
+increase the cost of such attack some what; now such malware has to
+check which kernel Tails is running and then fetch the corresponding
+kernel address map from some external source. This is not hard, but
+certainly not all malware has such functionality.
+
+For this reason, we also make sure to purge `/boot/System.map`.
+
+#### `vm.mmap_rnd_bits`, `vm.mmap_rnd_compat_bits`
+
+These settings are
+[[!tails_gitweb config/chroot_local-includes/etc/sysctl.d/mmap_aslr.conf desc="set to the maximum supported value"]]
+in order to improve ASLR effectiveness for mmap, at the cost of
+increased address-space fragmentation.
+
+### `kernel.kexec_load_disabled = 1`
+
+kexec is dangerous: it enables replacement of the running kernel.
+
+### `mds=full,nosmt`
+
+As per
+<https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/mds.html>,
+if the CPU is vulnerable, this:
+
+1. enables "all available mitigations for the MDS vulnerability, CPU
+   buffer clearing on exit to userspace";
+2. disables simultaneous multithreading (SMT), such as Hyper-Threading, which is another avenue for exploiting this class
+   of attacks.
+
+### `randomize_kstack_offset=on`
+
+Randomize kernel stack offset on syscall entry.
+
+This is recommended by <https://kernsec.org/wiki/index.php/Kernel_Self_Protection_Project/Recommended_Settings>
+and enabled by default in more recent Debian kernels [[!debbug 1016056]].
+
+### `net.core.bpf_jit_harden = 2`
+
+Turn on BPF JIT hardening, if the JIT is enabled.
+
+This is recommended by
+<https://kernsec.org/wiki/index.php/Kernel_Self_Protection_Project/Recommended_Settings>.
+
+### `spec_store_bypass_disable=on`
+
+Unconditionally disable the Speculative Store Bypass (SSB) on affected 
+CPUs (see for example <https://wiki.ubuntu.com/SecurityTeam/KnowledgeBase/SpectreAndMeltdown/MitigationControls#CVE-2018-3639>).
+
+The default is `prctl` which means that SSB is enabled by default and
+can be disabled by a process via `prctl`. That's the default because
+disabling SSB can have a performance impact. The performance impact is
+not expected to be significant in Tails and we prefer the security
+benefits.

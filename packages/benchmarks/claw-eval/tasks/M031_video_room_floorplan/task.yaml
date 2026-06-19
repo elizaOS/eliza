@@ -1,0 +1,36 @@
+task_id: M031_video_room_floorplan
+task_name: Video Room Floor Plan
+version: "1.0"
+category: video_image
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.mp4
+
+    Based on this video, reconstruct the floor plan layout of the room as a top-down 2D diagram. Orientation: The direction you face at the very start of the video defines the top edge of the floor plan. The right side of that initial view maps to the right edge, and the left side maps to the left edge. Maintain this orientation consistently throughout. Include all major objects that appear in the video, label them by name on the diagram, and accurately reflect their spatial relationships. Draw it as an SVG image and save it as /workspace/floorplan.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.mp4
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/floorplan.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch room tour video, identify all major objects and their positions,
+  create SVG floor plan diagram, save as /workspace/floorplan.png.
+primary_dimensions:
+  - completion
+  - robustness

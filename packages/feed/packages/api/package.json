@@ -1,0 +1,41 @@
+{
+  "name": "@feed/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Feed API Middleware and Utilities",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./solana-registration-debug": "./src/solana-registration-debug.ts"
+  },
+  "scripts": {
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/api/package.json packages/api/tsconfig.json packages/api/src",
+    "typecheck": "cd ../.. && bun run tsc -p packages/api --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "@aws-sdk/client-s3": "^3.943.0",
+    "@aws-sdk/lib-storage": "^3.943.0",
+    "@feed/shared": "workspace:*",
+    "@vercel/blob": "2.3.2",
+    "graphql": "16.13.2",
+    "graphql-request": "7.4.0",
+    "ioredis": "5.10.1",
+    "jose": "6.2.2",
+    "nanoid": "5.1.7",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@feed/db": "workspace:*",
+    "@feed/engine": "workspace:*",
+    "next": "^16.0.7",
+    "viem": "^2.45.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "swagger-jsdoc": "^6.2.8",
+    "tiktoken": "^1.0.21",
+    "typescript": "^5.9.3"
+  }
+}

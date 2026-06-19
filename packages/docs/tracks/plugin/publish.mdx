@@ -1,0 +1,49 @@
+---
+title: Publish a Plugin
+description: "Ship your plugin to npm so any agent can install it."
+---
+
+elizaOS plugins are plain npm packages. Publishing is `npm publish` with a small set of conventions.
+
+## Naming
+
+Use the `@elizaos/plugin-<name>` scope when contributing to the core registry, or your own scope (`@your-org/plugin-<name>`) for private / third-party plugins. Agents reference plugins by package name in their character's `plugins` array.
+
+## Build
+
+```bash
+bun run build
+```
+
+The default template uses `tsdown` to produce ESM + CJS + type declarations under `dist/`. Verify `package.json` `main`, `module`, `types`, and `exports` point into `dist/`.
+
+## Test
+
+```bash
+bun run test
+bun run test:e2e
+```
+
+E2E tests boot a real `AgentRuntime` with your plugin loaded — they catch boot-time registration failures that unit tests miss.
+
+## Publish
+
+```bash
+npm publish --access public
+```
+
+Use the `alpha` dist-tag for pre-release work to match the rest of the `@elizaos/*` packages:
+
+```bash
+npm publish --tag alpha --access public
+```
+
+## Discovery
+
+A character can load any plugin published to a registry the agent can reach. Once published, document the plugin in your README — the agent CLI's `--help` and the dashboard's plugin manager will pick it up automatically by package name.
+
+## See also
+
+- [Plugin publish guide](/plugins/publish)
+- [Plugin registry tooling](/guides/registry)
+- [Plugin eject](/plugins/plugin-eject) — extract a plugin from an app project into its own repo

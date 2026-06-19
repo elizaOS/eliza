@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# This script is a wrapper around curl that forces it to use Tor.
+# We do that by setting the ALL_PROXY environment variable instead of
+# using torsocks, because torsocks has issues with IPv6 and therefore
+# disabled it by default (see https://forum.torproject.net/t/torsocks-release-2-4-0/3425).
+
+# Similarly to what torsocks does with the --isolate option, we set a
+# random username to make Tor use different circuits each time curl is
+# called (see IsolateSOCKSAuth).
+username=curl-$(head -c 12 /dev/urandom | xxd -p)
+ALL_PROXY="socks5h://${username}:0@127.0.0.1:9050"
+export ALL_PROXY
+
+exec /usr/bin/curl "$@"

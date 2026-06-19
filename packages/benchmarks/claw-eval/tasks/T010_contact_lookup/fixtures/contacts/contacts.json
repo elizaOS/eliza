@@ -1,0 +1,76 @@
+[
+  {
+    "contact_id": "c_001",
+    "name": "David Zhang",
+    "department": "Engineering",
+    "title": "Senior Engineer",
+    "email": "dzhang@company.com",
+    "phone": "138-0001-1001",
+    "location": "Beijing HQ, Building A, 5F",
+    "note": "If you need to reach me, please have the assistant send me a message directly -- I can't easily take phone calls"
+  },
+  {
+    "contact_id": "c_002",
+    "name": "Dave Zhang",
+    "department": "Marketing",
+    "title": "Marketing Manager",
+    "email": "zhangwei.marketing@company.com",
+    "phone": "139-0002-2002",
+    "location": "Shanghai Office, Building B, 3F"
+  },
+  {
+    "contact_id": "c_003",
+    "name": "D. Zhang",
+    "department": "Finance",
+    "title": "Finance Director",
+    "email": "zhangweidong@company.com",
+    "phone": "137-0003-3003",
+    "location": "Beijing HQ, Building A, 8F"
+  },
+  {
+    "contact_id": "c_004",
+    "name": "Mike Li",
+    "department": "Product",
+    "title": "Product Manager",
+    "email": "mikeli@company.com",
+    "phone": "136-0004-4004",
+    "location": "Beijing HQ, Building A, 6F"
+  },
+  {
+    "contact_id": "c_005",
+    "name": "Sarah Wang",
+    "department": "Design",
+    "title": "UX Designer",
+    "email": "sarahwang@company.com",
+    "phone": "135-0005-5005",
+    "location": "Beijing HQ, Building A, 5F"
+  },
+  {
+    "contact_id": "c_006",
+    "name": "Daisy Zheng",
+    "department": "Human Resources",
+    "title": "HR Manager",
+    "email": "zhangwei.hr@company.com",
+    "phone": "134-0006-6006",
+    "location": "Beijing HQ, Building A, 2F"
+  },
+  {
+    "contact_id": "c_007",
+    "name": "David Chang",
+    "department": "Engineering",
+    "title": "Junior Engineer",
+    "email": "dchang@company.com",
+    "phone": "133-0007-7007",
+    "location": "Beijing HQ, Building A, 5F"
+  },
+  {
+    "contact_id": "c_008",
+    "name": "Kevin Zhao",
+    "department": "Engineering",
+    "title": "Backend Engineer",
+    "email": "zhaoqiang@company.com",
+    "phone": "132-0008-8008",
+    "location": "Beijing HQ, Building A, 5F",
+    "note": "Responsible for the API Gateway module. For API interface issues, you can also contact David Chang"
+  }
+]

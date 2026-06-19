@@ -1,0 +1,156 @@
+import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+
+const ELIZA_API_HOSTS: Record<string, string> = {
+  "elizacloud.ai": "https://api.elizacloud.ai",
+  "www.elizacloud.ai": "https://api.elizacloud.ai",
+  "staging.elizacloud.ai": "https://api-staging.elizacloud.ai",
+};
+
+function viteEnv(name: string): string | undefined {
+  const env = (import.meta as { env?: Record<string, string | undefined> }).env;
+  return env?.[name];
+}
+
+function isLocalApiBase(value: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/|$)/i.test(
+    value,
+  );
+}
+
+function isLocalBrowserHost(hostname: string): boolean {
+  return /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/i.test(hostname);
+}
+
+function configuredApiBase(): string | null {
+  const raw =
+    viteEnv("VITE_API_URL") ||
+    viteEnv("NEXT_PUBLIC_API_URL") ||
+    (typeof process !== "undefined"
+      ? process.env?.NEXT_PUBLIC_API_URL
+      : undefined);
+  if (!raw) return null;
+  const trimmed = raw.replace(/\/+$/, "");
+  if (!trimmed || isLocalApiBase(trimmed)) return null;
+  return trimmed;
+}
+
+function apiBaseForHostname(hostname: string): string | null {
+  const host = hostname.toLowerCase();
+  if (isLocalBrowserHost(host)) return null;
+  if (host.endsWith(".pages.dev")) return "https://api-staging.elizacloud.ai";
+  return configuredApiBase() ?? ELIZA_API_HOSTS[host] ?? null;
+}
+
+function browserApiBase(): string | null {
+  if (typeof window === "undefined") return null;
+  return apiBaseForHostname(window.location.hostname);
+}
+
+function isApiPath(path: string): boolean {
+  return path.startsWith("/api/") || path.startsWith("/steward/");
+}
+
+function readStewardToken(): string | null {
+  try {
+    return window.localStorage.getItem(STEWARD_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function withAuthHeaders(headers: HeadersInit | undefined): Headers {
+  const nextHeaders = new Headers(headers);
+  const token = readStewardToken();
+  if (token && !nextHeaders.has("Authorization")) {
+    nextHeaders.set("Authorization", `Bearer ${token}`);
+  }
+  return nextHeaders;
+}
+
+function rewriteStringInput(input: string): string {
+  if (isApiPath(input)) {
+    const base = browserApiBase();
+    return base ? `${base}${input}` : input;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    return input;
+  }
+
+  if (typeof window === "undefined" || !isApiPath(url.pathname)) {
+    return input;
+  }
+
+  const base =
+    url.origin === window.location.origin
+      ? browserApiBase()
+      : apiBaseForHostname(url.hostname);
+  return base ? `${base}${url.pathname}${url.search}${url.hash}` : input;
+}
+
+function rewriteUrlInput(input: URL): URL | string {
+  if (!isApiPath(input.pathname)) {
+    return input;
+  }
+  const base =
+    input.origin === window.location.origin
+      ? browserApiBase()
+      : apiBaseForHostname(input.hostname);
+  return base ? `${base}${input.pathname}${input.search}${input.hash}` : input;
+}
+
+export function installApiFetchBridge(): void {
+  if (typeof window === "undefined") return;
+  const globalWindow = window as Window & {
+    __elizaApiFetchBridgeInstalled?: boolean;
+  };
+  if (globalWindow.__elizaApiFetchBridgeInstalled) return;
+  globalWindow.__elizaApiFetchBridgeInstalled = true;
+
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof input === "string") {
+      const rewritten = rewriteStringInput(input);
+      if (rewritten !== input || isApiPath(input)) {
+        return nativeFetch(rewritten, {
+          ...init,
+          credentials: init?.credentials ?? "include",
+          headers: withAuthHeaders(init?.headers),
+        });
+      }
+    }
+
+    if (input instanceof URL && isApiPath(input.pathname)) {
+      return nativeFetch(rewriteUrlInput(input), {
+        ...init,
+        credentials: init?.credentials ?? "include",
+        headers: withAuthHeaders(init?.headers),
+      });
+    }
+
+    if (input instanceof Request) {
+      const url = new URL(input.url, window.location.origin);
+      const base =
+        url.origin === window.location.origin
+          ? browserApiBase()
+          : apiBaseForHostname(url.hostname);
+      if (base && isApiPath(url.pathname)) {
+        const request = new Request(input, init);
+        const rewritten = `${base}${url.pathname}${url.search}${url.hash}`;
+        return nativeFetch(new Request(rewritten, request), {
+          headers: withAuthHeaders(request.headers),
+          // A Request always carries credentials (spec default "same-origin"),
+          // so reading request.credentials would never reach "include" and a
+          // cross-origin upstream rewrite would drop the Steward cookie/JWT.
+          // Mirror the string/URL branches: honor an explicit init, else include.
+          credentials: init?.credentials ?? "include",
+        });
+      }
+    }
+
+    return nativeFetch(input, init);
+  };
+}

@@ -1,0 +1,21 @@
+{
+  "id": "hello-remote-plugin",
+  "name": "Hello Remote Plugin",
+  "version": "0.1.0",
+  "description": "Minimal background-mode reference remotePlugin used to validate the host bootstrap, statePath/logsPath wiring, and the log host-action loop end-to-end.",
+  "mode": "background",
+  "permissions": {
+    "host": {},
+    "bun": {},
+    "isolation": "shared-worker"
+  },
+  "view": {
+    "relativePath": "view/index.html",
+    "title": "Hello Remote Plugin",
+    "width": 480,
+    "height": 320
+  },
+  "worker": {
+    "relativePath": "worker.mjs"
+  }
+}

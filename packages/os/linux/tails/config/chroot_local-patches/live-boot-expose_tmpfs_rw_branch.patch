@@ -1,0 +1,20 @@
+diff --git a/scripts/boot/9990-overlay.sh b/scripts/boot/9990-overlay.sh
+index 098111c..e1cfd15 100755
+--- a/lib/live/boot/9990-overlay.sh
++++ b/lib/live/boot/9990-overlay.sh
+@@ -136,7 +136,7 @@
+ 	# tmpfs file systems
+ 	touch /etc/fstab
+ 	mkdir -p /live/overlay
+-	mount -t tmpfs tmpfs /live/overlay
++	# mount -t tmpfs tmpfs /live/overlay
+ 
+ 	# Looking for persistence devices or files
+ 	if [ -n "${PERSISTENCE}" ] && [ -z "${NOPERSISTENCE}" ]
+@@ -360,5 +360,5 @@
+ 	# ensure that a potentially stray tmpfs gets removed
+ 	# otherways, initramfs-tools is unable to remove /live
+ 	# and fails to boot
+-	umount /live/overlay > /dev/null 2>&1 || true
++	# umount /live/overlay > /dev/null 2>&1 || true
+ }

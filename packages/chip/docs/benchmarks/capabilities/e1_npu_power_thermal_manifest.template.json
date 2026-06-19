@@ -1,0 +1,68 @@
+{
+  "schema": "eliza.e1_npu_power_thermal_manifest.v1",
+  "claim_boundary": "template_only_not_sustained_power_or_thermal_evidence",
+  "status": "blocked",
+  "android_boot_claim_allowed": false,
+  "android_nnapi_claim_allowed": false,
+  "phone_claim_allowed": false,
+  "release_claim_allowed": false,
+  "silicon_claim_allowed": false,
+  "sustained_performance_claim_allowed": false,
+  "false_claim_flags": {
+    "android_boot_claim_allowed": false,
+    "android_nnapi_claim_allowed": false,
+    "phone_claim_allowed": false,
+    "release_claim_allowed": false,
+    "silicon_claim_allowed": false,
+    "sustained_performance_claim_allowed": false
+  },
+  "target": "android-device-or-linux-target-name",
+  "generated_by": "hardware validation job command or CI job id",
+  "date_utc": "YYYY-MM-DDTHH:MM:SS+00:00",
+  "measurement_window": {
+    "duration_seconds": 0,
+    "ambient_c": 0,
+    "cooling": "blocked_until_lab_setup_recorded",
+    "workload": "tflite_e1_npu"
+  },
+  "required_statuses": {
+    "power_meter_calibrated": "blocked",
+    "thermal_sensor_calibrated": "blocked",
+    "npu_frequency_locked_or_recorded": "blocked",
+    "sustained_workload_trace": "blocked",
+    "throttle_state_recorded": "blocked",
+    "perf_per_watt_computed_from_trace": "blocked"
+  },
+  "artifacts": {
+    "power_trace": {
+      "path": "docs/evidence/android/e1-npu/power-trace.csv",
+      "sha256": "64-character lowercase sha256 of the exact power trace",
+      "required_columns": ["timestamp_s", "watts"],
+      "min_samples": 1
+    },
+    "thermal_trace": {
+      "path": "docs/evidence/android/e1-npu/thermal-trace.csv",
+      "sha256": "64-character lowercase sha256 of the exact thermal trace",
+      "required_columns": ["timestamp_s", "die_c"],
+      "min_samples": 1
+    },
+    "frequency_trace": {
+      "path": "docs/evidence/android/e1-npu/frequency-trace.csv",
+      "sha256": "64-character lowercase sha256 of the exact frequency trace",
+      "required_columns": ["timestamp_s", "npu_hz"],
+      "min_samples": 1
+    },
+    "calibration_record": {
+      "path": "docs/evidence/android/e1-npu/power-thermal-calibration.json",
+      "sha256": "64-character lowercase sha256 of the exact calibration record",
+      "required_fields": ["power_meter", "thermal_sensor", "calibrated_utc"]
+    }
+  },
+  "computed_metrics": {
+    "sustained_int8_tops": 0,
+    "average_watts": 0,
+    "sustained_perf_per_w_int8_tops": 0,
+    "max_die_c": 0,
+    "throttle_state": "blocked"
+  }
+}

@@ -1,0 +1,220 @@
+[[!meta date="Tue, 13 Jun 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.0 is out"]]
+[[!tag announce]]
+
+We are especially proud to present you Tails 3.0, the first version of Tails
+based on Debian 9 (Stretch). It brings a completely new startup and shutdown
+experience, a lot of polishing to the desktop, security improvements in depth,
+and major upgrades to a lot of the included software.
+
+Debian 9 (Stretch) will be [released on June
+17](https://lists.debian.org/debian-devel-announce/2017/05/msg00002.html).
+It is the first time that we are releasing a new version of Tails almost
+at the same time as the version of Debian it is based upon. This was an important
+objective for us as it is beneficial to both our users and users of
+Debian in general and strengthens our [[relationship with
+upstream|contribute/relationship_with_upstream]]:
+
+- Our users can benefit from the cool changes in Debian earlier.
+- We can detect and fix issues in the new version of Debian while it is
+  still in development so that our work also benefits Debian earlier.
+
+This release also fixes [[many security
+issues|security/Numerous_security_holes_in_2.12]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+<a id="greeter"></a>
+
+### New startup and shutdown experience
+
+- *Tails Greeter*, the application to configure Tails at startup, has
+  been completely redesigned for ease of use:
+  - All options are available from a single window.
+  - Language and region settings are displayed first to benefit our
+    international audience.
+  - Accessibility features can be enabled from the start.
+
+  This has been a long process, started three years ago with the UX team of
+  [NUMA Paris](https://paris.numa.co/) and lead only by volunteers. Join us on
+  [[tails-dev@boum.org|doc/about/contact#tails-dev]] to participate in future
+  designs!
+
+  [[!img tails-greeter.png link="no"]]
+
+- The shutdown experience has also been redesigned in order to be:
+  - More reliable. It was crashing on various computers with
+    unpredictable results.
+  - More discrete. The screen is now totally black to look less
+    suspicious.
+
+  Technically speaking, it is now using the [[freed memory poisoning
+  feature|contribute/design/memory_erasure]] of the Linux kernel.
+
+### Polishing the desktop
+
+- We switched to the default black theme of GNOME which has a more
+  modern and discrete look:
+
+  [[!img black-theme.png link="no"]]
+
+- Tails 3.0 benefits from many other small improvements to the GNOME desktop:
+
+  - *Files* has been redesigned to reduce clutter and make the interface easier
+    to use. Several new features have been added, such as the ability to
+    rename multiple files at the same time and the ability to extract
+    compressed files without needing a separate application.
+
+    [[!img batch-rename.png link="no"]]
+
+  - The notification area has been improved to allow easy access to previous
+    notifications. Notification popups have also been repositioned to make them
+    more noticeable.
+
+    [[!img message-list.png link="no"]]
+
+  - Shortcut windows have been added to help you discover keyboard shortcuts in
+    GNOME applications.
+
+    For example, press **Ctrl+F1** in *Files* to
+    display its shortcut window.
+
+### Security improvements in depth
+
+- Tails 3.0 works on
+  <span class="definition">[[!wikipedia x86-64 desc="64-bit computers"]]</span>
+  only and not on 32-bit computers anymore. Dropping hardware support,
+  even for a small portion of our user base, is always a hard decision
+  to make but being 64-bit only has important security and reliability
+  benefits. For example, to protect against some types of security
+  exploits, support for the <span class="definition">[[!wikipedia NX_bit]]</span>
+  is compulsory and most binaries are hardened with
+  <span class="definition">[[!wikipedia Position-independent_code desc="PIE"]]</span>
+  which allows <span class="definition">[[!wikipedia Address_space_layout_randomization desc="ASLR"]]</span>.
+
+  [[!toggle id="check" text="Check if your computer is 64-bit or 32-bit."]]
+
+[[!toggleable id="check" text="""
+1. Start any Tails version.
+
+1. To open a terminal choose
+   **Applications&nbsp;▸ Utilities&nbsp;▸ Terminal**.
+
+1. Execute the following command to display system information:
+
+           uname -m
+
+   - If the output is `x86_64`, your computer is 64-bit and Tails 3.0
+     should work.
+
+   - If the output is `i686`, your computer is 32-bit and Tails 3.0 will
+     not work.
+"""]]
+
+- Update *Tor Browser* to 7.0.1 (based on Firefox 52 ESR) which is
+  multiprocess
+  and paves the way to [content
+  sandboxing](https://wiki.mozilla.org/Security/Sandbox). This should
+  make it harder to exploit security vulnerabilities in the browser.
+
+### Major upgrades to included software
+
+- Most included software has been upgraded in Debian 9, for example:
+  - *KeePassX* from 0.4.3 to 2.0.3<br/>
+    Your password database will be
+    [[migrated automatically|doc/encryption_and_privacy/manage_passwords#migration]] to the new format of *KeePassX* 2.
+  - *LibreOffice* from 4.3.3 to 5.2.6
+  - *Inkscape* from 0.48.5 to 0.92.1
+  - *Audacity* from 2.0.6 to 2.1.2
+  - *Enigmail* from 1.8.2 to 1.9.6
+  - *MAT* from 0.5.2 to 0.6.1
+  - *Dasher* from 4.11 to 5.0
+  - *git* from 2.1.4 to 2.11.0
+
+## Upgrades and changes
+
+- The *Pidgin* tray icon was removed from the top navigation bar and
+  replaced by popup notifications.
+
+  [[!img pidgin.png link="no"]]
+
+- *Icedove* was renamed as *Thunderbird*, its original name, inheriting
+  this change from Debian.
+
+- The search box and the search feature of the address bar of the
+  *Unsafe Browser* were removed. ([[!tails_ticket 12540]])
+
+- The read-only option of the persistent storage was removed. It was
+  used by very few users, created confusion, and lead to unexpected
+  issues. ([[!tails_ticket 12093]])
+
+## Fixed problems
+
+- The new *X.Org* display server in Tails 3.0 should work on more newer
+  graphical hardware.
+
+- UEFI boot has been fixed on some machines (ThinkPad X220).
+
+- MAC spoofing has been fixed on some network interfaces (TP-Link WN725N). ([[!tails_ticket 12362]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+- *Tails Installer* erroneously rejects some USB sticks. When this
+  happens, a message that starts with "Skipping non-removable device"
+  is displayed ([[!tails_ticket 12696]]). To workaround this problem:
+
+  1. Start the operating system you want to use *Tails Installer* on.<br />
+     If you want to use *Tails Installer* in Tails 3.0,
+     [[set up an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+  2. Choose
+     **Applications&nbsp;▸ System Tools&nbsp;▸ Root Terminal**
+     to open a terminal with administration rights.
+
+  3. Execute the following command to fix the bug in *Tails Installer*:
+
+     <span class="code">
+     perl -pi -E 's,media_removable,removable,' /usr/lib/python2.7/dist-packages/tails_installer/creator.py
+     </span>
+
+  4. *Tails Installer* should not expose this problem again… until you
+     restart Tails, as these changes will be reverted upon restart.
+
+- Tails fails to start on some computers with [[Intel graphical
+  hardware|support/known_issues#xorg-driver]].
+
+- Some users have reported problems during the migration from *Icedove*
+  to *Thunderbird*, in particular that *Thunderbird* doesn't start.
+
+  If this happens to you, please
+  [[send us a *WhisperBack* report|doc/first_steps/whisperback/#whisperback]]
+  without restarting Tails.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.0
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, all users have to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.0.|install/download]]
+
+# What's coming up?
+
+Tails 3.1 is [[scheduled|contribute/calendar]] for August 8.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.0">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

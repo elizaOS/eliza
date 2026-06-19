@@ -1,0 +1,29 @@
+[[!meta title="Ernesto, March 2017"]]
+
+Ernesto is working in the social science department of a University in
+Latin America where he does communication, web development, and video.
+He is also active in a local hacklab where he has a community TV and
+does video editing with free software.
+
+He uses Tails to be able to have a secure access to his personal data
+from the work computer that he has at the University or when he wants to
+travel light.
+
+Things he likes:
+
+- Have a full OS on a USB stick is cool!
+- All the connections go through Tor.
+- Keeping his email configuration and encryption keys in the persistent
+  storage.
+- Tails comes with everything you need already. It even has a video
+  editor.
+- He liked meeting the developers in person and seeing that we share
+  similar ways of doing things. Now he wonders how he could help back.
+
+Things he dislikes:
+
+- The fact the upgrade mechanism is sometimes automatic and sometimes
+  manual. You never know what to expect.
+- The new installation instructions are good for new users but he feels
+  a bit lost when looking for the command line instructions only.
+

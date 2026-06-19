@@ -1,0 +1,55 @@
+name: Env Audit
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  env-audit:
+    name: env:audit:check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+
+      - name: Install dependencies
+        run: |
+          if bun install --frozen-lockfile; then
+            exit 0
+          fi
+
+          # The frozen install above is the canonical lockfile-drift signal. When
+          # it fails we fall back to a non-frozen install — but Bun canary (this
+          # repo tracks `bun-version: canary`) reserializes bun.lock byte-for-byte
+          # between versions even when the resolved dependency graph is identical,
+          # so a `git diff --exit-code` here fails on serialization noise rather
+          # than real drift. Restore the committed lockfile after installing; real
+          # lockfile drift is still gated by the Tests/build lanes' "commit the
+          # updated lockfile" guards. This lane only needs deps present so the
+          # (continue-on-error) env audit below can run.
+          bun install --no-frozen-lockfile
+          git checkout -- bun.lock
+
+      - name: Env audit check
+        run: bun run --cwd packages/feed env:audit:check
+        continue-on-error: true

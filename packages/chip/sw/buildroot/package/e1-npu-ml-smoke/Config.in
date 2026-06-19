@@ -1,0 +1,8 @@
+config BR2_PACKAGE_E1_NPU_ML_SMOKE
+	bool "e1-npu-ml-smoke"
+	depends on BR2_USE_MMU
+	help
+	  Target-side /dev/e1-npu GEMM_S8 smoke. This is a deterministic
+	  Linux driver/runtime check and rejects CPU-only fallback.
+
+	  It is not NNAPI, Android HAL, or hardware benchmark evidence.

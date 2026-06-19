@@ -1,0 +1,43 @@
+[[!meta date="Sat, 01 May 2010 19:17:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.5, is out.
+This is the first release since the [[project has been renamed|new_project_name]].
+
+Tons of bugs were fixed, including:
+
+- A trick workarounds the nasty bug that often prevented the system to
+  connect to the Tor network.
+- New windows don't open in background anymore.
+- Memory wiping at shutdown is now lightning fast and does not
+  prevent the computer to halt anymore.
+- onBoard now correctly autodetects the keyboard layout... at least
+  once some keys have been pressed.
+- and more!
+
+Other notable changes include:
+
+- Tor 0.2.1.25
+- Vidalia 0.2.8
+- Claws Mail 3.7.5 with OpenPGP support
+- Pidgin automatically connects to irc.oftc.net with a randomized
+  nickname, which allows to easily join our new
+  [[chatroom|support/chat]].
+- At shutdown time, only prompt to remove CD; just halt when booted
+  from a USB stick.
+- User settings (`$HOME`) are now generated in a programmatic way: no
+  more ugly binary files in our source code!
+- Forbid any IPv6 communication with the outside.
+- Added some wifi drivers: Ralink rt2570, rt2860 and Broadcom STA.
+
+... and of course the usual bunch of software security updates.
+
+See the online
+Changelog
+for details.
+
+Please note we now have a [[newsletter|/news]], a web forum
+and a [[chatroom on IRC|support/chat]].
+
+[[Download it, seed it!|install]]

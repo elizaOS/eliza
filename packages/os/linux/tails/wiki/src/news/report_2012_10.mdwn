@@ -1,0 +1,196 @@
+[[!meta date="Fri, 02 Nov 2012 09:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for October, 2012"]]
+
+October 2012 has seen the highest activity on Tails development mailing list
+since it is publicly archived (September 2010). This reflects how much
+work is done to slowly make Tails better and better. More details follow.
+
+Releases
+========
+
+Tails 0.14 is on its way. A first release candidate was released on the 12th
+with pretty good reactions so far. This new version will catch up with
+long awaited, unspectacular but important features, and fix an
+impressive amount of small bugs.
+
+While testing the first release candidate, we found I2P unable to work
+properly. The source of the problem was ultimately determined to
+a random bit
+flip.
+
+What should have been an easy update to the next "Entreprise Stable
+Release" of Iceweasel (Debian unbranded Firefox) left us cold with a
+half-working Torbutton. This required us to hurry on fixing this
+standing problem: we now have our own APT repository and a custom
+Iceweasel package which includes TorBrowser patches for anonymity.
+
+This got included in the second release candidate, released on the
+30th, together with translation updates. Unless a major issue shows up,
+Tails 0.14 should be released on November, 6th.
+
+People
+======
+
+Tails has been started and successfully connected to the Tor network
+around 80.420 times in September. That makes a boot every 33 seconds on
+average. This number is an approximation from the requests made for the
+security announcements feed. The later is retrieved by Tails after being
+connected to Tor to eventually encourage users to update.
+
+50 reports were received through WhisperBack.
+
+The forum activity is still really intense: 1542 messages, 161 signed by Tails.
+
+Code
+====
+
+The bug that sometimes made Iceweasel open PDF with *GIMP* or MP3 with
+Audacity has been
+fixed.
+
+Whisperback
+1.6.1
+fixed the inability to resend a bug after a network problem and some
+other minor issues.
+
+Network Manager connections can now persist across
+sessions.
+
+Default to use ftp.us.debian.org as a Debian mirror in the Vagrant build
+system.
+
+Finally got to nail the issue with the current memory wipe
+system.
+
+Meanwhile, a new solution was proposed using the `hugetlbfs` kernel
+mechanism.
+
+Finally implemented support for multiple kernels meaning proper support
+for multiple CPUs and cores and more than 3 GB of memory.
+This also required a new version of liveusb-creator to fix some
+concurrency
+issues.
+
+Support for public key encryption in
+gpgApplet has been merged, finally!
+
+Yelp does not crash on internal links
+anymore.
+
+Persistence for browser bookmarks is ready for Tails
+0.15.
+
+Add and get good reports for a Japanese input
+method, will be included
+in Tails 0.14.
+
+Add an input system for Korean, should be
+included in Tails 0.15.
+
+`tordate` was broken with Tor 0.2.3. A fix has quickly been
+found.
+
+Display "Unsafe browser" instead of "Iceweasel" in the Unsafe
+browser.
+
+Preliminary support for obfsproxy
+bridges.
+
+Quite some work happened on setting up our own APT
+repository (Puppet modules hacking and
+documentation, among others).
+
+Add our custom APT repository in
+Tails.
+
+Get our own Iceweasel packages with TorBrowser
+patches and include them in
+Tails
+0.14.
+
+Get more test results for OpenPGP smartcards
+support.
+
+Add vendor-specific dpkg origin information.
+
+Do not use pdnsd anymore.
+
+New progress has been made on Tails automated test
+suite.
+
+Documentation and website
+=========================
+
+Document the upcoming Network Manager persistence.
+
+Document the new support for public key encryption in the OpenPGP
+applet, and generally improve this part of the documentation along the way.
+
+Fix links to the Universal USB Installer.
+
+Consistently use long GnuPG key ID format in our examples.
+
+Many improvements to French and Portuguese translations.
+
+Documented more of Tails current development process: 
+[[roles, processes|contribute/working_together]] and
+the [[release schedule|contribute/release_schedule]].
+
+Infrastructure
+==============
+
+Our own APT repository `deb.tails.boum.org` has gone live on the 24th.
+This already enables us to use big custom packages (Iceweasel). In the
+mid-term, we will be able to remove binary packages from our main Git
+repository. And on the long run, this will enable more control over
+our freezes, as well as proper source distribution.
+
+In order to [[!tails_ticket 6033 desc="get commit announcements back on
+IRC"]], we have setup an
+instance of GitBot on `#tails-dev`. Unfortunately, this did not work
+as expected, and `repo.or.cz` admins explained us that they do not
+support commit notifications for mirror projects. Next steps are left
+to be determined.
+
+On-going discussions
+====================
+
+Is there any advantage in faking user agent in
+tordate?
+
+How about authenticated
+NTP?
+
+Mockups for a revamped Tails Greeter, resulting in several
+comments
+
+Alan should be taking over maintenance of the Metadata Anonymization
+Toolkit
+
+Is Tails interested in some boot scripts from
+Whonix?
+
+Tails website
+license?
+
+Which Pidgin protocols should be considered
+"safe"?
+
+Dependencies between persistence
+options
+
+Block/unblock wireless devices at boot
+time?
+
+Disable FireWire et al. at boot
+time?
+
+Tests of two-layered virtualized
+systems
+
+Funding
+=======
+
+Unfortunately, sponsor Bravo is not able to fund as much as promised earlier.
+There might still be funds for some hardware. We'll see how it goes.

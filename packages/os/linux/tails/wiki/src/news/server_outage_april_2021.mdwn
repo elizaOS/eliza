@@ -1,0 +1,29 @@
+[[!meta title="About our website being offline last week-end"]]
+[[!meta date="Wed, 05 May 2021 15:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+As many of you noticed, our main server was offline from Friday April 30 19:09
+UTC until Monday May 3 05:58 UTC.
+
+This was caused by a hardware failure in one of the many Power Distribution
+Units on the rack where our main server is hosted. Riseup, also hosted in the
+same datacenter, suffered from the [same hardware
+failure](https://twitter.com/riseupnet/status/1388214079316283394).
+
+Unfortunately, the outage impacted all Tails users: upgrades were failing and
+our website was not appearing when starting Tor Browser.
+
+Some of you were afraid that the Tails infrastructure could have gone under an
+attack of some sort. This does not seem to have been the case. The actual
+reasons for the power glitch are still being investigated, but all indicates
+that it was a simple hardware failure. There are no signs of malicious activity
+whatsoever.
+
+It took us so much time to bring it back online because of a bad configuration
+of our notification system. Our sysadmins only learned about the outage when
+coming back to work on Monday.
+
+To avoid such long delay in the future, we will make our notification system
+more resilient.
+
+Sorry for the inconvenience!

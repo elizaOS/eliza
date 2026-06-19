@@ -1,0 +1,109 @@
+[[!meta title="Tails 4.2 is out"]]
+[[!meta date="Tue, 07 Jan 2020 17:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_4.1.1]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Improvements to automatic upgrades
+
+We worked on important improvements to the automatic upgrade feature,
+which is still one of your major pain points when using Tails:
+
+- Until now, if your version of Tails was several months old, you
+  sometimes had to do 2 or more automatic upgrades in a row.  For
+  example, to upgrade from Tails 3.12 to Tails 3.16, you first had to
+  upgrade to Tails 3.14.
+
+  Starting with 4.2, direct automatic upgrades will be available from
+  all prior versions to the latest version.
+
+- Until now, you could only do a limited number of automatic upgrades,
+  after which you had to do a much more complicated [["manual"
+  upgrade|doc/upgrade#manual]].
+
+  Starting with 4.2, you will only have to do a manual upgrade between
+  major versions, for example to upgrade to Tails 5.0 in 2021.
+
+- We made automatic upgrades use less memory.
+
+- We optimized a bit the size of the download when doing automatic
+  upgrades.
+
+# New features
+
+- We included several command line tools used by
+  [*SecureDrop*](https://securedrop.org/) users to analyze the metadata
+  of leaked documents on computers that cannot use the *Additional
+  Software* feature:
+
+  - [*PDF Redact Tools*](https://github.com/firstlookmedia/pdf-redact-tools)
+    to redact and strip metadata from text documents before publishing
+  - [*Tesseract OCR*](https://github.com/tesseract-ocr/tesseract)
+    to convert images containing text into a text document
+  - [*FFmpeg*](https://ffmpeg.org/) to record and convert audio and video
+
+# Changes and upgrades
+
+- Update *Tor Browser* to 9.0.3.
+
+- Update *Thunderbird* to [68.3.0](https://www.mozilla.org/en-US/thunderbird/68.3.0/releasenotes/).
+
+- Update *Linux* to 5.3.15.
+
+# Fixed problems
+
+- Open *~/Persistent/keepassx.kdbx* by default when starting *KeePassX*.
+  If this database does not exist yet, stop pointing to it in the list
+  of recent databases.
+
+  [[!img version_4.0/keepassxc.png link="no" alt=""]]
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 4.2
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 4.0, 4.1, and 4.1.1 to 4.2.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can directly download
+Tails 4.2:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.3 is [[scheduled|contribute/calendar]] for February 11.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.2">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

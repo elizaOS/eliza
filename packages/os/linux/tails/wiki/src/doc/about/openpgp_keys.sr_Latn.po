@@ -1,0 +1,393 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-13 10:59+0200\n"
+"PO-Revision-Date: 2024-06-05 05:54+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"OpenPGP keys\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Tails developers maintain several OpenPGP key pairs."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Make sure to verify the keys that you download.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>For example, if you first [[authenticate the Tails signing key\n"
+"through the OpenPGP Web of Trust|install/download#wot]], then\n"
+"you can verify our others keys as they are all certified by the Tails\n"
+"signing key.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"signing\"></a>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Signing key"
+msgstr ""
+
+#. type: Title -
+#, no-wrap
+msgid "Purpose"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This key only has the capability to sign and certify: it has no encryption "
+"subkey."
+msgstr ""
+
+#. type: Plain text
+msgid "Its only purpose is:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "To sign Tails released images"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "To certify other cryptographic public keys needed for Tails development"
+msgstr ""
+
+#. type: Title -
+#, no-wrap
+msgid "Policy"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The secret key material will never be stored on an online server or on "
+"systems managed by anyone other than Tails core developers."
+msgstr ""
+
+#. type: Title ###
+#, no-wrap
+msgid "Primary key"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Is not owned in a usable format by any single individual. It is split "
+"cryptographically using [gfshare](https://tracker.debian.org/pkg/libgfshare)."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Is only used offline, in an air-gapped Tails only communicating with the "
+"outside world through:"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"Plugging the Tails flash media in another operating system to install Tails "
+"in the first place."
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"Plugging other removable media in the air-gapped Tails to send the public "
+"key, secret key stubs, parts of the secret master key, and so on to the "
+"outside world."
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"Plugging other removable media in the air-gapped Tails to receive Debian "
+"packages, public keys, and so on from the outside world."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Expires in less than one year. We will extend its validity as many times as "
+"we find reasonable."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Has a revocation certificate split amongst different people.  See the "
+"[[details of the mechanism|signing_key_revocation]]."
+msgstr ""
+
+#. type: Title ###
+#, no-wrap
+msgid "Signing subkeys"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Stored on OpenPGP smartcards owned by those who need them.  Smartcards "
+"ensure that the cryptographic operations are done on the smartcard itself "
+"and that the secret cryptographic material is not directly available to the "
+"operating system using it."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Expiration date: same as the primary key."
+msgstr ""
+
+#. type: Title -
+#, no-wrap
+msgid "Key details"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"    pub   rsa4096/0xDBB802B258ACD84F 2015-01-18 [SC] [expires: 2027-01-13]\n"
+"          A490D0F4D311A4153E2BB7CADBB802B258ACD84F\n"
+"    uid                   [ultimate] Tails developers <tails@boum.org>\n"
+"    uid                   [ultimate] Tails developers (offline long-term identity key) <tails@boum.org>\n"
+"    sub   ed25519/0x8E9567D327792707 2024-05-23 [S] [expires: 2027-01-13]\n"
+"    sub   ed25519/0xC69FF0E4C08F8209 2024-05-23 [S] [expires: 2027-01-13]\n"
+"    sub   ed25519/0xBC8BD3DAC9CD2979 2024-05-23 [S] [expires: 2027-01-13]\n"
+msgstr ""
+"    pub   rsa4096/0xDBB802B258ACD84F 2015-01-18 [C] [expires: 2026-01-13]\n"
+"          Key fingerprint = A490 D0F4 D311 A415 3E2B  B7CA DBB8 02B2 58AC D84F\n"
+"    uid           [  full  ] Tails developers (offline long-term identity key) <tails@boum.org>\n"
+"    uid           [  full  ] Tails developers <tails@boum.org>\n"
+"    sub   rsa4096/0xD21DAD38AF281C0B 2017-08-28 [S] [expires: 2025-01-25]\n"
+"    sub   ed25519/0x90B2B4BD7AED235F 2017-08-28 [S] [expires: 2025-01-25]\n"
+"    sub   rsa4096/0x7BFBD2B902EE13D0 2021-10-14 [S] [expires: 2025-01-25]\n"
+"    sub   rsa4096/0xE5DBA2E186D5BAFC 2023-10-03 [S] [expires: 2025-01-25]\n"
+"    sub   ed25519/0x8E9567D327792707 2024-05-23 [S] [expires: 2026-01-13]\n"
+"    sub   ed25519/0xFE2C600D5BB759B5 2024-05-23 [S] [expires: 2026-01-13]\n"
+"    sub   ed25519/0xC69FF0E4C08F8209 2024-05-23 [S] [expires: 2026-01-13]\n"
+"    sub   ed25519/0xBC8BD3DAC9CD2979 2024-05-23 [S] [expires: 2026-01-13]\n"
+
+#. type: Title -
+#, no-wrap
+msgid "How to get the public key?"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To get this OpenPGP public key, download it from this website: [[!"
+"tails_website tails-signing.key]]."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you already have Tails signing key but download it again, it can update "
+"the list of existing signatures of the key."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"support\"></a>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "User support key"
+msgstr ""
+
+#. type: Title ###
+#, no-wrap
+msgid "Encryption"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Use this key to encrypt private support requests sent to [[support@tails.net|"
+"doc/about/contact#support]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"This same key is used to handle [[*WhisperBack* reports|first_steps/"
+"whisperback]]."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The secret key material and its passphrase are stored on the server that "
+"runs our encrypted mailing list software and on systems managed by core "
+"Tails developers."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    pub   rsa4096 2013-07-24 [SC] [expires: 2027-10-08]\n"
+"          1F56EDD30741048035DAC1C5EC57B56EF0C43132\n"
+"    uid           [ unknown] Tails user support <support@tails.net>\n"
+"    sub   rsa4096 2013-07-24 [E] [expires: 2027-10-08]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "There are multiple ways to get this OpenPGP public key:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Download it from this website: [[!tails_website tails-bugs.key]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Fetch it from your favourite key server."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"foundations\"></a>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Foundations team key\n"
+"==================\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Use this key to encrypt private emails sent to [[foundations@tails.net|doc/"
+"about/contact#tails-foundations]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    pub   rsa4096 2024-04-30 [SC]\n"
+"          621609457A166C993245FFCA5F6B02630DDDE331\n"
+"    uid           [ unknown] foundations@tails.net <foundations@tails.net>\n"
+"    uid           [ unknown] foundations@tails.net <foundations-request@tails.net>\n"
+"    uid           [ unknown] foundations@tails.net <foundations-owner@tails.net>\n"
+"    sub   rsa4096 2024-04-30 [E]\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Download it from this website: [[!tails_website foundations-tails-net.key]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"sysadmins\"></a>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Sysadmins team key"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Use this key to encrypt private emails sent to [[sysadmins@tails.net|doc/"
+"about/contact#tails-sysadmins]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    pub   rsa4096 2024-04-26 [SC]\n"
+"          0082D4D63B722D1FA27518A5C8F12D2B1AE1CB26\n"
+"    uid           [ unknown] sysadmins@tails.net <sysadmins@tails.net>\n"
+"    uid           [ unknown] sysadmins@tails.net <sysadmins-request@tails.net>\n"
+"    uid           [ unknown] sysadmins@tails.net <sysadmins-owner@tails.net>\n"
+"    sub   rsa4096 2024-04-26 [E]\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Download it from this website: [[!tails_website sysadmins-tails-net.key]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"weblate\"></a>\n"
+msgstr "<a id=\"weblate\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Translation platform admins team key"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Use this key to encrypt private emails sent to [[the admins of the "
+"translation platform at weblate@tails.net|doc/about/contact#tails-weblate]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    pub   rsa4096 2024-04-30 [SC]\n"
+"          EFECA896F429B066B83E0266B702FE73C485A41D\n"
+"    uid           [ unknown] weblate@tails.net <weblate@tails.net>\n"
+"    uid           [ unknown] weblate@tails.net <weblate-request@tails.net>\n"
+"    uid           [ unknown] weblate@tails.net <weblate-owner@tails.net>\n"
+"    sub   rsa4096 2024-04-30 [E]\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Download it from this website: [[!tails_website weblate-tails-net.key]]."
+msgstr ""
+
+#, no-wrap
+#~ msgid "<a id=\"board\"></a>\n"
+#~ msgstr "<a id=\"board\"></a>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"fundraising\"></a>\n"
+#~ msgstr "<a id=\"fundraising\"></a>\n"
+
+#~ msgid "Signature"
+#~ msgstr "Signatur"
+
+#~ msgid ""
+#~ "This key also has the capability to sign and certify. Until Tails 0.5 and "
+#~ "0.6~rc3, released images were signed by this key. This purpose is now "
+#~ "deprecated: further releases will be signed by a dedicated, safer signing "
+#~ "key. As of 2010 October 7th, our mailing list key signature only means "
+#~ "our mailing list software checked the signed content was originally "
+#~ "OpenPGP-signed by a Tails core developer."
+#~ msgstr ""
+#~ "Dieser Schlüssel kann auch Signieren und Zertifizieren. Bis Tails 0.5 und "
+#~ "0.6~rc3 wurden veröffentlichte Images mit diesem Schlüssel signiert. "
+#~ "Diese Verwendung ist nun hinfällig: weitere Veröffentlichungen werden mit "
+#~ "einem dedizierten, sichereren Signaturschlüssel signiert. Seit dem 7. "
+#~ "Oktober 2010 bedeutet eine Signatur der Mailingliste nur mehr, dass die "
+#~ "Mailinglistensoftware überprüft hat, dass der signierte Inhalt "
+#~ "ursprünglich von einem Tails Kern-Entwickler signiert wurde."

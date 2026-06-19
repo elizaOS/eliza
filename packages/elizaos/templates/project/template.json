@@ -1,0 +1,9 @@
+{
+  "id": "project",
+  "name": "project",
+  "aliases": ["project"],
+  "description": "Create a package-first elizaOS project with optional local source mode",
+  "kind": "project",
+  "version": 1,
+  "languages": ["typescript"]
+}

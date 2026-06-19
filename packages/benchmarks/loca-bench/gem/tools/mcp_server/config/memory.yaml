@@ -1,0 +1,25 @@
+# Memory MCP Server Configuration
+name: memory
+display_name: Memory MCP Server
+description: Persistent memory storage (NPM package version)
+
+execution:
+  command_type: npx
+  package_name: "@modelcontextprotocol/server-memory"
+
+parameters:
+  memory_file_path:
+    required: false
+    default: "./memory.json"
+    env_var: "MEMORY_FILE_PATH"
+    description: "Path to memory storage file"
+
+  use_local_server:
+    required: false
+    default: false
+    description: "If True, use local TypeScript server (recommended). If False, use npx to download server (may timeout)."
+
+workspace:
+  set_cwd: false
+  supports_placeholders: true
+  mkdir_if_needed: false

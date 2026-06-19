@@ -1,0 +1,14 @@
+[Unit]
+Description=Remote shell used in Tails test suite
+Documentation=https://tails.net/contribute/release_process/test/automated_tests/
+ConditionKernelCommandLine=autotest_never_use_this_option
+Before=gdm.service
+
+[Service]
+Type=notify
+ExecStart=/usr/local/lib/tails-autotest-remote-shell
+OOMScoreAdjust=-1000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

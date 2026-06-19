@@ -1,0 +1,41 @@
+{
+  "$schema": "https://docs.openclaw.ai/schema/config.json",
+  "version": "2026.2.6-3",
+  "server": {
+    "host": "0.0.0.0",
+    "port": 3000
+  },
+  "plugins": {
+    "entries": {
+      "telegram": {
+        "enabled": true,
+        "config": {
+          "botToken": "7812345678:AAF_EXAMPLE_TOKEN_NOT_REAL_xKz9mQ",
+          "allowedUsers": ["5992622663"],
+          "defaultTarget": "5992622663"
+        }
+      },
+      "device-pair": {
+        "enabled": false,
+        "config": {
+          "publicUrl": ""
+        }
+      }
+    }
+  },
+  "cron": {
+    "enabled": true,
+    "storeDir": "~/.openclaw/cron",
+    "heartbeatIntervalMs": 1800000
+  },
+  "agent": {
+    "model": "anthropic/claude-sonnet-4-20250514",
+    "thinkingMode": "off",
+    "maxTokens": 4096,
+    "workspace": "/home/node/workspace"
+  },
+  "memory": {
+    "maxContextTokens": 8192,
+    "sessionTimeout": 3600
+  }
+}

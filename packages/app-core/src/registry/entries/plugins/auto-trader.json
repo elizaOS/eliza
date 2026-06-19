@@ -1,0 +1,203 @@
+{
+  "id": "auto-trader",
+  "name": "Auto Trader",
+  "description": "Autonomous trading plugin with LLM-powered strategies for Solana",
+  "npmName": "@elizaos/plugin-auto-trader",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "trading",
+    "solana",
+    "jupiter",
+    "defi",
+    "auto-trader",
+    "auto",
+    "trader"
+  ],
+  "config": {
+    "SLIPPAGE_BPS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Bps",
+      "help": "Basis points (e.g. slippage)",
+      "advanced": false
+    },
+    "TRADING_MODE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Mode",
+      "help": "Operating mode",
+      "advanced": false
+    },
+    "SOLANA_ADDRESS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Address",
+      "help": "Wallet address",
+      "advanced": false
+    },
+    "SOLANA_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "SOLANA_RPC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Rpc Url",
+      "help": "RPC endpoint URL",
+      "advanced": false
+    },
+    "ZEROEX_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Zeroex",
+      "advanced": false
+    },
+    "BIRDEYE_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Birdeye",
+      "advanced": false
+    },
+    "EVM_PROVIDER_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Provider Url",
+      "help": "Provider endpoint URL",
+      "advanced": false
+    },
+    "RUGCHECK_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "MIN_LIQUIDITY_USD": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Liquidity Usd",
+      "help": "Min liquidity usd",
+      "advanced": false
+    },
+    "STOP_LOSS_PERCENT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Loss Percent",
+      "help": "Percentage value",
+      "advanced": false
+    },
+    "MAX_BUY_SELL_RATIO": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Buy Sell Ratio",
+      "help": "Ratio limit",
+      "advanced": false,
+      "min": 0
+    },
+    "MAX_DAILY_LOSS_USD": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Daily Loss Usd",
+      "help": "Max daily loss usd",
+      "advanced": false,
+      "min": 0
+    },
+    "MIN_SELL_COUNT_24H": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Sell Count 24h",
+      "help": "Min sell count 24h",
+      "advanced": false,
+      "min": 0
+    },
+    "MIN_VOLUME_24H_USD": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Volume 24h Usd",
+      "help": "Min volume 24h usd",
+      "advanced": false
+    },
+    "SOLANA_PRIVATE_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Private Key",
+      "help": "Private key for Solana",
+      "advanced": false
+    },
+    "TAKE_PROFIT_PERCENT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Profit Percent",
+      "help": "Percentage value",
+      "advanced": false
+    },
+    "TRADING_INTERVAL_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Interval Ms",
+      "help": "Polling interval in milliseconds",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "MAX_POSITION_SIZE_USD": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Position Size Usd",
+      "help": "Max position size usd",
+      "advanced": false,
+      "min": 0
+    },
+    "MAX_PORTFOLIO_ALLOCATION": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Portfolio Allocation",
+      "help": "Maximum allocation percentage",
+      "advanced": false,
+      "min": 1,
+      "max": 65535
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "TrendingDown",
+    "group": "blockchain",
+    "groupOrder": 4,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "blockchain"
+}

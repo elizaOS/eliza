@@ -1,0 +1,131 @@
+[[!meta title="Security audit of automatic upgrades and recent changes"]]
+[[!meta date="Fri, 16 May 2025 17:39:24 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+[[!tag security/audit]]
+
+Late 2024, [Radically Open
+Security](https://www.radicallyopensecurity.com/) conducted another security
+audit of critical parts of Tails.
+
+To better protect our users, we addressed the security vulnerabilities
+as soon as they were discovered and reported to us, without waiting for the
+audit to be complete and public.
+
+We can now share with you the [final
+report](https://gitlab.tails.boum.org/-/project/2/uploads/8e2864e7271d1a34d4419f1cb70ebd18/tails-ros-penetration-test-report-2024.pdf).
+
+The auditors concluded that:
+
+> The Tails operating system leaves a strong security impression, addressing
+> most anonymity-related concerns. We did not find any remote code execution
+> vulnerabilities, and all identified issues required a compromised
+> low-privileged `amnesia` user &ndash; the default user in Tails.
+>
+> Looking back at the [[previous audit|audit_by_ROS]], we can see the Tails
+> developers have made significant progress, demonstrating expertise and a
+> serious commitment to security.
+
+# Findings
+
+The auditors did not identify any vulnerability in:
+
+- The creation of the Persistent Storage with LUKS2,
+  introduced in [[Tails 5.14|version_5.14]] (June 2023)
+
+- Our security improvements to [[*Thunderbird*|doc/anonymous_internet/thunderbird]]
+
+- The random seed feature, introduced in [[Tails 6.4|version_6.4]] (June 2024)
+
+The auditors found 4 issues in:
+
+- The automatic upgrade mechanism
+
+- Other important changes since [[Tails 5.8|version_5.8]] (November 2023)
+
+<table>
+<tr><th>ID</th><th>Impact</th><th>Description</th><th>Issue</th><th>Status</th><th>Release</th></tr>
+<tr><td>OTF-001</td><td>High</td><td>Local privilege escalation in <i>Tails Upgrader</i></td><td>[[!tails_ticket 20701]]</td><td>Fixed</td><td>6.11</td></tr>
+<tr><td>OTF-002</td><td>High</td><td>Arbitrary code execution in Python scripts</td><td>[[!tails_ticket 20702]]</td><td>Fixed</td><td>6.11</td></tr>
+<tr><td>       </td><td></td><td></td><td>[[!tails_ticket 20744]]</td><td>Fixed</td><td>6.12</td></tr>
+<tr><td>OTF-003</td><td>Moderate</td><td>Argument injection in privileged GNOME scripts</td><td>[[!tails_ticket 20709]]</td><td>Fixed</td><td>6.11</td></tr>
+<tr><td>       </td><td></td><td></td><td>[[!tails_ticket 20710]]</td><td>Fixed</td><td>6.11</td></tr>
+<tr><td>OTF-004</td><td>Low</td><td>Untrusted search path in Tor Browser launcher</td><td>[[!tails_ticket 20733]]</td><td>Fixed</td><td>6.12</td></tr>
+</table>
+
+# Postmortem
+
+Our team went further than simply fixing these issues. We conducted a
+*postmortem* to understand *how* we introduced these vulnerabilities in our
+releases and *what* we could do to avoid similar vulnerabilities in the future.
+This analysis led to technical, policy, and culture changes.
+
+This analysis was useful and we'll definitely consider doing postmortems again
+after future audits. It might also be useful for other projects to understand
+how we worked on these long-lasting improvements.
+
+## Technical improvements
+
+ - Postmortem of OTF-001
+
+   While preparing a major Tails release based on a new version of Debian, for example, Tails 7.0,
+   we will look for Perl code included in Tails
+   that modifies `@INC` in a dangerous way. ([[!tails_ticket 19627]])
+
+   Furthermore, we now
+   [[!tails_gitweb config/chroot_local-hooks/99-zzz_check_mite desc="automatically check"]]
+   for potentially vulnerable Mite code and fail the build if we find any.
+
+ - Postmortem of OTF-002 ([[!tails_ticket 20719]] and [[!tails_mr 1911]])
+
+   Our CI now ensures that all our custom Python software runs in
+   isolated mode.
+
+ - Postmortem of OTF-003 ([[!tails_ticket 20711]] and [[!tails_mr 1979]])
+
+   Our `sudo` configuration is now generated from a higher-level description,
+   which has safer defaults and demands explanations when diverging
+   from them.
+
+ - Postmortem of OTF-004 ([[!tails_ticket 20817]] and [[!tails_mr 2040]])
+
+   Our CI now ensures that we don't write software that does unsafe `.desktop`
+   file lookup.
+
+   We will also periodically audit the configuration of `onion-grater`, our
+   firewall for the Tor control port. ([[!tails_ticket 20821]])
+
+## Policy and culture improvements
+
+ - During the audit, we noticed that we lacked a policy about when we should
+   make confidential security issues public.
+
+   This was problematic because:
+
+   - We have sometimes been too secretive.
+
+     As a temporary measure, this protected our users by erring on the safe
+     side.  But, without a disclosure process, we were not meeting our own
+     standards for transparency and openness to third-party reviews.
+
+   - Different team members were working with different assumptions, which
+     caused communication issues.
+
+   To have better guidelines for confidentiality and disclosure, we created our [[security issue response
+   policy|contribute/security_policy]], based on the policy of the Tor
+   Project's Network Team.
+
+ - We will be more intentional about when it's worth the
+   effort and risk to do large code refactoring.
+
+   While refactoring is necessary for a healthy software
+   development process, this postmortem showed that large refactoring can
+   also introduce security vulnerabilities.
+
+ - When changing security-sensitive code, such as
+   our `sudo` configuration or any code that elevates privileges,
+   we now require an extra review focused on security.
+
+ - We will communicate about security issues more broadly
+   within our team when we discover them so that every team member can
+   learn along the way.

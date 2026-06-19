@@ -1,0 +1,391 @@
+schema: eliza.e1_phone_usb_sidekey_integration.v1
+status: blocked_requires_usb_c_pd_charger_sidekey_routed_and_measured_evidence
+date: '2026-05-21'
+claim_boundary: Fail-closed integration gate for the single USB-C port, USB-PD controller, charger/power path, and power/volume
+  side buttons. This is not a routed schematic, DRC evidence, PD attach proof, charger safety validation, button force/travel
+  signoff, or enclosure-ready evidence.
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - package/usb-c/e1-phone-usb-c-port.yaml
+  - package/usb-pd/tps65987.yaml
+  - package/charger/max77860.yaml
+  - package/human-interface/side-buttons.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/external-interface-design-review.yaml
+  - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
+  - board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/power-thermal-budget.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
+usb_c_port_context:
+  port_count: 1
+  manifest_port_count: 1
+  active_matrix_region_mm:
+    x: 26.0
+    y: 126.0
+    width: 16.0
+    height: 6.0
+  placement:
+    board_edge: bottom_center
+    board_region_mm:
+      x: 26.0
+      y: 126.0
+      width: 16.0
+      height: 6.0
+    enclosure_requirements:
+      - connector_shell_captured_by_enclosure_not_only_solder_joints
+      - chamfered_or_radiused_port_opening
+      - minimum_plug_keepout_verified_with_cable_overmold
+      - local_ground_stitching_and_chassis_ground_policy
+  external_interface_region_mm:
+    x: 26.0
+    y: 126.0
+    width: 16.0
+    height: 6.0
+  selected_evt0_connector:
+    vendor: GCT
+    family: USB4105
+    type: USB_Type_C_USB2_receptacle
+    active_contacts: 16
+    mechanical_contacts: 24_position_with_dummy_pins
+    current_rating: VBUS_5A_collective
+    temperature_c:
+      min: -40
+      max: 85
+    rationale: 'Easier routing for first prototype when the SoC/package has no proven USB3/DP lane bonding. Supports charging,
+      USB2 data, ADB/fastboot/debug, and PD controller CC lines.
+
+      '
+    source_url: https://gct.co/files/specs/usb4105-spec.pdf
+  production_alternate:
+    vendor: Molex
+    family: 221632_or_217804_Port_On
+    type: USB_Type_C_24_pin_waterproof_receptacle
+    features:
+      - USB_3_2_Gen_2
+      - mid_mount_or_top_mount_options
+      - IPX5_IPX8_options
+    current_rating: up_to_5A_or_6A_family_dependent
+    rationale: 'Use if the final E1 package bonds USB3/DP lanes and the enclosure needs a waterproof Type-C opening. This
+      increases routing density and SI burden.
+
+      '
+    source_url: https://www.molex.com/content/dam/molex/molex-dot-com/en_us/pdf/datasheets/987651-4081.pdf
+  required_blocks:
+    - usb_c_receptacle
+    - cc_esd_and_usb_pd_controller
+    - usb2_esd_close_to_connector
+    - vbus_tv_s_or_surge_protection
+    - vbus_current_sense_or_charger_input_monitor
+    - connector_shell_ground_network
+  required_nets:
+    - GND
+    - SHIELD_GND
+    - USBPD_I2C_SCL
+    - USBPD_I2C_SDA
+    - USBPD_IRQ_N
+    - USBPD_RESET
+    - USB_CC1
+    - USB_CC2
+    - USB_DN
+    - USB_DP
+    - VBUS
+  routing_requirements:
+    - 90_ohm_usb2_diff_pair_from_receptacle_to_esd_and_split_interconnect
+    - usb2_esd_close_to_connector_without_long_stub
+    - cc_esd_and_pd_controller_route_near_receptacle
+    - vbus_tvs_current_sense_and_charger_entry_between_port_and_power_path
+    - shield_ground_chassis_policy_and_stitching_defined_before_esd_test
+  mechanical_requirements:
+    - single_bottom_center_port_only
+    - connector_shell_captured_by_enclosure_not_only_solder_joints
+    - chamfered_or_radiused_cutout_verified_with_plug_overmold
+    - through_hole_shell_stakes_or_enclosure_saddle_for_insertion_load
+    - waterproof_variant_requires_new_cutout_gasket_and_drain_review
+  bringup_test_access:
+    - bottom-island test pads: VBUS, USB_CC1, USB_CC2, USB_DP, USB_DN, SHIELD_GND
+    - fixture access must remain reachable after the orange back shell is removed
+usb_pd_and_charger_context:
+  pd_controller:
+    part: TPS65987DDH
+    vendor: Texas Instruments
+    status: planning_binding_no_bonded_pins_no_fabricated_board
+    required_nets:
+      - USBPD_I2C_SCL
+      - USBPD_I2C_SDA
+      - USBPD_IRQ_N
+      - USBPD_RESET
+      - USB_CC1
+      - USB_CC2
+      - USB_DN
+      - USB_DP
+      - VBUS
+    power_sequence_status: required_not_implemented
+    evidence_required:
+      - PD source-cap transcript (lsusb -t)
+      - typec_class probe transcript (/sys/class/typec/)
+      - PPS/EPR negotiation oscilloscope captures
+  charger:
+    part: MAX77860
+    vendor: Analog Devices (formerly Maxim Integrated)
+    status: planning_binding_no_bonded_pins_no_fabricated_board
+    required_nets:
+      - BAT_ID
+      - BAT_NTC
+      - CHG_CE_N
+      - CHG_I2C_SCL
+      - CHG_I2C_SDA
+      - CHG_IRQ_N
+      - CHG_OTG_EN
+      - CHG_TS
+      - GND
+      - SYS
+      - VBAT
+      - VBUS
+    charge_current_max_a: 3.0
+    power_sequence_status: required_not_implemented
+    evidence_required:
+      - power_supply uevent transcript
+      - CC + CV phase captures (voltage and current vs time)
+      - JEITA profile compliance under hot/cold conditions
+  power_sequence_steps_required:
+    - id: usb_pd_dead_battery_attach
+      current_status: blocked_no_pd_attach_or_dead_battery_log
+      required_nets:
+        - VBUS
+        - USB_CC1
+        - USB_CC2
+        - USBPD_I2C_SCL
+        - USBPD_I2C_SDA
+        - USBPD_IRQ_N
+        - USBPD_RESET
+      source_artifacts:
+        - package/usb-pd/tps65987.yaml
+        - board/kicad/e1-phone/power-thermal-budget.yaml
+      required_evidence:
+        - cc_orientation_attach_on_both_plug_flips
+        - pd_sink_profile_negotiation_log
+        - dead_battery_boot_current_limit_log
+    - id: charger_sys_precharge
+      current_status: blocked_no_charger_precharge_or_ntc_id_log
+      required_nets:
+        - VBUS
+        - VBAT
+        - SYS
+        - BAT_NTC
+        - BAT_ID
+        - CHG_TS
+        - CHG_I2C_SCL
+        - CHG_I2C_SDA
+        - CHG_IRQ_N
+        - CHG_OTG_EN
+        - CHG_CE_N
+      source_artifacts:
+        - package/charger/max77860.yaml
+        - package/battery/e1-phone-17p3wh-pack.yaml
+      required_evidence:
+        - charger_i2c_readback
+        - battery_ntc_and_id_readback
+        - cc_cv_charge_cycle_log
+    - id: pmic_aon_and_ap_rails
+      current_status: blocked_no_pmic_rail_scope_or_probe_transcript
+      required_nets:
+        - SYS
+        - VBAT
+        - AON_1V8
+        - AP_0V8
+        - AP_1V1
+        - IO_1V8
+        - PMIC_I2C_SCL
+        - PMIC_I2C_SDA
+        - PMIC_IRQ_N
+        - PMIC_RESET_N
+      source_artifacts:
+        - package/pmic/da9063.yaml
+        - board/kicad/e1-phone/power-thermal-budget.yaml
+      required_evidence:
+        - regulator_enable_order_scope_capture
+        - pmic_fault_and_irq_probe_transcript
+        - suspend_resume_current_log
+  power_thermal_status: blocked_power_thermal_requires_real_schematic_and_measurement
+side_key_context:
+  manifest_side_buttons:
+    - power
+    - volume_up
+    - volume_down
+  actuator_spine_placement: left_edge_side_spine
+  actuator_spine_region_mm:
+    x: 4.0
+    y: 50.0
+    width: 7.0
+    height: 46.0
+  active_matrix_connector_region_mm:
+    x: 18.0
+    y: 26.0
+    width: 12.0
+    height: 3.0
+  external_interface_region_mm:
+    x: 18.0
+    y: 26.0
+    width: 12.0
+    height: 3.0
+  primary_switch_family:
+    vendor: Panasonic
+    family: EVQ-P7_EVQ-P3_EVQ-9P7
+    type: SMD_side_push_tactile
+    dimensions_mm:
+      length: 3.5
+      width: 2.9
+      height: 1.35
+    travel_mm: 0.2
+    terminal_options:
+      - L_shape
+      - J_bent
+      - straight
+    applications:
+      - mobile_phones
+      - digital_cameras
+      - portable_audio
+    source_url: https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247
+  alternate_switch_family:
+    vendor: Littelfuse_CK
+    family: KMR2
+    type: micro_miniature_SMT_tactile_top_actuated
+    dimensions_mm:
+      length: 4.2
+      width: 2.2
+      height: 1.9
+    source_url: https://www.ckswitches.com/products/switches/product-details/Tactile/KMR2
+    note: 'Use only if the enclosure has a plunger that converts side motion to a top-actuated force path. The Panasonic side-push
+      family is mechanically cleaner for a phone edge.
+
+      '
+  required_nets:
+    - AON_1V8
+    - GND
+    - PWR_KEY_N
+    - VOL_DOWN_N
+    - VOL_UP_N
+  recommended_min_contacts: 8
+  layout_requirements:
+    - low_cap_esd_near_side_key_flex_if_buttons_are_off_board
+    - one_ground_adjacent_to_each_wake_or_recovery_signal_where_pinout_allows
+    - aon_1v8_pullups_and_bootloader_recovery_key_scan_defined
+    - pogo_or_exposed_test_access_for_power_volume_and_aon_rail
+    - side_key_flex_stiffener_avoids_battery_window_and_top_bottom_interconnect
+  mechanical_requirements:
+    - external_caps_push_enclosure_rib_or_elastomer_not_solder_joints
+    - power_key_and_volume_keys_aligned_to_side_button_cap_centerlines
+    - force_travel_stack_and_ingress_gap_checked_before_ID_freeze
+    - recovery_combo_volume_down_plus_power_available_during_boot
+  bringup_test_access:
+    - PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, AON_1V8, and GND must have pogo or exposed-pad access before first-article firmware
+      recovery testing.
+routing_and_height_context:
+  usb_diff_pair:
+    name: USB_DP_DN
+    nets:
+      - USB_DP
+      - USB_DN
+    class: usb2_diff
+    max_length_mm: 90
+    intra_pair_skew_mm_max: 0.5
+    region: bottom_usb_to_soc
+  side_key_control_route:
+    name: SIDE_KEYS
+    nets:
+      - PWR_KEY_N
+      - VOL_UP_N
+      - VOL_DOWN_N
+    max_length_mm: 80
+    debounce_required: true
+    aon_domain: true
+    source_section: single_ended_buses
+  power_test_points_required:
+    - VBUS
+    - VBAT
+    - SYS
+    - AON_1V8
+    - IO_1V8
+    - RF_VBAT
+    - CAM_AVDD_2V8
+    - DISP_AVDD_5V5
+  height_models_required:
+    - usb_c_receptacle
+factory_and_validation_requirements:
+  required_test_access_nets:
+    - AON_1V8
+    - GND
+    - PWR_KEY_N
+    - SHIELD_GND
+    - USB_CC1
+    - USB_CC2
+    - USB_DN
+    - USB_DP
+    - VBUS
+    - VOL_DOWN_N
+    - VOL_UP_N
+  required_release_outputs: &id001
+    - board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+    - board/kicad/e1-phone/production/sourcing/usb-c-signed-drawing.pdf
+    - board/kicad/e1-phone/production/sourcing/side-key-signed-drawing.pdf
+    - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+    - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+    - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+    - board/kicad/e1-phone/production/reports/side-button-force-travel.csv
+    - board/kicad/e1-phone/production/reports/button-wake-recovery-log.json
+    - mechanical/e1-phone/review/routed-board-clearance.json
+  external_interface_release_outputs:
+    - signed_usb_c_receptacle_drawing_and_land_pattern
+    - pd_controller_cc_attach_log
+    - charger_current_limit_and_vbus_surge_test
+    - usb2_adb_or_fastboot_attach_log
+    - plug_insertion_removal_clearance_STEP_capture
+    - signed_side_key_flex_or_switch_drawing_with_datums
+    - force_travel_measurement_log
+    - wake_from_power_key_log
+    - bootloader_recovery_combo_log
+    - drop_and_side_load_review
+required_release_outputs: *id001
+cross_checks:
+  single_usb_c_port_matches_manifest: true
+  usb_c_region_matches_binding_review_and_active_matrix: true
+  usb_c_region_terminates_at_bottom_edge: true
+  usb_c_active_matrix_nets_covered: true
+  side_key_connector_region_matches_review_and_active_matrix: true
+  side_key_active_matrix_nets_match_review: true
+  side_key_contact_budget_matches_binding_and_review: true
+  usb_sidekey_mechanical_decision_remains_fail_closed: true
+  pd_and_charger_power_sequences_remain_blocked: true
+  release_outputs_fail_closed: true
+release_blockers:
+  - USB-C receptacle drawing, land pattern, shell load path, ESD, and STEP evidence missing
+  - USB-PD controller firmware, CC attach, dead-battery boot, PPS, and Type-C class logs missing
+  - charger CC/CV cycle, NTC/pack-ID readback, JEITA, current-limit, and surge validation missing
+  - side-key flex or switch drawing, force/travel, ESD, wake, and recovery-combo evidence missing
+  - routed schematic, ERC, routed PCB, DRC, SI/PI, and approved enclosure release clearance missing
+forbidden_claims:
+  - EPR_active
+  - Health_HAL_VINTF_compatible
+  - JEITA_compliant
+  - OTG_active
+  - PD_negotiating
+  - PPS_active
+  - charging_active
+  - charging_ready
+  - enclosure_ready
+  - end_to_end_phone_ready
+  - fabrication_ready
+  - pd_ready
+  - power_key_wake_ready
+  - recovery_key_combo_ready
+  - side_buttons_ready
+  - superspeed_ready
+  - usb_c_ready
+  - usb_sidekey_ready
+  - usb_typec_HAL_compatible
+  - waterproof_ready

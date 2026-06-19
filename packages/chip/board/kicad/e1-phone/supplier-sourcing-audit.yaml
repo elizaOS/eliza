@@ -1,0 +1,424 @@
+schema: eliza.e1_phone_supplier_sourcing_audit.v1
+status: sourcing_supported_by_public_listings_not_procurement_ready
+date: '2026-05-21'
+claim_boundary: Current public sourcing audit only. This is not a purchase order, AVL, supplier approval,
+  NDA datasheet pack, sample receipt, incoming inspection, or permission to freeze KiCad symbols, footprints,
+  FPC pinouts, antennas, or enclosure datums.
+source_artifacts:
+  - package/display/v0-dsi-720x1280.yaml
+  - package/camera/oem-mipi-csi-modules.yaml
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+  - docs/board/e1-phone-mainboard-metrics.yaml
+  - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/supplier-source-verification.yaml
+  - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
+selection_summary:
+  display_anchor: 5.5_in_1080x1920_MIPI_DSI_CTP
+  device_envelope_mm:
+    width: 78.0
+    height: 153.6
+    max_thickness: 11.8
+  mainboard_bbox_mm:
+    width: 64.0
+    height: 132.0
+    area_mm2: 8448.0
+  screen_fit_basis:
+    vendor: Chenghao Optoelectronic
+    part: CH550FH01A-CT
+    outline_source: module_outline_mm
+    outline_mm:
+      width: 77.1
+      height: 151.77
+      thickness: 3.39
+    active_area_mm:
+      width: 68.04
+      height: 120.96
+  primary_radio_module: RG255C_or_RM255C
+  primary_wifi_bt_module: LBEE5XV2EA-802
+public_source_validation:
+  checked_date: '2026-05-21'
+  method: Manual public web revalidation of marketplace/vendor pages. Listings are treated as sourcing
+    evidence only; supplier quote, drawing pack, sample receipt, and incoming inspection are still missing.
+  validated_sources:
+    - group: display
+      supplier: Shenzhen Chenghao Optoelectronic
+      url: https://chenghaolcd.en.made-in-china.com/product/pmFUBTZDnXVH/China-LCD-Manufacturer-1080-1920-Pixels-5-5inch-Pcap-Capacitive-Touch-Display-TFT-Module.html
+      public_page_status: public_listing_observed_2026_05_20
+      observed_fields:
+        - CH550FH01A-CT model number
+        - 1080x1920 resolution
+        - MIPI interface
+        - 77.1 x 151.77 x 3.39 mm outline
+        - 70.78 x 129.17 x 1.7 mm TFT outline
+        - 68.04 x 120.96 mm active area
+        - Shenzhen port and MOQ/price ladder signal
+      layout_use: primary_display_mechanical_anchor
+      blocking_gap: no_signed_drawing_or_exact_FPC_pinout
+    - group: display
+      supplier: META Display LLC
+      url: https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html
+      public_page_status: public_listing_observed_2026_05_20
+      observed_fields:
+        - 055WU01 model family
+        - 5.5 inch 1080x1920 TFT LCD
+        - MIPI 40-pin interface
+        - capacitive touch
+      layout_use: 40_pin_DSI_brightness_alternate
+      blocking_gap: public_outline_and_FPC_exit_missing
+    - group: display
+      supplier: META Display LLC
+      url: https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html
+      public_page_status: public_listing_observed_2026_05_21
+      observed_fields:
+        - 055WU01 model number
+        - 5.5 inch 1080x1920 TFT LCD with capacitive touch
+        - MIPI 4-lane and MIPI 40-pin signal interface
+        - 68.04 x 120.96 mm active area
+        - 1000 cd/m2 typical brightness signal
+        - MOQ 1 piece and 10 business day single-piece lead-time signal
+      layout_use: parseable_40pin_DSI_high_brightness_alternate
+      blocking_gap: signed_outline_drawing_FPC_exit_mating_connector_STEP_and_sample_inspection_missing
+    - group: display
+      supplier: Forfuture/FET display supplier
+      url: https://www.made-in-china.com/showroom/bella823/product-detailDjlmucpOAohW/China-Fet-High-Resolution-1080-1920-Mipi-Interface-5-5-Inch-Amoled-Display.html
+      public_page_status: public_listing_observed_2026_05_20
+      observed_fields:
+        - 5.5 inch 1080x1920 AMOLED
+        - MIPI 4-lane interface
+        - RM67191-class driver
+        - 70.66 x 128.36 x 0.82 mm outline
+      layout_use: thin_z_height_display_alternate
+      blocking_gap: touch_stack_and_power_sequence_not_received
+    - group: display
+      supplier: Shenzhen Dayuan Display Technology / FET-class suppliers
+      url: https://fetoled.en.made-in-china.com/product/RwKmavZJCtcS/China-5-5-Inch-Hight-Resolution-1080X1920-Amoled-Display-Screen-with-Mipi.html
+      public_page_status: public_listing_observed_2026_05_21
+      observed_fields:
+        - E549-HC01/RM67191-class model signal
+        - 5.5 inch 1080x1920 AMOLED
+        - MIPI 4-lane interface
+        - GT1151 touch IC or equivalent on-cell touch-controller signal
+        - 68.299 x 121.421 mm active area
+        - 70.66 x 128.36 x 0.82 mm outline
+      layout_use: parseable_thin_z_height_amoled_alternate
+      blocking_gap: exact_touch_stack_power_sequence_FPC_pinout_STEP_and_sample_inspection_missing
+    - group: camera
+      supplier: Sincere First
+      url: https://sincerefirst.en.made-in-china.com/product/WACpUrRYOVkc/China-Ov13855-Ov13850-CMOS-Sensor-Autofocus-13MP-Mipi-Camera-Module.html
+      public_page_status: public_listing_observed_2026_05_20
+      observed_fields:
+        - OV13855/OV13850 13MP sensor class
+        - MIPI interface
+        - autofocus lens
+        - 1/3.06 inch sensor size
+        - 78.4 degree view angle
+        - 5-piece MOQ/price signal on Made-in-China video listing
+      layout_use: rear_camera_primary_FPC_and_z_stack_class
+      blocking_gap: exact_module_drawing_pinout_and_lens_stack_missing
+    - group: camera
+      supplier: Sincere First
+      url: https://sincerefirst.en.made-in-china.com/product/iaVrcpOdEBhg/China-5MP-High-Definition-Mipi-Coms-Gc5035-Sensor-Auto-Focus-Mini-Camera-Module.html
+      public_page_status: public_listing_observed_2026_05_20
+      observed_fields:
+        - GC5035 5MP sensor
+        - 2592x1944 array size
+        - MIPI camera module
+        - fixed-focus/minisize class
+        - consumer electronics and smartphone application statement
+      layout_use: front_camera_primary_size_and_CSI_class
+      blocking_gap: selected_FF_part_number_and_FPC_drawing_need_supplier_confirmation
+    - group: cellular
+      supplier: Quectel
+      url: https://www.quectel.com/product/5g-redcap-rg255c-series/
+      public_page_status: vendor_page_observed_2026_05_20
+      observed_fields:
+        - RG255C 5G RedCap Sub-6 LGA module series
+        - LTE Cat 4 fallback
+        - USB 2.0, PCIe 2.0, PCM, UART, SGMII, SPI interfaces
+        - Windows, Linux, and Android driver support statement
+      layout_use: primary_cellular_LGA_module_and_RF_region
+      blocking_gap: region_SKU_band_matrix_and_hardware_design_guide_missing
+    - group: wifi_bluetooth
+      supplier: Murata
+      url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+      public_page_status: vendor_page_observed_2026_05_20
+      observed_fields:
+        - LBEE5XV2EA-802 order number
+        - in-production status
+        - Infineon CYW55573 chipset
+        - Wi-Fi 6E 2x2 MIMO and Bluetooth 5.3
+        - PCIe/SDIO Wi-Fi, UART Bluetooth
+        - 12.5 x 9.4 x 1.2 mm SMT shielded resin package
+      layout_use: primary_wifi6e_bt53_module_land_pattern_and_RF_feed
+      blocking_gap: datasheet_package_reference_layout_and_firmware_license_missing
+public_sourcing_evidence:
+  display:
+    - supplier: Shenzhen Chenghao Optoelectronic
+      marketplace: Made-in-China
+      candidate: CH550FH01A-CT
+      url: https://chenghaolcd.en.made-in-china.com/product/pmFUBTZDnXVH/China-LCD-Manufacturer-1080-1920-Pixels-5-5inch-Pcap-Capacitive-Touch-Display-TFT-Module.html
+      observed_public_specs:
+        resolution: 1080x1920
+        interface: MIPI-DSI
+        module_outline_mm:
+          width: 77.1
+          height: 151.77
+          thickness: 3.39
+        tft_outline_mm:
+          width: 70.78
+          height: 129.17
+          thickness: 1.7
+        active_area_mm:
+          width: 68.04
+          height: 120.96
+      fit_result: fits_current_78p0_x_153p6_mm_envelope
+      procurement_role: primary_mechanical_anchor
+    - supplier: META Display LLC
+      marketplace: Alibaba
+      candidate: 055WU01
+      url: https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html
+      observed_public_specs:
+        resolution: 1080x1920
+        interface: MIPI-DSI 4-lane, 40-pin
+        active_area_mm:
+          width: 68.04
+          height: 120.96
+        brightness_typ_cd_m2: 1000
+        signal_interface: MIPI_40_pin
+      fit_result: electrical_alternate_missing_public_outline
+      procurement_role: pinout_or_brightness_alternate
+    - supplier: META Display LLC
+      marketplace: Alibaba
+      candidate: 055WU01_parseable_5p5_1080x1920_MIPI_40pin_CTP
+      url: https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html
+      observed_public_specs:
+        resolution: 1080x1920
+        interface: MIPI_4_lane
+        signal_interface: MIPI_40_pins
+        active_area_mm:
+          width: 68.04
+          height: 120.96
+        brightness_typ_cd_m2: 1000
+        minimum_order_signal_pieces: 1
+        single_piece_lead_time_business_days: 10
+      fit_result: active_area_matches_primary_display_supplier_outline_required
+      procurement_role: parseable_40pin_brightness_display_alternate
+    - supplier: Alibaba OEM/ODM display supplier
+      marketplace: Alibaba
+      candidate: 5p5_1080x1920_MIPI_40pin_ILI7807D_1200nit_class
+      url: https://www.alibaba.com/product-detail/5-5-Inch-1080x1920-LCM-IPS_1601692707933.html
+      observed_public_specs:
+        resolution: 1080x1920
+        interface: MIPI_40_pin
+        driver_ic: ILI7807D
+        brightness_typ_cd_m2: 1200
+        touch: capacitive
+      fit_result: electrical_alternate_supplier_drawing_required
+      procurement_role: high_brightness_display_alternate
+    - supplier: Forfuture/FET display supplier
+      marketplace: Made-in-China
+      candidate: 5p5_1080x1920_MIPI_AMOLED_RM67191_class
+      url: https://www.made-in-china.com/showroom/bella823/product-detailDjlmucpOAohW/China-Fet-High-Resolution-1080-1920-Mipi-Interface-5-5-Inch-Amoled-Display.html
+      observed_public_specs:
+        resolution: 1080x1920
+        interface: MIPI_4_lane
+        driver_ic: RM67191
+        active_area_mm:
+          width: 68.299
+          height: 121.421
+        outline_mm:
+          width: 70.66
+          height: 128.36
+          thickness: 0.82
+      fit_result: z_height_alternate_supplier_touch_stack_required
+      procurement_role: thin_display_power_alternate
+    - supplier: Shenzhen Dayuan Display Technology / FET-class suppliers
+      marketplace: Made-in-China
+      candidate: E549-HC01_RM67191_AMOLED_class
+      url: https://fetoled.en.made-in-china.com/product/RwKmavZJCtcS/China-5-5-Inch-Hight-Resolution-1080X1920-Amoled-Display-Screen-with-Mipi.html
+      observed_public_specs:
+        resolution: 1080x1920
+        interface: MIPI_4_lane
+        driver_ic: RM67191
+        touch_ic: GT1151
+        touch_screen: on_cell
+        active_area_mm:
+          width: 68.299
+          height: 121.421
+        outline_mm:
+          width: 70.66
+          height: 128.36
+          thickness: 0.82
+      fit_result: thin_z_height_amoled_alternate_supplier_pack_required
+      procurement_role: parseable_thin_amoled_display_alternate
+  camera:
+    - supplier: Guangzhou Sincere Information Technology
+      marketplace: Alibaba
+      candidate: OV13850_13MP_MIPI_class
+      url: https://www.alibaba.com/supplier/mobile-camera-module.html
+      observed_public_specs:
+        class: 13MP_MIPI_mobile_phone_camera_module
+        price_signal_usd: 11_to_14_listing_range
+        supplier_profile: custom_manufacturer
+        customization:
+          - minor_customization
+          - full_customization
+      procurement_role: rear_camera_supplier_family_check
+    - supplier: Sincere First
+      marketplace: Made-in-China
+      candidate: SF-XR3855A-A0
+      url: https://sincerefirst.en.made-in-china.com/product/WACpUrRYOVkc/China-Ov13855-Ov13850-CMOS-Sensor-Autofocus-13MP-Mipi-Camera-Module.html
+      observed_public_specs:
+        sensor: OV13855_or_OV13850
+        resolution_mp: 13
+        interface: MIPI_CSI
+        pin_count: 24
+        focus: autofocus
+      procurement_role: rear_camera_primary_pin_count_class
+    - supplier: Sincere First
+      marketplace: Made-in-China
+      candidate: AR1335_13MP_AF_30pin_class
+      url: https://sincerefirst.en.made-in-china.com/product/dfapAuFoazVG/China-Mini-Size-Ar1335-13MP-CMOS-Sensor-Af-Camera-Module-Mipi-30pin.html
+      observed_public_specs:
+        sensor: AR1335
+        resolution_px: 4208x3120
+        interface: MIPI_CSI_2_4_lane
+        pin_count: 30
+        focus: autofocus
+      procurement_role: rear_camera_4lane_alternate
+    - supplier: Sincere First
+      marketplace: Made-in-China
+      candidate: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+      url: https://sincerefirst.en.made-in-china.com/product/stzRqCgufMVy/China-5MP-Gc5035-CMOS-Image-Sensor-Small-Size-Fixed-Focus-Mipi-Camera-Module.html
+      observed_public_specs:
+        sensor: GC5035
+        resolution_px: 2592x1944
+        interface: MIPI_2_lane
+        pin_count: 30
+        focus: fixed_focus
+        module_role: front_camera_candidate
+      procurement_role: front_camera_primary_class
+    - supplier: Shenzhen Junde Electronics
+      marketplace: Alibaba
+      candidate: IMX219_8MP_fixed_focus_MIPI_module
+      url: https://www.alibaba.com/product-detail/IMX219-8MP-120-Degree-Wide-Angle_1601568412012.html
+      observed_public_specs:
+        sensor: IMX219
+        resolution_px: 3280x2464
+        interface: MIPI_CSI
+        focus: fixed_focus
+        module_size_mm:
+          width: 25
+          height: 24
+        module_role: front_or_lab_camera_alternate
+      procurement_role: front_camera_or_lab_bringup_alternate
+  cellular:
+    - supplier: Quectel
+      source_type: primary_vendor_page
+      candidate: RM255C-GL
+      url: https://www.quectel.com/product/5g-redcap-rm255c-gl/
+      observed_public_specs:
+        class: 5G_RedCap_Sub_6_M2
+        peak_downlink_mbps: 223
+        peak_uplink_mbps: 123
+        form_factor: M.2
+      procurement_role: socketed_lab_and_possible_production_module
+    - supplier: Quectel
+      source_type: package_binding
+      candidate: RG255C_or_RM255C
+      url: https://www.quectel.com/product/5g-redcap-rg255c-series/
+      observed_public_specs:
+        release: 3GPP_Rel_17_RedCap
+        peak_downlink_mbps: 223
+        peak_uplink_mbps: 123
+        fallback: LTE_Cat_4
+        gnss: optional_multi_constellation
+        host_interfaces:
+          - USB_2_0
+          - PCIe_2_0
+          - PCM
+          - UART
+          - SGMII
+          - SPI
+        driver_os:
+          - Linux
+          - Android
+          - Windows
+      procurement_role: LGA_or_M2_first_phone_target
+  wifi_bluetooth:
+    - supplier: Murata
+      source_type: primary_vendor_page
+      candidate: LBEE5XV2EA-802
+      url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+      observed_public_specs:
+        chipset: Infineon_CYW55573
+        wireless:
+          wifi: 802.11a_b_g_n_ac_ax_2x2_MIMO_2p4_5_6_GHz
+          wifi_phy_rate_mbps: 1200
+          bluetooth: 5.3_BR_EDR_LE
+        interfaces:
+          - PCIe
+          - SDIO
+          - UART
+          - GPIO
+          - PCM
+        package_mm:
+          width: 12.5
+          height: 9.4
+          thickness: 1.2
+        io_voltage_v: 1.8
+      procurement_role: primary_wifi_6e_bt_5p3_module
+board_layout_implications:
+  - Keep 78.0 x 153.6 mm device envelope until a better 5.5 inch supplier outline is received.
+  - Keep 64.0 x 132.0 mm rigid board target behind the display and reserve side rails for buttons and
+    antenna plastic.
+  - Route 4-lane DSI and 2-to-4-lane CSI as controlled-impedance MIPI D-PHY before layout closure.
+  - Reserve either LGA cellular module land pattern or M.2 lab interposer area before committing final
+    RF shield dimensions.
+  - Keep Wi-Fi/BT as a shielded SMT module with 1.8 V IO, PCIe/SDIO, UART flow control, and antenna matching/test
+    access.
+must_request_from_suppliers_before_freeze:
+  - display 2D drawing, FPC exit, full pinout, touch controller, init sequence, and backlight curve
+  - rear and front camera drawings, FPC pinouts, lens z-height, lane order, power sequence, and calibration
+    flow
+  - cellular region SKU, hardware design guide, antenna reference, SIM/eSIM reference, carrier certification
+    statement
+  - Murata Type 2EA datasheet package, footprint DXF, hardware app note, radio-law note, and antenna reference
+    layout
+  - sample quote, lead time, lifecycle statement, and second source or pin-compatible alternate for each
+    critical module
+cross_checks:
+  display_primary_fits_current_envelope: true
+  display_clearance_mm:
+    width_clearance_mm: 0.9
+    height_clearance_mm: 1.83
+  has_alibaba_display_evidence: true
+  has_made_in_china_display_evidence: true
+  has_high_brightness_display_alternate: true
+  has_thin_amoled_display_alternate: true
+  has_parseable_alibaba_meta_055wu01_display_alternate: true
+  has_parseable_made_in_china_e549_amoled_display_alternate: true
+  display_sourcing_audit_matches_source_verification_2026_05_21: true
+  has_camera_marketplace_evidence: true
+  has_front_camera_candidate_evidence: true
+  has_alibaba_camera_evidence: true
+  has_cellular_primary_vendor_evidence: true
+  has_wifi_bt_primary_vendor_evidence: true
+release_blockers:
+  - supplier_contact_and_quote_not_captured
+  - samples_not_ordered_or_received
+  - exact_pinouts_not_received
+  - supplier_2d_drawings_not_received
+  - supplier_step_models_not_received
+  - connector_mating_parts_not_frozen
+  - lifecycle_and_avl_not_approved
+  - regulatory_certification_scope_not_confirmed
+forbidden_claims:
+  - supplier_selected
+  - samples_ordered
+  - avl_ready
+  - pinouts_frozen
+  - footprints_frozen
+  - enclosure_ready
+  - fabrication_ready

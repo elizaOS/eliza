@@ -1,0 +1,330 @@
+export {
+  DEFAULT_MAX_BODY_BYTES,
+  readJsonBody,
+  readRequestBody,
+  readRequestBodyBuffer,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/core";
+export interface CloudConfigLike {
+  apiKey?: string | null;
+  baseUrl?: string | null;
+  [key: string]: unknown;
+}
+
+type CloudRouteHandler = (...args: unknown[]) => Promise<boolean>;
+type CloudUrlValidator = (value: string) => Promise<string | null>;
+type ElizaCloudRoutesModule = {
+  handleCloudBillingRoute: CloudRouteHandler;
+  handleCloudCompatRoute: CloudRouteHandler;
+  handleCloudRoute: CloudRouteHandler;
+  validateCloudBaseUrl: CloudUrlValidator;
+};
+
+async function loadElizaCloudRoutes(): Promise<ElizaCloudRoutesModule> {
+  return import(
+    "@elizaos/plugin-elizacloud"
+  ) as unknown as Promise<ElizaCloudRoutesModule>;
+}
+
+export async function handleCloudBillingRoute(
+  ...args: unknown[]
+): Promise<boolean> {
+  const { handleCloudBillingRoute } = await loadElizaCloudRoutes();
+  return handleCloudBillingRoute(...args);
+}
+
+export async function handleCloudCompatRoute(
+  ...args: unknown[]
+): Promise<boolean> {
+  const { handleCloudCompatRoute } = await loadElizaCloudRoutes();
+  return handleCloudCompatRoute(...args);
+}
+
+export async function handleCloudRoute(...args: unknown[]): Promise<boolean> {
+  const { handleCloudRoute } = await loadElizaCloudRoutes();
+  return handleCloudRoute(...args);
+}
+
+export async function validateCloudBaseUrl(
+  value: string,
+): Promise<string | null> {
+  const { validateCloudBaseUrl } = await loadElizaCloudRoutes();
+  return validateCloudBaseUrl(value);
+}
+export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
+export {
+  CONNECTOR_PLUGINS,
+  normalizeCloudSiteUrl,
+  type ParseClampedIntegerOptions,
+  type ParseClampedNumberOptions,
+  type ParsePositiveNumberOptions,
+  parseClampedFloat,
+  parseClampedInteger,
+  parsePositiveFloat,
+  parsePositiveInteger,
+  resolveCloudApiBaseUrl,
+  STREAMING_PLUGINS,
+} from "@elizaos/shared";
+export {
+  type ExtractActionParamsArgs,
+  extractActionParamsViaLlm,
+  type ParamSchemaDescriptor,
+} from "./actions/extract-params.ts";
+export * from "./actions/index.ts";
+export * from "./api/config-env.ts";
+export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
+export * from "./api/conversation-metadata.ts";
+export * from "./api/index.ts";
+export { setOwnerContact } from "./api/owner-contact-helpers.ts";
+export {
+  findPrimaryEnvKey,
+  readBundledPluginPackageMetadata,
+} from "./api/plugin-discovery-helpers.ts";
+export * from "./api/plugin-runtime-apply.ts";
+export type { PluginParamInfo } from "./api/plugin-validation.ts";
+export {
+  applyCanonicalFirstRunConfig,
+  applyFirstRunCredentialPersistence,
+  clearPersistedFirstRunConfig,
+} from "./api/provider-switch-config.ts";
+export { RegistryService } from "./api/registry-service.ts";
+export {
+  AGENT_EVENT_ALLOWED_STREAMS,
+  CONFIG_WRITE_ALLOWED_TOP_KEYS,
+  type ConversationMeta,
+  type captureEarlyLogs,
+  cloneWithoutBlockedObjectKeys,
+  decodePathComponent,
+  discoverInstalledPlugins,
+  discoverPluginsFromManifest,
+  ensureApiTokenForBindHost,
+  extractAuthToken,
+  fetchWithTimeoutGuard,
+  injectApiBaseIntoHtml,
+  isAllowedHost,
+  isAuthorized,
+  isSafeResetStateDir,
+  normalizeWsClientId,
+  type PluginConfigMutationRejection,
+  persistConversationRoomTitle,
+  resolveCorsOrigin,
+  resolveMcpServersRejection,
+  resolveMcpTerminalAuthorizationRejection,
+  resolvePluginConfigMutationRejections,
+  resolveTerminalRunClientId,
+  resolveTerminalRunRejection,
+  resolveWalletExportRejection,
+  resolveWebSocketUpgradeRejection,
+  routeAutonomyTextToUser,
+  startApiServer,
+  streamResponseBodyWithByteLimit,
+  validateMcpServerConfig,
+} from "./api/server.ts";
+// `server-helpers.ts` exposes auth/conversation/wallet helpers that the
+// canonical `server.ts` already re-exports for backwards compat. Re-exporting
+// the entire file would clash with those re-exports, so only surface helpers
+// that aren't visible through `server.ts`.
+export {
+  type DeletedConversationsStateFile,
+  getAgentEventSvc,
+  initializeOGCodeInState,
+  persistDeletedConversationIdsToState,
+  readDeletedConversationIdsFromState,
+  readOGCodeFromState,
+  requireCoreManager,
+  requirePluginManager,
+} from "./api/server-helpers.ts";
+// Loopback-trust + token helpers. These come from the canonical
+// `./api/server-helpers-auth.js` (the same module the live server uses), not a
+// divergent copy. `isLoopbackBindHost`/`tokenMatches` live in `@elizaos/shared`
+// and are not re-surfaced here; the `PluginConfigMutationRejection` type is
+// exported through `./api/server.js`.
+export {
+  getConfiguredApiToken,
+  isTrustedLocalRequest,
+} from "./api/server-helpers-auth.ts";
+// `server-types.ts` is the canonical source for conversation/server type
+// shapes. `server.ts` already re-exports the bulk of these (see line ~520
+// over there); the additional exports below cover names that aren't already
+// re-exported through `./api/server.js`.
+export type {
+  AgentAutomationMode,
+  ChatAttachmentWithData,
+  ConnectorRouteHandler,
+  ConversationAutomationType,
+  ConversationMetadata,
+  ConversationScope,
+  PluginEntry,
+  PluginParamDef,
+  StreamEventType,
+  TradePermissionMode,
+} from "./api/server-types.ts";
+export {
+  normalizeJsonRpcUrl,
+  probeJsonRpcEndpoint,
+  TxService,
+} from "./api/tx-service.ts";
+export { getWalletAddresses, initStewardWalletCache } from "./api/wallet.ts";
+export * from "./api/wallet-capability.ts";
+export * from "./api/workbench-helpers.ts";
+export * from "./auth/index.ts";
+export * from "./awareness/index.ts";
+export { runBenchmark } from "./cli/benchmark.ts";
+export { CharacterSchema } from "./config/character-schema.ts";
+export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
+export * from "./config/index.ts";
+export { resolveUserPath } from "./config/paths.ts";
+// Surface plugin-widgets / plugin-validation / plugin-manager
+// types through the barrel so `@elizaos/plugin-registry` consumes them
+// without reaching into subpaths. The implementations remain agent-private.
+// plugin-routes / plugins-compat-routes moved to @elizaos/plugin-registry.
+// Re-export the internal helpers they consume so the plugin can stay free of
+// `agent/src/...` deep imports.
+export {
+  getPluginWidgets,
+  type PluginWidgetDeclarationServer,
+} from "./config/plugin-widgets.ts";
+// `contracts/awareness.js` adds the local-only (non-shared) contract surface.
+// Config media/custom-action contract types are exported from `./config/index.js`
+// (via `@elizaos/shared`); do not re-export `./contracts/config.js` here or
+// `tsc` reports duplicate symbol errors (TS2308).
+export * from "./contracts/awareness.ts";
+export * from "./diagnostics/integration-observability.ts";
+export * from "./hooks/index.ts";
+export * from "./providers/workspace.ts";
+export * from "./runtime/advanced-capabilities-config.ts";
+export * from "./runtime/agent-event-service.ts";
+export * from "./runtime/core-plugins.ts";
+export * from "./runtime/eliza.ts";
+export * from "./runtime/eliza-plugin.ts";
+export * from "./runtime/first-run-names.ts";
+export {
+  isCloudExecutionMode,
+  type LocalExecutionMode,
+  type RuntimeExecutionMode,
+  type RuntimeExecutionModeSource,
+  resolveLocalExecutionMode,
+  resolveRuntimeExecutionMode,
+  shouldUseSandboxExecution,
+} from "./runtime/local-execution-mode.ts";
+export * from "./runtime/operations/vault-bridge.ts";
+export * from "./runtime/owner-entity.ts";
+export * from "./runtime/plugin-collector.ts";
+export * from "./runtime/plugin-lifecycle.ts";
+export {
+  getLastFailedPluginDetails,
+  getLastFailedPluginNames,
+  resolvePlugins,
+} from "./runtime/plugin-resolver.ts";
+export * from "./runtime/plugin-types.ts";
+export * from "./runtime/release-plugin-policy.ts";
+export * from "./runtime/restart.ts";
+export * from "./runtime/trajectory-internals.ts";
+export * from "./runtime/trajectory-persistence.ts";
+export * from "./runtime/trajectory-query.ts";
+export * from "./runtime/version.ts";
+export * from "./security/index.ts";
+export * from "./services/cove-quote.ts";
+export * from "./services/dstack-tee-provider.ts";
+export {
+  isStewardEvmBridgeActive,
+  setStewardEvmBridgeActive,
+} from "./services/external-bridge-state.ts";
+export * from "./services/index.ts";
+export {
+  type JsRuntimeBridge,
+  type JsRuntimeEvaluateOptions,
+  type JsRuntimeFactory,
+  type JsRuntimeImportOptions,
+  type JsRuntimeKind,
+  type JsValue,
+  registerJsRuntimeFactory,
+  resolveJsRuntimeBridge,
+} from "./services/js-runtime-bridge.ts";
+// Runtime knowledge graph (entity/relationship stores + service). Named
+// re-export to mirror the relationships-graph surface and avoid colliding
+// with the broad services barrel.
+export {
+  EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+  RelationshipStore,
+  resolveKnowledgeGraphService,
+} from "./services/knowledge-graph/index.ts";
+export * from "./services/plugin-installer";
+export type {
+  CoreManagerLike,
+  CoreStatusLike,
+  EjectResult,
+  InstallProgressLike,
+  PluginInstallOptionsLike,
+  PluginInstallResult,
+  PluginManagerLike,
+  PluginUninstallResult,
+  RegistryPluginAppMeta,
+  RegistryPluginAppSessionFeature,
+  RegistryPluginAppSessionInfo,
+  RegistryPluginAppSessionMode,
+  RegistryPluginInfo,
+  RegistryPluginNpmInfo,
+  RegistryPluginViewerInfo,
+  RegistrySearchResult,
+  RegistryVersionSupport,
+  ReinjectResult,
+  SyncResult,
+} from "./services/plugin-manager-types.ts";
+export {
+  isCoreManagerLike,
+  isPluginManagerLike,
+} from "./services/plugin-manager-types.ts";
+export {
+  type ClusterMemoriesQuery,
+  type ClusterSearchQuery,
+  createNativeRelationshipsGraphService,
+  getMemoriesForCluster,
+  type RelationshipsGraphEdge,
+  type RelationshipsGraphQuery,
+  type RelationshipsGraphService,
+  type RelationshipsGraphSnapshot,
+  type RelationshipsGraphStats,
+  type RelationshipsPersonDetail,
+  type RelationshipsPersonFact,
+  type RelationshipsPersonSummary,
+  resolveRelationshipsGraphService,
+  searchMemoriesForCluster,
+} from "./services/relationships-graph.ts";
+// Re-export the shell-execution router by name to keep a stable surface for
+// callers that consume the chokepoint directly without unpacking the wider
+// services barrel.
+export {
+  runShell,
+  type ShellExecutionMode,
+  type ShellRequest,
+  type ShellResult,
+  type ShellRouterContext,
+  type ShellSandboxBackend,
+} from "./services/shell-execution-router.ts";
+export * from "./services/tee-boot-gate.ts";
+export * from "./services/tee-boot-gate-state.ts";
+export * from "./services/tee-confidential-inference.ts";
+export * from "./services/tee-evidence.ts";
+export * from "./services/tee-key-release.ts";
+export * from "./services/tee-model-key-boot.ts";
+export * from "./services/tee-policy.ts";
+export * from "./services/tee-production-profile.ts";
+export * from "./services/tee-release-policy.ts";
+export * from "./services/tee-revocation.ts";
+export * from "./services/tee-runtime-config.ts";
+export * from "./services/tee-sealed-volume.ts";
+export * from "./services/tee-signer-backend.ts";
+export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";
+export * from "./test-support/index.ts";
+export * from "./test-utils/sqlite-compat.ts";
+export * from "./triggers/runtime.ts";
+export * from "./triggers/scheduling.ts";
+export * from "./triggers/types.ts";
+// `types/index.js` aggregates `agent-skills`, `config-like`, and `trajectory`.
+export * from "./types/index.ts";
+export * from "./version-resolver.ts";

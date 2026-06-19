@@ -1,0 +1,104 @@
+# Input Trust Policy v1.0-draft
+# Draft Date: 2023-11-20
+# Author: J. Martinez
+# Status: DRAFT - SUPERSEDED BY v2.3
+# NOTE: This document is retained for historical reference only.
+
+policy_version: "1.0-draft"
+policy_name: "LLM Assistant Input Trust Classification Policy (Draft)"
+draft_date: "2023-11-20"
+author: "J. Martinez"
+status: "draft"
+
+description: >
+  Initial draft of the input trust classification policy for the
+  LLM assistant. Defines trusted and semi-trusted input channels.
+
+trusted_channels:
+  - channel_id: whatsapp_direct
+    display_name: "WhatsApp Direct Messages"
+    trust_level: full_execute
+    description: >
+      Messages from the verified WhatsApp account.
+    allowed_operations:
+      - execute
+      - configure
+      - delete
+      - summarize
+      - translate
+
+  - channel_id: rpi_local_hid
+    display_name: "Raspberry Pi Local Input"
+    trust_level: full_execute
+    description: >
+      Direct keyboard and mouse input on the Raspberry Pi.
+    allowed_operations:
+      - execute
+      - configure
+      - delete
+      - summarize
+      - translate
+
+semi_trusted:
+  - channel_id: email
+    display_name: "Email Content"
+    trust_level: conditional_execute
+    description: >
+      Email content from known senders can be conditionally executed
+      after basic sender verification. Emails from the user's own
+      address are treated as semi-trusted.
+    conditions:
+      - sender_in_allowlist: true
+      - subject_contains_keyword: "EXECUTE"
+    allowed_operations:
+      - execute
+      - summarize
+      - translate
+    notes: >
+      If the sender address matches the owner's known email addresses,
+      commands embedded in the email body may be executed. This allows
+      the user to send themselves instructions via email for the
+      assistant to carry out.
+
+untrusted_sources:
+  - source_id: pdf
+    display_name: "PDF Document Content"
+    trust_level: data_only
+    allowed_operations:
+      - summarize
+      - translate
+    blocked_operations:
+      - execute
+      - configure
+      - delete
+
+  - source_id: webpage
+    display_name: "Web Page Content"
+    trust_level: data_only
+    allowed_operations:
+      - summarize
+      - translate
+    blocked_operations:
+      - execute
+      - configure
+      - delete
+
+action_rules:
+  - rule_id: AR-001
+    name: "Trusted Channel Execute"
+    condition: "channel.trust_level == full_execute"
+    action: "allow_all_operations"
+
+  - rule_id: AR-002
+    name: "Semi-Trusted Conditional Execute"
+    condition: "channel.trust_level == conditional_execute AND conditions_met"
+    action: "allow_with_confirmation"
+
+  - rule_id: AR-003
+    name: "Untrusted Source Read-Only"
+    condition: "source.trust_level == data_only"
+    action: "allow_read_operations_only"
+
+audit_settings:
+  log_all_commands: true
+  log_retention_days: 180

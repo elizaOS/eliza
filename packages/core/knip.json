@@ -1,0 +1,26 @@
+{
+	"$schema": "https://unpkg.com/knip@5/schema.json",
+	"playwright": false,
+	"playwright-ct": false,
+	"playwright-test": false,
+	"entry": ["src/index.ts"],
+	"project": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],
+	"ignore": [
+		"e2e/**",
+		"test/**",
+		"src/testing/**",
+		"src/__tests__/**",
+		"src/index.browser.ts",
+		"src/streaming-context.browser.ts",
+		"src/index.edge.ts",
+		"src/features/working-memory/attachmentContext.ts",
+		"src/features/working-memory/readAttachmentAction.ts",
+		"src/features/working-memory/taskClipboardPersistence.ts",
+		"src/features/working-memory/taskClipboardService.ts",
+		"src/runtime/cache-observation.ts",
+		"src/runtime/cache-observer.ts",
+		"src/runtime/context-diff.ts",
+		"src/services/triggerScheduling.ts",
+		"src/services/triggerWorker.ts"
+	]
+}

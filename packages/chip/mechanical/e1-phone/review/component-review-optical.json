@@ -1,0 +1,119 @@
+{
+  "schema": "eliza.e1_phone_optical_component_review.v1",
+  "stage": "evt_design_review_not_production_release",
+  "device_revision": "evt0-mechanical-cad-flush-back",
+  "locked_requirements": {
+    "thickness_mm": 11.2,
+    "back_face": "fully_flush_no_bump_no_proud_ring",
+    "rear_camera_buried": true,
+    "lens_count_each_direction": 1
+  },
+  "recommended_camera_flash_min_spacing_mm": {
+    "center_to_center_recommended": 6.0,
+    "center_to_center_hard_floor": 5.0,
+    "mandatory_isolation": "opaque_internal_septum_plus_black_inter_window_mask",
+    "rationale": "coplanar_flush_windows_in_single_back_wall_raise_crosstalk_vs_bumped_design"
+  },
+  "components": [
+    {
+      "component": "rear_camera",
+      "mpn": "Sincere First OV13B10 13MP AF MIPI CSI-2 FPC module (OV13855/OV13850 pin-class alternates)",
+      "source_url": "https://www.cameramodule.com/fpc-camera-module/auto-focus-camera-module/ov13b10-sensor-mipi-autofocus-high-resolution.html",
+      "price_100k_usd": 3.90,
+      "manufacturable": "yes_conditional",
+      "min_clearances_mm": {
+        "module_height_budget": 5.1,
+        "module_height_actual_typ": 4.0,
+        "burial_clearance_to_back_inner_wall": 0.30,
+        "window_aperture_vs_lens_radial_margin": 1.2,
+        "flush_window_flatness_tolerance": 0.05,
+        "battery_back_face_to_inner_wall_gap": 0.15
+      },
+      "occlusion_risk": "medium: needs blackened baffle column in ~6mm air gap to flush window; battery pouch swell vs 0.15mm wall gap; flash crosstalk (see flash)",
+      "blockers": [
+        "vendor z-height + lens-axis + OTP calibration drawing",
+        "internal baffle/dust seal design vs flush window",
+        "battery swell keepout vs 0.15mm battery-to-wall gap",
+        "confirm SoC (Unisoc T606) supports 4-lane CSI-2 at 13MP"
+      ]
+    },
+    {
+      "component": "front_camera",
+      "mpn": "Sincere First SF-G5035S60FY (GalaxyCore GC5035 5MP fixed-focus MIPI)",
+      "source_url": "https://m.alibaba.com/product/62543023652/5mp-camera-module-GC5035-sensor-D5L02C.html",
+      "price_100k_usd": 1.10,
+      "manufacturable": "yes",
+      "min_clearances_mm": {
+        "module_envelope_z": 3.2,
+        "lens_diameter": 3.4,
+        "recommended_black_mask_aperture": 4.0,
+        "aperture_to_earpiece_edge": 2.0,
+        "aperture_to_active_area_edge": 1.5
+      },
+      "occlusion_risk": "low: single FF lens, shallow z; black-mask aperture misalignment could vignette",
+      "blockers": [
+        "exact pinout, lens-z, enclosure z-stack, driver support",
+        "confirm black-mask aperture vs FOV cone with lens drawing"
+      ]
+    },
+    {
+      "component": "rear_flash_led",
+      "mpn": "Lumileds LXCL-PWF1 LUXEON Flash white (1.64x0.90mm, 1000mA) + Awinic AW36515/AW36501 I2C boost driver; OSRAM CEYW / Everlight / MLW alternates; SGM3140 simple driver alt",
+      "source_url": "https://octopart.com/lxcl-pwf1-lumileds-961573",
+      "driver_source_url": "https://www.awinic.com/en/productDetail/AW36515EFCR",
+      "price_100k_usd": 0.45,
+      "price_100k_breakdown": { "led_usd": 0.20, "driver_ic_usd": 0.25, "note": "not_yet_in_bom_unit_cost_yaml_add_line" },
+      "manufacturable": "conditional",
+      "min_clearances_mm": {
+        "seat_envelope": [1.0, 1.0, 0.7],
+        "led_actual_footprint_lxcl_pwf1": [1.64, 0.90],
+        "window": [1.6, 1.6, 0.5],
+        "flash_to_camera_center_recommended": 6.0,
+        "flash_to_camera_center_hard_floor": 5.0,
+        "seat_footprint_mismatch_note": "LXCL-PWF1 1.64mm exceeds 1.0mm seat axis; widen seat to ~1.7x1.0 or use 1.0x1.0 OSRAM CEYW-class"
+      },
+      "occlusion_risk": "high: flush coplanar flash+camera windows in single back wall couple flash into camera optical path -> lens flare/veiling glare; requires >=6mm spacing + opaque septum + black inter-window mask + walled light-pipe",
+      "blockers": [
+        "reconcile LXCL-PWF1 1.64x0.90 footprint vs 1.0x1.0 seat in CAD",
+        "add flash LED + driver IC as explicit BOM lines",
+        "stray-light/flare validation build before DVT",
+        "confirm >=6mm flash-to-lens spacing actually dimensioned in params (only 'beside camera' today)"
+      ]
+    },
+    {
+      "component": "display",
+      "mpn": "Chenghao CH550FH01A-CT 5.5in FHD 1080x1920 LTPS MIPI LCD + on-cell CTP, 40-pin FPC (BOE/Tianma/META 055WU01 alternates)",
+      "source_url": "https://www.chenghaolcd.com/doc/26717023/5-5-inch-ltps-tft-lcd-module-1080-1920-resolution-mipi-lcd-screen.pdf",
+      "price_100k_usd": 11.80,
+      "manufacturable": "yes_conditional",
+      "min_clearances_mm": {
+        "ctp_outline": [77.1, 151.77, 3.39],
+        "cover_glass_to_active_side_margin": 4.5,
+        "cover_glass_to_active_top_bottom_margin": 15.0,
+        "adhesive_width": 1.0,
+        "adhesive_thickness": 0.18,
+        "screen_xy_allowance": 0.3,
+        "display_gap_to_bezel_nominal": 0.15,
+        "display_gap_to_bezel_tolerance": 0.15,
+        "fpc_bend_radius": 1.0,
+        "camera_aperture_to_active_edge_recommended": 1.5,
+        "earpiece_to_active_edge_recommended": 1.0
+      },
+      "occlusion_risk": "low_medium: FPC bend-radius kink at assembly; active-area encroachment into earpiece/front-camera band",
+      "blockers": [
+        "exact pinout + FPC drawing + init sequence",
+        "touch controller MPN unspecified",
+        "confirm FPC tail length + bend radius vs PCB z-center -2.1mm"
+      ]
+    }
+  ],
+  "sources": [
+    "https://www.cameramodule.com/fpc-camera-module/auto-focus-camera-module/ov13b10-sensor-mipi-autofocus-high-resolution.html",
+    "https://sincerefirst.en.made-in-china.com/product/HaVRqhYrYokl/China-Support-OEM-13MP-Ov13b10-Ov13855-Ov13850-Ov13858-Sensor-Mipi-Mini-Camera-Module.html",
+    "https://octopart.com/lxcl-pwf1-lumileds-961573",
+    "https://lumileds.com/wp-content/uploads/files/DS49.pdf",
+    "https://www.awinic.com/en/productDetail/AW36515EFCR",
+    "https://www.awinic.com/en/productDetail/AW36501DNR",
+    "https://www.chenghaolcd.com/doc/26717023/5-5-inch-ltps-tft-lcd-module-1080-1920-resolution-mipi-lcd-screen.pdf"
+  ]
+}

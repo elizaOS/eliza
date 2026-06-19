@@ -1,0 +1,88 @@
+{
+  "scanTool": "Fortify Static Code Analyzer",
+  "scanVersion": "23.2.0",
+  "scanDate": "2024-03-10T14:22:00Z",
+  "projectName": "compensation-service",
+  "targetBranch": "release/2.3.1",
+  "totalFindings": 6,
+  "findings": [
+    {
+      "id": "SAST-2024-001",
+      "category": "SQL Injection",
+      "severity": "Critical",
+      "confidence": "Definite",
+      "file": "src/main/java/com/wish/biz/rs/compensationbus/srv/cprototype/impl/CompensationServiceImpl.java",
+      "lineNumber": 53,
+      "sink": "java.sql.Statement.executeQuery()",
+      "source": "Method parameter: orderId",
+      "description": "User-controlled data flows into Statement.executeQuery() without sanitization. Tainted data from parameter 'orderId' in method 'queryCompensation' reaches a SQL execution sink at line 53.",
+      "cwe": "CWE-89",
+      "recommendation": "Use PreparedStatement with parameterized queries instead of string concatenation."
+    },
+    {
+      "id": "SAST-2024-002",
+      "category": "Insecure Deserialization",
+      "severity": "Critical",
+      "confidence": "Definite",
+      "file": "src/main/java/com/wish/biz/rs/compensationbus/srv/cprototype/impl/CompensationServiceImpl.java",
+      "lineNumber": 86,
+      "sink": "CompensationServiceImpl.createCompensation(CompensationDTO)",
+      "source": "HTTP request body",
+      "description": "The method createCompensation accepts a CompensationDTO object deserialized from the HTTP request body. Attacker-supplied serialized payloads could exploit known gadget chains in the application's classpath (Spring, Commons IO) to achieve remote code execution via deserialization of untrusted data.",
+      "cwe": "CWE-502",
+      "recommendation": "Avoid Java native deserialization of untrusted data. Use safe alternatives such as JSON-only deserialization with strict type checking."
+    },
+    {
+      "id": "SAST-2024-003",
+      "category": "Use of Hard-coded Password",
+      "severity": "Critical",
+      "confidence": "Definite",
+      "file": "src/main/java/com/wish/biz/rs/compensationbus/srv/cprototype/impl/CompensationServiceImpl.java",
+      "lineNumber": 28,
+      "sink": "Field assignment: dbPassword",
+      "source": "String literal",
+      "description": "Hard-coded password 'Admin@123' is assigned to the class field 'dbPassword'. This credential is used to establish database connections at line 51.",
+      "cwe": "CWE-798",
+      "recommendation": "Store credentials in a secure vault or environment variables. Never embed secrets in source code."
+    },
+    {
+      "id": "SAST-2024-004",
+      "category": "Missing Authentication",
+      "severity": "High",
+      "confidence": "High",
+      "file": "src/main/java/com/wish/biz/rs/compensationbus/srv/cprototype/impl/CompensationServiceImpl.java",
+      "lineNumber": 0,
+      "sink": "Class-level analysis",
+      "source": "API endpoint definitions",
+      "description": "No authentication or authorization annotations (@PreAuthorize, @Secured, @RolesAllowed) detected on any public method in CompensationServiceImpl. The API specification defines a BearerAuth security scheme, but it is not applied to any endpoint path. All service methods are accessible without authentication enforcement at the application layer.",
+      "cwe": "CWE-862",
+      "recommendation": "Apply Spring Security method-level annotations or configure endpoint security in SecurityConfig to enforce the BearerAuth scheme defined in the API specification."
+    },
+    {
+      "id": "SAST-2024-005",
+      "category": "Unsafe Reflection",
+      "severity": "High",
+      "confidence": "Medium",
+      "file": "src/main/java/com/wish/biz/rs/compensationbus/srv/cprototype/impl/CompensationServiceImpl.java",
+      "lineNumber": 175,
+      "sink": "Method invocation: callExternalPaymentService",
+      "source": "CompensationEntity record parameter",
+      "description": "The private method callExternalPaymentService receives a CompensationEntity parameter whose field values originate from the database and may be influenced by user input. Dynamic method dispatch or reflective invocation based on entity field values could allow an attacker to redirect execution flow to arbitrary methods.",
+      "cwe": "CWE-470",
+      "recommendation": "Avoid using reflection with user-controlled input. If dynamic dispatch is required, use a strict whitelist of allowed target methods."
+    },
+    {
+      "id": "SAST-2024-006",
+      "category": "Server-Side Request Forgery",
+      "severity": "High",
+      "confidence": "Medium",
+      "file": "src/main/java/com/wish/biz/rs/compensationbus/srv/cprototype/impl/CompensationServiceImpl.java",
+      "lineNumber": 175,
+      "sink": "Method invocation: callExternalPaymentService",
+      "source": "CompensationEntity record — orderId and userName fields originate from user HTTP input",
+      "description": "The private method callExternalPaymentService receives a CompensationEntity whose field values are derived from user-supplied HTTP request data. If the method constructs outbound HTTP requests using these field values (e.g., building a callback URL from orderId), an attacker could manipulate the destination to target internal network services (e.g., http://169.254.169.254/latest/meta-data/ on AWS). The method name and parameter signature strongly suggest external service communication with user-influenced routing.",
+      "cwe": "CWE-918",
+      "recommendation": "Validate and whitelist all external service URLs. Never construct outbound request URLs from user-controlled data. Use a service registry with fixed endpoints."
+    }
+  ]
+}

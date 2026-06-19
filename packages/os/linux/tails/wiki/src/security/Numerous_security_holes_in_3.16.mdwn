@@ -1,0 +1,41 @@
+[[!meta date="Sat, 19 Sep 2019 23:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.16"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.0|news/version_4.0]] fixes many security issues that affect
+Tails 3.16. You should [[upgrade to Tails 4.0|news/version_4.0]] as
+soon as possible.
+
+ - Tor Browser: [[!mfsa 2019-33]]
+ - Linux: [[!cve CVE-2019-15118]], [[!cve CVE-2019-15117]], [[!cve
+   CVE-2019-16714]], [[!cve CVE-2019-14835]], [[!cve CVE-2019-15504]],
+   [[!cve CVE-2019-14821]], [[!cve CVE-2019-14814]], [[!cve
+   CVE-2019-14815]], [[!cve CVE-2019-14816]], [[!cve CVE-2019-15505]],
+   and [[!cve CVE-2019-15538]]
+ - CUPS [[!cve CVE-2019-8696]], [[!cve CVE-2019-8675]],
+   and more security fixes
+ - GnuPG: mitigate the certificates flooding attack
+ - e2fsprogs [[!debsa2019 4535]]
+ - ghostscript: [[!debsa2019 4518]], [[!debsa2019 4499]]
+ - WebKitGTK: [[!debsa2019 4515]]
+ - Pango: [[!debsa2019 4496]]
+ - ffmpeg: [[!debsa2019 4502]]
+ - expat: [[!debsa2019 4530]]
+ - GLib: [[!cve CVE-2019-13012]]
+ - libmariadb3: numerous vulnerabilities
+ - NSS: [[!cve CVE-2019-11719]], [[!cve CVE-2019-11727]],
+   [[!cve CVE-2019-11729]]).
+ - LibreOffice: [[!debsa2019 4519]], [[!debsa2019 4501]],
+   [[!debsa2019 4483]], and [[!cve CVE-2019-9848]]
+ - Samba: [[!debsa2019 4513]]
+ - OpenSSL: [[!debsa2019 4539]]
+ - libxslt: [[!cve CVE-2019-11068]], [[!cve CVE-2019-13117]],
+   and [[!cve CVE-2019-13118]]
+ - zeromq3: [[!debsa2019 4477]]
+ - patch: [[!debsa2019 4489]]
+ - Thunderbird: [[!debsa2019 4523]], [[!debsa2019 4482]]
+ - wpasupplicant: [[!debsa2019 4538]]
+ - IBus: [[!debsa2019 4525]]
+ - sudo: [[!debsa2019 4543]]

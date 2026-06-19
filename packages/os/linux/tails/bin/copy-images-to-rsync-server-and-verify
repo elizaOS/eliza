@@ -1,0 +1,54 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+
+NAME=$(basename "${0}")
+LONGOPTS="version:,dist:,release-branch:,matching-jenkins-images-build-id:"
+OPTS=$(getopt -o "" --longoptions $LONGOPTS -n "${NAME}" -- "$@")
+eval set -- "$OPTS"
+while [ $# -gt 0 ]; do
+    case $1 in
+    --version)
+        shift
+        VERSION="$1"
+        ;;
+    --dist)
+        shift
+        DIST="$1"
+        ;;
+    --release-branch)
+        shift
+        RELEASE_BRANCH="$1"
+        ;;
+    --matching-jenkins-images-build-id)
+        shift
+        MATCHING_JENKINS_IMAGES_BUILD_ID="$1"
+        ;;
+    esac
+    shift
+done
+
+ssh rsync.lizard gpg --import <wiki/src/tails-signing.key
+
+# shellcheck disable=SC2087
+ssh rsync.lizard <<EOF
+   wget --continue --quiet \
+      "https://nightly.tails.boum.org/build_Tails_ISO_${RELEASE_BRANCH:?}/builds/${MATCHING_JENKINS_IMAGES_BUILD_ID:?}/archive/build-artifacts/tails-amd64-${VERSION:?}.iso" \
+      "https://nightly.tails.boum.org/build_Tails_ISO_${RELEASE_BRANCH:?}/builds/${MATCHING_JENKINS_IMAGES_BUILD_ID:?}/archive/build-artifacts/tails-amd64-${VERSION:?}.img" && \
+   gpg --verify tails-amd64-${VERSION:?}.iso{.sig,} && \
+   gpg --verify tails-amd64-${VERSION:?}.img{.sig,}
+EOF
+
+# shellcheck disable=SC2087
+ssh rsync.lizard <<EOF
+  sudo install -o root -g rsync_tails -m 0755 -d \
+     /srv/rsync/tails/tails/${DIST:?}/tails-amd64-${VERSION:?} && \
+  sudo chown root:rsync_tails tails-amd64-${VERSION:?}.{iso,img}* && \
+  sudo chmod u=rwX,go=rX tails-amd64-${VERSION:?}.{iso,img}* && \
+  sudo mv tails-amd64-${VERSION:?}.{iso,img}* \
+          /srv/rsync/tails/tails/${DIST:?}/tails-amd64-${VERSION:?}
+EOF
+
+"$(dirname "$0")"/update-trace-time \
+    "Updating trace file after uploading the ISO and USB images for ${VERSION:?}."

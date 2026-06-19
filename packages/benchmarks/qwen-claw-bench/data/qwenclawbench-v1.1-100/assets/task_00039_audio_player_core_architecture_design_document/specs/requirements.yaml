@@ -1,0 +1,149 @@
+# Audio Player Core - Requirements Specification
+# Version: 2.0
+# Last Updated: 2024-05-20
+# Owner: Core Audio Team
+
+project:
+  name: audio-player-core
+  version: "2.0.0"
+  language: rust
+  edition: "2021"
+  min_rust_version: "1.75.0"
+
+queue_management:
+  description: "Manages the playback queue with full CRUD operations and persistence"
+  operations:
+    - name: add
+      description: "Add a track to the queue at a specified position or end"
+      params:
+        - track: Track
+        - position: Option<usize>
+      max_queue_size: 10000
+    - name: remove
+      description: "Remove a track by index or track_id"
+      params:
+        - target: QueueTarget  # ByIndex(usize) | ByTrackId(String)
+    - name: reorder
+      description: "Move a track from one position to another"
+      params:
+        - from_index: usize
+        - to_index: usize
+    - name: clear
+      description: "Remove all tracks from the queue"
+    - name: persist
+      description: "Save current queue state to persistent storage"
+  persistence:
+    backend: sqlite
+    db_file: "queue.db"
+    auto_save: true
+    auto_save_interval_sec: 30
+
+play_modes:
+  - name: sequential
+    description: "Play tracks in order, stop after last track"
+  - name: shuffle
+    algorithm: fisher_yates
+    description: "Randomized playback order using Fisher-Yates shuffle"
+    reproducible: true
+    seed_source: "user-provided or system entropy"
+  - name: repeat_one
+    description: "Repeat the current track indefinitely"
+  - name: repeat_all
+    description: "After last track, loop back to first track"
+
+playback_controls:
+  - name: play
+    description: "Start or resume playback of the current track"
+  - name: pause
+    description: "Pause playback, retaining current position"
+  - name: stop
+    description: "Stop playback and reset position to 0"
+  - name: prev
+    description: "Skip to the previous track in the queue"
+  - name: next
+    description: "Skip to the next track in the queue"
+  - name: seek
+    description: "Seek to a specific position in the current track"
+    params:
+      position_ms: u64
+    constraints:
+      - "Must clamp to [0, track_duration_ms]"
+  - name: set_speed
+    description: "Adjust playback speed"
+    params:
+      speed: f32
+    constraints:
+      min: 0.25
+      max: 4.0
+      default: 1.0
+
+caching:
+  strategy: LRU
+  max_size_mb: 512
+  prefetch_count: 3
+  prefetch_trigger: "when current track reaches 75% played"
+  eviction_policy: least_recently_used
+  cache_directory: "~/.audio_player/cache"
+  ttl_hours: 168
+  supported_operations:
+    - prefetch
+    - evict
+    - query_cached
+    - cache_stats
+
+codec_support:
+  supported_codecs:
+    - name: mp3
+      decoder: symphonia
+      max_bitrate_kbps: 320
+      lossy: true
+    - name: flac
+      decoder: symphonia
+      max_bitrate_kbps: 9216
+      lossy: false
+    - name: ogg
+      decoder: symphonia
+      max_bitrate_kbps: 500
+      lossy: true
+    - name: wav
+      decoder: symphonia
+      max_bitrate_kbps: 4608
+      lossy: false
+    - name: aac
+      decoder: symphonia
+      max_bitrate_kbps: 512
+      lossy: true
+
+state_persistence:
+  backend: sled
+  db_path: "~/.audio_player/state"
+  fields:
+    - current_track_id
+    - queue
+    - queue_position
+    - play_mode
+    - playback_position_ms
+    - volume
+    - speed
+    - shuffle_seed
+    - is_playing
+    - last_saved_at
+  save_triggers:
+    - on_track_change
+    - on_mode_change
+    - periodic_interval_sec: 30
+    - on_app_background
+
+platform_targets:
+  - linux
+  - macos
+  - windows
+  - android
+  - ios
+
+performance_requirements:
+  max_seek_latency_ms: 50
+  max_track_switch_latency_ms: 100
+  max_memory_usage_mb: 128
+  audio_buffer_underrun_tolerance: 0
+  target_cpu_usage_percent: 5

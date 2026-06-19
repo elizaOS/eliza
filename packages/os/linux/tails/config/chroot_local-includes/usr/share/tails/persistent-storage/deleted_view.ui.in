@@ -1,0 +1,51 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.99.8 -->
+<!-- Generated with glade 3.38.2 -->
+<interface>
+  <!-- interface-name deleted_view.ui.in -->
+  <requires lib="gtk+" version="3.24"/>
+  <object class="GtkBox" id="box">
+    <property name="can-focus">False</property>
+    <property name="margin-bottom">20</property>
+    <property name="margin-end">20</property>
+    <property name="margin-start">20</property>
+    <property name="margin-top">20</property>
+    <property name="orientation">vertical</property>
+    <property name="spacing">50</property>
+    <property name="vexpand">True</property>
+    <property name="visible">True</property>
+    <child>
+      <object class="GtkLabel">
+        <property name="can-focus">False</property>
+        <property name="label" translatable="yes">The Persistent Storage was successfully deleted.</property>
+        <property name="max-width-chars">50</property>
+        <property name="valign">center</property>
+        <property name="vexpand">True</property>
+        <property name="visible">True</property>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkButton" id="close_button">
+        <property name="can-focus">True</property>
+        <property name="halign">center</property>
+        <property name="label" translatable="yes">_Close</property>
+        <property name="receives-default">True</property>
+        <property name="use-underline">True</property>
+        <property name="valign">center</property>
+        <property name="vexpand">True</property>
+        <property name="visible">True</property>
+        <signal name="clicked" handler="on_close_button_clicked"/>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+  </object>
+</interface>

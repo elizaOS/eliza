@@ -1,0 +1,145 @@
+claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
+description: 'Macro-placement evidence gate. Fail-closed until AlphaChip and DREAMPlace
+
+  candidate placements are head-to-head compared against the OpenROAD
+
+  baseline on both proxy AND routed PPA truth (run_post_route_ppa.py).
+
+  '
+generated_utc: '2026-05-20T10:18:21Z'
+hard_macros_available:
+- sky130_sram_2kbyte_1rw1r_32x512_8
+- e1_sram_4kb_1rw
+local_findings:
+  alphachip_proxy_full_256_macros:
+    alphachip_proxy: 0.2308
+    delta_pct: -3.01
+    interpretation: AlphaChip 3 % better on proxy; PPA truth not yet captured.
+    openroad_proxy: 0.2379
+    status: ran_locally
+  alphachip_proxy_smoke_16_macros:
+    alphachip_proxy: 0.761
+    interpretation: AlphaChip worse than OpenROAD on toy training run.
+    openroad_proxy: 0.499
+    status: ran_locally
+  dreamplace_head_to_head:
+    dreamplace_device: CPU_8_threads_deterministic_seed_1337
+    dreamplace_iterations: 472
+    dreamplace_runtime_s: 3.683
+    evidence_boundary: 'DREAMPlace 4.0 (limbo018/DREAMPlace v37214b4) built CPU-only
+      inside
+
+      limbo018/dreamplace:cuda image at external/DREAMPlace/install. CT
+
+      e1_softmacro_full benchmark converted to Bookshelf via
+
+      scripts/alphachip/pb_to_bookshelf.py (293 nodes, 2423 nets). HPWL
+
+      recomputed on both placements via scripts/alphachip/plc_hpwl.py for
+
+      apples-to-apples comparison. GPU build BLOCKED: host nvidia-docker
+
+      runtime/CDI vendor not registered; DREAMPlace prebuilt image is also
+
+      CUDA 11.0/sm_60-7.5 only (RTX 5080 is sm_120 Blackwell). AlphaChip
+
+      256-macro PPO placement is BLOCKED_pending_gpu_training; the 3-way
+
+      JSON records that slot explicitly with the resume command.
+
+      '
+    hpwl_delta_pct: -79.66
+    hpwl_microns_dreamplace: 160149.5
+    hpwl_microns_openroad_baseline: 787550.9
+    status: ran_locally_cpu_e1_softmacro_full
+    three_way_json: build/reports/pd/three_way_placement_comparison.json
+  hard_macros_in_release:
+    count_after_re_run: 1
+    count_baseline: 0
+    evidence_boundary: 'The most recent completed OpenLane Sky130 release (RUN_2026-05-19_05-08-54)
+
+      reports Macros: 0, MacroArea: 0. The release config has been updated
+
+      to instantiate sky130_sram_2kbyte_1rw1r_32x512_8 as `u_soc/u_weight_buffer/u_sram`
+
+      via EXTRA_LEFS / EXTRA_LIBS / EXTRA_GDS_FILES / EXTRA_VERILOG_MODELS
+
+      and a `MACROS` entry in pd/openlane/config.sky130.json. Next release
+
+      run will flip the macros count from 0 -> 1, unblocking AlphaChip /
+
+      DREAMPlace / OpenROAD post-route PPA comparisons. A run is currently
+
+      in flight (RUN_2026-05-19_10-00-34) using the BEFORE config.
+
+      '
+    status: integrated_pending_release_re_run
+  openroad_autotuner_sweep:
+    evidence_boundary: 'scripts/openroad_autotuner.py emits the dry-run grid under
+
+      build/pd/autotuner/sky130_dry_001/. Full sweep BLOCKED on
+
+      `pip install optuna` (not installed on this host).
+
+      '
+    status: dry_run_validated_optuna_missing
+  post_route_ppa_truth:
+    evidence_boundary: 'run_post_route_ppa.py exists and is ready. BLOCKED until the
+      next
+
+      release run with EXTRA_LEFS finishes, at which point both AlphaChip
+
+      and OpenROAD candidate .plc files can be re-placed with the macro
+
+      pinned, and the routed wirelength / TNS / DRC / power delta will
+
+      land under research/alpha_chip_macro_placement/07_post_route_ppa/.
+
+      '
+    status: blocked
+release_blockers:
+- "OpenRAM-generated 4 KB SRAM end-to-end toolchain is wired: pip openram 1.2.48 in\
+  \ chip .venv, EDA stack via OpenRAM install_conda.sh at <home>/.openram-miniconda\
+  \ (magic 8.3.363 + ngspice 26 + netgen 1.5.253 + klayout 0.28.3), sky130_fd_bd_sram\
+  \ cell library at <home>/.openram-pdk/sky130_fd_bd_sram (pinned dd64256), Sky130A\
+  \ PDK symlinked from external/pdks/volare. First run hit an upstream OpenRAM bug:\
+  \ compiler/verify/magic.py writes #!/bin/sh + 'source <conda activate>', which dash\
+  \ on Ubuntu rejects \u2014 bitcell_array LVS exits 0 without producing the report\
+  \ file, OpenRAM asserts. Local patch flips #!/bin/sh to #!/bin/bash in magic.py\
+  \ write_drc_script / write_lvs_script / write_extract_script and clears compiler/verify/__pycache__.\
+  \ Second run pending; expected wall ~40-90 min with inline_lvsdrc=True. Once .lef/.gds/.lib/.sp\
+  \ land in pd/macros/sky130/e1_sram_4kb_1rw/build/, promote into pd/openlane/config.sky130.json\
+  \ EXTRA_LEFS/EXTRA_LIBS/EXTRA_GDS_FILES and flip the manifest's BLOCKED_run_openram\
+  \ entries. 16 KB / 64 KB use the same flow with different num_words."
+- DREAMPlace head-to-head ran locally (CPU); GPU path remains BLOCKED because Docker
+  NVIDIA runtime is not registered and the prebuilt limbo018/dreamplace:cuda image
+  targets sm_60-sm_75 (RTX 5080 is sm_120). For GPU acceleration, rebuild DREAMPlace
+  inside a CUDA 12.x image with -DCMAKE_CUDA_FLAGS='-gencode=arch=compute_120,code=sm_120'
+  once a working nvidia-docker runtime is in place.
+- AlphaChip post-route PPA truth (run_post_route_ppa.py output) requires a release
+  run with the new macros config to finish first.
+- False Dawn controversy (arXiv 2302.11014) requires post-route PPA, not proxy cost,
+  as the final acceptance metric.
+- PPO RL training pending H200 GPU access. Nebius runbook ready at scripts/alphachip/nebius_h200_runbook.md.
+  Local RTX 5080 has only 16 GB VRAM and is not sufficient for the full PPO trajectory
+  buffer.
+- OpenROAD AutoTuner Optuna sweep requires `pip install optuna`.
+release_use: prohibited_until_external_review
+required_validators:
+- scripts/run_post_route_ppa.py --plc <alphachip.plc> --netlist <bench>.pb.txt --openroad-run-dir
+  <run> --openlane-config pd/openlane/config.sky130.json --out-json research/alpha_chip_macro_placement/07_post_route_ppa/alphachip.json
+- scripts/run_post_route_ppa.py --plc <openroad.plc> --netlist <bench>.pb.txt --openroad-run-dir
+  <run> --openlane-config pd/openlane/config.sky130.json --out-json research/alpha_chip_macro_placement/07_post_route_ppa/openroad.json
+- scripts/dreamplace_eval.py --bench-dir <host-tmp>/e1_softmacro --out-dir
+  build/pd/dreamplace/e1 --use-gpu
+schema: eliza.pd_macro_placement_evidence.v1
+scope: alphachip_dreamplace_openroad_macro_placement_head_to_head
+source_artifacts:
+- pd/macros/manifest.yaml
+- scripts/alphachip/compare_proxy_costs.sh
+- scripts/run_post_route_ppa.py
+- scripts/dreamplace_eval.py
+- docs/pd/macro-placement.md
+- research/alpha_chip_macro_placement/06_e1_notes/openlane_full_release_2026-05-19.md
+- research/alpha_chip_macro_placement/06_e1_notes/openlane_smoke_baseline_2026-05-19.md
+status: draft_local_evidence

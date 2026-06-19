@@ -1,0 +1,20 @@
+[[!meta date="Fri, 27 Jan 2012 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.10"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect Tails 0.10.
+
+We **strongly** urge you to [[upgrade to Tails 0.10.1|news/version_0.10.1]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+* Linux kernel ([[!cve CVE-2012-0056]], [[!cve CVE-2012-0207]],
+  [[!cve CVE-2011-4127]], [[!cve CVE-2011-4622]])
+* foomatic-filters ([[!debsa2012 2380]])
+* t1lib ([[!debsa2012 2388]])
+* openssl ([[!debsa2012 2390]], [[!debsa2012 2392]])
+* libxml2 ([[!debsa2012 2394]])

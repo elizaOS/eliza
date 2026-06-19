@@ -1,0 +1,28 @@
+{
+  "installMethod": "npm",
+  "installDate": "2025-10-25T08:30:00Z",
+  "lastUpdate": "2025-12-10T14:22:00Z",
+  "lastUpdateFrom": "2025.11.15",
+  "lastUpdateTo": "2025.12.8",
+  "nodeVersion": "v22.11.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "prefix": "/opt/homebrew",
+  "configPath": "openclaw/config.yaml",
+  "updates": [
+    {
+      "date": "2025-11-18T09:15:00Z",
+      "from": "2025.10.22",
+      "to": "2025.11.15",
+      "method": "npm",
+      "success": true
+    },
+    {
+      "date": "2025-12-10T14:22:00Z",
+      "from": "2025.11.15",
+      "to": "2025.12.8",
+      "method": "npm",
+      "success": true
+    }
+  ]
+}

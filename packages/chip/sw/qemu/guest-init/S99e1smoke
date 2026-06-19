@@ -1,0 +1,41 @@
+#!/bin/sh
+#
+# Guest init hook (runs from buildroot /etc/init.d/rcS) that executes one e1
+# software-BSP smoke against the functional /dev/e1-npu QEMU model and frames
+# its output so the host runner (sw/qemu/run-e1-smoke.sh) can extract it.
+#
+# The smoke is selected by the `e1smoke=` kernel command-line argument.
+
+case "$1" in
+  start)
+    mode=$(tr ' ' '\n' < /proc/cmdline | sed -n 's/^e1smoke=//p')
+    [ -z "$mode" ] && mode=ml
+    echo "E1_SMOKE_BEGIN mode=$mode"
+    case "$mode" in
+      mmio)
+        # Show the platform devices the smoke validates so the transcript
+        # records that /dev/e1-npu and the eliza-e1-dma driver were present.
+        ls -l /dev/e1-npu
+        for driver in /sys/bus/platform/drivers/*; do
+          name=${driver##*/}
+          case "$name" in
+            *[Ee][Ll][Ii][Zz][Aa]*) printf '%s\n' "$name" ;;
+          esac
+        done
+        /usr/bin/e1-mmio-smoke
+        rc=$?
+        ;;
+      ml)
+        /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu
+        rc=$?
+        ;;
+      *)
+        echo "unknown e1smoke mode: $mode"
+        rc=2
+        ;;
+    esac
+    echo "E1_SMOKE_RC=$rc"
+    echo "E1_SMOKE_END"
+    /sbin/poweroff -f
+    ;;
+esac

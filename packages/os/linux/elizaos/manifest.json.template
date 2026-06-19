@@ -1,0 +1,55 @@
+{
+  "id": "elizaos-linux-riscv64-template",
+  "kind": "raw-image",
+  "target": {
+    "platform": "linux",
+    "architecture": "@@ARCH@@",
+    "device": "qemu-virt-riscv64",
+    "hypervisor": "qemu",
+    "firmware": "GRUB EFI RISC-V"
+  },
+  "filename": "@@FILENAME@@",
+  "downloadUrl": null,
+  "status": "planned",
+  "sizeBytes": null,
+  "sha256": "@@SHA256@@",
+  "signature": {
+    "status": "pending",
+    "url": null
+  },
+  "validation": {
+    "requiredEvidence": [
+      "qemu-virt-boot",
+      "grub-efi-riscv64-boot",
+      "elizaos-agent-live",
+      "riscv64-agent-runtime"
+    ],
+    "evidence": [
+      {
+        "id": "qemu-virt-boot",
+        "status": "missing",
+        "path": "evidence/qemu_virt_boot.json",
+        "notes": "Generic qemu-virt OS boot evidence; not chip/AP objective evidence."
+      },
+      {
+        "id": "grub-efi-riscv64-boot",
+        "status": "missing",
+        "path": "evidence/qemu_virt_boot.json",
+        "notes": "GRUB EFI RISC-V transcript markers from the qemu-virt boot evidence."
+      },
+      {
+        "id": "elizaos-agent-live",
+        "status": "missing",
+        "path": "evidence/generated_eliza_ap_agent_live.json",
+        "notes": "Agent liveness evidence must include active service, PID, and /api/health."
+      },
+      {
+        "id": "riscv64-agent-runtime",
+        "status": "collected",
+        "path": "evidence/riscv64_agent_runtime_smoke.json",
+        "notes": "Staged RV64 agent runtime smoke and Bun/Node provenance."
+      }
+    ]
+  },
+  "notes": "Template manifest remains planned until ISO, qemu-virt boot, GRUB, and agent-live evidence rows are collected. The staged riscv64 runtime smoke is already collected as static pre-ISO evidence."
+}

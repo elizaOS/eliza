@@ -1,0 +1,98 @@
+name: coverage-gate
+
+# SOC2 CC4.1 — track unit-test coverage on changed files. ADVISORY at first
+# (warns but does not fail the build). Flip to required by setting the env
+# var COVERAGE_GATE_ENFORCE=1 in this workflow once the baseline is stable.
+#
+# TODO(security): promote to required once the team agrees on a per-package
+# threshold floor. See docs/security/ai-pr-review-policy.md for the broader
+# review checklist.
+
+on:
+  pull_request:
+    branches: ["main", "develop"]
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: coverage on changed files
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Determine changed files
+        id: changed
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+          {
+            echo 'files<<EOF'
+            git diff --name-only "$BASE" "$HEAD" -- '*.ts' '*.tsx' '*.js' '*.jsx' \
+              | grep -vE '(^|/)(__tests__|test|tests)/' || true
+            echo 'EOF'
+            echo 'tests<<EOF'
+            git diff --name-only "$BASE" "$HEAD" -- \
+              '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' '*.test.mjs' \
+              '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' '*.spec.mjs' \
+              | while IFS= read -r file; do
+                  [ -f "$file" ] || continue
+                  case "$file" in
+                    *.e2e.test.*|*.live.test.*) continue ;;
+                  esac
+                  if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
+                    echo "Skipping Vitest-only test in Bun coverage gate: $file" >&2
+                    continue
+                  fi
+                  echo "$file"
+                done
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup Bun workspace
+        if: steps.changed.outputs.tests != ''
+        # Keep dependency setup behind the changed-test check. The coverage gate
+        # is advisory for changed Bun-native tests, so docs-only and no-test PRs
+        # should not spend CI time or fail on unrelated registry/install noise.
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+
+      - name: Run changed Bun tests with coverage
+        if: steps.changed.outputs.tests != ''
+        run: |
+          cat > "$RUNNER_TEMP/changed-tests.txt" <<'EOF'
+          ${{ steps.changed.outputs.tests }}
+          EOF
+          mapfile -t changed_tests < <(grep -v '^$' "$RUNNER_TEMP/changed-tests.txt" || true)
+          if [ "${#changed_tests[@]}" -eq 0 ]; then
+            echo "no changed Bun-native test files; skipping coverage run"
+            exit 0
+          fi
+          bun test "${changed_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage || true
+        env:
+          # Tests must produce coverage/lcov.info. If a package emits to a
+          # different path, surface it here.
+          BUN_COVERAGE_DIR: coverage
+
+      - name: Apply coverage gate (advisory)
+        if: steps.changed.outputs.tests != ''
+        env:
+          COVERAGE_GATE_ENFORCE: "0"   # flip to "1" once baseline established
+        run: |
+          if [ ! -f coverage/lcov.info ]; then
+            echo "no coverage/lcov.info produced; skipping gate"
+            exit 0
+          fi
+          awk \
+            -v changed="${{ steps.changed.outputs.files }}" \
+            -v threshold=70 \
+            -f scripts/security/coverage-gate.awk \
+            coverage/lcov.info

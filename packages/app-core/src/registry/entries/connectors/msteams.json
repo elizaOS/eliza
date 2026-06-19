@@ -1,0 +1,104 @@
+{
+  "id": "msteams",
+  "name": "MS Teams",
+  "description": "Microsoft Teams integration for ElizaOS",
+  "npmName": "@elizaos/plugin-msteams",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "social", "social-chat", "messaging", "msteams"],
+  "config": {
+    "MSTEAMS_APP_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "App Id",
+      "help": "Application/client ID",
+      "advanced": false
+    },
+    "MSTEAMS_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "MSTEAMS_TENANT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Tenant Id",
+      "help": "Team/tenant ID",
+      "advanced": false
+    },
+    "MSTEAMS_APP_PASSWORD": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "App Password",
+      "help": "Password for Msteams App",
+      "advanced": false
+    },
+    "MSTEAMS_MEDIA_MAX_MB": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Media Max Mb",
+      "help": "Maximum size in MB",
+      "advanced": false
+    },
+    "MSTEAMS_WEBHOOK_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Path",
+      "help": "Webhook path",
+      "advanced": false
+    },
+    "MSTEAMS_WEBHOOK_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Port",
+      "help": "Port number",
+      "advanced": false,
+      "min": 1,
+      "max": 65535
+    },
+    "MSTEAMS_ALLOWED_TENANTS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Allowed Tenants",
+      "help": "Comma-separated allowed channel/room list",
+      "advanced": false
+    },
+    "MSTEAMS_SHAREPOINT_SITE_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Sharepoint Site Id",
+      "help": "Site identifier",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Square",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#microsoft-teams"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

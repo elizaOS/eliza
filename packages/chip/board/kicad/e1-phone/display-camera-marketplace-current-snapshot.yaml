@@ -1,0 +1,162 @@
+schema: eliza.e1_phone_display_camera_marketplace_current_snapshot.v1
+status: public_marketplace_snapshot_not_supplier_response_or_release_evidence
+date: 2026-05-21
+claim_boundary: >
+  Current public marketplace snapshot for display and camera OEM candidates.
+  These browser/search-visible fields are sourcing and RFQ seed evidence only.
+  They are not supplier responses, not signed drawings, not quotes, not sample
+  receipts, not pinout approval, not footprint approval, not STEP/B-rep geometry,
+  and not permission to route or release the PCB for enclosure placement.
+
+source_artifacts:
+  - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
+  - board/kicad/e1-phone/supplier-source-verification.yaml
+  - board/kicad/e1-phone/supplier-sourcing-audit.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+
+snapshot_policy:
+  checked_date: 2026-05-21
+  method: live_public_web_search_and_page_snippet_verification
+  source_use_limit: rfq_seed_and_shortlist_only
+  supplier_response_required_before_release: true
+  signed_drawing_required_before_pinout_or_footprint_freeze: true
+  sample_inspection_required_before_enclosure_release: true
+  browser_sources_can_unlock_routing: false
+  browser_sources_can_unlock_enclosure_ready: false
+
+current_sources:
+  - id: display_primary_chenghao_ch550fh01a_ct
+    marketplace: Made-in-China
+    supplier: Shenzhen Chenghao Optoelectronic
+    url: https://chenghaolcd.en.made-in-china.com/product/pmFUBTZDnXVH/China-LCD-Manufacturer-1080-1920-Pixels-5-5inch-Pcap-Capacitive-Touch-Display-TFT-Module.html
+    observed_crawl_window: crawled_last_month_in_public_search
+    candidate: CH550FH01A-CT
+    observed_fields:
+      model: CH550FH01A-CT
+      screen_size_in: 5.5
+      resolution: 1080x1920
+      interface: MIPI
+      module_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
+      tft_outline_mm: {width: 70.78, height: 129.17, thickness: 1.7}
+      active_area_mm: {width: 68.04, height: 120.96}
+      price_signal_usd: {qty_2_to_299: 17.40, qty_300_to_999: 16.50, qty_1000_plus: 15.40}
+      production_capacity_signal: 500000_pcs_per_month
+    board_action: keep_primary_display_anchor_for_78x153p6_mm_envelope
+    release_status: blocked_until_signed_supplier_pack_and_samples
+  - id: display_alternate_alibaba_meta_055wu01
+    marketplace: Alibaba
+    supplier: META Display LLC
+    url: https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html
+    observed_crawl_window: crawled_last_month_in_public_search
+    candidate: 055WU01
+    observed_fields:
+      model: 055WU01
+      screen_size_in: 5.5
+      resolution: 1080x1920
+      interface: MIPI_4_lane
+      signal_interface: MIPI_40_pins
+      active_area_mm: {width: 68.04, height: 120.96}
+      brightness_typ_cd_m2: 1000
+      minimum_order_signal_pieces: 1
+      single_piece_lead_time_business_days: 10
+    board_action: keep_as_parseable_40pin_high_brightness_display_alternate
+    release_status: blocked_until_outline_fpc_exit_pinout_connector_step_and_samples
+  - id: display_alternate_made_in_china_e549_amoled
+    marketplace: Made-in-China
+    supplier: Forfuture_FET_or_Shenzhen_Dayuan_Display_class_supplier
+    url: https://www.made-in-china.com/showroom/bella823/product-detailDjlmucpOAohW/China-Fet-High-Resolution-1080-1920-Mipi-Interface-5-5-Inch-Amoled-Display.html
+    observed_crawl_window: crawled_2_months_ago_in_public_search
+    candidate: E549_HC01_RM67191_AMOLED_class
+    observed_fields:
+      screen_size_in: 5.5
+      resolution: 1080x1920
+      interface: MIPI_4_lane
+      driver_ic: RM67191_class
+      active_area_mm: {width: 68.299, height: 121.421}
+      outline_mm: {width: 70.66, height: 128.36, thickness: 0.82}
+    board_action: keep_as_thin_z_height_amoled_alternate_only
+    release_status: blocked_until_exact_touch_stack_power_sequence_fpc_pinout_step_and_samples
+  - id: rear_camera_primary_sincere_first_ov13855
+    marketplace: Made-in-China
+    supplier: Guangzhou Sincere Information Technology / Sincere First
+    url: https://sincerefirst.en.made-in-china.com/product/WACpUrRYOVkc/China-Ov13855-Ov13850-CMOS-Sensor-Autofocus-13MP-Mipi-Camera-Module.html
+    observed_crawl_window: crawled_last_week_and_video_listing_crawled_3_days_ago
+    candidate: SF_XR3855A_A0_OV13855_or_OV13850_class
+    observed_fields:
+      sensor_class: OV13855_or_OV13850
+      resolution_mp: 13
+      interface: MIPI
+      pin_count: 24
+      focus: autofocus
+      sensor_size_in: "1/3.06"
+      view_angle_deg: 78.4
+      price_signal_usd: {qty_5_to_999: 16.35, qty_1000_to_9999: 11.65, qty_10000_plus: 8.35}
+      certification_signal: [CE, FCC, RoHS, ISO9001]
+    board_action: keep_as_rear_camera_primary_class_pending_supplier_xy_z_pack
+    release_status: blocked_until_exact_module_drawing_fpc_pinout_step_capture_and_calibration_samples
+  - id: front_camera_gc5035_sincere_first_public_variant_risk
+    marketplace: Made-in-China
+    supplier: Guangzhou Sincere Information Technology / Sincere First
+    url: https://sincerefirst.en.made-in-china.com/product/iaVrcpOdEBhg/China-5MP-High-Definition-Mipi-Coms-Gc5035-Sensor-Auto-Focus-Mini-Camera-Module.html
+    observed_crawl_window: crawled_2_months_ago_in_public_search
+    candidate: SF_G5035S60AY_GC5035_public_sibling_variant
+    observed_fields:
+      model: SF-G5035S60AY
+      image_sensor: GC5035
+      resolution_px: 2592x1944
+      interface: MIPI
+      focus: fixed_focus
+      sensor_size_in: "1/5"
+      production_capacity_signal: 10kk_pcs_per_month
+      certification_signal: [CE, FCC, RoHS, ISO9001]
+    board_action: do_not_promote_as_exact_front_camera_until_supplier_confirms_SF_G5035S60FY_or_substitution
+    release_status: blocked_variant_mismatch_requires_supplier_confirmation_drawing_pinout_step_and_capture_samples
+
+rfq_delta_actions:
+  - function: display_touch
+    action: send RFQ for CH550FH01A-CT and require signed drawing, exact FPC pinout, mating connector MPN, STEP/B-rep, HX8399C init, GT911 config, samples, and 10/100/1000 pricing.
+    public_snapshot_id: display_primary_chenghao_ch550fh01a_ct
+    release_allowed: false
+  - function: display_touch_alternate
+    action: keep META 055WU01 as 40-pin/high-brightness alternate and require signed outline, FPC exit, pinout, connector, STEP, and samples before altering connector or envelope.
+    public_snapshot_id: display_alternate_alibaba_meta_055wu01
+    release_allowed: false
+  - function: display_touch_amoled_alternate
+    action: keep E549/RM67191 AMOLED as thin-Z alternate only; require exact touch stack, power sequence, FPC pinout, connector, STEP, luminance/burn-in, and sample evidence before promotion.
+    public_snapshot_id: display_alternate_made_in_china_e549_amoled
+    release_allowed: false
+  - function: rear_camera
+    action: send RFQ for OV13855/OV13850 class rear module and require exact module drawing, lens-axis datum, 24-pin FPC pinout, connector MPN, STEP, register pack, OTP/calibration flow, and capture samples.
+    public_snapshot_id: rear_camera_primary_sincere_first_ov13855
+    release_allowed: false
+  - function: front_camera
+    action: require Sincere First to confirm whether SF-G5035S60FY remains orderable or whether public SF-G5035S60AY is the substitution; do not freeze front-camera connector, footprint, or enclosure datums until resolved.
+    public_snapshot_id: front_camera_gc5035_sincere_first_public_variant_risk
+    release_allowed: false
+
+cross_checks:
+  primary_display_snapshot_matches_current_display_anchor: true
+  alibaba_display_snapshot_remains_shortlist_only: true
+  amoled_snapshot_remains_alternate_only: true
+  rear_camera_snapshot_preserves_ov13855_13mp_mipi_class: true
+  front_camera_snapshot_flags_public_variant_risk: true
+  no_snapshot_source_unlocks_supplier_pack_gate: true
+  no_snapshot_source_unlocks_routing_or_enclosure_release: true
+
+release_blockers:
+  - public marketplace pages are not signed supplier responses
+  - exact display FPC pinout, connector MPN, drawing, STEP/B-rep, init sequence, and samples are missing
+  - exact camera module drawing, FPC pinout, connector MPN, lens-axis datum, STEP/B-rep, calibration data, and samples are missing
+  - front GC5035 public page exposes a sibling model and requires supplier confirmation before freeze
+  - routed PCB, DRC, MIPI SI, routed board STEP, enclosure clearance, and first-article logs are missing
+
+forbidden_claims:
+  - supplier_selected
+  - supplier_response_received
+  - display_connector_ready
+  - camera_connector_ready
+  - pinouts_frozen
+  - footprints_frozen
+  - routed_pcb_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

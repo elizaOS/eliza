@@ -1,0 +1,120 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:07+0000\n"
+"PO-Revision-Date: 2025-09-18 17:20+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"GNOME Boxes\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[*GNOME Boxes*](https://apps.gnome.org/Boxes/) aims at providing a simple "
+"interface to create and use virtual machines for Linux with GNOME.  *GNOME "
+"Boxes* does not allow the use of a Persistent Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/advanced_topics/virtualization.caution\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/advanced_topics/virtualization.caution.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>The following instructions have been tested on Debian 13 (Trixie).</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Installation"
+msgstr "Instalação"
+
+#. type: Plain text
+msgid ""
+"To install *GNOME Boxes* in Debian or Ubuntu, execute the following command:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"command\">sudo apt install gnome-boxes</p>\n"
+msgstr "<p class=\"command\">sudo apt install gnome-boxes</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Running Tails from an ISO image"
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"[[Download Tails as an ISO image|install/download-iso]], instead of a USB "
+"image."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Start *GNOME Boxes*."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"Select the [[!img lib/list-add.png alt=\"New\" class=\"symbolic\" "
+"link=\"no\"]] button in the top-left corner."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"In the menu **Create new virtual machine**, select **Install from File**."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Choose the ISO image that you want to start from."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "In the **New Virtual Machine** dialog:"
+msgstr ""
+
+#. type: Bullet: '     1. '
+msgid "In the field **Name**, enter a name of your choice."
+msgstr ""
+
+#. type: Bullet: '     1. '
+msgid "In the field **Operating System**, enter **Debian 13**."
+msgstr ""
+
+#. type: Bullet: '     1. '
+msgid "In the field **Memory**, enter at least 3.0 GB."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Select the **Create** button."
+msgstr ""
+
+#, no-wrap
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"

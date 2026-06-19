@@ -1,0 +1,169 @@
+schema: eliza.e1_phone_selected_hardware_first_article_execution.v1
+status: blocked_selected_hardware_first_article_requires_routed_board_factory_limits_identity_enclosure_and_functional_transcripts
+date: 2026-05-21
+claim_boundary: >
+  Selected-hardware first-article execution contract. This defines the
+  board-serial-tied physical, electrical, RF, factory, and enclosure evidence
+  required for the selected display, cameras, USB-C/power/side keys, cellular,
+  and Wi-Fi/Bluetooth stack. It is not a first-article transcript, not factory
+  release evidence, not enclosure signoff, and not approval to fabricate.
+
+source_artifacts:
+  - board/kicad/e1-phone/first-article-route-execution-order.yaml
+  - board/kicad/e1-phone/production-factory-release-execution.yaml
+  - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+  - board/kicad/e1-phone/post-route-validation-binding.yaml
+  - board/kicad/e1-phone/routed-clearance-release-execution.yaml
+  - board/kicad/e1-phone/power-bringup-acceptance-checklist.yaml
+  - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
+  - board/kicad/e1-phone/display-camera-acceptance-checklist.yaml
+  - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
+
+first_article_policy:
+  release_revision: EVT1-routed-first-article
+  selected_function_count: 5
+  required_transcript: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  required_traveler: board/kicad/e1-phone/production/first-article
+  required_factory_limits: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  required_probe_coordinates: board/kicad/e1-phone/production/test/probe-coordinates.csv
+  required_routed_clearance_release: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  board_serial_traceability_required: true
+  fixture_id_traceability_required: true
+  test_software_revision_required: true
+  supplier_lot_traceability_required: true
+  enclosure_physical_fit_required: true
+  first_article_release_allowed: false
+
+selected_hardware_first_article_records:
+  - function: display_touch
+    selected_hardware: CH550FH01A-CT
+    factory_acceptance_ref: selected_hardware_factory_acceptance.display_touch
+    production_coupling_ref: selected_hardware_release_coupling.display_touch
+    required_fixture_domains: [display_touch]
+    required_transcript_sections:
+      - board_serial_and_display_supplier_lot
+      - display_pinout_review_and_connector_revision
+      - mipi_dsi_signal_integrity_summary
+      - display_touch_bringup_log
+      - routed_clearance_release_reference
+    required_outputs:
+      - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+      - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+      - board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    status: blocked_missing_display_first_article_transcript_and_clearance
+    release_allowed: false
+  - function: rear_front_cameras
+    selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+    factory_acceptance_ref: selected_hardware_factory_acceptance.rear_front_cameras
+    production_coupling_ref: selected_hardware_release_coupling.rear_front_cameras
+    required_fixture_domains: [cameras]
+    required_transcript_sections:
+      - board_serial_and_camera_supplier_lots
+      - rear_front_camera_pinout_reviews_and_connector_revisions
+      - mipi_csi_signal_integrity_summary
+      - camera_capture_focus_and_thermal_log
+      - routed_clearance_release_reference
+    required_outputs:
+      - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+      - board/kicad/e1-phone/production/reports/camera-capture-log.json
+      - board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    status: blocked_missing_camera_first_article_transcript_and_clearance
+    release_allowed: false
+  - function: usb_c_power_sidekeys
+    selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+    factory_acceptance_ref: selected_hardware_factory_acceptance.usb_c_power_sidekeys
+    production_coupling_ref: selected_hardware_release_coupling.usb_c_power_sidekeys
+    required_fixture_domains: [usb_c, buttons_sensors_nfc, power_rails]
+    required_transcript_sections:
+      - board_serial_and_usb_power_sidekey_supplier_lots
+      - usb_c_shell_load_path_and_connector_revision
+      - usb_pd_attach_debug_and_dead_battery_log
+      - charger_cc_cv_jeita_and_thermal_log
+      - side_key_force_travel_wake_and_recovery_combo_log
+      - routed_clearance_release_reference
+    required_outputs:
+      - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+      - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+      - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+      - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    status: blocked_missing_usb_power_sidekey_first_article_transcript_and_clearance
+    release_allowed: false
+  - function: cellular
+    selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference
+    factory_acceptance_ref: selected_hardware_factory_acceptance.cellular
+    production_coupling_ref: selected_hardware_release_coupling.cellular
+    required_fixture_domains: [radios]
+    required_transcript_sections:
+      - board_serial_cellular_module_lot_and_region_sku
+      - imei_or_modem_identifier_and_firmware_revision
+      - cellular_conducted_rf_and_vna_summary
+      - sim_esim_provisioning_and_carrier_scope
+      - sar_prescan_and_coexistence_references
+      - routed_clearance_release_reference
+    required_outputs:
+      - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+      - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+      - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+      - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    status: blocked_missing_cellular_first_article_transcript_rf_identity_and_clearance
+    release_allowed: false
+  - function: wifi_bluetooth
+    selected_hardware: Murata_LBEE5XV2EA-802
+    factory_acceptance_ref: selected_hardware_factory_acceptance.wifi_bluetooth
+    production_coupling_ref: selected_hardware_release_coupling.wifi_bluetooth
+    required_fixture_domains: [radios]
+    required_transcript_sections:
+      - board_serial_wifi_bluetooth_module_lot_and_mpn
+      - wifi_mac_bluetooth_mac_firmware_nvram_clm_revision
+      - wifi_bluetooth_conducted_rf_and_vna_summary
+      - regulatory_country_code_and_modular_grant_scope
+      - coexistence_and_identity_provisioning_references
+      - routed_clearance_release_reference
+    required_outputs:
+      - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+      - board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+      - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+      - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+      - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    status: blocked_missing_wifi_bluetooth_first_article_transcript_rf_identity_and_clearance
+    release_allowed: false
+
+release_output_inventory:
+  required_common_outputs:
+    - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+    - board/kicad/e1-phone/production/first-article
+    - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    - board/kicad/e1-phone/production/test/probe-coordinates.csv
+    - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  present_common_output_count: 0
+  missing_common_output_count: 5
+  all_selected_hardware_outputs_absent: true
+
+cross_checks:
+  selected_hardware_matches_factory_acceptance: true
+  selected_hardware_matches_production_release_coupling: true
+  transcript_sections_cover_display_camera_usb_power_buttons_cellular_wifi_bt: true
+  first_article_outputs_remain_absent: true
+  routed_clearance_release_required_before_first_article_release: true
+  all_selected_hardware_first_article_records_fail_closed: true
+
+release_blockers:
+  - first-article transcript and traveler are missing
+  - factory limits and probe coordinates derived from routed first article are missing
+  - routed clearance release and enclosure physical fit evidence are missing
+  - selected display, cameras, USB-C, charger, side keys, cellular, and Wi-Fi/Bluetooth functional logs are missing
+  - wireless identity, RF calibration, firmware, and regulatory traceability evidence are missing
+  - board serial, fixture ID, test software revision, and supplier lot traceability are missing
+
+forbidden_claims:
+  - selected_hardware_first_article_ready
+  - first_article_ready
+  - factory_test_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

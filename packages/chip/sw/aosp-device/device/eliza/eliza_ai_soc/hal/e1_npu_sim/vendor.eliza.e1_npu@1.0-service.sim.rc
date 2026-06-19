@@ -1,0 +1,1 @@
+service vendor.e1_npu_sim /vendor/bin/hw/vendor.eliza.e1_npu@1.0-service.sim

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Carrot Clock</title>
+    <style>
+      :root { color-scheme: light dark; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #111;
+        color: #eee;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .time {
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 36px;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.04em;
+      }
+      .date {
+        font-size: 12px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="time" id="time">--:--:--</div>
+    <div class="date" id="date">—</div>
+    <script>
+      const timeEl = document.getElementById("time");
+      const dateEl = document.getElementById("date");
+      function tick() {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, "0");
+        const mm = String(now.getMinutes()).padStart(2, "0");
+        const ss = String(now.getSeconds()).padStart(2, "0");
+        timeEl.textContent = hh + ":" + mm + ":" + ss;
+        dateEl.textContent = now.toLocaleDateString(undefined, {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        });
+      }
+      tick();
+      setInterval(tick, 1000);
+    </script>
+  </body>
+</html>

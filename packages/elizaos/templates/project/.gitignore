@@ -1,0 +1,22 @@
+# Android build output
+**/android/build/
+**/android/.gradle/
+**/android/.cxx/
+**/android/app/build/
+**/android/capacitor-cordova-android-plugins/build/
+
+# iOS build output
+**/ios/build/
+**/ios/DerivedData/
+**/ios/Pods/
+
+# Electron build output
+**/electron/dist/
+**/electron/app/
+
+# General
+node_modules/
+eliza/
+.elizaos/
+.DS_Store
+screenshots/

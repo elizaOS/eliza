@@ -1,0 +1,26 @@
+schema: eliza.ai_eda.external_intake_manifest.v1
+asset_id: intel-floorset
+kind: dataset
+source_url: https://github.com/IntelLabs/FloorSet
+upstream_revision:
+  type: commit
+  value: a01137f8cb0406fcb1eef4a76e09445d95aab863
+license:
+  status: training_only_review_complete_apache-2.0_repo_cc-by-4.0_dataset
+  evidence:
+    - https://github.com/IntelLabs/FloorSet
+    - external/datasets/intel-floorset/payload/LICENSE
+    - external/datasets/intel-floorset/payload/README.md
+    - external/datasets/intel-floorset/payload/iccad2026contest/README.md
+  reviewed_at: 2026-05-21
+intake:
+  review_status: metadata_reviewed
+  allowed_use: training-only
+  release_use_allowed: false
+  deterministic_replay_required: true
+  next_action: keep_full_hf_archives_training_only_and_run_deterministic_replay_before_any_e1_claim
+local_payload:
+  downloaded: true
+  payload_path: external/datasets/intel-floorset/payload
+  checksum_status: verified_by_fetch_report_codex-floorset-verify-20260521_and_hf_archive_manifest_codex-floorset-hf-archives-20260521
+claim_boundary: external_intake_metadata_only_no_payload_no_training_no_release_claim

@@ -1,0 +1,80 @@
+schema: eliza.ams_block_contract.v1
+block_id: pll_ref_clock
+block_class: PLL
+status: BLOCKED_procurement_or_pdk_ip_required
+claim_boundary: >
+  Interface and procurement contract for the E1 reference PLL / clock generator.
+  Captures the supply rails, reference clock, lock/calibration interface, target
+  process nodes, and the signoff corners that a vendor or PDK-bundled PLL must
+  satisfy. Makes no jitter, lock-time, or phase-noise claim: those stay blocked
+  on Spectre/AMS jitter signoff with the vendor model.
+claim_allowed: false
+release_claim_allowed: false
+electrical_signoff_claim_allowed: false
+vendor_ip_claim_allowed: false
+silicon_claim_allowed: false
+
+supply_rails:
+  - rail: VDD_PLL_ANA
+    nominal_v: 1.8
+    domain: analog_pll
+    isolation: dedicated_analog_supply_with_ldo
+  - rail: VDD_PLL_DIG
+    nominal_v: 0.75
+    domain: core_logic
+  - rail: VSS_PLL
+    nominal_v: 0.0
+    domain: analog_ground
+
+ref_clock:
+  source: external_xo_or_board_oscillator
+  nominal_frequency_hz: 38400000
+  accepted_range_hz: [19200000, 52000000]
+  duty_cycle_pct_range: [45, 55]
+  jitter_budget_status: BLOCKED_requires_vendor_phase_noise_model
+
+control_pins:
+  - name: PLL_RST_N
+    direction: input
+    role: reset
+  - name: PLL_EN
+    direction: input
+    role: enable
+  - name: PLL_LOCK
+    direction: output
+    role: lock_status
+  - name: PLL_CFG_SDI
+    direction: input
+    role: config_serial_in
+  - name: PLL_CFG_SCLK
+    direction: input
+    role: config_serial_clock
+  - name: PLL_CAL_DONE
+    direction: output
+    role: calibration_done
+
+interface_revision:
+  kind: vendor_register_map
+  revision: vendor_specific_unresolved
+
+target_process_nodes: [tsmc-n2p, tsmc-a14, intel-14a, samsung-sf2p]
+
+signoff_required_corners:
+  pvt: [ss_0p675v_125c, tt_0p75v_25c, ff_0p825v_m40c]
+  jitter: [period_jitter_rms, long_term_jitter, spur_table]
+  required_tool: spectre_or_equivalent_ams_signoff
+
+procurement:
+  posture: vendor_ip_or_foundry_pdk_pll
+  candidate_classes:
+    - foundry_pdk_bundled_pll
+    - third_party_clocking_ip
+  blockers:
+    - no_vendor_phase_noise_or_jitter_model
+    - no_pdk_for_target_node
+    - process_node_unsettled
+
+forbidden_claims:
+  - pll_jitter_closed
+  - pll_lock_time_verified
+  - pll_phase_noise_signed_off

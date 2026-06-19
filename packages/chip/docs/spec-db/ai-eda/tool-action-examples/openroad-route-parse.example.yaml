@@ -1,0 +1,41 @@
+schema: eda.tool_action.v1
+id: openroad-route-log-parse-fixture
+action_type: artifact_parse
+intent: Parse existing OpenROAD/OpenLane route metrics into internal labels.
+mode: parse_only
+claim_boundary: example_tool_action_only_no_tool_execution_design_change_or_release_claim
+scope:
+  read_paths:
+    - build/ai_eda/openlane_flow_labels/validation/records/flow-run-with-metrics.json
+  write_paths:
+    - build/ai_eda/tool_actions/openroad-route-log-parse-fixture/
+  forbidden_paths:
+    - rtl/
+    - pd/openlane/config*.json
+    - pd/signoff/waivers/
+command:
+  tool: python
+  argv:
+    - scripts/ai_eda/parse_openlane_metrics_to_flow_run.py
+    - --run-id
+    - tool-action-fixture
+inputs:
+  manifests:
+    - build/ai_eda/e1_openlane_conversion/validation/records/flow-run.json
+outputs:
+  report: build/ai_eda/tool_actions/openroad-route-log-parse-fixture/report.json
+  artifacts:
+    - build/ai_eda/tool_actions/openroad-route-log-parse-fixture/stdout.log
+safety:
+  source_tree_write_allowed: false
+  release_use_allowed: false
+  deterministic_replay_required: true
+  human_review_required: true
+replay:
+  dry_run_command: make ai-eda-openlane-flow-labels
+  verification_gates:
+    - ai-eda-openlane-flow-labels
+    - ai-eda-internal-schemas-check
+decision:
+  status: dry_run_only
+  reason: parse-only example for schema validation

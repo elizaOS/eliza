@@ -1,0 +1,129 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-25 11:32+0200\n"
+"PO-Revision-Date: 2024-10-17 09:09+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Introduction to the Persistent Storage|persistent_storage]]"
+msgid "[[Introduction to the Persistent Storage|persistent_storage]]"
+msgstr "- [[Einführung in den beständigen Datenspeicher|persistent_storage]]"
+
+#. type: Bullet: '  * '
+msgid "[[Creating the Persistent Storage|persistent_storage/create]]"
+msgstr "[[Erstellen des beständigen Datenspeichers|persistent_storage/create]]"
+
+#. type: Bullet: '  * '
+msgid "[[Configuring the Persistent Storage|persistent_storage/configure]]"
+msgstr ""
+"[[Konfigurieren des beständigen Datenspeichers|persistent_storage/configure]]"
+
+#. type: Bullet: '  * '
+msgid "[[Unlocking and using the Persistent Storage|persistent_storage/use]]"
+msgstr ""
+"[[Entsperren und Verwenden des beständigen Datenspeichers|persistent_storage/"
+"use]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Making a backup of your Persistent Storage|persistent_storage/backup]]"
+msgstr ""
+"[[Erstellen einer Sicherungskopie Ihres beständigen Datenspeichers|"
+"persistent_storage/backup]]"
+
+#. type: Bullet: '  * '
+msgid "[[Deleting the Persistent Storage|persistent_storage/delete]]"
+msgstr "[[Löschen des beständigen Datenspeichers|persistent_storage/delete]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Installing additional software|persistent_storage/"
+#| "additional_software]]"
+msgid ""
+"[[Installing additional software|persistent_storage/additional_software]]"
+msgstr ""
+"- [[Installation zusätzlicher Software|persistent_storage/"
+"additional_software]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Converting dangerous documents to safe PDFs using *Dangerzone*|"
+"persistent_storage/additional_software/dangerzone]]"
+msgstr ""
+"[[Umwandlung gefährlicher Dokumente in sichere PDFs mit *Dangerzone*|"
+"persistent_storage/additional_software/dangerzone]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Installing additional software|persistent_storage/"
+#| "additional_software]]"
+msgid "[[Installing additional fonts|persistent_storage/additional_fonts]]"
+msgstr ""
+"- [[Installation zusätzlicher Software|persistent_storage/"
+"additional_software]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Changing the passphrase of the Persistent Storage|persistent_storage/"
+"passphrase]]"
+msgstr ""
+"[[Ändern des Passworts des beständigen Datenspeichers|persistent_storage/"
+"passphrase]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Opening your Persistent Storage from another operating system|"
+"persistent_storage/open]]"
+msgstr ""
+"[[Öffnen Ihres beständigen Datenspeichers von einem anderen Betriebssystem|"
+"persistent_storage/open]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Recovering data from the Persistent Storage when Tails doesn't start|"
+"persistent_storage/recover]]"
+msgstr ""
+"[[Wiederherstellen von Daten aus dem beständigen Datenspeicher, wenn Tails "
+"nicht startet|persistent_storage/recover]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Recovering data from the Persistent Storage when it has file system errors|"
+"persistent_storage/fsck]]"
+msgstr ""
+"[[Wiederherstellen von Daten aus dem beständigen Datenspeicher, wenn er "
+"Dateisystemfehler aufweist|persistent_storage/fsck]]"
+
+#, fuzzy
+#~| msgid "- Advanced topics on the Persistent Storage"
+#~ msgid "Advanced topics on the Persistent Storage"
+#~ msgstr "- Fortgeschrittene Themen zum beständigen Datenspeicher"
+
+#~ msgid ""
+#~ "- [[Advanced topics on the Persistent Storage|persistent_storage/"
+#~ "advanced_topics]]"
+#~ msgstr ""
+#~ "[[Erstellen des beständigen Datenspeichers|persistent_storage/create]]"
+
+#~ msgid "- Advanced topics on the Persistent Storage"
+#~ msgstr "- Fortgeschrittene Themen zum beständigen Datenspeicher"
+
+#~ msgid "Recovering data from the Persistent Storage"
+#~ msgstr "Wiederherstellung von Daten aus dem beständigen Datenspeicher"

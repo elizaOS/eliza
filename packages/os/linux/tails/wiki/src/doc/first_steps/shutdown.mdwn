@@ -1,0 +1,39 @@
+[[!meta title="Shutting down Tails"]]
+
+There are 2 ways of shutting down Tails.
+
+[[!toc levels=1]]
+
+With both techniques, all the data stored in [[!wikipedia Random-access_memory
+desc="RAM"]] is securely erased to protect you from [[cold boot
+attacks|doc/advanced_topics/cold_boot_attacks]].
+
+Shutdown from the system menu
+=============================
+
+Click on the system menu in the upper right corner of the screen.
+
+* Choose [[!img lib/system-shutdown.png link="no" class="symbolic" alt="Power Off"]] to
+  shutdown the computer.
+
+* Choose [[!img lib/view-refresh.png link="no" class="symbolic" alt="Restart"]] to restart
+  the computer on Tails or on your regular operating system.
+
+[[!img desktop/system-with-wifi-only.png class="screenshot" alt=""]]
+
+Emergency shutdown
+==================
+
+To trigger an emergency shutdown, unplug the USB stick or eject the DVD from
+which Tails is running. Doing so might be faster than shutting down from the
+system menu.
+
+<div class="caution">
+
+<p>You risk breaking your Persistent Storage and losing data when you unplug
+your USB stick while Tails is running.</p>
+
+<p>If you use a Persistent Storage, only unplug your Tails USB stick in an
+emergency.</p>
+
+</div>

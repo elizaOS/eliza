@@ -1,0 +1,106 @@
+{
+  "compilerOptions": {
+    // Language and Environment
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Type Checking
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    // Emit
+    "outDir": "./dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "removeComments": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "noEmit": true,
+    "incremental": true,
+    "ignoreDeprecations": "6.0",
+    // Interop Constraints
+    "isolatedModules": true,
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    // Bun-specific
+    "types": ["bun-types", "@serwist/next/typings"],
+    "moduleDetection": "force",
+    // Next.js
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    // Path aliases for shared code and Next.js
+    "baseUrl": ".",
+    "paths": {
+      "@feed/db": ["../../packages/db/src/index.ts"],
+      "@feed/db/*": ["../../packages/db/src/*"],
+      "@feed/api": ["../../packages/api/src/index.ts"],
+      "@feed/api/*": ["../../packages/api/src/*"],
+      "@feed/agents": ["../../packages/agents/src/index.ts"],
+      "@feed/agents/*": ["../../packages/agents/src/*"],
+      "@feed/a2a": ["../../packages/a2a/src/index.ts"],
+      "@feed/a2a/*": ["../../packages/a2a/src/*"],
+      "@feed/mcp": ["../../packages/mcp/src/index.ts"],
+      "@feed/mcp/*": ["../../packages/mcp/src/*"],
+      "@feed/engine": ["../../packages/engine/src/index.ts"],
+      "@feed/engine/*": ["../../packages/engine/src/*"],
+      "@feed/core": ["../../packages/core/markets/index.ts"],
+      "@feed/core/markets/*": ["../../packages/core/markets/*"],
+      "@feed/shared": ["../../packages/shared/src/index.ts"],
+      "@feed/shared/*": ["../../packages/shared/src/*"],
+      "@feed/pack-default": ["../../packages/pack-default/src/index.ts"],
+      "@feed/pack-default/*": ["../../packages/pack-default/src/*"],
+      "@/components/*": ["./src/components/*"],
+      "@/lib/*": ["./src/lib/*"],
+      "@/hooks/*": ["./src/hooks/*"],
+      "@/stores/*": ["./src/stores/*"],
+      "@/app/*": ["./src/app/*"],
+      "@/*": ["./src/*"]
+    },
+    "allowJs": true
+  },
+  "include": [
+    "src/**/*",
+    "next.config.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "types/**/*.d.ts",
+    ".next-integration-*/types/**/*.ts",
+    ".next-integration-*/dev/types/**/*.ts",
+    ".next-debug*/types/**/*.ts",
+    ".next-debug*/dev/types/**/*.ts",
+    ".next-webpack-debug*/types/**/*.ts",
+    ".next-webpack-debug*/dev/types/**/*.ts",
+    ".next-integration-3100/types/**/*.ts",
+    ".next-integration-3100/dev/types/**/*.ts",
+    ".next-integration-3101/types/**/*.ts",
+    ".next-integration-3101/dev/types/**/*.ts",
+    ".next-debug-webpack/types/**/*.ts",
+    ".next-debug-webpack/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.disabled",
+    "src/**/__tests__/**/*",
+    "src/app/sw.ts",
+    "public/sw.js"
+  ]
+}

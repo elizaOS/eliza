@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-0c850b2f1315d33c173fa276b8ea7aab26546939
+Repository: element-hq/element-web
+Base Commit: 4712ae49b2aec6220bf2df68b1c9f1356c7e9cf8
+Test Files: ["test/components/views/elements/TooltipTarget-test.tsx", "/app/test/components/views/elements/TooltipTarget-test.ts", "test/components/views/elements/__snapshots__/TooltipTarget-test.tsx.snap"]
+FAIL_TO_PASS: ["/app/test/components/views/elements/TooltipTarget-test.tsx | <TooltipTarget /> | renders container", "/app/test/components/views/elements/TooltipTarget-test.tsx | <TooltipTarget /> | displays tooltip on mouseover", "/app/test/components/views/elements/TooltipTarget-test.tsx | <TooltipTarget /> | hides tooltip on mouseleave", "/app/test/components/views/elements/TooltipTarget-test.tsx | <TooltipTarget /> | displays tooltip on focus", "/app/test/components/views/elements/TooltipTarget-test.tsx | <TooltipTarget /> | hides tooltip on blur"]
+PASS_TO_PASS: []

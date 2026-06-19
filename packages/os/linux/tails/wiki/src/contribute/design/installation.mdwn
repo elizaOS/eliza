@@ -1,0 +1,129 @@
+[[!meta title="Tails Cloner"]]
+
+Tails is easily installed to a USB storage device
+by cloning an existing Tails system that is running from DVD or USB.
+Tails Cloner also supports upgrades from an ISO image or from
+the currently running Tails system.
+
+The choice between possible destination
+devices or partitions is proposed amongst the
+available removable storage devices.
+
+[[!toc]]
+
+Related documents
+=================
+
+- [[Design document of our installation instructions|installation_instructions]]
+
+Upgrades
+========
+
+Tails Cloner can perform a full upgrade of an already installed
+USB stick. During this process, nothing is modified on the target
+drive but the Tails system partition and the [[!wikipedia Master boot record]].
+
+At the end of the upgrade process, we upgrade syslinux with the binary
+found in `utils/linux/syslinux` on the Tails system partition.
+Likewise, upgrade the boot device's MBR with the one found in
+`utils/mbr/mbr.bin` on the Tails system partition. This ensures that
+the installed version of syslinux matches the version of the COM32
+modules that are shipped by the version of Tails the target drive was
+just upgraded to.
+
+Security discussion: with this mechanism in place, anyone who can feed
+an arbitrary ISO into Tails Cloner can run arbitrary code (stored
+in the ISO filesystem as `utils/linux/syslinux`) as the user running
+Tails Cloner. We have no mechanism to run Tails Cloner with
+elevated privileges currently, so this should not be a problem: being
+able to run `tails-installer` with arbitrary arguments is equivalent
+to being able to run arbitrary code already.
+
+Mode of operation and booting methods
+=====================================
+
+In order to be able to have non-destructive upgrades, blind overwrites
+(using `dd` or similar raw copy methods) of the boot media is not possible 
+(even when Tails used to ship hybrid ISO images).
+
+Two alternatives booting methods have been investigated:
+
+1. **Boot ISO file**: Set up a bootloader on the USB stick that is able
+   to boot an ISO image dropped into the right directory of it. Even
+   early boot files (kernel, initramfs) are loaded from *inside* the
+   ISO file.
+
+2. **Copy ISO's content**: Copy needed files (mainly the kernel,
+   initramfs and SquashFS image that live in the `live/` directory)
+   from the ISO filesystem to the destination partition, then set up a
+   bootloader that uses files in that directory. The end result is
+   more or less equivalent to dd'ing the ISO image to the USB stick,
+   but achieved with a non-destructive process.
+
+We have settled on the *copy ISO's content* way, mostly because it is overall
+simpler, more robust, and allows
+implementing [[contribute/design/upgrades]] relatively easily.
+
+Partitioning
+============
+
+The storage device is partitioned using [GPT](https://en.wikipedia.org/wiki/GUID_Partition_Table). Using GPT has several desirable properties:
+
+ * The system partition is hidden from Windows using the `hidden` flag of GPT. Hopefully this
+   should prevent some misuse of Tails system partition, even if we
+   explicitly discourage users to plug their Tails USB stick to a
+   running system (Windows among other OS).
+
+ * `sgdisk` can run on Windows whereas no other free partitioning tools
+   are available under Windows for other partitioning method.
+
+ * Partitions can be labeled. The [[design/persistence]] setup tools can
+   easily detect the right partitions without blind tries.
+
+The Tails system partition uses a FAT32 filesystem, mainly because it is the
+one supported by SYSLINUX we may easily create, in a programmatic manner, from
+Windows systems. This choice has consequences that are barely related to the
+USB installation task: the restrictions on filenames imposed by the FAT32
+filesystem limits what can be shipped on the system partition
+(e.g. Tails documentation is only available inside Tails).
+
+The rest of the device is left unpartitionned for an encrypted storage
+partition that can be used for the [[design/persistence]] feature.
+
+Launchers
+=========
+
+We need to pass the `-u` and `-n` switches in any case; specific modes
+of operation need other switches:
+
+ * Initial installation needs `-P` and `-m`, upgrade does not.
+ * Cloning needs `--clone`, installing from ISO does not.
+
+We have `.desktop` files for the following usecases:
+
+ * Clone the currently running Tails onto a shiny new USB stick:
+   `--clone -P -m`
+
+ * Upgrade a (non-running) Tails system using a ISO file: no
+   additional switch required.
+
+ * Upgrade a (non-running) Tails system using another, fresher,
+   running Tails: no additional switch required.
+
+Why a fork of liveusb-creator?
+==============================
+
+After an initial [[!tails_blueprint usb_install_and_upgrade/archive desc="roundup of existing tools"]],
+we decided to use Fedora's `liveusb-creator` as a basis, for reasons that are now
+obsolete due to more recent design choices. While we did most of our initial
+adaptation work on liveusb-creator with future upstreaming of our changes in
+mind, it proved to be hard, and future extension seems now out of question.
+Our [[!tails_blueprint usb_install_and_upgrade desc="future plans"]] include moving to another
+piece of software as a basis, and hopefully working more closely with this
+future upstream of ours.
+
+Source code
+===========
+
+The Tails Cloner source code lives in the [[!tails_gitweb_repo installer]]
+Git repository.

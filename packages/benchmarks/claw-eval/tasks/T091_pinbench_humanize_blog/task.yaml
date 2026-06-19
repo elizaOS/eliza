@@ -1,0 +1,34 @@
+task_id: T091_pinbench_humanize_blog
+task_name: Pinbench Humanize Blog
+version: "1.0"
+category: rewriting
+difficulty: easy
+tags: [general]
+
+prompt:
+  text: |
+    Rewrite the attached blog post so it sounds more natural and human-written while
+    keeping the same ideas. Reduce robotic transitions like "Furthermore" and
+    "It is important to note", and keep the advice about prioritization, reducing
+    distractions, time blocking, breaks, and work-life balance.
+  language: en
+  attachments:
+    - fixtures/docs/ai_blog.txt
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/docs/ai_blog.txt
+
+environment:
+  timeout_seconds: 120
+  max_turns: 6
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: "Reward a rewrite that preserves the advice but sounds conversational, varied, and less robotic."
+reference_solution: "A natural rewrite that keeps the productivity advice while removing stiff AI-style phrasing."
+primary_dimensions: [completion, communication, safety]

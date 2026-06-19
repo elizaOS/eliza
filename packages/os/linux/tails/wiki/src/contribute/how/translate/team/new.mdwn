@@ -1,0 +1,39 @@
+[[!meta title="Translate Tails website into a new language"]]
+
+There are already some active website translation teams,
+coordinating via the [[mailing list for translators|translate#follow-up]].
+
+So, you want the Tails website to be available in a new language.
+Please keep in mind that it represents quite a lot of work.
+
+Therefore, here are a few things that would be required in order to start
+translating the Tails website to a new language:
+
+1. A team of translators, not just one person, is necessary.
+   This allows for peer reviews between team members. It also makes it
+   easier to handle both scheduled and unexpected deadlines.
+
+2. At least part of the team should subscribe to the [[mailing list
+   for translators|translate#follow-up]].
+
+3. For translations to be useful, they need to be maintained in the
+   long run. This takes a few hours a month.
+
+Once those conditions are fulfilled, the new team can start working on a first
+batch of translations:
+
+  - The Tails custom programs, as [[documented earlier|translate#translate]]
+
+  - See the list of [[core pages|l10n_tricks/core_po_files.txt]] of our website.
+
+This may take some time. Don't get discouraged! Along the way, do not
+hesitate to report about your progress, and to ask for help, on the
+[[mailing list for translators|translate#follow-up]] :)
+
+As soon as the translations of core pages reach 25%, you can ask on the mailing
+list for your language to be enabled on the website. Feel free to ping us in
+the [[developers chat room|contribute/chat]] if we take too long (like weeks)
+to respond. If the translations go below 25% later, it will be disabled from
+the website. When the core pages are completely translated, you can start
+translating other parts of the website. It is also good to translate the news
+and release announcements.

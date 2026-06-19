@@ -1,0 +1,115 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/.next-build/
+/.next-test-*/
+/out/
+
+# production
+/build
+/public/
+/apps/frontend/dist-ssr/
+
+# misc
+.DS_Store
+*.pem
+*.key
+*.key.*
+*.p8
+*.p12
+*.pkcs8
+*.jwk
+*.jwks
+id_dsa
+id_ecdsa
+id_ed25519
+id_rsa
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (keep live values out of git; use .env.example as the template)
+.env
+.env.local
+.env.dev
+.env.development
+.env.production
+.env.vercel*
+.env.staging*
+.dev.vars
+.dev.vars.*
+!apps/api/.dev.vars.example
+
+# vercel
+.vercel
+
+#local llm guides
+guides
+plan-files
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+test-results/
+apps/frontend/vite.config.ts.timestamp-*.mjs
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/apple/build/
+src-tauri/gen/apple/Externals/
+src-tauri/gen/android/
+src-tauri/Cargo.lock
+
+ignore/
+.env*.local
+
+.claude/*
+claudedocs
+
+# prr state file (auto-generated)
+.pr-resolver-state.json
+
+# Dev logs
+logs/
+!apps/api/**/logs/
+!apps/api/**/logs/**
+test_output.log
+ts_errors.log
+
+# Local runtime state and generated databases
+.eliza/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+
+.prr/
+modelcontextprotocol/
+
+*storybook.log
+storybook-static
+.next-dev/
+DEV_TO_PROD_AUDIT.md
+TRIAGE_NOTES.md
+.env.preview
+.env.local.bak-*
+.wrangler
+.wrangler-dry-run

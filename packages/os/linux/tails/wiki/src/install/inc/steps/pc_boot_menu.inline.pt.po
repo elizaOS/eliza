@@ -1,0 +1,321 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-03-30 09:38+0000\n"
+"PO-Revision-Date: 2025-09-18 15:39+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr "[[!meta robots=\"noindex\"]]"
+
+#. type: Content of: <p>
+#, fuzzy
+#| msgid ""
+#| "Most computers do not start on the Tails USB stick automatically but you "
+#| "can press a Boot Menu key to display a list of possible devices to start "
+#| "from."
+msgid ""
+"Most computers do not start automatically on the Tails USB stick, but you "
+"can press a Boot Menu key to display a list of possible devices to start "
+"from."
+msgstr ""
+"A maioria dos computadores não inicializa automaticamente a partir do "
+"pendrive USB com Tails, mas você pode pressionar uma tecla que abrirá o Menu "
+"de Boot que então mostrará uma lista de dispositivos que podem ser usados "
+"para inicializar."
+
+#. type: Content of: <div><p>
+#, fuzzy
+#| msgid ""
+#| "If Windows 8 or 10 is <span class=\"linux upgrade-linux\">also</span> "
+#| "installed on the computer, you can refer instead to the [[instructions on "
+#| "starting Tails from Windows 8 or 10|doc/first_steps/start/pc#windows-"
+#| "restart]].  Starting Tails from Windows is easier than using the Boot "
+#| "Menu key."
+msgid ""
+"If Windows is <span class=\"linux upgrade-linux\">also</span> installed on "
+"the computer, you can refer instead to the [[instructions on starting Tails "
+"from Windows|doc/first_steps/start/pc#windows-restart]].  Starting Tails "
+"from Windows is easier than using the Boot Menu key."
+msgstr ""
+"Se o Windows 8 ou 10 <span class=\"linux upgrade-linux\">também</span> "
+"estiver instalado no computador, siga nossas[[instruções para iniciar o "
+"Tails a partrir do Windows 8 ou 10|doc/first_steps/start/pc#windows-"
+"restart]]. Iniciar o Tails a partir do Windows é mais fácil do que iniciar "
+"usando a tecla do Menu de Boot."
+
+#. type: Content of: <p>
+msgid "The following screenshot is an example of a Boot Menu:"
+msgstr "A captura de tela a seguir é um exemplo de um Menu de Boot:"
+
+#. type: Content of: <p>
+msgid ""
+"[[!img install/inc/screenshots/boot_menu.png class=\"screenshot\" alt=\"\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/boot_menu.png class=\"screenshot\" alt=\"\"]]"
+
+#. type: Content of: <p>
+msgid ""
+"This animation summarizes how to use the Boot Menu key to start on the USB "
+"stick:"
+msgstr ""
+"Essa animação mostra como usar a tecla do Menu de Boot para iniciar no "
+"pendrive USB:"
+
+#. type: Content of: <p>
+msgid ""
+"The following instructions explain in detail how to use the Boot Menu key to "
+"start on the USB stick:"
+msgstr ""
+"As instruções a seguir explicam detalhadamente como usar a tecla do Menu de "
+"Boot para iniciar no pendrive USB:"
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have installed Tails using either:"
+msgstr "Certifique-se de ter instalado Tails usando uma das seguintes formas:"
+
+#. type: Content of: <ol><li><ul><li>
+#, fuzzy
+#| msgid "[[<i>balenaEtcher</i> from Windows|install/windows#etcher]]"
+msgid "[[<i>Rufus</i> from Windows|install/windows#rufus]]"
+msgstr "[[<i>balenaEtcher</i> a partir de um Windows|install/windows#etcher]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]"
+msgstr "[[<i>balenaEtcher</i> a partir de um macOS|install/mac#etcher]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>GNOME Disks</i> from Linux|install/linux#install]]"
+msgstr "[[<i>GNOME Disks</i> a partir de um Linux|install/linux#install]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[the Linux command line|install/expert#install]]"
+msgstr "[[linha de comando em um Linux|install/expert#install]]"
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer while leaving the USB stick plugged in."
+msgstr "Deixe o pen drive USB conectado e desligue o computador."
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer and plug in the Tails USB stick."
+msgstr "Desligue o computador e conecte o pendrive USB com Tails."
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer."
+msgstr "Desligue o computador."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Plug in the other Tails USB stick that you want to <span class=\"pc-"
+"clone\">install</span> <span class=\"upgrade\">upgrade</span> from."
+msgstr ""
+"Conecte o outro pendrive USB com Tails a partir do qual você quer <span "
+"class=\"pc-clone\">instalar</span> <span class=\"upgrade\">clonar</span>."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Unplug your Tails USB stick while leaving the intermediary USB stick plugged "
+"in."
+msgstr ""
+"Desconecte o seu pendrive USB com Tails e mantenha o pendrive USB "
+"intermediário conectado."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Identify the possible Boot Menu keys for the computer depending on the "
+"computer manufacturer in the following list:"
+msgstr ""
+"Identifique as possíveis teclas do Menu de Boot de acordo com o fabricante "
+"do computador na lista seguinte:"
+
+#. type: Content of: <ol><li><table><tr><th>
+msgid "Manufacturer"
+msgstr "Fabricante"
+
+#. type: Content of: <ol><li><table><tr><th>
+msgid "Key"
+msgstr "Tecla"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Acer"
+msgstr "Acer"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12, F9, F2, Esc"
+msgstr "F12, F9, F2, Esc"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Apple"
+msgstr "Apple"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Option"
+msgstr "Opção"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Asus"
+msgstr "Asus"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Esc"
+msgstr "Esc"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Clevo"
+msgstr "Clevo"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F7"
+msgstr "F7"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Dell"
+msgstr "Dell"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12"
+msgstr "F12"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Fujitsu"
+msgstr "Fujitsu"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12, Esc"
+msgstr "F12, Esc"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "HP"
+msgstr "HP"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F9"
+msgstr "F9"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Huawei"
+msgstr "Huawei"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Intel"
+msgstr "Intel"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F10"
+msgstr "F10"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Lenovo"
+msgstr "Lenovo"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12, <a href=\"https://support.lenovo.com/solutions/ht062552\">Novo</a>"
+msgstr ""
+"F12, <a href=\"https://support.lenovo.com/pt/pt/solutions/ht062552\">Novo</a>"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "MSI"
+msgstr "MSI"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F11"
+msgstr "F11"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Samsung"
+msgstr "Samsung"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Esc, F12, F2"
+msgstr "Esc, F12, F2"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Sony"
+msgstr "Sony"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F11, Esc, F10"
+msgstr "F11, Esc, F10"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Toshiba"
+msgstr "Toshiba"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Others&hellip;"
+msgstr "Outros&hellip;"
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"On many computers, a message is displayed very briefly when switching on "
+"that also explains how to get to the Boot Menu or edit the BIOS settings."
+msgstr ""
+"Em diversos computadores, uma mensagem que aparece muito rapidamente ao "
+"ligar pode explicar como ativar o Menu de Boot ou acessar as configurações "
+"da BIOS."
+
+#. type: Content of: <ol><li><p>
+msgid "Switch on the computer."
+msgstr "Ligue o computador."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Immediately press several times the first possible Boot Menu key identified "
+"in step 2."
+msgstr ""
+"Pressione imediatamente e várias vezes a primeira tecla do Menu de Boot "
+"identificada no passo 2."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If the computer starts on another operating system or returns an error "
+"message, shut down the computer again and repeat step 3 for all the possible "
+"Boot Menu keys identified in step 2."
+msgstr ""
+"Se o computador iniciar em outro sistema operacional ou retornar uma "
+"mensagem de erro, desligue o computador novamente e repita a etapa 3 para "
+"todas as possíveis teclas de Menu de Boot identificadas na etapa 2."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If a Boot Menu with a list of devices appears, select your USB stick and "
+"press <b>Enter</b>."
+msgstr ""
+"Se um menu de Boot com uma lista de dispositivos aparecer, selecione o seu "
+"pendrive USB e pressione <b>Enter</b>."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If the computer starts on Tails, the Boot Loader appears and Tails starts "
+"automatically after 4 seconds."
+msgstr ""
+"Se o computador iniciar no Tails, o Boot Loader aparecerá e o Tails iniciará "
+"automaticamente após 4 segundos."
+
+#. type: Content of: <ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "[[!img install/inc/screenshots/grub.png link=\"no\" alt=\"Black screen "
+#| "('GNU GRUB') with Tails logo and 2 options: 'Tails' and 'Tails "
+#| "(Troubleshooting Mode)'.\"]]"
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black "
+"screen ('GNU GRUB') with Tails logo and 3 options: 'Tails' and 'Tails "
+"(Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/grub.png link=\"no\" alt=\"Tela preta ('GNU "
+"GRUB') com a logo do Tails e duas opções: 'Tails' e 'Tails (Troubleshooting "
+"Mode)'.\"]]"

@@ -1,0 +1,31 @@
+{
+  "config": {
+    "wide_screen_mode": true,
+    "enable_forward": true
+  },
+  "header": {
+    "title": {
+      "content": "☀️ Morning News Digest — {{DATE}}",
+      "tag": "plain_text"
+    },
+    "template": "blue"
+  },
+  "elements": [
+    {
+      "tag": "markdown",
+      "content": "{{DIGEST_CONTENT}}"
+    },
+    {
+      "tag": "hr"
+    },
+    {
+      "tag": "note",
+      "elements": [
+        {
+          "tag": "plain_text",
+          "content": "Compiled at {{TIMESTAMP}} | Sources: Reuters, HN, BBC, TechCrunch"
+        }
+      ]
+    }
+  ]
+}

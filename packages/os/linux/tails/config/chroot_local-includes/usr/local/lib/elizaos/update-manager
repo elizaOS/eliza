@@ -1,0 +1,735 @@
+#!/bin/sh
+
+set -eu
+
+run_dir="${ELIZAOS_RUN_DIR:-/run/elizaos}"
+staged_root="${ELIZAOS_STAGED_UPDATE_DIR:-/home/amnesia/.eliza/updates}"
+baked_runtime="${ELIZAOS_BAKED_RUNTIME:-/opt/milady}"
+default_channel="${ELIZAOS_DEFAULT_UPDATE_CHANNEL:-stable}"
+runtime_store="${ELIZAOS_RUNTIME_STORE:-/live/persistence/TailsData_unlocked/elizaos-system/runtimes}"
+state_root="${ELIZAOS_UPDATE_STATE_DIR:-/live/persistence/TailsData_unlocked/elizaos-system/update-state}"
+
+trusted_keyrings="
+${ELIZAOS_UPDATE_KEYRING:-}
+/usr/share/keyrings/elizaos-update.gpg
+/etc/elizaos/update-keyring.gpg
+/usr/local/share/elizaos/update-keyring.gpg
+"
+
+log() {
+    printf 'elizaos-update-manager: %s\n' "$*" >&2
+}
+
+shell_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+write_fallback_selector() {
+    reason="${1:-fallback}"
+    install -d -m 0755 "${run_dir}"
+    if [ "$(id -u)" -eq 0 ]; then
+        chown root:root "${run_dir}"
+    fi
+    tmp_env="$(mktemp "${run_dir}/runtime.env.XXXXXX")"
+    tmp_json="$(mktemp "${run_dir}/runtime-selection.json.XXXXXX")"
+
+    {
+        printf 'ELIZAOS_RUNTIME_TRUST=%s\n' "$(shell_quote baked)"
+        printf 'ELIZAOS_RUNTIME_STATUS=%s\n' "$(shell_quote fallback)"
+        printf 'ELIZAOS_RUNTIME_REASON=%s\n' "$(shell_quote "${reason}")"
+        printf 'ELIZAOS_UPDATE_CHANNEL=%s\n' "$(shell_quote "${default_channel}")"
+        printf 'ELIZAOS_RUNTIME_DIR=%s\n' "$(shell_quote "${baked_runtime}")"
+        printf 'ELIZAOS_RUNTIME_ROOT=%s\n' "$(shell_quote "${baked_runtime}")"
+        printf 'ELIZAOS_RUNTIME_BIN_DIR=%s\n' "$(shell_quote "${baked_runtime}/bin")"
+        printf 'ELIZAOS_BUN=%s\n' "$(shell_quote "${baked_runtime}/bin/bun")"
+        printf 'ELIZAOS_LAUNCHER=%s\n' "$(shell_quote "${baked_runtime}/bin/launcher")"
+        printf 'ELIZAOS_AGENT_ENTRY=%s\n' "$(shell_quote "${baked_runtime}/Resources/app/eliza-dist/entry.js")"
+        printf 'ELIZAOS_NODE_PATH=%s\n' "$(shell_quote "${baked_runtime}/Resources/app/eliza-dist/node_modules")"
+        printf 'ELIZAOS_MODEL_CATALOG=\n'
+        printf 'ELIZAOS_UPDATE_MANIFEST=\n'
+        printf 'ELIZAOS_UPDATE_SEQUENCE=0\n'
+        printf 'ELIZAOS_UPDATE_MANIFEST_SHA256=\n'
+    } > "${tmp_env}"
+
+    cat > "${tmp_json}" <<EOF
+{
+  "status": "fallback",
+  "trust": "baked",
+  "reason": "$(printf '%s' "${reason}" | sed 's/["\\]/_/g')",
+  "runtimeDir": "${baked_runtime}"
+}
+EOF
+
+    if [ "$(id -u)" -eq 0 ]; then
+        chown root:root "${tmp_env}" "${tmp_json}"
+    fi
+    chmod 0644 "${tmp_env}" "${tmp_json}"
+    mv -f "${tmp_env}" "${run_dir}/runtime.env"
+    mv -f "${tmp_json}" "${run_dir}/runtime-selection.json"
+}
+
+safe_channel() {
+    channel="${1:-}"
+    case "${channel}" in
+        ""|*/*|*..*|*[!A-Za-z0-9._-]*)
+            return 1
+            ;;
+        *)
+            printf '%s\n' "${channel}"
+            ;;
+    esac
+}
+
+read_channel() {
+    channel="${ELIZAOS_UPDATE_CHANNEL:-}"
+    if [ -z "${channel}" ] && [ -r "${staged_root}/channel" ]; then
+        channel="$(sed -n '1p' "${staged_root}/channel" | tr -d '[:space:]')"
+    fi
+    if ! safe_channel "${channel:-${default_channel}}" >/dev/null; then
+        log "ignoring unsafe update channel '${channel}'"
+        channel="${default_channel}"
+    fi
+    safe_channel "${channel:-${default_channel}}"
+}
+
+find_keyring() {
+    for keyring in ${trusted_keyrings}; do
+        [ -n "${keyring}" ] || continue
+        [ -r "${keyring}" ] || continue
+        printf '%s\n' "${keyring}"
+        return 0
+    done
+    return 1
+}
+
+verify_staged_update() {
+    write_fallback_selector "unverified"
+
+    if ! command -v gpgv >/dev/null 2>&1; then
+        log "gpgv is unavailable; using baked runtime"
+        write_fallback_selector "missing-gpgv"
+        return 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        log "python3 is unavailable for manifest parsing; using baked runtime"
+        write_fallback_selector "missing-python3"
+        return 0
+    fi
+
+    if ! keyring="$(find_keyring)"; then
+        log "no trusted elizaOS update keyring installed; using baked runtime"
+        write_fallback_selector "missing-keyring"
+        return 0
+    fi
+
+    channel="$(read_channel)"
+    manifest_dir="${staged_root}/channels/${channel}"
+    manifest="${manifest_dir}/manifest.json"
+    signature="${manifest}.sig"
+
+    if [ ! -f "${manifest}" ] || [ ! -f "${signature}" ]; then
+        log "no staged signed manifest for channel '${channel}'; using baked runtime"
+        write_fallback_selector "no-staged-manifest"
+        return 0
+    fi
+
+    if ! gpgv --keyring "${keyring}" "${signature}" "${manifest}" >/dev/null 2>&1; then
+        log "manifest signature failed for channel '${channel}'; using baked runtime"
+        write_fallback_selector "bad-signature"
+        return 0
+    fi
+
+    if ! python3 - "${manifest_dir}" "${manifest}" "${channel}" "${run_dir}" "${staged_root}" "${baked_runtime}" "${runtime_store}" "${state_root}" <<'PY'
+import datetime as _dt
+import hashlib
+import json
+import os
+import pathlib
+import re
+import shutil
+import shlex
+import stat
+import sys
+import tempfile
+
+manifest_dir = pathlib.Path(sys.argv[1]).resolve()
+manifest_path = pathlib.Path(sys.argv[2]).resolve()
+selected_channel = sys.argv[3]
+run_dir = pathlib.Path(sys.argv[4])
+staged_root = pathlib.Path(sys.argv[5]).resolve()
+baked_runtime = sys.argv[6]
+runtime_store = pathlib.Path(sys.argv[7]).resolve()
+state_root = pathlib.Path(sys.argv[8]).resolve()
+
+name_re = re.compile(r"^[A-Za-z0-9._-]+$")
+sha256_re = re.compile(r"^[a-fA-F0-9]{64}$")
+
+def fail(message):
+    raise SystemExit(message)
+
+def normalize_version(value):
+    parts = []
+    for item in re.split(r"[^0-9]+", str(value or "")):
+        if item:
+            parts.append(int(item))
+    return parts
+
+def version_at_least(current, minimum):
+    current_parts = normalize_version(current)
+    minimum_parts = normalize_version(minimum)
+    if not minimum_parts:
+        return True
+    width = max(len(current_parts), len(minimum_parts))
+    current_parts.extend([0] * (width - len(current_parts)))
+    minimum_parts.extend([0] * (width - len(minimum_parts)))
+    return current_parts >= minimum_parts
+
+def current_os_version():
+    override = os.environ.get("ELIZAOS_OS_VERSION", "").strip()
+    if override:
+        return override
+    os_release = pathlib.Path("/etc/os-release")
+    if not os_release.is_file():
+        return ""
+    for line in os_release.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if line.startswith("VERSION_ID="):
+            return line.split("=", 1)[1].strip().strip('"')
+    return ""
+
+def safe_relative_path(value, field):
+    if not isinstance(value, str) or not value or value.startswith("/"):
+        fail(f"{field} must be a relative path")
+    if "\x00" in value:
+        fail(f"{field} contains NUL")
+    parts = pathlib.PurePosixPath(value).parts
+    if any(part in ("", ".", "..") for part in parts):
+        fail(f"{field} contains an unsafe path segment")
+    return pathlib.PurePosixPath(value)
+
+def resolve_under(base, rel, field):
+    candidate = (base / pathlib.Path(*rel.parts)).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError:
+        fail(f"{field} escapes the staged update directory")
+    return candidate
+
+def read_json(path, field):
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except Exception as exc:
+        fail(f"{field} is not valid JSON: {exc}")
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def ensure_safe_dir(path, field):
+    if path.exists() and path.is_symlink():
+        fail(f"{field} must not be a symlink")
+    path.mkdir(mode=0o755, parents=True, exist_ok=True)
+    if path.is_symlink():
+        fail(f"{field} must not be a symlink")
+    if os.geteuid() == 0:
+        st = path.stat()
+        if st.st_uid != 0:
+            fail(f"{field} must be root-owned")
+        if st.st_mode & 0o022:
+            fail(f"{field} must not be group/world writable")
+    return path
+
+def copy_verified_file(src, dst, expected_sha256):
+    dst.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    if dst.parent.is_symlink():
+        fail(f"destination parent must not be a symlink: {dst.parent}")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        src_fd = os.open(src, flags)
+    except OSError as exc:
+        fail(f"unable to open verified runtime file without following symlinks: {src}: {exc}")
+    tmp_name = None
+    try:
+        src_stat = os.fstat(src_fd)
+        if not stat.S_ISREG(src_stat.st_mode):
+            fail(f"verified runtime path is not a regular file: {src}")
+        tmp_fd, tmp_name = tempfile.mkstemp(prefix=f"{dst.name}.", dir=str(dst.parent))
+        digest = hashlib.sha256()
+        with os.fdopen(src_fd, "rb", closefd=True) as src_handle, os.fdopen(
+            tmp_fd,
+            "wb",
+            closefd=True,
+        ) as dst_handle:
+            src_fd = -1
+            for chunk in iter(lambda: src_handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+                dst_handle.write(chunk)
+        actual = digest.hexdigest()
+        if actual.lower() != expected_sha256.lower():
+            fail(f"verified runtime file changed while copying: {src}")
+        os.chmod(tmp_name, 0o755 if src_stat.st_mode & 0o111 else 0o644)
+        os.replace(tmp_name, dst)
+        tmp_name = None
+    finally:
+        if src_fd >= 0:
+            os.close(src_fd)
+        if tmp_name and os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+
+def chown_tree_root(path):
+    if os.geteuid() != 0:
+        return
+    os.chown(path, 0, 0)
+    for root, dirs, files in os.walk(path):
+        for name in dirs:
+            os.chown(os.path.join(root, name), 0, 0)
+        for name in files:
+            os.chown(os.path.join(root, name), 0, 0)
+
+manifest = read_json(manifest_path, "manifest")
+if manifest.get("schemaVersion") != 1:
+    fail("manifest schemaVersion must be 1")
+if manifest.get("kind") != "elizaos.updateManifest":
+    fail("manifest kind must be elizaos.updateManifest")
+channel = manifest.get("channel")
+if channel != selected_channel:
+    fail("manifest channel does not match selected channel")
+if not isinstance(channel, str) or not name_re.fullmatch(channel):
+    fail("manifest channel is unsafe")
+sequence = manifest.get("sequence")
+if not isinstance(sequence, int) or sequence < 1:
+    fail("manifest sequence must be a positive integer")
+
+product = manifest.get("product")
+current_product = os.environ.get("ELIZAOS_PRODUCT", "elizaos-live")
+if product is not None:
+    if not isinstance(product, str) or not name_re.fullmatch(product):
+        fail("manifest product is unsafe")
+    if product != current_product:
+        fail("manifest product does not match this image")
+
+architectures = manifest.get("architectures")
+current_architecture = os.environ.get("ELIZAOS_ARCHITECTURE") or os.uname().machine
+if architectures is not None:
+    if (
+        not isinstance(architectures, list)
+        or not architectures
+        or any(not isinstance(item, str) or not name_re.fullmatch(item) for item in architectures)
+    ):
+        fail("manifest architectures must be a non-empty list of safe names")
+    if current_architecture not in architectures:
+        fail("manifest architecture does not match this image")
+
+minimum_os_version = manifest.get("minimumOsVersion")
+if minimum_os_version is not None:
+    if not isinstance(minimum_os_version, str) or not minimum_os_version.strip():
+        fail("manifest minimumOsVersion must be a non-empty string")
+    os_version = current_os_version()
+    if os_version and not version_at_least(os_version, minimum_os_version):
+        fail("manifest minimumOsVersion is newer than this image")
+
+published_at = manifest.get("publishedAt")
+if not isinstance(published_at, str):
+    fail("manifest publishedAt must be a string")
+try:
+    _dt.datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+except ValueError:
+    fail("manifest publishedAt is not an ISO-8601 timestamp")
+
+runtime = manifest.get("runtime")
+if not isinstance(runtime, dict):
+    fail("manifest runtime must be an object")
+runtime_id = runtime.get("id")
+runtime_version = runtime.get("version")
+if not isinstance(runtime_id, str) or not name_re.fullmatch(runtime_id):
+    fail("runtime.id is required and must be path-safe")
+if not isinstance(runtime_version, str) or not runtime_version.strip():
+    fail("runtime.version is required")
+
+bundle_rel = safe_relative_path(runtime.get("bundlePath"), "runtime.bundlePath")
+bundle_dir = resolve_under(manifest_dir, bundle_rel, "runtime.bundlePath")
+if not bundle_dir.is_dir():
+    fail("runtime bundle directory is missing")
+
+entrypoints = runtime.get("entrypoints")
+if not isinstance(entrypoints, dict):
+    fail("runtime.entrypoints must be an object")
+entrypoint_defaults = {
+    "bun": "bin/bun",
+    "launcher": "bin/launcher",
+    "agent": "Resources/app/eliza-dist/entry.js",
+    "nodeModules": "Resources/app/eliza-dist/node_modules",
+}
+resolved_entrypoints = {}
+for key, default in entrypoint_defaults.items():
+    rel = safe_relative_path(entrypoints.get(key, default), f"runtime.entrypoints.{key}")
+    resolved = resolve_under(bundle_dir, rel, f"runtime.entrypoints.{key}")
+    if key == "nodeModules":
+        if not resolved.is_dir():
+            fail(f"runtime entrypoint {key} is missing")
+    elif not resolved.is_file():
+        fail(f"runtime entrypoint {key} is missing")
+    resolved_entrypoints[key] = str(resolved)
+
+files = runtime.get("files")
+if not isinstance(files, list) or not files:
+    fail("runtime.files must list at least one hashed file")
+if runtime.get("filesComplete") is not True:
+    fail("runtime.filesComplete must be true")
+hashed_entrypoint_paths = set()
+declared_files = {}
+declared_hashes = {}
+for item in files:
+    if not isinstance(item, dict):
+        fail("runtime.files entries must be objects")
+    rel = safe_relative_path(item.get("path"), "runtime.files.path")
+    expected = item.get("sha256")
+    if not isinstance(expected, str) or not sha256_re.fullmatch(expected):
+        fail("runtime.files.sha256 must be a SHA-256 hex digest")
+    path = resolve_under(bundle_dir, rel, "runtime.files.path")
+    if not path.is_file():
+        fail(f"hashed runtime file is missing: {rel}")
+    actual = file_sha256(path)
+    if actual.lower() != expected.lower():
+        fail(f"hash mismatch for runtime file: {rel}")
+    hashed_entrypoint_paths.add(str(path))
+    rel_text = rel.as_posix()
+    if rel_text in declared_files:
+        fail(f"runtime.files contains duplicate path: {rel_text}")
+    declared_files[rel_text] = path
+    declared_hashes[rel_text] = expected.lower()
+
+for candidate in bundle_dir.rglob("*"):
+    if candidate.is_symlink():
+        fail(f"runtime bundle contains unsupported symlink: {candidate.relative_to(bundle_dir).as_posix()}")
+    if candidate.is_file():
+        rel_text = candidate.relative_to(bundle_dir).as_posix()
+        if rel_text not in declared_files:
+            fail(f"runtime bundle contains unlisted file: {rel_text}")
+
+for key in ("bun", "launcher", "agent"):
+    if resolved_entrypoints[key] not in hashed_entrypoint_paths:
+        fail(f"runtime entrypoint {key} must be included in runtime.files")
+
+manifest_digest = file_sha256(manifest_path)
+store_available = runtime_store.exists() or os.environ.get("ELIZAOS_RUNTIME_STORE")
+if not store_available and not pathlib.Path("/live/persistence/TailsData_unlocked").exists():
+    fail("root-owned persistent runtime store is unavailable")
+ensure_safe_dir(runtime_store, "runtime store")
+ensure_safe_dir(state_root, "update state root")
+state_dir = state_root
+ensure_safe_dir(state_dir / "good", "good update state")
+ensure_safe_dir(state_dir / "rejected", "rejected update state")
+ensure_safe_dir(state_dir / "sequence-floor", "sequence floor state")
+if (state_dir / "rejected" / manifest_digest).exists():
+    fail("manifest digest is marked rejected")
+floor_path = state_dir / "sequence-floor" / channel
+if floor_path.exists():
+    try:
+        floor = int(floor_path.read_text(encoding="utf-8").strip())
+    except ValueError:
+        fail("stored update sequence floor is invalid")
+    if sequence < floor:
+        fail("manifest sequence is below the stored channel floor")
+
+model_catalog_path = ""
+model_catalog_digest = ""
+model_catalog = manifest.get("modelCatalog")
+if model_catalog is not None:
+    if not isinstance(model_catalog, dict):
+        fail("modelCatalog must be an object")
+    rel = safe_relative_path(model_catalog.get("path"), "modelCatalog.path")
+    expected = model_catalog.get("sha256")
+    if not isinstance(expected, str) or not sha256_re.fullmatch(expected):
+        fail("modelCatalog.sha256 must be a SHA-256 hex digest")
+    catalog_path = resolve_under(manifest_dir, rel, "modelCatalog.path")
+    if not catalog_path.is_file():
+        fail("model catalog file is missing")
+    actual = file_sha256(catalog_path)
+    if actual.lower() != expected.lower():
+        fail("model catalog hash mismatch")
+    model_catalog_digest = expected.lower()
+    catalog = read_json(catalog_path, "modelCatalog")
+    if catalog.get("schemaVersion") != 1 or catalog.get("kind") != "elizaos.modelCatalog":
+        fail("model catalog kind/schemaVersion mismatch")
+    model_catalog_path = str(catalog_path)
+
+store_dir = runtime_store / manifest_digest
+materialized_runtime = store_dir / "runtime"
+if materialized_runtime.exists():
+    if materialized_runtime.is_symlink():
+        fail("materialized runtime must not be a symlink")
+else:
+    tmp_store = pathlib.Path(tempfile.mkdtemp(prefix=f"{manifest_digest}.", dir=str(runtime_store)))
+    tmp_runtime = tmp_store / "runtime"
+    try:
+        for rel_text, src in declared_files.items():
+            copy_verified_file(
+                src,
+                tmp_runtime / pathlib.PurePosixPath(rel_text),
+                declared_hashes[rel_text],
+            )
+        node_modules_rel = pathlib.Path(
+            os.path.relpath(resolved_entrypoints["nodeModules"], bundle_dir)
+        )
+        (tmp_runtime / node_modules_rel).mkdir(mode=0o755, parents=True, exist_ok=True)
+        copy_verified_file(manifest_path, tmp_store / "manifest.json", manifest_digest)
+        if model_catalog_path:
+            copy_verified_file(
+                pathlib.Path(model_catalog_path),
+                tmp_store / "model-catalog.json",
+                model_catalog_digest,
+            )
+            model_catalog_path = str(tmp_store / "model-catalog.json")
+        chown_tree_root(tmp_store)
+        for root, dirs, files in os.walk(tmp_store):
+            os.chmod(root, 0o755)
+            for name in files:
+                file_path = os.path.join(root, name)
+                mode = os.stat(file_path).st_mode
+                os.chmod(file_path, 0o755 if mode & 0o111 else 0o644)
+        os.rename(tmp_store, store_dir)
+    except FileExistsError:
+        shutil.rmtree(tmp_store, ignore_errors=True)
+    except Exception:
+        shutil.rmtree(tmp_store, ignore_errors=True)
+        raise
+
+if not materialized_runtime.is_dir():
+    fail("materialized runtime directory is missing")
+materialized_manifest_path = store_dir / "manifest.json"
+if not materialized_manifest_path.is_file():
+    fail("materialized update manifest is missing")
+if file_sha256(materialized_manifest_path) != manifest_digest:
+    fail("materialized update manifest hash mismatch")
+for rel_text, src in declared_files.items():
+    expected = declared_hashes[rel_text]
+    materialized_file = materialized_runtime / pathlib.PurePosixPath(rel_text)
+    if materialized_file.is_symlink():
+        fail(f"materialized runtime contains unsupported symlink: {rel_text}")
+    if not materialized_file.is_file():
+        fail(f"materialized runtime file is missing: {rel_text}")
+    if file_sha256(materialized_file).lower() != expected.lower():
+        fail(f"materialized runtime hash mismatch: {rel_text}")
+for candidate in materialized_runtime.rglob("*"):
+    if candidate.is_symlink():
+        fail(f"materialized runtime contains unsupported symlink: {candidate.relative_to(materialized_runtime).as_posix()}")
+    if candidate.is_file():
+        rel_text = candidate.relative_to(materialized_runtime).as_posix()
+        if rel_text not in declared_files:
+            fail(f"materialized runtime contains unlisted file: {rel_text}")
+
+def materialized_entrypoint(original):
+    rel = pathlib.Path(os.path.relpath(original, bundle_dir))
+    candidate = materialized_runtime / rel
+    if not candidate.exists():
+        fail(f"materialized entrypoint is missing: {rel.as_posix()}")
+    return str(candidate)
+
+resolved_entrypoints = {
+    key: materialized_entrypoint(value)
+    for key, value in resolved_entrypoints.items()
+}
+if model_catalog_path:
+    model_catalog_path = str(store_dir / "model-catalog.json")
+
+status = "active" if (state_dir / "good" / manifest_digest).exists() else "candidate"
+trust = "signed"
+
+env_values = {
+    "ELIZAOS_RUNTIME_TRUST": trust,
+    "ELIZAOS_RUNTIME_STATUS": status,
+    "ELIZAOS_RUNTIME_REASON": "verified",
+    "ELIZAOS_UPDATE_CHANNEL": channel,
+    "ELIZAOS_RUNTIME_DIR": str(materialized_runtime),
+    "ELIZAOS_RUNTIME_ROOT": str(materialized_runtime),
+    "ELIZAOS_RUNTIME_BIN_DIR": str(materialized_runtime / "bin"),
+    "ELIZAOS_BUN": resolved_entrypoints["bun"],
+    "ELIZAOS_LAUNCHER": resolved_entrypoints["launcher"],
+    "ELIZAOS_AGENT_ENTRY": resolved_entrypoints["agent"],
+    "ELIZAOS_NODE_PATH": resolved_entrypoints["nodeModules"],
+    "ELIZAOS_MODEL_CATALOG": model_catalog_path,
+    "ELIZAOS_UPDATE_MANIFEST": str(materialized_manifest_path),
+    "ELIZAOS_UPDATE_SEQUENCE": str(sequence),
+    "ELIZAOS_UPDATE_MANIFEST_SHA256": manifest_digest,
+}
+
+selection = {
+    "status": status,
+    "trust": trust,
+    "channel": channel,
+    "sequence": sequence,
+    "manifestSha256": manifest_digest,
+    "manifest": str(materialized_manifest_path),
+    "sourceManifest": str(manifest_path),
+    "runtimeDir": str(materialized_runtime),
+    "runtimeStore": str(store_dir),
+    "sourceRuntimeDir": str(bundle_dir),
+    "runtimeId": runtime_id,
+    "runtimeVersion": runtime_version,
+    "modelCatalog": model_catalog_path or None,
+}
+
+run_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+fd, tmp_env = tempfile.mkstemp(prefix="runtime.env.", dir=str(run_dir), text=True)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        for key, value in env_values.items():
+            handle.write(f"{key}={shlex.quote(value)}\n")
+    if os.geteuid() == 0:
+        os.chown(tmp_env, 0, 0)
+    os.chmod(tmp_env, 0o644)
+    os.replace(tmp_env, run_dir / "runtime.env")
+finally:
+    if os.path.exists(tmp_env):
+        os.unlink(tmp_env)
+
+fd, tmp_json = tempfile.mkstemp(prefix="runtime-selection.json.", dir=str(run_dir), text=True)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(selection, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    if os.geteuid() == 0:
+        os.chown(tmp_json, 0, 0)
+    os.chmod(tmp_json, 0o644)
+    os.replace(tmp_json, run_dir / "runtime-selection.json")
+finally:
+    if os.path.exists(tmp_json):
+        os.unlink(tmp_json)
+PY
+    then
+        log "staged manifest failed validation; using baked runtime"
+        write_fallback_selector "invalid-manifest"
+        return 0
+    fi
+
+    log "verified staged runtime for channel '${channel}'"
+}
+
+mark_selection() {
+    action="${1}"
+    if [ "$(id -u)" -ne 0 ]; then
+        log "mark-${action} must run as root"
+        exit 77
+    fi
+    if [ ! -r "${run_dir}/runtime-selection.json" ]; then
+        log "no runtime selection exists in ${run_dir}"
+        exit 66
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        log "python3 is unavailable"
+        exit 69
+    fi
+    python3 - "${run_dir}/runtime-selection.json" "${state_root}" "${action}" <<'PY'
+import json
+import os
+import pathlib
+import sys
+import tempfile
+
+selection_path = pathlib.Path(sys.argv[1])
+state_root = pathlib.Path(sys.argv[2]).resolve()
+action = sys.argv[3]
+
+def ensure_safe_dir(path, field):
+    if path.exists() and path.is_symlink():
+        raise SystemExit(f"{field} must not be a symlink")
+    path.mkdir(mode=0o755, parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise SystemExit(f"{field} must not be a symlink")
+    if os.geteuid() == 0:
+        st = path.stat()
+        if st.st_uid != 0:
+            raise SystemExit(f"{field} must be root-owned")
+        if st.st_mode & 0o022:
+            raise SystemExit(f"{field} must not be group/world writable")
+    return path
+
+with selection_path.open("r", encoding="utf-8") as handle:
+    selection = json.load(handle)
+
+digest = selection.get("manifestSha256")
+if selection.get("trust") != "signed" or not isinstance(digest, str) or len(digest) != 64:
+    raise SystemExit("current runtime selection is not a signed staged update")
+
+state_dir = ensure_safe_dir(state_root, "update state root")
+good_dir = state_dir / "good"
+rejected_dir = state_dir / "rejected"
+sequence_dir = state_dir / "sequence-floor"
+ensure_safe_dir(good_dir, "good update state")
+ensure_safe_dir(rejected_dir, "rejected update state")
+ensure_safe_dir(sequence_dir, "sequence floor state")
+
+target_dir = good_dir if action == "good" else rejected_dir
+other_dir = rejected_dir if action == "good" else good_dir
+record = dict(selection)
+record["marked"] = action
+
+fd, tmp = tempfile.mkstemp(prefix=f"{digest}.", dir=str(target_dir), text=True)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(record, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, target_dir / digest)
+finally:
+    if os.path.exists(tmp):
+        os.unlink(tmp)
+
+try:
+    (other_dir / digest).unlink()
+except FileNotFoundError:
+    pass
+
+if action == "good":
+    channel = selection.get("channel")
+    sequence = selection.get("sequence")
+    if not isinstance(channel, str) or "/" in channel or ".." in channel:
+        raise SystemExit("selection channel is unsafe")
+    if not isinstance(sequence, int) or sequence < 1:
+        raise SystemExit("selection sequence is invalid")
+    floor_path = sequence_dir / channel
+    current = 0
+    try:
+        current = int(floor_path.read_text(encoding="utf-8").strip())
+    except FileNotFoundError:
+        pass
+    except ValueError:
+        raise SystemExit("stored update sequence floor is invalid")
+    if sequence > current:
+        fd, tmp_floor = tempfile.mkstemp(prefix=f"{channel}.", dir=str(sequence_dir), text=True)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(f"{sequence}\n")
+            os.chmod(tmp_floor, 0o644)
+            os.replace(tmp_floor, floor_path)
+        finally:
+            if os.path.exists(tmp_floor):
+                os.unlink(tmp_floor)
+PY
+}
+
+case "${1:-verify}" in
+    verify)
+        verify_staged_update
+        ;;
+    fallback)
+        write_fallback_selector "${2:-manual}"
+        ;;
+    mark-good)
+        mark_selection good
+        ;;
+    mark-bad)
+        mark_selection rejected
+        ;;
+    *)
+        echo "usage: $0 [verify|fallback|mark-good|mark-bad]" >&2
+        exit 64
+        ;;
+esac

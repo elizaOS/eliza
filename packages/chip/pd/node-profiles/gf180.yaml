@@ -1,0 +1,28 @@
+schema: eliza.pd_node_profile.v1
+node_id: gf180
+foundry: GlobalFoundries
+status: open_fabricable
+fabricable: true
+bspdn: false
+bump_pitch_um: null
+metal_stack: "5 (3 thin + 2 thick)"
+
+pdk_adapter:
+  openlane_config: pd/openlane/config.gf180.json
+  flow: openlane2
+  pdk_key: gf180mcuC
+  std_cell_library: gf180mcu_fd_sc_mcu7t5v0
+  max_routing_layer: Metal5
+  corner_views:
+    library_manifest: pd/library-manifests/gf180.yaml
+    corner_manifest: pd/corner-manifests/gf180.yaml
+
+default_corner_manifest: pd/corner-manifests/gf180.yaml
+
+source_files:
+  access_gate: null
+  corner_manifest: pd/corner-manifests/gf180.yaml
+  library_manifest: pd/library-manifests/gf180.yaml
+  portability_index_id: gf180mcu_release
+
+forbidden_claims_until_unblocked: []

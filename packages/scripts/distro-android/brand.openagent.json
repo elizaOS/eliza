@@ -1,0 +1,28 @@
+{
+  "_comment": "OpenAgent E1 RISC-V SoC + Eliza system overlay. Fused product: the base device tree (board config, kernel cmdline, init.rc, sepolicy, VINTF, NPU HAL) comes from the chip team's device/eliza/eliza_ai_soc/ tree (imported into AOSP by packages/chip/sw/aosp-device/import-aosp-device.sh). The eliza_common.mk system layer is inherited AFTER so privileged-APK / role overrides land on top. Distro identity (vendorDir, packageName, classPrefix) intentionally matches brand.eliza.json — only the product/lunch target and device-tree binding differ.",
+  "brand": "eliza",
+  "appName": "Eliza",
+  "distroName": "elizaOS",
+  "packageName": "ai.elizaos.app",
+  "classPrefix": "Eliza",
+  "productName": "eliza_openagent_ai_soc_phone",
+  "lunchTarget": "eliza_openagent_ai_soc_phone-trunk_staging-userdebug",
+  "envPrefix": "ELIZA",
+  "propertyPrefix": "elizaos",
+  "vendorDir": "packages/os/android/vendor/eliza",
+  "initRcName": "init.eliza.rc",
+  "commonMakefile": "eliza_common.mk",
+  "pixelMakefilePrefix": "eliza",
+  "buildAndroidSystemCmd": ["bun", "run", "build:android:system"],
+  "aospDeviceTreePaths": [
+    "device/eliza/eliza_ai_soc/eliza_ai_soc.mk",
+    "device/eliza/eliza_ai_soc/BoardConfig.mk"
+  ],
+  "chip": {
+    "chipImport": {
+      "script": "packages/chip/sw/aosp-device/import-aosp-device.sh",
+      "expectedDevicePath": "device/eliza/eliza_ai_soc",
+      "_comment": "Run as: bash <script> <AOSP_ROOT>. The script rsyncs device/eliza/eliza_ai_soc/ from the chip vendor tree into the AOSP checkout. build-aosp.mjs can chain this before validate/build in a follow-up wire-up."
+    }
+  }
+}

@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# This script will build https-get-expired.
+# As such, it's not meant to be run at runtime.
+
+set -eu
+set -o pipefail
+
+# This script can be invoked by config/chroot_local-hooks/52-https-accept-expired and by Gitlab CI: two very
+# different contexts.
+# So we expect the caller to set PREFIX to customize the environment.
+# If you are working on this area and want to build https-get-expired, do what .gitlab-ci-pipeline.yml does.
+PREFIX=${PREFIX%/}
+SRC="${PREFIX}/usr/src/https-get-expired.go"
+SRCDIR="$(dirname "$SRC")"
+if [ "${PREFIX}" = "" ]; then
+    DST="/usr/local/lib/https-get-expired"
+else
+    DST="https-get-expired"
+fi
+
+goDir=$(find /usr/share/ -maxdepth 1 -name 'go-*' -type d | head -n1)
+if [ -z "$goDir" ]; then
+    echo "Could not find a go installation, aborting" >&2
+    exit 1
+fi
+cp "${goDir}/src/crypto/tls/cache.go" "$SRCDIR"
+sed -i -e '0,/^package tls/s//package main/' "$SRCDIR/cache.go"
+go build -v -ldflags=-buildid= -trimpath -o "$DST" "$SRC" "$SRCDIR/cache.go"
+strip --strip-all "$DST"
+rm -f "$SRCDIR/cache.go"
+
+if [ "$PREFIX" = "" ]; then
+    rm -rf \
+        /root/.cache/go-build/ \
+        /root/.config/go/
+fi

@@ -1,0 +1,325 @@
+schema: eliza.pd_signoff_manifest.v1
+signoff: e1_chip_top_pd
+status: required_for_pd_release
+claim_allowed: false
+phone_claim_allowed: false
+release_claim_allowed: false
+tapeout_claim_allowed: false
+pd_signoff_claim_allowed: false
+silicon_claim_allowed: false
+production_readiness_claim_allowed: false
+false_claim_flags:
+  claim_allowed: false
+  phone_claim_allowed: false
+  release_claim_allowed: false
+  tapeout_claim_allowed: false
+  pd_signoff_claim_allowed: false
+  silicon_claim_allowed: false
+  production_readiness_claim_allowed: false
+run_manifest_schema: pd/signoff/run-manifest.schema.json
+next_commands:
+  manifest_preflight: python3 scripts/check_pd_signoff.py --manifest-only
+  si_pi_pdn_local_evidence: python3 scripts/check_si_pi_pdn_evidence.py
+  local_input_preflight: python3 scripts/check_pd_preflight.py --dry-run-commands --config pd/openlane/config.sky130.json
+  local_exploratory_run: scripts/run_openlane.sh --exploratory
+  local_release_run: scripts/run_openlane.sh --release
+  antenna_metadata_gate: python3 scripts/check_antenna_metadata.py --release
+  release_gate: python3 scripts/check_pd_signoff.py
+  product_release_gate: python3 scripts/product_check.py --release
+runner:
+  openlane_image: ghcr.io/efabless/openlane2:2.4.0.dev1
+  openlane_image_digest: sha256:bcaabac3b114dfb9e739af9f16b53a79ce1b744bcdb3ad4fc476c961581fe5d5
+  require_pinned_runner_for_release: true
+openlane_configs:
+  release:
+    - pd/openlane/config.json
+    - pd/openlane/config.sky130.json
+    - pd/openlane/config.gf180.json
+  exploratory:
+    - pd/openlane/config.sky130.exploratory.json
+    - pd/openlane/config.gf180.exploratory.json
+    - pd/openlane/config.pd-smoke.sky130.json
+blocked_gates:
+  pd_release:
+    blocked: true
+    evidence_manifest: pd/signoff/manifest.yaml
+    reason: No selected OpenLane/OpenROAD run archive is present; release requires one selected run with complete artifacts plus clean antenna and post-route timing/DRV reports.
+    unblock_requires:
+      - Archive a selected OpenLane/OpenROAD run under pd/openlane/runs/* or runs/* with a signoff-run manifest.
+      - Run python3 scripts/check_pd_closure.py --run <selected-run-dir> against the archived selected run.
+      - Close or formally disposition all antenna violations in the selected run.
+      - Clear top-level antenna metadata warnings for JTAG_TCK, JTAG_TDI, JTAG_TMS, TEST_MODE, DBG_READY, and JTAG_TDO through real logic/pad-cell evidence, not hand-edited LEF claims.
+      - Close post-route hold, max-slew, and max-cap violations across selected signoff corners.
+      - Replace waiver-only antenna/STA evidence with release-clean reports.
+  tapeout_release:
+    blocked: true
+    evidence_manifest: pd/signoff/manifest.yaml
+    reason: Standalone-chip signoff is missing SI/PI, PDN/current budget, and padframe/package release evidence.
+    unblock_requires:
+      - Close SI/PI and PDN/current-budget sections in this manifest.
+      - Replace placeholder package and padframe plan with foundry/package-vendor artifacts.
+      - Approve tapeout checklist and manufacturing release manifest.
+  board_fabrication_release:
+    blocked: true
+    evidence_manifest: docs/manufacturing/release-manifest.yaml
+    reason: Board package is a placeholder and has no DFM, footprint, SI, PI, or current-limit review evidence.
+    unblock_requires:
+      - Release package drawing, footprint, and pin-1 orientation evidence.
+      - Complete board SI/PI review and rail current-limit budget.
+      - Complete assembly-house DFM review and first-article limits.
+si_pi:
+  status: blocked
+  release_blocking: true
+  blockers:
+    - No package model, IBIS/SPICE model, extracted parasitics, or board stackup has been approved.
+    - No clock/reset/debug/GPIO signal-integrity report has been archived.
+    - No rail impedance, decoupling, or return-path review has been archived.
+  required_artifacts:
+    - name: package_model
+      status: missing
+      globs:
+        - "package/models/**/*"
+        - "pd/signoff/si-pi/package-models/**/*"
+    - name: board_signal_integrity_report
+      status: draft
+      globs:
+        - "board/reports/si/**/*"
+        - "pd/signoff/si-pi/board-si/**/*"
+        - "docs/pd/signoff/si-pi/local-gap-report.md"
+        - "pd/signoff/si-pi/local-evidence.yaml"
+    - name: power_integrity_report
+      status: draft
+      globs:
+        - "board/reports/pi/**/*"
+        - "pd/signoff/si-pi/power-integrity/**/*"
+        - "docs/pd/signoff/si-pi/local-gap-report.md"
+        - "pd/signoff/si-pi/local-evidence.yaml"
+pdn_current_budget:
+  status: blocked
+  release_blocking: true
+  rails:
+    - name: VDDCORE
+      voltage: 1.8V
+      board_net: +1V8
+      current_limit_status: draft_local_estimate
+      pdn_status: draft_local_openroad_ir
+    - name: VDDIO
+      voltage: 3.3V
+      board_net: +3V3
+      current_limit_status: draft_first_article_limit_only
+      pdn_status: missing
+  blockers:
+    - VDDCORE local current estimate is derived from OpenLane metrics only, not workload-calibrated post-route vectors or measured silicon data.
+    - VDDIO current is not derived because IO pad, package, and board load models are missing.
+    - EM, decoupling, and external first-article current-limit review reports are not archived.
+  required_artifacts:
+    - name: post_route_power_report
+      status: draft
+      globs:
+        - "pd/reports/power/**/*"
+        - "pd/openlane/runs/*/reports/power/**/*"
+        - "runs/*/reports/power/**/*"
+        - "pd/signoff/pdn-current/local-budget.yaml"
+        - "docs/pd/signoff/pdn-current/local-budget.md"
+    - name: ir_drop_em_report
+      status: draft
+      globs:
+        - "pd/reports/pdn/**/*"
+        - "pd/openlane/runs/*/reports/pdn/**/*"
+        - "runs/*/reports/pdn/**/*"
+        - "pd/openlane/runs/*/*-openroad-irdropreport/irdrop.rpt"
+        - "pd/signoff/pdn-current/local-budget.yaml"
+        - "docs/pd/signoff/pdn-current/local-budget.md"
+    - name: board_current_limit_plan
+      status: draft
+      globs:
+        - "docs/board/kicad/e1-demo/fab-notes.md"
+        - "docs/manufacturing/e1-demo-checklist.md"
+        - "pd/signoff/pdn-current/local-budget.yaml"
+        - "docs/pd/signoff/pdn-current/local-budget.md"
+thermal_package_board:
+  status: blocked
+  release_blocking: true
+  blockers:
+    - Package and board thermal evidence is not tied to post-route power, regulator loss, ambient, airflow, or enclosure assumptions.
+    - First-article temperature limits, measurement points, and thermal stop conditions are not archived.
+  required_artifacts:
+    - name: package_board_thermal_model_or_review
+      status: missing
+      globs:
+        - "docs/manufacturing/evidence/thermal/**/*"
+        - "board/reports/thermal/**/*"
+        - "pd/signoff/thermal/**/*"
+    - name: first_article_temperature_limits
+      status: missing
+      globs:
+        - "docs/manufacturing/evidence/lab/*thermal*"
+        - "docs/manufacturing/evidence/thermal/*first-article*"
+padframe_package:
+  status: blocked
+  release_blocking: true
+  blockers:
+    - Padframe is a contract scaffold, not a foundry IO ring.
+    - Package is a placeholder QFN64 planning artifact with no vendor drawing or bond diagram.
+    - Package, padframe, and board footprint have not been cross-probed against released fabrication data.
+  required_artifacts:
+    - name: padframe_contract
+      status: draft
+      globs:
+        - "pd/padframe/e1_demo_padframe.yaml"
+        - "docs/pd/padframe/e1_demo_padframe.md"
+    - name: package_pinout
+      status: draft
+      globs:
+        - "package/e1-demo-pinout.yaml"
+        - "docs/package/e1-demo-package.md"
+        - "docs/package/e1-demo-pad-ring.md"
+    - name: board_footprint_notes
+      status: draft
+      globs:
+        - "docs/board/kicad/e1-demo/fab-notes.md"
+run_roots:
+  - pd/openlane/runs
+  - runs
+required_artifacts:
+  run_manifest:
+    min_bytes: 128
+    globs:
+      - "pd/openlane/runs/*/signoff-run.yaml"
+      - "pd/openlane/runs/*/reports/signoff/signoff-run.yaml"
+      - "runs/*/signoff-run.yaml"
+      - "runs/*/reports/signoff/signoff-run.yaml"
+  gds:
+    min_bytes: 128
+    globs:
+      - "pd/openlane/runs/*/final/gds/*.gds"
+      - "runs/*/final/gds/*.gds"
+  def:
+    min_bytes: 128
+    globs:
+      - "pd/openlane/runs/*/final/def/*.def"
+      - "runs/*/final/def/*.def"
+  gate_netlist:
+    min_bytes: 128
+    globs:
+      - "pd/openlane/runs/*/final/nl/*.v"
+      - "pd/openlane/runs/*/final/pnl/*.v"
+      - "pd/openlane/runs/*/final/verilog/gl/*.v"
+      - "runs/*/final/nl/*.v"
+      - "runs/*/final/pnl/*.v"
+      - "runs/*/final/verilog/gl/*.v"
+  corner_manifest:
+    min_bytes: 64
+    globs:
+      - "pd/openlane/runs/*/reports/signoff/*corner*.yaml"
+      - "pd/openlane/runs/*/reports/signoff/*corners*.yaml"
+      - "pd/openlane/runs/*/signoff-corners.yaml"
+      - "runs/*/reports/signoff/*corner*.yaml"
+      - "runs/*/reports/signoff/*corners*.yaml"
+      - "runs/*/signoff-corners.yaml"
+  sdc:
+    min_bytes: 32
+    globs:
+      - "pd/openlane/runs/*/final/sdc/*.sdc"
+      - "runs/*/final/sdc/*.sdc"
+  spef:
+    min_bytes: 128
+    globs:
+      - "pd/openlane/runs/*/final/spef/*.spef"
+      - "pd/openlane/runs/*/final/spef/**/*.spef"
+      - "pd/openlane/runs/*/signoff/*.spef"
+      - "runs/*/final/spef/*.spef"
+      - "runs/*/final/spef/**/*.spef"
+      - "runs/*/signoff/*.spef"
+  sdf:
+    min_bytes: 128
+    globs:
+      - "pd/openlane/runs/*/final/sdf/*.sdf"
+      - "pd/openlane/runs/*/final/sdf/**/*.sdf"
+      - "pd/openlane/runs/*/signoff/*.sdf"
+      - "runs/*/final/sdf/*.sdf"
+      - "runs/*/final/sdf/**/*.sdf"
+      - "runs/*/signoff/*.sdf"
+  drc_report:
+    min_bytes: 32
+    globs:
+      - "pd/openlane/runs/*/final/drc/*.rpt"
+      - "pd/openlane/runs/*/reports/signoff/*drc*.rpt"
+      - "runs/*/final/drc/*.rpt"
+      - "runs/*/reports/signoff/*drc*.rpt"
+    fail_regex: "(?i)(\\bfail\\b|violations?\\s*[:=]\\s*[1-9][0-9]*|<item>)"
+    pass_regex: "(?i)(\\b0\\s+(drc\\s+)?violations?\\b|violations?\\s*[:=]\\s*0|count\\s*[:=]\\s*0|\\bclean\\b|\\bpass(?:ed)?\\b|</report-database>)"
+  klayout_drc_report:
+    min_bytes: 1024
+    globs:
+      - "pd/openlane/runs/*/reports/signoff/*klayout*.rpt"
+      - "runs/*/reports/signoff/*klayout*.rpt"
+    fail_regex: "(?i)(\\bfail\\b|violations?\\s*[:=]\\s*[1-9][0-9]*|<item>)"
+    pass_regex: "(?i)</report-database>"
+  lvs_report:
+    min_bytes: 32
+    globs:
+      - "pd/openlane/runs/*/final/lvs/*.rpt"
+      - "pd/openlane/runs/*/reports/signoff/*lvs*.rpt"
+      - "runs/*/final/lvs/*.rpt"
+      - "runs/*/reports/signoff/*lvs*.rpt"
+    fail_regex: "(?i)(\\bfail\\b|netlists?\\s+do\\s+not\\s+match|mismatch)"
+    pass_regex: "(?i)(netlists?\\s+match|circuits?\\s+match|lvs\\s+(clean|pass(?:ed)?))"
+  antenna_report:
+    min_bytes: 32
+    globs:
+      - "pd/openlane/runs/*/final/antenna/*.rpt"
+      - "pd/openlane/runs/*/reports/signoff/*antenna*.rpt"
+      - "runs/*/final/antenna/*.rpt"
+      - "runs/*/reports/signoff/*antenna*.rpt"
+    fail_regex: "(?i)(\\bfail\\b|violations?\\s*[:=]\\s*[1-9][0-9]*)"
+    pass_regex: "(?i)(\\b0\\s+antenna\\s+violations?\\b|violations?\\s*[:=]\\s*0|\\bclean\\b|\\bpass(?:ed)?\\b)"
+  sta_report:
+    min_bytes: 32
+    globs:
+      - "pd/openlane/runs/*/final/sta/*.rpt"
+      - "pd/openlane/runs/*/reports/signoff/*sta*.rpt"
+      - "runs/*/final/sta/*.rpt"
+      - "runs/*/reports/signoff/*sta*.rpt"
+    fail_regex: "(?i)(\\bslack\\s*[-:]\\s*-[0-9]|wns\\s*[:=]\\s*-[0-9])"
+    pass_regex: "(?i)(wns\\s*[:=]\\s*[+]?(0|[1-9][0-9]*)(\\.[0-9]+)?|no\\s+timing\\s+violations|timing\\s+(clean|pass(?:ed)?))"
+  utilization_report:
+    min_bytes: 32
+    globs:
+      - "pd/openlane/runs/*/reports/signoff/*util*.rpt"
+      - "pd/openlane/runs/*/reports/final/*util*.rpt"
+      - "runs/*/reports/signoff/*util*.rpt"
+      - "runs/*/reports/final/*util*.rpt"
+    fail_regex: "(?i)(\\bfail\\b|overflow\\s*[:=]\\s*[1-9][0-9]*)"
+    pass_regex: "(?i)(utili[sz]ation|die\\s+area|cell\\s+area|\\bpass(?:ed)?\\b|\\bclean\\b)"
+  congestion_report:
+    min_bytes: 32
+    globs:
+      - "pd/openlane/runs/*/reports/signoff/*congestion*.rpt"
+      - "pd/openlane/runs/*/reports/routing/*congestion*.rpt"
+      - "runs/*/reports/signoff/*congestion*.rpt"
+      - "runs/*/reports/routing/*congestion*.rpt"
+    fail_regex: "(?i)(\\bfail\\b|overflow\\s*[:=]\\s*[1-9][0-9]*|congested)"
+    pass_regex: "(?i)(overflow\\s*[:=]\\s*0|congestion\\s+(clean|pass(?:ed)?)|\\bpass(?:ed)?\\b|\\bclean\\b)"
+  density_fill_report:
+    min_bytes: 32
+    globs:
+      - "pd/openlane/runs/*/reports/signoff/*density*.rpt"
+      - "pd/openlane/runs/*/reports/signoff/*fill*.rpt"
+      - "runs/*/reports/signoff/*density*.rpt"
+      - "runs/*/reports/signoff/*fill*.rpt"
+    fail_regex: "(?i)(\\bfail\\b|violations?\\s*[:=]\\s*[1-9][0-9]*|density\\s+violation)"
+    pass_regex: "(?i)(violations?\\s*[:=]\\s*0|density\\s+(clean|pass(?:ed)?)|fill\\s+(clean|pass(?:ed)?)|\\bpass(?:ed)?\\b|\\bclean\\b)"
+  tool_versions:
+    min_bytes: 32
+    globs:
+      - "pd/openlane/runs/*/reports/signoff/tool_versions.txt"
+      - "pd/openlane/runs/*/tool_versions.txt"
+      - "runs/*/reports/signoff/tool_versions.txt"
+      - "runs/*/tool_versions.txt"
+waivers:
+  required_if_any_report_dirty: true
+  globs:
+    - "pd/signoff/waivers/*.yaml"
+    - "pd/openlane/runs/*/signoff-waivers.yaml"
+    - "runs/*/signoff-waivers.yaml"

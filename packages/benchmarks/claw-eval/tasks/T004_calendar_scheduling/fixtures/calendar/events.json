@@ -1,0 +1,65 @@
+[
+  {
+    "event_id": "evt_001",
+    "title": "Daily Standup",
+    "start_time": "2026-03-02T09:00:00Z",
+    "end_time": "2026-03-02T09:30:00Z",
+    "attendees": ["Manager Zhang", "Mike Li", "Sarah Wang", "Kevin Zhao"],
+    "location": "Conference Room A",
+    "recurring": true
+  },
+  {
+    "event_id": "evt_002",
+    "title": "Product Review",
+    "start_time": "2026-03-02T10:00:00Z",
+    "end_time": "2026-03-02T11:30:00Z",
+    "attendees": ["Manager Zhang", "Mike Li", "Director Chen"],
+    "location": "Main Conference Room",
+    "recurring": false
+  },
+  {
+    "event_id": "evt_003",
+    "title": "Lunch",
+    "start_time": "2026-03-02T12:00:00Z",
+    "end_time": "2026-03-02T13:00:00Z",
+    "attendees": [],
+    "location": "",
+    "recurring": true
+  },
+  {
+    "event_id": "evt_004",
+    "title": "1:1 with Manager Zhang",
+    "start_time": "2026-03-02T14:00:00Z",
+    "end_time": "2026-03-02T14:30:00Z",
+    "attendees": ["Manager Zhang"],
+    "location": "Manager Zhang's Office",
+    "recurring": true
+  },
+  {
+    "event_id": "evt_005",
+    "title": "Tech Talk",
+    "start_time": "2026-03-02T16:00:00Z",
+    "end_time": "2026-03-02T17:00:00Z",
+    "attendees": ["All Engineering"],
+    "location": "Main Conference Room",
+    "recurring": false
+  },
+  {
+    "event_id": "evt_006",
+    "title": "Mike Li - External Client Meeting",
+    "start_time": "2026-03-02T13:00:00Z",
+    "end_time": "2026-03-02T14:00:00Z",
+    "attendees": ["Mike Li", "External Client"],
+    "location": "Conference Room C",
+    "recurring": false
+  },
+  {
+    "event_id": "evt_007",
+    "title": "Sarah Wang - User Testing Session",
+    "start_time": "2026-03-02T17:00:00Z",
+    "end_time": "2026-03-02T18:00:00Z",
+    "attendees": ["Sarah Wang", "QA Team"],
+    "location": "Testing Lab",
+    "recurring": false
+  }
+]

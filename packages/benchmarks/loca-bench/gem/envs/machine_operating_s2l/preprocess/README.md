@@ -1,0 +1,1 @@
+calculate_groundtruth.py is used to calculate the groundtruth answer based on tasks/finalpool/machine-operating/preprocess/live_sensor_data.csv and tasks/finalpool/machine-operating/preprocess/machine_operating_parameters.xlsx

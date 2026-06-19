@@ -1,0 +1,264 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-20 17:54+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"networkmanager/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Connecting to a local network\"]]\n"
+msgstr "[[!meta title=\"متصل شدن به شبکه با استفاده از NetworkManager\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "Connecting to a local network"
+msgstr "[[!meta title=\"متصل شدن به شبکه با استفاده از NetworkManager\"]]\n"
+
+#. type: Plain text
+msgid ""
+"You can connect to a local network using a wired, Wi-Fi, or mobile data "
+"connection:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open the system menu in the top-right corner."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   [[!img doc/first_steps/desktop/system-with-wired.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img doc/first_steps/desktop/system.png link=\"no\"]]\n"
+
+#. type: Bullet: '   - '
+#, fuzzy
+msgid ""
+"If a wired connection is detected, Tails automatically connects to the "
+"network."
+msgstr ""
+"اگر یک اتصال باسیم شناسایی شود، <span class=\"application\">NetworkManager</"
+"span> به طور خودکار به آن متصل می‌شود."
+
+#. type: Bullet: '   - '
+msgid ""
+"To connect to a Wi-Fi network, click [[!img lib/go-next.png link=\"no\" "
+"class=\"symbolic\" alt=\"\"]] on the right of the **Wi-Fi** button."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     A list of available Wi-Fi networks appears below the **Wi-Fi** button.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     <div class=\"bug\">\n"
+msgstr "     <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <p>If there is no <b>Wi-Fi</b> menu, your Wi-Fi interface might not\n"
+"     be compatible with Tails. See [[Troubleshooting Wi-Fi not\n"
+"     working|no-wifi]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "     </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '   - '
+msgid "To connect to a mobile data network, choose **Mobile Broadband**."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   <div class=\"note\">\n"
+msgstr "   <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>It is currently impossible to [[use a VPN in\n"
+"   Tails|support/faq#vpn]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"After you connect to a local network, the *Tor Connection* assistant appears "
+"to help you [[connect to the Tor network|tor]]."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   [[!img tor/tor-connection.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img tor/tor-connection.png link=\"no\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Saving your network settings"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To remember the password for Wi-Fi networks and custom network "
+"configurations across different Tails sessions, turn on the [[Network "
+"Connections|persistent_storage/configure#network_connections]] feature of "
+"the Persistent Storage."
+msgstr ""
+"اگر قصد استفادهٔ دوباره از تنظیمات اختصاصی <span "
+"class=\"application\">NetworkManager</span> خود\n"
+"یا گذرواژه‌های رمزگذاری‌شدهٔ اتصالات بی‌سیم را در نشست‌های کاری مختلف دارید، "
+"می‌توانید \n"
+"[[ویژگی **اتصالات شبکه** \n"
+"مانا|first_steps/persistence/configure#network_connections]] را انتخاب "
+"کنید.\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Modifying your network settings"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To modify your network settings, for example, to configure whether or not to "
+"automatically connect to a Wi-Fi network, choose **Apps&nbsp;▸ System "
+"Tools&nbsp;▸ Settings&nbsp;▸ Network**."
+msgstr ""
+"می‌توانید تنظیمات هر کدام از اتصالات ذخیره‌شدهٔ شبکه را تغییر دهید\n"
+"(برای مثال برای این که ببینید می‌خواهید خودکار به یک شبکهٔ وای‌فای وصل شوید یا "
+"نه).\n"
+"برای این کار روی <span class=\"application\">برنامک NetworkManager</span>\n"
+"کلیک و **ویرایش اتصالات...** را انتخاب کنید.\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "   <ul>\n"
+#~ "   <li>Dial-up modems.</li>\n"
+#~ "   <li>VPNs, see [[the corresponding FAQ|support/faq#vpn]].</li>\n"
+#~ "   </ul>\n"
+#~ msgstr ""
+#~ "<ul>\n"
+#~ "<li>*NetworkManager* از مودم‌های دایال‌آپ\n"
+#~ "پشتیبانی نمی‌کند. رجوع کنید به [[!tails_ticket 5913]].</li>\n"
+#~ "<li>در حال حاضر در تیلز امکان استفاده از وی‌پی‌ان وجود ندارد. [[سوالات متداول\n"
+#~ "در این زمینه را ببینید.|support/faq#vpn]]</li>\n"
+#~ "</ul>\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "For more information, open\n"
+#~ "*[[GNOME Help|first_steps/desktop#help]]*\n"
+#~ "and choose **Networking, web & email**.\n"
+#~ msgstr ""
+#~ "برای کسب اطلاعات بیشتر در مورد *NetworkManager*، \n"
+#~ "*[[کمک گنوم|first_steps/desktop#help]]* را باز کرده و\n"
+#~ "**شبکه، وب، رایانه و گفتگوهای آنلاین** را انتخاب کنید.\n"
+
+#~ msgid "After establishing a connection to a network:"
+#~ msgstr "پس از برقراری اتصال به شبکه:"
+
+#, fuzzy
+#~ msgid ""
+#~ "If you need to log in to a captive portal before being granted access to "
+#~ "the Internet, see our documentation on [[logging in to captive portals|"
+#~ "doc/anonymous_internet/unsafe_browser]]."
+#~ msgstr ""
+#~ "  الف. اگر امکان دسترسی به اینترنت دارید پس تور و \n"
+#~ "        *[[ویدالیا]]* خودکار راه‌اندازی شده‌اند.\n"
+#~ "  ب. اگر پیش از این اجازه یافتن برای دسترسی اینترنت باید وارد یک کپتیو "
+#~ "پورتال شوید،\n"
+#~ "      [[سند مرتبط|unsafe_browser]] را ببینید.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "If you are concerned about being identified as a Tails user on your "
+#~| "network, read our documentation about [[network fingerprinting|doc/about/"
+#~| "fingerprint]]."
+#~ msgid ""
+#~ "If you are concerned about being identified as a Tails user on your "
+#~ "network, read our documentation about [[network fingerprinting|tor/hide]]."
+#~ msgstr ""
+#~ "اگر نگران شناخته‌شدن به عنوان یک کاربر تیلز روی شبکهٔ خود هستید، سند ما "
+#~ "راجع به [[اثر انگشت در شبکه|doc/about/fingerprint]] را بخوانید."
+
+#~ msgid "<a id=\"no-wi-fi\"></a>\n"
+#~ msgstr "<a id=\"no-wi-fi\"></a>\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/anonymous_internet/networkmanager/no-wifi.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/anonymous_internet/networkmanager/no-wifi.inline."
+#~ "fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "[[!img first_steps/desktop/network-wired.png link=no]]\n"
+#~ msgstr "[[!img first_steps/desktop/network-wired.png link=no]]\n"
+
+#~ msgid "[[!img first_steps/desktop/network-wireless.png link=no]]\n"
+#~ msgstr "[[!img first_steps/desktop/network-wireless.png link=no]]\n"
+
+#, fuzzy
+#~ msgid "Connecting to a network\n"
+#~ msgstr "[[!meta title=\"متصل شدن به شبکه با استفاده از NetworkManager\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "If you want to reuse your custom\n"
+#~ "configuration or the passwords of encrypted wireless connections across "
+#~ "separate\n"
+#~ "working sessions, you can activate the [[<span class=\"guilabel\">Network "
+#~ "connections</span> persistence\n"
+#~ "feature|first_steps/persistence/configure#network_connections]].\n"
+#~ msgstr ""
+#~ "اگر قصد استفادهٔ دوباره از تنظیمات اختصاصی <span "
+#~ "class=\"application\">NetworkManager</span> خود\n"
+#~ "یا گذرواژه‌های رمزگذاری‌شدهٔ اتصالات بی‌سیم را در نشست‌های کاری مختلف دارید، "
+#~ "می‌توانید \n"
+#~ "[[ویژگی **اتصالات شبکه** \n"
+#~ "مانا|first_steps/persistence/configure#network_connections]] را انتخاب "
+#~ "کنید.\n"
+
+#~ msgid ""
+#~ "*NetworkManager* allows you to connect to a\n"
+#~ "network using a wired or wireless connection (Wi-Fi, 3G, or GSM):\n"
+#~ msgstr ""
+#~ "ابزار *NetworkManager*\n"
+#~ "به شما اجازه می‌دهد با کمک یک اتصال بی‌سیم (وای‌فای، ۳جی یا جی‌اس‌ام) یا باسیم "
+#~ "به اینترنت وصل شوید:\n"
+
+#~ msgid ""
+#~ "To connect to a wireless connection, click on the <span "
+#~ "class=\"application\">NetworkManager Applet</span> to see the list of "
+#~ "available connections. Then select the one you want to connect to."
+#~ msgstr ""
+#~ "برای وصل شدن به یک اتصال بی‌سیم، روی <span class=\"application\">برنامک "
+#~ "NetworkManager</span> کلیک کنید تا فهرست اتصال‌های موجود را ببینید. سپس "
+#~ "اتصالی که قصد وصل شدن به آن دارید را انتخاب کنید."

@@ -1,0 +1,39 @@
+{
+  "checkpoint": "/home/shaw/milady/eliza/packages/robot/checkpoints/text_conditioned_v2",
+  "mirror_enabled": false,
+  "mirror_period_s": null,
+  "host": "192.168.1.218:9090",
+  "policy_hz": 8.0,
+  "episode_s": 3.0,
+  "prompts": [
+    {
+      "prompt": "stand still",
+      "duration_s": 16.48,
+      "matched_task": "stand_up",
+      "steps_completed": 24
+    },
+    {
+      "prompt": "wave hello",
+      "duration_s": 7.36,
+      "matched_task": "wave_right",
+      "steps_completed": 24
+    },
+    {
+      "prompt": "turn left",
+      "duration_s": 6.7,
+      "matched_task": "turn_left",
+      "steps_completed": 24
+    },
+    {
+      "prompt": "walk forward",
+      "duration_s": 6.66,
+      "matched_task": "walk_forward",
+      "steps_completed": 24
+    }
+  ],
+  "divergence_samples": 3,
+  "mean_rms_mrad": 133.00275703745965,
+  "median_rms_mrad": 133.29335357222627,
+  "max_rms_mrad": 133.44976534227737,
+  "p95_rms_mrad": 133.43412416527227
+}

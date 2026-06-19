@@ -1,0 +1,57 @@
+schema: eliza.pd_advanced_node_access_gate.v1
+pdk: Samsung_SF2P
+node_class: samsung_sf2p_3rd_gen_mbcfet_gaa
+status: blocked_until_foundry_agreement
+evidence_class: procurement_blocked_no_artifacts
+
+role: backup_2028_target_if_tsmc_and_intel_blocked
+
+reason:
+  - Samsung Foundry SAFE program / NDA agreement at SF2P is not in place.
+  - SF2P is frontside; the SF2Z BSPDN variant arrives 2027 and is a separate gate.
+  - Samsung SF3 yield issues limited external customer uptake; SF1.4 slipped to
+    2028-2029, so SF2P customer mix is mostly internal (Exynos 2600 / 2800 family).
+  - Hard-IP ecosystem at Samsung Foundry external customers is thinner than TSMC.
+
+unblock_requires:
+  - executed_samsung_foundry_safe_program_or_nda_at_sf2p
+  - lpddr5x_or_lpddr6_phy_license_at_sf2p
+  - usb32_or_usb4_phy_license_at_sf2p
+  - mipi_d_phy_v3_or_c_phy_v2_license_at_sf2p
+  - dsi2_or_csi2_controller_license_at_sf2p
+  - pll_hard_ip_license_at_sf2p
+  - sram_compiler_license_at_sf2p
+  - commercial_signoff_eda_seat_qualified_at_sf2p
+  - lvf_or_socv_corner_set_loaded
+  - mature_yield_evidence_from_samsung
+  - mask_set_and_tapeout_nre_budget_committed
+
+procurement_economics:
+  wafer_usd_estimate: "below_tsmc_n2p_competitive"
+  expected_customer_window: "Exynos internal; external customers more constrained than TSMC"
+
+process_technical_summary:
+  transistor: mbcfet_gaa_3rd_gen
+  bspdn: sf2p_frontside_only
+  sf2z_bspdn_variant_eta: 2027
+  hd_density_mtr_per_mm2: 231
+  perf_or_power_lift_vs_sf3p: "+25% power efficiency @ iso-clock"
+  yield_history_caveat: "sf3_yield_issues_limited_external_uptake_sf1p4_slipped"
+
+corner_set: pd/corner-manifests/samsung-sf2p.yaml
+library_set: pd/library-manifests/samsung-sf2p.yaml
+
+forbidden_claims_until_unblocked:
+  - samsung_sf2p_tapeout_ready
+  - samsung_sf2p_signoff_clean
+  - sf2z_bspdn_signoff
+  - any_advanced_node_ppa_number_marked_as_signoff
+
+what_can_be_said_today:
+  - Samsung SF2P is documented as a backup 2028 target if both TSMC and Intel are blocked.
+  - SF2P is frontside; SF2Z BSPDN is a separate 2027+ variant.
+
+next_commands:
+  preflight: make pdk-portability-check
+  projection: make ppa-projection
+  procurement_gate: make pdk-access-gate

@@ -1,0 +1,465 @@
+{
+  "verdict": "needs-work",
+  "bodykit_parts": 71,
+  "regions": {
+    "feet_ankles": {
+      "part_count": 8,
+      "parts": [
+        "left_foot_top_shell",
+        "left_foot_toe_armor",
+        "left_foot_sole_black",
+        "left_foot_heel_black",
+        "right_foot_top_shell",
+        "right_foot_toe_armor",
+        "right_foot_sole_black",
+        "right_foot_heel_black"
+      ],
+      "visual_focus": "low armored shoe shells, black sole bands, ankle joint clearance",
+      "review_images": [
+        "bodykit_front.png",
+        "bodykit_left.png",
+        "bodykit_right.png",
+        "bodykit_front_concept_overlay.png",
+        "bodykit_left_concept_overlay.png",
+        "bodykit_right_concept_overlay.png"
+      ],
+      "visual_inspection_status": "needs-work",
+      "programmatic_checks": {
+        "minimum_non_mounted_clearance_mm": 105.672,
+        "panel_gap_verdict": "pass",
+        "worst_panel_pairs": [
+          {
+            "part_a": "left_foot_top_shell",
+            "body_a": "left_ankle_roll_link",
+            "role_a": "armor",
+            "part_b": "left_foot_sole_black",
+            "body_b": "left_ankle_roll_link",
+            "role_b": "underbody",
+            "minimum_sampled_gap_mm": 2.838,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "right_foot_top_shell",
+            "body_a": "right_ankle_roll_link",
+            "role_a": "armor",
+            "part_b": "right_foot_heel_black",
+            "body_b": "right_ankle_roll_link",
+            "role_b": "underbody",
+            "minimum_sampled_gap_mm": 3.162,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "right_foot_top_shell",
+            "body_a": "right_ankle_roll_link",
+            "role_a": "armor",
+            "part_b": "right_foot_sole_black",
+            "body_b": "right_ankle_roll_link",
+            "role_b": "underbody",
+            "minimum_sampled_gap_mm": 5.763,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "right_foot_sole_black",
+            "body_a": "right_ankle_roll_link",
+            "role_a": "underbody",
+            "part_b": "right_foot_heel_black",
+            "body_b": "right_ankle_roll_link",
+            "role_b": "underbody",
+            "minimum_sampled_gap_mm": 9.22,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          }
+        ]
+      },
+      "manufacturing_status": "evt-prototype-source-needs-production-surfacing"
+    },
+    "legs": {
+      "part_count": 12,
+      "parts": [
+        "left_thigh_shell",
+        "left_thigh_front_armor",
+        "left_thigh_side_armor",
+        "right_thigh_shell",
+        "right_thigh_front_armor",
+        "right_thigh_side_armor",
+        "left_shin_shell",
+        "left_shin_front_armor",
+        "left_shin_side_armor",
+        "right_shin_shell",
+        "right_shin_front_armor",
+        "right_shin_side_armor"
+      ],
+      "visual_focus": "slim thigh/shin armor, knee articulation reveals, calf taper",
+      "review_images": [
+        "bodykit_front.png",
+        "bodykit_left.png",
+        "bodykit_right.png",
+        "bodykit_front_concept_overlay.png",
+        "bodykit_left_concept_overlay.png",
+        "bodykit_right_concept_overlay.png"
+      ],
+      "visual_inspection_status": "needs-work",
+      "programmatic_checks": {
+        "minimum_non_mounted_clearance_mm": 26.406,
+        "panel_gap_verdict": "pass",
+        "worst_panel_pairs": [
+          {
+            "part_a": "right_shin_shell",
+            "body_a": "right_knee_link",
+            "role_a": "underbody",
+            "part_b": "right_shin_side_armor",
+            "body_b": "right_knee_link",
+            "role_b": "armor",
+            "minimum_sampled_gap_mm": 2.591,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "left_shin_shell",
+            "body_a": "left_knee_link",
+            "role_a": "underbody",
+            "part_b": "left_shin_side_armor",
+            "body_b": "left_knee_link",
+            "role_b": "armor",
+            "minimum_sampled_gap_mm": 4.008,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          }
+        ]
+      },
+      "manufacturing_status": "evt-prototype-source-needs-production-surfacing"
+    },
+    "hips_torso_chest_back": {
+      "part_count": 28,
+      "parts": [
+        "torso_chest_shell",
+        "chest_upper_bridge_armor",
+        "chest_lower_bridge_armor",
+        "chest_sensor_black",
+        "chest_panel_seam_black",
+        "left_chest_contour_armor",
+        "right_chest_contour_armor",
+        "left_chest_outer_armor_skin",
+        "right_chest_outer_armor_skin",
+        "chest_under_bust_black",
+        "left_chest_vent_black",
+        "right_chest_vent_black",
+        "rear_back_spine_plate",
+        "rear_spine_black_channel",
+        "rear_left_back_cut_black",
+        "rear_right_back_cut_black",
+        "torso_abdomen_black",
+        "abdomen_center_armor",
+        "abdomen_panel_rib_1",
+        "abdomen_panel_rib_2",
+        "pelvis_front_shell",
+        "pelvis_center_plate",
+        "pelvis_lower_nose_plate",
+        "rear_seat_bridge_armor",
+        "left_rear_hip_fairing",
+        "right_rear_hip_fairing",
+        "left_rear_glute_armor_skin",
+        "right_rear_glute_armor_skin"
+      ],
+      "visual_focus": "tapered waist, armored chest contour, rear spine/hip fairings",
+      "review_images": [
+        "bodykit_front.png",
+        "bodykit_rear.png",
+        "bodykit_upper_three_quarter.png",
+        "bodykit_front_concept_overlay.png",
+        "bodykit_rear_concept_overlay.png"
+      ],
+      "visual_inspection_status": "needs-work",
+      "programmatic_checks": {
+        "minimum_non_mounted_clearance_mm": 1.526,
+        "panel_gap_verdict": "pass",
+        "worst_panel_pairs": [
+          {
+            "part_a": "rear_seat_bridge_armor",
+            "body_a": "pelvis",
+            "role_a": "armor",
+            "part_b": "right_rear_hip_fairing",
+            "body_b": "pelvis",
+            "role_b": "armor",
+            "minimum_sampled_gap_mm": 3.989,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "torso_chest_shell",
+            "body_a": "torso_link",
+            "role_a": "armor",
+            "part_b": "head_mount_neck_black",
+            "body_b": "torso_link",
+            "role_b": "underbody",
+            "minimum_sampled_gap_mm": 4.335,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "chest_panel_seam_black",
+            "body_a": "torso_link",
+            "role_a": "face_detail",
+            "part_b": "left_chest_outer_armor_skin",
+            "body_b": "torso_link",
+            "role_b": "armor",
+            "minimum_sampled_gap_mm": 4.61,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "chest_panel_seam_black",
+            "body_a": "torso_link",
+            "role_a": "face_detail",
+            "part_b": "right_chest_outer_armor_skin",
+            "body_b": "torso_link",
+            "role_b": "armor",
+            "minimum_sampled_gap_mm": 4.61,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "pelvis_center_plate",
+            "body_a": "pelvis",
+            "role_a": "armor",
+            "part_b": "pelvis_lower_nose_plate",
+            "body_b": "pelvis",
+            "role_b": "armor",
+            "minimum_sampled_gap_mm": 5.011,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          }
+        ]
+      },
+      "manufacturing_status": "evt-prototype-source-needs-production-surfacing"
+    },
+    "arms": {
+      "part_count": 18,
+      "parts": [
+        "left_shoulder_cap",
+        "left_shoulder_fastener_front",
+        "right_shoulder_cap",
+        "right_shoulder_fastener_front",
+        "left_upper_arm_shell",
+        "left_upper_arm_outer_blade",
+        "left_upper_arm_front_armor",
+        "right_upper_arm_shell",
+        "right_upper_arm_outer_blade",
+        "right_upper_arm_front_armor",
+        "left_forearm_shell",
+        "left_forearm_outer_blade",
+        "left_forearm_inner_detail",
+        "left_wrist_separated_cuff",
+        "right_forearm_shell",
+        "right_forearm_outer_blade",
+        "right_forearm_inner_detail",
+        "right_wrist_separated_cuff"
+      ],
+      "visual_focus": "slim shoulder/upper-arm/forearm shells and elbow articulation gaps",
+      "review_images": [
+        "bodykit_front.png",
+        "bodykit_left.png",
+        "bodykit_right.png",
+        "bodykit_front_concept_overlay.png",
+        "bodykit_left_concept_overlay.png",
+        "bodykit_right_concept_overlay.png",
+        "bodykit_operating_blocker_front_concept_overlay.png",
+        "bodykit_mechanical_blocker_right_concept_overlay.png"
+      ],
+      "visual_inspection_status": "needs-work",
+      "programmatic_checks": {
+        "minimum_non_mounted_clearance_mm": 0.743,
+        "panel_gap_verdict": "pass",
+        "worst_panel_pairs": [
+          {
+            "part_a": "right_upper_arm_front_armor",
+            "body_a": "right_shoulder_yaw_link",
+            "role_a": "armor",
+            "part_b": "right_forearm_shell",
+            "body_b": "right_elbow_link",
+            "role_b": "underbody",
+            "minimum_sampled_gap_mm": 2.831,
+            "articulated_interface": true,
+            "interface_type": "articulated",
+            "gap_gate_mm": 1.0,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "left_upper_arm_front_armor",
+            "body_a": "left_shoulder_yaw_link",
+            "role_a": "armor",
+            "part_b": "left_forearm_shell",
+            "body_b": "left_elbow_link",
+            "role_b": "underbody",
+            "minimum_sampled_gap_mm": 3.568,
+            "articulated_interface": true,
+            "interface_type": "articulated",
+            "gap_gate_mm": 1.0,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "right_upper_arm_shell",
+            "body_a": "right_shoulder_yaw_link",
+            "role_a": "underbody",
+            "part_b": "right_forearm_shell",
+            "body_b": "right_elbow_link",
+            "role_b": "underbody",
+            "minimum_sampled_gap_mm": 3.909,
+            "articulated_interface": true,
+            "interface_type": "articulated",
+            "gap_gate_mm": 1.0,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "right_forearm_shell",
+            "body_a": "right_elbow_link",
+            "role_a": "underbody",
+            "part_b": "right_forearm_outer_blade",
+            "body_b": "right_elbow_link",
+            "role_b": "armor",
+            "minimum_sampled_gap_mm": 4.431,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "right_upper_arm_outer_blade",
+            "body_a": "right_shoulder_yaw_link",
+            "role_a": "armor",
+            "part_b": "right_forearm_shell",
+            "body_b": "right_elbow_link",
+            "role_b": "underbody",
+            "minimum_sampled_gap_mm": 5.111,
+            "articulated_interface": true,
+            "interface_type": "articulated",
+            "gap_gate_mm": 1.0,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          }
+        ]
+      },
+      "manufacturing_status": "evt-prototype-source-needs-production-surfacing"
+    },
+    "neck_head_face": {
+      "part_count": 5,
+      "parts": [
+        "head_mount_neck_black",
+        "face_shell",
+        "left_eye_insert",
+        "right_eye_insert",
+        "lip_insert"
+      ],
+      "visual_focus": "donor face alignment, hard-plastic head boundary, neck carrier fit",
+      "review_images": [
+        "bodykit_head.png",
+        "bodykit_head_three_quarter.png",
+        "bodykit_front_concept_overlay.png",
+        "bodykit_mechanical_blocker_right_concept_overlay.png",
+        "eliza-face-donor.png"
+      ],
+      "visual_inspection_status": "needs-work",
+      "programmatic_checks": {
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "panel_gap_verdict": "pass",
+        "worst_panel_pairs": [
+          {
+            "part_a": "face_shell",
+            "body_a": "torso_link",
+            "role_a": "face",
+            "part_b": "left_eye_insert",
+            "body_b": "torso_link",
+            "role_b": "face_detail",
+            "minimum_sampled_gap_mm": 1.549,
+            "articulated_interface": false,
+            "interface_type": "seated_detail",
+            "gap_gate_mm": 0.1,
+            "below_nominal_gap": true,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "face_shell",
+            "body_a": "torso_link",
+            "role_a": "face",
+            "part_b": "right_eye_insert",
+            "body_b": "torso_link",
+            "role_b": "face_detail",
+            "minimum_sampled_gap_mm": 1.549,
+            "articulated_interface": false,
+            "interface_type": "seated_detail",
+            "gap_gate_mm": 0.1,
+            "below_nominal_gap": true,
+            "below_gap_gate": false
+          },
+          {
+            "part_a": "torso_chest_shell",
+            "body_a": "torso_link",
+            "role_a": "armor",
+            "part_b": "head_mount_neck_black",
+            "body_b": "torso_link",
+            "role_b": "underbody",
+            "minimum_sampled_gap_mm": 4.335,
+            "articulated_interface": false,
+            "interface_type": "rigid_panel",
+            "gap_gate_mm": 2.5,
+            "below_nominal_gap": false,
+            "below_gap_gate": false
+          }
+        ],
+        "face_alignment_verdict": "pass",
+        "face_alignment_metrics": {
+          "face_height_to_width_yz": 1.4359,
+          "eye_span_to_face_width": 0.5004,
+          "eye_center_down_from_face_top": 0.3313,
+          "eye_width_to_face_width": 0.2524,
+          "mouth_center_down_from_face_top": 0.7631,
+          "mouth_width_to_face_width": 0.3056
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955
+      },
+      "manufacturing_status": "evt-prototype-source-needs-production-surfacing"
+    }
+  },
+  "unclassified_parts": [],
+  "review_contract": "Every generated bodykit part is assigned to a region for visual review, clearance review, panel-gap review, and manufacturing follow-up. The report is not a final aesthetic approval."
+}

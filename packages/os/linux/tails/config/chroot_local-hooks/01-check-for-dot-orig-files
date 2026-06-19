@@ -1,0 +1,26 @@
+#! /bin/sh
+
+set -e
+
+echo "Checking for .orig files"
+
+DOT_ORIG_ALLOWLIST_DELETE=$(cat <<'EOF'
+/bin/hostname.orig
+/etc/resolv.conf.orig
+/lib/systemd/system/alsa-utils.service.orig
+EOF
+)
+
+# live-build creates this backup copy and restores it later in the build process
+DOT_ORIG_ALLOWLIST_KEEP="/usr/sbin/start-stop-daemon.orig"
+
+# shellcheck disable=SC2086
+rm -f ${DOT_ORIG_ALLOWLIST_DELETE}
+
+DOT_ORIG_FILES=$(find / -type f -name '*.orig' || :)
+
+if [ "$DOT_ORIG_FILES" != "$DOT_ORIG_ALLOWLIST_KEEP" ]; then
+    echo "E: Some patches are fuzzy and leave .orig files around:" >&2
+    echo "$DOT_ORIG_FILES" >&2
+    exit 1
+fi

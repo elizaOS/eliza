@@ -1,0 +1,81 @@
+{
+  "id": "tailscale",
+  "name": "Tailscale",
+  "description": "Tunnel plugin — local Tailscale serve/funnel or Eliza Cloud-routed Tailscale auth-key minter. Mutually exclusive with the ngrok tunnel plugin.",
+  "npmName": "@elizaos/plugin-tailscale",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["tunnel", "tailscale", "networking"],
+  "config": {
+    "TAILSCALE_BACKEND": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "auto",
+      "label": "Backend",
+      "help": "Backend to use: 'local' (tailscale CLI), 'cloud' (Eliza Cloud-minted ephemeral auth key), or 'auto' (cloud when Eliza Cloud is connected, else local).",
+      "advanced": false
+    },
+    "TAILSCALE_AUTH_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Auth Key",
+      "help": "Optional pre-minted Tailscale auth key for the local backend. Most users authenticate once via 'tailscale up' and never set this.",
+      "advanced": true
+    },
+    "TAILSCALE_TAGS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "tag:eliza-tunnel",
+      "label": "Tags",
+      "help": "Comma-separated ACL tags applied to the cloud-minted ephemeral key.",
+      "advanced": true
+    },
+    "TAILSCALE_FUNNEL": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "False",
+      "label": "Use Funnel",
+      "help": "When true, use 'tailscale funnel' to expose to the public Internet. When false, use 'tailscale serve' (tailnet-internal only).",
+      "advanced": false
+    },
+    "TAILSCALE_DEFAULT_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "3000",
+      "label": "Default Port",
+      "help": "Used when no port is extracted from the user message.",
+      "advanced": false
+    },
+    "TAILSCALE_AUTH_KEY_EXPIRY_SECONDS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "3600",
+      "label": "Auth Key Expiry (seconds)",
+      "help": "Expiry hint passed to the cloud auth-key minter.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Network",
+    "group": "devtools",
+    "groupOrder": 6,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/eliza-ai/eliza/tree/develop/plugins/plugin-tailscale#readme",
+    "repository": "https://github.com/eliza-ai/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools",
+  "cloudBacked": true
+}

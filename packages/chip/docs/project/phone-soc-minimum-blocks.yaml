@@ -1,0 +1,212 @@
+schema: eliza.phone_soc_minimum_blocks.v1
+status: pre_hardware_release_blocked
+claim_allowed: false
+release_claim_allowed: false
+android_boot_claim_allowed: false
+wifi_claim_allowed: false
+ai_throughput_claim_allowed: false
+tapeout_claim_allowed: false
+claim_boundary: >
+  This inventory describes the minimum block set for an Android-capable RISC-V
+  AI phone SoC. Repo-local artifacts are architecture contracts and scaffolds
+  unless an evidence gate says otherwise.
+source_contracts:
+  platform_contract: sw/platform/e1_platform_contract.json
+  rtl_gap_work_order: verify/rtl_gap_work_order.yaml
+  software_bsp_gate: scripts/check_software_bsp.py
+release_claim_policy:
+  android_boot_claim_requires:
+    - make software-bsp-evidence-check
+    - docs/evidence/android/eliza_ai_soc_lunch.log
+    - docs/evidence/android/eliza_ai_soc_vendorimage.log
+    - docs/evidence/android/eliza_ai_soc_checkvintf.log
+    - docs/evidence/android/cuttlefish_riscv64_boot.log
+  wifi_claim_requires:
+    - docs/manufacturing/real-world-verification-gaps.yaml#wifi_bluetooth_gnss_nfc_stack
+    - package/wifi-external-interface.yaml
+    - package/wifi/murata-1dx-sdio.yaml
+    - runtime SDIO enumeration transcript
+    - brcmfmac firmware load transcript
+  ai_throughput_claim_requires:
+    - benchmarks/configs/benchmark_plan.json
+    - docs/benchmarks/report-schema.yaml
+    - non-placeholder model artifact with pinned sha256
+    - NNAPI or runtime accelerator selection log
+    - unsupported op count and CPU fallback percentage
+  tapeout_claim_requires:
+    - make pd-signoff-check
+    - pd/signoff/manifest.yaml
+    - foundry IO padframe release
+    - package vendor drawing and bond diagram
+    - SI/PI and PDN/current evidence
+phone_soc_blocks:
+  - id: application_cpu_cluster
+    category: compute
+    minimum_subblocks:
+      - RV64GC application harts
+      - privileged architecture with S-mode and M-mode handoff
+      - MMU and page-table walker
+      - L1 instruction and data caches
+      - coherent L2 or last-level cache interface
+      - debug and trace policy
+    current_repo_artifacts:
+      - docs/arch/cpu-subsystem.md
+      - rtl/cpu/e1_cpu_subsystem_stub.sv
+      - verify/cocotb/test_tiny_cpu_execution.py
+    current_status: blocked_contract_model_only
+    closure_gate: executable Linux/OpenSBI boot transcript on selected CPU integration
+    evidence_required:
+      - CPU integration source or pinned generator config.
+      - RISC-V privileged boot log through OpenSBI.
+      - MMU/cache/interrupt conformance test transcript.
+  - id: management_security_subsystem
+    category: security
+    minimum_subblocks:
+      - boot ROM
+      - OTP/fuse abstraction
+      - image authentication hooks
+      - debug lock policy
+      - reset and clock ownership
+      - lifecycle state machine
+    current_repo_artifacts:
+      - docs/arch/security.md
+      - rtl/bootrom/e1_bootrom.sv
+    current_status: blocked_placeholder_contract
+    closure_gate: secure boot and debug-lock fail-closed evidence
+    evidence_required:
+      - Versioned boot ROM image and reset-vector proof.
+      - Key/fuse lifecycle policy and negative debug-auth tests.
+  - id: unified_memory_subsystem
+    category: memory
+    minimum_subblocks:
+      - LPDDR/DDR controller boundary
+      - PHY integration boundary
+      - shared DRAM aperture
+      - cache coherency policy
+      - IOMMU/SMMU or fail-closed DMA address isolation
+      - memory QoS and bandwidth counters
+      - carveout and dma-buf allocation policy
+    current_repo_artifacts:
+      - docs/arch/memory-subsystem.md
+      - rtl/memory/e1_axi_lite_dram.sv
+      - rtl/top/e1_soc_top.sv
+    current_status: blocked_sram_backed_axi_lite_model
+    closure_gate: UMA coherency/IOMMU/QoS validation report
+    evidence_required:
+      - CPU/DMA/NPU/display shared-buffer coherency tests.
+      - IOMMU fault-injection and isolation tests.
+      - QoS bandwidth and latency measurements under display plus NPU load.
+  - id: coherent_interconnect
+    category: fabric
+    minimum_subblocks:
+      - coherent CPU fabric
+      - noncoherent peripheral fabric
+      - bridge policy between coherent and MMIO domains
+      - decode-error policy
+      - ordering and backpressure assertions
+      - arbitration and QoS controls
+    current_repo_artifacts:
+      - docs/arch/interconnect.md
+      - rtl/interconnect/e1_axi_lite_interconnect.sv
+      - rtl/interconnect/e1_linux_soc_contract.sv
+    current_status: blocked_axi_lite_scaffold
+    closure_gate: generated address-map equivalence and fabric protocol proof
+    evidence_required:
+      - Address-map generation proof across RTL, DTS, and software headers.
+      - Protocol property results for every master and target.
+  - id: ai_accelerator
+    category: ai
+    minimum_subblocks:
+      - selected NPU/TPU/vector/GPU compute option
+      - command queue or descriptor ABI
+      - tensor/scratchpad memory policy
+      - DMA or coherent memory client
+      - interrupt and error reporting
+      - runtime/HAL integration
+      - performance and fallback counters
+    current_repo_artifacts:
+      - docs/arch/npu.md
+      - rtl/npu/e1_npu.sv
+      - benchmarks/configs/benchmark_plan.json
+    current_status: blocked_mmio_tiny_gemm_only
+    closure_gate: AI throughput evidence with fallback accounting
+    evidence_required:
+      - Model artifact with sha256 and reproducible input set.
+      - Runtime log proving accelerator use instead of CPU fallback.
+      - Operator coverage and unsupported-op report.
+  - id: graphics_display_subsystem
+    category: graphics_display
+    minimum_subblocks:
+      - framebuffer or DRM/KMS display controller
+      - GPU or 2D composition option
+      - DSI/eDP/HDMI or panel bridge boundary
+      - display memory QoS client
+      - Android HWC implementation
+      - underflow and vsync reporting
+    current_repo_artifacts:
+      - docs/arch/display.md
+      - rtl/display/e1_display.sv
+      - sw/aosp-device/device/eliza/eliza_ai_soc/manifest.xml
+    current_status: blocked_scanout_scaffold_no_gpu
+    closure_gate: SurfaceFlinger/HWC/display pipeline transcript
+    evidence_required:
+      - Linux DRM/KMS or framebuffer driver build and runtime log.
+      - Android HWC service log and visible frame/update evidence.
+      - Underflow test under memory pressure.
+  - id: wireless_connectivity
+    category: connectivity
+    minimum_subblocks:
+      - SDIO or PCIe WiFi host
+      - Bluetooth UART or USB transport
+      - GPIO/pinctrl/power sequencing
+      - firmware packaging
+      - wake/IRQ/suspend-resume path
+      - board RF/module evidence
+    current_repo_artifacts:
+      - docs/arch/wifi.md
+      - package/wifi-external-interface.yaml
+      - package/wifi/murata-1dx-sdio.yaml
+      - sw/linux/dts/eliza-e1.dts
+    current_status: blocked_external_module_contract_only
+    closure_gate: WiFi/Bluetooth enumeration and traffic transcript
+    evidence_required:
+      - SDIO enumeration and brcmfmac firmware log.
+      - Bluetooth HCI attach log with flow control.
+      - Board/module datasheet binding and regulatory plan.
+  - id: phone_io_and_power
+    category: phone_product
+    minimum_subblocks:
+      - USB device/host and ADB/fastboot
+      - eMMC/UFS/SD storage and partitioning
+      - audio codec/I2S/PDM path
+      - camera CSI/ISP path
+      - sensors/input/haptics
+      - PMIC/charger/fuel gauge/thermal
+      - cellular modem integration if phone claim includes cellular
+    current_repo_artifacts:
+      - docs/manufacturing/real-world-verification-gaps.yaml
+      - docs/project/critical-gap-review-2026-05-17.md
+    current_status: blocked_not_implemented
+    closure_gate: product feature evidence per real-world gap manifest
+    evidence_required:
+      - Driver, HAL, board, firmware, and runtime transcript for each claimed feature.
+      - Certification and regulatory evidence for radio-bearing features.
+  - id: physical_implementation
+    category: tapeout
+    minimum_subblocks:
+      - PDK and corner selection
+      - IO padframe and ESD cells
+      - package/bond/footprint release
+      - routed PD run
+      - STA/DRC/LVS/antenna/power/SI/PI signoff
+      - board fabrication and first-article limits
+    current_repo_artifacts:
+      - pd/signoff/manifest.yaml
+      - docs/package/e1-demo-package.md
+      - docs/manufacturing/release-manifest.yaml
+    current_status: blocked_planning_artifacts_only
+    closure_gate: make pd-signoff-check and release manifest unblock
+    evidence_required:
+      - Final GDS/DEF/netlist/SPEF/SDF/DRC/LVS/STA/power reports.
+      - Foundry/package vendor artifacts.
+      - SI/PI, PDN/current, board DFM, and first-article evidence.

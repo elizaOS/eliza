@@ -1,0 +1,55 @@
+# Spring Boot Application Configuration
+# Compensation Service v2.3.1
+
+server:
+  port: 8080
+  servlet:
+    context-path: /compensation-service
+
+spring:
+  application:
+    name: compensation-service
+  datasource:
+    url: jdbc:mysql://10.0.1.50:3306/compensation_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8
+    username: app_user
+    password: Admin@123  # TODO: move credentials to vault
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 30000
+      connection-timeout: 20000
+      max-lifetime: 1800000
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.wish.biz.rs.compensationbus.model
+  configuration:
+    map-underscore-to-camel-case: true
+
+pagehelper:
+  helper-dialect: mysql
+  reasonable: true
+  support-methods-arguments: true
+  params: count=countSql
+
+logging:
+  level:
+    root: INFO
+    com.wish.biz: DEBUG
+    org.springframework: WARN
+    com.github.pagehelper: DEBUG
+  file:
+    name: logs/app.log
+    max-size: 50MB
+    max-history: 30
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

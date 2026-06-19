@@ -1,0 +1,74 @@
+[
+  {
+    "customer_id": "CUS-901",
+    "name": "Dingxin Software",
+    "tier": "vip",
+    "status": "active",
+    "contract_end": "2026-04-15",
+    "annual_revenue": 960000,
+    "industry": "Software",
+    "sales_rep": "Zhao Lei",
+    "notes": "Core client, upgraded service package during last renewal",
+    "contact_person": "Zhao Lei"
+  },
+  {
+    "customer_id": "CUS-902",
+    "name": "Hanhai E-commerce",
+    "tier": "standard",
+    "status": "active",
+    "contract_end": "2026-05-20",
+    "annual_revenue": 360000,
+    "industry": "E-commerce",
+    "sales_rep": "Zhang Wei",
+    "notes": "Stable client, using standard plan",
+    "contact_person": "Zhang Wei"
+  },
+  {
+    "customer_id": "CUS-903",
+    "name": "Wantong Logistics",
+    "tier": "vip",
+    "status": "active",
+    "contract_end": "2026-04-05",
+    "annual_revenue": 1200000,
+    "industry": "Logistics",
+    "sales_rep": "Zhao Lei",
+    "notes": "One of our largest clients, very high service expectations",
+    "contact_person": "Zhao Lei"
+  },
+  {
+    "customer_id": "CUS-904",
+    "name": "Public Institution",
+    "tier": "standard",
+    "status": "active",
+    "contract_end": "2026-08-01",
+    "annual_revenue": 180000,
+    "industry": "Government",
+    "sales_rep": "Zhang Wei",
+    "notes": "Long-term partner",
+    "contact_person": "Zhang Wei"
+  },
+  {
+    "customer_id": "CUS-905",
+    "name": "Sunshine Media",
+    "tier": "vip",
+    "status": "active",
+    "contract_end": "2026-12-31",
+    "annual_revenue": 720000,
+    "industry": "Media",
+    "sales_rep": "Zhao Lei",
+    "notes": "Newly signed VIP client last year",
+    "contact_person": "Zhao Lei"
+  },
+  {
+    "customer_id": "CUS-906",
+    "name": "Qianfeng Technology",
+    "tier": "standard",
+    "status": "active",
+    "contract_end": "2026-04-30",
+    "annual_revenue": 240000,
+    "industry": "Technology",
+    "sales_rep": "Zhang Wei",
+    "notes": "Mid-size client, focused on cost-effectiveness",
+    "contact_person": "Zhang Wei"
+  }
+]

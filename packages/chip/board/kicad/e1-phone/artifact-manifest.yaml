@@ -1,0 +1,983 @@
+schema: eliza.e1_phone_board_artifact_manifest.v1
+status: blocked_not_fabrication_ready
+date: 2026-05-20
+claim_boundary: >
+  This manifest records the current phone mainboard artifact package and the
+  evidence required before claiming the PCB is finished end-to-end and ready
+  for enclosure placement. Current artifacts are concept and planning evidence
+  only.
+
+design_target:
+  display_anchor: 5.5_in_1080x1920_MIPI_LCM_CTP
+  board_bbox_mm: {width: 64.0, height: 132.0}
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.8}
+  battery_window_mm: {width: 64.0, height: 87.0}
+  usb_c_ports: 1
+  side_buttons: [power, volume_up, volume_down]
+  radios: [5g_redcap_cellular, wifi_6e, bluetooth_5_3, gnss_optional, nfc_optional]
+
+current_artifacts:
+  planning:
+    - docs/board/e1-phone-mainboard-end-to-end.md
+    - docs/board/e1-phone-mainboard-metrics.yaml
+    - docs/board/e1-phone-oem-sourcing.md
+    - docs/board/e1-phone-enclosure-interface.yaml
+    - board/kicad/e1-phone/block-netlist.yaml
+    - board/kicad/e1-phone/display-fit.yaml
+    - board/kicad/e1-phone/external-interface-design-review.yaml
+    - board/kicad/e1-phone/enclosure-placement-closure.yaml
+    - board/kicad/e1-phone/enclosure-tolerance-stack-closure.yaml
+    - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+    - board/kicad/e1-phone/interface-closure.yaml
+    - board/kicad/e1-phone/layout-utilization.yaml
+    - board/kicad/e1-phone/placement-interface-matrix.yaml
+    - board/kicad/e1-phone/power-thermal-budget.yaml
+    - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
+    - board/kicad/e1-phone/power-bringup-acceptance-checklist.yaml
+    - board/kicad/e1-phone/core-power-compute-schematic-net-binding.yaml
+    - board/kicad/e1-phone/preliminary-bom.yaml
+    - board/kicad/e1-phone/battery-layout-options.yaml
+    - board/kicad/e1-phone/board-topology-decision.yaml
+    - board/kicad/e1-phone/top-bottom-interconnect-plan.yaml
+    - board/kicad/e1-phone/split-interconnect-pin-allocation.yaml
+    - board/kicad/e1-phone/split-interconnect-connector-binding.yaml
+    - board/kicad/e1-phone/split-interconnect-schematic-net-binding.yaml
+    - board/kicad/e1-phone/audio-acoustic-closure.yaml
+    - board/kicad/e1-phone/audio-haptic-schematic-net-binding.yaml
+    - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+    - board/kicad/e1-phone/rf-connectivity-closure.yaml
+    - board/kicad/e1-phone/rf-antenna-coexistence-closure.yaml
+    - board/kicad/e1-phone/radio-module-source-revalidation.yaml
+    - board/kicad/e1-phone/radio-module-envelope-orderability-gate.yaml
+    - board/kicad/e1-phone/cellular-top-island-repack-feasibility.yaml
+    - board/kicad/e1-phone/cellular-space-saving-downselect.yaml
+    - board/kicad/e1-phone/display-envelope-downselect.yaml
+    - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+    - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    - board/kicad/e1-phone/radio-module-integration.yaml
+    - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
+    - board/kicad/e1-phone/wireless-module-release-execution.yaml
+    - board/kicad/e1-phone/wireless-module-public-source-refresh-2026-05-22.yaml
+    - board/kicad/e1-phone/module-host-integration-closure.yaml
+    - board/kicad/e1-phone/module-host-integration-acceptance-checklist.yaml
+    - board/kicad/e1-phone/module-rf-pinout-execution.yaml
+    - board/kicad/e1-phone/radio-module-schematic-net-binding.yaml
+    - board/kicad/e1-phone/routing-constraints.yaml
+    - board/kicad/e1-phone/route-feasibility-density.yaml
+    - board/kicad/e1-phone/trial-route-input-matrix.yaml
+    - board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml
+    - board/kicad/e1-phone/evt1-routing-work-package.yaml
+    - board/kicad/e1-phone/route-corridor-execution-package.yaml
+    - board/kicad/e1-phone/usb-route-topology-resolution.yaml
+    - board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml
+    - board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+    - board/kicad/e1-phone/usb-route-si-results-template.csv
+    - board/kicad/e1-phone/routing-acceptance-checklist.yaml
+    - board/kicad/e1-phone/supplier-sourcing-audit.yaml
+    - board/kicad/e1-phone/supplier-rfq-intake.yaml
+    - board/kicad/e1-phone/supplier-source-verification.yaml
+    - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+    - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
+    - board/kicad/e1-phone/supplier-response-pack-intake-contract.yaml
+    - board/kicad/e1-phone/sourcing-drafts/rfq-response-pack-template.yaml
+    - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+    - board/kicad/e1-phone/supplier-kicad-review-execution.yaml
+    - board/kicad/e1-phone/supplier-kicad-route-release-execution.yaml
+    - board/kicad/e1-phone/supplier-evidence-drawing-gap-map-2026-05-22.yaml
+    - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+    - board/kicad/e1-phone/supplier-sample-release-gate.yaml
+    - board/kicad/e1-phone/production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml
+    - board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
+    - board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/production/sourcing/battery/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/production/sourcing/split_interconnect/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/production/sourcing/audio_haptics/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/production/sourcing/charger_pd/rfq-response-pack-intake-template.yaml
+    - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
+    - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+    - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
+    - board/kicad/e1-phone/schematic-netclass-execution-package.yaml
+    - board/kicad/e1-phone/schematic-capture-readiness-binding.yaml
+    - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    - board/kicad/e1-phone/usb-sidekey-integration.yaml
+    - board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+    - board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
+    - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
+    - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
+    - board/kicad/e1-phone/usb-power-sidekey-release-execution.yaml
+    - board/kicad/e1-phone/usb-power-sidekey-public-source-refresh-2026-05-22.yaml
+    - board/kicad/e1-phone/usb-pd-controller-lifecycle-replacement-gate-2026-05-22.yaml
+    - board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml
+    - board/kicad/e1-phone/display-camera-oem-integration.yaml
+    - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
+    - board/kicad/e1-phone/display-camera-marketplace-current-snapshot.yaml
+    - board/kicad/e1-phone/display-camera-marketplace-refresh-2026-05-22.yaml
+    - board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml
+    - board/kicad/e1-phone/display-camera-schematic-net-binding.yaml
+    - board/kicad/e1-phone/display-camera-acceptance-checklist.yaml
+    - board/kicad/e1-phone/board-optimization-scorecard.yaml
+    - board/kicad/e1-phone/live-utilization-audit.yaml
+    - board/kicad/e1-phone/component-envelope-fit-audit.yaml
+    - board/kicad/e1-phone/placement-repack-candidate.yaml
+    - board/kicad/e1-phone/layout-optimization-execution.yaml
+    - board/kicad/e1-phone/layout-route-enclosure-release-execution.yaml
+    - board/kicad/e1-phone/component-height-step-integration.yaml
+    - board/kicad/e1-phone/pcb-implementation-audit.yaml
+    - board/kicad/e1-phone/end-to-end-readiness.yaml
+    - board/kicad/e1-phone/manufacturing-closure.yaml
+    - board/kicad/e1-phone/production-readiness.yaml
+    - board/kicad/e1-phone/fab-assembler-quote-intake-contract.yaml
+    - board/kicad/e1-phone/production-factory-release-execution.yaml
+    - board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/fabrication-enclosure-e2e-release-gate-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/routed-output-content-check-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/enclosure-readiness-gap-map-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/release-approval-signature-blocker-matrix-2026-05-23.yaml
+    - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+    - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+    - board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml
+    - board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml
+    - board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-executed-log-contract-2026-05-22.yaml
+    - board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-missing-evidence-2026-05-22.yaml
+    - board/kicad/e1-phone/production/test/first-article-traveler.template.yaml
+    - board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+    - board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
+    - board/kicad/e1-phone/e1-phone-readiness-unblock-register-2026-05-22.yaml
+    - board/kicad/e1-phone/factory-probe-map.yaml
+    - board/kicad/e1-phone/procurement-readiness.yaml
+    - board/kicad/e1-phone/off-the-shelf-sourcing-cost-model-2026-05-22.yaml
+    - board/kicad/e1-phone/off-the-shelf-sourcing-cost-model-2026-05-22.md
+    - board/kicad/e1-phone/routed-release-plan.yaml
+    - board/kicad/e1-phone/instance-pin-step-disposition-2026-06-02.yaml
+    - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+    - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+    - board/kicad/e1-phone/kicad-cad-end-to-end-stub-audit-2026-05-22.yaml
+    - board/kicad/e1-phone/routed-clearance-release-execution.yaml
+    - board/kicad/e1-phone/enclosure-physical-fit-first-article-execution.yaml
+    - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+    - board/kicad/e1-phone/production/stackup/release-manifest.yaml
+    - mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
+    - mechanical/e1-phone/review/mechanical-intake-template-manifest-2026-05-22.yaml
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/first-article-route-execution-order.yaml
+    - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+    - board/kicad/e1-phone/post-route-validation-binding.yaml
+    - board/kicad/e1-phone/kicad-cad-end-to-end-stub-audit-2026-05-22.yaml
+    - board/kicad/e1-phone/mechanical-overlay.yaml
+  package_bindings:
+    - package/display/v0-dsi-720x1280.yaml
+    - package/camera/oem-mipi-csi-modules.yaml
+    - package/cellular/quectel-5g-redcap.yaml
+    - package/wifi/murata-type-2ea-wifi6e.yaml
+    - package/usb-c/e1-phone-usb-c-port.yaml
+    - package/human-interface/side-buttons.yaml
+    - package/usb-pd/tps65987.yaml
+    - package/charger/max77860.yaml
+    - package/battery/e1-phone-17p3wh-pack.yaml
+    - package/pmic/da9063.yaml
+    - package/audio/v0-codec.yaml
+    - package/interconnect/e1-phone-top-bottom-flex.yaml
+  schematic_scaffold:
+    - board/kicad/e1-phone/e1-phone.kicad_pro
+    - board/kicad/e1-phone/schematic/e1-phone.kicad_sch
+    - board/kicad/e1-phone/schematic/power_usb.kicad_sch
+    - board/kicad/e1-phone/schematic/compute.kicad_sch
+    - board/kicad/e1-phone/schematic/display_camera.kicad_sch
+    - board/kicad/e1-phone/schematic/radios.kicad_sch
+    - board/kicad/e1-phone/schematic/audio_buttons.kicad_sch
+    - board/kicad/e1-phone/schematic/split_interconnect.kicad_sch
+    - board/kicad/e1-phone/preview/schematic/e1-phone.svg
+    - board/kicad/e1-phone/preview/schematic/e1-phone.png
+  kicad_concept:
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+    - board/kicad/e1-phone/preview/kicad-cli-mainboard.svg
+    - board/kicad/e1-phone/preview/kicad-cli-mainboard.png
+  kicad_routed_candidate:
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb.metadata.yaml
+    - board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  supplier_pinout_evidence:
+    - board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml
+    - board/kicad/e1-phone/supplier-pinouts/README.md
+    - board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/gct-usb4105-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/quectel-rg255c-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/panasonic-evq-p7-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/ov13855-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/gc5035-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/chenghao-ch550fh01a-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml
+    - board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml
+  manufacturing_config:
+    - board/kicad/e1-phone/kibot.yaml
+  preview_artifacts:
+    - board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.svg
+    - board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.html
+    - board/kicad/e1-phone/preview/e1-phone-mainboard-floorplan.png
+    - board/kicad/e1-phone/preview/e1-phone-mainboard-pcb-render.svg
+    - board/kicad/e1-phone/preview/e1-phone-mainboard-pcb-render.png
+    - board/kicad/e1-phone/preview/e1-phone-enclosure-fit.svg
+    - board/kicad/e1-phone/preview/e1-phone-enclosure-fit.png
+    - board/kicad/e1-phone/preview/floorplan-html-screenshot.png
+
+release_gates:
+  schematic:
+    status: missing
+    required_evidence:
+      - KiCad hierarchical schematic with every major block in placement-interface-matrix.yaml.
+      - Block netlist in board/kicad/e1-phone/block-netlist.yaml converted
+        into real KiCad schematic nets.
+      - Exact supplier connector pinouts for display, cameras, side-key flex,
+        USB-C, battery, speakers, microphones, antennas, SIM/eSIM, and test.
+      - ERC clean or justified waivers.
+  routed_pcb:
+    status: blocked_local_routed_candidate_not_release
+    source_artifacts:
+      - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb.metadata.yaml
+      - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+      - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+      - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+      - board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+    local_candidate_evidence:
+      routed_kicad_candidate_present: true
+      placeholder_marker_count: 0
+      segment_count: 306
+      via_count: 24
+      filled_zone_count: 6
+      routed_step_candidate: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      evidence_class: blocked_local_candidate_outputs_not_release
+      release_credit: false
+    required_evidence:
+      - Routed release output manifest in board/kicad/e1-phone/routed-release-plan.yaml
+        closed with every release-required output present.
+      - Routed KiCad PCB with footprints, nets, differential-pair constraints,
+        keepouts, copper pours, test points, fiducials, and mounting features.
+      - Routing constraints in board/kicad/e1-phone/routing-constraints.yaml
+        assigned to KiCad net classes and verified after route.
+      - DRC clean or justified waivers.
+      - Computed board utilization from real component courtyards and no-route
+        zones, replacing the concept-only gr_rect report in
+        board/kicad/e1-phone/layout-utilization.yaml.
+    release_allowed: false
+  enclosure:
+    status: blocked_local_cad_incomplete_and_release_requires_supplier_models_routed_clearance_and_first_article
+    source_artifacts:
+      - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+      - board/kicad/e1-phone/enclosure-physical-fit-first-article-execution.yaml
+      - mechanical/e1-phone/review/board-step-readiness.json
+      - mechanical/e1-phone/review/routed-board-clearance.json
+      - mechanical/e1-phone/review/full-cad-boolean-interference.json
+      - mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
+    local_candidate_evidence:
+      routed_board_step_candidate_present: true
+      full_cad_boolean_status: blocked_boolean_interference_incomplete
+      full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
+      full_cad_boolean_release_credit: false
+      routed_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
+      supplier_approved_component_model_count: 0
+      release_credit: false
+    required_evidence:
+      - STEP assembly with board, display, battery, camera modules, USB-C,
+        side buttons, speaker chambers, antennas, and midframe/rear cover.
+      - Tolerance stack proving the 11.8 mm flush-back thickness target.
+      - USB-C insertion load and side-button load path review.
+    release_allowed: false
+  power_thermal:
+    status: missing
+    required_evidence:
+      - Rail-by-rail schematic review, PI simulation, regulator load steps,
+        thermal simulation, and measured first-article power logs.
+  rf_si:
+    status: missing
+    required_evidence:
+      - MIPI/USB/PCIe/SDIO SI review.
+      - Cellular/Wi-Fi/GNSS/NFC antenna and matching review.
+      - VNA, conducted, coexistence, and SAR pre-scan evidence.
+  manufacturing:
+    status: missing
+    required_evidence:
+      - Production BOM/AVL, Gerber X2 or IPC-2581, drill files, pick-and-place,
+        assembly drawing, STEP, test plan, DFM/DFA review, and fab quote.
+
+alternate_display_package_release_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/procurement-readiness.yaml
+    - board/kicad/e1-phone/supplier-sample-release-gate.yaml
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/post-route-validation-binding.yaml
+    - board/kicad/e1-phone/production-factory-release-execution.yaml
+    - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+    - board/kicad/e1-phone/first-article-route-execution-order.yaml
+    - board/kicad/e1-phone/end-to-end-readiness.yaml
+  status: blocked_until_each_alternate_display_branch_has_supplier_sample_route_validation_factory_first_article_and_enclosure_evidence
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      gate_refs:
+        procurement: procurement-readiness.alternate_display_procurement_gate
+        sample_release: supplier-sample-release-gate.alternate_display_sample_release_gate
+        routed_layout: routed-layout-readiness-binding.alternate_display_layout_release_gate
+        post_route_validation: post-route-validation-binding.alternate_display_post_route_validation_gate
+        production_release: production-factory-release-execution.alternate_display_production_release_gate
+        factory_acceptance: factory-production-acceptance-checklist.alternate_display_factory_acceptance_gate
+        first_article: first-article-route-execution-order.alternate_display_first_article_gate
+        final_readiness: end-to-end-readiness.alternate_display_final_readiness_gate
+      required_before_manifest_release:
+        - supplier quote, lifecycle, MOQ, lead time, compliance, AVL row, sample lot, and incoming inspection evidence
+        - signed drawing, 40-pin pinout, connector MPN, land pattern, KiCad footprint, and STEP/B-rep models
+        - routed DSI/touch/backlight/bias nets with DRC/ERC, SI/PI, display/touch bring-up, and routed courtyard evidence
+        - routed board STEP, enclosure clearance rerun, physical fit, factory test limits, and first-article signoff
+        - promotion review proving 055WU01 availability, size fit, performance, factory risk, and enclosure tradeoffs before replacing CH550FH01A-CT
+      inherited_release_flags:
+        procurement_release_allowed: false
+        sample_release_allowed: false
+        routed_layout_release_blocked: true
+        post_route_validation_allowed: false
+        production_release_allowed: false
+        factory_acceptance_allowed: false
+        first_article_release_allowed: false
+        final_readiness_allowed: false
+      package_release_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      gate_refs:
+        procurement: procurement-readiness.alternate_display_procurement_gate
+        sample_release: supplier-sample-release-gate.alternate_display_sample_release_gate
+        routed_layout: routed-layout-readiness-binding.alternate_display_layout_release_gate
+        post_route_validation: post-route-validation-binding.alternate_display_post_route_validation_gate
+        production_release: production-factory-release-execution.alternate_display_production_release_gate
+        factory_acceptance: factory-production-acceptance-checklist.alternate_display_factory_acceptance_gate
+        first_article: first-article-route-execution-order.alternate_display_first_article_gate
+        final_readiness: end-to-end-readiness.alternate_display_final_readiness_gate
+      required_before_manifest_release:
+        - supplier quote, lifecycle, MOQ, lead time, compliance, AVL row, sample lot, burn-in/luminance, and incoming inspection evidence
+        - signed AMOLED drawing, FPC pinout, connector MPN, land pattern, KiCad footprint, STEP/B-rep models, RM67191 data, and GT1151 data
+        - routed MIPI/touch/power nets with DRC/ERC, SI/PI, power/thermal, display/touch bring-up, and routed courtyard evidence
+        - routed board STEP, enclosure clearance rerun, physical fit, factory test limits, and first-article signoff
+        - promotion review proving E549/RM67191 availability, thin-stack value, power/thermal risk, factory risk, and enclosure tradeoffs before replacing CH550FH01A-CT
+      inherited_release_flags:
+        procurement_release_allowed: false
+        sample_release_allowed: false
+        routed_layout_release_blocked: true
+        post_route_validation_allowed: false
+        production_release_allowed: false
+        factory_acceptance_allowed: false
+        first_article_release_allowed: false
+        final_readiness_allowed: false
+      package_release_allowed: false
+
+selected_external_interface_package_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/external-interface-design-review.yaml
+    - board/kicad/e1-phone/display-camera-acceptance-checklist.yaml
+    - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
+    - board/kicad/e1-phone/post-route-validation-binding.yaml
+    - board/kicad/e1-phone/end-to-end-readiness.yaml
+  status: blocked_until_screen_usb_c_power_and_volume_interfaces_have_supplier_route_enclosure_and_measurement_evidence
+  required_interface_count: 3
+  interfaces:
+    - id: display_touch
+      external_review: display_touch
+      selected_hardware: CH550FH01A-CT
+      objective_ref: popular_screen_size_fit
+      required_lower_gates:
+        - external-interface-design-review.interface_reviews.display_touch
+        - display-camera-acceptance-checklist.interface_summary.display_part
+        - post-route-validation-binding.selected_hardware_validation_matrix.display_touch
+        - end-to-end-readiness.objective_requirements.popular_screen_size_fit
+      required_before_manifest_release:
+        - signed display/touch drawing, exact FPC pinout, connector MPN, land pattern, STEP/B-rep, panel init, and touch-controller data
+        - routed DSI/touch/backlight/bias nets with DRC/ERC, SI/PI length-skew, impedance, return-path, and bring-up evidence
+        - routed board STEP clearance for display FPC bend, cover-lens/touch/LCM stack, adhesive, and enclosure datums
+      release_allowed: false
+    - id: usb_c_charge_data_debug
+      external_review: usb_c_charge_data_debug
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860
+      objective_ref: usb_c_power_volume_hardware
+      required_lower_gates:
+        - external-interface-design-review.interface_reviews.usb_c_charge_data_debug
+        - usb-sidekey-selection-wiring-decision.selected_hardware_stack.usb_c_evt0_connector
+        - usb-sidekey-acceptance-checklist.acceptance_items.usb_c_connector_shell_load_path
+        - post-route-validation-binding.selected_hardware_validation_matrix.usb_c_power_sidekeys
+        - end-to-end-readiness.objective_requirements.usb_c_power_volume_hardware
+      required_before_manifest_release:
+        - signed USB-C receptacle drawing, shell stake datum, land pattern, STEP/B-rep, aperture, plug overmold, and insertion-load path
+        - routed USB2/CC/VBUS/ESD/PD/charger nets with DRC/ERC, SI/PI, PD attach, ADB/fastboot, dead-battery, CC/CV, JEITA, and surge logs
+        - routed board STEP clearance for bottom-center port, connector saddle, cutout tolerance, shield/chassis policy, and factory probe access
+      release_allowed: false
+    - id: side_power_volume
+      external_review: side_power_volume
+      selected_hardware: Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      objective_ref: usb_c_power_volume_hardware
+      required_buttons: [power, volume_up, volume_down]
+      required_lower_gates:
+        - external-interface-design-review.interface_reviews.side_power_volume
+        - usb-sidekey-selection-wiring-decision.selected_hardware_stack.side_key_primary
+        - usb-sidekey-acceptance-checklist.acceptance_items.side_key_force_travel_and_solder_load
+        - usb-sidekey-acceptance-checklist.acceptance_items.side_key_recovery_and_wake
+        - end-to-end-readiness.objective_requirements.usb_c_power_volume_hardware
+      required_before_manifest_release:
+        - signed side-key switch or flex drawing, force/travel stack, actuator datum, pinout, ESD, and load-path evidence
+        - routed PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, AON_1V8, GND, debounce/leakage, recovery-combo, wake, and fixture-access evidence
+        - routed board STEP clearance for side-button cap centerlines, enclosure ribs or elastomer, ingress gap, and side-load/drop review
+      release_allowed: false
+
+selected_wireless_module_package_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    - board/kicad/e1-phone/radio-module-integration.yaml
+    - board/kicad/e1-phone/module-rf-pinout-execution.yaml
+    - board/kicad/e1-phone/radio-module-schematic-net-binding.yaml
+    - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
+    - board/kicad/e1-phone/wireless-module-release-execution.yaml
+    - board/kicad/e1-phone/wireless-module-public-source-refresh-2026-05-22.yaml
+    - board/kicad/e1-phone/post-route-validation-binding.yaml
+    - board/kicad/e1-phone/end-to-end-readiness.yaml
+  status: blocked_until_cellular_wifi_bluetooth_supplier_design_pack_route_firmware_rf_regulatory_factory_and_enclosure_evidence_exist
+  required_module_count: 2
+  required_rf_feed_count: 5
+  modules:
+    - id: cellular
+      selected_hardware: Quectel_RG255C_or_RM255C_5G_RedCap_Sub_6
+      active_fit_branch: quectel_eg915q_na_or_eg915u_class
+      current_region_fit: false
+      objective_ref: off_the_shelf_wireless_modules
+      required_lower_gates:
+        - radio-module-selection-wiring-decision.selected_wireless_stack.cellular_performance_reference
+        - radio-module-selection-wiring-decision.selected_wireless_stack.cellular_space_saving_branch
+        - radio-module-integration.module_integration.cellular_5g_redcap
+        - module-rf-pinout-execution.module_pinout_execution.cellular_5g_redcap_module
+        - radio-module-schematic-net-binding.schematic_blocks.cellular_5g_redcap_module
+        - radio-antenna-acceptance-checklist.acceptance_items.cellular_region_sku_band_matrix
+        - wireless-module-release-execution.release_records.cellular_branch_release
+        - post-route-validation-binding.selected_hardware_validation_matrix.cellular
+        - end-to-end-readiness.objective_requirements.off_the_shelf_wireless_modules
+      required_before_manifest_release:
+        - exact cellular region SKU, orderable MPN, band matrix, pad map, hardware design guide, reference layout, STEP/B-rep, firmware, and carrier/PTCRB/GCF scope
+        - resolved physical branch between RG255C/RM255C top-island repack and smaller supplier-approved LTE Cat 1 bis module
+        - routed USB2, PCIe, SIM/eSIM, RF_VBAT, reset, wake, W_DISABLE, CELL_RF_MAIN, CELL_RF_DIV, and CELL_GNSS_RF evidence with DRC/SI/RF reports
+        - antenna vendor review, matching networks, conducted access, VNA, coexistence, GNSS desense, SAR pre-scan, factory RF limits, and first-article radio transcript
+      release_allowed: false
+    - id: wifi_bluetooth
+      selected_hardware: Murata_LBEE5XV2EA-802_Infineon_CYW55573
+      current_region_fit: true
+      objective_ref: off_the_shelf_wireless_modules
+      required_lower_gates:
+        - radio-module-selection-wiring-decision.selected_wireless_stack.wifi_bluetooth_primary
+        - radio-module-integration.module_integration.wifi6e_bluetooth_5p3
+        - module-rf-pinout-execution.module_pinout_execution.wifi6e_bluetooth_5p3_module
+        - radio-module-schematic-net-binding.schematic_blocks.wifi6e_bluetooth_5p3_module
+        - radio-antenna-acceptance-checklist.acceptance_items.wifi6e_bt_2x2_antenna_feeds
+        - wireless-module-release-execution.release_records.wifi_bluetooth_release
+        - post-route-validation-binding.selected_hardware_validation_matrix.wifi_bluetooth
+        - end-to-end-readiness.objective_requirements.off_the_shelf_wireless_modules
+      required_before_manifest_release:
+        - Murata Type 2EA pinout, land pattern, reference layout, STEP/B-rep, firmware, NVRAM, CLM, license, regulatory database, and module-grant scope
+        - routed PCIe, SDIO fallback, Bluetooth UART, enable, IRQ, wake, RF_VBAT, WIFI_BT_RF0, and WIFI_BT_RF1 evidence with DRC/SI/RF reports
+        - 2x2 Wi-Fi 6E antenna isolation, Bluetooth coexistence configuration, country-code provisioning, suspend/resume, and attach logs
+        - antenna vendor review, conducted access, VNA, coexistence, factory RF limits, identity provisioning, and first-article radio transcript
+      release_allowed: false
+
+layout_optimization_package_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/board-optimization-scorecard.yaml
+    - board/kicad/e1-phone/layout-optimization-execution.yaml
+    - board/kicad/e1-phone/layout-route-enclosure-release-execution.yaml
+    - board/kicad/e1-phone/live-utilization-audit.yaml
+    - board/kicad/e1-phone/component-envelope-fit-audit.yaml
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/post-route-validation-binding.yaml
+    - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+    - board/kicad/e1-phone/end-to-end-readiness.yaml
+  status: blocked_until_routed_layout_proves_size_reserve_route_density_power_thermal_rf_factory_and_enclosure_constraints
+  locked_concept_geometry:
+    device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.8}
+    board_bbox_mm: {width: 64.0, height: 132.0, area_mm2: 8448.0}
+    battery_window_mm: {x: 0.0, y: 29.5, width: 64.0, height: 87.0, area_mm2: 5568.0}
+    display_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
+    display_clearance_mm: {width_clearance_mm: 0.9, height_clearance_mm: 1.83}
+  preserved_decision: keep_78p0_x_153p6_device_and_64p0_x_132p0_split_board_for_evt1_trial_route
+  required_optimization_domains:
+    - id: size_display_battery
+      source_gate: board-optimization-scorecard.scorecard.board_size
+      required_before_manifest_release:
+        - signed display stack, battery swelling/tail/PCM drawing, and routed board STEP prove the current 78.0 x 153.6 mm envelope and 64.0 x 132.0 mm split-board remain valid
+      release_allowed: false
+    - id: utilization_reserve
+      source_gate: layout-optimization-execution.layout_pressure_closure
+      required_before_manifest_release:
+        - supplier footprints/courtyards replace placeholders, routed courtyard utilization and escape-density reports meet reserve targets, and no battery-window or active-region intrusions remain
+      release_allowed: false
+    - id: route_density_si_pi
+      source_gate: layout-optimization-execution.performance_constraint_closure.route_density
+      required_before_manifest_release:
+        - routed high-speed domains, 24 differential pairs, 5 RF feeds, split interconnect, filled zones, DRC/ERC, SI/PI, and return-path reports pass
+      release_allowed: false
+    - id: power_thermal
+      source_gate: layout-optimization-execution.performance_constraint_closure.power_efficiency
+      required_before_manifest_release:
+        - rail load-step, regulator efficiency, charger cycle, power-integrity, thermal soak, graphite/gap-pad, and skin-temperature evidence pass on first article
+      release_allowed: false
+    - id: rf_factory_enclosure
+      source_gate: layout-optimization-execution.performance_constraint_closure.rf_connectivity
+      required_before_manifest_release:
+        - RF matching, VNA, conducted/coexistence/SAR, factory probe coordinates, test limits, routed STEP clearance, full CAD boolean interference, and physical fit evidence pass
+      release_allowed: false
+  release_allowed: false
+
+supplier_to_kicad_package_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+    - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+    - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
+    - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+    - board/kicad/e1-phone/supplier-kicad-review-execution.yaml
+    - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
+    - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+    - board/kicad/e1-phone/end-to-end-readiness.yaml
+  status: blocked_until_supplier_response_packs_pinout_symbol_footprint_and_3d_bindings_are_complete
+  required_record_count: 10
+  required_evidence_classes:
+    - rfq_response_pack
+    - signed_2d_drawing
+    - pinout_or_pad_map
+    - recommended_land_pattern
+    - step_or_brep_model
+    - sample_inspection
+    - compliance_pack
+    - pinout_review_signoff
+    - symbol_review
+    - footprint_review
+    - footprint_3d_binding
+  library_map_state:
+    matched_footprint_and_3d_model: 4
+    matched_footprint_only_model_missing: 2
+    supplier_defined_or_custom: many
+    local_matches_assign_no_pcb_footprints: true
+  required_before_manifest_release:
+    - every supplier RFQ response pack is received, archived, and tied to a stable function record
+    - every display, camera, USB-C, side-key, radio, battery, audio, and interconnect pinout review is signed off against the selected supplier drawing
+    - every KiCad symbol and footprint is reviewed against the supplier pinout, land pattern, courtyard, pad numbering, paste, and assembly drawing
+    - every height-critical part has a supplier STEP/B-rep model or approved exact library STEP bound to the KiCad footprint
+    - scaffold schematic symbols and placeholder E1Phone footprints are replaced, ERC passes, and the routed board consumes the reviewed libraries
+  release_allowed: false
+
+routed_pcb_release_package_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+    - board/kicad/e1-phone/routed-release-plan.yaml
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/post-route-validation-binding.yaml
+    - board/kicad/e1-phone/schematic-capture-readiness-binding.yaml
+    - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
+    - board/kicad/e1-phone/manufacturing-closure.yaml
+    - board/kicad/e1-phone/production-readiness.yaml
+    - board/kicad/e1-phone/end-to-end-readiness.yaml
+  status: blocked_until_real_schematic_routed_pcb_erc_drc_fabrication_outputs_step_and_post_route_evidence_exist
+  required_release_output_count: 20
+  current_kicad_state:
+    revision: EVT0-concept
+    required_release_revision: EVT1-routed
+    declared_net_count: 180
+    footprint_count: 87
+    assigned_pad_net_count: 507
+    net_class_count: 16
+    segment_count: 0
+    zone_count: 0
+    keepout_zone_count: 11
+    rf_feed_count: 5
+    test_point_count: 8
+    has_tracks: false
+    has_filled_zones: false
+    has_production_outputs: false
+    kibot_outputs_are_skeleton_commented: true
+    concept_placeholder_footprints: 87
+  required_release_outputs:
+    - schematic_erc_report
+    - pcb_drc_report
+    - routed_kicad_pcb
+    - filled_zones
+    - gerber_x2
+    - ipc_2581_or_odbpp
+    - nc_drill_slots
+    - stackup_impedance_report
+    - position_file
+    - production_bom_avl
+    - assembly_drawing
+    - split_interconnect_assembly_drawing
+    - board_step_with_supplier_models
+    - enclosure_clearance_report_using_routed_step
+    - si_pi_reports
+    - rf_reports
+    - power_thermal_measurements
+    - factory_test_limits
+    - first_article_traveler
+    - fab_assembler_quote
+  release_domains:
+    - id: supplier_freeze
+      source_phase: routed-pcb-implementation-execution.routed_evt1_execution_phases.0_supplier_freeze
+      required_before_manifest_release:
+        - supplier RFQ response packs, signed drawings, production BOM/AVL, fab/assembler quote, and stackup impedance report exist
+      release_allowed: false
+    - id: schematic_erc
+      source_phase: routed-pcb-implementation-execution.routed_evt1_execution_phases.1_schematic_and_netclass_capture
+      required_before_manifest_release:
+        - real hierarchical schematic, reviewed symbols, supplier pinouts, KiCad net classes, and ERC report or waivers exist
+      release_allowed: false
+    - id: placement_escape_drc
+      source_phase: routed-pcb-implementation-execution.routed_evt1_execution_phases.2_placement_and_escape
+      required_before_manifest_release:
+        - supplier land patterns, reviewed courtyards, routed KiCad PCB, DRC report, and routed courtyard utilization exist
+      release_allowed: false
+    - id: high_speed_rf_power_route
+      source_phase: routed-pcb-implementation-execution.routed_evt1_execution_phases.3_high_speed_rf_power_route
+      required_before_manifest_release:
+        - routed USB/MIPI/PCIe/LPDDR/UFS/RF/power domains, filled zones, SI/PI, RF, and power/thermal evidence exist
+      release_allowed: false
+    - id: manufacturing_outputs
+      source_phase: routed-pcb-implementation-execution.routed_evt1_execution_phases.4_manufacturing_outputs
+      required_before_manifest_release:
+        - Gerber X2 or IPC-2581/ODB++, NC drill, position files, assembly drawings, BOM/AVL, test limits, and first-article traveler exist
+      release_allowed: false
+    - id: routed_step_enclosure
+      source_phase: routed-layout-readiness-binding.enclosure_gate
+      required_before_manifest_release:
+        - routed board STEP with supplier models, routed clearance rerun, full CAD interference pass, and physical fit evidence exist
+      release_allowed: false
+    - id: post_route_validation
+      source_phase: post-route-validation-binding.validation_domains
+      required_before_manifest_release:
+        - DRC/ERC/zone-fill, SI/PI, RF, power/thermal, factory, first-article, and routed enclosure validation outputs exist
+      release_allowed: false
+  release_allowed: false
+
+enclosure_placement_release_package_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+    - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+    - board/kicad/e1-phone/routed-clearance-release-execution.yaml
+    - board/kicad/e1-phone/enclosure-physical-fit-first-article-execution.yaml
+    - board/kicad/e1-phone/component-height-step-integration.yaml
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/post-route-validation-binding.yaml
+    - board/kicad/e1-phone/end-to-end-readiness.yaml
+    - mechanical/e1-phone/review/board-step-readiness.json
+    - mechanical/e1-phone/review/routed-board-clearance.json
+    - mechanical/e1-phone/review/full-cad-boolean-interference.json
+  status: blocked_until_routed_board_step_supplier_geometry_clearance_boolean_physical_fit_and_functional_evidence_exist
+  execution_domain_count: 6
+  selected_hardware_clearance_function_count: 5
+  required_clearance_case_count: 12
+  complete_clearance_result_count: 0
+  current_enclosure_state:
+    ready_for_enclosure_allowed: false
+    board_step_readiness_status: blocked_local_routed_step_candidate_not_release
+    routed_board_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
+    component_height_step_status: blocked_requires_supplier_step_models_approved_routed_board_step_physical_clearance_and_signoff
+    production_step_present: false
+    routed_kicad_board_required: true
+    supplier_3d_models_required: true
+    all_clearance_cases_measured_required: true
+    no_boolean_interference_required: true
+    physical_fit_and_functional_logs_required: true
+    current_board_has_tracks: false
+    current_board_has_filled_zones: false
+    placeholder_marker_count: 116
+  required_release_outputs:
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step
+    - mechanical/e1-phone/review/routed-board-clearance.json
+    - mechanical/e1-phone/review/full-cad-boolean-interference.json
+    - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    - board/kicad/e1-phone/production/pdf/assembly.pdf
+  required_fit_domains:
+    - id: display_touch_stack
+      selected_hardware_ref: CH550FH01A-CT
+      required_before_manifest_release:
+        - signed display/touch geometry, routed display FPC connector STEP, FPC bend and cover-lens clearance, and display/touch functional logs exist
+      release_allowed: false
+    - id: front_rear_camera_stack
+      selected_hardware_ref: Sincere_First_OV13855_rear_and_GC5035_front
+      required_before_manifest_release:
+        - signed camera geometry, routed optical-axis/lens-window clearance, capture/focus/thermal logs, and footprint/pinout review signoff exist
+      release_allowed: false
+    - id: usb_c_side_buttons_bottom_io
+      selected_hardware_ref: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      required_before_manifest_release:
+        - signed USB-C and side-key geometry, plug sweep, button actuation clearance, USB attach/charge/debug logs, side-key force-travel logs, and ESD review exist
+      release_allowed: false
+    - id: battery_power_thermal_stack
+      selected_hardware_ref: E1_phone_64x87_battery_window_and_power_stack
+      required_before_manifest_release:
+        - signed pack swelling/PCM/connector geometry, routed battery cavity clearance, first-power, charger, load-step, and thermal soak logs exist
+      release_allowed: false
+    - id: radios_antennas_modules
+      selected_hardware_ref: Quectel_RG255C_or_RM255C_and_Murata_LBEE5XV2EA-802
+      required_before_manifest_release:
+        - module supplier STEP/reference-layout/firmware packs, routed RF feed and shield-can clearance, VNA, conducted, coexistence, carrier, SAR pre-scan, and identity logs exist
+      release_allowed: false
+    - id: audio_haptics_split_interconnect
+      selected_hardware_ref: audio_haptics_top_bottom_flex_stack
+      required_before_manifest_release:
+        - speaker, microphone, haptic, interconnect geometry, routed acoustic and flex clearance, functional fixture logs, and flex mating assembly drawing exist
+      release_allowed: false
+  selected_hardware_clearance_functions:
+    - display_touch
+    - rear_front_cameras
+    - usb_c_power_sidekeys
+    - cellular
+    - wifi_bluetooth
+  release_allowed: false
+
+production_factory_release_package_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/production-factory-release-execution.yaml
+    - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+    - board/kicad/e1-phone/fab-assembler-quote-intake-contract.yaml
+    - board/kicad/e1-phone/production-readiness.yaml
+    - board/kicad/e1-phone/manufacturing-closure.yaml
+    - board/kicad/e1-phone/routed-release-plan.yaml
+    - board/kicad/e1-phone/factory-probe-map.yaml
+    - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+    - board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+    - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+    - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/end-to-end-readiness.yaml
+  status: blocked_until_routed_release_supplier_packs_fabrication_assembly_fixture_traceability_quote_and_first_article_evidence_exist
+  required_release_output_count: 20
+  required_manufacturing_output_count: 11
+  required_acceptance_item_count: 9
+  required_probe_domain_count: 9
+  selected_hardware_release_function_count: 5
+  release_policy:
+    release_revision: EVT1-routed-first-article
+    fabrication_output_generation_requires_routed_pcb: true
+    assembly_output_generation_requires_supplier_avl_and_bom: true
+    fixture_release_requires_probe_coordinates_from_routed_pcb: true
+    factory_limits_require_first_article_measurements: true
+    enclosure_release_requires_routed_board_step_with_supplier_models: true
+    all_outputs_fail_closed_until_present: true
+  required_release_outputs:
+    - schematic_erc_report
+    - pcb_drc_report
+    - routed_kicad_pcb
+    - filled_zones
+    - gerber_x2
+    - ipc_2581_or_odbpp
+    - nc_drill_slots
+    - stackup_impedance_report
+    - position_file
+    - production_bom_avl
+    - assembly_drawing
+    - split_interconnect_assembly_drawing
+    - board_step_with_supplier_models
+    - enclosure_clearance_report_using_routed_step
+    - si_pi_reports
+    - rf_reports
+    - power_thermal_measurements
+    - factory_test_limits
+    - first_article_traveler
+    - fab_assembler_quote
+  manufacturing_outputs:
+    - gerber_x2
+    - ipc_2581
+    - drill
+    - bom_csv_or_ibom
+    - pick_and_place
+    - step
+    - schematic_pdf
+    - layout_pdf
+    - assembly_drawing
+    - dfm_dfa_report
+    - fab_quote
+  factory_probe_domains:
+    - power_rails
+    - usb_c
+    - display_touch
+    - cameras
+    - radios
+    - audio_haptics
+    - split_board_interconnect
+    - buttons_sensors_nfc
+    - compute_storage_debug
+  selected_hardware_release_functions:
+    - display_touch
+    - rear_front_cameras
+    - usb_c_power_sidekeys
+    - cellular
+    - wifi_bluetooth
+  required_release_domains:
+    - id: fabrication_outputs
+      acceptance_item: fabrication_outputs_gerber_ipc_drill
+      required_before_manifest_release:
+        - DRC-clean routed KiCad PCB, Gerber X2 or IPC-2581, NC drill and slot files, zone-fill evidence, and release revision lock exist
+      release_allowed: false
+    - id: stackup_impedance_quote
+      acceptance_item: fabricator_stackup_impedance_and_coupon_quote
+      required_before_manifest_release:
+        - selected fabricator stackup, impedance table, coupon geometry, HDI capability, 0.8 mm board-thickness acceptance, and quote exist
+      release_allowed: false
+    - id: assembly_bom_avl
+      acceptance_item: assembly_outputs_bom_pnp_drawings_stencil
+      required_before_manifest_release:
+        - production BOM/AVL, exact MPNs, lifecycle/MOQ/lead-time/substitution policy, pick-and-place, assembly drawings, stencil notes, AOI/X-ray rules, and cleaning requirements exist
+      release_allowed: false
+    - id: fixture_probe_limits
+      acceptance_item: fixture_probe_coordinates_and_accessibility
+      required_before_manifest_release:
+        - probe coordinates, ICT or flying-probe program, fixture ID, pogo access, enclosure/component-height clearance review, factory limits, and stop-on-fail rules exist
+      release_allowed: false
+    - id: rf_identity_traceability
+      acceptance_item: rf_calibration_and_wireless_identity_traceability
+      required_before_manifest_release:
+        - RF calibration procedure, conducted RF fixture, cellular IMEI/modem identity, Wi-Fi/Bluetooth MAC provisioning, regulatory/carrier/coexistence references, and factory identity records exist
+      release_allowed: false
+    - id: first_article_signoff
+      acceptance_item: first_article_traveler_measurements_and_signoff
+      required_before_manifest_release:
+        - first-article traveler, measured rail/USB/display/camera/radio/audio/interconnect/button transcripts, DRC/ERC/SI/PI/RF/thermal/DFM/DFA/enclosure signoff, and board serial traceability exist
+      release_allowed: false
+    - id: routed_step_dfm_enclosure
+      acceptance_item: routed_board_step_dfa_enclosure_and_dfm_quote
+      required_before_manifest_release:
+        - routed board STEP with supplier 3D models, enclosure clearance rerun, DFM/DFA report, and fab/assembly quote tied to routed board, stencil, fixture, and enclosure constraints exist
+      release_allowed: false
+  release_allowed: false
+
+end_to_end_phone_release_package_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/end-to-end-readiness.yaml
+    - board/kicad/e1-phone/display-envelope-downselect.yaml
+    - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
+    - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    - board/kicad/e1-phone/wireless-module-release-execution.yaml
+    - board/kicad/e1-phone/layout-optimization-execution.yaml
+    - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+    - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+    - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+    - board/kicad/e1-phone/production-factory-release-execution.yaml
+  status: blocked_until_all_objective_requirements_supplier_packs_routed_pcb_validation_enclosure_factory_and_first_article_evidence_exist
+  objective_requirement_count: 9
+  release_required_objective_count: 9
+  satisfied_objective_count: 0
+  blocked_objective_count: 9
+  release_decision:
+    ready_to_fabricate: false
+    ready_for_enclosure: false
+    ready_for_factory_test: false
+    end_to_end_phone_ready: false
+  required_objectives:
+    - id: popular_screen_size_fit
+      manifest_gate_ref: selected_external_interface_package_gate
+      required_before_manifest_release:
+        - selected 5.5 inch display supplier pack, signed drawing, FPC pinout, connector MPN, STEP/B-rep, routed DSI/touch/backlight evidence, bring-up logs, and enclosure clearance exist
+      release_allowed: false
+    - id: screen_camera_oem_sourcing
+      manifest_gate_ref: alternate_display_package_release_gate
+      required_before_manifest_release:
+        - Alibaba/Made-in-China display and camera OEM supplier response packs, sample inspection, compliance, pinout, land pattern, STEP/B-rep, and promotion/rejection decisions exist
+      release_allowed: false
+    - id: usb_c_power_volume_hardware
+      manifest_gate_ref: selected_external_interface_package_gate
+      required_before_manifest_release:
+        - USB-C, USB-PD, charger, power-key, and volume-key supplier geometry, routed schematic/PCB, PD/charge/button logs, ESD/load-path review, and enclosure clearance exist
+      release_allowed: false
+    - id: off_the_shelf_wireless_modules
+      manifest_gate_ref: selected_wireless_module_package_gate
+      required_before_manifest_release:
+        - selected cellular and Wi-Fi/Bluetooth module supplier design packs, region/SKU resolution, routed host/RF paths, firmware/regulatory identity, RF measurements, and first-article logs exist
+      release_allowed: false
+    - id: board_size_power_rf_thermal_optimization
+      manifest_gate_ref: layout_optimization_package_gate
+      required_before_manifest_release:
+        - routed utilization, escape density, SI/PI, power efficiency, thermal soak, RF, factory access, routed STEP, and enclosure clearance prove the optimized size and layout
+      release_allowed: false
+    - id: supplier_footprints_pinouts_and_3d_models
+      manifest_gate_ref: supplier_to_kicad_package_gate
+      required_before_manifest_release:
+        - supplier pinout reviews, symbol reviews, footprint reviews, land patterns, courtyards, and 3D bindings replace all placeholders and pass ERC
+      release_allowed: false
+    - id: schematic_and_pcb_routed_release
+      manifest_gate_ref: routed_pcb_release_package_gate
+      required_before_manifest_release:
+        - real schematic, reviewed symbols/footprints, ERC, routed KiCad PCB, filled zones, DRC, SI/PI/RF/power reports, and fabrication outputs exist
+      release_allowed: false
+    - id: component_height_and_enclosure_step
+      manifest_gate_ref: enclosure_placement_release_package_gate
+      required_before_manifest_release:
+        - routed board STEP with supplier 3D models, routed clearance cases, boolean interference, physical fit, functional logs, and enclosure first-article evidence exist
+      release_allowed: false
+    - id: manufacturing_and_factory_release
+      manifest_gate_ref: production_factory_release_package_gate
+      required_before_manifest_release:
+        - Gerbers/IPC/drill, BOM/AVL, pick-and-place, assembly drawings, fixture/probe limits, RF identity traceability, quotes, and first-article signoff exist
+      release_allowed: false
+  selected_supplier_response_gate_blocks_final_release: true
+  selected_hardware_post_route_gate_blocks_final_release: true
+  selected_hardware_production_gate_blocks_final_release: true
+  alternate_display_final_readiness_gate_blocks_final_release: true
+  release_allowed: false
+
+cross_checks:
+  alternate_display_manifest_gate_inherits_all_branch_blockers: true
+  alternate_display_manifest_branch_count_matches_sources: true
+  alternate_display_manifest_candidates_match_sources: true
+  selected_external_interface_manifest_gate_tracks_screen_usb_power_volume: true
+  selected_external_interface_manifest_gate_inherits_blocked_lower_gates: true
+  selected_wireless_manifest_gate_tracks_cellular_wifi_bluetooth_stack: true
+  selected_wireless_manifest_gate_inherits_blocked_rf_firmware_regulatory_factory_gates: true
+  layout_optimization_manifest_gate_tracks_locked_geometry_and_performance_constraints: true
+  layout_optimization_manifest_gate_inherits_routed_step_validation_and_enclosure_blockers: true
+  supplier_to_kicad_manifest_gate_tracks_all_supplier_evidence_records: true
+  supplier_to_kicad_manifest_gate_blocks_placeholder_symbol_footprint_release: true
+  routed_pcb_release_manifest_gate_tracks_all_release_outputs: true
+  routed_pcb_release_manifest_gate_blocks_fabrication_enclosure_and_end_to_end_release: true
+  enclosure_placement_manifest_gate_tracks_selected_hardware_clearance_domains: true
+  enclosure_placement_manifest_gate_blocks_enclosure_ready_claim: true
+  production_factory_manifest_gate_tracks_release_outputs_fixture_domains_and_first_article: true
+  production_factory_manifest_gate_blocks_end_to_end_ready_claim: true
+  end_to_end_manifest_gate_tracks_all_objective_requirements: true
+  end_to_end_manifest_gate_blocks_final_phone_ready_claim: true
+
+verification_commands:
+  structural_check: python3 scripts/check_e1_phone_board_package.py
+  render_check: make kicad-phone-render
+  preview_check: make kicad-phone-preview-check
+
+forbidden_claims_while_status_blocked:
+  - board_fabrication_ready
+  - enclosure_ready
+  - production_bom_ready
+  - rf_ready
+  - power_thermal_ready
+  - end_to_end_phone_ready
+
+release_blockers:
+  - top-level manifest cannot release parseable 055WU01 or E549/RM67191 display alternates until supplier, sample, route, validation, factory, first-article, and enclosure evidence all exist
+  - top-level manifest cannot release selected screen, USB-C, power-key, or volume-key interfaces until supplier drawings, routed evidence, enclosure clearance, measurements, and first-article evidence exist
+  - top-level manifest cannot release selected cellular, Wi-Fi, or Bluetooth modules until supplier design packs, routed RF, firmware, regulatory, factory, first-article, and enclosure evidence exist
+  - top-level manifest cannot release the optimized board size/layout until routed utilization, escape density, DRC/ERC, SI/PI, power/thermal, RF, factory, routed STEP, and enclosure clearance evidence all exist
+  - top-level manifest cannot release KiCad capture or routing until supplier response packs, pinout reviews, symbol reviews, footprint reviews, and 3D bindings are complete
+  - top-level manifest cannot release routed PCB, fabrication, enclosure, or end-to-end readiness until real schematic, routed copper, ERC/DRC, fabrication outputs, routed STEP, post-route validation, and first-article evidence exist
+  - top-level manifest cannot release enclosure placement until routed board STEP, supplier geometry, routed clearance cases, boolean interference, physical fit, functional logs, and first-article enclosure evidence exist
+  - top-level manifest cannot release production, factory test, first article, or end-to-end readiness until routed fabrication outputs, BOM/AVL, assembly package, fixture limits, RF identity traceability, quotes, and first-article signoff exist
+  - top-level manifest cannot release the end-to-end phone package until every objective requirement is satisfied and fabrication, enclosure, factory, supplier, validation, and first-article gates all close

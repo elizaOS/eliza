@@ -1,0 +1,187 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  background: #111827;
+  color: #f8fafc;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(
+      circle at 16% 18%,
+      rgba(20, 184, 166, 0.24),
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at 86% 20%,
+      rgba(244, 114, 182, 0.2),
+      transparent 24rem
+    ),
+    #111827;
+}
+
+main {
+  box-sizing: border-box;
+  width: min(1120px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 32px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 18px;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  padding-bottom: 18px;
+}
+
+header p {
+  margin: 0;
+  color: #7dd3fc;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 750;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+label {
+  display: grid;
+  gap: 5px;
+  color: rgba(248, 250, 252, 0.74);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+label:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+input {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.24);
+  color: #f8fafc;
+  font: inherit;
+  font-size: 13px;
+  padding: 9px 10px;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+button {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  font: inherit;
+  font-weight: 700;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.stream-panel {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.6fr) minmax(240px, 1fr) minmax(
+      280px,
+      1.4fr
+    );
+  gap: 10px;
+}
+
+.stream-panel > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stream-panel span {
+  color: rgba(248, 250, 252, 0.74);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+code {
+  box-sizing: border-box;
+  min-height: 38px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 10px;
+  font:
+    12px / 1.4 "SFMono-Regular",
+    Consolas,
+    monospace;
+  white-space: nowrap;
+}
+
+pre {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 460px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.34);
+  padding: 16px;
+  white-space: pre-wrap;
+  font:
+    12px / 1.55 "SFMono-Regular",
+    Consolas,
+    monospace;
+}
+
+.stream-panel pre {
+  min-height: 140px;
+  max-height: 220px;
+}
+
+@media (max-width: 700px) {
+  main {
+    padding: 20px;
+  }
+
+  .fields {
+    grid-template-columns: 1fr;
+  }
+
+  label:nth-child(3) {
+    grid-column: auto;
+  }
+
+  .stream-panel {
+    grid-template-columns: 1fr;
+  }
+}

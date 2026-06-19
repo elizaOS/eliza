@@ -1,0 +1,8 @@
+#!/bin/sh
+
+echo "- undiverting APT"
+
+if [ -f /usr/bin/apt-get.real ]; then
+        rm -f usr/bin/apt-get
+        dpkg-divert --rename --remove /usr/bin/apt-get
+fi

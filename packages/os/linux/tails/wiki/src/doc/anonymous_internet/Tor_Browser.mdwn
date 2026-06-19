@@ -1,0 +1,284 @@
+[[!meta title="Browsing the web with Tor Browser"]]
+
+[[!toc levels=1]]
+
+*[Tor Browser](https://www.torproject.org)* is a web
+browser based on [Mozilla Firefox](https://www.firefox.com/) but configured
+to protect your privacy.
+
+[[!img lib/apps/tor-browser.png link="no" alt=""]]
+
+Sending your connections to websites through the Tor network is not
+enough to totally protect you while browsing the web:
+
+- Cookies can be used to track and identify you across different
+  websites.
+
+- Security vulnerabilities in JavaScript have been used to [deanonymize Tor Browser in the
+  past](https://arstechnica.com/information-technology/2013/08/attackers-wield-firefox-exploit-to-uncloak-anonymous-tor-users/).
+
+This is why *Tor Browser* integrates all kinds of security protections
+inside the browser as well.
+
+Some frequently asked questions about *Tor Browser* can be found in
+[[the FAQ|support/faq#browser]].
+
+<h1 id="proxy">The proxy server is refusing connections</h1>
+
+The following error message in *Tor Browser* means that Tails is not yet
+connected to the Tor network:
+
+    The proxy server is refusing connections
+
+Make sure that you are:
+
+1. [[Connected to a local network|anonymous_internet/networkmanager]]
+
+1. [[Connected to the Tor network|anonymous_internet/tor]]
+
+<h1 id="confinement">Security confinement</h1>
+
+*Tor Browser* is only allowed to save the downloads and read the files that you
+specify in the file chooser of GNOME.
+
+For example, thanks to this confinement, even if an attacker manages to exploit
+a security vulnerability in *Tor Browser*, they wouldn't be able to access all
+the content of your Persistent Storage.
+
+<div class="tip">
+
+<p>To prevent Tails from running out of memory and crashing, download
+very big files to the <i>Persistent</i> folder.
+The files that you download outside of the Persistent Storage are
+stored in memory (RAM), which is more limited.</p>
+
+</div>
+
+<div class="note">
+
+<p>In [[Tails 6.14.1|news/version_6.14.1]] (April 2025), we improved the
+previous confinement and you can now safely download to and read from any
+folder in your <i>Home</i> folder or Persistent Storage.</p>
+
+</div>
+
+This confinement relies on 2 security technologies: *[[!debwiki AppArmor]]* and
+the [XDG Desktop Portals](https://flatpak.github.io/xdg-desktop-portal/) of
+*Flatpak*.
+
+<div class="bug">
+
+<p>When opening files from the <i>/usr</i> or <i>/etc</i> folders in Tor
+Browser, Tor Browser displays the following error:</p>
+
+<pre>Access to the file was denied</pre>
+
+</div>
+
+<h1 id="fingerprint">Hiding that you are using <i>Tor Browser</i></h1>
+
+It is impossible to hide to the websites that you visit that you are using Tor,
+because the [list of exit nodes of the Tor network is
+public](https://metrics.torproject.org/exonerator.html).
+
+That is why many more websites ask you to solve a CAPTCHA when using *Tor
+Browser*.
+
+The anonymity provided by *Tor Browser* works by making all users look the same
+to make it impossible to know who is who among the millions of users of *Tor
+Browser*.
+
+Tails tries to make it as difficult as possible for websites to distinguish
+Tails users from other users of *Tor Browser*. If it was possible for a website
+to determine whether you are a user of *Tor Browser* inside or outside of
+Tails, this would provide a little bit more information about you and reduce
+your anonymity.
+
+The websites that you visit can retrieve a lot of information about your
+browser, whether it's *Tor Browser* or a regular browser. This information is
+called the *fingerprint* of the browser and includes the name and version of
+the browser, the size of the window, the time zone, the available fonts, etc.
+
+To make it difficult to distinguish Tails users from other users of *Tor
+Browser*, *Tor Browser* in Tails tries to provide the same information as *Tor
+Browser* on other operating systems.
+
+<!--
+
+Refer to the [[fingerprint section of our list of known issues
+|support/known_issues#fingerprint]] to know if there are differences
+between the fingerprints of *Tor Browser* inside and outside of Tails.
+
+-->
+
+A difference is that Tails includes the *uBlock Origin* extension, which
+removes advertisements. If an attacker can determine that you are not
+downloading the advertisements that are included in a webpage, that could
+reveal that you are a Tails user.
+
+<div class="next">
+
+<p>To hide to someone monitoring your Internet connection that you are
+connecting to Tor, see our documentation about [[connecting to the Tor
+network|tor]].</p>
+
+</div>
+
+<h1 id="https-everywhere">Secure connections with HTTPS</h1>
+
+Using HTTPS instead of HTTP encrypts your communications with the website
+and prevents the [[Tor exit node from intercepting your
+communications|about/warnings/tor#exit]].
+
+For example, here is how the browser looks when we try to log in to an email
+account at [riseup.net](https://riseup.net/), using their [webmail
+interface](https://mail.riseup.net/):
+
+[[!img doc/anonymous_internet/Tor_Browser/riseup.png class="screenshot" alt=""]]
+
+Notice the padlock icon on the left of the address bar saying "mail.riseup.net".
+Notice also the address beginning with "https://" (instead of "http://"). These are the
+indicators that an encrypted connection using [[!wikipedia HTTPS]] is being
+used.
+
+When you are sending or retrieving sensitive information (like passwords), you
+should try to only use services providing HTTPS. Otherwise, it is very easy
+for an eavesdropper to steal whatever information you are sending, or to
+modify the content of a page on its way to your browser.
+
+To learn more about HTTPS and how *Tor Browser* protects you, see:
+
+* [Tor Support: How HTTPS encryption and Tor works in Tor Browser to enhance your privacy and anonymity](https://support.torproject.org/about-tor/security/https-encryption-and-tor/)
+* [Tor Browser User Manual: Secure Connections](https://tb-manual.torproject.org/secure-connections/)
+
+<h1 id="javascript">Protection against dangerous JavaScript</h1>
+
+Having all JavaScript disabled by default would disable a lot of harmless and
+possibly useful JavaScript, and might render many websites unusable.
+
+That is why JavaScript is enabled by default but
+*Tor Browser* disables all potentially
+dangerous JavaScript. We consider this as a necessary compromise between
+security and usability.
+
+<div class="note">
+
+<p>To understand better the behavior of <i>Tor Browser</i>,
+for example, regarding JavaScript and cookies, you can
+refer to the <a href="https://2019.www.torproject.org/projects/torbrowser/design/">
+<i>Tor Browser</i> design document</a>.</p>
+
+</div>
+
+<h1 id="security-level">Security level</h1>
+
+You can change the security level of *Tor Browser*
+to disable browser features as a trade-off between security and usability.
+For example, you can set the security level to *Safest* to disable JavaScript completely.
+
+The security level is set to *Standard* by default which gives
+the most usable experience.
+
+To change the security level:
+
+1. Select the [[!img security-level.png link="no" class="symbolic"]] icon on
+   the right of the address bar.
+
+1. Select **Settings** in the **Security level** menu.
+
+1. In the **Security Level** settings, select **Change**.
+
+1. Select a new security level.
+
+1. **Save and restart** to apply the change.
+
+   All windows and tabs will be closed when restarting.
+
+[[!img security-levels.png class="screenshot" alt=""]]
+
+<div class="note">
+
+<p>You can safely disregard the message, "Your browser is being managed by
+your organization," which appears in the
+<i>Tor Browser</i> preferences.</p>
+
+<p>All this message means is that the automatic updates feature of
+<i>Tor Browser</i> has been disabled. This is done
+intentionally in Tails to make sure that no security feature or configuration
+gets broken by automatic updates of
+<i>Tor Browser</i>.</p>
+
+</div>
+
+<h1 id="circuit-view">Tor circuit</h1>
+
+[[!img circuit-view.png class="screenshot" alt=""]]
+
+Select the [[!img tor-circuit.png alt="Tor Circuit" class="symbolic"
+link="no"]] button in the address bar to show the relays in the Tor circuit
+that is used to connect to the website in the current tab.
+
+The last relay in the circuit, the one immediately above the
+destination website, is the *exit relay*. Its
+country might influence how the website behaves.
+
+Click on the
+**[[New Tor circuit for this site|Tor_Browser#circuit-view]]** button
+to use a different circuit.
+
+You can use
+*[[Onion Circuits|doc/anonymous_internet/tor/circuits]]*
+to get more detailed information about the circuits being used.
+
+<h1 id="new-identity"><b>New Identity</b> feature</h1>
+
+To switch to a new identity, choose [[!img lib/open-menu.png alt="Open Application Menu"
+class="symbolic" link="no"]]&nbsp;▸ **New identity**.
+
+The New Identity feature of
+<i>Tor Browser</i>:
+
+- Closes all open tabs.
+
+- Clears the session state including cache, history, and cookies.
+
+- Closes all existing web connections and creates new Tor circuits.
+
+<div class="caution">
+
+<p>This feature is not enough to strongly [[separate contextual identities|about/warnings/identity#contextual]]
+as the Tor circuits used outside of
+<i>Tor Browser</i> are not changed.</p>
+
+<p>Restart Tails instead.</p>
+
+</div>
+
+For more details, see the [design and implementation of the Tor Browser](https://2019.www.torproject.org/projects/torbrowser/design/#new-identity).
+
+<h1 id="noscript">NoScript to have even more control over JavaScript</h1>
+
+*Tor Browser* includes the
+*NoScript* extension to:
+
+- Protect from more JavaScript attacks. For example, cross-site
+  scripting (XSS) attacks.
+
+- Allow you to disable JavaScript completely on some websites only.
+
+For more information, you can refer to the NoScript
+[website](http://noscript.net/) and [features](http://noscript.net/features).
+
+<h1 id="letterboxing">Letterboxing</h1>
+
+[[!img letter-boxing.png class="screenshot" alt=""]]
+
+The letterboxing feature of *Tor Browser* helps
+to prevent websites from identifying your browser based on the size of its window.
+Without letterboxing, websites could use
+the size of the browser window to track visitors or weaken your anonymity.
+
+The letterboxing feature of *Tor Browser* works
+by adding gray margins to the browser window when the window is resized. The
+webpage remains as close as possible to the desired size without revealing the
+actual size of the window.

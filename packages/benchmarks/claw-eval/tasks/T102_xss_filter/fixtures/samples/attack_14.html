@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html><head><title>SVG XSS</title></head>
+<body>
+<svg onload="alert('XSS via SVG onload')">
+  <circle cx="50" cy="50" r="40" fill="red"/>
+</svg>
+<p>SVG with onload event.</p>
+</body></html>

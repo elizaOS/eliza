@@ -1,0 +1,7 @@
+VERSION 5.8 ;
+MACRO npu_softmacro
+  CLASS BLOCK ;
+  ORIGIN 0 0 ;
+  SIZE 120 BY 120 ;
+END npu_softmacro
+END LIBRARY

@@ -1,0 +1,93 @@
+{
+  "verdict": "needs-implementation",
+  "candidate_count": 2,
+  "target_mm": 18.0,
+  "minimum_candidate_clearance_mm": 1.485,
+  "candidate_poses": [
+    "right_shoulder_pitch_joint_low__right_elbow_joint_low",
+    "left_shoulder_pitch_joint_low__left_elbow_joint_low"
+  ],
+  "candidate_rows": [
+    {
+      "pose": "right_shoulder_pitch_joint_low__right_elbow_joint_low",
+      "clearance_mm": 1.485,
+      "target_mm": 18.0,
+      "shortfall_mm": 16.515,
+      "part": "face_shell",
+      "region": "neck_head_face",
+      "part_body": "torso_link",
+      "base_body": "right_wrist_roll_link",
+      "base_geom": "geom_134",
+      "base_geom_type": "mesh",
+      "body_tree_distance": 5,
+      "part_sample_point_m": [
+        -0.00584,
+        -0.0429,
+        1.27113
+      ],
+      "base_sample_point_m": [
+        -0.00618,
+        -0.042,
+        1.26999
+      ],
+      "part_to_base_vector_m": [
+        -0.00034,
+        0.0009,
+        -0.00113
+      ],
+      "part_to_base_vector_mm": [
+        -0.342,
+        0.897,
+        -1.134
+      ]
+    },
+    {
+      "pose": "left_shoulder_pitch_joint_low__left_elbow_joint_low",
+      "clearance_mm": 2.351,
+      "target_mm": 18.0,
+      "shortfall_mm": 15.649,
+      "part": "face_shell",
+      "region": "neck_head_face",
+      "part_body": "torso_link",
+      "base_body": "left_wrist_roll_link",
+      "base_geom": "geom_117",
+      "base_geom_type": "mesh",
+      "body_tree_distance": 5,
+      "part_sample_point_m": [
+        -0.00718,
+        0.02037,
+        1.20628
+      ],
+      "base_sample_point_m": [
+        -0.00931,
+        0.02118,
+        1.20568
+      ],
+      "part_to_base_vector_m": [
+        -0.00212,
+        0.00081,
+        -0.0006
+      ],
+      "part_to_base_vector_mm": [
+        -2.124,
+        0.811,
+        -0.596
+      ]
+    }
+  ],
+  "controlled_part": "face_shell",
+  "controlled_base_body_suffix": "wrist_roll_link",
+  "enforcement": {
+    "policy_verdict": "needs-controller-enforcement",
+    "clearance_gate_mm": 18.0,
+    "blocked_or_replanned_poses": [
+      "right_shoulder_pitch_joint_low__right_elbow_joint_low",
+      "left_shoulder_pitch_joint_low__left_elbow_joint_low"
+    ],
+    "controlled_part": "face_shell",
+    "controlled_base_body_suffix": "wrist_roll_link",
+    "rationale": "The candidate rows are extreme wrist poses entering the protected face volume. A geometry-only fix large enough to clear them would degrade the donor-derived face."
+  },
+  "required_action": "Implement controller joint-limit or keepout-volume enforcement for candidate poses, or replace the physical wrist/forearm geometry, before claiming extreme-pose mechanical release.",
+  "design_guardrail": "Do not satisfy these rows by further flattening the donor-derived face unless the replacement face still passes concept-alignment review and visual inspection."
+}

@@ -1,0 +1,13 @@
+reason: external/linux exists and has imported the Eliza e1 BSP, but host tools cannot run the kernel build and no PASS transcript has been captured.
+state: blocked
+evidence_id: linux_kernel_build
+evidence_path: docs/evidence/linux/eliza_e1_kernel_build.log
+status_report: docs/evidence/linux/linux-external-bsp-status.json
+candidate_external_tree: external/linux
+preflight_command: python3 scripts/check_linux_external_bsp.py external/linux
+import_command: sw/linux/scripts/import-linux-bsp.sh external/linux
+configure_command: cd external/linux && make ARCH=riscv eliza_e1.config olddefconfig
+capture_command: sw/linux/scripts/capture-linux-bsp-evidence.sh external/linux kernel-build
+required_markers: eliza-evidence: target=linux artifact=eliza_e1_kernel_build; CONFIG_ELIZA_E1_BSP; CONFIG_ELIZA_E1_NPU; CONFIG_ELIZA_E1_DMA; CONFIG_ELIZA_E1_DISPLAY; eliza-evidence: status=PASS
+current_local_blockers: gnu_make_too_old_or_missing; riscv_cross_compiler_missing; linux_kernel_build_evidence_blocked
+audit: docs/android/bsp-critical-gap-audit-2026-05-17.md (Machine-readable BLOCK gates)

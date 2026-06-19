@@ -1,0 +1,748 @@
+import { getEntityDetails } from "../../../entities.ts";
+import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import { getRelatedEntityIds } from "../../../identity-clusters.ts";
+import type {
+	CustomMetadata,
+	Entity,
+	IAgentRuntime,
+	Memory,
+	Provider,
+	ProviderResult,
+	State,
+	UUID,
+} from "../../../types/index.ts";
+import { ChannelType } from "../../../types/index.ts";
+import { addHeader, formatMessages, formatPosts } from "../../../utils.ts";
+
+// Get text content from centralized specs
+const spec = requireProviderSpec("RECENT_MESSAGES");
+const MAX_RECENT_MESSAGES_LOOKBACK = 50;
+const MAX_RECENT_INTERACTIONS = 20;
+const MAX_COMPACT_LEDGER_CHARS = 4000;
+const INTERNAL_BRIDGE_MESSAGE_SOURCES = new Set([
+	"acpx:sub-agent-router",
+	"swarm_synthesis",
+]);
+const INTERNAL_TOOL_TRANSCRIPT_MARKERS = [
+	"[tool output:",
+	"[/tool output]",
+	"[sub-agent:",
+];
+const SYNTHETIC_ASSISTANT_FAILURE_TEXTS = new Set([
+	"sorry, i'm having a provider issue",
+	"something went wrong on my end. please try again.",
+	"i don't have a reply for that — try rephrasing?",
+	"i don't have a reply for that - try rephrasing?",
+]);
+const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
+	"provider_issue",
+	"local_inference",
+	"no_provider",
+	"insufficient_credits",
+	"no_response",
+	"transient_failure",
+]);
+
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+function hasSyntheticFailureMetadata(record: Record<string, unknown> | null) {
+	if (!record) return false;
+	if (
+		record.elizaSyntheticFailure === true ||
+		record.syntheticChatFailure === true
+	) {
+		return true;
+	}
+	const failureKind =
+		typeof record.failureKind === "string"
+			? record.failureKind
+			: typeof record.chatFailureKind === "string"
+				? record.chatFailureKind
+				: "";
+	return SYNTHETIC_ASSISTANT_FAILURE_KINDS.has(failureKind);
+}
+
+function hasTransientMetadata(record: Record<string, unknown> | null): boolean {
+	if (!record) return false;
+	return record.transient === true;
+}
+
+/**
+ * Filter out the agent's own *transient* status messages — sub-agent
+ * spawn acks, narration chunks, heartbeats, completion summaries — from
+ * the conversation memory served to the planner. Without this, the
+ * planner LLM reads its own past status text and paraphrases it as
+ * "facts" on later turns (e.g. a past "Can't spawn..." hallucination
+ * resurfaces as a new hallucination on the next request). Mirrors
+ * `isSyntheticAssistantFailureMessage` semantically; the difference is
+ * scope: synthetic-failure is provider/infra noise, transient is
+ * orchestrator status. Cross-platform: connector-agnostic, the flag is
+ * on the persisted Memory regardless of whether the post landed in a
+ * thread, an edit-in-place, or a fresh send.
+ */
+function isTransientStatusMessage(
+	memory: Memory,
+	agentId: UUID | undefined,
+): boolean {
+	if (!agentId || memory.entityId !== agentId) return false;
+	const content = asObjectRecord(memory.content);
+	return (
+		hasTransientMetadata(content) ||
+		hasTransientMetadata(asObjectRecord(content?.metadata)) ||
+		hasTransientMetadata(asObjectRecord(memory.metadata))
+	);
+}
+
+function isSyntheticAssistantFailureMessage(
+	memory: Memory,
+	agentId: UUID | undefined,
+): boolean {
+	if (!agentId || memory.entityId !== agentId) return false;
+
+	const content = asObjectRecord(memory.content);
+	if (
+		hasSyntheticFailureMetadata(content) ||
+		hasSyntheticFailureMetadata(asObjectRecord(content?.metadata)) ||
+		hasSyntheticFailureMetadata(asObjectRecord(memory.metadata))
+	) {
+		return true;
+	}
+
+	const normalized = normalizeDialogueText(memory)
+		.toLowerCase()
+		.replace(/[’]/g, "'")
+		.replace(/\s+/g, " ");
+	if (!normalized) return false;
+	if (SYNTHETIC_ASSISTANT_FAILURE_TEXTS.has(normalized)) return true;
+
+	return (
+		/\bprovider issue\b/.test(normalized) ||
+		/^something went wrong on my end\b/.test(normalized)
+	);
+}
+
+function isInternalBridgeMessage(memory: Memory): boolean {
+	const source =
+		typeof memory.content.source === "string"
+			? memory.content.source.trim()
+			: "";
+	const metadata =
+		memory.content?.metadata && typeof memory.content.metadata === "object"
+			? (memory.content.metadata as Record<string, unknown>)
+			: {};
+	return (
+		INTERNAL_BRIDGE_MESSAGE_SOURCES.has(source) || metadata.subAgent === true
+	);
+}
+
+function isLeakedAssistantToolTranscript(
+	memory: Memory,
+	agentId: UUID | undefined,
+): boolean {
+	if (!agentId || memory.entityId !== agentId) return false;
+	const text =
+		typeof memory.content.text === "string" ? memory.content.text : "";
+	return INTERNAL_TOOL_TRANSCRIPT_MARKERS.some((marker) =>
+		text.includes(marker),
+	);
+}
+
+function isLocalPathLine(line: string): boolean {
+	const trimmed = line.trim();
+	return (
+		(trimmed.startsWith("/") && trimmed.includes("/", 1)) ||
+		/^[A-Za-z]:[\\/]/.test(trimmed)
+	);
+}
+
+function isLeakedAssistantPathDump(
+	memory: Memory,
+	agentId: UUID | undefined,
+): boolean {
+	if (!agentId || memory.entityId !== agentId) return false;
+	const text =
+		typeof memory.content.text === "string" ? memory.content.text : "";
+	const lines = text
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean);
+	if (lines.length < 5) return false;
+	const pathLineCount = lines.filter(isLocalPathLine).length;
+	return pathLineCount >= 5 && pathLineCount / lines.length >= 0.6;
+}
+
+function normalizeDialogueText(memory: Memory): string {
+	return typeof memory.content.text === "string"
+		? memory.content.text.replace(/\s+/g, " ").trim()
+		: "";
+}
+
+function dedupeConsecutiveDialogueMessages(messages: Memory[]): Memory[] {
+	const deduped: Memory[] = [];
+	for (const message of messages) {
+		const previous = deduped.at(-1);
+		if (
+			previous?.entityId === message.entityId &&
+			normalizeDialogueText(previous) === normalizeDialogueText(message)
+		) {
+			continue;
+		}
+		deduped.push(message);
+	}
+	return deduped;
+}
+
+function dedupeAssistantRunMessages(
+	messages: Memory[],
+	agentId: UUID | undefined,
+): Memory[] {
+	if (!agentId) return messages;
+	const deduped: Memory[] = [];
+	let assistantRunTexts = new Set<string>();
+	for (const message of messages) {
+		if (message.entityId !== agentId) {
+			assistantRunTexts = new Set<string>();
+			deduped.push(message);
+			continue;
+		}
+		const normalized = normalizeDialogueText(message);
+		if (normalized && assistantRunTexts.has(normalized)) {
+			continue;
+		}
+		if (normalized) assistantRunTexts.add(normalized);
+		deduped.push(message);
+	}
+	return deduped;
+}
+
+function getConversationCompactionLedger(room: { metadata?: unknown } | null) {
+	const metadata =
+		room?.metadata && typeof room.metadata === "object"
+			? (room.metadata as Record<string, unknown>)
+			: {};
+	const compaction = metadata.conversationCompaction;
+	if (!compaction || typeof compaction !== "object") return "";
+	const ledger = (compaction as Record<string, unknown>).priorLedger;
+	return typeof ledger === "string" ? ledger.trim() : "";
+}
+
+function buildFormattingFallbackEntity(memory: Memory): Entity | null {
+	const metadata = memory.metadata as CustomMetadata | undefined;
+	const entityName =
+		typeof metadata?.entityName === "string" ? metadata.entityName.trim() : "";
+
+	if (!memory.entityId || entityName.length === 0) {
+		return null;
+	}
+
+	return {
+		id: memory.entityId,
+		agentId: memory.agentId,
+		names: [entityName],
+		metadata: {
+			name: entityName,
+			userName: entityName,
+			username: entityName,
+		},
+	} as Entity;
+}
+
+async function ensureFormattingEntities(
+	runtime: IAgentRuntime,
+	entities: Entity[],
+	messages: Memory[],
+): Promise<Entity[]> {
+	const entitiesById = new Map<UUID, Entity>();
+	for (const entity of entities) {
+		if (entity.id) {
+			entitiesById.set(entity.id, entity);
+		}
+	}
+
+	const missingMessageByEntityId = new Map<UUID, Memory>();
+	for (const memory of messages) {
+		if (!memory.entityId || entitiesById.has(memory.entityId)) {
+			continue;
+		}
+
+		if (!missingMessageByEntityId.has(memory.entityId)) {
+			missingMessageByEntityId.set(memory.entityId, memory);
+		}
+	}
+
+	const missingEntityIds = Array.from(missingMessageByEntityId.keys());
+	if (missingEntityIds.length === 0) {
+		return Array.from(entitiesById.values());
+	}
+
+	const resolvedEntities = await Promise.all(
+		missingEntityIds.map((entityId) => runtime.getEntityById(entityId)),
+	);
+
+	for (let i = 0; i < missingEntityIds.length; i += 1) {
+		const entityId = missingEntityIds[i];
+		const resolvedEntity = resolvedEntities[i];
+
+		if (resolvedEntity) {
+			entitiesById.set(entityId, resolvedEntity);
+			continue;
+		}
+
+		const fallbackMemory = missingMessageByEntityId.get(entityId);
+		const fallbackEntity =
+			fallbackMemory && buildFormattingFallbackEntity(fallbackMemory);
+		if (fallbackEntity) {
+			entitiesById.set(entityId, fallbackEntity);
+		}
+	}
+
+	return Array.from(entitiesById.values());
+}
+
+// Move getRecentInteractions outside the provider
+/**
+ * Retrieves the recent interactions between two entities in a specific context.
+ *
+ * @param {IAgentRuntime} runtime - The agent runtime object.
+ * @param {UUID} sourceEntityId - The UUID of the source entity.
+ * @param {UUID} targetEntityId - The UUID of the target entity.
+ * @param {UUID} excludeRoomId - The UUID of the room to exclude from the search.
+ * @returns {Promise<Memory[]>} A promise that resolves to an array of Memory objects representing recent interactions.
+ */
+/**
+ * Retrieves the recent interactions between two entities in different rooms excluding a specific room.
+ * @param {IAgentRuntime} runtime - The agent runtime object.
+ * @param {UUID} sourceEntityId - The UUID of the source entity.
+ * @param {UUID} targetEntityId - The UUID of the target entity.
+ * @param {UUID} excludeRoomId - The UUID of the room to exclude from the search.
+ * @returns {Promise<Memory[]>} An array of Memory objects representing recent interactions between the two entities.
+ */
+const getRecentInteractions = async (
+	runtime: IAgentRuntime,
+	sourceEntityId: UUID,
+	targetEntityId: UUID,
+	excludeRoomId: UUID,
+): Promise<Memory[]> => {
+	const sourceEntityIds = await getRelatedEntityIds(runtime, sourceEntityId);
+	const roomsByIdentity = await Promise.all(
+		sourceEntityIds.map((entityId) =>
+			runtime.getRoomsForParticipants([entityId, targetEntityId]),
+		),
+	);
+	const rooms = Array.from(new Set(roomsByIdentity.flat()));
+	const otherRooms = rooms.filter((room) => room !== excludeRoomId);
+	if (otherRooms.length === 0) {
+		return [];
+	}
+
+	// Check the existing memories in the database
+	return runtime.getMemoriesByRoomIds({
+		tableName: "messages",
+		roomIds: otherRooms,
+		limit: 20,
+	});
+};
+
+/**
+ * A provider object that retrieves recent messages, interactions, and memories based on a given message.
+ * @typedef {object} Provider
+ * @property {string} name - The name of the provider ("RECENT_MESSAGES").
+ * @property {string} description - A description of the provider's purpose ("Recent messages, interactions and other memories").
+ * @property {number} position - The position of the provider (100).
+ * @property {Function} get - Asynchronous function that retrieves recent messages, interactions, and memories.
+ * @param {IAgentRuntime} runtime - The runtime context for the agent.
+ * @param {Memory} message - The message to retrieve data from.
+ * @returns {object} An object containing data, values, and text sections.
+ */
+export const recentMessagesProvider: Provider = {
+	name: spec.name,
+	description: spec.description,
+	position: spec.position ?? 100,
+	contexts: ["memory", "messaging"],
+	contextGate: { anyOf: ["memory", "messaging"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	roleGate: { minRole: "USER" },
+
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state: State,
+	): Promise<ProviderResult> => {
+		try {
+			const { roomId } = message;
+			const conversationLength = Math.min(
+				runtime.getConversationLength(),
+				MAX_RECENT_MESSAGES_LOOKBACK,
+			);
+
+			// First get room to check for compaction point
+			const room = await runtime.getRoom(roomId);
+
+			// Check for compaction point - only load messages after this timestamp
+			const lastCompactionAt = room?.metadata?.lastCompactionAt as
+				| number
+				| undefined;
+			const compactLedger = getConversationCompactionLedger(room);
+
+			// Parallelize initial data fetching operations including recentInteractions
+			const [entitiesData, recentMessagesData, recentInteractionsData] =
+				await Promise.all([
+					getEntityDetails({ runtime, roomId }),
+					runtime.getMemories({
+						tableName: "messages",
+						roomId,
+						limit: conversationLength,
+						unique: false,
+						// Use compaction point to filter history
+						start: lastCompactionAt,
+					}),
+					message.entityId !== runtime.agentId
+						? getRecentInteractions(
+								runtime,
+								message.entityId,
+								runtime.agentId,
+								roomId,
+							).then((interactions) =>
+								interactions.slice(0, MAX_RECENT_INTERACTIONS),
+							)
+						: Promise.resolve([]),
+				]);
+
+			// Separate action results from regular messages
+			const actionResultMessages = recentMessagesData.filter(
+				(msg) => msg.content && msg.content.type === "action_result",
+			);
+
+			// Hard cap on rendered history regardless of how many memories the
+			// DB returned. The `limit` parameter passed to `runtime.getMemories`
+			// is meant to bound this — but in practice some adapter paths and
+			// compaction-window combinations return the entire room's history.
+			// That dropped a single HANDLE_RESPONSE call to 220K+ characters of
+			// formatted history, ~55K tokens, plus duplicates from
+			// `appendPriorDialogueEvents` and `PLATFORM_CHAT_CONTEXT`. Slice to
+			// the runtime-configured conversation length (or the lookback
+			// ceiling) so the formatted text block is always bounded.
+			const rawDialogueMessages = recentMessagesData
+				.filter(
+					(msg) =>
+						!(msg.content && msg.content.type === "action_result") &&
+						!isInternalBridgeMessage(msg) &&
+						!isSyntheticAssistantFailureMessage(msg, runtime.agentId) &&
+						!isTransientStatusMessage(msg, runtime.agentId) &&
+						!isLeakedAssistantToolTranscript(msg, runtime.agentId) &&
+						!isLeakedAssistantPathDump(msg, runtime.agentId),
+				)
+				.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+			const dialogueMessages = dedupeAssistantRunMessages(
+				dedupeConsecutiveDialogueMessages(rawDialogueMessages),
+				runtime.agentId,
+			).slice(-conversationLength);
+
+			// Room entity lookups only include current participants. Historical room
+			// context can still contain messages from senders who left the room or
+			// whose entity row is temporarily unavailable, so backfill those before
+			// formatting to avoid noisy "No entity found for message" warnings.
+			const entitiesForFormatting = await ensureFormattingEntities(
+				runtime,
+				entitiesData,
+				[message, ...dialogueMessages],
+			);
+
+			// Default to message format if room is not found or type is undefined
+			const isPostFormat = room?.type
+				? room.type === ChannelType.FEED || room.type === ChannelType.THREAD
+				: false;
+
+			// Format recent messages and posts in parallel, using only dialogue messages
+			const [formattedRecentMessages, formattedRecentPosts] = await Promise.all(
+				[
+					formatMessages({
+						messages: dialogueMessages,
+						entities: entitiesForFormatting,
+					}),
+					formatPosts({
+						messages: dialogueMessages,
+						entities: entitiesForFormatting,
+						conversationHeader: false,
+					}),
+				],
+			);
+
+			// Action results are formatted exclusively by the ACTION_STATE provider
+			// (position 150) to avoid duplication in the LLM context.
+
+			// Create formatted text with headers
+			const recentPostsBody =
+				formattedRecentPosts && formattedRecentPosts.length > 0
+					? addHeader("# Posts in Thread", formattedRecentPosts)
+					: "";
+
+			const compactedContext = compactLedger
+				? addHeader(
+						"# Conversation Compact Ledger",
+						compactLedger.length > MAX_COMPACT_LEDGER_CHARS
+							? `${compactLedger.slice(0, MAX_COMPACT_LEDGER_CHARS)}...`
+							: compactLedger,
+					)
+				: "";
+			const recentPosts = [compactedContext, recentPostsBody]
+				.filter(Boolean)
+				.join("\n\n");
+
+			const recentMessagesBody =
+				formattedRecentMessages && formattedRecentMessages.length > 0
+					? addHeader("# Conversation Messages", formattedRecentMessages)
+					: "";
+			const recentMessages = [compactedContext, recentMessagesBody]
+				.filter(Boolean)
+				.join("\n\n");
+
+			// If there are no messages at all, and no current message to process, return a specific message.
+			// The check for dialogueMessages.length === 0 ensures we only show this if there's truly nothing.
+			if (
+				!recentPosts &&
+				!recentMessages &&
+				dialogueMessages.length === 0 &&
+				!message.content.text
+			) {
+				return {
+					data: {
+						recentMessages: dialogueMessages,
+						recentInteractions: [],
+						actionResults: actionResultMessages,
+					},
+					values: {
+						recentPosts: "",
+						recentMessages: "",
+						recentMessageInteractions: "",
+						recentPostInteractions: "",
+						recentInteractions: "",
+						recentActionResults: "",
+					},
+					text: "No recent messages available",
+				};
+			}
+
+			let recentMessage = "No recent message available.";
+
+			if (dialogueMessages.length > 0) {
+				// Get the most recent dialogue message (create a copy to avoid mutating original array)
+				const mostRecentMessage = [...dialogueMessages].sort(
+					(a, b) => (b.createdAt || 0) - (a.createdAt || 0),
+				)[0];
+
+				// Format just this single message to get the internal thought
+				const formattedSingleMessage = formatMessages({
+					messages: [mostRecentMessage],
+					entities: entitiesForFormatting,
+				});
+
+				if (formattedSingleMessage) {
+					recentMessage = formattedSingleMessage;
+				}
+			}
+
+			const metaData = message.metadata as CustomMetadata;
+			const foundEntity = entitiesForFormatting.find(
+				(entity: Entity) => entity.id === message.entityId,
+			);
+			const senderName =
+				foundEntity?.names?.[0] || metaData.entityName || "Unknown User";
+			const receivedMessageContent = message.content.text;
+
+			const hasReceivedMessage = !!receivedMessageContent?.trim();
+
+			const receivedMessageHeader = hasReceivedMessage
+				? addHeader(
+						"# Received Message",
+						`${senderName}: ${receivedMessageContent}`,
+					)
+				: "";
+
+			const focusHeader = hasReceivedMessage
+				? addHeader(
+						"# Focus your response",
+						`You are replying to the above message from **${senderName}**. Keep your answer relevant to that message, but include as context any previous messages in the thread from after your last reply.`,
+					)
+				: "";
+
+			// Preload all necessary entities for both types of interactions
+			const interactionEntityMap = new Map<UUID, Entity>();
+
+			// Only proceed if there are interactions to process
+			if (recentInteractionsData.length > 0) {
+				// Get unique entity IDs that aren't the runtime agent
+				const uniqueEntityIds = [
+					...new Set(
+						recentInteractionsData
+							.map((message) => message.entityId)
+							.filter((id) => id !== runtime.agentId),
+					),
+				];
+
+				// Create a Set for faster lookup
+				const uniqueEntityIdSet = new Set(uniqueEntityIds);
+
+				// Add entities already fetched in entitiesData to the map
+				const entitiesDataIdSet = new Set<UUID>();
+				entitiesForFormatting.forEach((entity: Entity) => {
+					const entityId = entity.id;
+					if (entityId && uniqueEntityIdSet.has(entityId)) {
+						interactionEntityMap.set(entityId, entity);
+						entitiesDataIdSet.add(entityId);
+					}
+				});
+
+				// Get the remaining entities that weren't already loaded
+				// Use Set difference for efficient filtering
+				const remainingEntityIds = uniqueEntityIds.filter(
+					(id) => !entitiesDataIdSet.has(id),
+				);
+
+				// Only fetch the entities we don't already have
+				if (remainingEntityIds.length > 0) {
+					const entities = await Promise.all(
+						remainingEntityIds.map((entityId) =>
+							runtime.getEntityById(entityId),
+						),
+					);
+
+					entities.forEach((entity, index) => {
+						if (entity) {
+							interactionEntityMap.set(remainingEntityIds[index], entity);
+						}
+					});
+				}
+			}
+
+			// Format recent message interactions
+			const getRecentMessageInteractions = async (
+				recentInteractionsData: Memory[],
+			): Promise<string> => {
+				// Format messages using the pre-fetched entities
+				const formattedInteractions = recentInteractionsData.map((message) => {
+					const isSelf = message.entityId === runtime.agentId;
+					let sender: string;
+
+					if (isSelf) {
+						sender = runtime.character.name ?? "Agent";
+					} else {
+						const interactionEntity = interactionEntityMap.get(
+							message.entityId,
+						);
+						const interactionMetadata = interactionEntity?.metadata;
+						sender =
+							(interactionMetadata &&
+								(interactionMetadata.userName as string)) ||
+							"unknown";
+					}
+
+					return `${sender}: ${message.content.text}`;
+				});
+
+				return formattedInteractions.join("\n");
+			};
+
+			// Format recent post interactions
+			const getRecentPostInteractions = async (
+				recentInteractionsData: Memory[],
+				entities: Entity[],
+			): Promise<string> => {
+				// Combine pre-loaded entities with any other entities
+				const combinedEntities = [...entities];
+
+				// Add entities from interactionEntityMap that aren't already in entities
+				const actorIds = new Set(entities.map((entity) => entity.id));
+				for (const [id, entity] of interactionEntityMap.entries()) {
+					if (!actorIds.has(id)) {
+						combinedEntities.push(entity);
+					}
+				}
+
+				const formattedInteractions = formatPosts({
+					messages: recentInteractionsData,
+					entities: combinedEntities,
+					conversationHeader: true,
+				});
+
+				return formattedInteractions;
+			};
+
+			// Process both types of interactions in parallel
+			const [recentMessageInteractions, recentPostInteractions] =
+				await Promise.all([
+					getRecentMessageInteractions(recentInteractionsData),
+					getRecentPostInteractions(
+						recentInteractionsData,
+						entitiesForFormatting,
+					),
+				]);
+
+			const data = {
+				recentMessages: dialogueMessages,
+				recentInteractions: recentInteractionsData,
+				actionResults: actionResultMessages,
+			};
+
+			const values = {
+				recentPosts,
+				recentMessages,
+				recentMessageInteractions,
+				recentPostInteractions,
+				recentInteractions: isPostFormat
+					? recentPostInteractions
+					: recentMessageInteractions,
+				recentActionResults: "",
+				recentMessage,
+			};
+
+			// Combine all text sections
+			const text = [
+				isPostFormat ? recentPosts : recentMessages,
+				// Only add received message and focus headers if there are messages or a current message to process
+				recentMessages || recentPosts || message.content.text
+					? receivedMessageHeader
+					: "",
+				recentMessages || recentPosts || message.content.text
+					? focusHeader
+					: "",
+			]
+				.filter(Boolean)
+				.join("\n\n");
+
+			return {
+				data: {
+					recentMessages: data.recentMessages,
+					recentInteractions: data.recentInteractions,
+					actionResults: data.actionResults,
+				},
+				values,
+				text,
+			};
+		} catch (error) {
+			return {
+				data: {
+					recentMessages: [],
+					recentInteractions: [],
+					actionResults: [],
+					error: error instanceof Error ? error.message : String(error),
+				},
+				values: {
+					recentPosts: "",
+					recentMessages: "",
+					recentMessageInteractions: "",
+					recentPostInteractions: "",
+					recentInteractions: "",
+					recentActionResults: "",
+					recentMessage: "",
+				},
+				text: "No recent messages available",
+			};
+		}
+	},
+};

@@ -1,0 +1,95 @@
+import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { cn } from "../../lib/utils";
+import { BrandCard } from "./brand-card";
+
+export interface KeyMetric {
+  label: string;
+  value: ReactNode;
+  helper?: ReactNode;
+  delta?: {
+    value: string;
+    trend?: "up" | "down" | "neutral";
+    label?: string;
+  };
+  icon?: LucideIcon;
+  accent?: "violet" | "sky" | "emerald" | "amber" | "rose";
+}
+
+interface KeyMetricsGridProps {
+  metrics: KeyMetric[];
+  columns?: 2 | 3 | 4;
+}
+
+const accentClasses: Record<NonNullable<KeyMetric["accent"]>, string> = {
+  violet: "border-status-info/40",
+  sky: "border-status-info/40",
+  emerald: "border-ok/40",
+  amber: "border-warn/40",
+  rose: "border-danger/40",
+};
+
+type TrendTone = "up" | "down" | "neutral";
+
+const deltaToneClasses: Record<TrendTone, string> = {
+  up: "bg-ok-subtle text-ok border-ok/40",
+  down: "bg-destructive-subtle text-danger border-danger/40",
+  neutral: "bg-bg-muted text-muted-foreground border-border",
+};
+
+export function KeyMetricsGrid({ metrics, columns = 4 }: KeyMetricsGridProps) {
+  return (
+    <div
+      className={cn("grid gap-5 sm:gap-6", {
+        "md:grid-cols-2 xl:grid-cols-4": columns === 4,
+        "md:grid-cols-2 xl:grid-cols-3": columns === 3,
+        "md:grid-cols-2": columns === 2,
+      })}
+    >
+      {metrics.map((metric) => {
+        const tone: TrendTone = metric.delta?.trend ?? "neutral";
+
+        return (
+          <BrandCard
+            key={metric.label}
+            corners={false}
+            className={cn(
+              "relative overflow-hidden transition-colors hover:border-accent/40",
+              metric.accent ? accentClasses[metric.accent] : "",
+            )}
+          >
+            {metric.icon ? (
+              <div className="absolute right-5 top-5 text-muted-foreground">
+                <metric.icon className="h-5 w-5" />
+              </div>
+            ) : null}
+            <div className="space-y-2 p-6 pb-4">
+              <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {metric.label}
+              </h4>
+            </div>
+            <div className="flex flex-col gap-4 p-6 pt-3">
+              <div className="break-words text-2xl font-semibold leading-tight text-txt-strong md:text-3xl">
+                {metric.value}
+              </div>
+              {metric.delta ? (
+                <span
+                  className={cn(
+                    "w-fit rounded-sm border px-2 py-1 text-xs font-bold uppercase tracking-wide",
+                    deltaToneClasses[tone],
+                  )}
+                >
+                  {metric.delta.value}
+                  {metric.delta.label ? ` · ${metric.delta.label}` : null}
+                </span>
+              ) : null}
+              {metric.helper ? (
+                <p className="text-sm text-muted-foreground">{metric.helper}</p>
+              ) : null}
+            </div>
+          </BrandCard>
+        );
+      })}
+    </div>
+  );
+}

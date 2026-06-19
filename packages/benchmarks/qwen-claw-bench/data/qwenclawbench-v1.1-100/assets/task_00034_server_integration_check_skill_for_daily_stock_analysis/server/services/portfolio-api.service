@@ -1,0 +1,20 @@
+[Unit]
+Description=Portfolio Rebalancer API
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=admin
+Group=docker
+WorkingDirectory=/home/admin/server/deploy
+ExecStartPre=/usr/bin/docker compose pull portfolio_api
+ExecStart=/usr/bin/docker compose up portfolio_api
+ExecStop=/usr/bin/docker compose stop portfolio_api
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

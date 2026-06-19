@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_1401",
+    "from": "zhao@wantong-logistics.com",
+    "to": "support@company.com",
+    "subject": "URGENT: System unavailable for over 30 minutes, severely impacting warehouse dispatch",
+    "date": "2026-03-26T10:45:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "Hello, this is Director Zhao from Wantong Logistics. Our warehouse management system has been reporting frequent errors since 10:00 AM today, and for the past 30+ minutes it has been completely unusable. Real-time scheduling for over 200 warehouses is fully interrupted, delivery vehicles cannot receive dispatch instructions, estimated direct economic losses exceed 500,000 CNY per hour.\n\nWe are a VIP customer of your company, and our contract clearly stipulates 1-hour response and 4-hour resolution SLA standards. Please immediately initiate the emergency response process. I need to receive a resolution plan and estimated recovery time within 1 hour.\n\nIf this cannot be resolved today, we will pursue breach of contract liability per our agreement.\n\nWantong Logistics, Director Zhao\nPhone: 13900140001"
+  },
+  {
+    "message_id": "msg_1402",
+    "from": "weekly-report@company.com",
+    "to": "all-staff@company.com",
+    "subject": "Tech Department Weekly Report — 2026 Week 12",
+    "date": "2026-03-26T09:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "This week's tech department work summary:\n1. Completed v3.2 canary release\n2. Database primary-replica failover drill completed successfully\n3. Next week plan: API gateway upgrade, report module optimization\n\nAll teams please update JIRA progress promptly."
+  }
+]

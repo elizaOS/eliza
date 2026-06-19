@@ -1,0 +1,243 @@
+schema: eliza.e1_phone_supplier_pinout_manifest.v1
+date: '2026-05-21'
+claim_boundary: |
+  Manifest of e1-phone supplier pinouts captured from public supplier
+  datasheets. This artifact does NOT promote any pinout to production-release
+  evidence. The production-release gate (pinout-review/<function>.yaml + FAI
+  signoff) remains separate and is still blocked per pinout-footprint-freeze.yaml.
+source_artifacts:
+  - board/kicad/e1-phone/preliminary-bom.yaml
+  - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+captured_pinouts:
+  - file: compute-som-pinout.yaml
+    part: Core-3566JD4 (RK3566 compute SoM)
+    manufacturer: Firefly (T-chip Intelligent Technology)
+    function: application_processor_compute_som
+    package: 260-pin gold-finger SODIMM, 0.5 mm pitch
+    status: public_pinout_evidence_captured
+    completeness: full_per_pin_sodimm_signal_table_published_in_public_datasheet
+    evidence_class: public_som_connector_pinout
+    note: >
+      Retires the former NDA-gated SoC blocker. Compute is sourced as a turnkey
+      SoM (SoC + LPDDR4 + eMMC + PMIC) whose carrier-side 260-pin connector map
+      is public. Bare-SoC + NDA remains a documented cost-down option, not a
+      blocker. See nda_optional_cost_down_path below.
+  - file: gct-usb4105-pinout.yaml
+    part: USB4105-GF-A
+    manufacturer: Global Connector Technology
+    function: usb_c_receptacle_evt0
+    package: USB-C 2.0 receptacle 24-pos
+    status: public_pinout_evidence_captured
+    completeness: full_per_pin_table_published
+  - file: quectel-rg255c-pinout.yaml
+    part: RG255C-GL
+    manufacturer: Quectel
+    function: cellular
+    package: LGA 204-pin 5G RedCap
+    status: public_pinout_evidence_captured
+    completeness: full_public_1_to_204_pin_table_captured_pending_final_regional_sku_pack
+    evidence_class: public_supplier_datasheet
+    next_action: reconcile RG255C-GL public table against final EAB/NA/EU supplier pack before release
+  - file: murata-type-2ea-pinout.yaml
+    part: LBEE5XV2EA-802
+    manufacturer: Murata
+    function: wifi_bluetooth
+    package: Type 2EA SMT 12.5x9.4 mm
+    status: public_pinout_evidence_captured
+    completeness: full_public_1_to_199_terminal_table_captured_with_public_dxf_land_pattern
+    next_action: supplier/CM review of pad-number orientation, paste, RF keepouts, and assembly rules
+  - file: esim-mff2-pinout.yaml
+    part: MFF2 eSIM/eUICC standard 8-pad package
+    manufacturer: Multiple eUICC suppliers
+    function: embedded_sim
+    package: MFF2/QFN8 embedded SIM
+    status: public_pinout_evidence_captured
+    completeness: full_public_1_to_8_mff2_pin_table_captured
+    next_action: lock selected eUICC ordering code, EID personalization flow, and CM paste/reflow approval
+  - file: panasonic-evq-p7-pinout.yaml
+    part: EVQ-P7A01P
+    manufacturer: Panasonic
+    function: side_buttons
+    package: SMT side-push tactile 3.5x2.9 mm
+    status: public_pinout_evidence_captured
+    completeness: full_per_pin_table_published
+  - file: ov13855-pinout.yaml
+    part: SF-XR3855A (OV13855 module)
+    manufacturer: Sincere First / OmniVision
+    function: rear_camera
+    package: 24-pin 0.5 mm FPC tail
+    status: public_pinout_evidence_captured
+    completeness: signal_set_verified_per_pin_fpc_order_requires_signed_drawing
+    next_action: capture signed 2D drawing via supplier RFQ (rear_camera record)
+  - file: gc5035-pinout.yaml
+    part: SF-G5035S60FY (GC5035 module)
+    manufacturer: Sincere First / GalaxyCore
+    function: front_camera
+    package: 30-pin 0.5 mm FPC connector class
+    status: public_pinout_evidence_captured
+    completeness: signal_set_and_public_30pin_connector_class_verified_per_pin_fpc_order_requires_signed_drawing
+    next_action: capture signed 2D drawing via supplier RFQ (front_camera record)
+  - file: chenghao-ch550fh01a-pinout.yaml
+    part: CH550FH01A-CT
+    manufacturer: Shenzhen Chenghao Optoelectronic
+    function: display_touch
+    package: 40-pin 0.3 mm FPC + touch tail
+    status: public_pinout_evidence_captured
+    completeness: signal_set_verified_per_pin_fpc_order_requires_signed_spec
+    next_action: capture signed module specification via supplier RFQ (display_touch record)
+  - file: battery-pack-4pin-pinout.yaml
+    part: LP566487-class 1S LiPo pack connector
+    manufacturer: LiPol Battery / custom pack supplier class
+    function: battery
+    package: 4-contact 1.0 mm pitch board connector or welded FPC tail
+    status: public_pinout_evidence_captured
+    completeness: board-side 4-signal pack contract captured; exact supplier connector orientation still requires RFQ drawing
+    evidence_class: public_supplier_datasheet
+    next_action: capture supplier pack drawing, mating connector, NTC curve, ID policy, PCM spec, and safety documents
+  - file: audio-codec-qfn48-pinout.yaml
+    part: ALC5688-class audio codec and companion smart-amp development contract
+    manufacturer: Realtek / Cirrus Logic development audio function class
+    function: audio_haptics
+    package: 48-pin 0.5 mm pitch QFN development carrier pattern
+    status: public_pinout_evidence_captured
+    completeness: board-side audio signal contract captured; selected codec package pin table still required
+    evidence_class: public_supplier_datasheet
+    next_action: capture selected codec, smart amp, microphone, and haptic driver exact supplier pin tables
+  - file: backlight-bias-qfn24-pinout.yaml
+    part: LP8556-class display backlight/bias power development contract
+    manufacturer: Texas Instruments development function class
+    function: display_backlight_bias
+    package: 24-pin 0.5 mm pitch QFN/WQFN development carrier pattern
+    status: public_pinout_evidence_captured
+    completeness: board-side backlight/bias signal contract captured; selected driver package pin table still required
+    evidence_class: public_supplier_datasheet
+    next_action: capture selected backlight/bias driver exact supplier pin table and display LED-string loads
+  - file: fuel-gauge-wlcsp12-pinout.yaml
+    part: BQ27421-class single-cell Li-ion fuel gauge development contract
+    manufacturer: Texas Instruments development function class
+    function: battery_fuel_gauge
+    package: 12-ball WLCSP development carrier pattern
+    status: public_pinout_evidence_captured
+    completeness: board-side fuel-gauge signal contract captured; selected gauge ball map still required
+    evidence_class: public_supplier_datasheet
+    next_action: capture selected gauge ball map, chemistry profile, and calibration evidence
+  - file: haptic-driver-wlcsp9-pinout.yaml
+    part: DRV2605L-class LRA/ERM haptic driver development contract
+    manufacturer: Texas Instruments development function class
+    function: haptic_driver
+    package: 9-ball WLCSP development carrier pattern
+    status: public_pinout_evidence_captured
+    completeness: board-side haptic signal contract captured; selected driver ball map still required
+    evidence_class: public_supplier_datasheet
+    next_action: capture selected haptic driver ball map and actuator supplier data
+  - file: usim-esd-levelshift-pinout.yaml
+    part: TXS4555-class SIM interface supply/level-shift development contract
+    manufacturer: Texas Instruments development function class
+    function: usim_esd_levelshift
+    package: 10-pad development carrier pattern
+    status: public_pinout_evidence_captured
+    completeness: board-side USIM signal contract captured; selected level-shift/ESD pin table still required
+    evidence_class: public_supplier_datasheet
+    next_action: capture selected SIM level-shifter and ESD array exact pin tables
+  - file: nfc-controller-qfn32-pinout.yaml
+    part: PN7160-class NFC controller development contract
+    manufacturer: NXP development function class
+    function: nfc_controller
+    package: 32-pin 0.5 mm pitch QFN development carrier pattern
+    status: public_pinout_evidence_captured
+    completeness: board-side NFC signal contract captured; selected controller package reconciliation still required
+    evidence_class: public_supplier_datasheet
+    next_action: reconcile selected NFC controller package, antenna match, and production footprint
+  - file: nfc-loop-match-5pad-pinout.yaml
+    part: PN7160-class NFC antenna loop matching network development contract
+    manufacturer: NXP development function class
+    function: nfc_loop_match
+    package: 5-pad NFC loop matching development pattern
+    status: public_pinout_evidence_captured
+    completeness: board-side NFC loop matching contract captured; antenna tuning and exact values still required
+    evidence_class: public_supplier_datasheet
+    next_action: capture antenna supplier drawing, VNA tuning results, and final matching component values
+  - file: sensor-hub-qfn24-pinout.yaml
+    part: LSM6DSO-class always-on sensor hub development contract
+    manufacturer: STMicroelectronics development function class
+    function: sensor_hub
+    package: 24-pin 0.5 mm pitch QFN development carrier pattern
+    status: public_pinout_evidence_captured
+    completeness: board-side sensor-hub signal contract captured; selected sensor package pin tables still required
+    evidence_class: public_supplier_datasheet
+    next_action: capture selected IMU/ALS/barometer/magnetometer package pin tables and orientation review
+  - file: hirose-bm28-pinout.yaml
+    part: DF40C-80DP-0.4V(51)
+    manufacturer: Hirose Electric Group
+    function: top_bottom_interconnect
+    package: 80-pos 0.4 mm pitch B2B
+    status: public_pinout_evidence_captured
+    completeness: mechanical_full_signal_assignment_carried_by_flex
+  - file: tps65987-pinout.yaml
+    part: TPS65987DDH
+    manufacturer: Texas Instruments
+    function: usb_pd_controller
+    package: QFN-96, 9x9 mm
+    status: public_pinout_evidence_captured
+    completeness: full_1_to_59_pin_and_exposed_pad_table_captured_from_public_datasheet
+    next_action: cross-check against TI package drawing, IBIS/BSDL if available, and CM land-pattern review before production release
+  - file: max77860-pinout.yaml
+    part: MAX77860EWG+
+    manufacturer: Analog Devices (Maxim)
+    function: charger
+    package: WLP-81 9x9 array, 0.4 mm pitch
+    status: public_pinout_evidence_captured
+    completeness: full_A1_to_J9_bump_table_captured_from_public_datasheet
+    next_action: cross-check against ADI package drawing, land pattern, stencil, and CM WLP process review before production release
+nda_gated_pinouts: []
+
+compute_blocker_resolution:
+  status: resolved_buildable_from_public_data_via_som
+  resolved_date: '2026-05-21'
+  summary: >
+    The former sole NDA-gated line (bare Unisoc T606 BGA ball-map) is retired.
+    Compute is now sourced as the Firefly Core-3566JD4 RK3566 SoM, whose 260-pin
+    SODIMM connector pinout is published in a public datasheet (captured in
+    compute-som-pinout.yaml). The e1-phone is buildable today from public data.
+  chosen_som:
+    mpn: Core-3566JD4
+    vendor: Firefly (T-chip Intelligent Technology)
+    soc: Rockchip RK3566
+    public_pinout_doc: https://download.t-firefly.com/Spec/CoreBorads/Core-3566JD4_Specification_EN.pdf
+    buyable: ~$49 single-qty (2GB/32GB), MOQ 1, IndustryPC / Firefly Store / Alibaba
+  nda_optional_cost_down_path:
+    description: >
+      Moving from the SoM to a bare SoC on the e1-phone PCB at high volume is an
+      optional cost-down, NOT a blocker. It still requires the SoC vendor NDA for
+      the production BGA ball-map.
+    candidate_socs: [Rockchip RK3566 (public TRM + HW design guide, more openly mirrored), Unisoc T606/T616 (RDK behind NDA)]
+    unblock_procedure:
+      - contact the SoC vendor via an authorized distributor (Rockchip distributor for RK3566; Arrow/WPG/Tier-1 ODM for Unisoc)
+      - sign vendor NDA + Design-In Agreement and request the SoC Hardware Design Guide / Reference Design Kit
+      - mirror ball-map CSV to board/kicad/e1-phone/production/sourcing/soc/pinout-or-pad-map.csv
+      - emit <vendor>-<soc>-pinout.yaml with evidence_class nda_supplier_datasheet
+    owner: hardware_procurement_lead
+cross_checks:
+  total_captured: 21
+  total_nda_gated: 0
+  compute_buildable_from_public_data: true
+  every_captured_file_present_on_disk: true
+  every_captured_file_cites_public_url: true
+  complete_pin_table_file_count: 12
+  captured_files_evidence_class: [public_supplier_datasheet, public_som_connector_pinout, public_hardware_design_pdf]
+  pinout_footprint_freeze_yaml_untouched: true
+  supplier_to_kicad_evidence_map_yaml_untouched: true
+  preliminary_bom_yaml_untouched: true
+forbidden_claims:
+  - production_release_evidence_ready
+  - pinout_reviews_complete
+  - symbols_ready
+  - footprints_ready
+  - bare_soc_bga_ball_map_captured_without_nda
+release_blockers_unchanged:
+  - final regional SKU, supplier/CM orientation, paste, RF keepout, and release land-pattern signoff still required for Quectel and Murata modules
+  - all production-release reports (pinout-review, symbol-review, footprint-review, footprint-3d-binding) still blocked per supplier-to-kicad-evidence-map.yaml
+compute_blocker_change:
+  before: Unisoc T606/T616 bare-SoC BGA ball-map behind NDA was the sole un-unblockable public-data line
+  after: compute sourced as public-pinout RK3566 SoM (Core-3566JD4); no NDA-gated lines block a public-data build; bare-SoC+NDA retained as optional cost-down

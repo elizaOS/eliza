@@ -1,0 +1,49 @@
+task_id: M071_video_tennis_break_point_stats
+task_name: Video Tennis Break Point Statistics
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Watch the video and answer: in this highlights video, how many break points did Alcaraz and Medvedev each face in total? How many break points did each of them save?
+
+    Note: A break point occurs when the returner (the player who is NOT serving) is one point away from winning the game. In other words, if the returner wins this point, they "break" the server's serve. The server is said to "face" a break point, and if the server wins that point, they are said to have "saved" the break point.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the tennis highlights video.
+  Alcaraz faced 2 break points, saved 0.
+  Medvedev faced 3 break points, saved 2.
+
+primary_dimensions:
+  - completion
+  - robustness

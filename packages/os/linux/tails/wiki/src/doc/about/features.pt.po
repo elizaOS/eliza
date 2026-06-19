@@ -1,0 +1,652 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:08+0000\n"
+"PO-Revision-Date: 2025-09-18 15:11+0000\n"
+"Last-Translator: Cleverson Candido <optimuspraimu@gmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Features and included software\"]]\n"
+msgstr "[[!meta title=\"Funcionalidades e programas inclusos\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+msgid "Tails is based on [[Debian|https://www.debian.org/]] 13 (Trixie)."
+msgstr ""
+"Tails é baseado no [[Debian|https://www.debian.org/index.pt.html]] 13 "
+"(Trixie)."
+
+#. type: Title =
+#, no-wrap
+msgid "Included software"
+msgstr "Programas inclusos"
+
+#. type: Bullet: '- '
+msgid ""
+"[GNOME](http://www.gnome.org), an intuitive and attractive desktop "
+"environment ([[More...|doc/first_steps/desktop]])"
+msgstr ""
+"[GNOME](http://www.gnome.org), um ambiente de trabalho atrativo e intuitivo "
+"([[Mais...|doc/first_steps/desktop]])"
+
+#. type: Title -
+#, no-wrap
+msgid "Networking"
+msgstr "Rede"
+
+#. type: Bullet: '- '
+msgid "[Tor](https://www.torproject.org) with:"
+msgstr "[Tor](https://www.torproject.org) com:"
+
+#. type: Bullet: '  * '
+msgid "[[stream isolation|contribute/design/stream_isolation]]"
+msgstr "[[isolamento de fluxo|contribute/design/stream_isolation]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"the Onion Circuits graphical frontend ([[More...|doc/anonymous_internet/tor/"
+"circuits]])"
+msgstr ""
+"a interface gráfica Circuitos Onion ([[Mais...|doc/anonymous_internet/tor/"
+"circuits]])"
+
+#. type: Bullet: '- '
+msgid ""
+"[NetworkManager](https://networkmanager.dev/) for easy network configuration "
+"([[More...|doc/anonymous_internet/networkmanager]])"
+msgstr ""
+"[NetworkManager](https://networkmanager.dev/) para configurar redes "
+"facilmente ([[Mais...|doc/anonymous_internet/networkmanager]])"
+
+#. type: Bullet: '- '
+msgid ""
+"[Tor Browser](https://www.torproject.org) ([[More...|doc/anonymous_internet/"
+"Tor_Browser]]), a web browser based on [Mozilla Firefox](https://"
+"www.firefox.com/) and modified to protect your anonymity with:"
+msgstr ""
+"[Navegador Tor](https://www.torproject.org) ([[Mais...|doc/"
+"anonymous_internet/Tor_Browser]]), um navegador web baseado no [Mozilla "
+"Firefox](https://www.firefox.com/pt-PT/) e modificado para proteger sua "
+"anonimidade com:"
+
+#. type: Bullet: '  * '
+msgid ""
+"[NoScript](http://noscript.net/), to have even more control over JavaScript"
+msgstr ""
+"[NoScript](http://noscript.net/), para ter mais controle ainda sobre o "
+"JavaScript"
+
+#. type: Bullet: '  * '
+msgid ""
+"[uBlock Origin](https://github.com/gorhill/uBlock/), to remove advertisements"
+msgstr ""
+"[uBlock Origin](https://github.com/gorhill/uBlock/), para remover anúncios"
+
+#. type: Bullet: '- '
+msgid ""
+"[Pidgin](https://pidgin.im/) preconfigured with [OTR](https://"
+"otr.cypherpunks.ca/index.php) for Off-the-Record Messaging ([[More...|doc/"
+"anonymous_internet/pidgin]])"
+msgstr ""
+"[Pidgin](https://pidgin.im/) pré-configurado com [OTR](https://"
+"otr.cypherpunks.ca/index.php) para um serviço de mensagens sem registros "
+"([[Mais...|doc/anonymous_internet/pidgin]])"
+
+#. type: Bullet: '- '
+msgid "[OnionShare](https://onionshare.org/) for anonymous file sharing"
+msgstr ""
+"[OnionShare](https://onionshare.org/) para compartilhamento anônimo de "
+"arquivos"
+
+#. type: Bullet: '- '
+msgid ""
+"[Thunderbird](https://www.thunderbird.net/) email client with support for "
+"OpenPGP and RSS and Atom news feeds ([[More...|doc/anonymous_internet/"
+"thunderbird]])"
+msgstr ""
+"Cliente de e-mail [Thunderbird](https://www.thunderbird.net/) com suporte "
+"para OpenPGP e feeds de notícias RSS e Atom ([[Mais...|doc/"
+"anonymous_internet/thunderbird]])"
+
+#. type: Bullet: '- '
+msgid ""
+"[Electrum](https://electrum.org/), an easy-to-use bitcoin client ([[More...|"
+"doc/anonymous_internet/electrum]])"
+msgstr ""
+"[Electrum](https://electrum.org/), um cliente bitcoin fácil de usar "
+"([[Mais...|doc/anonymous_internet/electrum]])"
+
+#. type: Bullet: '- '
+msgid "[Wget](https://www.gnu.org/software/wget/) and [curl](https://curl.se)"
+msgstr "[Wget](https://www.gnu.org/software/wget/) e [curl](https://curl.se)"
+
+#. type: Title -
+#, no-wrap
+msgid "Desktop edition"
+msgstr "Versão \"desktop\""
+
+#. type: Bullet: '- '
+msgid ""
+"[LibreOffice](https://www.libreoffice.org/) ([[More...|doc/"
+"sensitive_documents/office_suite]])"
+msgstr ""
+"[LibreOffice.org](https://www.libreoffice.org/) ([[Mais...|doc/"
+"sensitive_documents/office_suite]])"
+
+#. type: Bullet: '- '
+msgid ""
+"[GIMP](https://www.gimp.org/) and [Inkscape](https://inkscape.org/) to edit "
+"images ([[More...|doc/sensitive_documents/graphics]])"
+msgstr ""
+"[GIMP](https://www.gimp.org/) e [Inkscape](https://inkscape.org/) para "
+"editar imagens ([[Mais...|doc/sensitive_documents/graphics]])"
+
+#. type: Bullet: '- '
+msgid ""
+"[GNOME Sound Recorder](https://wiki.gnome.org/Apps/SoundRecorder) for "
+"recording sound"
+msgstr ""
+"[Gravador de Som GNOME](https://wiki.gnome.org/Apps/SoundRecorder) para "
+"gravar som"
+
+#. type: Bullet: '- '
+msgid ""
+"[Audacity](https://www.audacityteam.org/) for recording and editing sounds "
+"([[More...|doc/sensitive_documents/sound_and_video]])"
+msgstr ""
+"[Audacity](https://www.audacityteam.org/) para gravação e edição de áudio "
+"([[Mais...|doc/sensitive_documents/sound_and_video]])"
+
+#. type: Bullet: '- '
+msgid ""
+"[Document Scanner](https://apps.gnome.org/SimpleScan/) to scan documents"
+msgstr ""
+"[Document Scanner](https://apps.gnome.org/pt/SimpleScan/) para escanear "
+"documentos"
+
+#. type: Bullet: '- '
+msgid "[Brasero](https://wiki.gnome.org/Apps/Brasero) to burn CD/DVDs"
+msgstr "[Brasero](https://wiki.gnome.org/Apps/Brasero) para gravar CD/DVDs"
+
+#. type: Bullet: '- '
+msgid ""
+"[Sound Juicer](https://wiki.gnome.org/Apps/SoundJuicer) to rip audio CDs"
+msgstr ""
+"[Sound Juicer](https://wiki.gnome.org/Apps/SoundJuicer) para extrair áudios "
+"de CDs"
+
+#. type: Bullet: '- '
+msgid ""
+"[BookletImposer](http://kjo.herbesfolles.org/bookletimposer/) to convert "
+"linear PDF documents into booklets, and vice-versa"
+msgstr ""
+"[BookletImposer](http://kjo.herbesfolles.org/bookletimposer/) para converter "
+"documentos PDF lineares em livretos, e vice-versa"
+
+#. type: Title -
+#, no-wrap
+msgid "Encryption and privacy"
+msgstr "Criptografia e privacidade"
+
+#. type: Bullet: '- '
+msgid ""
+"Support for both [[!wikipedia Linux_Unified_Key_Setup desc=\"LUKS\"]] and "
+"[VeraCrypt](https://veracrypt.fr) encrypted volumes (like USB sticks) "
+"([[More...|doc/encryption_and_privacy/encrypted_volumes]])"
+msgstr ""
+"Suporte para criptografia de dispositivos (como pendrives USB) com [[!"
+"wikipedia_pt Linux_Unified_Key_Setup desc=\"LUKS\"]] e [VeraCrypt](https://"
+"veracrypt.fr) ([[Mais...|doc/encryption_and_privacy/encrypted_volumes]])"
+
+#. type: Bullet: '- '
+msgid ""
+"[GnuPG](http://gnupg.org/), the GNU implementation of OpenPGP for email and "
+"data encryption and signing"
+msgstr ""
+"[GnuPG](https://gnupg.org/), a implementação GNU do OpenPGP para email, "
+"criptografia e assinaturas digitais"
+
+#. type: Bullet: '  * '
+msgid ""
+"[Kleopatra](https://apps.kde.org/kleopatra/) provides a graphical interface "
+"to manage and use GnuPG on text and files"
+msgstr ""
+"[Kleopatra](https://apps.kde.org/kleopatra/) fornece uma interface gráfica "
+"para administrar e usar GnuPG em textos e arquivos"
+
+#. type: Bullet: '  * '
+msgid ""
+"[Thunderbird](https://www.thunderbird.net/) has an integrated OpenPGP "
+"feature for encrypted emails"
+msgstr ""
+"[Thunderbird](https://www.thunderbird.net/) possui uma funcionalidade "
+"OpenPGP integrada para emails criptografados"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[GNOME Screen Keyboard](https://help.gnome.org/users/gnome-help/stable/"
+#| "keyboard-osk.html.en)  for accessibility and protection against hardware "
+#| "[[!wikipedia Keystroke logging desc=\"keyloggers\"]] ([[More...|doc/"
+#| "first_steps/accessibility#keyboard]])"
+msgid ""
+"[GNOME Screen Keyboard](https://help.gnome.org/gnome-help/keyboard-"
+"osk.html)  for accessibility and protection against hardware [[!wikipedia "
+"Keystroke logging desc=\"keyloggers\"]] ([[More...|doc/first_steps/"
+"accessibility#keyboard]])"
+msgstr ""
+"[Teclado visual do GNOME](https://help.gnome.org/users/gnome-help/stable/"
+"keyboard-osk.html.pt) para accessibilidade e para se proteger de [[!"
+"wikipedia_pt Keylogger desc=\"captura de digitação\"]] ([[Mais...|doc/"
+"first_steps/accessibility#keyboard]])"
+
+#. type: Bullet: '- '
+msgid ""
+"[Metadata Cleaner](https://gitlab.com/rmnvgr/metadata-cleaner) and [mat2]"
+"(https://0xacab.org/jvoisin/mat2) to remove metadata from files ([[More...|"
+"doc/sensitive_documents/metadata]])"
+msgstr ""
+"[Metadata Cleaner](https://gitlab.com/rmnvgr/metadata-cleaner) e [mat2]"
+"(https://0xacab.org/jvoisin/mat2) para remover metadados de arquivos "
+"([[Mais...|doc/sensitive_documents/metadata]])"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[KeePassXC](https://keepassxc.org/) password manager ([[More...|doc/"
+#| "encryption_and_privacy/manage_passwords]])"
+msgid ""
+"[GNOME Secrets](https://apps.gnome.org//Secrets/) password manager "
+"([[More...|doc/encryption_and_privacy/manage_passwords]])"
+msgstr ""
+"gerenciador de senhas [KeePassXC](https://keepassxc.org/) ([[Mais...|doc/"
+"encryption_and_privacy/manage_passwords]])"
+
+#. type: Bullet: '- '
+msgid ""
+"[Tesseract OCR](https://tesseract-ocr.github.io/) to convert images "
+"containing text into a text document"
+msgstr ""
+"[Tesseract OCR](https://tesseract-ocr.github.io/) para converter imagens "
+"contendo texto em documentos de texto"
+
+#. type: Bullet: '- '
+msgid "[FFmpeg](https://ffmpeg.org/) to record and convert audio and video"
+msgstr "[FFmpeg](https://ffmpeg.org/) para gravar e converter áudio e vídeo"
+
+#. type: Title =
+#, no-wrap
+msgid "Additional software"
+msgstr "Programas adicionais"
+
+#. type: Plain text
+msgid ""
+"Additionally, you can install in Tails any other software available in "
+"Debian."
+msgstr ""
+"Além disso, você pode instalar no Tails qualquer outro software que esteja "
+"disponível no Debian."
+
+#. type: Plain text
+msgid ""
+"To install additional software automatically when starting Tails, use the "
+"[[Additional Software|persistent_storage/additional_software]] feature of "
+"the Persistent Storage."
+msgstr ""
+"Para installar programas adicionais ao iniciar o Tails, use a funcionalidade "
+"de [[Programas Adicionais|persistent_storage/additional_software]] do "
+"armazenamento persistente."
+
+#. type: Title =
+#, no-wrap
+msgid "Additional features"
+msgstr "Funcionalidades adicionais"
+
+#. type: Bullet: '- '
+msgid ""
+"Automatic mechanism to [[upgrade a USB stick|doc/upgrade]] to newer versions"
+msgstr ""
+"Mecanismo automático para [[atualizar um pendrive USB|doc/upgrade]] para "
+"novas versões"
+
+#. type: Bullet: '- '
+msgid ""
+"64-bit PAE-enabled kernel with NX-bit and SMP support on hardware that "
+"supports it"
+msgstr ""
+"Kernel de 64-bits com PAE habilitado e suporte a NX-bit e SMP nos hardwares "
+"compatíveis"
+
+#. type: Bullet: '- '
+msgid "Some basic [[doc/first_steps/accessibility]] features"
+msgstr ""
+"Algumas funcionalidades básicas de [[acessibilidade|doc/first_steps/"
+"accessibility]]"
+
+#. type: Bullet: '- '
+msgid "Some [[contribute/design/application_isolation]] with AppArmor"
+msgstr ""
+"Algum [[isolamento de aplicações|contribute/design/application_isolation]] "
+"com AppArmor"
+
+#. type: Bullet: '- '
+msgid ""
+"To prevent cold boot attacks and various memory forensics, Tails erases most "
+"memory on shutdown and when the boot media is physically removed."
+msgstr ""
+"Para prevenir ataques do tipo cold-boot e várias técnicas forenses de "
+"resgate memória, Tails apaga a maior parte da memória quando o computador é "
+"desligado ou quando a mídia de inicialização é fisicamente removida."
+
+#. type: Title =
+#, no-wrap
+msgid "Multilingual support"
+msgstr "Suporte a diferentes idiomas"
+
+#. type: Plain text
+msgid ""
+"When starting Tails, you can choose between a large number of languages, "
+"including Arabic, English, Farsi, French, German, Hindi, Indonesian, "
+"Italian, Portuguese, Russian, Simplified Chinese, Spanish, Turkish, and more."
+msgstr ""
+"Durante a inicialização do Tails você pode escolher entre um grande número "
+"de idiomas, incluindo Alemão, Árabe, Chinês simplificado, Espanhol, Francês, "
+"Hindi, Indonésio, Inglês, Italiano, Persa, Português, Russo, Turco e outros."
+
+#. type: Plain text
+msgid ""
+"If you find an issue using one of these languages, please [[tell us about it|"
+"support]]."
+msgstr ""
+"Se você encontrar um problema ao usar um desses idiomas, por favor [[nos "
+"informe|support]]."
+
+#. type: Plain text
+msgid ""
+"To make it easier to use Tails in your own language, you can [[help with "
+"translations|contribute/how/translate]]."
+msgstr ""
+"Para facilitar o uso do Tails no seu idioma, você pode [[ajudar com tradução|"
+"contribute/how/translate]]."
+
+#~ msgid "[Aircrack-ng](http://aircrack-ng.org/) for wireless network auditing"
+#~ msgstr "[Aircrack-ng](http://aircrack-ng.org/) para examinar redes sem fio"
+
+#~ msgid ""
+#~ "[HTTPS Everywhere](https://www.eff.org/https-everywhere)  transparently "
+#~ "enables SSL-encrypted connections to a great number of major websites"
+#~ msgstr ""
+#~ "[HTTPS Everywhere](https://www.eff.org/https-everywhere)  ativa a conexão "
+#~ "criptografada com SSL de maneira transparente para a maior parte dos "
+#~ "sites importantes"
+
+#~ msgid ""
+#~ "- GNOME Sound Recorder for recording sound ([[More...|doc/"
+#~ "sensitive_documents/sound_and_video]])"
+#~ msgstr ""
+#~ "- Gravador de Som GNOME para gravar som ([[Mais...|doc/"
+#~ "sensitive_documents/sound_and_video]])"
+
+#~ msgid ""
+#~ "Can be run as a virtualized guest inside [VirtualBox](http://"
+#~ "www.virtualbox.org/) ([[More...|doc/advanced_topics/virtualization]])"
+#~ msgstr ""
+#~ "Pode ser utilizado como um sistema virtual dentro do [VirtualBox](http://"
+#~ "www.virtualbox.org/) ([[Mais...|doc/advanced_topics/virtualization]])"
+
+#, fuzzy
+#~| msgid ""
+#~| "[GtkHash](https://github.com/tristanheaven/gtkhash) to calculate "
+#~| "checksums ([[More...|doc/encryption_and_privacy/checksums]])"
+#~ msgid ""
+#~ "- [GtkHash](https://github.com/tristanheaven/gtkhash) to calculate "
+#~ "checksums ([[More...|doc/encryption_and_privacy/checksums]])"
+#~ msgstr ""
+#~ "[GtkHash](https://github.com/tristanheaven/gtkhash) para calcular somas "
+#~ "de verificação ([[Mais...|doc/encryption_and_privacy/checksums]])"
+
+#~ msgid ""
+#~ "Some of these languages could not be thoroughly tested as we don't speak "
+#~ "every language in the world. If you find issues using one of the "
+#~ "supposedly supported languages, don't hesitate to [[tell us about it|"
+#~ "support]]. E.g. Tails probably lacks some non-Latin fonts or input "
+#~ "systems."
+#~ msgstr ""
+#~ "Alguns destes idiomas não puderam ser amplamente testados porque nós não "
+#~ "falamos todas as línguas do mundo. Se você encontrar problemas ao usar um "
+#~ "dos idiomas supostamente implementados, não hesite em [[contar-nos a "
+#~ "respeito|support]]. Por exemplo, no Tails provavelmente faltam algumas "
+#~ "fontes ou sistemas não-latinos de entrada de dados."
+
+#~ msgid "all cookies are treated as session cookies by default;"
+#~ msgstr "todos os cookies sendo tratados como cookies de sessão por padrão;"
+
+#~ msgid "The required keyboard input system is automatically enabled."
+#~ msgstr ""
+#~ "O método requisitado para entrada do teclado é automaticamente habilitado."
+
+#~ msgid ""
+#~ "[[See the corresponding documentation.|doc/first_steps/"
+#~ "additional_software]]"
+#~ msgstr ""
+#~ "[[Veja a documentação correspondente.|doc/first_steps/"
+#~ "additional_software]]"
+
+#~ msgid ""
+#~ "[Simple Scan](https://launchpad.net/simple-scan) and [SANE](http://sane-"
+#~ "project.org/) for scanner support"
+#~ msgstr ""
+#~ "[Simple Scan](https://launchpad.net/simple-scan) e [SANE](http://sane-"
+#~ "project.org/) para suporte a escaneadores"
+
+#~ msgid ""
+#~ "[MAT](https://0xacab.org/jvoisin/mat2) to anonymize metadata in files"
+#~ msgstr ""
+#~ "[MAT](https://0xacab.org/jvoisin/mat2) para anonimizar metadados de "
+#~ "arquivos"
+
+#~ msgid ""
+#~ "[PDF Redact Tools](https://github.com/firstlookmedia/pdf-redact-tools) to "
+#~ "redact and strip metadata from text documents before publishing"
+#~ msgstr ""
+#~ "[PDF Redact Tools](https://github.com/firstlookmedia/pdf-redact-tools) "
+#~ "para redigir e remover metadados de documentos de texto antes de publicar"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "* [Tor](https://www.torproject.org) with:\n"
+#~| "  - [[stream isolation|contribute/design/stream_isolation]]\n"
+#~| "  - regular, obfs2, obfs3, obfs4, and ScrambleSuit bridges support\n"
+#~| "  - the Onion Circuits graphical frontend ([[More...|doc/anonymous_internet/tor_status#circuits]])\n"
+#~| "* [NetworkManager](https://wiki.gnome.org/Projects/NetworkManager) for easy\n"
+#~| "  network configuration ([[More...|doc/anonymous_internet/networkmanager]])\n"
+#~| "* [Tor Browser](https://www.torproject.org/projects/torbrowser.html.en) ([[More...|doc/anonymous_internet/Tor_Browser]]), a web\n"
+#~| "  browser based on [Mozilla Firefox](https://www.mozilla.org/firefox/) and modified to protect your anonymity with:\n"
+#~| "  - [Torbutton](https://www.torproject.org/docs/torbutton/) for anonymity\n"
+#~| "    and protection against evil JavaScript\n"
+#~| "  - all cookies are treated as session cookies by default;\n"
+#~| "  - [HTTPS Everywhere](https://www.eff.org/https-everywhere)\n"
+#~| "    transparently enables SSL-encrypted connections to a great number\n"
+#~| "    of major websites\n"
+#~| "  - [NoScript](http://noscript.net/) to have even more control over JavaScript.\n"
+#~| "  - [uBlock Origin](https://github.com/gorhill/uBlock/) to remove advertisements.\n"
+#~| "* [Pidgin](http://www.pidgin.im/) preconfigured with\n"
+#~| "  [OTR](https://otr.cypherpunks.ca/index.php) for Off-the-Record\n"
+#~| "  Messaging ([[More...|doc/anonymous_internet/pidgin]])\n"
+#~| "* [OnionShare](https://onionshare.org/) for anonymous file sharing\n"
+#~| "* [Thunderbird](https://www.mozilla.org/en-US/thunderbird/) email client with [Enigmail](https://www.enigmail.net/) for OpenPGP support ([[More...|doc/anonymous_internet/thunderbird]])\n"
+#~| "* [Liferea](http://liferea.sourceforge.net/) feed aggregator\n"
+#~| "* [Gobby](http://gobby.0x539.de/trac/) for collaborative text writing\n"
+#~| "* [Aircrack-ng](http://aircrack-ng.org/) for wireless network auditing\n"
+#~| "* [Electrum](https://electrum.org/), an easy-to-use bitcoin client ([[More...|doc/anonymous_internet/electrum]])\n"
+#~ msgid ""
+#~ "* [Tor](https://www.torproject.org) with:\n"
+#~ "  - [[stream isolation|contribute/design/stream_isolation]]\n"
+#~ "  - the Onion Circuits graphical frontend ([[More...|doc/anonymous_internet/tor/circuits]])\n"
+#~ "* [NetworkManager](https://wiki.gnome.org/Projects/NetworkManager) for easy\n"
+#~ "  network configuration ([[More...|doc/anonymous_internet/networkmanager]])\n"
+#~ "* [Tor Browser](https://www.torproject.org) ([[More...|doc/anonymous_internet/Tor_Browser]]), a web\n"
+#~ "  browser based on [Mozilla Firefox](https://www.mozilla.org/firefox/) and modified to protect your anonymity with:\n"
+#~ "  - all cookies are treated as session cookies by default;\n"
+#~ "  - [HTTPS Everywhere](https://www.eff.org/https-everywhere)\n"
+#~ "    transparently enables SSL-encrypted connections to a great number\n"
+#~ "    of major websites\n"
+#~ "  - [NoScript](http://noscript.net/) to have even more control over JavaScript.\n"
+#~ "  - [uBlock Origin](https://github.com/gorhill/uBlock/) to remove advertisements.\n"
+#~ "* [Pidgin](http://www.pidgin.im/) preconfigured with\n"
+#~ "  [OTR](https://otr.cypherpunks.ca/index.php) for Off-the-Record\n"
+#~ "  Messaging ([[More...|doc/anonymous_internet/pidgin]])\n"
+#~ "* [OnionShare](https://onionshare.org/) for anonymous file sharing\n"
+#~ "* [Thunderbird](https://www.thunderbird.net/) email client with support for OpenPGP and RSS and Atom news feeds ([[More...|doc/anonymous_internet/thunderbird]])\n"
+#~ "* [Aircrack-ng](http://aircrack-ng.org/) for wireless network auditing\n"
+#~ "* [Electrum](https://electrum.org/), an easy-to-use bitcoin client ([[More...|doc/anonymous_internet/electrum]])\n"
+#~ msgstr ""
+#~ "* [Tor](https://www.torproject.org) com:\n"
+#~ "  - [[isolamento de fluxo|contribute/design/stream_isolation]]\n"
+#~ "  - suporte a bridges comuns e do tipo obfs2, obfs3, obfs4, e ScrambleSuit\n"
+#~ "  - a ferramenta gráfica Onion Circuits ([[More...|doc/anonymous_internet/tor_status#circuits]])].\n"
+#~ "* [NetworkManager](https://wiki.gnome.org/Projects/NetworkManager) para uma fácil\n"
+#~ "  configuração da rede ([[Mais...|doc/anonymous_internet/networkmanager]]).\n"
+#~ "* [Tor Browser](https://www.torproject.org/projects/torbrowser.html.en) ([[Mais...|doc/anonymous_internet/Tor_Browser]]), um\n"
+#~ "  navegador web baseado em [Mozilla Firefox](https://www.mozilla.org/firefox/) e modificado para proteger seu anonimato com:\n"
+#~ "  - [Torbutton](https://www.torproject.org/docs/torbutton) para o anonimato\n"
+#~ "    e proteção contra JavaScript maligno.\n"
+#~ "  - todos os cookies são tratados como cookies de sessão por padrão;\n"
+#~ "  - [HTTPS Everywhere](https://www.eff.org/https-everywhere)\n"
+#~ "    habilita criptografia via SSL de forma transparente  para um grande\n"
+#~ "    número de sítios web.\n"
+#~ "  - [NoScript](http://noscript.net/) para se obter ainda mais controle sobre JavaScript.\n"
+#~ "  - [uBlock Origin](https://github.com/gorhill/uBlock/) para remover propagandas.\n"
+#~ "* [Pidgin](http://www.pidgin.im/) configurado com\n"
+#~ "  [OTR](https://otr.cypherpunks.ca/index.php) para conversação Off-the-Record\n"
+#~ "  ([[Mais...|doc/anonymous_internet/pidgin]])\n"
+#~ "* [OnionShare](https://onionshare.org/) para compartilhar arquivos de forma anônima.\n"
+#~ "* Cliente de email [Thunderbird](https://www.mozilla.org/en-US/thunderbird/) com [Enigmail](https://www.enigmail.net/) para suporte a OpenPGP \n"
+#~ "  ([[Mais...|doc/anonymous_internet/thunderbird]])\n"
+#~ "* [Liferea](http://liferea.sourceforge.net/) leitor de canais de RSS.\n"
+#~ "* [Gobby](http://gobby.0x539.de/trac/) para redação conjunta.\n"
+#~ "* [Aircrack-ng](http://aircrack-ng.org/) para auditoria de redes sem fio.\n"
+#~ "* [Electrum](https://electrum.org/), um bliente de bitcoin fácil de usar ([[Mais...|doc/anonymous_internet/electrum]])\n"
+
+#~ msgid ""
+#~ "The full packages list can be found in the [BitTorrent files download "
+#~ "directory](https://tails.boum.org/torrents/files/) (look for files with "
+#~ "the `.packages` extension)."
+#~ msgstr ""
+#~ "A lista completa de pacotes pode ser encontrada no [diretório de download "
+#~ "de arquivos BitTorrent](https://tails.boum.org/torrents/files/) (arquivos "
+#~ "com a extensão `.packages`)."
+
+#~ msgid "[Poedit](https://poedit.net/) to edit .po files"
+#~ msgstr "[Poedit](https://poedit.net/) para editar arquivos .po"
+
+#~ msgid "[Scribus](https://www.scribus.net/) for page layout"
+#~ msgstr "[Scribus](https://www.scribus.net/) para diagramação"
+
+#~ msgid ""
+#~ "[[customization|contribute/customize]] (e.g. to add a given missing piece "
+#~ "of software) is relatively easy: one may [[contribute/build]] a custom "
+#~ "Amnesic Incognito Live System in about one hour on a modern desktop "
+#~ "computer"
+#~ msgstr ""
+#~ "[[adaptar o sistema|contribute/customize]] (adicionar um programa que não "
+#~ "está presente, por exemplo) é relativamente fácil: qualquer pessoa pode "
+#~ "[[construir|contribute/build]] uma versião própia do Amnesic Incognito "
+#~ "Live System em cerca de uma hora em um computador moderno"
+
+#~ msgid ""
+#~ "[PiTiVi](http://pitivi.org/) for non-linear audio/video editing "
+#~ "([[More...|doc/sensitive_documents/sound_and_video]])"
+#~ msgstr ""
+#~ "[PiTIVi](http://pitivi.org/) para edição não-linear de áudio e vídeo "
+#~ "([[Mais...|doc/sensitive_documents/sound_and_video]])"
+
+#~ msgid ""
+#~ "[Traverso](http://traverso-daw.org/) a multi-track audio recorder and "
+#~ "editor"
+#~ msgstr ""
+#~ "[Traverso](http://traverso-daw.org/) um gravador e editor de áudio "
+#~ "multipistas"
+
+#~ msgid ""
+#~ "[Monkeysign](http://web.monkeysphere.info/monkeysign), a tool for OpenPGP "
+#~ "key signing and exchange"
+#~ msgstr ""
+#~ "[Monkeysign](http://web.monkeysphere.info/monkeysign), uma ferramenta "
+#~ "para assinatura e troca de chaves OpenPGP"
+
+#~ msgid ""
+#~ "[PWGen](http://pwgen-win.sourceforge.net/), a strong password generator"
+#~ msgstr ""
+#~ "[PWGen](http://pwgen-win.sourceforge.net/), um gerador de senhas fortes"
+
+#~ msgid ""
+#~ "[[!wikipedia Shamir's Secret Sharing]] using [gfshare](http://www.digital-"
+#~ "scurf.org/software/libgfshare)  and [ssss](http://point-at-infinity.org/"
+#~ "ssss/)"
+#~ msgstr ""
+#~ "[[!wikipedia Shamir's Secret Sharing]] configurado com [gfshare](http://"
+#~ "www.digital-scurf.org/software/libgfshare)  e [ssss](http://point-at-"
+#~ "infinity.org/ssss/)"
+
+#~ msgid ""
+#~ "[Keyringer](https://keyringer.pw/), a command line tool to encrypt "
+#~ "secrets shared through Git ([[More...|doc/encryption_and_privacy/"
+#~ "keyringer]])"
+#~ msgstr ""
+#~ "[Keyringer](https://keyringer.pw/), uma ferramenta de linha de comando "
+#~ "para criptografar segredos compartilhados através de Git ([[More...|doc/"
+#~ "encryption_and_privacy/keyringer]])"
+
+#~ msgid ""
+#~ "[Paperkey](http://www.jabberwocky.com/software/paperkey/) a command line "
+#~ "tool to back up OpenPGP secret keys on paper ([[More...|doc/"
+#~ "advanced_topics/paperkey]])"
+#~ msgstr ""
+#~ "[Paperkey](http://www.jabberwocky.com/software/paperkey/) ferramenta de "
+#~ "linha de comando para fazer cópia de segurança das chaves secretas "
+#~ "OpenPGP em papel ([[Mais...|doc/advanced_topics/paperkey]])"
+
+#~ msgid ""
+#~ "You can [[install additional software|doc/first_steps/"
+#~ "additional_software]] in Tails: all software packaged for Debian is "
+#~ "installable in Tails."
+#~ msgstr ""
+#~ "Você pode [[instalar mais programas|doc/advanced_topics/"
+#~ "additional_software]] no Tails: todo software empacotado para Debian é "
+#~ "instalável no Tails."
+
+#~ msgid "One can choose at boot time between a big number of languages."
+#~ msgstr "É possível escolher uma entre muitas línguas durante o boot."
+
+#~ msgid ""
+#~ "[[TrueCrypt|encryption_and_privacy/truecrypt]] a disk encryption software"
+#~ msgstr ""
+#~ "[[TrueCrypt|encryption_and_privacy/truecrypt]] software de criptografia "
+#~ "de discos"
+
+#~ msgid ""
+#~ "One can choose at boot time between the following languages: Arabic, "
+#~ "Chinese, English, French, Italian, German, Portuguese and Spanish "
+#~ "(Castellano)."
+#~ msgstr ""
+#~ "Ao iniciar é possível escolher entre os seguinte idiomas: Árabe, Chinês, "
+#~ "Inglês, Francês, Italiano, Alemão, Português e Espanhol (Castelhano)."

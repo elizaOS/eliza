@@ -1,0 +1,1 @@
+export { last, last as default } from "./es-toolkit-compat";

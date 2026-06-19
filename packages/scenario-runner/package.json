@@ -1,0 +1,99 @@
+{
+  "name": "@elizaos/scenario-runner",
+  "version": "2.0.3-beta.14",
+  "description": "Lean scenario runner for the WS7 scenario-schema architecture. Loads .scenario.ts files, executes them against a real @elizaos/core AgentRuntime with a live LLM, and emits a JSON report.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/scenario-runner"
+  },
+  "keywords": [
+    "elizaos",
+    "scenario",
+    "testing",
+    "runtime"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "bin",
+    "schema"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "eliza-scenarios": "./bin/eliza-scenarios"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    },
+    "./schema": {
+      "types": "./schema/index.d.ts",
+      "default": "./schema/index.js"
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run build",
+    "build": "tsc --noCheck -p tsconfig.build.json",
+    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "test:deterministic:e2e": "SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/cli.ts run test/scenarios --scenario deterministic-pr-smoke,deterministic-app-control-actions,deterministic-generated-app-routes,deterministic-todos-actions,deterministic-streaming-actions,deterministic-xr-view-actions,deterministic-mcp-actions-routes,deterministic-workflow-actions-routes,deterministic-github-actions-routes,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions,deterministic-agent-skills-actions,deterministic-media-emote-actions,deterministic-gitpathology-actions --report-dir ../../reports/scenarios/pr-deterministic --run-dir ../../reports/scenarios/pr-deterministic",
+    "test:live:e2e": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/cli.ts run ../../plugins/plugin-app-control/test/scenarios --report-dir ../../reports/scenarios/live --run-dir ../../reports/scenarios/live",
+    "test:pr:e2e": "bun run test:deterministic:e2e",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-agent-skills": "workspace:*",
+    "@elizaos/plugin-app-control": "workspace:*",
+    "@elizaos/plugin-coding-tools": "workspace:*",
+    "@elizaos/plugin-commands": "workspace:*",
+    "@elizaos/plugin-device-filesystem": "workspace:*",
+    "@elizaos/plugin-gitpathologist": "workspace:*",
+    "@elizaos/plugin-github": "workspace:*",
+    "@elizaos/plugin-health": "workspace:*",
+    "@elizaos/plugin-personal-assistant": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-mcp": "workspace:*",
+    "@elizaos/plugin-shell": "workspace:*",
+    "@elizaos/plugin-workflow": "workspace:*",
+    "@elizaos/plugin-streaming": "workspace:*",
+    "@elizaos/plugin-todos": "workspace:*",
+    "@elizaos/plugin-video": "workspace:*",
+    "@elizaos/plugin-xr": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  }
+}

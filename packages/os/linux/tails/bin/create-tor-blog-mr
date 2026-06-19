@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+
+TOR_BLOG_CHECKOUT="$1"
+VERSION="$2"
+TOR_BLOG_FILE="$3"
+
+cd "${TOR_BLOG_CHECKOUT}"
+git checkout main
+git pull
+git checkout -b "Tails-${TAG}"
+TOR_BLOG_DIR="content/blog/new-release-tails-${TAG//./_}"
+mkdir -p "${TOR_BLOG_DIR}"
+cd "${TOR_BLOG_DIR}"
+mv "${TOR_BLOG_FILE}" contents.lr
+ln -s ../../../assets/static/images/blog/tails.jpeg lead.jpg &&
+    git add lead.jpg
+git add contents.lr
+git commit -m "Announce Tails ${VERSION}"
+git push \
+    -o merge_request.create \
+    -o merge_request.draft \
+    -o merge_request.title="Announce Tails ${VERSION}" \
+    --set-upstream origin HEAD

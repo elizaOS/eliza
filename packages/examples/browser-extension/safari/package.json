@@ -1,0 +1,14 @@
+{
+  "name": "@elizaos/example-browser-extension-safari",
+  "version": "2.0.0-beta.0",
+  "description": "Safari extension wrapper for Chat with Webpage - see README.md for build instructions",
+  "scripts": {
+    "prepare:source": "node scripts/prepare-safari-source.mjs",
+    "convert": "npm run prepare:source && xcrun safari-web-extension-converter .generated/extension --project-location . --app-name 'Chat with Webpage' --bundle-identifier com.elizaos.chatwithwebpage --swift --no-open --no-prompt --force",
+    "build": "node scripts/build-safari-extension.mjs",
+    "info": "echo 'See README.md for detailed Safari extension build instructions'",
+    "test": "bun test",
+    "lint": "node scripts/fix-generated-safari.mjs && bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "echo 'No TypeScript config; skipping typecheck'"
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "software": {
+    "os": "blocked-no-target-os-image",
+    "kernel": "blocked-no-kernel-build",
+    "firmware": "blocked-no-target-firmware",
+    "runtime": "blocked-no-benchmark-runtime",
+    "build_id": "blocked-no-release-build"
+  },
+  "clocks": {
+    "source": "blocked-no-clock-evidence",
+    "cpu_hz": 1,
+    "npu_hz": 1,
+    "memory_hz": 1,
+    "governor": "blocked-no-governor-evidence"
+  },
+  "memory": {
+    "type": "blocked-no-memory-target",
+    "capacity_bytes": 1,
+    "bandwidth_bytes_per_second": 1,
+    "channels": 1
+  },
+  "thermal": {
+    "ambient_c": 1,
+    "die_c": 1,
+    "cooling": "blocked-no-thermal-setup",
+    "throttle_state": "blocked-no-throttle-evidence"
+  },
+  "power": {
+    "source": "blocked-no-power-instrumentation",
+    "watts": 1,
+    "measurement_method": "blocked-no-measurement-method",
+    "sample_count": 1,
+    "averaging_window_seconds": 1
+  },
+  "process": {
+    "node": "blocked-no-process-node",
+    "pdk": "blocked-no-pdk",
+    "process_effects_contract": {
+      "path": "docs/spec-db/process-14a-effects.yaml",
+      "sha256": "blocked-no-process-effects-contract-hash"
+    },
+    "process_corner_count": 1,
+    "worst_process_corner": "blocked-no-worst-process-corner",
+    "pdk_signoff_claim": "blocked-no-pdk-signoff"
+  },
+  "calibration": {
+    "status": "blocked-no-calibrated-assets",
+    "source": "blocked-no-calibration-source",
+    "ground_truth_reference": "blocked-no-ground-truth-reference",
+    "last_calibrated_utc": "blocked-no-calibration-date",
+    "assets": {
+      "clock_source": {
+        "status": "blocked",
+        "source": "blocked-no-clock-calibration",
+        "sha256": "blocked-no-clock-evidence-hash",
+        "evidence": "blocked-no-clock-evidence"
+      },
+      "coremark_binary": {
+        "status": "blocked",
+        "source": "blocked-no-coremark-build",
+        "sha256": "blocked-no-coremark-binary-hash",
+        "evidence": "blocked-no-coremark-binary"
+      },
+      "fio_binary": {
+        "status": "blocked",
+        "source": "blocked-no-fio-build",
+        "sha256": "blocked-no-fio-binary-hash",
+        "evidence": "blocked-no-fio-binary"
+      },
+      "lmbench_binary": {
+        "status": "blocked",
+        "source": "blocked-no-lmbench-build",
+        "sha256": "blocked-no-lmbench-binary-hash",
+        "evidence": "blocked-no-lmbench-binary"
+      },
+      "memory_model": {
+        "status": "blocked",
+        "source": "blocked-no-memory-model",
+        "sha256": "blocked-no-memory-model-hash",
+        "evidence": "blocked-no-memory-model"
+      },
+      "nnapi_driver": {
+        "status": "blocked",
+        "source": "blocked-no-nnapi-driver",
+        "sha256": "blocked-no-nnapi-driver-hash",
+        "evidence": "blocked-no-nnapi-driver"
+      },
+      "power_meter": {
+        "status": "blocked",
+        "source": "blocked-no-power-calibration",
+        "sha256": "blocked-no-power-evidence-hash",
+        "evidence": "blocked-no-power-evidence"
+      },
+      "simulator_counter_export": {
+        "status": "blocked",
+        "source": "blocked-no-simulator-counter-export",
+        "sha256": "blocked-no-simulator-counter-export-hash",
+        "evidence": "blocked-no-simulator-counter-export"
+      },
+      "simulator_config": {
+        "status": "blocked",
+        "source": "blocked-no-simulator-calibration",
+        "sha256": "blocked-no-simulator-config-hash",
+        "evidence": "blocked-no-simulator-ground-truth"
+      },
+      "storage_target": {
+        "status": "blocked",
+        "source": "blocked-no-storage-target",
+        "sha256": "blocked-no-storage-target-hash",
+        "evidence": "blocked-no-storage-target"
+      },
+      "stream_binary": {
+        "status": "blocked",
+        "source": "blocked-no-stream-build",
+        "sha256": "blocked-no-stream-binary-hash",
+        "evidence": "blocked-no-stream-binary"
+      },
+      "tflite_benchmark_model": {
+        "status": "blocked",
+        "source": "blocked-no-tflite-benchmark-model-build",
+        "sha256": "blocked-no-tflite-benchmark-model-hash",
+        "evidence": "blocked-no-tflite-benchmark-model"
+      },
+      "tflite_model": {
+        "status": "blocked",
+        "source": "blocked-no-tflite-model",
+        "sha256": "blocked-no-tflite-model-hash",
+        "evidence": "blocked-no-tflite-model"
+      }
+    }
+  }
+}

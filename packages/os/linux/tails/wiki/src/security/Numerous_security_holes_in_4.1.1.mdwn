@@ -1,0 +1,21 @@
+[[!meta date="Sun, 05 Jan 2020 17:00:00 +0100"]]
+[[!meta title="Numerous security holes in Tails 4.1.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.2|news/version_4.2]] fixes many security issues that affect
+Tails 4.1.1. You should [[upgrade to Tails 4.2|news/version_4.2]] as
+soon as possible.
+
+ - Tor Browser: [[!mfsa 2020-02]]
+ - Thunderbird: No MFSA published.
+ - Linux: [[!cve CVE-2019-19602]], [[!cve CVE-2019-18811]],
+   [[!cve CVE-2019-18660]], [[!cve CVE-2019-15291]],
+   [[!cve CVE-2019-18683]], [[!cve CVE-2019-15099]],
+   [[!cve CVE-2019-19524]], [[!cve CVE-2019-19051]],
+   [[!cve CVE-2019-19047]], [[!cve CVE-2019-19045]],
+   [[!cve CVE-2019-19534]], [[!cve CVE-2019-19529]],
+   [[!cve CVE-2019-19052]]
+ - Cyrus SASL: [[!debsa2019 4591]]
+ - Python ECDSA: [[!debsa2019 4588]]

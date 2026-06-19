@@ -1,0 +1,78 @@
+[[!meta date="Tue, 09 Jan 2018 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.4 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_3.3]] and users should
+upgrade as soon as possible.
+
+In particular, Tails 3.4 fixes the widely reported
+[Meltdown](https://meltdownattack.com/) attack, and includes the
+partial mitigation for [Spectre](https://spectreattack.com/).
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Update *Linux* to 4.14.12 which fixes
+  [Meltdown](https://meltdownattack.com/),
+  [Spectre](https://spectreattack.com/) (only partially) and many
+  other issues. ([[!tails_ticket 14976]])
+
+## Fixed problems
+
+- Fix an issue that made Tails start very slowly, in particular on
+  DVD. ([[!tails_ticket 14964]])
+
+- Don't delete downloaded Debian packages after installing them. This
+  is mostly relevant for users of the *APT Packages* persistence
+  feature. ([[!tails_ticket 10958]])
+
+- Fix an issue that prevented some Debian packages to install properly
+  with the *Additional software* feature. ([[!tails_ticket 6038]])
+
+- Update *uBlock Origin* to restore its icon in *Tor Browser*, and
+  make its settings dashboard work again. ([[!tails_ticket 14993]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+- The graphical splash screen usually displayed during Tails startup
+  quickly disappears and is replaced by garbled text messages. As long
+  as Tails appears to work fine for you otherwise, please ignore these
+  messages, including the alarming message about a "kernel BUG" (which
+  was [[!debbug 886329 desc="reported to Debian"]]): they do not
+  affect the safety of your Tails system.
+- Due to [an issue in *Tor
+  Browser*](https://trac.torproject.org/projects/tor/ticket/24243), the
+  documentation shipped in Tails doesn't open in *Tor Browser* anymore
+  and lacks our sidebar. The warning page of the
+  *Unsafe Browser* also lacks graphical design. ([[!tails_ticket 14962]])
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.4
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.2 and 3.3.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.4.|install/download]]
+
+# What's coming up?
+
+Tails 3.5 is [[scheduled|contribute/calendar]] for January 23.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.4">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

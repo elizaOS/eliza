@@ -1,0 +1,44 @@
+[project]
+name = "clawbench"
+version = "0.1.0"
+description = "Deterministic, scenario-based evaluation for OpenClaw agents"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "TrajectoryRL" },
+]
+keywords = ["openclaw", "agent", "evaluation", "testing", "clawbench", "benchmark", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "typer>=0.9",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[project.urls]
+Homepage = "https://github.com/trajectoryRL/clawbench"
+Repository = "https://github.com/trajectoryRL/clawbench"
+Issues = "https://github.com/trajectoryRL/clawbench/issues"
+
+[project.scripts]
+clawbench = "clawbench.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

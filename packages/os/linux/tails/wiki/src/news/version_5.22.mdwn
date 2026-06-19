@@ -1,0 +1,72 @@
+[[!meta title="Tails 5.22"]]
+[[!meta date="Tue, 30 Jan 2024 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="features">New features</h1>
+
+- In *Tor Browser*, you can now save files to more folders: Documents, Downloads,
+  Music, Pictures, and Videos. You can also upload files from these folders.
+
+- When your Persistent Storage is broken, Tails now tries to repair its
+  file system when you unlock it in the Welcome Screen.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Report the write speed after cloning a Persistent Storage from *Tails Cloner*.
+
+- Do not try to unlock or delete a Persistent Storage on a read-only USB stick.
+
+- Update *Tor Browser* to [13.0.9](https://blog.torproject.org/new-release-tor-browser-1309/).
+
+- Update *Thunderbird* to [115.7](https://www.thunderbird.net/en-US/thunderbird/115.7.0/releasenotes/).
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Stop leaking the first-level domain of visited websites in *WhisperBack* reports.
+  The problem was first introduced in Tails 5.15.1 (July 2023). ([[!tails_mr 1344]])
+
+- Make installing Tails with *Tails Cloner* more robust by fixing occasional
+  errors `AttributeError: 'NoneType' object has no attribute 'props'`.
+  Thanks to Ben Westgate! ([[!tails_mr 1312]])
+
+- Fix saving the Additional Software configuration when creating
+  a Persistent Storage. ([[!tails_mr 1350]])
+
+- Fix help link when resizing the system partition fails the first time
+  Tails is started. ([[!tails_mr 1341]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 5.22</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 5.0 or later to 5.22.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 5.22 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

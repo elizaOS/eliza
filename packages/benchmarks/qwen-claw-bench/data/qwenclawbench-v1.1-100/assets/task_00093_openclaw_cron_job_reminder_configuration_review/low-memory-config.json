@@ -1,0 +1,32 @@
+{
+  "lowMemory": {
+    "enabled": true,
+    "maxContextTokens": 4096,
+    "gcIntervalMs": 300000,
+    "maxConcurrentSessions": 2,
+    "swapWarningThresholdMB": 1024,
+    "alertBelowMB": 300
+  },
+  "serverSpecs": {
+    "totalRAM_MB": 1638,
+    "swapSize_MB": 8192,
+    "cpu": "2 vCPU",
+    "os": "Ubuntu 22.04 LTS",
+    "provider": "Tencent Cloud Lighthouse",
+    "region": "Beijing"
+  },
+  "optimizations": [
+    "Reduced agent maxTokens to 4096",
+    "Limited concurrent sessions to 2",
+    "Enabled aggressive garbage collection every 5 minutes",
+    "Configured swap usage alerts at 1GB threshold",
+    "Disabled device-pair plugin to save memory",
+    "Set NODE_OPTIONS='--max-old-space-size=512'"
+  ],
+  "monitoring": {
+    "checkIntervalHours": 4,
+    "alertChannel": "telegram",
+    "alertTarget": "5992622663",
+    "metrics": ["mem_available", "swap_used", "cpu_load_1m", "disk_usage"]
+  }
+}

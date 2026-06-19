@@ -1,0 +1,182 @@
+schema: eliza.e1_phone_audio_acoustic_closure.v1
+status: planning_audio_acoustic_cross_checked_not_measured
+date: '2026-05-20'
+claim_boundary: Audio/acoustic planning closure only. This is not an acoustic simulation, speaker-box
+  drawing, microphone gasket drawing, codec schematic, ALSA probe transcript, Android Audio HAL evidence,
+  or measured SPL/SNR result.
+source_artifacts:
+  - package/audio/v0-codec.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/audio-haptic-schematic-net-binding.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - docs/board/e1-phone-enclosure-interface.yaml
+  - board/kicad/e1-phone/mechanical-overlay.yaml
+  - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - mechanical/e1-phone/cad/e1_phone_params.yaml
+device_envelope_mm:
+  width: 78.0
+  height: 153.6
+  max_thickness: 11.8
+acoustic_planning_model:
+  model_class: sealed_box_and_helmholtz_planning_targets_not_measured
+  constants:
+    speed_of_sound_m_s: 343.0
+    air_density_kg_m3: 1.204
+    reference_temperature_c: 20
+  bottom_loudspeaker:
+    module: 1115 micro speaker module with rear acoustic chamber
+    module_envelope_mm:
+      - 15.0
+      - 11.0
+      - 3.5
+    module_displaced_volume_mm3: 577.5
+    target_rear_back_volume_cc: 0.8
+    target_rear_back_volume_mm3: 800.0
+    rear_chamber_depth_budget_mm: 8.3
+    vented_grille_port_mm:
+      width: 8.0
+      height: 0.8
+      wall_length: 1.15
+      area_mm2: 6.4
+    helmholtz_port_resonance_hz: 3176.2
+    interpretation: Sealed rear chamber sets the box stiffness; the bottom-firing vented grille adds a
+      port resonance near 3176 Hz. The 1115 module is 3.5 mm tall against a 8.3 mm depth budget, so the
+      back chamber must be carved laterally, not stacked, in the flush-back enclosure.
+  earpiece_receiver:
+    module: 1206 earpiece receiver behind glass slot/gasket
+    module_envelope_mm:
+      - 12.0
+      - 6.0
+      - 2.5
+    front_slot_air_gap_mm: 0.3
+    front_cavity_volume_mm3: 21.6
+    interpretation: 1206 receiver behind a bonded cover-glass slot. The thin front cavity and slot leak
+      set the receiver band-pass; the acoustic path must stay clear of the top antenna feed keepout.
+  microphones:
+    count: 2
+    bottom_port:
+      part_envelope_mm:
+        - 3.5
+        - 2.65
+        - 1.0
+      port_diameter_mm: 0.8
+      port_area_mm2: 0.5027
+      wall_length_mm: 1.15
+      front_volume_estimate_mm3: 1.5
+      port_resonance_hz: 25888.7
+      port_resonance_above_audio_band: true
+    top_noise_cancel:
+      part_envelope_mm:
+        - 3.5
+        - 2.65
+        - 1.0
+      role: noise_cancel_reference_far_from_bottom_speaker_port
+    hydrophobic_mesh_required: true
+    interpretation: Two MEMS ports through the 1.0 mm wall, each with a hydrophobic dust/water mesh, separated
+      so the noise-cancel reference does not couple to the loudspeaker port.
+  haptic_lra:
+    part: compact 0612 X-axis linear resonant actuator
+    envelope_mm:
+      - 6.0
+      - 12.0
+      - 2.5
+    interpretation: X-axis LRA mass pocket must clear screw bosses and tall parts; resonance and enclosure
+      rattle are a measurement residual.
+  leakage_and_sealing_paths:
+    - loudspeaker rear chamber must be gasket-sealed against the bottom island and back wall
+    - bottom-firing grille slot needs a hydrophobic mesh and drain path (IP54 design intent)
+    - earpiece front slot gasket compression sets the front leak and must seal to the cover glass
+    - each microphone tunnel needs a compressed gasket boot from the mesh to the MEMS port
+    - USB-C shell drip-break and drain shelf must not vent into the microphone tunnels
+  physical_residuals:
+    - speaker-box drawing must confirm the 0.8 cc rear volume and slot port geometry
+    - Thiele-Small parameters and measured SPL/excursion replace the sealed-box target
+    - measured microphone SNR and wind-noise replace the port-geometry estimate
+    - gasket compression set and acoustic-leak test confirm the sealing paths
+audio_components:
+  codec: ALC5688
+  smart_amp: CS35L41
+  microphone_count: 2
+  microphone_part: SPH0641LM4H
+  placement_region_mm:
+    x: 3.0
+    y: 120.0
+    width: 22.0
+    height: 8.0
+required_audio_nets:
+  - AMP_INT
+  - AUDIO_I2C_SCL
+  - AUDIO_I2C_SDA
+  - CODEC_INT
+  - GND
+  - HAPTIC_OUT
+  - I2S_BCLK
+  - I2S_DIN
+  - I2S_DOUT
+  - I2S_LRCLK
+  - IO_1V8
+  - PDM_CLK
+  - PDM_DAT
+  - SPK_N
+  - SPK_P
+  - SYS
+  - VDD_AMP_3V3
+  - VDD_AUDIO_3V3
+missing_required_nets: []
+routing_buses_checked:
+  AUDIO_I2S_PDM:
+    name: AUDIO_I2S_PDM
+    nets:
+      - I2S_BCLK
+      - I2S_LRCLK
+      - I2S_DOUT
+      - I2S_DIN
+      - PDM_CLK
+      - PDM_DAT
+    max_length_mm: 85
+    group_skew_mm_max: 2.0
+    keepaway: usb_c_and_rf_feeds
+  AUDIO_I2C_IRQ:
+    name: AUDIO_I2C_IRQ
+    nets:
+      - AUDIO_I2C_SCL
+      - AUDIO_I2C_SDA
+      - CODEC_INT
+      - AMP_INT
+    max_length_mm: 85
+    pullups_to: IO_1V8
+missing_routing_buses: []
+routing_missing_nets: {}
+acoustic_constraints_found:
+  bottom_speaker_mic_gasket: true
+  top_earpiece_rf_separation: true
+missing_mechanical_keepouts: []
+supplier_freeze_record: audio_speaker_microphone_flexes
+missing_supplier_evidence_records: []
+speaker_microphone_mechanical_requirements:
+  - bottom loudspeaker chamber volume, port path, and gasket compression defined in ME CAD
+  - at least two microphone acoustic ports with dust mesh and gasket stack
+  - top earpiece acoustic path separated from RF feed/antenna keepout
+  - haptic LRA pocket clear of screw bosses and tall components
+  - USB-C shell/grounding kept away from microphone port noise path
+required_measurements_before_release:
+  - ALSA codec and smart-amp probe transcript
+  - Android Audio HAL service and dumpsys media.audio_flinger transcript
+  - speaker SPL, impedance, excursion, and thermal protection measurement
+  - microphone SNR, sensitivity, wind/noise leakage, and wake-word PDM integrity measurement
+  - haptic resonance and enclosure rattle measurement
+  - acoustic leak and dust/water ingress review for speaker, mic, and earpiece openings
+release_blockers:
+  - speaker-box and earpiece acoustic chamber CAD
+  - microphone port, dust mesh, and gasket drawings
+  - codec, smart amp, PDM microphone, and haptic driver schematic capture
+  - real footprints and routed audio nets away from USB/RF aggressors
+  - ALSA/Android Audio HAL bring-up logs and acoustic measurements
+forbidden_claims:
+  - audio_ready
+  - speaker_ready
+  - microphone_ready
+  - haptics_ready
+  - audio_hal_ready
+  - acoustic_enclosure_ready

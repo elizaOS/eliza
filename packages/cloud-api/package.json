@@ -1,0 +1,53 @@
+{
+  "name": "@elizaos/cloud-api",
+  "version": "2.0.3-beta.14",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "lint": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write .",
+    "dev": "node ../scripts/cloud/admin/dev/cloud-api-dev.mjs",
+    "dev:full": "node ../scripts/cloud/admin/dev/cloud-api-dev.mjs --with-control-plane",
+    "agent:build": "node ../scripts/cloud/admin/dev/build-cloud-agent-image.mjs",
+    "build": "tsc --noEmit",
+    "deploy": "wrangler deploy --env production",
+    "codegen": "node src/_generate-router.mjs",
+    "typecheck": "tsgo --noEmit",
+    "test": "node test/run-unit-isolated.mjs",
+    "test:batch": "bun test __tests__",
+    "test:audit": "node test/_audit-coverage.mjs",
+    "test:e2e": "node test/e2e/run-e2e-batches.mjs",
+    "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload test/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "^3.0.37",
+    "@ai-sdk/openai": "^3.0.54",
+    "@cloudflare/workers-types": "^4.20260429.1",
+    "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/security": "workspace:*",
+    "@fal-ai/client": "^1.10.1",
+    "@fal-ai/server-proxy": "^1.2.1",
+    "@neondatabase/serverless": "^1.1.0",
+    "@upstash/redis": "^1.37.0",
+    "ai": "^6.0.170",
+    "drizzle-orm": "^0.45.1",
+    "file-type": "^22.0.1",
+    "hono": "4.12.25",
+    "music-metadata": "^11.12.3",
+    "nanoid": "^5.1.9",
+    "stripe": "^22.0.0",
+    "telegraf": "^4.16.3",
+    "uuid": "^14.0.0",
+    "viem": "^2.48.8",
+    "wrangler": "^4.0.0",
+    "zod": "^4.4.3",
+    "@elizaos/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.0",
+    "@types/pg": "^8.16.0",
+    "dotenv": "^17.4.2",
+    "pg": "^8.20.0",
+    "typescript": "^6.0.3"
+  }
+}

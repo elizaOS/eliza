@@ -1,0 +1,343 @@
+schema: eliza.rail_plan.v1
+status: authoritative_planning_release_blocked
+claim_allowed: false
+release_claim_allowed: false
+pdn_signoff_claim_allowed: false
+pmic_procurement_claim_allowed: false
+measured_silicon_claim_allowed: false
+tapeout_claim_allowed: false
+production_readiness_claim_allowed: false
+claim_boundary: >
+  This file is the authoritative 16-rail target plan for the Eliza E1 2028
+  mobile-class SKU. Voltages, current budgets, and decoupling targets are
+  modeled engineering targets derived from sub-report C.2 of
+  docs/architecture-optimization/sota-2028/power-delivery.md and the operating
+  point in docs/architecture-optimization/soc-optimized-operating-point.yaml.
+  It is not measured silicon evidence, not a PMIC vendor procurement record,
+  and not a signed-off PDN signoff report.
+source_artifacts:
+  - docs/architecture-optimization/sota-2028/power-delivery.md
+  - docs/architecture-optimization/soc-optimized-operating-point.yaml
+  - docs/architecture-optimization/physical-power-thermal.md
+  - docs/spec-db/process-14a-effects.yaml
+process:
+  marketing_name: 14A / 1.4 nm class
+  primary_variant: frontside_pdn_a14_class
+  follow_on_variant: backside_pdn_or_super_power_rail_follow_on
+  follow_on_status: 2029_re_spin_not_2028_critical_path
+soc_topology:
+  cpu_big_cores: 2
+  cpu_little_cores: 4
+  npu_dense_int8_tops_target: 44.0
+  gpu_present: true
+  display_present: true
+  lpddr_class: LPDDR5X
+  usb_phy_class: USB3
+  pcie_phy_class: PCIe_Gen4
+budgets:
+  sustained_w: 3.5
+  burst_peak_w: 12.0
+  idle_w: 1.0
+  max_die_tj_c: 95.0
+  per_rail_avg_a_meaning: workload_active_average_not_time_average
+  notes: >
+    Two budget tiers consumed by the rail plan: idle (~1 W) for ambient
+    leakage + AON, and burst_peak (~12 W) representing a 1-second
+    sum-of-standalone-peaks envelope that is regulated down by the
+    thermal throttle ladder in fw/pmc/src/thermal_policy.c. The sustained
+    target (3.5 W) is the system-level independent-throttle envelope and
+    is NOT a sum of per-rail avg_a values, because per-rail avg_a is the
+    workload-active average for that rail (e.g. NPU avg = NPU running a
+    workload, not NPU time-averaged including idle). The sustained
+    envelope is enforced at the throttle policy, not at the rail plan.
+control_interfaces:
+  pmic_to_soc:
+    primary: SPMI_v2
+    fallback: I2C_FM_PLUS_1MHZ
+    notes: SPMI v2.0 is the industry default; I2C is preserved for bench bring-up.
+  s_mode_to_pmc:
+    primary: SBI_MPXY_v1_RPMI_v1_0
+    fallback: PSCI_style_direct_calls
+    notes: >
+      SBI MPxy + RPMI v1.0 are ratified (SBI v3.0, RPMI v1.0). Linux drivers
+      landed in 6.x in 2025. Pin OpenSBI release at silicon bring-up; document
+      fallback to direct PSCI-style calls if the kernel driver regresses.
+rails:
+  - id: VDD_CPU_BIG
+    index: 1
+    nominal_v: 0.70
+    dvfs_min_v: 0.55
+    dvfs_max_v: 0.95
+    dvfs_step_mv: 6.25
+    peak_a: 3.5
+    avg_a: 1.0
+    regulator: external_buck_plus_on_die_dldo
+    on_die_dldo: per_core
+    domain: cpu_big
+    decoupling_nf:
+      on_die_target: 600
+      package_target: 4000
+      board_target: 22000
+    notes: 2x big OoO cores @ 3.2 GHz base
+  - id: VDD_CPU_LITTLE
+    index: 2
+    nominal_v: 0.65
+    dvfs_min_v: 0.50
+    dvfs_max_v: 0.85
+    dvfs_step_mv: 6.25
+    peak_a: 1.5
+    avg_a: 0.4
+    regulator: external_buck_plus_on_die_dldo
+    on_die_dldo: per_cluster
+    domain: cpu_little
+    decoupling_nf:
+      on_die_target: 250
+      package_target: 2000
+      board_target: 10000
+    notes: 4x little in-order cores
+  - id: VDD_NPU
+    index: 3
+    nominal_v: 0.70
+    dvfs_min_v: 0.55
+    dvfs_max_v: 0.90
+    dvfs_step_mv: 6.25
+    peak_a: 2.5
+    avg_a: 1.7
+    regulator: external_buck_plus_on_die_dldo
+    on_die_dldo: per_tile
+    domain: npu
+    decoupling_nf:
+      on_die_target: 500
+      package_target: 3000
+      board_target: 22000
+    notes: 44 TOPS @ 1.2 W avg
+  - id: VDD_GPU
+    index: 4
+    nominal_v: 0.70
+    dvfs_min_v: 0.55
+    dvfs_max_v: 0.90
+    dvfs_step_mv: 6.25
+    peak_a: 2.0
+    avg_a: 0.6
+    regulator: external_buck
+    on_die_dldo: none
+    domain: gpu
+    decoupling_nf:
+      on_die_target: 300
+      package_target: 2000
+      board_target: 10000
+    notes: Framebuffer + future GPU IP slot
+  - id: VDD_SOC_FABRIC
+    index: 5
+    nominal_v: 0.75
+    dvfs_min_v: 0.65
+    dvfs_max_v: 0.85
+    dvfs_step_mv: 6.25
+    peak_a: 1.2
+    avg_a: 0.5
+    regulator: external_buck
+    on_die_dldo: none
+    domain: soc_fabric
+    decoupling_nf:
+      on_die_target: 200
+      package_target: 1500
+      board_target: 4700
+    notes: NoC, IOMMU, system cache, coherency
+  - id: VDD_SRAM
+    index: 6
+    nominal_v: 0.80
+    dvfs_min_v: 0.70
+    dvfs_max_v: 0.90
+    dvfs_step_mv: 6.25
+    peak_a: 1.5
+    avg_a: 0.6
+    regulator: external_buck
+    on_die_dldo: none
+    domain: sram
+    decoupling_nf:
+      on_die_target: 400
+      package_target: 2000
+      board_target: 10000
+    notes: All on-die SRAM (L1/L2/SLC + NPU local + retention)
+  - id: VDD_LPDDR_VDDQ
+    index: 7
+    nominal_v: 0.50
+    dvfs_min_v: 0.50
+    dvfs_max_v: 0.50
+    dvfs_step_mv: 0
+    peak_a: 0.8
+    avg_a: 0.5
+    regulator: external_buck
+    on_die_dldo: none
+    domain: lpddr_io
+    decoupling_nf:
+      on_die_target: 100
+      package_target: 1000
+      board_target: 10000
+    notes: LPDDR5X IO (per JEDEC LPDDR5X)
+  - id: VDD_LPDDR_VDD1
+    index: 8
+    nominal_v: 1.80
+    dvfs_min_v: 1.80
+    dvfs_max_v: 1.80
+    dvfs_step_mv: 0
+    peak_a: 0.3
+    avg_a: 0.15
+    regulator: external_ldo
+    on_die_dldo: none
+    domain: lpddr_array
+    decoupling_nf:
+      on_die_target: 0
+      package_target: 500
+      board_target: 4700
+    notes: LPDDR5X array supply
+  - id: VDD_LPDDR_VDD2H_2L
+    index: 9
+    nominal_v: 1.05
+    dvfs_min_v: 0.50
+    dvfs_max_v: 1.05
+    dvfs_step_mv: 0
+    peak_a: 0.5
+    avg_a: 0.3
+    regulator: external_buck_dual_output
+    on_die_dldo: none
+    domain: lpddr_ctrl
+    decoupling_nf:
+      on_die_target: 0
+      package_target: 1000
+      board_target: 10000
+    notes: VDD2H 1.05 V / VDD2L 0.50 V dual-rail (one buck, two outputs)
+  - id: VDD_PHY_ANALOG
+    index: 10
+    nominal_v: 0.85
+    dvfs_min_v: 0.85
+    dvfs_max_v: 0.85
+    dvfs_step_mv: 0
+    peak_a: 0.4
+    avg_a: 0.2
+    regulator: external_ldo
+    on_die_dldo: none
+    domain: lpddr_phy_analog
+    decoupling_nf:
+      on_die_target: 100
+      package_target: 1000
+      board_target: 4700
+    notes: LPDDR PHY analog (PLL, DLL, regulator references)
+  - id: VDD_AON
+    index: 11
+    nominal_v: 0.75
+    dvfs_min_v: 0.75
+    dvfs_max_v: 0.75
+    dvfs_step_mv: 0
+    peak_a: 0.05
+    avg_a: 0.02
+    regulator: external_ldo_plus_on_die_retention_ldo
+    on_die_dldo: aon_retention
+    domain: aon
+    decoupling_nf:
+      on_die_target: 100
+      package_target: 500
+      board_target: 1000
+    notes: AON island, RTC, mgmt-core retention state
+  - id: VDD_PMC
+    index: 12
+    nominal_v: 0.80
+    dvfs_min_v: 0.80
+    dvfs_max_v: 0.80
+    dvfs_step_mv: 0
+    peak_a: 0.1
+    avg_a: 0.05
+    regulator: external_ldo
+    on_die_dldo: none
+    domain: pmc
+    decoupling_nf:
+      on_die_target: 50
+      package_target: 500
+      board_target: 1000
+    notes: Ibex power-management core supply
+  - id: VDD_IO_18
+    index: 13
+    nominal_v: 1.80
+    dvfs_min_v: 1.80
+    dvfs_max_v: 1.80
+    dvfs_step_mv: 0
+    peak_a: 0.5
+    avg_a: 0.2
+    regulator: external_buck
+    on_die_dldo: none
+    domain: io_18
+    decoupling_nf:
+      on_die_target: 0
+      package_target: 500
+      board_target: 10000
+    notes: GPIO, audio, sensor IO (1.8 V)
+  - id: VDD_IO_33
+    index: 14
+    nominal_v: 3.30
+    dvfs_min_v: 3.30
+    dvfs_max_v: 3.30
+    dvfs_step_mv: 0
+    peak_a: 0.2
+    avg_a: 0.1
+    regulator: external_buck
+    on_die_dldo: none
+    domain: io_33
+    decoupling_nf:
+      on_die_target: 0
+      package_target: 500
+      board_target: 4700
+    notes: Slow IO, eMMC fallback (3.3 V)
+  - id: VDD_USB_PCIE_PHY
+    index: 15
+    nominal_v: 0.85
+    dvfs_min_v: 0.85
+    dvfs_max_v: 1.20
+    dvfs_step_mv: 0
+    peak_a: 0.3
+    avg_a: 0.1
+    regulator: external_ldo_dual
+    on_die_dldo: none
+    domain: usb_pcie_phy
+    decoupling_nf:
+      on_die_target: 100
+      package_target: 500
+      board_target: 4700
+    notes: USB 3.x analog 0.85 V + PCIe Gen4 1.20 V (dual LDO output)
+  - id: VDD_RF_REF
+    index: 16
+    nominal_v: 1.80
+    dvfs_min_v: 1.80
+    dvfs_max_v: 1.80
+    dvfs_step_mv: 0
+    peak_a: 0.2
+    avg_a: 0.05
+    regulator: external_ldo
+    on_die_dldo: none
+    domain: rf_ref
+    decoupling_nf:
+      on_die_target: 0
+      package_target: 500
+      board_target: 1000
+    notes: WiFi/BT analog reference
+sum_check:
+  standalone_peak_sum_w_modeled: 12.77
+  workload_active_sum_w_modeled: 5.350
+  burst_peak_w_target: 12.0
+  workload_active_sum_w_target: 5.5
+  notes: >
+    standalone_peak_sum_w_modeled is the simple sum of nominal_v * peak_a
+    across all 16 rails (12.77 W) and bounds the worst 1-second burst
+    envelope. workload_active_sum_w_modeled is the sum of nominal_v *
+    avg_a (5.35 W); this is the worst-case sum if every rail simultaneously
+    ran its declared workload-active average. The sustained 3.5 W
+    independent-throttle target is enforced by
+    fw/pmc/src/thermal_policy.c and the AVFS loop, not by per-rail budgets.
+    Final numbers require vector-driven post-route power signoff.
+release_blockers:
+  - PMIC vendor or discrete BOM not selected. See docs/pd/pmic-selection.md.
+  - Vector-driven dynamic IR-drop signoff per rail not produced. See docs/evidence/power/pdn-signoff-gate.yaml.
+  - Per-corner DVFS tables not generated. See docs/evidence/power/dvfs-table-evidence.yaml.
+  - UPF (pd/upf/e1_soc_top.upf) not run through commercial low-power signoff (VC LP / Conformal LP).
+  - Per-rail decoupling actual placement not budgeted in pd/openroad floorplan.
+  - PDN impedance Z(f) profile not produced for 1 kHz - 1 GHz under package + board model.
+release_use: prohibited_until_external_review

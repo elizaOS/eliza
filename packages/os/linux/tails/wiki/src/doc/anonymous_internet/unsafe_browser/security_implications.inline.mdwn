@@ -1,0 +1,12 @@
+[[!meta robots="noindex"]]
+
+The *Unsafe Browser* does not use Tor. The websites that you visit can
+see your real IP address.
+
+This is why we recommend that you:
+
+- Only use the *Unsafe Browser* to sign in to a network using a captive portal
+  or [[browse trusted web pages on the local
+  network|advanced_topics/lan#browser]].
+
+- Close the *Unsafe Browser* after signing in to the network.

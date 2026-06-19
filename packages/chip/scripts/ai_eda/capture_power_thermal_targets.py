@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""Capture dry-run power, thermal, IR-drop, and PDN AI/EDA targets for E1."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.util
+import json
+import shutil
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/power_thermal_targets"
+CLAIM_BOUNDARY = "power_thermal_target_capture_only_no_power_or_thermal_claim"
+
+INPUT_ARTIFACTS = (
+    "benchmarks/power/workload-plan.yaml",
+    "benchmarks/power/manifests/e1-npu-sustained-capture.template.json",
+    "benchmarks/power/sustained-run-evidence.schema.json",
+    "benchmarks/power/scripts/check_sustained_run_evidence.py",
+    "benchmarks/power/scripts/derive_local_power_estimates.py",
+    "docs/manufacturing/evidence/power/e1-npu-power-capture-manifest.yaml",
+    "docs/manufacturing/evidence/thermal/e1-npu-thermal-capture-plan.md",
+    "benchmarks/configs/benchmark_plan.json",
+    "benchmarks/results/soc-optimized-operating-point.json",
+    "benchmarks/results/cpu-npu-2028-burst-sustained-policy.json",
+    "pd/signoff/si-pi/local-evidence.yaml",
+    "pd/signoff/manifest.yaml",
+    "pd/openlane/config.sky130.json",
+    "docs/spec-db/process-14a-effects.yaml",
+    "docs/manufacturing/board-package-2028-scaling-checklist.yaml",
+    "scripts/check_cpu_npu_burst_sustained_policy.py",
+    "scripts/check_cpu_npu_burst_thermal_transient.py",
+)
+
+OPTIONAL_COMMANDS = (
+    "openroad",
+    "klayout",
+    "magic",
+    "ngspice",
+    "hotspot",
+    "mcpat",
+)
+
+OPTIONAL_PYTHON_MODULES = (
+    "torch",
+    "numpy",
+    "scipy",
+    "sklearn",
+    "cv2",
+    "matplotlib",
+)
+
+
+def rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def artifact_entry(path_text: str) -> dict[str, Any]:
+    path = ROOT / path_text
+    return {
+        "path": path_text,
+        "status": "PRESENT" if path.is_file() else "MISSING",
+        "sha256": sha256_file(path) if path.is_file() else None,
+    }
+
+
+def command_entry(name: str) -> dict[str, str | None]:
+    resolved = shutil.which(name)
+    return {
+        "command": name,
+        "status": "PRESENT" if resolved else "MISSING",
+        "path": resolved,
+    }
+
+
+def module_entry(name: str) -> dict[str, str]:
+    return {
+        "module": name,
+        "status": "PRESENT" if importlib.util.find_spec(name) else "MISSING",
+    }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    report = {
+        "schema": "eliza.ai_eda.power_thermal_targets.v1",
+        "run_id": args.run_id,
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "mode": "dry-run",
+        "status": "TARGET_CAPTURE_ONLY_NO_POWER_THERMAL_CLAIM",
+        "claim_boundary": CLAIM_BOUNDARY,
+        "source_ids": [
+            "agentictcad",
+            "tcadgpt",
+            "deepoheat",
+            "thermal-generative-ai",
+            "commercial-thermal-map-dataset",
+            "hotgauge",
+            "mcpat",
+            "hotspot-thermal-simulator",
+            "thermedge-iredge",
+            "waca-unet-ir-drop",
+            "lmm-ir-static-ir-drop",
+            "ir-drop-predictor",
+            "eda-irdrop-prediction",
+            "powernet-ir-drop",
+            "mavirec-ir-drop",
+            "pdnnet-dynamic-ir-drop",
+            "dust-irdrop",
+            "openpdn",
+            "aieda",
+            "rtlmul",
+            "opensta-power-analysis",
+            "ieda-ipower",
+            "trace2power",
+            "archpower",
+            "autopower",
+            "atompower-rtl-power",
+        ],
+        "policy": {
+            "generates_power_map": False,
+            "generates_thermal_map": False,
+            "generates_pdn": False,
+            "changes_pdn": False,
+            "changes_floorplan": False,
+            "runs_power_analysis": False,
+            "runs_thermal_analysis": False,
+            "downloads_external_assets": False,
+            "prediction_generated": False,
+            "release_use_allowed": False,
+            "tops_per_w_claim_allowed": False,
+            "thermal_claim_allowed": False,
+            "ir_drop_claim_allowed": False,
+        },
+        "input_artifacts": [artifact_entry(path) for path in INPUT_ARTIFACTS],
+        "optional_backends": {
+            "commands": [command_entry(name) for name in OPTIONAL_COMMANDS],
+            "python_modules": [module_entry(name) for name in OPTIONAL_PYTHON_MODULES],
+        },
+        "candidate_tasks": [
+            {
+                "id": "power-thermal-label-readiness",
+                "status": "CAPTURED_NOT_MODELED",
+                "target": "hash sustained power, thermal, frequency, workload, and calibration evidence contracts",
+                "acceptance_gates": [
+                    "make power-thermal-evidence-check",
+                    "make power-thermal-evidence-test",
+                ],
+            },
+            {
+                "id": "ir-drop-pdn-predictor-watch",
+                "status": "CAPTURED_NOT_PREDICTED",
+                "target": "future static/dynamic IR-drop and PDN template predictor after local OpenROAD/PDNSim labels, dynamic activity provenance, and PDN graph extraction exist",
+                "acceptance_gates": [
+                    "make pd-signoff-manifest-check",
+                    "make physical-closure-work-order-check",
+                ],
+            },
+            {
+                "id": "dynamic-ir-drop-model-intake-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future PowerNet, MAVIREC, PDNNet, or DuST-IRdrop style dynamic droop models require pinned assets, vector/activity provenance, PDN graph features where applicable, held-out E1 labels, temporal error analysis, and signoff replay",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make pd-signoff-manifest-check",
+                    "make power-thermal-evidence-check",
+                ],
+            },
+            {
+                "id": "tcad-device-power-thermal-assumption-watch",
+                "status": "CAPTURED_NOT_MODELED",
+                "target": "future TCAD-derived device, leakage, self-heating, or thermal assumptions must be reviewed against process authority and measured or signoff labels",
+                "acceptance_gates": [
+                    "make process-14a-effects-check",
+                    "make power-thermal-evidence-check",
+                    "make pd-signoff-manifest-check",
+                ],
+            },
+            {
+                "id": "thermal-hotspot-surrogate-watch",
+                "status": "CAPTURED_NOT_PREDICTED",
+                "target": "future thermal surrogate or HotSpot-style deterministic thermal screening after power maps, package model, floorplan mapping, and measured traces exist",
+                "acceptance_gates": [
+                    "make power-thermal-evidence-check",
+                    "make board-package-evidence-check",
+                ],
+            },
+            {
+                "id": "external-thermal-dataset-framework-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future commercial thermal-map datasets, HotGauge, McPAT, or HotSpot-style thermal/power frameworks require exact revisions, licenses, device/workload provenance, dependency manifests, package/floorplan mapping, calibration traces, split review, and held-out E1 thermal evidence before any import or run",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
+                    "make power-thermal-evidence-check",
+                    "make board-package-evidence-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "static-ir-multimodal-model-watch",
+                "status": "CAPTURED_NOT_PREDICTED",
+                "target": "future LMM-IR-style static IR-drop models require netlist/layout feature schemas, PDNSim or signoff labels, train/test and contamination review, held-out E1 error analysis, prediction quarantine, and PD reviewer disposition",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make pd-signoff-manifest-check",
+                    "make power-thermal-evidence-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "rtl-ppa-power-advisory-join",
+                "status": "CAPTURED_NOT_EXECUTED",
+                "target": "join RTLMUL, OpenSTA/iPower/trace2power activity analysis, or AtomPower-style RTL power priors with local post-route, per-cycle activity, and measured power labels only after calibration",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/run_rtlmul_ppa_advisory.py --run-id validation",
+                    "make synth",
+                ],
+            },
+            {
+                "id": "activity-annotated-power-analysis-watch",
+                "status": "CAPTURED_NOT_ANALYZED",
+                "target": "future OpenSTA, iEDA iPower, or trace2power-style power/activity analysis requires pinned tool revisions, Liberty/netlist/SDC/parasitic/activity hashes, top-scope mapping, activity coverage, report hashes, and cross-tool correlation",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation",
+                    "make power-thermal-evidence-check",
+                    "make synth",
+                ],
+            },
+            {
+                "id": "architecture-power-model-intake-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future ArchPower, AutoPower, or McPAT-style CPU/AP power models require pinned datasets/configs, feature mappings, local calibration labels, train/test splits, and error analysis before any E1 simulator or power claim",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make cpu-npu-burst-sustained-policy",
+                    "make power-thermal-evidence-check",
+                ],
+            },
+        ],
+        "blocked_by": [
+            "no calibrated E1 rail power trace, thermal trace, frequency trace, or workload transcript",
+            "no package, board, airflow, heatsink, or phone skin thermal model calibrated to E1",
+            "no license-reviewed external thermal-map dataset or HotGauge-style thermal framework with exact revision, dependency manifest, package/floorplan mapping, and local calibration",
+            "no pinned McPAT or HotSpot revision, technology/config manifest, activity/power-map inputs, package/floorplan mapping, sensitivity analysis, or local calibration",
+            "no local OpenROAD/PDNSim IR-drop label corpus across repeated runs",
+            "no approved multimodal static IR-drop feature schema with netlist/layout hashes, signoff labels, contamination review, and held-out E1 error analysis",
+            "no dynamic IR-drop label corpus with vector/activity provenance, PDN graph extraction, held-out E1 splits, or temporal error analysis",
+            "no activity-aligned power map or vector-based post-route power evidence",
+            "no pinned OpenSTA, iEDA iPower, or trace2power revision with Liberty/netlist/SDC/parasitic/activity hashes, top-scope mapping, activity coverage, report hashes, or cross-tool correlation",
+            "no per-cycle RTL activity and power-label corpus for AtomPower-style RTL power estimates",
+            "no approved TCAD/DTCO deck, device model, simulator, calibration corpus, or process authority for E1 device-level power and thermal assumptions",
+            "no approved ArchPower dataset intake, AutoPower code revision, E1 CPU/AP feature mapping, or held-out local calibration labels",
+            "no approved PowerNet/MAVIREC/PDNNet/DuST-IRdrop asset intake, license review, dependency manifest, generated prediction quarantine, or signoff replay",
+            "no approved flow for AI-generated PDN, power map, thermal map, or signoff waiver",
+        ],
+    }
+    out_dir = (args.out_root / args.run_id).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "targets_report.json"
+    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(f"STATUS: PASS ai_eda.power_thermal.targets {rel(path)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

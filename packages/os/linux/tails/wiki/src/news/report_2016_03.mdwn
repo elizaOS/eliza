@@ -1,0 +1,182 @@
+[[!meta title="Tails report for March, 2016"]]
+[[!meta date="Wed, 13 Apr 2016 13:14:38 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 2.2 was released on March 8|news/version_2.2]] (major release).
+
+* [[Tails 2.2.1 was released on March 18|news/version_2.2.1]] (minor release).
+
+* Tails 2.3 is [[scheduled for April 19|contribute/calendar]].
+
+The following changes were introduced in 2.2:
+
+- Add support for viewing DVDs with DRM protection. ([[!tails_ticket 7674]])
+
+- Replace *Vidalia*, which has been unmaintained for years, with:
+  - a system status icon indicating whether Tails is connected to Tor or not,
+  - *Onion Circuits* to display a list of the current Tor circuits and connections.
+
+- Automatically save the database of *KeePassX* after every change to prevent
+  data loss when shutting down. ([[!tails_ticket 11147]])
+
+- Disable the **Alt + Shift** and
+  **Left Shift + Right Shift** keyboard
+  shortcuts that used to switch to the next keyboard layout.
+  You can still use **Meta + Space** to change
+  keyboard layout. ([[!tails_ticket 11042]])
+
+- Fix **optional PGP key** feature of *WhisperBack*. ([[!tails_ticket 11033]])
+
+- Fix saving of *WhisperBack* report to a file when offline. ([[!tails_ticket 11133]])
+
+- Make Git verify the integrity of transferred objects. ([[!tails_ticket 11107]])
+
+Code
+====
+
+* segfault applied for a Google Summer of Code on Tails
+  Server. Their goal is to make it easy to run
+  onion services from inside Tails (web servers, chat servers, tools for
+  collaborative edition, etc.).
+
+* We finished a script that allows running a Mumble, a VoIP
+  server from Tails on an onion service. We are
+  now discussing how and whether this should be integrated in Tails by
+  default. ([[!tails_ticket 11241]])
+
+* Llama Tail
+  and
+  GoodCrypto
+  started porting our shell scripts to
+  Python.
+
+* We decided to drop our custom Ciphers and MACs settings for
+  SSH.
+
+* u submitted some [patches for TorBirdy](https://github.com/ioerror/torbirdy/pull/30)
+  to better support our improvements to the Thunderbird
+  autoconfiguration assistant.
+
+Documentation and website
+=========================
+
+* Many advanced users complained about the lack of a direct download link in
+  our new installation assistant. We are working on adding one back while still
+  protecting people from being lazy and skipping the ISO verification.
+  ([[!tails_ticket 11024]])
+
+* We worked on speeding up the build of the website and almost reached
+  our goal of 30%. ([[!tails_ticket 11151]])
+
+* We created a page that lists [[all our mailing lists and email
+  addresses|doc/about/contact]], their scope and policy.
+
+* We improved the instructions for resetting a USB
+  stick and verifying the ISO
+  image in Mac OS X.
+
+* We explained [[how to restart GNOME
+  Shell|support/known_issues#restart-shell]]. This is particularly
+  useful when icons and information located on the top right corner of
+  the screen disappear.
+
+User experience
+===============
+
+* sajolida sent the slides, mockups, and notes from his UX session on
+  connecting to Tor in Tails
+  held at the Internet Freedom Festival.
+
+Infrastructure
+==============
+
+* intrigeri and Cyril Brulebois presented their design for our upcoming
+  freezable APT repository.
+  It will allow saving snapshots of all the packages that are used to
+  build a given Tails. It's a necessary step to have reproducible builds
+  and allow distributing better the source code of all the software in
+  Tails.
+
+* anonym started using Dogtail
+  to identify graphical user interface elements programmatically in our
+  test suite, instead of based on screenshots.
+
+* bertagaz deployed an Icinga2 monitoring system to monitor our most
+  important services.
+
+* We decided to drop the requirement for OpenPGP communication with HTTP
+  mirror operators.
+
+* We clarified what needs to be done to have a proper
+  [[!tails_ticket 10331#note-14 desc="review"]] and
+  merge
+  process in Weblate.
+
+* 839 ISO images were automatically built and tested by our continuous integration infrastructure.
+
+Outreach
+========
+
+Past Events
+-----------
+
+- Four of us participated to [Internet Freedom Festival](https://internetfreedomfestival.org/):
+  - Emma Peel gave a workshop on translating Tails to Spanish,
+  - sajolida did a session about the user experience of configuring Tor in Tails.
+
+- TetaLab organized a Tails release party on March 8th at 18:00 in Toulouse, France.
+
+- Six of us attended the Logan CIJ Symphosium where we participated
+  on a panel ['Future of OS'](https://logancij.com/schedule/)
+  with David Mirza Ahmad, Joanna Rutkowska, and Jacob Applebaum
+  ([recording](https://www.youtube.com/watch?v=Nol8kKoB-co)). We also proposed a Tails
+  workshop for journalists and maintained a table at the CryptoBar.
+
+- syl, Vigdis and gagz did a [workshop about Tails and Tor](http://biblio.insa-rennes.fr/crypto) at Insa, Rennes, France
+
+- gagz gave [a conference and a workshop about privacy, Tor, and Tails](http://www.agendadulibre.org/events/10869) during the [Semaine de l'environnement](https://sderennes.wordpress.com/), Rennes, France
+
+Press and testimonials
+======================
+
+* 2016-03-17: [Tails – das Betriebssystem für gemäßigt Paranoide](http://www.zeit.de/digital/internet/2016-03/linux-test-tails-live-betriebssystem-usb) by Patrick Beuth in Zeit Online.
+
+* 2016-03-15: In Best Linux Distro: Linux Experts Rate Distros Tails is ranked #5 by Bruce Byfield who adds that "even if you decide not to run Tails, its documentation is well worth reading as a primer in security".
+
+* 2016-03-15: [Wie der Computer zur Hochsicherheitszone wird](http://www.sueddeutsche.de/digital/tails-und-subgraph-wie-der-computer-zur-hochsicherheitszone-wird-1.2907946) by Jessica Binsch in Süddeutsche Zeitung (in German).
+
+* 2016-03-14: [Logan CIJ Symposium 2016: Technik, die entgeistert](http://www.linux-magazin.de/NEWS/Logan-CIJ-Symposium-2016-Technik-die-entgeistert)
+  by Kristian Kißling in Linux-Magazin covers the panel we participated in at the [Logan CIJ Symposium](https://logancij.com/) on March 12 (in German).
+
+Translation
+===========
+
+## All the website
+
+  - de: 47% (2549) strings translated, 4% strings fuzzy, 42% words translated
+  - fa: 52% (2843) strings translated, 6% strings fuzzy, 59% words translated
+  - fr: 56% (3064) strings translated, 6% strings fuzzy, 58% words translated
+  - pt: 29% (1571) strings translated, 7% strings fuzzy, 28% words translated
+
+Total original words: 56061
+
+## Core pages of the website
+
+  - de: 88% (1179) strings translated, 6% strings fuzzy, 91% words translated
+  - fa: 77% (1037) strings translated, 12% strings fuzzy, 72% words translated
+  - fr: 80% (1069) strings translated, 10% strings fuzzy, 77% words translated
+  - pt: 68% (917) strings translated, 17% strings fuzzy, 66% words translated
+
+Total original words: 14006
+
+Metrics
+=======
+
+* Tails has been started more than 568.280 times this month. This makes 18.331 boots a day on average.
+* 11004 downloads of the OpenPGP signature of Tails ISO from our website.
+* 181 bug reports were received through WhisperBack.

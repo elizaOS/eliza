@@ -1,0 +1,82 @@
+---
+company: NovaTech
+last_updated: "2024-12-01"
+roadmap_version: "2024.4"
+
+products:
+  - name: GX200
+    category: Datacenter GPU
+    architecture: Blackwell-derived
+    status: Shipping
+    launch_date: "2024-03-18"
+    specifications:
+      transistor_count_billions: 208
+      process_node_nm: 4
+      cuda_cores: 18432
+      tensor_cores: 576
+      memory_type: HBM3e
+      memory_capacity_gb: 192
+      memory_bandwidth_tb_s: 8.0
+      tdp_watts: 1000
+      fp8_performance_pflops: 20
+      fp16_performance_pflops: 10
+      interconnect: NVBridge 5.0
+      max_gpu_cluster: 256
+    target_market: Hyperscale AI training and inference
+    key_customers:
+      - FrontierAI
+      - MegaCloud
+      - Azure Compute
+      - Alphabet DeepMind
+    pricing:
+      list_price_usd: 40000
+      volume_discount_pct: 15
+
+  - name: Obsidian Architecture
+    category: Next-Gen GPU Architecture
+    status: In Development
+    expected_launch: "2025-H2"
+    specifications:
+      transistor_count_billions: 300
+      process_node_nm: 3
+      memory_type: HBM4
+      memory_capacity_gb: 288
+      memory_bandwidth_tb_s: 12.0
+      tdp_watts: 1200
+      fp8_performance_pflops: 40
+      interconnect: NVBridge 6.0
+    improvements_over_gx200:
+      training_speedup: "2x"
+      inference_efficiency: "3x"
+      power_efficiency: "1.5x per FLOP"
+    target_market: Next-generation foundation model training
+
+  - name: PUMA
+    category: Software Platform
+    current_version: "13.2"
+    status: Generally Available
+    description: >
+      Comprehensive GPU computing software ecosystem providing libraries,
+      tools, and frameworks for AI/ML, HPC, and graphics workloads.
+      Industry-standard platform with deep integration across all major
+      AI frameworks.
+    components:
+      - name: PUMA Deep Learning SDK
+        version: "9.4"
+      - name: PUMA Collective Communications Library (PCCL)
+        version: "2.21"
+      - name: PUMA TensorRT
+        version: "10.1"
+      - name: PUMA Triton Inference Server
+        version: "24.08"
+    supported_frameworks:
+      - PyTorch
+      - TensorFlow
+      - JAX
+      - ONNX Runtime
+    developer_adoption: "4.2 million active developers"
+    moat_assessment: >
+      PUMA creates significant switching costs. Estimated 6-18 months
+      of engineering effort to port large-scale training pipelines to
+      competing platforms. This ecosystem lock-in is NovaTech's primary
+      competitive moat.

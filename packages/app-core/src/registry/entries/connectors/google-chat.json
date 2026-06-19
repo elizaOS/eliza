@@ -1,0 +1,120 @@
+{
+  "id": "google-chat",
+  "name": "Google Chat",
+  "description": "Google Chat connector for bots, spaces, and message-driven workflows.",
+  "npmName": "@elizaos/plugin-google-chat",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "connector",
+    "messaging",
+    "google-chat",
+    "productivity",
+    "social",
+    "social-chat",
+    "google",
+    "chat"
+  ],
+  "config": {
+    "GOOGLE_CHAT_SPACES": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Chat Spaces",
+      "help": "Comma-separated space/room list",
+      "advanced": false
+    },
+    "GOOGLE_CHAT_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Chat Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "GOOGLE_CHAT_AUDIENCE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Chat Audience",
+      "help": "Audience/auth scope",
+      "advanced": false
+    },
+    "GOOGLE_CHAT_BOT_USER": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Chat Bot User",
+      "help": "Bot user identifier",
+      "advanced": false
+    },
+    "GOOGLE_CHAT_WEBHOOK_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Chat Webhook Path",
+      "help": "Webhook path",
+      "advanced": false
+    },
+    "GOOGLE_CHAT_AUDIENCE_TYPE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Chat Audience Type",
+      "help": "Audience/auth scope",
+      "advanced": false
+    },
+    "GOOGLE_CHAT_REQUIRE_MENTION": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Chat Require Mention",
+      "help": "Only respond when mentioned",
+      "advanced": false
+    },
+    "GOOGLE_CHAT_SERVICE_ACCOUNT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Chat Service Account",
+      "help": "Service account credentials",
+      "advanced": false,
+      "min": 0
+    },
+    "GOOGLE_APPLICATION_CREDENTIALS": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Application Credentials",
+      "help": "Credentials file path or JSON",
+      "advanced": false
+    },
+    "GOOGLE_CHAT_SERVICE_ACCOUNT_FILE": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Chat Service Account File",
+      "help": "Service account credentials",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "MessagesSquare",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#google-chat"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

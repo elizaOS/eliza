@@ -1,0 +1,255 @@
+[[!meta title="Additional software packages"]]
+
+[[!toc levels=2]]
+
+Rationale
+=========
+
+Tails includes a coherent but limited set of applications. As the system is
+amnesic, new software packages for Debian can be installed in a working
+session but they are not reinstalled at next reboot.
+
+Additional Software Packages is a feature to remember a set of Debian Packages
+to be installed automatically from the [[Persistent
+Storage|contribute/design/persistence]] each time Tails is started.
+
+Use cases
+=========
+
+Alice is a geographer working for an NGO in an unstable country. They need
+to use Tails but needs the QGis SIG to work. It would make little sense
+to add such a specific software in Tails. But thanks to Additional
+Software Packages, Alice can have QGis installed every time when they boot
+Tails with the Persistent Storage unlocked.
+
+Bob is a journalist and wants to publish videos made by other
+colleagues. Bob needs to convert these videos and is used to the open
+source video transcoder HandBrake. With Additional Software Packages,
+Bob doesn't need to install it every time when they boot Tails.
+
+Specifications
+==============
+
+Goals
+-----
+
+- Allow people to choose to:
+  - Reinstall a package every time they start Tails.
+  - Stop reinstalling a package every time on boot.
+
+- Integrate this in:
+  - The usual installation and removal process of a package (through
+    Synaptic, another graphical tool, or APT on the command line).
+  - The Persistent Storage settings.
+
+- Ensure packages are installed even offline.
+
+- Ensure packages are updated when the machine is connected to the Internet.
+
+Non-goals
+---------
+
+- We won't support installing software that is not in Debian's official
+  repositories.
+
+- We won't provide a way for people to specify which packages to install
+  outside of the usual installation process of a package. We only ask
+  people if they want to reinstall a package every time *after it has
+  been successfully installed a first time*.
+
+Implementation
+==============
+
+Software installation at startup
+--------------------------------
+
+The systemd user unit
+[[!tails_gitweb config/chroot_local-includes/usr/lib/systemd/user/tails-additional-software-install.service]]
+is triggered by `desktop.target`. It starts the system unit
+[[!tails_gitweb config/chroot_local-includes/lib/systemd/system/tails-additional-software-install.service]]
+with sudo (see
+[[!tails_gitweb config/chroot_local-includes/etc/sudoers.d/zzz_tails-additional-software]]).
+
+`tails-additional-software-install.service` starts if its configuration exists and executes
+[[!tails_gitweb config/chroot_local-includes/usr/local/sbin/tails-additional-software]]
+ `install` then creates `/run/live-additional-software/installed`.
+
+`tails-additional-software install` reads `live-additional-software.conf` which
+contains a package name per line and install these packages with `apt-get`
+(using options that prevent questions being asked to the user, see
+`install_additional_packages` and `_launch_apt_get` in
+[[!tails_gitweb config/chroot_local-includes/usr/local/sbin/tails-additional-software]]).
+
+In the beginning of the process, the user is notified through desktop
+notifications that additional software is being installed:
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/notification - installing.png"/>
+
+In the end, they are informed of success of failure. In the latter case, they are
+offered to open a configuration window or to examine the logs in order to better
+understand the issue. The notifications with buttons displayed are as the desktop
+user and are implemented in
+[[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-additional-software-notify]].
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/notification - installation failed.png"/>
+
+
+Software upgrade on Internet connection
+---------------------------------------
+
+A network-manager dispatcher hook starts the systemd unit
+[[!tails_gitweb config/chroot_local-includes/lib/systemd/system/tails-additional-software-upgrade.path]]
+which waits for `/run/live-additional-software/installed` then starts the
+oneshot service `/usr/local/sbin/tails-additional-software upgrade` after
+`tails-wait-until-tor-has-bootstrapped.service`, `tails-additional-software-install.service`,
+and `tails-additional-software-update-config.service`.
+
+[[!tails_gitweb config/chroot_local-includes/usr/local/sbin/tails-additional-software]]
+`update` saves a copy of apt lists, then starts `apt-get update` and launches the
+installation process again, triggering an upgrade if necessary.
+
+If the upgrade is successful, the copy of old apt lists is deleted.
+Else, it would be restored by the installation process next time Tails
+is started, ensuring that a network disconnection or another unexpected
+issue doesn't make the Additional Software Packages unavailable.
+
+In the beginning of the process, the user is notified via desktop
+notifications that additional software is being upgraded.
+
+In the end, they are informed of success of failure. In the latter case,
+they are offered to open a configuration window or to examine the logs
+in order to better understand the issue.
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/notification - upgrade failed.png"/>
+
+User interface for addition and removal of software
+---------------------------------------------------
+
+When the user installs a package either through the APT command line or
+a graphical interface like Synaptic, a notification is displayed to let
+them add or remove it from their list of additional software.
+
+Two APT hooks are configured in
+[[!tails_gitweb config/chroot_local-includes/etc/apt/apt.conf.d/80tails-additional-software.disabled]],
+which are enabled by
+[[!tails_gitweb config/chroot_local-hooks/99-zz-install-ASP-DPKG-hooks]] in the
+end of the build process. See
+[the apt.conf man page](https://manpages.debian.org/stable/apt/apt.conf.5.en.html#HOW_APT_CALLS_DPKG(1))
+for details about the APT hooks mechanism.
+
+The first hook
+[[!tails_gitweb config/chroot_local-includes/usr/local/lib/additional-software/asp-pre-apt]]
+is configured via `DPkg::Pre-Install-Pkgs` to run *before* APT invokes
+dpkg to install or remove any packages. It saves the list of packages
+to be installed or removed in `/run/live-additional-software/packages`.
+
+The second hook
+[[!tails_gitweb config/chroot_local-includes/usr/local/lib/additional-software/asp-post-apt]]
+is configured via `DPkg::Post-Invoke` to run *after* APT invokes dpkg to
+install or remove packages. It starts a transient systemd service which runs
+[[!tails_gitweb config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes]]
+asynchronously, in order to not block APT. This script then reads the
+list of files written by the first hook and checks which packages were
+manually installed or removed.
+
+### When a package is installed
+
+<img src="https://redmine.tails.boum.org/code/attachments/download/1925/asp-flow-installed.svg" height="auto" />
+
+#### With the Persistent Storage unlocked:
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/notification - add.png"/>
+
+When *Add To Persistent Storage* is clicked,
+`/usr/local/lib/tpscli` is used to enable the `AdditionalSoftware`
+Persistent Storage feature.
+The new additional packages are then added
+atomically to the `live-additional-software.conf` configuration file
+(this logic is handled by
+[[!tails_gitweb config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py]]).
+
+#### Without a Persistent Storage
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/notification - add without persistent storage.png"/>
+
+When *Add To Persistent Storage* is clicked, the Persistent Storage app
+is started to lead the user through the process
+of creating a Persistent Storage. The `AdditionalSoftware` preset is
+automatically enabled. The new additional packages are then added to the
+`live-additional-software.conf` configuration file (this logic in handled by
+[[!tails_gitweb config/chroot_local-includes/usr/lib/python3/dist-packages/tailslib/persistence.py]]).
+
+#### With the Persistent Storage locked
+
+No notification is displayed as people who have a Persistent Storage but
+don't unlock it, probably do this only sometimes and for a reason. They
+probably otherwise unlock their Persistent Storage most of the time. If
+they install packages with their Persistent Storage locked, they
+probably do it with their Persistent Storage unlocked as well and would
+learn about this feature when it's most relevant for them.
+
+#### When it's impossible to have a Persistent Storage
+
+This happens when running from a DVD, virtual machine, or intermediary
+Tails.
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/notification - impossible persistent storage.png"/>
+
+The state file `/run/live-additional-software/installer-asked` ensures
+this notification is only shown once per session, not to bother people
+too much.
+
+### When a package is removed
+
+<img src="https://redmine.tails.boum.org/code/attachments/download/1926/asp-flow-removed.svg" height="auto" />
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/notification - remove.png"/>
+
+When *Remove* is clicked, the packages are removed atomically from the
+`live-additional-software.conf` configuration file (this logic is
+handled by
+[[!tails_gitweb config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py]]).
+
+Additional Software configuration window
+----------------------------------------
+
+The list of additional software can be opened from:
+
+- **Apps&nbsp;▸ System Tools&nbsp;▸ Additional Software**
+- **Apps&nbsp;▸ Tails&nbsp;▸ Additional Software**
+- a click on the gear button next to the **Additional
+Software** feature in the Persistent Storage settings
+
+This application is implemented in the following files:
+
+- [[!tails_gitweb config/chroot_local-includes/usr/local/bin/tails-additional-software-config]]
+- [[!tails_gitweb config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in]]
+- [[!tails_gitweb config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui]]
+
+If there is no Persistent Storage or before any package is added, if the
+Persistent Storage is locked, or if it is impossible to have a Persistent
+Storage (for example, when running from a DVD or a virtual machine) the window
+shows an explanation text with appropriate pointers:
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/additional software - without persistent storage.png"/>
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/additional software - empty.png"/>
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/additional software - locked persistent storage.png"/>
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/additional software - impossible persistent storage.png"/>
+
+When packages have already been added, the window displays a list of
+these Additional Software Packages:
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/additional software.png"/>
+
+When clicking on the delete cross, a confirmation dialog is displayed:
+
+<img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/additional software/png/additional software - remove.png"/>
+
+The privileged helper 
+[[!tails_gitweb config/chroot_local-includes/usr/local/sbin/tails-additional-software-remove]]
+is called through *pkexec* to remove the software from the
+`live-additional-software.conf` configuration file (see
+[[!tails_gitweb config/chroot_local-includes/usr/share/polkit-1/actions/org.boum.tails.additional-software.policy]]

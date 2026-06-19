@@ -1,0 +1,58 @@
+---
+title: Services
+description: "Long-lived subsystems hosted by the runtime."
+---
+
+A **Service** is a class with lifecycle hooks that the runtime owns for the duration of the agent's life. Use a service when you need:
+
+- a connector polling/socket loop (Discord client, Telegram bot)
+- a scheduler (cron jobs, autonomy ticks)
+- a native bridge (audio capture, OS APIs)
+- a cache, queue, or in-memory index
+- anything else that's stateful and longer-lived than a single turn
+
+## Shape
+
+```ts
+import { Service, type IAgentRuntime } from '@elizaos/core';
+
+export class MyService extends Service {
+  static serviceType = 'my-service' as const;
+  capabilityDescription = 'What this service offers the agent.';
+
+  static async start(runtime: IAgentRuntime): Promise<MyService> {
+    const svc = new MyService(runtime);
+    // open connections, start timers
+    return svc;
+  }
+
+  async stop(): Promise<void> {
+    // close connections, clear timers
+  }
+}
+```
+
+## Registration
+
+Services are added to the plugin's `services` array. The runtime instantiates each one during `initialize()` and stops them in `stop()`.
+
+```ts
+export const plugin: Plugin = {
+  name: 'plugin-my-thing',
+  services: [MyService],
+};
+```
+
+## Discovery
+
+Other code (actions, providers, evaluators, even other services) retrieves a running service by type:
+
+```ts
+const svc = runtime.getService<MyService>('my-service');
+```
+
+## See also
+
+- [Services reference](/runtime/services)
+- [Service patterns](/plugins/patterns)
+- [Plugin architecture](/plugins/architecture)

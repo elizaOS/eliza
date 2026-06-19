@@ -1,0 +1,35 @@
+{
+  "memoryThresholds": {
+    "warningMB": 400,
+    "criticalMB": 200,
+    "swapWarningPercent": 70
+  },
+  "processLimits": {
+    "maxNodeProcesses": 2,
+    "maxWorkerThreads": 4,
+    "gcInterval": 300
+  },
+  "openclawOptimizations": {
+    "sessionTimeout": 1800,
+    "maxConcurrentSessions": 3,
+    "compactMemoryOnIdle": true,
+    "reduceLogVerbosity": true,
+    "disablePluginsOnLowMem": ["browser-automation"],
+    "modelOverrides": {
+      "cronJobs": "default",
+      "heartbeat": "default"
+    }
+  },
+  "systemInfo": {
+    "totalRAM": "1.6GB",
+    "swapSize": "8GB",
+    "os": "Ubuntu 22.04 LTS",
+    "openclawVersion": "2026.2.6-3",
+    "nodeVersion": "v22.5.0"
+  },
+  "monitoringSchedule": {
+    "checkInterval": "every 4 hours",
+    "logRotation": "daily",
+    "maxLogSize": "50MB"
+  }
+}

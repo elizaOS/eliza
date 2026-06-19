@@ -1,0 +1,216 @@
+schema: eliza.e1_phone_radio_module_selection_wiring_decision.v1
+status: blocked_radio_module_selection_requires_supplier_design_packs_region_decision_routed_rf_and_firmware_evidence
+date: '2026-05-21'
+claim_boundary: Explicit off-the-shelf wireless module selection and wiring decision for the E1 phone planning package.
+  It records the current cellular, Wi-Fi, and Bluetooth module stack, host bus contracts, RF feeds, fit consequences,
+  and required supplier/factory evidence. It is not a supplier pinout, not an approved reference layout, not firmware
+  release evidence, not a routed RF design, not regulatory/carrier approval, and not enclosure-ready evidence.
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+  - board/kicad/e1-phone/radio-module-source-revalidation.yaml
+  - board/kicad/e1-phone/radio-module-envelope-orderability-gate.yaml
+  - board/kicad/e1-phone/cellular-space-saving-downselect.yaml
+  - board/kicad/e1-phone/radio-module-integration.yaml
+  - board/kicad/e1-phone/module-rf-pinout-execution.yaml
+  - board/kicad/e1-phone/radio-module-schematic-net-binding.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+upstream_status:
+  cellular_package: sourcing_shortlist_no_bonded_pins_no_fabricated_board
+  wifi_bluetooth_package: phone_class_sourcing_target_no_bonded_pins_no_fabricated_board
+  radio_module_source_revalidation: public_sources_revalidated_radio_modules_not_supplier_approved
+  radio_module_envelope_orderability_gate: blocked_cellular_region_too_small_and_supplier_design_packs_missing
+  cellular_space_saving_downselect: blocked_space_saving_lte_alternates_need_supplier_packs_and_performance_decision
+  radio_module_integration: blocked_requires_module_pinout_firmware_rf_measurement_and_regulatory_evidence
+  module_rf_pinout_execution: blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence
+  radio_module_schematic_net_binding: blocked_radio_module_net_binding_requires_supplier_pinouts_real_schematic_rf_route_firmware_and_factory_evidence
+  placement_interface_matrix: concept_constraints_not_routed_pcb
+  supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
+selected_wireless_stack:
+  cellular_performance_reference:
+    vendor: Quectel
+    family: RG255C_or_RM255C
+    selected_phone_form_factor: RG255C_LGA
+    class: 5G_RedCap_Sub_6
+    public_envelope_mm: {width: 29.0, height: 32.0, thickness: 2.4}
+    host_interfaces_kept_for_evt1:
+      - USB_2_0
+      - PCIe_2_0
+      - USIM_or_eSIM
+      - reset_wake_disable_gpio
+    board_decision: keep_as_primary_performance_reference_but_do_not_route_release_until_top_island_repack_or_smaller_module_branch_is_resolved
+  cellular_space_saving_branch:
+    preferred_candidate_id: quectel_eg915q_na_or_eg915u_class
+    class: LTE_Cat_1_bis
+    public_envelope_mm: {width: 23.6, height: 19.9, thickness: 2.4}
+    tradeoff: smaller_top_island_area_but_loses_5g_redcap_throughput_and_restarts_region_carrier_sar_scope
+    board_decision: keep_as_active_rfq_branch_not_production_substitute
+  wifi_bluetooth_primary:
+    vendor: Murata
+    order_number: LBEE5XV2EA-802
+    chipset: Infineon_CYW55573
+    wireless:
+      wifi: 802.11a_b_g_n_ac_ax_2x2_MIMO_2p4_5_6_GHz
+      wifi_phy_rate_mbps: 1200
+      bluetooth: 5.3_BR_EDR_LE
+    public_envelope_mm: {width: 12.5, height: 9.4, thickness: 1.2}
+    host_interfaces_kept_for_evt1:
+      - PCIe_primary
+      - SDIO_fallback
+      - UART_bluetooth_with_RTS_CTS
+      - enable_irq_wake_gpio
+    board_decision: keep_as_primary_wifi6e_bluetooth_module_pending_murata_design_pack_firmware_and_regulatory_review
+placement_fit_decision:
+  cellular_current_region:
+    placement_refdes_group: U_CELL
+    placement_region_mm: {x: 3.0, y: 3.0, width: 14.0, height: 14.0}
+    selected_lga_envelope_mm: {width: 29.0, height: 32.0, thickness: 2.4}
+    fits_current_region: false
+    width_shortfall_mm: 15.0
+    height_shortfall_mm: 18.0
+    release_decision: block_evt1_route_until_top_rf_island_is_repacked_or_a_smaller_supplier_approved_module_is_selected
+  wifi_bluetooth_current_region:
+    placement_refdes_group: U_WIFI_BT
+    placement_region_mm: {x: 3.0, y: 18.0, width: 14.0, height: 10.0}
+    selected_module_envelope_mm: {width: 12.5, height: 9.4, thickness: 1.2}
+    fits_current_region: true
+    width_clearance_mm: 1.5
+    height_clearance_mm: 0.6
+    release_decision: keep_region_reserved_but_require_reference_layout_rf_keepout_land_pattern_step_firmware_and_regulatory_scope
+host_wiring_contract:
+  cellular_required_host_contracts:
+    - CELL_USB2_DP
+    - CELL_USB2_DN
+    - CELL_PCIE_TX_P
+    - CELL_PCIE_TX_N
+    - CELL_PCIE_RX_P
+    - CELL_PCIE_RX_N
+    - CELL_RESET_N
+    - CELL_WAKE_AP
+    - AP_WAKE_CELL
+    - CELL_W_DISABLE_N
+    - USIM_CLK
+    - USIM_RST
+    - USIM_IO
+  cellular_required_power_control_nets:
+    - RF_VBAT
+    - IO_1V8
+    - CELL_RESET_N
+    - CELL_W_DISABLE_N
+    - AP_WAKE_CELL
+    - CELL_WAKE_AP
+  cellular_sim_esim_nets:
+    - USIM_VCC
+    - USIM_CLK
+    - USIM_RST
+    - USIM_IO
+    - USIM_DET
+    - ESIM_VCC
+    - ESIM_CLK
+    - ESIM_RST
+    - ESIM_IO
+  wifi_bluetooth_required_host_contracts:
+    - WIFI_PCIE_TX_P
+    - WIFI_PCIE_TX_N
+    - WIFI_PCIE_RX_P
+    - WIFI_PCIE_RX_N
+    - WIFI_SDIO_CLK
+    - WIFI_SDIO_CMD
+    - WIFI_SDIO_D0
+    - WIFI_SDIO_D1
+    - WIFI_SDIO_D2
+    - WIFI_SDIO_D3
+    - BT_UART_TX
+    - BT_UART_RX
+    - BT_UART_CTS_N
+    - BT_UART_RTS_N
+    - WIFI_EN
+    - BT_EN
+    - WIFI_HOST_WAKE
+    - WIFI_IRQ
+  wifi_bluetooth_required_power_control_nets:
+    - RF_VBAT
+    - IO_1V8
+    - WIFI_EN
+    - BT_EN
+    - WIFI_IRQ
+    - WIFI_HOST_WAKE
+rf_feed_contract:
+  required_rf_nets:
+    - CELL_RF_MAIN
+    - CELL_RF_DIV
+    - CELL_GNSS_RF
+    - WIFI_BT_RF0
+    - WIFI_BT_RF1
+  required_rf_feed_count: 5
+  cellular_minimum_ports:
+    - cellular_main
+    - cellular_diversity
+    - gnss_optional
+  wifi_bluetooth_ports:
+    - wifi_bt_chain0
+    - wifi_bt_chain1
+  common_requirements:
+    - 50 ohm routed geometry with continuous ground reference
+    - matching network and conducted access before each antenna feed
+    - antenna vendor review against final plastics and metal stack
+    - VNA S11/S21, conducted RF, coexistence, SAR pre-scan, and factory RF calibration evidence
+firmware_identity_factory_contract:
+  required_traceability_fields:
+    - board_serial
+    - imei_or_modem_identifier
+    - wifi_mac
+    - bluetooth_mac
+    - secure_key_provisioning_result
+    - fixture_id
+    - test_software_revision
+  missing_firmware_artifacts:
+    - Quectel modem firmware, driver, and carrier test-mode package
+    - Murata/Infineon CYW55573 firmware, NVRAM, CLM, license, and regulatory database
+    - Android/Linux device-tree, RF-kill, suspend/resume, country-code, RIL, Wi-Fi, and Bluetooth attach logs
+supplier_release_policy:
+  supplier_response_packs_received: 0
+  release_allowed_without_supplier_response_packs: false
+  required_before_layout_release:
+    - exact cellular region SKU, orderable MPN, band matrix, pad map, hardware design guide, reference layout, STEP, firmware, and carrier scope
+    - selected cellular branch decision between 5G RedCap repack and smaller LTE Cat 1 bis module
+    - Murata Type 2EA pinout, land pattern, reference layout, STEP, firmware/NVRAM/CLM/license, and modular approval scope
+    - antenna vendor review, RF matching/conducted access plan, factory RF limits, and first-article radio transcript
+cross_checks:
+  primary_cellular_matches_package_binding: true
+  wifi_bluetooth_matches_package_binding: true
+  public_source_revalidation_matches_selected_stack: true
+  cellular_fit_blocker_matches_envelope_gate: true
+  cellular_space_saving_branch_matches_downselect: true
+  wifi_bluetooth_fit_matches_envelope_gate: true
+  cellular_host_contracts_present_in_block_netlist: true
+  wifi_bluetooth_host_contracts_present_in_block_netlist: true
+  rf_feed_contract_matches_rf_execution: true
+  routing_constraints_cover_high_speed_module_pairs: true
+  supplier_response_packs_absent_and_required: true
+  all_release_claims_fail_closed: true
+release_blockers:
+  - Cellular 5G RedCap reference module does not fit the current 14 x 14 mm U_CELL region.
+  - Cellular branch is unresolved between top-island repack for RG255C LGA and smaller LTE Cat 1 bis supplier-approved module.
+  - Cellular exact region SKU, band matrix, hardware design guide, pad map, reference layout, STEP, firmware, carrier/PTCRB/GCF plan, and SAR scope are missing.
+  - Murata Type 2EA pinout, land pattern, reference layout, STEP, firmware/NVRAM/CLM/license, regulatory database, and modular approval review are missing.
+  - Routed RF geometry, matching networks, conducted access, antenna tune, VNA/coexistence/SAR evidence, and factory RF limits are missing.
+forbidden_claims:
+  - radio_module_selection_final
+  - cellular_region_ready
+  - cellular_ready
+  - wifi_ready
+  - bluetooth_ready
+  - rf_ready
+  - carrier_ready
+  - sar_ready
+  - regulatory_ready
+  - firmware_ready
+  - factory_rf_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

@@ -1,0 +1,58 @@
+[[!meta date="Mon, 30 Jan 2012 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.10.1 is out"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.10.1, is out.
+
+This is a bugfix-only release mainly aimed at fixing serious bugs and
+security issues.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Iceweasel
+  - Make Startpage the default web search engine. Scroogle does not look
+    reliable enough these days.
+
+* Software
+  - Upgrade WhisperBack to 1.5.1 (update link to bug reporting documentation).
+  - Update MAT to 0.2.2-2~bpo60+1 (fixes a critical bug in the GUI).
+
+* Hardware support
+  - Upgrade Linux kernel to 3.2.1-2
+
+* Time synchronization
+    Serious rework that should fix most, if not all, of the infamous
+    time-sync' related bugs some Tails users have experienced recently.
+    - Make htpdate more resilient by using three server pools, and
+      allowing some failure ratio.
+    - Set time from Tor's unverified-consensus if needed.
+    - Set time to middle of [valid-after, fresh-until] from consensus.
+    - Many robustness, performance and fingerprinting-resistance improvements.
+    - Display time-sync' notification much earlier.
+
+* Miscellaneous
+  - Fix access to "dumb" git:// protocol by using a connect-socks wrapper
+    as GIT_PROXY_COMMAND.
+  - SSH client: fix access to SSH servers on the Internet by correcting
+    Host / ProxyCommand usage.
+  - Pidgin: use OFTC hidden service to workaround Tor blocking.
+  - Claws Mail: disable draft autosaving.
+    When composing PGP encrypted email, drafts are saved back to
+    the server in plaintext. This includes both autosaved and manually
+    saved drafts.
+  - tails-security-check-wrapper: avoid eating all memory when offline.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.

@@ -1,0 +1,49 @@
+[[!meta title="Git merge policy: common rules"]]
+
+## Documentation is not optional
+
+When writing Tails code, one commits to adapt the design and end-user
+documentations accordingly in a timely manner, writing brand new
+chapters if needed.
+
+### Design documentation
+
+As a side note, best is generally to write specification and design
+documentation before implementing changes; among other very valid
+reasons to do so, it may avoid doing work that won't be applied ever,
+or be reverted later, because of a faulty design that was reviewed and
+diagnosed only when the implementation was up and running. On the
+other hand, we're not great fans of over-engineering and we do know
+proceeding like this is not always an option, as the right design
+sometimes arises from erratic implementation attempts.
+
+### User documentation
+
+See our [[documentation guidelines|contribute/how/documentation/style_guide]].
+
+Verify that your changes do not affect the rest of the user documentation and
+FAQ. If they do, or if in doubt, create an issue to ask our
+[[technical writers|contribute/working_together/roles/technical_writer]]
+to update the documentation accordingly.
+
+We generally prepare documentation updates in the same branch as the
+corresponding code changes, so that both get released together.
+
+Regarding the [[FAQ|support/faq]], don't write new questions in advance but make sure that the
+existing ones are still correct.
+
+## Do not break the build... or get reverted
+
+Do not push changes breaking the build into one of our [[main Git
+branches|contribute/git#branches]]: `master`, `stable`, `testing`, and `devel`.
+
+If you find the `devel` branch in a non-building state and can
+identify the root cause of it to a recent commit, fix it if you wish,
+but don't let it disturb you otherwise: just revert the faulty commit
+and inform the other developers on [[tails-dev@boum.org|doc/about/contact#tails-dev]] so that the author knows
+s/he needs to fix his/her stuff before reapplying it at a later point.
+
+## Coordinate major changes and freeze exceptions with Release Managers
+
+See the coordination guidelines [[for developers with Release
+Managers|contribute/working_together/interfaces/developers_and_release_managers]].

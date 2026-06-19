@@ -1,0 +1,142 @@
+[[!meta title="Tails report for November, 2018"]]
+[[!meta date="Tue, 17 Dec 2018 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Welcome to Tails monthly report for November 2018! A lot has happened in the
+last month, but first of all, we want to point you to our ongoing donation
+campaign! If everyone using Tails today donated $6, our fundraiser
+would be done in just one day!
+
+Upcoming releases
+=================
+
+Very soon, we will drastically simplify the installation for Windows
+and macOS and improve support for UEFI computers! To this aim, with
+the Tails 3.12 release [[scheduled for January
+29|contribute/calendar]], we will start distributing *USB images* in
+addition to *ISO images*.
+
+
+Code
+====
+
+* We've been working hard since a few months on our USB image project
+  ([[!tails_ticket 15292]]) and will soon send a call for testing.
+  The main remaining challenge is to build the USB image reproducibly
+  ([[!tails_ticket 15985]]).
+
+* We resumed work on porting Tails to Debian 10 (Buster).
+  Our Foundations Team will have a sprint focused on this topic next
+  month and should publish a first beta release by the end of April.
+
+* We identified and fixed one root cause for a major problem some
+  users face when upgrading Tails: part of the user interface that
+  provided feedback about the progress of the upgrade was broken,
+  which lead users to restart Tails before the upgrade was fully
+  applied. While we were at it, we improved the user experience of the
+  upgrade process, which will now require user confirmation before
+  shutting down the network connection. ([[!tails_ticket 14754]],
+  [[!tails_ticket 15282]])
+
+* Tails 3.11, [[scheduled for December 11|contribute/calendar]] and [[released 
+  on time|/news/version_3.11]] fixed a great number of long-standing problems 
+  and recent regressions.
+
+
+Infrastructure
+==============
+
+We made good progress on adjusting our infrastructure to upcoming
+changes at our previous providers:
+
+* We now host our website on our own infrastructure. An unintended but
+  welcome side-effect is that browsing our website is snappier than it
+  used to. ([[!tails_ticket 14588]])
+
+* We renamed our Redmine instance from https://labs.riseup.net/ to
+  https://redmine.tails.boum.org/. This avoids confusion about who
+  is responsible for this service and it will allow our Riseup friends
+  to set up *single sign-on* (SSO) for their own services.
+
+* We built a plan to migrate our Schleuder mailing lists to different
+  servers, depending on their privacy, security and availability
+  requirements. We will implement it in December.
+
+Funding
+=======
+
+We continued working on our yearly donation campaign:
+
+* We added to our donation banner a counter for the total amount. We
+  reached 23% of our fundraising goal in the first half of the campaign.
+
+* We got 64% more donors, which is amazing! Thanks a lot for your
+  support :) But so far we raised 51% less in amount compared to last
+  year. More people are donating but we are missing the big donors
+  that we had in the past.
+
+Outreach
+========
+
+We published an [[extensive summary of our achievements in
+2018|news/achievements_in_2018]] and also announced that in addition to
+bitcoins, you can now donate using [[four new
+cryptocurrencies|news/new_cryptocurrencies]]. By the way, donations! Have you
+already met our donation campaign site? Cryptocurrencies are only
+one way to donate, but wouldn't it be interesting to try to donate in every way
+possible?
+
+Upcoming events
+---------------
+
+* At the monthly meeting, the idea of attending
+  [FOSDEM](https://fosdem.org/2019/) came up
+
+* sajolida pointed
+  out
+the [Internet Freedom Festival](https://internetfreedomfestival.org/), which
+will happen in April next year.
+
+
+Translation
+===========
+
+## All the website
+
+  - de: 50% (3112) strings translated, 7% strings fuzzy, 45% words translated
+  - es: 56% (3459) strings translated, 3% strings fuzzy, 47% words translated
+  - fa: 30% (1864) strings translated, 11% strings fuzzy, 33% words translated
+  - fr: 86% (5273) strings translated, 4% strings fuzzy, 86% words translated
+  - it: 32% (1986) strings translated, 6% strings fuzzy, 28% words translated
+  - pt: 25% (1541) strings translated, 8% strings fuzzy, 21% words translated
+
+Total original words: 64362
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 81% (1544) strings translated, 10% strings fuzzy, 82% words translated
+  - es: 95% (1813) strings translated, 3% strings fuzzy, 95% words translated
+  - fa: 31% (591) strings translated, 13% strings fuzzy, 31% words translated
+  - fr: 96% (1835) strings translated, 3% strings fuzzy, 97% words translated
+  - it: 68% (1308) strings translated, 14% strings fuzzy, 69% words translated
+  - pt: 44% (836) strings translated, 14% strings fuzzy, 47% words translated
+
+Total original words: 17343
+
+
+Metrics
+=======
+
+* Tails has been started more than 695 882 times this month. This makes 23196
+  boots a day on average.
+* 7 668 downloads of the OpenPGP signature of Tails ISO from our website.
+* 66 bug reports were received through WhisperBack.
+
+
+Oh, it's already the end of the monthly report! So now is probably the good
+time for whose of you who can donate to head over to our donation campaign
+page!
+
+[Donate](https://tails.net/donate/)

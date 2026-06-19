@@ -1,0 +1,156 @@
+schema: eliza.display_panel_binding.v1
+as_of: 2026-05-19
+panel: v0_oem_5p5_fhd_1080x1920_dsi
+status: planning_binding_no_bonded_pins_no_fabricated_board
+claim_boundary: >
+  Planning binding only. No DSI controller exists in `rtl/`, no DSI lanes are
+  bonded in `package/e1-demo-pinout.yaml`, no panel is mounted on a board,
+  and no DRM/KMS evidence has been captured. Promotion of any display claim
+  requires the controller RTL (`e1_dsi_tx` per
+  `research/mobile_platform_2026/02_analysis/display_dsi_dsc.md`), bonded
+  DSI pins, panel driver upstream coverage, and DRM/KMS transcript.
+selected_for:
+  - "First v0 hand-held panel: commodity 5.5\" 1080x1920 IPS/OLED LCM with MIPI-DSI 4-lane PHY."
+  - "Mechanical anchor: 68.04 x 120.96 mm active area, roughly 70-71 mm TFT outline."
+  - DSI command-mode or video-mode operation per selected vendor datasheet.
+panel_candidates:
+  - vendor: Chenghao Optoelectronic
+    part: CH550FH01A-CT
+    interface: MIPI-DSI
+    resolution: 1080x1920
+    refresh_hz: 60
+    active_area_mm: {width: 68.04, height: 120.96}
+    tft_outline_mm: {width: 70.78, height: 129.17, thickness: 1.7}
+    module_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
+    touch: capacitive
+    tft_driver_ic_public_pdf: HX8399C
+    touch_controller_public_pdf: GT911
+    ctp_interface_public_pdf: I2C
+    luminance_public_pdf_cd_m2: 650
+    linux_driver: vendor_init_sequence_required
+    datasheet_status: public_pdf_cross_checked_not_signed_supplier_pack
+    public_pdf_url: https://www.chenghaolcd.com/doc/14495745/5-5-inch-tft-capacitive-touchscreen-1080x1920-pixel-ltps-transmissive.pdf
+  - vendor: META Display / OEM 055WU01 class
+    part: 055WU01
+    interface: MIPI-DSI 4-lane, 40-pin
+    resolution: 1080x1920
+    refresh_hz: 60
+    active_area_mm: {width: 68.04, height: 120.96}
+    brightness_typ_cd_m2: 1000
+    touch: capacitive
+    linux_driver: vendor_init_sequence_required
+    datasheet_status: supplier_request_required
+  - vendor: Forfuture / FET
+    part: E549-HCO1 or pin-compatible AMOLED class
+    interface: MIPI-DSI 4-lane
+    resolution: 1080x1920
+    refresh_hz: 60
+    active_area_mm: {width: 68.299, height: 121.421}
+    outline_mm: {width: 70.66, height: 128.36, thickness: 0.82}
+    driver_ic: RM67191
+    touch: oncell_optional
+    linux_driver: vendor_init_sequence_required
+    datasheet_status: supplier_request_required
+  - vendor: Alibaba OEM/ODM 5.5 inch ILI7807D class
+    part: 5p5_1080x1920_MIPI_40pin_1200nit_class
+    interface: MIPI-DSI 4-lane, 40-pin
+    resolution: 1080x1920
+    refresh_hz: 60
+    brightness_typ_cd_m2: 1200
+    driver_ic: ILI7807D
+    touch: capacitive
+    linux_driver: vendor_init_sequence_required
+    datasheet_status: supplier_request_required
+  - vendor: BOE
+    part: TV050QDM-N00
+    interface: MIPI-DSI 4-lane (subset 1–2 lane usable)
+    resolution: 720x1280
+    refresh_hz: 60
+    driver_ic: Himax HX8394
+    linux_driver: panel-himax-hx8394 (DRM bridge)
+    datasheet_status: vendor_request_required
+  - vendor: Truly
+    part: TFT3P1761E
+    interface: MIPI-DSI 2-lane
+    resolution: 720x1280
+    refresh_hz: 60
+    driver_ic: ILI9881C
+    linux_driver: panel-ilitek-ili9881c (mainline since v4.20)
+    datasheet_status: vendor_distributor_request
+  - vendor: PineDio reference
+    part: PinePhone Pro display assembly (LCM)
+    interface: MIPI-DSI 4-lane
+    resolution: 720x1440
+    refresh_hz: 60
+    driver_ic: ST7703 (Sitronix)
+    linux_driver: panel-sitronix-st7703 (mainline since v5.8)
+    datasheet_status: reference_open
+linux_support:
+  framework: DRM/KMS via drm_panel_bridge + drm_simple_kms_helper
+  fallback_simpledrm: true
+  driver_path_examples:
+    - drivers/gpu/drm/panel/panel-ilitek-ili9881c.c
+    - drivers/gpu/drm/panel/panel-sitronix-st7703.c
+  evidence_manifest: package/display/evidence-gates.yaml
+host_interfaces:
+  dsi_lanes:
+    count_required: 4
+    count_optional_max: 4
+    speed_per_lane_gbps:
+      min: 0.8
+      target: 1.0
+      max_panel_dependent: 1.5
+    signals:
+      - {contract: DSI_CLK_P, module_role: dsi_clock_p, direction_at_soc: output}
+      - {contract: DSI_CLK_N, module_role: dsi_clock_n, direction_at_soc: output}
+      - {contract: DSI_D0_P, module_role: dsi_data0_p, direction_at_soc: output}
+      - {contract: DSI_D0_N, module_role: dsi_data0_n, direction_at_soc: output}
+      - {contract: DSI_D1_P, module_role: dsi_data1_p, direction_at_soc: output}
+      - {contract: DSI_D1_N, module_role: dsi_data1_n, direction_at_soc: output}
+      - {contract: DSI_D2_P, module_role: dsi_data2_p, direction_at_soc: output}
+      - {contract: DSI_D2_N, module_role: dsi_data2_n, direction_at_soc: output}
+      - {contract: DSI_D3_P, module_role: dsi_data3_p, direction_at_soc: output}
+      - {contract: DSI_D3_N, module_role: dsi_data3_n, direction_at_soc: output}
+  control:
+    signals:
+      - {contract: DISP_RESET_N, module_role: panel_reset_n, direction_at_soc: output, default: low}
+      - {contract: DISP_TE, module_role: tearing_effect, direction_at_soc: input, default_pull: down}
+      - {contract: DISP_BL_EN, module_role: backlight_enable, direction_at_soc: output, default: low}
+      - {contract: DISP_BL_PWM, module_role: backlight_pwm, direction_at_soc: output}
+power_sequence:
+  status: required_not_implemented
+  rails:
+    - {name: VBAT, owner: board, status: missing, voltage_v: 3.3_to_4.4}
+    - {name: VDD_IO, owner: PMIC_GPIO_LDO, status: missing, voltage_v: 1.8}
+    - {name: VDD_AVDD, owner: PMIC_BUCK_BOOST, status: missing, voltage_v: 5.5}
+    - {name: VDD_AVEE, owner: PMIC_BUCK_BOOST, status: missing, voltage_v: -5.5}
+  default_controls:
+    DISP_RESET_N: low
+    DISP_BL_EN: low
+  ordered_steps:
+    - Keep DISP_RESET_N low while VDD_IO and VDD_AVDD/AVEE are absent or ramping.
+    - Apply VDD_IO 1.8V, settle ≥ 10 ms.
+    - Apply VDD_AVDD/AVEE, settle ≥ 5 ms.
+    - Release DISP_RESET_N high; wait ≥ 10 ms before sending init commands.
+    - Send panel init sequence over DSI command mode.
+    - Enable backlight (DISP_BL_EN high, ramp DISP_BL_PWM duty cycle).
+android_hal:
+  framework: Android Composer HAL 2.4 + SurfaceFlinger
+  fallback_simpledrm_surface: true
+  vintf_entry_planned: android.hardware.graphics.composer@2.4-service.eliza_ai_soc
+  evidence_required:
+    - DRM/KMS panel probe transcript (modetest -M dsi-0)
+    - simple-framebuffer fallback transcript
+    - SurfaceFlinger boot log
+evidence_gates_pointer: package/display/evidence-gates.yaml
+cross_references:
+  - docs/arch/display.md
+  - docs/architecture-optimization/phone-platform.md
+  - research/mobile_platform_2026/02_analysis/display_dsi_dsc.md
+  - research/mobile_platform_2026/03_implementation/platform_path_for_e1.md
+forbidden_claims:
+  - display_works
+  - panel_probed
+  - SurfaceFlinger_running
+  - 60_Hz_sustained
+  - Composer_HAL_VINTF_compatible

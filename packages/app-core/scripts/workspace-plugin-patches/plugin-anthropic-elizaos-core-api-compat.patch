@@ -1,0 +1,34 @@
+From 6711acc78e013c3ae6f7d0afc1dde9d165e4363d Mon Sep 17 00:00:00 2001
+From: dutch <dutchiono@gmail.com>
+Date: Thu, 9 Apr 2026 11:45:14 -0400
+Subject: [PATCH] fix: cast emitEvent payload for @elizaos/core EventPayloadMap
+ compat
+
+MODEL_USED is not in EventPayloadMap's known keys after the core API update.
+Cast the payload to EventPayload to satisfy the generic overload.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ typescript/utils/events.ts | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/typescript/utils/events.ts b/typescript/utils/events.ts
+index 361676b..b36a8ec 100644
+--- a/typescript/utils/events.ts
++++ b/typescript/utils/events.ts
+@@ -1,4 +1,4 @@
+-import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
++import type { EventPayload, IAgentRuntime, ModelTypeName } from "@elizaos/core";
+ import { EventType } from "@elizaos/core";
+ 
+ type ModelUsage = {
+@@ -34,5 +34,5 @@ export function emitModelUsageEvent(
+       ...(cacheRead !== undefined ? { cacheRead } : {}),
+       ...(cacheWrite !== undefined ? { cacheWrite } : {}),
+     },
+-  });
++  } as EventPayload);
+ }
+-- 
+2.52.0.windows.1
+

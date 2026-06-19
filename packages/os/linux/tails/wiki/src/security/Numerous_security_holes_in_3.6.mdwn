@@ -1,0 +1,15 @@
+[[!meta date="Sun, 18 Mar 2018 14:16:05 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.6"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.6 are now fixed in Tails 3.6.1.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.6.1|news/version_3.6.1]] as soon as possible.
+
+- Tor Browser: [MSFA 2018-08](https://www.mozilla.org/en-US/security/advisories/mfsa2018-08/)
+- libvorbis: [[!debsa2018 4140]]
+- curl: [[!debsa2018 4136]]
+- samba: [[!debsa2018 4135]]

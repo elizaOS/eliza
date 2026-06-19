@@ -1,0 +1,21 @@
+#!/bin/sh
+
+set -eu
+
+echo "Selecting our preferred pinentry"
+
+for alternative in pinentry pinentry-x11 ; do
+   update-alternatives --set "$alternative" /usr/bin/pinentry-gtk-2
+done
+
+# XXX: remove once Debian bug #869416 is fixed
+mkdir -p /usr/lib/pinentry
+dpkg-divert --add --rename --divert \
+            /usr/lib/pinentry/pinentry-gtk-2 \
+            /usr/bin/pinentry-gtk-2
+
+cat > /usr/bin/pinentry-gtk-2 << 'EOF'
+#!/bin/sh
+/usr/local/lib/run-with-user-env /usr/lib/pinentry/pinentry-gtk-2 "$@"
+EOF
+chmod 755 /usr/bin/pinentry-gtk-2

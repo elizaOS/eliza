@@ -1,0 +1,179 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2024-03-30 18:29+0000\n"
+"Last-Translator: drebs <drebs@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Title ##
+#, no-wrap
+msgid "Connecting to the Internet and Tor"
+msgstr "Conectando à Internet e à rede Tor"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Connecting to a local network|anonymous_internet/networkmanager]]"
+msgid "[[Connecting to a local network|anonymous_internet/networkmanager]]"
+msgstr "- [[Conectando a uma rede local|anonymous_internet/networkmanager]]"
+
+#. type: Bullet: '  * '
+msgid "[[Troubleshooting Wi-Fi not working|anonymous_internet/no-wifi]]"
+msgstr ""
+"[[Resolvendo problemas quando o Wi-Fi não funciona|anonymous_internet/no-"
+"wifi]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Signing in to a network using a captive portal|anonymous_internet/"
+"unsafe_browser]]"
+msgstr ""
+"[[Logando em uma rede através de um portal cativo|anonymous_internet/"
+"unsafe_browser]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Connecting to the Tor network|anonymous_internet/tor]]"
+msgid "[[Connecting to the Tor network|anonymous_internet/tor]]"
+msgstr "- [[Conectando à rede Tor|anonymous_internet/tor]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Troubleshooting connecting to Tor|anonymous_internet/tor/troubleshoot]]"
+msgstr ""
+"[[Resolvendo problemas com a conexão à rede Tor|anonymous_internet/tor/"
+"troubleshoot]]"
+
+#. type: Bullet: '  * '
+msgid "[[Why does Tails use Tor?|anonymous_internet/tor/why]]"
+msgstr "[[Por que o Tails usa Tor?|anonymous_internet/tor/why]]"
+
+#. type: Bullet: '  * '
+msgid "[[Why is Tor slow?|anonymous_internet/tor/slow]]"
+msgstr "[[Por que a rede Tor é lenta?|anonymous_internet/tor/slow]]"
+
+#. type: Bullet: '  * '
+msgid "[[Managing the circuits of Tor|anonymous_internet/tor/circuits]]"
+msgstr "[[Gerenciando os circuitos Tor|anonymous_internet/tor/circuits]]"
+
+#. type: Title ##
+#, no-wrap
+msgid "Internet applications"
+msgstr "Aplicativos de Internet"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Browsing the web with *Tor Browser*|anonymous_internet/tor_browser]]"
+msgid "[[Browsing the web with *Tor Browser*|anonymous_internet/tor_browser]]"
+msgstr ""
+"- [[Navegando na Internet com o *Navegador Tor*|anonymous_internet/"
+"tor_browser]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Sharing files, websites, and chat rooms using *OnionShare*|"
+#| "anonymous_internet/onionshare]]"
+msgid ""
+"[[Sharing files, websites, and chat rooms using *OnionShare*|"
+"anonymous_internet/onionshare]]"
+msgstr ""
+"- [[ Compartilhando arquivos, websites e chats com *OnionShare*|"
+"anonymous_internet/onionshare]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Emailing and reading news with *Thunderbird*|anonymous_internet/"
+#| "thunderbird]]"
+msgid ""
+"[[Emailing and reading news with *Thunderbird*|anonymous_internet/"
+"thunderbird]]"
+msgstr ""
+"- [[Acessando email e lendo noticias com *Thunderbird*|anonymous_internet/"
+"thunderbird]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Exchanging bitcoins using *Electrum*|anonymous_internet/electrum]]"
+msgid "[[Exchanging bitcoins using *Electrum*|anonymous_internet/electrum]]"
+msgstr ""
+"- [[Realizando transações com bitcoin usando *Electrum*|anonymous_internet/"
+"electrum]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Chatting with *Pidgin* and OTR|anonymous_internet/pidgin]]"
+msgid "[[Chatting with *Pidgin* and OTR|anonymous_internet/pidgin]]"
+msgstr "- [[Batendo papo com *Pidgin* e OTR|anonymous_internet/pidgin]]"
+
+#~ msgid ""
+#~ "- [[Browsing the web with *Tor Browser*|anonymous_internet/tor_browser]] "
+#~ "- [[Sharing files with *OnionShare*|anonymous_internet/onionshare]] - "
+#~ "[[Emailing and reading news with *Thunderbird*|anonymous_internet/"
+#~ "thunderbird]] - [[Exchanging bitcoins using *Electrum*|anonymous_internet/"
+#~ "electrum]] - [[Chatting with *Pidgin* and OTR|anonymous_internet/pidgin]]"
+#~ msgstr ""
+#~ "- [[Navegando na internet com o *Navegador Tor*|anonymous_internet/"
+#~ "tor_browser]]\n"
+#~ "- [[Compartilhando arquivos com *OnionShare*|anonymous_internet/"
+#~ "onionshare]]\n"
+#~ "- [[Enviando emails e lendo notícias com *Thunderbird*|anonymous_internet/"
+#~ "thunderbird]]\n"
+#~ "- [[Enviando e recebendo bitcoins com *Electrum*|anonymous_internet/"
+#~ "electrum]]\n"
+#~ "- [[Batendo papo com *Pidgin* e OTR|anonymous_internet/pidgin]]"
+
+#, no-wrap
+#~ msgid ""
+#~ "- [[!traillink Connecting_to_a_local_network|anonymous_internet/networkmanager]]\n"
+#~ "  - [[!traillink Troubleshooting_Wi-Fi_not_working|anonymous_internet/no-wifi]]\n"
+#~ "  - [[!traillink Signing_in_to_a_network_using_a_captive_portal|anonymous_internet/unsafe_browser]]\n"
+#~ "- [[!traillink Connecting_to_the_Tor_network|anonymous_internet/tor]]\n"
+#~ "  - [[!traillink Troubleshooting_connecting_to_Tor|anonymous_internet/tor/troubleshoot]]\n"
+#~ "  - [[!traillink Why_does_Tails_use_Tor?|anonymous_internet/tor/why]]\n"
+#~ "  - [[!traillink Why_is_Tor_slow?|anonymous_internet/tor/slow]]\n"
+#~ "  - [[!traillink Viewing_the_circuits_of_Tor|anonymous_internet/tor/circuits]]\n"
+#~ msgstr ""
+#~ "- [[!traillink Conectando_a_uma_rede_local|anonymous_internet/networkmanager]]\n"
+#~ "  - [[!traillink Resolvendo_problemas_de_um_Wi-Fi_que_não_funciona|anonymous_internet/no-wifi]]\n"
+#~ "  - [[!traillink Logando_em_uma_rede_através_de_um_portal_captivo|anonymous_internet/unsafe_browser]]\n"
+#~ "- [[!traillink Conectando_à_rede_Tor|anonymous_internet/tor]]\n"
+#~ "  - [[!traillink Resolvendo_problemas_de_conexão_à_rede_Tor|anonymous_internet/tor/troubleshoot]]\n"
+#~ "  - [[!traillink Por_que_Tails_usa_Tor?|anonymous_internet/tor/why]]\n"
+#~ "  - [[!traillink Por_que_a_rede_Tor_é_lenta?|anonymous_internet/tor/slow]]\n"
+#~ "  - [[!traillink Visualizando_os_circuitos_Tor|anonymous_internet/tor/circuits]]\n"
+
+#~ msgid ""
+#~ "[[!traillink Controlling_Tor_using_<span_class=\"application\">Vidalia</"
+#~ "span>|anonymous_internet/vidalia]]"
+#~ msgstr ""
+#~ "[[!traillink Controlando_Tor_com_<span_class=\"application\">Vidalia</"
+#~ "span>|anonymous_internet/vidalia]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[!traillink Browsing_the_web_with_Tor_Browser|anonymous_internet/"
+#~| "tor_browser]]"
+#~ msgid ""
+#~ "[[!traillink "
+#~ "Reading_and_writing_emails_with_<span_class=\"application\">Claws_Mail</"
+#~ "span>|anonymous_internet/claws_mail]]"
+#~ msgstr ""
+#~ "[[!traillink Navegando_na_internet_com_Tor_Browser|anonymous_internet/"
+#~ "tor_browser]]"

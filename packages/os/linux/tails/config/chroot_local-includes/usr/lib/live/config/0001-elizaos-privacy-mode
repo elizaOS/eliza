@@ -1,0 +1,19 @@
+#!/bin/sh
+
+set -e
+
+mkdir -p /etc/elizaos
+
+case " $(cat /proc/cmdline) " in
+    *" elizaos_privacy=1 "*|*" privacy-mode "*)
+        printf '%s\n' on > /etc/elizaos/privacy-mode
+        ;;
+    *" elizaos_privacy=0 "*|*" no-privacy-mode "*)
+        printf '%s\n' off > /etc/elizaos/privacy-mode
+        ;;
+    *)
+        # Fail closed: absent or unrecognized boot profile keeps Tails'
+        # Tor-only networking behavior.
+        printf '%s\n' on > /etc/elizaos/privacy-mode
+        ;;
+esac

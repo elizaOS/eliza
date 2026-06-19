@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -eu -o pipefail
+shopt -s inherit_errexit
+
+# Enable xtrace with timestamp
+export PS4='+ $(date "+%H:%M:%S.%3N") '
+set -x
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=../../lib/lib.sh
+. "${DIR}/../../lib/lib.sh"
+
+SCRIPT="${LIB_DIR}/bind-new-includes"
+run_with_plymouth_msg "patch: Bind mounting new includes" "${SCRIPT}"

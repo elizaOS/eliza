@@ -1,0 +1,31 @@
+# Baidu Qianfan API Configuration
+# Last updated: 2024-01-10
+
+# Authentication credentials (replace with actual values)
+api_key: 'YOUR_API_KEY'
+secret_key: 'YOUR_SECRET_KEY'
+
+# Base URL for all API requests
+base_url: 'https://aip.baidubce.com'
+
+# Endpoint paths (relative to base_url)
+token_endpoint: '/oauth/2.0/token'
+chat_endpoint: '/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions'
+
+# OAuth grant type for server-to-server authentication
+grant_type: 'client_credentials'
+
+# Request settings
+timeout_seconds: 30
+max_retries: 3
+
+# Retry configuration
+retry:
+  initial_delay_ms: 500
+  max_delay_ms: 10000
+  backoff_multiplier: 2.0
+
+# Logging
+log_level: 'INFO'
+log_request_body: false
+log_response_body: false

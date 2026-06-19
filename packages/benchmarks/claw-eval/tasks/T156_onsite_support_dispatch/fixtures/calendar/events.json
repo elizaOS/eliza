@@ -1,0 +1,46 @@
+[
+  {
+    "event_id": "evt_1201",
+    "title": "Tech Department Weekly Meeting",
+    "start_time": "2026-03-26T09:00:00+08:00",
+    "end_time": "2026-03-26T10:00:00+08:00",
+    "location": "Conference Room A",
+    "organizer": "Wang Ming",
+    "attendees": ["Ma Qiang", "Li Hua", "Zhou Ming", "Wang Ming"],
+    "description": "Tech department weekly meeting, review last week's work and this week's plan",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_1202",
+    "title": "System Architecture Review",
+    "start_time": "2026-03-26T10:30:00+08:00",
+    "end_time": "2026-03-26T12:00:00+08:00",
+    "location": "Conference Room B",
+    "organizer": "Li Hua",
+    "attendees": ["Ma Qiang", "Li Hua"],
+    "description": "New microservices architecture proposal review, Ma Qiang and Li Hua attending",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_1203",
+    "title": "Shenzhen Customer Onsite Implementation",
+    "start_time": "2026-03-26T09:00:00+08:00",
+    "end_time": "2026-03-26T17:00:00+08:00",
+    "location": "Shenzhen Nanshan District - Customer Site",
+    "organizer": "Zhou Ming",
+    "attendees": ["Zhou Ming"],
+    "description": "Zhou Ming is at Shenzhen customer site all day for system deployment, cannot be reassigned remotely",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_1204",
+    "title": "Lunch Break",
+    "start_time": "2026-03-26T12:00:00+08:00",
+    "end_time": "2026-03-26T13:00:00+08:00",
+    "location": "",
+    "organizer": "",
+    "attendees": [],
+    "description": "Lunch break",
+    "status": "confirmed"
+  }
+]

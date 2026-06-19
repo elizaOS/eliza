@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Legacy device-manifest reserve file for the Eliza e1 AI SoC target.
+     Active HAL declarations live in per-service vintf_fragments. Graphics is
+     inherited from the Cuttlefish composer3 APEX packages; do not declare the
+     deprecated android.hardware.graphics.composer@2.4 HAL here. -->
+<manifest version="1.0" type="device">
+</manifest>

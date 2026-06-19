@@ -1,0 +1,39 @@
+[[!meta title="Charles, December 2017"]]
+
+Charles is 30 years old and lives in North America. He is a political
+activist working on law reform at the state level. He cares about free
+software and calls himself a "purist". He is part of an organization
+that provides computers and cell phones with free software
+(*libreboot*, *Replicant*) to people.
+
+Around 2012, Bill Binney's revelations about the amount of spying done
+by the US government shocked him and prompted him to re-evaluate his
+decisions about how he kept control of his data & communication.
+This made him start to use Tor and Tails.
+
+Since three years, Charles uses Tails daily. He submits bug reports
+and sends suggestions to the developers. He is a power-user at ease in
+a terminal; he installs additional packages to adapt Tails to
+his needs. He mainly uses Tails for IRC and XMPP chat, email, web
+browsing, and SSH.
+
+Things he likes:
+
+1. He has a sense of trust in the people who work on the Tails
+   project, and particularly about the fact they will make decisions
+   that will be in his best interest.
+2. Something he calls "usability": once the desired settings are in
+   place, every time he boots Tails it's fresh (but customized as
+   desired).
+3. Tor is integrated system-wide by default, which avoids the need to
+   configure another OS to achieve this goal.
+
+Things he dislike:
+
+1. Tails lacks support for next-generation IM (e.g. OMEMO); he is
+   aware that this support might be available via Additional Software
+   Packages already, but he thinks it should be available by default.
+2. Charles misses a really free software version of Tails (Linux Libre
+   kernel, no firmware).
+3. Charles misses support for server-related features (XMPP server,
+   Media Goblin, Mumble).

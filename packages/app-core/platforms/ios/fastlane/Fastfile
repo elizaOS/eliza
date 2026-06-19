@@ -1,0 +1,94 @@
+default_platform(:ios)
+
+APP_ID = ENV["APP_IDENTIFIER"] || "ai.elizaos.app"
+EXTENSION_IDS = (ENV["APP_IDENTIFIER_EXTRA"] || "")
+  .split(",")
+  .map(&:strip)
+  .reject(&:empty?)
+ALL_IDS = [APP_ID, *EXTENSION_IDS].uniq
+
+def match_profile_mapping(type_label)
+  ALL_IDS.each_with_object({}) do |bundle_id, mapping|
+    mapping[bundle_id] = "match #{type_label} #{bundle_id}"
+  end
+end
+
+platform :ios do
+
+  desc "Sync certificates and provisioning profiles"
+  lane :certs do
+    setup_ci if ENV["CI"]
+
+    match(
+      type: "appstore",
+      app_identifier: ALL_IDS,
+      readonly: is_ci
+    )
+  end
+
+  desc "Build the iOS app for App Store submission"
+  lane :build do
+    certs
+
+    build_app(
+      workspace: "App/App.xcworkspace",
+      scheme: "App",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: match_profile_mapping("AppStore")
+      },
+      output_directory: "build",
+      output_name: "Eliza.ipa",
+      clean: true,
+      include_bitcode: false
+    )
+  end
+
+  desc "Upload to TestFlight"
+  lane :beta do
+    build
+
+    if ENV["APP_STORE_APP_ID"].to_s.strip.empty?
+      UI.important(
+        "APP_STORE_APP_ID not set. Skipping TestFlight upload — the signed " \
+        "IPA is still produced at build/Eliza.ipa. Set the App Store " \
+        "Connect numeric app id (e.g. 6502835663) as a repo secret to " \
+        "enable TestFlight delivery."
+      )
+    else
+      upload_to_testflight(
+        skip_waiting_for_build_processing: true,
+        apple_id: ENV["APP_STORE_APP_ID"]
+      )
+    end
+  end
+
+  desc "Submit to App Store for review"
+  lane :release do
+    build
+
+    upload_to_app_store(
+      skip_screenshots: true,
+      skip_metadata: false,
+      force: true,
+      submit_for_review: true,
+      automatic_release: false,
+      precheck_include_in_app_purchases: false,
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        export_compliance_uses_encryption: true,
+        export_compliance_is_exempt: true
+      }
+    )
+  end
+
+  desc "Upload metadata and screenshots only"
+  lane :metadata do
+    upload_to_app_store(
+      skip_binary_upload: true,
+      skip_screenshots: false,
+      force: true
+    )
+  end
+
+end

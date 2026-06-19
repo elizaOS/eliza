@@ -1,0 +1,58 @@
+---
+title: Plugin
+description: "Build and publish a reusable @elizaos/plugin-* package."
+---
+
+A **Plugin** bundles a slice of agent capability — actions, providers, evaluators, services, model adapters, schemas, or HTTP routes — into a single npm package that any Eliza agent can load by adding its name to the character's `plugins` array.
+
+## What you build
+
+A package under `@elizaos/plugin-<name>` (or your own scope) that exports a `Plugin` object. When loaded, it registers everything it provides with the runtime.
+
+## Plugin surface
+
+```ts
+import type { Plugin } from '@elizaos/core';
+
+export const plugin: Plugin = {
+  name: 'plugin-example',
+  description: 'What it does in one sentence.',
+  actions: [/* ... */],
+  providers: [/* ... */],
+  evaluators: [/* ... */],
+  services: [/* ... */],
+  models: { /* ... */ },
+  routes: [/* ... */],
+  schemas: [/* ... */],
+  init: async (runtime) => { /* boot-time setup */ },
+};
+```
+
+Every field is optional. A plugin can be as small as one action.
+
+## Track contents
+
+<CardGroup cols={2}>
+  <Card title="Create a plugin" icon="plus" href="/tracks/plugin/create">
+    Scaffold a new plugin from the CLI template.
+  </Card>
+  <Card title="Anatomy" icon="microscope" href="/tracks/plugin/anatomy">
+    Actions, providers, evaluators, services, schemas, routes.
+  </Card>
+  <Card title="Publish" icon="upload" href="/tracks/plugin/publish">
+    Publish to npm under `@elizaos/*` (or your own scope).
+  </Card>
+</CardGroup>
+
+## Where this comes from
+
+- Plugin loader: [`packages/core/src/plugin.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/plugin.ts)
+- Plugin type: [`packages/core/src/types/plugin.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/types/plugin.ts)
+- Plugin template: [`packages/elizaos/templates/plugin/`](https://github.com/elizaOS/eliza/tree/develop/packages/elizaos/templates/plugin)
+
+## Deeper material
+
+- [Plugin architecture](/plugins/architecture)
+- [Plugin patterns](/plugins/patterns)
+- [Plugin testing](/plugins/testing)
+- [Decision guide: action vs. provider vs. evaluator vs. service](/plugins/decision-guide)

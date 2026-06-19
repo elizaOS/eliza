@@ -1,0 +1,29 @@
+#!/bin/bash
+
+set -eu -o pipefail
+
+# This hook will invoke generate-sudoers to allow you to patch
+# config/chroot_local-includes/etc/generate-sudoers.d/
+# Please note that, by default, Tails runtime doesn't include the necessary Python
+# packages which are required to run generate-sudoers (see
+# config/chroot_local-hooks/49-generate-sudoers)
+# So for this to be successful, you need to put the required packages in config/patch/packages/
+
+if ! /usr/local/lib/generate-sudoers --help; then
+    echo "generate-sudoers dependencies missing, aborting"
+    exit 0
+fi
+
+if [ -z "${TARGET_ROOT:-}" ]; then
+    TARGET_ROOT="/"
+fi
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# import run_with_plymouth_msg, GIT_REPO
+# shellcheck source=../../lib/lib.sh
+. "${DIR}/../../lib/lib.sh"
+
+run_with_plymouth_msg "patch: Generating sudoers.d" /usr/local/lib/generate-sudoers \
+    --config-dir "${GIT_REPO}/${INCLUDES_DIR}etc/generate-sudoers.d/" \
+    --output-dir "${TARGET_ROOT}etc/sudoers.d/"

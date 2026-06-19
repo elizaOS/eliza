@@ -1,0 +1,371 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 00:15+0000\n"
+"PO-Revision-Date: 2024-05-06 14:51+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Uninstalling Tails using macOS\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!inline pages=\"doc/first_steps/uninstall.intro\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/first_steps/reset.intro.zh_TW\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Start on macOS."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Make sure that the USB stick that you want to uninstall is unplugged."
+msgstr "電腦插上 USB 隨身碟。"
+
+#. type: Bullet: '1. '
+msgid "Start *Disk Utility*."
+msgstr "打開*磁碟工具*."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"   A list of all the storage devices on the computer appears in the left pane\n"
+"   of the window.\n"
+msgstr ""
+"    在視窗左側面板上\n"
+"    會出現一個電腦上所有儲存設備的清單\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Plug in the USB stick that you want to uninstall."
+msgstr "電腦插上 USB 隨身碟。"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   A new device appears in the list of storage devices. This new device\n"
+"   corresponds to the USB stick that you plugged in. Click on it.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the list of storage devices, verify that the device corresponds to the "
+"USB stick that you want to uninstall, its brand, its size, etc."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>You might overwrite any hard disk on the computer.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>If you are not sure about which device to choose, stop proceeding.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   </div>\n"
+msgstr "</div>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "To reset the USB stick, select the **Erase** button in the top middle."
+msgstr ""
+"    b. 在中間上方有一個 \n"
+"    **清除**鍵，請點擊它。\n"
+
+#. type: Bullet: '1. '
+msgid "In the confirmation dialog, click on the **Erase** button to confirm."
+msgstr "在確認的對話視窗中，按下**清除鍵**以確認。"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Erase** dialog, if you want the USB stick to also work on Windows "
+"and Linux, specify:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "**Format**: **MS-DOS (FAT)**"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "**Scheme**: **Master Boot Record**"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Erase**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If the erase process fails, try [[!toggle id=\"format\"\n"
+"text=\"formatting the USB stick using the command line\"]] first.</p>\n"
+msgstr ""
+"<p>如果清除操作失敗，請試著[[!toggle id=\"format\"\n"
+"text=\"利用文字命令操作來格式化 USB 隨身磁\"]]。</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toggleable id=\"format\" text=\"\"\"\n"
+msgstr "[[!toggleable id=\"format\" text=\"\"\"\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<span class=\"hide\">[[!toggle id=\"format\" text=\"\"]]</span>\n"
+msgstr "<span class=\"hide\">[[!toggle id=\"format\" text=\"\"]]</span>\n"
+
+#. type: Title -
+#, fuzzy, no-wrap
+msgid "Formatting the USB stick using the command line"
+msgstr "使用文字指令行來進行格式化 \n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<!-- Note for translators: This section is very similar to /install/inc/steps/install_with_etcher.inline. -->\n"
+msgstr "<!-- Note for translators: This section is very similar to /install/inc/steps/install_etcher_in_mac.inline. -->\n"
+
+#. type: Bullet: '1. '
+msgid "Unplug the USB stick from the computer."
+msgstr "電腦上拔除 USB 隨身碟。"
+
+#. type: Bullet: '1. '
+msgid "Open the **Terminal** utility from **Applications&nbsp;▸ Utilities**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Execute the following command."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   <p class=\"command\">diskutil list</p>\n"
+msgstr "打開*磁碟工具*."
+
+#. type: Plain text
+#, no-wrap
+msgid "   It returns a list of the storage devices on the system. For example:\n"
+msgstr "   如果它傳回一個系統上的儲存設備清單，例如像：\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       /dev/disk0\n"
+"        #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+"        0:    GUID_partition_scheme             *500.1 GB  disk0\n"
+"        1:                      EFI              209.7 MB  disk0s1\n"
+"        2:                Apple_HFS MacDrive     250.0 GB  disk0s2\n"
+"        3:                      EFI              134.1 GB  disk0s3\n"
+"        4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4\n"
+msgstr ""
+"       /dev/disk0\n"
+"        #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+"        0:    GUID_partition_scheme             *500.1 GB  disk0\n"
+"        1:                      EFI              209.7 MB  disk0s1\n"
+"        2:                Apple_HFS MacDrive     250.0 GB  disk0s2\n"
+"        3:                      EFI              134.1 GB  disk0s3\n"
+"        4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4\n"
+
+#. type: Bullet: '1. '
+msgid "Execute again the same command."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Your USB stick appears as a new device in the list. Check\n"
+"   that its size corresponds to the size of your USB stick.\n"
+msgstr ""
+"   你的 USB 隨身碟會出現在清單上的一個新設備。檢查\n"
+"   它的容量大小是否符合你的USB 隨身碟\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"       /dev/disk1\n"
+"        #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+"        0:   FDisk_partition_scheme             *8.0 GB    disk1\n"
+"        1:                Apple_HFS Untitled 1   8.0 GB    disk1s1\n"
+msgstr ""
+"       $ diskutil list\n"
+"       /dev/disk0\n"
+"         #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+"         0:    GUID_partition_scheme             *500.1 GB  disk0\n"
+"         1:                      EFI              209.7 MB  disk0s1\n"
+"         2:                Apple_HFS MacDrive     250.0 GB  disk0s2\n"
+"         3:                      EFI              134.1 GB  disk0s3\n"
+"         4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4\n"
+
+#. type: Bullet: '1. '
+msgid "Take note of the device name of your USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   In this example, the USB stick is 8.0 GB and its device name is <span class=\"command-placeholder\">/dev/disk1</span>.\n"
+"   Yours might be different.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>If you are not sure about the device, stop proceeding.</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"Execute the following command to safely eject the USB stick. Replace <span "
+"class=\"command-placeholder\">device</span> with the device name found in "
+"step 6."
+msgstr ""
+"執行以下指令來安全地移除USB 隨身磁，取代 <span class=\"code\">[device]</"
+"span> 在步驟6所找出的設備名稱。"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-template\">diskutil unmountDisk <span class=\"command-placeholder\">device</span></p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"Execute the following command to format the USB stick. Replace <span "
+"class=\"command-placeholder\">device</span> with the device name found in "
+"step 6."
+msgstr ""
+"執行以下指令來格式化 USB 隨身磁，取代 <span class=\"code\">[device]</span> 在"
+"步驟6所找出的設備名稱。"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-template\">sudo fdisk -iy <span class=\"command-placeholder\">device</span></p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"You can try to uninstall the USB stick again using *Disk Utility* from the "
+"beginning of this page."
+msgstr "你可以試著使用本頁開始的 *磁碟工具* 來重置 USB 隨身磁。"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"doc/reset.intro\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"doc/reset.intro.zh_TW\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "   a. If there is an **Erase** tab\n"
+#~ "   in the right pane, click on it and then click on the **Erase**\n"
+#~ "   button on the bottom right\n"
+#~ msgstr ""
+#~ "    a. 在右側面板上有一個 **清除** 分頁\n"
+#~ "    點開它並按下底部右方的 <span class=\"bold\">\n"
+#~ "    清除</span>鍵。\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <div class=\"caution\">\n"
+#~ "   <p>If you are unsure about the device name, you should stop proceeding or\n"
+#~ "   <strong>you risk overwriting any hard disk on the system</strong>.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"caution\">\n"
+#~ "   <p>如果不確定設備名稱，你最好停止操作否則\n"
+#~ "   <strong>會造成覆寫掉系統上任何一顆硬碟的風險</strong>.</p>\n"
+#~ "   </div>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "Troubleshooting"
+#~ msgstr "疑難解答\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "1. Open *Terminal* from\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applications**&nbsp;▸\n"
+#~ "     **Utilities**&nbsp;▸\n"
+#~ "     **Terminal.app**</span>.\n"
+#~ msgstr ""
+#~ "1. 開啟  <span class=\"menuchoice\">底下的\n"
+#~ "     *Terminal*\n"
+#~ "     **應用程式**&nbsp;▸\n"
+#~ "     **工具**&nbsp;▸\n"
+#~ "     **Terminal.app**</span>.\n"
+
+#, no-wrap
+#~ msgid "       diskutil list\n"
+#~ msgstr "       diskutil list\n"
+
+#, fuzzy
+#~ msgid "Plug in the USB stick."
+#~ msgstr "電腦插上 USB 隨身碟。"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "       $ diskutil list\n"
+#~ "       /dev/disk0\n"
+#~ "         #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+#~ "         0:    GUID_partition_scheme             *500.1 GB  disk0\n"
+#~ "         1:                      EFI              209.7 MB  disk0s1\n"
+#~ "         2:                Apple_HFS MacDrive     250.0 GB  disk0s2\n"
+#~ "         3:                      EFI              134.1 GB  disk0s3\n"
+#~ "         4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4\n"
+#~ "       /dev/disk1\n"
+#~ "         #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+#~ "         0:   FDisk_partition_scheme             *8.0 GB    disk1\n"
+#~ "         1:                Apple_HFS Untitled 1   8.0 GB    disk1s1\n"
+#~ msgstr ""
+#~ "       $ diskutil list\n"
+#~ "       /dev/disk0\n"
+#~ "         #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+#~ "         0:    GUID_partition_scheme             *500.1 GB  disk0\n"
+#~ "         1:                      EFI              209.7 MB  disk0s1\n"
+#~ "         2:                Apple_HFS MacDrive     250.0 GB  disk0s2\n"
+#~ "         3:                      EFI              134.1 GB  disk0s3\n"
+#~ "         4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4\n"
+
+#, no-wrap
+#~ msgid "       diskutil unmountDisk [device]\n"
+#~ msgstr "       diskutil unmountDisk [device]\n"
+
+#, no-wrap
+#~ msgid "       sudo fdisk -iy [device]\n"
+#~ msgstr "       sudo fdisk -iy [device]\n"
+
+#~ msgid "Troubleshooting\n"
+#~ msgstr "疑難解答\n"
+
+#~ msgid "Format using the command line\n"
+#~ msgstr "使用文字指令行來進行格式化 \n"

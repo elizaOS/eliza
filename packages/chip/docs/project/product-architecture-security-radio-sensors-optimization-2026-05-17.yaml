@@ -1,0 +1,363 @@
+schema: eliza.product_arch_security_radio_sensors_optimization.v1
+status: fail_closed_product_work_order
+date: 2026-05-17
+claim_allowed: false
+phone_claim_allowed: false
+release_claim_allowed: false
+android_compatibility_claim_allowed: false
+certification_claim_allowed: false
+secure_boot_claim_allowed: false
+silicon_claim_allowed: false
+production_readiness_claim_allowed: false
+claim_boundary: >
+  This is an optimization and verification work order for product architecture,
+  security, radio/connectivity, sensors, USB/storage/update, battery/charging,
+  and Android platform integration. It is not evidence that any phone product
+  feature, certification, secure boot chain, or Android compatibility gate is
+  complete.
+evidence_policy:
+  release_claims_forbidden_until:
+    - docs/manufacturing/real-world-verification-gaps.yaml keeps the matching gap release-blocking.
+    - Hardware transcripts, lab reports, build logs, or certification records are archived under the named evidence path.
+    - The local checker for the domain passes and the external evidence is reviewed.
+  large_battery_assumption: >
+    The product may tolerate extra battery mass and board area to prioritize
+    sustained performance, but idle leakage, thermal skin limits, safety,
+    certification, and manufacturability remain release blockers.
+primary_sources:
+  android_cdd:
+    url: https://source.android.com/docs/compatibility/android-cdd.pdf
+    relevance: Android compatibility requirements, including device-class behavior and CTS scope.
+  android_verified_boot:
+    url: https://source.android.com/docs/security/features/verifiedboot
+    relevance: Verified Boot, rollback protection, and trusted boot-state expectations.
+  android_keystore_keymint:
+    url: https://source.android.com/docs/security/features/keystore
+    relevance: TEE-backed Keystore, KeyMint, and StrongBox security boundary expectations.
+  android_sensors_hal:
+    url: https://source.android.com/docs/core/interaction/sensors/sensors-hal2
+    relevance: Sensors HAL event delivery, batching, FMQ, static sensor contract, and restart behavior.
+  android_health_hal:
+    url: https://source.android.com/docs/core/perf/health/implementation-2-1
+    relevance: BatteryService and Health HAL behavior for charger, battery, and storage health reporting.
+  android_usb_hal:
+    url: https://source.android.com/docs/core/permissions/usb-hal
+    relevance: Android USB HAL and gadget behavior, including NCM and USB speed reporting.
+  android_wifi_hal:
+    url: https://source.android.com/docs/core/connect/wifi-hal
+    relevance: Android Wi-Fi HAL and supplicant/hostapd integration surfaces.
+  android_bluetooth:
+    url: https://source.android.com/docs/core/connect/bluetooth
+    relevance: Android Bluetooth stack integration boundary.
+  android_radio_aidl:
+    url: https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/main/radio/aidl/
+    relevance: Android Radio AIDL surface for cellular modem integration.
+  bluetooth_qualification:
+    url: https://www.bluetooth.com/develop-with-bluetooth/qualify/
+    relevance: Bluetooth products must complete the qualification process before sale or distribution.
+  ptcrb_certification:
+    url: https://www.ptcrb.com/get-certified/
+    relevance: Cellular device certification process with authorized labs and documentation review.
+  usb_if_marks:
+    url: https://www.usb.org/sites/default/files/trademark_license_agreement_licensed_mark_requirements_final_as_of_september_20_2023.pdf
+    relevance: USB-IF mark and certification requirements for Type-C and USB product claims.
+domains:
+  - id: product_architecture
+    current_repo_evidence:
+      - docs/arch/soc.md
+      - docs/project/phone-soc-minimum-blocks.yaml
+      - docs/project/workstream-gap-review.md
+      - docs/manufacturing/real-world-verification-gaps.yaml
+    release_gap_id: regulatory_compliance_release
+    current_status: blocked_scaffold_architecture_only
+    scale_optimization:
+      - Keep a two-track architecture: open e1 demonstrator for flow proof, separate phone AP candidate for performance and Android claims.
+      - Prioritize memory bandwidth, DMA isolation, thermal telemetry, and Android HAL evidence before peak NPU arithmetic.
+      - Use external modules for RF, PMIC, sensors, storage, display panel, and camera until host interfaces and validation are stable.
+    power_size_manufacturing_tradeoff:
+      - Larger battery and extra weight can support sustained AI and radio bursts, but board area must still preserve antenna keepouts, thermal spreaders, test points, and serviceable connectors.
+      - Avoid integrating analog/RF/PMIC functions on die until module BOM, rail budgets, and certification evidence prove the product penalty.
+    verification_gates:
+      - make phone-soc-claim-check
+      - scripts/check_real_world_gates.py
+      - make product-release-check
+    optimization_backlog:
+      - P0: Define product claim levels for Android boot, Wi-Fi/BT, cellular, secure boot, battery, USB/storage/update, and sensors.
+      - P0: Cross-probe package pins, board nets, DTS nodes, Android manifest entries, and evidence paths for every product interface.
+      - P1: Add a product dashboard that displays BLOCKED/PASS/FAIL per domain and links to the exact evidence artifact.
+  - id: security_secure_boot
+    current_repo_evidence:
+      - docs/arch/security.md
+      - docs/arch/boot.md
+      - rtl/bootrom/e1_bootrom.sv
+      - docs/manufacturing/real-world-verification-gaps.yaml
+    release_gap_id: secure_boot_key_debug_policy
+    current_status: blocked_no_security_boundary
+    scale_optimization:
+      - Replace identity/contract ROM behavior with an executable reset ROM, versioned image format, and authenticated next-stage handoff.
+      - Add lifecycle states for development, manufacturing, locked production, RMA, and scrap with explicit debug authorization policy.
+      - Use TEE/secure monitor or dedicated secure element only after root-of-trust, OTP/fuse, rollback index, and KeyMint/attestation requirements are assigned.
+    power_size_manufacturing_tradeoff:
+      - Keep always-on security logic minimal; store rollback and key metadata in tamper-evident OTP/fuse or secure storage rather than general flash.
+      - Treat debug unlock and key provisioning as manufacturing flows with HSM/signer logs, not board bring-up conveniences.
+    verification_gates:
+      - Signed image acceptance transcript.
+      - Unsigned image rejection transcript.
+      - Rollback rejection transcript.
+      - Debug locked/unlocked state transcript.
+      - Android verified boot properties and KeyMint/attestation evidence when Android compatibility is claimed.
+    optimization_backlog:
+      - P0: Write a threat model covering ROM, bootloader, TEE/KeyMint, debug, update, RMA, and manufacturing provisioning.
+      - P0: Define boot image metadata, signature algorithm, key ladder, rollback index storage, and failure behavior.
+      - P1: Add negative boot tests that fail closed on bad signature, bad version, bad key, debug-locked JTAG, and wiped keys.
+  - id: cellular_radio
+    current_repo_evidence:
+      - docs/manufacturing/real-world-verification-gaps.yaml
+      - docs/project/phone-soc-minimum-blocks.yaml
+      - docs/project/workstream-gap-review.md
+    release_gap_id: cellular_modem_stack
+    current_status: blocked_not_implemented
+    scale_optimization:
+      - Use an external certified modem module with USB/QMI/MBIM or vendor-supported Android Radio AIDL path before considering deeper integration.
+      - Separate data-only lab bring-up from phone claims that imply voice, SMS, IMS, emergency calling, SAR, carrier, PTCRB, and GCF obligations.
+      - Add coexistence policy with Wi-Fi/BT/GNSS and thermal backoff before sustained throughput claims.
+    power_size_manufacturing_tradeoff:
+      - Allocate board volume and antenna isolation early; larger battery helps transmit bursts but does not replace RF exposure, SAR, thermal, or carrier validation.
+      - Prefer module reference layouts and antenna vendor review to reduce RF respin and certification risk.
+    verification_gates:
+      - USB or PCIe modem enumeration transcript.
+      - Firmware/version and SIM/eSIM identity transcript.
+      - Registration, data session, voice/IMS disposition, SMS disposition, suspend wake, and reset recovery logs.
+      - PTCRB/GCF/carrier/SAR or explicit product-scope waiver record.
+    optimization_backlog:
+      - P0: Choose data-only lab modem path or explicit no-cellular SKU boundary.
+      - P0: Define target countries, bands, antennas, SIM/eSIM, emergency behavior, and certification owner.
+      - P1: Build modem power-state matrix for airplane mode, idle, DRX/eDRX/PSM, active data, voice, and thermal throttling.
+  - id: wifi_bluetooth_gnss_nfc
+    current_repo_evidence:
+      - docs/arch/wifi.md
+      - package/wifi-external-interface.yaml
+      - package/wifi/murata-1dx-sdio.yaml
+      - docs/manufacturing/real-world-verification-gaps.yaml
+    release_gap_id: wifi_bluetooth_gnss_nfc_stack
+    current_status: blocked_reference_module_contract_only
+    scale_optimization:
+      - Keep Wi-Fi/Bluetooth, GNSS, and NFC as external module/controller integrations with Linux and Android support.
+      - Start with SDIO SDR25 Wi-Fi and UART Bluetooth with flow control; raise bus speed only after SI margin and firmware stability are measured.
+      - Add GNSS and NFC only after host buses, wake IRQs, regulatory database handling, and Android AIDL services are staffed.
+    power_size_manufacturing_tradeoff:
+      - Default radio rails off, qualify wake sources, and require suspend leakage logs before enabling WoWLAN, BT wake, GNSS duty cycling, or NFC polling.
+      - Preserve antenna keepouts, crystals, shielding, matching, and module certification boundaries in board layout.
+    verification_gates:
+      - SDIO enumeration and brcmfmac firmware load transcript.
+      - Wi-Fi association, IP throughput, country-code, MAC provisioning, suspend wake, and recovery logs.
+      - Bluetooth HCI attach, BLE scan, pairing, profile behavior if declared, and qualification record.
+      - GNSS fix or simulator lock and NFC tag/reader evidence when those features are declared.
+    optimization_backlog:
+      - P0: Select final Wi-Fi/BT module and archive datasheet, firmware/NVRAM ownership, antenna path, and certification boundary.
+      - P0: Implement host SDIO, UART, GPIO, reset, IRQ, wake, pinctrl, regulator, and firmware-loading contracts.
+      - P1: Add coexistence test matrix for Wi-Fi/BT/cellular/GNSS active combinations.
+  - id: camera_isp
+    current_repo_evidence:
+      - docs/manufacturing/real-world-verification-gaps.yaml
+      - docs/manufacturing/product-feature-evidence-manifest.yaml
+      - docs/sw/aosp-device/README.md
+    release_gap_id: camera_isp_stack
+    current_status: blocked_not_implemented
+    scale_optimization:
+      - Select a sensor, lens, actuator, flash, CSI lane map, and ISP ownership boundary before any camera HAL declaration.
+      - Keep capture bring-up on Linux V4L2/media-controller first, then promote to Android camera HAL only with tuning and calibration records.
+      - Treat privacy indicator behavior and camera permission enforcement as release blockers, not UI polish.
+    power_size_manufacturing_tradeoff:
+      - Camera module height, connector placement, shield cans, flash current, and thermal rise must be reserved before board fabrication.
+      - Larger battery capacity does not remove flash-current, image-noise, thermal, or privacy-indicator validation.
+    verification_gates:
+      - media-ctl graph and v4l2 device enumeration transcript.
+      - Frame capture, exposure/gain, still, video, privacy indicator, and recovery transcript.
+      - Tuning, calibration, Android HAL, CTS/VTS, and factory focus or image-quality evidence.
+    optimization_backlog:
+      - P0: Pick first camera sensor and document CSI, clock, reset, regulator, flash, and lens-control ownership.
+      - P0: Add camera absence checks so Android cannot declare camera features without backing nodes and HAL service.
+      - P1: Define image-quality, privacy-indicator, and factory calibration pass/fail criteria.
+  - id: audio
+    current_repo_evidence:
+      - docs/manufacturing/real-world-verification-gaps.yaml
+      - docs/manufacturing/product-feature-evidence-manifest.yaml
+      - docs/sw/aosp-device/README.md
+    release_gap_id: audio_codec_dsp_stack
+    current_status: blocked_not_implemented
+    scale_optimization:
+      - Use an external codec/amplifier/microphone path with Linux ALSA and Android audio policy precedent before adding DSP complexity.
+      - Bring up playback, capture, routing, jack detect, and suspend resume before declaring voice, media, or accessibility audio features.
+      - Keep microphone privacy and acoustic safety evidence tied to hardware transcripts.
+    power_size_manufacturing_tradeoff:
+      - Speaker enclosure, microphone ports, codec clocks, amplifier peak current, and board noise isolation must be reserved early.
+      - Higher battery capacity does not replace amplifier thermal, acoustic safety, or microphone privacy validation.
+    verification_gates:
+      - ALSA playback, capture, loopback, routing, volume, mute, underrun, and suspend-resume transcript.
+      - Android audio policy, HAL, dumpsys audio, and CTS/VTS evidence.
+      - Acoustic, safety, privacy, and factory speaker/microphone calibration evidence.
+    optimization_backlog:
+      - P0: Select codec, amplifier, microphone, speaker, headset, bus, clocks, regulators, and jack-detect policy.
+      - P0: Add Android feature-declaration checks so absent audio routes cannot look implemented.
+      - P1: Define acoustic and privacy acceptance thresholds for factory and release.
+  - id: sensors_input_haptics
+    current_repo_evidence:
+      - docs/arch/peripherals.md
+      - docs/arch/android-contract.md
+      - docs/manufacturing/real-world-verification-gaps.yaml
+      - docs/project/workstream-gap-review.md
+    release_gap_id: sensors_input_haptics_stack
+    current_status: blocked_not_implemented
+    scale_optimization:
+      - Start with one combo IMU and one ambient/proximity sensor using Linux IIO/input and Android Sensors HAL semantics.
+      - Use sensor FIFO batching, wake-up sensors, and calibration persistence before adding a dedicated low-power sensor hub.
+      - Integrate touch and haptics after display, mechanical stack, ESD, and user-facing latency targets are selected.
+    power_size_manufacturing_tradeoff:
+      - Avoid AP polling; use interrupts, FIFO batching, and controller runtime PM.
+      - Select combo parts that reduce BOM and board area without hiding calibration, self-test, or HAL support behind proprietary tooling.
+    verification_gates:
+      - getevent and evtest input transcript.
+      - IIO enumeration, sample-rate, timestamp, FIFO, flush, and overflow transcript.
+      - Android sensorservice, Sensors HAL VTS/CTS Verifier, calibration persistence, suspend wake, haptic actuation, and ESD/environmental evidence.
+    optimization_backlog:
+      - P0: Choose IMU, ALS/proximity, touch controller, haptic driver, interrupt lines, regulators, and calibration storage.
+      - P0: Define Android feature declarations so absent sensors cannot pass as implemented.
+      - P1: Add power delta measurements per sensor mode and a low-power hub decision record.
+  - id: usb_storage_update
+    current_repo_evidence:
+      - docs/manufacturing/real-world-verification-gaps.yaml
+      - sw/aosp-device/device/eliza/eliza_ai_soc/fstab.eliza
+      - docs/sw/aosp-device/README.md
+      - docs/project/workstream-gap-review.md
+    release_gap_id: usb_storage_update_stack
+    current_status: blocked_not_implemented
+    scale_optimization:
+      - Use eMMC or SD first for bring-up, then UFS only when PHY/IP, SI/PI, package, and power budget are available.
+      - Add USB 2.0 device mode for ADB/fastboot before USB 3.x or alternate modes; Type-C/PD must have a controller, CC policy, ESD, and compliance plan.
+      - Treat AVB, A/B update, rollback, recovery, fastbootd, and power-cut recovery as core platform requirements.
+    power_size_manufacturing_tradeoff:
+      - Larger battery supports field update safety, but storage flush, low-battery OTA policy, and power-cut integrity must still be proven.
+      - Avoid removable storage and high-speed USB features unless product requirements justify connector, ESD, SI, and compliance cost.
+    verification_gates:
+      - USB enumeration, role switch, ADB, fastboot, and USB HAL transcript.
+      - Storage enumeration, fio, filesystem recovery, AVB chain, OTA success/failure, rollback rejection, recovery boot, and secure wipe evidence.
+      - USB-IF pre-scan or certification record for any USB logo or Type-C/PD claim.
+    optimization_backlog:
+      - P0: Pick first boot storage and partition map with AVB and recovery policy.
+      - P0: Define USB-C/PD sink/source/data-role matrix, ESD, current limit, and compliance owner.
+      - P1: Add update failure-mode tests for interrupted download, interrupted install, bad signature, rollback, full storage, and low battery.
+  - id: battery_pmic_thermal
+    current_repo_evidence:
+      - docs/manufacturing/real-world-verification-gaps.yaml
+      - docs/manufacturing/physical-closure-work-order.yaml
+      - docs/project/phone-soc-minimum-blocks.yaml
+      - docs/project/workstream-gap-review.md
+    release_gap_id: battery_pmic_thermal_stack
+    current_status: blocked_not_implemented
+    scale_optimization:
+      - Define rails by always-on, AP, NPU, memory, display, camera, radio, sensors, storage, audio, and debug domains before PMIC selection.
+      - Use a PMIC/charger/fuel-gauge family with Linux or Android BSP precedent; avoid custom charger safety logic.
+      - Size battery and thermal spreader for sustained workloads, but gate performance claims on measured rail power, thermal zones, and throttling state.
+    power_size_manufacturing_tradeoff:
+      - Extra mass can improve battery life and heat spreading, but battery safety, shipping, enclosure skin temperature, regulator efficiency, and antenna layout remain constraints.
+      - Charger current must derate with thermal state, battery temperature, USB-C/PD contract, and modem/NPU/display load.
+    verification_gates:
+      - Rail sequencing scope capture and first-article current-limit logs.
+      - Charger, discharge, fuel gauge, thermistor, thermal-zone, throttling, shutdown, brownout, ship mode, and suspend leakage evidence.
+      - Android Health, Power, Thermal, battery stats, and CTS/VTS evidence.
+    optimization_backlog:
+      - P0: Create power-state table for off, ship, standby, suspend, idle display, active UI, NPU burst, sustained AI, charge, and thermal throttle.
+      - P0: Select PMIC/charger/fuel gauge after rail load-step and transient estimates exist.
+      - P1: Add sustained AI/display/radio thermal chamber plan with pass/fail temperatures, current limits, and throttle expectations.
+  - id: privacy
+    current_repo_evidence:
+      - docs/manufacturing/real-world-verification-gaps.yaml
+      - docs/manufacturing/product-feature-evidence-manifest.yaml
+      - docs/sw/aosp-device/README.md
+    release_gap_id: privacy_data_protection_policy
+    current_status: blocked_not_implemented
+    scale_optimization:
+      - Maintain a data-flow inventory for camera, microphone, location, radios, sensors, identifiers, crash logs, update logs, and factory logs.
+      - Make telemetry opt-in or disabled by default until retention, deletion, export, and incident-response obligations are assigned.
+      - Treat secure wipe, factory reset, privacy indicators, and permission enforcement as hardware/OS evidence gates.
+    power_size_manufacturing_tradeoff:
+      - Privacy controls should be implemented in platform policy and secure storage rather than hidden in per-app behavior.
+      - Factory logs and calibration records must preserve traceability without leaking user identifiers or keys.
+    verification_gates:
+      - Permission, appops, sensor privacy, privacy indicator, telemetry default, and log-redaction transcript.
+      - Secure wipe, factory reset, identifier reset, and recovery evidence.
+      - Regional privacy, consent, retention, deletion, export, and post-market response records.
+    optimization_backlog:
+      - P0: Write privacy threat model and data-flow inventory.
+      - P0: Add target-OS checks for unsupported telemetry and feature declarations.
+      - P1: Define log retention, redaction, and factory data segregation policy.
+  - id: regulatory_sar_ptcrb_fcc
+    current_repo_evidence:
+      - docs/manufacturing/real-world-verification-gaps.yaml
+      - docs/manufacturing/product-feature-evidence-manifest.yaml
+      - package/wifi-external-interface.yaml
+    release_gap_id: regulatory_compliance_release
+    current_status: blocked_not_implemented
+    scale_optimization:
+      - Create a country and SKU compliance matrix before locking radio, antenna, battery, charger, USB, enclosure, or label decisions.
+      - Prefer certified modules and reference layouts, but require board-level grant reuse analysis for every radio-bearing feature.
+      - Separate prototype demos from FCC, CE, UKCA, ISED, PTCRB, GCF, SAR, safety, EMC, and environmental product claims.
+    power_size_manufacturing_tradeoff:
+      - Larger enclosure and battery may help SAR and thermal margins but can also alter antennas, labels, shipping class, and safety obligations.
+      - Certification planning must include charger, USB-C, Bluetooth, Wi-Fi, cellular, battery, materials, manuals, and post-market support.
+    verification_gates:
+      - Product compliance matrix with target countries, standards, owners, exceptions, and lab plan.
+      - Accredited lab reports or explicit module grant reuse analysis.
+      - Label, manual, software license, privacy, accessibility, emergency behavior, and post-market obligation records.
+    optimization_backlog:
+      - P0: Decide target countries, SKUs, radio features, cellular/no-cellular boundary, and lab owner.
+      - P0: Build certification artifact index under docs/manufacturing/evidence/regulatory.
+      - P1: Add release archive checks for labels, manuals, grants, test reports, and accepted waivers.
+  - id: factory_test
+    current_repo_evidence:
+      - docs/manufacturing/real-world-verification-gaps.yaml
+      - docs/manufacturing/physical-closure-work-order.yaml
+      - docs/manufacturing/product-feature-evidence-manifest.yaml
+    release_gap_id: factory_test_provisioning_flow
+    current_status: blocked_not_implemented
+    scale_optimization:
+      - Define station flow before board fabrication so test pads, fixtures, labels, serialization, calibration, and debug access are not afterthoughts.
+      - Keep provisioning, calibration, and outgoing quality logs machine-readable and traceable to board ID, SKU, operator, tool version, and pass/fail limits.
+      - Separate development debug from locked-production debug authorization and RMA.
+    power_size_manufacturing_tradeoff:
+      - Test pads, fixture access, antenna test points, current measurement, and thermal sensors need board and enclosure space.
+      - Factory data retention must support quality analysis without retaining secrets or unnecessary personal data.
+    verification_gates:
+      - Automated station transcript for power, boot, storage, USB, display, touch, camera, audio, radios, sensors, haptics, thermal, secure boot, and debug lock.
+      - Serialization, MAC, IMEI if cellular, key provisioning, calibration, labels, yield, retest, quarantine, and traceability record.
+      - Locked-production and RMA policy transcript.
+    optimization_backlog:
+      - P0: Draft factory station sequence and required fixtures.
+      - P0: Define provisioning ownership for serials, MACs, IMEI if cellular, keys, calibration blobs, and labels.
+      - P1: Add manufacturing evidence parser for station logs and calibration-limit failures.
+  - id: mobile_platform_android
+    current_repo_evidence:
+      - docs/sw/aosp-device/README.md
+      - sw/aosp-device/device/eliza/eliza_ai_soc/manifest.xml
+      - sw/aosp-device/device/eliza/eliza_ai_soc/BoardConfig.mk
+      - docs/android/bsp-critical-gap-audit-2026-05-17.md
+    release_gap_id: regulatory_compliance_release
+    current_status: blocked_scaffold_no_boot_or_compatibility
+    scale_optimization:
+      - Keep AOSP product files as scaffold until lunch, vendorimage, checkvintf, SELinux, HAL binaries, and boot transcript evidence exist.
+      - Prefer current AIDL HALs for new product domains unless a target Android version explicitly requires legacy HIDL.
+      - Declare no camera, audio, radio, GNSS, NFC, USB, sensor, power, or security features without matching service binary, backing node, VINTF, SELinux, VTS/CTS, and hardware evidence.
+    power_size_manufacturing_tradeoff:
+      - Android power, health, thermal, radio, and sensor services must reflect measured hardware state; synthetic properties create false readiness and bad field diagnostics.
+      - Vendor image size and HAL package growth must be tracked against actual implemented features.
+    verification_gates:
+      - lunch eliza_ai_soc-userdebug transcript.
+      - vendorimage and installed-files-vendor transcript.
+      - checkvintf and SELinux build transcript.
+      - Cuttlefish or target boot transcript.
+      - VTS/CTS subset results for every declared HAL or feature.
+    optimization_backlog:
+      - P0: Remove or keep fail-closed any VINTF/HAL declaration without a service binary and backing Linux node.
+      - P0: Add HAL absence tests proving unsupported behavior instead of feature success.
+      - P1: Add installed-files-vendor growth and feature-declaration diff checks to release review.

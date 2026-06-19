@@ -1,0 +1,64 @@
+name: Cloud Gateway Webhook
+
+# Source: cloud/.github/workflows/gateway-webhook.yml in the original elizaOS/cloud repo.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/cloud-services/gateway-webhook/**"
+      - "packages/cloud-shared/src/lib/services/**"
+      - "packages/cloud-shared/src/lib/onboarding/**"
+      - "packages/cloud-shared/src/lib/auth/**"
+      - "packages/cloud-shared/src/db/**"
+      - "packages/cloud-shared/scripts/messaging-gateway-preflight.mjs"
+      - ".github/workflows/cloud-gateway-webhook.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/cloud-services/gateway-webhook/**"
+      - "packages/cloud-shared/src/lib/services/**"
+      - "packages/cloud-shared/src/lib/onboarding/**"
+      - "packages/cloud-shared/src/lib/auth/**"
+      - "packages/cloud-shared/src/db/**"
+      - "packages/cloud-shared/scripts/messaging-gateway-preflight.mjs"
+      - ".github/workflows/cloud-gateway-webhook.yml"
+
+concurrency:
+  group: cloud-gateway-webhook-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: packages/cloud-shared
+
+env:
+  BUN_VERSION: "canary"
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --no-save && git diff --exit-code -- bun.lock
+
+      - name: Run messaging gateway preflight
+        run: bun run preflight:messaging-gateways
+
+      - name: Run unit tests (isolated — mock.module is process-global in bun)
+        working-directory: packages/cloud-services/gateway-webhook
+        run: |
+          bun test ./__tests__/build-forward-body.test.ts --timeout 60000
+          bun test ./__tests__/internal-auth.test.ts --timeout 60000

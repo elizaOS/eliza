@@ -1,0 +1,21 @@
+[[!meta title="Join us at the Tails HackFest, 2014!"]]
+[[!meta date="Fri, 04 Jul 2014 21:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Join us on July 5-6 in Paris, to make online anonymity and digital
+privacy usable by the masses! Whether you're a writer, a software
+developer, a designer, a system administrator or just plain
+interested, come learn about the challenges faced by Tails, and how
+you can be part of the solution.
+
+The Tails HackFest will bring together anyone interested in making
+Tails more usable and more secure. This open event will be an intense
+mix of teaching, drawing, coding, sharing, learning and celebrating.
+
+Learn more about it: [[!tails_blueprint HackFest_2014_Paris desc="logistics, contact, registration, scheduling
+information, etc."]]
+
+Many thanks to Debian, IRILL, Mozilla and the Tor project for
+supporting this event!
+

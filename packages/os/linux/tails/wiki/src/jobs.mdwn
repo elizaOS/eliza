@@ -1,0 +1,51 @@
+[[!meta title="Jobs"]]
+[[!meta stylesheet="jobs" rel="stylesheet" title=""]]
+
+Join us in our fight against surveillance and censorship!
+
+About Tails
+===========
+
+[[!inline pages="jobs/about_tails" raw="yes" sort="age"]]
+
+Full-time and part-time positions
+=================================
+
+We don't have any open full-time or part-time positions at the moment.
+
+[Other job openings at the Tor Project.](https://www.torproject.org/about/jobs/)
+
+<!--
+<ul class="open-jobs">
+[[!inline pages="page(jobs/*) and tagged(job/staff) and tagged(job/open)" sort="age" template="job" feeds="no"]]
+</ul>
+-->
+
+Consultancy jobs
+================
+
+We don't have any open consultancy job at the moment.
+
+<!--
+
+<ul class="open-jobs">
+[[!inline pages="page(jobs/*) and tagged(job/consultancy) and tagged(job/open)" sort="age" template="job" feeds="no"]]
+</ul>
+
+-->
+
+Learn about new opportunities
+=============================
+
+- Follow us on Twitter: [@Tails_live](https://twitter.com/tails_live).
+
+- Subscribe to our newsletter, amnesia-news:
+
+  <form method="POST" action="https://www.autistici.org/mailman/subscribe/amnesia-news">
+          <input name="email" value=""/>
+          <input type="submit" value="Subscribe"/>
+  </form>
+
+- Follow the RSS or Atom feed of our job opportunities:
+
+  [[!inline pages="page(jobs/*) and tagged(job/open)" sort="age" feedonly="yes"]]

@@ -1,0 +1,474 @@
+#!/usr/bin/env python3
+"""
+Generate a list of packages that should be updated from Debian.
+It uses the the Ultimate Debian Database (UDD) to get a
+list of version in the Debian repository.
+
+By default it will get the last successful build manifest file from testing or stable from here:
+https://nightly.tails.boum.org/build_Tails_ISO_testing/lastSuccessful/archive/build-artifacts/
+https://nightly.tails.boum.org/build_Tails_ISO_stable/lastSuccessful/archive/build-artifacts/
+"""
+
+import argparse
+import collections
+import itertools
+import logging
+import operator
+import re
+import sys
+import urllib
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+
+import debian.debian_support
+import distro_info  # type: ignore[import]
+import psycopg2
+import requests
+import yaml
+
+logger = logging.getLogger()
+
+
+class Version(debian.debian_support.Version):
+    def _compare(self, other):
+        assert isinstance(other, type(self))
+        return super()._compare(other)
+
+
+def partition(pred, iterable):
+    "Use a predicate to partition entries into false entries and true entries"
+    # partition(is_odd, range(10)) --> 0 2 4 6 8   and  1 3 5 7 9
+
+    match = []
+    non_match = []
+
+    for i in iterable:
+        if pred(i)():
+            match.append(i)
+        else:
+            non_match.append(i)
+
+    return non_match, match
+
+
+class NoBuildManifest(Exception):
+    pass
+
+
+def add_metadata(yml, name):
+    yml["file_name"] = name
+    match = re.match(r".*@([0-9a-f]+)-([0-9T]+Z).build-manifest", name)
+    if match:
+        yml["git_hash"] = match.group(1)
+        yml["timestamp"] = match.group(2)
+
+
+def get_build_manifest(suite: str) -> dict:
+    base_url = f"https://nightly.tails.boum.org/build_Tails_ISO_{suite}/lastSuccessful/archive/build-artifacts/"
+
+    shasum_response = requests.get(
+        urllib.parse.urljoin(base_url, "tails-build-artifacts.shasum"),
+        timeout=10,
+    )
+
+    try:
+        shasum_response.raise_for_status()
+    except requests.HTTPError as e:
+        raise NoBuildManifest(f"build-manifest file for {suite} not found!") from e
+
+    for i in shasum_response.text.splitlines():
+        _, name = i.split()
+
+        if name.endswith(".build-manifest"):
+            url = urllib.parse.urljoin(base_url, name)
+            bm_response = requests.get(url, timeout=60)
+            ret = yaml.safe_load(bm_response.text)  # type: dict
+            ret["url"] = url
+            add_metadata(ret, name)
+            return ret
+
+    raise NoBuildManifest(f"build-manifest file for {suite} not found!")
+
+
+class NotFoundError(Exception):
+    pass
+
+
+class NewerThanDebianError(Exception):
+    pass
+
+
+@dataclass
+class UDDPackageRow:
+    package: str
+    version: Version
+    release: str
+    component: str
+    distribution: str
+    source: str
+    source_version: Version
+
+
+class UDD:
+    """to manage output of the Ultimate Debian Database (UDD).
+    Normally you give a list of packages you want to check and get the versions on different suites.
+    """
+
+    def __init__(self, packages: Sequence[str], suites: Sequence[str]):
+        self.suites = suites
+        self.packages = self._request(packages)
+
+    def _request(self, packages: Sequence[str]) -> dict[str, dict[str, UDDPackageRow]]:
+        ret: dict[str, dict[str, UDDPackageRow]] = collections.defaultdict(dict)
+        with psycopg2.connect(
+            "postgresql://udd-mirror:udd-mirror@udd-mirror.debian.net/udd",
+        ) as conn, conn.cursor() as curs:
+            archs = ("all", "amd64")
+            components = ("main", "contrib", "non-free", "non-free-firmware")
+            pkgs = tuple(packages)
+            fields = ", ".join(UDDPackageRow.__dataclass_fields__.keys())
+
+            curs.execute(
+                f"SELECT {fields}"  # noqa: S608 (derived from data hard-coded in this script)
+                " FROM packages"
+                " WHERE distribution = 'debian'"
+                " and release in %s"
+                " and architecture in %s"
+                " and component in %s"
+                " and package in %s;",
+                (self.suites, archs, components, pkgs),
+            )
+            for r in curs:
+                row = UDDPackageRow(*r)
+                row.version = Version(row.version)
+                row.source_version = Version(row.source_version)
+                if row.release in ret[row.package]:
+                    if ret[row.package][row.release].version > row.version:
+                        continue
+                ret[row.package][row.release] = row
+        return ret
+
+    def package(self, name: str) -> dict[str, UDDPackageRow]:
+        return self.packages[name]
+
+    def source(self, name: str, suite: str) -> str:
+        package = self.package(name)
+
+        if suite not in package:
+            raise NotFoundError(f"{name} not found in {suite}")
+
+        return package[suite].source
+
+    def source_version(self, name: str, suite: str) -> Version:
+        package = self.package(name)
+
+        if suite not in package:
+            raise NotFoundError(f"{name} not found in {suite}")
+
+        return package[suite].source_version
+
+    def version(self, name: str, suite: str) -> Version:
+        package = self.package(name)
+
+        if suite not in package:
+            raise NotFoundError(f"{name} not found in {suite}")
+
+        return package[suite].version
+
+    def get_debian_version(self, name: str, version: Version) -> tuple:
+        suite_version = None
+        for suite in self.suites:
+            try:
+                suite_version = self.version(name, suite)
+            except NotFoundError:
+                continue
+            if version <= suite_version:
+                return (suite, suite_version)
+        if suite_version is not None:
+            # We found the package in at least 1 Debian suite, but our
+            # version was always strictly larger than theirs
+            raise NewerThanDebianError(
+                f"{name}: the package version ({version}) is higher than "
+                f"the newest version in Debian ({suite_version})"
+            )
+        else:
+            raise NotFoundError(
+                f"{name}: the package was not found in any of the Debian suites"
+            )
+
+    def packages_by_source(self, source: str, suite: str) -> set[str]:
+        ret = set()
+        for name, pkg in self.packages.items():
+            if suite not in pkg:
+                continue
+            p = pkg[suite]
+            if p.source == source:
+                ret.add(name)
+        return ret
+
+
+def strip_tails_version(version: str) -> Version:
+    """if we have a Tails own fork get the Debian version."""
+    match = re.match(r"^(.*)(tails[0-9]+)$", version)
+    if match:
+        return Version(match[1])
+    else:
+        return Version(version)
+
+
+@dataclass
+class NewVersionIssue:
+    name: str
+    source: str
+    version: Version
+    suite: str
+    suite_version: Version
+    suite_source_version: Version
+
+    def __str__(self):
+        binaries = getattr(self, "log_binaries", None)
+        if binaries:
+            binaries = ", ".join(binaries)
+            return f"{self.source}[{binaries}] ({self.version}) to Debian {self.suite} ({self.suite_source_version})"
+        return f"{self.source} ({self.version}) to Debian {self.suite} ({self.suite_source_version})"
+
+    def tails_fork(self):
+        return re.search("tails[0-9]+$", str(self.version)) is not None
+
+
+def get_udd(package_dict: dict[str, Version], suites: tuple[str]) -> UDD:
+    return UDD(package_dict.keys(), suites)  # type: ignore[arg-type]
+
+
+def get_issues(udd: UDD, package_dict: dict[str, Version]) -> Iterator[NewVersionIssue]:
+    """Get a issue list of updateable packages."""
+    for package, version in package_dict.items():
+        striped_version = strip_tails_version(str(version))
+        try:
+            suite, suite_version = udd.get_debian_version(package, striped_version)
+        except NotFoundError as e:
+            logger.error(e)
+            continue
+        except NewerThanDebianError as e:
+            logger.warning(e)
+            continue
+
+        if striped_version < suite_version:
+            issue = NewVersionIssue(
+                package,
+                udd.source(package, suite),
+                version,
+                suite,
+                suite_version,
+                udd.source_version(package, suite),
+            )
+            if issue.tails_fork() and striped_version >= issue.suite_source_version:
+                continue
+            yield issue
+
+
+def check_build_manifest(
+    build_manifest: dict,
+    config: dict,
+    suites: tuple[str],
+    verbose: bool,
+) -> bool:
+    ignore = config.get("ignore", {})
+    general_ignore = ignore.get("general", [])
+    tmp_ignore = ignore.get("temporary", {})
+
+    pkg_dict: dict[str, Version] = {}
+    for pkg in build_manifest["packages"]["binary"]:
+        p = pkg["package"]
+        v = Version(pkg["version"])
+        if pkg_dict.get(p):
+            logger.debug(
+                "%(p)s: multiple entries, so only considering max(%(v)s, %(seen)s)",
+                {
+                    "p": p,
+                    "v": v,
+                    "seen": pkg_dict[p],
+                },
+            )
+            if pkg_dict.get(p) > v:
+                logger.debug(
+                    "%(p)s: %(seen)s > %(v)s, so ignoring %(v)s",
+                    {
+                        "p": p,
+                        "seen": pkg_dict.get(p),
+                        "v": v,
+                    },
+                )
+                continue
+        pkg_dict[p] = v
+
+    udd = get_udd(pkg_dict, suites)
+
+    issues = list(get_issues(udd, pkg_dict))
+
+    def _is_ignored(issue):
+        if issue.source in general_ignore:
+            return True
+        if (
+            str(issue.suite_source_version)
+            == tmp_ignore.get(issue.source, {"version": None})["version"]
+        ):
+            return True
+        return False
+
+    if not verbose:
+        issues = list(itertools.filterfalse(_is_ignored, issues))
+
+    non_forked, forked = partition(
+        operator.attrgetter("tails_fork"),
+        issues,
+    )
+
+    def _log_issue(issue):
+        if _is_ignored(issue):
+            if issue.source in general_ignore:
+                return f"(always ignored) {issue}"
+            return f"(known) {issue}"
+        else:
+            return str(issue)
+
+    def log_group(source, issues):
+        issue = issues[0]
+        suite = issue.suite
+        names = {i.name for i in issues}
+        if names != udd.packages_by_source(source, suite):
+            issue.log_binaries = names
+
+        return _log_issue(issue)
+
+    def _log(issues):
+        for source, i in itertools.groupby(
+            issues,
+            key=operator.attrgetter("source"),
+        ):
+            yield log_group(source, list(i))
+
+    if forked:
+        line = "\n  - ".join(sorted(_log(forked)))
+        logger.info(f"Need to upgrade our own forked package:\n  - {line}")
+
+    if non_forked:
+        line = "\n  - ".join(sorted(_log(non_forked)))
+        logger.info(f"Need to upgrade to a new APT snapshot:\n  - {line}")
+
+    # Check if we have at least one non ignored issue
+    try:
+        next(itertools.filterfalse(_is_ignored, issues))
+        return True
+    except StopIteration:
+        pass
+
+    return False
+
+
+def get_suites(min_codename: str) -> list:
+    suites = []
+    ddi = distro_info.DebianDistroInfo()
+    ddi_s = ddi.supported()
+    codename_pos = ddi_s.index(min_codename)
+    testing = ddi.testing()
+    for suite in ddi_s[codename_pos:]:
+        if suite in (testing, "sid", "experimental"):
+            suites.append(suite)
+        else:
+            # We always want to make sure that we have the stable-security
+            # version installed, if available.
+            # The rest of the list follows the Debian package flow.
+            suites.extend(
+                [
+                    f"{suite}-security",
+                    suite,
+                    f"{suite}-updates",
+                    f"{suite}-backports",
+                ],
+            )
+
+    return suites
+
+
+def udd_mirror_last_update():
+    return parsedate_to_datetime(
+        requests.head(
+            "https://udd-mirror.debian.net/logs/stamp.txt", timeout=60
+        ).headers["last-modified"]
+    )
+
+
+def main():
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(levelname)s: %(message)s",
+    )
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+
+    parser = argparse.ArgumentParser(
+        description="list all packages that need to be updated"
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Give more infos")
+    parser.add_argument("--debug", action="store_true", help="Show all debug messages")
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=argparse.FileType("r"),
+        default="config/ci/needed-package-updates.yml",
+        help="Config file",
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--suite", help="build manifest suite name.")
+    group.add_argument("--file", type=argparse.FileType("r"), help="local file name.")
+
+    args = parser.parse_args()
+
+    logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
+
+    if args.debug:
+        args.verbose = True
+
+    config = yaml.safe_load(args.config)
+
+    suites = tuple(get_suites(config.get("distribution")))
+
+    if args.file:
+        build_manifest = yaml.safe_load(args.file)
+        add_metadata(build_manifest, args.file.name)
+        logger.info("Check local file %s", build_manifest["file_name"])
+    elif args.suite:
+        build_manifest = get_build_manifest(args.suite)
+        logger.info("Check %s", build_manifest["file_name"])
+    else:
+        err = None
+        for suite in ("testing", "stable"):
+            try:
+                build_manifest = get_build_manifest(suite)
+                logger.info("Check %s", build_manifest["file_name"])
+                break
+            except NoBuildManifest as e:
+                logger.debug("No build manifest found for %s.", suite)
+                err = e
+        else:
+            raise err
+
+    udd_mirror_last_update_dt = udd_mirror_last_update()
+    logger.info(
+        "Last successful auto-update of the UDD mirror: %s (%s ago)",
+        udd_mirror_last_update_dt,
+        datetime.now(UTC) - udd_mirror_last_update_dt,
+    )
+
+    propose_update = check_build_manifest(build_manifest, config, suites, args.verbose)
+
+    if propose_update:
+        sys.exit(1)
+    else:
+        logger.debug("Nothing to do.")
+
+
+if __name__ == "__main__":
+    main()

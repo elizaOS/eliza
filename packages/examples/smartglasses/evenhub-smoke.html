@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Eliza Smartglasses EvenHub Smoke</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        background: #101114;
+        color: #f4f4f5;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+      }
+      main {
+        width: min(720px, calc(100vw - 32px));
+      }
+      pre {
+        min-height: 280px;
+        padding: 16px;
+        overflow: auto;
+        background: #050507;
+        border: 1px solid #2f3137;
+        border-radius: 8px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Eliza Smartglasses EvenHub Smoke</h1>
+      <pre id="log">booting...</pre>
+    </main>
+    <script type="module" src="./evenhub-smoke.ts"></script>
+  </body>
+</html>

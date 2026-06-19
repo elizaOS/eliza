@@ -1,0 +1,69 @@
+#!/bin/bash
+
+set -e
+set -u
+
+. "$(dirname "$0")/utils.sh"
+
+ARCHIVE="$1"
+
+output_tagged_snapshot() {
+    local archive="$1"
+    local tag="$2"
+    local snapshot
+    snapshot=$(branch_name_to_suite "$tag")
+    echo "http://tagged.snapshots.deb.tails.boum.org/$snapshot/$archive"
+}
+
+output_time_based_snapshot() {
+    local archive="$1"
+    local serial="$2"
+    echo "http://time-based.snapshots.deb.tails.boum.org/$archive/$serial"
+}
+
+### Sanity checks
+
+[ -n "$ARCHIVE" ] || exit 1
+
+### Main
+
+SERIAL=$(cat "config/APT_snapshots.d/$ARCHIVE/serial")
+RESOLVED_SERIAL=$(cat "tmp/APT_snapshots.d/$ARCHIVE/serial")
+BASE_BRANCH=$(base_branch)
+CURRENT_BRANCH=$(git_current_branch)
+
+if [ "$BASE_BRANCH" = stable ] ||
+    [ "$BASE_BRANCH" = testing ] ||
+    (git_on_a_tag && [ "$CURRENT_BRANCH" = feature/trixie ]); then
+    case "$ARCHIVE" in
+    debian-security)
+        [ "$SERIAL" = latest ] ||
+            fatal "APT snapshots are frozen for the debian-security archive," \
+                "which should happen neither on feature/trixie nor on" \
+                "a branch based on $BASE_BRANCH"
+        ;;
+    *)
+        [ "$SERIAL" != latest ] ||
+            fatal "APT snapshots are not frozen for the $ARCHIVE archive," \
+                "which should happen neither on feature/trixie nor on" \
+                "a branch based on $BASE_BRANCH"
+        ;;
+    esac
+    if version_was_released "$(version_in_changelog)" && git_on_a_tag; then
+        output_tagged_snapshot "$ARCHIVE" "$(version_in_changelog)"
+    else
+        if [ "$BASE_BRANCH" = stable ]; then
+            version_was_released "$(previous_version_in_changelog)" ||
+                fatal "None of the two last version in changelog were released"
+        fi
+        output_time_based_snapshot "$ARCHIVE" "$RESOLVED_SERIAL"
+    fi
+else
+    if [ "$BASE_BRANCH" = devel ] || [ "$CURRENT_BRANCH" = feature/trixie ]; then
+        if [ "$SERIAL" != latest ]; then
+            fatal "APT snapshots are frozen, which should happen neither on" \
+                "feature/trixie nor on a branch based on the devel one"
+        fi
+    fi
+    output_time_based_snapshot "$ARCHIVE" "$RESOLVED_SERIAL"
+fi

@@ -1,0 +1,464 @@
+workflow:
+  rules:
+    - if: $CI_FORCE_RUN
+    - if: $CI_MERGE_REQUEST_IID
+    - if: $CI_COMMIT_TAG
+    - if: '$CI_COMMIT_BRANCH =~ /^(master|stable|testing|devel)$/'
+
+# This block is nothing special in GitLab CI semantics. It's just a place we're
+# putting "variables" to be reused later
+.definitions:
+  # Please, make sure to only use images from `registry.gitlab.tails.boum.org`,
+  # as we give significant privileges to our Runners wrt. what they can do in our
+  # repositories.
+  image-trixie: &image-trixie "registry.gitlab.tails.boum.org/sysadmin-team/container-images/debian:trixie"
+  image-forky: &image-forky "registry.gitlab.tails.boum.org/sysadmin-team/container-images/debian:forky"
+  image-sid: &image-sid "registry.gitlab.tails.boum.org/sysadmin-team/container-images/debian:sid"
+
+  # Some tests specifically need to use the same Debian suite as a Tails built
+  # from this branch.  To ensure this, those jobs must set `image: *current-suite-image`.
+  current-suite-image: &current-suite-image "registry.gitlab.tails.boum.org/sysadmin-team/container-images/debian:trixie"
+
+image: *image-trixie
+
+variables:
+    GET_SOURCES_ATTEMPTS: 10
+
+before_script:
+  - export DEBIAN_FRONTEND=noninteractive
+  - apt-get update -qq
+
+.prepare-lint-po: &prepare-lint-po
+  - apt-get -qy install git i18nspector
+  - git clone https://gitlab.tails.boum.org/tails/jenkins-tools.git /tmp/jenkins-tools
+
+build-website:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      variables:
+        IKIWIKI_RCS_OPTION: --rcs git
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"'
+    - changes:
+        - .gitlab-ci.yml
+        - .gitlab-ci-pipeline.yml
+  image: registry.gitlab.tails.boum.org/sysadmin-team/container-images/ikiwiki:trixie
+  cache:
+    key: website-$CI_COMMIT_REF_SLUG
+    paths:
+      - config/chroot_local-includes/usr/share/doc/tails/website
+      - wiki/src/.ikiwiki
+      - underlays
+  artifacts:
+    name: website
+    paths:
+      - config/chroot_local-includes/usr/share/doc/tails/website
+    when: on_success
+    expire_in: 1 day
+  variables:
+    UNDERLAYS_DIR: ${CI_PROJECT_DIR}/underlays
+  script:
+    - mkdir -p ${UNDERLAYS_DIR}
+    - |
+      for i in etcher-binary promotion-material; do
+        test -d ${UNDERLAYS_DIR}/${i} || git clone --depth=1 https://gitlab.tails.boum.org/tails/${i}.git ${UNDERLAYS_DIR}/${i}
+        git -C ${UNDERLAYS_DIR}/${i} switch master
+        git -C ${UNDERLAYS_DIR}/${i} pull
+      done
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "master" ]; then
+        git checkout -B master $CI_COMMIT_SHA
+        git branch -u origin/master
+        git remote set-url origin https://user:$WEBSITE_BUILD_PROJECT_ACCESS_TOKEN@gitlab.tails.boum.org/tails/tails.git
+      fi
+    - |
+      ./build-website ${IKIWIKI_RCS_OPTION} \
+        --url "https://tails.net" \
+        --usedirs \
+        --sslcookie \
+        --historyurl "https://gitlab.tails.boum.org/tails/tails/-/commits/master/wiki/src/[[file]]" \
+        --diffurl "https://gitlab.tails.boum.org/tails/tails/-/commit/[[sha1_commit]]" \
+        --rss \
+        --atom \
+        --set exclude='^misc\/.*|\.(ar|fa|id|pl|sr_Latn|tr|zh|zh_TW)\.po$' \
+        --include '^contribute\/how\/promote\/material\/.*' \
+        --set-yaml add_underlays="['${UNDERLAYS_DIR}/etcher-binary','${UNDERLAYS_DIR}/promotion-material','${CI_PROJECT_DIR}/wiki/src/.well-known']"
+
+deploy-website:
+  needs: [build-website, lint-po, check-website-core-pages, check-po-msgfmt, check-po-meta-date, check-translatable-live-website-urls]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+  image: registry.gitlab.tails.boum.org/sysadmin-team/container-images/rsync:trixie
+  dependencies:
+    - build-website
+  environment: production
+  resource_group: production/$SSH_SERVER
+  parallel:
+    matrix:
+      - SSH_SERVER: www.lizard
+        SSH_PORT: 22
+      - SSH_SERVER: www2.chameleon
+        SSH_PORT: 22
+  script:
+    - apt-get install -y openssh-client rsync
+    - test -e .ssh || mkdir .ssh
+    - cp "$WEBSITE_DEPLOY_SSH_PRIVATE_KEY" .ssh/private_key
+    - cp "$WEBSITE_DEPLOY_SSH_KNOWN_HOSTS" .ssh/known_hosts
+    - chmod 400 .ssh/known_hosts .ssh/private_key
+    - echo "variables often lack a trailing newline, which breaks SSH, detect and fix"
+    - ssh-keygen -y -f .ssh/private_key || echo >> .ssh/private_key
+    - echo "here is the SSH key we will deploy with"
+    - ssh-keygen -y -f .ssh/private_key
+    - echo -n "Begin rsync, time is " && date '+%Y-%m-%d %H-%M-%S%z'
+    - rsync --rsh="ssh -p ${SSH_PORT} -o UserKnownHostsFile=.ssh/known_hosts -i .ssh/private_key" --checksum --archive --no-times --verbose --mkpath --delete "config/chroot_local-includes/usr/share/doc/tails/website/" www-data@${SSH_SERVER}:/
+
+lint-po:
+  image: *image-trixie
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(master|stable|testing|devel)$/'
+    - changes:
+        - .gitlab-ci.yml
+        - .gitlab-ci-pipeline.yml
+        - ./**.po
+  script:
+    - *prepare-lint-po
+    - /tmp/jenkins-tools/slaves/lint_po
+
+avoid-gtk-launch:
+  script:
+    - apt-get -qy install --no-install-recommends python3 git
+    - ./bin/test-utils/gtk-launch
+
+git-history:
+  only:
+    - merge_requests
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 0
+  script:
+    - apt-get -qy install git
+    - ./bin/test-utils/check-git-history "origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:?}"
+
+codespell:
+  image: *image-trixie
+  script:
+    - apt-get -qy install codespell
+    - codespell --version
+    - codespell
+
+ruff-lint-changed-files:
+  only:
+    - merge_requests
+
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 0
+
+  image: *image-sid
+
+  script:
+    - apt-get -qy install ruff findutils git python3
+    - ruff --version
+    - git fetch origin "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:?}"
+    - ./bin/test-utils/ruff "origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:?}" check --output-format=junit --output-file=ruff.xml
+  artifacts:
+    when: always
+    reports:
+      junit: ruff.xml
+
+ruff-format-changed-files:
+  only:
+    - merge_requests
+
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 0
+
+  image: *image-sid
+
+  script:
+    - apt-get -qy install ruff findutils git python3
+    - ruff --version
+    - git fetch origin "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:?}"
+    - ./bin/test-utils/ruff "origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:?}" format --check
+
+check-isolated-python:
+  script:
+    - apt-get -qy install git python3-sh
+    - ./bin/test-utils/check-isolated-python
+
+check-udfs-signatures:
+  image: *current-suite-image
+  script:
+    - apt-get -qy install python3 python3-debian sqopv
+    - export VERSION=$(python3 -c 'from debian.changelog import Changelog; print(Changelog(open("debian/changelog"))[0].version)')
+    - echo "${VERSION:?}"
+    - ./bin/check-udfs-signature
+
+check-website-core-pages:
+  script:
+    - apt-get -qy install git
+    - ./bin/check-core-pages
+
+check-po-msgfmt:
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(master|stable|testing|devel)$/'
+    - changes:
+        - .gitlab-ci.yml
+        - .gitlab-ci-pipeline.yml
+        - ./**.po
+  script:
+    - apt-get -qy install python3 gettext
+    - ./bin/check-po-msgfmt
+
+check-po-meta-date:
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(master|stable|testing|devel)$/'
+    - changes:
+        - .gitlab-ci.yml
+        - .gitlab-ci-pipeline.yml
+        - ./**.po
+  script:
+    - apt-get -qy install git ruby
+    - ./bin/sanity-check-website
+
+check-translatable-live-website-urls:
+  script:
+    - apt-get -qy install python3-polib
+    - ./bin/check-translatable-live-website-urls po/tails.pot
+
+check-locale-descriptions:
+  script:
+    - apt-get -qy install python3 python3-requests python3-toml python3-bs4
+    - echo 'If this fails, look at https://tails.net/contribute/release_process/update_locale_descriptions/'
+    - ./bin/locale-descriptions suggest
+
+rubocop:
+  image: *image-trixie
+  script:
+  - apt-get -qy install rubocop
+  - rubocop --version
+  - rubocop --format junit --out rubocop.xml --format markdown
+  artifacts:
+    when: always
+    reports:
+      junit: rubocop.xml
+
+test-iuk:
+  rules:
+    - if: '$CI_COMMIT_BRANCH != "master"'
+  image: *current-suite-image
+  script:
+  - './bin/test-utils/test-iuk'
+
+test-perl5lib:
+  rules:
+    - if: '$CI_COMMIT_BRANCH != "master"'
+  image: *current-suite-image
+  script:
+  - 'cat config/chroot_local-packageslists/tails-perl5lib.list
+       | grep -E -v "^#"
+       | xargs apt-get -qy install'
+  - 'apt-get -qy install
+       apt-file
+       libdist-zilla-plugin-test-notabs-perl
+       libdist-zilla-plugin-test-perl-critic-perl
+       libdist-zilla-app-command-authordebs-perl
+       libmodule-build-perl
+       sudo'
+  - apt-get update -qq # Take into account APT configuration added by apt-file
+  # Otherwise, apt-get called by "dzil authordebs --install" asks confirmation
+  - echo 'APT::Get::Assume-Yes "true";' > /etc/apt/apt.conf.d/yes
+  - cd $CI_PROJECT_DIR/config/chroot_local-includes/usr/src/perl5lib
+  - dzil authordebs --install
+  - dzil test --all
+
+shellcheck:
+  image: *image-trixie
+  script:
+  - apt-get -qy install python3 shellcheck xmlstarlet git
+  - shellcheck --version
+  - 'git ls-files -z | ./bin/test-utils/is-file-type filter --zero shell | xargs --verbose --no-run-if-empty -0 shellcheck --format=checkstyle
+       | xmlstarlet tr config/ci/shellcheck/checkstyle2junit.xslt
+       > shellcheck.xml'
+  artifacts:
+    when: always
+    reports:
+      junit: shellcheck.xml
+
+shfmt-changed-files:
+  only:
+    - merge_requests
+
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 0
+
+  image: *image-sid
+
+  script:
+    - apt-get -qy install shfmt findutils git python3
+    - shfmt --version
+    - git fetch origin "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:?}"
+    - ./bin/test-utils/shfmt -s "origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:?}"
+
+test-persistent-storage-config-file:
+  image: *current-suite-image
+  script:
+    - apt-get -qy install python3 python3-gi acl e2fsprogs
+    - python3 config/chroot_local-includes/usr/lib/python3/dist-packages/tps/configuration/config_file_test.py
+
+test-python-doctest:
+  image: *current-suite-image
+  script:
+    - apt-get -qy install python3 python3-sh python3-toml python3-requests python3-bs4
+    - config/chroot_local-includes/usr/local/lib/tails-gdm-error-message doctest --verbose
+    - env PYTHONPATH=config/chroot_local-includes/usr/lib/python3/dist-packages python3 config/chroot_local-includes/usr/local/bin/tails-documentation --doctest
+    - env PYTHONPATH=config/chroot_local-includes/usr/lib/python3/dist-packages python3 config/chroot_local-includes/usr/local/lib/tails-uefi-ca-detect --doctest
+    - ./bin/locale-descriptions doctest
+    - env PYTHONPATH=config/chroot_local-includes/usr/lib/python3/dist-packages python3 -m doctest --verbose config/chroot_local-includes/usr/lib/python3/dist-packages/tails_jsonrpc/__init__.py
+
+test-tca:
+  rules:
+    - if: '$CI_COMMIT_BRANCH != "master"'
+  image: *current-suite-image
+  script:
+    - 'cat config/chroot_local-packageslists/tor-connection-assistant.list
+       | grep -E -v "^#"
+       | xargs apt-get -qy install'
+    - 'cd config/chroot_local-includes/usr/lib/python3/dist-packages ; find tca -name "*.py" -print0 | xargs -0 -L1 env PYTHONPATH=. python3 -m doctest'
+
+test-tca-portal:
+  rules:
+    - if: '$CI_COMMIT_BRANCH != "master"'
+  image: *current-suite-image
+  script:
+    - 'cat config/chroot_local-packageslists/tor-connection-assistant.list
+       | grep -E -v "^#"
+       | xargs apt-get -qy install'
+    - 'PYTHONPATH=config/chroot_local-includes/usr/lib/python3/dist-packages env python3 ./config/chroot_local-includes/usr/local/lib/tca-portal --doctest-only --log-level DEBUG'
+
+
+test-tailslib:
+  rules:
+    - if: '$CI_COMMIT_BRANCH != "master"'
+  image: *current-suite-image
+  script:
+    - apt-get -qy install python3 python3-atomicwrites python3-setuptools python3-sh python3-gi git
+    - |
+      cd config/chroot_local-includes/usr/lib/python3/dist-packages
+      find tailslib -name "*.py" -print0 |
+         grep --null-data --invert-match --extended-regexp \
+            '/(gnome|netnsdrop|thunderbird).py$' |
+         xargs -0 -L1 env PYTHONPATH=. python3 -m doctest
+
+test-whisperback:
+  rules:
+    - if: '$CI_COMMIT_BRANCH != "master"'
+  image: *current-suite-image
+  script:
+    - 'cat config/chroot_local-packageslists/whisperback.list | grep -E -v "^#"
+         | xargs apt-get -qy install'
+    - apt-get -qy install python3-pytest
+    - 'PYTHONPATH=config/chroot_local-includes/usr/lib/python3/dist-packages
+         pytest-3 --verbose --junit-xml=report.xml
+         config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/test.py'
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+
+test-ci-configuration:
+  variables:
+    GIT_STRATEGY: clone
+    # GIT_DEPTH=0 disables shallow cloning, see
+    # https://docs.gitlab.com/ci/pipelines/settings/#limit-the-number-of-changes-fetched-during-clone
+    GIT_DEPTH: 0
+  script:
+    - apt-get -qy install python3-pydantic python3-pytest git
+    # pytest can't test files whose extension is not ".py", let's give it what it wants
+    - cp bin/ci-configuration bin/ci-configuration.py
+    - 'pytest-3 --verbose --junit-xml=report.xml
+         bin/ci-configuration.py'
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+
+apt-snapshots-expiry:
+  script:
+    - apt-get -qy install curl git
+    - ./bin/apt-snapshots-expiry
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^stable|testing|devel$/'
+    - changes:
+        - .gitlab-ci.yml
+        - .gitlab-ci-pipeline.yml
+        - config/APT_snapshots.d/*/serial
+        - vagrant/definitions/tails-builder/config/APT_snapshots.d/*/serial
+
+.install-https-get-expired-build-deps: &install-https-get-expired-build-deps
+  - apt-get -qy install --no-install-recommends golang-go golang-src ca-certificates binutils
+
+.build-https-get-expired: &build-https-get-expired
+  - env PREFIX=config/chroot_local-includes ./config/chroot_local-includes/usr/local/lib/build-https-accept-expired
+
+.test-https-get-expired: &test-https-get-expired
+  - echo "Basic check:"
+  - ./https-get-expired -reject-expired https://tails.net/
+  - echo "Let's pretend we are in the past. Then, this certificate is still good."
+  - ./https-get-expired -current-time 2000-01-01 -reject-expired https://tails.net/
+  - echo "Let's pretend we are in the future. Then, this certificate is expired"
+  - "! ./https-get-expired -current-time 2090-01-01 -reject-expired https://tails.net/"
+  - "! ./https-get-expired -reject-expired https://wrong.host.badssl.com/"
+  - "! ./https-get-expired -reject-expired https://self-signed.badssl.com/"
+  - "! ./https-get-expired -reject-expired https://untrusted-root.badssl.com/"
+  - "! ./https-get-expired -reject-expired https://expired.badssl.com/"
+  - echo "Invalid host"
+  - "! ./https-get-expired -reject-expired https://nxdomain.tails.net/"
+  - "./bin/test-utils/https-get-expired-test-all"
+
+check-target-branch-for-rm-config-change:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "merge_request_event"
+      when: never
+    - if: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == "master"
+      when: never
+    - if: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == "stable"
+      when: never
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
+      when: never
+    - changes:
+        - bin/rm-config
+        - config/release_management/*.yml
+        - config/release_management/templates/*.yml
+  script:
+    - echo "rm-config changes should target the master branch."
+    - echo "For details, see tails/tails#21175."
+    - exit 1
+
+https-get-expired:
+  image: *current-suite-image
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^stable|testing|devel$/'
+    - changes:
+        - .gitlab-ci.yml
+        - .gitlab-ci-pipeline.yml
+        - config/chroot_local-includes/usr/src/https-get-expired.go
+        - config/chroot_local-includes/etc/default/htpdate.pools
+        - config/chroot_local-includes/usr/local/lib/build-https-accept-expired
+  script:
+    - *install-https-get-expired-build-deps
+    - *build-https-get-expired
+    - *test-https-get-expired
+
+Ensure MR from stable into devel:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "stable"'
+  image: registry.gitlab.tails.boum.org/sysadmin-team/container-images/python3-gitlab:trixie
+  script:
+    - |
+      ./bin/ensure-merge-request \
+          --project tails/tails \
+          --source stable \
+          --target devel \
+          --pipeline-timeout 120

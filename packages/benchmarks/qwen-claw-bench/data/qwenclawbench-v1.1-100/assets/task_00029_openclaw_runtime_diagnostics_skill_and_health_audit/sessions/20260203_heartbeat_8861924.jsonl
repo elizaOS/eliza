@@ -1,0 +1,12 @@
+{"type": "session_start", "session_id": "heartbeat_8861924", "model": "deepseek-r1", "created_at": "2026-02-03T20:11:54.356515", "user_id": "subagent-runner", "channel": "internal"}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-03T20:15:56.739547", "session_id": "heartbeat_8861924", "seq": 1, "usage": {"prompt_tokens": 4024, "completion_tokens": 1883, "total_tokens": 7174}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-03T20:16:21.039542", "session_id": "heartbeat_8861924", "seq": 2}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-03T20:18:20.150364", "session_id": "heartbeat_8861924", "seq": 3, "usage": {"prompt_tokens": 496, "completion_tokens": 2144, "total_tokens": 4516}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-03T20:18:40.107088", "session_id": "heartbeat_8861924", "seq": 4}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-03T20:21:24.691142", "session_id": "heartbeat_8861924", "seq": 5}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-03T20:23:35.810884", "session_id": "heartbeat_8861924", "seq": 6, "usage": {"prompt_tokens": 6057, "completion_tokens": 3050, "total_tokens": 2860}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-03T20:28:15.584791", "session_id": "heartbeat_8861924", "seq": 7, "usage": {"prompt_tokens": 4271, "completion_tokens": 2981, "total_tokens": 8036}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-03T20:30:21.513775", "session_id": "heartbeat_8861924", "seq": 8}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-03T20:32:26.346193", "session_id": "heartbeat_8861924", "seq": 9}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-03T20:32:49.919221", "session_id": "heartbeat_8861924", "seq": 10}
+{"type": "session_end", "session_id": "heartbeat_8861924", "ended_at": "2026-02-03T20:32:59.919221", "total_messages": 10, "status": "error"}

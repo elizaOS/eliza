@@ -1,0 +1,168 @@
+[[!meta title="Tails report for March, 2015"]]
+[[!meta date="Thu, 09 Apr 2015 08:02:37 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+March was full of surprises: first Mozilla changed the release date for Firefox, so the Tor team had to change the release date for the [[Tor Browser|https://blog.torproject.org/blog/tor-browser-406-released]], and we had to change the release date of version 1.3.1. Usually, these updates are a little late... but this time, it has been advanced one week earlier!
+
+But then... a whole bunch of [[vulnerabilities were discovered in Firefox|https://www.mozilla.org/en-US/security/known-vulnerabilities/firefox-esr/#firefoxesr31.6]], so Mozilla did an emergency release.  Due to their early release, we released 1.3.1 early as well, so that we could incorporate those security fixes. And the planned 1.3.1 became 1.3.2. So, instead of a release-free month, we had a two-releases month!
+
+Despite the hectic changes of plans, we did some good work. And for starters, a bit of recursivity: in March, we... published the [[two|news/report_2014_end]] [[previous|news/report_2015_01-02]] reports ;)
+
+[[!toc  ]]
+
+Releases
+========
+
+* [[Tails 1.3.1 was released on March 23, 2015|news/version_1.3.1]] (minor release).
+* [[Tails 1.3.2 was released on March 31, 2015|news/version_1.3.2]] (minor release).
+* The next release (1.4) is planned for May 12.
+
+Code
+====
+
+The two releases of this month fixed security issues, but did not introduce major changes visible to the user. For details, see each release announcement.
+
+We see a lot of users still confused with how to save files from the Tor Browser, so here's the link if you have the same problem :)
+
+Documentation and website
+=========================
+
+* We explained why users [[shouldn't update Tails using `apt-get` or *Synaptic*|support/faq#upgrade]].
+
+* We explained how to install additional software.
+
+* We mentioned I2P in our [[About page|about]].
+
+* We explained [[what is metadata and recommend cleaning it|doc/sensitive_documents/graphics]].
+
+* We added to the known issues that [[Tails doesn't erase the video memory|support/known_issues#video-memory]].
+
+User experience
+===============
+
+* We did a UX sprint at NUMA Paris to start our work on the web assistant
+  for getting started with Tails:
+  - We discussed two initial designs we did
+    beforehand.
+  - We decided on a broad structure for our work.
+  - We refined our initial
+    designs, conducted user
+    testing on each of them, drew conclusions from
+    that.
+
+Infrastructure
+==============
+
+* Our test suite now covers 162 scenarios, 9 more than in February
+  (but the numbers in February report were wrong). Thanks to some
+  welcome refactoring, we turned 14 tests into one :)
+
+* As [[announced recently|news/signing_key_transition]], Tails ships a new signing key in 1.3.
+
+* We have [[!tails_ticket 6564 desc="enabled"]] core developers to
+  remotely run the Tails automated test suite on our infrastructure.
+
+* We did quite some work to prepare our infrastructure for the
+  upcoming release of Debian 8 (Jessie). Not only we have started
+  upgrading some of our systems, but for example, we have adapted our
+  automated test suite [[!tails_ticket 8165 desc="to run in a Jessie
+  environment"]], which led us to discover [[!debbug 766475 desc="a
+  bug"]] in [[!debpts python-xmpp]], that we then fixed directly in
+  Debian. Similarly, we have also helped validating the fix for
+  a regression we have suffered from in the version of Puppet that is
+  shipped in Jessie.
+
+* Lots of thought and discussion was put into [[!tails_ticket 8654
+  desc="revamping how we handle our APT repository"]].
+
+Funding
+=======
+
+* We [[received a $25,000 donation from DuckDuckGo|https://duck.co/blog/donations_2015]]. Thank you :)
+
+* We started integrating the feedback from Open Technology
+  Fund into our proposal, and answered some of
+  their questions.
+
+* We submitted our first quarterly report to the [Digital
+  Defenders Partnership](https://digitaldefenders.org/).
+
+* Our income statement for 2014 is almost ready to be published --
+  stay tuned.
+
+* We removed the call for donations from the homepage of the website,
+  but... yes, you guessed, we still welcome your donations, in euro,
+  US dollar, bitcoin, or your favorite currency :)
+
+Outreach
+========
+
+* We are compiling a list of people and organizations doing Tails training. If you do and want to be added, please write to <tails-press@boum.org>.
+
+* DrWhax attended the [[Tor Dev's Winter Meeting|https://trac.torproject.org/projects/tor/wiki/org/meetings/2015WinterDevMeeting]] during the Circumvention Tech Festival in Valencia (Spain), March 1st-6th.
+
+* Tails was presented during a lightning talk session organized by AccessNow, at [[RightsCon|https://www.rightscon.org]], in Manila (Philippines) on March 24th 2015.
+
+* Tchou presented Tails at the [[Hacks/Hackers meetup at Numa Paris|http://www.meetup.com/Hacks-Hackers-Paris/events/221190081/]] (France), a meeting between journalists and developers.
+
+Upcoming events
+---------------
+
+* intrigeri will give a talk about Tails at the [[MiniDebConf in Lyon, France|https://france.debian.net/events/minidebconf2015/]] in April.
+
+* A talk about Tails will probably take place at a [[MiniDebConf in Bucharest, Romania|http://bucharest2015.mini.debconf.org/]] in May.
+
+Please let us know if you organize an event about Tails :)
+
+On-going discussions
+====================
+
+* Do we need a green onion or not for Tor Monitor (future replacement for Vidalia)?
+
+* More ISO verification discussion
+
+* There are problems with Electrum and Tor
+
+* Do we need a GUI for LUKS/Truecrypt?
+
+* Tails on Windows Tablet?
+
+* We need an underlay for UX and blueprints
+
+* The automatic build specifications are nearly done.
+
+Press & Testimonials
+====================
+
+* 2015-03: A DIY Guide to Feminist Cybersecurity by safehubcollective.org qualifies Tails as "ultimate anonymity and amnesia".
+
+* 2015-03: [SecureDrop at The Globe and Mail](https://sec.theglobeandmail.com/securedrop/): even more newspapers recommend Tails to their potential sources :)
+
+Translation and internationalization
+====================================
+
+* We're [[!tails_ticket 9049 desc="talking about our translation infrastructure"]]: how to make it easier to translate our website?
+
+All website PO files
+--------------------
+
+  - de: 16% (1012) strings translated, 0% strings fuzzy, 16% words translated
+  - fr: 47% (2970) strings translated, 2% strings fuzzy, 45% words translated
+  - pt: 30% (1913) strings translated, 2% strings fuzzy, 28% words translated
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+--------------------------------------
+
+  - de: 44% (568) strings translated, 1% strings fuzzy, 57% words translated
+  - fr: 93% (1204) strings translated, 2% strings fuzzy, 94% words translated
+  - pt: 89% (1149) strings translated, 6% strings fuzzy, 92% words translated
+
+Metrics
+=======
+
+* Tails has been started more than 411,474 times in March. This makes 13,273 boots a day on average.
+* 27,787 downloads of the OpenPGP signature of Tails ISO from our website.
+* 106 bug reports were received through WhisperBack.
+
+-- 
+Report by BitingBird for Tails folks

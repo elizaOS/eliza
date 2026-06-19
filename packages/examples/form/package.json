@@ -1,0 +1,17 @@
+{
+  "name": "@elizaos/example-form",
+  "version": "2.0.0-beta.0",
+  "description": "Form-driven elizaOS example agent.",
+  "type": "module",
+  "scripts": {
+    "start": "bun ../chat/chat.ts",
+    "dev": "bun --watch ../chat/chat.ts",
+    "typecheck": "bun run --cwd ../chat typecheck",
+    "test": "bun run --cwd ../chat typecheck",
+    "build": "bun run --cwd ../chat build",
+    "lint": "bunx @biomejs/biome check --write --unsafe ."
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

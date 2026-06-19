@@ -1,0 +1,52 @@
+# Project Settings — Motor Control SVPWM
+# Platform: XMC4200
+# Last updated: 2024-01-20
+
+general:
+  project_name: "SVPWM_MotorControl"
+  version: "2.1.0"
+  target_mcu: "XMC4200"
+  optimization_level: "-O2"
+
+pwm:
+  pwm_period: 1000
+  pwm_frequency_hz: 20000
+  mode: "edge_aligned"
+
+svpwm:
+  # Normalization factor for voltage vector conversion to duty cycle
+  # normalization factor = sqrt(3) for per-unit conversion
+  # Used as: duty = (sqrt(3) * Vref) / vdc_normalization
+  vdc_normalization: 1.7320   # sqrt(3) — per-unit voltage base
+  max_modulation_index: 0.907
+  overmodulation_mode: "none"
+  sector_detection: "three_variable"
+  min_pulse_width_us: 2.0
+
+motor:
+  pole_pairs: 4
+  rated_speed_rpm: 3000
+  rated_current_a: 5.0
+  stator_resistance_ohm: 1.2
+  stator_inductance_mh: 8.5
+  back_emf_constant: 0.045
+
+control:
+  current_loop_bandwidth_hz: 1000
+  speed_loop_bandwidth_hz: 50
+  current_kp: 2.5
+  current_ki: 150.0
+  speed_kp: 0.5
+  speed_ki: 10.0
+
+adc:
+  resolution_bits: 12
+  sampling_time_ns: 250
+  trigger_source: "pwm_period"
+  current_offset_calibration: true
+
+protection:
+  overcurrent_threshold_a: 10.0
+  overvoltage_threshold_v: 400.0
+  undervoltage_threshold_v: 200.0
+  overtemperature_c: 85.0

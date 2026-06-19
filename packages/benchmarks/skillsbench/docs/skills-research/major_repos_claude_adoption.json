@@ -1,0 +1,888 @@
+{
+  "total_checked": 88,
+  "with_claude_md": 14,
+  "with_claude_dir": 7,
+  "with_skills": 2,
+  "repos": [
+    {
+      "repo": "facebook/react",
+      "stars": 242059,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The library for web and native user interfaces.",
+      "language": "JavaScript"
+    },
+    {
+      "repo": "vuejs/vue",
+      "stars": 209821,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "This is the repo for Vue 2. For Vue 3, go to https://github.com/vuejs/core",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "tensorflow/tensorflow",
+      "stars": 193240,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "An Open Source Machine Learning Framework for Everyone",
+      "language": "C++"
+    },
+    {
+      "repo": "microsoft/vscode",
+      "stars": 180417,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Visual Studio Code",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "ollama/ollama",
+      "stars": 158914,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Get up and running with OpenAI gpt-oss, DeepSeek-R1, Gemma 3 and other models.",
+      "language": "Go"
+    },
+    {
+      "repo": "huggingface/transformers",
+      "stars": 154667,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "\ud83e\udd17 Transformers: the model-definition framework for state-of-the-art machine learning models in text, vision, audio, and multimodal models, for both inference and training. ",
+      "language": "Python"
+    },
+    {
+      "repo": "vercel/next.js",
+      "stars": 136985,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": true,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The React Framework",
+      "language": "JavaScript"
+    },
+    {
+      "repo": "golang/go",
+      "stars": 131805,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The Go programming language",
+      "language": "Go"
+    },
+    {
+      "repo": "langchain-ai/langchain",
+      "stars": 123577,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "\ud83e\udd9c\ud83d\udd17 The platform for reliable agents.",
+      "language": "Python"
+    },
+    {
+      "repo": "kubernetes/kubernetes",
+      "stars": 119672,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Production-Grade Container Scheduling and Management",
+      "language": "Go"
+    },
+    {
+      "repo": "nodejs/node",
+      "stars": 115076,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Node.js JavaScript runtime \u2728\ud83d\udc22\ud83d\ude80\u2728",
+      "language": "JavaScript"
+    },
+    {
+      "repo": "rust-lang/rust",
+      "stars": 109180,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Empowering everyone to build reliable and efficient software.",
+      "language": "Rust"
+    },
+    {
+      "repo": "denoland/deno",
+      "stars": 105746,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A modern runtime for JavaScript and TypeScript.",
+      "language": "Rust"
+    },
+    {
+      "repo": "shadcn-ui/ui",
+      "stars": 104203,
+      "has_claude_md": false,
+      "has_claude_dir": true,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A set of beautifully-designed, accessible components and a code distribution platform. Works with your favorite frameworks. Open Source. Open Code.",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "angular/angular",
+      "stars": 99632,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Deliver web apps with confidence \ud83d\ude80",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "pytorch/pytorch",
+      "stars": 96383,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": true,
+      "has_skills": true,
+      "skill_count": 4,
+      "description": "Tensors and Dynamic neural networks in Python with strong GPU acceleration",
+      "language": "Python"
+    },
+    {
+      "repo": "supabase/supabase",
+      "stars": 95743,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The Postgres development platform. Supabase gives you a dedicated Postgres database to build your web, mobile, and AI applications.",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "neovim/neovim",
+      "stars": 95464,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Vim-fork focused on extensibility and usability",
+      "language": "Vim Script"
+    },
+    {
+      "repo": "ggerganov/llama.cpp",
+      "stars": 92533,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "LLM inference in C/C++",
+      "language": "C++"
+    },
+    {
+      "repo": "tailwindlabs/tailwindcss",
+      "stars": 91858,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A utility-first CSS framework for rapid UI development.",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "oven-sh/bun",
+      "stars": 86015,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": true,
+      "has_skills": true,
+      "skill_count": 5,
+      "description": "Incredibly fast JavaScript runtime, bundler, test runner, and package manager \u2013 all in one",
+      "language": "Zig"
+    },
+    {
+      "repo": "sveltejs/svelte",
+      "stars": 85364,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "web development for the rest of us",
+      "language": "JavaScript"
+    },
+    {
+      "repo": "vitejs/vite",
+      "stars": 77438,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Next generation frontend tooling. It's fast!",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "junegunn/fzf",
+      "stars": 76643,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": ":cherry_blossom: A command-line fuzzy finder",
+      "language": "Go"
+    },
+    {
+      "repo": "elastic/elasticsearch",
+      "stars": 75798,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Free and Open Source, Distributed, RESTful Search Engine",
+      "language": "Java"
+    },
+    {
+      "repo": "nestjs/nest",
+      "stars": 74156,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A progressive Node.js framework for building efficient, scalable, and enterprise-grade server-side applications with TypeScript/JavaScript \ud83d\ude80",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "redis/redis",
+      "stars": 72415,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "For developers, who are building real-time data-driven applications, Redis is the preferred, fastest, and most feature-rich cache, data structure server, and document and vector query engine.",
+      "language": "C"
+    },
+    {
+      "repo": "grafana/grafana",
+      "stars": 71584,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The open and composable observability and data visualization platform. Visualize metrics, logs, and traces from multiple sources like Prometheus, Loki, Elasticsearch, InfluxDB, Postgres and many more. ",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "docker/docker",
+      "stars": 71314,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The Moby Project - a collaborative project for the container ecosystem to assemble container-based systems",
+      "language": "Go"
+    },
+    {
+      "repo": "moby/moby",
+      "stars": 71314,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The Moby Project - a collaborative project for the container ecosystem to assemble container-based systems",
+      "language": "Go"
+    },
+    {
+      "repo": "python/cpython",
+      "stars": 70954,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The Python programming language",
+      "language": "Python"
+    },
+    {
+      "repo": "jesseduffield/lazygit",
+      "stars": 70243,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "simple terminal UI for git commands",
+      "language": "Go"
+    },
+    {
+      "repo": "apple/swift",
+      "stars": 69534,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The Swift Programming Language",
+      "language": "C++"
+    },
+    {
+      "repo": "expressjs/express",
+      "stars": 68511,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Fast, unopinionated, minimalist web framework for node.",
+      "language": "JavaScript"
+    },
+    {
+      "repo": "vllm-project/vllm",
+      "stars": 66966,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A high-throughput and memory-efficient inference and serving engine for LLMs",
+      "language": "Python"
+    },
+    {
+      "repo": "webpack/webpack",
+      "stars": 65888,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A bundler for javascript and friends. Packs many modules into a few bundled assets. Code Splitting allows for loading parts of the application on demand. Through \"loaders\", modules can be CommonJs, AMD, ES6 modules, CSS, Images, JSON, Coffeescript, LESS, ... and your custom stuff.",
+      "language": "JavaScript"
+    },
+    {
+      "repo": "facebook/docusaurus",
+      "stars": 63257,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Easy to maintain open source documentation websites.",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "prometheus/prometheus",
+      "stars": 62084,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The Prometheus monitoring system and time series database.",
+      "language": "Go"
+    },
+    {
+      "repo": "nuxt/nuxt",
+      "stars": 59253,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The Progressive Web Framework.",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "BurntSushi/ripgrep",
+      "stars": 58676,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "ripgrep recursively searches directories for a regex pattern while respecting your gitignore",
+      "language": "Rust"
+    },
+    {
+      "repo": "sharkdp/bat",
+      "stars": 56510,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A cat(1) clone with wings.",
+      "language": "Rust"
+    },
+    {
+      "repo": "microsoft/autogen",
+      "stars": 53217,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A programming framework for agentic AI",
+      "language": "Python"
+    },
+    {
+      "repo": "cypress-io/cypress",
+      "stars": 49507,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Fast, easy and reliable testing for anything that runs in a browser.",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "hashicorp/terraform",
+      "stars": 47395,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Terraform enables you to safely and predictably create, change, and improve infrastructure. It is a source-available tool that codifies APIs into declarative configuration files that can be shared amongst team members, treated as code, edited, reviewed, and versioned.",
+      "language": "Go"
+    },
+    {
+      "repo": "jestjs/jest",
+      "stars": 45248,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Delightful JavaScript Testing.",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "ClickHouse/ClickHouse",
+      "stars": 45035,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "ClickHouse\u00ae is a real-time analytics database management system",
+      "language": "C++"
+    },
+    {
+      "repo": "prisma/prisma",
+      "stars": 44992,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Next-generation ORM for Node.js & TypeScript | PostgreSQL, MySQL, MariaDB, SQL Server, SQLite, MongoDB and CockroachDB",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "parcel-bundler/parcel",
+      "stars": 44034,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The zero configuration build tool for the web. \ud83d\udce6\ud83d\ude80",
+      "language": "JavaScript"
+    },
+    {
+      "repo": "apache/spark",
+      "stars": 42597,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Apache Spark - A unified analytics engine for large-scale data processing",
+      "language": "Scala"
+    },
+    {
+      "repo": "crewAIInc/crewAI",
+      "stars": 42318,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.",
+      "language": "Python"
+    },
+    {
+      "repo": "sharkdp/fd",
+      "stars": 41057,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A simple, fast and user-friendly alternative to 'find'",
+      "language": "Rust"
+    },
+    {
+      "repo": "chakra-ui/chakra-ui",
+      "stars": 40119,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": true,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Chakra UI is a component system for building SaaS products with speed \u26a1\ufe0f",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "evanw/esbuild",
+      "stars": 39614,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "An extremely fast bundler for the web",
+      "language": "Go"
+    },
+    {
+      "repo": "vim/vim",
+      "stars": 39609,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The official Vim repository",
+      "language": "Vim Script"
+    },
+    {
+      "repo": "pingcap/tidb",
+      "stars": 39562,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "TiDB - the open-source, cloud-native, distributed SQL database designed for modern applications.",
+      "language": "Go"
+    },
+    {
+      "repo": "trpc/trpc",
+      "stars": 39275,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "\ud83e\uddd9\u200d\u2640\ufe0f  Move Fast and Break Nothing. End-to-end typesafe APIs made easy. ",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "charmbracelet/bubbletea",
+      "stars": 37989,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A powerful little TUI framework \ud83c\udfd7",
+      "language": "Go"
+    },
+    {
+      "repo": "istio/istio",
+      "stars": 37778,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Connect, secure, control, and observe services.",
+      "language": "Go"
+    },
+    {
+      "repo": "fastify/fastify",
+      "stars": 35362,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Fast and low overhead web framework, for Node.js",
+      "language": "JavaScript"
+    },
+    {
+      "repo": "hashicorp/vault",
+      "stars": 33741,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A tool for secrets management, encryption as a service, and privileged access management",
+      "language": "Go"
+    },
+    {
+      "repo": "pnpm/pnpm",
+      "stars": 33621,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Fast, disk space efficient package manager",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "drizzle-team/drizzle-orm",
+      "stars": 32186,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "ORM",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "remix-run/remix",
+      "stars": 32095,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Build Better Websites. Create modern, resilient user experiences with web fundamentals.",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "cockroachdb/cockroach",
+      "stars": 31701,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": true,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "CockroachDB \u2014 the cloud native, distributed SQL database designed for high availability, effortless scale, and control over data placement.",
+      "language": "Go"
+    },
+    {
+      "repo": "apache/kafka",
+      "stars": 31653,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Mirror of Apache Kafka",
+      "language": "Java"
+    },
+    {
+      "repo": "OWASP/CheatSheetSeries",
+      "stars": 31040,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The OWASP Cheat Sheet Series was created to provide a concise collection of high value information on specific application security topics.",
+      "language": "Python"
+    },
+    {
+      "repo": "hashicorp/consul",
+      "stars": 29654,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Consul is a distributed, highly available, and data center aware solution to connect and configure applications across dynamic, distributed infrastructure.",
+      "language": "Go"
+    },
+    {
+      "repo": "openai/openai-python",
+      "stars": 29624,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The official Python library for the OpenAI API",
+      "language": "Python"
+    },
+    {
+      "repo": "vercel/turborepo",
+      "stars": 29431,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Build system optimized for JavaScript\u00a0and TypeScript, written in Rust",
+      "language": "Rust"
+    },
+    {
+      "repo": "helm/helm",
+      "stars": 29265,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The Kubernetes Package Manager",
+      "language": "Go"
+    },
+    {
+      "repo": "mongodb/mongo",
+      "stars": 27963,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The MongoDB Database",
+      "language": "C++"
+    },
+    {
+      "repo": "envoyproxy/envoy",
+      "stars": 27288,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Cloud-native high-performance edge/middle/service proxy",
+      "language": "C++"
+    },
+    {
+      "repo": "rome/tools",
+      "stars": 23523,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Unified developer tools for JavaScript, TypeScript, and the web",
+      "language": "Rust"
+    },
+    {
+      "repo": "biomejs/biome",
+      "stars": 23008,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": true,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "A toolchain for web projects, aimed to provide functionalities to maintain them. Biome offers formatter and linter, usable via CLI and LSP.",
+      "language": "Rust"
+    },
+    {
+      "repo": "jaegertracing/jaeger",
+      "stars": 22317,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "CNCF Jaeger, a Distributed Tracing Platform",
+      "language": "Go"
+    },
+    {
+      "repo": "mkdocs/mkdocs",
+      "stars": 21546,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Project documentation with Markdown.",
+      "language": "Python"
+    },
+    {
+      "repo": "containerd/containerd",
+      "stars": 20064,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "An open and reliable container runtime",
+      "language": "Go"
+    },
+    {
+      "repo": "postgres/postgres",
+      "stars": 19522,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Mirror of the official PostgreSQL GIT repository. Note that this is just a *mirror* - we don't work with pull requests on github. To contribute, please see https://wiki.postgresql.org/wiki/Submitting_a_Patch",
+      "language": "C"
+    },
+    {
+      "repo": "testing-library/react-testing-library",
+      "stars": 19497,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "\ud83d\udc10 Simple and complete React DOM testing utilities that encourage good testing practices.",
+      "language": "JavaScript"
+    },
+    {
+      "repo": "dotnet/runtime",
+      "stars": 17353,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": ".NET is a cross-platform runtime for cloud, mobile, desktop, and IoT apps.",
+      "language": "C#"
+    },
+    {
+      "repo": "zaproxy/zaproxy",
+      "stars": 14596,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "The ZAP by Checkmarx Core project",
+      "language": "Java"
+    },
+    {
+      "repo": "yarnpkg/berry",
+      "stars": 7941,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "\ud83d\udce6\ud83d\udc08 Active development trunk for Yarn \u2692",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "aws/aws-sdk-js-v3",
+      "stars": 3513,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Modularized AWS SDK for JavaScript.",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "open-telemetry/opentelemetry-js",
+      "stars": 3230,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "OpenTelemetry JavaScript Client",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "googleapis/google-cloud-node",
+      "stars": 3106,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "Google Cloud Client Library for Node.js",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "anthropics/anthropic-sdk-python",
+      "stars": 2589,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": null,
+      "language": "Python"
+    },
+    {
+      "repo": "Azure/azure-sdk-for-js",
+      "stars": 2262,
+      "has_claude_md": "CLAUDE.md",
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "This repository is for active development of the Azure SDK for JavaScript (NodeJS & Browser). For consumers of the SDK we recommend visiting our public developer docs at https://docs.microsoft.com/javascript/azure/ or our versioned developer docs at https://azure.github.io/azure-sdk-for-js. ",
+      "language": "TypeScript"
+    },
+    {
+      "repo": "playwright-community/playwright",
+      "stars": 0,
+      "has_claude_md": false,
+      "has_claude_dir": false,
+      "has_skills": false,
+      "skill_count": 0,
+      "description": "",
+      "language": ""
+    }
+  ]
+}

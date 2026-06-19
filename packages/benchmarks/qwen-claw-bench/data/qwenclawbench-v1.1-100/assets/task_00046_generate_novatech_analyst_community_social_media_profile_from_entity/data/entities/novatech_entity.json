@@ -1,0 +1,19 @@
+{
+  "entity_name": "NovaTech",
+  "entity_type": "PublicCompany",
+  "summary": "Leading AI chip manufacturer, dominant GPU market share",
+  "attributes": {
+    "ticker": "NVTK",
+    "sector": "Technology",
+    "market_cap_billions": 2800,
+    "flagship_products": ["GX200", "Obsidian Architecture"],
+    "moat": "PUMA software ecosystem",
+    "dc_revenue_trend": "declining_q4",
+    "headquarters": "Santa Clara, CA",
+    "ceo": "David Huang",
+    "founded": 1995,
+    "employees": 32000
+  },
+  "related_entities": ["analysts", "Starbridge", "FrontierAI"],
+  "last_updated": "2024-12-15"
+}

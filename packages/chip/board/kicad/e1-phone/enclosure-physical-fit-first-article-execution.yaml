@@ -1,0 +1,215 @@
+schema: eliza.e1_phone_enclosure_physical_fit_first_article_execution.v1
+status: blocked_enclosure_physical_fit_first_article_requires_routed_board_step_supplier_geometry_clearance_functional_logs_and_signed_traveler
+date: 2026-05-21
+claim_boundary: >
+  Physical enclosure first-article execution contract for the selected E1 phone
+  PCB hardware stack. This is a work order and evidence inventory only. It is
+  not routed-board clearance evidence, not a physical-fit result, not a signed
+  assembly traveler, and not an enclosure-ready release.
+
+source_artifacts:
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/routed-clearance-release-execution.yaml
+  - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+  - board/kicad/e1-phone/production-factory-release-execution.yaml
+  - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+  - board/kicad/e1-phone/post-route-validation-binding.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - mechanical/e1-phone/review/board-step-readiness.json
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  - mechanical/e1-phone/review/full-cad-boolean-interference.json
+
+physical_fit_policy:
+  release_revision: EVT1-routed-first-article
+  required_physical_fit_report: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+  required_routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+  required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  required_routed_clearance_release: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  required_routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  required_assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  required_first_article_transcript: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  selected_function_count: 5
+  execution_domain_count: 6
+  required_clearance_case_count: 12
+  complete_clearance_result_count: 0
+  physical_fit_release_allowed: false
+  release_allowed_without_routed_board_step: false
+  release_allowed_without_supplier_geometry: false
+  release_allowed_without_clearance_release: false
+  release_allowed_without_functional_logs: false
+  release_allowed_from_concept_cad: false
+
+fit_domain_execution:
+  - domain: display_touch_stack
+    selected_hardware_ref: CH550FH01A-CT
+    required_motion_or_contact_checks:
+      - display FPC bend and stiffener sweep
+      - cover-glass and adhesive datum compression
+      - display connector mated-height and keepout inspection
+    required_release_outputs:
+      - board/kicad/e1-phone/production/step/display-touch-stack.step
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_display_supplier_geometry_routed_clearance_and_fit_log
+    release_allowed: false
+  - domain: front_rear_camera_stack
+    selected_hardware_ref: Sincere_First_OV13855_rear_and_GC5035_front
+    required_motion_or_contact_checks:
+      - rear lens axis to cover-glass aperture
+      - front camera to earpiece and black-mask datum
+      - camera FPC bend, connector height, and focus thermal drift
+    required_release_outputs:
+      - board/kicad/e1-phone/production/step/rear-camera-module.step
+      - board/kicad/e1-phone/production/step/front-camera-module.step
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/camera-capture-log.json
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_camera_supplier_geometry_routed_clearance_capture_and_fit_log
+    release_allowed: false
+  - domain: usb_c_side_buttons_bottom_io
+    selected_hardware_ref: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+    required_motion_or_contact_checks:
+      - USB-C plug insertion and overmold sweep
+      - USB shell saddle and chassis-load path
+      - power and volume actuator force, travel, return, and recovery-combo access
+    required_release_outputs:
+      - board/kicad/e1-phone/production/sourcing/usb-c-signed-drawing.pdf
+      - board/kicad/e1-phone/production/sourcing/side-key-signed-drawing.pdf
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+      - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_usb_sidekey_supplier_geometry_plug_button_and_fit_log
+    release_allowed: false
+  - domain: battery_power_thermal_stack
+    selected_hardware_ref: E1_phone_64x87_battery_window_and_power_stack
+    required_motion_or_contact_checks:
+      - battery pouch swelling envelope and pull-tab path
+      - battery connector, pack-ID, NTC, and foam compression
+      - charger and modem-burst thermal soak in closed enclosure
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+      - board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_pack_swelling_routed_clearance_power_thermal_and_fit_log
+    release_allowed: false
+  - domain: radios_antennas_modules
+    selected_hardware_ref: Quectel_RG255C_or_RM255C_and_Murata_LBEE5XV2EA-802
+    required_motion_or_contact_checks:
+      - cellular and Wi-Fi/Bluetooth module shield clearance
+      - antenna plastic, RF feed, coax or spring contact, and SAR keepout inspection
+      - closed-enclosure VNA, conducted RF, coexistence, identity, and firmware traceability
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+      - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+      - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_radio_supplier_geometry_rf_identity_measurements_and_fit_log
+    release_allowed: false
+  - domain: audio_haptics_split_interconnect
+    selected_hardware_ref: audio_haptics_top_bottom_flex_stack
+    required_motion_or_contact_checks:
+      - speaker chamber, microphone port, and mesh alignment
+      - haptic contact and battery-edge clearance
+      - top-bottom interconnect flex fold, connector mate, and side-rail clearance
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/pdf/assembly.pdf
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_audio_haptic_interconnect_routed_clearance_and_fit_log
+    release_allowed: false
+
+selected_hardware_fit_records:
+  - function: display_touch
+    selected_hardware: CH550FH01A-CT
+    enclosure_fit_domain: display_touch_stack
+    first_article_record_ref: selected_hardware_first_article_records.display_touch
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_display_touch_physical_fit_first_article
+    release_allowed: false
+  - function: rear_front_cameras
+    selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+    enclosure_fit_domain: front_rear_camera_stack
+    first_article_record_ref: selected_hardware_first_article_records.rear_front_cameras
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/camera-capture-log.json
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_camera_physical_fit_first_article
+    release_allowed: false
+  - function: usb_c_power_sidekeys
+    selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+    enclosure_fit_domain: usb_c_side_buttons_bottom_io
+    first_article_record_ref: selected_hardware_first_article_records.usb_c_power_sidekeys
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+      - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_usb_c_power_sidekey_physical_fit_first_article
+    release_allowed: false
+  - function: cellular
+    selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference
+    enclosure_fit_domain: radios_antennas_modules
+    first_article_record_ref: selected_hardware_first_article_records.cellular
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_cellular_physical_fit_first_article
+    release_allowed: false
+  - function: wifi_bluetooth
+    selected_hardware: Murata_LBEE5XV2EA-802
+    enclosure_fit_domain: radios_antennas_modules
+    first_article_record_ref: selected_hardware_first_article_records.wifi_bluetooth
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    status: blocked_missing_wifi_bluetooth_physical_fit_first_article
+    release_allowed: false
+
+release_output_inventory:
+  required_common_outputs:
+    - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    - board/kicad/e1-phone/production/pdf/assembly.pdf
+    - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  present_common_output_count: 0
+  missing_common_output_count: 7
+  concept_cad_outputs_do_not_count: true
+  all_physical_fit_outputs_absent: true
+
+cross_checks:
+  physical_fit_report_matches_enclosure_fit_required_output: true
+  physical_fit_report_matches_routed_clearance_required_input: true
+  selected_hardware_records_match_enclosure_clearance_gate: true
+  selected_hardware_records_match_first_article_execution: true
+  routed_clearance_release_required_before_physical_fit_release: true
+  concept_cad_boolean_result_is_not_physical_fit_release: true
+  all_fit_domains_fail_closed: true
+
+release_blockers:
+  - local routed KiCad PCB and routed STEP candidates exist for review only; supplier-approved routed board STEP with production 3D models is missing
+  - routed clearance release and routed boolean interference report are missing
+  - signed supplier geometry for display, cameras, USB-C, side keys, cellular, and Wi-Fi/Bluetooth is missing
+  - physical enclosure first-article traveler and assembly drawing are missing
+  - display, camera, USB-C, side-key, power, RF, audio, haptic, and interconnect functional logs are missing
+  - concept CAD and demo STEP outputs cannot release physical enclosure fit
+
+forbidden_claims:
+  - enclosure_physical_fit_verified
+  - routed_clearance_passed
+  - routed_board_step_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

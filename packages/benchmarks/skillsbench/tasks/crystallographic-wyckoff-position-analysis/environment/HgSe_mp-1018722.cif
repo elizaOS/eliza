@@ -1,0 +1,37 @@
+# generated using pymatgen
+data_HgSe
+_symmetry_space_group_name_H-M   'P 1'
+_cell_length_a   4.42071849
+_cell_length_b   4.42071849
+_cell_length_c   9.90160453
+_cell_angle_alpha   90.00000000
+_cell_angle_beta   90.00000000
+_cell_angle_gamma   120.00000000
+_symmetry_Int_Tables_number   1
+_chemical_formula_structural   HgSe
+_chemical_formula_sum   'Hg3 Se3'
+_cell_volume   167.57990030
+_cell_formula_units_Z   3
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+loop_
+ _atom_type_symbol
+ _atom_type_oxidation_number
+  Hg2+  2.0
+  Se2-  -2.0
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Hg2+  Hg0  1  0.72148553  0.72148553  0.00000000  1
+  Hg2+  Hg1  1  0.27851447  0.00000000  0.66666667  1
+  Hg2+  Hg2  1  0.00000000  0.27851447  0.33333333  1
+  Se2-  Se3  1  0.49366610  0.49366610  0.50000000  1
+  Se2-  Se4  1  0.50633390  0.00000000  0.16666667  1
+  Se2-  Se5  1  0.00000000  0.50633390  0.83333333  1

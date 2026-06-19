@@ -1,0 +1,424 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-08-22 12:57+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Acknowledgments and similar projects\"]]\n"
+msgstr "[[!meta title=\"Благодарности и похожие проекты\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails was first released in [August 2009](https://lists.torproject.org/"
+"pipermail/tor-talk/2009-August/002667.html), when it was still called "
+"*amnesia*.  In 2019, Tails [[celebrated 10 years of existence|news/"
+"celebrating_10_years]]."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Acknowledgments"
+msgstr "Благодарности"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "Tails could not exist without [[Debian|https://www.debian.org/]], "
+#| "[[Debian Live|https://www.debian.org/devel/debian-live/]], and [[Tor|"
+#| "https://www.torproject.org/]]; see our [[contribute/relationship with "
+#| "upstream]] document for details."
+msgid ""
+"Tails could not exist without [[Debian|https://www.debian.org/]], [[Debian "
+"Live|https://www.debian.org/devel/debian-live/]], and [[Tor|https://"
+"www.torproject.org/]]. See our [[contribute/relationship_with_upstream]] "
+"document for details."
+msgstr ""
+"Tails не было бы без [[Debian|https://www.debian.org/]], [[Debian Live|"
+"https://www.debian.org/devel/debian-live/]] и [[Tor|https://"
+"www.torproject.org/ru/]]. Подробнее см. [[здесь|contribute/relationship with "
+"upstream]]."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "Tails was inspired by the [[Incognito LiveCD|http://web.archive.org/web/"
+#| "20090220133020/http://anonymityanywhere.com/]]. The Incognito author "
+#| "declared it to be dead on March 23rd, 2010, and wrote that Tails \"should "
+#| "be considered as its spiritual successor\"."
+msgid ""
+"Tails was inspired by the [[Incognito LiveCD|https://web.archive.org/web/"
+"20090220133020/http://anonymityanywhere.com/]]. The Incognito author "
+"declared it to be dead on March 23, 2010, and wrote that Tails \"*should be "
+"considered as its spiritual successor*\"."
+msgstr ""
+"Cоздатели Tails черпали вдохновение в проекте [[Incognito LiveCD|https://"
+"web.archive.org/web/20090220133020/http://anonymityanywhere.com/]]. Автор "
+"The Incognito объявил о закрытии проекта 23 марта 2010 года и написал, что "
+"Tails «следует считать его духовным преемником»."
+
+#. type: Bullet: '- '
+msgid ""
+"The [[Privatix Live-System|http://mandalka.name/privatix/]] was an early "
+"source of inspiration, too."
+msgstr ""
+"На начальных этапах нас также вдохновляла [[Privatix Live-System|https://"
+"mandalka.name/privatix/]]."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "Some ideas (in particular the improvements to the [[contribute/design/"
+#| "memory_erasure]] procedure) were borrowed from [Liberté Linux](https://"
+#| "dee.su/liberte)."
+msgid ""
+"Some ideas were borrowed from Liberté Linux, in particular the improvements "
+"to the [[contribute/design/memory_erasure]] procedure."
+msgstr ""
+"Некоторые идеи (в частности, усовершенствование процедуры стирания памяти "
+"([[contribute/design/memory_erasure]]) позаимствованы из проекта [Liberté "
+"Linux](https://dee.su/liberte)."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"similar_projects\"></a>\n"
+msgstr "<a id=\"similar_projects\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Similar projects"
+msgstr "Похожие проекты"
+
+#. type: Plain text
+msgid ""
+"Feel free to contact us if you think that your project is missing, or if "
+"some project is listed in the wrong category."
+msgstr ""
+"Если вы считаете, что ваш проект должен быть в этом списке, но его там нет, "
+"или какой-либо проект указан не в той категории, пожалуйста, свяжитесь с "
+"нами."
+
+#. type: Title ##
+#, no-wrap
+msgid "Active projects"
+msgstr "Действующие проекты"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- We degrade projects to 'discontinued' if they don't release a new version in at least 1 year. -->\n"
+msgstr "<!-- Если у проекта за последний год не появилось новых версий, мы относим его к прекращённым. -->\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "[Qubes](https://www.qubes-os.org/)"
+msgid "[Qubes](https://www.qubes-os.org/)"
+msgstr "[Qubes](https://www.qubes-os.org/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "[Whonix](https://www.whonix.org/)"
+msgid "[Whonix](https://www.whonix.org/)"
+msgstr "[Whonix](https://www.whonix.org/)"
+
+#. type: Title ##
+#, no-wrap
+msgid "Discontinued, abandoned or sleeping projects"
+msgstr "Прекращённые, заброшенные и неактивные проекты"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[Anonym.OS](https://web.archive.org/web/20060212030338/http://"
+#| "theory.kaos.to:80/projects.html)"
+msgid ""
+"[Anonym.OS](https://web.archive.org/web/20060212030338/http://"
+"theory.kaos.to:80/projects.html)"
+msgstr ""
+"[Anonym.OS](https://web.archive.org/web/20060212030338/http://"
+"theory.kaos.to:80/projects.html)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[ELE](https://web.archive.org/web/20050422130010/http://"
+#| "www.northernsecurity.net:80/download/ele/)"
+msgid ""
+"[ELE](https://web.archive.org/web/20050422130010/http://"
+"www.northernsecurity.net:80/download/ele/)"
+msgstr ""
+"[ELE](https://web.archive.org/web/20050422130010/http://"
+"www.northernsecurity.net:80/download/ele/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[Estrella Roja](http://distrowatch.com/table.php?"
+#| "distribution=estrellaroja)"
+msgid ""
+"[Estrella Roja](https://distrowatch.com/table.php?distribution=estrellaroja)"
+msgstr ""
+"[Estrella Roja](https://distrowatch.com/table.php?distribution=estrellaroja)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[Freepto](https://web.archive.org/web/20171022102527/http://"
+#| "www.freepto.mx:80/en/)"
+msgid ""
+"[Freepto](https://web.archive.org/web/20171022102527/http://"
+"www.freepto.mx:80/en/)"
+msgstr ""
+"[Freepto](https://web.archive.org/web/20171022102527/http://"
+"www.freepto.mx:80/en/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "[Heads](https://heads.dyne.org/)"
+msgid "[Heads](https://heads.dyne.org/)"
+msgstr "[Heads](https://heads.dyne.org/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[SilentKeys](https://web.archive.org/web/20160521142915/https://"
+#| "getsilentkeys.com/en/)"
+msgid "[ICLOAK](https://web.archive.org/web/20190112145729/https://icloak.me/)"
+msgstr ""
+"[SilentKeys](https://web.archive.org/web/20160521142915/https://"
+"getsilentkeys.com/en/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[Odebian](https://web.archive.org/web/20140816183354/http://"
+#| "www.odebian.org/)"
+msgid ""
+"[IprediaOS](https://web.archive.org/web/20211006174745/https://"
+"www.ipredia.org/)"
+msgstr ""
+"[Odebian](https://web.archive.org/web/20140816183354/http://www.odebian.org/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[ISXUbuntu](https://web.archive.org/web/20180625024257/http://www.isoc-"
+#| "ny.org/wiki/ISXUbuntu)"
+msgid ""
+"[ISXUbuntu](https://web.archive.org/web/20180625024257/http://www.isoc-"
+"ny.org/wiki/ISXUbuntu)"
+msgstr ""
+"[ISXUbuntu](https://web.archive.org/web/20180625024257/http://www.isoc-"
+"ny.org/wiki/ISXUbuntu)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[JonDo Live-CD](https://anonymous-proxy-servers.net/en/jondo-live-cd.html)"
+msgid ""
+"[JonDo Live-CD](https://web.archive.org/web/20230311232734/https://anonymous-"
+"proxy-servers.net/en/jondo-live-cd.html)"
+msgstr ""
+"[JonDo Live-CD](https://anonymous-proxy-servers.net/en/jondo-live-cd.html)"
+
+#. type: Bullet: '- '
+msgid "Liberté Linux"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[Odebian](https://web.archive.org/web/20140816183354/http://"
+#| "www.odebian.org/)"
+msgid ""
+"[Odebian](https://web.archive.org/web/20140816183354/http://www.odebian.org/)"
+msgstr ""
+"[Odebian](https://web.archive.org/web/20140816183354/http://www.odebian.org/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[ParanoidLinux](https://web.archive.org/web/20090425140610/http://"
+#| "paranoidlinux.org:80/)"
+msgid ""
+"[ParanoidLinux](https://web.archive.org/web/20090425140610/http://"
+"paranoidlinux.org:80/)"
+msgstr ""
+"[ParanoidLinux](https://web.archive.org/web/20090425140610/http://"
+"paranoidlinux.org:80/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "[Phantomix](http://phantomix.ytternhagen.de/)"
+msgid "[Phantomix](http://phantomix.ytternhagen.de/)"
+msgstr "[Phantomix](http://phantomix.ytternhagen.de/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[Polippix](https://web.archive.org/web/20140329210549/http://"
+#| "polippix.org/)"
+msgid ""
+"[Polippix](https://web.archive.org/web/20140329210549/http://polippix.org/)"
+msgstr ""
+"[Polippix](https://web.archive.org/web/20140329210549/http://polippix.org/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[Freepto](https://web.archive.org/web/20171022102527/http://"
+#| "www.freepto.mx:80/en/)"
+msgid ""
+"[Privatix](https://web.archive.org/web/20211111075731/https://"
+"www.mandalka.name/privatix/)"
+msgstr ""
+"[Freepto](https://web.archive.org/web/20171022102527/http://"
+"www.freepto.mx:80/en/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[SilentKeys](https://web.archive.org/web/20160521142915/https://"
+#| "getsilentkeys.com/en/)"
+msgid ""
+"[SilentKeys](https://web.archive.org/web/20160521142915/https://"
+"getsilentkeys.com/en/)"
+msgstr ""
+"[SilentKeys](https://web.archive.org/web/20160521142915/https://"
+"getsilentkeys.com/en/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[Odebian](https://web.archive.org/web/20140816183354/http://"
+#| "www.odebian.org/)"
+msgid ""
+"[SubgraphOS](https://web.archive.org/web/20240202224635/https://subgraph.com/"
+"sgos/)"
+msgstr ""
+"[Odebian](https://web.archive.org/web/20140816183354/http://www.odebian.org/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[The Haven Project](https://web.archive.org/web/20171005222753/http://"
+#| "www.haven-project.org/)"
+msgid ""
+"[The Haven Project](https://web.archive.org/web/20171005222753/http://"
+"www.haven-project.org/)"
+msgstr ""
+"[The Haven Project](https://web.archive.org/web/20171005222753/http://"
+"www.haven-project.org/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[The Incognito LiveCD](http://web.archive.org/web/20090220133020/http://"
+#| "anonymityanywhere.com/)"
+msgid ""
+"[The Incognito LiveCD](https://web.archive.org/web/20090220133020/http://"
+"anonymityanywhere.com/)"
+msgstr ""
+"[The Incognito LiveCD](https://web.archive.org/web/20090220133020/http://"
+"anonymityanywhere.com/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[Odebian](https://web.archive.org/web/20140816183354/http://"
+#| "www.odebian.org/)"
+msgid ""
+"[Discreete Linux](https://web.archive.org/web/20230708151423/https://"
+"www.privacy-cd.org/)"
+msgstr ""
+"[Odebian](https://web.archive.org/web/20140816183354/http://www.odebian.org/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[uVirtus](https://web.archive.org/web/20131030050159/https://"
+#| "www.uvirtus.org/)"
+msgid ""
+"[uVirtus](https://web.archive.org/web/20131030050159/https://"
+"www.uvirtus.org/)"
+msgstr ""
+"[uVirtus](https://web.archive.org/web/20131030050159/https://"
+"www.uvirtus.org/)"
+
+#, fuzzy
+#~| msgid "[Discreete Linux](https://www.privacy-cd.org/)"
+#~ msgid "- [Discreete Linux](https://www.privacy-cd.org/)"
+#~ msgstr "[Discreete Linux](https://www.privacy-cd.org/)"
+
+#, fuzzy
+#~| msgid "[SubgraphOS](https://subgraph.com/sgos/)"
+#~ msgid "- [SubgraphOS](https://subgraph.com/sgos/)"
+#~ msgstr "[SubgraphOS](https://subgraph.com/sgos/)"
+
+#, fuzzy
+#~| msgid "[Liberté Linux](https://dee.su/liberte)"
+#~ msgid "- [Liberté Linux](https://dee.su/liberte)"
+#~ msgstr "[Liberté Linux](https://dee.su/liberte)"
+
+#~ msgid ""
+#~ "In 2019, Tails [[celebrated 10 years of existence|news/"
+#~ "celebrating_10_years]]."
+#~ msgstr "В 2019 году Tails [[исполнилось 10 лет|news/celebrating_10_years]]."
+
+#~ msgid "[ICLOAK](https://icloak.me/)"
+#~ msgstr "[ICLOAK](https://icloak.me/)"
+
+#~ msgid "[IprediaOS](http://www.ipredia.org/)"
+#~ msgstr "[IprediaOS](https://archiveos.org/ipredia/)"
+
+#~ msgid "[Privatix](http://www.mandalka.name/privatix/)"
+#~ msgstr "[Privatix](https://www.mandalka.name/privatix/index.html.en)"
+
+#~ msgid ""
+#~ "[Trusted End Node Security](https://spi.dod.mil/lipose.htm) (previously "
+#~ "*Lightweight Portable Security*)"
+#~ msgstr ""
+#~ "[Trusted End Node Security](https://spi.dod.mil/lipose.htm) (ранее — "
+#~ "*Lightweight Portable Security*)"
+
+#~ msgid "[Anonym.OS](http://sourceforge.net/projects/anonym-os/)"
+#~ msgstr "[Anonym.OS](http://sourceforge.net/projects/anonym-os/)"
+
+#~ msgid "[ELE](http://www.northernsecurity.net/download/ele/) (dead link)"
+#~ msgstr "[ELE](http://www.northernsecurity.net/download/ele/) (toter Link)"
+
+#~ msgid "[Freepto](http://www.freepto.mx/)"
+#~ msgstr "[Freepto](http://www.freepto.mx/)"
+
+#~ msgid "[Odebian](http://www.odebian.org/)"
+#~ msgstr "[Odebian](http://www.odebian.org/)"
+
+#~ msgid "[onionOS](http://jamon.name/files/onionOS/) (dead link)"
+#~ msgstr "[onionOS](http://jamon.name/files/onionOS/) (toter Link)"
+
+#~ msgid "[ParanoidLinux](http://www.paranoidlinux.org/) (dead link)"
+#~ msgstr "[ParanoidLinux](http://www.paranoidlinux.org/) (toter Link)"
+
+#~ msgid "[Polippix](http://polippix.org/)"
+#~ msgstr "[Polippix](http://polippix.org/)"
+
+#~ msgid "[uVirtus](http://uvirtus.org/)"
+#~ msgstr "[uVirtus](http://uvirtus.org/)"
+
+#~ msgid "[Lightweight Portable Security](http://www.spi.dod.mil/lipose.htm)"
+#~ msgstr "[Lightweight Portable Security](http://www.spi.dod.mil/lipose.htm)"

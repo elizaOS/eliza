@@ -1,0 +1,19 @@
+[[!meta title="Donate"]]
+
+<style>
+#donate span {
+  opacity: 0;
+}
+</style>
+
+[[Tails has merged with the Tor Project|news/tails_tor/]]
+
+From now on, all new donations to the Tor Project will support the whole suite
+of tools developed by the Tor Project, including Tails, the Tor network, and
+Tor Browser.
+
+<div class="cta">
+
+[[Donate to the Tor Project|https://donate.torproject.org/]]
+
+</div>

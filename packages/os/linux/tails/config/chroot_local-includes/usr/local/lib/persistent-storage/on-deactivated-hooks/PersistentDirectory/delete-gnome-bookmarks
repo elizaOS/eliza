@@ -1,0 +1,7 @@
+#!/bin/sh
+
+set -e
+set -u
+
+PERSISTENT_DIR='/home/amnesia/Persistent'
+sudo -u amnesia /usr/local/lib/remove-GNOME-bookmark "${PERSISTENT_DIR}" || true

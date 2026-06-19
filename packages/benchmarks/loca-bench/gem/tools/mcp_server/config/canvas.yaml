@@ -1,0 +1,35 @@
+# Canvas LMS MCP Server Configuration
+name: canvas
+display_name: Canvas LMS MCP Server
+description: Mock Canvas LMS API server for benchmarking
+
+execution:
+  command_type: python
+  script:
+    primary: "mcp_convert/mcps/canvas/server.py"
+    fallbacks: []
+parameters:
+  data_dir:
+    required: true
+    default: "./canvas_data"
+    env_var: "CANVAS_DATA_DIR"
+    description: "Path to Canvas data directory"
+
+  login_id:
+    required: false
+    cli_arg: "--login_id"
+    description: "Auto-login user ID"
+
+  password:
+    required: false
+    cli_arg: "--password"
+    description: "Auto-login password"
+
+  server_script:
+    required: false
+    description: "Override server script path (for testing)"
+
+workspace:
+  set_cwd: false
+  supports_placeholders: true
+  mkdir_if_needed: true

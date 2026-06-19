@@ -1,0 +1,56 @@
+{
+  "name": "@elizaos/operator",
+  "version": "0.0.1",
+  "description": "elizaOS Server Operator",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "pepr": {
+    "uuid": "eliza-operator",
+    "onError": "reject",
+    "webhookTimeout": 10,
+    "customLabels": {
+      "namespace": {
+        "pepr.dev": ""
+      }
+    },
+    "alwaysIgnore": {
+      "namespaces": []
+    },
+    "admission": {
+      "alwaysIgnore": {
+        "namespaces": []
+      }
+    },
+    "watch": {
+      "alwaysIgnore": {
+        "namespaces": []
+      }
+    },
+    "includedFiles": [],
+    "env": {}
+  },
+  "scripts": {
+    "lint": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write .",
+    "typecheck": "tsgo --noEmit",
+    "build": "node ./scripts/build.mjs",
+    "dev": "bunx pepr dev",
+    "deploy:local": "ELIZA_OPERATOR_SKIP_CRD_REGISTER=1 PATH=./scripts:$PATH bunx pepr build && ./scripts/deploy-local.sh"
+  },
+  "dependencies": {
+    "ioredis": "^5.10.1",
+    "kubernetes-fluent-client": "^3.11.7",
+    "pepr": "^1.1.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.0",
+    "@types/bun": "1.3.14",
+    "esbuild": "0.28.1",
+    "ioredis-mock": "^8.13.1",
+    "prettier": "3.8.4",
+    "typescript": "5.8.3",
+    "uuid": "14.0.0"
+  }
+}

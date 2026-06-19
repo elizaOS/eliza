@@ -1,0 +1,13 @@
+127.0.0.1 localhost
+127.0.0.1 fzw.best
+127.0.0.1 www.fzw.best
+127.0.0.1 auth.wslf.cc
+
+# The following lines are desirable for IPv6 capable hosts
+::1 localhost ip6-localhost ip6-loopback
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+
+# Server aliases
+10.0.0.1 db-server
+10.0.0.2 cache-server

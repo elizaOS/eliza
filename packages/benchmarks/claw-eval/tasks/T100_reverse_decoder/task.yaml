@@ -1,0 +1,59 @@
+task_id: T100_reverse_decoder
+task_name: Reverse-Engineer Custom Encoder
+version: "2.0"
+category: terminal
+difficulty: easy
+tags: [general]
+
+services: []
+
+prompt:
+  text: |
+    Container files:
+
+    - /workspace/fixtures/decoder.py — reads encoded binary from stdin, writes decoded text to stdout
+    - /workspace/fixtures/target.txt — desired output text
+
+    Create /workspace/encoded.dat such that:
+      python /workspace/fixtures/decoder.py < /workspace/encoded.dat
+    produces output that exactly matches target.txt.
+
+    Size constraint: encoded.dat must be at most 60% the size of target.txt in bytes.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/decoder.py
+  - fixtures/target.txt
+
+sandbox_grader_files:
+  - fixtures/verify_encoder.py
+
+env_snapshot_commands:
+  - python /workspace/fixtures/verify_encoder.py
+  - wc -c < /workspace/encoded.dat 2>/dev/null || echo 0
+  - wc -c < /workspace/fixtures/target.txt
+  - test -f /workspace/encoded.dat && echo EXISTS || echo MISSING
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  The decoder uses a 3-stage pipeline (in decode order):
+  1. Parse 4-byte header with INTERLEAVED bytes: n=(z[0]<<8)|z[2], seed=(z[1]<<8)|z[3]
+  2. XOR mask: each byte XOR'd with ((seed*(i+1)+165) & 0xFF) — self-inverse
+  3. Block de-interleave: 16-byte blocks, first half→even positions, second half→odd
+  4. Bitstream decode: 0-flag=literal, 1-flag=RLE(4-bit run_len+2), variable-length prefix codes
+  5. Symbol table packed as 3-byte entries in _C: (code_len, code_val_int, char_byte)
+  6. Escape: (1,1,1,1,1,1) + 8 raw bits; EOS: byte-aligned 0xFF 0x00
+  The encoder must reverse all stages: bitstream encode → block interleave → XOR → header.
+
+primary_dimensions: [completion, robustness]

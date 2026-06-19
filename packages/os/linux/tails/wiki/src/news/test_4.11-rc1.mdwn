@@ -1,0 +1,112 @@
+[[!meta title="Call for testing: 4.11~rc1"]]
+[[!meta date="Sun, 6 Sep 2020 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+Tails 4.11, scheduled for September 22, will be the first version of
+Tails to include Tor Browser 10.0 and to support persistent settings
+on the Welcome Screen!
+
+You can help Tails by testing the release candidate for Tails 4.11 now.
+
+[[!toc levels=1]]
+
+# Persistent settings on the Welcome Screen
+
+If you enable this persistence feature your Welcome Screen settings,
+like language selection and any administration password, will be
+automatically saved between sessions. While at the Welcome Screen the
+settings are restored as soon as you unlock your persistent encrypted
+volume. Please let us know if there are any problems!
+
+# Tor Browser 10.0 (alpha 6)
+
+This new major release of Tor Browser is based on a brand new Firefox
+ESR series, version 78, which contains tons of changes, most under the
+hood. There's a risk that some of these changes break some expected
+feature in Tails, so please pay close attention and report any such
+issues to us!
+
+# Changelog
+
+For more details about what has changed in Tails 4.11~rc1, read our
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/raw/4.11-rc1/debian/changelog).
+
+# Known issues
+
+* In Tor Browser, opening `file://` URLs has a problem: opening any
+  such local file will result in an infinite refresh loop like if you
+  kept the F5 key pressed, so it will likely not display anything. At
+  the moment this makes it impossible to read the offline
+  documentation inside Tails, for instance. This will be fixed in
+  Tails 4.11.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# How to test Tails 4.11~rc1?
+
+Keep in mind that this is a test image. We tested that it is not broken in
+obvious ways, but it might still contain undiscovered issues.
+
+Please, report any new problem to <tails-testers@boum.org> (public mailing list).
+
+# Get Tails 4.11~rc1
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 4.2 or later to 4.11~rc1.
+
+  To do an automatic upgrade to Tails 4.11~rc1:
+
+  1. Start Tails 4.2 or later and
+     [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+  
+  1. Run this command in a *Terminal*:
+  
+         echo TAILS_CHANNEL=\"alpha\" | sudo tee -a /etc/os-release && \
+              tails-upgrade-frontend-wrapper
+  
+     Enter the administration password when asked for the "password
+     for amnesia".
+  
+  1. After the upgrade is applied, restart Tails and choose
+     **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+     to verify that you are running Tails 4.11~rc1.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To download 4.11~rc1
+
+### Direct download
+
+  - For USB sticks (USB image)
+    (OpenPGP signature)
+
+  - For DVDs and virtual machines (ISO image)
+    (OpenPGP signature)
+
+### BitTorrent download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - Install from Windows
+  - Install from macOS
+  - Install from Linux
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+# What's coming up?
+
+Tails 4.11 is [[scheduled|contribute/calendar]] for September 22.
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.11-rc1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

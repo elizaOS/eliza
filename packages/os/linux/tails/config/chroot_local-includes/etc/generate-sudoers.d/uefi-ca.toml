@@ -1,0 +1,4 @@
+[[commands]]
+executable = "/usr/local/lib/tails-uefi-ca-detect"
+allowed_user = "amnesia"
+

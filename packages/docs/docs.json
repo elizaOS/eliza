@@ -1,0 +1,666 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "elizaOS Documentation",
+  "homepage": "index",
+  "colors": {
+    "primary": "#0B35F1",
+    "light": "#FF5800",
+    "dark": "#0B35F1"
+  },
+  "background": {
+    "color": {
+      "light": "#ffffff",
+      "dark": "#000000"
+    }
+  },
+  "appearance": {
+    "default": "dark"
+  },
+  "fonts": {
+    "family": "Poppins"
+  },
+  "styling": {
+    "eyebrows": "section"
+  },
+  "favicon": "/brand/favicons/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/elizaOS/eliza"
+      },
+      {
+        "label": "Discord",
+        "href": "https://discord.gg/elizaos"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Open Cloud",
+      "href": "https://elizacloud.ai"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Get Started",
+        "groups": [
+          {
+            "group": "Welcome",
+            "pages": [
+              "index",
+              "installation",
+              "quickstart",
+              "tracks/overview"
+            ]
+          },
+          {
+            "group": "Use Eliza",
+            "pages": [
+              "user/apps-and-control",
+              "user/connect-remotely",
+              "user/provider-setup",
+              "user/change-character",
+              "user/add-capability",
+              "user/connect-discord",
+              "user/connect-telegram",
+              "user/lifeops-setup",
+              "user/developer-docs",
+              "user/troubleshooting"
+            ]
+          },
+          {
+            "group": "Project",
+            "pages": [
+              "changelog",
+              "direction",
+              "build-and-release"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "OS",
+        "groups": [
+          {
+            "group": "elizaOS",
+            "pages": [
+              "tracks/elizaos/overview",
+              "tracks/elizaos/linux",
+              "tracks/elizaos/aosp",
+              "tracks/elizaos/install"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Runtime",
+        "groups": [
+          {
+            "group": "Agent",
+            "pages": [
+              "tracks/agent/overview",
+              "tracks/agent/create",
+              "tracks/agent/character",
+              "tracks/agent/lifecycle",
+              "tracks/agent/memory",
+              "tracks/agent/connect-channels"
+            ]
+          },
+          {
+            "group": "Framework (use @elizaos/core)",
+            "pages": [
+              "tracks/framework/overview",
+              "tracks/framework/runtime",
+              "tracks/framework/actions-providers-evaluators",
+              "tracks/framework/services"
+            ]
+          },
+          {
+            "group": "Plugins",
+            "pages": [
+              "tracks/plugin/overview",
+              "tracks/plugin/create",
+              "tracks/plugin/anatomy",
+              "tracks/plugin/publish"
+            ]
+          },
+          {
+            "group": "Runtime internals",
+            "pages": [
+              "runtime/core",
+              "runtime/models",
+              "runtime/memory",
+              "runtime/events",
+              "runtime/services",
+              "runtime/providers",
+              "runtime/types",
+              "runtime/action-callback-streaming"
+            ]
+          },
+          {
+            "group": "Agent internals",
+            "pages": [
+              "agents/runtime-and-lifecycle",
+              "agents/character-interface",
+              "agents/personality-and-behavior",
+              "agents/memory-and-state"
+            ]
+          },
+          {
+            "group": "Plugin internals",
+            "pages": [
+              "plugins/overview",
+              "plugins/architecture",
+              "plugins/create-a-plugin",
+              "plugins/development",
+              "plugins/patterns",
+              "plugins/schemas",
+              "plugins/testing",
+              "plugins/scenarios",
+              "plugins/local-plugins",
+              "plugins/plugin-eject",
+              "plugins/publish",
+              "plugins/skills",
+              "plugins/decision-guide",
+              "plugin-resolution-and-node-path"
+            ]
+          },
+          {
+            "group": "Architecture & config",
+            "pages": [
+              "architecture",
+              "configuration",
+              "config-schema",
+              "model-providers",
+              "chat-commands",
+              "plugin-setup-guide",
+              "action-catalog",
+              "skills/streaming"
+            ]
+          },
+          {
+            "group": "Connectors",
+            "pages": [
+              "tracks/agent/connect-channels",
+              "connectors/discord",
+              "connectors/telegram",
+              "connectors/slack",
+              "connectors/twitter",
+              "connectors/whatsapp",
+              "connectors/signal",
+              "connectors/imessage",
+              "connectors/wechat",
+              "connectors/farcaster",
+              "connectors/bluesky",
+              "connectors/nostr",
+              "connectors/lens",
+              "connectors/matrix",
+              "connectors/msteams",
+              "connectors/googlechat",
+              "connectors/instagram",
+              "connectors/github",
+              "connectors/twitch",
+              "connectors/gmail-watch",
+              "connectors/line",
+              "connectors/feishu",
+              "connectors/mattermost",
+              "connectors/tlon",
+              "connectors/twilio",
+              "connectors/blooio",
+              "connectors/bluebubbles",
+              "connectors/nextcloud-talk",
+              "connectors/zalo",
+              "connectors/zalouser"
+            ]
+          },
+          {
+            "group": "Eliza-1 model",
+            "pages": [
+              "tracks/training/overview",
+              "tracks/training/eliza-1",
+              "tracks/training/benchmarks"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "App",
+        "groups": [
+          {
+            "group": "Agent App (bundled shell)",
+            "pages": [
+              "tracks/agent-app/overview",
+              "tracks/agent-app/desktop",
+              "tracks/agent-app/mobile",
+              "tracks/agent-app/dashboard",
+              "tracks/agent-app/deploy"
+            ]
+          },
+          {
+            "group": "Framework App (your own shell)",
+            "pages": [
+              "tracks/framework-app/overview",
+              "tracks/framework-app/skeleton",
+              "tracks/framework-app/extend",
+              "tracks/framework-app/package"
+            ]
+          },
+          {
+            "group": "Apps",
+            "pages": [
+              "apps/overview",
+              "apps/desktop",
+              "apps/desktop-local-development",
+              "apps/desktop-main-process-reset",
+              "apps/desktop-vrm-three-and-spark",
+              "apps/electrobun-darwin-macos-webgpu-version",
+              "electrobun-startup",
+              "apps/desktop/deep-linking",
+              "apps/desktop/native-modules",
+              "apps/mobile",
+              "apps/mobile/build-guide",
+              "apps/mobile/capacitor-plugins",
+              "apps/dashboard",
+              "apps/ui-library"
+            ]
+          },
+          {
+            "group": "Dashboard",
+            "pages": [
+              "dashboard/chat",
+              "dashboard/apps",
+              "dashboard/pairing",
+              "dashboard/stream",
+              "apps/dashboard/settings",
+              "apps/dashboard/talk-mode"
+            ]
+          },
+          {
+            "group": "App developer guides",
+            "pages": [
+              "guides/sandbox",
+              "apps/ui-library",
+              "apps/desktop-local-development",
+              "apps/desktop/native-modules",
+              "apps/mobile/build-guide",
+              "dashboard/chat",
+              "dashboard/apps",
+              "apps/dashboard/settings",
+              "plugins/testing",
+              "plugins/scenarios",
+              "plugins/decision-guide",
+              "plugins/local-plugins",
+              "plugin-resolution-and-node-path",
+              "action-catalog"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Cloud",
+        "groups": [
+          {
+            "group": "Concepts",
+            "pages": [
+              "tracks/cloud/overview",
+              "tracks/cloud/auth",
+              "tracks/cloud/apps",
+              "tracks/cloud/inference",
+              "tracks/cloud/containers",
+              "tracks/cloud/billing",
+              "tracks/cloud/domains"
+            ]
+          },
+          {
+            "group": "Getting Started",
+            "pages": [
+              "cloud/index",
+              "cloud/quickstart",
+              "cloud/installation",
+              "cloud/authentication",
+              "cloud/wallet-api"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "cloud/agents",
+              "cloud/agent-creator",
+              "cloud/character-json"
+            ]
+          },
+          {
+            "group": "Runtime & Apps",
+            "pages": [
+              "cloud/apps",
+              "cloud/app-domains",
+              "cloud/containers",
+              "cloud/mcps",
+              "cloud/documents"
+            ]
+          },
+          {
+            "group": "Monetization",
+            "pages": [
+              "cloud/earnings",
+              "cloud/monetized-apps",
+              "cloud/billing"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              {
+                "group": "REST API",
+                "pages": [
+                  "cloud/api/index",
+                  "cloud/api/overview",
+                  "cloud/api/agents",
+                  "cloud/api/apps",
+                  "cloud/api/api-keys",
+                  "cloud/api/chat",
+                  "cloud/api/messages",
+                  "cloud/api/embeddings",
+                  "cloud/api/models",
+                  "cloud/api/images",
+                  "cloud/api/video",
+                  "cloud/api/voice",
+                  "cloud/api/credits",
+                  "cloud/api/redemptions",
+                  "cloud/api/containers",
+                  "cloud/api/documents",
+                  "cloud/api/gallery",
+                  "cloud/api/mcps"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Protocols",
+            "pages": [
+              "cloud/a2a",
+              "cloud/mcp"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "cloud/rate-limits",
+              "cloud/errors",
+              "cloud/sdks",
+              "cloud/launch-status",
+              "cloud/changelog"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "tracks/cloud/overview",
+              "tracks/cloud/inference",
+              "eliza-cloud-deployment",
+              "eliza-cloud-rollout"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Chip",
+        "groups": [
+          {
+            "group": "Eliza E1 SoC",
+            "pages": [
+              "tracks/chip/overview",
+              "tracks/chip/architecture",
+              "tracks/chip/rtl-verify",
+              "tracks/chip/software",
+              "tracks/chip/physical-design",
+              "tracks/chip/simulation",
+              "tracks/chip/manufacturing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Robot",
+        "groups": [
+          {
+            "group": "Embodiment",
+            "pages": [
+              "tracks/training/robot",
+              "tracks/training/feed"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI",
+        "groups": [
+          {
+            "group": "CLI",
+            "pages": [
+              "cli/overview",
+              "cli/create-project",
+              "cli/create-plugin"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration",
+              "config-schema",
+              "model-providers",
+              "chat-commands",
+              "self-updates"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment",
+              "deployment-bare-metal",
+              "build-and-release",
+              "security"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/database",
+              "advanced/logs",
+              "advanced/trajectories",
+              "websocket-events",
+              "stability/known-failure-modes",
+              "security/codeflow-residual-risk"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Docs for LLMs",
+          "icon": "robot",
+          "href": "https://docs.elizaos.ai/llms-full.txt"
+        }
+      ]
+    }
+  },
+  "redirects": [
+    {
+      "source": "/guides/contributing",
+      "destination": "/index"
+    },
+    {
+      "source": "/guides/connectors",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/guides/beginners-user-guide",
+      "destination": "/user/apps-and-control"
+    },
+    {
+      "source": "/guides/beginners-development-guide",
+      "destination": "/tracks/framework-app/overview"
+    },
+    {
+      "source": "/guides/developer-playbook",
+      "destination": "/tracks/framework-app/overview"
+    },
+    {
+      "source": "/guides/first-extension-walkthrough",
+      "destination": "/tracks/framework-app/extend"
+    },
+    {
+      "source": "/guides/custom-actions",
+      "destination": "/tracks/framework/actions-providers-evaluators"
+    },
+    {
+      "source": "/guides/hooks",
+      "destination": "/plugins/patterns"
+    },
+    {
+      "source": "/guides/triggers",
+      "destination": "/plugins/patterns"
+    },
+    {
+      "source": "/guides/coding-swarms",
+      "destination": "/plugins/scenarios"
+    },
+    {
+      "source": "/guides/config-includes",
+      "destination": "/configuration"
+    },
+    {
+      "source": "/guides/config-templates",
+      "destination": "/configuration"
+    },
+    {
+      "source": "/guides/agent-export",
+      "destination": "/user/developer-docs"
+    },
+    {
+      "source": "/guides/autonomous-mode",
+      "destination": "/configuration"
+    },
+    {
+      "source": "/guides/documents",
+      "destination": "/cloud/documents"
+    },
+    {
+      "source": "/guides/emotes",
+      "destination": "/dashboard/chat"
+    },
+    {
+      "source": "/guides/media-generation",
+      "destination": "/cloud/image-generation"
+    },
+    {
+      "source": "/guides/themes",
+      "destination": "/apps/ui-library"
+    },
+    {
+      "source": "/guides/local-models",
+      "destination": "/model-providers"
+    },
+    {
+      "source": "/guides/training",
+      "destination": "/tracks/training/overview"
+    },
+    {
+      "source": "/guides/wallet-basics",
+      "destination": "/cloud/wallet-api"
+    },
+    {
+      "source": "/guides/wallet",
+      "destination": "/cloud/wallet-api"
+    },
+    {
+      "source": "/guides/whatsapp",
+      "destination": "/connectors/whatsapp"
+    },
+    {
+      "source": "/guides/registry",
+      "destination": "/tracks/plugin/publish"
+    },
+    {
+      "source": "/guides/platform-secure-store",
+      "destination": "/apps/desktop/native-modules"
+    },
+    {
+      "source": "/guides/onboarding-and-support",
+      "destination": "/user/apps-and-control"
+    },
+    {
+      "source": "/guides/onboarding-ui-flow",
+      "destination": "/user/apps-and-control"
+    },
+    {
+      "source": "/guides/developer-diagnostics-and-workspace",
+      "destination": "/apps/desktop-local-development"
+    },
+    {
+      "source": "/guides/tutorial-autonomous-agent",
+      "destination": "/tracks/agent/create"
+    },
+    {
+      "source": "/guides/tutorial-discord-bot",
+      "destination": "/connectors/discord"
+    },
+    {
+      "source": "/guides/tutorial-telegram-bot",
+      "destination": "/connectors/telegram"
+    },
+    {
+      "source": "/guides/mcp-marketplace",
+      "destination": "/cloud/mcp"
+    },
+    {
+      "source": "/guides/cloud",
+      "destination": "/tracks/cloud/overview"
+    },
+    {
+      "source": "/guides/cloud-provider-routing",
+      "destination": "/tracks/cloud/inference"
+    }
+  ],
+  "topAnchor": {
+    "name": "Documentation"
+  },
+  "anchors": {
+    "style": "guide"
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/elizaos",
+      "github": "https://github.com/elizaos/eliza",
+      "discord": "https://discord.gg/elizaos",
+      "youtube": "https://www.youtube.com/@elizaOSDeveloper",
+      "linkedin": "https://www.linkedin.com/company/elizalabs"
+    }
+  },
+  "seo": {
+    "indexHiddenPages": false,
+    "metadata": {
+      "og:site_name": "elizaOS Documentation",
+      "og:type": "website",
+      "og:image": "/brand/ogembeds/elizaos_ogembed.svg",
+      "x:card": "summary_large_image",
+      "x:image": "/brand/ogembeds/elizaos_ogembed.svg"
+    }
+  },
+  "contextual": {
+    "options": ["copy", "view", "chatgpt", "claude", "perplexity"]
+  }
+}

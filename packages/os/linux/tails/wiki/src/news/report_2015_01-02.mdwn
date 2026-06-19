@@ -1,0 +1,140 @@
+[[!meta title="Tails report for January and February, 2015"]]
+[[!meta date="Mon, 09 Mar 2015 00:24:24 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Welcome to the new Tails report!
+This edition is more complete than last time. We have some good news to share and you can also see that we did some good work. If you have suggestions about what to include next time, please write to <tails-project@boum.org> about it :)
+
+[[!toc  ]]
+
+Releases
+========
+
+* [[Tails 1.2.3 was released on January 15, 2015.|news/version_1.2.3]] (minor release)
+* [[Tails 1.3 was released on February 24, 2015.|news/version_1.3]] (major release)
+* The next release (1.3.1) is [[planned for March 31|contribute/calendar]].
+
+Code
+====
+
+The complete list of improvements is in the release announcements. Some major points are:
+
+* Distribute a hybrid ISO image again: no need for anyone to manually run `isohybrid` anymore!
+* Tails now ships the *Electrum* Bitcoin client.
+* Support obfs4 Tor bridges.
+
+Documentation and website
+=========================
+
+- We completely rewrote the documentation on [[virtualization|doc/advanced_topics/virtualization]]. It now makes it clearer what is virtualization, what are the [[security implications|doc/advanced_topics/virtualization#security]] and provides detailed instructions on how to setup Tails in VirtualBox, [[virt-manager|doc/advanced_topics/virtualization/virt-manager]], and [[GNOME Boxes|doc/advanced_topics/virtualization/boxes]], either straight from ISO, from a [[physical USB stick|doc/advanced_topics/virtualization/virt-manager#usb]], or from a [[virtual USB stick|doc/advanced_topics/virtualization/virt-manager#virtual_usb]].
+
+- We explained the risks of accessing internal
+  hard disks from Tails.
+
+- ... and plenty of small improvements everywhere :)
+
+User experience
+===============
+
+* We discussed a solution for a screen
+  locker that could be reused by other live
+  distributions.
+
+* We [[!tails_ticket 8235#note-11 desc="reviewed"]] the
+  latest mockups of the new Tails Greeter
+  with usability experts.
+
+* We analyzed in depth the process for new users to get started with
+  Tails and made plans to adjust the relevant
+  tools (Tails Installer,
+  browser extension, Tails
+  Upgrader, and web
+  assistant).
+
+Infrastructure
+==============
+
+* Our test suite covers 172 scenarios, 85 (!) more than in July 2014. That's a huge improvement because each release can be automatically tested to avoid regressions instead of having to manually perform the same tests each time. There is still some way to go, but someday releasing will be fast, safe, and easy :)
+
+* Tails ships a new certificate in 1.2.3, and a new signing key in 1.3.
+
+* We rewrote the history of our main Git repository to make it four times smaller.
+  This should make the new contributors' experience much nicer.
+
+* We upgraded the hardware of our main server so that it can handle the short and mid-term plans we have for it: [[!tails_ticket 6196 desc="automatically building ISO images from all active branches"]], and then [[!tails_ticket 5288 desc="running our automated test suite on these ISO images"]].
+
+Funding
+=======
+
+* Laura Poitras and Edward Snowden won Ridenhour's film award for Citizenfour and offered the $10K prize to Tails - thanks, Laura and Edward! (and congratulations for the Oscar)
+
+* The Freedom Of The Press Foundation continues their crowdfunding campaign for Tails (and other great projects!). Of course, there are many other ways to donate if you want to help :)
+
+Outreach
+========
+
+* We passed a call for [[help to have a Windows camouflage in Tails Jessie|news/windows_camouflage_jessie]]!
+
+* Tails now has a code of conduct!
+
+* Two of us attended [FOSDEM](https://fosdem.org/2015/) in Brussels, saw some interesting talks and I hear the Belgian beer was good.
+
+* One of us gave a talk at the Sapienza University of Rome, Italy ([slides](https://tails.net/contribute/how/promote/slides/Roma-Uni_Sapienza-20150127/Tails.shtml)). Thanks a lot to the local organizers!
+
+On-going discussions
+====================
+
+* We did not reach an agreement yet about [[!tails_ticket 8665 desc="removing Adblock Plus"]] (to have a fingerprint closer to the Tor Browser Bundle's one) or keeping it (because it's more comfortable for users).
+
+* People try to come up with the best ideas for Tor Monitor, a [[!tails_ticket 6841 desc="replacement for Vidalia"]] in Tails Jessie. This is discussed on tails-dev.
+
+* What kind of verification mechanism shall we do in the future ISO verification extension.
+
+Press & Testimonials
+====================
+
+* Four major French-speaking media outlets (Le Monde, La Libre Belgique, Le Soir de Bruxelles and RTBF - radio-télévision belge) have launched [Source Sûre](https://sourcesure.eu/), a whistleblowing platform, in French, that uses Tails.
+
+* Many people seemed excited to hear about the Bitcoin wallet in Tails and wrote about it. Welcome, Bitcoin community :)
+
+Translation and internationalization
+====================================
+
+* Some new translators joined the German translation team within the last months. It's now the biggest translation team and they're seriously working to have all the core pages of the website translated. Nearly halfway there, keep up :)
+
+* The French translation team manages to keep the core pages up-to-date, but the rest of the web site could use more attention.
+
+* The Portuguese translation team has not been very active lately, so the Portuguese translations slowly becomes obsolete.
+
+* The Spanish and Italian translation teams are still at the organizing stages so their translations have not started yet.
+
+* For all those languages (and other ones!), [[new translators are really welcome|contribute/how/translate/]]!
+
+All website PO files
+--------------------
+
+  - de: 16% (979) strings translated, 0% strings fuzzy
+  - fr: 50% (3,004) strings translated, 1% strings fuzzy
+  - pt: 32% (1,947) strings translated, 2% strings fuzzy
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+---------------------
+
+  - de: 44% (571) strings translated, 0% strings fuzzy
+  - fr: 96% (1,223) strings translated, 1% strings fuzzy
+  - pt: 92% (1,173) strings translated, 4% strings fuzzy
+
+Metrics
+=======
+
+In January:
+
+* Tails has been started more than 356,292 times in January. This makes 11,493 boots a day on average.
+* 27,617 downloads of the OpenPGP signature of Tails ISO from our website.
+* 108 bug reports were received through WhisperBack.
+
+In February:
+
+* Tails has been started more than 344,664 times in February. This makes 12,309 boots a day on average.
+* 25,530 downloads of the OpenPGP signature of Tails ISO from our website.
+* 89 bug reports were received through WhisperBack.

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="{{url_for('static', filename='style.css')}}">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.0.3/css/font-awesome.css	">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.bundle.min.js"></script>
+    <link rel="icon" href="data:,">
+  </head>
+  <body>
+    <div class="container py-5">
+      <div class="row top-buffer">
+        <div class="col-sm-6">
+          <div id="instruction-text" class="text-center">
+            <h4>Instruction:<br>{{ instruction_text }}</h4>
+          </div>
+        </div>
+      </div>
+      <div class="row top-buffer">
+        <form method="post" action="{{url_for('index', session_id=session_id)}}">
+          <button type="submit" class="btn btn-success">Back to Search</button>
+        </form>
+      </div>
+      <div class="row top-buffer">
+        <form method="post" action="{{url_for('search_results', session_id=session_id, keywords=keywords, page=page)}}">
+          <button type="submit" class="btn btn-primary">&lt; Prev</button>
+        </form>
+      </div>
+      <div class="row top-buffer">
+        <div class="col-md-4 mb-4 mb-md-0">
+          <div class="row top-buffer">
+            <img id="product-image" src="{{product_info.MainImage}}" class="item-page-img">
+          </div>
+          {% for option_name, option_contents in product_info.options.items() %}
+            <div class="row top-buffer">
+              <h4>{{ option_name }}</h4>
+              <div class="radio-toolbar">
+                {% for option_content in option_contents %}
+                  {% set current_options = options.copy() %}
+                  {% set _ = current_options.update({option_name: option_content}) %}
+                  {% set url = url_for('item_page', session_id=session_id, asin=asin, keywords=keywords, page=page, options=current_options) %}
+                  <input type="radio" id="radio_{{ option_name }}{{ loop.index0 }}" name="{{ option_name }}" value="{{ option_content }}" data-url="{{ url }}">
+                  <label for="radio_{{ option_name }}{{ loop.index0 }}">{{ option_content }}</label>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="col-md-6">
+          <h2>{{product_info.Title}}</h2>
+          <h4>Price: {{product_info.Price}}</h4>
+          <h4>Rating: {{product_info.Rating}}</h4>
+          <div class="row top-buffer">
+            <div class="col-sm-3" name="description">
+              <form method="post" action="{{ url_for('item_sub_page', session_id=session_id, asin=asin, keywords=keywords, page=page, sub_page='Description', options=options) }}">
+                <button class="btn btn-primary" type="submit">Description</button>
+              </form>
+            </div>
+            <div class="col-sm-3" name="bulletpoints">
+              <form method="post" action="{{ url_for('item_sub_page', session_id=session_id, asin=asin, keywords=keywords, page=page, sub_page='Features', options=options) }}">
+                <button class="btn btn-primary" type="submit">Features</button>
+              </form>
+            </div>
+            <div class="col-sm-3" name="reviews">
+              <form method="post" action="{{ url_for('item_sub_page', session_id=session_id, asin=asin, keywords=keywords, page=page, sub_page='Reviews', options=options) }}">
+                <button class="btn btn-primary" type="submit">Reviews</button>
+              </form>
+            </div>
+            {% if show_attrs %}
+            <div class="col-sm-3" name="attributes">
+              <form method="post" action="{{ url_for('item_sub_page', session_id=session_id, asin=asin, keywords=keywords, page=page, sub_page='Attributes', options=options) }}">
+                <button class="btn btn-primary" type="submit">Attributes</button>
+              </form>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-sm-2">
+          <div class="row top-buffer">
+            <form method="post" action="{{url_for('done', session_id=session_id, asin=asin, options=options )}}">
+              <button type="submit" class="btn btn-lg purchase">Buy Now</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+  <script>
+    $(document).ready(function() {
+      $('input:radio').each(function() {
+        //console.log($(this).val());
+        let options = JSON.parse(`{{ options | tojson }}`);
+        let optionValues = $.map(options, function(value, key) { return value });
+        //console.log(optionValues);
+        if (optionValues.includes($(this).val())) {
+          $(this).prop('checked', true);
+
+          let option_to_image = JSON.parse(`{{ product_info.option_to_image | tojson }}`);
+//          console.log($(this).val());
+//          console.log(options);
+//          console.log(option_to_image);
+          let image_url = option_to_image[$(this).val()];
+
+          //console.log(image_url);
+          if (image_url) {
+            $("#product-image").attr("src", image_url);
+          }
+        }
+        
+        // reload with updated options
+        this.addEventListener("click", function() {
+          window.location.href = this.dataset.url;
+        });
+
+      });
+    });
+  </script>
+</html>

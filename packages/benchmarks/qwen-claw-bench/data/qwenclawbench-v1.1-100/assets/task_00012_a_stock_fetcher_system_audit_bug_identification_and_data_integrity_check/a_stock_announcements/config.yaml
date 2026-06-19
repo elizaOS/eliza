@@ -1,0 +1,65 @@
+# A-Stock Announcements Fetcher Configuration
+# =============================================
+
+api:
+  # cninfo disclosure query endpoint
+  base_url: "http://www.cninfo.com.cn/new/hisAnnouncement/query"
+
+  # Default exchange column: szse (Shenzhen) or sse (Shanghai)
+  column: "szse"
+
+  # Also fetch from SSE in each run
+  fetch_sse: true
+
+  # Tab name for query type
+  tab_name: "fulltext"
+
+  # Announcement category filter
+  # Options: category_ndbg_szsh (annual reports), category_bndbg_szsh (semi-annual),
+  #          category_yjdbg_szsh (Q1/Q3), category_scgkfx_szsh (IPO),
+  #          category_rcjy_szsh (daily operations)
+  category: ""
+
+  # Results per page
+  page_size: 30
+
+  # Max pages to fetch per run (full mode overrides to 20)
+  max_pages: 3
+
+  # Delay between page requests (seconds) — be respectful
+  request_delay: 1.5
+
+  # Request timeout (seconds)
+  timeout: 30
+
+# HTTP settings
+user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# Output settings
+output:
+  # Also generate CSV summary files alongside JSON
+  csv_summary: true
+
+  # Keep JSON files for N days (0 = keep forever)
+  retention_days: 30
+
+# Notification settings
+notifications:
+  enabled: false
+  # Minimum new announcement count to trigger notification
+  min_count: 5
+  # Webhook URL (Slack, DingTalk, Feishu, custom)
+  webhook_url: ""
+
+# Stock watchlist (optional - empty means fetch all)
+# Filter announcements to only these stock codes
+watchlist: []
+#  - "000001"  # Ping An Bank
+#  - "600519"  # Kweichow Moutai
+#  - "000858"  # Wuliangye
+#  - "601318"  # Ping An Insurance
+
+# Scheduling notes:
+# This script is designed to run every 15 minutes via cron during market hours
+# Recommended cron: */15 9-17 * * 1-5
+# The deduplication state ensures no double-counting across runs

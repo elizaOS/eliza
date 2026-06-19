@@ -1,0 +1,12 @@
+{"type": "session_start", "session_id": "heartbeat_9628703", "model": "deepseek-r1", "created_at": "2026-03-17T22:56:59.536609", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-17T22:57:54.108101", "session_id": "heartbeat_9628703", "seq": 1}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-17T23:00:15.585853", "session_id": "heartbeat_9628703", "seq": 2}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-17T23:02:20.295864", "session_id": "heartbeat_9628703", "seq": 3}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-17T23:04:08.498840", "session_id": "heartbeat_9628703", "seq": 4}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-17T23:04:54.060444", "session_id": "heartbeat_9628703", "seq": 5}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-17T23:09:45.356134", "session_id": "heartbeat_9628703", "seq": 6}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-17T23:13:03.472586", "session_id": "heartbeat_9628703", "seq": 7}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-17T23:13:20.110685", "session_id": "heartbeat_9628703", "seq": 8, "usage": {"prompt_tokens": 3785, "completion_tokens": 1799, "total_tokens": 3969}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-17T23:17:25.986185", "session_id": "heartbeat_9628703", "seq": 9}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-17T23:18:24.897660", "session_id": "heartbeat_9628703", "seq": 10}
+{"type": "session_end", "session_id": "heartbeat_9628703", "ended_at": "2026-03-17T23:18:34.897660", "total_messages": 10, "status": "timeout"}

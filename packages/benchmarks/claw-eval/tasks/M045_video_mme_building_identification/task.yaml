@@ -1,0 +1,48 @@
+task_id: M045_video_mme_building_identification
+task_name: Video-MME Building Identification and Frame Extraction
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    请观看视频，完成以下任务：
+
+    1. 找出视频中正式介绍的第11个建筑物，告诉我它截止2026年3月有多少米高。将你的回答（建筑物名称和高度）保存为一行文本到 /workspace/answer.txt。
+    2. 从视频中截取一帧该建筑物清晰出现的画面，保存为 /workspace/building_frame.png。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/answer.txt
+  - /workspace/building_frame.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames.
+  The 11th building formally introduced is the Eiffel Tower (埃菲尔铁塔), 330 meters tall as of March 2026.
+  Find a frame where the Eiffel Tower is clearly visible and save it as /workspace/building_frame.png.
+
+primary_dimensions:
+  - completion
+  - robustness

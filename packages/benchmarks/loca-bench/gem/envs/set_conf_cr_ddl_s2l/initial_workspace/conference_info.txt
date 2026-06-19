@@ -1,0 +1,20 @@
+Conference Tracking Note
+========================
+
+You have submitted papers to multiple conferences:
+  • SR1 (main-track)
+  • KG (short-paper)
+  • GC4 (industry)
+  • GC2 (poster)
+  • OC (industry)
+  • WT1 (industry)
+  • DLNN (main-track)
+  • EI (industry)
+  • SC4 (main-track)
+  • NO4 (main-track)
+
+Please check your recent emails for the camera-ready deadline notifications.
+
+Remember to:
+1. Find the camera-ready submission deadline(s) from emails
+2. Set calendar reminder(s) 3 hours before each deadline

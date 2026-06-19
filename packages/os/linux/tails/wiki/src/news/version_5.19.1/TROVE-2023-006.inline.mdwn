@@ -1,0 +1,22 @@
+  The details of TROVE-2023-006 haven't been disclosed by the Tor Project to
+  leave time for users to upgrade before revealing more. We only know that the
+  Tor Project describes TROVE-2023-006 as a "[*remote triggerable assert on
+  onion
+  services*](https://gitlab.torproject.org/tpo/core/team/-/wikis/NetworkTeam/TROVE)".
+
+  Our team thinks that this vulnerability could affect Tails users who are
+  creating onion services from their Tails, for example when sharing files or
+  publishing a website using *OnionShare*.
+
+  This vulnerability might allow an attacker who already knows your
+  *OnionShare* address to make your Tor client crash. A powerful attacker might
+  be able to further exploit this crash to reveal your IP address.
+
+  This analysis is only a hypothesis because our team doesn't have access to
+  more details about this vulnerability. Still, we are releasing this emergency
+  release as a precaution.
+
+  *OnionShare* is the only application included in Tails that creates onion
+  services. You are not affected by this vulnerability if you don't use
+  *OnionShare* in Tails and only use Tails to connect to onion services and
+  don't create onion services using Additional Software.

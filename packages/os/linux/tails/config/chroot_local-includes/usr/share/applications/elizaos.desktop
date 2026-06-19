@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=elizaOS
+Comment=elizaOS AI desktop
+Exec=/usr/local/bin/elizaos
+TryExec=/usr/local/bin/elizaos
+Icon=elizaos
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+StartupWMClass=elizaOS

@@ -1,0 +1,20 @@
+---
+build-target: amd64
+channel: alpha
+initial-install-version: '6.0~testoverlayfs'
+product-name: Tails
+upgrades:
+- details-url: https://tails.boum.org/news/version_6.2-test/
+  type: major
+  upgrade-paths:
+  - target-files:
+    - sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+      size: 1234567890
+      url: https://download.tails.net/tails/stable/tails-amd64-6.2~testoverlayfs/tails-amd64-6.2~testoverlayfs.iso
+    type: full
+  - target-files:
+    - sha256: 009824fe08566f9692940e5b0bdae4aed7bb59ec127c2847348f60e16420bd1c
+      size: 4096
+      url: https://download.tails.net/tails/stable/iuk/v2/Tails_amd64_6.0~testoverlayfs_to_6.2~testoverlayfs.iuk
+    type: incremental
+  version: 6.2~testoverlayfs

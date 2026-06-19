@@ -1,0 +1,110 @@
+schema: eliza.e1_phone_supplier_rfq_response_pack_template.v1
+status: blank_template_not_supplier_evidence
+date: 2026-05-21
+claim_boundary: >
+  Blank supplier RFQ response-pack template. This file is only a form for
+  creating returned supplier response packs under production/sourcing/<function>/.
+  It is not a supplier response, not signed evidence, not an AVL row, not a
+  sample record, not a STEP/B-rep model, and cannot unlock schematic capture,
+  footprint assignment, routing, enclosure clearance, production release, or
+  first article.
+
+template_policy:
+  evidence_class: blank_template
+  allowed_as_release_evidence: false
+  target_archive_pattern: board/kicad/e1-phone/production/sourcing/<function>/rfq-response-pack.yaml
+  required_response_format: supplier_signed_pdf_or_native_cad_plus_machine_readable_summary
+  quote_quantities: [10, 100, 1000]
+  minimum_sample_lot_per_candidate: 5
+  accepted_document_languages: [english, bilingual_supplier_original_plus_english]
+
+response_identity:
+  function: ""
+  candidate: ""
+  supplier_legal_name: ""
+  supplier_contact: ""
+  marketplace_or_vendor_url: ""
+  orderable_manufacturer_part_number: ""
+  supplier_sku: ""
+  lifecycle_status: ""
+
+commercial_terms:
+  MOQ: null
+  unit_price_10: null
+  unit_price_100: null
+  unit_price_1000: null
+  lead_time_days_10: null
+  lead_time_days_100: null
+  lead_time_days_1000: null
+  payment_terms: ""
+  quote_expiration_date: ""
+  delivery_risk_notes: ""
+
+supplier_document_paths:
+  signed_2d_drawing_path: ""
+  pinout_or_pad_map_path: ""
+  mating_connector_mpn: ""
+  recommended_land_pattern_path: ""
+  step_or_brep_model_path: ""
+  electrical_specs_path: ""
+  reference_schematic_or_layout_path: ""
+  compliance_pack_index_path: ""
+  sample_lot_tracking: ""
+  incoming_inspection_path: ""
+  firmware_or_driver_pack_path: ""
+  regulatory_or_modular_grant_scope: ""
+  enclosure_datums_and_keepouts_path: ""
+
+specialized_returns:
+  display_touch: []
+  rear_camera: []
+  front_camera: []
+  cellular: []
+  wifi_bluetooth: []
+  usb_c_receptacle_evt0: []
+  side_buttons: []
+  battery_pack: []
+  audio_speaker_microphone_flexes: []
+  top_bottom_interconnect: []
+
+review_gates:
+  orderable_mpn_received: false
+  signed_2d_drawing_received: false
+  pinout_or_pad_map_received: false
+  recommended_land_pattern_received: false
+  step_or_brep_model_received: false
+  sample_received_and_inspected: false
+  compliance_pack_received: false
+  pinout_symbol_footprint_reviews_complete: false
+  enclosure_datums_reviewed: false
+  quote_approved_for_evt1_buy: false
+
+review_signoff:
+  approved_by_ee: false
+  approved_by_me: false
+  approved_by_ops: false
+  ee_reviewer: ""
+  me_reviewer: ""
+  ops_reviewer: ""
+  review_date: ""
+  exceptions_or_waivers: []
+
+downstream_unlocks:
+  schematic_symbol_capture_allowed: false
+  footprint_assignment_allowed: false
+  routed_layout_allowed: false
+  routed_step_export_allowed: false
+  production_bom_avl_allowed: false
+  enclosure_clearance_allowed: false
+  first_article_release_allowed: false
+
+forbidden_claims:
+  - supplier_pack_complete
+  - pinout_freeze_ready
+  - footprint_ready
+  - routed_layout_ready
+  - routed_board_step_ready
+  - production_bom_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

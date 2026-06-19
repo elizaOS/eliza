@@ -1,0 +1,153 @@
+# Spanish translation of basewiki/sandbox page for ikiwiki.
+# Copyright (C) 2009 Free Software Foundation, Inc.
+# This file is distributed under the same license as the ikiwiki package.
+# Fernando González de Requena <fgrequena@gmail.com>, 2009.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"POT-Creation-Date: 2025-12-17 16:14+0000\n"
+"PO-Revision-Date: 2024-05-06 21:32+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: None\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+msgid "This is the SandBox."
+msgstr "Este es el SandBox."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "*emphasised* text.\n"
+msgid "*emphasized* text.\n"
+msgstr "texto *resaltado*.\n"
+
+#. type: Title #
+#, no-wrap
+msgid "GitLab syntax"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "MR: !123"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "issue: #18079"
+msgstr ""
+
+#. type: Title #
+#, no-wrap
+msgid "Header"
+msgstr "Título"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"> This is a blockquote.\n"
+">\n"
+"> This is the first level of quoting.\n"
+">\n"
+"> > This is nested blockquote.\n"
+">\n"
+"> Back to the first level.\n"
+msgstr ""
+"> Esto es un bloque de cita.\n"
+">\n"
+"> Éste es el primer nivel de citación.\n"
+">\n"
+"> > Esto es un bloque de cita de nivel inferior.\n"
+">\n"
+"> De vuelta al primer nivel.\n"
+
+#. type: Plain text
+msgid "Numbered list:"
+msgstr "Lista numerada:"
+
+#. type: Bullet: '1. '
+msgid "First item."
+msgstr "Primer elemento."
+
+#. type: Bullet: '1. '
+msgid "Another."
+msgstr "Otro."
+
+#. type: Bullet: '  - '
+msgid "nesting them"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "more nests"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "And another.."
+msgstr "Y otro..."
+
+#. type: Plain text
+#, fuzzy
+#| msgid "Bulleted list"
+msgid "Bulleted list:"
+msgstr "Lista"
+
+#. type: Bullet: '* '
+msgid "*item*"
+msgstr "*elemento*"
+
+#. type: Bullet: '* '
+msgid "item"
+msgstr "elemento"
+
+#. type: Bullet: '  - '
+msgid "1st item in nested list"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "2nd item in nested list"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "3rd item in nested list"
+msgstr ""
+
+#. type: Title ##
+#, no-wrap
+msgid "Heading level 2"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid "Another test!"
+msgid "Another test!!!!"
+msgstr "¡Otro test!"
+
+#. type: Title ###
+#, no-wrap
+msgid "Level 3"
+msgstr ""
+
+#. type: Plain text
+msgid "hey."
+msgstr ""
+
+#~ msgid ""
+#~ "This is the SandBox, a page anyone can edit to learn how to use the wiki."
+#~ msgstr ""
+#~ "Esta es la Zona de Pruebas («SandBox»), una página que cualquiera puede "
+#~ "editar para aprender a usar el wiki."
+
+#~ msgid "Here's a paragraph."
+#~ msgstr "Aquí podemos ver un párrafo."
+
+#~ msgid "Here's another one with *emphasised* text."
+#~ msgstr "Aquí podemos ver otro con texto *resaltado*."
+
+#~ msgid "Subheader"
+#~ msgstr "Subtítulo"
+
+#~ msgid "[[ikiwiki/WikiLink]]"
+#~ msgstr "[[ikiwiki/WikiLink]]"

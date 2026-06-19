@@ -1,0 +1,116 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"esModuleInterop": true,
+		"strict": false,
+		"strictNullChecks": true,
+		"skipLibCheck": true,
+		"ignoreDeprecations": "6.0",
+		"declaration": true,
+		"declarationMap": true,
+		"outDir": "./dist",
+		"rootDir": "../../../",
+		"lib": ["ES2022", "DOM"],
+		"types": ["node", "bun"],
+		"allowImportingTsExtensions": true,
+		"rewriteRelativeImportExtensions": true,
+		"paths": {
+			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
+			"@elizaos/agent/*": ["../../packages/agent/src/*"],
+			"@elizaos/app-core": ["./src/type-shims/app-core-root.ts"],
+			"@elizaos/app-core/agent-bridge": [
+				"../../packages/app-core/src/agent-bridge.ts"
+			],
+			"@elizaos/app-core/api/auth": ["../../packages/app-core/src/api/auth.ts"],
+			"@elizaos/app-core/api/cloud-pair-route": [
+				"../../packages/app-core/src/api/cloud-pair-route.ts"
+			],
+			"@elizaos/app-core/api/compat-route-shared": [
+				"../../packages/app-core/src/api/compat-route-shared.ts"
+			],
+			"@elizaos/app-core/api/response": [
+				"../../packages/app-core/src/api/response.ts"
+			],
+			"@elizaos/app-core/registry": [
+				"../../packages/app-core/src/registry/index.ts"
+			],
+			"@elizaos/app-core/services/vault-mirror": [
+				"../../packages/app-core/src/services/vault-mirror.ts"
+			],
+			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
+			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
+			"@elizaos/shared/*": ["../../packages/shared/src/*"],
+			"@elizaos/vault": ["../../packages/vault/src/index.ts"],
+			"@elizaos/plugin-agent-skills": [
+				"../../plugins/plugin-agent-skills/src/index.ts"
+			],
+			"@elizaos/plugin-agent-skills/*": [
+				"../../plugins/plugin-agent-skills/src/*"
+			],
+			"@elizaos/plugin-app-manager": [
+				"../../plugins/plugin-app-manager/src/index.ts"
+			],
+			"@elizaos/plugin-app-manager/*": [
+				"../../plugins/plugin-app-manager/src/*"
+			],
+			"@elizaos/plugin-aosp-local-inference": [
+				"../../plugins/plugin-aosp-local-inference/src/index.ts"
+			],
+			"@elizaos/plugin-aosp-local-inference/*": [
+				"../../plugins/plugin-aosp-local-inference/src/*"
+			],
+			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+			"@elizaos/plugin-commands": [
+				"../../plugins/plugin-commands/src/index.ts"
+			],
+			"@elizaos/plugin-local-inference": [
+				"../../plugins/plugin-local-inference/src/index.ts"
+			],
+			"@elizaos/plugin-local-inference/*": [
+				"../../plugins/plugin-local-inference/src/*"
+			],
+			"@elizaos/plugin-remote-manifest": [
+				"../../packages/plugin-remote-manifest/src/index.ts"
+			],
+			"@elizaos/plugin-remote-manifest/*": [
+				"../../packages/plugin-remote-manifest/src/*"
+			],
+			"@elizaos/plugin-registry": [
+				"../../plugins/plugin-registry/src/index.ts"
+			],
+			"@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
+			"@elizaos/plugin-task-coordinator": [
+				"../../plugins/plugin-task-coordinator/src/index.ts"
+			],
+			"@elizaos/plugin-task-coordinator/*": [
+				"../../plugins/plugin-task-coordinator/src/*"
+			],
+			"@elizaos/plugin-worker-runtime": [
+				"../../packages/plugin-worker-runtime/src/index.ts"
+			],
+			"@elizaos/plugin-worker-runtime/*": [
+				"../../packages/plugin-worker-runtime/src/*"
+			],
+			"@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+			"@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
+			"@elizaos/plugin-x402": ["../../plugins/plugin-x402/src/index.ts"],
+			"@elizaos/plugin-x402/*": ["../../plugins/plugin-x402/src/*"]
+		}
+	},
+	"include": ["src/**/*"],
+	"exclude": [
+		"node_modules",
+		"dist",
+		"src/**/__tests__/**",
+		"src/**/*.test.ts",
+		"src/**/*.test.tsx",
+		"**/__tests__/**",
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/*.e2e.test.ts"
+	]
+}

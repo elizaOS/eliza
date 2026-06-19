@@ -1,0 +1,380 @@
+schema: eliza.e1_phone_module_rf_pinout_execution.v1
+status: blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence
+date: '2026-05-21'
+claim_boundary: Execution package for turning selected off-the-shelf cellular and Wi-Fi/Bluetooth modules into KiCad
+  symbols, footprints, RF feeds, firmware identity, and factory evidence. This is not a supplier pinout, not routed
+  RF, not firmware release evidence, not regulatory or carrier approval, not SAR evidence, not a fabrication package,
+  and not enclosure-ready evidence.
+source_artifacts:
+  - board/kicad/e1-phone/radio-module-integration.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/module-host-integration-acceptance-checklist.yaml
+  - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
+  - board/kicad/e1-phone/rf-connectivity-closure.yaml
+  - board/kicad/e1-phone/routing-constraints.yaml
+  - board/kicad/e1-phone/block-netlist.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/radio-module-schematic-net-binding.yaml
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+upstream_status:
+  radio_module: blocked_requires_module_pinout_firmware_rf_measurement_and_regulatory_evidence
+  module_host_acceptance: blocked_module_host_integration_requires_supplier_pinouts_routed_host_buses_firmware_identity_and_factory_evidence
+  radio_antenna_acceptance: blocked_radio_antenna_acceptance_requires_supplier_route_firmware_regulatory_and_measurements
+  rf_connectivity: planning_rf_connectivity_cross_checked_not_measured
+  cellular_package: sourcing_shortlist_no_bonded_pins_no_fabricated_board
+  wifi_bluetooth_package: phone_class_sourcing_target_no_bonded_pins_no_fabricated_board
+selected_module_context:
+  cellular:
+    vendor: Quectel
+    family: RG255C_or_RM255C
+    class: 5G_RedCap_Sub_6
+    placement_refdes_group: U_CELL
+    placement_region_mm: &id001
+      x: 3.0
+      y: 3.0
+      width: 14.0
+      height: 14.0
+    host_contract_count: 13
+    minimum_rf_ports:
+      - cellular_main
+      - cellular_diversity
+      - gnss_optional
+    rf_nets: &id002
+      - CELL_RF_MAIN
+      - CELL_RF_DIV
+      - CELL_GNSS_RF
+    package_status: sourcing_shortlist_no_bonded_pins_no_fabricated_board
+  wifi_bluetooth:
+    vendor: Murata
+    order_number: LBEE5XV2EA-802
+    chipset: Infineon_CYW55573
+    package_mm:
+      width: 12.5
+      height: 9.4
+      thickness: 1.2
+    placement_refdes_group: U_WIFI_BT
+    placement_region_mm: &id003
+      x: 3.0
+      y: 18.0
+      width: 14.0
+      height: 10.0
+    wifi_preferred_bus: PCIe
+    wifi_fallback_bus: SDIO
+    bluetooth_bus: UART
+    rf_nets: &id004
+      - WIFI_BT_RF0
+      - WIFI_BT_RF1
+    package_status: phone_class_sourcing_target_no_bonded_pins_no_fabricated_board
+module_pinout_execution:
+  - id: cellular_5g_redcap_module
+    refdes_group: U_CELL
+    package_binding: package/cellular/quectel-5g-redcap.yaml
+    selected_family: RG255C_or_RM255C
+    status: blocked_waiting_region_sku_supplier_pinout_reference_layout_step_firmware_and_cert_plan
+    placement_region_mm: *id001
+    required_host_contracts:
+      - CELL_USB2_DP
+      - CELL_USB2_DN
+      - CELL_PCIE_TX_P
+      - CELL_PCIE_TX_N
+      - CELL_PCIE_RX_P
+      - CELL_PCIE_RX_N
+      - CELL_RESET_N
+      - CELL_WAKE_AP
+      - AP_WAKE_CELL
+      - CELL_W_DISABLE_N
+      - USIM_CLK
+      - USIM_RST
+      - USIM_IO
+    required_power_control_nets:
+      - RF_VBAT
+      - IO_1V8
+      - GND
+      - CELL_RESET_N
+      - CELL_W_DISABLE_N
+      - AP_WAKE_CELL
+      - CELL_WAKE_AP
+    sim_esim_nets:
+      - USIM_VCC
+      - USIM_CLK
+      - USIM_RST
+      - USIM_IO
+      - USIM_DET
+      - ESIM_VCC
+      - ESIM_CLK
+      - ESIM_RST
+      - ESIM_IO
+    required_rf_nets: *id002
+    route_constraints:
+      differential_pairs:
+        CELL_USB2_DP_DN:
+          name: CELL_USB2_DP_DN
+          nets:
+            - CELL_USB2_DP
+            - CELL_USB2_DN
+          class: usb2_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.5
+          region: top_left_cell_to_soc
+        CELL_PCIE_TX:
+          name: CELL_PCIE_TX
+          nets:
+            - CELL_PCIE_TX_P
+            - CELL_PCIE_TX_N
+          class: pcie_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.15
+          region: cellular_to_soc
+        CELL_PCIE_RX:
+          name: CELL_PCIE_RX
+          nets:
+            - CELL_PCIE_RX_P
+            - CELL_PCIE_RX_N
+          class: pcie_diff
+          max_length_mm: 55
+          intra_pair_skew_mm_max: 0.15
+          region: cellular_to_soc
+      single_ended_buses:
+        USIM_ESIM:
+          name: USIM_ESIM
+          nets:
+            - USIM_VCC
+            - USIM_CLK
+            - USIM_RST
+            - USIM_IO
+            - USIM_DET
+            - ESIM_VCC
+            - ESIM_CLK
+            - ESIM_RST
+            - ESIM_IO
+          max_length_mm: 35
+          esd_required: true
+          keepaway: cellular_rf_feeds
+    required_supplier_inputs:
+      - exact regional SKU and band matrix
+      - supplier pinout, hardware design guide, land pattern, and STEP model
+      - reference layout and RF matching guidance
+      - modem firmware, Linux/Android driver package, and carrier test-mode procedure
+      - IMEI/modem identity and SIM/eSIM provisioning workflow
+    blocker: Cellular module cannot be captured or routed until supplier pinout, region SKU, firmware, RF, and certification
+      inputs are frozen.
+  - id: wifi6e_bluetooth_5p3_module
+    refdes_group: U_WIFI_BT
+    package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
+    selected_order_number: LBEE5XV2EA-802
+    status: blocked_waiting_supplier_pinout_reference_layout_firmware_nvram_clm_and_regulatory_review
+    placement_region_mm: *id003
+    required_host_contracts:
+      - WIFI_PCIE_TX_P
+      - WIFI_PCIE_TX_N
+      - WIFI_PCIE_RX_P
+      - WIFI_PCIE_RX_N
+      - WIFI_SDIO_CLK
+      - WIFI_SDIO_CMD
+      - WIFI_SDIO_D0
+      - WIFI_SDIO_D1
+      - WIFI_SDIO_D2
+      - WIFI_SDIO_D3
+      - BT_UART_TX
+      - BT_UART_RX
+      - BT_UART_CTS_N
+      - BT_UART_RTS_N
+      - WIFI_EN
+      - BT_EN
+      - WIFI_HOST_WAKE
+      - WIFI_IRQ
+    required_power_control_nets:
+      - RF_VBAT
+      - IO_1V8
+      - GND
+      - WIFI_EN
+      - BT_EN
+      - WIFI_IRQ
+      - WIFI_HOST_WAKE
+    required_rf_nets: *id004
+    route_constraints:
+      differential_pairs:
+        WIFI_PCIE_TX:
+          name: WIFI_PCIE_TX
+          nets:
+            - WIFI_PCIE_TX_P
+            - WIFI_PCIE_TX_N
+          class: pcie_diff
+          max_length_mm: 35
+          intra_pair_skew_mm_max: 0.15
+          region: wifi_to_soc
+        WIFI_PCIE_RX:
+          name: WIFI_PCIE_RX
+          nets:
+            - WIFI_PCIE_RX_P
+            - WIFI_PCIE_RX_N
+          class: pcie_diff
+          max_length_mm: 35
+          intra_pair_skew_mm_max: 0.15
+          region: wifi_to_soc
+      single_ended_buses:
+        WIFI_SDIO:
+          name: WIFI_SDIO
+          nets:
+            - WIFI_SDIO_CLK
+            - WIFI_SDIO_CMD
+            - WIFI_SDIO_D0
+            - WIFI_SDIO_D1
+            - WIFI_SDIO_D2
+            - WIFI_SDIO_D3
+          max_length_mm: 35
+          group_skew_mm_max: 1.0
+      bluetooth_uart_nets:
+        - BT_UART_TX
+        - BT_UART_RX
+        - BT_UART_CTS_N
+        - BT_UART_RTS_N
+    required_supplier_inputs:
+      - Murata Type 2EA pinout, land pattern, reference layout, and STEP model
+      - RF feed, keepout, and antenna matching rules
+      - CYW55573 firmware, NVRAM, CLM, license, and country-code archive
+      - Wi-Fi MAC and Bluetooth MAC provisioning workflow
+      - modular approval review for final antenna gains and enclosure plastics
+    blocker: Wi-Fi/Bluetooth module cannot be captured or routed until pinout, reference layout, firmware identity,
+      and regulatory scope are frozen.
+rf_feed_execution:
+  - net: CELL_RF_MAIN
+    role: cellular_main
+    candidate_zone: top_or_bottom_plastic_edge_after_vendor_review
+    near: U_CELL
+    band_plan: LTE/NR Sub-6 low+mid band; exact matrix follows region SKU
+    freq_range_mhz:
+      - 617
+      - 3800
+    planning_target_s11_db_max: -6.0
+    planning_target_total_efficiency_pct_min: 35.0
+    planning_target_evidence_class: planning_estimate_not_vna_measured
+    requires_pi_or_t_matching_network: true
+    requires_conducted_access_before_matching: true
+    requires_via_fence_and_continuous_ground_reference: true
+    status: blocked_waiting_reference_layout_antenna_vendor_review_vna_and_sar_evidence
+    blocker: RF feed is a logical net with a required matching-network placeholder; the S11/efficiency targets are
+      pre-layout planning estimates. No routed 50 ohm geometry, antenna tune, VNA data, or SAR evidence exists.
+  - net: CELL_RF_DIV
+    role: cellular_diversity
+    candidate_zone: opposite_plastic_edge_or_side_slot_after_vendor_review
+    near: U_CELL
+    band_plan: LTE/NR Sub-6 diversity, mirror of main band matrix
+    freq_range_mhz:
+      - 617
+      - 3800
+    planning_target_s11_db_max: -6.0
+    planning_target_total_efficiency_pct_min: 30.0
+    planning_target_evidence_class: planning_estimate_not_vna_measured
+    requires_pi_or_t_matching_network: true
+    requires_conducted_access_before_matching: true
+    requires_via_fence_and_continuous_ground_reference: true
+    status: blocked_waiting_reference_layout_antenna_vendor_review_vna_and_sar_evidence
+    blocker: RF feed is a logical net with a required matching-network placeholder; the S11/efficiency targets are
+      pre-layout planning estimates. No routed 50 ohm geometry, antenna tune, VNA data, or SAR evidence exists.
+  - net: CELL_GNSS_RF
+    role: gnss_optional
+    candidate_zone: top_edge_or_dedicated_lna_path_if_desense_allows
+    near: U_CELL_or_GNSS_LNA
+    band_plan: GNSS L1 (GPS L1 / GLONASS L1 / Galileo E1)
+    freq_range_mhz:
+      - 1559
+      - 1610
+    planning_target_s11_db_max: -10.0
+    planning_target_total_efficiency_pct_min: 40.0
+    planning_target_evidence_class: planning_estimate_not_vna_measured
+    requires_pi_or_t_matching_network: true
+    requires_conducted_access_before_matching: true
+    requires_via_fence_and_continuous_ground_reference: true
+    status: blocked_waiting_reference_layout_antenna_vendor_review_vna_and_sar_evidence
+    blocker: RF feed is a logical net with a required matching-network placeholder; the S11/efficiency targets are
+      pre-layout planning estimates. No routed 50 ohm geometry, antenna tune, VNA data, or SAR evidence exists.
+  - net: WIFI_BT_RF0
+    role: wifi_bt_chain0
+    candidate_zone: side_plastic_or_top_edge_after_vendor_review
+    near: U_WIFI_BT
+    band_plan: Wi-Fi 2.4/5/6 GHz + Bluetooth 5.3 (2.4 GHz)
+    freq_range_mhz:
+      - 2400
+      - 7125
+    planning_target_s11_db_max: -8.0
+    planning_target_total_efficiency_pct_min: 45.0
+    planning_target_evidence_class: planning_estimate_not_vna_measured
+    requires_pi_or_t_matching_network: true
+    requires_conducted_access_before_matching: true
+    requires_via_fence_and_continuous_ground_reference: true
+    status: blocked_waiting_reference_layout_antenna_vendor_review_vna_and_sar_evidence
+    blocker: RF feed is a logical net with a required matching-network placeholder; the S11/efficiency targets are
+      pre-layout planning estimates. No routed 50 ohm geometry, antenna tune, VNA data, or SAR evidence exists.
+  - net: WIFI_BT_RF1
+    role: wifi_bt_chain1
+    candidate_zone: spatially_separated_side_or_bottom_edge_after_vendor_review
+    near: U_WIFI_BT
+    band_plan: Wi-Fi 2.4/5/6 GHz 2x2 MIMO second chain
+    freq_range_mhz:
+      - 2400
+      - 7125
+    planning_target_s11_db_max: -8.0
+    planning_target_total_efficiency_pct_min: 45.0
+    planning_target_evidence_class: planning_estimate_not_vna_measured
+    requires_pi_or_t_matching_network: true
+    requires_conducted_access_before_matching: true
+    requires_via_fence_and_continuous_ground_reference: true
+    status: blocked_waiting_reference_layout_antenna_vendor_review_vna_and_sar_evidence
+    blocker: RF feed is a logical net with a required matching-network placeholder; the S11/efficiency targets are
+      pre-layout planning estimates. No routed 50 ohm geometry, antenna tune, VNA data, or SAR evidence exists.
+factory_firmware_identity_execution:
+  traceability_fields_required:
+    - board_serial
+    - imei_or_modem_identifier
+    - wifi_mac
+    - bluetooth_mac
+    - secure_key_provisioning_result
+    - fixture_id
+    - test_software_revision
+  firmware_artifacts_missing:
+    - Quectel modem firmware and carrier test-mode package
+    - Murata/Infineon CYW55573 firmware, NVRAM, CLM, and license archive
+    - Android/Linux device-tree, regulatory-domain, suspend/resume, and RF-kill logs
+  factory_test_modes_missing:
+    - cellular boot and IMEI/modem identifier readback
+    - USIM/eSIM readback and provisioning result
+    - Wi-Fi conducted or shield-box TX/RX
+    - Bluetooth LE advertise/scan and RF-level test
+    - GNSS conducted or reradiated acquisition check
+  status: blocked_no_firmware_identity_or_factory_rf_test_release
+cross_checks:
+  cellular_and_wifi_modules_match_acceptance_summary: true
+  module_placements_match_active_matrix: true
+  cellular_required_host_contracts_present_in_block_netlist: true
+  wifi_bt_required_host_contracts_present_in_block_netlist: true
+  required_rf_nets_match_radio_antenna_acceptance: true
+  all_rf_feeds_have_execution_records: true
+  all_rf_feeds_carry_planning_s11_efficiency_targets: true
+  rf_closure_exposes_keepout_audit_and_sar_plan: true
+  routing_constraints_cover_required_module_pairs: true
+  factory_traceability_fields_include_radio_identity: true
+  all_execution_records_fail_closed: true
+  packages_still_not_fabrication_ready: true
+release_blockers:
+  - cellular regional SKU, supplier pinout, land pattern, STEP, firmware, and carrier plan missing
+  - Wi-Fi/Bluetooth module pinout, land pattern, STEP, firmware, NVRAM/CLM, and regulatory scope missing
+  - RF matching networks and conducted access are requirements only; no 50 ohm routed geometry or VNA data exists
+  - factory RF calibration, identity provisioning, and first-article radio limits are missing
+  - routed PCB, DRC, SI/PI, RF, SAR, enclosure, and fabrication outputs are missing
+forbidden_claims:
+  - cellular_ready
+  - wifi_ready
+  - bluetooth_ready
+  - rf_ready
+  - regulatory_ready
+  - carrier_ready
+  - sar_ready
+  - module_host_ready
+  - factory_rf_ready
+  - routed_pcb_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

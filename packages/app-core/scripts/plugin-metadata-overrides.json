@@ -1,0 +1,165 @@
+{
+  "anthropic": {
+    "description": "Anthropic model provider for Claude chat and reasoning models.",
+    "tags": ["ai-provider", "llm", "anthropic", "chat"]
+  },
+  "blooio": {
+    "description": "Integrates Blooio iMessage/SMS messaging into elizaOS with signed webhooks and outbound message sending.",
+    "tags": ["connector", "social", "social-chat", "messaging", "blooio"]
+  },
+  "commands": {
+    "description": "Chat command system for Eliza agents (/help, /status, /reset, etc.)",
+    "tags": ["commands"]
+  },
+  "directives": {
+    "description": "Inline directive parsing for Eliza agents (@think, @model, @verbose, etc.)",
+    "tags": ["directives"]
+  },
+  "elevenlabs": {
+    "description": "ElevenLabs voice plugin for text-to-speech generation and conversational audio output.",
+    "tags": ["feature", "voice", "text-to-speech", "audio"]
+  },
+  "eliza-classic": {
+    "description": "Compatibility plugin referencing the original ELIZA-style patterns alongside legacy elizaOS agent workflows.",
+    "tags": ["feature", "compatibility", "legacy", "agents"]
+  },
+  "elizacloud": {
+    "description": "elizaOS plugin to connect with elizaOS Cloud services",
+    "tags": ["elizacloud"]
+  },
+  "farcaster": {
+    "description": "Farcaster connector for publishing casts and responding to social conversations.",
+    "tags": ["connector", "social", "farcaster", "messaging"]
+  },
+  "feishu": {
+    "description": "Feishu connector for bots, chats, and workflow notifications on Lark/Feishu.",
+    "tags": ["connector", "messaging", "feishu", "productivity"]
+  },
+  "google-chat": {
+    "description": "Google Chat connector for bots, spaces, and message-driven workflows.",
+    "tags": ["connector", "messaging", "google-chat", "productivity"]
+  },
+  "groq": {
+    "description": "Groq model provider for low-latency chat and inference workloads.",
+    "tags": ["ai-provider", "llm", "groq", "chat"]
+  },
+  "imessage": {
+    "description": "iMessage connector for Mac-based conversations and message automation.",
+    "tags": ["connector", "messaging", "imessage", "apple"]
+  },
+  "iq": {
+    "description": "IQ on-chain chat plugin for Eliza agents on Solana",
+    "tags": ["connector", "integration", "iq"]
+  },
+  "knowledge": {
+    "description": "elizaOS RAG knowledge plugin",
+    "tags": ["knowledge"]
+  },
+  "line": {
+    "description": "LINE connector for bot messaging and customer conversations.",
+    "tags": ["connector", "messaging", "line", "social"]
+  },
+  "local-ai": {
+    "description": "LocalAI provider for self-hosted, OpenAI-compatible local model inference.",
+    "tags": ["ai-provider", "llm", "local-models", "self-hosted"]
+  },
+  "matrix": {
+    "description": "Matrix connector for rooms, bots, and federated chat workflows.",
+    "tags": ["connector", "messaging", "matrix", "chat"]
+  },
+  "minecraft": {
+    "description": "Minecraft automation app for driving Mineflayer bots from Eliza agents.",
+    "tags": ["app", "games", "minecraft", "automation"]
+  },
+  "moltbook": {
+    "description": "Moltbook social plugin for Eliza agents - Reddit-style platform for AI agents",
+    "tags": ["moltbook", "social", "reddit", "agents", "autonomous"]
+  },
+  "nostr": {
+    "description": "Nostr connector for relay-based social posting and conversation handling.",
+    "tags": ["connector", "social", "nostr", "relays"]
+  },
+  "ollama": {
+    "description": "Ollama provider for running local LLMs on your own machine.",
+    "tags": ["ai-provider", "llm", "ollama", "local-models"]
+  },
+  "openrouter": {
+    "description": "OpenRouter provider for routing requests across many hosted models through one API.",
+    "tags": ["ai-provider", "llm", "openrouter", "routing"]
+  },
+  "pdf": {
+    "description": "Core Node.js plugin for elizaOS that provides essential services and actions for file operations.",
+    "tags": ["pdf"]
+  },
+  "roblox": {
+    "description": "Roblox app integration for agent-driven gameplay and interactive experiences.",
+    "tags": ["app", "games", "roblox", "interactive"]
+  },
+  "s3-storage": {
+    "description": "S3-compatible object storage plugin for saving files, media, and generated artifacts.",
+    "tags": ["feature", "storage", "files", "s3"]
+  },
+  "solana": {
+    "description": "Core Solana blockchain plugin for elizaOS, enabling token operations, trading, and DeFi integrations.",
+    "tags": ["crypto", "solana"]
+  },
+  "sql": {
+    "description": "SQL database adapter for persistent agent state, memory, and logs.",
+    "tags": ["database", "storage", "sql", "persistence"]
+  },
+  "telegram": {
+    "description": "Telegram connector for bot chats, groups, channels, and topic-based conversations.",
+    "tags": ["connector", "messaging", "telegram", "chat"]
+  },
+  "tlon": {
+    "description": "Tlon connector for Urbit chat and social interactions.",
+    "tags": ["connector", "social", "urbit", "chat"]
+  },
+  "twitch": {
+    "description": "Twitch connector for live chat, channel events, and audience interactions.",
+    "tags": ["connector", "streaming", "twitch", "chat"]
+  },
+  "vercel-ai-gateway": {
+    "description": "Vercel AI Gateway provider for routing model requests through a single endpoint.",
+    "tags": ["ai-provider", "llm", "gateway", "routing"]
+  },
+  "zalo": {
+    "description": "Zalo connector for official account messaging and support workflows.",
+    "tags": ["connector", "messaging", "zalo", "chat"]
+  },
+  "zalouser": {
+    "description": "Zalo personal-account connector for one-to-one messaging workflows.",
+    "tags": ["connector", "messaging", "zalo", "personal-account"]
+  },
+  "wechat": {
+    "description": "WeChat connector for messaging via proxy API with QR code login.",
+    "tags": ["connector", "messaging", "wechat", "social"]
+  },
+  "music-library": {
+    "description": "Music metadata, library storage, playlists, user preferences, analytics, and YouTube search for elizaOS agents.",
+    "tags": ["feature", "music", "library", "playlists", "analytics", "audio"],
+    "configKeys": [
+      "MUSICBRAINZ_USER_AGENT",
+      "LASTFM_API_KEY",
+      "GENIUS_API_KEY",
+      "THEAUDIODB_API_KEY",
+      "SPOTIFY_CLIENT_ID",
+      "SPOTIFY_CLIENT_SECRET",
+      "MUSIC_STORAGE_DIR",
+      "MUSIC_STORAGE_HIGH_QUALITY"
+    ]
+  },
+  "music-player": {
+    "description": "Music playback engine with queue management, cross-fading, HTTP streaming, and optional Discord voice integration.",
+    "tags": ["feature", "music", "playback", "streaming", "audio", "discord"],
+    "configKeys": [
+      "AUDIO_CACHE_DIR",
+      "AUDIO_CACHE_FORMAT",
+      "YOUTUBE_COOKIES",
+      "YTDLP_COOKIES",
+      "YOUTUBE_PROXY",
+      "YTDLP_PROXY",
+      "SERVER_URL"
+    ]
+  }
+}

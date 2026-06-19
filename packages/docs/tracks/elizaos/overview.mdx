@@ -1,0 +1,41 @@
+---
+title: elizaOS
+description: "The Linux distribution and AOSP variant of elizaOS."
+---
+
+**elizaOS** (the operating system) is a bootable distribution that ships the elizaOS app and agent runtime as a first-class home surface. It comes in two shapes:
+
+- **elizaOS Live** — a Tails-derived bootable Linux variant. Boots from USB, runs entirely from RAM, with optional encrypted persistence.
+- **elizaOS Mobile** — AOSP (Android Open Source Project) builds with the agent runtime and app pre-installed, targeting select supported devices.
+
+## When to pick this track
+
+- You want a privacy-first dedicated device for Eliza.
+- You're shipping hardware bundled with Eliza pre-installed.
+- You're building a kiosk, lab device, or appliance.
+- You want to evaluate Eliza in an isolated environment (VM bundles ship for QEMU/KVM, UTM, and OVA).
+
+## Track contents
+
+<CardGroup cols={2}>
+  <Card title="Linux (live USB)" icon="linux" href="/tracks/elizaos/linux">
+    The Tails-based live distribution. Boot, persistence, security model.
+  </Card>
+  <Card title="AOSP (Android)" icon="android" href="/tracks/elizaos/aosp">
+    Supported devices, flashing, OTA, validation.
+  </Card>
+  <Card title="Install" icon="download" href="/tracks/elizaos/install">
+    Flashers, checksums, recovery, channels.
+  </Card>
+</CardGroup>
+
+## Where this comes from
+
+- Linux: [`packages/os/linux/`](https://github.com/elizaOS/eliza/tree/develop/packages/os/linux)
+- Android: [`packages/os/android/`](https://github.com/elizaOS/eliza/tree/develop/packages/os/android)
+- Installer / flasher: [`packages/os/setup/`](https://github.com/elizaOS/eliza/tree/develop/packages/os/setup), [`packages/os/usb-installer/`](https://github.com/elizaOS/eliza/tree/develop/packages/os/usb-installer)
+- Release manifests: [`packages/os/release/`](https://github.com/elizaOS/eliza/tree/develop/packages/os/release)
+
+## Status
+
+elizaOS is actively developed. Channels (alpha / beta / stable) and supported-device lists are pinned in `packages/os/release/`. Always verify checksums before flashing.

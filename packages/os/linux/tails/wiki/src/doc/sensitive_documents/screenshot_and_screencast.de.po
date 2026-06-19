@@ -1,0 +1,152 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-18 15:39+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Screenshot and screencast\"]]\n"
+msgstr "[[!meta title=\"Screenshot und Bildschirmaufnahme\"]]\n"
+
+#. type: Plain text
+msgid "To take a screenshot or record a screencast:"
+msgstr "Um einen Screenshot zu machen oder einen Screencast aufzunehmen:"
+
+#. type: Bullet: '1. '
+msgid "To start the camera widget, either:"
+msgstr "Um das Kamera-Widget zu starten, entweder:"
+
+#. type: Bullet: '   - '
+msgid "Press the **PrtScn** key of the keyboard."
+msgstr "Drücken Sie die **PrtScn**-Taste auf der Tastatur."
+
+#. type: Bullet: '   - '
+#, fuzzy
+#| msgid ""
+#| "Click on [[!img lib/camera-photo.png alt=\"Take Screenshot\" "
+#| "class=\"symbolic\" link=\"no\"]] in the system menu."
+msgid ""
+"Select the [[!img lib/applets-screenshoter.png alt=\"Take Screenshot\" "
+"class=\"symbolic\" link=\"no\"]] button in the system menu."
+msgstr ""
+"Klicken Sie im Systemmenü auf [[!img lib/camera-photo.png alt=\"Screenshot "
+"machen\" class=\"symbolic\" link=\"no\"]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img first_steps/desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+"     [[!img first_steps/desktop/system-with-wifi-only.png class="
+"\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "The camera widget appears at the bottom of the screen."
+msgstr "Das Kamera-Widget erscheint am unteren Bildschirmrand."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img camera.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img camera.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"To turn on the screenshot mode, click on the [[!img lib/camera-photo.png "
+"alt=\"Screenshot\" class=\"symbolic\" link=\"no\"]] button."
+msgstr ""
+"Um den Screenshot-Modus zu aktivieren, klicken Sie auf die [[!img lib/camera-"
+"photo.png alt=\"Screenshot\" class=\"symbolic\" link=\"no\"]] Schaltfläche."
+
+#. type: Bullet: '   - '
+msgid ""
+"To turn on the screencast mode, click on the [[!img lib/camera-web.png "
+"alt=\"Screencast\" class=\"symbolic\" link=\"no\"]] button."
+msgstr ""
+"Um den Screencast-Modus zu aktivieren, klicken Sie auf die [[!img lib/camera-"
+"web.png alt=\"Screencast\" class=\"symbolic\" link=\"no\"]] Schaltfläche."
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the [[!img lib/media-record.png alt=\"Screencast\" "
+"class=\"symbolic\" link=\"no\"]] button to take a screenshot or start "
+"recording a screencast."
+msgstr ""
+"Klicken Sie auf die [[!img lib/media-record.png alt=\"Screencast\" "
+"class=\"symbolic\" link=\"no\"]] Schaltfläche, um einen Screenshot zu "
+"erstellen oder mit der Aufnahme eines Screencasts zu beginnen."
+
+#. type: Bullet: '   - '
+msgid ""
+"Screenshots are saved in the *Pictures* folder, accessible from the *Files* "
+"browser."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Screencasts are saved in the *Videos* folder, accessible from the *Files* "
+"browser."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Screencasts don't record sound. You can record ambient sound using\n"
+"<i>[[Sound Recorder|sound_and_video]]</i>.</p>\n"
+msgstr ""
+"<p>Screencasts zeichnen keinen Ton auf. Sie können Umgebungsgeräusche mit\n"
+"<i>[[Sound Recorder|sound_and_video]]</i> aufnehmen.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#~ msgid "Screenshots are saved in **Places**&nbsp;▸ **Pictures**."
+#~ msgstr "Screenshots werden in **Orte**&nbsp;▸ **Bilder** gespeichert."
+
+#~ msgid "Screencasts are saved in **Places**&nbsp;▸ **Videos**."
+#~ msgstr "Screencasts werden in **Orte**&nbsp;▸ **Videos** gespeichert."
+
+#, no-wrap
+#~ msgid "Taking a screenshot"
+#~ msgstr "Bildschirmfoto aufnehmen"
+
+#~ msgid ""
+#~ "To take a screenshot of the entire screen, part of the screen, or a "
+#~ "single window choose **Applications**&nbsp;▸ **Screenshot**."
+#~ msgstr ""
+#~ "Um einen Screenshot des gesamten Bildschirms, eines Teils des Bildschirms "
+#~ "oder eines einzelnen Fensters zu erstellen, wählen Sie "
+#~ "**Anwendungen**&nbsp;▸ **Screenshot**."
+
+#~ msgid ""
+#~ "You can also press the **PrtScn** key of the keyboard to take a "
+#~ "screenshot of the entire screen instantaneously. The screenshot is saved "
+#~ "in **Places**&nbsp;▸ **Pictures**."
+#~ msgstr ""
+#~ "Sie können auch die Taste **PrtScn** auf der Tastatur drücken, um sofort "
+#~ "einen Screenshot des gesamten Bildschirms zu erstellen. Der Screenshot "
+#~ "wird unter **Places**&nbsp;▸ **Pictures** gespeichert."
+
+#, no-wrap
+#~ msgid "Recording a screencast"
+#~ msgstr "Aufzeichnung eines Screencasts"

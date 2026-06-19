@@ -1,0 +1,96 @@
+[[!meta title="Tails 6.14.1"]]
+[[!meta date="Thu, 03 Apr 2025 13:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Today, we are releasing 6.14.1 instead of 6.14 because we discovered an
+important issue while testing 6.14 on Tuesday and had to start the release
+process again to fix it.
+
+<h1 id="features">New features</h1>
+
+## More flexible confinement of *Tor Browser*
+
+We improved the confinement technology that we use to protect your files from
+possible security vulnerabilities in *Tor Browser*.
+
+Until now, *Tor Browser* could only save downloads to and read files from a
+limited number of folders.
+
+With Tails 6.14.1, you can safely access any folder in your *Home* folder or
+Persistent Storage from *Tor Browser*.
+
+This new integration also solves other usability and accessibility issues:
+
+- The Large Text accessibility feature works in *Tor Browser*. ([[!tails_ticket 19266]])
+
+- The Cursor Size accessibility feature works in *Tor Browser*. ([[!tails_ticket 19572]])
+
+- The minimize and maximize buttons are available again in the title bar. ([[!tails_ticket 19328]])
+
+These improvements rely on 2 security technologies: the flexibility of the new
+[XDG Desktop Portals](https://flatpak.github.io/xdg-desktop-portal/) of
+*Flatpak* allowed us to relax the [[AppArmor
+confinement|contribute/design/application_isolation]], improving usability
+without compromising on security.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [14.0.9](https://blog.torproject.org/new-release-tor-browser-1409).
+
+- Update the *Tor* client to 0.4.8.16.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix the Welcome Screen freezing after unlocking the Persistent Storage.
+  ([[!tails_ticket 20783]])
+
+- Add a clearer border to the *Kleopatra* window when on white background.
+  ([[!tails_ticket 20861]])
+
+- Fix the error when closing the check for upgrades from *About Tails*.
+  ([[!tails_ticket 20861]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<!--
+
+<h1 id="issues">Known issues</h1>
+
+Copy the known issues from the previous version if they haven't been
+solved or move them to /support/known_issues if more appropriate.
+
+-->
+
+<h1 id="get">Get Tails 6.14.1</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.14.1.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.14.1 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.14.1 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

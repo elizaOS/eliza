@@ -1,0 +1,88 @@
+[[!meta title="Troubleshooting connecting to Tor"]]
+
+The sections below summarize the most common problems when [[connecting to Tor|tor]].
+
+[[!toc startlevel=2]]
+
+<h2 id="clock">The computer clock is set to an incorrect time zone</h2>
+
+The clock of the computer needs to be correct to connect to Tor.
+
+If you choose to [[hide that you are connecting to Tor|tor#hiding]], you might
+have to fix the clock manually if Tails fails to connect to Tor.
+
+Choose **Fix Clock** in the error screen of the *Tor Connection* assistant to
+set the clock and time zone of your computer.
+
+If you have problems fixing the clock, you can instead try to restart Tails and
+choose to [[connect to Tor automatically|tor#automatic]]. When connecting to
+Tor automatically, Tails fixes the clock automatically by connecting to the
+captive portal detection service of [Fedora](http://fedoraproject.org/static/hotspot.txt) before
+connecting to Tor.
+
+<h2 id="portal">You need to sign in to the network</h2>
+
+[[!inline pages="doc/anonymous_internet/unsafe_browser/captive_portal.inline" raw="yes" sort="age"]]
+
+To sign in to a network using a captive portal:
+
+1. In the error screen of the *Tor Connection* assistant, choose **Try Signing in to the Network**.
+
+1. Wait until the *Unsafe Browser* starts.
+
+1. Follow the instructions on the home page of the *Unsafe Browser*.
+
+<h2 id="bridge">You need to configure a Tor bridge</h2>
+
+[[!inline pages="doc/anonymous_internet/tor/bridge.inline" raw="yes" sort="age"]]
+
+<h2 id="stuck">The progress bar gets stuck around 50%</h2>
+
+When using a custom Tor *obfs4* bridge, the progress bar of *Tor Connection*
+sometimes gets stuck halfway through and becomes extremely slow.
+
+[[!img stuck.png link="no" alt=""]]
+
+To fix this, you can either:
+
+- Close and reopen *Tor Connection* to speed up the initial connection.
+
+- Try with [[another bridge|troubleshoot#bridge]].
+
+<div class="bug">
+
+<!--
+
+On 2025-09-04, the Anticensorship Team believed that there were still many
+bridges with an obfs4 version earlier than 0.0.12.
+
+Their "transport-info" info in cached-extrainfo is too new to give us reliable
+information.
+
+-->
+
+<p>This issue only affects outdated <i>obfs4</i> bridges and does not happen with
+<i>obfs4</i> bridges that run version 0.0.12 or later.</p>
+
+</div>
+
+<h2 id="broken">The bridge is no longer operational</h2>
+
+It is possible that the bridge that you entered is no longer working.
+
+Try with [[another bridge|troubleshoot#bridge]].
+
+<h2 id="incorrect">You did not enter the bridge correctly</h2>
+
+You can use *obfs4* and *WebTunnel* bridges in Tails right now.
+
+- An *obfs4* bridge looks like:
+
+      obfs4 1.2.3.4:1234 B0E566C9031657EA7ED3FC9D248E8AC4F37635A4 cert=OYWq67L7MDApdJCctUAF7rX8LHvMxvIBPHOoAp0+YXzlQdsxhw6EapaMNwbbGICkpY8CPQ iat-mode=0
+
+- A *WebTunnel* bridge looks like:
+
+      webtunnel [1234:567:890a:bcde:f123:4567:890a:bcde]:443 5F55B60FF2AEA996B5109BC338FC5F2BCA696F52 url=https://example.com/webtunnel ver=0.0.1
+
+You need to enter the entire line, not just the IP address and port
+combination.

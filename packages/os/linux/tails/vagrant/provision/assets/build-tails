@@ -1,0 +1,222 @@
+#!/bin/sh
+# -*- mode: sh; sh-basic-offset: 4; indent-tabs-mode:nil; -*-
+
+set -e
+set -u
+set -o pipefail
+set -x
+
+umask 022
+
+if [ -n "${TAILS_PROXY:-}" ]; then
+    export http_proxy="${TAILS_PROXY}"
+fi
+
+if [ "${TAILS_WEBSITE_CACHE}" = "yes" ]; then
+    export WEBSITE_CACHE_BASEDIR=/var/cache/tails-website
+fi
+
+as_root_do() {
+    # shellcheck disable=SC2154
+    sudo \
+        ${RSYNC_PROXY:+RSYNC_PROXY="${RSYNC_PROXY}"} \
+        ${http_proxy:+http_proxy="${http_proxy}"} \
+        ${https_proxy:+https_proxy="${https_proxy}"} \
+        ${ftp_proxy:+ftp_proxy="${ftp_proxy}"} \
+        ${no_proxy:+no_proxy="${no_proxy}"} \
+        ${MKSQUASHFS_OPTIONS:+MKSQUASHFS_OPTIONS="${MKSQUASHFS_OPTIONS}"} \
+        ${APT_SNAPSHOTS_SERIALS:+APT_SNAPSHOTS_SERIALS="${APT_SNAPSHOTS_SERIALS}"} \
+        ${TAILS_WEBSITE_CACHE:+TAILS_WEBSITE_CACHE="${TAILS_WEBSITE_CACHE}"} \
+        ${WEBSITE_CACHE_BASEDIR:+WEBSITE_CACHE_BASEDIR="${WEBSITE_CACHE_BASEDIR}"} \
+        ${GIT_COMMIT:+GIT_COMMIT="${GIT_COMMIT}"} \
+        ${GIT_REF:+GIT_REF="${GIT_REF}"} \
+        ${BASE_BRANCH_GIT_COMMIT:+BASE_BRANCH_GIT_COMMIT="${BASE_BRANCH_GIT_COMMIT}"} \
+        ${FEATURE_BRANCH_GIT_COMMIT:+FEATURE_BRANCH_GIT_COMMIT="${FEATURE_BRANCH_GIT_COMMIT}"} \
+        ${TAILS_PROXY_TYPE:+TAILS_PROXY_TYPE="${TAILS_PROXY_TYPE}"} \
+        ${JENKINS_URL:+JENKINS_URL="${JENKINS_URL}"} \
+        "${@}"
+}
+
+cleanup() {
+    [ -n "${BUILD_DIR:-}" ] || return 0
+    cd /
+    remove_build_dirs
+    sudo rm -rf "${BUILD_DIR}"
+}
+
+remove_build_dirs() {
+    for mountpoint in $(old_build_dirs | tac); do
+        tries=0
+        sudo lsof | grep --fixed-strings "${mountpoint}" || true
+        while ! sudo umount -f --verbose "${mountpoint}" && [ $tries -lt 12 ]; do
+            sudo fuser --ismountpoint --mount "${mountpoint}" --kill || true
+            sleep 5
+            tries=$((tries + 1))
+        done
+        sudo rm -rf "${mountpoint}"
+    done
+}
+
+old_build_dirs() {
+    mount |
+        perl -ni -E 'say $mountpoint if (($mountpoint) = ($_ =~ m{^(?:tmpfs|devpts-live|proc-live|sysfs-live) on (/tmp/tails-build(?:-tmpfs)?\.[/[:alnum:]]+)}))'
+}
+
+ntp_enabled() {
+    timedatectl status | grep -qs -E '^\s*NTP\s+service:\s+active$'
+}
+
+ntp_synchronized() {
+    ntp_enabled &&
+        timedatectl status | grep -qs -E '^\s*System\s+clock\s+synchronized:\s+yes$'
+}
+
+shrink_acng_cache() {
+    local proxy_type="$1"
+    [ "${proxy_type}" = "vmproxy" ] || return 0
+    # The apt-cacher-ng cache disk is 15G, so let's ensure at most 10G
+    # of it is used so there is 5G before each build, which should be
+    # enough for any build, even if we have to download a complete set
+    # of new packages for a new Debian release.
+    as_root_do /usr/lib/apt-cacher-ng/acngtool shrink 10G -f ||
+        echo "The clean-up of apt-cacher-ng's cache failed: this is" \
+            "not fatal and most likely just means that some disk" \
+            "space could not be reclaimed -- in order to fix that" \
+            "situation you need to manually investigate " \
+            "/var/cache/apt-cacher-ng/apt-cacher-ng-log/main_*.html" >&2
+}
+
+if [ "${TAILS_BUILD_FAILURE_RESCUE}" != 1 ]; then
+    trap cleanup EXIT
+    remove_build_dirs
+fi
+
+# In git 2.39.5 an ownership check was introduced when cloning local
+# repositories in order to handle CVE-2024-32004. The host's Git dir
+# is shared into the tails-builder VM in such a way that it is owned
+# by the same (numeric) uid inside the VM as on the host, and if it is
+# different than the vagrant user's uid (1000), then the `git clone`
+# below would fail due to the ownership check (tails#20560) unless we
+# explicitly tell Git that the source dir is safe. For most of us this
+# won't be a problem since our main user has uid 1000, but this is for
+# instance not the case on jenkins.
+for dir in /amnesia.git/.git /amnesia.git/.git/modules/submodules/*; do
+    git config --global --add safe.directory "${dir}"
+done
+
+TAILS_GIT_DIR="/home/vagrant/amnesia"
+rm -rf "${TAILS_GIT_DIR}"
+# We use --shared as an time/space optimization, and it is safe
+# since our build process doesn't modify any objects (which would
+# fail since the host's .git directory is shared read-only).
+git clone --shared --local /amnesia.git/.git "${TAILS_GIT_DIR}"
+# When we locally Git clone the main repo over the filesystem
+# above, it will use the host's local repo as origin, but the
+# submodules will continue to use their remote repos. A problem
+# with this, beside unnecessary fetching of the network, is that
+# any unpublished commits in the host's submodule are
+# inaccessible, so if we want to build we first have to push those
+# commits to the submodules remote repo. To avoid this, and in
+# general try to make sure that the Git state in the builder is
+# the same as on the host, we just clone the submodules in the
+# same way we do the main repo.
+(
+    cd "${TAILS_GIT_DIR}/submodules"
+    for submodule in *; do
+        # handle the case when there is no submodule
+        [ -e "$submodule" ] || break
+        rm -rf "${submodule}"
+        git clone --shared \
+            "/amnesia.git/.git/modules/submodules/${submodule}"
+        cd "${submodule}"
+        # Mirror the branches this submodule tracks on its
+        # "origin" remote as if they were on our own "origin" remote,
+        # so our build scripts have access to refs. See more detailed
+        # explanation below, where we do the same thing
+        # in $TAILS_GIT_DIR.
+        git config remote.origin.fetch \
+            +refs/remotes/origin/*:refs/remotes/origin/*
+        cd ..
+    done
+)
+
+cd "${TAILS_GIT_DIR}"
+# Mirror the branches amnesia.git tracks on its "origin" remote as if
+# they were on our own "origin" remote, (i.e. under the origin/$REF
+# name), even if it's untrue (our own "origin" is amnesia.git and has
+# only one local ref, which is the branch we work on and that it has
+# checked out as a local tracking branch). This allows
+# git_base_branch_head(), that's used by Rakefile to set
+# $BASE_BRANCH_GIT_COMMIT, to do its job: without this, it would not
+# have access to the state of the base branch because it would not
+# have any ref for it.
+git config remote.origin.fetch +refs/remotes/origin/*:refs/remotes/origin/*
+
+# Ensure we have the same Git state as on the host
+git fetch --tags --recurse-submodules=no
+git checkout --force "${GIT_REF}"
+git reset --hard "${GIT_COMMIT}"
+git submodule update --init
+
+# We use our own fork of live-build.  To ease development, we no
+# longer build and install Debian packages, but install it from a git
+# submodule.
+#
+# We just run make install here, which is cheap, and it makes sure
+# that we always use the current version even during development.
+as_root_do make -C "${TAILS_GIT_DIR}/submodules/live-build" install
+
+if as_root_do systemctl --quiet is-active apt-cacher-ng.service; then
+    as_root_do ./auto/scripts/update-acng-config
+    as_root_do systemctl restart apt-cacher-ng.service
+fi
+
+if [ "${TAILS_OFFLINE_MODE}" != 1 ]; then
+    as_root_do timedatectl set-ntp true
+    set +x
+    ELAPSED=0
+    echo -n "Waiting for the time to be synchronized..."
+    while ! ntp_synchronized; do
+        if [ "${ELAPSED}" -ge 120 ]; then
+            echo "NTP synchronization didn't succeed within 2 minutes, aborting..." >&2
+            exit 1
+        fi
+        ELAPSED=$((ELAPSED + 1))
+        sleep 1
+        echo -n "."
+    done
+    echo " done."
+    set -x
+fi
+if [ -n "$TAILS_DATE_OFFSET" ]; then
+    as_root_do timedatectl set-ntp false
+    set +x
+    echo -n "Waiting for NTP to be disabled..."
+    while ntp_enabled; do
+        sleep 1
+        echo -n "."
+    done
+    echo " done."
+    set -x
+
+    DESIRED_DATE=$(date --utc --date="${TAILS_DATE_OFFSET} days" '+%F %T')
+    echo "Setting system time to ${DESIRED_DATE}"
+    as_root_do timedatectl set-time "$DESIRED_DATE"
+fi
+
+shrink_acng_cache "${TAILS_PROXY_TYPE}"
+
+BUILD_DIR=$(mktemp -d /tmp/tails-build.XXXXXXXX)
+if [ "${TAILS_RAM_BUILD}" = "yes" ]; then
+    as_root_do mount -t tmpfs -o "noatime,size=100%,mode=0770,uid=root,gid=${USER}" tmpfs "${BUILD_DIR}"
+fi
+as_root_do rsync -a "${TAILS_GIT_DIR}"/ "${BUILD_DIR}"/
+
+cd "${BUILD_DIR}"
+
+as_root_do lb config --cache false
+as_root_do lb build
+
+shrink_acng_cache "${TAILS_PROXY_TYPE}"
+
+mv -f tails-* "${TAILS_GIT_DIR}/"

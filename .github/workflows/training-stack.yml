@@ -1,0 +1,185 @@
+name: Training Stack
+
+# Reproducibility gate for the eliza-1 training + quantization stack.
+#
+# Two lanes:
+#   - cpu-smoke:  GitHub-hosted ubuntu-22.04. Builds the CPU image, lints
+#                 packages/training/scripts/, runs the model_registry
+#                 import probe, and any pure-python tests that do not
+#                 require CUDA. Runs on every PR that touches
+#                 packages/training/**.
+#   - gpu-build:  Self-hosted runner with `gpu-cuda-12.6` label. Builds
+#                 the full GPU Dockerfile (which exercises QJL nvcc end
+#                 to end) and runs CUDA-dependent tests. Pull requests
+#                 opt in with the `gpu-ci` label; push/manual runs keep
+#                 exercising the self-hosted lane.
+#
+# CUDA / torch alignment lives in packages/training/Dockerfile and
+# packages/training/pyproject.toml — keep the runner label and the
+# Dockerfile CUDA tag in lockstep when they change.
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "packages/training/**"
+      - ".github/workflows/training-stack.yml"
+  pull_request:
+    branches: [develop]
+    paths:
+      - "packages/training/**"
+      - ".github/workflows/training-stack.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: training-stack-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-smoke:
+    name: CPU smoke (lint + import)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5
+
+      # The CPU training image is large; the stock github-hosted runner runs out
+      # of disk mid-build ("No space left on device"). Reclaim the preinstalled
+      # toolchains we don't need before building.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/local/.ghcup || true
+          sudo docker image prune -af || true
+          df -h
+
+      - name: Build CPU image
+        id: build_cpu
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        with:
+          context: packages/training
+          file: packages/training/Dockerfile.cpu
+          tags: eliza-training-cpu:ci
+          load: true
+          cache-from: type=gha,scope=training-cpu
+          cache-to: type=gha,scope=training-cpu,mode=max
+
+      - name: Install ruff (host)
+        # ruff lint is fast on the host and gives a clean GitHub
+        # Annotations surface — no need to shell into the container.
+        run: pipx install ruff || pip install --user ruff
+
+      - name: Lint packages/training/scripts/
+        run: ruff check packages/training/scripts/
+
+      - name: Import probe — model_registry
+        # The whole point of this lane: catch import-time errors in the
+        # training package before they hit a real GPU run.
+        # Mount live sources under /workspace/live so the image's
+        # /workspace/.venv and TOON node_modules remain visible at runtime.
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/packages/training:/workspace/live" \
+            -e PYTHONPATH=/workspace/live/scripts \
+            eliza-training-cpu:ci \
+            -c "python -c 'from training.model_registry import REGISTRY; print(list(REGISTRY))'"
+
+      - name: Run pure-python test suite
+        # All pytest files in scripts/ that don't need GPU. test_reward_fn
+        # may be a no-op in some branches; we still surface its result.
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/packages/training:/workspace/live" \
+            -e PYTHONPATH=/workspace/live/scripts \
+            eliza-training-cpu:ci \
+            -c "set -e; \
+                cd /workspace/live; \
+                pytest -xvs \
+                  scripts/test_default_thought_leak.py \
+                  scripts/test_eliza_record.py \
+                  scripts/test_cap_distribution.py \
+                  scripts/test_reward_fn.py \
+                  scripts/test_tier_caps.py"
+
+      - name: Corpus-quality chain end-to-end smoke
+        # Synthesizer dry-runs → classifier → audit --strict-phases →
+        # reasoning_cot + claude_distill transforms. Catches drift in
+        # the runtime-phase enforcement chain (RUNTIME_PHASES.md /
+        # COVERAGE_AUDIT.md) on every PR.
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/packages/training:/workspace/live" \
+            -e PYTHONPATH=/workspace/live/scripts \
+            eliza-training-cpu:ci \
+            -c "set -e; cd /workspace/live; bash scripts/ci_smoke_e2e.sh"
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cpu-smoke-logs
+          path: |
+            packages/training/scripts/**/*.log
+            /tmp/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  gpu-build:
+    name: GPU build (QJL nvcc + Triton JIT)
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'gpu-ci')
+    runs-on: [self-hosted, gpu-cuda-12.6]
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Show GPU / CUDA host environment
+        run: |
+          nvidia-smi || echo "[gpu-build] nvidia-smi not available"
+          nvcc --version || echo "[gpu-build] nvcc not on host PATH (Docker image still has it)"
+          docker --version
+
+      - name: Build GPU image
+        # End-to-end validation of the QJL nvcc compile chain. If this
+        # step succeeds, every later run on this image is guaranteed
+        # to have working QJL .so files and a Triton-capable toolchain.
+        run: |
+          docker build \
+            --file packages/training/Dockerfile \
+            --tag eliza-training:ci \
+            packages/training
+
+      - name: Run QJL CUDA tests (skip cleanly if no GPU visible)
+        # test_qjl.py auto-skips its CUDA-dependent assertions when no
+        # GPU is visible inside the container. Mounting --gpus all gives
+        # it real CUDA devices when the runner has them.
+        run: |
+          docker run --rm --gpus all \
+            -v "${{ github.workspace }}/packages/training:/workspace_src:ro" \
+            eliza-training:ci \
+            -c "set -e; \
+                cd /workspace; \
+                python scripts/quantization/test_qjl.py || \
+                  { echo '[gpu-build] test_qjl.py exited non-zero (may be acceptable skip — see logs)'; exit 1; }"
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: gpu-build-logs
+          path: |
+            packages/training/scripts/**/*.log
+            /tmp/*.log
+          if-no-files-found: ignore
+          retention-days: 7

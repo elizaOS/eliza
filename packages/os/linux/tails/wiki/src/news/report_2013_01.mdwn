@@ -1,0 +1,124 @@
+[[!meta date="Sat, 09 Feb 2013 16:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for January, 2013"]]
+
+[[!toc levels=1]]
+
+Releases
+========
+
+Tails 0.16 [[was released on January 11th|news/version_0.16]].
+
+The Tails 0.17 release is scheduled for late February. Back on tracks
+with the [[6-weeks release cycle|contribute/release_schedule]] we
+wanted to try, finally!
+
+People
+======
+
+Tails has been started and successfully connected to the Tor network
+around 100 865 times in January. That makes a boot every 27 seconds on
+average. (This number is an approximation from the requests made for
+the security announcements feed. The later is retrieved by Tails after
+being connected to Tor to eventually encourage users to update.)
+
+We received 24 reports through WhisperBack.
+
+The forum activity has been a bit lower, but still quite high:
+874 messages, 140 signed by Tails.
+
+Code
+====
+
+Our "Iceweasel with Torbrowser patches" packages have been rebased
+on Iceweasel 17. Many thanks to Mike Perry for
+his support along the way!
+
+Alessandro Grassi is still leading work on integrating
+Minitube in Tails. The Debian part was [fixed for
+Wheezy](http://bugs.debian.org/699603). Jacob Appelbaum [has
+volunteered](https://trac.torproject.org/projects/tor/ticket/8064) to
+audit Minitube anonymity for us (thanks a bunch!), and Alessandro has
+started this
+audit.
+
+The persistence device search is now
+similar to the live-boot
+one.
+
+Some preliminary work was done to
+make memory wipe faster
+on shutdown.
+
+A branch
+fixed a configuration bug that disabled the Torbrowser
+protection against listing available fonts. This was no regression.
+
+The Seahorse GnuPG agent was
+replaced with the regular
+gnupg-agent, to fix a long standing bug with Claws Mail. This adds
+support for OpenPGP smartcards as a bonus.
+
+Our Icedove patches were rebased against the 10.x series, and test
+packages were
+uploaded.
+We're still not there yet but this, added to TorBirdy soon arriving
+into Debian, is a significant step towards replacing Claws Mail with
+Icedove.
+
+It's now possible to build a Tails image based on Debian Wheezy.
+There's still quite some work.
+
+A branch that
+switches I2P to hidden mode is ready.
+
+The buggy default Iceweasel spelling language
+was fixed.
+
+The next Tails ISO should be
+a bit smaller... but don't get
+used to it.
+
+Work was done to
+install recent Intel and AMD microcode.
+
+Quite some time was spent to help make Debian Wheezy an awesome
+platform to use and built Tails upon.
+
+Documentation and website
+=========================
+
+Some localization tricks [[were published|contribute/l10n_tricks]].
+
+Tails accessibility features [[were
+documented|doc/first_steps/accessibility]].
+
+It has been explained what one may expect
+from the Tails fingerprint.
+
+A script to check our PO files quality was written.
+
+On-going discussions
+====================
+
+We are discussing how the browser homepage should be
+like.
+
+It's likely that some anonymity-oriented distributions share a common
+username and hostname in the future.
+
+We are discussing with upstream how to adapt TorBirdy for Tails'
+needs.
+
+We're not sure whether it's worth keeping the Tails section in the
+Applications menu.
+
+It's still not totally clear what should be the defaults regarding MAC
+address changing.
+
+Funding
+=======
+
+We have filed a grant application with Sponsor Bravo.
+
+Our upcoming bounties program is being organized.

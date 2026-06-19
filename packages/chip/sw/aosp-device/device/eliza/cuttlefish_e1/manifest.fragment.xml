@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  VINTF manifest fragment for the Cuttlefish e1_npu simulator overlay.
+
+  Declares vendor.eliza.e1_npu@1.0 as a live device HAL on
+  aosp_cf_riscv64_phone-* builds. The implementation binary on disk is
+  vendor.eliza.e1_npu@1.0-service.sim — checkvintf --check-compat does
+  not care which binary backs the interface, only that the package
+  name, version, transport, and instance match the framework matrix.
+-->
+<manifest version="1.0" type="device">
+    <hal format="hidl">
+        <name>vendor.eliza.e1_npu</name>
+        <transport>hwbinder</transport>
+        <version>1.0</version>
+        <interface>
+            <name>IE1Npu</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
+</manifest>

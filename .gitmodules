@@ -1,0 +1,69 @@
+[submodule "plugins/plugin-local-inference/native/llama.cpp"]
+	# The single canonical llama.cpp checkout for the whole repo. This is the
+	# elizaOS/llama.cpp fork (tracking main): the unified
+	# fork with the eliza kernels (Q4_POLAR / QJL1_256 / TBQ4_0 / TBQ3_0
+	# GGML types + Metal/Vulkan/CUDA kernels). The host build
+	# (build-llama-cpp-desktop-dylib.mjs) + AOSP cross-compile
+	# (aosp/compile-libllama.mjs) default to this submodule; bun's postinstall
+	# (scripts/ensure-llama-cpp-submodule.mjs) initializes it. The fork is
+	# itself a llama.cpp fork, so it carries convert_hf_to_gguf.py /
+	# llama-quantize / llama-cli too — the training pipeline's plain Q4_K_M
+	# GGUF path uses the fork's tooling (there is no separate "stock upstream"
+	# submodule). build/ is gitignored by llama.cpp's own .gitignore so only
+	# the gitlink (commit SHA) is tracked.
+	path = plugins/plugin-local-inference/native/llama.cpp
+	url = https://github.com/elizaOS/llama.cpp.git
+	branch = main
+
+[submodule "plugins/plugin-local-inference/native/omnivoice.cpp"]
+	# omnivoice.cpp — the voice inference engine (TTS + streaming audio).
+	# Forked from ServeurpersoCom/omnivoice.cpp; elizaOS fork lives at
+	# elizaOS/omnivoice.cpp. Initialized by postinstall via
+	# scripts/ensure-omnivoice-submodule.mjs. CMakeLists.txt probed by
+	# build-omnivoice.mjs. build/ is gitignored so only the gitlink is tracked.
+	#
+	# Tracks elizaOS/omnivoice.cpp `develop` — the integration branch that
+	# carries the fork's diagnostic injection layer, the GGML_OPENVINO_DISABLE
+	# cmake hook, and the latest ServeurpersoCom upstream merge. The fused
+	# libelizainference build (packages/app-core/scripts/omnivoice-fuse/) grafts
+	# sources from this tree into the llama.cpp fork at fuse time.
+	path = plugins/plugin-local-inference/native/omnivoice.cpp
+	url = https://github.com/elizaOS/omnivoice.cpp.git
+	branch = develop
+
+[submodule "plugins/plugin-local-inference/native/whisper.cpp"]
+	# whisper.cpp — ggml-backed Whisper ASR runtime. Replaces the previous
+	# OpenVINO Whisper Python-worker path. Loaded via
+	# `libwhisper_eliza_adapter` (a thin C ABI wrapper in
+	# `plugins/plugin-local-inference/native/whisper-eliza-adapter/`) through
+	# bun:ffi by `src/services/voice/whisper-cpp-asr.ts`. Build script
+	# `build-whisper.mjs` mirrors `build-omnivoice.mjs` for the cross-compile
+	# matrix (android/linux × arm64/x86_64/riscv64 + darwin-arm64-metal).
+	#
+	# When the submodule is absent, `build-whisper.mjs` falls back to a
+	# `git clone --depth 1 --branch v1.7.4` of upstream ggerganov/whisper.cpp
+	# into `~/.cache/eliza-whisper-cpp/whisper.cpp`. The submodule
+	# is the canonical pin; the fallback is the new-checkout convenience path.
+	path = plugins/plugin-local-inference/native/whisper.cpp
+	url = https://github.com/ggerganov/whisper.cpp.git
+	branch = master
+
+[submodule "plugins/plugin-agent-orchestrator/vendor/opencode"]
+	# opencode — the elizaOS fork of the opencode AI coding agent.
+	# Used by plugin-agent-orchestrator to spawn opencode sub-agents.
+	# The binary is expected on PATH after build; hasBinaryOnPath("opencode")
+	# in task-agent-frameworks.ts gates its use.
+	path = plugins/plugin-agent-orchestrator/vendor/opencode
+	url = https://github.com/elizaOS/opencode.git
+	branch = dev
+
+[submodule "packages/robot/vendor/asimov-1"]
+	# ASIMOV-1 public CAD, MuJoCo model, electrical, and fabrication assets.
+	# The robot package generates its profile MJCF from this pinned checkout.
+	path = packages/robot/vendor/asimov-1
+	url = https://github.com/asimovinc/asimov-1.git
+	branch = main
+[submodule "upstreams/electrobun"]
+	path = upstreams/electrobun
+	url = https://github.com/elizaOS/electrobun.git
+	branch = develop

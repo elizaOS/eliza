@@ -1,0 +1,238 @@
+schema: eliza.e1_phone_wireless_module_release_execution.v1
+status: blocked_wireless_module_release_requires_cellular_branch_decision_supplier_design_packs_routed_rf_firmware_regulatory_and_factory_logs
+date: '2026-05-21'
+claim_boundary: >
+  Release-execution gate for the off-the-shelf cellular and Wi-Fi/Bluetooth modules in the E1 phone
+  package. This records the current public-source module choices, RF feed and host wiring obligations,
+  supplier response gaps, factory probe coverage, and evidence required before EVT1 routed release.
+  It is not a supplier-approved pinout, land pattern, routed RF layout, firmware release, regulatory
+  approval, carrier approval, SAR evidence, first-article result, enclosure clearance release, or
+  fabrication-ready PCB.
+source_artifacts:
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/radio-module-integration.yaml
+  - board/kicad/e1-phone/radio-antenna-acceptance-checklist.yaml
+  - board/kicad/e1-phone/radio-module-source-revalidation.yaml
+  - board/kicad/e1-phone/radio-module-envelope-orderability-gate.yaml
+  - board/kicad/e1-phone/cellular-space-saving-downselect.yaml
+  - board/kicad/e1-phone/module-rf-pinout-execution.yaml
+  - board/kicad/e1-phone/radio-module-schematic-net-binding.yaml
+  - board/kicad/e1-phone/rf-connectivity-closure.yaml
+  - board/kicad/e1-phone/rf-antenna-coexistence-closure.yaml
+  - board/kicad/e1-phone/routed-clearance-release-execution.yaml
+  - board/kicad/e1-phone/enclosure-physical-fit-first-article-execution.yaml
+  - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+  - package/cellular/quectel-5g-redcap.yaml
+  - package/wifi/murata-type-2ea-wifi6e.yaml
+upstream_status:
+  radio_module_selection_wiring_decision: blocked_radio_module_selection_requires_supplier_design_packs_region_decision_routed_rf_and_firmware_evidence
+  radio_module_integration: blocked_requires_module_pinout_firmware_rf_measurement_and_regulatory_evidence
+  radio_antenna_acceptance: blocked_radio_antenna_acceptance_requires_supplier_route_firmware_regulatory_and_measurements
+  radio_module_source_revalidation: public_sources_revalidated_radio_modules_not_supplier_approved
+  radio_module_envelope_orderability_gate: blocked_cellular_region_too_small_and_supplier_design_packs_missing
+  cellular_space_saving_downselect: blocked_space_saving_lte_alternates_need_supplier_packs_and_performance_decision
+  module_rf_pinout_execution: blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence
+  radio_module_schematic_net_binding: blocked_radio_module_net_binding_requires_supplier_pinouts_real_schematic_rf_route_firmware_and_factory_evidence
+  rf_connectivity_closure: planning_rf_connectivity_cross_checked_not_measured
+  rf_antenna_coexistence_closure: blocked_requires_vendor_rf_review_routed_layout_and_measured_antenna_data
+  routed_clearance_release_execution: blocked_routed_clearance_release_requires_routed_step_supplier_models_boolean_physical_fit_and_functional_logs
+  enclosure_physical_fit_first_article_execution: blocked_enclosure_physical_fit_first_article_requires_routed_board_step_supplier_geometry_clearance_functional_logs_and_signed_traveler
+  selected_hardware_first_article_execution: blocked_selected_hardware_first_article_requires_routed_board_factory_limits_identity_enclosure_and_functional_transcripts
+  supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
+  factory_probe_map: blocked_requires_routed_board_fixture_and_first_article_limits
+release_policy:
+  release_revision: EVT1-routed-first-article
+  cellular_branch_decision_required: true
+  selected_function_count: 2
+  selected_functions:
+    - cellular
+    - wifi_bluetooth
+  required_rf_feed_count: 5
+  supplier_response_packs_received: 0
+  supplier_response_packs_required_before_release: true
+  release_allowed_without_supplier_response_packs: false
+  routed_pcb_required: true
+  clean_erc_drc_required: true
+  supplier_step_or_brep_required: true
+  firmware_and_regulatory_packs_required: true
+  first_article_rf_and_fit_logs_required: true
+  release_allowed: false
+selected_public_source_snapshot:
+  cellular_performance_reference:
+    source_ids:
+      - cellular_primary_quectel_rg255c_vendor_page
+      - cellular_quectel_2026_product_brochure
+    vendor: Quectel
+    family: RG255C_or_RM255C
+    selected_phone_form_factor: RG255C_LGA
+    class: 5G_RedCap_Sub_6
+    public_envelope_mm: {width: 29.0, height: 32.0, thickness: 2.4}
+    current_region_fit: false
+    width_shortfall_mm: 15.0
+    height_shortfall_mm: 18.0
+    release_use: performance_reference_not_layout_ready
+  cellular_space_saving_branch:
+    source_artifact: board/kicad/e1-phone/cellular-space-saving-downselect.yaml
+    preferred_candidate_id: quectel_eg915q_na_or_eg915u_class
+    class: LTE_Cat_1_bis
+    public_envelope_mm: {width: 23.6, height: 19.9, thickness: 2.4}
+    release_use: active_rfq_branch_not_production_substitute
+  wifi_bluetooth_primary:
+    source_ids:
+      - wifi_bluetooth_primary_murata_type_2ea_vendor_page
+      - wifi_bluetooth_murata_type_2ea_product_brief
+    vendor: Murata
+    order_number: LBEE5XV2EA-802
+    chipset: Infineon_CYW55573
+    wireless: Wi-Fi_6E_2x2_MIMO_Bluetooth_5p3
+    public_envelope_mm: {width: 12.5, height: 9.4, thickness: 1.2}
+    current_region_fit: true
+    width_clearance_mm: 1.5
+    height_clearance_mm: 0.6
+    release_use: primary_wifi_bluetooth_module_pending_design_pack_firmware_and_regulatory_review
+rf_feed_release_contract:
+  required_rf_nets:
+    - CELL_RF_MAIN
+    - CELL_RF_DIV
+    - CELL_GNSS_RF
+    - WIFI_BT_RF0
+    - WIFI_BT_RF1
+  required_rf_feed_count: 5
+  required_route_outputs:
+    - routed 50 ohm geometry with continuous ground reference
+    - pi or T matching network before each antenna feed
+    - conducted access before matching for every RF feed
+    - antenna vendor review against final plastics and metal stack
+    - VNA S11/S21, conducted RF, coexistence, GNSS desense, SAR pre-scan, and factory RF calibration logs
+release_records:
+  - id: cellular_branch_release
+    selected_context: Quectel_RG255C_LGA_performance_reference_with_EG915Q_EG915U_space_saving_branch
+    acceptance_items:
+      - cellular_region_sku_band_matrix
+    required_supplier_artifacts:
+      - exact cellular region SKU and orderable MPN
+      - band matrix tied to target launch countries
+      - hardware design guide, pad map, reference layout, land pattern, STEP or B-rep
+      - firmware, driver, RIL, modem test-mode, carrier, PTCRB, GCF, and SAR scope
+      - sample modules and supplier response pack
+    required_release_outputs:
+      - cellular branch decision signed between RG255C repack and smaller supplier-approved module
+      - cellular schematic symbol and footprint captured from supplier pinout
+      - routed cellular host, SIM/eSIM, power-control, and RF nets with DRC/ERC and SI/RF evidence
+    status: blocked_missing_cellular_branch_decision_and_supplier_design_pack
+    release_allowed: false
+  - id: cellular_rf_release
+    selected_context: CELL_RF_MAIN_CELL_RF_DIV_CELL_GNSS_RF
+    acceptance_items:
+      - cellular_antenna_main_div_gnss_feeds
+      - rf_matching_conducted_access_and_vna
+    required_supplier_artifacts:
+      - cellular antenna application note and reference layout
+      - module RF port pad map and keepout rules
+      - antenna vendor placement and tuning review
+    required_release_outputs:
+      - CELL_RF_MAIN, CELL_RF_DIV, and CELL_GNSS_RF routed and matched
+      - conducted-access pads or fixtures before matching
+      - VNA S11/S21 and cellular conducted TX/RX report
+    status: blocked_missing_routed_cellular_rf_and_measurements
+    release_allowed: false
+  - id: wifi_bluetooth_release
+    selected_context: Murata_LBEE5XV2EA-802_Type_2EA
+    acceptance_items:
+      - wifi6e_bt_2x2_antenna_feeds
+      - firmware_driver_nvram_clm_and_country_code
+    required_supplier_artifacts:
+      - Type 2EA pinout, application note, land pattern, reference layout, STEP or B-rep
+      - Infineon/Murata firmware, NVRAM, CLM, license archive, and regulatory database
+      - modular approval scope and antenna gain review
+    required_release_outputs:
+      - routed PCIe, SDIO fallback, UART Bluetooth, enable, IRQ, wake, RF_VBAT, WIFI_BT_RF0, and WIFI_BT_RF1 evidence
+      - Wi-Fi 2.4/5/6 GHz and Bluetooth conducted attach and sensitivity logs
+      - country-code provisioning, suspend/resume, and coexistence configuration logs
+    status: blocked_missing_murata_design_pack_firmware_regulatory_and_rf_measurements
+    release_allowed: false
+  - id: coexistence_regulatory_factory_release
+    selected_context: cellular_wifi_bluetooth_gnss_factory_and_compliance
+    acceptance_items:
+      - coexistence_gnss_desense_and_usb_charging_states
+      - regulatory_carrier_ptcrb_gcf_sar_prescan
+      - factory_rf_calibration_and_first_article_limits
+    required_supplier_artifacts:
+      - module test-mode procedures and regulatory grant applicability review
+      - carrier, PTCRB, GCF, FCC, CE, RED, and SAR pre-scan plans
+      - factory RF calibration procedure and conducted/shield-box fixture requirements
+    required_release_outputs:
+      - coexistence matrix for cellular TX, Wi-Fi/Bluetooth, GNSS, display, USB-C, charger, and thermal states
+      - SAR and RF exposure pre-scan tied to final enclosure stack
+      - factory RF limits, calibration logs, and first-article radio transcript tied to serial numbers
+    status: blocked_missing_coexistence_regulatory_factory_rf_and_first_article_logs
+    release_allowed: false
+absent_release_outputs:
+  - board/kicad/e1-phone/pcb/e1-phone-routed.kicad_pcb
+  - board/kicad/e1-phone/reports/erc-drc-clean.json
+  - board/kicad/e1-phone/mechanical/e1-phone-routed-board.step
+  - board/kicad/e1-phone/routed-board-clearance-release.yaml
+  - board/kicad/e1-phone/enclosure-fit-first-article.yaml
+  - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  - board/kicad/e1-phone/rf/vna-s11-s21.json
+  - board/kicad/e1-phone/rf/conducted-cellular-wifi-bt.json
+  - board/kicad/e1-phone/rf/coexistence-matrix.json
+  - board/kicad/e1-phone/rf/sar-prescan-summary.pdf
+  - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+factory_probe_and_traceability:
+  required_probe_domain: radios
+  required_probe_nets:
+    - CELL_GNSS_RF
+    - CELL_RF_DIV
+    - CELL_RF_MAIN
+    - WIFI_BT_RF0
+    - WIFI_BT_RF1
+    - USIM_IO
+    - ESIM_IO
+  required_traceability_fields:
+    - board_serial
+    - imei_or_modem_identifier
+    - wifi_mac
+    - bluetooth_mac
+    - secure_key_provisioning_result
+    - fixture_id
+    - test_software_revision
+cross_checks:
+  selected_sources_match_radio_source_revalidation: true
+  cellular_public_envelope_matches_selection: true
+  cellular_current_region_remains_blocked: true
+  cellular_space_saving_branch_matches_downselect: true
+  wifi_bluetooth_public_envelope_matches_selection: true
+  wifi_bluetooth_current_region_fit_matches_selection: true
+  rf_feed_contract_matches_selection_and_rf_execution: true
+  release_records_cover_all_radio_acceptance_items: true
+  factory_probe_radios_domain_covers_required_nets: true
+  supplier_response_packs_absent_and_required: true
+  absent_outputs_block_release: true
+  all_release_records_fail_closed: true
+release_blockers:
+  - Cellular branch is unresolved between RG255C LGA top-island repack and smaller supplier-approved LTE Cat 1 bis module.
+  - Cellular supplier region SKU, band matrix, design guide, pad map, reference layout, STEP/B-rep, firmware, carrier, PTCRB, GCF, and SAR evidence are missing.
+  - Murata Type 2EA pinout, land pattern, reference layout, STEP/B-rep, firmware/NVRAM/CLM/license, regulatory database, and antenna gain review are missing.
+  - Routed RF geometry, matching networks, conducted access, VNA, coexistence, GNSS desense, SAR pre-scan, and factory RF calibration logs are missing.
+  - Local routed PCB and routed STEP candidates exist for review only; clean ERC/DRC, supplier-approved routed STEP, enclosure clearance, factory probe coordinates, and first-article transcripts are missing.
+forbidden_claims:
+  - wireless_module_release_ready
+  - radio_module_selection_final
+  - cellular_region_ready
+  - cellular_ready
+  - wifi_ready
+  - bluetooth_ready
+  - gnss_ready
+  - rf_ready
+  - carrier_ready
+  - sar_ready
+  - regulatory_ready
+  - firmware_ready
+  - factory_rf_ready
+  - routed_pcb_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

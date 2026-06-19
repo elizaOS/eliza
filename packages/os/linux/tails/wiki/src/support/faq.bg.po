@@ -1,0 +1,1033 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:07+0000\n"
+"PO-Revision-Date: 2024-10-17 22:09+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Frequently asked questions\"]]\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For hardware compatibility issues, refer to our [[known issues|support/"
+"known_issues]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"To learn what you can do with Tails, refer to our [[documentation|doc]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For questions related to Tor, see also to the [Tor support pages](https://"
+"support.torproject.org/)."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"project\">Tails project</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- This entire section would be better placed in an \"About Us\" section. See #17700. -->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"tor\">What is the relationship between Tor and Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Tails is part of the [Tor Project](https://torproject.org/)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails [[was founded|news/celebrating_10_years]] in 2009 and [[joined forces "
+"with Tor|news/tails_tor]] in 2024."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"See also our explanation about [[why Tails uses Tor|doc/anonymous_internet/"
+"tor/why#relationship]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"debian\">Why is Tails based on Debian and not on another distribution?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We are deeply rooted and involved in Debian. The friendships, relationships, "
+"and technical expertise we have in Debian have many benefits for Tails, and "
+"we are not ready to build the same relationship with Ubuntu, OpenBSD, or any "
+"other distribution. See our statement about our [[contribute/"
+"relationship_with_upstream]] for details."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"See also the article [Why there are so many Debian derivatives](http://"
+"upsilon.cc/~zack/blog/posts/2011/09/"
+"why_there_are_so_many_debian_derivatives/)  by Stefano Zacchiroli."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"ubuntu\">Why isn't Tails based on Ubuntu?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "First, see the answer to the [[previous question|faq#debian]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The rapid development cycle of Ubuntu would be too fast for Tails."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Ubuntu adds features in ways that we find dangerous for privacy. For an "
+"example, see [EFF: Privacy in Ubuntu 12.10, Amazon Ads and Data Leaks]"
+"(https://www.eff.org/deeplinks/2012/10/privacy-ubuntu-1210-amazon-ads-and-"
+"data-leaks)."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Ubuntu is led by [[!wikipedia Canonical (company) desc=\"Canonical\"]], a "
+"for-profit corporation that takes most of the important decisions."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"We usually ship kernels and video drivers from [Debian backports](http://"
+"backports.debian.org/). The result is comparable to Ubuntu in terms of "
+"support for recent hardware."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"We think that the general quality of the maintenance work being done on "
+"packages matters from a security perspective. Debian maintainers generally "
+"are experts in the fields their packages deal with; while it is generally "
+"not the case outside of the limited number of packages Ubuntu officially "
+"supports."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"gnome\">Why does Tails ship the GNOME Desktop?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"People have asked for Tails with LXDE, XFCE, MATE, KDE, and so on, but we "
+"are not going to use a different desktop."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The main drawback of GNOME is that it requires quite a lot of resources, but "
+"GNOME has many advantages, especially for users who are new to Linux."
+msgstr ""
+
+#. type: Plain text
+msgid "The GNOME desktop is:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Well integrated"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Very well translated"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Doing relatively well in terms of accessibility features"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Actively developed"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Well maintained in Debian, where it is the default desktop"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We invested quite some time in acquiring GNOME knowledge, and switching our "
+"desktop environment would require going through that process again."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"That's also why we are not going to provide more than one desktop option."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"installation\">Installation</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"dedicated-stick\">Do I need a USB stick dedicated to Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Yes. Tails requires a USB stick dedicated to running Tails only."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If it were possible to use the same USB stick with another operating system, "
+"for example to store files to use on Windows, a virus in the other operating "
+"system could corrupt your Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"That's why your Tails USB stick is not recognized in Windows and why we "
+"discourage installing other live operating systems on the same USB stick."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To store files in your Tails USB stick, use the [[Persistent Storage|doc/"
+"persistent_storage]]. To exchange files between Tails and another operating "
+"system, use a separate USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"permanent-install\">Can I install Tails permanently onto my hard disk?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This is not possible using the recommended installation methods. Tails is "
+"designed to be a live system running from a removable media: USB stick or "
+"DVD."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This is a conscious decision as this mode of operation is better for what we "
+"want to provide to Tails users: amnesia, the fact that Tails leaves no "
+"traces on the computer after a session is closed."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"unetbootin\">Can I install Tails with UNetbootin, YUMI, Ventoy, or another tool?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"No. Those installation methods are unsupported. They might not work at all, "
+"or worse: they might seem to work, but produce a USB stick that does *not* "
+"behave like Tails should. Follow the [[download and installation "
+"documentation|install]] instead."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"upgrade\">Should I update Tails using <code>apt upgrade</code> or <i>Synaptic</i>?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"No. Upgrading whenever you get a notification from *[[Tails Upgrader|doc/"
+"upgrade]]* is enough."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails provides upgrades every 4 weeks, which are thoroughly tested to make "
+"sure that no security feature or configuration gets broken."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you upgrade the system yourself using `apt` or *Synaptic*, you might "
+"break things."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Our team sometimes publishes emergency releases, whenever important security "
+"upgrades are available in Debian or *Tor Browser* before the next scheduled "
+"release."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"preinstalled\">Can I buy a preinstalled Tails USB stick or DVD?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "No, we don't sell preinstalled Tails devices."
+msgstr ""
+
+#. type: Plain text
+msgid "Selling preinstalled devices would in fact be a pretty bad idea:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If burned on a DVD, then this DVD would be outdated on the next release. "
+"This means after 4 weeks at most."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If installed onto a USB stick, then it would be impossible to verify that "
+"the Tails on the USB stick is genuine. Trusting that a Tails USB stick is "
+"genuine should be based either on cryptographic verification or on personal "
+"trust (if you know someone you trust who can clone a Tails USB stick for "
+"you). But once Tails is installed on a USB stick it is not possible to use "
+"our cryptographic verification techniques anymore. Being able to trust your "
+"Tails USB stick is something that we really care about."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"integrity\">Can I verify the integrity of a Tails USB stick or DVD?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"It is impossible to verify the integrity of a Tails USB stick or DVD while "
+"running Tails from it. It would be like asking someone whether they are "
+"lying: a true liar would always pretend to tell the truth."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you worry that your Tails might be corrupted, do a [[manual upgrade|doc/"
+"upgrade]] from a trusted operating system to upgrade it to a trusted version "
+"of Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In the future, we might make it possible to verify the integrity of a Tails\n"
+"USB stick from another trusted OS. ([[!tails_ticket 7496]])</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"browser\">Tor Browser</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- We might move some of this content to the Tor Browser documentation. See #19122. -->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"javascript\">Why is JavaScript enabled by default in <i>Tor Browser</i>?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Many websites today require JavaScript to work correctly. As a consequence "
+"JavaScript is enabled by default in Tails to avoid confusing many users. But "
+"*Tor Browser* takes care of [[blocking dangerous JavaScript functionalities|"
+"doc/anonymous_internet/Tor_Browser#javascript]]."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tor Browser also includes a [[security level|doc/anonymous_internet/"
+"Tor_browser#security-level]] and the [[NoScript|doc/anonymous_internet/"
+"Tor_browser#noscript]] extension to optionally disable more JavaScript. This "
+"might improve security in some cases. However, if you disable JavaScript, "
+"then the [[fingerprint|doc/anonymous_internet/Tor_Browser#fingerprint]] of "
+"your *Tor Browser* differs from most users. This reduces your anonymity."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We think that having JavaScript enabled by default is the best possible "
+"compromise between usability and security in this case."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>We have plans to allow storing the security level in the Persistent Storage. ([[!tails_ticket 9700]])</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"add-ons\">Can I install other add-ons in <i>Tor Browser</i>?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Installing add-ons in *Tor Browser* might break the security built into "
+"Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Add-ons can do many things within the browser, and even if all the "
+"networking goes through Tor, some add-ons might interact badly with the rest "
+"of the configuration or leak private information."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"1. They can track and reveal information about your browsing behaviour, browsing\n"
+"history, or system information, either on purpose or by mistake.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"2. They can have bugs and security vulnerabilities that can be remotely exploited by an\n"
+"attacker.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"3. They can have bugs that break the security offered by other add-ons\n"
+"and break your anonymity.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"4. They can break your anonymity by making your browsing behaviour\n"
+"distinguishable from other Tails users.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Unless proven otherwise, no add-on, apart from the ones already included in "
+"Tails, has been seriously audited and should be considered safe to use in "
+"this context."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"next\">\n"
+"  <ul>\n"
+"    <li>[[Browsing the web with <i>Tor Browser</i>|doc/anonymous_internet/Tor_browser]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"XXX: Push that information to the browser documentation?\n"
+"XXX: Check https://2019.www.torproject.org/docs/torbutton/torbutton-faq.html.en#recommendedextensions\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"update-add-ons\">Should I manually update add-ons included in <i>Tor Browser</i>?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "No."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Updating add-ons in *Tor Browser* might break the security built into Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"anonymity-test\">How to analyse the results of online anonymity tests?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Fingerprinting websites, such as <https://coveryourtracks.eff.org/>, try to "
+"retrieve as much information as possible from your browser to see if it can "
+"be used to identify you."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"As explained in our documentation about [[the fingerprint of *Tor Browser* "
+"in Tails|doc/anonymous_internet/Tor_Browser#fingerprint]], Tails provides "
+"anonymity by making it difficult to distinguish you from other users of *Tor "
+"Browser* (either in Tails or on other operating systems)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"So, the information retrieved by such fingerprinting websites is not harmful "
+"for anonymity in itself, as long as it is the same for all users of *Tor "
+"Browser*."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Furthermore, we verify the result of those websites before each release, see "
+"our [[test suite|contribute/release_process/test]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"networking\">Networking</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"vpn\">Can I use Tails with a VPN?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Currently, Tails does not work with VPNs."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tor provides anonymity by making it impossible for a single point in the "
+"network to know both the origin and destination of a connection."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img doc/anonymous_internet/tor/tor.png link=\"no\" class=\"svg\" alt=\"A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Unlike Tor, VPNs don't provide strong anonymity because the VPN provider can "
+"see both where you are connecting from and where you are connecting to."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img doc/anonymous_internet/tor/vpn.png link=\"no\" class=\"svg\" alt=\"A VPN connection goes through a single relay\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"But VPNs have clear benefits over Tor in some situations where strong "
+"anonymity is not needed, for example:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"To access websites that block Tor or can only be accessed from a given "
+"country"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "To use videoconferencing tools like *Jitsi* or *Zoom*"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "To access private VPN services like intranets or share folders"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "To browse the Internet at higher speeds than Tor"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"In the future, we want to add another browser in Tails that would use a VPN\n"
+"instead of Tor. See our [[!tails_blueprint desc=\"blueprint on VPN support\"\n"
+"VPN-support]].\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"torrc\">Can I choose the country of my exit nodes or further edit the <code>torrc</code>?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Editing the Tor configuration file, also called `torrc`, to modify how Tor "
+"creates circuits can weaken your anonymity in ways that are hard to "
+"understand and explain. That is why we don't explain how to modify the Tor "
+"configuration file in Tails, for example, to choose the country of your exit "
+"nodes or exclude some entry guards."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Still, you can close a given circuit and trigger Tor to create a new one "
+"using the [[New Tor circuit for this site|doc/anonymous_internet/"
+"Tor_Browser]] button of *Tor Browser* or the [[*Onion Circuits*|doc/"
+"anonymous_internet/tor/circuits]] utility."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"htp\">Why does Tails automatically connect to websites when starting?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "The clock of the computer needs to be set at the correct time for both:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Being able to connect to the Tor network."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The computer clock is fixed a first time, approximately, before connecting\n"
+"   to Tor, either [[automatically|doc/anonymous_internet/tor#automatic]] or\n"
+"   [[manually|doc/anonymous_internet/tor/troubleshoot#clock]].\n"
+msgstr ""
+
+#. type: Bullet: '2. '
+msgid "Protecting your anonymity while using Tor."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The computer clock is fixed a second time, precisely, to prevent a website\n"
+"   from identifying you by analyzing minor differences between your computer clock\n"
+"   and the correct time.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   This second synchronization is made by sending HTTPS queries through Tor to several\n"
+"   websites and deducing a correct time from their answers. You can see the\n"
+"   list of websites that Tails can connect to in *[[!tails_gitweb config/chroot_local-includes/etc/default/htpdate.pools desc=\"/etc/default/htpdate.pools\"]]*.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"See also our [[design document on time synchronization|contribute/design/"
+"Time_syncing]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"relay\">Can I help the Tor network by running a relay or a bridge in Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "It is currently impossible to run a Tor relay or bridge in Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"onion-service\">Can I run a Tor onion service from Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can use [[*OnionShare*|doc/anonymous_internet/onionshare]] to share "
+"files, websites, and chat rooms from Tails using onion services."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"It is technically possible to use Tails to create other onion services, but "
+"it is complicated and we have no plans to document this."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"ping\">Can I use <code>ping</code> in Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"It is impossible to use `ping` in Tails, because `ping` uses the ICMP "
+"protocol while Tor can only transport TCP connections."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"software\">Included software</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"new-software\">Can my favorite software be included in Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If a software is not included in Tails, but is included in Debian, you can use\n"
+"the [[Additional\n"
+"Software|doc/persistent_storage/configure#additional_software]] feature of\n"
+"the Persistent Storage to install it automatically every time you start Tails.</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"First, make sure that this software is already available in Debian, as this "
+"is a requirement to be included in Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Adding to Tails software that is not in Debian implies extra work that could "
+"compromise the sustainability of the project."
+msgstr ""
+
+#. type: Plain text
+msgid "Being in Debian brings many advantages:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"It is included in the Debian process for security updates and new versions."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "It is authenticated using OpenPGP signatures."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"It is under the scrutiny of the Debian community and its many users and "
+"derivatives, including Ubuntu."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To check whether some software is in Debian, search for it on <https://"
+"packages.debian.org/>. If it is not yet available in Debian, ask its "
+"developers why it is not the case yet."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Second, this software might not be useful to accomplish our design goals. "
+"Refer to our [[design documents|contribute/design]] to understand which are "
+"the intended use cases, and the assumptions on which Tails is based."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We also try to limit the amount of software included in Tails, and we only "
+"add new software with a very good reason to do so:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "We try to limit the growth of the images and automatic upgrades."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "More software implies more security issues."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "We avoid proposing several options to accomplish the same task."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If a package needs to be removed after its inclusion, for example because of "
+"security problems, then this might be problematic as users might rely on it."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"After considering all this, if you still think that this software is a good "
+"candidate to be included in Tails, please explain us your proposal on [[!"
+"tails_ticket desc=\"GitLab\"]]."
+msgstr ""
+
+#. type: Plain text
+msgid "Here is some of the software we are often asked to include in Tails:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**monero**: not in Debian ([[!tails_ticket 17823]])"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**bitmessage**: not in Debian"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**retroshare**: not in Debian"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**rar/unrar**: not [[Free Software|doc/about/license]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"messaging\">Can I use messaging apps like WhatsApp, Telegram, or Signal in Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Adding [*Signal*](https://signal.org/) is very high in our priorities but "
+"complicated because *Signal* is not available in Debian by default and "
+"updates very often."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Because no single app will ever meet the needs of all our users, we might "
+"also make it easier to install other messaging apps. ([[!tails_ticket "
+"14567]])"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In Tails, you can already chat over XMPP using [[Pidgin|doc/"
+"anonymous_internet/pidgin]] and create anonymous chat rooms using "
+"[[OnionShare|doc/anonymous_internet/onionshare]]."
+msgstr ""
+
+#. type: Plain text
+msgid "Current alternatives:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Signal**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  You can follow this tutorial to [install *Signal Desktop* on\n"
+"  Tails](https://0xacab.org/about.privacy/messengers-on-tails-os/-/wikis/Signal/Install-Signal-desktop)\n"
+"  and link to an existing *Signal* account.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  To create a *Signal* account for a new telephone number from Tails, follow\n"
+"  this tutorial on [registering an account using\n"
+"  `signal-cli`](https://0xacab.org/about.privacy/messengers-on-tails-os/-/wikis/Signal/Registration-and-Provisioning-via-signal-cli).\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**WhatsApp**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  *WhatsApp Web* works in *Tor Browser* as of January 2025. *WhatsApp Web* has\n"
+"  been unreliable in *Tor Browser* in the past and might stop working in the\n"
+"  future.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Telegram Web**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  *Telegram Web* does not work in *Tor Browser* as of January 2025. *Telegram\n"
+"  Web* has been working in *Tor Browser* in the past and might work again in\n"
+"  the future.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"voip\">Can I do voice or video calls from Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Not yet."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Videoconferencing tools that work in web browsers, like *Jitsi* or *Zoom*, "
+"don't work in *Tor Browser* yet."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  They rely on the [[!wikipedia WebRTC]] technology, which uses\n"
+"  [[!wikipedia User_Datagram_Protocol desc=\"UDP\"]] connections. But, the Tor network only\n"
+"  supports TCP connections, like the ones used for HTTP and email.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  To remove this limitation, the Tor Project is working on [supporting UDP traffic over\n"
+"  Tor](https://spec.torproject.org/proposals/339-udp-over-tor.html).\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Proprietary applications like *Skype* or *Zoom* will never be available in "
+"Tails because they are not Free Software."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[*Mumble*](https://www.mumble.info/) is the only voice chat application that "
+"we know works from Tails. You can use the [[Additional Software|doc/"
+"persistent_storage/additional_software]] feature to add *Mumble* to your "
+"Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  [*Wahay*](https://wahay.org/) is a decentralized voice chat application based\n"
+"  on *Mumble*. If you are a Debian developer, please help us\n"
+"  [[!tails_ticket 17617 desc=\"get *Wahay* in Debian\"]].\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"bittorrent\">Can I download using BitTorrent with Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails does not ship any BitTorrent software and is unlikely to do so in the "
+"future."
+msgstr ""
+
+#. type: Plain text
+msgid "There are 2 problems with using BitTorrent over Tor:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"It is technically hard to do it properly, see: <https://blog.torproject.org/"
+"bittorrent-over-tor-isnt-good-idea>."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"It harms the network, see: <https://blog.torproject.org/why-tor-slow-and-"
+"what-were-going-do-about-it>."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"monero\">Can I use Monero in Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Yes. You can install the [[*Feather*|doc/advanced_topics/feather]] Monero "
+"wallet as an AppImage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Tails currently does not include a Monero wallet. However, we are interested\n"
+"in making it easier to use Monero in Tails in the future. See [[!tails_ticket\n"
+"17823]] for a list of unofficial guides on how to use Monero in Tails.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"antivirus\">Does Tails need an antivirus?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"No, as other Linux systems, Tails doesn't require an antivirus to protect "
+"itself from most malware, such as viruses, trojans, and worms. There are "
+"various reasons why Linux operating systems generally don't need antivirus "
+"software, including the permission design of Linux systems."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"See the [[!wikipedia Linux_malware desc=\"Wikipedia page on Linux "
+"malware\"]] for further details."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"old-software\">Why does Tails include old versions of software?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "The Tails 7 series is based on Debian 13 (Trixie)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The version of each application included in Tails corresponds to the version "
+"available in this version of Debian. Even though some versions might be old, "
+"the [Debian Security Team](https://wiki.debian.org/Teams/Security) provides "
+"security updates."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Newer versions of all applications will be available starting from Tails "
+"7.0, which will be based on Debian 13 (Trixie). Until then, you cannot "
+"update any of the applications included in Tails to a newer version."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can see which version of a software package is available in each version "
+"of Debian on <https://packages.debian.org/>."
+msgstr ""

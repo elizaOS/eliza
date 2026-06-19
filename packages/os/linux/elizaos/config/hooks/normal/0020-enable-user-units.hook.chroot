@@ -1,0 +1,17 @@
+#!/bin/sh
+# Mark elizaOS launch scripts executable inside the chroot.
+#
+# The GUI is the locked kiosk (cage -> elizaOS app), wired as the system
+# service elizaos-kiosk.service by hook 0025 — NOT a per-user GNOME session.
+# So no graphical-session.target user units are enabled here: the kiosk app is
+# the single window and serves both the launcher and chat surfaces in kiosk
+# shell mode. The /etc/systemd/user units remain installed but inert unless a
+# GNOME session is started manually.
+set -eu
+
+chmod 0755 /usr/local/lib/elizaos/first-boot.sh \
+           /usr/lib/elizaos/wait-agent-health.sh \
+           /usr/lib/elizaos/run-terminal-tui-smoke.sh \
+           /usr/local/lib/elizaos/start-kiosk \
+           /usr/local/lib/elizaos/start-launcher \
+           /usr/local/lib/elizaos/start-chat-overlay

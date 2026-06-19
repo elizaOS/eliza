@@ -1,0 +1,9 @@
+elizaos-app (2.0.0~beta0-1) unstable; urgency=medium
+
+  * Initial Debian packaging
+  * Personal AI assistant built on elizaOS
+  * CLI with interactive onboarding
+  * Multi-provider AI support (Anthropic, OpenAI, Google, Ollama, etc.)
+  * Web dashboard on port 18789
+
+ -- elizaos <dev@app.elizaos.ai>  Sat, 07 Feb 2026 00:00:00 +0000

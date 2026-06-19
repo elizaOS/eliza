@@ -1,0 +1,100 @@
+import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import {
+  readTailscaleAccounts,
+  resolveTailscaleAccount,
+  resolveTailscaleAccountId,
+} from "./accounts";
+import { validateTailscaleConfig } from "./environment";
+
+function runtime(settings: Record<string, unknown>): IAgentRuntime {
+  return Object.assign(Object.create(null) as IAgentRuntime, {
+    character: {},
+    getSetting: vi.fn((key: string) => {
+      const value = settings[key];
+      return typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+        ? value
+        : null;
+    }),
+  });
+}
+
+describe("Tailscale account resolution", () => {
+  it("keeps legacy settings as the default account", async () => {
+    const rt = runtime({
+      TAILSCALE_TAGS: "tag:one,tag:two",
+      TAILSCALE_FUNNEL: "true",
+    });
+
+    expect(resolveTailscaleAccountId(rt)).toBe("default");
+    expect(
+      resolveTailscaleAccount(readTailscaleAccounts(rt), "default"),
+    ).toMatchObject({
+      accountId: "default",
+      tags: "tag:one,tag:two",
+      funnel: "true",
+    });
+    await expect(validateTailscaleConfig(rt)).resolves.toMatchObject({
+      TAILSCALE_TAGS: ["tag:one", "tag:two"],
+      TAILSCALE_FUNNEL: true,
+    });
+  });
+
+  it("resolves explicit accountId from TAILSCALE_ACCOUNTS", async () => {
+    const rt = runtime({
+      TAILSCALE_ACCOUNTS: JSON.stringify({
+        cloud: {
+          tags: ["tag:cloud"],
+          funnel: false,
+          backend: "cloud",
+          authKeyExpirySeconds: 120,
+        },
+      }),
+    });
+
+    expect(resolveTailscaleAccountId(rt, { accountId: "cloud" })).toBe("cloud");
+    await expect(validateTailscaleConfig(rt, "cloud")).resolves.toMatchObject({
+      TAILSCALE_TAGS: ["tag:cloud"],
+      TAILSCALE_BACKEND: "cloud",
+      TAILSCALE_AUTH_KEY_EXPIRY_SECONDS: 120,
+    });
+  });
+
+  it("ignores malformed account JSON and sanitizes hostile numeric config", async () => {
+    const rt = runtime({
+      TAILSCALE_ACCOUNTS: "{not json",
+      TAILSCALE_TAGS: " tag:one, ,tag:two ",
+      TAILSCALE_DEFAULT_PORT: "123abc",
+      TAILSCALE_AUTH_KEY_EXPIRY_SECONDS: "60.5",
+    });
+
+    expect(
+      readTailscaleAccounts(rt).map((account) => account.accountId),
+    ).toEqual(["default"]);
+    await expect(validateTailscaleConfig(rt)).resolves.toMatchObject({
+      TAILSCALE_TAGS: ["tag:one", "tag:two"],
+      TAILSCALE_DEFAULT_PORT: 3000,
+      TAILSCALE_AUTH_KEY_EXPIRY_SECONDS: 3600,
+    });
+  });
+
+  it("trims array tags and rejects fractional runtime defaults", async () => {
+    const rt = runtime({
+      TAILSCALE_ACCOUNTS: JSON.stringify({
+        cloud: {
+          tags: [" tag:cloud ", "", "tag:ops"],
+          defaultPort: 1.5,
+          authKeyExpirySeconds: Number.NaN,
+        },
+      }),
+    });
+
+    await expect(validateTailscaleConfig(rt, "cloud")).resolves.toMatchObject({
+      TAILSCALE_TAGS: ["tag:cloud", "tag:ops"],
+      TAILSCALE_DEFAULT_PORT: 3000,
+      TAILSCALE_AUTH_KEY_EXPIRY_SECONDS: 3600,
+    });
+  });
+});

@@ -1,0 +1,19 @@
+[[!meta date="Tue, 2 Oct 2018 12:34:56 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.9"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.9 are now fixed in Tails 3.9.1.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.9.1|news/version_3.9.1]] as soon as possible.
+
+ - Tor Browser: [[!mfsa 2018-22]]
+ - Thunderbird: [[!mfsa 2018-22]]
+ - lcms2: [[!debsa2018 4284]]
+ - curl: [[!debsa2018 4286]]
+ - ghostscript: [[!debsa2018 4288]], [[!debsa2018 4294]]
+ - texlive-bin: [[!debsa2018 4299]]
+ - python2.7: [[!debsa2018 4306]]
+ - python3.5: [[!debsa2018 4307]]

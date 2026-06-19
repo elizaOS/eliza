@@ -1,0 +1,83 @@
+---
+title: elizaOS
+description: "The open agentic operating system — OS, Runtime, App, Cloud, Chip, Robot."
+---
+
+<img src="/brand/banners/elizaos_banner.svg" alt="elizaOS" />
+
+<Tip>
+  **elizaOS** is six things in one repository: an operating system, a runtime,
+  an app distribution layer, a hosted cloud, custom silicon, and an embodied
+  robot stack. Every project on elizaOS lives in one (or more) of these.
+</Tip>
+
+## Pick your dimension
+
+<CardGroup cols={2}>
+  <Card title="OS" icon="computer" href="/tracks/elizaos/overview">
+    elizaOS as an operating system. Linux live USB + AOSP variants.
+  </Card>
+  <Card title="Runtime" icon="cubes" href="/tracks/agent/overview">
+    The core that makes an agent. Plugins, character files, Eliza-1 models.
+  </Card>
+  <Card title="App" icon="window" href="/tracks/agent-app/overview">
+    Product shells. Desktop, mobile, dashboard, custom UIs on `@elizaos/core`.
+  </Card>
+  <Card title="Cloud" icon="cloud" href="/tracks/cloud/overview">
+    Managed APIs. Auth, app registration, inference, containers, billing, domains.
+  </Card>
+  <Card title="Chip" icon="microchip" href="/tracks/chip/overview">
+    The Eliza E1 RISC-V SoC.
+  </Card>
+  <Card title="Robot" icon="robot" href="/tracks/training/robot">
+    MuJoCo sim, RL training, real-hardware bridge, Feed.
+  </Card>
+</CardGroup>
+
+---
+
+## Three commands to a live agent
+
+```bash
+npx elizaos create my-agent
+cd my-agent
+bun install && bun run dev
+```
+
+That gets you the **Runtime** dimension. See [Quickstart](/quickstart) for full setup, or [Installation](/installation) for desktop / CLI install options.
+
+---
+
+## Why elizaOS?
+
+<CardGroup cols={3}>
+  <Card title="Plugin-first" icon="puzzle-piece">
+    Connectors, model providers, and capabilities all ship as composable plugins under `@elizaos/*`.
+  </Card>
+  <Card title="Persistent memory" icon="brain">
+    Agents remember conversations, learn from interactions, act on long-running goals.
+  </Card>
+  <Card title="Runs anywhere" icon="server">
+    Local-only, desktop, mobile, Cloud, your own VPS, or directly on elizaOS hardware.
+  </Card>
+  <Card title="Open" icon="code-branch">
+    Every package is open source. Extend, fork, contribute upstream.
+  </Card>
+  <Card title="Cloud optional" icon="cloud-arrow-up">
+    Eliza Cloud handles auth, hosting, billing, and domains when you want it — never required.
+  </Card>
+  <Card title="Trains on your data" icon="microchip">
+    Fine-tune Eliza-1 (0.8B–27B), evaluate against 70+ benchmarks, deploy on-device.
+  </Card>
+</CardGroup>
+
+---
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation" horizontal />
+  <Card title="Quickstart" icon="rocket" href="/quickstart" horizontal />
+  <Card title="CLI" icon="terminal" href="/cli/overview" horizontal />
+  <Card title="Contribute" icon="code-branch" href="/guides/contributing" horizontal />
+</CardGroup>

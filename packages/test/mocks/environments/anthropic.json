@@ -1,0 +1,96 @@
+{
+  "uuid": "00000000-0000-4000-8000-0anthropic0000",
+  "lastMigration": 33,
+  "name": "Anthropic Messages API",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3016,
+  "hostname": "127.0.0.1",
+  "routes": [
+    {
+      "uuid": "00000001-0000-4000-8000-0anthropic0000",
+      "type": "http",
+      "documentation": "POST /v1/messages — text response (start-mocks.ts overrides for tool-use / computer-use)",
+      "method": "post",
+      "endpoint": "v1/messages",
+      "responses": [
+        {
+          "uuid": "00000002-0000-4000-8000-0anthropic0000",
+          "body": "{\"id\":\"msg_{{faker 'string.alphanumeric' length=24}}\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Mock response from Anthropic fixture.\"}],\"model\":\"claude-haiku-4-5-20251001\",\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK — text",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000003-0000-4000-8000-0anthropic0000",
+      "type": "http",
+      "documentation": "GET /v1/models",
+      "method": "get",
+      "endpoint": "v1/models",
+      "responses": [
+        {
+          "uuid": "00000004-0000-4000-8000-0anthropic0000",
+          "body": "{\"data\":[{\"type\":\"model\",\"id\":\"claude-opus-4-7\",\"display_name\":\"Claude Opus 4.7\",\"created_at\":\"2025-01-01T00:00:00Z\"},{\"type\":\"model\",\"id\":\"claude-sonnet-4-6\",\"display_name\":\"Claude Sonnet 4.6\",\"created_at\":\"2025-01-01T00:00:00Z\"},{\"type\":\"model\",\"id\":\"claude-haiku-4-5-20251001\",\"display_name\":\"Claude Haiku 4.5\",\"created_at\":\"2025-01-01T00:00:00Z\"}]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    { "type": "route", "uuid": "00000001-0000-4000-8000-0anthropic0000" },
+    { "type": "route", "uuid": "00000003-0000-4000-8000-0anthropic0000" }
+  ],
+  "folders": [],
+  "data": [],
+  "callbacks": [],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [],
+  "proxyReqHeaders": [],
+  "proxyResHeaders": []
+}

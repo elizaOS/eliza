@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:alpine
+    container_name: firecrawl-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  firecrawl:
+    build:
+      context: ./firecrawl-src/apps/api
+      dockerfile: Dockerfile
+    container_name: firecrawl-api
+    ports:
+      - "3002:3002"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=3002
+      - HOST=0.0.0.0
+      - USE_DB_AUTHENTICATION=false
+      - SELF_HOSTED=true
+    depends_on:
+      - redis
+    restart: unless-stopped

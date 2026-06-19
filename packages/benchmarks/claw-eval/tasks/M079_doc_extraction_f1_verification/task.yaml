@@ -1,0 +1,50 @@
+task_id: M079_doc_extraction_f1_verification
+task_name: Document Extraction - F1 Score Verification
+version: "1.0"
+category: doc_extraction
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am a researcher reviewing the GLiNER paper on Named Entity Recognition.
+    Please download and read this PDF: https://arxiv.org/pdf/2311.08526
+
+    The paper reports F1 scores in Table 5 for three different negative sampling
+    ratios, along with the corresponding Precision and Recall values. I want to
+    verify whether the reported F1 scores are correctly computed from the given
+    Precision and Recall using the standard F1 formula. Please extract the data
+    from Table 5, recalculate the F1 scores, and compare them against the
+    reported values.
+
+    Output requirements:
+    - A CSV file /workspace/gliner_f1_verification.csv with columns:
+      Negative_Sampling_Ratio, Precision, Recall, F1_Reported, F1_Calculated,
+      Match (Yes/No)
+    - A comparison visualization /workspace/gliner_f1_verification.png using a
+      grouped bar chart showing the reported F1 vs. calculated F1 for each
+      negative sampling ratio
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/gliner_f1_verification.csv
+  - /workspace/gliner_f1_verification.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Download GLiNER PDF, extract Table 5 P/R/F1 for 3 negative sampling ratios,
+  recalculate F1 = 2PR/(P+R), compare with reported values, save CSV and
+  grouped bar chart.
+primary_dimensions:
+  - completion
+  - robustness

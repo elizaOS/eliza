@@ -1,0 +1,224 @@
+[[!meta robots="noindex"]]
+
+<h1 id="etcher" class="step">Install <em>balenaEtcher</em></h1>
+
+<div class="step-image usb">[[!img inc/infography/install-etcher.png link="no" alt=""]]</div>
+<div class="step-image upgrade">[[!img inc/infography/install-etcher-with-intermediary.png link="no" alt=""]]</div>
+
+<p class="upgrade">In the following steps, you will install an intermediary Tails using the Tails USB
+image that you downloaded earlier.</p>
+
+<p><a href="https://etcher.balena.io/"><i>balenaEtcher</i></a> is the Free Software tool that we recommend to install Tails from macOS.</p>
+
+<div class="attack">
+
+<p>We [[stopped recommending|news/rufus]] <i>balenaEtcher</i> to install Tails
+from Windows in 2025 because <i>balenaEtcher</i> shares [[!tails_ticket 16381
+desc="sensitive information"]] to the Balena company that allows identifying
+who is installing Tails.</p>
+
+<p>We have not updated our installation instructions for macOS yet.</p>
+
+<p>If you are worried about being identified as a Tails user, you can instead:</p>
+
+<ul>
+  <li>[[!toggle id="dd" text="Install Tails using `dd` on the command line"]].</li>
+  <li>Install Tails using <a href="https://www.raspberrypi.com/software/"><i>Raspberry Pi Imager</i></a>.</li>
+</ul>
+
+</div>
+
+[[!toggleable id="dd" text="""
+
+[[!toggle id="dd" text="""<span class="hide-button"></span>"""]]
+
+1. Make sure that your USB stick is unplugged.
+
+1. Open the **Terminal** utility from **Applications&nbsp;▸ Utilities**.
+
+1. Execute the following command.
+
+   <p class="command">diskutil list</p>
+
+   It returns a list of the storage devices on the system. For example:
+
+       /dev/disk0
+        #:                     TYPE NAME         SIZE      IDENTIFIER
+        0:    GUID_partition_scheme             *500.1 GB  disk0
+        1:                      EFI              209.7 MB  disk0s1
+        2:                Apple_HFS MacDrive     250.0 GB  disk0s2
+        3:                      EFI              134.1 GB  disk0s3
+        4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4
+
+1. Plug your USB stick into the computer.
+
+1. Execute again the same command.
+
+   <p class="command">diskutil list</p>
+
+   Your USB stick appears as a new device in the list. Check
+   that its size corresponds to the size of your USB stick.
+
+       /dev/disk0
+        #:                     TYPE NAME         SIZE      IDENTIFIER
+        0:    GUID_partition_scheme             *500.1 GB  disk0
+        1:                      EFI              209.7 MB  disk0s1
+        2:                Apple_HFS MacDrive     250.0 GB  disk0s2
+        3:                      EFI              134.1 GB  disk0s3
+        4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4
+
+       /dev/disk1
+        #:                     TYPE NAME         SIZE      IDENTIFIER
+        0:   FDisk_partition_scheme             *8.0 GB    disk1
+        1:                Apple_HFS Untitled 1   8.0 GB    disk1s1
+
+1. Take note of the device name of your USB stick.
+
+   In this example, the USB stick is 8.0 GB and its device name is <span class="command-placeholder">/dev/disk1</span>.
+   Yours might be different.
+
+   <div class="caution">
+
+   <p>You might overwrite any hard disk on the computer.</p>
+
+   <p>If you are not sure about the device, stop proceeding.</p>
+
+   </div>
+
+1. Execute the following command to safely eject the USB stick. Replace <span class="command-placeholder">device</span>
+   with the device name found in step 6.
+
+   <p class="command-template">diskutil unmountDisk <span class="command-placeholder">device</span></p>
+
+1. Execute the following commands to copy the USB image that you
+   downloaded earlier to the USB stick. Replace:
+
+   - <span class="command-placeholder">tails.img</span> with the path to the USB image
+
+     <div class="tip">
+     <p>If you are unsure about the path to the USB image, you can insert the
+     correct path by dragging and dropping the icon of the USB image from
+     <i>Finder</i> onto <i>Terminal</i>.</p>
+     </div>
+
+   - <span class="command-placeholder">device</span> with the device name found in step 6
+
+     <div class="tip">
+     <p>You can try adding <code>r</code> before <code>disk</code> to make the installation faster.</p>
+     </div>
+
+   <p class="command-template">dd if=<span class="command-placeholder">tails.img</span> of=<span class="command-placeholder">device</span> bs=16m && sync</p>
+
+   You should get something like this:
+
+   <p class="command-template">dd if=/Users/me/tails-amd64-3.12.img of=/dev/rdisk9 bs=16m && sync</p>
+
+   If no error message is returned, Tails is being copied on the USB
+   stick. The copy takes some time, generally a few minutes.
+
+   <div class="note">
+   <p>If you get a <code>Permission denied</code> error, try
+   adding <code>sudo</code> at the beginning of the command:</p>
+
+   <p class="command-template">sudo dd if=<span class="command-placeholder">tails.img</span> of=<span class="command-placeholder">device</span> bs=16m && sync</p>
+
+   <p>If you get an <code>invalid number ‘16m’</code> error, try
+   using <code>16M</code> instead:</p>
+
+   <p class="command-template">dd if=<span class="command-placeholder">tails.img</span> of=<span class="command-placeholder">device</span> bs=16M && sync</p>
+
+   </div>
+
+   The installation is complete when the command prompt reappears.
+
+"""]]
+
+1. Click on the following button to download <em>balenaEtcher</em>:
+
+   <p class="button">[[Download <i>balenaEtcher</i> for macOS|https://tails.net/etcher/balenaEtcher.dmg]]</p>
+
+   Save your download to your usual *Downloads* folder and not to the USB stick.
+
+1. Open the *balenaEtcher* download (DMG disk image).
+
+   [[!img install/inc/screenshots/install_etcher_in_mac.png class="screenshot" alt=""]]
+
+1. To install *balenaEtcher*, drag the
+   *balenaEtcher* icon onto the
+   **Applications** icon.
+
+1. Close the installation window of
+   *balenaEtcher*.
+
+   Optionally, eject the disk image of *balenaEtcher* from the sidebar of *Finder*.
+
+<h1 id="install" class="step">Install <span class="upgrade">an intermediary</span> Tails using <em>balenaEtcher</em></h1>
+
+<div class="step-image usb">[[!img install/inc/infography/install-tails.png link="no" alt=""]]</div>
+<div class="step-image upgrade">[[!img install/inc/infography/install-upgrade-usb-only.png link="no" alt=""]]</div>
+
+1. <p class="mac upgrade-mac">
+   Open <i>Finder</i> and choose
+   <i>balenaEtcher</i> in
+   <b>Applications</b>.
+   </p>
+
+   At the security warning, confirm that you want to open
+   *balenaEtcher*.
+
+   *balenaEtcher* starts.
+
+   [[!img install/inc/screenshots/etcher_in_mac.png class="mac upgrade-mac screenshot" alt=""]]
+
+1. Plug in the USB stick on which you want to install
+   <span class="usb">Tails.</span>
+   <span class="upgrade">the intermediary Tails.</span>
+
+   <div class="caution">
+
+   <p>All the data on this USB stick will be lost.</p>
+
+   <p>Some data might still be recovered using advanced forensics tools.</p>
+
+   </div>
+
+   <div class="note upgrade"><p>The Persistent Storage of your Tails USB stick will not be
+   copied to the temporary Tails.</p></div>
+
+1. Click the **Flash from file** button.
+
+   Choose the USB image that you downloaded earlier.
+
+   <div class="note">
+   <p>Make sure that the USB image is called <i>[[!inline pages="inc/stable_amd64_img_filename" raw="yes" sort="age"]]</i> and has an
+   <i>.img</i> file extension.</p>
+
+   <p>If the image has an <i>.iso</i> file
+   extension, it is the wrong image. Please go back to the
+   <span class="mac">[[download step|mac#download]].</span>
+   <span class="upgrade-mac">[[download step|doc/upgrade/mac#download]].</span></p>
+   </div>
+
+1. Click the **Select target** button to select your USB stick.
+
+1. Click **Flash**.
+
+   Enter your password if you are asked for it.
+
+   The installation takes a few minutes.
+
+   After installing Tails, *balenaEtcher* verifies the
+   installation.
+
+   <div class="bug">
+   <p>If the verification of <i>balenaEtcher</i>
+   fails, try to install again or try using a different USB
+   stick.</p>
+   </div>
+
+1. Close *balenaEtcher*.
+
+   <p class="mac upgrade-mac">
+   If a notification about the USB stick not being readable appears,
+   click <b>Eject</b> to eject the USB stick.
+   </p>

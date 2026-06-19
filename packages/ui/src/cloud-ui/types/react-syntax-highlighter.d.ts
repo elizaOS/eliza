@@ -1,0 +1,71 @@
+declare module "react-syntax-highlighter" {
+  import type { ComponentType, CSSProperties, ReactNode } from "react";
+
+  export type SyntaxHighlighterStyle = Record<string, CSSProperties>;
+
+  export type SyntaxHighlighterProps = {
+    children?: ReactNode;
+    className?: string;
+    codeTagProps?: Record<string, unknown>;
+    customStyle?: CSSProperties;
+    language?: string;
+    lineNumberStyle?: CSSProperties;
+    PreTag?: string;
+    showLineNumbers?: boolean;
+    style?: SyntaxHighlighterStyle;
+    wrapLongLines?: boolean;
+  };
+
+  export const Prism: ComponentType<SyntaxHighlighterProps>;
+}
+
+declare module "react-syntax-highlighter/dist/esm/prism-light" {
+  import type { ComponentType } from "react";
+  import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
+
+  type PrismLight = ComponentType<SyntaxHighlighterProps> & {
+    registerLanguage: (name: string, language: unknown) => void;
+    alias: (name: string, aliases: string | string[]) => void;
+  };
+
+  const PrismLight: PrismLight;
+  export default PrismLight;
+}
+
+declare module "refractor/lang/*" {
+  const lang: unknown;
+  export default lang;
+}
+
+declare module "react-syntax-highlighter/dist/esm/languages/prism/*" {
+  const language: unknown;
+  export default language;
+}
+
+declare module "react-syntax-highlighter/dist/esm/languages/hljs/*" {
+  const language: unknown;
+  export default language;
+}
+
+declare module "react-syntax-highlighter/dist/esm/styles/prism/index.js" {
+  import type { SyntaxHighlighterStyle } from "react-syntax-highlighter";
+
+  export const oneDark: SyntaxHighlighterStyle;
+  export const oneLight: SyntaxHighlighterStyle;
+  export const vscDarkPlus: SyntaxHighlighterStyle;
+}
+
+declare module "react-syntax-highlighter/dist/esm/styles/prism" {
+  import type { SyntaxHighlighterStyle } from "react-syntax-highlighter";
+
+  export const oneDark: SyntaxHighlighterStyle;
+  export const oneLight: SyntaxHighlighterStyle;
+  export const vscDarkPlus: SyntaxHighlighterStyle;
+}
+
+declare module "react-syntax-highlighter/dist/esm/styles/prism/*" {
+  import type { SyntaxHighlighterStyle } from "react-syntax-highlighter";
+
+  const style: SyntaxHighlighterStyle;
+  export default style;
+}

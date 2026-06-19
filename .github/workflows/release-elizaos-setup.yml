@@ -1,0 +1,44 @@
+name: Release AOSP Flasher
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version tag
+        required: false
+  release:
+    types: [created]
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            artifact: elizaos-setup-macos
+          - os: ubuntu-latest
+            platform: linux
+            artifact: elizaos-setup-linux
+          - os: windows-latest
+            platform: win32
+            artifact: elizaos-setup-windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+      - run: bun install
+      - run: bun run --cwd packages/os/setup build
+      - run: bun run --cwd packages/os/setup typecheck
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ matrix.artifact }}
+          path: packages/os/setup/dist/
+          if-no-files-found: error
+          retention-days: 30

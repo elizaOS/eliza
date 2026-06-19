@@ -1,0 +1,27 @@
+# WooCommerce MCP Server Configuration
+name: woocommerce
+display_name: WooCommerce MCP Server
+description: Mock WooCommerce API server for benchmarking
+
+execution:
+  command_type: uv
+  script:
+    primary: "mcp_convert/mcps/woocommerce/server.py"
+    fallbacks: []
+  requires_project_root: true
+
+parameters:
+  data_dir:
+    required: true
+    default: "./woocommerce_data"
+    env_var: "WOOCOMMERCE_DATA_DIR"
+    description: "Path to WooCommerce data directory"
+
+  server_script:
+    required: false
+    description: "Override server script path (for testing)"
+
+workspace:
+  set_cwd: false
+  supports_placeholders: true
+  mkdir_if_needed: true

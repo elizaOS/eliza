@@ -1,0 +1,288 @@
+# LifeOps Multi-Agent Benchmark Gate
+#
+# Runs the `lifeops-bench` runner per agent (eliza, hermes, openclaw) on
+# every PR that touches the lifeops surface area. Cerebras gpt-oss-120b is
+# used by the model-backed agents.
+#
+# Local equivalent (run before pushing):
+#
+#     cd packages/benchmarks/lifeops-bench && pip install -e .
+#     lifeops-bench --agent eliza --suite full --limit 25
+#
+# The per-job matrix uploads the per-agent run directory from
+# `~/.eliza/runs/lifeops/lifeops-multiagent-<ts>/<agent>/` (plus the
+# top-level `report.md` / `report.json`) as a 30-day artifact, and posts a
+# side-by-side summary as a PR comment after all matrix legs complete.
+#
+# Required secrets (job is skipped, NOT failed, when missing):
+#   CEREBRAS_API_KEY  — eval/judge/teacher provider (gpt-oss-120b)
+
+name: LifeOps Benchmark
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "plugins/plugin-personal-assistant/**"
+      - "plugins/plugin-training/**"
+      - "packages/scenario-runner/**"
+      - "packages/benchmarks/lifeops-bench/**"
+      - "packages/core/src/runtime/**"
+      - "test/scenarios/lifeops.**"
+      - "scripts/lifeops-*.mjs"
+      - ".github/workflows/lifeops-bench.yml"
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: "Which agent to run (default: all)"
+        required: false
+        type: choice
+        options: [all, eliza, hermes, openclaw, cerebras-direct]
+        default: all
+      limit:
+        description: "Scenarios per agent (default: 25)"
+        required: false
+        type: string
+        default: "25"
+
+concurrency:
+  group: lifeops-bench-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lifeops-bench:
+    name: "lifeops-bench: ${{ matrix.agent }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        agent: ["eliza", "hermes", "openclaw"]
+    steps:
+      - name: Check secrets
+        id: gate
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+        run: |
+          if [ -z "${CEREBRAS_API_KEY:-}" ]; then
+            echo "[lifeops-bench] CEREBRAS_API_KEY not configured — skipping benchmark."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Python
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup workspace dependencies
+        if: steps.gate.outputs.skip != 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+
+      - name: Install Python bench package
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          cd packages/benchmarks/lifeops-bench
+          pip install -e .
+
+      - name: Type/build check (lifeops + training + scenario-runner + core)
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          set -e
+          bun run --cwd packages/core typecheck
+          bun run --cwd packages/scenario-runner build
+          bun run --cwd plugins/plugin-personal-assistant build:types
+          bun run --cwd plugins/plugin-training build:types
+
+      - name: Verify Cerebras wiring
+        if: steps.gate.outputs.skip != 'true'
+        id: cerebras
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+        run: |
+          set +e
+          bun run lifeops:verify-cerebras 2>&1 | tee verify-cerebras.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "provider-throttled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if grep -Eq 'cerebras error 429|too_many_requests_error|too_many_tokens_error|queue_exceeded|request_quota_exceeded|token_quota_exceeded|Tokens per day limit exceeded' verify-cerebras.log; then
+            echo "::notice::LifeOps benchmark skipped — Cerebras is currently rate limited or queue saturated."
+            echo "provider-throttled=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$status"
+
+      - name: Check OpenClaw CLI
+        if: steps.gate.outputs.skip != 'true' && steps.cerebras.outputs.provider-throttled != 'true' && matrix.agent == 'openclaw'
+        id: openclaw
+        run: |
+          set -euo pipefail
+          OPENCLAW_BIN="${OPENCLAW_BIN:-$HOME/.eliza/agents/openclaw/v2026.5.7/node_modules/.bin/openclaw}"
+          if [ ! -x "$OPENCLAW_BIN" ]; then
+            echo "::notice::OpenClaw CLI not installed at $OPENCLAW_BIN; skipping optional openclaw benchmark leg."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run lifeops multi-agent bench (matrix leg)
+        if: steps.gate.outputs.skip != 'true' && steps.cerebras.outputs.provider-throttled != 'true' && steps.openclaw.outputs.skip != 'true'
+        id: run
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ELIZA_BENCH_AGENT: ${{ matrix.agent }}
+          ELIZA_BENCH_LIMIT: ${{ inputs.limit || '25' }}
+        run: |
+          set -e
+          RUN_DIR="${GITHUB_WORKSPACE}/runs/lifeops-${ELIZA_BENCH_AGENT}-${GITHUB_RUN_ID}"
+          mkdir -p "$RUN_DIR/${ELIZA_BENCH_AGENT}"
+          set +e
+          timeout 1200s lifeops-bench \
+            --agent "$ELIZA_BENCH_AGENT" \
+            --suite full \
+            --limit "$ELIZA_BENCH_LIMIT" \
+            --seeds 1 \
+            --concurrency 2 \
+            --max-cost-usd 10.00 \
+            --per-scenario-timeout-s 300 \
+            --output-dir "$RUN_DIR/${ELIZA_BENCH_AGENT}" \
+            2>&1 | tee lifeops-full.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            if grep -Eq 'cerebras error 429|too_many_requests_error|too_many_tokens_error|queue_exceeded|request_quota_exceeded|token_quota_exceeded|Tokens per day limit exceeded' lifeops-full.log; then
+              echo "::notice::LifeOps benchmark skipped — Cerebras quota or rate limit was reached during benchmark execution."
+              echo "provider-throttled=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            exit "$status"
+          fi
+          echo "provider-throttled=false" >> "$GITHUB_OUTPUT"
+          echo "RUN_DIR=$RUN_DIR" | tee -a lifeops-full.log
+
+          RESULT_JSON=$(ls -t "$RUN_DIR/${ELIZA_BENCH_AGENT}"/lifeops_*.json 2>/dev/null | head -n1 || true)
+          if [ -z "$RESULT_JSON" ] || [ ! -f "$RESULT_JSON" ]; then
+            echo "[lifeops-bench] Could not resolve result JSON in $RUN_DIR." >&2
+            exit 1
+          fi
+          cp "$RESULT_JSON" "$RUN_DIR/report.json"
+          python - "$RUN_DIR/report.json" "$RUN_DIR/report.md" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path(sys.argv[1]).read_text())
+          scenarios = report.get("scenarios", [])
+          lines = [
+              "# LifeOps Benchmark",
+              "",
+              f"Model: {report.get('model_name', 'unknown')}",
+              f"Judge: {report.get('judge_model_name', 'unknown')}",
+              f"Scenarios: {len(scenarios)}",
+              f"pass@1: {report.get('pass_at_1', 0):.3f}",
+              f"pass@k: {report.get('pass_at_k', 0):.3f}",
+              f"Total cost: ${report.get('total_cost_usd', 0):.4f}",
+          ]
+          Path(sys.argv[2]).write_text("\n".join(lines) + "\n")
+          PY
+
+          echo "run-dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
+          echo "run-id=$(basename "$RUN_DIR")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload run artifacts
+        if: steps.gate.outputs.skip != 'true' && steps.cerebras.outputs.provider-throttled != 'true' && steps.run.outputs.provider-throttled != 'true' && always() && steps.run.outputs.run-dir != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: lifeops-run-${{ matrix.agent }}-${{ github.run_id }}
+          path: |
+            ${{ steps.run.outputs.run-dir }}/report.md
+            ${{ steps.run.outputs.run-dir }}/report.json
+            ${{ steps.run.outputs.run-dir }}/${{ matrix.agent }}/**
+            ${{ steps.run.outputs.run-dir }}/mockoon/**
+            ${{ steps.run.outputs.run-dir }}/js-scenarios/**
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Annotate PR with side-by-side summary
+        if: steps.gate.outputs.skip != 'true' && steps.cerebras.outputs.provider-throttled != 'true' && steps.run.outputs.provider-throttled != 'true' && github.event_name == 'pull_request' && steps.run.outputs.run-dir != ''
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          RUN_DIR: ${{ steps.run.outputs.run-dir }}
+          RUN_ID: ${{ steps.run.outputs.run-id }}
+          AGENT: ${{ matrix.agent }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const runDir = process.env.RUN_DIR;
+            const runId = process.env.RUN_ID;
+            const agent = process.env.AGENT;
+            const reportPath = path.join(runDir, 'report.md');
+            if (!fs.existsSync(reportPath)) {
+              core.warning(`report.md not found at ${reportPath}`);
+              return;
+            }
+            const md = fs.readFileSync(reportPath, 'utf8');
+            const head = md.split('\n').slice(0, 80).join('\n');
+            const body = [
+              `### LifeOps Benchmark — \`${agent}\``,
+              ``,
+              `Run ID: \`${runId}\``,
+              ``,
+              head,
+              ``,
+              `Full artifacts: see the \`lifeops-run-${agent}-${{ github.run_id }}\` upload on this run.`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Skipped notice
+        if: steps.gate.outputs.skip == 'true'
+        run: |
+          echo "::notice::LifeOps benchmark skipped — CEREBRAS_API_KEY is not configured for this repo."
+
+      - name: Cerebras throttled notice
+        if: steps.gate.outputs.skip != 'true' && (steps.cerebras.outputs.provider-throttled == 'true' || steps.run.outputs.provider-throttled == 'true')
+        run: |
+          echo "::notice::LifeOps benchmark skipped — Cerebras is currently rate limited or queue saturated."
+
+      - name: OpenClaw skipped notice
+        if: steps.gate.outputs.skip != 'true' && steps.cerebras.outputs.provider-throttled != 'true' && matrix.agent == 'openclaw' && steps.openclaw.outputs.skip == 'true'
+        run: |
+          echo "::notice::LifeOps openclaw benchmark skipped — OpenClaw CLI is not installed in this runner."

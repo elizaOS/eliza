@@ -1,0 +1,46 @@
+const localModelRemote = {
+  id: "eliza.local-model",
+  name: "Eliza Model",
+  version: "0.1.0",
+  description:
+    "Model Remote for ElizaLaunch. Provides Eliza-1 local model catalog, status, download, and routing controls for Eliza Orbit.",
+  mode: "background",
+  permissions: {
+    host: {
+      storage: true,
+      "manage-remote-plugins": true,
+    },
+    bun: {
+      read: true,
+      write: true,
+      env: true,
+      run: true,
+      worker: true,
+      ffi: true,
+      addons: true,
+    },
+    isolation: "isolated-process",
+  },
+  view: {
+    relativePath: "src/web/index.html",
+    title: "Eliza Model Remote",
+    width: 480,
+    height: 320,
+    hidden: true,
+  },
+  worker: {
+    relativePath: "src/bun/worker.ts",
+  },
+} as const;
+
+export default {
+  app: {
+    name: "Eliza Model Remote",
+    identifier: "ai.eliza.launch.local-model",
+    version: "0.1.0",
+  },
+  build: {
+    carrot: localModelRemote,
+    carrotOnly: true,
+  },
+};

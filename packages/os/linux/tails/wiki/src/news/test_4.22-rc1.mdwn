@@ -1,0 +1,100 @@
+[[!meta title="Call for testing 4.22~rc1"]]
+[[!meta date="Thu, 19 Aug 2021 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Contribute to Tails by testing our release candidate for Tails 4.22 by the end of August!
+
+[[!toc levels=1]]
+
+<h1 id="new">What's new in 4.22~rc1?</h1>
+
+Tails 4.22, scheduled for release on September 7, will allow users to
+manually set their correct time zone and clock. This helps users to work around
+a long-standing issue of Tails not being able to connect to Tor when obfs4
+bridges are being used and the computer has a hardware clock that is set to
+a time zone that is east of UTC. See [[!tails_ticket 15548]].
+
+[[!img tor-connection-fix-clock.png link="no" alt="" width="809"]]
+
+Also, Tails 4.22 will allow users to save bridges to Persistent Storage so
+that the bridges do not need to be reentered every time Tails is restarted.
+
+<h1>What's new since 4.21?</h1>
+
+- Update *Thunderbird* to [78.13](https://www.thunderbird.net/en-US/thunderbird/78.13.0/releasenotes/)
+
+- Tor Connection assistant will stop trying to connect to Tor when the error
+  screen is displayed.
+
+- Offline documentation includes the Russian language translation.
+
+For more details, read our
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/raw/4.22-rc1/debian/changelog).
+
+<h1>Get Tails 4.22~rc1</h1>
+
+<h2 id="upgrade">To upgrade your Tails USB stick and keep your Persistent Storage</h2>
+
+If you are running Tails 4.19 or later, you can upgrade like this:
+
+1. Start Tails and
+   [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Connect to the network and make sure Tor is connected successfully.
+
+1. Run this command in a *Terminal*:
+
+       echo TAILS_CHANNEL=\"alpha\" | sudo tee -a /etc/os-release && \
+            tails-upgrade-frontend-wrapper
+
+   Enter the administration password when asked for the "password
+   for amnesia".
+
+1. After the upgrade is applied, restart Tails and choose
+   **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+   to verify that you are running Tails 4.22~rc1.
+
+<h2 id="download">Download Tails 4.22~rc1</h1>
+
+Download and install Tails 4.22~rc1 as usually.
+
+<div class="caution">
+
+<p>All the data on this USB stick will be lost. Don't install Tails 4.22~rc1
+on any USB stick that already has a Persistent Storage, upgrade instead.</p>
+
+</div>
+
+### Direct download
+
+  - For USB sticks (USB image)<br/>
+    <small>OpenPGP signature<br/>SHA256SUM: 52930e1241809c0939754968e9d6925de4306a1dd3b727d5a2f0b33f5442859f</small>
+
+  - For DVDs and virtual machines (ISO image)<br/>
+    <small>OpenPGP signature<br/>SHA256SUM: 6e37811b753f480d709d7c88464ae1b2d7282470876e25513a49b987adafa87e</small>
+
+### BitTorrent download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+<h1 id="how-to-test">What to test in Tails 4.22~rc1?</h1>
+
+We particularly would like to know if Tails successfully connects to Tor
+using bridges when the correct time zone and clock are set from within Tor Connection
+assistant.
+
+Also, we want to make sure that bridges are properly saved to and restored
+from Persistent Storage when the Tor Bridges feature is enabled.
+
+Tell us if anything is unclear, confusing, or not working as you would expect.
+
+Please, send your feedback to <tails-testers@boum.org> (public mailing list).
+
+<h1 id="known-issues">Known issues in 4.22~rc1</h1>
+
+None specific to this release.
+
+Happy testing!

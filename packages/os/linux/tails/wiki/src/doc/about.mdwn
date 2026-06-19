@@ -1,0 +1,3 @@
+[[!meta title="General information"]]
+
+[[!inline pages="doc/about.index" raw="yes" sort="age"]]

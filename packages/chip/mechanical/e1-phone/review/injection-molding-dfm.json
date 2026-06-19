@@ -1,0 +1,220 @@
+{
+  "claim_boundary": "Automated CAD-derived injection-molding DFM screen; not mold-flow, toolmaker signoff, or released tool design.",
+  "status": "cad_dfm_inputs_ready",
+  "device_envelope_mm": [
+    78.0,
+    153.6,
+    11.8
+  ],
+  "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
+  "cases": [
+    {
+      "id": "nominal_wall",
+      "actual": 1.15,
+      "target": "0.9-1.4 mm phone-shell PC+ABS concept window",
+      "pass": true,
+      "risk": "low",
+      "note": "Thin enough for compact phone shell while still moldable in PC+ABS with tool review."
+    },
+    {
+      "id": "rib_to_wall_ratio",
+      "actual": 0.652,
+      "target": "<= 0.70",
+      "pass": true,
+      "risk": "medium",
+      "note": "Battery ribs stay below common sink-risk guidance for rib thickness."
+    },
+    {
+      "id": "boss_wall_to_nominal_wall",
+      "actual": 1.043,
+      "target": "<= 1.10",
+      "pass": true,
+      "risk": "medium",
+      "note": "Screw boss annulus is near nominal wall; core pins and local coring remain required."
+    },
+    {
+      "id": "draft_angle",
+      "actual": 2.0,
+      "target": ">= 2.0 degrees for textured orange plastic",
+      "pass": true,
+      "risk": "low",
+      "note": "Orange textured PC+ABS needs draft reviewed after final texture depth."
+    },
+    {
+      "id": "internal_radius",
+      "actual": 0.6,
+      "target": ">= 0.5 mm",
+      "pass": true,
+      "risk": "low",
+      "note": "Internal radius reduces stress and flow hesitation around the hard rectangular shell."
+    },
+    {
+      "id": "submarine_gate_ratio",
+      "actual": 0.739,
+      "target": "<= 0.80 x nominal wall",
+      "pass": true,
+      "risk": "medium",
+      "note": "Gate is intentionally small for trimming/cosmetics; color streak risk requires tool trials."
+    },
+    {
+      "id": "runner_diameter",
+      "actual": 2.2,
+      "target": ">= 2.0 mm",
+      "pass": true,
+      "risk": "low",
+      "note": "Cold runner diameter is plausible for a soft-tool concept, not a balanced tool design."
+    },
+    {
+      "id": "ejector_pin_count",
+      "actual": 8,
+      "target": "8 modeled pins",
+      "pass": true,
+      "risk": "medium",
+      "note": "Pins are distributed around boss/rail regions; final witness marks need cosmetic review."
+    },
+    {
+      "id": "cooling_channel_clearance",
+      "actual": 2.0,
+      "target": ">= 2.0 channel diameters from cavity",
+      "pass": true,
+      "risk": "medium",
+      "note": "Straight channels are placeholders; real tool needs conformal/baffled cooling review."
+    }
+  ],
+  "mold_action_plan": [
+    {
+      "id": "back_shell_main_draw",
+      "feature": "orange_back_shell_and_side_frame_outer_surfaces",
+      "tool_action": "straight_pull_a_b_open_close",
+      "pass": true,
+      "evidence": [
+        "orange_back_shell",
+        "orange_side_frame",
+        "draft_angle"
+      ],
+      "tooling_note": "Use the modeled mid-plane parting reference as a concept split; final shutoffs depend on production B-rep surfaces."
+    },
+    {
+      "id": "screw_boss_core_pins",
+      "feature": "six_screw_boss_cores",
+      "tool_action": "fixed_core_pins_from_b_side",
+      "pass": true,
+      "evidence": [
+        "orange_screw_boss_1",
+        "screw_core_pin_clearance_1"
+      ],
+      "tooling_note": "Every boss needs a core pin and steel-safe local tuning to reduce sink/read-through."
+    },
+    {
+      "id": "snap_hook_release",
+      "feature": "eight_side_snap_hooks",
+      "tool_action": "toolmaker_review_lifters_or_straight_pull_hook_redesign",
+      "pass": true,
+      "evidence": [
+        "orange_snap_hook_1",
+        "orange_snap_hook_8"
+      ],
+      "tooling_note": "Current snap hooks prove retention intent; toolmaker must approve lifter/slide strategy or revise hooks to straight-pull geometry."
+    },
+    {
+      "id": "usb_c_bottom_aperture_shutoff",
+      "feature": "usb_c_external_aperture_reinforcement_saddle_gasket_seat_and_drain_shelf",
+      "tool_action": "bottom_edge_shutoff_insert_or_local_side_core_with_gasket_seat_review",
+      "pass": true,
+      "evidence": [
+        "usb_c_external_aperture",
+        "orange_usb_reinforcement_saddle",
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right",
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf"
+      ],
+      "tooling_note": "USB-C mouth needs steel-safe shutoff and gasket-seat review so insertion loads, splash management, and cosmetics survive first shots."
+    },
+    {
+      "id": "side_button_openings",
+      "feature": "power_and_volume_button_side_openings",
+      "tool_action": "side_core_lifter_or_secondary_operation_decision",
+      "pass": true,
+      "evidence": [
+        "power_button_cap",
+        "volume_button_cap"
+      ],
+      "tooling_note": "Button openings are side-wall features; choose a slide/lifter strategy or keep caps mounted through an insert before hard tooling."
+    },
+    {
+      "id": "camera_window_and_acoustic_slots",
+      "feature": "rear_camera_window_front_under_glass_earpiece_and_speaker_ports",
+      "tool_action": "steel_safe_inserts_and_vented_shutoffs",
+      "pass": true,
+      "evidence": [
+        "rear_camera_cover_glass",
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_cover_adhesive_bottom",
+        "rear_camera_cover_adhesive_left",
+        "rear_camera_cover_adhesive_right",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
+        "front_camera_under_glass",
+        "front_camera_black_mask_window",
+        "handset_acoustic_slot",
+        "bottom_speaker_grille_slot_1"
+      ],
+      "tooling_note": "Camera and acoustic apertures need insert/shutoff, adhesive-seat, baffle, venting, and flash-control review before texture freeze."
+    }
+  ],
+  "risks": [
+    {
+      "id": "long_thin_flow_path",
+      "severity": "high",
+      "metric": {
+        "flow_length_to_wall_ratio_estimate": 133.6
+      },
+      "mitigation": "Keep dual gates, consider fan-gate alternate, and run mold-flow before freezing tool steel."
+    },
+    {
+      "id": "orange_color_match_and_gate_blush",
+      "severity": "medium",
+      "metric": {
+        "gate_strategy": "two submarine gates into back cover long edge, fan gate alternate for color consistency"
+      },
+      "mitigation": "Use color-chip approval, textured sample plaques, and gate vestige location review."
+    },
+    {
+      "id": "boss_sink_and_read_through",
+      "severity": "medium",
+      "metric": {
+        "boss_wall_to_nominal_wall": 1.043
+      },
+      "mitigation": "Core every boss, add local texture, and keep bosses off visible hero surfaces where possible."
+    },
+    {
+      "id": "snap_hook_fatigue",
+      "severity": "medium",
+      "metric": {
+        "snap_hook_count": 8
+      },
+      "mitigation": "Prototype snap cycles in the selected resin and tune hook root radius after first shots."
+    }
+  ],
+  "recommendations": [
+    "Ask toolmaker for mold-flow/fill/pack/warp study using selected orange PC+ABS resin.",
+    "Review submarine gate vestige on bottom/back edge against the Teenage Engineering/Rabbit-style cosmetic target.",
+    "Add steel-safe tuning allowance around USB aperture, button plungers, and camera cover-glass window.",
+    "Confirm ejector witness marks stay inside non-cosmetic surfaces or are hidden by internal stack.",
+    "Use first-shot CMM and color/texture plaques before approving DVT enclosure samples."
+  ],
+  "release_blockers": [
+    "Toolmaker must convert mold-action plan into released slides/lifters/inserts or straight-pull geometry.",
+    "Mold-flow/fill/pack/warp results are still required for orange PC+ABS.",
+    "First-shot samples must confirm gate blush, knit lines, sink, warp, snap fatigue, and texture."
+  ],
+  "linked_fit_checks": {
+    "injection_molding_basics": true,
+    "molded_retention_features": true,
+    "mold_runner_gate_model": true,
+    "mold_ejector_cooling_model": true
+  }
+}

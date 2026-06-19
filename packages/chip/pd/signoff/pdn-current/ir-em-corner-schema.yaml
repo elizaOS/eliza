@@ -1,0 +1,48 @@
+schema: eliza.pdn_ir_analysis.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+claim_boundary: >
+  Per-corner static-IR / EM report binding schema for the E1 PDN. This file
+  lifts the report globs already named in docs/evidence/power/pdn-signoff-gate.yaml
+  into a checked manifest: for each of the 36 mandated corner-runs (3 process x
+  4 thermal x 3 voltage) it names the static-IR report, the EM report, and the
+  per-rail acceptance thresholds. It does NOT contain signoff numbers. The bound
+  reports do not exist yet (no Voltus / RedHawk-SC seat, no SPEF corners), so
+  scripts/pdn_ir_analysis.py fails closed against this manifest until a
+  commercial run or the documented open-flow waiver populates the report paths.
+source_artifacts:
+  - docs/evidence/power/pdn-signoff-gate.yaml
+  - docs/pd/rail-plan-2028.yaml
+  - pd/signoff/pdn-current/local-budget.yaml
+
+# Acceptance thresholds mirror docs/evidence/power/pdn-signoff-gate.yaml.
+acceptance_thresholds:
+  static_ir_drop_pct_max: 5.0
+  static_ir_drop_pct_max_open_flow_waiver: 2.5
+  em_current_density_margin_min: 1.0
+
+# Corner matrix — must enumerate exactly the 36 corner-runs the gate mandates.
+corner_matrix:
+  process_corners: [SS, TT, FF]
+  thermal_corners_c: [0, 25, 85, 105]
+  voltage_corners: [min, nom, max]
+  total_corner_runs_required: 36
+
+# Report binding. Each corner names the report paths the signoff engine must
+# emit. report_globs use <run_id>; populated by a commercial Voltus/RedHawk-SC
+# run or the open-flow waiver path.
+report_source:
+  commercial_glob_roots:
+    - pd/signoff/voltus/<run_id>
+    - pd/signoff/redhawk/<run_id>
+  open_flow_glob_root: pd/openlane/runs/<run_id>/reports/pdn
+  required_per_corner_reports:
+    - static_ir.rpt
+    - em.rpt
+
+release_blockers:
+  - No commercial Voltus / RedHawk-SC static-IR or EM report set is present for any corner.
+  - SPEF parasitics per signoff corner not extracted (36 corner-runs required).
+  - EM signoff (foundry per-PG-layer current density) not produced.
+  - This manifest binds report paths only; it carries no signoff IR/EM numbers.
+check_command: python3 scripts/pdn_ir_analysis.py

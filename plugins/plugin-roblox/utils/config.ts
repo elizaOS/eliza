@@ -1,0 +1,42 @@
+import type { IAgentRuntime } from "@elizaos/core";
+import type { RobloxConfig } from "../types";
+
+const ROBLOX_DEFAULTS = {
+  MESSAGING_TOPIC: "eliza-agent",
+  DRY_RUN: false,
+} as const;
+
+export function hasRobloxEnabled(runtime: IAgentRuntime): boolean {
+  const apiKey = runtime.getSetting("ROBLOX_API_KEY");
+  const universeId = runtime.getSetting("ROBLOX_UNIVERSE_ID");
+  return Boolean(apiKey && universeId);
+}
+
+export function validateRobloxConfig(runtime: IAgentRuntime): RobloxConfig {
+  const apiKey = runtime.getSetting("ROBLOX_API_KEY") as string | undefined;
+  const universeId = runtime.getSetting("ROBLOX_UNIVERSE_ID") as string | undefined;
+
+  if (!apiKey) {
+    throw new Error("ROBLOX_API_KEY is required but not configured");
+  }
+
+  if (!universeId) {
+    throw new Error("ROBLOX_UNIVERSE_ID is required but not configured");
+  }
+
+  const placeId = runtime.getSetting("ROBLOX_PLACE_ID") as string | undefined;
+  const webhookSecret = runtime.getSetting("ROBLOX_WEBHOOK_SECRET") as string | undefined;
+  const messagingTopic =
+    (runtime.getSetting("ROBLOX_MESSAGING_TOPIC") as string) || ROBLOX_DEFAULTS.MESSAGING_TOPIC;
+  const dryRunStr = runtime.getSetting("ROBLOX_DRY_RUN") as string | undefined;
+  const dryRun = dryRunStr === "true";
+
+  return {
+    apiKey,
+    universeId,
+    placeId,
+    webhookSecret,
+    messagingTopic,
+    dryRun,
+  };
+}

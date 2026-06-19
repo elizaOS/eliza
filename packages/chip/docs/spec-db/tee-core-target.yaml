@@ -1,0 +1,129 @@
+schema: eliza.tee_core_target.v1
+as_of: 2026-05-22
+target_class: single_tenant_whole_os_confidential_vm
+
+positioning: >
+  CoVE/AP-TEE confidential-VM core target for the E1 TEE program (tee-plan/01
+  §1-2, tee-plan/07 §2). The OS runs as a measured guest (VS/VU) inside a
+  hardware-isolated TVM; a tiny M-mode TSM (TEE Security Manager) is the spine
+  TCB and uses the H-extension two-stage MMU plus Smmtt/MTT to enforce per-page
+  confidentiality. Smepmp is the Dorami wall isolating the TSM from untrusted
+  OpenSBI inside M-mode — NOT the whole-OS isolation primitive. This file is a
+  spec target, not silicon evidence.
+
+claim_boundary: >
+  This file is a planning spec. It does not promote any confidential-VM,
+  measured-launch, memory-encryption, IOMMU/IOPMP-isolation, NPU-isolation, or
+  attestation claim to product grade. Each forbidden_claims_until_evidence row
+  stays BLOCKED on the named lane transcript. BLOCKED means awaiting
+  FPGA/simulator/silicon, not a bug.
+
+trust_model:
+  shape: cove_ap_tee_confidential_vm
+  rejected_shapes:
+    - id: m_mode_monitor_epmp_enclave
+      reason: >
+        ePMP region count (16-64) cannot describe a whole Linux/AOSP physical
+        address space, and reprogramming per world-switch is slow and a
+        correctness hazard.
+    - id: multi_tenant_confidential_hypervisor
+      reason: >
+        E1 is a single-owner appliance; multi-tenant scheduling is the largest
+        TDX/SEV-SNP TCB contributor and buys nothing here.
+  tcb:
+    - m_mode_tsm
+    - rot_dice
+    - measured_tvm
+    - mtt
+    - mcie
+  untrusted:
+    - host_hypervisor_salus
+    - opensbi_below_tsm
+    - host_drivers
+    - unassigned_dma_masters
+
+isa_extensions:
+  required:
+    - id: H
+      role: hypervisor_extension_two_stage_mmu
+      status: blocked
+      blocked_on: cva6 H-extension not wired (rtl/cpu, grep finds no hgatp); FPGA target
+    - id: Smmtt
+      role: memory_tracking_table_whole_os_confidentiality
+      status: blocked
+      blocked_on: rtl/security/e1_mtt_checker.sv (C3) + mttp CSR + MTT walker
+    - id: Smepmp
+      role: dorami_tsm_wall_intra_m_mode_only
+      status: blocked
+      blocked_on: rtl/security/e1_tsm_epmp_wall.sv (C4)
+  forbidden:
+    - id: bare_iommu_for_private_domain
+      reason: BARE identity passthrough is forbidden for any domain holding private pages (tee-plan/07 §4)
+
+tsm_budget:
+  max_loc: 10000
+  rationale: >
+    Keep the security manager small enough to be a formal-verification candidate
+    (ACE-RISCV lesson). Scope is launch, measure, page-state transitions,
+    attestation glue, world-switch save/scrub only; device/PMIC/clock/console
+    init stays in untrusted OpenSBI.
+  privilege: m_mode
+  isolated_from_opensbi_by: smepmp_rule_locking_dorami
+
+smt_policy:
+  smt_enabled: false
+  rationale: >
+    No simultaneous multithreading: co-resident sibling threads are a cache/port
+    side-channel surface incompatible with the single-tenant confidential-domain
+    model (tee-plan/05 SMT policy).
+
+page_states:
+  - free
+  - private
+  - shared
+  - measured
+  - device_assigned
+  - scrub_pending
+no_direct_edge:
+  - from: private
+    to: free
+    rationale: the only exit from private is via scrub_pending (zeroize first)
+
+memory_protection:
+  cipher: aes_ctr_per_line_counter
+  forbidden_cipher: aes_xts
+  forbidden_cipher_reason: >
+    XTS is deterministic per address (ciphertext-equality leak exploited by
+    TEE.fail / CipherLeaks). Counter-mode freshens the keystream per write.
+  integrity: counter_integrity_tree_bonsai
+  tree_root_location: on_die_sram
+  packaging_target: pop_lpddr5x
+  status: blocked
+  blocked_on: docs/evidence/memory/lpddr-phy-procurement.yaml + real DRAM controller
+
+forbidden_claims_until_evidence:
+  - claim: confidential_vm_isolation
+    unblocked_by_phase: phase2
+    required_evidence:
+      - rtl/security/e1_mtt_checker.sv per-access MTT walk + SVA no-illegal-edge
+      - cocotb-mtt-checker green under Verilator
+  - claim: tsm_wall_integrity
+    unblocked_by_phase: phase2
+    required_evidence:
+      - rtl/security/e1_tsm_epmp_wall.sv Smepmp rule-locked wall
+      - cocotb-tsm-wall green
+  - claim: memory_encryption
+    unblocked_by_phase: phase3
+    required_evidence:
+      - MCIE AES-CTR + counter integrity tree on real LPDDR5X
+      - ciphertext bench (DDR capture) shows no deterministic collision
+  - claim: measured_launch
+    unblocked_by_phase: phase3
+    required_evidence:
+      - confidential elizaOS-Linux boot as a TVM under Salus
+      - end-to-end TeeEvidence signed by the lane-02 DICE key
+  - claim: attestation_quote_signed
+    unblocked_by_phase: phase3
+    required_evidence:
+      - lane-02 RoT silicon + key ceremony
+      - byte-exact cove_quote.c round-trip vs the agent verifier on real hardware

@@ -1,0 +1,22 @@
+version = "1.0"
+
+[metadata]
+author_name = "Wenbo Chen"
+author_email = "wenbochen111@gmail.com"
+difficulty = "medium"
+category = "energy"
+tags = [ "energy", "system-operation", "ac-optimal-power-flow", "non-convex-optimization",]
+
+[verifier]
+timeout_sec = 240.0
+
+[agent]
+timeout_sec = 3600.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 2
+memory_mb = 8192
+storage_mb = 10240
+gpus = 0
+allow_internet = true

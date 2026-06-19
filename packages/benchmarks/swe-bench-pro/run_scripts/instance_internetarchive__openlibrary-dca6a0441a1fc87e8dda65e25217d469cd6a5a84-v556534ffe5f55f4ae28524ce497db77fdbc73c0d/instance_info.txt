@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-dca6a0441a1fc87e8dda65e25217d469cd6a5a84-v556534ffe5f55f4ae28524ce497db77fdbc73c0d
+Repository: internetarchive/openlibrary
+Base Commit: b85fb8374b4d348ce7837ca6db2d4ff89261ff50
+Test Files: ["openlibrary/tests/core/test_imports.py"]
+FAIL_TO_PASS: ["openlibrary/tests/core/test_imports.py::TestImportItem::test_delete", "openlibrary/tests/core/test_imports.py::TestImportItem::test_delete_with_batch_id"]
+PASS_TO_PASS: []

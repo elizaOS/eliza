@@ -1,0 +1,108 @@
+# Source: https://github.com/llvm/llvm-project/pull/170992
+# Title:  [RISCV] Add Propeller support for RISC-V
+# Head:   e799179ff829128b921eedd83cd61adc6d5e336e  (PR #170992, 2 LGTMs: wangpc-pp, topperc, libcxx-ci SUCCESS)
+# State:  OPEN, stale since 2026-03-26; PR base diverged from current trunk
+# Rebased onto: de3ee84346d6dcf77ac20fe5c8acc95594886cbc (llvm-pin.json upstream.commit_sha, 2026-05-19)
+# Rebase delta: trunk added Windows/COFF + x86 support for -fbasic-block-address-map
+#               between the PR base and our pin; the two changes are orthogonal,
+#               so the RISC-V additions were merged into the new ELF triple guard.
+# Files touched: clang/lib/Driver/ToolChains/Clang.cpp,
+#                clang/test/Driver/basic-block-address-map.c,
+#                clang/test/Driver/fbasic-block-sections.c,
+#                llvm/lib/Target/RISCV/RISCVInstrInfo.cpp,
+#                llvm/lib/Target/RISCV/RISCVInstrInfo.h
+# Verified: `git apply --check` against pinned SHA -> clean (2 offset hunks).
+diff --git a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+index 0380568412e62..62ceaa7536f04 100644
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -6341,8 +6341,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
+ 
+   if (Arg *A = Args.getLastArg(options::OPT_fbasic_block_address_map,
+                                options::OPT_fno_basic_block_address_map)) {
+-    if (((Triple.isX86() || Triple.isAArch64()) && Triple.isOSBinFormatELF()) ||
++    if (((Triple.isX86() || Triple.isAArch64() || Triple.isRISCV()) &&
++         Triple.isOSBinFormatELF()) ||
+         (Triple.isX86() && Triple.isOSBinFormatCOFF())) {
+       if (A->getOption().matches(options::OPT_fbasic_block_address_map))
+         A->render(Args, CmdArgs);
+     } else {
+@@ -6418,6 +6418,13 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
+             << A->getAsString(Args) << A->getValue();
+       else
+         A->render(Args, CmdArgs);
++    } else if (Triple.isRISCV() && Triple.isOSBinFormatELF()) {
++      // Add RISC-V support for basic block sections
++      if (Val != "labels" && Val != "none" && !Val.starts_with("list="))
++        D.Diag(diag::err_drv_invalid_value)
++            << A->getAsString(Args) << A->getValue();
++      else
++        A->render(Args, CmdArgs);
+     } else if (Triple.isNVPTX()) {
+       // Do not pass the option to the GPU compilation. We still want it enabled
+       // for the host-side compilation, so seeing it here is not an error.
+diff --git a/clang/test/Driver/basic-block-address-map.c b/clang/test/Driver/basic-block-address-map.c
+index 12393e8ebfd54..48d8ae445f45d 100644
+--- a/clang/test/Driver/basic-block-address-map.c
++++ b/clang/test/Driver/basic-block-address-map.c
+@@ -1,6 +1,7 @@
+ // RUN: %clang -### --target=x86_64 -fbasic-block-address-map %s -S 2>&1 | FileCheck -check-prefix=CHECK-PRESENT %s
+ // RUN: %clang -### --target=aarch64 -fbasic-block-address-map %s -S 2>&1 | FileCheck -check-prefix=CHECK-PRESENT %s
++// RUN: %clang -### --target=riscv64 -fbasic-block-address-map %s -S 2>&1 | FileCheck -check-prefix=CHECK-PRESENT %s
+ // RUN: %clang -### --target=x86_64-pc-windows-msvc -fbasic-block-address-map %s -S 2>&1 | FileCheck -check-prefix=CHECK-PRESENT %s
+ // CHECK-PRESENT: -fbasic-block-address-map
+ 
+ // RUN: %clang -### --target=x86_64 -fno-basic-block-address-map %s -S 2>&1 | FileCheck %s --check-prefix=CHECK-ABSENT
+diff --git a/clang/test/Driver/fbasic-block-sections.c b/clang/test/Driver/fbasic-block-sections.c
+index 6dfba5f404cee..78999c89ea9f8 100644
+--- a/clang/test/Driver/fbasic-block-sections.c
++++ b/clang/test/Driver/fbasic-block-sections.c
+@@ -9,6 +9,11 @@
+ // RUN: not %clang -c --target=arm-unknown-linux -fbasic-block-sections=all %s -S 2>&1 | FileCheck -check-prefix=CHECK-TRIPLE %s
+ // RUN: %clang -### --target=arm-unknown-linux -fbasic-block-sections=all -fbasic-block-sections=none %s -S 2>&1 \
+ // RUN:   | FileCheck -check-prefix=CHECK-NOOPT %s
++// RUN: %clang -### --target=riscv64 -fbasic-block-sections=none %s -S 2>&1 | FileCheck -check-prefix=CHECK-OPT-NONE %s
++// RUN: %clang -### --target=riscv64 -fbasic-block-sections=list=%s %s -S 2>&1 | FileCheck -check-prefix=CHECK-OPT-LIST %s
++// RUN: %clang -### --target=riscv64 -fbasic-block-sections=labels %s -S 2>&1 | FileCheck -check-prefix=CHECK-OPT-LABELS %s
++// RUN: not %clang -### --target=riscv64 -fbasic-block-sections=all %s -S 2>&1 | FileCheck -check-prefix=CHECK-INVALID-VALUE %s
++// RUN: not %clang -c --target=riscv64-unknown-linux -fbasic-block-sections=all %s -S 2>&1 | FileCheck -check-prefix=CHECK-INVALID-VALUE %s
+ // RUN: not %clang -c --target=x86_64-apple-darwin10 -fbasic-block-sections=all %s -S 2>&1 | FileCheck -check-prefix=CHECK-TRIPLE %s
+ // RUN: not %clang -### --target=x86_64 -fbasic-block-sections=alll %s -S 2>&1 | FileCheck -check-prefix=CHECK-INVALID-VALUE %s
+ // RUN: not %clang -### --target=x86_64 -fbasic-block-sections=list %s -S 2>&1 | FileCheck -check-prefix=CHECK-INVALID-VALUE %s
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp b/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp
+index 9fb7ac0573824..58a0148e14287 100644
+--- a/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp
++++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp
+@@ -89,6 +89,18 @@ RISCVInstrInfo::RISCVInstrInfo(const RISCVSubtarget &STI)
+ #define GET_INSTRINFO_HELPERS
+ #include "RISCVGenInstrInfo.inc"
+ 
++void RISCVInstrInfo::insertNoop(MachineBasicBlock &MBB,
++                                MachineBasicBlock::iterator MI) const {
++  DebugLoc DL;
++  if (STI.hasStdExtZca())
++    BuildMI(MBB, MI, DL, get(RISCV::C_NOP));
++  else
++    BuildMI(MBB, MI, DL, get(RISCV::ADDI))
++        .addReg(RISCV::X0)
++        .addReg(RISCV::X0)
++        .addImm(0);
++}
++
+ MCInst RISCVInstrInfo::getNop() const {
+   if (STI.hasStdExtZca())
+     return MCInstBuilder(RISCV::C_NOP);
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.h b/llvm/lib/Target/RISCV/RISCVInstrInfo.h
+index 0ffe015b9fac8..bf12c1900be25 100644
+--- a/llvm/lib/Target/RISCV/RISCVInstrInfo.h
++++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.h
+@@ -86,6 +86,9 @@ class RISCVInstrInfo : public RISCVGenInstrInfo {
+ 
+   const RISCVRegisterInfo &getRegisterInfo() const { return RegInfo; }
+ 
++  void insertNoop(MachineBasicBlock &MBB,
++                  MachineBasicBlock::iterator MI) const override;
++
+   MCInst getNop() const override;
+ 
+   Register isLoadFromStackSlot(const MachineInstr &MI,

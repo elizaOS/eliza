@@ -1,0 +1,257 @@
+import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { handleTextEmbedding } from "../models/embedding";
+import {
+  getActionPlannerModel,
+  getApiKey,
+  getBaseURL,
+  getImageDescriptionApiKey,
+  getImageDescriptionBaseURL,
+  getLargeModel,
+  getResponseHandlerModel,
+  getSmallModel,
+} from "../utils/config";
+
+function buildRuntime(settings: Record<string, string | undefined>): IAgentRuntime {
+  return {
+    getSetting: vi.fn((key: string) => (key in settings ? (settings[key] ?? null) : null)),
+  } as IAgentRuntime;
+}
+
+const ENV_KEYS = [
+  "ELIZA_PROVIDER",
+  "OPENAI_BASE_URL",
+  "CEREBRAS_API_KEY",
+  "CEREBRAS_BASE_URL",
+  "CEREBRAS_MODEL",
+  "EVOLINK_API_KEY",
+  "EVOLINK_BASE_URL",
+  "EVOLINK_MODEL",
+  "OPENAI_API_KEY",
+  "OPENAI_SMALL_MODEL",
+  "OPENAI_LARGE_MODEL",
+  "OPENAI_RESPONSE_HANDLER_MODEL",
+  "OPENAI_SHOULD_RESPOND_MODEL",
+  "OPENAI_ACTION_PLANNER_MODEL",
+  "OPENAI_PLANNER_MODEL",
+  "OPENAI_EMBEDDING_URL",
+  "OPENAI_EMBEDDING_DIMENSIONS",
+  "OPENAI_IMAGE_DESCRIPTION_API_KEY",
+  "OPENAI_IMAGE_DESCRIPTION_BASE_URL",
+] as const;
+
+const originalEnv = new Map<string, string | undefined>();
+
+beforeEach(() => {
+  for (const key of ENV_KEYS) {
+    originalEnv.set(key, process.env[key]);
+    delete process.env[key];
+  }
+});
+
+afterEach(() => {
+  for (const key of ENV_KEYS) {
+    const value = originalEnv.get(key);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  originalEnv.clear();
+  vi.restoreAllMocks();
+});
+
+describe("plugin-openai Cerebras config (pure)", () => {
+  it("resolves Cerebras base URL and key when OPENAI_BASE_URL points at cerebras.ai", () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_API_KEY: undefined,
+    });
+    expect(getBaseURL(runtime)).toBe("https://api.cerebras.ai/v1");
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+  });
+
+  it("prefers CEREBRAS_API_KEY over OPENAI_API_KEY in Cerebras mode", () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_API_KEY: "sk-openai-fake",
+    });
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+  });
+
+  it("falls back to OPENAI_API_KEY when CEREBRAS_API_KEY is unset, even in Cerebras mode", () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      CEREBRAS_API_KEY: undefined,
+      OPENAI_API_KEY: "sk-openai-fake",
+    });
+    expect(getApiKey(runtime)).toBe("sk-openai-fake");
+  });
+
+  it("does not consume CEREBRAS_API_KEY when no Cerebras hint is present", () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: undefined,
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_API_KEY: "sk-openai-fake",
+    });
+    expect(getBaseURL(runtime)).toBe("https://api.openai.com/v1");
+    expect(getApiKey(runtime)).toBe("sk-openai-fake");
+  });
+
+  it("auto-detects Cerebras mode when only CEREBRAS_API_KEY is present", () => {
+    const runtime = buildRuntime({
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      CEREBRAS_BASE_URL: "https://api.cerebras.ai/v1",
+      OPENAI_API_KEY: undefined,
+      OPENAI_BASE_URL: undefined,
+    });
+    expect(getBaseURL(runtime)).toBe("https://api.cerebras.ai/v1");
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+  });
+
+  it("works with the exact env the Cerebras provider switch writes (key + model only)", () => {
+    // Mirrors provider-switch-config: CEREBRAS_API_KEY (envKey) +
+    // CEREBRAS_MODEL (PROVIDER_DEFAULT_MODELS) and nothing else. This is the
+    // real onboarding output, so it must resolve to a usable Cerebras client.
+    const runtime = buildRuntime({
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      CEREBRAS_MODEL: "gpt-oss-120b",
+    });
+    expect(getBaseURL(runtime)).toBe("https://api.cerebras.ai/v1");
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+    expect(getSmallModel(runtime)).toBe("gpt-oss-120b");
+    expect(getLargeModel(runtime)).toBe("gpt-oss-120b");
+  });
+
+  it("treats ELIZA_PROVIDER=cerebras as a Cerebras hint independent of base URL", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "cerebras",
+      OPENAI_BASE_URL: undefined,
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_API_KEY: "sk-openai-fake",
+    });
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+  });
+
+  it("uses CEREBRAS_MODEL as the OpenAI model fallback in Cerebras mode", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "cerebras",
+      CEREBRAS_MODEL: "gpt-oss-120b",
+      SMALL_MODEL: "stale-small",
+      LARGE_MODEL: "stale-large",
+      ACTION_PLANNER_MODEL: "stale-planner",
+      RESPONSE_HANDLER_MODEL: "stale-response",
+    });
+    expect(getSmallModel(runtime)).toBe("gpt-oss-120b");
+    expect(getLargeModel(runtime)).toBe("gpt-oss-120b");
+    expect(getResponseHandlerModel(runtime)).toBe("gpt-oss-120b");
+    expect(getActionPlannerModel(runtime)).toBe("gpt-oss-120b");
+  });
+
+  it("can route image descriptions to OpenAI while text uses Cerebras", () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_API_KEY: "sk-openai-fake",
+      OPENAI_IMAGE_DESCRIPTION_API_KEY: "sk-vision-fake",
+      OPENAI_IMAGE_DESCRIPTION_BASE_URL: "https://api.openai.com/v1",
+    });
+
+    expect(getBaseURL(runtime)).toBe("https://api.cerebras.ai/v1");
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+    expect(getImageDescriptionBaseURL(runtime)).toBe("https://api.openai.com/v1");
+    expect(getImageDescriptionApiKey(runtime)).toBe("sk-vision-fake");
+  });
+
+  it("falls back to OPENAI_API_KEY for OpenAI image descriptions while text uses Cerebras", () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_API_KEY: "sk-openai-fake",
+      OPENAI_IMAGE_DESCRIPTION_API_KEY: undefined,
+      OPENAI_IMAGE_DESCRIPTION_BASE_URL: "https://api.openai.com/v1",
+    });
+
+    expect(getBaseURL(runtime)).toBe("https://api.cerebras.ai/v1");
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+    expect(getImageDescriptionBaseURL(runtime)).toBe("https://api.openai.com/v1");
+    expect(getImageDescriptionApiKey(runtime)).toBe("sk-openai-fake");
+  });
+
+  it("respects an explicit OPENAI_BASE_URL for OpenAI-compatible non-Cerebras endpoints", () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.openrouter.ai/api/v1",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_API_KEY: "sk-openrouter-fake",
+    });
+    expect(getBaseURL(runtime)).toBe("https://api.openrouter.ai/api/v1");
+    expect(getApiKey(runtime)).toBe("sk-openrouter-fake");
+  });
+
+  it("auto-detects EvoLink mode when only EVOLINK_API_KEY is present", () => {
+    const runtime = buildRuntime({
+      EVOLINK_API_KEY: "evl-fake",
+      OPENAI_API_KEY: undefined,
+      OPENAI_BASE_URL: undefined,
+    });
+    expect(getBaseURL(runtime)).toBe("https://direct.evolink.ai/v1");
+    expect(getApiKey(runtime)).toBe("evl-fake");
+    expect(getSmallModel(runtime)).toBe("gpt-5.2");
+    expect(getLargeModel(runtime)).toBe("gpt-5.2");
+    expect(getResponseHandlerModel(runtime)).toBe("gpt-5.2");
+    expect(getActionPlannerModel(runtime)).toBe("gpt-5.2");
+  });
+
+  it("supports explicit EvoLink base URL and model overrides", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "evolink",
+      EVOLINK_API_KEY: "evl-fake",
+      EVOLINK_BASE_URL: "https://direct.evolink.ai/v1",
+      EVOLINK_MODEL: "gpt-5.1",
+      SMALL_MODEL: "stale-small",
+      LARGE_MODEL: "stale-large",
+    });
+    expect(getBaseURL(runtime)).toBe("https://direct.evolink.ai/v1");
+    expect(getApiKey(runtime)).toBe("evl-fake");
+    expect(getSmallModel(runtime)).toBe("gpt-5.1");
+    expect(getLargeModel(runtime)).toBe("gpt-5.1");
+  });
+
+  it("respects explicit OPENAI settings over EvoLink aliases", () => {
+    const runtime = buildRuntime({
+      EVOLINK_API_KEY: "evl-fake",
+      OPENAI_API_KEY: "sk-openai-fake",
+      OPENAI_BASE_URL: "https://api.openai.com/v1",
+    });
+    expect(getBaseURL(runtime)).toBe("https://api.openai.com/v1");
+    expect(getApiKey(runtime)).toBe("sk-openai-fake");
+    expect(getSmallModel(runtime)).toBe("gpt-5.4-mini");
+  });
+
+  it("uses a deterministic local embedding fallback in Cerebras mode without an embedding endpoint", async () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_EMBEDDING_DIMENSIONS: "1536",
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("remote embeddings should not be called"));
+
+    const first = await handleTextEmbedding(runtime, {
+      text: "remember the launch code",
+    });
+    const second = await handleTextEmbedding(runtime, {
+      text: "remember the launch code",
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(first).toHaveLength(1536);
+    expect(first).toEqual(second);
+    expect(first.some((value) => value !== 0)).toBe(true);
+  });
+});

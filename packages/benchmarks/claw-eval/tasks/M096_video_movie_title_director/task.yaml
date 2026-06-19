@@ -1,0 +1,45 @@
+task_id: M096_video_movie_title_director
+task_name: Movie Title and Director Identification
+version: "1.0"
+category: video_search
+difficulty: easy
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：/workspace/fixtures/video.mp4。请观看视频，说明这部电影的名字和导演。
+    将答案保存到 /workspace/answer.txt。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+
+env_snapshot_files:
+  - /workspace/answer.txt
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+
+reference_solution: |
+  观看视频片段，识别电影信息：
+  片名："影" (英文: SHADOW)
+  导演：张艺谋
+  评分：0.4 片名 + 0.6 导演
+
+primary_dimensions:
+  - completion
+  - robustness

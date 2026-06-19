@@ -1,0 +1,38 @@
+{
+  "project": "末世重生：气候浩劫",
+  "version": "1.0",
+  "description": "Project file structure configuration",
+  "output_directory": "chapters/",
+  "output_files": [
+    {
+      "filename": "设定文件.md",
+      "description": "Complete worldbuilding document",
+      "priority": 1
+    },
+    {
+      "filename": "角色设定.md",
+      "description": "Character profiles and backgrounds",
+      "priority": 2
+    },
+    {
+      "filename": "世界观设定.md",
+      "description": "Faction and location settings",
+      "priority": 3
+    },
+    {
+      "filename": "写作规范.md",
+      "description": "Writing standards and style guide",
+      "priority": 4
+    }
+  ],
+  "chapter_output": {
+    "directory": "chapters/",
+    "naming_pattern": "第{volume}卷_第{chapter}章_{title}.md",
+    "encoding": "utf-8"
+  },
+  "metadata": {
+    "created": "2024-03-10",
+    "author": "project_manager",
+    "status": "approved"
+  }
+}

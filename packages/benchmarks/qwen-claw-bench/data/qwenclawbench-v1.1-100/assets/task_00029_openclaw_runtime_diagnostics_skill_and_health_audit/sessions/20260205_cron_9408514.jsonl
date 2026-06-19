@@ -1,0 +1,9 @@
+{"type": "session_start", "session_id": "cron_9408514", "model": "deepseek-r1", "created_at": "2026-02-05T07:21:20.902864", "user_id": "cron-scheduler", "channel": "internal"}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-05T07:25:21.253922", "session_id": "cron_9408514", "seq": 1}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-05T07:27:04.240152", "session_id": "cron_9408514", "seq": 2}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-05T07:31:20.811476", "session_id": "cron_9408514", "seq": 3}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-05T07:31:33.998368", "session_id": "cron_9408514", "seq": 4}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-05T07:34:49.730880", "session_id": "cron_9408514", "seq": 5}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-05T07:36:46.026368", "session_id": "cron_9408514", "seq": 6}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-05T07:40:32.487521", "session_id": "cron_9408514", "seq": 7, "usage": {"prompt_tokens": 3513, "completion_tokens": 1238, "total_tokens": 3610}}
+{"type": "session_end", "session_id": "cron_9408514", "ended_at": "2026-02-05T07:40:42.487521", "total_messages": 7, "status": "timeout"}

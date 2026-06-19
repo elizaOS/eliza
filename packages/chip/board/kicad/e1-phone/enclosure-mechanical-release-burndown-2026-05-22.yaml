@@ -1,0 +1,461 @@
+schema: eliza.e1_phone_enclosure_mechanical_release_burndown.v1
+status: blocked_enclosure_mechanical_release_requires_supplier_geometry_routed_step_physical_fit_and_production_handoff_evidence
+date: 2026-05-22
+claim_boundary: >
+  Dated mechanical release burn-down for the E1 phone enclosure, routed-board
+  STEP, USB-C load path, side-button actuation, and first-article physical-fit
+  blockers. This converts remaining enclosure work into release inputs and
+  evidence tasks only. It is not supplier geometry, not a routed PCB, not a
+  routed-board STEP export, not a clearance result, not physical-fit evidence,
+  and not a production enclosure handoff.
+
+source_artifacts:
+  - board/kicad/e1-phone/enclosure-placement-closure.yaml
+  - board/kicad/e1-phone/enclosure-tolerance-stack-closure.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+  - board/kicad/e1-phone/routed-clearance-release-execution.yaml
+  - board/kicad/e1-phone/enclosure-physical-fit-first-article-execution.yaml
+  - board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+  - board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/mechanical-overlay.yaml
+  - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+
+upstream_status:
+  enclosure_placement_closure: enclosure_placement_cross_checked_not_release_ready
+  enclosure_tolerance_stack_closure: blocked_requires_supplier_geometry_routed_step_and_physical_tolerance_evidence
+  enclosure_fit_execution_package: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+  component_height_step_integration: blocked_requires_supplier_step_models_approved_routed_board_step_physical_clearance_and_signoff
+  routed_board_step_export_contract: blocked_requires_routed_kicad_step_supplier_3d_models_approved_clearance_and_signoff
+  routed_clearance_release_execution: blocked_routed_clearance_release_requires_routed_step_supplier_models_boolean_physical_fit_and_functional_logs
+  enclosure_physical_fit_first_article_execution: blocked_enclosure_physical_fit_first_article_requires_routed_board_step_supplier_geometry_clearance_functional_logs_and_signed_traveler
+  production_enclosure_first_article_release_execution: blocked_production_enclosure_first_article_release_requires_routed_outputs_factory_limits_traceability_clearance_physical_fit_and_signed_traveler
+  usb_sidekey_mechanical_decision: blocked_usb_sidekey_mechanical_decision_requires_supplier_drawings_routed_step_and_measurements
+  display_envelope_downselect: blocked_display_envelope_downselect_requires_signed_display_stack_connector_and_routed_clearance
+
+release_policy:
+  release_revision: EVT1-routed-first-article
+  ready_for_enclosure: false
+  ready_for_routed_step_export: false
+  ready_for_clearance_release: false
+  ready_for_physical_fit_first_article: false
+  ready_for_production_enclosure_handoff: false
+  release_allowed_without_supplier_step_or_brep: false
+  release_allowed_without_routed_board_step: false
+  release_allowed_without_boolean_interference_report: false
+  release_allowed_without_usb_plug_sweep: false
+  release_allowed_without_button_force_load_bypass: false
+  release_allowed_without_tolerance_stack_measurements: false
+  release_allowed_without_first_article_fit_evidence: false
+  release_allowed_from_concept_cad: false
+
+required_supplier_geometry_inputs:
+  - family: display_touch_stack
+    selected_hardware: CH550FH01A-CT
+    required_step_or_brep_inputs:
+      - display LCM plus CTP solid model with cover-lens, active-area, and adhesive datums
+      - FPC exit, stiffener, bend keepout, pin-1 datum, and mated connector height model
+      - signed 2D drawing with outline, active area, tolerance, and datum scheme
+    required_before_release:
+      - exact connector MPN, land pattern, height, and mated STEP or B-rep
+      - sample inspection report tying measured outline and thickness to the selected lot
+    release_allowed: false
+  - family: rear_front_camera_stack
+    selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+    required_step_or_brep_inputs:
+      - rear and front camera module bodies, lens barrels, FPC tails, stiffeners, and connector heights
+      - optical-center, lens-axis, cover-glass, dust-clearance, and focus datums
+      - signed 2D drawings and sample lot traceability
+    required_before_release:
+      - camera connector land patterns and routed placement datums
+      - focus fixture and image-capture clearance evidence
+    release_allowed: false
+  - family: usb_c_side_buttons_bottom_io
+    selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+    required_step_or_brep_inputs:
+      - USB-C receptacle shell, tongue, through-hole stakes, board-edge datum, and maximum-height model
+      - USB-C external aperture, saddle, gasket or chamfer geometry, and plug overmold sweep body
+      - side-key switch or flex subassembly, actuator spine, cap, rib, elastomer or stiffener, and tolerance datums
+    required_before_release:
+      - USB-C signed drawing, land pattern, insertion/extraction force, cycle, and shell-load evidence
+      - side-key signed drawing, force-travel curve, lifecycle cycle data, and recovery-combo access evidence
+    release_allowed: false
+  - family: battery_power_thermal_stack
+    selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+    required_step_or_brep_inputs:
+      - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+      - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+    required_before_release:
+      - pack supplier drawing with service-life swelling allowance
+      - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+    release_allowed: false
+  - family: audio_haptics_split_interconnect
+    selected_hardware: audio_haptics_top_bottom_flex_stack
+    required_step_or_brep_inputs:
+      - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+      - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+    required_before_release:
+      - acoustic gasket compression and port alignment report
+      - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+    release_allowed: false
+  - family: radios_antennas_modules
+    selected_hardware: Quectel_RG255C_or_RM255C_and_Murata_LBEE5XV2EA-802
+    required_step_or_brep_inputs:
+      - cellular and Wi-Fi/Bluetooth module STEP, shield-can height, keepout volumes, and antenna plastic
+      - RF feed, coax or spring contact, matching access, midframe, SAR, and regulatory keepout datums
+    required_before_release:
+      - routed RF feed clearance, VNA, conducted RF, coexistence, SAR pre-scan, and closed-enclosure logs
+    release_allowed: false
+
+board_component_height_model_inputs:
+  required_routed_board_source: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  required_step_output: board/kicad/e1-phone/production/step/routed-board-with-components.step
+  required_component_model_directory: board/kicad/e1-phone/production/step/component-models
+  required_height_model_families:
+    - display_fpc_connector
+    - rear_camera_module
+    - front_camera_module
+    - usb_c_receptacle
+    - side_key_switches_or_flex_subassembly
+    - battery_pack_connector_and_pcm
+    - bottom_speaker_module
+    - earpiece_receiver
+    - microphones
+    - haptic_lra
+    - split_interconnect_top_connector
+    - split_interconnect_bottom_connector
+    - split_interconnect_side_flex
+    - soc_shield_can
+    - pmic_shield_can
+    - radio_shield_can
+    - cellular_module
+    - wifi_bluetooth_module
+  current_height_model_release_status: blocked_missing_selected_supplier_step_or_brep_models_and_routed_board_step
+  placeholder_footprints_allowed_for_release: false
+  concept_step_artifacts_count_as_release_evidence: false
+  release_allowed: false
+
+physical_interface_burndown:
+  - interface: display
+    placement_refs: [J_DISPLAY_TOUCH]
+    required_release_checks:
+      - cover-lens to enclosure datum and adhesive thickness stack
+      - display FPC bend radius, stiffener, and mated connector height
+      - display outline clearance in 78.0 x 153.6 x 11.8 mm envelope
+      - routed MIPI, touch, backlight, reset, and bias clearances
+    required_evidence:
+      - supplier display STEP or B-rep and signed drawing
+      - routed board STEP display connector clearance report
+      - display bring-up and touch functional log
+    release_allowed: false
+  - interface: battery
+    placement_refs: [J_BATTERY]
+    required_release_checks:
+      - 64 x 87 mm pack cavity and no rigid component intrusion
+      - pack swelling, pull-tab, PCM, connector, NTC, pack-ID, and foam compression
+      - battery-to-PCB-islands and battery-back-void clearance
+    required_evidence:
+      - signed pack drawing and swelling envelope
+      - routed clearance reports for battery_to_pcb_islands and battery_back_void_foam_to_pouch
+      - insertion/removal and closed-enclosure thermal evidence
+    release_allowed: false
+  - interface: cameras
+    placement_refs: [J_CAM0_CAM1]
+    required_release_checks:
+      - rear lens axis to cover-glass aperture and camera bump clearance
+      - front camera to earpiece and black-mask datum
+      - camera FPC bend, connector height, focus alignment, and dust clearance
+    required_evidence:
+      - signed rear/front camera STEP or B-rep and optical datum drawings
+      - routed clearance reports for rear_camera_to_battery and front_camera_to_earpiece
+      - capture, focus, and thermal drift logs
+    release_allowed: false
+  - interface: usb_c
+    placement_refs: [J_USB_C]
+    required_release_checks:
+      - shell saddle or through-hole stake load path bypasses solder joints
+      - external aperture and cable overmold plug sweep
+      - shield ground, ESD gap, bottom mic, and bottom speaker clearances
+    required_evidence:
+      - signed USB-C drawing, land pattern, STEP or B-rep, and insertion-force data
+      - routed clearance reports for usb_shell_to_external_aperture, bottom_mic_to_usb, and usb_to_bottom_speaker
+      - USB attach, charge, debug, insertion-cycle, and ESD/chassis review logs
+    release_allowed: false
+  - interface: side_buttons
+    placement_refs: [SW_POWER_VOL]
+    required_release_checks:
+      - external cap pushes enclosure rib, elastomer, flex stiffener, or side-key subassembly
+      - load path bypasses switch solder joints and PCB edge copper
+      - power, volume-up, volume-down, return force, cap rattle, and recovery-combo access
+    required_evidence:
+      - signed side-key drawing, switch or flex STEP or B-rep, and force-travel CSV
+      - button actuation clearance report in routed board STEP
+      - wake, bootloader recovery combo, cycle, and side-load drop logs
+    release_allowed: false
+  - interface: speaker_audio_haptics
+    placement_refs: [U_AUDIO_SPK_MIC]
+    required_release_checks:
+      - speaker chamber, receiver, microphone ports, mesh, gasket compression, and haptic mass clearance
+      - bottom speaker to USB and haptic to battery or PCB-island clearances
+    required_evidence:
+      - acoustic, microphone, receiver, haptic, gasket, and mesh supplier geometry
+      - routed clearance reports for usb_to_bottom_speaker, haptic_to_battery, and haptic_to_pcb_islands
+      - audio functional, haptic current, and gasket compression logs
+    release_allowed: false
+  - interface: antennas_radios
+    placement_refs: [U_CELL, U_WIFI_BT]
+    required_release_checks:
+      - cellular and Wi-Fi/Bluetooth shield-can height and enclosure plastic clearances
+      - antenna keepout, RF feed, matching access, SAR keepout, and closed-cover detuning
+    required_evidence:
+      - supplier module STEP or B-rep, antenna keepout, and reference layout
+      - routed RF feed clearance and closed-enclosure VNA/conducted/coexistence logs
+      - SAR pre-scan and regulatory traceability evidence
+    release_allowed: false
+  - interface: split_interconnect
+    placement_refs: [J_TOP_BOTTOM_FLEX_TOP, J_TOP_BOTTOM_FLEX_BOTTOM]
+    required_release_checks:
+      - top-bottom connector mated height and side-rail flex path
+      - bend radius, stiffener, battery-edge clearance, strain relief, and service loop
+    required_evidence:
+      - flex and connector supplier drawings, land patterns, and STEP or B-rep models
+      - routed clearance reports for split_interconnect_connectors_on_pcb_islands, split_interconnect_flex_to_battery_edge, and split_interconnect_flex_within_side_rail
+      - continuity, mate-sequence, and inspection evidence
+    release_allowed: false
+
+usb_plug_sweep_and_button_load_path:
+  usb_c_plug_sweep:
+    required_sweep_body: common cable overmold envelope plus Type-C plug insertion path
+    required_cases:
+      - straight plug insertion at nominal datum
+      - plug insertion at worst-case shell, aperture, and board placement tolerance
+      - plug overmold clash with enclosure chamfer, speaker port, microphone port, and bottom rib
+      - insertion and extraction load transferred through shell stakes or enclosure saddle
+    required_outputs:
+      - board/kicad/e1-phone/production/reports/clearance/usb_shell_to_external_aperture.yaml
+      - board/kicad/e1-phone/production/reports/usb-c-plug-sweep.yaml
+      - board/kicad/e1-phone/production/reports/usb-c-insertion-cycle-log.json
+    release_allowed: false
+  side_button_force_load_bypass:
+    required_load_path: external cap to enclosure rib, elastomer, flex stiffener, or side-key subassembly without solder-joint load
+    required_cases:
+      - power button force, travel, return, and wake
+      - volume-up force, travel, return, and recovery access
+      - volume-down force, travel, return, and recovery access
+      - side-load, cap rattle, lifecycle cycle, and drop recovery
+    required_outputs:
+      - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+      - board/kicad/e1-phone/production/reports/side-key-load-path-review.yaml
+      - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    release_allowed: false
+
+tolerance_stack_burndown:
+  current_basis: concept_cad_and_planning_constraints_only
+  required_release_basis:
+    - supplier STEP or B-rep geometry loaded into routed assembly
+    - routed KiCad board STEP with final components, tracks, zones, shields, and interconnects
+    - measured display, battery, camera, USB-C, side-button, acoustic, antenna, and enclosure sample dimensions
+    - GD&T first-article CMM results for release characteristics
+    - compression, swelling, adhesive, gasket, thermal expansion, and lifecycle measurements
+  high_risk_stack_items:
+    - display_cover_lens_lcm_stack
+    - battery_swell_and_pcb_islands
+    - usb_c_saddle_aperture_and_insertion_load
+    - side_power_volume_actuation_stack
+    - front_rear_camera_z_and_optical_datums
+    - acoustic_haptic_and_ingress_paths
+    - antenna_plastic_and_midframe_keepouts
+    - routed_board_step_supplier_models_and_boolean_interference
+  known_fail_closed_delta:
+    item: battery_swell_back_void
+    current_back_swell_void_worst_case_over_budget_mm: 0.142
+    required_action: increase_back_swell_void_or_tighten_tolerance_or_specify_validated_compressible_foam_without_cell_preload
+  tolerance_stack_release_allowed: false
+
+routed_step_export_dependencies:
+  required_before_export:
+    - routed KiCad PCB source exists with production tracks and filled zones
+    - ERC and DRC reports exist and do not waive mechanical-edge collisions
+    - selected supplier land patterns, courtyards, heights, and STEP or B-rep models are bound
+    - KiCad mechanical origin, board transform, and CAD import transform are recorded
+    - placeholder footprints and concept rectangles are removed from release board
+  required_after_export:
+    - routed-board STEP imports into enclosure CAD with no manual offset
+    - full CAD boolean interference rerun uses supplier geometry, not concept envelopes
+    - routed clearance release covers all 12 listed clearance cases
+    - assembly drawing includes flex mate sequence, fastener or adhesive sequence, inspection points, and torque or compression limits
+  export_release_allowed: false
+
+first_article_physical_fit_evidence:
+  required_common_outputs:
+    - mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    - board/kicad/e1-phone/production/pdf/assembly.pdf
+    - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  required_fit_observations:
+    - display bond and FPC sweep inspected with routed board installed
+    - battery installed, removed, and inspected for pouch, pull-tab, foam, and connector clearance
+    - camera modules focused and verified against lens-window and dust-clearance datums
+    - USB-C plug sweep, attach, charge, and debug verified in enclosure
+    - side buttons measured for force, travel, return, wake, volume, and recovery combo
+    - speaker, microphone, receiver, haptic, and split interconnect installed and functionally checked
+    - cellular and Wi-Fi/Bluetooth radios measured in closed enclosure
+  present_common_output_count: 0
+  physical_fit_release_allowed: false
+
+production_enclosure_handoff_evidence:
+  required_handoff_outputs:
+    - production enclosure drawing pack with datums, GD&T, material, finish, color, texture, and inspection plan
+    - toolmaker DFM markup, mold-flow plan, gate/runner/ejector strategy, and critical-to-fit dimensions
+    - assembly traveler with signed mechanical inspection, functional logs, and nonconformance disposition
+    - CMM/FAI results for enclosure, board, display, USB-C aperture, side buttons, camera windows, and acoustic ports
+    - gasket, adhesive, foam, and compression process limits
+    - drop, side-key cycle, USB-C insertion-cycle, ingress path, thermal, RF/SAR pre-scan, and cosmetic inspection results
+  required_handoff_packets:
+    - id: enclosure_drawing_pack
+      deliverable: production enclosure drawing pack with datums, GD&T, material, finish, color, texture, and inspection plan
+      expected_path: board/kicad/e1-phone/production/enclosure/drawing-pack.yaml
+      owner: mechanical_release
+      required_action: collect supplier/toolmaker drawing pack, verify datums/GD&T/material/finish/color/texture/inspection content, and record approval signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: signed_supplier_drawing_pack
+      required_fields: [supplier, drawing_revision, datum_scheme, gd_t_callouts, material_spec, finish_spec, color_texture_spec, inspection_plan, approval_signature]
+      status: missing
+      release_credit: false
+    - id: toolmaker_dfm_pack
+      deliverable: toolmaker DFM markup, mold-flow plan, gate/runner/ejector strategy, and critical-to-fit dimensions
+      expected_path: board/kicad/e1-phone/production/enclosure/toolmaker-dfm-pack.yaml
+      owner: toolmaker_dfm
+      required_action: capture toolmaker DFM response with mold-flow plan, gate/runner/ejector strategy, critical-to-fit dimensions, open issues, and approval signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: toolmaker_dfm_response
+      required_fields: [toolmaker, dfm_markup_revision, mold_flow_plan, gate_runner_ejector_strategy, critical_to_fit_dimensions, open_issues, approval_signature]
+      status: missing
+      release_credit: false
+    - id: enclosure_assembly_traveler
+      deliverable: assembly traveler with signed mechanical inspection, functional logs, and nonconformance disposition
+      expected_path: board/kicad/e1-phone/production/enclosure/assembly-traveler.yaml
+      owner: manufacturing_engineering
+      required_action: execute first-article assembly traveler against routed board and enclosure revisions, attach functional logs, nonconformance disposition, operator signature, and QA signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: executed_assembly_traveler
+      required_fields: [unit_serial, routed_board_revision, enclosure_revision, signed_mechanical_inspection, functional_log_refs, nonconformance_disposition, operator_signature, qa_signature]
+      status: missing
+      release_credit: false
+    - id: enclosure_cmm_fai_results
+      deliverable: CMM/FAI results for enclosure, board, display, USB-C aperture, side buttons, camera windows, and acoustic ports
+      expected_path: board/kicad/e1-phone/production/enclosure/cmm-fai-results.yaml
+      owner: quality_metrology
+      required_action: run CMM/FAI on release units and attach fixture ID, measured features, tolerance limits, pass/fail disposition, measurement artifacts, and inspector signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: cmm_fai_measurement_report
+      required_fields: [unit_serial, fixture_id, measured_features, tolerance_limits, pass_fail_disposition, measurement_artifacts, inspector_signature]
+      status: missing
+      release_credit: false
+    - id: compression_process_limits
+      deliverable: gasket, adhesive, foam, and compression process limits
+      expected_path: board/kicad/e1-phone/production/enclosure/compression-process-limits.yaml
+      owner: process_engineering
+      required_action: approve controlled gasket, adhesive, foam, and compression windows with inspection method and release signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: controlled_process_limits
+      required_fields: [process_revision, gasket_limits, adhesive_limits, foam_limits, compression_limits, inspection_method, approval_signature]
+      status: missing
+      release_credit: false
+    - id: enclosure_validation_results
+      deliverable: drop, side-key cycle, USB-C insertion-cycle, ingress path, thermal, RF/SAR pre-scan, and cosmetic inspection results
+      expected_path: board/kicad/e1-phone/production/enclosure/validation-results.yaml
+      owner: validation_engineering
+      required_action: execute release validation across drop, side-key cycle, USB-C insertion-cycle, ingress path, thermal, RF/SAR pre-scan, and cosmetic inspection; attach unit serials and QA signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: executed_validation_results
+      required_fields: [unit_serials, drop_results, side_key_cycle_results, usb_c_insertion_cycle_results, ingress_path_results, thermal_results, rf_sar_prescan_refs, cosmetic_inspection, pass_fail_disposition, qa_signature]
+      status: missing
+      release_credit: false
+  present_handoff_output_count: 0
+  production_enclosure_handoff_allowed: false
+
+execution_burndown:
+  - step: collect_selected_supplier_step_brep_and_drawings
+    blocked_by:
+      - no selected supplier response packs with signed 2D drawings or STEP/B-rep models
+    required_outputs:
+      - selected display, camera, USB-C, side-key, battery, acoustic, haptic, interconnect, radio, antenna, and enclosure geometry packs
+    release_allowed: false
+  - step: bind_supplier_geometry_to_kicad_footprints_and_height_models
+    blocked_by:
+      - no release-grade land patterns, courtyards, mated connector heights, or final component models
+    required_outputs:
+      - component-3d-binding report and release KiCad footprint library evidence
+    release_allowed: false
+  - step: export_routed_board_step_and_import_into_enclosure_cad
+    blocked_by:
+      - no routed KiCad PCB, no production STEP, and placeholder concept geometry remains
+    required_outputs:
+      - routed-board-with-components.step and transform report
+    release_allowed: false
+  - step: rerun_clearance_boolean_and_tolerance_stack
+    blocked_by:
+      - routed STEP and supplier B-rep geometry are missing
+    required_outputs:
+      - routed-board-clearance-release.yaml, full-cad-boolean-interference-routed.yaml, and measured tolerance-stack release report
+    release_allowed: false
+  - step: run_physical_fit_first_article
+    blocked_by:
+      - no routed clearance release, assembly drawing, signed traveler, or functional logs
+    required_outputs:
+      - enclosure-fit-first-article.yaml and first-article-test-transcript.json
+    release_allowed: false
+  - step: handoff_production_enclosure_release
+    blocked_by:
+      - no physical-fit first article, production enclosure drawing pack, CMM/FAI, lifecycle, RF, thermal, or factory evidence
+    required_outputs:
+      - signed production enclosure handoff pack and end-to-end release decision
+    release_allowed: false
+
+cross_checks:
+  source_artifacts_cover_required_worker_c_scope: true
+  supplier_step_brep_inputs_required_before_mechanical_release: true
+  board_component_height_models_required_before_routed_step_export: true
+  display_battery_camera_usb_side_button_speaker_antenna_interconnect_interfaces_all_listed: true
+  usb_plug_sweep_required_and_fail_closed: true
+  side_button_force_load_bypass_required_and_fail_closed: true
+  tolerance_stack_requires_measured_supplier_and_first_article_data: true
+  routed_step_export_blocks_clearance_and_physical_fit_release: true
+  first_article_fit_evidence_required_before_production_handoff: true
+  production_enclosure_handoff_evidence_required_before_release: true
+  all_release_decisions_false: true
+
+release_blockers:
+  - selected supplier STEP/B-rep geometry, signed drawings, land patterns, datums, and sample evidence are missing
+  - local routed KiCad PCB and STEP candidates exist for review only; release ERC/DRC, production component STEP export, and transform report are missing
+  - board/component height model bindings are incomplete and concept STEP artifacts cannot release enclosure fit
+  - USB-C plug overmold sweep, insertion-cycle, saddle or shell-stake load path, and ESD/chassis review are missing
+  - side power/volume button force-travel, load-bypass, wake, recovery-combo, lifecycle, and side-load evidence are missing
+  - tolerance stack lacks measured supplier geometry, GD&T FAI, CMM, compression, swelling, adhesive, gasket, thermal, and lifecycle evidence
+  - local concept-envelope full CAD boolean interference passes with zero unintentional clashes, but routed clearance release, routed-board/supplier-geometry boolean rerun, and all 12 clearance case reports are still missing
+  - first-article physical-fit traveler, assembly drawing, functional logs, and signed inspection evidence are missing
+  - production enclosure handoff pack, toolmaker DFM, CMM/FAI, lifecycle, ingress path, RF/SAR, thermal, and cosmetic evidence are missing
+
+forbidden_claims:
+  - enclosure_ready
+  - mechanical_release_ready
+  - supplier_geometry_loaded
+  - routed_board_step_ready
+  - routed_clearance_passed
+  - boolean_interference_clear
+  - usb_c_mechanical_ready
+  - side_button_mechanical_ready
+  - tolerance_stack_closed
+  - physical_fit_verified
+  - production_enclosure_handoff_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

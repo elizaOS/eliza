@@ -1,0 +1,53 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/sdk/main/documentation/specs/runtime-configuration-file.md",
+  "_metadata": {
+    "description": "Canonical NuGet package version registry for LocTool solution",
+    "lastUpdated": "2024-02-28",
+    "maintainer": "sarah.chen@contoso.com",
+    "status": "current"
+  },
+  "targetFramework": "net8.0-windows",
+  "packages": {
+    "Microsoft.Extensions.DependencyInjection": {
+      "version": "8.0.0",
+      "usedIn": ["LocTool.App"],
+      "purpose": "Dependency injection container"
+    },
+    "EPPlus": {
+      "version": "7.0.0",
+      "usedIn": ["LocTool.Core"],
+      "purpose": "Excel file processing (.xlsx read/write)",
+      "licenseNote": "Requires LicenseContext.NonCommercial to be set before first use"
+    },
+    "CommunityToolkit.Mvvm": {
+      "version": "8.2.2",
+      "usedIn": ["LocTool.ViewModel"],
+      "purpose": "MVVM source generators and base classes"
+    },
+    "xunit": {
+      "version": "2.7.0",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Unit testing framework"
+    },
+    "xunit.runner.visualstudio": {
+      "version": "2.5.7",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Visual Studio test runner adapter"
+    },
+    "Microsoft.NET.Test.Sdk": {
+      "version": "17.9.0",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "MSTest platform infrastructure"
+    },
+    "Moq": {
+      "version": "4.20.70",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Mocking framework for unit tests"
+    },
+    "coverlet.collector": {
+      "version": "6.0.0",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Code coverage collector for dotnet test"
+    }
+  }
+}

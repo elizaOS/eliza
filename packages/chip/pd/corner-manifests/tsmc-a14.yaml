@@ -1,0 +1,71 @@
+schema: eliza.pd_corner_manifest.v1
+pdk: TSMC_A14
+node_class: tsmc_a14_2nd_gen_gaa
+status: blocked_until_foundry_agreement
+evidence_class: procurement_blocked_no_corner_set
+
+claim_boundary:
+  allowed: []
+  blocked:
+    - Any TSMC A14 corner-set claim is BLOCKED.
+    - A14 baseline is frontside-PDN; A14P (SPR-BSPDN) slips to 2029 and is documented separately.
+
+procurement_gate:
+  status: blocked_until_foundry_agreement
+  unblock_requires:
+    - Executed TSMC OIP / NDA agreement at A14.
+    - Hard-IP licenses re-cut for A14 (LPDDR PHY, USB, MIPI, PLL, SRAM compiler).
+    - Commercial EDA flow qualified at A14 by foundry.
+    - LVF/SOCV-capable signoff STA infrastructure.
+
+required_after_unblock:
+  total_effective_corners_min: 32
+  total_full_corners_min: 128
+  pvt_axes:
+    process: [SS, TT, FF, SSGNP, FFGNP, local_NFET, local_PFET]
+    voltage_v: [vmin_low, vnom, vmax_high]
+    temperature_c: [-40, 0, 25, 85, 110, 125]
+    aging: [t0, mid_life, EOL]
+    rc: [cworst, cbest, rcworst, rcbest, typical]
+  multi_vt_required:
+    - SLVT
+    - LVT
+    - RVT
+    - HVT
+    - ULVT_for_speed_critical_clusters
+  ocv_model: LVF_or_SOCV
+  bspdn_corners: a14_baseline_frontside_only_no_bspdn
+
+# BSPDN awareness — A14 baseline is frontside-PDN, so BSPDN corners are NOT
+# required for the 2028 mobile target. They are documented here for the A14P
+# 2029 follow-on variant, which the BSPDN PD-agent stream tracks separately.
+bspdn_planning_notes:
+  a14_baseline_2028:
+    pdn_topology: frontside_only
+    top_side_ir_corner_required: true
+    backside_ir_corner_required: false
+    combined_two_sided_ir_corner_required: false
+    thermal_corner_uplift_for_bspdn_c: 0
+    notes: >
+      A14 baseline does not introduce a backside metal stack. STA/IR signoff
+      uses the same single-side methodology the project drives on Sky130
+      today, scaled to A14 PVT envelope.
+  a14p_spr_bspdn_2029_variant:
+    pdn_topology: backside_plus_frontside_spr
+    top_side_ir_corner_required: true
+    backside_ir_corner_required: true
+    combined_two_sided_ir_corner_required: true
+    thermal_corner_uplift_for_bspdn_c: 5
+    thermal_uplift_basis: imec_bspdn_dtco_studies_and_intel_18a_published_data
+    bspdn_warpage_corner_required: true
+    notes: >
+      A14P SPR-BSPDN slips to 2029. When that target is selected, this corner
+      set needs to grow with two-sided PDN extraction, a Tj uplift of
+      5-10 °C in the active region per the BSPDN agent's research, and a
+      backside-thinned-silicon warpage corner for HPA. None of this affects
+      the 2028 A14-baseline mobile target.
+
+forbidden_claims_until_unblocked:
+  - a14_corner_clean
+  - a14_release_evidence
+  - a14p_bspdn_signoff_2029

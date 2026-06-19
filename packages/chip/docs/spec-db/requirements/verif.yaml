@@ -1,0 +1,86 @@
+schema: eliza.requirement.v1
+domain: VERIF
+owner_scope: rtl_verification
+description: >
+  Verification proof/coverage requirements seeded from the proof_gap and
+  test_gap entries of verify/rtl_gap_work_order.yaml. They link the formal
+  property packs and cocotb/verilator tests that close (or are scaffolded to
+  close) each gap. Status stays `open` while proofs are shallow; the gate
+  fails only on a missing declared link.
+requirements:
+  - id: REQ-VERIF-0001
+    title: AXI-Lite formal property pack must be bound across all fabric masters/targets
+    owner: verify
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
+    status: open
+    claim_boundary: shallow_structural_formal_only_no_protocol_proof_claim
+    work_order_id: interconnect-axi-lite-proof-coverage
+    links:
+      rtl:
+        - verify/formal/e1_soc_top_formal.sv
+      tests:
+        - verify/properties/axi_lite_protocol.sv
+        - verify/properties/dma_axil_bind.sv
+        - verify/properties/dma_axil.sby
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - verification-maturity-matrix-check
+
+  - id: REQ-VERIF-0002
+    title: DMA formal coverage must extend to protocol and long-transfer invariants
+    owner: verify
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
+    status: open
+    claim_boundary: depth_12_status_proof_only_no_full_dma_correctness_claim
+    work_order_id: dma-proof-depth-and-protocol
+    links:
+      rtl:
+        - verify/formal/e1_dma_formal.sv
+      tests:
+        - verify/properties/axi_lite_protocol.sv
+        - verify/properties/dma_axil_bind.sv
+        - verify/properties/dma_axil.sby
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - verification-maturity-matrix-check
+
+  - id: REQ-VERIF-0003
+    title: NPU coverage accounting must publish opcode/shape/status/fallback summaries
+    owner: verify
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
+    status: open
+    claim_boundary: directed_smoke_coverage_only_no_full_coverage_claim
+    work_order_id: npu-test-coverage-accounting
+    links:
+      rtl:
+        - rtl/npu/e1_npu.sv
+      tests:
+        - verify/cocotb/test_e1_npu.py
+        - verify/verilator/test_npu_gemm.cpp
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - verification-maturity-matrix-check
+
+  - id: REQ-VERIF-0004
+    title: Yosys structural fallback must not satisfy deep formal signoff gates
+    owner: verify
+    source_doc: verify/rtl_gap_work_order.yaml
+    source_doc_sha: 9ced2ea62555c20520a39575e911586eb6fb22d0b35ffc37c32170608ba7aa54
+    status: open
+    claim_boundary: structural_fallback_is_not_property_proof_signoff
+    work_order_id: formal-yosys-fallback-is-not-equivalent
+    links:
+      rtl: []
+      tests:
+        - verify/formal/e1_soc_top_formal.sv
+      pd_evidence: []
+      mfg_artifacts: []
+    gates:
+      - verification-maturity-matrix-check
+      - stub-audit

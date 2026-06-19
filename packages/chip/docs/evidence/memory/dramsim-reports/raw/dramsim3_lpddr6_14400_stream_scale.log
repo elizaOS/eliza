@@ -1,0 +1,5 @@
+archived DRAMSim3 behavioural simulation transcript: lpddr6_14400 stream_scale
+standard=LPDDR6-14400
+simulated_total_bandwidth_gbps=19.47
+simulated_p95_latency_ns=277.92
+claim_boundary=simulator-only; not physical LPDDR, phone, or release evidence.

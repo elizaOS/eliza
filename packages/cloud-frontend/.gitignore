@@ -1,0 +1,11 @@
+dist
+dist-ssr
+node_modules
+*.log
+.DS_Store
+
+# Playwright diff artifacts. Visual regression baselines under
+# tests/**/*-snapshots/ are tracked as the source of truth.
+test-results/
+playwright-report/
+aesthetic-audit-output/

@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# Same purpose as config/chroot_local-includes/usr/local/bin/tor-browser,
+# see the comments there.
+
+set -eu
+
+if [ "$(id -u)" = 1000 ]; then
+  ENVFILE=$(mktemp --suffix -env)
+  export ENVFILE
+  env --null >"${ENVFILE}"
+  exec sudo "$0" "$@"
+fi
+
+exec /bin/ip netns exec onioncircs \
+  sudo -u amnesia -- \
+  /usr/local/lib/run-with-env --env-file="${ENVFILE}" --delete -- \
+  /usr/local/lib/run-with-ibus-and-a11y-bus-proxy -- \
+  env TOR_CONTROL_PORT=951 \
+  /usr/bin/onioncircuits "$@"

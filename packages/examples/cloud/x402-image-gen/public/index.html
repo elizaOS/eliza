@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PayPerPixel — pay-per-image, no account</title>
+    <meta
+      name="description"
+      content="Generate an image, pay in USDC over x402. No sign-up, just a wallet."
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="badge">x402 · USDC · no account</div>
+        <h1>Pay<span>Per</span>Pixel</h1>
+        <p class="tagline">
+          Type a prompt, pay a few cents in USDC, get an image. The payment settles
+          on-chain and is credited to the creator's Eliza Cloud earnings.
+        </p>
+      </header>
+
+      <section class="card" id="generator">
+        <label class="field-label" for="prompt">Prompt</label>
+        <textarea
+          id="prompt"
+          rows="3"
+          placeholder="a neon koi swimming through a rainstorm of circuit boards, cinematic"
+        ></textarea>
+        <button id="generate" class="primary" type="button">
+          Generate <span class="price" id="price">· $0.05</span>
+        </button>
+        <p class="hint" id="status-line">Enter a prompt to begin.</p>
+      </section>
+
+      <section class="card pay-card" id="pay" hidden>
+        <h2>Payment required</h2>
+        <dl class="pay-grid">
+          <dt>Amount</dt><dd id="pay-amount">—</dd>
+          <dt>Network</dt><dd id="pay-network">—</dd>
+          <dt>Pay to</dt><dd class="mono" id="pay-to">—</dd>
+          <dt>Request</dt><dd class="mono" id="pay-id">—</dd>
+        </dl>
+        <p class="hint">
+          Settle this x402 request with your wallet, then paste the settled payment
+          payload below to receive your image. (A wallet integration would do this
+          automatically — see the README.)
+        </p>
+        <textarea id="payload" rows="3" placeholder='{"x402Version":2, ...}'></textarea>
+        <button id="settle" class="primary" type="button">Settle &amp; reveal image</button>
+      </section>
+
+      <section class="card result-card" id="result" hidden>
+        <img id="image" alt="Generated image" />
+        <p class="hint mono" id="receipt"></p>
+      </section>
+
+      <section class="card earnings-card" id="earnings">
+        <div class="earnings-head">
+          <h2>Creator earnings</h2>
+          <button id="refresh-earnings" class="ghost" type="button">Refresh</button>
+        </div>
+        <div class="earnings-grid">
+          <div><span class="big" id="e-lifetime">—</span><small>Lifetime</small></div>
+          <div><span class="big" id="e-withdrawable">—</span><small>Withdrawable</small></div>
+          <div><span class="big" id="e-purchase">—</span><small>From x402</small></div>
+        </div>
+        <p class="hint">Redeem withdrawable earnings for elizaOS tokens in the Cloud dashboard.</p>
+      </section>
+
+      <footer class="foot">
+        <span id="foot-config">Eliza Cloud example · x402 image generation</span>
+      </footer>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

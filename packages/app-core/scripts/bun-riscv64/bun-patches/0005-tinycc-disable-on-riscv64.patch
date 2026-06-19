@@ -1,0 +1,16 @@
+diff --git a/scripts/build/deps/tinycc.ts b/scripts/build/deps/tinycc.ts
+index 499a83b..2b3544f 100644
+--- a/scripts/build/deps/tinycc.ts
++++ b/scripts/build/deps/tinycc.ts
+@@ -31,6 +31,11 @@ export const tinycc: Dependency = {
+   patches: ["patches/tinycc/tcc.h.patch"],
+ 
+   build: cfg => {
++    if (cfg.riscv64) {
++      throw new Error(
++        "deps/tinycc: oven-sh/tinycc has no riscv64 backend. Build with --tinycc=off (default on riscv64).",
++      );
++    }
+     const sources = ["libtcc.c", "tccpp.c", "tccgen.c", "tccdbg.c", "tccelf.c", "tccasm.c", "tccrun.c"];
+     if (cfg.arm64) sources.push("arm64-gen.c", "arm64-link.c", "arm64-asm.c");
+     else sources.push("x86_64-gen.c", "x86_64-link.c", "i386-asm.c");

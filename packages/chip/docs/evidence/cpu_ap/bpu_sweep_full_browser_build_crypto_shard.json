@@ -1,0 +1,438 @@
+{
+  "baseline_weighted_mpki": 50.151481,
+  "best_config": "h2p_lowconf_only",
+  "best_delta_vs_baseline": -1.575371,
+  "best_geometry_diff": {
+    "H2P_LOWCONF_ONLY": 1
+  },
+  "best_weighted_mpki": 48.57611,
+  "cbp5_reference_mpki": {
+    "sample_fp_trace": 0.5736,
+    "sample_int_trace": 5.1327
+  },
+  "claim_boundary": "behavioural BPU geometry sweep only; SPEC/AOSP/JetStream real-workload MPKI claims remain blocked until those trace sets are captured",
+  "generated_at_utc": "2026-05-24T05:57:27.882547+00:00",
+  "generated_utc": "2026-05-24T05:57:27Z",
+  "harness": "behavioural-bpu-model",
+  "ittage_evidence_counters": [
+    "ittage_hit",
+    "ittage_target_used",
+    "ittage_weak_yield_to_ftb",
+    "ittage_updates",
+    "ittage_allocations",
+    "ittage_weak_target_replacements",
+    "ittage_victim_replacements",
+    "ittage_provider_evictions",
+    "ittage_useful_aging"
+  ],
+  "max_branches_per_trace": 0,
+  "ranking": [
+    "h2p_lowconf_only",
+    "h2p_off",
+    "baseline"
+  ],
+  "results": {
+    "baseline": {
+      "ittage_counter_totals": {
+        "ittage_allocations": 9506,
+        "ittage_hit": 63718,
+        "ittage_provider_evictions": 669,
+        "ittage_target_used": 57713,
+        "ittage_updates": 123198,
+        "ittage_useful_aging": 1,
+        "ittage_victim_replacements": 68137,
+        "ittage_weak_target_replacements": 475,
+        "ittage_weak_yield_to_ftb": 6005
+      },
+      "per_trace": {
+        "browser_layout_proxy": {
+          "branches": 2680318,
+          "instructions": 10753535,
+          "ittage_counters": {
+            "ittage_allocations": 329,
+            "ittage_hit": 1656,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1656,
+            "ittage_updates": 3756,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 901398,
+          "mpki": 83.823412,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.25
+        },
+        "build_compiler_proxy": {
+          "branches": 1418554,
+          "instructions": 7784542,
+          "ittage_counters": {
+            "ittage_allocations": 8856,
+            "ittage_hit": 60403,
+            "ittage_provider_evictions": 669,
+            "ittage_target_used": 54406,
+            "ittage_updates": 115689,
+            "ittage_useful_aging": 1,
+            "ittage_victim_replacements": 68137,
+            "ittage_weak_target_replacements": 475,
+            "ittage_weak_yield_to_ftb": 5997
+          },
+          "misp": 268442,
+          "mpki": 34.483981,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.25
+        },
+        "crypto_packet_proxy": {
+          "branches": 1280333,
+          "instructions": 17213991,
+          "ittage_counters": {
+            "ittage_allocations": 321,
+            "ittage_hit": 1659,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1651,
+            "ittage_updates": 3753,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 8
+          },
+          "misp": 475897,
+          "mpki": 27.645942,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.0
+        }
+      },
+      "timing_counter_totals": {
+        "h2p_deferred_by_timing_model": 0,
+        "ittage_deferred_by_timing_model": 0,
+        "l2_ftb_deferred_by_timing_model": 0,
+        "l2_ftb_late_redirect": 0,
+        "local_dir_deferred_by_timing_model": 0,
+        "sc_deferred_by_timing_model": 0
+      },
+      "weighted_mpki": 50.151481
+    },
+    "h2p_lowconf_only": {
+      "ittage_counter_totals": {
+        "ittage_allocations": 9506,
+        "ittage_hit": 63718,
+        "ittage_provider_evictions": 669,
+        "ittage_target_used": 57713,
+        "ittage_updates": 123198,
+        "ittage_useful_aging": 1,
+        "ittage_victim_replacements": 68137,
+        "ittage_weak_target_replacements": 475,
+        "ittage_weak_yield_to_ftb": 6005
+      },
+      "per_trace": {
+        "browser_layout_proxy": {
+          "branches": 2680318,
+          "instructions": 10753535,
+          "ittage_counters": {
+            "ittage_allocations": 329,
+            "ittage_hit": 1656,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1656,
+            "ittage_updates": 3756,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 859370,
+          "mpki": 79.915116,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.25
+        },
+        "build_compiler_proxy": {
+          "branches": 1418554,
+          "instructions": 7784542,
+          "ittage_counters": {
+            "ittage_allocations": 8856,
+            "ittage_hit": 60403,
+            "ittage_provider_evictions": 669,
+            "ittage_target_used": 54406,
+            "ittage_updates": 115689,
+            "ittage_useful_aging": 1,
+            "ittage_victim_replacements": 68137,
+            "ittage_weak_target_replacements": 475,
+            "ittage_weak_yield_to_ftb": 5997
+          },
+          "misp": 267309,
+          "mpki": 34.338436,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.25
+        },
+        "crypto_packet_proxy": {
+          "branches": 1280333,
+          "instructions": 17213991,
+          "ittage_counters": {
+            "ittage_allocations": 321,
+            "ittage_hit": 1659,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1651,
+            "ittage_updates": 3753,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 8
+          },
+          "misp": 468211,
+          "mpki": 27.199445,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.0
+        }
+      },
+      "timing_counter_totals": {
+        "h2p_deferred_by_timing_model": 0,
+        "ittage_deferred_by_timing_model": 0,
+        "l2_ftb_deferred_by_timing_model": 0,
+        "l2_ftb_late_redirect": 0,
+        "local_dir_deferred_by_timing_model": 0,
+        "sc_deferred_by_timing_model": 0
+      },
+      "weighted_mpki": 48.57611
+    },
+    "h2p_off": {
+      "ittage_counter_totals": {
+        "ittage_allocations": 9506,
+        "ittage_hit": 63718,
+        "ittage_provider_evictions": 669,
+        "ittage_target_used": 57713,
+        "ittage_updates": 123198,
+        "ittage_useful_aging": 1,
+        "ittage_victim_replacements": 68137,
+        "ittage_weak_target_replacements": 475,
+        "ittage_weak_yield_to_ftb": 6005
+      },
+      "per_trace": {
+        "browser_layout_proxy": {
+          "branches": 2680318,
+          "instructions": 10753535,
+          "ittage_counters": {
+            "ittage_allocations": 329,
+            "ittage_hit": 1656,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1656,
+            "ittage_updates": 3756,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 867735,
+          "mpki": 80.693,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.25
+        },
+        "build_compiler_proxy": {
+          "branches": 1418554,
+          "instructions": 7784542,
+          "ittage_counters": {
+            "ittage_allocations": 8856,
+            "ittage_hit": 60403,
+            "ittage_provider_evictions": 669,
+            "ittage_target_used": 54406,
+            "ittage_updates": 115689,
+            "ittage_useful_aging": 1,
+            "ittage_victim_replacements": 68137,
+            "ittage_weak_target_replacements": 475,
+            "ittage_weak_yield_to_ftb": 5997
+          },
+          "misp": 267827,
+          "mpki": 34.404978,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.25
+        },
+        "crypto_packet_proxy": {
+          "branches": 1280333,
+          "instructions": 17213991,
+          "ittage_counters": {
+            "ittage_allocations": 321,
+            "ittage_hit": 1659,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1651,
+            "ittage_updates": 3753,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 8
+          },
+          "misp": 472440,
+          "mpki": 27.445117,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.0
+        }
+      },
+      "timing_counter_totals": {
+        "h2p_deferred_by_timing_model": 0,
+        "ittage_deferred_by_timing_model": 0,
+        "l2_ftb_deferred_by_timing_model": 0,
+        "l2_ftb_late_redirect": 0,
+        "local_dir_deferred_by_timing_model": 0,
+        "sc_deferred_by_timing_model": 0
+      },
+      "weighted_mpki": 48.947883
+    }
+  },
+  "schema": "eliza.bpu_sweep.v1",
+  "status": "pass",
+  "timing_evidence_counters": [
+    "sc_deferred_by_timing_model",
+    "h2p_deferred_by_timing_model",
+    "local_dir_deferred_by_timing_model",
+    "ittage_deferred_by_timing_model",
+    "l2_ftb_deferred_by_timing_model",
+    "l2_ftb_late_redirect"
+  ],
+  "trace_filter": [
+    "browser_layout_proxy",
+    "build_compiler_proxy",
+    "crypto_packet_proxy"
+  ],
+  "trace_set": [
+    {
+      "branches": 1418554,
+      "instructions": 7784542,
+      "name": "build_compiler_proxy",
+      "weight": 1.25
+    },
+    {
+      "branches": 1280333,
+      "instructions": 17213991,
+      "name": "crypto_packet_proxy",
+      "weight": 1.0
+    },
+    {
+      "branches": 2680318,
+      "instructions": 10753535,
+      "name": "browser_layout_proxy",
+      "weight": 1.25
+    }
+  ],
+  "weights": {
+    "agent_decode": 1.5,
+    "agent_loop": 2.0,
+    "audio_frames": 1.5,
+    "browser_layout_proxy": 1.25,
+    "build_compiler_proxy": 1.25,
+    "cbp5:sample_fp_trace": 1.0,
+    "cbp5:sample_int_trace": 1.0,
+    "compression_proxy": 1.25,
+    "crypto_packet_proxy": 1.0,
+    "database_btree_proxy": 1.25,
+    "file_tlv": 1.5,
+    "gc_runtime_proxy": 1.25,
+    "gpu_control_proxy": 1.5,
+    "gpu_irq_fence_scheduler_proxy": 1.35,
+    "gpu_memory_residency_proxy": 1.35,
+    "http_parser": 1.5,
+    "kernel_syscall_proxy": 1.25,
+    "mobile_ui_frame_scheduler_proxy": 1.25,
+    "nn_delegate_fallback_proxy": 1.2,
+    "synthetic:alias_thrash": 0.5,
+    "synthetic:allocator_gc_barrier": 0.75,
+    "synthetic:alternating": 0.35,
+    "synthetic:always_not_taken": 0.25,
+    "synthetic:always_taken": 0.25,
+    "synthetic:android_runtime_inline_cache": 0.85,
+    "synthetic:command_buffer_validation": 0.85,
+    "synthetic:control_indirect_pair": 0.75,
+    "synthetic:correlated_xor_branches": 0.75,
+    "synthetic:cross_asid_same_pc_alias": 0.75,
+    "synthetic:deep_recursion": 0.35,
+    "synthetic:dual_branch_fetch_block": 0.75,
+    "synthetic:epoll_rpc_dispatch": 0.85,
+    "synthetic:gpu_command_processor": 1.0,
+    "synthetic:gpu_driver_submit_phases": 0.85,
+    "synthetic:gpu_nested_reconvergence": 0.75,
+    "synthetic:gpu_occupancy_phase": 0.75,
+    "synthetic:gpu_tile_kernel": 1.0,
+    "synthetic:gpu_warp_divergence": 1.0,
+    "synthetic:gpu_wavefront_compaction": 0.85,
+    "synthetic:hash_probe_inline_cache": 0.75,
+    "synthetic:interpreter_dispatch_mixed": 0.75,
+    "synthetic:jit_dispatch_warmup": 0.75,
+    "synthetic:json_parser_state_machine": 0.75,
+    "synthetic:l2_ftb_target_pressure": 0.75,
+    "synthetic:loop_with_known_trip": 0.5,
+    "synthetic:mixed_workload": 0.75,
+    "synthetic:nested_imli_loop": 0.75,
+    "synthetic:phase_change_server": 0.75,
+    "synthetic:return_mismatch_exceptions": 0.35,
+    "synthetic:signal_exception_unwind": 0.5,
+    "synthetic:v8_indirect_dispatch": 0.5,
+    "synthetic:vtable_path_correlated": 0.75,
+    "synthetic:wasm_threaded_interpreter_tiering": 0.85,
+    "synthetic:work_stealing_queues": 0.85,
+    "synthetic:workload_class_phase_alias": 0.75,
+    "text_log": 1.5,
+    "video_blocks": 1.5,
+    "wasm_jit_osr_proxy": 1.2
+  },
+  "window_mode": "prefix"
+}

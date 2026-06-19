@@ -1,0 +1,225 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-18 16:00+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Reducing risks when using untrusted computers\"]]"
+msgstr ""
+"[[!meta title=\"Réduire les risques avec les ordinateurs peu dignes de "
+"confiance\"]]"
+
+#. type: Content of: <h1>
+msgid "Using untrusted computers"
+msgstr "Utilisation d'ordinateurs non fiables"
+
+#. type: Content of: <div>
+msgid ""
+"[[!inline pages=\"doc/about/warning/computer.inline\" raw=\"yes\" "
+"sort=\"age\"]] [[!toc levels=2]]"
+msgstr ""
+"[[!inline pages=\"doc/about/warning/computer.inline.fr\" raw=\"yes\" "
+"sort=\"age\"]] [[!toc levels=2]]"
+
+#. type: Content of: <h2>
+msgid "Install Tails from a computer that you trust"
+msgstr "Installez Tails depuis un ordinateur de confiance"
+
+#. type: Content of: <p>
+msgid ""
+"Tails protects you from viruses and malware on your usual operating system. "
+"This is because Tails runs independently from other operating systems."
+msgstr ""
+"Tails vous protège des virus et des logiciels malveillants présents sur "
+"votre système d'exploitation habituel. En effet, Tails fonctionne "
+"indépendamment des autres systèmes d'exploitation."
+
+#. type: Content of: <p>
+msgid ""
+"But your Tails might be corrupted if you install from a compromised "
+"operating system. To reduce that risk:"
+msgstr ""
+"Mais votre Tails peut être corrompu si vous l'installez à partir d'un "
+"système d'exploitation compromis. Pour réduire ce risque :"
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Always install Tails from a trusted operating system.  For example, download "
+"Tails on a computer without viruses or clone Tails from a trusted friend."
+msgstr ""
+"Installez toujours Tails à partir d'un système d'exploitation fiable.  Par "
+"exemple, téléchargez Tails sur un ordinateur sans virus ou clonez Tails "
+"auprès d'un ami de confiance."
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Do not plug in your Tails USB stick while another operating system is "
+"running on the computer."
+msgstr ""
+"Ne branchez pas votre clé USB Tails lorsqu'un autre système d'exploitation "
+"est en cours d'exécution sur l'ordinateur."
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Use your Tails USB stick only to run Tails. Do not use your Tails USB stick "
+"to transfer files to or from another operating system."
+msgstr ""
+"Utilisez votre clé USB Tails uniquement pour exécuter Tails. N'utilisez pas "
+"votre clé USB Tails pour transférer des fichiers vers ou depuis un autre "
+"système d'exploitation."
+
+#. type: Content of: <p>
+msgid ""
+"If you worry that your Tails might be corrupted, do a [[manual upgrade|"
+"upgrade]] from a trusted operating system."
+msgstr ""
+"Si vous craignez que votre Tails soit corrompu, effectuez une [[mise à jour "
+"manuelle|upgrade]] à partir d'un système d'exploitation fiable."
+
+#. type: Content of: <div><p>
+msgid ""
+"We don't know of any virus able to infect a Tails installation, but one "
+"could be created in the future."
+msgstr ""
+"Nous ne connaissons pas de virus capable d'infecter une installation de "
+"Tails, mais un tel virus pourrait être créé à l'avenir."
+
+#. type: Content of: <h2>
+msgid "No operating system can protect against hardware alterations"
+msgstr ""
+"Aucun système d'exploitation ne peut se protéger contre les modifications "
+"matérielles"
+
+#. type: Content of: <p>
+msgid ""
+"The computer might be compromised if its physical components have been "
+"altered.  For example, if a keylogger has been physically installed on the "
+"computer, your passwords, personal information, and other data typed on the "
+"keyboard could be stored and accessed by someone else, even if you are using "
+"Tails."
+msgstr ""
+"L'ordinateur peut être compromis si ses composants physiques ont été "
+"modifiés.  Par exemple, si un enregistreur de frappe a été physiquement "
+"installé sur l'ordinateur, vos mots de passe, vos informations personnelles "
+"et d'autres données saisies sur le clavier pourraient être stockés et être "
+"accessibles par quelqu'un d'autre, même si vous utilisez Tails."
+
+#. type: Content of: <p>
+msgid ""
+"Try to keep your computer in a safe location. Hardware alterations are more "
+"likely on public computers, in Internet cafés or libraries, and on desktop "
+"computers, where a device is easier to hide."
+msgstr ""
+"Essayez de garder votre ordinateur dans un endroit sûr. Les modifications "
+"matérielles sont plus probables sur les ordinateurs publics, dans les "
+"cybercafés ou les bibliothèques, et sur les ordinateurs de bureau, où il est "
+"plus facile de cacher un appareil."
+
+#. type: Content of: <p>
+msgid "If you worry that a computer might be modified:"
+msgstr "Si vous craignez qu'un ordinateur ai été modifié :"
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Use a [[password manager|doc/encryption_and_privacy/manage_passwords]] to "
+"paste saved passwords. This way, you don't have to type passwords that might "
+"be visible to people or cameras near you."
+msgstr ""
+"Utilisez un [[gestionnaire de mots de passe|doc/encryption_et_privacy/"
+"manage_passwords]] pour coller les mots de passe enregistrés. Ainsi, vous "
+"n'aurez pas à taper de mots de passe qui pourraient être visibles par des "
+"personnes ou des caméras à proximité."
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Use the [[screen keyboard|doc/first_steps/accessibility#keyboard]], if you "
+"are using a public computer or worry that the computer might have a "
+"keylogger."
+msgstr ""
+"Utilisez le [[clavier visuel|doc/first_steps/accessibility#keyboard]], si "
+"vous utilisez un ordinateur public ou si vous craignez que cet ordinateur "
+"soit équipé d'un enregistreur de frappe."
+
+#. type: Content of: <div><p>
+msgid ""
+"Keyloggers are easy to buy and hide on desktop computers but not on laptops. "
+"For an example, see <a href=\"https://www.youtube.com/watch?"
+"v=6JJo8qCYE8M\">KeeLog: KeyGrabber forensic keylogger getting started</a>."
+msgstr ""
+"Les enregistreurs de frappe sont faciles à acheter et à cacher sur les "
+"ordinateurs de bureau mais pas sur les ordinateurs portables. Voir par "
+"exemple <a href=\"https://www.youtube.com/watch?v=6JJo8qCYE8M\">KeeLog : "
+"KeyGrabber forensic keylogger getting started</a>(en anglais)."
+
+#. type: Content of: <div><p>
+msgid ""
+"Other hardware alterations are much more complicated and expensive to "
+"install. For an example, see <a href=\"https://arstechnica.com/tech-policy/"
+"2014/05/photos-of-an-nsa-upgrade-factory-show-cisco-router-getting-implant/"
+"\">Ars Technica: Photos of an NSA “upgrade” factory show Cisco router "
+"getting implant</a>."
+msgstr ""
+"D'autres modifications matérielles sont beaucoup plus compliquées et "
+"coûteuses à installer. Voir par exemple <a href=\"https://arstechnica.com/"
+"tech-policy/2014/05/photos-of-an-nsa-upgrade-factory-show-cisco-router-"
+"getting-implant/\">Ars Technica : Les photos d'une usine de \"mise à jour\" "
+"de la NSA montrant un routeur Cisco se faire implanter</a> (en anglais)."
+
+#. type: Content of: <h2>
+msgid "No operating system can protect against BIOS and firmware attacks"
+msgstr ""
+"Aucun système d'exploitation ne peut se protéger contre les attaques du BIOS "
+"et des micrologiciels"
+
+#. type: Content of: <p>
+msgid ""
+"Firmware includes the BIOS or UEFI and other software stored in electronic "
+"chips on the computer.  All operating systems, including Tails, depend on "
+"firmware to start and run, so no operating system can protect against a "
+"firmware attack. In the same way that a car depends on the quality of the "
+"road it is driving on, operating systems depend on their firmware."
+msgstr ""
+"Les microprogrammes comprennent le BIOS ou l'UEFI et d'autres logiciels "
+"stockés dans des puces électroniques de l'ordinateur.  Tous les systèmes "
+"d'exploitation, Tails y compris, dépendent des microprogrammes pour démarrer "
+"et fonctionner,  aucun système d'exploitation ne peut donc se protéger "
+"contre une attaque basée sur les microprogrammes. De la même manière qu'une "
+"voiture dépend de la qualité de la route sur laquelle elle roule, les "
+"systèmes d'exploitation dépendent de leur microprogramme."
+
+#. type: Content of: <p>
+msgid ""
+"Keeping your computer in a safe location can protect against some firmware "
+"attacks, but some other firmware attacks can be performed remotely."
+msgstr ""
+"Garder votre ordinateur dans un endroit sûr peut vous protéger contre "
+"certaines attaques basées sur les microprogrammes, mais d'autres attaques de "
+"microprogrammes peuvent être réalisées à distance."
+
+#. type: Content of: <div><p>
+msgid ""
+"Firmware attacks have been demonstrated, but are complicated and expensive "
+"to perform. We don't know of any actual use against Tails users. For an "
+"example, see <a href=https://www.youtube.com/watch?v=sNYsfUNegEA>LegbaCore: "
+"Stealing GPG keys/emails in Tails via remote firmware infection</a>."
+msgstr ""
+"Des attaques basées sur les micrologiciels ont déjà été décrites, mais elles "
+"sont compliquées et coûteuses à réaliser. Nous n'avons pas connaissance "
+"d'une utilisation réelle contre les utilisateurs de Tails. Pour un exemple, "
+"voir <a href=https://www.youtube.com/watch?v=sNYsfUNegEA>LegbaCore : voler "
+"des clés PGP et des courriers électroniques dans Tails par infection à "
+"distance du micrologiciel</a>."

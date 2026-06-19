@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750" role="img" aria-label="Ambient Avatar Room / Signal Console generated assistant preview">
+    <rect width="1200" height="750" fill="#060807"/>
+    <circle cx="200" cy="120" r="180" fill="#ff8a00" opacity="0.18"/>
+    <circle cx="1020" cy="620" r="220" fill="#78d99a" opacity="0.10"/>
+    <rect x="40" y="40" width="1120" height="670" rx="3" fill="transparent" stroke="#78d99a26"/>
+    <text x="70" y="86" font-family="Inter, Arial, sans-serif" font-size="30" fill="#78d99a" font-weight="900">Ambient Avatar Room</text>
+    <text x="70" y="680" font-family="Inter, Arial, sans-serif" font-size="20" fill="#78d99a" opacity="0.72">Signal Console / rail transcript / floating apps</text>
+
+      <circle cx="600" cy="350" r="210" fill="#78d99a12" stroke="#78d99a33"/>
+      <circle cx="600" cy="350" r="142" fill="#78d99a16" stroke="#78d99a44"/>
+      <circle cx="600" cy="350" r="82" fill="#ff8a00"/>
+      <rect x="90" y="126" width="250" height="68" rx="3" fill="#78d99a18" stroke="#78d99a44"/>
+      <rect x="860" y="126" width="250" height="68" rx="3" fill="#78d99a18" stroke="#78d99a44"/>
+      <rect x="250" y="576" width="700" height="58" rx="29" fill="#78d99a18" stroke="#78d99a44"/>
+
+    <rect x="292" y="590" width="140" height="34" rx="17" fill="#78d99a18" stroke="#78d99a44"/>
+    <text x="310" y="612" font-size="13" fill="#78d99a" font-weight="700">Dim text</text>
+
+
+    <rect x="502" y="590" width="192" height="34" rx="17" fill="#78d99a18" stroke="#78d99a44"/>
+    <text x="520" y="612" font-size="13" fill="#78d99a" font-weight="700">Show context</text>
+
+
+    <rect x="710" y="590" width="166" height="34" rx="17" fill="#78d99a18" stroke="#78d99a44"/>
+    <text x="728" y="612" font-size="13" fill="#78d99a" font-weight="700">Quiet mode</text>
+
+
+  </svg>

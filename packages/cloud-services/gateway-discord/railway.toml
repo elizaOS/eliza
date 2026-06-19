@@ -1,0 +1,33 @@
+# Railway deploy config for gateway-discord.
+#
+# Multi-tenant Discord gateway: maintains WebSocket connections to Discord and
+# forwards events to Eliza Cloud. Stateless HTTP service on port 3000 (PORT env
+# overrides). Replaces the retired AWS EKS deployment.
+#
+# Required env vars / secrets (set on the Railway service before first deploy):
+#   GATEWAY_BOOTSTRAP_SECRET   Exchanged at startup for a JWT against ELIZA_CLOUD_URL.
+#   ELIZA_CLOUD_URL            Eliza Cloud API base URL (https://cloud.elizacloud.ai).
+#   REDIS_URL                  Upstash Redis REST URL (or KV_REST_API_URL).
+#   KV_REST_API_TOKEN          Upstash Redis REST token (paired with REDIS_URL/KV_REST_API_URL).
+#   AGENT_SERVER_SHARED_SECRET Shared secret for /internal/* routes from agent-server.
+#
+# Optional:
+#   ELIZA_APP_DISCORD_BOT_ENABLED        "true" to run the Eliza App system bot leader.
+#   ELIZA_APP_DISCORD_BOT_TOKEN          Bot token (only if BOT_ENABLED=true).
+#   ELIZA_APP_LEADER_KEY                 Redis key for leader election (default discord:eliza-app-bot:leader).
+#   VOICE_MESSAGE_ENABLED                "false" to disable voice transcription path.
+#   KEDA_COOLDOWN_SECONDS                Graceful-shutdown delay before exit (default 900).
+#   PROJECT                              Logical project tag in logs (default "cloud").
+#
+# Railway injects PORT, RAILWAY_REPLICA_ID, etc. POD_NAME falls back to hostname()
+# so no extra config needed for multi-replica leader election.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

@@ -1,0 +1,78 @@
+schema: eliza.dft_fault_model.v1
+status: DRAFT_CAPTURE_ONLY
+claim_boundary: fault_model_and_pattern_shape_definition_only_no_coverage_claim
+description: |
+  Fault-model and ATPG-pattern shape definition for the Eliza E1 SoC. This is
+  a schema/contract: it fixes the fault classes the open ATPG flow targets and
+  the shape of the pattern (STIL) and coverage (coverage.json) artifacts that a
+  vendored ATPG tool (Fault / Atalanta / Quaigh) must emit. It does NOT contain
+  coverage numbers, generated patterns, or any test-readiness claim. Generated
+  artifacts land under the quarantine root and remain BLOCKED until a vendored
+  tool produces them.
+quarantine_root: build/ai_eda/dft_atpg/
+fault_models:
+  - id: stuck_at
+    faults:
+      - stuck_at_0
+      - stuck_at_1
+    description: |
+      Single stuck-at fault model on every gate-level net of the scan-inserted
+      netlist. Baseline manufacturing-defect model.
+  - id: transition_delay
+    faults:
+      - slow_to_rise
+      - slow_to_fall
+    description: |
+      Transition-delay (at-speed) fault model. Requires a launch-on-capture or
+      launch-on-shift clocking sequence; at the advanced node this is BLOCKED on
+      the commercial-eda-gate.
+pattern_artifact:
+  format: STIL
+  path_template: build/ai_eda/dft_atpg/<run_id>/patterns.stil
+  must_contain:
+    - Signals
+    - SignalGroups
+    - ScanStructures
+    - Pattern
+  status: BLOCKED_no_vendored_atpg_tool
+coverage_artifact:
+  format: json
+  path_template: build/ai_eda/dft_atpg/<run_id>/coverage.json
+  required_fields:
+    - schema
+    - tool
+    - tool_revision
+    - netlist_sha256
+    - fault_model
+    - total_faults
+    - detected_faults
+    - test_coverage_percent
+    - pattern_count
+    - generated_at_utc
+  status: BLOCKED_no_vendored_atpg_tool
+  notes: |
+    test_coverage_percent must be computed by the vendored ATPG tool from its
+    own fault-simulation. No coverage number may be written here by any other
+    means. The dft-evidence gate consumes this artifact once it exists.
+log_artifact:
+  format: text
+  path_template: build/ai_eda/dft_atpg/<run_id>/scan_log.txt
+  status: BLOCKED_no_vendored_atpg_tool
+candidate_tools:
+  - id: fault
+    repo: https://github.com/AUCOHL/Fault
+    role: scan_stitch_plus_atpg
+    vendored: false
+  - id: atalanta
+    role: combinational_stuck_at_atpg
+    vendored: false
+  - id: quaigh
+    role: atpg_equivalence_and_fault_sim
+    vendored: false
+release_blockers:
+  - No ATPG tool (Fault, Atalanta, Quaigh) is vendored under external/.
+  - Scan chain is not stitched (scan ports absent from rtl/; Fault stitches).
+  - Transition-delay closure at the advanced node is BLOCKED on commercial-eda-gate.
+external_gates:
+  - docs/evidence/pd/dft-evidence.yaml
+  - docs/evidence/pd/commercial-eda-gate.yaml

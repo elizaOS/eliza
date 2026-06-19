@@ -1,0 +1,233 @@
+// 48px icon rail. Holds the sidebar toggle (hamburger), the New-chat action
+// (odysseus rail-new-session), the theme picker, settings, and the feature
+// glyphs (memory, calendar, gallery, …). Mutually exclusive with the wide
+// sidebar (odysseus sidebar-layout.js: the rail shows ONLY when the sidebar is
+// collapsed). When the sidebar is expanded its labeled rows carry the same
+// feature navigation; the shell renders this rail only in the collapsed state.
+
+import {
+  BookOpen,
+  Boxes,
+  Brain,
+  CalendarDays,
+  FileText,
+  FlaskConical,
+  GitCompare,
+  Images,
+  ListChecks,
+  Mail,
+  Palette,
+  PanelLeft,
+  Plus,
+  Settings,
+  SlidersHorizontal,
+  StickyNote,
+  Zap,
+} from "lucide-react";
+import type { ReactNode } from "react";
+
+export function IconRail({
+  onToggleSidebar,
+  onNewChat,
+  onOpenTheme,
+  onOpenMemory,
+  onOpenSkills,
+  onOpenNotes,
+  onOpenSettings,
+  onOpenModels,
+  onOpenTasks,
+  onOpenPresets,
+  onOpenCalendar,
+  onOpenCompare,
+  onOpenCookbook,
+  onOpenResearch,
+  onOpenEmail,
+  onOpenGallery,
+  onOpenDocs,
+}: {
+  onToggleSidebar: () => void;
+  onNewChat: () => void;
+  onOpenTheme: () => void;
+  onOpenMemory: () => void;
+  onOpenSkills: () => void;
+  onOpenNotes: () => void;
+  onOpenSettings: () => void;
+  onOpenCompare: () => void;
+  onOpenResearch: () => void;
+  onOpenDocs: () => void;
+  onOpenCalendar: () => void;
+  onOpenEmail: () => void;
+  onOpenGallery: () => void;
+  onOpenCookbook: () => void;
+  onOpenModels: () => void;
+  onOpenTasks: () => void;
+  onOpenEditor: () => void;
+  onOpenGroup: () => void;
+  onOpenAdmin: () => void;
+  onOpenVoice: () => void;
+  onOpenPresets: () => void;
+}): ReactNode {
+  return (
+    <div className="od-icon-rail">
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onToggleSidebar}
+        title="Toggle sidebar"
+        aria-label="Toggle sidebar"
+      >
+        <PanelLeft size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn od-rail-new-chat"
+        onClick={onNewChat}
+        title="New chat"
+        aria-label="New chat"
+      >
+        <Plus size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenMemory}
+        title="Memory"
+        aria-label="Memory"
+      >
+        <Brain size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenSkills}
+        title="Skills"
+        aria-label="Skills"
+      >
+        <Zap size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenNotes}
+        title="Notes"
+        aria-label="Notes"
+      >
+        <StickyNote size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenTasks}
+        title="Tasks"
+        aria-label="Tasks"
+      >
+        <ListChecks size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenModels}
+        title="Models"
+        aria-label="Models"
+      >
+        <Boxes size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenPresets}
+        title="Presets"
+        aria-label="Presets"
+      >
+        <SlidersHorizontal size={18} />
+      </button>
+      {/* Tool launchers (odysseus index.html #icon-rail "always visible,
+        alphabetical" group). The collapsed rail is the only nav surface, so
+        these glyphs make the tool windows reachable without expanding the
+        sidebar. Order mirrors odysseus: Calendar, Compare, Cookbook,
+        Research, Email, Gallery, Library. */}
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenCalendar}
+        title="Calendar"
+        aria-label="Calendar"
+      >
+        <CalendarDays size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenCompare}
+        title="Compare"
+        aria-label="Compare"
+      >
+        <GitCompare size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenCookbook}
+        title="Cookbook"
+        aria-label="Cookbook"
+      >
+        <BookOpen size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenResearch}
+        title="Deep Research"
+        aria-label="Deep Research"
+      >
+        <FlaskConical size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenEmail}
+        title="Email"
+        aria-label="Email"
+      >
+        <Mail size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenGallery}
+        title="Gallery"
+        aria-label="Gallery"
+      >
+        <Images size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenDocs}
+        title="Library"
+        aria-label="Library"
+      >
+        <FileText size={18} />
+      </button>
+      <div className="od-rail-spacer" />
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenTheme}
+        title="Theme"
+        aria-label="Theme"
+      >
+        <Palette size={18} />
+      </button>
+      <button
+        type="button"
+        className="od-rail-btn"
+        onClick={onOpenSettings}
+        title="Settings"
+        aria-label="Settings"
+      >
+        <Settings size={18} />
+      </button>
+    </div>
+  );
+}

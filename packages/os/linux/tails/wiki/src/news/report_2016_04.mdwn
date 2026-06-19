@@ -1,0 +1,90 @@
+[[!meta title="Tails report for April, 2016"]]
+[[!meta date="Thu, 12 May 2016 10:40:30 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+* [[Tails 2.3 was released on April 26, 2016|news/version_2.3]] (major release).
+
+Code
+====
+
+* i2p in Tails now has a new maintainer, welcome aboard!
+
+Documentation and website
+=========================
+
+* sajolida rewrote the instructions for OpenPGP verification
+  as part of small improvements to make the installation assistant less
+  frustrating for power users.
+
+* Some examples were added on the documentation about [[adding new mirror|contribute/how/mirror]].
+
+* We [[!tails_ticket 11151 desc="sped up the build of our website by
+  almost 50%"]] by removing deprecated documentation and translations of
+  little relevance.
+
+* We wrote a small FAQ on [[`ping` not working
+  in Tails|support/faq#ping]].
+
+User experience
+===============
+
+* Alan built an ISO image
+  with the new design of Tails Greeter and
+  asked for review.
+
+* segfault was approved to work on Tails Server
+  as his Google Summer of Code and already sent some mockups for a user
+  interface.
+
+Infrastructure
+==============
+* We moved our contributors chat to an [[XMPP channel|xmpp://tails-dev@conference.riseup.net]]. More info  [[here|contribute/chat]].
+* We are updating our mirror infrastructure to allow more mirrors as well as to switch all downloads to HTTPS in the future read the blueprint. Nearly all mirror operators have already adopted the new configuration of their server. We have updated our [[documentation for hosting a mirror|contribute/how/mirror/]]. Administrators of the mirror pool now have a dedicated mailing list.
+* In April, 779 ISO images were automatically built by our Jenkins instance.
+* We have continued to try out new "fundamental approaches" in our test suite to deal with robustness issues. This month we have looked closer at the "transient network issues", of which all seem to be related to using the real Tor network. Our solution ended up being to run our own miniature Tor network on the automated test suite host using the Tor project's own tool for running Tor network diagnostic tests, Chutney.
+* Our new monitoring system was deployed to production, and works very well so far. It's aim is to be able to detect within hours failures and malfunction on our services. 
+
+More information on our work on infrastructure this month can be found in our SponsorS report for April 2016.
+
+Outreach
+========
+
+* RomeoPapa announced
+  SilentKeys as fork of Tails.
+
+Press and testimonials
+======================
+
+* 2016-04-13: Tails Product Review: Tails
+OS by Kevin Lee in Privacy Shell.
+
+Translation
+===========
+
+**Overall translation of the website**
+
+* german: 47% (2567) strings translated, 4% strings fuzzy, 42% words translated
+* farsi: 52% (2843) strings translated, 6% strings fuzzy, 59% words translated
+* french: 62% (3366) strings translated, 5% strings fuzzy, 64% words translated
+* portuguese: 30% (1644) strings translated, 7% strings fuzzy, 29% words translated
+
+Total original words: 56061
+
+**Core pages of the website**
+
+* german: 88% (1179) strings translated, 6% strings fuzzy, 91% words translated
+* farsi: 77% (1037) strings translated, 12% strings fuzzy, 72% words translated
+* french: 85% (1139) strings translated, 7% strings fuzzy, 89% words translated
+* portuguese: 70% (940) strings translated, 16% strings fuzzy, 69% words translated
+
+Total original words: 14006
+
+
+Metrics
+=======
+* Tails has been started more than 527.629 times this month. This makes 17.587 boots a day on average.
+* 5.321 downloads of the OpenPGP signature of Tails ISO from our website.

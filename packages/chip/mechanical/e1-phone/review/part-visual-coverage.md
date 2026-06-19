@@ -1,0 +1,270 @@
+# E1 Phone Part Visual Coverage
+
+Status: part_visual_coverage_pass.
+
+This gate maps each CAD part to generated review views and the per-part contact sheets.
+
+## Coverage
+
+- PASS: `orange_back_shell` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_side_frame` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `screen_cover_glass` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_top_down.png`, `exploded_iso.png`
+- PASS: `display_lcm` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_top_down.png`, `exploded_iso.png`
+- PASS: `main_pcb` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `battery_pouch` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `battery_back_void_foam_pad` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_c_receptacle` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-io-buttons.png`, `exploded_iso.png`
+- PASS: `usb_c_external_aperture` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-io-buttons.png`, `exploded_iso.png`
+- PASS: `usb_c_perimeter_gasket_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-io-buttons.png`, `exploded_iso.png`
+- PASS: `usb_c_perimeter_gasket_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-io-buttons.png`, `exploded_iso.png`
+- PASS: `usb_c_perimeter_gasket_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-io-buttons.png`, `exploded_iso.png`
+- PASS: `usb_c_perimeter_gasket_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-io-buttons.png`, `exploded_iso.png`
+- PASS: `usb_c_molded_drip_break_lip` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-io-buttons.png`, `exploded_iso.png`
+- PASS: `usb_c_internal_drain_shelf` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-io-buttons.png`, `exploded_iso.png`
+- PASS: `bottom_speaker_module` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `earpiece_receiver` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `bottom_mic` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `top_mic` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `rear_camera_module` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
+- PASS: `rear_camera_shell_aperture` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `orange_rear_camera_bezel_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_rear_camera_bezel_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_rear_camera_bezel_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_rear_camera_bezel_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `rear_flash_shell_aperture` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `orange_rear_flash_bezel_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_rear_flash_bezel_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_rear_flash_bezel_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_rear_flash_bezel_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `rear_camera_lens_window` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
+- PASS: `rear_camera_optical_sight_tunnel` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rear_flash_led` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
+- PASS: `rear_flash_led_window` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
+- PASS: `front_camera_module` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_top_down.png`, `component-review-optical.png`, `component_stack.png`
+- PASS: `front_camera_under_glass` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_top_down.png`, `component-review-optical.png`, `component_stack.png`
+- PASS: `rear_camera_cover_adhesive_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_camera_cover_adhesive_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_camera_cover_adhesive_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_camera_cover_adhesive_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_camera_light_baffle_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_camera_light_baffle_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `front_camera_black_mask_window` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_flash_window_adhesive_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_flash_window_adhesive_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_flash_window_adhesive_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_flash_window_adhesive_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `front_camera_under_glass_adhesive_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `front_camera_under_glass_adhesive_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `front_camera_under_glass_adhesive_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `front_camera_under_glass_adhesive_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_flash_camera_septum` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `power_button_cap` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_left_side.png`, `component-review-io-buttons.png`, `component_stack.png`
+- PASS: `volume_button_cap` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_left_side.png`, `component-review-io-buttons.png`, `component_stack.png`
+- PASS: `handset_acoustic_slot` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `handset_acoustic_mesh` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `bottom_speaker_grille_slot_1` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `bottom_speaker_grille_slot_2` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `bottom_speaker_grille_slot_3` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `bottom_speaker_grille_slot_4` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `bottom_speaker_grille_slot_5` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `bottom_speaker_dust_mesh` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `split_interconnect_top_connector` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `split_interconnect_bottom_connector` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `split_interconnect_side_flex` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `split_interconnect_top_flex_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `split_interconnect_bottom_flex_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `bottom_microphone_port_1` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `bottom_microphone_mesh_1` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `bottom_microphone_port_2` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `bottom_microphone_mesh_2` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `top_microphone_port` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `top_microphone_mesh` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `power_button_elastomer_gasket` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_left_side.png`, `component-review-io-buttons.png`, `component_stack.png`
+- PASS: `power_button_labyrinth_upper_rail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_left_side.png`, `component-review-io-buttons.png`, `component_stack.png`
+- PASS: `power_button_labyrinth_lower_rail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_left_side.png`, `component-review-io-buttons.png`, `component_stack.png`
+- PASS: `volume_button_elastomer_gasket` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_left_side.png`, `component-review-io-buttons.png`, `component_stack.png`
+- PASS: `volume_button_labyrinth_upper_rail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_left_side.png`, `component-review-io-buttons.png`, `component_stack.png`
+- PASS: `volume_button_labyrinth_lower_rail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_left_side.png`, `component-review-io-buttons.png`, `component_stack.png`
+- PASS: `screen_adhesive_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `screen_adhesive_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `screen_adhesive_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `screen_adhesive_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_screw_boss_1` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_screw_boss_2` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_screw_boss_3` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_screw_boss_4` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_screw_boss_5` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_screw_boss_6` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_screw_boss_7` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_screw_boss_8` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_screw_boss_9` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_screw_boss_10` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_snap_hook_1` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_snap_hook_2` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_snap_hook_3` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_snap_hook_4` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_snap_hook_5` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_snap_hook_6` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_snap_hook_7` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_snap_hook_8` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_battery_left_rib` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_battery_right_rib` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `orange_usb_reinforcement_saddle` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `exploded_iso.png`
+- PASS: `display_fpc_connector` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `display_fpc_bend_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `bottom_speaker_acoustic_chamber` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_bottom_port.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `earpiece_gasket` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`, `component-review-audio.png`, `component_stack.png`
+- PASS: `orange_corner_rib_1` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_corner_rib_1_leg` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_corner_rib_2` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_corner_rib_2_leg` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_corner_rib_3` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_corner_rib_3_leg` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_corner_rib_4` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `orange_corner_rib_4_leg` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
+- PASS: `glass_perimeter_cushion_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `glass_perimeter_cushion_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `glass_perimeter_cushion_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `glass_perimeter_cushion_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `exploded_iso.png`
+- PASS: `cellular_top_antenna_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `cellular_bottom_antenna_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `wifi_bt_side_antenna_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `antenna_aperture_tuner` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `soc_shield_can` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `pmic_shield_can` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `radio_shield_can` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `cellular_lga_module_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_module_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `compute_som_sodimm_connector` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `compute_som_daughterboard_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `soc_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `dram_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `storage_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `pmic_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_pd_controller_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `charger_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `battery_connector_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `audio_codec_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rf_transceiver_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `gnss_lna_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `backlight_bias_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `fuel_gauge_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `haptic_driver_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usim_levelshift_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `esim_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `nfc_controller_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `nfc_loop_match_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `sensor_hub_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `esd_array_6ch_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `tvs_diode_2p_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `testpoint_1mm_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `fiducial_1mm_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `mounting_hole_1p2_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `r0402_component_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `c0402_component_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `l0402_component_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `pi_match_0402_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rc_array_4ch_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `shunt_1206_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_rf_feed_development_envelope` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_rf_feed_development_envelope` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `display_fpc_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rear_camera_fpc_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `front_camera_fpc_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `side_key_flex_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `battery_connector_lead_flex` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_c_power_data_escape_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_pd_controller_escape_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `pd_charger_control_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `charger_battery_power_sense_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `display_bias_power_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rear_camera_power_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `front_camera_power_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_host_control_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_host_control_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `bottom_speaker_lead_pair` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `bottom_microphone_flex_leads` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `top_microphone_flex_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `earpiece_receiver_lead_flex` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `haptic_flex_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `sensor_hub_i2c_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `sim_esim_signal_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `nfc_loop_antenna_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_div_rf_feed_development_envelope` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_gnss_rf_feed_development_envelope` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_rf1_feed_development_envelope` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `soc_shield_ground_spring_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `radio_shield_ground_spring_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `haptic_lra` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component-review-io-buttons.png`, `component_stack.png`
+- PASS: `sim_tray_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component_stack.png`
+- PASS: `sim_tray_outline` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component_stack.png`
+- PASS: `rear_camera_cover_glass` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
+- PASS: `service_label_recess` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component_stack.png`
+- PASS: `display_touch_fpc_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `display_touch_fpc_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rear_camera_csi_fpc_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rear_camera_csi_fpc_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `front_camera_csi_fpc_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `front_camera_csi_fpc_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `side_key_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `side_key_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `battery_lead_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `battery_lead_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_c_escape_tail_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_c_escape_tail_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_c_to_pd_controller_escape_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_c_to_pd_controller_escape_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `pd_controller_to_charger_control_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `pd_controller_to_charger_control_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `charger_to_battery_power_sense_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `charger_to_battery_power_sense_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `display_bias_power_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `display_bias_power_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rear_camera_power_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rear_camera_power_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `front_camera_power_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `front_camera_power_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_host_control_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_host_control_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_host_control_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_host_control_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `bottom_speaker_lead_pair_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `bottom_speaker_lead_pair_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `bottom_microphone_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `bottom_microphone_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `top_microphone_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `top_microphone_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `earpiece_receiver_lead_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `earpiece_receiver_lead_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `haptic_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `haptic_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `sensor_hub_i2c_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `sensor_hub_i2c_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `sim_esim_signal_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `sim_esim_signal_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `nfc_loop_antenna_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `nfc_loop_antenna_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `compute_som_sodimm_carrier_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `compute_som_sodimm_carrier_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `soc_shield_ground_spring_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `soc_shield_ground_spring_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `radio_shield_ground_spring_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `radio_shield_ground_spring_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_main_rf_feed_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_main_rf_feed_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_diversity_rf_feed_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_diversity_rf_feed_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_antenna_aperture_tuner_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_antenna_aperture_tuner_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_gnss_rf_feed_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_gnss_rf_feed_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_rf0_feed_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_rf0_feed_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_rf1_feed_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_rf1_feed_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `split_interconnect_side_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `split_interconnect_side_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+
+## Release Rule
+
+- Every CAD part must have passing per-part top-view and exploded-context contact-sheet entries and at least one role-appropriate generated review view before automated visual review coverage can claim that every part is reviewable.

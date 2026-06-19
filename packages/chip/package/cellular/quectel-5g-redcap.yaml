@@ -1,0 +1,186 @@
+schema: eliza.cellular_module_binding.v1
+as_of: 2026-05-21
+module_boundary: certified_cellular_module
+status: sourcing_shortlist_no_bonded_pins_no_fabricated_board
+claim_boundary: >
+  Planning binding only. No cellular module is mounted, no SIM/eSIM is wired,
+  no antennas are tuned, and no carrier/PTCRB/GCF/SAR evidence exists.
+
+primary_first_phone:
+  vendor: Quectel
+  family: RG255C_or_RM255C
+  class: 5G_RedCap_Sub_6
+  rationale: >
+    RedCap is the pragmatic first-phone cellular target: lower throughput than
+    full eMBB 5G, but smaller power/RF burden and enough bandwidth for
+    voice, messaging, maps, telemetry, and moderate data.
+  public_features:
+    release: 3GPP_Rel_17_RedCap
+    peak_downlink_mbps: 223
+    peak_uplink_mbps: 123
+    fallback: LTE_Cat_4
+    gnss: optional_multi_constellation
+    host_interfaces: [USB_2_0, PCIe_2_0, PCM, UART, SGMII, SPI]
+    driver_os: [Linux, Android, Windows]
+  public_2026_brochure_fields:
+    url: https://www.quectel.com/content/uploads/2026/01/Quectel_Product_Brochure_V8.5_2026.pdf
+    rg255c_lga_dimensions_mm: {width: 29.0, height: 32.0, thickness: 2.4}
+    rg255c_m2_dimensions_mm: {width: 30.0, height: 42.0, thickness: 3.25}
+    rm255c_gl_m2_dimensions_mm: {width: 42.0, height: 30.0, thickness: 2.3}
+    rg255c_lga_weight_g: 5.2
+    rm255c_gl_weight_g: 6.0
+    extended_temperature_c: {min: -40, max: 85}
+    region_sku_families: [RG255C_NA, RG255C_EU, RG255C_GL]
+  sourcing_url: https://www.quectel.com/product/5g-redcap-rg255c-series/
+  public_source_revalidation:
+    checked_date: 2026-05-21
+    source_type: direct_quectel_vendor_page_opened
+    observed_public_fields:
+      - RG255C series 5G RedCap module
+      - LGA form factor and small size
+      - 223 Mbps downlink and 123 Mbps uplink maximum data-rate signal
+      - LTE Cat 4 fallback and 5G Sub-6 SA support
+      - optional multi-constellation GNSS
+      - USB 2.0, PCIe 2.0, PCM, UART, SGMII, and SPI interfaces
+      - Windows, Linux, and Android USB driver resources
+      - region variants RG255C-CN, RG255C-GL, RG255C-NA, and RG255C-EU
+    board_use: primary_cellular_lga_module_top_left_rf_region
+    still_missing_before_use:
+      - selected region SKU, band matrix, and orderable MPN
+      - hardware design guide, reference layout, LGA pad map, and reserved-pin rules
+      - module STEP model, shield height, RF feed rules, and antenna matching recommendations
+      - modem firmware, Linux/Android driver package, carrier test mode, and certification scope
+
+lab_fallback:
+  vendor: Quectel
+  family: RM520N_GL
+  class: full_5G_M2_dev_module
+  rationale: >
+    Socketed M.2 is larger than a phone LGA module but easier to validate,
+    replace, and use for early Linux/Android modem-manager bring-up.
+  host_interfaces_required: [USB_3_or_PCIe, USB_2_diag, USIM]
+
+phone_layout_space_saving_alternates:
+  claim_boundary: >
+    Public-source size shortlist for smaller orderable cellular modules that may preserve the current display,
+    battery, and board envelope if the first phone accepts LTE Cat 1/Cat 1 bis service instead of 5G RedCap.
+    These are not approved substitutes until supplier packs, region SKUs, antenna review, carrier scope, and SAR
+    evidence are captured.
+  candidates:
+    - id: quectel_eg915q_na_or_eg915u_class
+      vendor: Quectel
+      family: EG915Q_or_EG915U
+      class: LTE_Cat_1_bis
+      form_factor: LGA
+      public_envelope_mm: {width: 23.6, height: 19.9, thickness: 2.4}
+      public_source: https://www.quectel.com/lte-iot-modules/
+      source_note: Quectel LTE IoT modules table lists EG915Q/EG915U-class 23.6 x 19.9 x 2.4 mm LGA Cat 1 bis modules
+      likely_phone_layout_use: space_saving_lte_fallback_if_5g_redcap_cannot_fit
+      fit_policy: requires_repacked_cellular_region_not_current_14x14_placeholder
+      tradeoff_vs_rg255c: loses_5g_redcap_and_high_downlink_uplink_rates_but_reduces_module_area
+    - id: quectel_eg916q_gl
+      vendor: Quectel
+      family: EG916Q-GL
+      class: LTE_Cat_1_bis
+      form_factor: LGA
+      public_envelope_mm: {width: 26.5, height: 22.5, thickness: 2.4}
+      public_source: https://www.quectel.com/product/lte-cat-1-bis-eg916q-gl/
+      source_note: Quectel product page lists 26.5 x 22.5 x 2.4 mm LGA, 10 Mbps downlink, 5 Mbps uplink, and Linux/Android driver resources
+      likely_phone_layout_use: global_lte_fallback_if_reduced_cellular_throughput_is_acceptable
+      fit_policy: requires_repacked_cellular_region_not_current_14x14_placeholder
+      tradeoff_vs_rg255c: global_cat1_bis_size_savings_but_not_5g_redcap
+    - id: fibocom_mc665
+      vendor: Fibocom
+      family: MC665
+      class: LTE_Cat_1_bis
+      form_factor: LCC_LGA
+      public_envelope_mm: {width: 20.2, height: 22.2, thickness: 2.4}
+      public_source: https://www.fibocom.com/en/SeriesProduct/info_itemid_133.html
+      source_note: Fibocom product page lists approximately 20.2 x 22.2 x 2.4 mm Cat 1 bis LCC+LGA module
+      likely_phone_layout_use: smallest_public_multisource_cross_check_candidate_pending_region_and_support_review
+      fit_policy: requires_repacked_cellular_region_not_current_14x14_placeholder
+      tradeoff_vs_rg255c: smaller_lte_cat1_bis_module_from_second_vendor_but_requires_new_host_rf_and_firmware_review
+    - id: simcom_a7680c_china_only_size_reference
+      vendor: SIMCom
+      family: A7680C
+      class: LTE_Cat_1
+      form_factor: LCC_LGA
+      public_envelope_mm: {width: 17.6, height: 15.7, thickness: 2.1}
+      public_source: https://www.simcom.com/news_view-159.html
+      source_note: SIMCom launch note lists 17.6 x 15.7 x 2.1 mm, but targets the Chinese market
+      likely_phone_layout_use: size_reference_or_china_sku_only_not_default_global_phone_module
+      fit_policy: requires_region_and_carrier_review_before_use
+      tradeoff_vs_rg255c: much_smaller_but_region_limited_and_not_5g_redcap
+  release_blockers:
+    - exact orderable MPN, lifecycle, and regional band matrix for each shortlisted alternate
+    - hardware design guide, pad map, reference layout, land pattern, paste mask, and STEP model
+    - modem firmware, Linux/Android driver package, test mode, carrier/PTCRB/GCF plan, and SAR scope
+    - antenna vendor review and conducted RF access for the final enclosure plastics
+
+host_interfaces:
+  cellular_module:
+    required:
+      - {contract: CELL_USB2_DP, module_role: usb2_dp, direction_at_soc: bidirectional}
+      - {contract: CELL_USB2_DN, module_role: usb2_dn, direction_at_soc: bidirectional}
+      - {contract: CELL_PCIE_TX_P, module_role: pcie_rx_p, direction_at_soc: output}
+      - {contract: CELL_PCIE_TX_N, module_role: pcie_rx_n, direction_at_soc: output}
+      - {contract: CELL_PCIE_RX_P, module_role: pcie_tx_p, direction_at_soc: input}
+      - {contract: CELL_PCIE_RX_N, module_role: pcie_tx_n, direction_at_soc: input}
+      - {contract: CELL_RESET_N, module_role: reset_n, direction_at_soc: output, default: low}
+      - {contract: CELL_WAKE_AP, module_role: wake_host, direction_at_soc: input}
+      - {contract: AP_WAKE_CELL, module_role: wake_module, direction_at_soc: output}
+      - {contract: CELL_W_DISABLE_N, module_role: radio_disable_n, direction_at_soc: output}
+      - {contract: USIM_CLK, module_role: sim_clk, direction_at_soc: output}
+      - {contract: USIM_RST, module_role: sim_rst, direction_at_soc: output}
+      - {contract: USIM_IO, module_role: sim_io, direction_at_soc: bidirectional}
+  rf_ports:
+    minimum_first_board: [cellular_main, cellular_diversity, gnss_optional]
+    production_target: [cellular_main, cellular_diversity, cellular_mimo_0, cellular_mimo_1, gnss]
+
+layout_requirements:
+  module_placement:
+    - Keep the RedCap module on the top RF island near cellular matching networks and away from the USB-C
+      bottom-edge shell current path.
+    - Preserve a grounded shield perimeter around the module while leaving top-edge antenna plastic clear of
+      midframe metal.
+    - Route USB2 and PCIe to the SoC with continuous ground reference and no crossing through display/camera
+      FPC bend keepouts.
+  antenna_plan:
+    cellular_main: top_or_bottom_plastic_edge_after_vendor_review
+    cellular_diversity: opposite_plastic_edge_or_side_slot_after_vendor_review
+    gnss_optional: top_edge_or_dedicated_LNA_path_if_desense_allows
+    matching_required: [CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF]
+    conducted_access_required_before_matching_network: true
+  sim_esim_layout:
+    - USIM/ESIM lines require ESD and short routing away from cellular RF feeds.
+    - Region SKU, band matrix, and SIM/eSIM certification path must be locked before EVT1 routing release.
+  coexistence_requirements:
+    - Reserve modem W_DISABLE_N and AP/module wake lines for airplane mode, suspend, and regulatory testing.
+    - Capture cellular transmit-current burst profile before RF_VBAT copper/via signoff.
+    - Run conducted coexistence checks against Wi-Fi 2.4/5/6 GHz, Bluetooth, GNSS, display bias, and USB-C
+      charging states.
+
+power_sequence:
+  status: required_not_implemented
+  rails:
+    - {name: CELL_VBAT, owner: battery_power_path_or_dedicated_buck, voltage_v: 3.3_to_4.4, status: missing}
+    - {name: CELL_VDDIO_1V8, owner: PMIC_LDO, voltage_v: 1.8, status: missing}
+  requirements:
+    - Size CELL_VBAT for transmit current bursts from the selected module datasheet.
+    - Keep RESET_N asserted until VBAT and VDDIO are stable.
+    - Provide RF kill path through W_DISABLE_N for regulatory and airplane-mode requirements.
+    - Add conducted RF test pads or coax bring-up points before matching networks.
+
+release_blockers:
+  - selected_region_sku_and_band_matrix
+  - module_datasheet_and_reference_layout_under_NDA_if_required
+  - sim_or_esim_certification_path
+  - antenna_vendor_review
+  - carrier_certification_plan
+  - sar_and_rf_exposure_pre_scan
+
+forbidden_claims:
+  - cellular_ready
+  - carrier_ready
+  - emergency_call_ready
+  - sar_ready

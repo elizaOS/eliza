@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+MAKEFILE = ROOT / "Makefile"
+CHECKER = ROOT / "scripts/check_display_scanout.py"
+
+
+def main() -> int:
+    makefile = MAKEFILE.read_text(encoding="utf-8")
+    checker = CHECKER.read_text(encoding="utf-8")
+    errors: list[str] = []
+
+    if ".PHONY: display-scanout-check" not in makefile:
+        errors.append("Makefile missing .PHONY: display-scanout-check")
+    if not re.search(
+        r"(?m)^display-scanout-check:\n\t@\$\(PYTHON\) scripts/check_display_scanout\.py$",
+        makefile,
+    ):
+        errors.append("display-scanout-check target must run scripts/check_display_scanout.py")
+
+    for token in (
+        '"phone_claim_allowed": False',
+        '"release_claim_allowed": False',
+        '"panel_bringup_claim_allowed": False',
+        '"dsi_phy_claim_allowed": False',
+        '"drm_kms_claim_allowed": False',
+        '"dts_binding_claim_allowed": False',
+        '"panel_dcs_init_claim_allowed": False',
+        '"async_pixel_clock_cdc_claim_allowed": False',
+        '"hil_bandwidth_trace_claim_allowed": False',
+        '"production_framebuffer_claim_allowed": False',
+        '"e1_soc_top_replacement_claim_allowed": False',
+        '"false_claim_flags": FALSE_CLAIM_FLAGS',
+        "Does NOT",
+        "cover the DSI analog PHY",
+        "panel DCS init",
+        "async pixel-clock CDC",
+        "DRM/KMS/compositor",
+        "legacy e1_soc_top SRAM-backed display path",
+        "remaining_product_dependencies",
+    ):
+        if token not in checker:
+            errors.append(f"display scanout checker missing token: {token}")
+
+    if errors:
+        for error in errors:
+            print(f"FAIL: {error}")
+        return 1
+    print("PASS display scanout gate regression")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

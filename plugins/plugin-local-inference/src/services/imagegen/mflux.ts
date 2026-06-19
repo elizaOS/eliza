@@ -1,0 +1,313 @@
+/**
+ * MLX-mflux image-gen backend (WS3) — macOS Apple Silicon.
+ *
+ * `mflux` is the community MLX port of FLUX.1 with Z-Image-Turbo support
+ * (https://github.com/filipstrand/mflux). It's a Python package that
+ * ships a `mflux-generate` CLI; we shell out to it from a venv the
+ * bundle installer creates at `${MODELS_DIR}/mlx/mflux`.
+ *
+ * Why a venv (and not a Node MLX binding):
+ *   - MLX Python is the canonical fast path on Apple Silicon — the
+ *     mflux maintainers track upstream MLX optimizations directly.
+ *   - There is no stable MLX Node binding today; writing one would
+ *     duplicate MLX Python's surface for very little gain. Diffusion
+ *     latency dominates the IPC cost.
+ *   - The mflux CLI is stable, with `--model …`, `--prompt …`,
+ *     `--steps …`, `--seed …`, `--output …`.
+ *
+ * Venv resolution:
+ *   1. `opts.binaryPath` (test injection).
+ *   2. `process.env.MFLUX_BIN` (operator override; usually the venv's
+ *      `bin/mflux-generate`).
+ *   3. `${MODELS_DIR}/mlx/mflux/bin/mflux-generate`.
+ *
+ * Model resolution:
+ *   mflux expects `--model` to be either a HuggingFace repo id
+ *   (`black-forest-labs/FLUX.1-schnell`) or a local checkpoint
+ *   directory. The bundle installer writes the local path; we pass it
+ *   verbatim.
+ *
+ * GPU validation status:
+ *   On Apple Silicon this hits the Metal Performance Shaders backend
+ *   through MLX. We have no Mac on this host — see
+ *   `__tests__/imagegen-handler.test.ts` notes for the on-device check
+ *   (M2 / M3 Max smoke for Z-Image-Turbo 4-step <2s 1024×1024).
+ *
+ * Publishing pipeline (macOS Apple Silicon only — Intel Mac falls back to
+ * sd-cpp Metal, see `sd-cpp.ts`):
+ *
+ *   Build:
+ *     python3 -m venv ${MODELS_DIR}/mlx/mflux
+ *     ${MODELS_DIR}/mlx/mflux/bin/pip install --upgrade pip
+ *     ${MODELS_DIR}/mlx/mflux/bin/pip install mflux           # arm64-only wheel
+ *   Sign:
+ *     codesign --force --options runtime --timestamp \
+ *       --sign "Developer ID Application: Eliza Labs Inc." \
+ *       ${MODELS_DIR}/mlx/mflux/bin/python3
+ *     codesign --force --options runtime --timestamp \
+ *       --sign "Developer ID Application: Eliza Labs Inc." \
+ *       ${MODELS_DIR}/mlx/mflux/bin/mflux-generate
+ *   Notarize:
+ *     ditto -c -k --keepParent ${MODELS_DIR}/mlx/mflux mflux-venv.zip
+ *     xcrun notarytool submit mflux-venv.zip \
+ *       --apple-id <ci-secret> --team-id <eliza-labs-team> --wait
+ *     xcrun stapler staple ${MODELS_DIR}/mlx/mflux/bin/mflux-generate
+ *   Drop:
+ *     releases.elizaos.ai/mflux/<version>/darwin-arm64/mflux-venv.tar.zst
+ *   The bundle installer untars the venv into the user's `${MODELS_DIR}/
+ *   mlx/mflux/` directory; the first launch runs `mflux-generate --help`
+ *   to warm up the cache.
+ */
+
+import { existsSync, promises as fs, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ImageGenBackendUnavailableError } from "./errors";
+import {
+	assertPngOutput,
+	defaultSpawn,
+	resolveSeed,
+	type SdCppSpawnLike,
+} from "./sd-cpp";
+import type {
+	ImageGenBackend,
+	ImageGenLoadArgs,
+	ImageGenRequest,
+	ImageGenResult,
+} from "./types";
+
+export interface MfluxBackendOptions {
+	loadArgs: ImageGenLoadArgs;
+	modelKey: string;
+	binaryPath?: string;
+	outputDir?: string;
+	spawnImpl?: SdCppSpawnLike;
+	/** Test seam — when set, skips subprocess and writes these bytes. */
+	fakeImageBytes?: Uint8Array;
+	now?: () => number;
+}
+
+const DEFAULT_BIN = "mflux-generate";
+
+export async function loadMfluxImageGenBackend(
+	opts: MfluxBackendOptions,
+): Promise<ImageGenBackend> {
+	const binary = resolveBinary(opts.binaryPath);
+	const now = opts.now ?? Date.now;
+
+	if (!opts.fakeImageBytes) {
+		await assertBinaryAvailable(binary, opts.spawnImpl);
+	}
+
+	const outputDir = opts.outputDir ?? mkdtempSync(join(tmpdir(), "mflux-"));
+	let disposed = false;
+
+	return {
+		id: "mflux",
+		supports(req) {
+			// mflux supports flexible WxH but resolution must be a /16 multiple
+			// for FLUX. SD 1.5 in mflux (less common) needs /8. We round up,
+			// so accept anything reasonable.
+			const w = req.width ?? 1024;
+			const h = req.height ?? 1024;
+			if (w <= 0 || h <= 0) return false;
+			if (w > 2048 || h > 2048) return false;
+			return true;
+		},
+		async generate(req): Promise<ImageGenResult> {
+			if (disposed) {
+				throw new ImageGenBackendUnavailableError(
+					"mflux",
+					"subprocess_failed",
+					"[imagegen/mflux] generate called after dispose()",
+				);
+			}
+			if (!req.prompt.trim()) {
+				throw new ImageGenBackendUnavailableError(
+					"mflux",
+					"unsupported_request",
+					"[imagegen/mflux] prompt is empty",
+				);
+			}
+			const seed = resolveSeed(req.seed);
+			const width = req.width ?? 1024;
+			const height = req.height ?? 1024;
+			// FLUX schnell / Z-Image-Turbo are 4-step turbo models; default
+			// to 4 here when the caller didn't specify.
+			const steps = req.steps ?? 4;
+			// FLUX schnell is CFG-free; mflux ignores the value but we record
+			// it as 0 in metadata when the caller didn't ask for one.
+			const guidanceScale = req.guidanceScale ?? 0;
+			const outputPath = join(outputDir, `out-${seed}-${now()}.png`);
+			const startMs = now();
+
+			if (opts.fakeImageBytes) {
+				await fs.writeFile(outputPath, opts.fakeImageBytes);
+				const elapsed = Math.max(1, now() - startMs);
+				if (req.onProgressChunk)
+					req.onProgressChunk({ step: steps, total: steps });
+				return {
+					image: opts.fakeImageBytes,
+					mime: "image/png",
+					seed,
+					metadata: {
+						model: opts.modelKey,
+						prompt: req.prompt,
+						steps,
+						guidanceScale,
+						inferenceTimeMs: elapsed,
+					},
+				};
+			}
+
+			if (!existsSync(opts.loadArgs.modelPath)) {
+				throw new ImageGenBackendUnavailableError(
+					"mflux",
+					"model_missing",
+					`[imagegen/mflux] model not found: ${opts.loadArgs.modelPath}`,
+				);
+			}
+
+			const args: string[] = [
+				"--model",
+				opts.loadArgs.modelPath,
+				"--prompt",
+				req.prompt,
+				"--width",
+				String(width),
+				"--height",
+				String(height),
+				"--steps",
+				String(steps),
+				"--seed",
+				String(seed),
+				"--output",
+				outputPath,
+			];
+			if (req.guidanceScale !== undefined) {
+				args.push("--guidance", String(req.guidanceScale));
+			}
+
+			await runMflux(binary, args, {
+				signal: req.signal,
+				spawnImpl: opts.spawnImpl,
+				onProgressChunk: req.onProgressChunk,
+				totalSteps: steps,
+			});
+
+			const bytes = new Uint8Array(await fs.readFile(outputPath));
+			assertPngOutput(bytes, "mflux", "subprocess_failed");
+			const elapsed = Math.max(1, now() - startMs);
+			return {
+				image: bytes,
+				mime: "image/png",
+				seed,
+				metadata: {
+					model: opts.modelKey,
+					prompt: req.prompt,
+					steps,
+					guidanceScale,
+					inferenceTimeMs: elapsed,
+				},
+			};
+		},
+		async dispose() {
+			if (disposed) return;
+			disposed = true;
+			await fs.rm(outputDir, { recursive: true, force: true }).catch(() => {});
+		},
+	};
+}
+
+function resolveBinary(override?: string): string {
+	if (override) return override;
+	const envBin = process.env.MFLUX_BIN;
+	if (envBin?.trim()) return envBin.trim();
+	return DEFAULT_BIN;
+}
+
+async function assertBinaryAvailable(
+	binary: string,
+	spawnImpl?: SdCppSpawnLike,
+): Promise<void> {
+	try {
+		const code = await new Promise<number | null>((resolve, reject) => {
+			const proc = defaultSpawn(spawnImpl)(binary, ["--help"]);
+			proc.on("error", (err: Error) => reject(err));
+			proc.on("exit", (c: number | null) => resolve(c));
+		});
+		// `mflux-generate --help` exits 0 on success. Tolerate code 2 in
+		// older mflux versions where --help is the default and exits non-zero.
+		if (code !== 0 && code !== 2) {
+			throw new ImageGenBackendUnavailableError(
+				"mflux",
+				"binary_version_mismatch",
+				`[imagegen/mflux] '${binary} --help' exited with code ${code}`,
+			);
+		}
+	} catch (err) {
+		if (err instanceof ImageGenBackendUnavailableError) throw err;
+		const message = err instanceof Error ? err.message : String(err);
+		throw new ImageGenBackendUnavailableError(
+			"mflux",
+			"binary_missing",
+			`[imagegen/mflux] cannot run '${binary} --help': ${message}. Set MFLUX_BIN or install the bundle's mflux venv at \${MODELS_DIR}/mlx/mflux.`,
+			{ cause: err },
+		);
+	}
+}
+
+async function runMflux(
+	binary: string,
+	args: readonly string[],
+	opts: {
+		signal?: AbortSignal;
+		spawnImpl?: SdCppSpawnLike;
+		onProgressChunk?: ImageGenRequest["onProgressChunk"];
+		totalSteps: number;
+	},
+): Promise<void> {
+	await new Promise<void>((resolve, reject) => {
+		const proc = defaultSpawn(opts.spawnImpl)(binary, args, {
+			signal: opts.signal,
+		});
+		const stderr = proc.stderr;
+		if (
+			opts.onProgressChunk &&
+			stderr &&
+			typeof (stderr as NodeJS.ReadableStream).on === "function"
+		) {
+			let leftover = "";
+			(stderr as NodeJS.ReadableStream).on("data", (chunk: Buffer | string) => {
+				const text =
+					leftover +
+					(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+				const lines = text.split(/\r?\n/);
+				leftover = lines.pop() ?? "";
+				for (const line of lines) {
+					// mflux prints `Step N/M` to stderr (tqdm-style).
+					const m = line.match(/step\s*(\d+)\s*\/\s*(\d+)/i);
+					if (!m) continue;
+					opts.onProgressChunk?.({
+						step: Number(m[1]),
+						total: Number(m[2]) || opts.totalSteps,
+					});
+				}
+			});
+		}
+		proc.on("error", (err: Error) => reject(err));
+		proc.on("exit", (code: number | null) => {
+			if (code === 0) {
+				resolve();
+				return;
+			}
+			reject(
+				new ImageGenBackendUnavailableError(
+					"mflux",
+					"subprocess_failed",
+					`[imagegen/mflux] mflux-generate exited with code ${code}`,
+				),
+			);
+		});
+	});
+}

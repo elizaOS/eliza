@@ -1,0 +1,1420 @@
+schema: eliza.e1_phone_readiness_unblock_register.v1
+status: blocked_unblock_register_all_domains_waiting_on_release_evidence
+date: '2026-05-22'
+claim_boundary: Action register for reaching fabrication, enclosure, factory, first-article,
+  and end-to-end phone readiness. It does not itself prove any release state.
+source_artifacts:
+- board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
+- board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+- board/kicad/e1-phone/production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml
+- board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
+- mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
+- board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml
+- board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml
+- mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml
+summary:
+  objective_status: blocked_objective_not_complete
+  blocker_count: 5
+  complete_blocker_count: 0
+  open_blocker_count: 5
+  artifact_presence_complete_blocker_count: 4
+  acceptance_artifact_count: 174
+  missing_acceptance_artifact_count: 0
+  non_release_acceptance_artifact_count: 137
+  production_presence_release_output_count: 0
+  production_presence_blocked_candidate_output_file_count: 47
+  production_presence_has_blocked_candidate_outputs: true
+  fabrication_ready: false
+  enclosure_ready: false
+  end_to_end_phone_ready: false
+  local_development_route_count: 153
+  local_development_segment_count: 306
+  local_development_via_count: 24
+  local_development_controlled_impedance_route_count: 48
+  local_development_route_classification_gap_count: 0
+  local_development_route_segment_trace_bound_count: 306
+  local_development_missing_net_count: 0
+  local_development_route_traceability_complete: true
+  local_development_required_shared_net_category_count: 7
+  local_development_required_shared_net_count: 177
+  local_development_routed_shared_net_count: 177
+  local_development_missing_required_shared_net_count: 0
+  local_development_route_domain_count: 7
+  local_development_route_domain_required_net_count_total: 177
+  local_development_route_domain_routed_or_aliased_net_count_total: 192
+  local_development_missing_route_domain_net_count: 0
+  local_development_all_route_domains_complete: true
+  local_real_footprint_development_refs: 89
+  local_routed_step_candidate_present: true
+  local_routed_step_candidate_release_credit: false
+  local_routed_step_candidate_sha256: ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6
+  local_routed_step_candidate_matches_development_source: true
+  local_routed_step_candidate_footprint_envelope_count: 89
+  local_routed_step_candidate_pad_contact_visual_count: 1452
+  local_routed_step_candidate_route_segment_visual_count: 306
+  local_pinout_captured_file_count: 21
+  local_pinout_declared_pin_count_total: 1212
+  local_pinout_record_count_total: 32
+  local_pinout_public_source_count: 21
+  local_pinout_bound_footprint_count: 21
+  local_pinout_exact_public_match_count: 17
+  local_pinout_pending_supplier_pad_map_or_order_count: 13
+  local_pinout_all_bound_footprints_have_terminal_contract: true
+  local_pinout_all_expected_public_pins_present: true
+  local_pattern_explicit_support_pattern_count: 11
+  local_pattern_all_support_patterns_have_explicit_provenance: true
+  local_pattern_all_electrical_pad_counts_match_manifest: true
+  local_instance_pin_step_status: instance_pin_pattern_step_disposition_complete_not_release
+  local_instance_pin_step_component_instance_count: 89
+  local_instance_pin_step_routed_board_footprint_count: 89
+  local_instance_pin_step_pinout_bound_instance_count: 22
+  local_instance_pin_step_support_pattern_instance_count: 67
+  local_instance_pin_step_pending_supplier_pad_map_or_order_instance_count: 13
+  local_instance_pin_step_public_candidate_package_conflict_instance_count: 3
+  local_instance_pin_step_local_step_instance_count: 89
+  local_instance_pin_step_local_step_hash_match_count: 89
+  local_instance_pin_step_local_contract_pass_count: 89
+  local_instance_pin_step_local_review_pass_count: 89
+  local_instance_pin_step_supplier_approved_instance_count: 0
+  local_instance_pin_step_release_credit_instance_count: 0
+  local_instance_pin_step_local_failure_count: 0
+  local_instance_pin_step_release_credit: false
+  local_cad_connection_passing_count: 32
+  local_cad_connection_terminal_marker_count: 64
+  local_cad_connection_terminal_pair_count: 32
+  local_cad_connection_solid_step_part_count: 96
+  local_cad_connection_solid_step_part_set_count: 32
+  local_cad_connection_solid_step_part_bytes_total: 1501919
+  local_cad_connection_assembly_manifest_part_count: 258
+  local_cad_connection_assembly_manifest_terminal_marker_count: 64
+  local_cad_connection_assembly_manifest_solid_step_part_count: 96
+  local_cad_connection_assembly_manifest_missing_solid_step_part_count: 0
+  local_cad_connection_represented_net_count_total: 150
+  local_cad_connection_represented_route_count_total: 153
+  local_cad_connection_represented_route_record_count_total: 153
+  local_cad_connection_represented_route_classification_gap_count: 0
+  local_cad_connection_all_represented_routes_have_layer_source_and_class: true
+  local_cad_connection_record_count: 32
+  local_cad_connection_represented_net_list_total: 150
+  local_cad_connection_all_records_have_represented_nets: true
+  local_cad_connection_all_represented_nets_match_routed_nets: true
+  local_cad_connection_controlled_impedance_count: 16
+  local_cad_connection_controlled_impedance_requirement_defined_count: 32
+  local_cad_connection_bend_radius_requirement_defined_count: 32
+  local_cad_connection_supplier_release_required_count: 32
+  local_cad_connection_release_credit: false
+  local_component_model_count: 89
+  local_component_model_supplier_approved_count: 0
+  local_component_model_release_allowed: false
+  local_component_model_pinout_bound_model_count: 22
+  local_component_model_support_pattern_model_count: 67
+  local_component_model_pattern_bound_model_count: 89
+  local_component_model_terminal_contract_bound_model_count: 89
+  local_component_model_terminal_contract_or_no_pad_model_count: 89
+  local_component_model_total_pad_contract_visual_count: 1452
+  local_component_model_uncovered_pad_visual_count: 0
+  local_component_model_non_signal_pad_contract_count: 7
+  local_component_model_npth_mechanical_feature_contract_count: 4
+  local_component_model_all_terminal_contract_flags_pass: true
+  local_component_model_all_pattern_binding_flags_pass: true
+  local_component_model_directory_record_count: 89
+  local_component_model_directory_terminal_contract_model_record_count: 85
+  local_component_model_directory_pattern_bound_model_record_count: 89
+  local_component_model_directory_terminal_contract_bound_model_record_count: 89
+  local_component_model_directory_terminal_contract_total_count: 1441
+  local_component_model_directory_total_pad_contract_visual_count: 1452
+  local_component_model_directory_uncovered_pad_visual_count: 0
+  local_component_model_directory_non_signal_pad_contract_total_count: 7
+  local_component_model_directory_npth_mechanical_feature_contract_total_count: 4
+  local_component_model_directory_source_routed_step_bound: true
+  local_component_model_directory_records_release_credit_false: true
+  local_component_model_directory_all_terminal_contract_flags_pass: true
+  local_component_model_directory_local_discrete_step_file_count: 89
+  local_component_model_directory_local_discrete_step_imported_solid_count: 89
+  local_component_model_directory_local_discrete_step_bbox_match_count: 89
+  local_component_model_directory_local_step_bound_model_record_count: 89
+  local_component_model_directory_local_discrete_step_bytes_total: 1387362
+  local_component_model_directory_supplier_step_intake_placeholder_count: 0
+  local_component_model_directory_supplier_step_intake_local_surrogate_count: 47
+  local_component_model_directory_supplier_step_intake_missing_count: 0
+  local_component_model_directory_supplier_step_intake_not_applicable_count: 42
+  local_component_model_directory_supplier_step_intake_release_candidate_count: 0
+  local_component_model_directory_supplier_step_intake_lane_counts:
+    audio_speaker_microphone_flexes: 8
+    battery_pack: 2
+    board_support_passives_mechanicals: 42
+    cellular: 8
+    charger_power_path: 1
+    display_touch: 3
+    front_camera: 2
+    pmic: 9
+    rear_camera: 2
+    side_buttons: 3
+    top_bottom_interconnect: 2
+    usb_c_receptacle_evt0: 1
+    usb_pd_controller: 1
+    wifi_bluetooth: 5
+  local_component_model_directory_release_allowed: false
+  public_sourcing_intake_ready: true
+  public_cad_source_record_count: 20
+  public_cad_source_step_or_3d_observed_count: 12
+  public_cad_source_footprint_or_eda_observed_count: 19
+  public_cad_source_local_downloaded_hashed_count: 3
+  public_cad_source_release_credit_record_count: 0
+  public_market_bom_cost_category_count: 11
+  public_market_bom_cost_volume_count: 5
+  public_market_bom_cost_avl_quote_count: 0
+  public_market_bom_cost_signed_supplier_quote_count: 0
+  public_sourcing_release_credit: false
+  public_sourcing_release_allowed: false
+public_sourcing_intake_context:
+  scope: public_cad_and_market_cost_intake_not_release_evidence
+  source_artifacts:
+  - board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml
+  - mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml
+  public_cad_source_record_count: 20
+  public_cad_source_step_or_3d_observed_count: 12
+  public_cad_source_footprint_or_eda_observed_count: 19
+  public_cad_source_local_downloaded_hashed_count: 3
+  public_cad_source_release_credit_record_count: 0
+  public_market_bom_cost_category_count: 11
+  public_market_bom_cost_volume_count: 5
+  public_market_bom_cost_avl_quote_count: 0
+  public_market_bom_cost_signed_supplier_quote_count: 0
+  public_sourcing_release_credit: false
+  public_sourcing_release_allowed: false
+blockers:
+- id: supplier_return_packs
+  domain: supplier
+  owner: sourcing_ops
+  status: outbound_intake_templates_created_not_supplier_evidence
+  evidence_class: external_or_physical_release_evidence
+  source_artifacts:
+  - board/kicad/e1-phone/supplier-evidence-drawing-gap-map-2026-05-22.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - board/kicad/e1-phone/supplier-response-pack-intake-contract.yaml
+  - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+  - board/kicad/e1-phone/sourcing-drafts/rfq-response-pack-template.yaml
+  required_evidence:
+  - supplier-returned RFQ response pack for every selected hardware lane
+  - 2D drawing, STEP or B-rep, sample lot, lifecycle, stock, and reviewer identity
+  - mapping from supplier evidence into KiCad symbol, footprint, courtyard, and 3D
+    model review
+  acceptance_artifacts:
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/battery_pack/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/battery_pack/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/battery_pack/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/battery_pack/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/battery_pack/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/battery_pack/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/battery_pack/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/battery_pack/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/battery_pack/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/cellular/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/cellular/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/cellular/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/cellular/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/cellular/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/cellular/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/cellular/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/cellular/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/display_touch/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/display_touch/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/display_touch/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/display_touch/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/display_touch/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/display_touch/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/display_touch/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/display_touch/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/front_camera/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/front_camera/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/front_camera/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/front_camera/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/front_camera/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/front_camera/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/front_camera/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/front_camera/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/rear_camera/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/rear_camera/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/rear_camera/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/rear_camera/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/rear_camera/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/rear_camera/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/rear_camera/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/rear_camera/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/side_buttons/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/side_buttons/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/side_buttons/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/side_buttons/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/side_buttons/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/side_buttons/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/side_buttons/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/side_buttons/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/supplier-model.step
+  present_acceptance_artifacts:
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/battery_pack/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/battery_pack/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/battery_pack/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/battery_pack/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/battery_pack/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/battery_pack/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/battery_pack/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/battery_pack/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/battery_pack/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/cellular/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/cellular/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/cellular/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/cellular/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/cellular/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/cellular/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/cellular/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/cellular/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/charger_power_path/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/display_touch/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/display_touch/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/display_touch/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/display_touch/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/display_touch/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/display_touch/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/display_touch/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/display_touch/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/front_camera/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/front_camera/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/front_camera/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/front_camera/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/front_camera/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/front_camera/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/front_camera/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/front_camera/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/rear_camera/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/rear_camera/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/rear_camera/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/rear_camera/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/rear_camera/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/rear_camera/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/rear_camera/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/rear_camera/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/side_buttons/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/side_buttons/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/side_buttons/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/side_buttons/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/side_buttons/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/side_buttons/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/side_buttons/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/side_buttons/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/usb_pd_controller/supplier-model.step
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/compliance-pack-index.yaml
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/lifecycle-stock-quote.yaml
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/pinout-or-pad-map.csv
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/recommended-land-pattern.pdf
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/sample-inspection.yaml
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/sample-lot-tracking.yaml
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/signed-2d-drawing.pdf
+  - board/kicad/e1-phone/production/sourcing/wifi_bluetooth/supplier-model.step
+  missing_acceptance_artifacts: []
+  artifact_presence_complete: true
+  non_release_acceptance_artifacts:
+    board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/battery_pack/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/battery_pack/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/battery_pack/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/battery_pack/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/battery_pack/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/battery_pack/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/battery_pack/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/battery_pack/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/cellular/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/cellular/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/cellular/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/cellular/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/cellular/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/cellular/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/cellular/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/charger_power_path/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/charger_power_path/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/charger_power_path/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/charger_power_path/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/charger_power_path/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/charger_power_path/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/charger_power_path/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/charger_power_path/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/display_touch/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/display_touch/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/display_touch/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/display_touch/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/display_touch/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/display_touch/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/display_touch/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/front_camera/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/front_camera/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/front_camera/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/front_camera/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/front_camera/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/front_camera/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/front_camera/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/rear_camera/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/rear_camera/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/rear_camera/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/rear_camera/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/rear_camera/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/rear_camera/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/rear_camera/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/side_buttons/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/side_buttons/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/side_buttons/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/side_buttons/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/side_buttons/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/side_buttons/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/side_buttons/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/usb_pd_controller/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/usb_pd_controller/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/usb_pd_controller/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/usb_pd_controller/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/usb_pd_controller/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/usb_pd_controller/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/usb_pd_controller/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/usb_pd_controller/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/wifi_bluetooth/compliance-pack-index.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/wifi_bluetooth/lifecycle-stock-quote.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/wifi_bluetooth/pinout-or-pad-map.csv:
+    - blocked_pending_supplier_return
+    - placeholder
+    board/kicad/e1-phone/production/sourcing/wifi_bluetooth/recommended-land-pattern.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/wifi_bluetooth/sample-inspection.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/wifi_bluetooth/sample-lot-tracking.yaml:
+    - blocked_pending_supplier_return
+    - local fail-closed
+    - not release evidence
+    - placeholder
+    - 'release_credit: false'
+    board/kicad/e1-phone/production/sourcing/wifi_bluetooth/signed-2d-drawing.pdf:
+    - not supplier evidence
+    - placeholder
+    - 'release_credit: false'
+    - sentinel_small_binary_artifact
+  non_release_acceptance_artifact_count: 96
+  acceptance_complete: false
+  missing_acceptance_artifact_count: 0
+  next_unblock_action: Send/track RFQs and populate returned supplier response packs;
+    do not promote public listings or templates.
+- id: routed_board_release
+  domain: routing
+  owner: layout_fabrication
+  status: blocked_current_kicad_concept_board_not_routed_or_fabrication_ready
+  evidence_class: local_generated_outputs_plus_external_review
+  source_artifacts:
+  - packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  - packages/chip/board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml
+  - packages/chip/board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+  required_evidence:
+  - supplier footprints replace all placeholders
+  - routed KiCad PCB with tracks, vias, filled zones, net classes, and DRC/ERC reports
+  - SI/PI/RF reports and routed-board STEP export using production component models
+  acceptance_artifacts: []
+  present_acceptance_artifacts: []
+  missing_acceptance_artifacts: []
+  artifact_presence_complete: false
+  non_release_acceptance_artifacts: {}
+  non_release_acceptance_artifact_count: 0
+  acceptance_complete: false
+  missing_acceptance_artifact_count: 0
+  next_unblock_action: Complete supplier footprint capture, route EVT1 board, run
+    ERC/DRC/SI/PI/RF, and export release outputs.
+- id: production_factory_outputs
+  domain: production
+  owner: manufacturing_ops
+  status: blocked_fail_closed_source_burndown_still_blocks_release
+  evidence_class: local_generated_outputs_plus_external_review
+  source_artifacts:
+  - board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
+  required_evidence:
+  - fabrication, assembly, quote, fixture, first-article, and production-release files
+    exist
+  - files are validated for correctness, signatures, freshness, and supplier/factory
+    acceptance
+  - factory limits, probe coordinates, RF calibration, traceability, and commercial
+    quotes are closed
+  acceptance_artifacts:
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/bom
+  - board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
+  - board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
+  - board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+  - board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+  - board/kicad/e1-phone/production/first-article
+  - board/kicad/e1-phone/production/gerbers
+  - board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
+  - board/kicad/e1-phone/production/ipc-2581
+  - board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
+  - board/kicad/e1-phone/production/pdf/assembly.pdf
+  - board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+  - board/kicad/e1-phone/production/pos
+  - board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
+  - board/kicad/e1-phone/production/reports/camera-capture-log.json
+  - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  - board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
+  - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  - board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+  - board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
+  - board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+  - board/kicad/e1-phone/production/reports/radio-module-integration.yaml
+  - board/kicad/e1-phone/production/reports/rf
+  - board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+  - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  - board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+  - board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  - board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+  - board/kicad/e1-phone/production/reports/si-pi
+  - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  - board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+  - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+  - board/kicad/e1-phone/production/reports/zone-fill.json
+  - board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
+  - board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
+  - board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
+  - board/kicad/e1-phone/production/step
+  - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  - board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
+  - board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
+  - board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
+  - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+  - board/kicad/e1-phone/production/test/probe-coordinates.csv
+  - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+  present_acceptance_artifacts:
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/bom
+  - board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
+  - board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
+  - board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+  - board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+  - board/kicad/e1-phone/production/first-article
+  - board/kicad/e1-phone/production/gerbers
+  - board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
+  - board/kicad/e1-phone/production/ipc-2581
+  - board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
+  - board/kicad/e1-phone/production/pdf/assembly.pdf
+  - board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+  - board/kicad/e1-phone/production/pos
+  - board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
+  - board/kicad/e1-phone/production/reports/camera-capture-log.json
+  - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  - board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
+  - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  - board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+  - board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
+  - board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+  - board/kicad/e1-phone/production/reports/radio-module-integration.yaml
+  - board/kicad/e1-phone/production/reports/rf
+  - board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+  - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  - board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+  - board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  - board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+  - board/kicad/e1-phone/production/reports/si-pi
+  - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  - board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+  - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+  - board/kicad/e1-phone/production/reports/zone-fill.json
+  - board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
+  - board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
+  - board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
+  - board/kicad/e1-phone/production/step
+  - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  - board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
+  - board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
+  - board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
+  - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+  - board/kicad/e1-phone/production/test/probe-coordinates.csv
+  - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+  missing_acceptance_artifacts: []
+  artifact_presence_complete: true
+  non_release_acceptance_artifacts:
+    board/kicad/e1-phone/production/bom:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/first-article:
+    - blocked_candidate_not_approved
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/gerbers:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/gerbers/nc-drill-and-slots:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/ipc-2581:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/pdf/assembly.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/pos:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/escape-density-via-count.yaml:
+    - blocked_candidate_not_approved
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/external-interface-design-review.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/radio-module-integration.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/rf:
+    - blocked_candidate_not_approved
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/route-feasibility-density.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml:
+    - blocked_candidate_not_approved
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/si-pi:
+    - blocked_candidate_not_approved
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/stackup/coupon-geometry.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv:
+    - candidate_not_release
+    board/kicad/e1-phone/production/step:
+    - blocked_candidate_not_approved
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/test/factory-test-limits.yaml:
+    - blocked_candidate_not_approved
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+    board/kicad/e1-phone/production/test/ict-or-flying-probe-program:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/test/probe-coordinates.csv:
+    - not_approved
+    - not_measured
+    board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf:
+    - not release evidence
+    - sentinel_small_binary_artifact
+  non_release_acceptance_artifact_count: 39
+  acceptance_complete: false
+  missing_acceptance_artifact_count: 0
+  next_unblock_action: Generate production/factory outputs from routed board package
+    and selected factory quote workflow.
+- id: enclosure_release_evidence
+  domain: mechanical
+  owner: mechanical_engineering
+  status: blocked_enclosure_evidence_missing
+  evidence_class: external_or_physical_release_evidence
+  source_artifacts:
+  - mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
+  required_evidence:
+  - routed-board STEP imported into enclosure CAD
+  - routed clearance results and boolean interference checks using supplier B-rep/STEP
+    models
+  - physical fit, lifecycle, GD&T/FAI, process validation, and signed production enclosure
+    handoff
+  acceptance_artifacts:
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  - mechanical/e1-phone/review/supplier-evidence-acceptance.json
+  - mechanical/e1-phone/review/physical-process-validation-acceptance.json
+  present_acceptance_artifacts:
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  - mechanical/e1-phone/review/supplier-evidence-acceptance.json
+  - mechanical/e1-phone/review/physical-process-validation-acceptance.json
+  missing_acceptance_artifacts: []
+  artifact_presence_complete: true
+  non_release_acceptance_artifacts:
+    board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - not_measured
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+  non_release_acceptance_artifact_count: 1
+  acceptance_complete: false
+  missing_acceptance_artifact_count: 0
+  next_unblock_action: Replace concept envelope evidence with routed-board and supplier
+    geometry evidence, then rerun clearance and physical validation gates.
+- id: first_article_bench_evidence
+  domain: first_article
+  owner: manufacturing_validation
+  status: template_manifest_fail_closed_no_release_evidence
+  evidence_class: external_or_physical_release_evidence
+  source_artifacts:
+  - board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml
+  - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+  required_evidence:
+  - executed first-article transcript and traveler
+  - USB-C PD, USB2/ADB, charger CC/CV, side-key force/travel/wake, display, camera,
+    RF, and audio logs
+  - factory limits and probe coordinates derived from measured first articles
+  acceptance_artifacts:
+  - board/kicad/e1-phone/production/first-article
+  - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  present_acceptance_artifacts:
+  - board/kicad/e1-phone/production/first-article
+  - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  missing_acceptance_artifacts: []
+  artifact_presence_complete: true
+  non_release_acceptance_artifacts:
+    board/kicad/e1-phone/production/first-article:
+    - blocked_candidate_not_approved
+    - not_approved
+    - unreviewed_local_candidate
+  non_release_acceptance_artifact_count: 1
+  acceptance_complete: false
+  missing_acceptance_artifact_count: 0
+  next_unblock_action: Run first article on routed hardware and replace templates
+    with executed signed logs and traveler.
+release_policy:
+  register_is_execution_plan_only: true
+  release_allowed: false
+  fabrication_release_allowed: false
+  enclosure_release_allowed: false
+  end_to_end_release_allowed: false
+  all_blockers_must_have_validated_acceptance_artifacts_before_release: true
+forbidden_claims:
+- fabrication_ready
+- enclosure_ready
+- factory_ready
+- first_article_passed
+- end_to_end_phone_ready

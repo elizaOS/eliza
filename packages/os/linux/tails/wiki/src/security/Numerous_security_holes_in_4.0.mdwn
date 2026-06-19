@@ -1,0 +1,33 @@
+[[!meta date="Sun, 01 Dec 2019 14:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 4.0"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.1|news/version_4.1]] fixes many security issues that affect
+Tails 4.0. You should [[upgrade to Tails 4.1|news/version_4.1]] as
+soon as possible.
+
+ - Tor Browser: [[!mfsa 2019-37]]
+ - Thunderbird: [[!mfsa 2019-38]]
+ - Linux: [[!cve CVE-2019-11135]], [[!cve CVE-2018-12207]],
+   [[!cve CVE-2019-0155]], [[!cve CVE-2019-0154]],
+   [[!cve CVE-2019-17133]], [[!cve CVE-2019-17055]],
+   [[!cve CVE-2019-17054]], [[!cve CVE-2019-17052]],
+   [[!cve CVE-2019-17053]], [[!cve CVE-2019-17056]],
+   [[!cve CVE-2019-16746]], [[!cve CVE-2019-17075]],
+   [[!cve CVE-2019-15098]]
+ - file: [[!debsa2019 4550]]
+ - FriBidi: [[!debsa2019 4561]]
+ - Ghostscript: [[!debsa2019 4569]]
+ - Intel microcode: [[!debsa2019 4565]], [[!cve CVE-2019-0117]]
+ - libarchive: [[!debsa2019 4557]]
+ - libvpx: [[!debsa2019 4578]]
+ - libxslt: [[!cve CVE-2019-18197]]
+ - ncurses: [[!cve CVE-2019-17594]], [[!cve CVE-2019-17595]]
+ - Python 2.7: [[!cve CVE-2018-20852]], [[!cve CVE-2019-10160]],
+   [[!cve CVE-2019-16056]], [[!cve CVE-2019-16935]],
+   [[!cve CVE-2019-9740]], [[!cve CVE-2019-9947]]
+ - Qt: [[!debsa2019 4556]]
+ - tcpdump: [[!debsa2019 4547]]
+ - WebKitGTK: [[!debsa2019 4558]], [[!debsa2019 4563]]

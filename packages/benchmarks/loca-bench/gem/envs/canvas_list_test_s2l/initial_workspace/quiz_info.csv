@@ -1,0 +1,2 @@
+course_code,course_name,credits,quiz_title,number_of_questions,time_limit,allowed_attempts,scoring_policy,points_possible,deadline
+CS401-1 (Example),Software Engineering,4,CS401 Advanced Software Architecture Quiz,2,120,1,keep_highest,200,2025-09-23T23:59:00Z

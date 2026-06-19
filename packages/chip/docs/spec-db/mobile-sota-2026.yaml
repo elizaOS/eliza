@@ -1,0 +1,309 @@
+schema: eliza.mobile_sota_reference.v1
+as_of: 2026-05-17
+purpose: >
+  Reference targets for architecture budgets and benchmark comparisons.
+  These are not pin-compatible design targets and must not be copied as
+  package, firmware, register-map, or board-escape specifications.
+sources_policy:
+  primary_first: true
+  benchmark_sources_are_context_not_ground_truth: true
+  required_for_claims:
+    - source_url
+    - benchmark_version
+    - device_under_test
+    - thermal_state
+    - power_measurement_method
+reference_socs:
+  snapdragon_8_elite:
+    vendor: Qualcomm
+    role: android_flagship_prior_generation_reference
+    process: TSMC 3 nm class
+    cpu:
+      topology: Qualcomm Oryon CPU
+      max_clock_ghz:
+        public_variant: 4.32
+    gpu:
+      name: Adreno
+      notes: Qualcomm discloses relative GPU and AI-engine improvements, not open RTL.
+    npu:
+      name: Hexagon NPU
+      public_tops: null
+      vendor_claims:
+        - 45% AI performance improvement
+        - 45% AI performance-per-watt improvement
+    memory:
+      type: LPDDR5X
+      public_bandwidth_gbps: 84.8
+    risk_notes:
+      - Closed CPU implementation, GPU, NPU, modem, camera ISP, firmware, PMIC coupling, and Android BSP.
+      - Useful as a reference for power/performance class, not as a drop-in or open design source.
+    primary_source: https://www.qualcomm.com/smartphones/products/8-series/snapdragon-8-elite-mobile-platform
+
+  snapdragon_8_elite_gen_5:
+    vendor: Qualcomm
+    role: android_flagship_performance_reference
+    process: TSMC N3P / 3 nm class
+    cpu:
+      topology: 2x Oryon Gen 3 Prime + 6x Oryon Gen 3 Performance
+      max_clock_ghz:
+        standard_prime: 4.6
+        galaxy_variant_prime: 4.74
+        performance: 3.62
+    gpu:
+      name: Adreno 840
+      notes: Qualcomm discloses relative GPU performance and efficiency claims, not open RTL.
+    npu:
+      name: Hexagon NPU
+      public_tops: null
+      vendor_claims:
+        - 37% NPU performance uplift
+        - 16% NPU performance-per-watt uplift
+    memory:
+      type: LPDDR5X
+      public_bandwidth_gbps: 84.8
+    benchmark_anchors:
+      geekbench_6_average:
+        single_core: 3649
+        multi_core: 11068
+        source: https://www.notebookcheck.net/Qualcomm-Snapdragon-8-Elite-Gen-5-Processor-Benchmarks-and-Specs.1123169.0.html
+      android_central_real_device:
+        geekbench_single_core: 3614
+        geekbench_multi_core: 10785
+        wild_life_extreme_score: 7105
+        source: https://www.androidcentral.com/phones/i-compared-the-snapdragon-8-elite-gen-5-to-the-snapdragon-8-elite-tensor-g5-and-dimensity-9500
+    risk_notes:
+      - Closed GPU, NPU, modem, firmware, PMIC, and Android BSP dependencies.
+      - Sustained thermals can dominate peak benchmark claims.
+    primary_source: https://www.qualcomm.com/smartphones/products/8-series/snapdragon-8-elite-gen-5
+
+  dimensity_9400:
+    vendor: MediaTek
+    role: android_flagship_user_requested_reference
+    process: TSMC second-generation 3 nm class
+    cpu:
+      topology: 1x Arm Cortex-X925 + 3x Arm Cortex-X4 + 4x Cortex-A720
+      max_clock_ghz:
+        cortex_x925: 3.62
+    gpu:
+      name: Arm Immortalis-G925 MC12
+      vendor_claims:
+        - 41% faster peak GPU performance
+        - 40% faster ray tracing
+        - 44% more power efficient
+    npu:
+      name: MediaTek NPU 890
+      public_tops: null
+      vendor_claims:
+        - 100% faster diffusion generation performance
+        - 80% faster LLM prompt performance
+        - up to 35% more power efficient
+    memory:
+      type: LPDDR5X-10667
+      public_bandwidth_gbps: null
+    connectivity:
+      wifi: Wi-Fi 7
+      wifi_peak_data_rate_gbps: 7.3
+      bluetooth: Bluetooth 6.0
+    camera_display_video:
+      max_camera_sensor_mp: 320
+      max_video_capture: 8K60
+      max_display_refresh: WQHD+ 180Hz
+    risk_notes:
+      - Strong comparison point for phone-class CPU/GPU/NPU/display/camera targets.
+      - Not open hardware; GPU, NPU, ISP, modem, RF, power-management, and BSP details remain closed.
+    primary_source: https://www.mediatek.com/products/smartphones/mediatek-dimensity-9400
+
+  dimensity_9500:
+    vendor: MediaTek
+    role: android_flagship_efficiency_reference
+    process: TSMC N3P / 3 nm class
+    cpu:
+      topology: 1x Arm C1-Ultra + 3x Arm C1-Premium + 4x Arm C1-Pro
+      max_clock_ghz:
+        c1_ultra: 4.21
+        c1_premium: 3.5
+        c1_pro: 2.7
+    gpu:
+      name: Arm Mali-G1 Ultra MC12
+      vendor_claims:
+        - 33% peak performance uplift
+        - 42% power efficiency uplift
+        - 119% ray-tracing uplift
+    npu:
+      name: MediaTek NPU 990
+      public_tops: null
+      vendor_claims:
+        - 2x AI compute
+        - 56% lower NPU peak power
+    memory:
+      type: LPDDR5X-10667
+      public_bandwidth_gbps: null
+    storage: UFS 4.1 four-lane
+    benchmark_anchors:
+      geekbench_6_average:
+        single_core: 3502
+        multi_core: 10417
+        source: https://www.notebookcheck.net/MediaTek-Dimensity-9500-Processor-Benchmarks-and-Specs.957550.0.html
+      android_central_real_device:
+        geekbench_single_core: 3391
+        geekbench_multi_core: 10085
+        wild_life_extreme_score: 6546
+        source: https://www.androidcentral.com/phones/i-compared-the-snapdragon-8-elite-gen-5-to-the-snapdragon-8-elite-tensor-g5-and-dimensity-9500
+    risk_notes:
+      - Strong public product specs, but flagship BSP, NPU, GPU, modem, and RF paths are closed.
+      - Useful as power-efficiency reference, not as open hardware source.
+    primary_source: https://www.mediatek.com/products/smartphones/mediatek-dimensity-9500
+
+  exynos_2600:
+    vendor: Samsung
+    role: android_flagship_process_and_gpu_reference
+    process: Samsung 2 nm GAA class
+    cpu:
+      topology: reported deca-core Arm v9.3 class
+      max_clock_ghz:
+        c1_ultra_reported: 3.8
+        c1_pro_high_reported: 3.25
+        c1_pro_low_reported: 2.75
+    gpu:
+      name: Xclipse 960
+      vendor_claims:
+        - 2x GPU compute
+        - 50% ray-tracing uplift
+    npu:
+      public_tops: null
+      vendor_claims:
+        - 113% generative-AI performance uplift
+    benchmark_anchors:
+      early_galaxy_s26_report:
+        geekbench_single_core: 3197
+        geekbench_multi_core: 11065
+        source: https://www.tomsguide.com/phones/samsung-phones/galaxy-s26-performance-face-off-snapdragon-8-elite-gen-5-vs-exynos-2600
+    risk_notes:
+      - Treat early device benchmarks and vendor thermal claims as provisional until sustained independent testing.
+      - Closed GPU, NPU, modem, firmware, and BSP.
+    primary_source: https://semiconductor.samsung.com/processor/mobile-processor/exynos-2600/
+
+  tensor_g5:
+    vendor: Google
+    role: android_ai_software_integration_reference
+    process: TSMC 3 nm class
+    cpu:
+      topology: 1x Cortex-X4 + 5x Cortex-A725 + 2x Cortex-A520
+      max_clock_ghz:
+        cortex_x4: 3.78
+        cortex_a725: 3.05
+        cortex_a520: 2.25
+    gpu:
+      name: IMG DXT-48-1536
+    npu:
+      name: Google Edge TPU / Tensor TPU generation
+      public_tops: null
+    benchmark_anchors:
+      android_central_pixel_10_pro_xl:
+        geekbench_single_core: 2288
+        geekbench_multi_core: 6030
+        wild_life_extreme_score: 3182
+        source: https://www.androidcentral.com/phones/google-pixel/google-tensor-g5
+    risk_notes:
+      - Useful for Android AI feature integration expectations.
+      - Not a raw flagship performance target.
+    secondary_source: https://www.notebookcheck.net/Google-Tensor-G5-Processor-Benchmarks-and-Specs.1100879.0.html
+
+  apple_a19_pro:
+    vendor: Apple
+    role: cross_platform_sota_cpu_gpu_battery_reference
+    process: TSMC 3 nm class
+    cpu:
+      topology: 2x performance + 4x efficiency
+    gpu:
+      topology: 6-core in iPhone 17 Pro / Pro Max; 5-core in iPhone Air
+    npu:
+      name: 16-core Neural Engine
+      public_tops: null
+    benchmark_anchors:
+      toms_guide_iphone_17_pro:
+        geekbench_single_core: 3834
+        geekbench_multi_core: 9988
+        solar_bay_unlimited_fps: 46.4
+        battery_test_hours: 15.53
+        source: https://www.tomsguide.com/us/best-apple-iphone%2Creview-6348.html
+    risk_notes:
+      - Reference only. Not Android, not open hardware, not sourceable as a phone SoC.
+    primary_source: https://support.apple.com/en-us/125090
+
+  xiaomi_xring_o1:
+    vendor: Xiaomi
+    role: in_house_android_soc_reference
+    process: TSMC 3 nm class reported by secondary sources
+    cpu:
+      topology: 10-core Arm big/mid/little reported by secondary sources
+      reported_max_clock_ghz:
+        cortex_x925: 3.9
+        cortex_a725_high: 3.4
+        cortex_a725_low: 1.9
+        cortex_a520: 1.8
+    gpu:
+      name: Arm Immortalis-G925 MC16 reported by secondary sources
+    npu:
+      public_tops: null
+      notes: Public accelerator detail is sparse.
+    memory:
+      type: LPDDR5T reported in device coverage
+    storage: UFS 4.1 reported in device coverage
+    benchmark_anchors:
+      notebookcheck_average:
+        geekbench_single_core: 2790
+        geekbench_multi_core: 15774
+        source: https://www.notebookcheck.net/Xiaomi-Xring-O1-Processor-Benchmarks-and-Specs.1041480.0.html
+    risk_notes:
+      - Useful as an example of a new in-house Android flagship SoC effort.
+      - Not open hardware and not a sourceable SoC baseline.
+      - Secondary-source specs should be revalidated before use in numeric design budgets.
+
+open_source_chip_and_ip_references:
+  cva6:
+    organization: OpenHW Group
+    license_visibility: open_source_core
+    role: linux_capable_open_riscv_cpu_candidate
+    repo: https://github.com/openhwgroup/cva6
+    docs: https://docs.openhwgroup.org/projects/cva6-user-manual/
+    usable_now:
+      - Pull RTL as a candidate AP core workstream.
+      - Run upstream simulation/regression in a pinned external checkout.
+      - Build a wrapper contract against the repo memory map before replacing the tiny CPU scaffold.
+    blocker:
+      - Integration, MMU/cache/interrupt proof, timing closure, and Android/Linux boot evidence are still ours to produce.
+  ibex:
+    organization: lowRISC
+    license_visibility: Apache-2.0 open_source_core
+    role: management_security_subsystem_candidate
+    docs: https://lowrisc.org/ibex/
+    usable_now:
+      - Evaluate as a management/security/always-on controller, not as the Android application CPU.
+      - Reuse OpenTitan-style verification discipline for root-of-trust planning.
+    blocker:
+      - 32-bit embedded core class; not a Linux-capable phone AP replacement.
+  basilisk:
+    organization: PULP / academic open silicon ecosystem
+    license_visibility: open_source_research_soc
+    role: linux_capable_open_soc_flow_reference
+    docs: https://arxiv.org/abs/2505.10060
+    usable_now:
+      - Use as a reference for end-to-end open EDA Linux-capable SoC evidence and realistic open-flow clock expectations.
+      - Compare required artifacts against our release archive and PD gates.
+    blocker:
+      - 130 nm research-class performance is orders away from flagship mobile; useful for flow realism, not SOTA phone parity.
+
+eliza_v0_targets:
+  architecture_budget:
+    cpu: "Linux-capable RV64 application cores first; Android usability second; flagship parity is non-v0."
+    memory: "Model cache and DRAM behavior; do not claim LPDDR5X-class until real PHY and board exist."
+    ai: "Gemmini or NVDLA-class open accelerator path with MLPerf/TFLite subset, not TOPS-only claims."
+    gpu: "Framebuffer/software UI first; Vulkan/GLES conformance is a separate long-term workstream."
+  explicit_non_goals:
+    - Snapdragon or Dimensity pin compatibility
+    - integrated LTE or 5G modem
+    - custom LPDDR5X/LPDDR6 PHY
+    - flagship GPU
+    - production camera ISP
+    - carrier-ready certification

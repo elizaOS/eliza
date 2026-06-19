@@ -1,0 +1,9 @@
+[Unit]
+BindsTo=run-nosymfollow.mount
+After=run-nosymfollow.mount
+
+[Service]
+Type=dbus
+BusName=org.boum.tails.PersistentStorage
+ExecStart=/usr/local/lib/tpsd
+ExecReload=/usr/bin/busctl call org.boum.tails.PersistentStorage /org/boum/tails/PersistentStorage org.boum.tails.PersistentStorage Reload

@@ -1,0 +1,30 @@
+[2025-01-14T02:02:43] [WARN] Firewall rule evaluation: src=192.168.1.226 dst=10.0.1.242 dport=22 proto=tcp action=DROP rule_id=FW-2542
+[2025-01-14T02:05:44] [INFO] DNS resolution: hostname=app-server-9.internal resolved_to=10.0.2.183 ttl=952s
+[2025-01-14T02:05:33] [INFO] SSL certificate check: host=192.168.1.59 port=443 issuer=LetsEncrypt valid_until=2025-10-21 cipher=TLS_AES_256_GCM_SHA384
+[2025-01-14T02:08:16] [INFO] Network segment scan complete: subnet=192.168.1.0/24 hosts_up=30 hosts_down=0 duration=89s
+[2025-01-14T02:12:30] [INFO] Port scan result: host=192.168.1.164 port=3306/tcp state=open service=unknown | latency=23ms
+[2025-01-14T02:05:18] [WARN] Firewall rule evaluation: src=192.168.1.125 dst=10.0.2.183 dport=80 proto=tcp action=ALLOW rule_id=FW-3033
+[2025-01-14T02:09:55] [INFO] SSL certificate check: host=10.0.2.208 port=443 issuer=LetsEncrypt valid_until=2025-06-16 cipher=TLS_AES_256_GCM_SHA384
+[2025-01-14T02:17:52] [INFO] nmap scan initiated: type=SYN target=10.0.1.197 ports=9090,443 | scanner=nmap-7.94 | operator=netops-bot
+[2025-01-14T02:25:30] [WARN] Firewall rule evaluation: src=10.0.1.186 dst=192.168.1.59 dport=8080 proto=tcp action=DENY rule_id=FW-3066
+[2025-01-14T02:07:30] [INFO] Network segment scan complete: subnet=10.0.1.0/24 hosts_up=5 hosts_down=5 duration=181s
+[2025-01-14T02:31:10] [INFO] nmap scan initiated: type=UDP target=192.168.1.226 ports=22,80 | scanner=nmap-7.94 | operator=netops-bot
+[2025-01-14T02:23:00] [ERROR] Connection refused: host=10.0.2.183 port=3306 | retries=3 timeout=5000ms | possible firewall block
+[2025-01-14T02:36:24] [INFO] Port scan result: host=10.0.1.197 port=5432/tcp state=open service=unknown | latency=13ms
+[2025-01-14T02:40:22] [WARN] Firewall rule evaluation: src=10.0.1.44 dst=10.0.1.6 dport=8080 proto=tcp action=DROP rule_id=FW-9182
+[2025-01-14T02:41:15] [WARN] Firewall rule evaluation: src=192.168.1.125 dst=192.168.1.164 dport=8080 proto=tcp action=ALLOW rule_id=FW-7846
+[2025-01-14T02:38:08] [WARN] Unusual traffic pattern detected: src=10.0.2.187 dst=10.0.1.160 bytes_sent=268971 bytes_recv=679 duration=49s
+[2025-01-14T02:46:28] [INFO] DNS resolution: hostname=app-server-16.internal resolved_to=10.0.2.249 ttl=1186s
+[2025-01-14T02:09:18] [INFO] Port scan result: host=10.0.1.44 port=22/tcp state=open service=ssh | latency=23ms
+[2025-01-14T02:34:12] [INFO] Port scan result: host=10.0.1.242 port=3306/tcp state=open service=unknown | latency=25ms
+[2025-01-14T02:55:40] [INFO] DNS resolution: hostname=app-server-10.internal resolved_to=192.168.1.164 ttl=702s
+[2025-01-14T02:24:09] [WARN] Unusual traffic pattern detected: src=192.168.1.164 dst=10.0.1.160 bytes_sent=301717 bytes_recv=4109 duration=19s
+[2025-01-14T02:22:22] [INFO] nmap scan initiated: type=TCP_CONNECT target=192.168.1.59 ports=80,8080 | scanner=nmap-7.94 | operator=netops-bot
+[2025-01-14T02:46:23] [INFO] SSL certificate check: host=10.0.2.187 port=443 issuer=LetsEncrypt valid_until=2025-11-09 cipher=TLS_AES_256_GCM_SHA384
+[2025-01-14T02:24:24] [WARN] Firewall rule evaluation: src=10.0.1.186 dst=192.168.1.222 dport=443 proto=tcp action=DENY rule_id=FW-9086
+[2025-01-14T02:58:20] [INFO] Port scan result: host=10.0.1.242 port=8443/tcp state=open service=unknown | latency=43ms
+[2025-01-14T03:09:20] [WARN] Unusual traffic pattern detected: src=10.0.1.160 dst=192.168.1.226 bytes_sent=100325 bytes_recv=4392 duration=35s
+[2025-01-14T02:50:24] [INFO] SSL certificate check: host=192.168.1.125 port=443 issuer=LetsEncrypt valid_until=2025-04-23 cipher=TLS_AES_256_GCM_SHA384
+[2025-01-14T02:53:40] [WARN] Unusual traffic pattern detected: src=10.0.2.208 dst=10.0.1.201 bytes_sent=202419 bytes_recv=3148 duration=1s
+[2025-01-14T03:00:54] [ERROR] Connection refused: host=10.0.1.201 port=5432 | retries=3 timeout=5000ms | possible firewall block
+[2025-01-14T02:33:00] [INFO] DNS resolution: hostname=app-server-14.internal resolved_to=10.0.1.201 ttl=3396s

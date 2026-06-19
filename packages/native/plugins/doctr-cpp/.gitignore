@@ -1,0 +1,4 @@
+build/
+build-*/
+test/fixtures/*.bin
+__pycache__/

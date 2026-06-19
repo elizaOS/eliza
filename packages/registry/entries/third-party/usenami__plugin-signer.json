@@ -1,0 +1,9 @@
+{
+  "package": "@usenami/plugin-signer",
+  "repository": "github:namixai/plugin-signer",
+  "kind": "plugin",
+  "description": "Keyless CEX/DEX perp order signing for elizaOS agents — HMAC/EIP-712 signatures are computed inside an AWS Nitro Enclave, so the venue API key never enters the agent process. Covers 6 venues: Binance, OKX, Asterdex, KuCoin, Bybit, Hyperliquid.",
+  "homepage": "https://usenami.io/signer",
+  "version": "0.2.0",
+  "tags": ["trading", "perpetuals", "cex", "dex", "signing", "security", "nitro-enclave"]
+}

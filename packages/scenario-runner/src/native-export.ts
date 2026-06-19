@@ -1,0 +1,480 @@
+/**
+ * Scenario-trajectory → `eliza_native_v1` corpus bridge.
+ *
+ * `eliza-scenarios run <dir> --run-dir <runDir>` makes the runtime's
+ * `JsonFileTrajectoryRecorder` write one `RecordedTrajectory` JSON file per
+ * agent turn under `<runDir>/trajectories/<agentId>/<trajectoryId>.json`. That
+ * shape (`stages[].model`) is a per-stage trace, not the canonical training
+ * corpus record. The eliza-1 training prep script
+ * (`packages/training/scripts/prepare_eliza1_trajectory_dataset.py`) ingests
+ * `eliza_native_v1` model-boundary rows — one row per Vercel AI SDK
+ * `generateText`/`streamText` call. This module converts the recorded stages
+ * into those rows so the scenario corpus can feed model training.
+ *
+ * Output shape mirrors `packages/core/src/services/trajectory-types.ts`
+ * (`ElizaNativeTrajectoryRow`) and the contract in
+ * `packages/training/docs/dataset/CANONICAL_RECORD.md`. The privacy filter is
+ * applied downstream by the training prep script on every input row.
+ */
+
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import type {
+  RecordedModelCall,
+  RecordedStage,
+  RecordedTrajectory,
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { toRecord } from "./utils.js";
+
+const NATIVE_FORMAT = "eliza_native_v1" as const;
+const NATIVE_SCHEMA_VERSION = 1 as const;
+const GENERATE_TEXT_BOUNDARY = "vercel_ai_sdk.generateText" as const;
+export const SCENARIO_NATIVE_EXPORT_SCHEMA =
+  "eliza_scenario_native_export" as const;
+export const SCENARIO_NATIVE_EXPORT_VERSION = 1 as const;
+
+/**
+ * Per-scenario assertion outcome, keyed by scenario id. Threaded into the
+ * exporter so failed/regressed trajectories are not emitted as gold-weight
+ * training rows. The recorder's own `trajectory.status` is the mechanical
+ * lifecycle (finished/errored) and does NOT reflect assertion pass/fail — only
+ * the scenario report carries that.
+ */
+export type ScenarioOutcome = "passed" | "failed" | "skipped";
+export type ScenarioOutcomeMap = ReadonlyMap<string, ScenarioOutcome>;
+
+export interface NativeBoundaryRow {
+  format: typeof NATIVE_FORMAT;
+  schemaVersion: typeof NATIVE_SCHEMA_VERSION;
+  boundary: typeof GENERATE_TEXT_BOUNDARY;
+  /**
+   * Scenario assertion outcome consumed by the training prep scorer
+   * (`native_success_and_score` in prepare_eliza1_trajectory_dataset.py). Kept
+   * separate from top-level `status`, which belongs to the canonical native
+   * trajectory lifecycle contract.
+   */
+  scenarioStatus?: ScenarioOutcome;
+  request: {
+    system?: string;
+    messages?: unknown[];
+    prompt?: string;
+    tools?: unknown;
+    toolChoice?: unknown;
+    providerOptions?: unknown;
+    settings?: {
+      temperature?: number;
+      maxOutputTokens?: number;
+      topP?: number;
+    };
+  };
+  response: {
+    text: string;
+    toolCalls?: Array<{
+      toolCallId?: string;
+      toolName: string;
+      input: unknown;
+    }>;
+    finishReason?: string;
+    usage?: {
+      promptTokens?: number;
+      completionTokens?: number;
+      totalTokens?: number;
+      cacheReadInputTokens?: number;
+      cacheCreationInputTokens?: number;
+    };
+  };
+  trajectoryId: string;
+  agentId: string;
+  scenarioId: string | null;
+  batchId: string | null;
+  stepId: string;
+  callId: string;
+  stepIndex: number;
+  callIndex: number;
+  timestamp: number;
+  purpose?: string;
+  stepType?: string;
+  model?: string;
+  modelVersion?: string;
+  modelType?: string;
+  provider?: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ScenarioNativeExportManifest {
+  schema: typeof SCENARIO_NATIVE_EXPORT_SCHEMA;
+  schemaVersion: typeof SCENARIO_NATIVE_EXPORT_VERSION;
+  generatedAt: string;
+  runDir: string;
+  trajectoriesDir: string;
+  jsonlPath: string;
+  manifestPath: string;
+  counts: {
+    trajectoryFiles: number;
+    parsedTrajectories: number;
+    skippedFiles: number;
+    rows: number;
+    passedRows: number;
+    failedRows: number;
+    skippedScenarioRows: number;
+    unknownOutcomeRows: number;
+  };
+  runIds: string[];
+  scenarioIds: string[];
+  agentIds: string[];
+}
+
+function isRecordedTrajectory(value: unknown): value is RecordedTrajectory {
+  const record = toRecord(value);
+  return (
+    record !== null &&
+    typeof record.trajectoryId === "string" &&
+    typeof record.agentId === "string" &&
+    Array.isArray(record.stages)
+  );
+}
+
+function stageKindToTaskType(
+  kind: string | undefined,
+  modelType: string | undefined,
+): string {
+  const tokens = `${kind ?? ""} ${modelType ?? ""}`
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase();
+  if (tokens.includes("planner")) return "action_planner";
+  if (tokens.includes("message_handler") || tokens.includes("should_respond")) {
+    return "should_respond";
+  }
+  if (tokens.includes("evaluation") || tokens.includes("evaluator"))
+    return "evaluation";
+  if (tokens.includes("facts") || tokens.includes("relationships"))
+    return "facts_and_relationships";
+  return "response";
+}
+
+function normalizeToolCalls(
+  toolCalls: RecordedModelCall["toolCalls"],
+):
+  | Array<{ toolCallId?: string; toolName: string; input: unknown }>
+  | undefined {
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return undefined;
+  const out: Array<{ toolCallId?: string; toolName: string; input: unknown }> =
+    [];
+  for (const call of toolCalls) {
+    const record = toRecord(call);
+    if (!record) continue;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    if (!name) continue;
+    const entry: { toolCallId?: string; toolName: string; input: unknown } = {
+      toolName: name,
+      input: toRecord(record.args) ?? {},
+    };
+    if (typeof record.id === "string" && record.id.length > 0)
+      entry.toolCallId = record.id;
+    out.push(entry);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function buildRequest(model: RecordedModelCall): NativeBoundaryRow["request"] {
+  const request: NativeBoundaryRow["request"] = {};
+  const messages = Array.isArray(model.messages) ? model.messages : undefined;
+  if (messages && messages.length > 0) {
+    request.messages = messages;
+  } else if (typeof model.prompt === "string" && model.prompt.length > 0) {
+    request.prompt = model.prompt;
+  }
+  if (model.tools !== undefined) request.tools = model.tools;
+  if (model.toolChoice !== undefined) request.toolChoice = model.toolChoice;
+  if (model.providerOptions !== undefined)
+    request.providerOptions = model.providerOptions;
+  return request;
+}
+
+function buildResponse(
+  model: RecordedModelCall,
+): NativeBoundaryRow["response"] {
+  const response: NativeBoundaryRow["response"] = {
+    text: typeof model.response === "string" ? model.response : "",
+  };
+  const toolCalls = normalizeToolCalls(model.toolCalls);
+  if (toolCalls) response.toolCalls = toolCalls;
+  if (typeof model.finishReason === "string")
+    response.finishReason = model.finishReason;
+  const usage = model.usage;
+  if (usage) {
+    const out: NonNullable<NativeBoundaryRow["response"]["usage"]> = {};
+    if (typeof usage.promptTokens === "number")
+      out.promptTokens = usage.promptTokens;
+    if (typeof usage.completionTokens === "number")
+      out.completionTokens = usage.completionTokens;
+    if (typeof usage.totalTokens === "number")
+      out.totalTokens = usage.totalTokens;
+    if (typeof usage.cacheReadInputTokens === "number") {
+      out.cacheReadInputTokens = usage.cacheReadInputTokens;
+    }
+    if (typeof usage.cacheCreationInputTokens === "number") {
+      out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
+    }
+    if (Object.keys(out).length > 0) response.usage = out;
+  }
+  return response;
+}
+
+/**
+ * Convert one recorded scenario trajectory into the model-boundary rows that
+ * `eliza_native_v1` defines — one row per `stages[].model` call. Stages without
+ * a model call (tool execution, tool search, cache snapshots) are skipped:
+ * they are not training-supervision boundaries.
+ */
+export function recordedTrajectoryToNativeRows(
+  trajectory: RecordedTrajectory,
+  scenarioOutcome?: ScenarioOutcome,
+): NativeBoundaryRow[] {
+  const rows: NativeBoundaryRow[] = [];
+  const stages: RecordedStage[] = Array.isArray(trajectory.stages)
+    ? trajectory.stages
+    : [];
+  for (const [stepIndex, stage] of stages.entries()) {
+    const model = stage?.model;
+    if (!model || typeof model !== "object") continue;
+    const request = buildRequest(model);
+    const response = buildResponse(model);
+    const hasRequest =
+      (Array.isArray(request.messages) && request.messages.length > 0) ||
+      (typeof request.prompt === "string" && request.prompt.length > 0);
+    const hasResponse =
+      response.text.trim().length > 0 || (response.toolCalls?.length ?? 0) > 0;
+    if (!hasRequest || !hasResponse) continue;
+
+    const stepId =
+      typeof stage.stageId === "string" && stage.stageId.length > 0
+        ? stage.stageId
+        : `${trajectory.trajectoryId}:stage:${stepIndex + 1}`;
+    const callId = `${trajectory.trajectoryId}:${stepId}`;
+    const scenarioId =
+      typeof trajectory.scenarioId === "string" &&
+      trajectory.scenarioId.length > 0
+        ? trajectory.scenarioId
+        : null;
+    const taskType = stageKindToTaskType(stage.kind, model.modelType);
+    rows.push({
+      format: NATIVE_FORMAT,
+      schemaVersion: NATIVE_SCHEMA_VERSION,
+      boundary: GENERATE_TEXT_BOUNDARY,
+      ...(scenarioOutcome ? { scenarioStatus: scenarioOutcome } : {}),
+      request,
+      response,
+      trajectoryId: trajectory.trajectoryId,
+      agentId: trajectory.agentId,
+      scenarioId,
+      batchId: null,
+      stepId,
+      callId,
+      stepIndex,
+      callIndex: 0,
+      timestamp:
+        typeof stage.startedAt === "number" && Number.isFinite(stage.startedAt)
+          ? stage.startedAt
+          : (trajectory.startedAt ?? 0),
+      purpose: stage.kind,
+      stepType: stage.kind,
+      model: typeof model.modelName === "string" ? model.modelName : undefined,
+      modelVersion:
+        typeof model.modelName === "string" ? model.modelName : undefined,
+      modelType:
+        typeof model.modelType === "string" ? model.modelType : undefined,
+      provider: typeof model.provider === "string" ? model.provider : undefined,
+      metadata: {
+        task_type: taskType,
+        source_dataset: "scenario_trajectory_boundary",
+        trajectory_id: trajectory.trajectoryId,
+        step_id: stepId,
+        call_id: callId,
+        agent_id: trajectory.agentId,
+        ...(typeof trajectory.runId === "string" && trajectory.runId.length > 0
+          ? { source_run_id: trajectory.runId }
+          : {}),
+        ...(typeof trajectory.roomId === "string" &&
+        trajectory.roomId.length > 0
+          ? { source_room_id: trajectory.roomId }
+          : {}),
+        ...(scenarioId ? { scenario_id: scenarioId } : {}),
+        source_stage_kind: stage.kind,
+        ...(typeof stage.iteration === "number"
+          ? { source_stage_iteration: stage.iteration }
+          : {}),
+        source_model:
+          typeof model.modelName === "string" ? model.modelName : undefined,
+        source_model_type:
+          typeof model.modelType === "string" ? model.modelType : undefined,
+        source_provider:
+          typeof model.provider === "string" ? model.provider : undefined,
+        trajectory_status: trajectory.status,
+        ...(scenarioOutcome ? { scenario_status: scenarioOutcome } : {}),
+        ...(typeof model.costUsd === "number"
+          ? { source_cost_usd: model.costUsd }
+          : {}),
+      },
+    });
+  }
+  return rows;
+}
+
+function collectTrajectoryFiles(rootDir: string): string[] {
+  const out: string[] = [];
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    if (!dir) continue;
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+        continue;
+      }
+      if (
+        entry.isFile() &&
+        entry.name.endsWith(".json") &&
+        !entry.name.endsWith(".tmp")
+      ) {
+        out.push(full);
+      }
+    }
+  }
+  return out.sort();
+}
+
+function defaultScenarioNativeManifestPath(outPath: string): string {
+  return outPath.endsWith(".jsonl")
+    ? `${outPath.slice(0, -".jsonl".length)}.manifest.json`
+    : `${outPath}.manifest.json`;
+}
+
+function addString(set: Set<string>, value: unknown): void {
+  if (typeof value === "string" && value.trim().length > 0) {
+    set.add(value.trim());
+  }
+}
+
+/**
+ * Read every `RecordedTrajectory` JSON under `<runDir>/trajectories/` and write
+ * the converted `eliza_native_v1` rows as JSONL to `outPath`. Returns the
+ * number of rows written. Trajectory files that fail to parse or aren't
+ * recorded-trajectory shaped are skipped with a warning — a malformed file in
+ * the run directory should not block the rest of the export.
+ *
+ * `scenarioOutcomes` maps scenario id → assertion outcome (passed/failed/
+ * skipped). Each emitted row carries its scenario outcome as `scenarioStatus`
+ * and `metadata.scenario_status` so the training prep scorer routes failed or
+ * skipped trajectories to rating="repair"/weight=0 instead of stamping them
+ * gold. Without this map the exporter cannot tell a scenario that mechanically
+ * finished but failed its assertions from a genuinely passing one — and would
+ * export both as gold.
+ */
+export function exportScenarioNativeJsonl(
+  runDir: string,
+  outPath: string,
+  scenarioOutcomes?: ScenarioOutcomeMap,
+): number {
+  const trajectoriesDir = path.join(runDir, "trajectories");
+  const files = collectTrajectoryFiles(trajectoriesDir);
+  const rows: NativeBoundaryRow[] = [];
+  const runIds = new Set<string>();
+  const scenarioIds = new Set<string>();
+  const agentIds = new Set<string>();
+  let parsedTrajectories = 0;
+  let skippedFiles = 0;
+  for (const file of files) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(file, "utf-8"));
+    } catch (err) {
+      skippedFiles += 1;
+      logger.warn(
+        `[scenario-runner] skipping unparseable trajectory file ${file}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      continue;
+    }
+    if (!isRecordedTrajectory(parsed)) {
+      skippedFiles += 1;
+      logger.warn(
+        `[scenario-runner] skipping non-trajectory JSON file ${file} (no trajectoryId/agentId/stages)`,
+      );
+      continue;
+    }
+    parsedTrajectories += 1;
+    addString(runIds, parsed.runId);
+    addString(scenarioIds, parsed.scenarioId);
+    addString(agentIds, parsed.agentId);
+    const scenarioOutcome =
+      scenarioOutcomes && typeof parsed.scenarioId === "string"
+        ? scenarioOutcomes.get(parsed.scenarioId)
+        : undefined;
+    if (
+      scenarioOutcomes &&
+      !scenarioOutcome &&
+      typeof parsed.scenarioId === "string"
+    ) {
+      logger.warn(
+        `[scenario-runner] trajectory ${parsed.trajectoryId} has scenarioId="${parsed.scenarioId}" with no matching scenario report; exporting without a pass/fail status`,
+      );
+    }
+    rows.push(...recordedTrajectoryToNativeRows(parsed, scenarioOutcome));
+  }
+  mkdirSync(path.dirname(outPath), { recursive: true });
+  const body =
+    rows.length === 0
+      ? ""
+      : `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+  writeFileSync(outPath, body, "utf-8");
+  let passedRows = 0;
+  let failedRows = 0;
+  let skippedScenarioRows = 0;
+  let unknownOutcomeRows = 0;
+  for (const row of rows) {
+    if (row.scenarioStatus === "passed") passedRows += 1;
+    else if (row.scenarioStatus === "failed") failedRows += 1;
+    else if (row.scenarioStatus === "skipped") skippedScenarioRows += 1;
+    else unknownOutcomeRows += 1;
+  }
+  const manifestPath = defaultScenarioNativeManifestPath(outPath);
+  const manifest: ScenarioNativeExportManifest = {
+    schema: SCENARIO_NATIVE_EXPORT_SCHEMA,
+    schemaVersion: SCENARIO_NATIVE_EXPORT_VERSION,
+    generatedAt: new Date().toISOString(),
+    runDir,
+    trajectoriesDir,
+    jsonlPath: outPath,
+    manifestPath,
+    counts: {
+      trajectoryFiles: files.length,
+      parsedTrajectories,
+      skippedFiles,
+      rows: rows.length,
+      passedRows,
+      failedRows,
+      skippedScenarioRows,
+      unknownOutcomeRows,
+    },
+    runIds: [...runIds].sort(),
+    scenarioIds: [...scenarioIds].sort(),
+    agentIds: [...agentIds].sort(),
+  };
+  writeFileSync(
+    manifestPath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf-8",
+  );
+  logger.info(
+    `[scenario-runner] wrote ${rows.length} eliza_native_v1 row(s) from ${files.length} trajectory file(s) → ${outPath} (passed=${passedRows} failed=${failedRows} skipped=${skippedScenarioRows} unknown=${unknownOutcomeRows}) (manifest → ${manifestPath})`,
+  );
+  return rows.length;
+}

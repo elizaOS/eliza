@@ -1,0 +1,202 @@
+{
+  "claim_boundary": "Fail-closed fixture and gauge calibration acceptance for EVT measurements. Fixture CAD does not count as calibrated metrology evidence.",
+  "status": "blocked_no_fixture_calibration_results",
+  "expected_calibration_count": 7,
+  "cad_prerequisite_calibration_count": 7,
+  "complete_result_count": 0,
+  "results_template": "mechanical/e1-phone/review/fixture-calibration-results-template.csv",
+  "calibration_cases": [
+    {
+      "id": "button_force_probe_load_cell_and_travel",
+      "fixture": "evt_fixture_button_force_probe",
+      "calibration_standard": "traceable load-cell weights and 0.01 mm dial-indicator block",
+      "max_error": "force <= +/-0.05 N and travel <= +/-0.02 mm",
+      "measurement_ids": [
+        "power_button_actuation_force",
+        "power_button_travel",
+        "volume_button_actuation_force"
+      ],
+      "required_standard_artifacts": [
+        "load_cell_weight_certificate",
+        "dial_indicator_block_certificate",
+        "probe_axis_alignment_photo"
+      ],
+      "fixture_present": true,
+      "used_by_evt_measurements": true,
+      "measurement_ids_present": true,
+      "cad_prerequisites_present": true
+    },
+    {
+      "id": "usb_c_insertion_gauge_axis_and_force",
+      "fixture": "evt_fixture_usb_c_insertion_gauge",
+      "calibration_standard": "certified USB-C plug gauge, port-axis alignment block, and force gauge",
+      "max_error": "axis <= 0.10 mm TIR and force <= +/-0.5 N",
+      "measurement_ids": [
+        "usb_c_insertion_force_no_rub"
+      ],
+      "required_standard_artifacts": [
+        "usb_c_plug_gauge_certificate",
+        "port_axis_alignment_record",
+        "force_gauge_certificate"
+      ],
+      "fixture_present": true,
+      "used_by_evt_measurements": true,
+      "measurement_ids_present": true,
+      "cad_prerequisites_present": true
+    },
+    {
+      "id": "screen_bond_clamp_flatness_and_gap",
+      "fixture": "evt_fixture_screen_bond_clamp_frame",
+      "calibration_standard": "granite plate, feeler gauge set, and compression witness shim",
+      "max_error": "flatness <= 0.05 mm and bond gap <= +/-0.02 mm",
+      "measurement_ids": [
+        "screen_adhesive_compression",
+        "display_fpc_bend_radius"
+      ],
+      "required_standard_artifacts": [
+        "granite_plate_certificate",
+        "feeler_gauge_certificate",
+        "compression_witness_shim_record"
+      ],
+      "fixture_present": true,
+      "used_by_evt_measurements": true,
+      "measurement_ids_present": true,
+      "cad_prerequisites_present": true
+    },
+    {
+      "id": "rear_camera_alignment_pin_datum",
+      "fixture": "evt_fixture_rear_camera_alignment_pin",
+      "calibration_standard": "CMM or optical comparator against released camera-window datum",
+      "max_error": "pin center <= +/-0.03 mm and pin diameter <= +/-0.01 mm",
+      "measurement_ids": [
+        "rear_camera_lens_center_error"
+      ],
+      "required_standard_artifacts": [
+        "camera_window_datum_drawing",
+        "cmm_or_comparator_report",
+        "pin_diameter_certificate"
+      ],
+      "fixture_present": true,
+      "used_by_evt_measurements": true,
+      "measurement_ids_present": true,
+      "cad_prerequisites_present": true
+    },
+    {
+      "id": "front_camera_alignment_pin_datum",
+      "fixture": "evt_fixture_front_camera_alignment_pin",
+      "calibration_standard": "CMM or optical comparator against front glass aperture datum",
+      "max_error": "pin center <= +/-0.03 mm and pin diameter <= +/-0.01 mm",
+      "measurement_ids": [
+        "front_camera_under_glass_center_error"
+      ],
+      "required_standard_artifacts": [
+        "front_glass_aperture_datum_drawing",
+        "cmm_or_comparator_report",
+        "pin_diameter_certificate"
+      ],
+      "fixture_present": true,
+      "used_by_evt_measurements": true,
+      "measurement_ids_present": true,
+      "cad_prerequisites_present": true
+    },
+    {
+      "id": "bottom_acoustic_leak_mask_seal",
+      "fixture": "evt_fixture_bottom_acoustic_leak_mask",
+      "calibration_standard": "flatness plate, leak reference orifice, and acoustic calibrator",
+      "max_error": "seal leak delta <= 0.5 dB against reference",
+      "measurement_ids": [
+        "bottom_audio_leak_delta"
+      ],
+      "required_standard_artifacts": [
+        "flatness_plate_certificate",
+        "leak_reference_orifice_certificate",
+        "acoustic_calibrator_certificate"
+      ],
+      "fixture_present": true,
+      "used_by_evt_measurements": true,
+      "measurement_ids_present": true,
+      "cad_prerequisites_present": true
+    },
+    {
+      "id": "earpiece_acoustic_leak_mask_seal",
+      "fixture": "evt_fixture_earpiece_leak_mask",
+      "calibration_standard": "flatness plate, leak reference orifice, and acoustic calibrator",
+      "max_error": "seal leak delta <= 0.5 dB against reference",
+      "measurement_ids": [
+        "handset_receiver_leak_delta"
+      ],
+      "required_standard_artifacts": [
+        "flatness_plate_certificate",
+        "leak_reference_orifice_certificate",
+        "acoustic_calibrator_certificate"
+      ],
+      "fixture_present": true,
+      "used_by_evt_measurements": true,
+      "measurement_ids_present": true,
+      "cad_prerequisites_present": true
+    }
+  ],
+  "result_cases": [
+    {
+      "calibration_case_id": "button_force_probe_load_cell_and_travel",
+      "expected_case": true,
+      "populated": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "calibration_case_id": "usb_c_insertion_gauge_axis_and_force",
+      "expected_case": true,
+      "populated": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "calibration_case_id": "screen_bond_clamp_flatness_and_gap",
+      "expected_case": true,
+      "populated": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "calibration_case_id": "rear_camera_alignment_pin_datum",
+      "expected_case": true,
+      "populated": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "calibration_case_id": "front_camera_alignment_pin_datum",
+      "expected_case": true,
+      "populated": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "calibration_case_id": "bottom_acoustic_leak_mask_seal",
+      "expected_case": true,
+      "populated": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "calibration_case_id": "earpiece_acoustic_leak_mask_seal",
+      "expected_case": true,
+      "populated": false,
+      "declared_pass": false,
+      "pass": false
+    }
+  ],
+  "missing_cases": [],
+  "incomplete_cases": [
+    "button_force_probe_load_cell_and_travel",
+    "usb_c_insertion_gauge_axis_and_force",
+    "screen_bond_clamp_flatness_and_gap",
+    "rear_camera_alignment_pin_datum",
+    "front_camera_alignment_pin_datum",
+    "bottom_acoustic_leak_mask_seal",
+    "earpiece_acoustic_leak_mask_seal"
+  ],
+  "failed_cases": [],
+  "release_rule": "Every EVT fixture and gauge must have traceable calibration standard, calibrated operator, date, as-left error, certificate ID, and explicit pass before physical test rows can support release."
+}

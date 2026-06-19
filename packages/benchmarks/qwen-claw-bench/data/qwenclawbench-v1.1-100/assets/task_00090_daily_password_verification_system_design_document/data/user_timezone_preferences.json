@@ -1,0 +1,182 @@
+[
+  {
+    "user_id": "u_sarah_chen",
+    "display_name": "Sarah Chen",
+    "preferred_timezone": "America/New_York",
+    "locale": "en-US",
+    "last_login": "2025-01-10T20:46:00Z",
+    "notification_preferences": {
+      "email": true,
+      "sms": false,
+      "push": true
+    }
+  },
+  {
+    "user_id": "u_jorge_martinez",
+    "display_name": "Jorge Martinez",
+    "preferred_timezone": "America/Chicago",
+    "locale": "en-GB",
+    "last_login": "2024-12-17T05:49:00Z",
+    "notification_preferences": {
+      "email": false,
+      "sms": false,
+      "push": true
+    }
+  },
+  {
+    "user_id": "u_remi_okonkwo",
+    "display_name": "Remi Okonkwo",
+    "preferred_timezone": "America/Denver",
+    "locale": "de-DE",
+    "last_login": "2024-12-24T00:51:00Z",
+    "notification_preferences": {
+      "email": true,
+      "sms": false,
+      "push": true
+    }
+  },
+  {
+    "user_id": "u_mika_tanaka",
+    "display_name": "Mika Tanaka",
+    "preferred_timezone": "America/Los_Angeles",
+    "locale": "fr-FR",
+    "last_login": "2024-12-17T01:57:00Z",
+    "notification_preferences": {
+      "email": true,
+      "sms": true,
+      "push": false
+    }
+  },
+  {
+    "user_id": "u_alex_smith",
+    "display_name": "Alex Smith",
+    "preferred_timezone": "Europe/London",
+    "locale": "ja-JP",
+    "last_login": "2025-01-02T11:18:00Z",
+    "notification_preferences": {
+      "email": false,
+      "sms": false,
+      "push": false
+    }
+  },
+  {
+    "user_id": "u_dev_patel",
+    "display_name": "Dev Patel",
+    "preferred_timezone": "Europe/Berlin",
+    "locale": "zh-CN",
+    "last_login": "2025-01-08T02:39:00Z",
+    "notification_preferences": {
+      "email": true,
+      "sms": true,
+      "push": false
+    }
+  },
+  {
+    "user_id": "u_karen_johnson",
+    "display_name": "Karen Johnson",
+    "preferred_timezone": "Europe/Paris",
+    "locale": "hi-IN",
+    "last_login": "2025-01-05T19:04:00Z",
+    "notification_preferences": {
+      "email": true,
+      "sms": false,
+      "push": false
+    }
+  },
+  {
+    "user_id": "u_tyler_williams",
+    "display_name": "Tyler Williams",
+    "preferred_timezone": "Asia/Tokyo",
+    "locale": "en-AU",
+    "last_login": "2025-01-12T13:58:00Z",
+    "notification_preferences": {
+      "email": true,
+      "sms": true,
+      "push": true
+    }
+  },
+  {
+    "user_id": "u_lena_hoffmann",
+    "display_name": "Lena Hoffmann",
+    "preferred_timezone": "Asia/Shanghai",
+    "locale": "en-NZ",
+    "last_login": "2024-12-26T20:58:00Z",
+    "notification_preferences": {
+      "email": true,
+      "sms": true,
+      "push": true
+    }
+  },
+  {
+    "user_id": "u_pierre_dubois",
+    "display_name": "Pierre Dubois",
+    "preferred_timezone": "Asia/Kolkata",
+    "locale": "pt-BR",
+    "last_login": "2024-12-28T03:00:00Z",
+    "notification_preferences": {
+      "email": true,
+      "sms": true,
+      "push": true
+    }
+  },
+  {
+    "user_id": "u_yuki_sato",
+    "display_name": "Yuki Sato",
+    "preferred_timezone": "Australia/Sydney",
+    "locale": "en-ZA",
+    "last_login": "2024-12-29T13:44:00Z",
+    "notification_preferences": {
+      "email": false,
+      "sms": false,
+      "push": false
+    }
+  },
+  {
+    "user_id": "u_wei_zhang",
+    "display_name": "Wei Zhang",
+    "preferred_timezone": "Pacific/Auckland",
+    "locale": "en-SG",
+    "last_login": "2025-01-07T18:18:00Z",
+    "notification_preferences": {
+      "email": false,
+      "sms": true,
+      "push": false
+    }
+  },
+  {
+    "user_id": "u_priya_sharma",
+    "display_name": "Priya Sharma",
+    "preferred_timezone": "America/Sao_Paulo",
+    "locale": "es-MX",
+    "last_login": "2024-12-27T00:49:00Z",
+    "notification_preferences": {
+      "email": true,
+      "sms": true,
+      "push": true
+    }
+  },
+  {
+    "user_id": "u_james_obrien",
+    "display_name": "James OBrien",
+    "preferred_timezone": "Africa/Johannesburg",
+    "locale": "ko-KR",
+    "last_login": "2025-01-15T00:23:00Z",
+    "notification_preferences": {
+      "email": false,
+      "sms": false,
+      "push": true
+    }
+  },
+  {
+    "user_id": "u_mei_lin_tan",
+    "display_name": "Mei Lin Tan",
+    "preferred_timezone": "Asia/Singapore",
+    "locale": "it-IT",
+    "last_login": "2025-01-05T11:23:00Z",
+    "notification_preferences": {
+      "email": true,
+      "sms": false,
+      "push": true
+    }
+  }
+]

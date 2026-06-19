@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Pinned AOSP RISC-V branch manifest for the e1 chip toolchain.
+
+  The `<default revision>` below is the resolved 40-hex commit SHA of the
+  AOSP `android-latest-release` platform manifest branch. That branch is the
+  one the repo's AOSP riscv64 / Cuttlefish runbook standardizes on
+  (`docs/android/riscv-bringup.md`: `repo init -u .../platform/manifest
+  -b android-latest-release`), and it carries the
+  aosp_cf_riscv64_phone-trunk_staging lunch target used for the RISC-V
+  bring-up track.
+
+  Pinned SHA provenance:
+    branch: refs/heads/android-latest-release
+    sha:    6dc9af1b583e5c6a4ab9c38e3f5646efd8079b7d
+    resolved via: git ls-remote \
+      https://android.googlesource.com/platform/manifest android-latest-release
+    resolved at (UTC): 2026-05-22T19:43:29Z
+    stability: identical across two consecutive probes on 2026-05-22
+
+  Pinning the resolved SHA (rather than the floating branch name) freezes the
+  manifest at a reproducible commit; re-`repo init` against this SHA reconstructs
+  the exact project set. scripts/check_rva23_compliance.py accepts a 40-hex SHA
+  here and reports `PASS rva23.aosp_branch_pin`.
+
+  CLAIM BOUNDARY: this pin freezes the AOSP manifest commit for reproducible
+  toolchain-profile work. It is NOT, on its own, evidence that Android boots on
+  e1_soc or that Tier-1 RISC-V CTS passes. Those remain gated by the AOSP BSP
+  evidence gate (scripts/check_software_bsp.py) and the bring-up evidence files
+  listed in docs/android/riscv-bringup.md.
+
+  Refresh procedure:
+
+    1. Re-resolve the branch HEAD:
+         git ls-remote https://android.googlesource.com/platform/manifest \
+           android-latest-release
+    2. Run `repo init -u https://android.googlesource.com/platform/manifest \
+         -b <sha>` and capture every project's SHA into <project sha1=...>.
+    3. Update the pinned SHA above plus the pinning evidence in
+       docs/evidence/compiler/aosp-branch-pin.yaml.
+-->
+<manifest>
+  <remote name="aosp" fetch="https://android.googlesource.com/" />
+  <default remote="aosp"
+           revision="6dc9af1b583e5c6a4ab9c38e3f5646efd8079b7d"
+           sync-j="8" />
+
+  <!-- The full project list is intentionally empty: any project entry implies
+       a tested branch SHA that does not yet exist. -->
+</manifest>

@@ -1,0 +1,321 @@
+name: Cloud CF Deploy
+
+# Cloudflare deployment for the eliza-cloud SPA + Workers API.
+# - push to develop  -> staging   (api-staging.elizacloud.ai + Pages preview "develop")
+# - push to main     -> production (api.elizacloud.ai + Pages production)
+# - pull_request     -> preview    (Pages preview branch backed by staging API)
+#
+# Required repo secrets:
+#   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
+#   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud-api/wrangler.toml
+#   BITROUTER_API_KEY      - BitRouter proxy bearer token for the API Worker
+# Optional provider secrets are published when configured:
+#   OPENAI_API_KEY, ANTHROPIC_API_KEY, CEREBRAS_API_KEY, GROQ_API_KEY,
+#   AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY, VAST_API_KEY, VAST_BASE_URL.
+#
+# Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/cloud-api/**"
+      - "packages/cloud-frontend/**"
+      - "packages/cloud-shared/**"
+      - "packages/cloud-services/**"
+      - "packages/cloud-sdk/**"
+      - ".github/workflows/cloud-cf-deploy.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/cloud-api/**"
+      - "packages/cloud-frontend/**"
+      - "packages/cloud-shared/**"
+      - "packages/cloud-services/**"
+      - "packages/cloud-sdk/**"
+      - ".github/workflows/cloud-cf-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Cloudflare environment to deploy
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+
+concurrency:
+  group: cloud-cf-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # API Worker
+  # ---------------------------------------------------------------------------
+  deploy-api:
+    name: Deploy API Worker
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    if: github.event_name != 'pull_request'
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Install dependencies
+        run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
+
+      - name: Build linked elizaOS workspaces
+        run: bun run build:core
+
+      - name: Verify Worker
+        run: bun run --cwd packages/cloud-api typecheck
+
+      - name: Run Worker e2e
+        run: bun run --cwd packages/cloud-api test:e2e
+
+      - name: Build
+        run: bun run --cwd packages/cloud-api build
+
+      - name: Resolve deploy environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
+            echo "wrangler_args=--env production" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=production" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "wrangler_args=--env staging" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=staging" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "wrangler_args=--env production" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "wrangler_args=--env staging" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=staging" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Cloudflare credentials
+        id: cf
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ACCOUNT" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            MSG="CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not configured. Add them at https://github.com/elizaOS/eliza/settings/secrets/actions."
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              # PRs from forks legitimately lack access to repo secrets.
+              echo "::warning::$MSG Skipping Worker deploy (PR event)." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$MSG Refusing to silently skip Worker deploy on $EVENT_NAME event." >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::$MSG Refusing to silently skip Worker deploy on $EVENT_NAME event."
+              exit 1
+            fi
+          fi
+
+      - name: Publish Worker AI secrets
+        if: steps.cf.outputs.configured == 'true'
+        working-directory: packages/cloud-api
+        env:
+          BITROUTER_API_KEY: ${{ secrets.BITROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+          VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$BITROUTER_API_KEY" ]; then
+            echo "::error::BITROUTER_API_KEY is not configured. Add it at https://github.com/elizaOS/eliza/settings/secrets/actions."
+            exit 1
+          fi
+
+          publish_secret() {
+            local name="$1"
+            local value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::notice::$name is not configured; skipping"
+              return 0
+            fi
+            printf '%s' "$value" | bunx wrangler secret put "$name" ${{ steps.env.outputs.wrangler_args }}
+          }
+
+          for name in \
+            BITROUTER_API_KEY \
+            OPENAI_API_KEY \
+            ANTHROPIC_API_KEY \
+            CEREBRAS_API_KEY \
+            GROQ_API_KEY \
+            AI_GATEWAY_API_KEY \
+            FAL_KEY \
+            ELEVENLABS_API_KEY \
+            VAST_API_KEY \
+            VAST_BASE_URL
+          do
+            publish_secret "$name"
+          done
+
+      - name: Deploy to Cloudflare Workers
+        if: steps.cf.outputs.configured == 'true'
+        working-directory: packages/cloud-api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx wrangler deploy ${{ steps.env.outputs.wrangler_args }}
+
+  # ---------------------------------------------------------------------------
+  # Frontend (Cloudflare Pages)
+  # ---------------------------------------------------------------------------
+  deploy-frontend:
+    name: Deploy Frontend (Pages)
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Install dependencies
+        run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
+
+      - name: Build linked elizaOS core workspace
+        run: bun run build:core
+
+      - name: Verify Frontend
+        run: bun run --cwd packages/cloud-frontend typecheck
+
+      - name: Build
+        run: bun run --cwd packages/cloud-frontend build
+        env:
+          # Pages preview/staging/prod all share the same API host today;
+          # override per-env if that changes.
+          VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
+          # Staging uses a separate Steward tenant (`elizacloud-staging`) so its
+          # `magicLinkBaseUrl` redirects email callbacks back to staging.elizacloud.ai.
+          NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
+          # Deployment-env signal baked into the SPA bundle. Read by isomorphic
+          # cloud-shared code (e.g. agent flavor catalog) to branch on env.
+          # Vite strips `process.env` for the browser, so the Worker
+          # `ENVIRONMENT` binding is invisible to the SPA — VITE_ENVIRONMENT is
+          # the only thing the bundle can see at runtime.
+          VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
+
+      - name: Resolve Pages branch
+        id: pages
+        env:
+          PR_HEAD_REF: ${{ github.head_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "branch=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
+            echo "branch=main" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "branch=develop" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=${GITHUB_REF#refs/heads/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Cloudflare credentials
+        id: cf
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ACCOUNT" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            MSG="CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not configured. Add them at https://github.com/elizaOS/eliza/settings/secrets/actions."
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              # PRs from forks legitimately lack access to repo secrets.
+              echo "::warning::$MSG Skipping Pages deploy (PR event)." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$MSG Refusing to silently skip Pages deploy on $EVENT_NAME event." >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::$MSG Refusing to silently skip Pages deploy on $EVENT_NAME event."
+              exit 1
+            fi
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.cf.outputs.configured == 'true'
+        working-directory: packages/cloud-frontend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Do NOT pass a positional `dist` argument: wrangler.toml already sets
+        # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
+        # ignore wrangler.toml — which silently drops the `functions/` upload
+        # (so `_middleware.ts` never runs and `/api/*` falls through to the
+        # SPA's index.html instead of being proxied to the API Worker).
+        run: bunx wrangler pages deploy --project-name=eliza-cloud --branch=${{ steps.pages.outputs.branch }}
+
+      # Same-origin checks against the SITE_URL custom domains were removed: those
+      # domains were served by Vercel, which has been decommissioned. We verify the
+      # freshly-deployed Cloudflare API Worker directly instead.
+      - name: Verify API Worker health
+        if: steps.cf.outputs.configured == 'true' && github.event_name != 'pull_request'
+        env:
+          API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+        run: |
+          check_json() {
+            local label="$1"
+            local url="$2"
+            local expected="$3"
+            local tmp
+            tmp="$(mktemp)"
+            local code
+            code="$(curl -sS -o "$tmp" -w '%{http_code}' -m 20 "$url" || echo "000")"
+            local content_type
+            content_type="$(file -b --mime-type "$tmp" 2>/dev/null || true)"
+            if [ "$code" != "$expected" ]; then
+              echo "::error::$label returned HTTP $code, expected $expected: $url"
+              head -c 500 "$tmp" || true
+              echo
+              exit 1
+            fi
+            if ! head -c 1 "$tmp" | grep -q '[{[]'; then
+              echo "::error::$label did not return JSON-looking content ($content_type): $url"
+              head -c 500 "$tmp" || true
+              echo
+              exit 1
+            fi
+          }
+
+          check_json "direct API health" "${API_URL%/}/api/health" 200
+          check_json "direct Steward providers" "${API_URL%/}/steward/auth/providers" 200

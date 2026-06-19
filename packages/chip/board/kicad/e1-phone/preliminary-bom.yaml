@@ -1,0 +1,179 @@
+schema: eliza.e1_phone_preliminary_bom.v1
+status: sourcing_shortlist_not_release_bom
+date: 2026-05-20
+claim_boundary: >
+  This is a preliminary sourcing/BOM shortlist for architecture and layout
+  planning. It is not an AVL, approved vendor list, purchase order, assembly
+  BOM, or lifecycle-checked production release.
+
+major_items:
+  - function: display_touch
+    qty: 1
+    primary: Chenghao_CH550FH01A_CT_or_pin_compatible_5p5_FHD_MIPI_CTP
+    alternates: [META_055WU01_class, 5p5_ILI7807D_1200nit_MIPI_40pin_class, 5p5_AMOLED_RM67191_class]
+    sourcing: docs/board/e1-phone-oem-sourcing.md
+    pcb_dependency: 40pin_or_supplier_defined_display_fpc_connector
+    freeze_blockers: [exact_pinout, fpc_drawing, init_sequence, touch_controller]
+
+  - function: rear_camera
+    qty: 1
+    primary: Sincere_First_SF_XR3855A_A0_OV13855_13MP_AF_MIPI
+    alternates: [AR1335_13MP_AF_4lane_MIPI_module]
+    sourcing: package/camera/oem-mipi-csi-modules.yaml
+    pcb_dependency: 24_to_30pin_camera_fpc_connector
+    freeze_blockers: [exact_pinout, z_height, lens_axis, driver_support, otp_calibration]
+
+  - function: front_camera
+    qty: 1
+    primary: Sincere_First_SF_G5035S60FY_GC5035_5MP_FF_MIPI
+    alternates: [Junde_IMX219_8MP_fixed_focus_MIPI_lab_or_front_alternate]
+    sourcing: package/camera/oem-mipi-csi-modules.yaml
+    pcb_dependency: small_camera_fpc_connector
+    freeze_blockers: [exact_pinout, lens_z_height, enclosure_z_stack, driver_support]
+
+  - function: cellular
+    qty: 1
+    primary: Quectel_RG255C_LGA_or_RM255C_M2_5G_RedCap
+    alternates: [Quectel_EG915Q_EG915U_LTE_Cat1bis_space_saving_branch, Quectel_EG916Q_GL_LTE_Cat1bis_global_branch, Fibocom_MC665_LTE_Cat1bis_second_vendor_branch, Quectel_RM520N_GL_M2_lab_fallback]
+    sourcing: package/cellular/quectel-5g-redcap.yaml
+    pcb_dependency: module_land_pattern_or_m2_socket_plus_sim_esim
+    freeze_blockers: [region_sku, bands, antenna_plan, carrier_certification_plan, compact_module_quote, compact_module_reference_layout_step_and_firmware_pack]
+
+  - function: wifi_bluetooth
+    qty: 1
+    primary: Murata_LBEE5XV2EA_802_Type_2EA_WiFi6E_BT5p3
+    alternates: [Murata_Type_1DX_SDIO_UART_fallback]
+    sourcing: package/wifi/murata-type-2ea-wifi6e.yaml
+    pcb_dependency: murata_reference_land_pattern_and_rf_feed
+    freeze_blockers: [firmware_license, antenna_layout, regulatory_scope]
+
+  - function: usb_c_receptacle_evt0
+    qty: 1
+    primary: GCT_USB4105_USB2_Type_C
+    alternates: [Molex_221632_or_217804_waterproof_24pin_if_USB3_required]
+    sourcing: package/usb-c/e1-phone-usb-c-port.yaml
+    pcb_dependency: connector_footprint_esd_pd_controller_charger
+    freeze_blockers: [mechanical_capture, port_cutout, pd_policy, esd_selection]
+
+  - function: side_buttons
+    qty: 3
+    primary: Panasonic_EVQ_P7_or_EVQ_P3_side_push_tactile
+    alternates: [C_and_K_KMR2_with_enclosure_plunger]
+    sourcing: package/human-interface/side-buttons.yaml
+    pcb_dependency: side_key_flex_or_left_edge_switch_island
+    freeze_blockers: [button_travel_stack, actuator_rib, wake_gpio_assignment]
+
+  - function: usb_pd_controller
+    qty: 1
+    primary: TI_TPS65987DDH
+    sourcing: package/usb-pd/tps65987.yaml
+    pcb_dependency: i2c_spi_flash_optional_cc_lines_vbus_path
+    freeze_blockers: [firmware_blob, pd_policy, pps_requirement]
+
+  - function: charger_power_path
+    qty: 1
+    primary: MAX77860_class
+    sourcing: package/charger/max77860.yaml
+    pcb_dependency: vbus_battery_sys_power_path_thermal_copper
+    freeze_blockers: [battery_pack, charge_current, thermistor_policy]
+
+  - function: battery_pack
+    qty: 1
+    primary: LiPol_LP566487_3p85V_5727mAh_22p05Wh_PCM_NTC_JST_SHR_03V_class
+    alternates: [LiPol_LP446487_4500mAh_baseline_outline_family, Made_in_China_custom_5727mAh_LiPo_family, Alibaba_custom_3p85V_5727mAh_pack_quote_pool]
+    sourcing: package/battery/e1-phone-17p3wh-pack.yaml
+    pcb_dependency: 4pin_battery_connector_or_soldered_pack_variant
+    freeze_blockers: [pack_supplier_quote, connector_pinout, ntc_curve, pcm_limits, safety_docs, battery_cavity_resize_or_custom_pack]
+
+  - function: pmic
+    qty: 1
+    primary: DA9063_class
+    sourcing: package/pmic/da9063.yaml
+    pcb_dependency: rail_tree_power_sequence_aon_domain
+    freeze_blockers: [rail_current_budget, reset_tree, rtc_backup_policy]
+
+  - function: audio_codec_amp_mics
+    qty: 1
+    primary: v0_audio_codec_binding
+    sourcing: package/audio/v0-codec.yaml
+    pcb_dependency: bottom_audio_region_speaker_mic_flexes
+    freeze_blockers: [speaker_box, mic_port_locations, acoustic_gaskets]
+
+  - function: top_bottom_interconnect
+    qty: 1
+    primary: Hirose_BM28_hybrid_power_signal_fpc_bridge_class
+    alternates: [Hirose_FH58_signal_flex_plus_power_tabs, Molex_SlimStack_ACB6_Plus_or_equivalent]
+    sourcing: package/interconnect/e1-phone-top-bottom-flex.yaml
+    pcb_dependency: top_and_bottom_mating_land_patterns_plus_controlled_impedance_fpc
+    freeze_blockers: [exact_mating_part_numbers, circuit_count, flex_stackup, usb2_si, current_temperature_rise, assembly_sequence]
+
+production_bom_requirements:
+  - every_item_has_manufacturer_part_number_and_supplier_part_number
+  - every_connector_has_mating_fpc_or_cable_drawing
+  - alternates_are_pin_and_footprint_compatible_or_variant_controlled
+  - lifecycle_status_checked_for_12_month_supply
+  - region_specific_cellular_sku_and_antenna_parts_selected
+  - RoHS_REACH_and_battery_shipping_documents_collected
+
+selected_supplier_response_bom_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_define_production_bom_identity_and_approved_alternates
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_bom_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  bom_fields_blocked:
+    - orderable_manufacturer_part_number
+    - supplier_sku
+    - lifecycle_status
+    - MOQ
+    - unit_price_10
+    - unit_price_100
+    - unit_price_1000
+    - lead_time_days_10
+    - lead_time_days_100
+    - lead_time_days_1000
+    - compliance_pack_index_path
+    - sample_lot_tracking
+    - approved_by_ee
+    - approved_by_me
+    - approved_by_ops
+  selected_bom_decisions_blocked:
+    - preliminary public-source part names cannot become approved production BOM lines without normalized supplier response packs
+    - selected display and camera FPC connector identities, mating parts, lifecycle, and alternates remain unapproved
+    - selected USB-C and side-key MPNs, shell/mechanical variants, lifecycle, and actuator-stack alternates remain unapproved
+    - selected cellular branch cannot choose RedCap versus compact Cat 1 bis alternate without returned quote, reference layout, firmware, and regional SKU evidence
+    - selected Wi-Fi/Bluetooth module cannot become AVL-approved without lifecycle, firmware, reference-layout, antenna, and regulatory response evidence
+  all_selected_supplier_response_packs_absent: true
+  production_bom_allowed_without_selected_supplier_packs: false
+
+cross_checks:
+  selected_supplier_response_bom_gate_blocks_production_bom_release: true
+  cellular_space_saving_alternates_are_preserved_in_bom: true
+  preliminary_bom_remains_public_shortlist_not_avl: true
+
+release_blockers:
+  - selected_supplier_response_packs_for_bom_identity_and_alternates_missing
+  - production_orderable_mpns_supplier_skus_lifecycle_moq_lead_time_and_price_breaks_missing
+  - selected_cellular_compact_branch_quote_reference_layout_step_and_firmware_pack_missing
+  - EE_ME_Ops_approvals_for_selected_bom_lines_missing
+
+forbidden_claims:
+  - production_BOM_ready
+  - AVL_ready
+  - supplier_selected
+  - alternates_approved
+  - purchase_order_ready
+  - fabrication_ready
+  - enclosure_ready

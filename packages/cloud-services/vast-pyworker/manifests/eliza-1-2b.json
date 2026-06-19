@@ -1,0 +1,41 @@
+{
+  "$schema": "./schema.json",
+  "label": "eliza-1-2b-gguf",
+  "model_size": "2b",
+  "model_repo": "elizaos/eliza-1",
+  "model_file": "bundles/2b/text/eliza-1-2b-128k.gguf",
+  "model_alias": "vast/eliza-1-2b",
+  "served_model_name": "eliza-1-2b",
+  "registry_key": "eliza-1-2b",
+  "gpu_target": "rtx5090-1x",
+  "image": "ghcr.io/ggml-org/llama.cpp:server-cuda",
+  "min_disk_gb": 30,
+  "min_inet_down_mbps": 100,
+  "port": 8080,
+  "health_check_url": "http://127.0.0.1:8080/health",
+  "model": "elizaos/eliza-1",
+  "tensor_parallel_size": 1,
+  "gpu_memory_utilization": 0.85,
+  "max_model_len": 131072,
+  "weight_quantization": "gguf",
+  "kv_cache_dtype": "auto",
+  "tool_parser": "eliza1",
+  "reasoning_parser": "eliza1",
+  "search_params": {
+    "gpu_name": ["RTX_5090", "RTX_4090", "RTX_PRO_5000", "L40S"],
+    "gpu_ram": ">=24000",
+    "disk_space": ">=30",
+    "inet_down": ">=100",
+    "reliability": ">=0.9",
+    "verified": true
+  },
+  "vast_template_env": {
+    "MODEL_REPO": "elizaos/eliza-1",
+    "MODEL_FILE": "bundles/2b/text/eliza-1-2b-128k.gguf",
+    "MODEL_ALIAS": "vast/eliza-1-2b",
+    "LLAMA_CONTEXT": "131072",
+    "LLAMA_PARALLEL": "4"
+  },
+  "onstart_script": "onstart.sh",
+  "notes": "Single-GPU llama.cpp serve for the 2B Eliza line. Pulls the GGUF from the canonical elizaos/eliza-1 bundle repo; no split 2B HF repo is required."
+}

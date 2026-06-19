@@ -1,0 +1,56 @@
+[[!meta title="Tails report for July 2024"]]
+[[!meta date="Thu, 29 Aug 2024 15:38:39 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- On our first month back from vacation, we continued making it easier to
+  recover from common failure modes without requiring technical expertise: 
+
+  - we drafted an implementation of our design to detect, report, and repair
+    corruption of the _Persistent Storage_ 
+
+  - we finished implementing our plans to improve the detection of and recovery
+    from low-memory situations. Going from prototype to  implementation, this
+    work was a great example of the [90-90
+    rule](https://en.wikipedia.org/wiki/Ninety%E2%80%93ninety_rule) in action: the
+    first 90% of the work consumed the first 90% of our  time, and the remaining
+    10% accounted for the other 90% of our time 
+
+- Over the past year, we have been close downstream of the Tor Project's design
+  and implementation of [Arti](https://tpo.pages.torproject.net/core/arti/).
+  This month, we reached a significant milestone in our collaboration: we
+  prepared a prototype of Tails in which multiple applications use Arti. 
+
+- [freiheitsfoo](https://freiheitsfoo.de/), one of our longest supporters,
+  renewed their sponsorship of Tails!  Welcome aboard for another year of
+  resisting censorship and surveillance online!
+
+Releases
+========
+
+📢[[We released Tails 6.5|news/version_6.5]]! 
+
+In Tails 6.5, we brought:
+    
+- an updated _Tor Browser_ with [cool letterboxing
+  improvements](https://blog.torproject.org/new-release-tor-browser-135/), and
+  the latest Debian (12.6)
+
+- repairs to first-boot partitioning that many users were facing issues with
+  after Tails 6.4
+
+- fixes to connecting via mobile broadband, LTE, and PPPoE DS. This has been a
+  persistent issue in the Tails 6 series so far. 
+
+To know more, check out the Tails 6.5 [[release notes|news/version_6.5]] and
+the
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/blob/master/debian/changelog). 
+
+Metrics
+=======
+
+Tails was started more than 779,262 times this month. That's a daily average of over 25,946 boots.

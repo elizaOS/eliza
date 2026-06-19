@@ -1,0 +1,532 @@
+#! /usr/bin/python3
+
+# Documentation: https://tails.net/contribute/working_together/GitLab/#api
+#
+# Usage example, from when we had lots of SPAM users and used this script
+# during the Ticket Gardening process:
+#
+#     GITLAB_NAME=TailsRoot ./bin/gitlab-users-cleanup \
+#         --min-creation-age='29 days' \
+#         --min-inactivity='28 days' \
+#         --active \
+#         --max-post-sign-up-activity='120 days' \
+#         --max-contribution-events=0 \
+#         --action=deactivate-or-block
+
+import datetime
+import logging
+import os
+from pathlib import Path
+import sys
+
+import dateutil.parser
+import gitlab  # type: ignore
+import django.utils.dateparse  # type: ignore
+
+PYTHON_GITLAB_CONFIG_FILE = os.getenv(
+    "PYTHON_GITLAB_CONFIG_FILE", default=Path.home() / ".python-gitlab.cfg"
+)
+
+PYTHON_GITLAB_NAME = os.getenv("GITLAB_NAME", default="Tails")
+
+LOG_FORMAT = "%(asctime)-15s %(levelname)s %(message)s"
+log = logging.getLogger()
+
+LEGIT_USERS = [
+    "adrelanos",
+    "ajitari",
+    "alster",
+    "amartinr",
+    "anarcat",
+    "anonymousblabla",
+    "AnthonyV",
+    "AtomiKe",
+    "Ballen",
+    "bertagaz",
+    "BitingBird",
+    "boklm",
+    "Brettermaik",
+    "cacahuatl",
+    "cacukin",
+    "cailmdaley",
+    "chouchou",
+    "cipherpunks",
+    "co6",
+    "counterflow",
+    "cypherpunks",
+    "CyrilBrulebois",
+    "Dary",
+    "davidiw",
+    "dawuud",
+    "dgoulet",
+    "disoj",
+    "dkg",
+    "diva",
+    "Dr_Whax",
+    "elouann",
+    "enrico",
+    "espiv",
+    "flapflap",
+    "Gaff",
+    "garrettr",
+    "geb",
+    "goupille",
+    "Guillaume",
+    "hellais",
+    "huertanix",
+    "hyas",
+    "import-from-Redmine",
+    "infinity0",
+    "ioerror",
+    "irregulator",
+    "iry",
+    "Joelsven1",
+    "johanbluecreek",
+    "johnnyvon",
+    "juris",
+    "lrnpenguin",
+    "ma1",
+    "maker",
+    "marcelisa2",
+    "matsa",
+    "mercedes508",
+    "micah",
+    "mjenglish",
+    "Moorm",
+    "mrphs",
+    "naar",
+    "nathan",
+    "natmaka",
+    "nc89",
+    "olabini",
+    "OneST8",
+    "ovitters",
+    "pablonatalino",
+    "png",
+    "pragmatic45",
+    "Rajie",
+    "rlrevell",
+    "rojiro",
+    "romeopapa",
+    "runa",
+    "runasand",
+    "s7r",
+    "saintmichael",
+    "sam_krd",
+    "SammyTheDuck",
+    "sascha.markus_gmail.com",
+    "sbrocca",
+    "sdibella",
+    "Seb35",
+    "senkdavid",
+    "singuliere",
+    "sjmurdoch",
+    "Sosthene",
+    "spriver",
+    "sriedel",
+    "sst",
+    "Standard8",
+    "sycamoreone",
+    "synthe",
+    "taggart",
+    "Tanejarahul",
+    "tchou",
+    "TheNerdyAnarchist",
+    "tim",
+    "ttailor",
+    "underite",
+    "usul",
+    "uzairfarooq",
+    "winterfairy",
+    "xin",
+    "xirzon",
+    "xmunoz",
+    "yawning",
+    "zooko",
+    "zopedi",
+]
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+
+    # Filters
+    parser.add_argument(
+        "--blocked", action="store_true", help="Only consider blocked users"
+    )
+    parser.add_argument(
+        "--active", action="store_true", help="Only consider active users"
+    )
+    parser.add_argument(
+        "--deactivated",
+        action="store_true",
+        help="Only consider deactivated users",
+    )
+    parser.add_argument(
+        "--min-creation-age",
+        type=django.utils.dateparse.parse_duration,
+        default="57 days",
+        help="Only consider users created at least this duration ago",
+    )
+    parser.add_argument(
+        "--max-creation-age",
+        type=django.utils.dateparse.parse_duration,
+        help="Only consider users created at most this duration ago",
+    )
+    parser.add_argument(
+        "--min-inactivity",
+        type=django.utils.dateparse.parse_duration,
+        default="56 days",
+        help="Only consider users inactive since this duration",
+    )
+    parser.add_argument(
+        "--max-post-sign-up-activity",
+        type=django.utils.dateparse.parse_duration,
+        help="Don't consider users who have been active for at least this duration after signing-up",
+    )
+    parser.add_argument(
+        "--max-sign-in-count",
+        type=int,
+        default=7,
+        help="Only consider users who have not signed-in more often than this",
+    )
+    parser.add_argument(
+        "--max-contribution-events",
+        type=int,
+        default=10,
+        help="Only consider users who have not acted on issues or MRs more often than this",
+    )
+    parser.add_argument(
+        "--min-contribution-events",
+        type=int,
+        default=0,
+        help="Only consider users who have acted on issues or MRs at least this often",
+    )
+    parser.add_argument(
+        "--not-in-group",
+        type=str,
+        default="contributors-team",
+        help="Only consider users who are not members of this group",
+    )
+    parser.add_argument(
+        "--search",
+        type=str,
+        help="Only consider users who satisfy this search criterion",
+    )
+    parser.add_argument(
+        "--email-ends-with",
+        type=str,
+        help="Only consider users whose email address ends with this string",
+    )
+
+    # Actions
+    parser.add_argument(
+        "--action",
+        type=str,
+        help="Action to take on selected users, among: deactivate, block, deactivate-or-block, delete, delete-user-and-contributions",
+    )
+
+    # General behavior control
+    parser.add_argument("--debug", action="store_true", help="debug output")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Don't actually update anything, just print",
+    )
+
+    args = parser.parse_args()
+
+    if args.deactivated and args.active:
+        sys.exit("Cannot use --deactivated and --active at the same time")
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+    else:
+        logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
+    gl = gitlab.Gitlab.from_config(
+        PYTHON_GITLAB_NAME, config_files=[PYTHON_GITLAB_CONFIG_FILE]
+    )
+    gl.auth()
+
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
+
+    max_creation_date = now - args.min_creation_age
+    log.debug("Max creation date: %s", max_creation_date)
+
+    min_creation_date = None
+    if args.max_creation_age:
+        min_creation_date = now - args.max_creation_age
+        log.debug("Min creation date: %s", min_creation_date)
+
+    max_activity_date = now - args.min_inactivity
+    log.debug("Max activity date: %s", max_activity_date)
+
+    if args.max_post_sign_up_activity is not None:
+        log.debug(
+            "Max post-sign-up activity: %s", args.max_post_sign_up_activity
+        )
+
+    if args.not_in_group is not None:
+        group = [
+            g
+            for g in gl.groups.list(all=True)
+            # Disambiguate between groups whose names share a common prefix
+            if g.full_path == args.not_in_group
+        ][0]
+        group_members_ids = [m.id for m in group.members_all.list(get_all=True)]
+    else:
+        group_members_ids = []
+    log.debug("Group members: %s", group_members_ids)
+
+    user_filters = {
+        "exclude_internal": True,
+        "two_factor": "disabled",
+    }
+    if args.blocked:
+        user_filters["blocked"] = True
+    if args.active:
+        user_filters["active"] = True
+    if args.deactivated:
+        user_filters["active"] = False
+    if args.search is not None:
+        user_filters["search"] = args.search
+
+    users = gl.users.list(all=True, iterator=True, **user_filters)
+
+    log.debug("Users: %s", users)
+
+    for user in users:
+        user_desc = f"{user.username} (id={user.id})"
+
+        # Filter out users we don't want to act upon
+
+        if args.deactivated and user.state != "deactivated":
+            log.debug(
+                "User %s is not deactivated (state: %s) ⇒ skipping",
+                user_desc,
+                user.state,
+            )
+            continue
+
+        if dateutil.parser.isoparse(user.created_at) < max_creation_date:
+            log.debug(
+                "User %s was created more than %s ago",
+                user_desc,
+                args.min_creation_age,
+            )
+            if min_creation_date:
+                if dateutil.parser.isoparse(user.created_at) > min_creation_date:
+                    log.debug(
+                        "User %s was created less than %s ago",
+                        user_desc,
+                        args.max_creation_age,
+                    )
+                else:
+                    log.debug(
+                        "User %s was created more than %s ago ⇒ skipping",
+                        user_desc,
+                        args.max_creation_age,
+                    )
+                    continue
+        else:
+            log.debug(
+                "User %s was created less than %s ago ⇒ skipping",
+                user_desc,
+                args.min_creation_age,
+            )
+            continue
+
+        if user.last_activity_on is None:
+            log.debug("User %s was never active", user_desc)
+        elif (
+            dateutil.parser.isoparse(user.last_activity_on + "T00Z")
+            < max_activity_date
+        ):
+            log.debug(
+                "User %s is inactive since at least %s",
+                user_desc,
+                args.min_inactivity,
+            )
+        else:
+            log.debug(
+                "User %s was active in the last %s ⇒ skipping",
+                user_desc,
+                args.min_inactivity,
+            )
+            continue
+
+        if (
+            user.last_activity_on is not None
+            and args.max_post_sign_up_activity is not None
+        ):
+            created_at = dateutil.parser.isoparse(user.created_at)
+            last_activity_on = dateutil.parser.isoparse(
+                user.last_activity_on + "T00Z"
+            )
+            if last_activity_on < created_at + args.max_post_sign_up_activity:
+                log.debug(
+                    "User %s has not been active for more than %s after sign-up",
+                    user_desc,
+                    args.max_post_sign_up_activity,
+                )
+            else:
+                log.debug(
+                    "User %s has been active for more than %s after sign-up ⇒ skipping",
+                    user_desc,
+                    args.max_post_sign_up_activity,
+                )
+                continue
+
+        if user.username in LEGIT_USERS:
+            log.debug(
+                "User %s is legit ⇒ skipping",
+                user_desc,
+            )
+            continue
+
+        if user.id in group_members_ids:
+            log.debug(
+                "User %s is in group %s ⇒ skipping",
+                user_desc,
+                args.not_in_group,
+            )
+            continue
+
+        if args.email_ends_with is not None:
+            if user.email.endswith(args.email_ends_with):
+                log.debug(
+                    "User %s has an email address that ends with %s",
+                    user_desc,
+                    args.email_ends_with,
+                )
+            else:
+                log.debug(
+                    "User %s has no email address that ends with %s",
+                    user_desc,
+                    args.email_ends_with,
+                )
+                continue
+
+        user_obj = gl.users.get(user.id)
+
+        if user_obj.sign_in_count <= args.max_sign_in_count:
+            log.debug(
+                "User %s has signed-in %i <= %i times",
+                user_desc,
+                user_obj.sign_in_count,
+                args.max_sign_in_count,
+            )
+        else:
+            log.debug(
+                "User %s has signed-in %i > %i times ⇒ skipping",
+                user_desc,
+                user_obj.sign_in_count,
+                args.max_sign_in_count,
+            )
+            continue
+
+        events = user_obj.events.list(all=True)
+        contribution_events = [
+            e
+            for e in events
+            if e.target_type
+            in ["Note", "DiscussionNote", "Issue", "merge_request"]
+        ]
+        if len(contribution_events) <= args.max_contribution_events:
+            log.debug(
+                "User %s has done less than %i contributions",
+                user_desc,
+                args.max_contribution_events,
+            )
+        else:
+            log.debug(
+                "User %s has done at least %i contributions ⇒ skipping",
+                user_desc,
+                args.max_contribution_events,
+            )
+            continue
+        if len(contribution_events) >= args.min_contribution_events:
+            log.debug(
+                "User %s has done at least %i contributions",
+                user_desc,
+                args.min_contribution_events,
+            )
+        else:
+            log.debug(
+                "User %s has done less than %i contributions ⇒ skipping",
+                user_desc,
+                args.min_contribution_events,
+            )
+            continue
+
+        # If we reached this point, perform args.action
+
+        if args.action == "deactivate":
+            if user.state == "blocked":
+                log.debug(
+                    "User %s is already blocked, cannot deactivate", user_desc
+                )
+            elif user.state == "deactivated":
+                log.debug("User %s is already deactivated", user_desc)
+            else:
+                log.info(
+                    "Deactivating user %s (previous state: %s)",
+                    user_desc,
+                    user.state,
+                )
+                if not args.dry_run:
+                    user.deactivate()
+        elif args.action == "block":
+            if user.state == "blocked":
+                log.debug("User %s is already blocked", user_desc)
+            else:
+                log.info(
+                    "Blocking user %s (previous state: %s)",
+                    user_desc,
+                    user.state,
+                )
+                if not args.dry_run:
+                    user.block()
+        elif args.action == "deactivate-or-block":
+            if user.state in ["blocked", "deactivated"]:
+                log.debug("User %s is already %s", user_desc, user.state)
+            else:
+                log.info(
+                    "Deactivating user %s (previous state: %s)",
+                    user_desc,
+                    user.state,
+                )
+                if not args.dry_run:
+                    try:
+                        user.deactivate()
+                    # The GitLab API forbids deactivating a user who
+                    # has been active in the past 90 days, so block them.
+                    except gitlab.exceptions.GitlabDeactivateError:
+                        log.info(
+                            "Deactivating user %s (previous state: %s) failed, so blocking them",
+                            user_desc,
+                            user.state,
+                        )
+                        user.block()
+        elif args.action == "delete":
+            log.info(
+                "Deleting user %s (previous state: %s): https://gitlab.tails.boum.org/%s",
+                user_desc,
+                user.state,
+                user.username,
+            )
+            if not args.dry_run:
+                user.delete()
+        elif args.action == "delete-user-and-contributions":
+            log.info(
+                "Deleting user %s and contributions (previous state: %s): https://gitlab.tails.boum.org/%s",
+                user_desc,
+                user.state,
+                user.username,
+            )
+            if not args.dry_run:
+                user.delete(hard_delete=True)
+        else:
+            sys.exit("Unsupported action: %s" % args.action)

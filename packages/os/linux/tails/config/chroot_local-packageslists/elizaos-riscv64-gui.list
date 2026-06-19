@@ -1,0 +1,26 @@
+# elizaOS Live riscv64 GUI contract packages.
+#
+# This file is intentionally kept with the canonical Tails-derived distro even
+# though upstream Tails' live-build plumbing remains amd64-first today. Do not
+# move riscv64 Linux support back into a second distro tree.
+linux-image-riscv64
+grub-efi-riscv64
+grub-efi-riscv64-bin
+qemu-efi-riscv64
+virtiofsd
+xorg
+gdm3
+gnome-session
+gnome-shell
+gnome-terminal
+gnome-control-center
+nautilus
+network-manager
+network-manager-gnome
+pipewire
+pipewire-pulse
+epiphany-browser
+nodejs
+node-undici
+node-ws
+node-fetch

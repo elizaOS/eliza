@@ -1,0 +1,1898 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-07 22:25+0000\n"
+"PO-Revision-Date: 2023-03-13 17:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"known_issues/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Known issues\"]]\n"
+msgstr "[[!meta title=\"مشکلات شناخته‌شده\"]]\n"
+
+#. type: Bullet: '- '
+msgid ""
+"To learn what you can do with Tails, refer to our [[documentation|doc]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For more general questions about Tails, refer to our [[FAQ|support/faq]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For issues with graphics cards, see our [[known issues with graphics cards|"
+"known_issues/graphics]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"not-at-all\">Tails not starting at all</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"mac-not-at-all\">Mac</h2>\n"
+msgstr "<a id=\"mac\"></a>\n"
+
+#. type: Plain text
+msgid "This section lists known problems with specific hardware."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails does not start at all on Mac models that use the Apple chips (M1, M2, "
+"and so on) and on many other Mac models."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Apple does not prioritize collaborating with Free Software projects. Their "
+"newest hardware is usually very hard for Free Software developers to get "
+"working with Linux, and thus Tails. PC hardware tends to be more open and "
+"work better with Linux."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on Mac|doc/first_steps/start/mac]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>[[Let us know|support/talk]] if you discover a new issue or workaround.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"pc-not-at-all\">PC</h2>\n"
+msgstr "<a id=\"pny\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on PC|doc/first_steps/start/pc]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"dell-latitude-e5250\">Dell Latitude E5250</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-04-05\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid "Does not start on Tails USB sticks."
+msgstr "راه‌اندازی از درایوهای یواس‌بی ایجادشده توسط نصب‌کنندهٔ تیلز انجام نمی‌شود."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h3 id=\"dell-latitude-e6430\">Dell Latitude E6430 and E6230</h3>\n"
+msgstr "Dell Inc. Latitude E6430 and E6230\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2018-06-14 (wb://7653aff4f415e996567233d8c088da08)\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid "Does not start on USB sticks."
+msgstr "راه‌اندازی از درایوهای یواس‌بی ایجادشده توسط نصب‌کنندهٔ تیلز انجام نمی‌شود."
+
+#. type: Plain text
+msgid "With BIOS versions A03 06/03/2012 (and A09, A11, and A12)"
+msgstr "با بایوس نسخه‌های A03 06/03/2012 (و A09، A11 و A12)"
+
+#. type: Plain text
+msgid "Error message: `Invalid partition table!`"
+msgstr "پیغام‌های خطا: `Invalid partition table!`"
+
+#. type: Plain text
+msgid ""
+"Workaround (at least with BIOS versions A09, A11, and A12): just hit enter "
+"and it will continue with the boot."
+msgstr ""
+"راه‌های پیرامونی (دست‌کم با بایوس نسخه‌های A09، A11 و A12): تنها کافی است دکمهٔ "
+"Enter را بزنید و راه‌اندازی ادامه پیدا می‌کند."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"hp-notebook-BCM943142HM\">HP Notebook BCM943142HM</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2020-12-18\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid "Does not start Tails 4.13."
+msgstr "تیلز ۱٫۲٫۲ که با نصب‌کنندهٔ تیلز ایجاد شده باشد راه‌اندازی نمی‌شود."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"system76-oryx-pro\">System76 Oryx Pro</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-05-02\n"
+"Specs: https://system76.com/laptops/oryx\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This machine does not start from a Tails USB stick: the Linux kernel "
+"included in at least Tails 3.11 to 3.13.1, inclusive, does not support the "
+"hardware USB controller."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"not-entirely\">Tails not starting entirely</h1>\n"
+msgstr "تیلز حافظهٔ ویدیویی را پاک نمی‌کند\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"mac-not-entirely\">Mac</h2>\n"
+msgstr "<a id=\"mac\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on Mac|doc/first_steps/start/mac#not-entirely]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated:\n"
+"- MacBook Air Retina 2019: 2019-11-01\n"
+"- MacBook Pro 8,3: 2019-11-01\n"
+"-->\n"
+msgstr ""
+
+#. type: Title ###
+#, no-wrap
+msgid "MacBook Air Retina 2018 and 2019"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To start Tails successfully, [[add the following boot option when starting "
+"Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+"گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/first_steps/"
+"startup_options#boot_menu]] اضافه کنید."
+
+#. type: Plain text
+#, no-wrap
+msgid "    modprobe.blacklist=thunderbolt\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Still, the trackpad and keyboard might not work. You can use an external "
+"mouse and keyboard."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"pc-not-entirely\">PC</h2>\n"
+msgstr "<a id=\"pny\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on PC|doc/first_steps/start/pc#not-entirely]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"lockup\">\"Soft lockup\" error</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-05-20\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "On some laptops, Tails starts with the following error:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"code\">soft lockup - CPU#<span class=\"command-placeholder\">N</span> stuck for <span class=\"command-placeholder\">N</span>s</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To start Tails successfully, try to [[add the following boot option when "
+"starting Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+"گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/first_steps/"
+"startup_options#boot_menu]] اضافه کنید."
+
+#. type: Plain text
+#, no-wrap
+msgid "    acpi_rev_override=1\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"microsoft-surface-laptop\">Microsoft Surface Laptop 3 and 4</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2022-09-12\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The keyboard and mouse do not work on this laptop.  If you find a "
+"workaround, please let us know."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"sbat\">Shim SBAT verification error</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This section applies if you get the following error message, either when "
+"starting Tails or when restarting your regular Linux operating system after "
+"starting Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p class=\"code\">\n"
+"Verifying shim SBAT data failed: Security Policy Violation<br>\n"
+"Something has gone seriously wrong: SBAT self-check failed: Security Policy Violation\n"
+"</p>\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If you get this error message when starting Tails, then do a [[manual "
+"upgrade|doc/upgrade#manual]] of your Tails USB to Tails 6.7 or later."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If you get this error message when starting your regular Linux operating "
+"system, then it means that your Linux operating system is outdated."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Edit your UEFI settings to disable Secure Boot."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     With Secure Boot disabled, your regular Linux operating system should\n"
+"     start again.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     To learn how to edit the BIOS or UEFI settings, search for the user manual\n"
+"     of the computer on the support website of the manufacturer.\n"
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Update your regular Linux operating system."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Try to enable Secure Boot again in your UEFI settings."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     If your regular Linux operating system still doesn't start, then disable\n"
+"     Secure Boot again. You can try to enable Secure Boot again in the future.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     It might take several months for your Linux distribution to provide updates\n"
+"     before you can enable Secure Boot again.\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"wifi\">Networking issues</h1>\n"
+msgstr "<a id=\"wi-fi\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"problematic-wifi\">Problematic Wi-Fi interfaces</h2>\n"
+msgstr "<a id=\"problematic-usb-sticks\"></a>\n"
+
+#. type: Plain text
+msgid ""
+"Check in this section if there is a workaround to get your Wi-Fi interface "
+"work in Tails."
+msgstr ""
+
+#. type: Plain text
+msgid "To know the model of your Wi-Fi interface:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open a *Console* and execute the following command."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "       lspci -v | grep \"Network controller\"\n"
+msgstr "       lspci -nn | grep Network\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"88w8897\">88W8897 [AVASTAR] 802.11ac Wireless</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2018-09-19\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"On some computers with a Marvell Avastar 88W8897 Wi-Fi adapter, such as some "
+"Microsoft Surface Pro models, Tails fails to connect to Wi-Fi networks."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you experience this problem, you can try to [[disable MAC address "
+"anonymization|doc/first_steps/welcome_screen/mac_spoofing]] that sometimes "
+"fixes it."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"rtl8723be\">RTL8723BE PCIe Wireless Network Adapter</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2017-12-24\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"On some computers with a RTL8723be Wi-Fi adapter, Tails might fail to "
+"discover Wi-Fi networks, provide unreliable Wi-Fi connections, or have poor "
+"Wi-Fi performance."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can try to [[add the following boot options when starting Tails|doc/"
+"advanced_topics/boot_options]] until you find a combination that works for "
+"you. The exact combination of options that works depends on the computer:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "<span class=\"command\">rtl8723be.fwlps=0 rtl8723be.ips=0</span>"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "<span class=\"command\">rtl8723be.ant_sel=1</span>"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "<span class=\"command\">rtl8723be.ant_sel=2</span>"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"<span class=\"command\">rtl8723be.ant_sel=1 rtl8723be.fwlps=0 "
+"rtl8723be.ips=0</span>"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"<span class=\"command\">rtl8723be.ant_sel=2 rtl8723be.fwlps=0 "
+"rtl8723be.ips=0</span>"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h3 id=\"broadcom-sta-dkms\">Broadcom Wi-Fi network interface needing <code>broadcom-sta-dkms</code></h3>\n"
+msgstr "رابط شبکهٔ وای‌فای Broadcam نیازمند به `broadcom-sta-dkms\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-01-29\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Some Broadcom Wi-Fi interfaces require the [`wl`](https://wiki.debian.org/"
+"wl) driver, provided by the `broadcom-sta-dkms` Debian package, to work in "
+"Tails."
+msgstr ""
+"بعضی رابط‌های وای‌فای Broadcam برای کار کردن با تیلز نیازمند راه‌انداز [`wl`]"
+"(https://wiki.debian.org/wl) هستند که در بستهٔ دبیان `broadcom-sta-dkms` وجود "
+"دارد."
+
+#. type: Plain text
+msgid "The `wl` driver is not included in Tails because it is proprietary."
+msgstr "راه‌انداز `wl` در تیلز آورده نشده، چون مالکیتی است."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Your device requires the `wl` driver if it is in the list of devices "
+"supported by the `broadcom-sta-dkms` package on the corresponding [Debian "
+"wiki page](https://wiki.debian.org/wl). If you find your device in the list "
+"of supported devices, then it is impossible to use your Wi-Fi card in Tails."
+msgstr ""
+"۲. در صفحهٔ  [صفحهٔ ویکی دبیان](https://wiki.debian.org/wl) مرتبط اطمینان حاصل "
+"کنید \n"
+"که دستگاه شما در فهرست دستگاه‌های مورد پشتیبانی بستهٔ `broadcom-sta-dkms` وجود "
+"دارد.\n"
+"اگر دستگاهتان را در فهرست این دستگاه‌ها یافتید، آن‌گاه \n"
+"استفاده از کارت وای‌فای شما در تیلز غیرممکن است.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"broadcom-43602\">Authentication issues with Broadcom 43602</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2024-03-28\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The Broadcom 43602 Wi-Fi interface asks for the password of Wi-Fi networks "
+"in a loop when trying to connect."
+msgstr ""
+
+#. type: Plain text
+msgid "To fix this, try the following, if you have an iPhone:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Start Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Set up a personal Wi-Fi hotspot from your iPhone with the **Maximize "
+"Compatibility** option turned on."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Connect to your personal Wi-Fi hotspot from Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Disconnect."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Connect to any other Wi-Fi network."
+msgstr "تیلز نمی‌تواند به بعضی شبکه‌های وای‌فای وصل شود\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"lenovo-legion-y530\">Lenovo Legion Y530</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-05-10\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Wi-Fi adapter does not work."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To fix this issue, [[add the following boot option when starting Tails|doc/"
+"advanced_topics/boot_options]]:"
+msgstr ""
+"گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/first_steps/"
+"startup_options#boot_menu]] اضافه کنید."
+
+#. type: Plain text
+#, no-wrap
+msgid "    modprobe.blacklist=ideapad_laptop\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"security-issues\">Security issues</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Note: If we enable again this section in the future, we should link to it "
+"from /doc/anonymous_internet/Tor_Browser#fingerprint."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"fingerprint\"></a>\n"
+msgstr "<a id=\"fingerprint\"></a>\n"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "Browser fingerprint"
+msgstr "اثر انگشت\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"There are known differences between the fingerprints of *Tor Browser* inside "
+"and outside of Tails:"
+msgstr ""
+"<!-- اثر انگشت *مرورگر تور* روی تیلز و سیستم‌عامل‌های دیگر متفاوت است: -->\n"
+
+#. type: Plain text
+msgid ""
+"For more detail, see our documentation about the [[fingerprint of *Tor "
+"Browser* in Tails|doc/anonymous_internet/Tor_Browser#fingerprint]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"hardware\">Other hardware issues</h1>\n"
+msgstr "<a id=\"wi-fi\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"touchpad-configurations\">Touchpad configurations</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"lenovo-ideapad-3-touchpad\">Lenovo IdeaPad 3 Touchpad</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2021-03-26\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"This touchpad does not work by default. To fix this problem, [[add the "
+"following boot option when starting Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+"گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/first_steps/"
+"startup_options#boot_menu]] اضافه کنید."
+
+#. type: Plain text
+#, no-wrap
+msgid "    pci=nocrs\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"lenovo-thinkpad-11e\">Lenovo ThinkPad 11e</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2018-03-22\n"
+"Specs: https://www.cnet.com/products/lenovo-thinkpad-11e/specs/\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails might be unstable and stop working regularly on some Lenovo ThinkPad "
+"11e laptops, such as the 2015 model."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To fix this problem, [[add the following boot option when starting Tails|doc/"
+"advanced_topics/boot_options]]:"
+msgstr ""
+"گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/first_steps/"
+"startup_options#boot_menu]] اضافه کنید."
+
+#. type: Plain text
+#, no-wrap
+msgid "    intel_idle.max_cstate=1\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"usb-gigabyte\">USB devices are not working on some <a href=\"https://www.gigabyte.com/\">GIGABYTE</a> motherboards</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-06-02\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To workaround this issue, you can try to:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Use other USB ports. For example, use USB 2 ports instead of USB 3 ports and "
+"vice versa."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Enable these 3 options in the BIOS"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "xHCI handoff"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "EHCI handoff"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "IOMMU controller"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Add the following boot option when starting Tails|doc/advanced_topics/"
+"boot_options]]:"
+msgstr ""
+"گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/first_steps/"
+"startup_options#boot_menu]] اضافه کنید."
+
+#. type: Plain text
+#, no-wrap
+msgid "      amd_iommu=on iommu=pt\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Disable IOMMU in the BIOS then enable it again."
+msgstr ""
+
+#. type: Plain text
+msgid "Some of these workarounds might disable some of the USB ports."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"graphics-corruption-tor-browser\">Graphics corruption in Tor Browser and Thunderbird</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2020-02-22\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"On some computers, _Tor Browser_ and _Thunderbird_ are displayed incorrectly:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The application window is initially empty and white."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The icons and menus only appear when hovered by the mouse."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The contents of the window is only displayed in stripes when scrolling."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To workaround this issue, [[add the following boot option when starting "
+"Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+"گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/first_steps/"
+"startup_options#boot_menu]] اضافه کنید."
+
+#. type: Plain text
+#, no-wrap
+msgid "    intel_iommu=off\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid "This problem affects at least the following computers:"
+msgstr "این مشکل روی این سخت‌افزارها گزارش شده:"
+
+#. type: Bullet: '- '
+msgid "MacBookPro11,5"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Other MacBooks with a Radeon R9 graphics adapter"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"acer-swift-3\">Acer Swift 3</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2020-05-30\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In order to allow Tails to use all available memory, start Tails from the "
+"*F2 EFI setup* firmware entry."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"dell-xps-15-7590-nvidia\">Dell XPS 15 7590 with Nvidia graphics card</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2023-07-07\n"
+"Debian bug: https://bugs.debian.org/1036530\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When using the Nvidia card of a Dell XPS 15 7590 laptop, the system may "
+"become unresponsive while using Tails."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To fix this, start Tails with the following [[boot option|doc/"
+"advanced_topics/boot_options]]:"
+msgstr ""
+"گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/first_steps/"
+"startup_options#boot_menu]] اضافه کنید."
+
+#. type: Plain text
+#, no-wrap
+msgid "    pcie_port_pm=off\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"misc\">Other issues</h1>\n"
+msgstr "<a id=\"wi-fi\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"video-memory\">Tails does not erase video memory</h2>\n"
+msgstr "تیلز حافظهٔ ویدیویی را پاک نمی‌کند\n"
+
+#. type: Plain text
+msgid ""
+"Tails doesn't erase the [[!wikipedia Video_random-access_memory desc=\"video "
+"memory\"]]."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When you restart your computer after using Tails, it might briefly display "
+"the last screen that was displayed in Tails."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"If you shut down your computer instead of restarting it, the video memory "
+"will erase itself automatically after some time."
+msgstr ""
+"خاموش کردن کامل رایانه به جای راه‌اندازی دوبارهٔ آن ممکن است به حافظهٔ ویدیویی "
+"اجازه بدهد که محتویات خود را پاک کند."
+
+#. type: Plain text
+msgid "See [[!tails_ticket 5356 desc=\"Erase video memory on shutdown\"]]."
+msgstr ""
+"رجوع کنید به [[!tails_ticket 5356 desc=\"پاک کردن حافظهٔ ویدیویی هنگام خاموش "
+"شدن\"]]."
+
+#, fuzzy
+#~ msgid "Tails 3.3 does not start."
+#~ msgstr "همچنین رجوع کنید به [[!tails_ticket 6397]]."
+
+#~ msgid ""
+#~ "With UEFI enabled, when choosing a boot device, select `Boot From EFI "
+#~ "File` and then `Filesystem Tails` and `EFI/BOOT/BOOTX64.EFI`."
+#~ msgstr ""
+#~ "با UEFI فعال، هنگام انتخاب یک دستگاه بوت،  `Boot From EFI File` و سپس "
+#~ "`Filesystem Tails` و `EFI/BOOT/bootx64.efi` را انتخاب کنید."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"no-wifi\">Wi-Fi not working</h2>\n"
+#~ msgstr "<a id=\"wi-fi\"></a>\n"
+
+#~ msgid "Bluetooth is not enabled in Tails for security reasons."
+#~ msgstr "بلوتوث به دلایل امنیتی روی تیلز فعال نشده است."
+
+#, fuzzy
+#~ msgid ""
+#~ "To fix this problem, you can [[update your Tails manually|doc/upgrade/"
+#~ "#manual]]."
+#~ msgstr ""
+#~ "برای حل این مشکل می‌توانید [[تیلز خود را دستی به‌روز کنید|doc/first_steps/"
+#~ "upgrade/#manual]]."
+
+#, fuzzy
+#~ msgid ""
+#~ "To prevent this from occurring, [[add the following boot option when "
+#~ "starting Tails|doc/advanced_topics/boot_options]]:"
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy, no-wrap
+#~ msgid "<h1 id=\"problematic-usb-sticks\">Problematic USB sticks</h1>\n"
+#~ msgstr "<a id=\"problematic-usb-sticks\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h3 id=\"aegis\">Aegis Secure Key 3.0</h3>\n"
+#~ msgstr "<a id=\"aegis\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h3 id=\"datatraveler-2000\">Kingston DataTraveler 2000, Kingston DataTraveler 100 G3, Kingston DataTraveler Max</h3>\n"
+#~ msgstr "<a id=\"xorg-driver\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Starting Tails from a Kingston DataTraveler 2000, DataTraveler 100G3, or "
+#~ "Kingston DataTraveler Max might not work."
+#~ msgstr "<a id=\"xorg-driver\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "If Tails fails to start, [[add the following boot option when starting "
+#~ "Tails|doc/advanced_topics/boot_options]]:"
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy, no-wrap
+#~ msgid "[[!inline pages=\"doc/anonymous_internet/no-wifi.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"doc/anonymous_internet/networkmanager/no-wifi.inline.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "MacBook Air 3,2 (A1369 EMC 2392)"
+#~ msgstr "دستگاه MacBook Air 3,2 (A1369 EMC 2392) هنگام راه‌اندازی تیلز در حالت UEFI بی‌حرکت می‌شود."
+
+#, fuzzy, no-wrap
+#~ msgid "  Freezes when booting Tails in UEFI mode.\n"
+#~ msgstr "دستگاه MacBook Air 3,2 (A1369 EMC 2392) هنگام راه‌اندازی تیلز در حالت UEFI بی‌حرکت می‌شود."
+
+#, fuzzy, no-wrap
+#~ msgid "Mac Pro Tower and MacBook Pro 4,1 (both from early 2008)"
+#~ msgstr "دستگاه‌های Mac Pro Tower و MacBook Pro 4,1 (هر دو متعلق به اوایل ۲۰۰۸) و MacBook Pro 8,2 (اواخر ۲۰۱۱) در راه‌اندازی از یک درایو یواس‌بی ایجادشده توسط نصب‌کنندهٔ تیلز ناموفق هستند."
+
+#, fuzzy, no-wrap
+#~ msgid "  Fail to start on Tails.\n"
+#~ msgstr "مشکلات هنگام راه‌اندازی تیلز\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h3 id=\"sg-black-screen\">Acer Travelmate 8573T-254G50M</h3>\n"
+#~ msgstr "Acer Travelmate 8573T-254G50M\n"
+
+#, fuzzy
+#~ msgid "Booting from DVD works fine, but does not start from USB sticks."
+#~ msgstr ""
+#~ "راه‌اندازی از دی‌وی‌دی به خوبی انجام می‌شود، اما راه‌اندازی از درایوهای یواس‌بی "
+#~ "ایجادشده توسط نصب‌کنندهٔ تیلز انجام نمی‌شود."
+
+#~ msgid ""
+#~ "This problem might be corrected in Tails 1.1 and newer: please report "
+#~ "your test results back to us."
+#~ msgstr ""
+#~ "این مشکل ممکن است در تیلز ۱٫۱ و نسخه‌های جدیدتر از آن حل شده باشد. لطفاً "
+#~ "نتایج آزمایش‌های خود در این مورد را به ما گزارش دهید."
+
+#~ msgid ""
+#~ "Legacy support needs to be enabled in order to start Tails. To enable "
+#~ "legacy boot support, enable 'Launch CSM' under boot (menu)."
+#~ msgstr ""
+#~ "برای راه‌اندازی تیلز باید پشتیبانی از Legacy فعال شود. برای فعال کردن "
+#~ "پشتیبانی راه‌اندازی legacy «'Launch CSM» را زیر (فهرست) راه‌اندازی فعال "
+#~ "کنید."
+
+#, fuzzy, no-wrap
+#~ msgid "<h3 id=\"dell-xps-l702x\">Dell XPS L702X/03RG89, Samsung RV520, Samsung Series 7 Chronos</h3>\n"
+#~ msgstr "Dell XPS L702X/03RG89, Samsung RV520, Samsung Series 7 Chronos\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated:\n"
+#~ "- Dell XPS L702X/03RG89: 2012-08-22\n"
+#~ "- Samsung RV520: 2012-12-21\n"
+#~ "- Samsung Series 7 Chronos: 2014-02-28\n"
+#~ "-->\n"
+#~ msgstr "Dell XPS L702X/03RG89, Samsung RV520, Samsung Series 7 Chronos\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "We were reported that the legacy BIOS shipped on these systems doesn't "
+#~ "know how to deal with the GPT partition scheme used in Tails."
+#~ msgstr ""
+#~ "به ما گزارش شده که بایوس legacy گنجانده‌شده در این سیستم‌ها نمی‌داند چطور "
+#~ "باید با طرح پارتیشن GPT نصب‌شده روی نصب‌کنندهٔ تیلز برخورد کند."
+
+#~ msgid ""
+#~ "<https://www.dell.com/community/Laptops-General-Read-Only/GPT-Bootable-"
+#~ "Bios-Optimus-Switch-Are-Necessary-For-L502x-L702x/m-p/3699920>"
+#~ msgstr ""
+#~ "<https://www.dell.com/community/Laptops-General-Read-Only/GPT-Bootable-"
+#~ "Bios-Optimus-Switch-Are-Necessary-For-L502x-L702x/m-p/3699920>"
+
+#, fuzzy, no-wrap
+#~ msgid "<h3 id=\"hp-compaq-dc5750\">HP Compaq dc5750 Microtower</h3>\n"
+#~ msgstr "HP Compaq dc5750 Microtower\n"
+
+#, fuzzy
+#~ msgid "Does not start Tails 1.2.3."
+#~ msgstr "تیلز ۱٫۲٫۲ که با نصب‌کنندهٔ تیلز ایجاد شده باشد راه‌اندازی نمی‌شود."
+
+#, fuzzy
+#~ msgid ""
+#~ "You need to update the firmware to its latest version in order to start "
+#~ "from a USB stick."
+#~ msgstr ""
+#~ "برای راه‌اندازی از دستگاه نصب‌شده توسط نصب‌کنندهٔ تیلز باید سفت‌افزار را به "
+#~ "آخرین نسخهٔ آن ارتقاء دهید."
+
+#~ msgid "Does not start Tails 1.1 from USB installed manually in Linux."
+#~ msgstr ""
+#~ "تیلز ۱٫۱ را از درایو یواس‌بی که روی لینوکس دستی نصب شده باشد راه‌اندازی "
+#~ "نمی‌کند."
+
+#, fuzzy
+#~ msgid "Goes back continuously to Boot Loader on Tails installed on DVD."
+#~ msgstr "روی تیلز نصب‌شده روی دی‌وی‌دی مدام به فهرست راه‌اندازی بازمی‌گردد."
+
+#, fuzzy, no-wrap
+#~ msgid "<h3 id=\"clevo-w258cu\">Clevo W258CU, ThinkPad X121e, T420i, T410, T520, W520, W540, T530, T60, E325, and E530</h3>\n"
+#~ msgstr "Clevo W258CU, ThinkPad X121e, T420i, T410, T520, W520, T530, E325, و E530\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "These machines do not start on USB sticks due to a firmware limitation."
+#~ msgstr ""
+#~ "این دستگاه‌ها به دلیل یک محدودیت سفت‌افزاری با درایو یواس‌بی ایجادشده توسط "
+#~ "نصب‌کنندهٔ تیلز راه‌اندازی نمی‌شوند."
+
+#, fuzzy
+#~ msgid ""
+#~ "To make the display work properly, [[add the following boot option when "
+#~ "starting Tails|doc/advanced_topics/boot_options]]:"
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy, no-wrap
+#~ msgid "<h3 id=\"pny\">PNY</h3>\n"
+#~ msgstr "<a id=\"pny\"></a>\n"
+
+#~ msgid ""
+#~ "When installing Tails, PNY USB sticks have problems with the constant "
+#~ "write load and are prone to failure."
+#~ msgstr ""
+#~ "هنگام نصب تیلز، درایوهای یواس‌بی PNY با میزان نوشتن ثابت دچار مشکل شده و "
+#~ "احتمال توقف نصب با آن‌ها وجود دارد."
+
+#, fuzzy
+#~ msgid ""
+#~ "Tails doesn't erase the [[!wikipedia Video_RAM_(dual-ported_DRAM) "
+#~ "desc=\"video memory\"]] yet.  When one uses Tails, then restarts the "
+#~ "computer into another operating system, that other operating system "
+#~ "might, for a moment, display the last screen that was displayed in Tails."
+#~ msgstr ""
+#~ "تیلز هنوز [[!wikipedia Video_RAM_(dual-ported_DRAM) desc=\"حافظهٔ "
+#~ "ویدیویی\"]] را پاک نمی‌کند. هنگام استفاده از تیلز و راه‌اندازی دوبارهٔ "
+#~ "رایانه به سیستم‌عاملی دیگر، آن سیستم‌عامل دیگر می‌تواند ببیند که روی صفحهٔ "
+#~ "تیلز چه چیزهایی دیده می‌شد."
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"support/known_issues/import_broken_in_seahorse.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"support/known_issues/import_broken_in_seahorse.inline.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"boot-loader-display-issues\">Boot Loader has display issues</h2>\n"
+#~ msgstr "مشکلاتی در نمایش فهرست راه‌اندازی وجود دارد\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Since Tails 1.1, on some hardware (ThinkPad X230, MacBook Pro 8,1), the "
+#~ "Boot Loader is not displayed properly. Tails starts fine, though."
+#~ msgstr ""
+#~ "از تیلز ۱٫۱ به بعد، فهرست راه‌اندازی روی بعضی سخت‌افزارها (ThinkPad X230، "
+#~ "MacBook Pro 8,1) به خوبی نشان داده نمی‌شود. اما تیلز بدون مشکل راه‌اندازی "
+#~ "می‌شود."
+
+#, fuzzy, no-wrap
+#~ msgid "<h3 id=\"acer-travelmate-b113\">Acer TravelMate B113 - ETPS/2 Elantech Touchpad</h3>\n"
+#~ msgstr "Acer TravelMate B113 - ETPS/2 Elantech Touchpad"
+
+#, no-wrap
+#~ msgid ""
+#~ "    synclient FingerPress=256;\n"
+#~ "    synclient TapButton3=0;\n"
+#~ "    synclient Clickpad=1;\n"
+#~ "    synclient VertTwoFingerScroll=1;\n"
+#~ "    synclient FingerLow=1;\n"
+#~ "    synclient FingerHigh=1;\n"
+#~ msgstr ""
+#~ "    synclient FingerPress=256;\n"
+#~ "    synclient TapButton3=0;\n"
+#~ "    synclient Clickpad=1;\n"
+#~ "    synclient VertTwoFingerScroll=1;\n"
+#~ "    synclient FingerLow=1;\n"
+#~ "    synclient FingerHigh=1;\n"
+
+#, fuzzy
+#~ msgid "Note that your Persistent Storage will be safely preserved."
+#~ msgstr "در نظر داشته باشید که درایو مانای شما امن خواهد بود."
+
+#, fuzzy
+#~ msgid ""
+#~ "This happens when the GnuPG feature of the Persistent Storage was turned "
+#~ "on before Tails 2.3. To fix this problem, execute the following command "
+#~ "in a [[terminal|doc/first_steps/"
+#~ "introduction_to_gnome_and_the_tails_desktop#terminal]]:"
+#~ msgstr ""
+#~ "این فرمان را در یک [[پایانه|doc/first_steps/"
+#~ "introduction_to_gnome_and_the_tails_desktop#terminal]] اجرا کنید:"
+
+#~ msgid ""
+#~ "This section lists known problems with specific hardware. To report a "
+#~ "problem with different hardware see our [[report guidelines when Tails "
+#~ "does not start|doc/first_steps/bug_reporting#does-not-start]]."
+#~ msgstr ""
+#~ "این بخش مشکلات شناخته‌شدهٔ سخت‌افزارهای خاص را فهرست می‌کند. برای گزارش یک "
+#~ "مشکل با سخت‌افزاری متفاوت [[دستورالعمل‌های گزارش هنگامی که تیلز راه‌اندازی "
+#~ "نمی‌شود|doc/first_steps/bug_reporting#does-not-start]] را ببینید."
+
+#, fuzzy
+#~ msgid ""
+#~ "Any Mac with 32-bit EFI might not start on Tails.  You can check if a "
+#~ "given Mac is 32-bit or 64-bit EFI on that list: <https://www.everymac.com/"
+#~ "mac-answers/snow-leopard-mac-os-x-faq/mac-os-x-snow-leopard-64-bit-"
+#~ "macs-64-bit-efi-boot-in-64-bit-mode.html>"
+#~ msgstr ""
+#~ "هر دستگاه مک با EFI ۳۲بیتی ممکن است در راه‌اندازی درایو یواس‌بی تیلز "
+#~ "ایجادشده با نصب‌کنندهٔ تیلز ناموفق باشد. می‌توانید در این فهرست بررسی کنید "
+#~ "که آیا یک دستگاه مک خاص ۳۲بیتی است یا ۶۴بیتی: <https://www.everymac.com/"
+#~ "mac-answers/snow-leopard-mac-os-x-faq/mac-os-x-snow-leopard-64-bit-"
+#~ "macs-64-bit-efi-boot-in-64-bit-mode.html>"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "  To start Tails successfully, [[add the following boot option when\n"
+#~ "  starting Tails|doc/advanced_topics/boot_options]]:\n"
+#~ msgstr "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy
+#~ msgid "Does not start Tails 4.13 ([[!tails_ticket 17953]])."
+#~ msgstr "تیلز ۱٫۲٫۲ که با نصب‌کنندهٔ تیلز ایجاد شده باشد راه‌اندازی نمی‌شود."
+
+#~ msgid "Aegis Secure Key USB 2.0"
+#~ msgstr "Aegis Secure Key USB 2.0"
+
+#~ msgid ""
+#~ "During the boot process, USB is briefly powered off, that causes Aegis "
+#~ "hardware-encrypted USB sticks to lock down, and the PIN must be entered "
+#~ "again (fast) in order to complete the boot."
+#~ msgstr ""
+#~ "هنگام روند راه‌اندازی، یواس‌بی برای مدتی خاموش می‌شود که منجر به قفل شدن "
+#~ "درایوهای یواس‌بی Aegis  می‌شوند که از طریق سخت‌افزار رمزگذاری شده‌اند و در "
+#~ "نتیجه باید دوباره (و سریع) پین را وارد کنید تا راه‌اندازی کامل انجام شود."
+
+#~ msgid "Aegis Secure Key USB 3.0"
+#~ msgstr "Aegis Secure Key USB 3.0"
+
+#~ msgid ""
+#~ "This USB stick doesn't start Tails at all, the USB 2.0 workaround is not "
+#~ "working for that hardware."
+#~ msgstr ""
+#~ "این درایو یواس‌بی به کل تیلز را راه‌اندازی نکرده و روش پیرامونی یواس‌بی ۲٬۰ "
+#~ "برای آن سخت‌افزار کار نمی‌کند."
+
+#, fuzzy
+#~ msgid "Problems starting Tails"
+#~ msgstr "مشکلات هنگام راه‌اندازی تیلز\n"
+
+#, fuzzy
+#~ msgid "Problematic USB sticks"
+#~ msgstr "درایوهای یواس‌بی مشکل‌دار\n"
+
+#~ msgid "PNY"
+#~ msgstr "PNY"
+
+#, fuzzy
+#~ msgid "Aegis Secure Key"
+#~ msgstr "Aegis Secure Key USB 2.0"
+
+#, fuzzy
+#~ msgid "<a id=\"pc\">\n"
+#~ msgstr "<a id=\"pny\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"lockup\"></a>\n"
+#~ msgstr "<a id=\"pny\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"sg-black-screen\"></a>\n"
+#~ msgstr "<a id=\"switchable_graphics_black_screen\"></a>\n"
+
+#, fuzzy
+#~ msgid "Acer Aspire 5315-ICL50"
+#~ msgstr "Acer Aspire 5315-ICL50\n"
+
+#, fuzzy
+#~ msgid "ASUS VivoBook X202E"
+#~ msgstr "ASUS VivoBook X202E\n"
+
+#, fuzzy
+#~ msgid "Dell Latitude E5250"
+#~ msgstr "Dell Inc. Latitude E6430 and E6230\n"
+
+#, fuzzy
+#~ msgid "HP Compaq 615"
+#~ msgstr "Compaq 615\n"
+
+#, fuzzy
+#~ msgid "HP Compaq CQ60-214DX"
+#~ msgstr "Compaq 615\n"
+
+#, fuzzy
+#~ msgid "HP Pavilion 15-ab277ca"
+#~ msgstr "HP Pavilion dv7\n"
+
+#, fuzzy
+#~ msgid "HP ProBook"
+#~ msgstr "HP ProBook\n"
+
+#, fuzzy
+#~ msgid "Lenovo IdeaPad Y410p"
+#~ msgstr "Lenovo IdeaPad Y410p\n"
+
+#, fuzzy
+#~ msgid "Lenovo IdeaPad z585"
+#~ msgstr "Lenovo IdeaPad z585\n"
+
+#, fuzzy
+#~ msgid "Wi-Fi issues"
+#~ msgstr "مشکلات وای‌فای\n"
+
+#, fuzzy
+#~ msgid "<a id=\"wi-fi-workarounds\"></a>\n"
+#~ msgstr "<a id=\"wi-fi\"></a>\n"
+
+#~ msgid "<a id=\"broadcom-sta-dkms\"></a>\n"
+#~ msgstr "<a id=\"broadcom-sta-dkms\"></a>\n"
+
+#, fuzzy
+#~ msgid "Broadcom Wi-Fi network interface needing `broadcom-sta-dkms`"
+#~ msgstr "رابط شبکهٔ وای‌فای Broadcam نیازمند به `broadcom-sta-dkms\n"
+
+#, fuzzy
+#~ msgid "Security issues"
+#~ msgstr "مسائل امنیتی\n"
+
+#~ msgid "<a id=\"video-memory\"></a>\n"
+#~ msgstr "<a id=\"video-memory\"></a>\n"
+
+#, fuzzy
+#~ msgid "Tails does not erase video memory"
+#~ msgstr "تیلز حافظهٔ ویدیویی را پاک نمی‌کند\n"
+
+#, fuzzy
+#~ msgid "Other issues"
+#~ msgstr "مسائل دیگر\n"
+
+#, fuzzy
+#~| msgid "<a id=\"aegis\"></a>\n"
+#~ msgid "<a id=\"openpgp-import\"></a>\n"
+#~ msgstr "<a id=\"aegis\"></a>\n"
+
+#, fuzzy
+#~ msgid "Boot Loader has display issues"
+#~ msgstr "مشکلاتی در نمایش فهرست راه‌اندازی وجود دارد\n"
+
+#, fuzzy
+#~ msgid "Touchpad configurations"
+#~ msgstr "پیکربندی حس‌گر لمسی\n"
+
+#, fuzzy
+#~ msgid "Bluetooth devices don't work"
+#~ msgstr "دستگاه بلوتوث کار نمی‌کند\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<a id=\"automatic_upgrade_fails\"></a>\n"
+#~ "<a id=\"partial-upgrade\"></a>\n"
+#~ msgstr "<a id=\"automatic_upgrade_fails\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"persistence-disappears\"></a>\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"utc\"></a>\n"
+#~ msgstr "<a id=\"mac\"></a>\n"
+
+#, fuzzy
+#~ msgid "Lenovo ThinkPad 11e"
+#~ msgstr "Lenovo IdeaPad Y410p\n"
+
+#, fuzzy
+#~ msgid "<a id=\"usb-gigabyte\"></a>\n"
+#~ msgstr "<a id=\"mac\"></a>\n"
+
+#~ msgid "<a id=\"restart-shell\"></a>\n"
+#~ msgstr "<a id=\"restart-shell\"></a>\n"
+
+#, fuzzy
+#~ msgid "See [[!tails_ticket 10576]] for more details."
+#~ msgstr "همچنین رجوع کنید به [[!tails_ticket 6397]]."
+
+#, fuzzy
+#~ msgid "Problematic USB sticks\n"
+#~ msgstr "درایوهای یواس‌بی مشکل‌دار\n"
+
+#~ msgid ""
+#~ "Mac\n"
+#~ "---\n"
+#~ msgstr ""
+#~ "مک\n"
+#~ "---\n"
+
+#, fuzzy
+#~ msgid "Wi-Fi issues\n"
+#~ msgstr "مشکلات وای‌فای\n"
+
+#, fuzzy
+#~ msgid "Security issues\n"
+#~ msgstr "مسائل امنیتی\n"
+
+#, fuzzy
+#~ msgid "Browser fingerprint\n"
+#~ msgstr "اثر انگشت\n"
+
+#, fuzzy
+#~ msgid "Other issues\n"
+#~ msgstr "مسائل دیگر\n"
+
+#, fuzzy
+#~ msgid "Touchpad configurations\n"
+#~ msgstr "پیکربندی حس‌گر لمسی\n"
+
+#, fuzzy
+#~ msgid "Bluetooth devices don't work\n"
+#~ msgstr "دستگاه بلوتوث کار نمی‌کند\n"
+
+#~ msgid "Note that your Persistent Volume will be safely preserved."
+#~ msgstr "در نظر داشته باشید که درایو مانای شما امن خواهد بود."
+
+#, fuzzy
+#~ msgid ""
+#~ "This happens when one has enabled the GnuPG persistence feature before "
+#~ "Tails 2.3. To fix this problem, execute the following command in a "
+#~ "[[terminal|doc/first_steps/"
+#~ "introduction_to_gnome_and_the_tails_desktop#terminal]]:"
+#~ msgstr ""
+#~ "این فرمان را در یک [[پایانه|doc/first_steps/"
+#~ "introduction_to_gnome_and_the_tails_desktop#terminal]] اجرا کنید:"
+
+#~ msgid "Aegis"
+#~ msgstr "Aegis"
+
+#~ msgid "MacBook Pro 5,5 does not boot with Tails in UEFI mode."
+#~ msgstr "دستگاه MacBook Pro 5,5 با تیلز در حالت UEFI راه‌اندازی نمی‌شود."
+
+#, fuzzy
+#~ msgid ""
+#~ "MacBook Pro 5,1 17\" (Nvidia GeForce 9400M): one must add the "
+#~ "`nouveau.noaccel=1` boot parameter so that the display works properly."
+#~ msgstr ""
+#~ "دستگاه MacBook Pro 5,1 17\" (Nvidia GeForce 9400M): باید پارامترهای "
+#~ "راه‌اندازی `nouveau.noaccel=1` اضافه شوند تا صفحه نمایش درست کار کند."
+
+#, fuzzy
+#~ msgid ""
+#~ "You need to add `nomodeset` to the [[startup options|/doc/first_steps/"
+#~ "startup_options/#boot_loader_menu]] to make Tails start successfully."
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy
+#~ msgid "Dell Dimension 2400"
+#~ msgstr "Dell Dimension 2400\n"
+
+#~ msgid ""
+#~ "Does not start neither from USB nor from DVD. System crashes with a blank "
+#~ "screen and locked up keyboard. This problem might be corrected in newer "
+#~ "versions: please report your test results back to us."
+#~ msgstr ""
+#~ "تیلز نه از یواس بی راه‌اندازی می‌شود و نه از دی‌وی‌دی. سیستم با یک صفحهٔ خالی "
+#~ "متوقف شده و صفحه‌کلید قفل می‌شود. این مشکل شاید در نسخه‌های جدیدتر حل شده "
+#~ "باشد: لطفاً نتایج آزمایش‌های خود در این مورد را به ما گزارش کنید."
+
+#, fuzzy
+#~ msgid "Dell Inspiron 8100"
+#~ msgstr "Dell Inspiron 8100\n"
+
+#~ msgid ""
+#~ "The display panel will have the wrong resolution unless "
+#~ "`video=LVDS-1:1600x1200 nouveau.noaccel=1` is added to the boot command "
+#~ "line. This problem might be corrected in Tails 1.1 and newer: please "
+#~ "report your test results back to us."
+#~ msgstr ""
+#~ "پنل نمایش راه‌حلی اشتباه خواهد داشت مگر این که `video=LVDS-1:1600x1200 "
+#~ "nouveau.noaccel=1` به خط فرمان راه‌اندازی اضافه شود. این مشکل ممکن است در "
+#~ "تیلز نسخه‌های ۱٫۱ و جدیدتر حل شده باشد. لطفاً نتیجهٔ آزمایش‌های خود در این "
+#~ "مورد را به ما گزارش کنید."
+
+#, fuzzy
+#~ msgid "Fujitsu Siemens Amilo A 1667G"
+#~ msgstr "Fujitsu Siemens Amilo A 1667G\n"
+
+#, fuzzy
+#~ msgid "HP Pavilion dv7"
+#~ msgstr "HP Pavilion dv7\n"
+
+#, fuzzy
+#~ msgid "Since Tails 1.3, gets stuck at the Boot Loader Menu."
+#~ msgstr ""
+#~ "از تیلز ۱٫۳ در فهرست راه‌اندازی متوقف می‌شود، چه تیلز دستی نصب شده باشد و "
+#~ "چه با نصب‌کنندهٔ تیلز."
+
+#~ msgid ""
+#~ "A workaround for some of these machines is to use the [[manual "
+#~ "installation process|install/linux/usb]].  Note, however, that this "
+#~ "technique does not allow you to set up a persistent volume."
+#~ msgstr ""
+#~ "راه پیرامونی برای برخی از این دستگاه‌ها استفاده از [[روند نصب دستی|install/"
+#~ "linux/usb]] است. در خاطر داشته باشید این روش‌ها به شما اجازهٔ تنظیم درایو "
+#~ "مانا نمی‌دهند."
+
+#, fuzzy
+#~ msgid ""
+#~ "Most such problems can be solved by adding [[startup options|/doc/"
+#~ "first_steps/startup_options/#boot_loader_menu]]."
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy
+#~ msgid ""
+#~ "Adding `modprobe.blacklist=ideapad_laptop` to the [[startup options|doc/"
+#~ "first_steps/startup_options#boot_loader_menu]] fixes the issue."
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy
+#~ msgid "<a id=\"fails-to-shutdown\"></a>\n"
+#~ msgstr "<a id=\"chainloading\"></a>\n"
+
+#, fuzzy
+#~ msgid "Tails fails to completely shutdown or restart\n"
+#~ msgstr "تیلز نمی‌تواند به بعضی شبکه‌های وای‌فای وصل شود\n"
+
+#, fuzzy
+#~ msgid "This issue has been reported on the following hardware:"
+#~ msgstr "این مشکل روی این سخت‌افزارها گزارش شده:"
+
+#~ msgid "<a id=\"chainloading\"></a>\n"
+#~ msgstr "<a id=\"chainloading\"></a>\n"
+
+#, fuzzy
+#~ msgid "Chainloading Tails from GRUB\n"
+#~ msgstr "بارگذاری زنجیره‌ای تیلز از GRUB\n"
+
+#~ msgid ""
+#~ "To workaround problems in booting Tails on laptops with UEFI support, it "
+#~ "is possible to chainload the syslinux on the ISO image from another boot "
+#~ "loader that is already working on the laptop, like GRUB. Be careful not "
+#~ "to modify at all the options of syslinux in the process."
+#~ msgstr ""
+#~ "برای استفاده از راه‌حل‌های پیرامونی هنگام راه‌اندازی تیلز در لپ‌تاپ‌هایی که از "
+#~ "UEFI پشتیبانی می‌کنند، می‌توان syslinux را روی تصویر ایزو از بارگذار "
+#~ "راه‌اندازی دیگری که در حال کار روی لپ‌تاپ است، مانند GRUB، بارگذاری "
+#~ "زنجیره‌ای کرد. دقت کنید که در این روند تمام گزینه‌های syslinux را تغییر "
+#~ "ندهید."
+
+#~ msgid "The following commands, run from the GRUB shell, might be helpful:"
+#~ msgstr "فرمان‌های زیر که از پوستهٔ GRUB اجرا می‌شوند ممکن است سودمند باشند:"
+
+#~ msgid ""
+#~ "    set root=(hd1)\n"
+#~ "    chainloader +1\n"
+#~ "    boot\n"
+#~ msgstr ""
+#~ "    set root=(hd1)\n"
+#~ "    chainloader +1\n"
+#~ "    boot\n"
+
+#~ msgid ""
+#~ "This might be related to the introduction of wireless regulation support "
+#~ "in Tails 0.13."
+#~ msgstr "این مشکل ممکن است به آغاز پشتیبانی بی‌سیم در تیلز ۰٫۱۳ مرتبط باشد."
+
+#~ msgid "<a id=\"browser_languages\"></a>\n"
+#~ msgstr "<a id=\"browser_languages\"></a>\n"
+
+#, fuzzy
+#~ msgid "Tor Browser is translated in a limited number of languages\n"
+#~ msgstr "مرورگر تور تنها به چند زبان ترجمه می‌شود\n"
+
+#~ msgid ""
+#~ "Since Tails 1.2, the web browser is based on Tor Browser which is "
+#~ "translated in less languages than before. You can see the list of "
+#~ "languages available in Tor Browser from the [Tor Browser homepage]"
+#~ "(https://www.torproject.org/projects/torbrowser.html.en)."
+#~ msgstr ""
+#~ "از تیلز ۱٫۲ به بعد مرورگر وب مبتنی بر مرورگر تور است که به زبان‌های کمتری "
+#~ "از قبل ترجمه شده‌است. می‌توانید فهرست زبان‌های موجود در مرورگر تور را از "
+#~ "[صفحهٔ اصلی تور](https://www.torproject.org/projects/torbrowser.html.en) "
+#~ "ببینید."
+
+#, fuzzy
+#~ msgid ""
+#~ "If the sound output does not work on an Acer Aspire One laptop, add `snd-"
+#~ "hda-intel.model=acer-aspire` to the [[startup options|/doc/first_steps/"
+#~ "startup_options/#boot_loader_menu]]."
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#~ msgid "<a id=\"sandisk\"></a>\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#~ msgid "SanDisk"
+#~ msgstr "سان‌دیسک"
+
+#, fuzzy
+#~ msgid ""
+#~ "Many SanDisk USB sticks are configured by the manufacturer as a fixed "
+#~ "disk, and not as a removable disk. As a consequence, they require "
+#~ "removing the `live-media=removable` boot parameter. See troubleshooting "
+#~ "section about Tails not starting entirely on [[PC|install/win/usb#start-"
+#~ "tails]] or [[Mac|install/mac/usb#start-tails]]."
+#~ msgstr ""
+#~ "بسیاری از درایوهای یواس‌بی سان‌دیسک توسط تولیدکننده‌شان مانند یک دیسک ثابت "
+#~ "پیکربندی‌شده‌اند، نه مانند یک دیسک جداشدنی. در نتیجه استفاده از آن‌ها مستلزم "
+#~ "پارامتر راه‌اندازی `live-media=removable` است که [[خطرناک است|doc/"
+#~ "first_steps/bug_reporting/tails_does_not_start#entirely]]."
+
+#~ msgid "SanDisk Cruzer Edge 8GB"
+#~ msgstr "SanDisk Cruzer Edge 8GB"
+
+#, fuzzy
+#~ msgid "SanDisk Cruzer Extreme USB 3.0 16GB, 32GB, and 64GB"
+#~ msgstr "SanDisk Cruzer Extreme USB 3.0 16GB، 32GB و 64GB"
+
+#~ msgid "SanDisk Cruzer Fit USB 2.0 8GB, 16GB, and 32G"
+#~ msgstr "SanDisk Cruzer Fit USB 2.0 8GB، 16GB و 32G"
+
+#~ msgid "SanDisk Cruzer Force 8GB"
+#~ msgstr "SanDisk Cruzer Force 8GB"
+
+#, fuzzy
+#~ msgid "SanDisk Cruzer Glide 4GB, 8GB, 16GB, and 32GB"
+#~ msgstr "SanDisk Cruzer Blade 4GB، 8GB و 32GB"
+
+#, fuzzy
+#~ msgid "SanDisk Cruzer Switch USB 2.0 8GB, and 32GB"
+#~ msgstr "SanDisk Cruzer Switch USB 2.0 8GB و 32GB"
+
+#~ msgid "SanDisk Cruzer USB 3.0 64GB"
+#~ msgstr "SanDisk Cruzer USB 3.0 64GB"
+
+#~ msgid "SanDisk Cruzer Blade 4GB, 8GB, and 32GB"
+#~ msgstr "SanDisk Cruzer Blade 4GB، 8GB و 32GB"
+
+#~ msgid "SanDisk Cruzer Facet"
+#~ msgstr "SanDisk Cruzer Facet"
+
+#~ msgid ""
+#~ "SanDisk Cruzer Orbiter 32GB (hangs at installation time but boots fine "
+#~ "afterwards)"
+#~ msgstr ""
+#~ "SanDisk Cruzer Orbiter 32GB (موقع نصب دچار مشکل می‌شود اما پس از آن بدون "
+#~ "مشکل راه‌اندازی می‌شود)"
+
+#~ msgid "SanDisk Ultra 16GB, 32GB"
+#~ msgstr "SanDisk Ultra 16GB, 32GB"
+
+#~ msgid ""
+#~ "SanDisk had begun the production of flash drives configured as fixed disk "
+#~ "in 2012 to meet new requirements for Windows 8 Certification, and ended "
+#~ "it in mid-2014. The flash drives that comply with this certification will "
+#~ "have the Windows 8 logo on their packaging.  If a flash drive does not "
+#~ "have the Windows 8 logo on its packaging, then that drive will function "
+#~ "as a removable disk and should work with Tails."
+#~ msgstr ""
+#~ "سان‌دیسک از سال ۲۰۱۲ برای انطابق با نیازمندی‌های جدید گواهی ویندوز ۸ شروع "
+#~ "به تولید درایوهای یواس‌بی تنظیم‌شده به شکل دیسک ثابت کرده که تولید آن‌ها در "
+#~ "اواسط سال ۲۰۱۴ متوقف شد. فلش‌هایی که مطابق این گواهی هستند روی بسته‌بندی‌شان "
+#~ "علامت ویندوز ۸ دیده می‌شود.  اگر روی بسته‌بندی یک درایو یواس‌بی لوگوی ویندوز "
+#~ "۸ نباشد، آن درایو مانند یک دیسک جداشدنی عمل کرده و در نتیجه باید بتواند "
+#~ "با تیلز کار کند."
+
+#~ msgid "See also [[!tails_ticket 6397]]."
+#~ msgstr "همچنین رجوع کنید به [[!tails_ticket 6397]]."
+
+#~ msgid "Other vendors"
+#~ msgstr "تولیدکننده‌های دیگر"
+
+#~ msgid ""
+#~ "Staples Relay USB 2.0 16GB, suffers from the same problem as [[some "
+#~ "SanDisk USB sticks|known_issues#sandisk]]."
+#~ msgstr ""
+#~ "فلش Staples Relay USB 2.0 16GB دچار همان مشکل [[بعضی درایوهای یواس‌بی "
+#~ "سان‌دیسک|known_issues#sandisk]] می‌شود."
+
+#, fuzzy
+#~ msgid ""
+#~ "Sometimes, after an automatic upgrade, Tails gets blocked when booting, "
+#~ "often after the message 'Loading, please wait...'."
+#~ msgstr ""
+#~ "سپس موقع راه‌اندازی مسدود می‌شود که اغلب این اتفاق پس از پیغام 'Loading, "
+#~ "please wait...' رخ می‌دهد."
+
+#, fuzzy
+#~ msgid "<a id=\"partial-upgrade\"></a>\n"
+#~ msgstr "<a id=\"automatic_upgrade_fails\"></a>\n"
+
+#, fuzzy
+#~ msgid "Connecting to FTP servers is not possible\n"
+#~ msgstr "اتصال به سرورهای اف‌تی‌پی ممکن نیست\n"
+
+#~ msgid ""
+#~ "Public FTP servers on the Internet are not reachable using Tails.  See [[!"
+#~ "tails_ticket 6096 desc=\"Fix FTP support\"]] for more details."
+#~ msgstr ""
+#~ "نمی‌توان از طریق تیلز به سرورهای اف‌تی‌پی عمومی در اینترنت دسترسی پیدا کرد. "
+#~ "برای جزییات بیشتر رجوع کنید به [[!tails_ticket 6096 desc=\"حل پشتیبانی "
+#~ "اف‌تی‌پی\"]]."
+
+#, fuzzy
+#~ msgid ""
+#~ "Does not start on USB sticks created using Tails Installer nor Etcher."
+#~ msgstr ""
+#~ "راه‌اندازی از درایوهای یواس‌بی ایجادشده توسط نصب‌کنندهٔ تیلز انجام نمی‌شود."
+
+#, fuzzy
+#~ msgid "Graphics issues"
+#~ msgstr "مسائل امنیتی\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "For some models, adding `radeon.modeset=0` to the [[startup options|/doc/"
+#~ "first_steps/startup_options/#boot_loader_menu]] fixes the issue."
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy
+#~ msgid ""
+#~ "Some computers cannot start Tails Greeter. This issue has appeared with "
+#~ "the following graphic adapters:"
+#~ msgstr "این مشکل روی این سخت‌افزارها گزارش شده:"
+
+#~ msgid "<a id=\"nvidia-maxwell\"></a>\n"
+#~ msgstr "<a id=\"nvidia-maxwell\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Some computers cannot start Tails Greeter. This appears with some graphic "
+#~ "cards in the [Nvidia Maxwell family](https://nouveau.freedesktop.org/wiki/"
+#~ "CodeNames/#nv110familymaxwell).  This problem has been fixed in Tails 3.2 "
+#~ "for some of these graphic cards. If Tails Greeter still does not start "
+#~ "for you:"
+#~ msgstr "این مشکل روی این سخت‌افزارها گزارش شده:"
+
+#, fuzzy
+#~ msgid ""
+#~ "Add `nouveau.noaccel=1` or `nouveau.modeset=0` to the [[startup options|"
+#~ "doc/first_steps/startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy
+#~ msgid "<a id=\"nvidia-pascal\"></a>\n"
+#~ msgstr "<a id=\"nvidia-maxwell\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Some computers cannot start Tails Greeter. This may appear with the "
+#~ "[Nvidia Pascal family](https://nouveau.freedesktop.org/wiki/CodeNames/"
+#~ "#nv130familypascal)  of graphic adapters."
+#~ msgstr "این مشکل روی این سخت‌افزارها گزارش شده:"
+
+#, fuzzy
+#~ msgid "Black screen with switchable graphics computers"
+#~ msgstr "رایانه‌های با گرافیک قابل‌تغییر\n"
+
+#~ msgid ""
+#~ "Some computers with switchable graphics (such as Optimus) fail to choose "
+#~ "a video card and end up on a black screen. This has been reported for "
+#~ "MacBook Pro 6,2, MacBook Pro 10,1 Retina, MacBook Pro 15-inch (early "
+#~ "2011) and might affect many others."
+#~ msgstr ""
+#~ "بعضی رایانه‌ها با گرافیک‌های قابل‌تغییر (مانند اوپتیموس) نمی‌توانند کارت "
+#~ "تصویر را انتخاب کنند و تنها یک صفحهٔ سیاه نشان می‌دهند. این مشکل در مورد "
+#~ "MacBook Pro 6,2، MacBook Pro 10,1 Retin، MacBook Pro 15-inch (اوایل ۲۰۱۱) "
+#~ "گزارش شده و ممکن است مدل‌های بسیار دیگری نیز این مشکل را داشته باشند."
+
+#, fuzzy
+#~ msgid "There are several possible workarounds for this issue:"
+#~ msgstr "دو راه پیرامونی ممکن برای این مشکل وجود دارد:"
+
+#~ msgid ""
+#~ "For the Mac computers, it is possible to use a third-party application, "
+#~ "<https://gfx.io/>, to force integrated graphics only through OS X.  Then "
+#~ "restart in that special mode that works with Tails."
+#~ msgstr ""
+#~ "برای رایانه‌های مک، تنها در اواس ده می‌توان از یک ابزار طرف سوم، <https://"
+#~ "gfx.io/>، برای استفاده از گرافیک‌های یکپارچه استفاده کرد. سپس باید رایانه "
+#~ "را در حالت خاصی راه‌اندازی کرد که با تیلز کار می‌کند."
+
+#~ msgid "Expert Linux users can also do the following:"
+#~ msgstr "کاربران خبرهٔ لینوکس نیز می‌توانند این کار را انجام دهند:"
+
+#, fuzzy
+#~ msgid ""
+#~ "Add the `i915.modeset=0 rootpw=pass` option in the [[Boot Loader Menu|doc/"
+#~ "first_steps/startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#~ msgid ""
+#~ "Create a file `/etc/X11/xorg.conf.d/switchable.conf` with the following "
+#~ "content:"
+#~ msgstr ""
+#~ "فایل `/etc/X11/xorg.conf.d/switchable.conf` با این محتویات ایجاد کنید:"
+
+#~ msgid ""
+#~ "         Section \"Device\"\n"
+#~ "             Identifier \"Device0\"\n"
+#~ "             Driver \"nouveau\"\n"
+#~ "             BusID \"1:0:0\"\n"
+#~ "         EndSection\n"
+#~ msgstr ""
+#~ "         Section \"Device\"\n"
+#~ "             Identifier \"Device0\"\n"
+#~ "             Driver \"nouveau\"\n"
+#~ "             BusID \"1:0:0\"\n"
+#~ "         EndSection\n"
+
+#~ msgid "Restart X with the command:"
+#~ msgstr "X را با این فرمان دوباره راه‌اندازی کنید:"
+
+#~ msgid "         service gdm3 restart\n"
+#~ msgstr "         service gdm3 restart\n"
+
+#~ msgid ""
+#~ "After the GNOME session has started, change again the root password with "
+#~ "the command:"
+#~ msgstr ""
+#~ "پس از آغاز شدن نشست کاری گنوم، دوباره گذرواژهٔ اصلی را با این فرمان عوض "
+#~ "کنید:"
+
+#~ msgid "         sudo passwd\n"
+#~ msgstr "         sudo passwd\n"
+
+#~ msgid ""
+#~ "For more details, see our ticket on [[!tails_ticket 7505 desc=\"Video is "
+#~ "broken with switchable graphics\"]]."
+#~ msgstr ""
+#~ "برای جزییات بیشتر به این مورد مراجعه کنید: [[!tails_ticket 7505 "
+#~ "desc=\"Video is broken with switchable graphics\"]]."
+
+#~ msgid "<a id=switchable_graphics_segfault></a>\n"
+#~ msgstr "<a id=switchable_graphics_segfault></a>\n"
+
+#, fuzzy
+#~ msgid "Cannot start GNOME session with switchable graphics computers"
+#~ msgstr "رایانه‌های با گرافیک قابل‌تغییر\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Starting in **Troubleshooting Mode** works, as well as adding the "
+#~ "`modprobe.blacklist=nouveau` to the [[startup options|doc/first_steps/"
+#~ "startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy
+#~ msgid ""
+#~ "See [[!debbug 776911 desc=\"relevant bug report\"]] for more information."
+#~ msgstr "همچنین رجوع کنید به [[!tails_ticket 6397]]."
+
+#, fuzzy
+#~ msgid "See [[!linuxbug 187001]] for more information."
+#~ msgstr "همچنین رجوع کنید به [[!tails_ticket 6397]]."
+
+#~ msgid "<a id=\"xorg-driver\"></a>\n"
+#~ msgstr "<a id=\"xorg-driver\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Add the `xorg-driver=intel` option in the [[boot menu|doc/first_steps/"
+#~ "startup_options#boot_menu]]."
+#~ msgstr ""
+#~ "گزینهٔ `i915.modeset=0 rootpw=pass` را در [[فهرست راه‌اندازی|doc/"
+#~ "first_steps/startup_options#boot_menu]] اضافه کنید."
+
+#, fuzzy
+#~ msgid "See [[!tails_ticket 15168]] for more details."
+#~ msgstr "همچنین رجوع کنید به [[!tails_ticket 6397]]."
+
+#~ msgid "To find out if your Wi-Fi interface requires the `wl` driver:"
+#~ msgstr ""
+#~ "برای یافتن این که آیا رابط وای‌فای شما به درایور `wl` نیاز دارد یا نه:"
+
+#~ msgid ""
+#~ "Execute the following command in a [[terminal|doc/first_steps/"
+#~ "introduction_to_gnome_and_the_tails_desktop#terminal]]:"
+#~ msgstr ""
+#~ "این فرمان را در یک [[پایانه|doc/first_steps/"
+#~ "introduction_to_gnome_and_the_tails_desktop#terminal]] اجرا کنید:"
+
+#~ msgid "SanDisk Cruzer Glide 4GB, 8GB and 16GB"
+#~ msgstr "SanDisk Cruzer Glide 4GB، 8GB و 16GB"

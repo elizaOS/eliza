@@ -1,0 +1,4 @@
+config BR2_PACKAGE_HELLO_NPU_ML_SMOKE
+	bool "hello NPU ML smoke"
+	help
+	  Build the fail-closed /dev/hello-npu GEMM_S8 target smoke.

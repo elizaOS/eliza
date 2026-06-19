@@ -1,0 +1,151 @@
+task_id: T127zh_ticket_assignment
+task_name: 工单归属分配
+version: "1.0"
+category: ops
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: contacts
+    command: python mock_services/contacts/server.py
+    port: 9103
+    health_check: http://localhost:9103/contacts/search
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9103/contacts/reset
+    env:
+      CONTACTS_FIXTURES: tasks/T127zh_ticket_assignment/fixtures/contacts/contacts.json
+  - name: helpdesk
+    command: python mock_services/helpdesk/server.py
+    port: 9107
+    health_check: http://localhost:9107/helpdesk/tickets
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9107/helpdesk/reset
+    env:
+      HELPDESK_FIXTURES: tasks/T127zh_ticket_assignment/fixtures/helpdesk/tickets.json
+
+prompt:
+  text: |
+    当前有6个未分配的工单，请帮我做分配建议：
+    1. 查看每个工单的详情，了解问题类型和提交部门
+    2. 在通讯录中查找各部门负责人
+    3. 根据问题类型匹配最合适的处理人
+    4. 注意区分IT问题和非IT问题
+    5. 输出分配建议表（工单→建议处理人→分配理由）
+  language: zh
+
+tools:
+  - name: helpdesk_list_tickets
+    description: 列出工单
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "工单状态筛选(open/all)"
+          default: open
+      required: []
+
+  - name: helpdesk_get_ticket
+    description: 获取工单详情
+    input_schema:
+      type: object
+      properties:
+        ticket_id:
+          type: string
+          description: 工单ID
+      required: [ticket_id]
+
+  - name: contacts_search
+    description: 搜索内部通讯录
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词
+        department:
+          type: string
+          description: 按部门筛选
+      required: [query]
+
+  - name: contacts_get
+    description: 获取联系人详情
+    input_schema:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          description: 联系人ID
+      required: [contact_id]
+
+tool_endpoints:
+  - tool_name: helpdesk_list_tickets
+    url: http://localhost:9107/helpdesk/tickets
+    method: POST
+  - tool_name: helpdesk_get_ticket
+    url: http://localhost:9107/helpdesk/tickets/get
+    method: POST
+  - tool_name: contacts_search
+    url: http://localhost:9103/contacts/search
+    method: POST
+  - tool_name: contacts_get
+    url: http://localhost:9103/contacts/get
+    method: POST
+
+environment:
+  timeout_seconds: 300
+  max_turns: 20
+
+scoring_components:
+  - name: routing_accuracy
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "6个工单是否分配给正确的处理人"
+  - name: reasoning_quality
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "分配理由是否合理，是否区分了IT和非IT问题"
+  - name: report_format
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "分配建议表是否格式清晰完整"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  评估助手的工单分配建议质量。
+
+  ## 正确的分配
+  1. TK-901(系统登录异常) → 马强(IT运维组) — 系统故障属于运维范畴
+  2. TK-902(报表数据不准) → 李华(数据组) — 数据问题属于数据工程范畴
+  3. TK-903(VPN无法连接) → 马强(IT运维组) — 网络/VPN属于运维范畴
+  4. TK-904(权限申请) → 张伟(安全组) — 权限管理属于安全组职责
+  5. TK-905(办公椅损坏) → 陈婷(行政部) — 办公设备是行政事务，非IT工单
+  6. TK-906(邮箱存储满) → 马强(IT运维组) — 邮箱系统属于运维范畴
+
+  ## 关键判断
+  - TK-905必须识别为非IT问题，分配给行政部而非IT
+  - TK-901、TK-903、TK-906都属于IT运维，可以分给马强
+  - TK-904是权限相关，应分给安全组张伟而非运维
+
+  评分：
+  - 0.8-1.0: 6个工单全部正确分配，TK-905识别为非IT
+  - 0.5-0.7: 5个正确
+  - 0.2-0.4: 3-4个正确
+  - 0.0-0.1: 分配错误或未完成
+
+reference_solution: |
+  1. helpdesk_list_tickets() → 6个工单
+  2. 逐个查看工单详情
+  3. contacts_search按部门查找：IT运维、数据组、安全组、行政部
+  4. 按问题类型→部门→负责人映射
+  5. 输出分配建议表
+
+primary_dimensions: [completion, robustness, communication]

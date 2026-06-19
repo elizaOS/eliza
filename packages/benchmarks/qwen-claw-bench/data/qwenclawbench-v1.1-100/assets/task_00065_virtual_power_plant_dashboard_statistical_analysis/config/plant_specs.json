@@ -1,0 +1,47 @@
+{
+  "plant_name": "GreenField Virtual Power Plant",
+  "plant_id": "VPP-GF-2024-001",
+  "location": {
+    "latitude": 34.0522,
+    "longitude": -118.2437,
+    "region": "Southern California",
+    "timezone": "America/Los_Angeles"
+  },
+  "specifications": {
+    "solar_capacity": {
+      "value": 1.2,
+      "unit": "MW",
+      "panel_type": "Monocrystalline Si",
+      "inverter_efficiency": 0.97
+    },
+    "wind_capacity": {
+      "value": 0.5,
+      "unit": "MW",
+      "turbine_model": "Vestas V47-660",
+      "hub_height_m": 55
+    },
+    "battery_capacity": {
+      "value": 1.0,
+      "unit": "MWh",
+      "chemistry": "Lithium Iron Phosphate (LFP)",
+      "cycle_life": 6000
+    },
+    "max_charge_rate": {
+      "value": 0.2,
+      "unit": "MW"
+    },
+    "max_discharge_rate": {
+      "value": 0.2,
+      "unit": "MW"
+    }
+  },
+  "commissioning_date": "2023-11-15",
+  "operator": "GreenField Energy Solutions Inc.",
+  "grid_connection": {
+    "voltage_kv": 12.47,
+    "interconnection_agreement": "IA-2023-4412",
+    "max_export_mw": 1.5
+  },
+  "last_maintenance": "2024-05-20",
+  "notes": "Capacity values represent nameplate ratings. Actual output varies with weather conditions."
+}

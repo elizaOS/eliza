@@ -1,0 +1,11 @@
+service vendor.e1_npu /vendor/bin/hw/vendor.eliza.e1_npu@1.0-service
+    interface vendor.eliza.e1_npu@1.0::IE1Npu default
+    class hal
+    user system
+    group system
+
+on property:vendor.e1_npu.ready=1
+    start vendor.e1_npu
+
+on property:vendor.e1_npu.ready=0
+    stop vendor.e1_npu

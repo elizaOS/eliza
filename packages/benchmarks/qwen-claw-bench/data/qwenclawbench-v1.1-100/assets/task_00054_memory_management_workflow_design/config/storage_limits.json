@@ -1,0 +1,23 @@
+{
+  "storage_limits": {
+    "max_memory_items": 5000,
+    "retention_days": 30,
+    "max_recurring_items": 50,
+    "max_ad_hoc_items": 200,
+    "storage_quota_mb": 256,
+    "warning_threshold_percent": 80,
+    "critical_threshold_percent": 95
+  },
+  "enforcement": {
+    "hard_limit": true,
+    "auto_purge_on_limit": true,
+    "purge_strategy": "oldest_first",
+    "notify_on_warning": true
+  },
+  "metadata": {
+    "last_reviewed": "2024-07-22",
+    "reviewed_by": "ops-team",
+    "applies_to": "all_environments",
+    "notes": "Updated limits after capacity planning review. Retention reduced to 30 days to conserve storage. Max items increased to 5000 to accommodate growth projections."
+  }
+}

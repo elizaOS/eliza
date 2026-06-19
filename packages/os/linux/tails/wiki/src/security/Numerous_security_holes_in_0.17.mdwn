@@ -1,0 +1,19 @@
+[[!meta date="Wed, 20 Mar 2013 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.17"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.17.
+
+We **strongly** urge you to [[upgrade to Tails 0.17.1|news/version_0.17.1]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - Iceweasel ([MFSA 2013-29](https://www.mozilla.org/security/announce/2013/mfsa2013-29.html))
+ - Linux ([[!cve CVE-2013-0871]], [[!cve CVE-2013-0217]])
+ - Perl ([[!debsa2013 2641]])
+ - openjpeg ([[!debsa2013 2629]])
+ - sudo ([[!debsa2013 2642]])

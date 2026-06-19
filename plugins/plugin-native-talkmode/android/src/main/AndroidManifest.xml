@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Microphone permission for speech recognition -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Internet permission for ElevenLabs TTS API -->
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

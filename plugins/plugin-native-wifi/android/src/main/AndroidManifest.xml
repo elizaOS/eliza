@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <!--
+      ACCESS_FINE_LOCATION is required for `WifiManager.scanResults` on
+      API 26+ — without a granted runtime location permission the platform
+      returns an empty list. Declared as normal `uses-permission`; runtime
+      grant is the responsibility of the host app at first scan.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+</manifest>

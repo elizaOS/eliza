@@ -1,0 +1,26 @@
+[options]
+mode bmc
+depth 16
+multiclock off
+
+[engines]
+smtbmc z3
+smtbmc bitwuzla
+
+[script]
+# The real MESI directory (`e1_coherence_dir`) declares `module ... import
+# e1_cache_pkg::*;`, which the stock yosys Verilog frontend cannot parse, so the
+# RTL is read through the yosys-slang frontend (shipped with the oss-cad-suite
+# yosys that sby drives). The SWMR property pack is bound onto the directory's
+# authoritative coherence record inside e1_coherence_dir_formal; the protocol's
+# request/probe/grant channels are free top-level inputs, so the proof shows the
+# directory itself maintains SWMR rather than assuming it.
+plugin -i slang
+read_slang cache_pkg.sv e1_coherence_dir.sv e1_coherence_dir_swmr_props.sv e1_coherence_dir_formal.sv --top e1_coherence_dir_formal --keep-hierarchy
+prep -top e1_coherence_dir_formal -flatten
+
+[files]
+../../../rtl/cache/cache_pkg.sv
+../../../rtl/cache/coherence/e1_coherence_dir.sv
+e1_coherence_dir_swmr_props.sv
+e1_coherence_dir_formal.sv

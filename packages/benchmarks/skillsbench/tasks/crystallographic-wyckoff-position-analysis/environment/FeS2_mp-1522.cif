@@ -1,0 +1,37 @@
+# generated using pymatgen
+data_FeS2
+_symmetry_space_group_name_H-M   'P 1'
+_cell_length_a   3.37769817
+_cell_length_b   4.42562487
+_cell_length_c   5.39652822
+_cell_angle_alpha   90.00000000
+_cell_angle_beta   90.00000000
+_cell_angle_gamma   90.00000000
+_symmetry_Int_Tables_number   1
+_chemical_formula_structural   FeS2
+_chemical_formula_sum   'Fe2 S4'
+_cell_volume   80.66959749
+_cell_formula_units_Z   2
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+loop_
+ _atom_type_symbol
+ _atom_type_oxidation_number
+  Fe3+  3.0
+  S1.50-  -1.5
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Fe3+  Fe0  1  0.50000000  0.50000000  0.50000000  1
+  Fe3+  Fe1  1  0.00000000  0.00000000  0.00000000  1
+  S1.50-  S2  1  0.50000000  0.29959281  0.87818467  1
+  S1.50-  S3  1  0.50000000  0.70040719  0.12181533  1
+  S1.50-  S4  1  0.00000000  0.20040719  0.37818467  1
+  S1.50-  S5  1  0.00000000  0.79959281  0.62181533  1

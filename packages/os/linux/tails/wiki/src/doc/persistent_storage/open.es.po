@@ -1,0 +1,80 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2024-02-26 12:26+0100\n"
+"PO-Revision-Date: 2024-04-24 15:38+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Opening your Persistent Storage from another operating system\"]]\n"
+msgstr ""
+"[[!meta title=\"Abrir el Almacenamiento Persistente desde otro sistema "
+"operativo\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Opening your Persistent Storage from another operating system can compromise "
+"your security. For example, the other operating system might create "
+"thumbnails of images or automatically index the content of the files in the "
+"Persistent Storage."
+msgstr ""
+"Abrir el Almacenamiento Persistente desde otro sistema operativo puede "
+"comprometer tu seguridad. Por ejemplo, el otro sistema operativo podría "
+"crear miniaturas de imágenes o indexar automáticamente el contenido de los "
+"archivos en el Almacenamiento Persistente."
+
+#. type: Plain text
+msgid ""
+"There are currently no easy tools to open a Persistent Storage from Windows "
+"or macOS anyway, so there is no risk of doing so by mistake."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you plug your Tails USB stick into another Linux, you will probably be "
+"asked to enter the passphrase of your Persistent Storage automatically, for "
+"example in Debian or Ubuntu. Linux distributions generally include utilities "
+"to open and create LUKS encrypted volumes, like the Persistent Storage, by "
+"default."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To exchange files between your Persistent Storage and another operating "
+"system, store these files instead on a separate USB stick or external hard "
+"disk. You can:"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"[[Create an encrypted volume using *VeraCrypt*|encryption_and_privacy/"
+"veracrypt]] to store multiple files in a kind of encrypted folder or "
+"partition. *VeraCrypt* works on Windows, macOS, and Linux."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"[[Create an encrypted partition using LUKS|doc/encryption_and_privacy/"
+"encrypted_volumes]] to use an encrypted USB stick between Tails and another "
+"Linux system."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"[[Encrypt files using *Kleopatra*|encryption_and_privacy/kleopatra]].  "
+"*Kleopatra* works on Windows and Linux, but not macOS."
+msgstr ""

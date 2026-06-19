@@ -1,0 +1,168 @@
+# GUI-Agent Architecture and Workflow
+## System Overview
+### Core Components
+- Controller: Central controller responsible for state management and decision triggering
+- Manager: Task planner responsible for task decomposition and re-planning
+- Worker: Executor with three specialized roles:
+   - Technician: Uses system terminal to complete tasks
+   - Operator: Executes GUI interface operations
+   - Analyst: Provides analytical support
+- Evaluator: Quality inspector responsible for execution effectiveness evaluation
+- Hardware: Hardware interface responsible for actual operation execution
+### Global State Definitions
+```python
+{
+ "TaskStatus": ["created", "pending", "on_hold", "fulfilled", "rejected"],
+ "SubtaskStatus": ["ready", "pending", "fulfilled", "rejected"],
+ "ExecStatus": ["executed", "timeout", "error", "pending"],
+ "GateDecision": ["gate_done", "gate_fail", "gate_supplement", "gate_continue"],
+ "GateTrigger": ["PERIODIC_CHECK", "WORKER_STALE", "WORKER_SUCCESS", "FINAL_CHECK"],
+ "controller_situation": ["INIT", "GET_ACTION", "EXECUTE_ACTION", "QUALITY_CHECK", "PLAN", "SUPPLEMENT", "FINAL_CHECK", "DONE"],
+}
+```
+#### State Descriptions:
+- TaskStatus: Overall task status
+- SubtaskStatus: Subtask status
+- ExecStatus: Command execution status
+- GateDecision: Quality check decision result
+- GateTrigger: Quality check trigger condition
+- controller_situation: Controller situation status
+
+## System Startup and Initialization
+### Startup Check
+```
+Initialize system state 
+    TaskStatus = pending
+
+Check task status:
+    If TaskStatus = fulfilled or TaskStatus = rejected
+        Enter end state
+    Otherwise 
+        enter core scheduling loop
+```
+## Core Scheduling Loop
+### State Flow Description
+
+- GET_ACTION: Generate specific operation instructions
+```
+Executing Component: Worker (Technician/Operator/Analyst)
+GET_ACTION → Worker execution → Result judgment
+├── success → current_situation = QUALITY_CHECK
+├── CANNOT_EXECUTE → current_situation = REPLAN  
+├── STALE_PROGRESS → current_situation = QUALITY_CHECK
+└── generate_action → current_situation = EXECUTE_ACTION
+└── supplement → current_situation = SUPPLEMENT
+```
+- EXECUTE_ACTION: Execute specific operations
+```
+Executing Component: Hardware
+SEND_ACTION → Hardware execution → Get screenshot → Update history → current_situation = GET_ACTION
+```
+
+- QUALITY_CHECK: Quality assessment of execution effectiveness
+```
+Executing Component: Evaluator
+Core Functions: Visual comparison, progress analysis, efficiency evaluation
+QUALITY_CHECK → Evaluator assessment → GateDecision judgment
+├── gate_done → Check subtask status
+│   ├── More subtasks exist → Switch to next subtask → current_situation = GET_ACTION
+│   └── No more subtasks → current_situation=FINAL_CHECK
+├── gate_fail → current_situation = PLAN
+├── gate_continue → current_situation = EXECUTE_ACTION  
+└── gate_supplement → current_situation = SUPPLEMENT
+```
+
+- PLAN: Re-plan tasks
+```
+Executing Component: Manager
+PLAN → Manager re-planning → Generate new subtasks → Assign Workers → current_situation = GET_ACTION
+```
+- SUPPLEMENT: Supplement external materials
+```
+Executing Component: Manager
+SUPPLEMENT → Manager calls external tools → Generate supplementary materials → Record materials → current_situation = PLAN
+External Tools: web search, RAG, etc.
+```
+
+- FINAL_CHECK: Final verification of task completion status
+```
+Executing Component: Evaluator
+Trigger Condition: Final verification after all subtasks are marked as complete
+FINAL_CHECK → Evaluator final assessment → Result judgment
+├── Verification passed → TaskStatus = fulfilled → System ends
+├── Issues found → current_situation = PLAN → Continue execution
+Verification Content:
+   Whether overall objectives are achieved
+   Whether all necessary steps are completed
+   Whether final state meets expectations
+   Whether there are omissions or errors
+```
+
+## Worker Professional Division
+### Technician
+- Applicable Scenarios: Tasks requiring system-level operations
+- Working Method: Complete tasks through terminal commands via backend service execution, can write code in ```bash...``` code blocks for bash scripts, and ```python...``` code blocks for python code.
+- Typical Tasks:
+    - File system operations
+    - System configuration modifications
+    - Program installation and deployment
+    - Script execution
+### Operator
+- Applicable Scenarios: Tasks requiring GUI interface interaction or inner operations such as memrorization
+- Working Method: Simulate user interface operations
+- Typical Tasks:
+    - Clicking buttons, menus
+    - Filling forms
+    - Drag and drop operations
+    - Window management
+### Analyst
+- Applicable Scenarios: Tasks requiring data analysis and decision support
+- Working Method: Analyze memory stored inside the system, provide recommendations
+- Typical Tasks:
+    - Question analysis
+
+## Monitoring and Trigger Mechanisms
+### Quality Check Trigger Mechanism
+GateTrigger Types:
+```
+PERIODIC_CHECK: Periodic check
+   Regular verification of execution progress
+WORKER_STALE: Worker stagnation check
+   Worker reports task cannot goingon
+WORKER_SUCCESS: Worker successful completion
+   Worker reports task completion
+   Need to verify completion quality
+```
+### Task Termination Conditions
+```
+TaskStatus = rejected conditions:
+   Manager planning attempts > 10 times
+   current_step > N steps (timeout termination)
+TaskStatus = fulfilled conditions:
+   All subtask status = fulfilled
+   FINAL_CHECK verification passed
+   Expected target state achieved
+```
+### ExecStatus Handling
+```
+executed: Normal execution completion → Continue process
+timeout: Execution timeout → Retry or re-plan
+error: Execution error → Error handling, may need re-planning
+pending: Currently executing
+```
+## State Monitoring Mechanism
+### SubtaskStatus Management
+```
+ready: Ready for execution, waiting
+pending: Currently executing
+fulfilled: Successfully completed
+rejected: Execution failed
+```
+### State Transition Monitoring
+```
+System continuously monitors state changes at all levels:
+TaskStatus changes trigger global process adjustments
+SubtaskStatus changes affect current execution strategy
+ExecStatus changes determine immediate response measures
+All state changes are recorded in execution history
+```

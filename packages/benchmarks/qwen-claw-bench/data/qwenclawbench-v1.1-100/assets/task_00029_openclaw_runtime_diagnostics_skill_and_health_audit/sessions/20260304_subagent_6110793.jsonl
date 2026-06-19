@@ -1,0 +1,17 @@
+{"type": "session_start", "session_id": "subagent_6110793", "model": "claude-sonnet-4-20250514", "created_at": "2026-03-04T02:33:37.543813", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-04T02:38:31.636771", "session_id": "subagent_6110793", "seq": 1}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-04T02:39:58.077848", "session_id": "subagent_6110793", "seq": 2}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-04T02:40:51.625378", "session_id": "subagent_6110793", "seq": 3}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-04T02:44:21.477659", "session_id": "subagent_6110793", "seq": 4}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-04T02:47:08.734983", "session_id": "subagent_6110793", "seq": 5, "usage": {"prompt_tokens": 3594, "completion_tokens": 796, "total_tokens": 8187}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-04T02:48:57.853692", "session_id": "subagent_6110793", "seq": 6}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-04T02:53:50.161160", "session_id": "subagent_6110793", "seq": 7}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-04T02:58:36.519418", "session_id": "subagent_6110793", "seq": 8}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-04T02:59:19.371946", "session_id": "subagent_6110793", "seq": 9}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-04T03:00:37.340900", "session_id": "subagent_6110793", "seq": 10}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-04T03:01:23.073503", "session_id": "subagent_6110793", "seq": 11}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-04T03:01:24.109633", "session_id": "subagent_6110793", "seq": 12}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-04T03:03:10.856688", "session_id": "subagent_6110793", "seq": 13}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-04T03:03:50.065477", "session_id": "subagent_6110793", "seq": 14}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-04T03:07:10.299336", "session_id": "subagent_6110793", "seq": 15}
+{"type": "session_end", "session_id": "subagent_6110793", "ended_at": "2026-03-04T03:07:20.299336", "total_messages": 15, "status": "error"}

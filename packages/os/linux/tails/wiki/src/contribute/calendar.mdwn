@@ -1,0 +1,4 @@
+[[!meta title="Calendar"]]
+
+The Tails release schedule is maintained in the dedicated
+[*Tails Releases* calendar](https://nc.torproject.net/apps/calendar/p/GyNfRmBS9myreFF8).

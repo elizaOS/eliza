@@ -1,0 +1,81 @@
+{
+  "searchIntentCategories": {
+    "informational": {
+      "description": "User seeks information or answers to questions",
+      "patterns": [
+        "how to",
+        "what is",
+        "guide",
+        "tips",
+        "how much",
+        "when to",
+        "why",
+        "explained",
+        "understanding",
+        "learn about",
+        "how does",
+        "definition"
+      ],
+      "examples": [
+        "how to calculate retirement withdrawals",
+        "what is the 4 percent rule retirement"
+      ]
+    },
+    "commercial": {
+      "description": "User is researching products or services before making a decision",
+      "patterns": [
+        "best",
+        "top",
+        "review",
+        "compare",
+        "vs",
+        "comparison",
+        "recommended",
+        "rated",
+        "alternatives",
+        "pros and cons"
+      ],
+      "examples": [
+        "best retirement withdrawal calculator for early retirement",
+        "top retirement planning tools compared"
+      ]
+    },
+    "transactional": {
+      "description": "User intends to complete an action or use a tool",
+      "patterns": [
+        "buy",
+        "download",
+        "sign up",
+        "free tool",
+        "calculator",
+        "use",
+        "try",
+        "get started",
+        "online tool",
+        "free"
+      ],
+      "examples": [
+        "free retirement withdrawal calculator online",
+        "download retirement planning spreadsheet"
+      ]
+    },
+    "navigational": {
+      "description": "User is looking for a specific website or page",
+      "patterns": [
+        "login",
+        "official",
+        "site",
+        "website",
+        ".com",
+        "app",
+        "portal",
+        "account"
+      ],
+      "examples": [
+        "fidelity retirement calculator login",
+        "vanguard retirement planning tool official"
+      ]
+    }
+  },
+  "classificationNotes": "When a keyword matches multiple intent patterns, prioritize the most specific match. Long-tail keywords with 'calculator' typically indicate transactional intent unless preceded by 'how to' or 'best'."
+}

@@ -1,0 +1,23 @@
+{
+  "id": "app-control",
+  "name": "App Control",
+  "description": "Launch, close, and list running Eliza apps from agent chat. Backed by the /api/apps/* HTTP surface.",
+  "npmName": "@elizaos/plugin-app-control",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["apps", "control", "core-addon"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "LayoutGrid",
+    "group": "automation",
+    "groupOrder": 10,
+    "actions": ["enable"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "automation"
+}

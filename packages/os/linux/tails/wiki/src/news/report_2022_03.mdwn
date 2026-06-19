@@ -1,0 +1,37 @@
+[[!meta title="Tails report for March 2022"]]
+[[!meta date="Thu, 14 Apr 2022 16:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+We've been working hard on the upgrade of Tails to Debian 11
+Bullseye. You can [[test Tails 5.0~beta1|news/test_5.0-beta1]] and
+[[!tails_gitlab groups/tails/-/milestones/20#tab-issues desc="track
+the progress"]] of our work.
+
+Online trainings in [[Mexico|news/ciclo_de_autodefensa_digital_mexico/]] and
+[[Brazil|news/ciclo_de_autodefensa_digital_brasil/]] were prepared and
+conducted. You can check out [the nice
+slides](https://tails.net/contribute/how/promote/slides/Ciclo_Autodefensa_Digital_202204/Tails-Spanish.odp)
+that were used.
+
+We [[interviewed Daniel
+Moßbrucker|contribute/how/user_experience/interviews/daniel/]], who used Tails
+to investigate pedocriminal forums on the Darknet and took down 13.5 terabytes
+of photos and videos of child abuse.
+
+Our page about [[trusting Tails|doc/about/trust/]] was entirely rewritten and
+we have a new [[FAQ about VoIP|support/faq/#voip]].
+
+Releases
+========
+
+[[Tails 4.29 was released on April 05|news/version_4.29]]: This version
+updates Tor Browser, Thunderbird, the Linux kernel and obfs4proxy.
+
+
+Metrics
+=======
+
+Tails has been started more than 783850 times this month. This makes 25285
+boots a day on average.

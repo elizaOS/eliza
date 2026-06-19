@@ -1,0 +1,70 @@
+{
+  "id": "nostr",
+  "name": "Nostr",
+  "description": "Nostr connector for relay-based social posting and conversation handling.",
+  "npmName": "@elizaos/plugin-nostr",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "social", "nostr", "relays", "social-feed"],
+  "config": {
+    "NOSTR_RELAYS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Relays",
+      "help": "Comma-separated list of relay URLs",
+      "advanced": false
+    },
+    "NOSTR_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "NOSTR_DM_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Dm Policy",
+      "help": "DM policy (e.g. allow, deny, allowlist)",
+      "advanced": false
+    },
+    "NOSTR_ALLOW_FROM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Allow From",
+      "help": "Comma-separated allowed user list",
+      "advanced": false
+    },
+    "NOSTR_PRIVATE_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Private Key",
+      "help": "Private key for Nostr",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Fingerprint",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#nostr"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

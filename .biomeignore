@@ -1,0 +1,24 @@
+**/dist/**
+**/node_modules/**
+**/.git/**
+**/build/**
+**/*.d.ts
+**/.venv/**
+**/coverage/**
+**/scripts/async-optimizer.js
+.turbo
+.turbo/**
+**/.turbo
+**/.turbo/**
+**/target/**
+target
+packages/examples/browser-extension/safari/.generated/**
+packages/examples/browser-extension/safari/Chat with Webpage/**
+**/data/**
+data
+.eliza
+**/.eliza/**
+.cursor
+**/.cursor/**
+.next
+**/.next/**

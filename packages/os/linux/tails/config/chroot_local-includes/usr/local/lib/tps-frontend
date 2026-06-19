@@ -1,0 +1,90 @@
+#!/usr/bin/python3 -I
+
+# Parts of this script are based on GNOME Music
+# https://gitlab.gnome.org/GNOME/gnome-music
+# Licensed under GPLv2 by the GNOME Music developers
+
+import os
+
+# NOQA:E402
+import argparse
+import locale
+import logging
+import gettext
+import gi
+from pathlib import Path
+import signal
+import sys
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gio  # noqa: E402
+from gi.repository import Gtk  # noqa: E402
+
+from tps_frontend.application import Application  # noqa: E402
+
+LOCALE_DIR = "/usr/share/locale"
+TRANSLATION_DOMAIN = "tails"
+
+
+def set_exception_hook():
+    """Configures sys.excepthook to enforce Gtk application exiting."""
+
+    def new_hook(etype, evalue, etb):
+        old_hook(etype, evalue, etb)
+        while Gtk.main_level():
+            Gtk.main_quit()
+        sys.exit()
+
+    old_hook = sys.excepthook
+    sys.excepthook = new_hook
+
+
+def set_internationalization():
+    """Sets application internationalization."""
+    locale.bindtextdomain(TRANSLATION_DOMAIN, LOCALE_DIR)
+    locale.textdomain(TRANSLATION_DOMAIN)
+    gettext.bindtextdomain(TRANSLATION_DOMAIN, LOCALE_DIR)
+    gettext.textdomain(TRANSLATION_DOMAIN)
+
+
+def main():
+    # Parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action="store_true")
+    args = parser.parse_args()
+
+    # Set up logging
+    debug = (
+        args.debug
+        or os.getenv("DEBUG")
+        or "debug" in Path("/proc/cmdline").read_text().split()
+    )
+    log_level = logging.DEBUG if debug else logging.INFO
+    log_format = "%(levelname)s:%(filename)s:%(lineno)d: %(message)s"
+    logging.basicConfig(level=log_level, format=log_format)
+
+    set_exception_hook()
+    set_internationalization()
+
+    # Connect to D-Bus via the open file descriptor which we inherited
+    # from inherit-fd and which is connected to the system bus and
+    # already authenticated as user tails-persistent-storage.
+    authenticated_dbus_fd = 3
+    socket = Gio.Socket.new_from_fd(fd=int(authenticated_dbus_fd))
+    socket_connection = socket.connection_factory_create_connection()
+    bus = Gio.DBusConnection.new_sync(
+        socket_connection,
+        None,
+        Gio.DBusConnectionFlags.NONE | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+        None,
+        None,
+    )  # type: Gio.DBusConnection
+
+    app = Application(bus)
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    return app.run()
+
+
+if __name__ == "__main__":
+    main()

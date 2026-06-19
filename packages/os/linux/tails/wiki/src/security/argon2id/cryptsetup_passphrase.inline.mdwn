@@ -1,0 +1,7 @@
+[[!tag security/fixed]]
+
+      1. To change your passphrase, execute the following command.
+         Replace <span class="command-placeholder">[partition]</span> with the
+         partition name found in step 1.6.
+
+        <p class="pre command-template">cryptsetup luksChangeKey /dev/<span class="command-placeholder">[partition]</span></p>

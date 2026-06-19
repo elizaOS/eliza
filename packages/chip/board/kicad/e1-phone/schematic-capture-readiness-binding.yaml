@@ -1,0 +1,128 @@
+schema: eliza.e1_phone_schematic_capture_readiness_binding.v1
+status: blocked_schematic_capture_requires_real_symbols_supplier_pinouts_footprints_erc_and_trial_route
+date: 2026-05-21
+claim_boundary: >
+  Aggregate schematic-capture readiness binding for the E1 phone PCB package.
+  This rolls up the subsystem schematic-net bindings into one production
+  capture gate for real KiCad symbols, exact supplier pinouts, footprint
+  bindings, ERC, netclass assignment, and trial-route proof. It is not a
+  production schematic, not production ERC evidence, not routed copper, not DRC
+  evidence, and not fabrication or enclosure readiness.
+
+source_artifacts:
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
+  - board/kicad/e1-phone/schematic-netclass-execution-package.yaml
+  - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+  - board/kicad/e1-phone/display-camera-schematic-net-binding.yaml
+  - board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
+  - board/kicad/e1-phone/radio-module-schematic-net-binding.yaml
+  - board/kicad/e1-phone/core-power-compute-schematic-net-binding.yaml
+  - board/kicad/e1-phone/audio-haptic-schematic-net-binding.yaml
+  - board/kicad/e1-phone/split-interconnect-schematic-net-binding.yaml
+  - board/kicad/e1-phone/erc/erc-closure.md
+  - board/kicad/e1-phone/erc/erc-report.json
+
+upstream_status:
+  schematic_symbol_footprint_status: blocked_requires_real_kicad_symbols_supplier_footprints_and_erc
+  schematic_netclass_execution_status: blocked_requires_supplier_symbols_netclass_capture_erc_and_trial_route
+  evt1_footprint_capture_status: blocked_evt1_footprint_capture_requires_supplier_intake_reviews_and_real_kicad_libraries
+  display_camera_binding_status: blocked_display_camera_net_binding_requires_supplier_pinouts_real_schematic_route_bringup_and_capture
+  usb_sidekey_binding_status: blocked_usb_sidekey_net_binding_requires_real_schematic_footprints_route_and_measurements
+  radio_module_binding_status: blocked_radio_module_net_binding_requires_supplier_pinouts_real_schematic_rf_route_firmware_and_factory_evidence
+  core_power_compute_binding_status: blocked_core_power_compute_binding_requires_real_schematic_erc_route_pi_first_power_and_factory_evidence
+  audio_haptic_binding_status: blocked_audio_haptic_net_binding_requires_real_schematic_acoustic_parts_route_hal_and_measurements
+  split_interconnect_binding_status: blocked_split_interconnect_net_binding_requires_supplier_connector_flex_stackup_real_symbols_route_si_and_enclosure_evidence
+
+binding_inventory:
+  - id: display_camera
+    artifact: board/kicad/e1-phone/display-camera-schematic-net-binding.yaml
+    domains_covered: [display_touch, front_rear_cameras]
+    current_gate: supplier display/camera pinouts, FPC connector land patterns, DSI/CSI route proof, and camera bring-up missing
+  - id: usb_sidekey
+    artifact: board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
+    domains_covered: [usb_c_charge_data_debug, side_buttons]
+    current_gate: real USB-C, USB-PD, charger, side-key symbols, footprints, PD/charger/button measurements missing
+  - id: radio_module
+    artifact: board/kicad/e1-phone/radio-module-schematic-net-binding.yaml
+    domains_covered: [radios_cellular_wifi_bt_gnss]
+    current_gate: supplier module pinouts, RF reference layouts, firmware/regulatory files, RF route and factory evidence missing
+  - id: core_power_compute
+    artifact: board/kicad/e1-phone/core-power-compute-schematic-net-binding.yaml
+    domains_covered: [power_battery_pmic_thermal, compute_storage]
+    current_gate: real PMIC/charger/battery/SoC/memory/storage schematic capture, first-power logs, and factory probes missing
+  - id: audio_haptic
+    artifact: board/kicad/e1-phone/audio-haptic-schematic-net-binding.yaml
+    domains_covered: [audio_haptics]
+    current_gate: codec, smart amp, microphone, speaker/receiver, haptic driver schematic capture and acoustic/HAL measurements missing
+  - id: split_interconnect
+    artifact: board/kicad/e1-phone/split-interconnect-schematic-net-binding.yaml
+    domains_covered: [split_interconnect]
+    current_gate: supplier connector/flex stackup, real symbols, mirrored pin review, USB/audio SI, and enclosure strain-relief evidence missing
+
+production_capture_policy:
+  domain_count: 10
+  subsystem_binding_count: 6
+  requires_all_subsystem_bindings_before_symbol_capture: true
+  requires_supplier_pinout_before_pin_number_assignment: true
+  requires_symbol_electrical_type_review_before_erc: true
+  requires_footprint_3d_binding_before_trial_route: true
+  requires_production_erc_not_demo_erc_before_release: true
+  requires_trial_route_before_routed_pcb_release: true
+
+erc_state:
+  demo_erc_artifact: board/kicad/e1-phone/erc/erc-closure.md
+  demo_erc_evidence_class: non_release_demo_erc
+  demo_erc_zero_violations: true
+  production_erc_artifact: board/kicad/e1-phone/erc/erc-report-release.json
+  production_erc_present: false
+  production_erc_required_before_release: true
+  demo_erc_may_not_satisfy_release_gate: true
+
+release_required_outputs:
+  - board/kicad/e1-phone/production/reports/schematic-capture-readiness.yaml
+  - board/kicad/e1-phone/production/reports/schematic-review/display_touch.yaml
+  - board/kicad/e1-phone/production/reports/schematic-review/front_rear_cameras.yaml
+  - board/kicad/e1-phone/production/reports/schematic-review/usb_c_charge_data_debug.yaml
+  - board/kicad/e1-phone/production/reports/schematic-review/side_buttons.yaml
+  - board/kicad/e1-phone/production/reports/schematic-review/power_battery_pmic_thermal.yaml
+  - board/kicad/e1-phone/production/reports/schematic-review/radios_cellular_wifi_bt_gnss.yaml
+  - board/kicad/e1-phone/production/reports/schematic-review/audio_haptics.yaml
+  - board/kicad/e1-phone/production/reports/schematic-review/split_interconnect.yaml
+  - board/kicad/e1-phone/production/reports/schematic-review/compute_storage.yaml
+  - board/kicad/e1-phone/production/reports/schematic-review/factory_test.yaml
+  - board/kicad/e1-phone/production/reports/erc/production-root.json
+  - board/kicad/e1-phone/production/reports/pinout-review-signoff.yaml
+  - board/kicad/e1-phone/production/reports/footprint-3d-model-binding.yaml
+
+cross_checks:
+  manifest_cites_binding: true
+  all_subsystem_bindings_present: true
+  subsystem_binding_statuses_are_fail_closed: true
+  schematic_netclass_domains_match_capture_policy: true
+  symbol_footprint_closure_still_blocks_production_erc: true
+  demo_erc_is_recorded_as_non_release_only: true
+  production_erc_is_missing_and_required: true
+  fail_closed_until_real_symbols_supplier_pinouts_footprints_erc_and_trial_route_exist: true
+
+release_blockers:
+  - real KiCad symbols and wires have not replaced the schematic text scaffold
+  - exact supplier pinouts and land patterns are not accepted for production capture
+  - reviewed symbol library and footprint library are not present
+  - ERC reports and signed waivers are missing for production schematic symbols
+  - demo ERC is non-release evidence only and cannot satisfy the production ERC gate
+  - supplier-footprint escape and trial-route evidence is missing for all domains
+  - routed copper, DRC, SI/PI/RF, factory, and enclosure clearance evidence are missing
+
+forbidden_claims:
+  - schematic_ready
+  - schematic_capture_complete
+  - symbols_ready
+  - footprints_ready
+  - erc_clean
+  - netclasses_ready
+  - trial_route_ready
+  - routed_pcb_ready
+  - fabrication_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

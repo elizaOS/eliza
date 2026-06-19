@@ -1,0 +1,25 @@
+CREATE INDEX IF NOT EXISTS "org_billing_organization_idx" ON "organization_billing" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "org_billing_stripe_customer_idx" ON "organization_billing" USING btree ("stripe_customer_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "org_billing_auto_top_up_enabled_idx" ON "organization_billing" USING btree ("auto_top_up_enabled");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "org_config_organization_idx" ON "organization_config" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "org_encryption_keys_org_idx" ON "organization_encryption_keys" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_identities_user_idx" ON "user_identities" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_identities_privy_user_id_idx" ON "user_identities" USING btree ("privy_user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_identities_is_anonymous_idx" ON "user_identities" USING btree ("is_anonymous");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_identities_anonymous_session_idx" ON "user_identities" USING btree ("anonymous_session_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_identities_expires_at_idx" ON "user_identities" USING btree ("expires_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_identities_telegram_id_idx" ON "user_identities" USING btree ("telegram_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_identities_phone_number_idx" ON "user_identities" USING btree ("phone_number");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_identities_discord_id_idx" ON "user_identities" USING btree ("discord_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_identities_whatsapp_id_idx" ON "user_identities" USING btree ("whatsapp_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_preferences_user_idx" ON "user_preferences" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_preferences_work_function_idx" ON "user_preferences" USING btree ("work_function");--> statement-breakpoint
+
+CREATE INDEX IF NOT EXISTS "app_config_app_idx" ON "app_config" USING btree ("app_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "app_billing_app_idx" ON "app_billing" USING btree ("app_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "app_databases_app_idx" ON "app_databases" USING btree ("app_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "app_databases_status_idx" ON "app_databases" USING btree ("user_database_status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_privy_idx" ON "users" USING btree ("privy_user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_telegram_idx" ON "users" USING btree ("telegram_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_discord_idx" ON "users" USING btree ("discord_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_phone_idx" ON "users" USING btree ("phone_number");--> statement-breakpoint

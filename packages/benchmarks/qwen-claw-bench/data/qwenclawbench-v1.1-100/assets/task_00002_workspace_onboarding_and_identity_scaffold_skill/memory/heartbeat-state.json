@@ -1,0 +1,18 @@
+{
+  "lastChecks": {
+    "email": 1773914400,
+    "calendar": 1773928800,
+    "weather": 1773900000,
+    "github": 1773921600,
+    "social": null
+  },
+  "lastHeartbeat": 1773932400,
+  "heartbeatCount": 47,
+  "consecutiveMisses": 0,
+  "lastAlertSent": null,
+  "status": "healthy",
+  "upSince": 1773676800,
+  "checkIntervalMs": 1800000,
+  "sessionId": "sess_a3f8c1d2e9b7",
+  "version": "1.2.0"
+}

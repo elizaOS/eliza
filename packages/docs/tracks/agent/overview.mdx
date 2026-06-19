@@ -1,0 +1,53 @@
+---
+title: Agent
+description: "Configure a character, plug in connectors, run an autonomous Eliza agent."
+---
+
+An **Eliza agent** is an `AgentRuntime` instance wrapped around a **Character** — a configuration file describing personality, knowledge, capabilities, and the connectors it speaks through. The runtime handles message ingestion, action selection, memory, evaluator passes, and provider context injection. Everything else is a plugin.
+
+## What you build
+
+A single agent, addressable from one or more channels (Discord, Telegram, Slack, X, WhatsApp, iMessage, the elizaOS app — see [Connectors](/guides/connectors)). It can hold long-running goals, remember conversations, run tools, and act on a schedule.
+
+## Three commands
+
+```bash
+npx elizaos create my-agent
+cd my-agent
+bun install && bun run dev
+```
+
+The scaffolded project includes a `character.ts`, a default plugin stack, and a dev entry point. See the [CLI](/cli/overview) reference for what each command does.
+
+## Track contents
+
+<CardGroup cols={2}>
+  <Card title="Create an agent" icon="plus" href="/tracks/agent/create">
+    Scaffold a new agent project from the CLI template.
+  </Card>
+  <Card title="Character files" icon="id-card" href="/tracks/agent/character">
+    The `Character` schema: name, bio, system, examples, plugins, secrets.
+  </Card>
+  <Card title="Lifecycle" icon="rotate" href="/tracks/agent/lifecycle">
+    Initialization, message handling, evaluators, shutdown.
+  </Card>
+  <Card title="Memory" icon="brain" href="/tracks/agent/memory">
+    Conversations, embeddings, state, recall.
+  </Card>
+  <Card title="Connect channels" icon="plug" href="/tracks/agent/connect-channels">
+    Wire the agent into Discord, Telegram, Slack, X, and more.
+  </Card>
+</CardGroup>
+
+## Where this comes from
+
+- Runtime: [`packages/core/src/runtime.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/runtime.ts)
+- Agent entrypoint: [`packages/agent/src/runtime/eliza.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/agent/src/runtime/eliza.ts)
+- Character schema: [`packages/agent/src/config/character-schema.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/agent/src/config/character-schema.ts)
+
+## Going further
+
+- [Agent runtime internals](/agents/runtime-and-lifecycle)
+- [Character interface](/agents/character-interface)
+- [Memory and state](/agents/memory-and-state)
+- [Personality and behavior](/agents/personality-and-behavior)

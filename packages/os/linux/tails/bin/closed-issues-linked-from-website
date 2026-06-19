@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+
+MASTER_CHECKOUT="$1"
+
+cd "${MASTER_CHECKOUT:?}"
+
+find wiki/src/{doc,support} \
+    ! -path wiki/src/support/known_issues/graphics.mdwn \
+    \( -name "*.mdwn" -o -name "*.html" \) \
+    -exec cat '{}' + |
+    ruby -e 'puts STDIN.read.scan(/\[\[!tails_ticket\s+(\d+)[^\]]*\]\]/)' |
+    while read -r ticket; do
+        ticket_status="$(python-gitlab --gitlab TailsRM -o json --fields state project-issue get --project-id 2 --iid "$ticket" | jq --raw-output .state)"
+        if [ -z "${ticket_status:-}" ]; then
+            echo "Failed to find the status of #${ticket:?}" >&2
+            continue
+        fi
+        if [ "${ticket_status:?}" = "closed" ]; then
+            echo "It seems issue #${ticket:?} has been fixed. Please find all instances on the website and adjust them as needed. Ticket URL: https://gitlab.tails.boum.org/tails/tails/-/issues/${ticket:?}"
+        fi
+    done

@@ -1,0 +1,1 @@
+{"steps":[{"usd_class_transfer":{"toPerp":true,"usdc":10.0}},{"set_leverage":{"coin":"ETH","leverage":5,"cross":false}},{"perp_orders":{"orders":[{"coin":"ETH","tif":"Ioc","side":"buy","sz":0.01,"reduceOnly":true,"px":"mid"}]}}]}

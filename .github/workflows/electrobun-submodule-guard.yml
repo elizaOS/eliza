@@ -1,0 +1,66 @@
+# Electrobun Submodule Guard
+#
+# Fails fast when the `upstreams/electrobun` submodule gitlink points at a commit
+# that is NOT fetchable from its configured remote — the recurring "dangling
+# pointer" that breaks `git submodule update` for every fresh clone and CI run.
+#
+# History of this bug (each a commit that pinned an unfetchable SHA):
+#   db785c6dc6 -> fixed by 2881d83894 -> regressed to 6bedce8261 (evil merge
+#   f5ae5dfed5) -> root cause finally fixed by d32749acdc, which repointed the
+#   submodule URL at the elizaOS/electrobun fork (where the real, ahead-of-public
+#   electrobun development actually lives) instead of upstream blackboardsh/electrobun.
+#
+# This guard keeps it from regressing: any PR/push that moves the gitlink or the
+# URL must leave a pin that the remote can actually serve.
+name: Electrobun Submodule Guard
+
+on:
+  pull_request:
+    paths:
+      - "upstreams/electrobun"
+      - ".gitmodules"
+  push:
+    branches: [develop, main]
+    paths:
+      - "upstreams/electrobun"
+      - ".gitmodules"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-electrobun-pin:
+    name: electrobun gitlink is fetchable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (no submodules)
+        # actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          submodules: false
+
+      - name: Verify the electrobun pin is fetchable from its remote
+        run: |
+          set -euo pipefail
+          url=$(git config -f .gitmodules submodule.upstreams/electrobun.url || true)
+          sha=$(git ls-tree HEAD upstreams/electrobun | awk '{print $3}' || true)
+          echo "configured url: ${url:-<none>}"
+          echo "pinned commit:  ${sha:-<none>}"
+          if [ -z "${url}" ] || [ -z "${sha}" ]; then
+            echo "::error::Could not read the electrobun submodule URL or pinned commit from .gitmodules / the tree."
+            exit 1
+          fi
+          # Mirror exactly what `git submodule update` does: fetch that exact commit.
+          # GitHub serves any commit reachable from a ref (allowReachableSHA1InWant);
+          # a dangling/unpushed commit fails here just as it would for a fresh clone.
+          tmp=$(mktemp -d)
+          git init -q "${tmp}"
+          if git -C "${tmp}" fetch -q --depth=1 "${url}" "${sha}"; then
+            echo "OK: ${sha} is fetchable from ${url}"
+          else
+            echo "::error::electrobun submodule pin ${sha} is NOT fetchable from ${url}."
+            echo "::error::A fresh 'git submodule update' will fail ('not our ref') — this is the recurring dangling-gitlink bug."
+            echo "::error::Fix: push that electrobun commit to the configured remote, or repoint the pin/URL to a commit the remote serves (e.g. the elizaOS/electrobun develop or main HEAD)."
+            exit 1
+          fi

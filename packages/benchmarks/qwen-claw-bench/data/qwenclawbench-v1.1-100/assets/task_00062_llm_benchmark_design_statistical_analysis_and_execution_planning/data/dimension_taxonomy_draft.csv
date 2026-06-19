@@ -1,0 +1,21 @@
+dimension_id,dimension_name,description,parent_category,estimated_questions
+D01,Mathematical Reasoning,"Ability to solve mathematical problems including algebra, calculus, and number theory",Quantitative,65
+D02,Code Generation,Generating correct and efficient code from natural language specifications,Technical,60
+D03,Code Debugging,Identifying and fixing bugs in provided code snippets,Technical,45
+D04,Reading Comprehension,Understanding and extracting information from provided text passages,Language,55
+D05,Text Understanding,Comprehending written text and answering questions about its content and meaning,Language,50
+D06,Logical Deduction,Drawing valid conclusions from given premises using formal logic rules,Reasoning,55
+D07,Deductive Reasoning,Applying deductive logic to derive conclusions from stated premises and rules,Reasoning,50
+D08,Common Sense Reasoning,Applying everyday knowledge and intuition to answer questions about the world,Reasoning,55
+D09,Scientific Knowledge,"Demonstrating understanding of scientific concepts across physics, chemistry, and biology",Knowledge,50
+D10,Creative Writing,"Producing original, engaging, and well-structured creative text",Generation,45
+D11,Instruction Following,Accurately following complex multi-step instructions with constraints,Alignment,55
+D12,Summarization,Condensing long texts into accurate and concise summaries,Language,45
+D13,Tool Use,"Correctly invoking external tools, APIs, and functions based on task requirements",Agentic,55
+D14,Multilingual Competence,Understanding and generating text in multiple languages with cultural awareness,Language,50
+D15,Safety and Alignment,Appropriately refusing harmful requests and maintaining ethical boundaries,Alignment,50
+D16,Multi-turn Dialogue,Maintaining coherent and contextually appropriate multi-turn conversations,Interaction,55
+D17,Data Analysis,"Interpreting data, tables, and charts to draw accurate conclusions",Quantitative,50
+D18,Fact Retrieval,Accurately recalling and presenting factual information,Knowledge,50
+D19,Robustness,"Maintaining performance under adversarial inputs, typos, and perturbations",Reliability,55
+D20,Agentic Planning,Decomposing complex tasks into subtasks and executing multi-step plans,Agentic,55

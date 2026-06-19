@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Polymarket</title>
+  <desc id="desc">Prediction market dashboard hero artwork with market probability cards.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#10291f"/>
+      <stop offset="0.58" stop-color="#174335"/>
+      <stop offset="1" stop-color="#f0c66f"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7fff8" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#e8f5ee" stop-opacity="0.94"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="22" stdDeviation="22" flood-color="#07140f" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <path d="M0 556C176 493 278 526 423 482C582 433 653 315 813 301C969 287 1087 372 1200 335V675H0Z" fill="#0b1d17" opacity="0.42"/>
+  <path d="M0 100C123 58 222 91 342 59C475 24 580 -14 706 52C837 121 925 116 1200 42V0H0Z" fill="#ffffff" opacity="0.08"/>
+  <g filter="url(#shadow)">
+    <rect x="94" y="90" width="420" height="496" rx="32" fill="url(#card)"/>
+    <rect x="134" y="136" width="172" height="18" rx="9" fill="#1c3d31"/>
+    <rect x="134" y="176" width="300" height="13" rx="6.5" fill="#6b7f76" opacity="0.72"/>
+    <rect x="134" y="230" width="332" height="96" rx="22" fill="#ffffff"/>
+    <rect x="134" y="352" width="332" height="96" rx="22" fill="#ffffff"/>
+    <rect x="134" y="474" width="332" height="58" rx="18" fill="#10291f"/>
+    <path d="M168 286C202 264 225 302 256 279C285 258 301 246 336 265C365 281 385 271 430 250" fill="none" stroke="#23a879" stroke-width="8" stroke-linecap="round"/>
+    <path d="M168 407C203 390 222 430 258 414C291 399 307 362 344 383C381 404 404 395 430 371" fill="none" stroke="#d49b2b" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="430" cy="250" r="12" fill="#23a879"/>
+    <circle cx="430" cy="371" r="12" fill="#d49b2b"/>
+    <text x="164" y="265" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="0" fill="#10291f">YES 64%</text>
+    <text x="164" y="386" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="0" fill="#10291f">NO 36%</text>
+    <text x="164" y="511" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="0" fill="#f7fff8">Track position</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="580" y="130" width="520" height="410" rx="34" fill="#f7fff8" opacity="0.96"/>
+    <text x="628" y="214" font-family="Inter, Arial, sans-serif" font-size="62" font-weight="800" letter-spacing="0" fill="#10291f">Polymarket</text>
+    <text x="632" y="266" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="500" letter-spacing="0" fill="#466158">Prediction markets, resolved cleanly.</text>
+    <rect x="632" y="322" width="390" height="18" rx="9" fill="#d9e7df"/>
+    <rect x="632" y="322" width="286" height="18" rx="9" fill="#23a879"/>
+    <rect x="632" y="374" width="312" height="18" rx="9" fill="#d9e7df"/>
+    <rect x="632" y="374" width="122" height="18" rx="9" fill="#d49b2b"/>
+    <rect x="632" y="426" width="430" height="52" rx="18" fill="#10291f"/>
+    <text x="660" y="460" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="0" fill="#f7fff8">Markets, watchlist, and activity</text>
+  </g>
+</svg>

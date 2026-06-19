@@ -1,0 +1,156 @@
+import * as os from "node:os";
+import { describe, expect, it, vi } from "vitest";
+// Post-consolidation: CREATE_AGENT_TASK is `TASKS { action: "create" }` (default action).
+import { createTaskAction } from "../../src/actions/tasks.js";
+import { codingAgentExamplesProvider } from "../../src/providers/action-examples.js";
+import {
+  callback,
+  memory,
+  runtimeWith,
+  serviceMock,
+  state,
+} from "../../src/test-utils/action-test-utils.js";
+
+describe("TASKS:create", () => {
+  it("keeps the coding TASKS parent out of generic owner task context", () => {
+    expect(createTaskAction.contexts).toContain("code");
+    expect(createTaskAction.contexts).toContain("automation");
+    expect(createTaskAction.contexts).not.toContain("tasks");
+    expect(codingAgentExamplesProvider.contexts).toContain("code");
+    expect(codingAgentExamplesProvider.contexts).not.toContain("tasks");
+  });
+
+  it("surfaces TASKS whenever the ACP service is ready", async () => {
+    // Validation surfaces TASKS as soon as the ACP service is registered;
+    // routing personal-LifeOps phrasings off this action is the Stage-1
+    // router's job (regex on message text is fragile across plurals,
+    // languages, and paraphrases).
+    expect(
+      await createTaskAction.validate(
+        runtimeWith(serviceMock()),
+        memory({ task: "implement feature" }),
+        state,
+      ),
+    ).toBe(true);
+    expect(
+      await createTaskAction.validate(
+        runtimeWith(undefined),
+        memory({ task: "implement feature" }),
+        state,
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps website update requests eligible for the coding TASKS parent", async () => {
+    expect(
+      await createTaskAction.validate(
+        runtimeWith(serviceMock()),
+        memory({ text: "update the website, add some fixes" }),
+        state,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps personal reminder wording off TASKS so LifeOps can own it", async () => {
+    expect(
+      await createTaskAction.validate(
+        runtimeWith(serviceMock()),
+        memory({ text: "set a reminder to call mom tomorrow" }),
+        state,
+      ),
+    ).toBe(false);
+  });
+
+  it("supports nyx options.parameters and returns data.agents[].sessionId plus id", async () => {
+    const svc = serviceMock();
+    // Must be a real directory: resolveSpawnWorkdir drops an explicit workdir
+    // that does not exist on disk (the planner routinely typos the path).
+    const workdir = os.tmpdir();
+    const result = await createTaskAction.handler(
+      runtimeWith(svc),
+      memory({}),
+      state,
+      {
+        parameters: {
+          action: "create",
+          task: "fix bug",
+          agentType: "codex",
+          workdir,
+          model: "gpt-5.5",
+          approvalPreset: "readonly",
+          timeout_ms: 1000,
+        },
+      },
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    // Without an OrchestratorTaskService, no [TASK:…] widget block is appended;
+    // the callback still receives the prose summary.
+    expect(result?.text).toBe("Created task agent.");
+    expect(result?.data?.taskId).toBeNull();
+    expect(result?.data?.agents).toEqual([
+      {
+        id: "abcdef123456",
+        sessionId: "abcdef123456",
+        agentType: "codex",
+        name: "agent-one",
+        workdir,
+        label: "fix bug",
+        status: "completed",
+      },
+    ]);
+    expect(svc.emitSessionEvent).toHaveBeenCalledWith(
+      "abcdef123456",
+      "task_complete",
+      expect.objectContaining({ response: "done" }),
+    );
+  });
+  it("handles missing service, auth error, generic failure", async () => {
+    expect(
+      (
+        await createTaskAction.handler(
+          runtimeWith(undefined),
+          memory(),
+          state,
+          { parameters: { action: "create" } },
+          callback(),
+        )
+      )?.error,
+    ).toBe("SERVICE_UNAVAILABLE");
+    const auth = serviceMock({
+      spawnSession: vi.fn(async () => {
+        throw new Error("auth failed");
+      }),
+    });
+    const authResult = await createTaskAction.handler(
+      runtimeWith(auth),
+      memory({ task: "x" }),
+      state,
+      { parameters: { action: "create" } },
+      callback(),
+    );
+    expect(authResult?.success).toBe(false);
+    expect(authResult?.data?.agents).toBeDefined();
+    const fail = serviceMock({
+      sendPrompt: vi.fn(async () => ({
+        sessionId: "abcdef123456",
+        response: "",
+        finalText: "",
+        stopReason: "error",
+        durationMs: 1,
+        error: "boom",
+      })),
+    });
+    expect(
+      (
+        await createTaskAction.handler(
+          runtimeWith(fail),
+          memory({ task: "x" }),
+          state,
+          { parameters: { action: "create" } },
+          callback(),
+        )
+      )?.success,
+    ).toBe(false);
+  });
+});

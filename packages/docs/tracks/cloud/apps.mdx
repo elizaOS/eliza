@@ -1,0 +1,60 @@
+---
+title: Cloud Apps
+description: "Register a Cloud app, route app-scoped chat, and prepare container deploys."
+---
+
+An **app** in Cloud is a registered product that bundles metadata, allowed
+origins, billing settings, and deployment configuration. Registering an app
+gives you an `id` that:
+
+- Identifies the app to Cloud-routed inference, billing, and analytics.
+- Lets the app use app-scoped chat and app-owned admin APIs.
+- Enables container deploys and domain binding.
+- Powers creator monetization (earnings tied to app usage).
+
+## Register
+
+`POST /api/v1/apps`
+
+Body:
+
+```json
+{
+  "name": "My App",
+  "app_url": "https://placeholder.invalid",
+  "allowed_origins": ["https://placeholder.invalid"],
+  "description": "What it does.",
+  "skipGitHubRepo": true
+}
+```
+
+Response includes the assigned app `id` and a one-time app API key. Store the
+key server-side.
+
+## Lifecycle
+
+- `GET /api/v1/apps/:id` - fetch.
+- `PATCH /api/v1/apps/:id` - update metadata, URLs, origins, and settings.
+- `DELETE /api/v1/apps/:id` - soft-delete.
+
+## Deploy Readiness
+
+App deploys are gated in production by `APPS_DEPLOY_ENABLED`. The cutover is
+operator-controlled: apply the production apps data plane, merge the production
+Worker flag, arm the production daemon, then deploy the all-features eDad test
+app with isolated DB mode.
+
+**Why:** the app record, Worker route, daemon, app node, tenant DB, and wildcard
+domain must agree before production can safely accept deploy jobs. See
+[Launch Status](/cloud/launch-status) for the current gate.
+
+## Source
+
+- Route: `packages/cloud-api/v1/apps/route.ts`, `packages/cloud-api/v1/apps/[id]/route.ts`
+- Dashboard UI: `packages/cloud-frontend/src/dashboard/apps/`
+
+## See also
+
+- [Auth](/tracks/cloud/auth)
+- [Domains](/tracks/cloud/domains)
+- [Billing](/tracks/cloud/billing)

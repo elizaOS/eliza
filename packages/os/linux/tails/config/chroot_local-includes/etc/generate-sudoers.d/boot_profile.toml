@@ -1,0 +1,3 @@
+[[commands]]
+executable = "/usr/local/lib/kill-boot-profile"
+allowed_user = "amnesia"

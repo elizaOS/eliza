@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-9b316e8e7fc49470237bc0adb9535226d6c33f8f-v579cb6b03cf8f928b7694cb4f65acf55bd8b8fb8
+Repository: element-hq/element-web
+Base Commit: 72a2773629d8105dc67fea13e73495204d549bec
+Test Files: ["test/unit-tests/components/views/settings/AvatarSetting-test.tsx", "test/unit-tests/components/views/settings/AvatarSetting-test.ts", "test/unit-tests/components/views/elements/MiniAvatarUploader-test.tsx"]
+FAIL_TO_PASS: ["test/unit-tests/components/views/settings/AvatarSetting-test.tsx | should noop when selecting no file", "test/unit-tests/components/views/settings/AvatarSetting-test.tsx | should show error if user tries to use non-image file"]
+PASS_TO_PASS: ["test/unit-tests/components/views/settings/AvatarSetting-test.tsx | renders avatar with specified alt text", "test/unit-tests/components/views/settings/AvatarSetting-test.tsx | renders a file as the avatar when supplied", "test/unit-tests/components/views/settings/AvatarSetting-test.tsx | calls onChange when a file is uploaded", "test/unit-tests/components/views/elements/MiniAvatarUploader-test.tsx | calls setAvatarUrl when a file is uploaded"]

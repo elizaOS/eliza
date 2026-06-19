@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_e1x_fabric_cocotb_gate_passes() -> None:
+    result = subprocess.run(
+        [sys.executable, "scripts/check_e1x_fabric_cocotb.py"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    )
+    assert "PASS: E1X fabric cocotb" in result.stdout
+    report = json.loads((ROOT / "build/reports/e1x_fabric_cocotb.json").read_text())
+    assert report["status"] == "PASS"
+    assert report["summary"]["failing_check_count"] == 0
+    assert report["summary"]["testcases"] >= 20
+    checks = {check["id"]: check for check in report["checks"]}
+    assert checks["e1x_credit_router_cocotb_gate"]["status"] == "pass"

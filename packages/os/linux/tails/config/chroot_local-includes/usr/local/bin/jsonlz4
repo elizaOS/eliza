@@ -1,0 +1,28 @@
+#!/usr/bin/python3 -I
+
+# This script is based on https://unix.stackexchange.com/a/434882
+# Original author: https://unix.stackexchange.com/users/61726/h%c3%a5kon-a-hjortland
+
+import os
+import sys
+
+import lz4.block
+
+usage = f"""Usage: {sys.argv[0]} [-c|-d] < infile > outfile
+Compress or decompress Mozilla-flavor LZ4 files.
+
+Examples:
+    {sys.argv[0]} -d < infile.json.lz4 > outfile.json
+    {sys.argv[0]} -c < infile.json > outfile.json.lz4"""
+
+stdin = os.fdopen(sys.stdin.fileno(), "rb")
+stdout = os.fdopen(sys.stdout.fileno(), "wb")
+
+if sys.argv[1:] == ["-c"]:
+    stdout.write(b"mozLz40\0" + lz4.block.compress(stdin.read()))
+elif sys.argv[1:] == ["-d"]:
+    assert stdin.read(8) == b"mozLz40\0"
+    stdout.write(lz4.block.decompress(stdin.read()))
+else:
+    print(usage)
+    sys.exit(1)

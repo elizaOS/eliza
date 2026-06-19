@@ -1,0 +1,156 @@
+# Social Media Account Setup Guidelines
+# Version: 1.0 (Final)
+# Effective Date: 2024-01-15
+# Applies to: All institutional and organizational social media accounts
+
+metadata:
+  document_id: SMG-2024-001
+  version: "1.0"
+  status: final
+  approved_by: "Content Strategy Team"
+  effective_date: "2024-01-15"
+
+required_fields:
+  - bio
+  - persona
+  - age
+  - gender
+  - mbti
+  - country
+  - profession
+  - interested_topics
+
+field_constraints:
+  bio:
+    type: string
+    min_length: 150
+    max_length: 250
+    description: >
+      A concise introduction of the account. Should capture the entity's core identity,
+      mission, and value proposition. Must be written in Chinese (zh-CN).
+    language: zh-CN
+    allow_null: false
+
+  persona:
+    type: string
+    min_length: 1500
+    max_length: 2500
+    description: >
+      Comprehensive persona description written as a single continuous paragraph
+      with NO newline characters. Must cover organizational basics, account positioning,
+      speaking style, content characteristics, stance and attitudes, special notes,
+      and organizational memory. Written in Chinese (zh-CN).
+    language: zh-CN
+    format: single_paragraph
+    allow_newlines: false
+    allow_null: false
+
+  age:
+    type: integer
+    value: 30
+    description: >
+      Standardized account age representation. For institutional accounts,
+      this is set to a fixed value of 30 to represent organizational maturity.
+    allow_null: false
+
+  gender:
+    type: string
+    value: "other"
+    description: >
+      Gender field for institutional accounts. Must be the English string 'other'.
+      This is an exception to the Chinese language requirement - gender MUST remain
+      in English as 'other' for system compatibility.
+    language: en
+    allow_null: false
+
+  mbti:
+    type: string
+    pattern: "^[EI][SN][TF][JP]$"
+    description: >
+      MBTI personality type code. Must be a valid 4-letter MBTI type.
+      Selected based on the entity's communication style and organizational culture.
+    allow_null: false
+
+  country:
+    type: string
+    description: >
+      Country where the entity is headquartered. Written in Chinese (zh-CN).
+    language: zh-CN
+    allow_null: false
+
+  profession:
+    type: string
+    description: >
+      Professional category or industry descriptor. Written in Chinese (zh-CN).
+    language: zh-CN
+    allow_null: false
+
+  interested_topics:
+    type: array
+    item_type: string
+    min_items: 3
+    max_items: 10
+    description: >
+      Array of topic strings the account is interested in. Each topic written
+      in Chinese (zh-CN). Must contain at least 3 topics.
+    language: zh-CN
+    allow_null: false
+    allow_empty: false
+
+content_policies:
+  language_policy:
+    default: zh-CN
+    exceptions:
+      - field: gender
+        language: en
+        reason: "System compatibility requirement - must be English string 'other'"
+    notes: >
+      All text fields must be in Chinese (zh-CN) unless explicitly listed
+      as an exception above. The gender field is the ONLY exception.
+
+  null_policy:
+    allow_null_values: false
+    description: >
+      No field may contain null, None, empty string, or undefined values.
+      Every required field must have a meaningful, non-empty value.
+
+  value_types:
+    description: >
+      All values must be either string, number (integer), or array of strings.
+      No nested objects, no boolean values, no complex types.
+
+formatting_rules:
+  persona_structure:
+    format: single_paragraph
+    must_include:
+      - section: org_basics
+        description: "Basic organizational information (founding, mission, scale)"
+      - section: account_positioning
+        description: "How this social media account positions itself"
+      - section: speaking_style
+        description: "Tone, vocabulary, and communication approach"
+      - section: content_characteristics
+        description: "Types of content shared and content strategy"
+      - section: stance_attitudes
+        description: "Positions on key industry topics and debates"
+      - section: special_notes
+        description: "Any unique behavioral patterns or restrictions"
+      - section: org_memory
+        description: "Key facts the account should always remember about the org"
+    constraints:
+      - "Must be a single continuous paragraph - NO newline characters (\\n)"
+      - "Must flow naturally between sections without explicit headers"
+      - "Length must be between 1500 and 2500 characters"
+      - "Written entirely in Chinese (zh-CN)"
+
+  bio_structure:
+    format: continuous_text
+    constraints:
+      - "Between 150 and 250 characters"
+      - "Written in Chinese (zh-CN)"
+      - "Should mention entity name, core mission, and key differentiator"
+
+  general:
+    encoding: UTF-8
+    output_format: JSON
+    json_indent: 2

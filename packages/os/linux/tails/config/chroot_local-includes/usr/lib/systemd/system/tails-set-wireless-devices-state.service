@@ -1,0 +1,16 @@
+[Unit]
+Description=Set proper default state on wireless devices
+Documentation=https://tails.net/contribute/design/
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/tails-set-wireless-devices-state
+CapabilityBoundingSet=~CAP_SYS_ADMIN
+PrivateDevices=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

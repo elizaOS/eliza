@@ -1,0 +1,240 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 02:00+0000\n"
+"PO-Revision-Date: 2024-05-12 12:53+0000\n"
+"Last-Translator: drebs <drebs@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Shutting down Tails|first_steps/shutdown]]"
+msgid "[[Starting Tails|first_steps/start]]"
+msgstr "- [[Desligando o Tails|first_steps/shutdown]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+#| msgid "- [[Shutting down Tails|first_steps/shutdown]]"
+msgid "[[Starting Tails on PC|first_steps/start/pc]]"
+msgstr "- [[Desligando o Tails|first_steps/shutdown]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+#| msgid "- [[Shutting down Tails|first_steps/shutdown]]"
+msgid "[[Starting Tails on Mac|first_steps/start/mac]]"
+msgstr "- [[Desligando o Tails|first_steps/shutdown]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Accessibility|first_steps/accessibility]]"
+msgid "[[Accessibility|first_steps/accessibility]]"
+msgstr "- [[Acessibilidade|first_steps/accessibility]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Welcome Screen|first_steps/welcome_screen]]"
+msgid "[[Welcome Screen|first_steps/welcome_screen]]"
+msgstr "- [[Tela de Boas-vindas|first_steps/welcome_screen]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Administration password|first_steps/welcome_screen/"
+"administration_password]]"
+msgstr ""
+"[[Senha de administração|first_steps/welcome_screen/administration_password]]"
+
+#. type: Bullet: '  * '
+msgid "[[MAC address anonymization|first_steps/welcome_screen/mac_spoofing]]"
+msgstr ""
+"[[Anonimização de endereço MAC|first_steps/welcome_screen/mac_spoofing]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Introduction to GNOME and the Tails desktop|first_steps/desktop]]"
+msgid "[[Introduction to GNOME and the Tails desktop|first_steps/desktop]]"
+msgstr ""
+"- [[Introdução ao GNOME e à área de trabalho do Tails|first_steps/desktop]]"
+
+#. type: Bullet: '  * '
+msgid "[[Why is the time wrong?|first_steps/desktop/time]]"
+msgstr "[[Por que o relógio está errado?|first_steps/desktop/time]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Reporting an error using *WhisperBack*|first_steps/whisperback]]"
+msgid "[[Reporting an error using *WhisperBack*|first_steps/whisperback]]"
+msgstr ""
+"- [[Reportando um erro através do Whisperback|first_steps/whisperback]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Shutting down Tails|first_steps/shutdown]]"
+msgid "[[Shutting down Tails|first_steps/shutdown]]"
+msgstr "- [[Desligando o Tails|first_steps/shutdown]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Shutting down Tails|first_steps/shutdown]]"
+msgid "[[Uninstalling Tails|doc/first_steps/uninstall]]"
+msgstr "- [[Desligando o Tails|first_steps/shutdown]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+#| msgid "- [[Shutting down Tails|first_steps/shutdown]]"
+msgid "[[Uninstalling Tails using Windows|doc/first_steps/uninstall/windows]]"
+msgstr "- [[Desligando o Tails|first_steps/shutdown]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+#| msgid "- [[Shutting down Tails|first_steps/shutdown]]"
+msgid "[[Uninstalling Tails using macOS|doc/first_steps/uninstall/mac]]"
+msgstr "- [[Desligando o Tails|first_steps/shutdown]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+#| msgid "- [[Shutting down Tails|first_steps/shutdown]]"
+msgid "[[Uninstalling Tails using Linux|doc/first_steps/uninstall/linux]]"
+msgstr "- [[Desligando o Tails|first_steps/shutdown]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+#| msgid "- [[Shutting down Tails|first_steps/shutdown]]"
+msgid ""
+"[[Uninstalling Tails using Tails itself|doc/first_steps/uninstall/tails]]"
+msgstr "- [[Desligando o Tails|first_steps/shutdown]]"
+
+#, fuzzy
+#~| msgid "- [[Shutting down Tails|first_steps/shutdown]]"
+#~ msgid ""
+#~ "[[Uninstalling Tails or resetting a USB stick|doc/first_steps/reset]]"
+#~ msgstr "- [[Desligando o Tails|first_steps/shutdown]]"
+
+#, fuzzy
+#~| msgid "- Starting Tails"
+#~ msgid "Starting Tails"
+#~ msgstr "- Iniciando o Tails"
+
+#~ msgid "[[On PC|first_steps/start/pc]]"
+#~ msgstr "[[Em um PC|first_steps/start/pc]]"
+
+#~ msgid "[[On Mac|first_steps/start/mac]]"
+#~ msgstr "[[Em um Mac|first_steps/start/mac]]"
+
+#~ msgid "- Starting Tails"
+#~ msgstr "- Iniciando o Tails"
+
+#~ msgid "[[!traillink Persistent_Storage|first_steps/persistence]]"
+#~ msgstr "[[!traillink Armazenamento_Persistente|first_steps/persistence]]"
+
+#~ msgid ""
+#~ "[[!traillink Warnings_about_the_Persistent_Storage|first_steps/"
+#~ "persistence/warnings]]"
+#~ msgstr ""
+#~ "[[!traillink Avisos_sobre_o_Armazenamento_Persistente|first_steps/"
+#~ "persistence/warnings]]"
+
+#~ msgid ""
+#~ "[[!traillink Making_a_backup_of_your_Persistent_Storage|first_steps/"
+#~ "persistence/backup]]"
+#~ msgstr ""
+#~ "[[!traillink Fazendo_um_backup_do_seu_Armazenamento_Persistente|"
+#~ "first_steps/persistence/backup]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[!traillink Warnings_about_the_Persistent_Storage|first_steps/"
+#~| "persistence/warnings]]"
+#~ msgid ""
+#~ "[[!traillink Changing_the_passphrase_of_the_Persistent_Storage|"
+#~ "first_steps/persistence/passphrase]]"
+#~ msgstr ""
+#~ "[[!traillink Avisos_sobre_o_Armazenamento_Persistente|first_steps/"
+#~ "persistence/warnings]]"
+
+#~ msgid ""
+#~ "[[!traillink Rescuing_your_Persistent_Storage_from_a_broken_Tails|"
+#~ "first_steps/persistence/rescue]]"
+#~ msgstr ""
+#~ "[[!traillink "
+#~ "Resgatando_seu_Armazenamento_Persistente_de_um_Tails_quebrado|first_steps/"
+#~ "persistence/rescue]]"
+
+#~ msgid ""
+#~ "[[!traillink Deleting_the_Persistent_Storage|first_steps/persistence/"
+#~ "delete]]"
+#~ msgstr ""
+#~ "[[!traillink Apagando_o_Armazenamento_Persistente|first_steps/persistence/"
+#~ "delete]]"
+
+#~ msgid ""
+#~ "[[!traillink Installing_additional_software|first_steps/"
+#~ "additional_software]]"
+#~ msgstr ""
+#~ "[[!traillink Instalando_programas_adicionais|first_steps/"
+#~ "additional_software]]"
+
+#, no-wrap
+#~ msgid ""
+#~ "  - Starting Tails\n"
+#~ "    - [[!traillink On_PC|first_steps/start/pc]]\n"
+#~ "    - [[!traillink On_Mac|first_steps/start/mac]]\n"
+#~ "  - [[!traillink Accessibility|first_steps/accessibility]]\n"
+#~ "  - [[!traillink Welcome_Screen|first_steps/welcome_screen]]\n"
+#~ "    - [[!traillink Administration_password|first_steps/welcome_screen/administration_password]]\n"
+#~ "    - [[!traillink MAC_address_anonymization|first_steps/welcome_screen/mac_spoofing]]\n"
+#~ "  - [[!traillink Introduction_to_GNOME_and_the_Tails_desktop|first_steps/introduction_to_gnome_and_the_tails_desktop]]\n"
+#~ "  - [[!traillink Persistent_Storage|first_steps/persistence]]\n"
+#~ "    - [[!traillink Warnings_about_the_Persistent_Storage|first_steps/persistence/warnings]]\n"
+#~ "    - [[!traillink Making_a_backup_of_your_Persistent_Storage|first_steps/persistence/backup]]\n"
+#~ "    - [[!traillink Rescuing_your_Persistent_Storage_from_a_broken_Tails|first_steps/persistence/rescue]]\n"
+#~ "    - [[!traillink Deleting_the_Persistent_Storage|first_steps/persistence/delete]]\n"
+#~ "  - [[!traillink Installing_additional_software|first_steps/additional_software]]\n"
+#~ "  - [[!traillink Reporting_an_error|first_steps/bug_reporting]]\n"
+#~ "  - [[!traillink Shutting_down_Tails|first_steps/shutdown]]\n"
+#~ msgstr ""
+#~ "  - Iniciando o Tails\n"
+#~ "    - [[!traillink Em_um_PC|first_steps/start/pc]]\n"
+#~ "    - [[!traillink Em_um_Mac|first_steps/start/mac]]\n"
+#~ "  - [[!traillink Acessibilidade|first_steps/accessibility]]\n"
+#~ "  - [[!traillink Tela_de_Boas-vindas|first_steps/welcome_screen]]\n"
+#~ "    - [[!traillink Senha_de_administração|first_steps/welcome_screen/administration_password]]\n"
+#~ "    - [[!traillink Anonimização_de_endereço_MAC|first_steps/welcome_screen/mac_spoofing]]\n"
+#~ "  - [[!traillink Introdução_ao_GNOME_e_à_área_de_trabalho_do_Tails|first_steps/introduction_to_gnome_and_the_tails_desktop]]\n"
+#~ "  - [[!traillink Armazenamento_Persistente|first_steps/persistence]]\n"
+#~ "    - [[!traillink Avisos_sobre_o_Armazenamento_Persistente|first_steps/persistence/warnings]]\n"
+#~ "    - [[!traillink Fazendo_um_backup_do_seu_Armazenamento_Persistente|first_steps/persistence/backup]]\n"
+#~ "    - [[!traillink Recuperando_seu_Armazenamento_Persistente_de_um_Tails_quebrado|first_steps/persistence/rescue]]\n"
+#~ "    - [[!traillink Deletando_o_Armazenamento_Persistente|first_steps/persistence/delete]]\n"
+#~ "  - [[!traillink Instalando_programas_adicionais|first_steps/additional_software]]\n"
+#~ "  - [[!traillink Reporte_um_erro|first_steps/bug_reporting]]\n"
+#~ "  - [[!traillink Desligando_o_Tails|first_steps/shutdown]]\n"
+
+#~ msgid "<div class=\"tip\">\n"
+#~ msgstr "<div class=\"tip\">\n"
+
+#~ msgid ""
+#~ "<p>For installing and starting Tails, we recommend you try our new\n"
+#~ "[[installation assistant|install]]. The following pages are the old\n"
+#~ "instructions, provided as a fallback.</p>\n"
+#~ msgstr ""
+#~ "<p>Para instalar e iniciar o Tails, recomendamos que você experimente "
+#~ "nosso novo\n"
+#~ "[[assistente de instalação|install]]. As páginas a seguir são as "
+#~ "instruções antigas,\n"
+#~ "disponibilizadas como uma referência alternativa.</p>\n"
+
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"

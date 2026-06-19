@@ -1,0 +1,19 @@
+[[!meta date="Sat, 18 May 2019 17:24:13 +0200"]]
+[[!meta title="Numerous security holes in Tails 3.13.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.13.2 are now fixed in Tails 3.14.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.14|news/version_3.14]] as soon as possible.
+
+
+ - Tor Browser: [[!mfsa 2019-14]]
+ - Linux: [[!debsa2019 4444]]
+ - BIND libraries: [[!debsa2019 4440]]
+ - CUPS filters: [Debian Security Advisory 4442-2](https://lists.debian.org/debian-security-announce/2019/msg00087.html)
+ - Ghostscript: [[!debsa2019 4442]]
+ - Intel microcode: [[!debsa2019 4447]]
+ - Samba: [[!debsa2019 4443]]

@@ -1,0 +1,110 @@
+============================================================
+  ANTENNA POSITIONER SPECIFICATION SHEET
+  Model: AZP-5000 Azimuth-over-Elevation Positioner
+  Manufacturer: MI Technologies / NSI-MI
+  Document: DS-AZP5000-Rev04
+  Date: 2023-11-20
+============================================================
+
+1. GENERAL DESCRIPTION
+----------------------
+The AZP-5000 is a precision two-axis antenna positioner
+designed for far-field and compact range antenna measurement
+systems. It provides continuous azimuth rotation and
+±90° elevation coverage for antenna payloads up to 500 kg.
+
+2. MECHANICAL SPECIFICATIONS
+-----------------------------
+Parameter                          Value
+---------------------------------  -------------------------
+Maximum payload capacity           500 kg
+Azimuth rotation range             ±180° (continuous option)
+Elevation rotation range           ±90°
+Azimuth positioning accuracy       ±0.01°
+Elevation positioning accuracy     ±0.01°
+Azimuth repeatability              ±0.005°
+Elevation repeatability            ±0.005°
+Maximum azimuth speed              5 °/s
+Maximum elevation speed            3 °/s
+Azimuth drive type                 Direct-drive torque motor
+Elevation drive type               Worm gear with DC servo
+Position feedback                  26-bit absolute encoder
+Positioner weight (without AUT)    1,200 kg
+Mounting interface                 8 × M20 floor bolts on
+                                   600 mm PCD
+Foundation requirement             Reinforced concrete pad,
+                                   min. 300 mm thick, C35
+Floor bolt embedment               200 mm minimum
+Vibration isolation                Optional air-spring mounts
+
+3. ELECTRICAL SPECIFICATIONS
+-----------------------------
+Parameter                          Value
+---------------------------------  -------------------------
+Power supply                       380V, 3-phase, 50 Hz
+Power consumption (peak)           3.5 kW
+Power consumption (typical)        1.2 kW
+Control interface                  Ethernet TCP/IP
+Controller model                   MI-2090A
+Emergency stop                     Category 1 per IEC 60204
+Cable length (positioner to ctrl)  30 m standard
+
+4. INSTALLATION REQUIREMENTS
+-----------------------------
+4.1 Floor Mounting
+    The positioner shall be mounted on a precision-leveled
+    concrete pedestal or directly on the chamber floor slab.
+    Floor flatness requirement: ±0.5 mm over the mounting
+    footprint (700 mm × 700 mm).
+
+4.2 Alignment
+    The azimuth axis shall be aligned to the chamber
+    longitudinal axis within ±0.05°. A precision alignment
+    procedure using laser tracker or theodolite is required.
+
+4.3 Lifting and Placement
+    The positioner weighs 1,200 kg and must be lifted into
+    the chamber and placed on the mounting pedestal during
+    installation. A suitable lifting device (crane, hoist,
+    or forklift) with a minimum capacity of 2,000 kg is
+    required. Four M16 lifting eyes are provided on the
+    positioner frame for rigging attachment.
+
+    NOTE: The positioner manufacturer does not specify
+    requirements for the building's permanent lifting
+    points. The installation contractor is responsible for
+    providing appropriate lifting equipment and ensuring
+    that all rigging operations comply with applicable
+    safety regulations.
+
+4.4 Cable Routing
+    Control cables and power cables shall be routed through
+    the chamber floor via the cable trench. RF-filtered
+    feedthrough panels are required at the shielding
+    boundary.
+
+5. ENVIRONMENTAL REQUIREMENTS
+------------------------------
+Parameter                          Value
+---------------------------------  -------------------------
+Operating temperature              15°C to 30°C
+Storage temperature                -10°C to 50°C
+Operating humidity                 20% to 80% RH (non-cond.)
+Cleanliness                        General laboratory
+
+6. MAINTENANCE
+--------------
+- Lubricate elevation worm gear every 12 months
+- Check belt tension (if applicable) every 6 months
+- Verify encoder calibration annually
+- Clean slip rings every 24 months
+
+7. APPLICABLE STANDARDS
+------------------------
+- IEC 60204-1 Safety of Machinery
+- IEEE 149 Standard Test Procedures for Antennas
+- CE Marking (LVD + EMC Directives)
+
+============================================================
+  END OF SPECIFICATION SHEET
+============================================================

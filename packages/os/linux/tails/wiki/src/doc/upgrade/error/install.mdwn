@@ -1,0 +1,37 @@
+[[!meta title="Error while installing the upgrade"]]
+
+The upgrade could not be installed.
+
+<div class="caution">
+
+<p>Your Tails USB stick needs to be repaired and might be unable to restart.</p>
+
+</div>
+
+This is probably caused by a software error in Tails Upgrader.
+
+If you set up an [[administration password|first_steps/welcome_screen/administration_password]] when starting Tails and
+are comfortable with the command line, please [[report the
+problem to us|install#report]] before repairing your Tails USB stick.
+
+<h2 id="repair">Repairing your Tails USB stick</h2>
+
+To repair your Tails USB stick, please try doing a [[manual upgrade|upgrade#manual]].
+
+<div class="note">
+
+<p>The Persistent Storage on the USB stick will be preserved.</p>
+
+</div>
+
+<h2 id="report">Reporting us the problem</h2>
+
+1. Open a *Console*.
+
+1. Execute the following command.
+
+   <p class="command">sudo tails-debugging-info > /home/amnesia/tails-debugging-info</p>
+
+1. Copy the file *tails-debugging-info* from your *Home* folder to another USB stick.
+
+1. Send us the file *tails-debugging-info* by [[email|support/talk]].

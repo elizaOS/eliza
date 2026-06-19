@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://internal.tools/schemas/social-media-profile-v1.json",
+  "title": "Social Media Profile Output Schema",
+  "description": "Defines the required structure and validation rules for generated social media profiles. All institutional accounts must conform to this schema.",
+  "type": "object",
+  "properties": {
+    "bio": {
+      "type": "string",
+      "minLength": 150,
+      "maxLength": 250,
+      "description": "Concise account introduction in Chinese. Must capture entity identity, mission, and value proposition."
+    },
+    "persona": {
+      "type": "string",
+      "minLength": 1500,
+      "maxLength": 2500,
+      "description": "Comprehensive persona description as a single continuous paragraph in Chinese. No newline characters allowed.",
+      "pattern": "^[^\\n\\r]+$"
+    },
+    "age": {
+      "type": "integer",
+      "const": 30,
+      "description": "Fixed age value for institutional accounts representing organizational maturity."
+    },
+    "gender": {
+      "type": "string",
+      "enum": ["other"],
+      "description": "Must be the English string 'other' for institutional accounts. This is an exception to the Chinese language requirement."
+    },
+    "mbti": {
+      "type": "string",
+      "pattern": "^[EI][SN][TF][JP]$",
+      "description": "Valid 4-letter MBTI personality type code reflecting the entity's communication style."
+    },
+    "country": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Country of headquarters in Chinese."
+    },
+    "profession": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Professional category or industry descriptor in Chinese."
+    },
+    "interested_topics": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 3,
+      "maxItems": 10,
+      "description": "Array of topic strings in Chinese representing the account's areas of interest."
+    }
+  },
+  "required": [
+    "bio",
+    "persona",
+    "age",
+    "gender",
+    "mbti",
+    "country",
+    "profession",
+    "interested_topics"
+  ],
+  "additionalProperties": false
+}

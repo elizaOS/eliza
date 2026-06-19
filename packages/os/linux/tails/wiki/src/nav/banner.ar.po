@@ -1,0 +1,36 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-22 08:54+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Content of: <div>
+msgid ""
+"[[ <span>Tails</span> [[!img lib/logo.png link=\"no\" class=\"svg\" "
+"alt=\"\"]] |index]]"
+msgstr ""
+
+#. type: Content of: <div><nav><form>
+msgid ""
+"<input type=\"search\" id=\"searchbox\" name=\"q\" value=\"\" size=\"16\" "
+"placeholder=\"Using DuckDuckGo&hellip;\" /> <input type=\"hidden\" "
+"name=\"sites\" value=\"tails.net\"/> <button aria-label=\"Search\" "
+"type=\"submit\"><span>Search</span></button>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "<a href=\"https://tails.net/donate/\"><span>Donate</span></a>"
+msgstr ""

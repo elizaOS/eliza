@@ -1,0 +1,37 @@
+[
+  {
+    "id": "companion-companionheader--default",
+    "overlay": "t is not a function\n    \n      The component failed to render properly, likely due to a configuration issue in Storybook.\n      Here are some common causes and how you can address them:\n    \n    \n      \n        Missing Context/Providers: You can use decorators to supply specific\n        contexts or providers, which are sometimes necessary for components to render correctly. For\n        detailed in",
+    "errs": [
+      "console: TypeError: t is not a function\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:25832\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:215\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:26469\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:215\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:27055\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:29530\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186\n    at http://localhost:6007/assets/components-nvxd-XfR.js:19:1298\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186"
+    ]
+  },
+  {
+    "id": "companion-companionheader--character-view",
+    "overlay": "t is not a function\n    \n      The component failed to render properly, likely due to a configuration issue in Storybook.\n      Here are some common causes and how you can address them:\n    \n    \n      \n        Missing Context/Providers: You can use decorators to supply specific\n        contexts or providers, which are sometimes necessary for components to render correctly. For\n        detailed in",
+    "errs": [
+      "console: TypeError: t is not a function\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:25832\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:215\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:26469\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:215\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:27055\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:29530\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186\n    at http://localhost:6007/assets/components-nvxd-XfR.js:19:1298\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186"
+    ]
+  },
+  {
+    "id": "companion-companionheader--voice-muted",
+    "overlay": "t is not a function\n    \n      The component failed to render properly, likely due to a configuration issue in Storybook.\n      Here are some common causes and how you can address them:\n    \n    \n      \n        Missing Context/Providers: You can use decorators to supply specific\n        contexts or providers, which are sometimes necessary for components to render correctly. For\n        detailed in",
+    "errs": [
+      "console: TypeError: t is not a function\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:25832\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:215\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:26469\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:215\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:27055\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:29530\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186\n    at http://localhost:6007/assets/components-nvxd-XfR.js:19:1298\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186"
+    ]
+  },
+  {
+    "id": "companion-inferencecloudalertbutton--warning",
+    "overlay": "t is not a function\n    \n      The component failed to render properly, likely due to a configuration issue in Storybook.\n      Here are some common causes and how you can address them:\n    \n    \n      \n        Missing Context/Providers: You can use decorators to supply specific\n        contexts or providers, which are sometimes necessary for components to render correctly. For\n        detailed in",
+    "errs": [
+      "console: TypeError: t is not a function\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:25832\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:215\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:26469\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:215\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:27055\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:29530\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186\n    at http://localhost:6007/assets/components-nvxd-XfR.js:19:1298\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186"
+    ]
+  },
+  {
+    "id": "companion-inferencecloudalertbutton--danger",
+    "overlay": "t is not a function\n    \n      The component failed to render properly, likely due to a configuration issue in Storybook.\n      Here are some common causes and how you can address them:\n    \n    \n      \n        Missing Context/Providers: You can use decorators to supply specific\n        contexts or providers, which are sometimes necessary for components to render correctly. For\n        detailed in",
+    "errs": [
+      "console: TypeError: t is not a function\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:25832\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:215\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:26469\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:215\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:27055\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186\n    at http://localhost:6007/assets/components-nvxd-XfR.js:16:29530\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186\n    at http://localhost:6007/assets/components-nvxd-XfR.js:19:1298\n    at http://localhost:6007/assets/preload-helper-DbRxMUml.js:1:186"
+    ]
+  }
+]

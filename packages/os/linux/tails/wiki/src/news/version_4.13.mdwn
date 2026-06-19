@@ -1,0 +1,95 @@
+[[!meta title="Tails 4.13 is out"]]
+[[!meta date="Tue, 17 Nov 2020 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_4.12]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [10.0.5](https://blog.torproject.org/new-release-tor-browser-1005).
+
+  *Tor Browser* 10.0.5 fixes the [[critical vulnerability discovered last week
+  in the JavaScript engine|security/mcallgetproperty]].
+
+- Update *Thunderbird* from 68.12 to [78.4.2](https://www.thunderbird.net/en-US/thunderbird/78.4.2/releasenotes/).
+
+  *Thunderbird* 78 replaces the *Enigmail* extension with built-in support for
+  OpenPGP encryption.
+
+  If you used *Enigmail* before Tails 4.13, follow our instructions to
+  migrate from *Enigmail* to *Thunderbird*
+  78.
+
+- Add a button to restart Tails at the end of creating the Persistent Storage.
+  ([[!tails_ticket 16384]])
+
+- Only include translations for languages that are available in the Welcome
+  Screen. This reduces the size of the download by 5%. ([[!tails_ticket 17139]])
+
+- Make the root directory of the Persistent Storage only readable by the `root`
+  user. ([[!tails_ticket 7465]])
+
+  Users of the Dotfiles feature of the Persistent Storage can choose
+  **Places&nbsp;▸ Dotfiles** to open the
+  */live/persistence/TailsData_unlocked/dotfiles folder* in the *Files*
+  browser.
+
+- Enable TCP timestamps. This might increase stability on slower Internet
+  connections. ([[!tails_ticket 17491]])
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix the **Upgrade** button of *Tails Installer* when running Croatian,
+  Danish, French, Hebrew, Macedonian, Simplified Chinese, and Turkish.
+  ([[!tails_ticket 17982]])
+
+- Allow raising the sound volume above 100%. ([[!tails_ticket 17322]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 4.13</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 4.2 or later to 4.13.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.13 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+<h1 id="next">What's coming up?</h1>
+
+Tails 4.14 is [[scheduled|contribute/calendar]] for December 15.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.13">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

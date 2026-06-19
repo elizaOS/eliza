@@ -1,0 +1,100 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-02 09:34+0000\n"
+"PO-Revision-Date: 2026-04-06 12:18+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Installing additional fonts\"]]\n"
+msgstr "[[!meta title=\"Instal·lació de fonts addicionals\"]]\n"
+
+#. type: Plain text
+msgid ""
+"You can install additional fonts in Tails to use in *LibreOffice*, "
+"*Inkscape*, or *GIMP*."
+msgstr ""
+"Podeu instal·lar fonts addicionals a Tails per utilitzar-les al "
+"*LibreOffice*, *Inkscape* o *GIMP*."
+
+#. type: Plain text
+msgid "To do so:"
+msgstr "Per fer-ho:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Turn on the [[Dotfiles|persistent_storage/configure#dotfiles]] feature of "
+"the Persistent Storage."
+msgstr ""
+"Activeu la funcionalitat de [[Dotfiles|persistent_storage/"
+"configure#dotfiles]] de l'Emmagatzematge Persistent."
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files**."
+msgstr "Seleccioneu **Aplicacions&nbsp;▸ Accessoris&nbsp;▸ Fitxers**."
+
+#. type: Bullet: '1. '
+msgid "Select the *Dotfiles* folder in the sidebar."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Choose **[[!img lib/open-menu.png alt=\"Menu\" class=\"symbolic\" "
+#| "link=\"no\"]]&nbsp;▸ Show Hidden Files** in the *Files* browser to "
+#| "display hidden files and folders."
+msgid ""
+"Select the [[!img lib/go-down.png alt=\"View Options\" class=\"symbolic\" "
+"link=\"no\"]] button in the title bar and select the option **Show Hidden "
+"Files**."
+msgstr ""
+"Trieu **[[!img lib/open-menu.png alt=\"Menú\" class=\"symbolic\" "
+"link=\"no\"]]&nbsp;▸ Mostra els fitxers ocults** al navegador de *Fitxers* "
+"per mostrar fitxers i les carpetes ocults."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Create a new folder named *.fonts* (notice the `.`) in this *Dotfiles* "
+#| "folder."
+msgid ""
+"Create a folder named *.fonts* (notice the `.`) in this *Dotfiles* folder."
+msgstr ""
+"Creeu una carpeta nova anomenada *.fonts* (observeu el `.`) en aquesta "
+"carpeta *Dotfiles*."
+
+#. type: Bullet: '1. '
+msgid "Store the fonts that you want to persist in this *.fonts* folder."
+msgstr ""
+"Emmagatzemeu els tipus de lletra que voleu conservar en aquesta carpeta "
+"*.fonts*."
+
+#. type: Plain text
+#, no-wrap
+msgid "   You can store TTF and ODT fonts.\n"
+msgstr "   Podeu emmagatzemar tipus de lletra TTF i ODT.\n"
+
+#. type: Bullet: '1. '
+msgid "Restart Tails."
+msgstr "Reinicieu Tails."
+
+#~ msgid ""
+#~ "Choose **Places&nbsp;▸ Dotfiles** from the top navigation bar to open the "
+#~ "*Dotfiles* folder in the *Files* browser."
+#~ msgstr ""
+#~ "Trieu **Llocs&nbsp;▸ Dotfiles** a la barra de navegació superior per "
+#~ "obrir la carpeta *Dotfiles* al navegador de *Fitxers*."

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace><!-- Replace with project namespace --></RootNamespace>
+    <AssemblyName><!-- Replace with assembly name --></AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- NuGet Package References -->
+    <!-- Example: -->
+    <!-- <PackageReference Include="PackageName" Version="x.y.z" /> -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Project References -->
+    <!-- Example: -->
+    <!-- <ProjectReference Include="..\OtherProject\OtherProject.csproj" /> -->
+  </ItemGroup>
+
+</Project>

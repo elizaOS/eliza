@@ -1,0 +1,143 @@
+[[!meta title="Tails report for October, 2017"]]
+[[!meta date="Sat, 11 Nov 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Code
+====
+
+- We started evaluating our options regarding a possible
+  [[!tails_ticket 14789 desc="upgrade to Linux 4.13"]]
+  in Tails 3.3.
+
+- We had a first sprint to evaluate how it would be like if Tails was
+  based on quarterly snapshots of Debian testing:
+  - We ported most of Tails to Debian Buster.
+  - We adjusted most of our test suite accordingly.
+  - We designed a [[!tails_ticket 14791 desc="process"]] and
+    implemented [[!tails_ticket 14579 desc="tools"]] that will allow
+    us to tell technical writers what part of the documentation is
+    affected by changes in our code, test suite, or installed packages.
+  - We adapted the Debian Security Tracker code to
+    [[!tails_ticket 14823 desc="track security issues fixed in Debian but not in the snapshots Tails uses"]].
+  - In November we will check how we are doing and will decide what
+    the next steps shall be.
+
+Documentation and website
+=========================
+
+- We improved our donation page in preparation of the donation campaign
+  to mention CCT instead of Zwiebelfreunde and be better structured.
+
+User experience
+===============
+
+- We installed *LimeSurvey* on our infrastructure
+  and advertised a first survey on file storage encryption from the homepage of
+  *Tor Browser* in Tails. Our users have been very responsive to our
+  call
+  and since then we have gathered 30 complete answers to the survey each
+  day on average, reaching 375 in total on October 30.
+
+- We extensively tested older and newer versions of UUI to understand why
+  [[!tails_ticket 13206 desc="cloning from a USB stick installed using UUI
+  sometimes fails"]]. Everything is fine as long as "*Format in FAT32*" is
+  checked which is documented but not always applied by users, so we should
+  either improve UUI, our documentation, or *Tails Greeter* to prevent that.
+
+- We continued to port our verification extension for Firefox to Web
+  Extensions and we now have a working prototype
+  that computes the checksum in a reasonable time (45 seconds)!
+
+Hot topics on our help desk
+===========================
+
+1. Tails Installer treats drives differently depending on when they are plugged
+
+1. Install by cloning sometimes silently fails from a stick installed with UUI
+
+1. A few users with Nvidia graphics reported some issues.
+
+Infrastructure
+==============
+
+- We consolidated our system administration team by hiring a new
+  member. Welcome, groente!
+
+- For our installation of *LimeSurvey*, we implemented an automatic monitoring
+  of new upstream versions to notify system administrators when a security
+  update is available (Git repository).
+
+Funding
+=======
+
+- The proposal that we submitted to the Lush Digital Fund
+  in May was accepted. It will fund the integration of a web-based translation
+  platform in the build of our website and documentation.
+
+- We published our finances for 2016.
+
+- We launched our 2017 donation campaign and blogged about [[Many hands make
+  Tails|news/many_hands_make_tails]].
+
+Outreach
+========
+
+Past events
+-----------
+
+* The Hackmitin 2017 at Rancho Electronico in Ciudad Monstruo, Mexico featured two Tails workshops.
+
+* Some of us attended the Reproducible Builds World summit in Berlin, Germany.
+
+Upcoming events
+---------------
+
+* intrigeri will attend the OTF summit in Valencia (November 14-16).
+
+* Many Tails people will be at the
+  [34th Chaos Communication Congress, aka. 34C3](https://www.ccc.de/en/updates/2017/34C3-in-leipzig)
+  in Leipzig (December 27 to December 30).
+
+Press and testimonials
+======================
+
+* Tails is briefly mentioned in the Arte televisions' series on philosophy. In
+  French «Incognito, donc libre?»,
+  in German: "Inkognito, also frei?".
+
+* Infosec Bytes has created a [[video crash course series about Tails
+  for journalists|https://www.youtube.com/watch?list=PLOZKbRUo9H_qXgyGp5UVYCoGQYo9YB5E8&v=-f6cgUKBUXg]].
+  They are based at the Centre for Investigative Journalism in London
+  and supported by the Logan Foundation.
+
+Translation
+===========
+
+## All the website
+
+  - de: 54% (2825) strings translated, 7% strings fuzzy, 48% words translated
+  - fa: 40% (2107) strings translated, 9% strings fuzzy, 43% words translated
+  - fr: 89% (4631) strings translated, 1% strings fuzzy, 87% words translated
+  - it: 39% (2025) strings translated, 5% strings fuzzy, 34% words translated
+  - pt: 24% (1290) strings translated, 9% strings fuzzy, 21% words translated
+
+Total original words: 54735
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 76% (1454) strings translated, 13% strings fuzzy, 77% words translated
+  - fa: 34% (651) strings translated, 11% strings fuzzy, 35% words translated
+  - fr: 98% (1870) strings translated, 0% strings fuzzy, 99% words translated
+  - it: 76% (1447) strings translated, 13% strings fuzzy, 77% words translated
+  - pt: 44% (850) strings translated, 15% strings fuzzy, 45% words translated
+
+Total original words: 17292
+
+Metrics
+=======
+
+* Tails has been started more than 683188 times this month. This makes 22036 boots a day on average.
+* 11166 downloads of the OpenPGP signature of Tails ISO from our website.
+* 137 bug reports were received through WhisperBack.

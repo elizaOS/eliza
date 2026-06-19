@@ -1,0 +1,60 @@
+---
+title: Actions, Providers, Evaluators
+description: "The three primitives that shape an agent's behavior."
+---
+
+Most of an agent's behavior is composed from three primitives. All three are registered on the runtime by plugins (or directly by your application).
+
+## Action
+
+**What the agent _does_.** An action represents a discrete capability the model can choose to invoke. It has a name, a description (the model reads this), an example set, a validator, and a handler.
+
+```ts
+const greet: Action = {
+  name: 'GREET_USER',
+  description: 'Say hello when the user joins.',
+  examples: [/* few-shot turns */],
+  validate: async (runtime, message) => true,
+  handler: async (runtime, message, state, options, callback) => {
+    await callback({ text: `Hello, ${message.entityId}` });
+    return true;
+  },
+};
+```
+
+The runtime asks the model which action(s) to run after gathering provider context. Multiple actions can run per turn.
+
+## Provider
+
+**What the agent _knows_ this turn.** A provider produces a string (or `ProviderResult`) that's injected into the prompt. Providers are how facts, conversation history, goals, time, location, and skill state all get into the model's context.
+
+```ts
+const time: Provider = {
+  name: 'time',
+  position: 0,
+  get: async () => ({ text: `Current time: ${new Date().toISOString()}` }),
+};
+```
+
+`position` controls ordering. Lower numbers come first.
+
+## Evaluator
+
+**What the agent _reflects on_ after responding.** Evaluators run post-turn. They extract facts, score trust, update goals, or trigger follow-ups. Like actions, the model decides which evaluators to run.
+
+```ts
+const reflect: Evaluator = {
+  name: 'REFLECT',
+  description: 'Extract durable facts from the conversation.',
+  examples: [/* ... */],
+  validate: async () => true,
+  handler: async (runtime, message) => { /* extract + store */ },
+};
+```
+
+## See also
+
+- [Decision guide](/plugins/decision-guide) — when to use which
+- [Providers reference](/runtime/providers)
+- [Action callback streaming](/runtime/action-callback-streaming)
+- [Custom actions guide](/guides/custom-actions)

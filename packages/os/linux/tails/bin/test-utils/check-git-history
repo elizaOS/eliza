@@ -1,0 +1,22 @@
+#!/bin/sh
+
+set -eu -o pipefail
+
+REF=$(git rev-parse "$1")
+
+UNWANTED_COMMITS=$(
+    git log \
+        --extended-regexp \
+        --grep='^((amend|fixup|squash)!|WIP|XXX)' \
+        --pretty=oneline \
+        "$REF"..
+)
+
+if [ -n "$UNWANTED_COMMITS" ]; then
+    echo "Please clean up Git history before merging:"
+    echo
+    echo "${UNWANTED_COMMITS}" | sed --regexp-extended 's,^, - ,'
+    echo
+    echo "Pro tip: git config --global rebase.autosquash true"
+    exit 1
+fi

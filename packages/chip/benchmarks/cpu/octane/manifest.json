@@ -1,0 +1,33 @@
+{
+  "schema": "eliza.cpu_benchmark_manifest.v1",
+  "benchmark": "octane2",
+  "status": "pinned_not_run",
+  "claim_boundary": "octane_is_legacy_we_run_it_for_baseline_only",
+  "rationale": "Octane v2 was retired by Google in 2017; it remains useful as a legacy reality-check against older V8/Hermes baselines and embedded JS workloads. Modern code coverage is JetStream 2; do NOT use Octane as the primary JS perf claim.",
+  "upstream": {
+    "name": "Octane 2.0",
+    "vendor": "Google V8 team (archived)",
+    "repo": "https://github.com/chromium/octane.git",
+    "license": "BSD-3-Clause",
+    "pinned_version": "2.0",
+    "pinned_commit": "BLOCKED_until_first_clone"
+  },
+  "engines_supported": ["V8", "JavaScriptCore", "Hermes"],
+  "expected_results": {
+    "e1_ultra_target_4.0_ghz_v8": {
+      "octane_2_score": 70000,
+      "claim_status": "blocked_until_DUT_run"
+    },
+    "reference_apple_a18_pro_jsc": {
+      "octane_2_score": 90000,
+      "claim_status": "external_reference_only"
+    }
+  },
+  "result_artifact": "benchmarks/results/cpu/octane/result.json",
+  "run_command": "scripts/run_octane.sh",
+  "fail_closed_until": [
+    "external/octane/ checkout",
+    "V8 RISC-V build with JIT",
+    "DUT capable of running V8"
+  ]
+}

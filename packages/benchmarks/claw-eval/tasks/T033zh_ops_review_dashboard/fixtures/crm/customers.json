@@ -1,0 +1,69 @@
+[
+  {
+    "customer_id": "CUS-301",
+    "name": "永康智能",
+    "tier": "vip",
+    "status": "active",
+    "annual_revenue": 12000000,
+    "contact_person": "马总",
+    "contact_email": "ma@yongkang-smart.com",
+    "contact_phone": "138-0000-1001",
+    "industry": "智能家居",
+    "contract_end_date": "2026-12-31",
+    "recent_interactions": [
+      {
+        "date": "2026-02-27",
+        "type": "complaint",
+        "channel": "电话",
+        "handled_by": "陈经理",
+        "notes": "投诉智能摄像头Pro质量问题，批量采购500台中有89台故障（故障率17.8%），威胁终止合作。要求：1) 全额退款故障产品 2) 提供质量改进方案 3) 如一周内无回复将更换供应商。"
+      },
+      {
+        "date": "2026-01-15",
+        "type": "order",
+        "channel": "系统",
+        "notes": "批量采购智能摄像头Pro 500台，订单金额 ¥2,500,000"
+      }
+    ]
+  },
+  {
+    "customer_id": "CUS-302",
+    "name": "恒信电子",
+    "tier": "standard",
+    "status": "active",
+    "annual_revenue": 3500000,
+    "contact_person": "刘经理",
+    "contact_email": "liu@hengxin.com",
+    "contact_phone": "139-0000-2002",
+    "industry": "电子制造",
+    "contract_end_date": "2026-09-30",
+    "recent_interactions": [
+      {
+        "date": "2026-02-20",
+        "type": "inquiry",
+        "channel": "邮件",
+        "notes": "询问企业路由器X1批量采购折扣"
+      }
+    ]
+  },
+  {
+    "customer_id": "CUS-303",
+    "name": "明辉科技",
+    "tier": "vip",
+    "status": "active",
+    "annual_revenue": 8000000,
+    "contact_person": "赵总",
+    "contact_email": "zhao@minghui-tech.com",
+    "contact_phone": "137-0000-3003",
+    "industry": "物联网",
+    "contract_end_date": "2027-03-31",
+    "recent_interactions": [
+      {
+        "date": "2026-02-25",
+        "type": "meeting",
+        "channel": "视频会议",
+        "notes": "季度业务回顾，对智能门锁S1产品表示满意，计划下季度扩大采购"
+      }
+    ]
+  }
+]

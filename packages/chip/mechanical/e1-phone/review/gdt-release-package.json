@@ -1,0 +1,264 @@
+{
+  "claim_boundary": "CAD-derived GD&T/FAI characteristic package; not a released, signed, supplier-controlled drawing.",
+  "status": "gdt_release_package_ready",
+  "datum_scheme": [
+    {
+      "id": "A",
+      "name": "front_cover_glass_outer_plane",
+      "purpose": "Primary touch/display cosmetic plane and Z-stack reference."
+    },
+    {
+      "id": "B",
+      "name": "device_centerline_x",
+      "purpose": "Left/right symmetry reference for glass, PCB, USB-C, and camera placement."
+    },
+    {
+      "id": "C",
+      "name": "bottom_usb_c_port_centerline",
+      "purpose": "Bottom I/O datum for USB insertion, speaker grille, microphones, and lower antenna."
+    },
+    {
+      "id": "D",
+      "name": "rear_camera_cover_glass_center",
+      "purpose": "Camera lens/window datum for rear camera module and cover-glass alignment."
+    }
+  ],
+  "characteristic_count": 13,
+  "characteristics": [
+    {
+      "characteristic_id": "CRIT-001",
+      "feature": "cover_glass_perimeter",
+      "control": "profile to datum B/C",
+      "datum_reference": "B/C",
+      "nominal": "per CAD",
+      "plus_tolerance_mm": 0.25,
+      "minus_tolerance_mm": 0.25,
+      "inspection_method": "CMM or optical comparator against released STEP/drawing",
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "100% first article; Cpk after DVT tool tuning"
+    },
+    {
+      "characteristic_id": "CRIT-002",
+      "feature": "usb_c_port_aperture",
+      "control": "position to datum B/C",
+      "datum_reference": "B/C",
+      "nominal": "per CAD",
+      "plus_tolerance_mm": 0.15,
+      "minus_tolerance_mm": 0.15,
+      "inspection_method": "CMM or optical comparator against released STEP/drawing",
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "100% first article; Cpk after DVT tool tuning"
+    },
+    {
+      "characteristic_id": "CRIT-003",
+      "feature": "side_button_plunger_faces",
+      "control": "position to side rail and travel stop",
+      "datum_reference": "see control",
+      "nominal": "per CAD",
+      "plus_tolerance_mm": 0.2,
+      "minus_tolerance_mm": 0.2,
+      "inspection_method": "CMM or optical comparator against released STEP/drawing",
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "100% first article; Cpk after DVT tool tuning"
+    },
+    {
+      "characteristic_id": "CRIT-004",
+      "feature": "rear_camera_cover_glass_window",
+      "control": "position to datum D",
+      "datum_reference": "D",
+      "nominal": "per CAD",
+      "plus_tolerance_mm": 0.15,
+      "minus_tolerance_mm": 0.15,
+      "inspection_method": "CMM or optical comparator against released STEP/drawing",
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "100% first article; Cpk after DVT tool tuning"
+    },
+    {
+      "characteristic_id": "CRIT-005",
+      "feature": "screw_boss_core_pins",
+      "control": "position to rear shell datum pattern",
+      "datum_reference": "pattern",
+      "nominal": "per CAD",
+      "plus_tolerance_mm": 0.2,
+      "minus_tolerance_mm": 0.2,
+      "inspection_method": "CMM or optical comparator against released STEP/drawing",
+      "required_evidence_artifacts": [
+        "fai_cmm_or_optical_raw_report",
+        "inspection_equipment_calibration_certificate",
+        "feature_inspection_photo_or_scan",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "100% first article; Cpk after DVT tool tuning"
+    },
+    {
+      "characteristic_id": "STACK-006",
+      "feature": "cover_glass_to_orange_rail_x",
+      "control": "minimum clearance to datum B",
+      "datum_reference": "B",
+      "nominal": 0.45,
+      "plus_tolerance_mm": "",
+      "minus_tolerance_mm": "",
+      "minimum_mm": 0.3,
+      "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "all EVT first articles"
+    },
+    {
+      "characteristic_id": "STACK-007",
+      "feature": "cover_glass_to_orange_rail_y",
+      "control": "minimum clearance to datum C",
+      "datum_reference": "C",
+      "nominal": 0.915,
+      "plus_tolerance_mm": "",
+      "minus_tolerance_mm": "",
+      "minimum_mm": 0.3,
+      "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "all EVT first articles"
+    },
+    {
+      "characteristic_id": "STACK-008",
+      "feature": "display_tft_under_cover_glass",
+      "control": "minimum clearance to datum A",
+      "datum_reference": "A",
+      "nominal": 3.16,
+      "plus_tolerance_mm": "",
+      "minus_tolerance_mm": "",
+      "minimum_mm": 0.5,
+      "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "all EVT first articles"
+    },
+    {
+      "characteristic_id": "STACK-009",
+      "feature": "display_fpc_bend_radius",
+      "control": "minimum clearance to datum A",
+      "datum_reference": "A",
+      "nominal": 1.0,
+      "plus_tolerance_mm": "",
+      "minus_tolerance_mm": "",
+      "minimum_mm": 1.0,
+      "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "all EVT first articles"
+    },
+    {
+      "characteristic_id": "STACK-010",
+      "feature": "usb_shell_to_aperture",
+      "control": "minimum clearance to datum C",
+      "datum_reference": "C",
+      "nominal": 0.175,
+      "plus_tolerance_mm": "",
+      "minus_tolerance_mm": "",
+      "minimum_mm": 0.15,
+      "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "all EVT first articles"
+    },
+    {
+      "characteristic_id": "STACK-011",
+      "feature": "pcb_edge_to_enclosure",
+      "control": "minimum clearance to datum B",
+      "datum_reference": "B",
+      "nominal": 7.0,
+      "plus_tolerance_mm": "",
+      "minus_tolerance_mm": "",
+      "minimum_mm": 2.5,
+      "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "all EVT first articles"
+    },
+    {
+      "characteristic_id": "STACK-012",
+      "feature": "rear_camera_lens_to_cover_glass",
+      "control": "minimum clearance to datum D",
+      "datum_reference": "D",
+      "nominal": 1.2,
+      "plus_tolerance_mm": "",
+      "minus_tolerance_mm": "",
+      "minimum_mm": 0.8,
+      "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "all EVT first articles"
+    },
+    {
+      "characteristic_id": "STACK-013",
+      "feature": "nominal_z_stack_margin",
+      "control": "minimum clearance to datum A",
+      "datum_reference": "A",
+      "nominal": 3.32,
+      "plus_tolerance_mm": "",
+      "minus_tolerance_mm": "",
+      "minimum_mm": 1.0,
+      "inspection_method": "FAI measurement using fixture/CMM after supplier STEP lock",
+      "required_evidence_artifacts": [
+        "fai_stack_measurement_raw_report",
+        "inspection_fixture_or_cmm_calibration_certificate",
+        "assembly_stack_inspection_photo",
+        "part_revision_tooling_and_resin_lot_records"
+      ],
+      "sample_requirement": "all EVT first articles"
+    }
+  ],
+  "fai_template": "mechanical/e1-phone/review/gdt-fai-template.csv",
+  "release_blockers": [
+    "Needs supplier-returned STEP and drawings before nominal dimensions are frozen.",
+    "Needs toolmaker-approved datum scheme and CMM plan.",
+    "Needs populated first-article inspection measurements before release."
+  ]
+}

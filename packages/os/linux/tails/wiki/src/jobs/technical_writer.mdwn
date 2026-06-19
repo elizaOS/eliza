@@ -1,0 +1,132 @@
+[[!meta title="Technical writer"]]
+
+[[!meta stylesheet="jobs" rel="stylesheet" title=""]]
+[[!tag job/consultancy]]
+[[!meta robots="noindex"]]
+
+**This job opening is closed. Applications received after December 22,
+  2022, will not be considered.**
+
+[[!toc levels=2]]
+
+Summary
+=======
+
+Tails, a portable operating system that protects privacy and helps avoid
+censorship, is looking for a technical writing consultant to strengthen
+our Technical Writing team. The Technical Writing team is responsible
+for writing our user documentation, support pages, and release notes.
+
+This is a paid offer for self-employed freelancers.
+
+About Tails
+===========
+
+[[!inline pages="jobs/about_tails" raw="yes" sort="age"]]
+
+Details
+=======
+
+### Role description
+
+As a technical writer working for Tails, you will:
+
+- Update our user documentation to changes in Tails: new features,
+  smaller updates, and changes in the included software.
+
+- Improve our support pages to answer frequent questions and document
+  known issues and workarounds.
+
+- Redact release notes to describe the changes in new versions of Tails
+  and how they affect users.
+
+- Communicate with our engineers, UX designer, and help desk to get a
+  detailed understanding of the topic and discuss priorities.
+
+- Help our UX designer write text for user interfaces.
+
+- Apply, maintain, and improve our writing style guide.
+
+- Improve the structure and information architecture of our user
+  documentation and support pages.
+
+You will be part of the Technical Writing team and work with 2 other
+technical writers to decide priorities, assign tasks, and review each
+other's work. You and your team will be responsible to self-organize
+your work and time with the project's priorities in mind.
+
+You will work remotely and use mostly asynchronous communication
+channels (email and bug tracker) to work with your team and other people
+in the project, who live in different time zones and have various
+degrees of involvement. We also use Jabber/XMPP and voice calls for
+synchronous communication.
+
+You will be part of the Tails community, which includes paid workers and
+volunteer contributors. Together, we are in charge of maintaining not
+only an operating system but also the good health of the community.
+Together, we continuously discuss and improve various social and
+organizational aspects of the Tails project.
+
+We will meet in person at least once a year during the annual gathering
+of all regular Tails contributors (usually in Europe).
+
+You will have the opportunity to represent Tails in other international
+events, if you want to.
+
+### Qualifications
+
+- If you are part of a group that is under-represented in Free and Open
+  Source Software communities, we particularly encourage you to apply.
+  We acknowledge that our community is not as diverse as we would like
+  it to be. We understand that we are part of the problem. We want to be
+  part of the solution.
+
+- You can dedicate between 10 and 20 hours to Tails every month.
+
+- Experience working in technical writing of software documentation.
+
+- Good written skills in English. Most of our documentation was not
+  written by native speakers, therefore being an English native speaker
+  is a plus but not a requirement.
+
+- Some experience adapting your writing style to the context and the
+  audience. For example, using plain language, writing
+  for the web techniques, or technical communication style guides.
+
+- Some experience using Linux.
+
+- Interest in how people in a team organize their work and communicate
+  about it, share their needs and feelings, make decisions, and share
+  responsibilities.
+
+### Optional skills
+
+Additionally, we would love it if you have:
+
+- Experience with some of the tools of [*docs as
+  code*](https://www.writethedocs.org/guide/docs-as-code/) workflows:
+
+  - Issue trackers: we use GitLab and Redmine but you might already know
+    GitHub
+  - Version-control software: we use Git but you might already know
+    Subversion or Mercurial
+  - Plain text markup: we use Markdown but you might already know
+    reStructuredText or Textile
+  - Static site generators: we use ikiwiki but you might already know
+    Hugo, Jekyll, or Sphinx
+
+- Experience participating in Open Source, Free Software, Internet
+  freedom communities, or digital privacy tools.
+
+- Basic knowledge of web technologies: HTML, CSS, JavaScript, etc.
+
+How to apply
+============
+
+Send an email to <sajolida@pimienta.org>.
+
+<style>
+.apply-cover-letter, .apply-contributions { display: none; }
+</style>
+
+[[!inline pages="jobs/apply" raw="yes" sort="age"]]

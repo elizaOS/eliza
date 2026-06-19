@@ -1,0 +1,56 @@
+[[!meta title="Tails report for August 2022"]]
+[[!meta date="Thu, 08 Sep 2022 21:08:20 +0200"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- We are hiring a [[Fundraising Lead|jobs/fundraising]]. Please help us pass
+  the word!
+
+- We made lots of progress on a complete rewrite of the Persistent Storage that
+  implements a [new
+  design](https://gitlab.tails.boum.org/tails/blueprints/-/wikis/Persistent-Storage-redesign)
+  from 2021.
+
+  For example, the new Persistent Storage won't require restarting each time
+  you activate a new feature and will make it easier to persist more settings
+  in the future.
+
+  You can sneak peek at our experimental USB
+  image!
+  Don't use it for security just yet.
+
+- We did an initial deployment of
+  [Mirrorbits](https://github.com/etix/mirrorbits) to handle our downloads,
+  instead of our current custom scripts. Mirrorbits will make downloads more
+  reliable by freeing us from some manual maintenance work when a mirror goes
+  down, make downloads a bit faster by optimizing based on IP locations, and
+  allow us to do stats on the number of downloads.
+
+  We also bought the domain name [tails.net](https://tails.net/), so this new
+  infra will live under <https://download.tails.net/> in some weeks.
+
+- We travelled to Brazil to meet local activists, train them on Tails, and do
+  usability test of [[!tails_ticket 18762 desc="Tor Connection"]] and
+  [[!tails_ticket 18784 desc="18784"]].
+
+  The many fixes that we did to the installation instructions since we last
+  tested them in [[!tails_ticket 18074 desc="December 2021"]] gave excellent
+  results. All the test participants could install and start Tails pretty
+  easily!
+
+Releases
+========
+
+- [[Tails 5.3.1 was released on August 2|news/version_5.3.1]] (emergency
+  release) to fix a security vulnerability in the *Linux* kernel.
+
+- [[Tails 5.4 was released on August 24|news/version_5.4]].
+
+Metrics
+=======
+
+Tails has been started more than 765785 times this month. This makes 24703 boots a day on average.

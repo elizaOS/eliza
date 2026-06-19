@@ -1,0 +1,316 @@
+id: asimov-1
+name: ASIMOV-1
+version: 1.0.0
+description: 25-DoF ASIMOV-1 humanoid integrated from the public asimovinc/asimov-1
+  CAD and MuJoCo assets.
+kinematics:
+  dof: 25
+  joints:
+  - name: left_hip_pitch_joint
+    index: 0
+    lower_rad: -2.094395
+    upper_rad: 1.0
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: left_hip_roll_joint
+    index: 1
+    lower_rad: -0.785398
+    upper_rad: 0.785398
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: left_hip_yaw_joint
+    index: 2
+    lower_rad: -0.785398
+    upper_rad: 0.785398
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: left_knee_joint
+    index: 3
+    lower_rad: 0.0
+    upper_rad: 1.5
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: left_ankle_pitch_joint
+    index: 4
+    lower_rad: -0.35
+    upper_rad: 0.35
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: left_ankle_roll_joint
+    index: 5
+    lower_rad: -0.1
+    upper_rad: 0.1
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_hip_pitch_joint
+    index: 6
+    lower_rad: -1.0
+    upper_rad: 2.094395
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_hip_roll_joint
+    index: 7
+    lower_rad: -0.785398
+    upper_rad: 0.785398
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_hip_yaw_joint
+    index: 8
+    lower_rad: -0.785398
+    upper_rad: 0.785398
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_knee_joint
+    index: 9
+    lower_rad: -1.5
+    upper_rad: 0.0
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_ankle_pitch_joint
+    index: 10
+    lower_rad: -0.35
+    upper_rad: 0.35
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_ankle_roll_joint
+    index: 11
+    lower_rad: -0.1
+    upper_rad: 0.1
+    home_rad: 0.0
+    group: LEG
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: left_shoulder_pitch_joint
+    index: 12
+    lower_rad: -3.1415
+    upper_rad: 0.872665
+    home_rad: 0.0
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: left_shoulder_roll_joint
+    index: 13
+    lower_rad: -1.570796
+    upper_rad: 0.0
+    home_rad: 0.0
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: left_shoulder_yaw_joint
+    index: 14
+    lower_rad: -1.570796
+    upper_rad: 1.570796
+    home_rad: 0.0
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: left_elbow_joint
+    index: 15
+    lower_rad: 0.0
+    upper_rad: 2.443461
+    home_rad: 0.785398
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: left_wrist_yaw_joint
+    index: 16
+    lower_rad: -3.1415
+    upper_rad: 3.1415
+    home_rad: 0.0
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_shoulder_pitch_joint
+    index: 17
+    lower_rad: -0.872665
+    upper_rad: 3.1415
+    home_rad: 0.0
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_shoulder_roll_joint
+    index: 18
+    lower_rad: 0.0
+    upper_rad: 1.570796
+    home_rad: 0.0
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_shoulder_yaw_joint
+    index: 19
+    lower_rad: -1.570796
+    upper_rad: 1.570796
+    home_rad: 0.0
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_elbow_joint
+    index: 20
+    lower_rad: -2.443461
+    upper_rad: 0.0
+    home_rad: -0.785398
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: right_wrist_yaw_joint
+    index: 21
+    lower_rad: -3.1415
+    upper_rad: 3.1415
+    home_rad: 0.0
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: waist_yaw_joint
+    index: 22
+    lower_rad: -1.570796
+    upper_rad: 1.570796
+    home_rad: 0.0
+    group: ARM
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: neck_pitch_joint
+    index: 23
+    lower_rad: -0.785398
+    upper_rad: 0.785398
+    home_rad: 0.0
+    group: HEAD
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+  - name: neck_yaw_joint
+    index: 24
+    lower_rad: -1.570796
+    upper_rad: 1.570796
+    home_rad: 0.0
+    group: HEAD
+    actuator_torque_nm: 20.0
+    velocity_max_rad_s: 20.0
+gait:
+  cycle_hz: 1.0
+  swing_height_m: 0.08
+  stance_width_m: 0.135
+  step_length_max_m: 0.18
+  foot_offset_m: -0.63
+  default_height_m: 0.63
+  controller: rl
+contact:
+  floor_geom_names: [floor]
+  left_foot_geom_names:
+  - left_foot1_collision
+  - left_foot2_collision
+  - left_foot3_collision
+  - left_foot4_collision
+  - left_foot6_collision
+  - left_toe1_collision
+  - left_toe2_collision
+  - left_toe3_collision
+  - left_toe4_collision
+  - left_toe5_collision
+  right_foot_geom_names:
+  - right_foot1_collision
+  - right_foot2_collision
+  - right_foot3_collision
+  - right_foot4_collision
+  - right_foot5_collision
+  - right_toe1_collision
+  - right_toe2_collision
+  - right_toe3_collision
+  - right_toe4_collision
+  - right_toe5_collision
+sensors:
+  imu_noise_std: 0.01
+  locomotion_tracking_body: pelvis_link
+  cameras:
+  - name: front_camera
+    width: 640
+    height: 480
+    fps: 30
+    fov_deg: 60.0
+    mount_link: pelvis_link
+    extrinsics_rpy_xyz:
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+control:
+  rate_hz: 50.0
+  command_smoothing: 0.2
+  max_joint_delta_rad_per_step: 0.3
+  safe_torque_clip_nm: 20.0
+assets:
+  mjcf_xml: mjcf/asimov_eliza.xml
+  mjx_xml: mjcf/asimov_eliza.xml
+  urdf: asimov.urdf
+  mesh_dir: meshes
+actions:
+  groups:
+    stand:
+      name: stand
+      duration_s: 1.0
+      frames:
+      - t: 0.0
+        joints:
+          left_hip_pitch_joint: 0.0
+          left_hip_roll_joint: 0.0
+          left_hip_yaw_joint: 0.0
+          left_knee_joint: 0.0
+          left_ankle_pitch_joint: 0.0
+          left_ankle_roll_joint: 0.0
+          right_hip_pitch_joint: 0.0
+          right_hip_roll_joint: 0.0
+          right_hip_yaw_joint: 0.0
+          right_knee_joint: 0.0
+          right_ankle_pitch_joint: 0.0
+          right_ankle_roll_joint: 0.0
+          left_shoulder_pitch_joint: 0.0
+          left_shoulder_roll_joint: 0.0
+          left_shoulder_yaw_joint: 0.0
+          left_elbow_joint: 0.785398
+          left_wrist_yaw_joint: 0.0
+          right_shoulder_pitch_joint: 0.0
+          right_shoulder_roll_joint: 0.0
+          right_shoulder_yaw_joint: 0.0
+          right_elbow_joint: -0.785398
+          right_wrist_yaw_joint: 0.0
+          waist_yaw_joint: 0.0
+          neck_pitch_joint: 0.0
+          neck_yaw_joint: 0.0
+safety:
+  fall_pitch_rad: 0.7
+  fall_roll_rad: 0.7
+  battery_low_mv: 1
+  deadman_timeout_s: 1.0
+bridge_capabilities:
+- asimov.mode
+- asimov.velocity
+- asimov.trajectory
+- walk.command
+- walk.set
+- servo.set
+- policy.tick
+- action.play
+- profile.describe
+- camera.snapshot

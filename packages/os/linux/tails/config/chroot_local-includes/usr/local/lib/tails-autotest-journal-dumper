@@ -1,0 +1,14 @@
+#!/bin/sh
+
+channel="/dev/virtio-ports/org.tails.journal_dumper.0"
+
+until [ -e "${channel}" ]; do
+    sleep 0.1
+done
+
+while true; do
+    echo "------------------ /var/log/boot.log -----------------" > "${channel}"
+    cat /var/log/boot.log > "${channel}"
+    echo "----------------------- journal ----------------------" > "${channel}"
+    journalctl --all --no-pager --lines=all --follow > "${channel}"
+done

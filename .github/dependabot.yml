@@ -1,0 +1,48 @@
+version: 2
+updates:
+  # JS/TS workspace (root). Bun monorepo — pulls all workspace package.json files.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+    ignore:
+      # isomorphic-git@1.x requires ignore@^5; the `ignore` dep in @elizaos/agent
+      # exists only to satisfy it. v6/v7 break isomorphic-git's GitIgnoreManager
+      # (git.add fails — see closed PR #8483). Cap at major 5 until
+      # isomorphic-git supports ignore@7.
+      - dependency-name: "ignore"
+        versions: [">= 6.0.0"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Python benchmarks (kept on weekly cadence; demo / research code)
+  - package-ecosystem: "pip"
+    directory: "/packages/benchmarks/OSWorld"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    ignore:
+      # Transitive via wandb; advisory has no patched version yet (opened 2026-04).
+      - dependency-name: "gitpython"
+      # Transitive via fabric -> paramiko; libsodium 1.0.20 bundled in PyNaCl 1.6.x
+      # already includes the disallowed-inputs fix.
+      - dependency-name: "pynacl"
+
+  - package-ecosystem: "pip"
+    directory: "/packages/benchmarks/solana/solana-gym-env"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+
+  # NOTE: cargo (Rust) example entries were removed — commit b69d70632b made the
+  # examples TypeScript-only and deleted the packages/examples/*/rust/* trees.
+  # The stale cargo entries made Dependabot abort every run with
+  # "Cargo.toml not found". Re-add cargo blocks only if a real Cargo.toml returns.

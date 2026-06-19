@@ -1,0 +1,17 @@
+{
+  "palette_name": "Doraemon Standard Colors",
+  "version": "2.0",
+  "last_updated": "2024-01-10",
+  "colors": {
+    "body_blue": "#0093D6",
+    "face_white": "#FFFFFF",
+    "nose_red": "#D63C3C",
+    "collar_red": "#CC0000",
+    "bell_yellow": "#FFD700",
+    "outline_black": "#000000",
+    "whisker_black": "#333333",
+    "eye_white": "#FFFFFF",
+    "mouth_red": "#CC3333"
+  },
+  "notes": "This is the current canonical color palette for the Doraemon drawing project. Body color is the signature Doraemon blue."
+}

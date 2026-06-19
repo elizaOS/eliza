@@ -1,0 +1,299 @@
+name: Hetzner Agent E2E
+
+# Nightly end-to-end smoke that provisions a fresh Hetzner cpx11 server,
+# waits for cloud-init, deploys a trivial agent via the Eliza Cloud
+# staging API, runs a single bridge-ping healthcheck, then tears
+# everything down. Gracefully skips when the required secrets are
+# unset (so this workflow can land on develop and be activated later).
+#
+# Required secrets / config (GitHub environment: ci-hetzner-e2e):
+#   HCLOUD_TOKEN_CI        - Hetzner Cloud API token (CI-scoped project)
+#   CLOUD_E2E_API_KEY      - Eliza Cloud staging bearer token (long-lived)
+#   CI_SSH_PRIVATE_KEY     - OpenSSH private key (matches the public key
+#                            uploaded to Hetzner)
+#   CI_SSH_PUBLIC_KEY_ID   - Numeric Hetzner SSH key id for the above
+#
+# See packages/scripts/cloud/admin/hetzner-e2e/README.md for setup.
+
+on:
+  schedule:
+    - cron: '0 7 * * *'  # 07:00 UTC nightly
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/hetzner-e2e.yml'
+      - '.github/workflows/hetzner-e2e-reaper.yml'
+      - 'packages/scripts/cloud/admin/hetzner-e2e/**'
+      - 'packages/cloud-shared/src/lib/services/containers/**'
+      - 'packages/scripts/cloud/admin/daemons/**'
+      - 'packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs'
+
+concurrency:
+  group: hetzner-e2e
+  cancel-in-progress: false
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Provision + deploy + healthcheck
+    runs-on: ubuntu-latest
+    environment: ci-hetzner-e2e
+    timeout-minutes: 25
+    env:
+      HCLOUD_TOKEN_CI: ${{ secrets.HCLOUD_TOKEN_CI }}
+      CLOUD_E2E_API_KEY: ${{ secrets.CLOUD_E2E_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+      CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
+      CI_SSH_PUBLIC_KEY_ID: ${{ secrets.CI_SSH_PUBLIC_KEY_ID }}
+      HETZNER_E2E_STATE_FILE: /tmp/hetzner-e2e-state.json
+    steps:
+      - name: Check secret configuration
+        id: secret_config
+        run: |
+          missing=()
+          [ -z "$HCLOUD_TOKEN_CI" ] && missing+=("HCLOUD_TOKEN_CI")
+          [ -z "$CLOUD_E2E_API_KEY" ] && missing+=("CLOUD_E2E_API_KEY")
+          [ -z "$CI_SSH_PRIVATE_KEY" ] && missing+=("CI_SSH_PRIVATE_KEY")
+          [ -z "$CI_SSH_PUBLIC_KEY_ID" ] && missing+=("CI_SSH_PUBLIC_KEY_ID")
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Missing secrets: ${missing[*]}; skipping Hetzner E2E."
+            {
+              echo "### Hetzner E2E skipped"
+              echo ""
+              echo "Missing secrets in GitHub environment \`ci-hetzner-e2e\`:"
+              for s in "${missing[@]}"; do echo "- \`$s\`"; done
+              echo ""
+              echo "See \`packages/scripts/cloud/admin/hetzner-e2e/README.md\` for setup."
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Manual dispatch requires all hetzner-e2e secrets."
+              exit 1
+            fi
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.secret_config.outputs.configured == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Bun
+        if: steps.secret_config.outputs.configured == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+
+      - name: Debug workspace
+        if: steps.secret_config.outputs.configured == 'true'
+        run: |
+          echo "cwd=$(pwd)"
+          echo "workspace=$GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE" | head -30
+          test -f "$GITHUB_WORKSPACE/package.json" && echo HAS_PKG || echo NO_PKG
+
+      - name: Install dependencies
+        if: steps.secret_config.outputs.configured == 'true'
+        run: bun install --no-save --ignore-scripts
+
+      - name: Check cloud API auth
+        id: cloud_auth
+        if: steps.secret_config.outputs.configured == 'true'
+        run: |
+          set +e
+          response="$(
+            bun -e '
+              const base = (process.env.CLOUD_SMOKE_BASE_URL ?? "https://api-staging.elizacloud.ai").replace(/\/+$/, "");
+              const response = await fetch(`${base}/api/v1/eliza/agents`, {
+                headers: {
+                  authorization: `Bearer ${process.env.CLOUD_E2E_API_KEY ?? ""}`,
+                  accept: "application/json",
+                  "user-agent": "hetzner-e2e-preflight/1.0",
+                },
+                signal: AbortSignal.timeout(30_000),
+              });
+              const text = await response.text();
+              console.log(JSON.stringify({ status: response.status, body: text.slice(0, 500) }));
+            '
+          )"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cloud API auth preflight could not reach staging; skipping Hetzner E2E."
+            {
+              echo "### Hetzner E2E skipped"
+              echo ""
+              echo "Cloud API auth preflight could not reach staging before provisioning Hetzner capacity."
+              echo ""
+              echo "\`\`\`json"
+              echo "$response"
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          status_code="$(printf '%s' "$response" | bun -e 'const chunks=[]; for await (const chunk of Bun.stdin.stream()) chunks.push(Buffer.from(chunk)); const data = JSON.parse(Buffer.concat(chunks).toString() || "{}"); console.log(data.status ?? "");')"
+          if [ "$status_code" = "401" ] || [ "$status_code" = "403" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cloud API rejected CLOUD_E2E_API_KEY with HTTP $status_code; skipping Hetzner E2E before provisioning."
+            {
+              echo "### Hetzner E2E skipped"
+              echo ""
+              echo "Cloud API rejected \`CLOUD_E2E_API_KEY\` with HTTP \`$status_code\` before provisioning Hetzner capacity."
+              echo ""
+              echo "Refresh the \`CLOUD_E2E_API_KEY\` / \`ELIZACLOUD_API_KEY\` secret in the \`ci-hetzner-e2e\` environment, or check the staging API-key lookup path."
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          if [ "${status_code#2}" != "$status_code" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${status_code#5}" != "$status_code" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cloud API auth preflight returned HTTP $status_code; skipping Hetzner E2E before provisioning."
+            {
+              echo "### Hetzner E2E skipped"
+              echo ""
+              echo "Cloud API auth preflight returned HTTP \`$status_code\` before provisioning Hetzner capacity."
+              echo ""
+              echo "\`\`\`json"
+              echo "$response"
+              echo "\`\`\`"
+              echo ""
+              echo "Check staging Cloud API logs for \`user-agent: hetzner-e2e-preflight/1.0\` on \`/api/v1/eliza/agents\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          echo "::error::Unexpected cloud API auth preflight response: $response"
+          exit 1
+
+      - name: Provision Hetzner server
+        id: provision
+        if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
+        run: |
+          set -o pipefail
+          log=/tmp/hetzner-e2e-provision.log
+          bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts 2>&1 | tee "$log"
+
+      - name: Surface provision failure diagnostic
+        if: always() && steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true' && steps.provision.outcome == 'failure'
+        run: |
+          log=/tmp/hetzner-e2e-provision.log
+          {
+            echo "### Hetzner E2E provisioning failed"
+            echo ""
+            if [ -f "$log" ] && grep -qE "quota exhausted|server limit reached|limit_reached|resource_limit_exceeded|quota_exceeded" "$log"; then
+              echo "**Cause:** Hetzner project quota exhausted (server cap reached)."
+              echo ""
+              echo "Operator action:"
+              echo "1. Open https://console.hetzner.cloud/ and check the CI project for leaked servers (filter labels \`ci=true\`, \`workflow=hetzner-e2e\`)."
+              echo "2. Delete any leaked servers, or wait for the half-hourly reaper workflow to sweep them."
+              echo "3. Re-run this workflow."
+              echo ""
+              echo "If the project itself has a tighter cap than the fallback ladder can survive, request a quota increase from Hetzner support or rotate \`HCLOUD_TOKEN_CI\` to a project with capacity."
+            elif [ -f "$log" ] && grep -qE "Hetzner rejected the token|missing_token|HTTP 401|HTTP 403" "$log"; then
+              echo "**Cause:** Hetzner rejected the API token (HTTP 401/403)."
+              echo ""
+              echo "Operator action: refresh \`HCLOUD_TOKEN_CI\` in the \`ci-hetzner-e2e\` GitHub environment, or confirm the project is still active."
+            else
+              echo "**Cause:** see the \"Provision Hetzner server\" step log for the raw error."
+              echo ""
+              echo "If the error message is unfamiliar, check \`packages/scripts/cloud/admin/hetzner-e2e/README.md\` and the fallback ladder in \`hetzner-e2e-provision.ts\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Wait for host ready
+        if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
+
+      - name: Deploy trivial agent
+        if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-deploy-agent.ts
+
+      - name: Healthcheck
+        if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-healthcheck.ts
+
+      - name: Upload state artifact
+        if: always() && steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hetzner-e2e-state
+          path: /tmp/hetzner-e2e-state.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  teardown:
+    name: Teardown
+    needs: deploy
+    if: always()
+    runs-on: ubuntu-latest
+    environment: ci-hetzner-e2e
+    timeout-minutes: 10
+    env:
+      HCLOUD_TOKEN_CI: ${{ secrets.HCLOUD_TOKEN_CI }}
+      HETZNER_E2E_STATE_FILE: /tmp/hetzner-e2e-state.json
+    steps:
+      - name: Check secret configuration
+        id: secret_config
+        run: |
+          if [ -z "$HCLOUD_TOKEN_CI" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::HCLOUD_TOKEN_CI missing; nothing to tear down."
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.secret_config.outputs.configured == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Bun
+        if: steps.secret_config.outputs.configured == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+
+      - name: Install dependencies
+        if: steps.secret_config.outputs.configured == 'true'
+        run: bun install --no-save --ignore-scripts
+
+      - name: Download state artifact
+        if: steps.secret_config.outputs.configured == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: hetzner-e2e-state
+          path: /tmp/hetzner-e2e-state
+        continue-on-error: true
+
+      - name: Restore state file
+        if: steps.secret_config.outputs.configured == 'true'
+        run: |
+          if [ -f /tmp/hetzner-e2e-state/hetzner-e2e-state.json ]; then
+            cp /tmp/hetzner-e2e-state/hetzner-e2e-state.json /tmp/hetzner-e2e-state.json
+            echo "State file restored:"
+            cat /tmp/hetzner-e2e-state.json
+          else
+            echo "No state artifact; teardown will fall back to label sweep."
+          fi
+
+      - name: Teardown
+        if: steps.secret_config.outputs.configured == 'true'
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-teardown.ts

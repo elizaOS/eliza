@@ -1,0 +1,99 @@
+{
+  "schema": "eliza.e1_npu_android_proof_manifest.v1",
+  "claim_boundary": "template_only_not_android_boot_cts_vts_or_nnapi_evidence",
+  "status": "blocked",
+  "android_boot_claim_allowed": false,
+  "android_nnapi_claim_allowed": false,
+  "phone_claim_allowed": false,
+  "release_claim_allowed": false,
+  "silicon_claim_allowed": false,
+  "sustained_performance_claim_allowed": false,
+  "false_claim_flags": {
+    "android_boot_claim_allowed": false,
+    "android_nnapi_claim_allowed": false,
+    "phone_claim_allowed": false,
+    "release_claim_allowed": false,
+    "silicon_claim_allowed": false,
+    "sustained_performance_claim_allowed": false
+  },
+  "target": "eliza_ai_soc-userdebug",
+  "generated_by": "external AOSP validation job command or CI job id",
+  "date_utc": "YYYY-MM-DDTHH:MM:SS+00:00",
+  "proof_gate": {
+    "android_boot_claim": "none",
+    "compatibility_claim": "none",
+    "nnapi_acceleration_claim": "none_without_all_required_artifacts_passed"
+  },
+  "capture_commands": {
+    "aosp_build_evidence": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp {vendorimage|checkvintf|sepolicy-build|selinux-neverallow|cts-vts-plan}",
+    "cts_smoke": "AOSP_TREE=/path/to/aosp scripts/android/run_cts_smoke.sh",
+    "vts_smoke": "AOSP_TREE=/path/to/aosp scripts/android/run_vts_smoke.sh",
+    "nnapi_transcripts": "scripts/android/capture_e1_npu_nnapi_evidence.sh",
+    "absent_device_probe": "scripts/android/capture_e1_npu_hal_absent_device.sh",
+    "manifest_check": "python3 scripts/check_e1_npu_android_proof_manifest.py --manifest docs/evidence/android/e1-npu/android-proof-manifest.json --require-pass"
+  },
+  "required_statuses": {
+    "aidl_or_hidl_hal_declared": "blocked",
+    "hal_binary_in_vendorimage": "blocked",
+    "vintf_check": "blocked",
+    "selinux_policy_build": "blocked",
+    "selinux_neverallow": "blocked",
+    "vts_e1_npu": "blocked",
+    "cts_nnapi_smoke": "blocked",
+    "nnapi_accelerator_query": "blocked",
+    "fail_closed_absent_device": "blocked"
+  },
+  "artifacts": {
+    "vts_result": {
+      "path": "docs/evidence/android/e1-npu/vts-result.json",
+      "sha256": "64-character lowercase sha256 of the exact VTS result artifact",
+      "bytes": 1
+    },
+    "cts_result": {
+      "path": "docs/evidence/android/e1-npu/cts-result.json",
+      "sha256": "64-character lowercase sha256 of the exact CTS result artifact",
+      "bytes": 1
+    },
+    "selinux_policy_build_log": {
+      "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
+      "sha256": "64-character lowercase sha256 of the exact SELinux build transcript",
+      "bytes": 1
+    },
+    "selinux_neverallow_log": {
+      "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
+      "sha256": "64-character lowercase sha256 of the exact neverallow transcript",
+      "bytes": 1
+    },
+    "vintf_check_log": {
+      "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
+      "sha256": "64-character lowercase sha256 of the exact VINTF transcript",
+      "bytes": 1
+    },
+    "nnapi_query_log": {
+      "path": "docs/evidence/android/e1-npu/nnapi-accelerator-query.log",
+      "sha256": "64-character lowercase sha256 of the exact NNAPI query transcript",
+      "bytes": 1
+    },
+    "absent_device_probe_log": {
+      "path": "docs/evidence/android/e1-npu/absent-device-probe.log",
+      "sha256": "64-character lowercase sha256 of the exact fail-closed probe transcript",
+      "bytes": 1
+    }
+  },
+  "required_markers": {
+    "vts_result": ["VTS_SCOPE", "e1_npu", "RESULT=0"],
+    "cts_result": ["CTS_SCOPE", "NNAPI", "RESULT=0"],
+    "selinux_policy_build_log": ["e1_npu_device", "hal_e1_npu_default", "eliza-evidence: status=PASS", "RESULT=0"],
+    "selinux_neverallow_log": ["sepolicy_neverallows", "e1_npu", "eliza-evidence: status=PASS", "RESULT=0"],
+    "vintf_check_log": ["checkvintf", "vendor.eliza.e1_npu", "eliza-evidence: status=PASS", "RESULT=0"],
+    "nnapi_query_log": ["e1-npu", "NNAPI", "accelerator"],
+    "absent_device_probe_log": [
+      "e1_npu_status=unsupported",
+      "device_node_present=false",
+      "runtime_supported=false",
+      "nnapi_acceleration=false",
+      "eliza-evidence: status=PASS",
+      "RESULT=0"
+    ]
+  }
+}

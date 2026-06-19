@@ -1,0 +1,37 @@
+[[!meta robots="noindex"]]
+
+A security vulnerability was discovered in the sandboxing
+mechanism of *Firefox* and *Tor Browser*. This vulnerability allows a
+malicious website to bypass some of the confinement built in *Firefox*,
+which means possibly spying on the content of other tabs and steal
+the passwords of other websites.
+
+After *Tor Browser* has been compromised, the only reliable solution is
+to restart Tails.
+
+Because *Tor Browser* in Tails is [[confined using
+*AppArmor*|doc/anonymous_internet/Tor_Browser#confinement]], only the
+data accessible to *Tor Browser* might be compromised but not the other
+applications or your other files. For example, a compromised *Tor
+Browser* might access your files in the *Tor Browser* and
+*Persistent/Tor Browser* folders but not anywhere else.
+
+For example, without restarting Tails:
+
+- It is unsafe to:
+
+  - Log in to a website and also visit an untrusted website.
+    Your password on the first website might be stolen by the untrusted website.
+
+  - Visit an untrusted website if you have sensitive information stored
+    in your *Persistent/Tor Browser* folder. The untrusted website might
+    access these files.
+
+- It is safe to:
+
+  - Visit untrusted websites, without logging in, if you have no
+    sensitive information stored in your *Tor Browser* and
+    *Persistent/Tor Browser* folders.
+
+  - Log in to several trusted websites without visiting any untrusted
+    websites.

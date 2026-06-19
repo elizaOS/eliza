@@ -1,0 +1,23 @@
+#!/bin/sh
+# Source-level smoke hook for the Eliza e1 Buildroot rootfs.
+#
+# Real MMIO access requires a kernel built with sw/linux/dts/eliza-e1.dts
+# and the e1 drivers from sw/linux/drivers/e1. This script records the
+# platform contract values expected by the user-space probe.
+
+set -eu
+
+CONTRACT=/etc/eliza/e1_platform_contract.json
+
+echo "Eliza e1 MMIO smoke"
+echo "contract=${CONTRACT}"
+echo "E1_NPU_BASE=0x10020000"
+echo "E1_DMA_BASE=0x10010000"
+echo "E1_DISPLAY_BASE=0x10030000"
+
+if [ ! -e /dev/e1-npu ]; then
+    echo "missing /dev/e1-npu; import sw/linux drivers into the external kernel tree" >&2
+    exit 2
+fi
+
+echo "e1 BSP device nodes present"

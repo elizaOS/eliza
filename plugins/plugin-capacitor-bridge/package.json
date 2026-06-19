@@ -1,0 +1,75 @@
+{
+	"name": "@elizaos/plugin-capacitor-bridge",
+	"version": "2.0.3-beta.14",
+	"description": "Capacitor WebSocket bridge to device llama for stock mobile (non-AOSP) Eliza builds.",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./android/bridge": {
+			"types": "./dist/android/bridge.d.ts",
+			"import": "./dist/android/bridge.js",
+			"default": "./dist/android/bridge.js"
+		},
+		"./ios/bridge": {
+			"types": "./dist/ios/bridge.d.ts",
+			"import": "./dist/ios/bridge.js",
+			"default": "./dist/ios/bridge.js"
+		},
+		"./mobile-device-bridge-bootstrap": {
+			"types": "./dist/mobile-device-bridge-bootstrap.d.ts",
+			"import": "./dist/mobile-device-bridge-bootstrap.js",
+			"default": "./dist/mobile-device-bridge-bootstrap.js"
+		},
+		"./shared/fs-shim": {
+			"types": "./dist/shared/fs-shim.d.ts",
+			"import": "./dist/shared/fs-shim.js",
+			"default": "./dist/shared/fs-shim.js"
+		},
+		"./*.css": "./dist/*.css",
+		"./*": {
+			"types": "./dist/*.d.ts",
+			"import": "./dist/*.js",
+			"default": "./dist/*.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "bun run check:android-manifest && NODE_OPTIONS='--max-old-space-size=8192' tsup",
+		"check:android-manifest": "node scripts/check-android-manifest.mjs",
+		"dev": "tsup --watch",
+		"clean": "rm -rf dist .turbo node_modules",
+		"lint": "bunx @biomejs/biome check --write --unsafe .",
+		"lint:check": "bunx @biomejs/biome check .",
+		"format": "bunx @biomejs/biome format --write .",
+		"format:check": "bunx @biomejs/biome format .",
+		"test": "vitest run --config vitest.config.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"ws": "^8.18.0"
+	},
+	"peerDependencies": {
+		"@elizaos/core": "workspace:*"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.14",
+		"@types/bun": "^1.3.12",
+		"@types/node": "24.12.2",
+		"@types/ws": "^8.5.13",
+		"tsup": "8.5.1",
+		"typescript": "^6.0.3",
+		"vitest": "^4.0.18"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

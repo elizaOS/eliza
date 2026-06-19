@@ -1,0 +1,26 @@
+skill_id,skill_name,domain,priority,complexity,data_sources_needed,implementation_status,estimated_hours
+SK-001,RTOS Scheduler Analysis,rtos,P0,high,3,in_progress,40
+SK-002,Task Priority Configuration,rtos,P0,medium,2,done,16
+SK-003,Inter-task Communication Patterns,rtos,P0,high,3,in_progress,32
+SK-004,Device Tree Configuration,build_system,P1,high,2,not_started,24
+SK-005,Linker Script Generation,build_system,P0,high,3,in_progress,36
+SK-006,Buildroot Package Creation,build_system,P1,medium,2,not_started,20
+SK-007,Yocto Recipe Writing,build_system,P1,high,2,not_started,28
+SK-008,ARM Cortex-M Register Mapping,architecture,P0,medium,2,done,12
+SK-009,RISC-V Extension Selection,architecture,P1,medium,2,in_progress,18
+SK-010,Memory-Mapped I/O Configuration,architecture,P0,medium,3,done,14
+SK-011,C Embedded Coding Best Practices,language,P0,low,2,done,8
+SK-012,Rust no_std Development,language,P0,high,3,in_progress,30
+SK-013,Unsafe Rust Block Auditing,language,P1,high,2,not_started,22
+SK-014,GDB Remote Debugging Workflows,debugging,P0,medium,3,done,16
+SK-015,OpenOCD Configuration Generation,debugging,P0,medium,2,in_progress,18
+SK-016,Memory Leak Detection,debugging,P0,high,3,in_progress,26
+SK-017,JTAG/SWD Troubleshooting,debugging,P1,medium,2,not_started,14
+SK-018,Stack Overflow Analysis,optimization,P0,medium,2,done,12
+SK-019,Power Consumption Profiling,optimization,P1,high,3,not_started,28
+SK-020,Boot Time Optimization,optimization,P1,high,3,not_started,24
+SK-021,OTA Update Design Patterns,rtos,P2,high,4,not_started,36
+SK-022,Interrupt Handler Review,architecture,P0,medium,2,done,10
+SK-023,DMA Configuration Assistance,architecture,P1,high,3,not_started,22
+SK-024,RTOS Memory Pool Management,optimization,P0,medium,2,in_progress,18
+SK-025,Firmware Binary Size Optimization,optimization,P1,medium,3,not_started,20

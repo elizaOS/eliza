@@ -1,0 +1,55 @@
+#!/bin/bash
+
+set -eu -o pipefail
+shopt -s inherit_errexit
+
+# Enable xtrace with timestamp
+export PS4='+ $(date "+%H:%M:%S.%3N") '
+set -x
+
+if [ "${EUID}" -ne 0 ]; then
+  echo >&2 "This script must be run as root"
+  exit 1
+fi
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib.sh
+. "${DIR}/lib.sh"
+
+if [ -n "${1:-}" ]; then
+  INCLUDES_DIR=$(realpath "$1")
+else
+  INCLUDES_DIR=$(realpath "${DIR}/../rw-includes")
+fi
+
+# See comment in bind-rw-includes
+initialize_amnesia_home
+
+find -L "${INCLUDES_DIR}" -type f | sort | \
+  while read -r file; do
+    # Ignore empty lines and the .gitignore and README.md files
+    if [ -z "${file}" ] || \
+       [ "${file}" = "${INCLUDES_DIR}/.gitignore" ] || \
+       [ "${file}" = "${INCLUDES_DIR}/README.md" ]; then
+      continue
+    fi
+
+    src="${file}"
+    dest="${file#"${INCLUDES_DIR}"}"
+
+    # Create the target directory
+    mkdir -p "$(dirname "${dest}")"
+
+    # Copy the file. Don't preserve ownership (i.e. change ownership to
+    # root) to avoid issues like:
+    #
+    #   sudo: /etc/sudoers.d/zzz_tbb is owned by uid 1000, should be 0
+    #
+    cp --no-dereference --preserve=all --no-preserve=ownership "${src}" "${dest}"
+
+    # If the file was copied below /home/amnesia, change owner to amnesia
+    if [ "${dest:0:13}" = /home/amnesia ]; then
+      chown 1000:1000 "${dest}"
+    fi
+  done

@@ -1,0 +1,63 @@
+[[!meta title="Call for help: improve the infrastructure behind Tails"]]
+
+[[!meta date="Thu, 01 May 2014 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Tails is becoming increasingly popular: lately, someone boots Tails
+every ten seconds somewhere in the world. And also, every six weeks,
+there is a Firefox security update and we subsequently release a new
+version of Tails.
+
+Because of that amount of users and such a short release cycle, it is
+a challenge to keep Tails alive and getting better.
+
+We needs more hands!
+
+Among the things we know we should do in the
+next few years, we have identified some areas that could benefit the most
+from new dedicated contributors.
+
+Today, we are talking of **improving the infrastructure behind
+Tails**. So, if you are a system administrator, a software developer,
+or anything in between, we need you! Please read on.
+
+What is the mission?
+====================
+
+The Tails [[system
+administrators|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/role-description]] set up
+and maintain the infrastructure that supports the development and
+operations of Tails. We aim at making the life of Tails contributors
+easier, and to improve the quality of our releases.
+
+Our main tools are: Debian, Puppet, Git and Jenkins.
+
+The most important, and larger pieces on our roadmap currently are:
+
+* Continuous Integration: we want to drastically cut down the amount
+  of work needed to prepare a Tails release; we also want to detect
+  regressions as soon as possible. Everything we merge should go
+  through an automated test suite, and our Debian packages should be
+  automatically built from Git tags.
+
+* Freezable APT repository: we need to freeze our APT repository when
+  we freeze our release branch; this is also a first and important
+  milestone on our way towards reproducible builds.
+
+Exciting, uh? Needless to say, we also have plenty of smaller tasks on
+our plate :)
+
+How can I help?
+===============
+
+There are many ways to give us a hand in this area.
+
+<div class="note">
+
+When getting in touch with us, please attach a patch, or your plans,
+for a ticket marked *Easy*: this way, you can quickly get up to speed,
+and we can get used to working together. Of course, if the ticket you
+want to work on lacks the information you need to resolve it, don't
+hesitate asking us for clarification first.
+
+</div>

@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+adhdbench_results/
+adhdbench_cache/
+*.egg
+.eggs/

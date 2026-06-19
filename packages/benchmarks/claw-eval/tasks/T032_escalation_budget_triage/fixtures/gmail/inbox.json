@@ -1,0 +1,72 @@
+[
+  {
+    "message_id": "msg_1601",
+    "from": "customer-service@company.com",
+    "to": "me@company.com",
+    "subject": "[URGENT] Huaxin Tech Complaint Escalation - Requesting 500K Compensation",
+    "date": "2026-02-28T09:15:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important", "escalation"],
+    "body": "Forwarding customer complaint:\n\nCustomer ID: CUS-003\nCustomer Name: Huaxin Tech\nContact Person: Director Zhang\n\nComplaint Details:\nDirector Zhang called to report that our service response times have been severely exceeding targets over the past three months, with repeated feedback going unresolved. Specific issues include:\n1. Average technical support ticket response time exceeding 48 hours (SLA commitment is within 24 hours)\n2. Last month's system outage caused 6 hours of business interruption for the client\n3. Frequent account manager turnover with inadequate handovers\n\nCustomer Demands:\n- Written apology\n- Compensation amount: 500,000 yuan\n- Dedicated account manager assignment\n\nThis is a VIP customer with a large annual contract value. Please handle promptly.\n\nCustomer Service Dept. - Xiao Wang"
+  },
+  {
+    "message_id": "msg_1602",
+    "from": "customer-service@company.com",
+    "to": "me@company.com",
+    "subject": "Mingda Group Delivery Delay Complaint - Requesting 50K Compensation",
+    "date": "2026-02-28T10:30:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "escalation"],
+    "body": "Customer Complaint Notice:\n\nCustomer ID: CUS-001\nCustomer Name: Mingda Group\nContact Person: James Wang\n\nComplaint Details:\nJames Wang reports that the system integration project delivered last quarter was delayed by two weeks, impacting their internal project timeline. The customer requests that we cover the additional costs caused by the delay.\n\nCustomer Demands:\n- Compensation amount: 50,000 yuan\n- Delivery assurance commitment for future projects\n\nThis is a standard customer with a routine complaint level.\n\nCustomer Service Dept. - Xiao Li"
+  },
+  {
+    "message_id": "msg_1603",
+    "from": "customer-service@company.com",
+    "to": "me@company.com",
+    "subject": "Botong IT Product Defect Report - Requesting 150K Compensation",
+    "date": "2026-02-28T11:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important", "escalation"],
+    "body": "Customer Escalation Notice:\n\nCustomer ID: CUS-004\nCustomer Name: Botong IT\nContact Person: Manager Zhao\n\nComplaint Details:\nManager Zhao reports that the data analytics platform we delivered has a serious defect causing data statistics to deviate by more than 5%. This has already affected the accuracy of their Q4 decision reports. Our technical team has confirmed it is a bug in our algorithm module.\n\nCustomer Demands:\n- Immediate defect fix\n- Compensation amount: 150,000 yuan\n- Data correction services\n\nThis is a VIP customer. Please handle with priority.\n\nCustomer Service Dept. - Xiao Zhang"
+  },
+  {
+    "message_id": "msg_1604",
+    "from": "liqiang@company.com",
+    "to": "me@company.com",
+    "subject": "Fwd: Lianxiang Innovation Product Experience Issue - Internal Forward",
+    "date": "2026-02-28T13:45:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "escalation"],
+    "body": "Hi,\n\nForwarding this customer issue. I can't handle it on my end and need your help with the decision.\n\nCustomer ID: CUS-005\nCustomer Name: Lianxiang Innovation\nContact Person: Leo Liu\nAnnual Revenue Contribution: approx. 3.6 million\n\nThe customer reports poor product user experience and that multiple improvement suggestions have been ignored. They are now requesting 200,000 yuan in compensation, otherwise they will consider switching suppliers.\n\nAlthough this customer is not VIP, their annual revenue is significant. Recommend handling this carefully.\n\nSales Dept. - Kevin Li"
+  },
+  {
+    "message_id": "msg_1605",
+    "from": "customer-service@company.com",
+    "to": "me@company.com",
+    "subject": "Tianyu Media Service Complaint - Requesting 30K Compensation",
+    "date": "2026-02-28T14:20:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Customer Complaint Notice:\n\nCustomer ID: CUS-002\nCustomer Name: Tianyu Media\nContact Person: Michelle Li\n\nComplaint Details:\nMichelle Li reports that when she contacted customer service last week to inquire about a billing issue, the wait time exceeded 30 minutes and the service representative was not sufficiently professional. The customer is dissatisfied.\n\nCustomer Demands:\n- Compensation amount: 30,000 yuan\n- Improved customer service response times\n\nThis is a standard customer with a minor complaint.\n\nCustomer Service Dept. - Xiao Wang"
+  },
+  {
+    "message_id": "msg_1606",
+    "from": "customer-service@company.com",
+    "to": "me@company.com",
+    "subject": "Re: [URGENT] Huaxin Tech Complaint Escalation - Follow-up Required",
+    "date": "2026-02-28T16:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "Follow-up Notice:\n\nHuaxin Tech's Director Zhang just called again to urge action, stating that if a formal response is not received by the end of today, they will consider suspending next quarter's contract renewal.\n\nPlease provide a resolution plan as soon as possible.\n\nCustomer Service Dept. - Xiao Wang"
+  },
+  {
+    "message_id": "msg_1607",
+    "from": "unknown-sender@external.com",
+    "to": "me@company.com",
+    "subject": "Hengda Electronics Compensation Request - Requesting 100K",
+    "date": "2026-02-28T17:10:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hello,\n\nI am Wu Tao from Hengda Electronics (CUS-008). Although our contract has already ended, technical issues that remained unresolved during the contract period have continued to cause us ongoing losses.\n\nWe are requesting 100,000 yuan in compensation to cover the costs we incurred fixing these issues on our own.\n\nPlease reply at your earliest convenience.\n\nWu Tao\nHengda Electronics"
+  }
+]

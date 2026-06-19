@@ -1,0 +1,23 @@
+[[!meta  title="Welcome to tails.net!"]]
+[[!meta  date="Thu, 27 Jul 2023 17:53:31 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Today, we finished migrating our website to a new domain: [[tails.net|https://tails.net]].
+
+After 14 years using a subdomain of `boum.org`, we finally
+found a new home that will be easier for everybody to remember and type. Tails
+will become easier to find by the people who need it the most.
+
+The new domain also provides us more autonomy and possibilities for
+some technical work.
+
+The former `tails.boum.org` domain will continue working
+until further notice, to avoid breaking upgrades and security notifications on
+older versions of Tails and external links on the Internet.
+
+Please make sure to update any important pointers you might have or know about.
+
+We want to thank `boum.org` for supporting the project for all these years.
+Their support was and continues to be very
+valuable! :)

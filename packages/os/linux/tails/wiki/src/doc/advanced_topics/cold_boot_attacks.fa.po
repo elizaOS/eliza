@@ -1,0 +1,151 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2024-05-27 21:54+0000\n"
+"PO-Revision-Date: 2015-10-15 07:25+0000\n"
+"Last-Translator: sprint5 <translation5@451f.org>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"cold_boot_attacks/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.4-dev\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Protection against cold boot attacks\"]]\n"
+msgstr "[[!meta title=\"محافظت در برابر حملات راه‌اندازی سرد\"]]\n"
+
+#. type: Plain text
+msgid ""
+"While using a computer, all the data manipulated is written temporarily in "
+"[[!wikipedia Random-access_memory desc=\"RAM\"]]: texts, saved files, but "
+"also passwords and encryption keys. The more recent the activity, the more "
+"likely it is for the data to still be in RAM."
+msgstr ""
+"هنگام استفاده از یک رایانه تمام اطلاعات دست‌کاری شده به طور موقت در [[!"
+"wikipedia Random-access_memory desc=\"حافظهٔ تصادفی\"]] ذخیره می‌شوند: متن‌ها، "
+"فایل‌های ذخیره‌شده و همین‌طور گذرواژه‌ها و کلیدهای رمزگذاری. هرچه فعالیتتان "
+"جدیدتر باشد، احتمال وجود داشتن آن در حافظهٔ تصادفی بیشتر است."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"After a computer is powered off, the data in RAM disappears rapidly, but it "
+"can remain in RAM up to several minutes after shutdown. An attacker having "
+"access to a computer before the data in RAM disappears completely could "
+"recover important data from your session."
+msgstr ""
+"پس از خاموش شدن یک رایانه اطلاعات موجود در حافظهٔ تصادفی بلافاصله ناپدید "
+"می‌شوند، اما ممکن است تا چند دقیقه پس از خاموش شدن رایانه همچنان در حافظهٔ "
+"تصادفی باقی بمانند. مهاجمی که به رایانهٔ شما پیش از پاک شدن کامل اطلاعات از "
+"حافظهٔ تصادفی دسترسی پیدا کند می‌تواند اطلاعات مهمی از نشست کاری شما را "
+"بازیابی کند."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"This can be achieved using a technique called [[!wikipedia cold boot "
+"attack]]. To prevent such attacks, the data in RAM is overwritten by random "
+"data when you shut down Tails."
+msgstr ""
+"این کار را می‌توان با شگردی به نام <span\n"
+"class=\"definition\">[[!wikipedia Cold_boot_attack desc=\"حمله راه‌اندازی\n"
+"سرد\"]] </span> انجام داد. برای جلوگیری از چنین حمله‌ای اطلاعات موجود در "
+"حافظهٔ تصادفی \n"
+"پس از خاموش شدن تیلز با اطلاعاتی تصادفی جایگزین می‌شوند. این کار باعث پاک شدن "
+"ردپای \n"
+"نشست کاری شما از روی رایانه می‌شود.\n"
+
+#. type: Plain text
+msgid ""
+"Moreover, an attacker having physical access to the computer *while Tails is "
+"running* can recover data from RAM as well. To avoid that, learn the "
+"different methods to [[shutdown Tails|doc/first_steps/shutdown]] rapidly."
+msgstr ""
+"علاوه بر این مهاجمی که به رایانهٔ شما *هنگام استفاده از تیلز* دسترسی دارد "
+"می‌تواند اطلاعات را از حافظهٔ تصادفی نیز بازیابی کند. برای جلوگیری از این مشکل "
+"سعی کنید شگردهای مختلف  [[خاموش کردن فوری تیلز|doc/first_steps/shutdown]] را "
+"فرا بگیرید."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>As far as we know, cold boot attacks are not a common procedure for\n"
+"data recovery.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In a <a\n"
+"href=\"https://www.forensicfocus.com/stable/wp-content/uploads/2011/08/cold_boot_attack_for_forensiscs1.pdf\">research\n"
+"report from 2011</a>, Defense Research and Development Canada concluded that\n"
+"cold boot attacks can be useful in some cases to acquire data in memory but are\n"
+"not a panacea and have many drawbacks dictated by the laws of physics, which\n"
+"cannot be overcome by the technique. The authors recommend to only use cold\n"
+"boot attacks as a last resort when all other avenues have been exhausted.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See how we implement this [[memory\n"
+"erasure|contribute/design/memory_erasure]], for example, if you want to\n"
+"implement this feature outside of Tails.</p>\n"
+msgstr ""
+
+#~ msgid ""
+#~ "As far as we know, cold boot attacks are not a common procedure for data "
+#~ "recovery, but it might still be good to be prepared. If no cold boot "
+#~ "attack happens directly after shutdown, the RAM empties itself in "
+#~ "minutes, and all data disappears."
+#~ msgstr ""
+#~ "تا آن‌جایی که ما می‌دانیم، حملات راه‌اندازی سرد راهی معمول برای بازیابی "
+#~ "اطلاعات نیستند، اما همچنان خوب است که برای مقابله با آن‌ها آماده باشیم. "
+#~ "اگر حملهٔ راه‌اندازی سرد مستقیماً پس از خاموش شدن رایانه انجام نشود، حافظهٔ "
+#~ "تصادفی داده‌های خود را پس از چند دقیقه پاک می‌کند و تمام اطلاعات حذف می‌شوند."
+
+#~ msgid ""
+#~ "On some computers Tails might fail to:\n"
+#~ "<ul>\n"
+#~ "  <li>[[erase all the data in RAM on\n"
+#~ "  shutdown|support/known_issues#memory-wipe]]</li>\n"
+#~ "  <li>[[completely shutdown or restart|support/known_issues#fails-to-"
+#~ "shutdown]]\n"
+#~ "  (in this case there is no guarantee that all the data in RAM is\n"
+#~ "  erased).</li>\n"
+#~ "</ul>\n"
+#~ msgstr ""
+#~ "ممکن است روی بعضی رایانه‌ها تیلز نتواند:\n"
+#~ "<ul>\n"
+#~ "  <li>[[تمام اطلاعات حافظهٔ تصادفی را پس از خاموش شدن\n"
+#~ "  پاک کند|support/known_issues#index9h2]]</li>\n"
+#~ "  <li>[[خاموش شدن یا راه‌اندازی دوباره را کامل انجام دهد|support/"
+#~ "known_issues#fails-to-shutdown]]\n"
+#~ "  (در این حالت تضمینی وجود ندارد که تمام اطلاعات موجود روی حافظهٔ تصادفی\n"
+#~ "  پاک شوند).</li>\n"
+#~ "</ul>\n"

@@ -1,0 +1,81 @@
+schema: eliza.e1_phone_mechanical_overlay.v1
+status: cad_projected_constraints_not_routed_layout
+date: 2026-05-20
+claim_boundary: >
+  Board-space projection of the current E1 phone CAD keepouts. This is a
+  KiCad concept overlay and planning artifact, not routed-PCB signoff, STEP
+  evidence, or DRC-clean fabrication data.
+
+coordinate_system:
+  origin: top_left_of_64x132_mainboard_front_view
+  units: mm
+  board_bbox: {x: 0.0, y: 0.0, width: 64.0, height: 132.0}
+  device_envelope_reference: {width: 78.0, height: 153.6, max_thickness: 11.8}
+
+keepouts:
+  - id: battery_window
+    layer: Dwgs.User
+    rect_mm: {x: 0.0, y: 29.5, width: 64.0, height: 87.0}
+    source: cad_selected_64x87_battery_pouch_and_top_bottom_pcb_islands
+    rule: no rigid PCB components or copper intrusion; top/bottom island or flex implementation required
+  - id: usb_c_shell_capture
+    layer: Dwgs.User
+    rect_mm: {x: 26.0, y: 126.0, width: 16.0, height: 6.0}
+    source: cad_usb_c_receptacle_and_external_aperture
+    rule: connector mouth, shell stakes, and insertion load must align to enclosure saddle
+  - id: display_fpc_bend_keepout
+    layer: Dwgs.User
+    rect_mm: {x: 42.0, y: 33.0, width: 20.0, height: 11.0}
+    source: cad_display_fpc_connector_and_bend_keepout
+    rule: preserve display/touch FPC bend radius and no tall components
+  - id: side_key_actuator_keepout
+    layer: Dwgs.User
+    rect_mm: {x: 4.0, y: 50.0, width: 7.0, height: 46.0}
+    source: cad_power_and_volume_button_caps
+    rule: switch solder joints cannot carry external button side loads
+  - id: rear_camera_z_keepout
+    layer: Dwgs.User
+    rect_mm: {x: 47.0, y: 8.0, width: 15.0, height: 24.0}
+    source: cad_rear_camera_module_and_cover_glass
+    rule: preserve lens axis datum and rear cover-glass stack
+  - id: front_camera_earpiece_keepout
+    layer: Dwgs.User
+    rect_mm: {x: 2.0, y: 3.0, width: 22.0, height: 12.0}
+    source: cad_front_camera_under_glass_and_earpiece_gasket
+    rule: camera and receiver acoustic path remain under glass with gasket compression
+  - id: haptic_lra_keepout
+    layer: Dwgs.User
+    rect_mm: {x: 55.0, y: 101.0, width: 6.0, height: 12.0}
+    source: cad_compact_0612_haptic_lra_right_lower_pocket
+    rule: no tall parts or screw bosses under haptic moving mass
+  - id: sim_tray_keepout
+    layer: Dwgs.User
+    rect_mm: {x: 56.0, y: 48.0, width: 8.0, height: 24.0}
+    source: cad_sim_tray_keepout
+    rule: keep side service tray clear or convert to eSIM-only blocker
+  - id: top_antenna_keepout
+    layer: Dwgs.User
+    rect_mm: {x: 3.0, y: 3.0, width: 58.0, height: 5.0}
+    source: cad_cellular_top_antenna_keepout
+    rule: no metal fill, shield, or tall grounded parts without RF review
+  - id: bottom_antenna_keepout
+    layer: Dwgs.User
+    rect_mm: {x: 3.0, y: 124.0, width: 58.0, height: 5.0}
+    source: cad_cellular_bottom_antenna_keepout
+    rule: bottom antenna feed and USB shell grounding must be co-designed
+  - id: wifi_bt_side_antenna_keepout
+    layer: Dwgs.User
+    rect_mm: {x: 41.0, y: 33.0, width: 20.0, height: 5.0}
+    source: cad_wifi_bt_side_antenna_keepout
+    rule: preserve plastic side aperture and pi matching network clearance
+
+projected_into_kicad_pcb:
+  file: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
+  required_tokens:
+    - MECH_KEEP_USB_C_CAPTURE
+    - MECH_KEEP_SIDE_KEY_ACTUATOR
+    - MECH_KEEP_DISPLAY_FPC
+    - MECH_KEEP_HAPTIC_LRA
+    - MECH_KEEP_SIM_TRAY
+    - MECH_KEEP_RF_TOP
+    - MECH_KEEP_RF_BOTTOM

@@ -1,0 +1,22 @@
+{"type": "session_start", "session_id": "subagent_4722793", "model": "claude-sonnet-4-20250514", "created_at": "2026-03-04T05:55:15.074966", "user_id": "system", "channel": "internal"}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-04T05:55:42.614671", "session_id": "subagent_4722793", "seq": 1}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-04T05:58:22.516124", "session_id": "subagent_4722793", "seq": 2, "usage": {"prompt_tokens": 7270, "completion_tokens": 971, "total_tokens": 1675}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-04T06:00:25.221679", "session_id": "subagent_4722793", "seq": 3, "usage": {"prompt_tokens": 800, "completion_tokens": 2838, "total_tokens": 9607}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-04T06:03:18.262172", "session_id": "subagent_4722793", "seq": 4}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-04T06:07:29.126996", "session_id": "subagent_4722793", "seq": 5}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-04T06:08:36.776322", "session_id": "subagent_4722793", "seq": 6, "usage": {"prompt_tokens": 4923, "completion_tokens": 1206, "total_tokens": 10209}}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-04T06:09:08.939630", "session_id": "subagent_4722793", "seq": 7}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-04T06:10:59.369703", "session_id": "subagent_4722793", "seq": 8}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-04T06:15:35.655795", "session_id": "subagent_4722793", "seq": 9}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-04T06:16:12.891953", "session_id": "subagent_4722793", "seq": 10}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-03-04T06:16:37.326485", "session_id": "subagent_4722793", "seq": 11, "usage": {"prompt_tokens": 5424, "completion_tokens": 3455, "total_tokens": 1206}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-04T06:20:25.895329", "session_id": "subagent_4722793", "seq": 12, "usage": {"prompt_tokens": 3223, "completion_tokens": 1536, "total_tokens": 8629}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-04T06:23:42.390635", "session_id": "subagent_4722793", "seq": 13}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-04T06:28:01.961541", "session_id": "subagent_4722793", "seq": 14}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-04T06:29:57.771275", "session_id": "subagent_4722793", "seq": 15, "usage": {"prompt_tokens": 6148, "completion_tokens": 2840, "total_tokens": 3585}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-04T06:34:57.458988", "session_id": "subagent_4722793", "seq": 16, "usage": {"prompt_tokens": 6673, "completion_tokens": 3033, "total_tokens": 3415}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-04T06:35:14.736028", "session_id": "subagent_4722793", "seq": 17}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-04T06:37:10.737957", "session_id": "subagent_4722793", "seq": 18, "usage": {"prompt_tokens": 3314, "completion_tokens": 2825, "total_tokens": 9143}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-04T06:39:06.833381", "session_id": "subagent_4722793", "seq": 19}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-04T06:39:27.603205", "session_id": "subagent_4722793", "seq": 20}
+{"type": "session_end", "session_id": "subagent_4722793", "ended_at": "2026-03-04T06:39:37.603205", "total_messages": 20, "status": "completed"}

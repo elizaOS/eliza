@@ -1,0 +1,10 @@
+--- a/etc/apparmor.d/usr.bin.pidgin	2018-11-02 13:27:48.000000000 +0100
++++ b/etc/apparmor.d/usr.bin.pidgin	2018-11-05 18:08:01.820091736 +0100
+@@ -62,6 +62,7 @@
+   /usr/bin/gvfs-open rmix,
+   /usr/bin/pidgin r,
+   /usr/bin/xdg-open rmix,
++  /usr/local/bin/tor-browser rmUx,
+ 
+   /etc/purple/prefs.xml r,
+ 

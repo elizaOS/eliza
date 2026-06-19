@@ -1,0 +1,8 @@
+{
+  "package": "elizaos-plugin-neynar-search",
+  "repository": "github:xavier-arosemena/elizaos-plugin-neynar-search",
+  "kind": "plugin",
+  "description": "Farcaster engagement discovery, like, reply, and follow/unfollow actions via Neynar REST API for ElizaOS agents",
+  "version": "0.1.0",
+  "tags": ["farcaster", "neynar", "social", "discovery"]
+}

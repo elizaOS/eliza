@@ -1,0 +1,36 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noEmit": true,
+    "rootDir": "../../../",
+    "strict": false,
+    "types": ["node", "bun-types"],
+    "paths": {
+      "@elizaos/plugin-facewear": [
+        "../../../plugins/plugin-facewear/src/index.ts"
+      ],
+      "@elizaos/plugin-facewear/register": [
+        "../../../plugins/plugin-facewear/src/register.ts"
+      ],
+      "@elizaos/plugin-facewear/*": ["../../../plugins/plugin-facewear/src/*"]
+    }
+  },
+  "include": [
+    "declarations.d.ts",
+    "eliza-runtime-smoke.ts",
+    "evenhub-smoke.ts",
+    "hardware-evidence.ts",
+    "hardware-report-status.ts",
+    "hardware-smoke.ts",
+    "noble-hardware-smoke.ts",
+    "package-smoke.ts",
+    "simulator-automation-smoke.ts",
+    "validate-hardware-report.ts",
+    "../../../plugins/plugin-facewear/src/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,14 @@
+# Initial Android fstab package for eliza_ai_soc.
+# Cuttlefish integration may override block devices during simulator bring-up.
+# AVB/A-B/recovery/OTA flags are not evidence of AVB keys, rollback indexes,
+# recovery behavior, update success, or secure flashing.
+# not AVB, A/B, recovery, OTA, rollback evidence.
+# scaffold marker only: slotselect,avb remains blocked until target AVB/A-B evidence lands.
+
+# /vendor: read-only vendor image. Block-device name matches the Android
+# dynamic-partition convention; the underlying super partition layout is
+# defined by the imported Cuttlefish-derived product.
+/dev/block/by-name/vendor   /vendor   ext4   ro,barrier=1                                                                       wait,first_stage_mount,logical
+# /data: userdata. ICE/file-based encryption is NOT enabled yet; left out
+# until a keymaster/keymint HAL and storage key path exist.
+/dev/block/by-name/userdata /data     f2fs   noatime,nosuid,nodev,discard,reserve_root=32768,resgid=1065,inlinecrypt           wait,check,formattable,quota

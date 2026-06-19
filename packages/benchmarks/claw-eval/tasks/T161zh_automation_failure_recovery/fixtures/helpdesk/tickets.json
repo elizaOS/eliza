@@ -1,0 +1,50 @@
+[
+  {
+    "ticket_id": "TK-1501",
+    "title": "库存数量与实际不符",
+    "description": "仓库盘点发现系统中显示的无线鼠标库存为50个，但实际货架上只有32个。USB-C扩展坞系统显示0，但上周供应商明明送了一批货。怀疑系统数据不准确。",
+    "reporter": "仓储部-周磊",
+    "department": "仓储部",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-26T09:30:00Z",
+    "tags": ["库存", "数据不一致", "仓储"],
+    "category": "数据问题"
+  },
+  {
+    "ticket_id": "TK-1502",
+    "title": "自动补货没有触发",
+    "description": "网络交换机库存已经低于安全线（当前3台，安全库存5台），但系统没有自动触发补货订单。往常库存低于安全线时会自动生成采购单，但最近几天没有任何自动采购记录。请紧急处理，项目下周需要用到交换机。",
+    "reporter": "IT部-赵阳",
+    "department": "IT部",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-26T10:00:00Z",
+    "tags": ["补货", "自动化", "紧急", "库存"],
+    "category": "系统故障"
+  },
+  {
+    "ticket_id": "TK-1503",
+    "title": "供应商价格没有更新",
+    "description": "采购部发现系统中的供应商价格还是上周的数据，3月21日供应商发了新的价格表（部分产品调价），但系统中没有反映。需要确认是否同步出了问题。",
+    "reporter": "采购部-陈蕾",
+    "department": "采购部",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-26T11:00:00Z",
+    "tags": ["供应商", "价格", "同步"],
+    "category": "数据问题"
+  },
+  {
+    "ticket_id": "TK-1504",
+    "title": "打印机故障",
+    "description": "2楼打印间的彩色打印机无法打印，显示纸盒卡纸错误。已尝试清理纸盒但问题没有解决。",
+    "reporter": "行政部-李娜",
+    "department": "行政部",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-26T08:45:00Z",
+    "tags": ["硬件", "打印机"],
+    "category": "硬件故障"
+  }
+]

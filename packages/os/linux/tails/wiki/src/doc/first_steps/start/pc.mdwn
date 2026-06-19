@@ -1,0 +1,106 @@
+[[!meta title="Starting Tails on PC"]]
+[[!meta stylesheet="install/inc/stylesheets/hide" rel="stylesheet" title=""]]
+[[!meta stylesheet="install/inc/stylesheets/standalone" rel="stylesheet" title=""]]
+
+This page describes the basic and advanced techniques to start Tails from a USB stick on PC.
+
+[[!toc levels=2]]
+
+<h1 id="windows-restart">Starting from Windows</h1>
+
+From Windows or the sign-in screen of Windows:
+
+[[!inline pages="install/inc/steps/windows_boot_menu.inline" raw="yes" sort="age"]]
+
+<div class="next">
+<p>If the Boot Loader appears, you can follow our [[instructions
+on the Welcome Screen|install/windows#tails]].</p>
+</div>
+
+<h1 id="boot-menu-key">Starting with the Boot Menu key</h1>
+
+[[!inline pages="install/inc/steps/pc_boot_menu.inline" raw="yes" sort="age"]]
+
+<div class="next">
+<p>If the Boot Loader appears, you can follow our [[instructions
+on the Welcome Screen|install/windows#tails]].</p>
+</div>
+
+<h1 id="automatically">Starting on Tails automatically</h1>
+
+To start on Tails automatically when your Tails USB stick is plugged in:
+
+- Open the BIOS or UEFI settings of the computer.
+
+  To learn how to edit the BIOS or UEFI settings, search for the user manual of
+  the computer on the support website of the manufacturer.
+
+- Edit the **Boot Order**. You might see an entry for **Removable devices**
+  or **USB media**. Move this entry to the top of the list to force the computer
+  to start from the USB stick before starting from the internal hard disk.
+
+- Restart the computer.
+
+<h1 id="not-at-all">Troubleshooting Tails not starting at all</h1>
+
+Use this section if the computer does not start from the USB stick and the Boot Loader does not display:
+
+[[!img install/inc/screenshots/grub.png class="screenshot" alt="Black screen ('GNU GRUB') with Tails
+logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'."]]
+
+<h2 id="verify">Verify your Tails USB stick</h2>
+
+[[!inline pages="install/inc/steps/basic_troubleshooting.inline" raw="yes" sort="age"]]
+
+<div class="note">
+
+<p>If you get the following error message in Windows:</p>
+
+<p class="code">The disc image file is corrupted.</p>
+
+<p>Then, you have to [[install Tails using <i>Rufus</i>|install/windows#rufus]].</p>
+
+</div>
+
+<h2 id="known-issues">Check our list of known issues</h2>
+
+Similar problems might have been reported already for your computer model
+in our [[list of known issues about Tails not starting at all|support/known_issues#pc-not-at-all]].
+
+<h2 id="bios-settings">Edit the BIOS or UEFI settings (advanced users)</h2>
+
+To learn how to edit the BIOS or UEFI settings, search for the user manual of
+the computer on the support website of the manufacturer.
+
+<div class="caution">
+
+<p>Take note of the changes that you apply to the BIOS or UEFI settings. That way, you
+can revert the changes if they prevent the computer from starting on its usual
+operating system.</p>
+
+</div>
+
+In the BIOS or UEFI settings, try to apply the following changes:
+
+- Make sure that the Boot Menu key is enabled, in your BIOS or UEFI options.
+  This option might be called **Boot Device List** or something similar,
+  depending on the computer.
+
+- Edit the **Boot Order**. You might see an entry for **Removable devices**
+  or **USB media**. Move this entry to the top of the list to force the computer
+  to start from the USB stick before starting from the internal hard disk.
+
+- Disable **Fast Boot**.
+
+- Enable **CSM Boot**.
+
+- Enable **Legacy Boot**, in addition to UEFI.
+  The computer might not start anymore on its regular operating system
+  if you disable UEFI completely or if you only enable Legacy boot.
+
+- Try to upgrade the BIOS or UEFI. To do so, refer to the support website of
+  the computer manufacturer.
+
+<h1 id="not-entirely">Troubleshooting Tails not starting after the Boot Loader</h1>
+
+[[!inline pages="doc/first_steps/start/not_entirely.inline" raw="yes" sort="age"]]

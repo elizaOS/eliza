@@ -1,0 +1,12 @@
+{
+  "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "notify_user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa07",
+  "app_id": "cli_a1234567890b",
+  "app_secret": "PLACEHOLDER_DO_NOT_COMMIT_REAL_SECRET",
+  "notification_settings": {
+    "max_per_hour": 20,
+    "batch_delay_seconds": 5,
+    "include_source_link": true,
+    "card_template": "blue"
+  }
+}

@@ -1,0 +1,57 @@
+#!/bin/sh
+
+set -e
+set -u
+
+# Get $XKBMODEL, $XKBLAYOUT, $XKBVARIANT and $XKBOPTIONS
+. /var/lib/tails-user-session/keyboard
+
+if [ -z "${XKBVARIANT:-}" ] ; then
+	XKBCONF="$XKBLAYOUT"
+else
+	XKBCONF="$XKBLAYOUT+$XKBVARIANT"
+fi
+
+# Choose the keyboard layout we'll use regardless of the IBus input methods
+if [ "$XKBLAYOUT" = 'us' ] ; then
+    SOURCES="('xkb', '$XKBCONF')"
+else
+    SOURCES="('xkb', '$XKBCONF'), ('xkb', 'us')"
+fi
+
+# Choose preferred IBus input methods
+LANGPREFIX=$(echo "$LANG" | sed 's/_.*//')
+case "$LANGPREFIX" in
+   ja)
+      PRELOAD="['mozc-jp', 'libpinyin', 'hangul', 'Unikey', 'chewing']"
+      SOURCES="[$SOURCES, ('ibus', 'mozc-jp'), ('ibus', 'libpinyin'), ('ibus', 'chewing'), ('ibus', 'hangul'), ('ibus', 'Unikey')]"
+      ;;
+   ko)
+      PRELOAD="['hangul', 'libpinyin', 'mozc-jp', 'Unikey', 'chewing']"
+      SOURCES="[$SOURCES, ('ibus', 'hangul'), ('ibus', 'libpinyin'), ('ibus', 'chewing'), ('ibus', 'mozc-jp'), ('ibus', 'Unikey')]"
+      ;;
+   vi)
+      PRELOAD="['Unikey', 'hangul', 'libpinyin', 'mozc-jp', 'chewing']"
+      SOURCES="[$SOURCES, ('ibus', 'Unikey'), ('ibus', 'hangul'), ('ibus', 'libpinyin'), ('ibus', 'chewing'), ('ibus', 'mozc-jp')]"
+      ;;
+   zh)
+      PRELOAD="['libpinyin', 'chewing', 'mozc-jp', 'hangul', 'Unikey']"
+      SOURCES="[$SOURCES, ('ibus', 'libpinyin'), ('ibus', 'chewing'), ('ibus', 'mozc-jp'), ('ibus', 'hangul'), ('ibus', 'Unikey')]"
+      ;;
+   *)
+      PRELOAD="['libpinyin', 'mozc-jp', 'hangul', 'Unikey', 'chewing']"
+      SOURCES="[$SOURCES, ('ibus', 'libpinyin'), ('ibus', 'mozc-jp'), ('ibus', 'hangul'), ('ibus', 'Unikey'), ('ibus', 'chewing')]"
+      ;;
+esac
+
+# Configure enabled input methods and their preferred order
+dconf write /desktop/ibus/general/preload-engines "$PRELOAD"
+dconf write /org/gnome/desktop/input-sources/sources "$SOURCES"
+if [ -n "${XKBOPTIONS:-}" ] ; then
+    dconf write /org/gnome/desktop/input-sources/xkb-options "$XKBOPTIONS"
+fi
+
+# Export environment variables to enable use of IBus
+export GTK_IM_MODULE='ibus'
+export QT_IM_MODULE='ibus'
+export XMODIFIERS='@im=ibus'

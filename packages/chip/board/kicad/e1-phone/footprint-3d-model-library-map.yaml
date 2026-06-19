@@ -1,0 +1,438 @@
+schema: eliza.e1_phone_footprint_3d_model_library_map.v1
+date: '2026-05-21'
+status: library_match_preparation_with_local_routed_candidate_not_release
+claim_boundary: >
+  Library-level footprint and 3D-model availability map only. For each REAL single
+  catalog component in the unit-cost BOM it records whether the LOCAL KiCad install
+  ships a real land pattern (.kicad_mod) and/or a bundled 3D model (.wrl/.step) that
+  matches the manufacturer part. It is preparation for future schematic capture and
+  footprint assignment. It does NOT assign footprints in any .kicad_pcb, does NOT
+  create a netlist, does NOT run ERC/DRC, does NOT approve a supplier, and does NOT
+  flip any release or routed gate. The mainboard concept PCB
+  (board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb) still carries 87
+  NON-RELEASE E1Phone: placeholder footprints with generic evenly-pitched pad rows
+  and no electrical netlist. The routed/local-development PCB
+  (board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb) has replaced those
+  literal placeholders with 89 board-bound e1-phone-dev development patterns and
+  zero E1_PHONE_PLACEHOLDER markers, but every such pattern remains tagged
+  NON_RELEASE_DEVELOPMENT_PATTERN pending supplier land-pattern, pinout, and STEP
+  approval. A prior concept-board investigation recorded 1316 DRC / 366 ERC
+  violations. The concept board remains a scaffold; the routed board remains a
+  local candidate rather than release evidence.
+
+toolchain_provenance:
+  kicad_cli_version: 7.0.11
+  active_binary_install: scripts/kicad_run.sh -> .tools/kicad-local
+  active_binary_ships_3d_models: false
+  notes_active_binary: >
+    The active wrapper resolves KiCad CLI 7.0.11 from .tools/kicad-local. It exposes
+    pcb export step but lacks the release-required sch erc and pcb drc command
+    families, and it cannot open the current routed board file because that file was
+    created by a newer KiCad format. It ships footprints and symbols but the local
+    3D model subset is incomplete.
+  footprint_library_root: .tools/kicad-local/usr/share/kicad/footprints
+  model_library_root: .tools/kicad-local/usr/share/kicad/3dmodels
+  footprint_library_count_pretty: 142
+  model_library_count_3dshapes: 100
+  notes_model_library: >
+    .tools/kicad-local ships 100 of the official ~140 .3dshapes libraries — it is an
+    incomplete subset. Several footprints reference an embedded ${KICAD7_3DMODEL_DIR}
+    / ${KICAD6_3DMODEL_DIR} .wrl that is NOT present in this subset (verified by
+    direct file stat). Those cases are flagged model_status: footprint_ref_present_model_file_missing.
+  model_env_var_in_footprints:
+    - ${KICAD6_3DMODEL_DIR}
+    - ${KICAD7_3DMODEL_DIR}
+
+match_legend:
+  matched: real KiCad land pattern AND bundled 3D model (.wrl + .step) both present locally.
+  matched_footprint_only: real KiCad land pattern present; bundled 3D model file absent in local subset.
+  needs_custom_or_supplier_step: >
+    no fixed catalog land pattern exists, OR the part is an IC/module/enclosure/passive-array
+    whose real pad map and STEP must come from the supplier datasheet/drawing. A generic
+    KiCad package-family footprint may exist but is NOT a release-grade match without the
+    supplier pin map and thermal-pad geometry.
+
+components:
+
+  # ---- catalog single-components with a real named KiCad footprint ----
+
+  - bom_line: 17
+    function: usb_c_receptacle
+    manufacturer_part: GCT USB4105-GF-A
+    qty: 1
+    kicad_footprint_lib: Connector_USB
+    kicad_footprint_name: USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal
+    footprint_path: .tools/kicad-local/usr/share/kicad/footprints/Connector_USB.pretty/USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal.kicad_mod
+    model_path: .tools/kicad-local/usr/share/kicad/3dmodels/Connector_USB.3dshapes/USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal.wrl
+    step_path: .tools/kicad-local/usr/share/kicad/3dmodels/Connector_USB.3dshapes/USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal.step
+    status: matched
+    notes: >
+      Direct MPN match. KiCad ships the exact GCT USB4105 16-position top-mount
+      horizontal receptacle land pattern with both .wrl and .step. Replaces concept
+      placeholder E1Phone:J_USB_C (6 generic pads at 2.28 mm pitch) one-for-one after
+      schematic capture binds the USB_C_24p symbol pins to this footprint.
+
+  - bom_line: 18
+    function: tactile_switches_side_buttons
+    manufacturer_part: Panasonic EVQP7A01P
+    qty: 3
+    kicad_footprint_lib: Button_Switch_SMD
+    kicad_footprint_name: SW_SPST_EVQP7A
+    footprint_path: .tools/kicad-local/usr/share/kicad/footprints/Button_Switch_SMD.pretty/SW_SPST_EVQP7A.kicad_mod
+    model_path: footprint_ref_present_model_file_missing
+    step_path: footprint_ref_present_model_file_missing
+    model_ref_in_footprint: ${KICAD7_3DMODEL_DIR}/Button_Switch_SMD.3dshapes/SW_SPST_EVQP7A.wrl
+    status: matched_footprint_only
+    notes: >
+      Direct MPN match on the land pattern (SW_SPST_EVQP7A is the EVQP7 series light-touch
+      SMD switch). The footprint embeds a model reference to SW_SPST_EVQP7A.wrl, but that
+      model file is NOT in the local .3dshapes subset (only SW_SPST_EVQP2 and SW_SPST_EVQPE1
+      models are present). Pull SW_SPST_EVQP7A.wrl/.step from the full kicad-packages3d
+      release or from Panasonic's STEP, or accept no 3D body for these switches.
+
+  - bom_line: 19
+    function: mems_microphones
+    manufacturer_part: Knowles SPK0641HT4H-1
+    qty: 2
+    kicad_footprint_lib: Sensor_Audio
+    kicad_footprint_name: Knowles_LGA-5_3.5x2.65mm
+    footprint_path: .tools/kicad-local/usr/share/kicad/footprints/Sensor_Audio.pretty/Knowles_LGA-5_3.5x2.65mm.kicad_mod
+    model_path: footprint_ref_present_model_file_missing
+    step_path: footprint_ref_present_model_file_missing
+    model_ref_in_footprint: ${KICAD6_3DMODEL_DIR}/Sensor_Audio.3dshapes/Knowles_LGA-5_3.5x2.65mm.wrl
+    status: matched_footprint_only
+    alternate_footprint: Knowles_LGA-6_4.72x3.76mm
+    notes: >
+      Knowles bottom-port digital PDM MEMS mic. SPK0641HT4H-1 is a 5-pad 3.5x2.65 mm LGA,
+      so Knowles_LGA-5_3.5x2.65mm is the correct generic Knowles land pattern; confirm pad/
+      port geometry against the SPK0641HT4H-1 recommended footprint before freeze. The local
+      subset is missing the Knowles_LGA-5 and Knowles_LGA-6 .wrl/.step (present models in
+      Sensor_Audio.3dshapes are CUI_CMC-4013-SMT, InvenSense_ICS-43434, Knowles_SPH0645LM4H-6,
+      ST_HLGA-6). Use Knowles_SPH0645LM4H-6_3.5x2.65mm.step as a visual placeholder body or
+      pull the LGA-5 model from the full kicad-packages3d release.
+
+  - bom_line: 12
+    function: display_lcd_ctp_fpc_connector
+    manufacturer_part: Chenghao CH550FH01A-CT (5.5in FHD MIPI LCD+CTP, 40-pin 0.5 mm FPC)
+    qty: 1
+    kicad_footprint_lib: Connector_FFC-FPC
+    kicad_footprint_name: Hirose_FH12-40S-0.5SH_1x40-1MP_P0.50mm_Horizontal
+    footprint_path: .tools/kicad-local/usr/share/kicad/footprints/Connector_FFC-FPC.pretty/Hirose_FH12-40S-0.5SH_1x40-1MP_P0.50mm_Horizontal.kicad_mod
+    model_path: .tools/kicad-local/usr/share/kicad/3dmodels/Connector_FFC-FPC.3dshapes/Hirose_FH12-40S-0.5SH_1x40-1MP_P0.50mm_Horizontal.wrl
+    step_path: .tools/kicad-local/usr/share/kicad/3dmodels/Connector_FFC-FPC.3dshapes/Hirose_FH12-40S-0.5SH_1x40-1MP_P0.50mm_Horizontal.step
+    status: matched
+    match_scope: mating_fpc_connector_on_mainboard_only
+    alternate_display_branch_policy:
+      branch_count: 2
+      branches:
+        - source_id: display_alternate_alibaba_meta_055wu01
+          candidate: 055WU01
+          footprint_status: candidate_40pin_fpc_connector_only_not_panel_footprint
+          required_before_assignment:
+            - signed 2D drawing with FPC exit, pin-1 datum, and cover-lens datum
+            - exact 40-pin FPC pinout, mating connector MPN, and recommended land pattern
+            - supplier STEP or B-rep model for display stack, connector, FPC tail, and stiffener
+            - promotion review before replacing CH550FH01A-CT symbol, footprint, or enclosure branch
+          kicad_assignment_allowed: false
+        - source_id: display_alternate_made_in_china_e549_amoled
+          candidate: E549-HC01_RM67191_AMOLED_class
+          footprint_status: supplier_defined_amoled_connector_touch_stack_and_panel_geometry_required
+          required_before_assignment:
+            - signed 2D drawing with AMOLED outline, FPC exit, active-area datum, and touch-stack datum
+            - exact AMOLED FPC pinout, mating connector MPN, and recommended land pattern
+            - supplier STEP or B-rep model for AMOLED stack, connector, FPC tail, and stiffener
+            - RM67191 power-sequence and GT1151 touch configuration review before footprint or enclosure branch release
+          kicad_assignment_allowed: false
+    notes: >
+      The display MODULE itself is supplier-custom (no catalog footprint). What IS matchable
+      is the 40-pin 0.5 mm horizontal FPC RECEPTACLE on the mainboard that mates the display
+      tail. Hirose FH12-40S-0.5SH is a real 40-pin 0.5 mm FPC connector with land pattern +
+      both 3D models. The exact mainboard connector MPN is unfrozen (pending supplier FPC
+      pinout), so treat this as a vetted candidate land pattern for the 40-pin/0.5 mm class,
+      not a frozen selection.
+
+  # ---- standard passives / discrete (real generic land patterns + models) ----
+
+  - bom_line: passives_general
+    function: smt_passives_R_C_0402_0201
+    manufacturer_part: generic chip resistors/capacitors (0402/0201 metric)
+    qty: bulk
+    kicad_footprint_lib: [Resistor_SMD, Capacitor_SMD]
+    kicad_footprint_name:
+      - R_0402_1005Metric
+      - R_0201_0603Metric
+      - C_0402_1005Metric
+      - C_0201_0603Metric
+    footprint_path:
+      - .tools/kicad-local/usr/share/kicad/footprints/Resistor_SMD.pretty/R_0402_1005Metric.kicad_mod
+      - .tools/kicad-local/usr/share/kicad/footprints/Resistor_SMD.pretty/R_0201_0603Metric.kicad_mod
+      - .tools/kicad-local/usr/share/kicad/footprints/Capacitor_SMD.pretty/C_0402_1005Metric.kicad_mod
+      - .tools/kicad-local/usr/share/kicad/footprints/Capacitor_SMD.pretty/C_0201_0603Metric.kicad_mod
+    model_path:
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Resistor_SMD.3dshapes/R_0402_1005Metric.wrl
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Resistor_SMD.3dshapes/R_0201_0603Metric.wrl
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Capacitor_SMD.3dshapes/C_0402_1005Metric.wrl
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Capacitor_SMD.3dshapes/C_0201_0603Metric.wrl
+    step_path:
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Resistor_SMD.3dshapes/R_0402_1005Metric.step
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Resistor_SMD.3dshapes/R_0201_0603Metric.step
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Capacitor_SMD.3dshapes/C_0402_1005Metric.step
+      - .tools/kicad-local/usr/share/kicad/3dmodels/Capacitor_SMD.3dshapes/C_0201_0603Metric.step
+    status: matched
+    notes: >
+      Standard IPC chip land patterns with bundled .wrl + .step. Covers the
+      decoupling/ESD/pullup/damping passive groups that the concept PCB currently lumps into
+      E1Phone:*_DECOUPLING / *_ESD / *_PULLUPS placeholder groups. Real per-passive refdes
+      and values come out of schematic capture, not this map.
+
+  - bom_line: 15a
+    function: rear_flash_torch_led
+    manufacturer_part: Everlight/OSRAM-class ~1.0x1.0 mm white flash LED (MPN not selected)
+    qty: 1
+    kicad_footprint_lib: LED_SMD
+    kicad_footprint_name: LED_0603_1608Metric
+    footprint_path: .tools/kicad-local/usr/share/kicad/footprints/LED_SMD.pretty/LED_0603_1608Metric.kicad_mod
+    model_path: .tools/kicad-local/usr/share/kicad/3dmodels/LED_SMD.3dshapes/LED_0603_1608Metric.wrl
+    step_path: .tools/kicad-local/usr/share/kicad/3dmodels/LED_SMD.3dshapes/LED_0603_1608Metric.step
+    status: matched
+    confidence: candidate_land_pattern_only
+    notes: >
+      0603 (1.6x0.8 mm) is the nearest standard land pattern to a 1.0x1.0 mm top-fire flash
+      LED; once a real flash LED MPN is chosen its supplier pad drawing governs. Vetted
+      candidate, not a frozen footprint.
+
+  # ---- ICs: package-family footprints exist, but require supplier pin map (not a clean catalog match) ----
+
+  - bom_line: 15b
+    function: flash_led_driver_ic
+    manufacturer_part: Awinic AW36515FCR (FCQFN-10, 1.2x1.6 mm)
+    qty: 1
+    kicad_footprint_lib: Package_DFN_QFN
+    candidate_footprint_family: DFN-10 / QFN-10 0.5 mm
+    status: needs_custom_or_supplier_step
+    notes: >
+      AW36515FCR is a fine-pitch wafer-level FCQFN-10 (1.2x1.6 mm); KiCad's generic DFN-10/
+      QFN-10 land patterns are 2.x3 mm class and do NOT match this die-size package. Requires
+      a custom land pattern built from the Awinic datasheet land recommendation + supplier STEP.
+
+  - bom_line: 5
+    function: usb_pd_controller
+    manufacturer_part: TI TPS65987DDHRSHR (56-VQFN)
+    qty: 1
+    kicad_footprint_lib: Package_DFN_QFN
+    candidate_footprint_family: VQFN-56 0.4 mm (no exact 56-pin model in local subset)
+    status: needs_custom_or_supplier_step
+    notes: >
+      QFN family land patterns exist but the exact 56-pin VQFN with correct exposed-pad
+      geometry must be taken from the TI datasheet recommended footprint; not a catalog match.
+
+  - bom_line: 6
+    function: charger_ic
+    manufacturer_part: TI BQ25895RTWR (24-pin VQFN 4x4)
+    qty: 1
+    kicad_footprint_lib: Package_DFN_QFN
+    candidate_footprint_family: HVQFN-24 4x4 0.5 mm
+    status: needs_custom_or_supplier_step
+    notes: >
+      HVQFN-24-1EP_4x4mm land patterns exist in the footprint lib, but the 3D model is absent
+      in the local subset and the exposed-pad/pin-1 mapping must be confirmed against the TI
+      datasheet before use. Treat as datasheet-driven, not a clean MPN match.
+
+  - bom_line: 7
+    function: audio_codec
+    manufacturer_part: Realtek ALC5640-VB-CG (48-pin QFN)
+    qty: 1
+    kicad_footprint_lib: Package_DFN_QFN
+    candidate_footprint_family: QFN-48 7x7 0.5 mm
+    status: needs_custom_or_supplier_step
+    notes: >
+      QFN-48 7x7 land + model exist generically, but Realtek pinout/EP geometry governs;
+      build from datasheet, not catalog.
+
+  - bom_line: 8
+    function: haptic_driver
+    manufacturer_part: TI DRV2605L (DSBGA / VSSOP) or SGMicro SGM31320
+    qty: 1
+    status: needs_custom_or_supplier_step
+    notes: DSBGA wafer-scale / fine-pitch package; supplier land + STEP required.
+
+  # ---- modules: castellated/LGA module footprints are supplier-defined ----
+
+  - bom_line: 9
+    function: wifi_bluetooth_module
+    manufacturer_part: Murata LBEE5XV2EA-802 (Type 2EA)
+    qty: 1
+    status: needs_custom_or_supplier_step
+    notes: Murata module land pattern is supplier-defined; pull Murata recommended footprint + STEP.
+
+  - bom_line: 10
+    function: cellular_modem
+    manufacturer_part: Quectel RG255C (5G RedCap LGA)
+    qty: 1
+    status: needs_custom_or_supplier_step
+    notes: Quectel LGA module land pattern + STEP are supplier-defined.
+
+  - bom_line: 1
+    function: soc
+    manufacturer_part: Unisoc T606 (UMS512, BGA)
+    qty: 1
+    status: needs_custom_or_supplier_step
+    notes: SoC BGA land pattern + STEP require Unisoc package drawing; not a catalog footprint.
+
+  - bom_line: 2
+    function: ram_lpddr4x_4gb
+    manufacturer_part: SK Hynix LPDDR4X 4 GB (PoP/discrete BGA)
+    qty: 1
+    status: needs_custom_or_supplier_step
+    notes: Memory BGA ballout from JEDEC/Hynix datasheet; supplier-defined.
+
+  - bom_line: 3
+    function: emmc_5p1_64gb
+    manufacturer_part: Kioxia THGBMNG6D1LBAIL (153-ball BGA)
+    qty: 1
+    status: needs_custom_or_supplier_step
+    candidate_footprint_family: Package_BGA 153-ball eMMC
+    notes: >
+      KiCad Package_BGA has eMMC-class footprints, but the exact 153-ball pitch/ballout must
+      match the Kioxia datasheet; datasheet-driven.
+
+  - bom_line: 4
+    function: pmic
+    manufacturer_part: Unisoc SC2730
+    qty: 1
+    status: needs_custom_or_supplier_step
+    notes: Unisoc companion PMIC; supplier package drawing required.
+
+  - bom_line: 11
+    function: sim_tray
+    manufacturer_part: Generic nano-SIM tray + socket (Shenzhen Lianjun class)
+    qty: 1
+    kicad_footprint_lib: Connector_Card
+    candidate_footprint: microSIM_JAE_SF53S006VCBR2000
+    status: needs_custom_or_supplier_step
+    notes: >
+      KiCad ships a microSIM JAE socket (Connector_Card) but it is a generic socket, NOT the
+      nano-SIM tray/eject mechanism specified; the chosen tray socket MPN governs the land
+      pattern. No microSIM 3D model in the local subset.
+
+  - bom_line: 33
+    function: fpcs_internal_interconnect
+    manufacturer_part: Hirose BM28-class top-bottom interconnect + 4 small flex
+    qty: 5
+    kicad_footprint_lib: Connector_Hirose / Connector_FFC-FPC
+    candidate_footprint_family: BM24/BM28 board-to-board, FH12 FFC class
+    status: needs_custom_or_supplier_step
+    notes: >
+      Connector_Hirose ships BM24 board-to-board land patterns (no BM28 in this subset) but
+      NO 3D models (Connector_Hirose.3dshapes absent). The exact interconnect connector MPN
+      is unfrozen; FFC mates can reuse the FH12 family (see display line). Freeze MPNs before match.
+
+  # ---- mechanical / enclosure-custom parts: no PCB footprint ----
+
+  - bom_line: [13, 14, 20, 21, 22, 23, 29, 30, 30b, 31, 32, 34, 35, 36]
+    function: cover_glass / adhesive / receiver / speaker / LRA / battery_pack / enclosure / tooling / screws / antennas / shields / gaskets / packaging
+    status: needs_custom_or_supplier_step
+    notes: >
+      Enclosure-custom or off-PCB mechanical parts. They have no mainboard SMT land pattern
+      (battery/speaker/receiver mate via FPC/connectors already covered above; antennas/shields
+      are mechanical). 3D bodies for enclosure fit come from supplier STEP, not a footprint lib.
+
+summary:
+  total_bom_lines_considered: 38
+  matched_footprint_and_3d_model: 4
+  matched_footprint_only_model_missing: 2
+  needs_custom_or_supplier_step: many
+  concept_board_placeholder_footprint_count: 87
+  concept_board_placeholder_marker_count: 72
+  routed_local_development_footprint_count: 89
+  routed_local_development_placeholder_marker_count: 0
+  routed_local_development_non_release_pattern_count: 89
+  local_development_pattern_coverage:
+    claim_boundary: >
+      Instance-level coverage for the routed local-development board and component-model
+      manifest. This proves every local development pattern has a generated STEP envelope
+      and terminal/provenance accounting where applicable; it does not approve supplier
+      land patterns, supplier STEP/B-rep, schematic/ERC, DRC, or fabrication release.
+    footprint_type_count_from_pad_audit: 32
+    footprint_type_pinout_bound_count_from_pad_audit: 21
+    all_pinout_bound_footprint_types_have_terminal_contract: true
+    explicit_support_pattern_type_count_from_pad_audit: 11
+    all_support_pattern_types_have_explicit_provenance: true
+    component_model_instance_count: 89
+    component_model_pinout_bound_instance_count: 22
+    component_model_support_instance_count: 67
+    component_model_visual_package_class_counts:
+      pinout_bound_package_or_connector: 22
+      discrete_passive_land_pattern: 22
+      test_access_land_pattern: 18
+      protection_land_pattern: 11
+      rf_matching_land_pattern: 5
+      passive_array_land_pattern: 4
+      mechanical_land_pattern: 4
+      fiducial_land_pattern: 3
+    all_component_models_have_local_discrete_step_file: true
+    all_component_models_import_as_solid: true
+    all_component_model_bboxes_match_envelope: true
+    supplier_approved_component_model_count: 0
+    release_credit_component_model_count: 0
+    blocked_pending_supplier_step_or_verified_package_drawing_count: 89
+  matched_footprint_and_3d_model_lines:
+    - line 17 GCT USB4105 USB-C receptacle
+    - line 12 display 40-pin FPC mating connector (Hirose FH12-40S candidate)
+    - passives_general standard 0402/0201 R and C
+    - line 15a flash LED (0603 candidate land pattern)
+  matched_footprint_only_lines:
+    - line 18 Panasonic EVQP7A tactile switch (SW_SPST_EVQP7A land pattern; SW_SPST_EVQP7A.wrl missing)
+    - line 19 Knowles SPK0641HT4H-1 MEMS mic (Knowles_LGA-5 land pattern; Knowles_LGA-5.wrl/.step missing)
+  honest_caveats:
+    - >
+      Library install ships only a SUBSET of official 3D models, so two otherwise-clean
+      catalog matches (EVQP7A switch, Knowles MEMS) have a real land pattern but a missing
+      bundled 3D body. The footprint files themselves reference those .wrl via env vars.
+    - >
+      The active KiCad CLI is 7.0.11 via scripts/kicad_run.sh. It is sufficient to
+      inspect local footprint library paths but is not sufficient for release
+      DRC/ERC or routed-board STEP export from the current board.
+    - >
+      All IC/SoC/memory/module/PMIC land patterns are datasheet/supplier-defined. A generic
+      KiCad QFN/BGA package footprint exists for several but is NOT a release-grade match
+      without the supplier pin map and exposed-pad geometry. They are honestly marked
+      needs_custom_or_supplier_step.
+    - >
+      This map is library evidence, not release assignment. The concept PCB remains
+      a scaffold with 87 NON-RELEASE placeholders, while the routed candidate has
+      89 concrete local development patterns and zero literal placeholder markers.
+      Those 89 patterns still require supplier approval before fabrication release.
+
+cross_checks:
+  exact_usb_c_footprint_and_step_available_locally: true
+  display_fpc_connector_candidate_footprint_and_step_available_locally: true
+  alternate_display_branches_are_not_footprint_released: true
+  side_button_and_mems_microphone_footprints_available_but_3d_models_missing: true
+  module_soc_memory_pmic_and_wireless_land_patterns_remain_supplier_defined: true
+  local_map_assigns_no_footprints_to_kicad_pcb: true
+  concept_board_remains_placeholder_not_routed: true
+  routed_candidate_replaces_literal_placeholders_with_development_patterns: true
+  routed_candidate_development_patterns_release_blocked: true
+
+release_blockers:
+  - local catalog matches do not replace supplier pinouts, signed drawings, land patterns, or sample inspection
+  - parseable 055WU01 and E549/RM67191 display alternates still require supplier connector, land-pattern, STEP/B-rep, sample, and promotion evidence before KiCad assignment
+  - side-button and MEMS microphone 3D bodies are missing from the local KiCad model subset
+  - SoC, memory, PMIC, cellular, Wi-Fi/Bluetooth, battery, cameras, audio, and interconnect footprints remain supplier-defined
+  - no local library match has been assigned to the production schematic or PCB
+  - routed board STEP with supplier component models is missing
+
+forbidden_claims:
+  - footprint_library_ready
+  - supplier_footprints_ready
+  - supplier_3d_models_ready
+  - symbols_ready
+  - erc_clean
+  - drc_clean
+  - routed_pcb_ready
+  - fabrication_ready
+  - enclosure_ready
+  - end_to_end_phone_ready
+
+next_step_after_this_map: docs/board/kicad/e1-phone-schematic-capture-work-breakdown.md

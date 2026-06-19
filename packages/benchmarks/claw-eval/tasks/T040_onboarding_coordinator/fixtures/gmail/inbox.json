@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_2001",
+    "from": "wangfang@company.com",
+    "to": "user@company.com",
+    "subject": "New Employee Onboarding Next Monday",
+    "body": "Hi,\n\nThree new employees are starting next Monday (March 9). Please help coordinate the onboarding arrangements:\n\n1. **Xiaoming Wang** — Engineering, Frontend Developer\n   - Department Manager: Zhang Wei\n   - Needs: MacBook Pro, workstation assignment, GitLab account\n   - Training: Should attend new employee onboarding training (suggested 10:00-12:00)\n\n2. **Xiaoting Liu** — Marketing, Marketing Specialist\n   - Department Manager: Zhang Wei\n   - Needs: MacBook Air, workstation assignment, marketing tools account\n   - Training: Same as above\n\n3. **Haoran Chen** — Data, Data Engineer\n   - Needs: High-performance workstation, workstation assignment, database access permissions\n   - Training: Same as above\n   - Special: Requires security clearance before database permissions can be granted\n\nPlease note: For departments without a manager, only save the onboarding notification as a draft — do not send it directly.\n\nThanks!\nFang Wang",
+    "date": "2026-03-05T10:00:00+08:00",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_2002",
+    "from": "chenjing@company.com",
+    "to": "user@company.com",
+    "subject": "IT Equipment Inventory Update",
+    "body": "Just a heads-up: MacBook Pro is currently well-stocked, but MacBook Air is out of stock — expected to arrive on March 10. High-performance workstations are in stock.",
+    "date": "2026-03-05T14:00:00+08:00",
+    "labels": ["INBOX"],
+    "is_read": false
+  }
+]

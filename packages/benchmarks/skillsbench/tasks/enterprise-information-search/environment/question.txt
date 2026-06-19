@@ -1,0 +1,5 @@
+{
+    "q1": Find employee IDs of the authors and key reviewers of the Market Research Report for the CoachForce product?,
+    "q2": Find employee IDs of team members who provided insights on the strengths and weaknesses of PersonalizeForce's competitor products?,
+    "q3": Find the demo URLs shared by team members for PersonalizeForce's competitor products?
+}

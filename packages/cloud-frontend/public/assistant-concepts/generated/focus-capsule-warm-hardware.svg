@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750" role="img" aria-label="Focus Capsule / Warm Hardware generated assistant preview">
+    <rect width="1200" height="750" fill="#171513"/>
+    <circle cx="200" cy="120" r="180" fill="#ff8a00" opacity="0.18"/>
+    <circle cx="1020" cy="620" r="220" fill="#f4efe7" opacity="0.10"/>
+    <rect x="40" y="40" width="1120" height="670" rx="3" fill="transparent" stroke="#f4efe726"/>
+    <text x="70" y="86" font-family="Inter, Arial, sans-serif" font-size="30" fill="#f4efe7" font-weight="900">Focus Capsule</text>
+    <text x="70" y="680" font-family="Inter, Arial, sans-serif" font-size="20" fill="#f4efe7" opacity="0.72">Warm Hardware / hidden-drawer transcript / floating apps</text>
+
+      <circle cx="600" cy="350" r="210" fill="#f4efe712" stroke="#f4efe733"/>
+      <circle cx="600" cy="350" r="142" fill="#f4efe716" stroke="#f4efe744"/>
+      <circle cx="600" cy="350" r="82" fill="#ff8a00"/>
+      <rect x="90" y="126" width="250" height="68" rx="3" fill="#f4efe718" stroke="#f4efe744"/>
+      <rect x="860" y="126" width="250" height="68" rx="3" fill="#f4efe718" stroke="#f4efe744"/>
+      <rect x="250" y="576" width="700" height="58" rx="29" fill="#f4efe718" stroke="#f4efe744"/>
+
+    <rect x="292" y="590" width="75" height="34" rx="17" fill="#f4efe718" stroke="#f4efe744"/>
+    <text x="310" y="612" font-size="13" fill="#f4efe7" font-weight="700">Pin</text>
+
+
+    <rect x="502" y="590" width="114" height="34" rx="17" fill="#f4efe718" stroke="#f4efe744"/>
+    <text x="520" y="612" font-size="13" fill="#f4efe7" font-weight="700">Expand</text>
+
+
+    <rect x="710" y="590" width="127" height="34" rx="17" fill="#f4efe718" stroke="#f4efe744"/>
+    <text x="728" y="612" font-size="13" fill="#f4efe7" font-weight="700">Dismiss</text>
+
+
+  </svg>

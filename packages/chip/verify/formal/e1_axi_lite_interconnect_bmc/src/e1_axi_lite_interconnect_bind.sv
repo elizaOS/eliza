@@ -1,0 +1,253 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// SymbiYosys harness binding ``axi_lite_protocol_props`` to the CPU master
+// port of ``e1_axi_lite_interconnect``. Drive with
+// ``verify/formal/e1_axi_lite_interconnect.sby``.
+//
+// Bind the shared AXI-Lite property pack to every master-facing ingress port
+// (CPU, DMA, debug). A single CPU-port bind is not enough evidence for
+// independent channel-stall or outstanding-accounting behavior on the other
+// ingress ports.
+
+`default_nettype none
+
+module e1_axi_lite_interconnect_props_top (
+    input  logic clk,
+    input  logic rst_n,
+
+    input  logic        m_axil_awvalid,
+    input  logic [31:0] m_axil_awaddr,
+    input  logic        m_axil_wvalid,
+    input  logic [31:0] m_axil_wdata,
+    input  logic [3:0]  m_axil_wstrb,
+    input  logic        m_axil_bready,
+
+    input  logic        m_axil_arvalid,
+    input  logic [31:0] m_axil_araddr,
+    input  logic        m_axil_rready,
+
+    input  logic        dma_m_awvalid,
+    input  logic [31:0] dma_m_awaddr,
+    input  logic        dma_m_wvalid,
+    input  logic [31:0] dma_m_wdata,
+    input  logic [3:0]  dma_m_wstrb,
+    input  logic        dma_m_bready,
+
+    input  logic        dma_m_arvalid,
+    input  logic [31:0] dma_m_araddr,
+    input  logic        dma_m_rready,
+
+    input  logic        dbg_m_awvalid,
+    input  logic [31:0] dbg_m_awaddr,
+    input  logic        dbg_m_wvalid,
+    input  logic [31:0] dbg_m_wdata,
+    input  logic [3:0]  dbg_m_wstrb,
+    input  logic        dbg_m_bready,
+
+    input  logic        dbg_m_arvalid,
+    input  logic [31:0] dbg_m_araddr,
+    input  logic        dbg_m_rready,
+
+    input  logic        dram_awready,
+    input  logic        dram_wready,
+    input  logic        dram_bvalid,
+    input  logic [1:0]  dram_bresp,
+    input  logic        dram_arready,
+    input  logic        dram_rvalid,
+    input  logic [31:0] dram_rdata,
+    input  logic [1:0]  dram_rresp,
+
+    input  logic        intc_awready,
+    input  logic        intc_wready,
+    input  logic        intc_bvalid,
+    input  logic [1:0]  intc_bresp,
+    input  logic        intc_arready,
+    input  logic        intc_rvalid,
+    input  logic [31:0] intc_rdata,
+    input  logic [1:0]  intc_rresp,
+
+    input  logic        dma_awready,
+    input  logic        dma_wready,
+    input  logic        dma_bvalid,
+    input  logic [1:0]  dma_bresp,
+    input  logic        dma_arready,
+    input  logic        dma_rvalid,
+    input  logic [31:0] dma_rdata,
+    input  logic [1:0]  dma_rresp,
+
+    input  logic        npu_awready,
+    input  logic        npu_wready,
+    input  logic        npu_bvalid,
+    input  logic [1:0]  npu_bresp,
+    input  logic        npu_arready,
+    input  logic        npu_rvalid,
+    input  logic [31:0] npu_rdata,
+    input  logic [1:0]  npu_rresp,
+
+    input  logic        display_awready,
+    input  logic        display_wready,
+    input  logic        display_bvalid,
+    input  logic [1:0]  display_bresp,
+    input  logic        display_arready,
+    input  logic        display_rvalid,
+    input  logic [31:0] display_rdata,
+    input  logic [1:0]  display_rresp
+);
+
+    logic        m_axil_awready;
+    logic        m_axil_wready;
+    logic        m_axil_bvalid;
+    logic [1:0]  m_axil_bresp;
+    logic        m_axil_arready;
+    logic        m_axil_rvalid;
+    logic [31:0] m_axil_rdata;
+    logic [1:0]  m_axil_rresp;
+
+    logic        dma_m_awready;
+    logic        dma_m_wready;
+    logic        dma_m_bvalid;
+    logic [1:0]  dma_m_bresp;
+    logic        dma_m_arready;
+    logic        dma_m_rvalid;
+    logic [31:0] dma_m_rdata;
+    logic [1:0]  dma_m_rresp;
+
+    logic        dbg_m_awready;
+    logic        dbg_m_wready;
+    logic        dbg_m_bvalid;
+    logic [1:0]  dbg_m_bresp;
+    logic        dbg_m_arready;
+    logic        dbg_m_rvalid;
+    logic [31:0] dbg_m_rdata;
+    logic [1:0]  dbg_m_rresp;
+
+    logic        dram_awvalid;
+    logic [31:0] dram_awaddr;
+    logic        dram_wvalid;
+    logic [31:0] dram_wdata;
+    logic [3:0]  dram_wstrb;
+    logic        dram_bready;
+    logic        dram_arvalid;
+    logic [31:0] dram_araddr;
+    logic        dram_rready;
+
+    logic        intc_awvalid;
+    logic [31:0] intc_awaddr;
+    logic        intc_wvalid;
+    logic [31:0] intc_wdata;
+    logic [3:0]  intc_wstrb;
+    logic        intc_bready;
+    logic        intc_arvalid;
+    logic [31:0] intc_araddr;
+    logic        intc_rready;
+
+    logic        dma_awvalid;
+    logic [31:0] dma_awaddr;
+    logic        dma_wvalid;
+    logic [31:0] dma_wdata;
+    logic [3:0]  dma_wstrb;
+    logic        dma_bready;
+    logic        dma_arvalid;
+    logic [31:0] dma_araddr;
+    logic        dma_rready;
+
+    logic        npu_awvalid;
+    logic [31:0] npu_awaddr;
+    logic        npu_wvalid;
+    logic [31:0] npu_wdata;
+    logic [3:0]  npu_wstrb;
+    logic        npu_bready;
+    logic        npu_arvalid;
+    logic [31:0] npu_araddr;
+    logic        npu_rready;
+
+    logic        display_awvalid;
+    logic [31:0] display_awaddr;
+    logic        display_wvalid;
+    logic [31:0] display_wdata;
+    logic [3:0]  display_wstrb;
+    logic        display_bready;
+    logic        display_arvalid;
+    logic [31:0] display_araddr;
+    logic        display_rready;
+
+    logic [2:0]  arb_grant;
+    logic [2:0]  timeout_irq;
+
+    e1_axi_lite_interconnect u_dut (.*);
+
+    bind e1_axi_lite_interconnect axi_lite_protocol_props #(
+        .ADDR_W(32), .DATA_W(32), .MAX_OUTST(8), .MAX_STALL(1024)
+    ) u_cpu_props (
+        .clk     (clk),
+        .rst_n   (rst_n),
+        .awvalid (m_axil_awvalid),
+        .awready (m_axil_awready),
+        .awaddr  (m_axil_awaddr),
+        .wvalid  (m_axil_wvalid),
+        .wready  (m_axil_wready),
+        .wdata   (m_axil_wdata),
+        .wstrb   (m_axil_wstrb),
+        .bvalid  (m_axil_bvalid),
+        .bready  (m_axil_bready),
+        .bresp   (m_axil_bresp),
+        .arvalid (m_axil_arvalid),
+        .arready (m_axil_arready),
+        .araddr  (m_axil_araddr),
+        .rvalid  (m_axil_rvalid),
+        .rready  (m_axil_rready),
+        .rdata   (m_axil_rdata),
+        .rresp   (m_axil_rresp)
+    );
+
+    bind e1_axi_lite_interconnect axi_lite_protocol_props #(
+        .ADDR_W(32), .DATA_W(32), .MAX_OUTST(8), .MAX_STALL(1024)
+    ) u_dma_props (
+        .clk     (clk),
+        .rst_n   (rst_n),
+        .awvalid (dma_m_awvalid),
+        .awready (dma_m_awready),
+        .awaddr  (dma_m_awaddr),
+        .wvalid  (dma_m_wvalid),
+        .wready  (dma_m_wready),
+        .wdata   (dma_m_wdata),
+        .wstrb   (dma_m_wstrb),
+        .bvalid  (dma_m_bvalid),
+        .bready  (dma_m_bready),
+        .bresp   (dma_m_bresp),
+        .arvalid (dma_m_arvalid),
+        .arready (dma_m_arready),
+        .araddr  (dma_m_araddr),
+        .rvalid  (dma_m_rvalid),
+        .rready  (dma_m_rready),
+        .rdata   (dma_m_rdata),
+        .rresp   (dma_m_rresp)
+    );
+
+    bind e1_axi_lite_interconnect axi_lite_protocol_props #(
+        .ADDR_W(32), .DATA_W(32), .MAX_OUTST(8), .MAX_STALL(1024)
+    ) u_dbg_props (
+        .clk     (clk),
+        .rst_n   (rst_n),
+        .awvalid (dbg_m_awvalid),
+        .awready (dbg_m_awready),
+        .awaddr  (dbg_m_awaddr),
+        .wvalid  (dbg_m_wvalid),
+        .wready  (dbg_m_wready),
+        .wdata   (dbg_m_wdata),
+        .wstrb   (dbg_m_wstrb),
+        .bvalid  (dbg_m_bvalid),
+        .bready  (dbg_m_bready),
+        .bresp   (dbg_m_bresp),
+        .arvalid (dbg_m_arvalid),
+        .arready (dbg_m_arready),
+        .araddr  (dbg_m_araddr),
+        .rvalid  (dbg_m_rvalid),
+        .rready  (dbg_m_rready),
+        .rdata   (dbg_m_rdata),
+        .rresp   (dbg_m_rresp)
+    );
+
+endmodule
+
+`default_nettype wire

@@ -1,0 +1,308 @@
+#! /bin/bash
+
+set -e
+set -u
+
+PERL_PROGS="/usr/local/bin/tails-security-check \
+    /usr/local/lib/tails-htp-notify-user \
+    $(
+    find \
+        config/chroot_local-includes/usr/src/iuk/bin \
+        -type f |
+        perl -p -E 's{^config/chroot_local-includes}{}'
+) \
+    $(
+    find \
+        config/chroot_local-includes/usr/src/iuk/lib \
+        config/chroot_local-includes/usr/src/perl5lib/lib \
+        -type f -name '*.pm' |
+        perl -p -E 's{^config/chroot_local-includes}{}'
+)"
+PYTHON_PROGS="\
+    /usr/local/bin/electrum \
+    /usr/local/bin/replace-su-with-sudo \
+    /usr/local/bin/tails-about \
+    /usr/local/bin/tails-additional-software-config \
+    /usr/local/bin/tails-screen-locker \
+    /usr/local/bin/tails-upgrade-frontend-wrapper \
+    /usr/lib/python3/dist-packages/additional_software.py \
+    /usr/lib/python3/dist-packages/tails_installer/creator.py \
+    /usr/lib/python3/dist-packages/tails_installer/gui.py \
+	/usr/lib/python3/dist-packages/tails_installer/passphrase_dialog.py \
+    /usr/lib/python3/dist-packages/tails_installer/source.py \
+    /usr/lib/python3/dist-packages/tails_installer/utils.py \
+    /usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py \
+    /usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py \
+    /usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py \
+    /usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py \
+    /usr/lib/python3/dist-packages/tailsgreeter/ui/region_settings.py \
+    /usr/lib/python3/dist-packages/tca/config.py \
+    /usr/lib/python3/dist-packages/tca/ui/main_window.py \
+    /usr/lib/python3/dist-packages/tps/configuration/binding.py \
+    /usr/lib/python3/dist-packages/tps/device.py \
+    /usr/lib/python3/dist-packages/tps_frontend/application.py \
+    /usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py \
+    /usr/lib/python3/dist-packages/tps_frontend/error_dialog.py \
+    /usr/lib/python3/dist-packages/tps_frontend/feature.py \
+    /usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py \
+    /usr/lib/python3/dist-packages/tps_frontend/views/features_view.py \
+    /usr/lib/python3/dist-packages/tps_frontend/window.py \
+    /usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py \
+    /usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_list.py \
+    /usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py \
+    /usr/lib/python3/dist-packages/whisperBack/exceptions.py \
+    /usr/lib/python3/dist-packages/whisperBack/gui.py \
+    /usr/lib/python3/dist-packages/whisperBack/whisperback.py \
+    /usr/local/lib/polkit-policy-change-message \
+    /usr/local/lib/change-apps-menu-name \
+    /usr/local/lib/additional-software/asp-handle-package-changes \
+    /usr/local/lib/additional-software/asp-install \
+    /usr/local/lib/tails-additional-software-notify \
+    /usr/local/lib/tails-low-ram-notify-user \
+    /usr/local/lib/tails-uefi-ca-notify-user \
+    /usr/local/lib/tails-virt-notify-user"
+SHELL_PROGS=" \
+    /usr/local/bin/secrets \
+    /usr/local/bin/tca \
+    /usr/local/lib/launch-tor-browser \
+    /usr/local/lib/tails-spoof-mac \
+    /usr/local/lib/tails-report-disk-ioerrors \
+    /usr/local/lib/tails-report-disk-partitioning-errors \
+    /usr/local/sbin/unsafe-browser"
+JAVASCRIPT_PROGS=" \
+    /usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js \
+    /usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js \
+"
+GTKBUILDER_UI="\
+    /usr/share/tails/additional-software/configuration-window.ui \
+"
+
+LOCALE_BASEDIR=config/chroot_local-includes/usr/share/locale
+
+### External libraries
+
+. config/chroot_local-includes/usr/local/lib/tails-shell-library/common.sh
+. config/chroot_local-includes/usr/local/lib/tails-shell-library/po.sh
+
+### Functions
+
+normalize_pot() {
+    sed --regexp-extended \
+        -i 's@^"Content-Type: text/plain; charset=CHARSET\\n"@"Content-Type: text/plain; charset=UTF-8\\n"@' \
+        "${@}"
+}
+
+prog_potfile() {
+    prog=$1
+
+    progpath="config/chroot_local-includes$prog"
+    case $prog in
+    /usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js)
+        domain=status-menu-helper-extension.js
+        ;;
+    /usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js)
+        domain=torstatus-extension.js
+        ;;
+    /usr/lib/python3/dist-packages/tps/*)
+        domain="tps-$(basename "$prog")"
+        ;;
+    /usr/lib/python3/dist-packages/tps_frontend/*)
+        domain="tps-frontend-$(basename "$prog")"
+        ;;
+    /usr/lib/python3/dist-packages/unlock_veracrypt_volumes/*)
+        domain="unlock-veracrypt-volumes-$(basename "$prog")"
+        ;;
+    /usr/lib/python3/dist-packages/tailsgreeter/*)
+        domain="greeter-$(basename "$prog")"
+        ;;
+    /usr/lib/python*/dist-packages/tails_installer/*)
+        domain="installer-$(basename "$prog")"
+        ;;
+    /usr/lib/python*/dist-packages/tca/*)
+        domain="tca-$(basename "$prog")"
+        ;;
+    /usr/local/bin/tca)
+        domain="tca-bin"
+        ;;
+    /usr/lib/python3/dist-packages/whisperBack/*)
+        domain="whisperBack-$(basename "$prog")"
+        ;;
+    *)
+        domain=$(basename "$prog")
+        ;;
+    esac
+    echo "tmp/pot/${domain}.pot"
+}
+
+create_pot() {
+    prog=$1
+    proglang=$2
+    progpath="config/chroot_local-includes${prog}"
+    if [ -e "${progpath}" ]; then
+        pot="$(prog_potfile "${prog}")"
+        mkdir -p "$(dirname "${pot}")"
+        case "$proglang" in
+        Perl)
+            # XXX: once we can assume libintl-perl 1.28+,
+            # generate this list of options with:
+            # perl -MLocale::TextDomain -E 'print Locale::TextDomain->options'
+            xgettext_args='--keyword'
+            xgettext_args="$xgettext_args --keyword=__"
+            xgettext_args="$xgettext_args --keyword='\$__'"
+            xgettext_args="$xgettext_args --keyword=__x"
+            xgettext_args="$xgettext_args --keyword=__n:1,2"
+            xgettext_args="$xgettext_args --keyword=__nx:1,2"
+            xgettext_args="$xgettext_args --keyword=__xn:1,2"
+            xgettext_args="$xgettext_args --keyword=__p:1c,2"
+            xgettext_args="$xgettext_args --keyword=__np:1c,2,3"
+            xgettext_args="$xgettext_args --keyword=__npx:1c,2,3"
+            xgettext_args="$xgettext_args --keyword=N__"
+            xgettext_args="$xgettext_args --keyword=N__n:1,2"
+            xgettext_args="$xgettext_args --keyword=N__p:1c,2"
+            xgettext_args="$xgettext_args --keyword=N__np:1c,2,3"
+            xgettext_args="$xgettext_args --keyword=%__'"
+            ;;
+        *)
+            xgettext_args=
+            ;;
+        esac
+        # shellcheck disable=SC2086
+        xgettext --language="${proglang}" --from-code=UTF-8 \
+            $xgettext_args \
+            --add-comments="Translators:" -o "${pot}" "${progpath}"
+        if [ -f "${pot}" ]; then
+            normalize_pot "${pot}"
+        fi
+    else
+        echo "error: We are supposed to create a POT file for '${prog}'" \
+            "but '${progpath}' does not exist"
+        exit 1
+    fi
+}
+
+po_file() {
+    locale=$1
+
+    echo "po/${locale}.po"
+}
+
+mo_file() {
+    locale=$1
+
+    echo "${LOCALE_BASEDIR}/${locale}/LC_MESSAGES/tails.mo"
+}
+
+refresh_mo() {
+    for locale in "$@"; do
+        po=$(po_file "$locale")
+        mo=$(mo_file "$locale")
+        mkdir -p "$(dirname "$mo")"
+        if ! msgfmt --check -o "${mo}" "${po}"; then
+            echo "Errors for locale '${locale}': restoring old file"
+            if [ -n "$(git ls-files "${po}")" ]; then
+                git restore "${po}"
+                msgfmt --check -o "${mo}" "${po}"
+            else
+                rm "${po}"
+            fi
+        fi
+    done
+}
+
+no_left_out_files() {
+    (cd po && intltool-update --maintain)
+    [ ! -e po/missing ] || return 1
+    return 0
+}
+
+intltool_update_pot() {
+    (
+        cd po
+        cp -a tails.pot tails.pot.orig
+        intltool-update --pot --gettext-package=tails
+        normalize_pot tails.pot tails.pot.orig
+
+        if [ "${FORCE:-}" = yes ]; then
+            echo "Force-updating 'tails.pot'."
+            rm tails.pot.orig
+        elif diff_without_pot_creation_date_and_comments -q tails.pot.orig tails.pot; then
+            echo "Only header or comment changes in tails.pot: keeping the old one"
+            mv tails.pot.orig tails.pot
+        else
+            echo "Real changes in tails.pot: switching to the updated one"
+            rm tails.pot.orig
+        fi
+    )
+}
+
+intltool_merge_desktop() {
+    extract_from_file_between_markers po/POTFILES.in \
+        '^# Files updated by intltool-merge --desktop-style' '^$' |
+        while read -r infile; do
+            intltool-merge --quiet --desktop-style --utf8 \
+                po "$infile" "${infile%.in}"
+        done
+}
+
+intltool_merge_xml() {
+    extract_from_file_between_markers po/POTFILES.in \
+        '^# Files updated by intltool-merge --xml-style' '^$' |
+        while read -r infile; do
+            intltool-merge --quiet --xml-style --utf8 \
+                po "$infile" "${infile%.in}"
+        done
+}
+
+### Main
+
+FORCE=no
+KEEP_TMP_POT=no
+while [ -n "${1:-}" ]; do
+    case "${1:-}" in
+    '--force')
+        FORCE=yes
+        ;;
+    '--keep-tmp-pot')
+        KEEP_TMP_POT=yes
+        ;;
+    *)
+        echo "Unknown option: ${1}"
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+# Schedule clean up
+# shellcheck disable=SC2064
+trap "rm -fr po/*.new po/*.orig ; [ '$KEEP_TMP_POT' = yes ] || rm -fr tmp/pot" EXIT
+trap "echo refresh-translations: failed" ERR
+
+# Update POT files
+mkdir -p tmp/pot
+for prog in $PERL_PROGS; do create_pot "$prog" Perl; done
+for prog in $PYTHON_PROGS; do create_pot "$prog" Python; done
+for prog in $SHELL_PROGS; do create_pot "$prog" Shell; done
+for prog in $JAVASCRIPT_PROGS; do create_pot "$prog" JavaScript; done
+# GtkBuilder UI Description files are called "Glade" by xgettext, even though Glade as a project is archived
+# since at least 2025.
+for prog in $GTKBUILDER_UI; do create_pot "$prog" Glade; done
+intltool_update_pot
+
+# If left out files are detected, intltool-update --maintain writes
+# them to po/missing.
+if ! no_left_out_files; then
+    echo "E: These files should be listed in POTFILES.in or POTFILES.skip:" >&2
+    cat po/missing
+    exit 3
+fi
+
+# Update PO files
+# shellcheck disable=SC2046
+intltool_update_po $(po_languages)
+
+# Update files that are actually used at runtime
+# shellcheck disable=SC2046
+refresh_mo $(po_languages)
+intltool_merge_desktop
+intltool_merge_xml

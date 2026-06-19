@@ -1,0 +1,663 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type { ElectrobunConfig } from "electrobun/bun";
+
+const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
+
+function chromiumFlags(
+  flags: Record<string, string | boolean>,
+): Record<string, string | true> {
+  return Object.fromEntries(
+    Object.entries(flags)
+      .filter(([, value]) => value !== false)
+      .map(([key, value]) => [key, value === true ? true : value]),
+  ) as Record<string, string | true>;
+}
+
+function isTruthyEnv(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
+const EXTERNAL_API_BASE_ENV_KEYS = [
+  "ELIZA_DESKTOP_TEST_API_BASE",
+  "ELIZA_DESKTOP_API_BASE",
+  "ELIZA_API_BASE_URL",
+  "ELIZA_API_BASE",
+] as const;
+
+function normalizeApiBase(raw: string | undefined): string | null {
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = new URL(raw.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.origin
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function shouldEmbedRuntimeBundle(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  for (const key of EXTERNAL_API_BASE_ENV_KEYS) {
+    if (normalizeApiBase(env[key])) {
+      return false;
+    }
+  }
+  return !isTruthyEnv(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT);
+}
+
+function linuxCefChromiumFlags(): Record<string, string | true> {
+  // Linux CEF WebGPU/Vulkan is still experimental in Electrobun. Keep the
+  // default renderer path stable and let hardware debugging opt in explicitly.
+  if (!isTruthyEnv(process.env.ELIZA_ELECTROBUN_ENABLE_CEF_WEBGPU)) {
+    return {};
+  }
+
+  return chromiumFlags({
+    "enable-unsafe-webgpu": true,
+    "enable-features": "Vulkan",
+    "disable-gpu": false,
+    "disable-gpu-compositing": false,
+    "disable-gpu-sandbox": false,
+    "enable-software-rasterizer": false,
+    "force-software-rasterizer": false,
+    "disable-accelerated-2d-canvas": false,
+    "disable-accelerated-video-decode": false,
+    "disable-accelerated-video-encode": false,
+    "disable-gpu-memory-buffer-video-frames": false,
+  });
+}
+
+const linuxCefEnabled = isTruthyEnv(
+  process.env.ELIZA_ELECTROBUN_ENABLE_LINUX_CEF,
+);
+
+export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
+  return (
+    fs.existsSync(path.join(candidateDir, "bun.lock")) &&
+    fs.existsSync(path.join(candidateDir, "package.json")) &&
+    (fs.existsSync(path.join(candidateDir, "packages/app/package.json")) ||
+      fs.existsSync(path.join(candidateDir, "apps/app/package.json"))) &&
+    (fs.existsSync(
+      path.join(
+        candidateDir,
+        "packages/app-core/platforms/electrobun/package.json",
+      ),
+    ) ||
+      fs.existsSync(
+        path.join(
+          candidateDir,
+          "eliza/packages/app-core/platforms/electrobun/package.json",
+        ),
+      ))
+  );
+}
+
+function hasOuterElizaElectrobunCheckout(candidateDir: string): boolean {
+  return fs.existsSync(
+    path.join(
+      candidateDir,
+      "eliza",
+      "packages",
+      "app-core",
+      "platforms",
+      "electrobun",
+      "package.json",
+    ),
+  );
+}
+
+function hasDirectElizaElectrobunCheckout(candidateDir: string): boolean {
+  return fs.existsSync(
+    path.join(
+      candidateDir,
+      "packages",
+      "app-core",
+      "platforms",
+      "electrobun",
+      "package.json",
+    ),
+  );
+}
+
+export function findElizaRepoRoot(startDir: string): string {
+  let current = path.resolve(startDir);
+  const matches: string[] = [];
+  while (true) {
+    if (hasElectrobunWorkspaceRoot(current)) {
+      matches.push(current);
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      const directRoot = matches.find(hasDirectElizaElectrobunCheckout);
+      if (directRoot) {
+        return directRoot;
+      }
+      const outerWrapperRoot = matches.find(hasOuterElizaElectrobunCheckout);
+      if (outerWrapperRoot) {
+        return outerWrapperRoot;
+      }
+      if (matches[0]) {
+        return matches[0];
+      }
+      throw new Error(
+        `Could not locate monorepo root from Electrobun config at ${startDir}`,
+      );
+    }
+    current = parent;
+  }
+}
+
+export function resolveElectrobunRepoRoot(startDir: string): string {
+  const override = (process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? "").trim();
+  if (override) {
+    const resolved = path.resolve(override);
+    if (!hasElectrobunWorkspaceRoot(resolved)) {
+      throw new Error(
+        `ELIZA_ELECTROBUN_REPO_ROOT does not point at an Electrobun workspace root: ${resolved}`,
+      );
+    }
+    return resolved;
+  }
+
+  return findElizaRepoRoot(startDir);
+}
+
+const repoRoot = resolveElectrobunRepoRoot(electrobunDir);
+const workspacePackagesRoot = fs.existsSync(
+  path.join(repoRoot, "packages", "shared", "src"),
+)
+  ? path.join(repoRoot, "packages")
+  : path.join(repoRoot, "eliza", "packages");
+const sharedSourceDir = path.join(workspacePackagesRoot, "shared", "src");
+const coreNodeEntry = fs.existsSync(
+  path.join(workspacePackagesRoot, "core", "dist", "node", "index.node.js"),
+)
+  ? path.join(workspacePackagesRoot, "core", "dist", "node", "index.node.js")
+  : path.join(workspacePackagesRoot, "core", "src", "index.node.ts");
+const rendererDistDir = path.relative(
+  electrobunDir,
+  fs.existsSync(path.join(repoRoot, "packages/app/package.json"))
+    ? path.join(repoRoot, "packages/app/dist")
+    : path.join(repoRoot, "apps/app/dist"),
+);
+function hasBrokenSymlink(filePath: string): boolean {
+  try {
+    return fs.lstatSync(filePath).isSymbolicLink() && !fs.existsSync(filePath);
+  } catch {
+    return false;
+  }
+}
+
+function resolveRuntimeBundleSourcePath(rootDir: string): string {
+  const runtimeDistPath = path.join(rootDir, "dist");
+  // The runtime dist only exists in packaged/build contexts. In tests and other
+  // import-time consumers it may be absent; bail out before any fs scan so
+  // importing this config never throws ENOENT.
+  if (!fs.existsSync(runtimeDistPath)) {
+    return runtimeDistPath;
+  }
+  const runtimeNodeModulesPath = path.join(runtimeDistPath, "node_modules");
+  if (!hasBrokenSymlink(runtimeNodeModulesPath)) {
+    return runtimeDistPath;
+  }
+
+  const sanitizedDistPath = path.join(
+    electrobunDir,
+    ".generated",
+    "runtime-dist",
+  );
+  fs.rmSync(sanitizedDistPath, { recursive: true, force: true });
+  fs.mkdirSync(sanitizedDistPath, { recursive: true });
+  for (const entry of fs.readdirSync(runtimeDistPath)) {
+    if (entry === "node_modules") continue;
+    fs.cpSync(
+      path.join(runtimeDistPath, entry),
+      path.join(sanitizedDistPath, entry),
+      {
+        recursive: true,
+        dereference: false,
+      },
+    );
+  }
+  return sanitizedDistPath;
+}
+
+const runtimeBundleSourcePath = resolveRuntimeBundleSourcePath(repoRoot);
+const runtimeBundleDistDir = path.relative(
+  electrobunDir,
+  runtimeBundleSourcePath,
+);
+const runtimeBundleNodeModulesDir = path.join(
+  runtimeBundleDistDir,
+  "node_modules",
+);
+const runtimeBundleNodeModulesPath = path.join(
+  runtimeBundleSourcePath,
+  "node_modules",
+);
+const useMacIconsetBuild = isTruthyEnv(
+  process.env.ELIZA_ELECTROBUN_USE_ICONSET,
+);
+const repoPluginsJsonPath = path.relative(
+  electrobunDir,
+  path.join(repoRoot, "plugins.json"),
+);
+const repoPackageJsonPath = path.relative(
+  electrobunDir,
+  path.join(repoRoot, "package.json"),
+);
+const defaultBrandConfigPath = path.join(
+  electrobunDir,
+  "assets",
+  "brand-config.json",
+);
+const generatedBrandConfigPath = path.join(
+  electrobunDir,
+  ".generated",
+  "brand-config.json",
+);
+const libMacWindowEffectsDylib = path.join(
+  electrobunDir,
+  "src",
+  "libMacWindowEffects.dylib",
+);
+
+function readJsonFile(filePath: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+type EntitlementValue = boolean | string | string[];
+
+/**
+ * Parse the small subset of plist XML used by our entitlements files
+ * (`<key>` followed by `<true/>`, `<false/>`, `<string>...</string>`, or
+ * `<array><string>...</string>...</array>`) into a flat JSON record matching
+ * Electrobun's `mac.entitlements` shape.
+ *
+ * Throws if the file cannot be read or contains a value type we do not
+ * support — unlike a defensive try/catch, we want a missing/malformed
+ * entitlements file to fail the build loudly rather than silently produce a
+ * sandbox build with no entitlements.
+ */
+function parseEntitlementsPlist(
+  filePath: string,
+): Record<string, EntitlementValue> {
+  const xml = fs.readFileSync(filePath, "utf8");
+  const dictMatch = xml.match(/<dict>([\s\S]*?)<\/dict>/);
+  if (!dictMatch?.[1]) {
+    throw new Error(`Entitlements plist has no <dict> body: ${filePath}`);
+  }
+  const body = dictMatch[1];
+  const out: Record<string, EntitlementValue> = {};
+  const keyRe =
+    /<key>([^<]+)<\/key>\s*(<true\/>|<false\/>|<string>([^<]*)<\/string>|<array>([\s\S]*?)<\/array>)/g;
+  for (const match of body.matchAll(keyRe)) {
+    const key = match[1];
+    const valueTag = match[2];
+    if (!key || !valueTag) continue;
+    if (valueTag === "<true/>") {
+      out[key] = true;
+    } else if (valueTag === "<false/>") {
+      out[key] = false;
+    } else if (valueTag.startsWith("<string>")) {
+      out[key] = match[3] ?? "";
+    } else if (valueTag.startsWith("<array>")) {
+      const inner = match[4] ?? "";
+      out[key] = Array.from(inner.matchAll(/<string>([^<]*)<\/string>/g)).map(
+        (m) => m[1] ?? "",
+      );
+    }
+  }
+  return out;
+}
+
+function trimEnv(name: string): string {
+  return (process.env[name] ?? "").trim();
+}
+
+function resolveSharedSourceImport(specifier: string): string | null {
+  if (specifier === "@elizaos/shared") {
+    return path.join(sharedSourceDir, "index.ts");
+  }
+
+  const prefix = "@elizaos/shared/";
+  if (!specifier.startsWith(prefix)) {
+    return null;
+  }
+
+  const subpath = specifier.slice(prefix.length);
+  const candidates = [
+    path.join(sharedSourceDir, `${subpath}.ts`),
+    path.join(sharedSourceDir, `${subpath}.tsx`),
+    path.join(sharedSourceDir, subpath, "index.ts"),
+    path.join(sharedSourceDir, subpath, "index.tsx"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+function createElectrobunWorkspaceResolvePlugin() {
+  return {
+    name: "electrobun-workspace-resolve",
+    setup(build: {
+      onResolve: (
+        options: { filter: RegExp },
+        callback: (args: { path: string }) => { path: string } | undefined,
+      ) => void;
+    }) {
+      build.onResolve(
+        { filter: /^@elizaos\/shared(?:\/.*)?$/ },
+        ({ path: specifier }) => {
+          const resolved = resolveSharedSourceImport(specifier);
+          return resolved ? { path: resolved } : undefined;
+        },
+      );
+      build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
+        path: coreNodeEntry,
+      }));
+    },
+  };
+}
+
+export function resolveElectrobunCopyMap({
+  buildVariant,
+  runtimeDistDir,
+  embedRuntime = buildVariant !== "store",
+}: {
+  buildVariant: "store" | "direct";
+  runtimeDistDir: string;
+  embedRuntime?: boolean;
+}): Record<string, string> {
+  const copy: Record<string, string> = {
+    [rendererDistDir]: "renderer",
+    "src/preload.js": "bun/preload.js",
+    "src/dynamic-views/demo": "bun/demo",
+    "src/trace/views": "bun/trace/views",
+    "src/launch/views": "bun/launch/views",
+    "assets/appIcon.png": "assets/appIcon.png",
+    "assets/appIcon.ico": "assets/appIcon.ico",
+  };
+
+  if (buildVariant !== "store" && embedRuntime) {
+    // The runtime bundle dist is produced by the build pipeline before
+    // Electrobun packaging runs. Enumerate its top-level entries when present;
+    // when it is absent (e.g. config imported outside a build, as in tests),
+    // the unconditional package.json + remotes mappings below still encode the
+    // embedded-runtime contract.
+    const runtimeBundleEntries = fs.existsSync(runtimeBundleSourcePath)
+      ? fs.readdirSync(runtimeBundleSourcePath)
+      : [];
+    for (const entry of runtimeBundleEntries) {
+      if (entry === "node_modules" || entry === "package.json") {
+        continue;
+      }
+      copy[path.join(runtimeBundleDistDir, entry)] =
+        `${runtimeDistDir}/${entry}`;
+    }
+    if (fs.existsSync(runtimeBundleNodeModulesPath)) {
+      copy[runtimeBundleNodeModulesDir] = `${runtimeDistDir}/node_modules`;
+    }
+    if (fs.existsSync(path.join(repoRoot, "plugins.json"))) {
+      copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`;
+    }
+    if (fs.existsSync(path.join(electrobunDir, "remotes"))) {
+      copy.remotes = "remotes";
+    }
+    copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
+  }
+
+  return copy;
+}
+
+function resolveBrandConfigCopySource({
+  appName,
+  appId,
+  urlScheme,
+}: {
+  appName: string;
+  appId: string;
+  urlScheme: string;
+}): string {
+  const explicitConfigPath = trimEnv("ELIZA_BRAND_CONFIG_PATH");
+  const namespace = trimEnv("ELIZA_NAMESPACE");
+  const appDescription = trimEnv("ELIZA_APP_DESCRIPTION");
+  const hasBrandOverride = Boolean(
+    explicitConfigPath ||
+      trimEnv("ELIZA_APP_NAME") ||
+      trimEnv("ELIZA_APP_ID") ||
+      trimEnv("ELIZA_URL_SCHEME") ||
+      namespace ||
+      appDescription,
+  );
+
+  if (!hasBrandOverride) {
+    return "assets/brand-config.json";
+  }
+
+  const fileConfig = explicitConfigPath
+    ? readJsonFile(path.resolve(explicitConfigPath))
+    : readJsonFile(defaultBrandConfigPath);
+  const configDirName =
+    trimEnv("ELIZA_CONFIG_DIR_NAME") ||
+    (explicitConfigPath &&
+    typeof fileConfig.configDirName === "string" &&
+    fileConfig.configDirName.trim()
+      ? fileConfig.configDirName
+      : appName);
+  const brandConfig = {
+    ...fileConfig,
+    appName,
+    appId,
+    urlScheme,
+    buildVariant:
+      process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
+    namespace: namespace || fileConfig.namespace || "elizaos",
+    configDirName,
+    ...(appDescription
+      ? { appDescription }
+      : typeof fileConfig.appDescription === "string"
+        ? { appDescription: fileConfig.appDescription }
+        : {}),
+  };
+
+  fs.mkdirSync(path.dirname(generatedBrandConfigPath), { recursive: true });
+  fs.writeFileSync(
+    generatedBrandConfigPath,
+    `${JSON.stringify(brandConfig, null, "\t")}\n`,
+  );
+
+  return path.relative(electrobunDir, generatedBrandConfigPath);
+}
+
+export function createElectrobunConfig(): ElectrobunConfig {
+  const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
+  const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
+  const urlScheme = (process.env.ELIZA_URL_SCHEME ?? "").trim() || "elizaos";
+  const appVersion =
+    (process.env.ELIZA_APP_VERSION ?? "").trim() || "2.0.0-beta.0";
+  const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
+  const runtimeDistDir =
+    (process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
+  const buildVariant: "store" | "direct" =
+    process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct";
+  const embedRuntime = shouldEmbedRuntimeBundle(process.env);
+  const brandConfigCopySource = resolveBrandConfigCopySource({
+    appName,
+    appId,
+    urlScheme,
+  });
+  // Note: All paths relative to electrobun.config.ts location
+  // (eliza/packages/app-core/platforms/electrobun/)
+  // ../../../../../ goes to eliza repo root where dist/, plugins.json, package.json exist
+
+  return {
+    app: {
+      name: appName,
+      identifier: appId,
+      version: appVersion,
+      description: "AI agents for the desktop",
+      urlSchemes: [urlScheme],
+    },
+    runtime: {
+      exitOnLastWindowClosed: false,
+    },
+    scripts: {
+      // Electrobun removes the target build folder without `force: true`;
+      // seed it first so clean worktrees do not fail with ENOENT.
+      preBuild: "scripts/ensure-build-folder.ts",
+      // Sign native code inside the runtime dist node_modules on the inner app bundle
+      // before Electrobun runs the platform signing/notarization flow.
+      postBuild: "scripts/postwrap-sign-runtime-macos.ts",
+      // Capture wrapper-bundle binary metadata after the self-extractor is created.
+      postWrap: "scripts/postwrap-diagnostics.ts",
+    },
+    build: {
+      bun: {
+        entrypoint: "src/index.ts",
+        plugins: [createElectrobunWorkspaceResolvePlugin()],
+        // The Electrobun bun process is a thin native shell — it creates
+        // windows, dispatches RPCs to the renderer, and manages the embedded
+        // API subprocess (or talks to an external API). It must NOT bundle
+        // the agent runtime, plugins, database, or ML stacks — those belong
+        // in the API subprocess. Any of these reaching the Electrobun bun
+        // bundle is a sign of an unintended import edge; either cut the edge
+        // or extend this list.
+        external: [
+          // Agent runtime packages — used only via type imports in the bun
+          // src, but workspace TS resolution can drag the source graph in.
+          "@elizaos/agent",
+          "@elizaos/app-core",
+          "@elizaos/shared",
+          // Plugins — initialized by the API subprocess, never the bun shell.
+          "@elizaos/plugin-sql",
+          "@elizaos/plugin-local-inference",
+          "@elizaos/plugin-local-inference",
+          // Database stack pulled in by plugin-sql.
+          "@electric-sql/pglite",
+          "drizzle-orm",
+          "pg",
+          // Native ML/embedding packages ship platform-specific bindings via
+          // relative require()s or per-platform sibling packages; bundling
+          // them breaks those paths.
+          "node-llama-cpp",
+          "@node-llama-cpp/*",
+        ],
+      },
+      views: {},
+      // Watch these extra dirs in dev --watch mode so changes to the Vite
+      // renderer build or shared types trigger a bun-side rebuild + relaunch.
+      watch: ["../dist", "src/shared/", "src/bridge/"],
+      // Ignore test files and build artifacts from watch triggers.
+      watchIgnore: [
+        "src/**/*.test.ts",
+        "src/**/*.spec.ts",
+        "artifacts/",
+        "build/",
+      ],
+      // Desktop intentionally supports both WebGPU paths:
+      // 1. renderer-webview WebGPU (`three/webgpu` via browser `navigator.gpu`)
+      // 2. Electrobun-native Dawn for Bun-side GpuWindow / <electrobun-wgpu>
+      //    surfaces and future native compute workloads.
+      copy: {
+        ...resolveElectrobunCopyMap({
+          buildVariant,
+          runtimeDistDir,
+          embedRuntime,
+        }),
+        [brandConfigCopySource]: "brand-config.json",
+        ...(process.platform === "darwin" &&
+        fs.existsSync(libMacWindowEffectsDylib)
+          ? { "src/libMacWindowEffects.dylib": "libMacWindowEffects.dylib" }
+          : {}),
+      },
+      mac: {
+        bundleWGPU: true,
+        codesign: process.env.ELECTROBUN_SKIP_CODESIGN !== "1",
+        notarize:
+          process.env.ELECTROBUN_SKIP_CODESIGN !== "1" &&
+          process.env.ELIZA_ELECTROBUN_NOTARIZE !== "0",
+        defaultRenderer: "native",
+        ...(useMacIconsetBuild ? { icons: "assets/appIcon.iconset" } : {}),
+        // Entitlements are selected by the ELIZA_BUILD_VARIANT axis:
+        // - "store": parsed from entitlements/mas.entitlements; turns on
+        //   com.apple.security.app-sandbox for Mac App Store distribution.
+        // - "direct" (default): inline hardened-runtime entitlements with
+        //   no sandbox — current behavior for direct downloads.
+        //
+        // Child-process entitlements (mas-child.entitlements with
+        // com.apple.security.inherit) are applied after this packaging
+        // step by codesign-mas.mjs, which walks the bundle bottom-up.
+        // See scripts/codesign-mas.mjs. Set ELIZA_MAS_SIGNING_IDENTITY
+        // in the build env (and optionally ELIZA_MAS_INSTALLER_IDENTITY
+        // for productbuild).
+        entitlements:
+          buildVariant === "store"
+            ? parseEntitlementsPlist(
+                path.join(electrobunDir, "entitlements/mas.entitlements"),
+              )
+            : {
+                "com.apple.security.cs.allow-jit": true,
+                "com.apple.security.cs.allow-unsigned-executable-memory": true,
+                "com.apple.security.cs.disable-library-validation": true,
+                "com.apple.security.network.client": true,
+                "com.apple.security.network.server": true,
+                "com.apple.security.files.user-selected.read-write": true,
+                "com.apple.security.device.camera": true,
+                "com.apple.security.device.microphone": true,
+                "com.apple.security.device.screen-recording": true,
+                "com.apple.security.personal-information.addressbook": true,
+                "com.apple.security.personal-information.calendars": true,
+                "com.apple.security.automation.apple-events": true,
+              },
+      },
+      linux: {
+        // Linux CEF remains opt-in until its helper processes are stable
+        // enough for the default desktop shell.
+        bundleCEF: linuxCefEnabled,
+        bundleWGPU: true,
+        defaultRenderer: "native",
+        icon: "assets/appIcon.png",
+        chromiumFlags: linuxCefEnabled ? linuxCefChromiumFlags() : {},
+      },
+      win: {
+        bundleCEF: true,
+        bundleWGPU: true,
+        defaultRenderer: "cef",
+        icon: "assets/appIcon.ico",
+        chromiumFlags: chromiumFlags({
+          "enable-unsafe-webgpu": true,
+          "enable-features": "Vulkan",
+          "in-process-gpu": true,
+          "disable-gpu-sandbox": true,
+          "no-sandbox": true,
+        }),
+      },
+    },
+    ...(releaseUrl
+      ? {
+          release: {
+            baseUrl: releaseUrl,
+            generatePatch: true,
+          },
+        }
+      : {}),
+  } satisfies ElectrobunConfig;
+}
+
+export default createElectrobunConfig();

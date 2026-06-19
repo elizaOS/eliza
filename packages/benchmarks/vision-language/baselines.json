@@ -1,0 +1,65 @@
+{
+  "_note": "Reference baselines for eliza-1 tiers vs. the closest published Qwen2.5-VL / Qwen3-VL numbers. Eliza-1 tiers are derived from the corresponding Qwen base, so we report the Qwen baseline at each size as the comparison target. The HF model-card pipeline (Task 11) reads the per-run report from results/<tier>-<benchmark>-<date>.json and joins against this file by `${tier}::${benchmark}`.",
+  "baselines": {
+    "eliza-1-2b::textvqa": {
+      "score": 0.795,
+      "source": "Qwen2.5-VL-3B technical report — TextVQA val (https://arxiv.org/abs/2502.13923 §5.2 Table 6)"
+    },
+    "eliza-1-2b::docvqa": {
+      "score": 0.886,
+      "source": "Qwen2.5-VL-3B technical report — DocVQA test ANLS (https://arxiv.org/abs/2502.13923 §5.2 Table 6)"
+    },
+    "eliza-1-2b::chartqa": {
+      "score": 0.844,
+      "source": "Qwen2.5-VL-3B technical report — ChartQA test (https://arxiv.org/abs/2502.13923 §5.2 Table 6)"
+    },
+    "eliza-1-2b::screenspot": {
+      "score": 0.55,
+      "source": "Qwen2.5-VL-3B technical report — ScreenSpot avg (https://arxiv.org/abs/2502.13923 §5.4 Table 9)"
+    },
+    "eliza-1-2b::osworld": {
+      "score": 0.034,
+      "source": "Qwen2.5-VL-3B technical report — OSWorld success rate (https://arxiv.org/abs/2502.13923 §5.4 Table 10)"
+    },
+    "eliza-1-9b::textvqa": {
+      "score": 0.847,
+      "source": "Qwen2.5-VL-7B technical report — TextVQA val (https://arxiv.org/abs/2502.13923 §5.2 Table 6)"
+    },
+    "eliza-1-9b::docvqa": {
+      "score": 0.954,
+      "source": "Qwen2.5-VL-7B technical report — DocVQA test ANLS (https://arxiv.org/abs/2502.13923 §5.2 Table 6)"
+    },
+    "eliza-1-9b::chartqa": {
+      "score": 0.873,
+      "source": "Qwen2.5-VL-7B technical report — ChartQA test (https://arxiv.org/abs/2502.13923 §5.2 Table 6)"
+    },
+    "eliza-1-9b::screenspot": {
+      "score": 0.876,
+      "source": "Qwen2.5-VL-7B technical report — ScreenSpot avg (https://arxiv.org/abs/2502.13923 §5.4 Table 9)"
+    },
+    "eliza-1-9b::osworld": {
+      "score": 0.083,
+      "source": "Qwen2.5-VL-7B technical report — OSWorld success rate (https://arxiv.org/abs/2502.13923 §5.4 Table 10)"
+    },
+    "eliza-1-27b::textvqa": {
+      "score": 0.834,
+      "source": "Qwen2.5-VL-32B (RLAIF tuned) — TextVQA val (https://qwenlm.github.io/blog/qwen2.5-vl-32b/)"
+    },
+    "eliza-1-27b::docvqa": {
+      "score": 0.946,
+      "source": "Qwen2.5-VL-32B technical card — DocVQA test ANLS"
+    },
+    "eliza-1-27b::chartqa": {
+      "score": 0.882,
+      "source": "Qwen2.5-VL-32B technical card — ChartQA test"
+    },
+    "eliza-1-27b::screenspot": {
+      "score": 0.879,
+      "source": "Qwen2.5-VL-32B technical card — ScreenSpot avg"
+    },
+    "eliza-1-27b::osworld": {
+      "score": 0.097,
+      "source": "Qwen2.5-VL-32B technical card — OSWorld success rate"
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{"type": "session_start", "session_id": "isolated_8899555", "model": "gpt-4o-2025-01-10", "created_at": "2026-02-22T01:24:52.960029", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-22T01:28:12.727746", "session_id": "isolated_8899555", "seq": 1}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-22T01:29:30.362808", "session_id": "isolated_8899555", "seq": 2}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-22T01:29:31.406239", "session_id": "isolated_8899555", "seq": 3, "usage": {"prompt_tokens": 7164, "completion_tokens": 3940, "total_tokens": 11142}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-22T01:33:53.354634", "session_id": "isolated_8899555", "seq": 4, "usage": {"prompt_tokens": 2482, "completion_tokens": 1938, "total_tokens": 6509}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-22T01:33:56.214928", "session_id": "isolated_8899555", "seq": 5}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-22T01:38:34.324640", "session_id": "isolated_8899555", "seq": 6}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-22T01:42:43.300859", "session_id": "isolated_8899555", "seq": 7, "usage": {"prompt_tokens": 4190, "completion_tokens": 476, "total_tokens": 2090}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-22T01:43:22.301477", "session_id": "isolated_8899555", "seq": 8}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-22T01:43:27.891507", "session_id": "isolated_8899555", "seq": 9}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-22T01:45:36.478944", "session_id": "isolated_8899555", "seq": 10, "usage": {"prompt_tokens": 6481, "completion_tokens": 2630, "total_tokens": 11134}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-22T01:48:18.140725", "session_id": "isolated_8899555", "seq": 11, "usage": {"prompt_tokens": 657, "completion_tokens": 812, "total_tokens": 4129}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-22T01:49:56.218495", "session_id": "isolated_8899555", "seq": 12}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-22T01:53:08.415584", "session_id": "isolated_8899555", "seq": 13}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-22T01:54:06.453446", "session_id": "isolated_8899555", "seq": 14, "usage": {"prompt_tokens": 4858, "completion_tokens": 3836, "total_tokens": 5073}}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-22T01:58:15.205579", "session_id": "isolated_8899555", "seq": 15}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-22T02:02:38.668132", "session_id": "isolated_8899555", "seq": 16}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-22T02:07:17.686310", "session_id": "isolated_8899555", "seq": 17, "usage": {"prompt_tokens": 5630, "completion_tokens": 163, "total_tokens": 9854}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-22T02:09:52.970078", "session_id": "isolated_8899555", "seq": 18}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-22T02:12:20.362672", "session_id": "isolated_8899555", "seq": 19}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-22T02:16:34.365489", "session_id": "isolated_8899555", "seq": 20, "usage": {"prompt_tokens": 3227, "completion_tokens": 3821, "total_tokens": 5531}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-22T02:17:45.954539", "session_id": "isolated_8899555", "seq": 21}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-22T02:22:14.402077", "session_id": "isolated_8899555", "seq": 22}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-22T02:26:01.750104", "session_id": "isolated_8899555", "seq": 23}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-22T02:27:27.248233", "session_id": "isolated_8899555", "seq": 24}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-22T02:30:48.635522", "session_id": "isolated_8899555", "seq": 25, "usage": {"prompt_tokens": 4515, "completion_tokens": 1203, "total_tokens": 1773}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-22T02:35:19.902784", "session_id": "isolated_8899555", "seq": 26}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-22T02:37:59.135940", "session_id": "isolated_8899555", "seq": 27}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-22T02:39:48.202439", "session_id": "isolated_8899555", "seq": 28}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-22T02:42:45.973687", "session_id": "isolated_8899555", "seq": 29}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-22T02:43:24.562910", "session_id": "isolated_8899555", "seq": 30, "usage": {"prompt_tokens": 3944, "completion_tokens": 1053, "total_tokens": 498}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-22T02:48:07.376183", "session_id": "isolated_8899555", "seq": 31}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-22T02:51:18.626744", "session_id": "isolated_8899555", "seq": 32, "usage": {"prompt_tokens": 1659, "completion_tokens": 158, "total_tokens": 6733}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-22T02:55:44.367478", "session_id": "isolated_8899555", "seq": 33}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-22T03:00:18.191482", "session_id": "isolated_8899555", "seq": 34}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-22T03:01:39.535647", "session_id": "isolated_8899555", "seq": 35}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-22T03:04:42.932494", "session_id": "isolated_8899555", "seq": 36}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-22T03:05:24.027652", "session_id": "isolated_8899555", "seq": 37}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-22T03:08:55.773070", "session_id": "isolated_8899555", "seq": 38, "usage": {"prompt_tokens": 2254, "completion_tokens": 2847, "total_tokens": 932}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-22T03:12:19.978303", "session_id": "isolated_8899555", "seq": 39}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-22T03:16:36.897095", "session_id": "isolated_8899555", "seq": 40}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-22T03:18:13.041350", "session_id": "isolated_8899555", "seq": 41, "usage": {"prompt_tokens": 4958, "completion_tokens": 1518, "total_tokens": 2994}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-22T03:19:36.659519", "session_id": "isolated_8899555", "seq": 42}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-22T03:20:19.164097", "session_id": "isolated_8899555", "seq": 43}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-22T03:21:44.023716", "session_id": "isolated_8899555", "seq": 44}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-22T03:22:40.362729", "session_id": "isolated_8899555", "seq": 45}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-22T03:24:16.243394", "session_id": "isolated_8899555", "seq": 46, "usage": {"prompt_tokens": 6346, "completion_tokens": 2702, "total_tokens": 9150}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-22T03:28:17.663660", "session_id": "isolated_8899555", "seq": 47}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-22T03:32:48.095535", "session_id": "isolated_8899555", "seq": 48}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-22T03:34:16.570806", "session_id": "isolated_8899555", "seq": 49, "usage": {"prompt_tokens": 6103, "completion_tokens": 2545, "total_tokens": 2095}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-22T03:36:28.156826", "session_id": "isolated_8899555", "seq": 50}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-22T03:40:32.536561", "session_id": "isolated_8899555", "seq": 51}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-22T03:40:48.510591", "session_id": "isolated_8899555", "seq": 52}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-22T03:40:50.980440", "session_id": "isolated_8899555", "seq": 53}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-22T03:45:23.335957", "session_id": "isolated_8899555", "seq": 54}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-22T03:48:52.888793", "session_id": "isolated_8899555", "seq": 55, "usage": {"prompt_tokens": 7816, "completion_tokens": 1658, "total_tokens": 5528}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-22T03:53:15.031014", "session_id": "isolated_8899555", "seq": 56}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-22T03:55:05.097156", "session_id": "isolated_8899555", "seq": 57}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-22T03:58:22.963238", "session_id": "isolated_8899555", "seq": 58, "usage": {"prompt_tokens": 5157, "completion_tokens": 487, "total_tokens": 808}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-22T03:59:11.874235", "session_id": "isolated_8899555", "seq": 59, "usage": {"prompt_tokens": 5884, "completion_tokens": 230, "total_tokens": 3402}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-22T04:00:00.105989", "session_id": "isolated_8899555", "seq": 60, "usage": {"prompt_tokens": 7337, "completion_tokens": 406, "total_tokens": 1883}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-22T04:00:57.139031", "session_id": "isolated_8899555", "seq": 61}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-22T04:02:44.848914", "session_id": "isolated_8899555", "seq": 62}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-22T04:03:17.640523", "session_id": "isolated_8899555", "seq": 63}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-22T04:04:12.738325", "session_id": "isolated_8899555", "seq": 64, "usage": {"prompt_tokens": 3290, "completion_tokens": 998, "total_tokens": 2624}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-22T04:09:05.158064", "session_id": "isolated_8899555", "seq": 65}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-22T04:13:50.111749", "session_id": "isolated_8899555", "seq": 66}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-22T04:15:55.437255", "session_id": "isolated_8899555", "seq": 67, "usage": {"prompt_tokens": 5970, "completion_tokens": 3596, "total_tokens": 1427}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-22T04:20:05.199382", "session_id": "isolated_8899555", "seq": 68, "usage": {"prompt_tokens": 7596, "completion_tokens": 3942, "total_tokens": 10871}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-22T04:22:51.319307", "session_id": "isolated_8899555", "seq": 69, "usage": {"prompt_tokens": 4147, "completion_tokens": 1542, "total_tokens": 11935}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-22T04:27:01.895631", "session_id": "isolated_8899555", "seq": 70}
+{"type": "session_end", "session_id": "isolated_8899555", "ended_at": "2026-02-22T04:27:11.895631", "total_messages": 70, "status": "error"}

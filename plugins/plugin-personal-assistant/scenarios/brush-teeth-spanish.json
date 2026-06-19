@@ -1,0 +1,37 @@
+{
+  "id": "brush-teeth-spanish",
+  "title": "Brush teeth from Spanish phrasing",
+  "domain": "tasks",
+  "rooms": [
+    {
+      "id": "main",
+      "source": "telegram",
+      "title": "LifeOps Brush Teeth Spanish"
+    }
+  ],
+  "turns": [
+    {
+      "name": "brush-teeth spanish preview",
+      "text": "recuérdame cepillarme los dientes por la mañana y por la noche",
+      "responseIncludesAny": ["brush", "teeth", "cepill", "mañana", "noche"]
+    },
+    {
+      "name": "brush-teeth spanish confirm",
+      "text": "sí, guárdalo",
+      "responseIncludesAny": ["saved", "brush", "teeth", "guard"]
+    }
+  ],
+  "finalChecks": [
+    {
+      "type": "definitionCountDelta",
+      "title": "Brush teeth",
+      "delta": 1,
+      "cadenceKind": "times_per_day",
+      "requiredSlots": [
+        { "label": "Morning", "minuteOfDay": 480 },
+        { "label": "Night", "minuteOfDay": 1260 }
+      ],
+      "requireReminderPlan": true
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@elizaos/cloud-sdk",
+  "version": "2.0.3-beta.14",
+  "description": "TypeScript SDK for Eliza Cloud API, auth, and agent management.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "scripts": {
+    "build": "bun run build.ts",
+    "typecheck": "tsgo --noEmit",
+    "test": "bun test src",
+    "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
+    "lint": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write ."
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./cloud-setup-session": {
+      "types": "./dist/cloud-setup-session/index.d.ts",
+      "import": "./dist/cloud-setup-session/index.js",
+      "default": "./dist/cloud-setup-session/index.js"
+    },
+    "./cloud-setup-session/*": {
+      "types": "./dist/cloud-setup-session/*.d.ts",
+      "import": "./dist/cloud-setup-session/*.js",
+      "default": "./dist/cloud-setup-session/*.js"
+    },
+    "./package.json": "./package.json"
+  }
+}

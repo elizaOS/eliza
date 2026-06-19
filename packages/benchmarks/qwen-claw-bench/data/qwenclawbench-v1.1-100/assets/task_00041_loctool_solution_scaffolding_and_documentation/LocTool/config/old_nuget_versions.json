@@ -1,0 +1,48 @@
+{
+  "_metadata": {
+    "description": "NuGet package version registry for LocTool solution",
+    "lastUpdated": "2023-01-15",
+    "maintainer": "mike.johnson@contoso.com",
+    "status": "approved",
+    "_comment": "Last updated: 2023-01-15 — Sprint 4 baseline versions"
+  },
+  "targetFramework": "net6.0-windows",
+  "packages": {
+    "Microsoft.Extensions.DependencyInjection": {
+      "version": "6.0.1",
+      "usedIn": ["LocTool.App"],
+      "purpose": "Dependency injection container"
+    },
+    "EPPlus": {
+      "version": "5.8.4",
+      "usedIn": ["LocTool.Core"],
+      "purpose": "Excel file processing (.xlsx read/write)",
+      "licenseNote": "Requires LicenseContext.NonCommercial to be set before first use"
+    },
+    "CommunityToolkit.Mvvm": {
+      "version": "8.0.0",
+      "usedIn": ["LocTool.ViewModel"],
+      "purpose": "MVVM source generators and base classes"
+    },
+    "xunit": {
+      "version": "2.4.2",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Unit testing framework"
+    },
+    "xunit.runner.visualstudio": {
+      "version": "2.4.5",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Visual Studio test runner adapter"
+    },
+    "Microsoft.NET.Test.Sdk": {
+      "version": "17.4.1",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "MSTest platform infrastructure"
+    },
+    "Moq": {
+      "version": "4.18.4",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Mocking framework for unit tests"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.boum.tails.AdditionalSoftware
+Exec=/usr/local/bin/tails-additional-software-config --gapplication-service

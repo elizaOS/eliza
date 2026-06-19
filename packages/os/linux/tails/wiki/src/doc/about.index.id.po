@@ -1,0 +1,65 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-09 12:03+0000\n"
+"PO-Revision-Date: 2016-07-17 03:44+0200\n"
+"Last-Translator: Tails translators <tails@boum.org>\n"
+"Language-Team: \n"
+"Language: id\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 1.8.8\n"
+
+#. type: Bullet: '- '
+msgid "[[System requirements and recommended USB sticks|about/requirements]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Warnings: Tails is safe but not magic!|about/warnings]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Protecting your identity when using Tails|about/warnings/identity]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Limitations of the Tor network|about/warnings/tor]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Reducing risks when using untrusted computers|about/warnings/computer]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Features and included software|about/features]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[How can I trust Tails?|about/trust]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[License and source code distribution|about/license]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Acknowledgments and similar projects|about/"
+"acknowledgments_and_similar_projects]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Contact|doc/about/contact]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[OpenPGP keys|about/openpgp_keys]]"
+msgstr ""

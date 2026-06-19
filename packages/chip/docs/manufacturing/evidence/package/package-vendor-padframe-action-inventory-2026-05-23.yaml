@@ -1,0 +1,85 @@
+schema: eliza.package_vendor_padframe.action_inventory.v1
+status: blocked
+release_use: prohibited
+release_credit: false
+review_date: 2026-05-23
+owner: package_closure
+scope:
+  package_artifact_manifest: package/artifact-manifest.yaml
+  package_pinout: package/e1-demo-pinout.yaml
+  padframe_contract: pd/padframe/e1_demo_padframe.yaml
+  board_cross_probe_draft: docs/manufacturing/evidence/board/e1-demo-package-padframe-board-cross-probe-draft.yaml
+  checker: scripts/check_package_cross_probe.py
+local_context:
+  package_pin_count: 64
+  package_pinout_status: local_planning_contract
+  padframe_status: contract_scaffold
+  board_cross_probe_status: local_draft
+  local_cross_probe_claim: planning-only package, RTL, and KiCad names are structurally comparable
+  release_boundary: no vendor package, foundry padframe, or independent board fabrication approval is present
+action_inventory:
+  - id: vendor_package_drawing
+    release_credit: false
+    current_state: missing
+    required_evidence:
+      - approved package-vendor drawing
+      - vendor revision identifier
+      - source checksum
+      - pin-1 orientation
+      - signed metadata companion
+    validation_command: python3 scripts/check_package_cross_probe.py --release
+  - id: vendor_land_pattern_or_footprint_source
+    release_credit: false
+    current_state: missing
+    required_evidence:
+      - land pattern or footprint source derived from approved package-vendor drawing
+      - source drawing revision
+      - source checksum
+      - reviewer disposition
+    validation_command: python3 scripts/check_package_cross_probe.py --release
+  - id: package_material_assembly_constraints
+    release_credit: false
+    current_state: missing
+    required_evidence:
+      - package material or assembly constraints
+      - vendor revision identifier
+      - source checksum
+      - approved disposition
+    validation_command: python3 scripts/check_package_cross_probe.py --release
+  - id: bond_diagram
+    release_credit: false
+    current_state: missing
+    required_evidence:
+      - foundry or package-vendor approved bond diagram
+      - die revision
+      - package revision
+      - source checksum
+      - signed metadata companion
+    validation_command: python3 scripts/check_package_cross_probe.py --release
+  - id: release_cross_probe_record
+    release_credit: false
+    current_state: missing
+    required_evidence:
+      - reviewer-approved package pinout to padframe to bond map to KiCad symbol cross-probe
+      - package pinout checksum
+      - padframe checksum
+      - board revision
+      - approved disposition
+    validation_command: python3 scripts/check_package_cross_probe.py --release
+  - id: foundry_padframe_signoff
+    release_credit: false
+    current_state: missing
+    required_evidence:
+      - foundry IO-cell selection
+      - ESD and corner-cell integration evidence
+      - padframe-inclusive DRC and LVS reports
+      - signed release disposition
+    validation_command: python3 scripts/check_padframe_contract.py
+release_blockers:
+  - Package artifact manifest is still scaffold, not complete.
+  - Package-vendor drawing is missing.
+  - Vendor-derived footprint or land-pattern source is missing.
+  - Material and assembly constraints are missing.
+  - Bond diagram is missing.
+  - Release cross-probe record is missing.
+  - Foundry padframe signoff is missing.

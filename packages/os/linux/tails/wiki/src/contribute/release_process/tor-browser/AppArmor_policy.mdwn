@@ -1,0 +1,38 @@
+[[!meta title="Update Tor Browser's AppArmor policy"]]
+
+# Preparation (first time)
+
+If you don't have our `torbrowser-launcher` Git repo, clone it
+and add a remote for upstream:
+
+    git clone git@gitlab-ssh.tails.boum.org:tails/torbrowser-launcher &&
+    cd torbrowser-launcher && \
+    git remote add upstream-repo https://github.com/micahflee/torbrowser-launcher
+
+# Merge upstream updates into our forked AppArmor policy
+
+Fetch:
+
+    git checkout devel && \
+    git pull && \
+    git fetch upstream-repo
+
+Then update our own branch:
+
+    git checkout devel && \
+	git merge upstream-repo/develop
+
+If needed, resolve merge conflicts and commit.
+
+Finally, make sure the diff looks OK:
+
+     git diff ORIG_HEAD.. -- apparmor/
+
+Finally, push to the `torbrowser-launcher` repository:
+
+     git push origin devel
+
+# Update the profile in the main Tails Git repository
+
+To have Tails builds use the updated profile, commit the submodule update in the
+`tails` repository.

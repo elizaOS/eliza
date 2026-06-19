@@ -1,0 +1,542 @@
+from __future__ import annotations
+
+import asyncio
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import uuid
+from dataclasses import dataclass
+from datetime import datetime
+from importlib import import_module
+from pathlib import Path
+from typing import Any
+
+
+SOLANA_DIR = Path(__file__).resolve().parent
+GYM_ENV_DIR = SOLANA_DIR / "solana-gym-env"
+SKILL_RUNNER_DIR = GYM_ENV_DIR / "voyager" / "skill_runner"
+
+
+@dataclass(frozen=True)
+class HarnessPath:
+    name: str
+    module: str
+    class_name: str
+    transport: str
+
+
+HARNESS_PATHS: dict[str, HarnessPath] = {
+    "eliza": HarnessPath(
+        name="eliza",
+        module="eliza_adapter.solana",
+        class_name="ElizaBridgeSolanaExplorer",
+        transport="eliza benchmark server",
+    ),
+    "hermes": HarnessPath(
+        name="hermes",
+        module="eliza_adapter.solana",
+        class_name="ElizaBridgeSolanaExplorer",
+        transport="ElizaClient delegate -> hermes_adapter.client.HermesClient",
+    ),
+    "openclaw": HarnessPath(
+        name="openclaw",
+        module="eliza_adapter.solana",
+        class_name="ElizaBridgeSolanaExplorer",
+        transport="ElizaClient delegate -> openclaw_adapter.client.OpenClawClient",
+    ),
+}
+
+
+EDGE_VARIANTS: tuple[str, ...] = (
+    "system-transfer-and-create-account",
+    "memo-unicode-and-large-payloads",
+    "compute-budget-priority-fees",
+    "token-account-initialization",
+    "associated-token-account-discovery",
+    "address-lookup-table-coverage",
+    "program-derived-address-seeds",
+    "versioned-transaction-routing",
+    "multi-instruction-batching",
+    "error-recovery-and-retry-paths",
+)
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def scenario_labels(expand_scenarios: bool = False) -> list[str]:
+    labels = ["base"]
+    if expand_scenarios:
+        labels.extend(f"edge_{index:02d}_{label}" for index, label in enumerate(EDGE_VARIANTS, start=1))
+    return labels
+
+
+def count_scenarios(expand_scenarios: bool = False) -> dict[str, int]:
+    edge = len(EDGE_VARIANTS) if expand_scenarios else 0
+    return {"base": 1, "edge": edge, "total": 1 + edge}
+
+
+def validate_scenarios(expand_scenarios: bool = False) -> dict[str, Any]:
+    labels = scenario_labels(expand_scenarios)
+    duplicate_count = len(labels) - len(set(labels))
+    return {
+        "valid": duplicate_count == 0 and labels[0] == "base",
+        "duplicate_count": duplicate_count,
+        "labels": labels,
+    }
+
+
+def normalize_harness(value: str | None = None) -> str:
+    raw = (
+        value
+        or os.getenv("BENCHMARK_HARNESS")
+        or os.getenv("ELIZA_BENCH_HARNESS")
+        or "eliza"
+    )
+    harness = raw.strip().lower()
+    if harness not in HARNESS_PATHS:
+        raise ValueError(
+            f"Unsupported Solana benchmark harness {raw!r}. "
+            f"Expected one of: {', '.join(sorted(HARNESS_PATHS))}"
+        )
+    return harness
+
+
+def load_harness_class(harness: str):
+    spec = HARNESS_PATHS[normalize_harness(harness)]
+    try:
+        module = import_module(spec.module)
+    except ImportError as exc:
+        raise RuntimeError(
+            f"Solana {spec.name} harness requires {spec.module}.{spec.class_name}. "
+            "Ensure benchmark adapter paths are on PYTHONPATH "
+            "(packages/benchmarks/eliza-adapter, hermes-adapter, openclaw-adapter)."
+        ) from exc
+    try:
+        return getattr(module, spec.class_name)
+    except AttributeError as exc:
+        raise RuntimeError(
+            f"Solana {spec.name} harness path is missing {spec.module}.{spec.class_name}"
+        ) from exc
+
+
+def _resolve_gym_path(path: str | os.PathLike[str]) -> Path:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    gym_relative = GYM_ENV_DIR / candidate
+    if gym_relative.exists() or str(candidate).startswith("voyager/"):
+        return gym_relative
+    return candidate
+
+
+def _last_json_line(output: str) -> dict[str, Any]:
+    for line in reversed(output.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return {
+        "success": False,
+        "reason": "Skill runner did not emit JSON output.",
+        "serialized_tx": None,
+    }
+
+
+def _detect_model_provider(model_name: str) -> str:
+    env_provider = os.getenv("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+    if env_provider:
+        return env_provider
+
+    lower = model_name.lower()
+    for provider in ("groq", "openrouter", "openai", "anthropic", "cerebras", "vllm"):
+        if lower.startswith(f"{provider}/"):
+            return provider
+    if lower.startswith("claude"):
+        return "anthropic"
+
+    if os.getenv("GROQ_API_KEY"):
+        return "groq"
+    if os.getenv("OPENROUTER_API_KEY"):
+        return "openrouter"
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    if os.getenv("CEREBRAS_API_KEY"):
+        return "cerebras"
+    if os.getenv("OPENAI_API_KEY"):
+        return "openai"
+    return "openai"
+
+
+def _strip_provider_prefix(model_name: str, provider: str) -> str:
+    prefix = f"{provider}/"
+    if model_name.lower().startswith(prefix):
+        return model_name[len(prefix):]
+    return model_name
+
+
+def run_typescript_skill(
+    code: str,
+    agent_pubkey: str,
+    latest_blockhash: str,
+    code_file: str | os.PathLike[str] | None = None,
+    timeout: int = 30000,
+) -> dict[str, Any]:
+    """Write and execute a Solana TypeScript skill with the bundled runner."""
+    target = _resolve_gym_path(code_file or "voyager/skill_runner/code_loop_code.ts")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(code, encoding="utf-8")
+
+    command = [
+        "bun",
+        "run",
+        "./runSkill.ts",
+        str(target),
+        str(timeout),
+        agent_pubkey,
+        latest_blockhash,
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=SKILL_RUNNER_DIR,
+            capture_output=True,
+            text=True,
+            check=True,
+            encoding="utf-8",
+        )
+        return _last_json_line(result.stdout)
+    except subprocess.CalledProcessError as exc:
+        try:
+            parsed = _last_json_line(exc.stdout or "")
+        except json.JSONDecodeError:
+            parsed = {
+                "success": False,
+                "reason": "Skill runner error",
+                "serialized_tx": None,
+            }
+        if exc.stderr:
+            parsed["stderr"] = exc.stderr
+        return parsed
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "reason": "Bun command not found. Make sure Bun is installed and in your PATH.",
+            "serialized_tx": None,
+        }
+
+
+class ElizaExplorer:
+    """Solana benchmark explorer facade used by registry/orchestrator wiring."""
+
+    code_pattern = re.compile(r"```(?:javascript|js|typescript|ts)(.*?)```", re.DOTALL)
+
+    def __init__(
+        self,
+        model_name: str = "anthropic/claude-sonnet-4.6",
+        run_index: int = 0,
+        max_messages: int = 50,
+        checkpoint_dir: str = "ckpt/eliza",
+        resume: bool = False,
+        verbose: bool = True,
+        code_file: str | None = None,
+        environment_config: str | None = None,
+        output_dir: str | None = None,
+        harness: str | None = None,
+    ):
+        self.model_name = model_name
+        self.run_index = run_index
+        self.max_messages = max_messages
+        self.checkpoint_dir = checkpoint_dir
+        self.resume = resume
+        self.verbose = verbose
+        self.code_file = code_file or "voyager/skill_runner/code_loop_code.ts"
+        self.environment_config_path = environment_config
+        self.harness = normalize_harness(harness)
+        self.harness_path = HARNESS_PATHS[self.harness]
+        self.output_dir = Path(output_dir or os.getenv("OUTPUT_DIR", "")).expanduser() if (output_dir or os.getenv("OUTPUT_DIR")) else None
+        self.env_config = self._load_environment_config(environment_config)
+        self._timeout_ms = int((self.env_config or {}).get("timeout", 30000))
+        self._llm = None
+
+        self.run_id = f"eliza_{datetime.now().strftime('%y-%m-%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        self.message_count = 0
+        self.messages: list[dict[str, str]] = []
+        self.metrics: dict[str, Any] = {
+            "model": model_name,
+            "run_index": run_index,
+            "run_id": self.run_id,
+            "harness": self.harness,
+            "harness_path": {
+                "module": self.harness_path.module,
+                "class_name": self.harness_path.class_name,
+                "transport": self.harness_path.transport,
+            },
+            "start_time": datetime.now().isoformat(),
+            "environment_config": environment_config,
+            "messages": [],
+            "cumulative_rewards": [],
+            "programs_discovered": {},
+            "instructions_by_program": {},
+            "phase_transitions": [],
+            "errors": [],
+        }
+
+    def _load_environment_config(self, config_path: str | None) -> dict[str, Any] | None:
+        if not config_path:
+            return None
+        try:
+            return json.loads(_resolve_gym_path(config_path).read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+    def _ensure_llm(self):
+        if self._llm is not None:
+            return self._llm
+        provider = _detect_model_provider(self.model_name)
+        provider_config = {
+            "groq": ("GROQ_API_KEY", "https://api.groq.com/openai/v1"),
+            "openrouter": ("OPENROUTER_API_KEY", "https://openrouter.ai/api/v1"),
+            "openai": ("OPENAI_API_KEY", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
+            "cerebras": (
+                "CEREBRAS_API_KEY",
+                os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1"),
+            ),
+            "vllm": (
+                "VLLM_API_KEY",
+                os.getenv(
+                    "VLLM_BASE_URL",
+                    os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:8001/v1"),
+                ),
+            ),
+        }
+        model_name = _strip_provider_prefix(self.model_name, provider)
+        if provider == "anthropic":
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise RuntimeError("API key required: set ANTHROPIC_API_KEY for provider=anthropic")
+            try:
+                from langchain_anthropic import ChatAnthropic
+            except ImportError as exc:
+                raise RuntimeError(
+                    "langchain_anthropic is required to run the Solana explorer with Anthropic"
+                ) from exc
+            self._llm = ChatAnthropic(
+                model=model_name,
+                api_key=api_key,
+                temperature=0.7,
+            )
+            return self._llm
+        if provider not in provider_config:
+            raise RuntimeError(
+                "Solana explorer supports provider=openai, groq, openrouter, "
+                "anthropic, cerebras, or vllm"
+            )
+        key_var, base_url = provider_config[provider]
+        api_key = os.getenv(key_var)
+        if provider == "vllm" and not api_key:
+            api_key = os.getenv("OPENAI_API_KEY", "local-vllm")
+        if not api_key:
+            raise RuntimeError(f"API key required: set {key_var} for provider={provider}")
+        try:
+            from langchain_openai import ChatOpenAI
+        except ImportError as exc:
+            raise RuntimeError("langchain_openai is required to run the Solana explorer") from exc
+        self._llm = ChatOpenAI(
+            base_url=base_url,
+            model=model_name,
+            api_key=api_key,
+            temperature=0.7,
+        )
+        return self._llm
+
+    def save_checkpoint(self) -> Path:
+        metrics_dir = self.output_dir or (GYM_ENV_DIR / "metrics")
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        cumulative = self.metrics.get("cumulative_rewards")
+        if isinstance(cumulative, list) and cumulative:
+            self.metrics["final_reward"] = cumulative[-1]
+        else:
+            self.metrics.setdefault("final_reward", 0)
+        programs = self.metrics.get("programs_discovered")
+        self.metrics["final_programs"] = len(programs) if isinstance(programs, dict) else 0
+        path = metrics_dir / f"{self.run_id}_metrics.json"
+        path.write_text(json.dumps(self.metrics, indent=2), encoding="utf-8")
+        return path
+
+    async def run(self) -> Path:
+        if self.max_messages <= 0:
+            raise ValueError(
+                "max_messages must be positive for a benchmark run; "
+                "zero-message Solana runs produce a vacuous 0.0 score."
+            )
+
+        if str(GYM_ENV_DIR) not in sys.path:
+            sys.path.insert(0, str(GYM_ENV_DIR))
+        from voyager.surfpool_env import SurfpoolEnv, _surfpool_validator
+        ExplorerClass = load_harness_class(self.harness)
+
+        old_cwd = Path.cwd()
+        os.chdir(GYM_ENV_DIR)
+        try:
+            runner = ExplorerClass(
+                model_name=self.model_name,
+                run_index=self.run_index,
+                max_messages=self.max_messages,
+                code_file=self.code_file,
+                environment_config=self.environment_config_path,
+                harness=self.harness,
+            )
+
+            allowed_programs = []
+            if runner.env_config and "reward_config" in runner.env_config:
+                allowed_programs = runner.env_config["reward_config"].get("allowed_programs", [])
+
+            use_external_surfpool = os.getenv("USE_EXTERNAL_SURFPOOL", "false").lower() == "true"
+            if use_external_surfpool:
+                env = SurfpoolEnv(allowed_programs=allowed_programs, use_external_surfpool=True)
+                await env.reset()
+                try:
+                    data = await runner.run(env)
+                    metrics_path = GYM_ENV_DIR / "metrics" / f"{runner.run_id}_metrics.json"
+                finally:
+                    await env.close()
+            else:
+                async with _surfpool_validator("https://api.mainnet-beta.solana.com"):
+                    env = SurfpoolEnv(allowed_programs=allowed_programs, use_external_surfpool=True)
+                    await env.reset()
+                    try:
+                        data = await runner.run(env)
+                        metrics_path = GYM_ENV_DIR / "metrics" / f"{runner.run_id}_metrics.json"
+                    finally:
+                        await env.close()
+
+            if not metrics_path.exists():
+                metrics_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            data = json.loads(metrics_path.read_text(encoding="utf-8"))
+            cumulative = data.get("cumulative_rewards")
+            data["final_reward"] = cumulative[-1] if isinstance(cumulative, list) and cumulative else 0
+            programs = data.get("programs_discovered")
+            data["final_programs"] = len(programs) if isinstance(programs, dict) else 0
+            metrics_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            if self.output_dir and metrics_path.parent != self.output_dir:
+                trajectory_path = data.get("trajectory_path")
+                if isinstance(trajectory_path, str) and trajectory_path:
+                    source_trajectory = Path(trajectory_path)
+                    if source_trajectory.exists():
+                        trajectory_target = self.output_dir / source_trajectory.name
+                        trajectory_target.write_text(
+                            source_trajectory.read_text(encoding="utf-8"),
+                            encoding="utf-8",
+                        )
+                        data["trajectory_path"] = str(trajectory_target)
+                target = self.output_dir / metrics_path.name
+                target.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                metrics_path = target
+            return metrics_path
+        finally:
+            os.chdir(old_cwd)
+
+
+def _annotate_metrics(
+    metrics_path: Path,
+    *,
+    scenario_label: str,
+    scenario_index: int,
+    expand_scenarios: bool,
+) -> None:
+    data = json.loads(metrics_path.read_text(encoding="utf-8"))
+    data["scenario_label"] = scenario_label
+    data["scenario_index"] = scenario_index
+    data["include_edge_scenarios"] = expand_scenarios
+    data["scenario_counts"] = count_scenarios(expand_scenarios)
+    metrics_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+async def async_main() -> None:
+    parser = argparse.ArgumentParser(description="Run the Solana instruction discovery benchmark")
+    parser.add_argument("--output-dir", default=os.getenv("OUTPUT_DIR"), help="Directory for metrics JSON")
+    parser.add_argument(
+        "--harness",
+        default=os.getenv("BENCHMARK_HARNESS") or os.getenv("ELIZA_BENCH_HARNESS") or "eliza",
+        choices=sorted(HARNESS_PATHS),
+        help="Agent harness path: eliza, hermes, or openclaw",
+    )
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run the base Solana scenario plus ten deterministic edge variants.",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print the selected Solana scenario counts before running.",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate generated Solana scenario labels before running.",
+    )
+    args = parser.parse_args()
+    expand_scenarios = (
+        args.expand_scenarios
+        or _truthy_env("EXPAND_SCENARIOS")
+        or _truthy_env("INCLUDE_EDGE_SCENARIOS")
+    )
+    counts = count_scenarios(expand_scenarios)
+    if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
+        print(
+            "Solana scenario counts: "
+            f"base={counts['base']} edge={counts['edge']} total={counts['total']}"
+        )
+    if args.validate_scenarios or _truthy_env("VALIDATE_SCENARIOS"):
+        validation = validate_scenarios(expand_scenarios)
+        if not validation["valid"]:
+            raise ValueError(f"Invalid Solana scenario expansion: {validation}")
+        print(
+            "Solana scenario validation passed: "
+            f"{counts['total']} scenario(s)"
+        )
+
+    max_messages = int(os.getenv("MAX_MESSAGES", "50"))
+    if max_messages <= 0:
+        raise ValueError(
+            "MAX_MESSAGES must be positive for a benchmark run; "
+            "zero-message Solana runs produce a vacuous 0.0 score."
+        )
+
+    base_run_index = int(os.getenv("RUN_INDEX", "0"))
+    for scenario_index, scenario_label in enumerate(scenario_labels(expand_scenarios)):
+        explorer = ElizaExplorer(
+            model_name=os.getenv("MODEL_NAME", os.getenv("BENCHMARK_MODEL_NAME", "openai/gpt-oss-120b")),
+            max_messages=max_messages,
+            run_index=base_run_index + scenario_index,
+            code_file=os.getenv("CODE_FILE"),
+            environment_config=os.getenv("ENVIRONMENT_CONFIG"),
+            output_dir=args.output_dir,
+            harness=args.harness,
+        )
+        metrics_path = await explorer.run()
+        _annotate_metrics(
+            metrics_path,
+            scenario_label=scenario_label,
+            scenario_index=scenario_index,
+            expand_scenarios=expand_scenarios,
+        )
+
+
+def main() -> None:
+    asyncio.run(async_main())
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,41 @@
+task_id: M034_video_tennis_shotlog_qa
+task_name: Video Tennis Shot Log QA
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    I have uploaded a video clip showing a specific game from a tennis match between Andy Murray and Roger Federer.
+    Please carefully watch the footage and locate the exact point that begins when the score is Set 0:1, Game 4:5, and Point 0:15. Please answer the following four questions sequentially.
+    First, identify which player is serving to start this point.
+    Second, provide a chronological, shot-by-shot log of the entire rally. Starting from the return of serve, explicitly specify the name of the player hitting the ball and whether they used a forehand or a backhand stroke for every single shot.
+    Third, count and state the exact total number of shots hit during this entire point, including the initial serve.
+    Fourth, clearly state the name of the player who ultimately won this specific point.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.webm
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files: []
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Use ReadMedia to extract frames from the tennis video.
+  Locate the point at Set 0:1, Game 4:5, Point 0:15.
+  Identify server, log each shot with player and stroke type, count total, identify winner.
+primary_dimensions:
+  - completion
+  - robustness

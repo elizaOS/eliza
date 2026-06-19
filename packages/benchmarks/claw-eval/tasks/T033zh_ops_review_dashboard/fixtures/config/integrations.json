@@ -1,0 +1,87 @@
+[
+  {
+    "integration_id": "INT-101",
+    "name": "payment_gateway",
+    "display_name": "支付网关",
+    "status": "active",
+    "error_rate": 0.5,
+    "base_url": "https://pay.example.com",
+    "call_volume_previous_week": 12000,
+    "service": "api",
+    "last_verified": "2026-02-28T23:00:00+08:00",
+    "monthly_calls": 12500
+  },
+  {
+    "integration_id": "INT-102",
+    "name": "crm_sync",
+    "display_name": "CRM数据同步",
+    "status": "active",
+    "error_rate": 12.0,
+    "base_url": "https://crm-api.example.com",
+    "call_volume_previous_week": 9200,
+    "notes": "状态显示active但错误率高达12%，指标与标签存在矛盾，需要确认实际健康状况",
+    "service": "api",
+    "last_verified": "2026-02-28T23:00:00+08:00",
+    "monthly_calls": 8500
+  },
+  {
+    "integration_id": "INT-103",
+    "name": "email_service",
+    "display_name": "邮件服务",
+    "status": "active",
+    "error_rate": 0.2,
+    "call_volume_previous_week": 3500,
+    "service": "smtp",
+    "monthly_calls": 3400,
+    "last_verified": "2026-02-28T00:00:00+08:00"
+  },
+  {
+    "integration_id": "INT-104",
+    "name": "inventory_api",
+    "display_name": "库存接口",
+    "status": "active",
+    "error_rate": 1.2,
+    "base_url": "https://inv-api.example.com",
+    "call_volume_previous_week": 5800,
+    "service": "api",
+    "last_verified": "2026-02-28T23:00:00+08:00",
+    "monthly_calls": 6000
+  },
+  {
+    "integration_id": "INT-105",
+    "name": "analytics_pipeline",
+    "display_name": "数据分析管道",
+    "status": "degraded",
+    "error_rate": 5.0,
+    "call_volume_previous_week": 210,
+    "notes": "已知问题，数据团队正在排查中",
+    "service": "batch",
+    "last_verified": "2026-02-28T22:00:00+08:00",
+    "monthly_calls": 200
+  },
+  {
+    "integration_id": "INT-106",
+    "name": "notification_service",
+    "display_name": "通知服务",
+    "status": "active",
+    "error_rate": 0.8,
+    "base_url": "https://notify.example.com/webhook",
+    "call_volume_previous_week": 4200,
+    "service": "webhook",
+    "last_verified": "2026-02-28T23:00:00+08:00",
+    "monthly_calls": 4500
+  },
+  {
+    "integration_id": "INT-107",
+    "name": "search_indexer",
+    "display_name": "搜索索引服务",
+    "status": "active",
+    "error_rate": 0.0,
+    "base_url": "https://search.example.com",
+    "call_volume_previous_week": 1500,
+    "notes": "错误率0%但调用量从上周1500骤降至本周15，下降99%，疑似服务中断或上游调用异常",
+    "service": "api",
+    "last_verified": "2026-02-28T23:00:00+08:00",
+    "monthly_calls": 15
+  }
+]

@@ -1,0 +1,149 @@
+schema: eliza.power_domains.v1
+status: authoritative_planning_release_blocked
+claim_boundary: >
+  Human-readable mapping of power domains in pd/upf/e1_soc_top.upf to physical
+  rails in docs/pd/rail-plan-2028.yaml. UPF binding is planning evidence;
+  release requires running through commercial low-power signoff (VC LP /
+  Conformal LP) against extracted netlist.
+source_artifacts:
+  - docs/pd/rail-plan-2028.yaml
+  - pd/upf/e1_soc_top.upf
+power_domains:
+  - upf_name: PD_AON
+    rail: VDD_AON
+    always_on: true
+    retention_strategy: hard_macro_retention_ff
+    isolation_to: [PD_PMC, PD_SOC_FABRIC]
+    notes: RTC, mgmt-core SRAM, wake controller. Never gated.
+  - upf_name: PD_PMC
+    rail: VDD_PMC
+    always_on: true
+    retention_strategy: hard_macro_retention_ff
+    isolation_to: [PD_AON, PD_SOC_FABRIC]
+    notes: Ibex RV32IMC management core; only off in deep ship-mode.
+  - upf_name: PD_SOC_FABRIC
+    rail: VDD_SOC_FABRIC
+    always_on: false
+    retention_strategy: retention_ff_critical_state_only
+    isolation_to:
+      - PD_AON
+      - PD_PMC
+      - PD_CPU_BIG
+      - PD_CPU_LITTLE
+      - PD_NPU
+      - PD_GPU
+      - PD_SRAM
+    notes: NoC + IOMMU + system cache controller, gated during S3/S4.
+  - upf_name: PD_SRAM
+    rail: VDD_SRAM
+    always_on: false
+    retention_strategy: light_sleep_retention_full
+    isolation_to: [PD_SOC_FABRIC, PD_CPU_BIG, PD_CPU_LITTLE, PD_NPU]
+    notes: All on-die SRAM. Retention voltage during light sleep, off during S4.
+  - upf_name: PD_CPU_BIG
+    rail: VDD_CPU_BIG
+    always_on: false
+    retention_strategy: per_core_retention_ff
+    isolation_to: [PD_SOC_FABRIC, PD_SRAM]
+    notes: 2x big OoO. Per-core dLDO, AVFS controlled. Gated when both cores idle.
+  - upf_name: PD_CPU_LITTLE
+    rail: VDD_CPU_LITTLE
+    always_on: false
+    retention_strategy: per_cluster_retention_ff
+    isolation_to: [PD_SOC_FABRIC, PD_SRAM]
+    notes: 4x little. Per-cluster dLDO. Gated when cluster idle.
+  - upf_name: PD_NPU
+    rail: VDD_NPU
+    always_on: false
+    retention_strategy: per_tile_retention_ff_descriptor_state
+    isolation_to: [PD_SOC_FABRIC, PD_SRAM]
+    notes: NPU tiles. Per-tile dLDO. Gated when no descriptor in flight.
+  - upf_name: PD_GPU
+    rail: VDD_GPU
+    always_on: false
+    retention_strategy: framebuffer_retention_only
+    isolation_to: [PD_SOC_FABRIC, PD_SRAM]
+    notes: GPU + display. Framebuffer retained during AOD; else gated.
+  - upf_name: PD_LPDDR_IO
+    rail: VDD_LPDDR_VDDQ
+    always_on: false
+    retention_strategy: lpddr_self_refresh_state_only
+    isolation_to: [PD_SOC_FABRIC, PD_LPDDR_PHY_ANALOG]
+    notes: LPDDR5X IO. Held during self-refresh, off in S4.
+  - upf_name: PD_LPDDR_ARRAY
+    rail: VDD_LPDDR_VDD1
+    always_on: false
+    retention_strategy: lpddr_self_refresh_state_only
+    isolation_to: [PD_LPDDR_IO]
+    notes: LPDDR5X array supply. JEDEC self-refresh during deep idle.
+  - upf_name: PD_LPDDR_CTRL
+    rail: VDD_LPDDR_VDD2H_2L
+    always_on: false
+    retention_strategy: lpddr_controller_retention_ff
+    isolation_to: [PD_LPDDR_IO, PD_SOC_FABRIC]
+    notes: LPDDR controller dual rail (VDD2H/VDD2L).
+  - upf_name: PD_LPDDR_PHY_ANALOG
+    rail: VDD_PHY_ANALOG
+    always_on: false
+    retention_strategy: pll_freeze_state
+    isolation_to: [PD_LPDDR_IO, PD_LPDDR_ARRAY]
+    notes: LPDDR PHY analog. Frozen state during self-refresh.
+  - upf_name: PD_IO_18
+    rail: VDD_IO_18
+    always_on: false
+    retention_strategy: pad_latch_state
+    isolation_to: [PD_SOC_FABRIC]
+    notes: 1.8 V general IO domain.
+  - upf_name: PD_IO_33
+    rail: VDD_IO_33
+    always_on: false
+    retention_strategy: pad_latch_state
+    isolation_to: [PD_SOC_FABRIC]
+    notes: 3.3 V slow IO domain.
+  - upf_name: PD_USB_PCIE_PHY
+    rail: VDD_USB_PCIE_PHY
+    always_on: false
+    retention_strategy: phy_powerdown_l2_l3
+    isolation_to: [PD_SOC_FABRIC]
+    notes: USB3 + PCIe Gen4 PHY analog (dual LDO output).
+  - upf_name: PD_RF_REF
+    rail: VDD_RF_REF
+    always_on: false
+    retention_strategy: rf_reference_pll_freeze
+    isolation_to: [PD_SOC_FABRIC]
+    notes: WiFi/BT analog reference.
+isolation_policy:
+  default_strategy: clamp_low_on_disable
+  exceptions:
+    - between: [PD_AON, PD_PMC]
+      strategy: latch_last_value
+      reason: Wake-event handshake must hold value across PMC sleep transitions.
+    - between: [PD_LPDDR_ARRAY, PD_LPDDR_IO]
+      strategy: hold_self_refresh_handshake
+      reason: JEDEC LPDDR5X self-refresh handshake must survive PHY clock gating.
+power_state_table:
+  states:
+    - id: S0_active
+      description: All domains live, DVFS active.
+      enabled_domains: ALL
+    - id: S0i1_light
+      description: Big CPU clock gated, little CPU active.
+      enabled_domains: ALL
+      gated_domains: []
+    - id: S0i2_deep_idle
+      description: CPU big + NPU + GPU gated; SRAM retention voltage.
+      enabled_domains: [PD_AON, PD_PMC, PD_SOC_FABRIC, PD_SRAM, PD_CPU_LITTLE, PD_LPDDR_IO, PD_LPDDR_ARRAY, PD_LPDDR_CTRL, PD_LPDDR_PHY_ANALOG, PD_IO_18, PD_IO_33]
+      gated_domains: [PD_CPU_BIG, PD_NPU, PD_GPU, PD_USB_PCIE_PHY, PD_RF_REF]
+    - id: S3_suspend_to_ram
+      description: LPDDR self-refresh, only AON + PMC + LPDDR domains alive.
+      enabled_domains: [PD_AON, PD_PMC, PD_LPDDR_IO, PD_LPDDR_ARRAY, PD_LPDDR_CTRL, PD_LPDDR_PHY_ANALOG]
+      gated_domains: [PD_SOC_FABRIC, PD_SRAM, PD_CPU_BIG, PD_CPU_LITTLE, PD_NPU, PD_GPU, PD_IO_18, PD_IO_33, PD_USB_PCIE_PHY, PD_RF_REF]
+    - id: S4_suspend_to_disk
+      description: Only AON + PMC alive. LPDDR contents persisted to NVM by software prior to entry.
+      enabled_domains: [PD_AON, PD_PMC]
+      gated_domains: [PD_SOC_FABRIC, PD_SRAM, PD_CPU_BIG, PD_CPU_LITTLE, PD_NPU, PD_GPU, PD_LPDDR_IO, PD_LPDDR_ARRAY, PD_LPDDR_CTRL, PD_LPDDR_PHY_ANALOG, PD_IO_18, PD_IO_33, PD_USB_PCIE_PHY, PD_RF_REF]
+release_blockers:
+  - UPF not exercised against extracted netlist in commercial low-power signoff.
+  - Retention strategy granularity (cell-level retention FF placement) not committed to RTL.
+  - Isolation cell library not selected (foundry-dependent).
+release_use: prohibited_until_external_review

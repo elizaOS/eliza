@@ -1,0 +1,32 @@
+# Deployment Notes — n8n Automation Platform
+# Environment: Staging
+# Maintained by: DevOps Team
+
+environment: staging
+n8n_version: "1.52.0"
+
+# Workflow storage configuration
+workflow_save_path: /var/lib/n8n/workflows
+workflow_backup_path: /var/lib/n8n/backups
+
+backup_enabled: true
+backup_schedule: "0 2 * * *"  # Daily at 2 AM
+backup_retention_days: 30
+
+last_deploy: "2024-06-01"
+deployed_by: "jenkins-pipeline-n8n-staging"
+
+resources:
+  cpu_limit: "2"
+  memory_limit: "4Gi"
+  replicas: 1
+
+health_check:
+  endpoint: "http://localhost:5678/healthz"
+  interval_seconds: 30
+  timeout_seconds: 5
+
+notes:
+  - "Upgraded from 1.48.0 to 1.52.0 on 2024-06-01"
+  - "SSL termination handled by nginx reverse proxy"
+  - "Workflow files synced from Git repository on deploy"

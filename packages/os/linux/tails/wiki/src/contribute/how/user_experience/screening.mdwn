@@ -1,0 +1,49 @@
+[[!meta title="Screening"]]
+[[!meta robots="noindex"]]
+
+Email templates
+===============
+
+Rejection
+---------
+
+    Hi,
+
+    Thanks for answering our invitation!
+
+    A lot of people answer our call and I am sorry to inform you that you
+    have not been selected this time.
+
+    OR
+
+    We didn't select you for the usability tests this time because we are
+    looking for people who had never used Tails in the past.
+
+    But we're keeping your email in our database and might contact you
+    again in the future for more similar opportunities.
+
+    Have a nice day,
+
+Acceptance
+----------
+
+    Hi,
+
+    Thanks a lot for answering our call for participants to our usability tests!
+
+    We are very interested in your profile.
+
+    Are you still available on $DAY $DOM from $START to $END ($HOUR UTC)?
+
+    If so, I'd like to propose you to have a 10 minutes call in the coming days in
+    order to do a sound check and make sure that everything will work fine on the
+    day of the tests.
+
+    We will be doing a video call so you will need a laptop and a good Wi-Fi
+    connection but you won't have to install anything new on your computer.
+
+    I could meet to test the video setup $TIME.
+
+    Could you propose me a couple of times to choose from?
+
+    Thanks and see you soon,

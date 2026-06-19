@@ -1,0 +1,39 @@
+[[!meta date="Mon, 01 Dec 2014 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.2 are now fixed in Tails 1.2.1.
+
+We **strongly** encourage you to [[upgrade to Tails
+1.2.1|news/version_1.2.1]] as soon as possible.
+
+Details
+=======
+
+ - Tor Browser and its bundled NSS: [[!mfsa 2014-83]],
+   [[!mfsa 2014-85]], [[!mfsa 2014-87]], [[!mfsa 2014-88]],
+   [[!mfsa 2014-89]] and [[!mfsa 2014-90]]
+ - wpa: [[!debsa2014 3052]] (CVE-2014-3686)
+ - openssl: [[!debsa2014 3053]] (CVE-2014-3513, CVE-2014-3566,
+   CVE-2014-3567, CVE-2014-3568)
+ - pidgin: [[!debsa2014 3055]] (CVE-2014-3694, CVE-2014-3695,
+   CVE-2014-3696, CVE-2014-3698)
+ - libtasn1-3: [[!debsa2014 3056]] (CVE-2014-3467, CVE-2014-3468,
+   CVE-2014-3469)
+ - libxml2: [[!debsa2014 3057]] (CVE-2014-3660)
+ - linux: [[!debsa2014 3060]] (CVE-2014-3610, CVE-2014-3611,
+   CVE-2014-3645, CVE-2014-3646, CVE-2014-3647, CVE-2014-3673,
+   CVE-2014-3687, CVE-2014-3688, CVE-2014-3690, CVE-2014-7207)
+ - wget: [[!debsa2014 3062]] (CVE-2014-4877)
+ - curl: [[!debsa2014 3069]] (CVE-2014-3707)
+ - nss: [[!debsa2014 3071]] (CVE-2014-1544)
+ - file: [[!debsa2014 3072]] (CVE-2014-3710)
+ - libgcrypt11: [[!debsa2014 3073]] (CVE-2014-5270)
+ - ppp: [[!debsa2014 3079]] (CVE-2014-3158)
+ - openjdk-7: [[!debsa2014 3080]] (CVE-2014-6457, CVE-2014-6502,
+   CVE-2014-6504, CVE-2014-6506, CVE-2014-6511, CVE-2014-6512,
+   CVE-2014-6517, CVE-2014-6519, CVE-2014-6531, CVE-2014-6558)
+ - flac: [[!debsa2014 3082]] (CVE-2014-8962, CVE-2014-9028)
+ - mutt: [[!debsa2014 3083]] (CVE-2014-9116)

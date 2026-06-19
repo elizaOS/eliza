@@ -1,0 +1,76 @@
+#!/usr/bin/python3 -I
+
+import argparse
+import subprocess
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gdk", "3.0")
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gio", "2.0")
+from gi.repository import Gdk, Gio, Gtk  # noqa: E402
+from systemd import journal  # noqa: E402
+
+
+def str_to_gfile(s) -> Gio.File:
+    return Gio.File.new_for_commandline_arg(s)
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("desktop", help="Path to the .desktop file", type=Path)
+    p.add_argument(
+        "app_args",
+        metavar="ARGUMENT",
+        nargs="*",
+        type=str_to_gfile,
+        help="Arguments for the application",
+    )
+    args = p.parse_args()
+
+    # This is how we solved tails#20745, and we make sure to load the desktop filename from an absolute path,
+    # so: qa-tails-20745-ok
+    app = Gio.DesktopAppInfo.new_from_filename(str(args.desktop))
+    # noinspection PyArgumentList
+    display: Gdk.Display = Gdk.Display.get_default()
+    launch_context: Gdk.AppLaunchContext = display.get_app_launch_context()
+    launch_context.set_timestamp(Gtk.get_current_event_time())
+    app.launch(files=args.app_args, context=launch_context)
+    bus_name = args.desktop.name.removesuffix(".desktop")
+    if Gio.dbus_is_name(bus_name):
+        object_path = "/" + bus_name.replace(".", "/")
+        try:
+            # This will wait until the application replies to the Ping,
+            # effectively blocking the application.
+            # While busctl already has a default --timeout value of 25s,
+            # we're setting it to be more explicit.
+            subprocess.run(
+                [
+                    "/usr/bin/busctl",
+                    "--quiet",
+                    "--user",
+                    "--timeout=25s",
+                    "call",
+                    bus_name,
+                    object_path,
+                    "org.freedesktop.DBus.Peer",
+                    "Ping",
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+        except subprocess.CalledProcessError as exc:
+            # Some applications don't really expose themselves on DBus
+            # (ie: org.gnome.Evince or org.boum.tails.PersistentStorage).
+            # Therefore failures are ok, we just print them.
+            journal.send(
+                exc.output.decode().strip(),
+                SYSLOG_IDENTIFIER="gtk-abspath-launch",
+                PRIORITY=5,
+            )
+
+
+if __name__ == "__main__":
+    main()

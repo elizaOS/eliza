@@ -1,0 +1,65 @@
+#!/bin/sh
+set -eu
+
+ARTIFACT_ROOT=/opt/elizaos-artifacts
+INSTALL=/opt/elizaos
+PROVENANCE="${ARTIFACT_ROOT}/riscv64-bun-provenance.json"
+MANIFEST="${ARTIFACT_ROOT}/manifest.txt"
+
+fail() {
+    echo "elizaos agent install failed: $*" >&2
+    exit 70
+}
+
+require_file() {
+    [ -s "$1" ] || fail "missing required artifact $1"
+}
+
+require_file "${PROVENANCE}"
+require_file "${MANIFEST}"
+require_file "${ARTIFACT_ROOT}/elizaos-app/agent-bundle.js"
+require_file "${ARTIFACT_ROOT}/elizaos-app.sha256"
+
+grep -Fq '"schema": "eliza.os.linux.riscv64_bun_stage_provenance.v1"' "${PROVENANCE}" ||
+    fail "riscv64-bun-provenance.json schema mismatch"
+grep -Fq 'bun-linux-riscv64-musl.zip' "${PROVENANCE}" ||
+    fail "riscv64-bun-provenance.json missing bun-linux-riscv64-musl.zip"
+grep -Fq 'bun-version.json' "${PROVENANCE}" ||
+    fail "riscv64-bun-provenance.json missing shared bun-version.json input"
+grep -Fq 'staged_bun_sha256' "${PROVENANCE}" ||
+    fail "riscv64-bun-provenance.json missing staged_bun_sha256"
+
+mkdir -p "${INSTALL}/app" "${INSTALL}/bin" "${INSTALL}/app/node_modules"
+cp -a "${ARTIFACT_ROOT}/elizaos-app/." "${INSTALL}/app/"
+# elizaos-app.sha256 lists files relative to elizaos-app/ (e.g. ./agent-bundle.js,
+# ./musl-runtime/bun) — verify from inside that dir, not the hook's cwd.
+( cd "${ARTIFACT_ROOT}/elizaos-app" && sha256sum -c "${ARTIFACT_ROOT}/elizaos-app.sha256" )
+
+if [ -s "${ARTIFACT_ROOT}/bun" ]; then
+    require_file "${ARTIFACT_ROOT}/bun.sha256"
+    # bun.sha256 lists the path relative to the artifact root (elizaos-app/musl-runtime/bun).
+    ( cd "${ARTIFACT_ROOT}" && sha256sum -c "${ARTIFACT_ROOT}/bun.sha256" )
+    install -m 0755 "${ARTIFACT_ROOT}/bun" "${INSTALL}/bin/bun"
+fi
+
+for module in undici ws node-fetch; do
+    if [ -d "/usr/share/nodejs/${module}" ] && [ ! -e "${INSTALL}/app/node_modules/${module}" ]; then
+        ln -s "/usr/share/nodejs/${module}" "${INSTALL}/app/node_modules/${module}"
+    fi
+done
+
+chown -R elizaos:elizaos "${INSTALL}" 2>/dev/null || true
+chmod 0755 "${INSTALL}" "${INSTALL}/app" "${INSTALL}/bin"
+
+# Enable the agent + first-boot units so systemd actually starts them at boot.
+# Both ship [Install] WantedBy=multi-user.target but nothing enabled them after
+# the e9ee362ee9 integration deleted the wiring — so the agent never ran on a
+# booted image (run-agent.sh + wait-agent-health.sh never fired, hence no
+# elizaos-firstboot-ready / elizaos-curl-health-ready / elizaos-agent-ready
+# markers). Enable them here, right after install.
+for unit in elizaos-first-boot.service elizaos-agent.service; do
+    if [ -e "/etc/systemd/system/${unit}" ]; then
+        systemctl enable "${unit}" >/dev/null 2>&1 ||
+            echo "WARNING: could not enable ${unit}" >&2
+    fi
+done

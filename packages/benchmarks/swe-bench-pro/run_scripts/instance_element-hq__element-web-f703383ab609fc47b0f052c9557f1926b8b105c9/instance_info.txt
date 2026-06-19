@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-f703383ab609fc47b0f052c9557f1926b8b105c9
+Repository: element-hq/element-web
+Base Commit: bb50cd56ee9f03f46c3b6f7947fccc596d1131c5
+Test Files: ["test/VoipUserMapper-test.ts"]
+FAIL_TO_PASS: ["test/VoipUserMapper-test.ts | VoipUserMapper | translates users to virtual users"]
+PASS_TO_PASS: []

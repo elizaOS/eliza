@@ -1,0 +1,180 @@
+[[!meta title="Upgrading a Tails USB stick"]]
+
+Tails includes an automatic mechanism to upgrade a USB stick to
+the latest version of Tails. When an automatic upgrade is performed, only an
+*upgrade package* is downloaded. The upgrade package contains all the changes
+made to Tails since Tails was first installed or was last manually upgraded.
+
+In some cases, it is impossible to do an **automatic upgrade**
+and you might have to do a **manual upgrade**. This page describes both techniques.
+
+<div class="note">
+
+<p>Your Persistent Storage will be preserved by both automatic and
+manual upgrades.</p>
+
+</div>
+
+If you use Tails from a DVD, you need to [[burn a new DVD|install/dvd]].
+
+[[!toc levels=2]]
+
+<h1 id="check-version">Checking which version of Tails you are currently running</h1>
+
+To check which version of Tails you are currently running, choose
+**Apps&nbsp;▸ Tails&nbsp;▸ About Tails**.
+
+In the **About Tails** utility, you can click **Check for Upgrades** to check
+whether a new version of Tails is available. This check is also done
+automatically every time you start Tails and connect to the Tor network.
+
+<h1 id="automatic">Automatic upgrade using <i>Tails Upgrader</i></h1>
+
+After starting Tails and connecting to Tor, *Tails Upgrader*
+automatically checks if upgrades are available and then
+proposes you to upgrade your USB stick. The upgrades are checked for and downloaded
+through Tor.
+
+The advantages of automatic upgrades are the following:
+
+- You only need a single Tails USB stick. The upgrade is done on the fly from a
+  running Tails. After upgrading, you can restart and use the new version.
+
+- The upgrade is much smaller to download than a full USB image.
+
+- The upgrade mechanism includes cryptographic verification of the upgrade.
+  You don't have to verify the USB image yourself anymore.
+
+Requirements:
+
+- A Tails USB stick
+
+- An Internet connection
+
+After connecting to Tor, if an upgrade is available, a dialog appears and
+proposes you to upgrade your USB stick.
+
+[[!img upgrader_automatic.png class="screenshot" alt=""]]
+
+If you decide to do the upgrade, click on **Upgrade now**,
+and follow the assistant through the upgrade process.
+
+<div class="tip">
+
+<p>If you cannot upgrade at startup, you can open <i>Tails Upgrader</i>
+later by choosing <b>Apps&nbsp;▸ Tails&nbsp;▸ About Tails</b> and clicking
+<b>Check for Upgrades</b>.</p>
+
+</div>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+- If an error occurs while installing the upgrade, *Tails Upgrader* asks you to visit:
+
+  [[file:///usr/share/doc/tails/website/doc/upgrade/error/install.en.html|upgrade/error/install]]
+
+- If another error occur while upgrading or if your Tails USB stick fails to
+  start after an automatic upgrade, we recommend that you do a manual upgrade
+  instead. See below.
+
+<h1 id="manual">Manual upgrade using <i>Tails Cloner</i></h1>
+
+It might not always be possible to do an automatic upgrade as described [[above|upgrade#automatic]].
+For example, when:
+
+- No automatic upgrade is available from our website for this version.
+
+- The automatic upgrade is impossible for technical reasons (not enough
+  memory, not enough free space on the USB stick, and so on). For example, if you
+  get the following error message:
+
+       there is not enough free space on the Tails system partition
+
+- The automatic upgrade failed and you need to repair a Tails USB stick.
+
+- You want to upgrade by cloning from another Tails USB stick which is
+  already up-to-date, for example, when working offline or with a slow
+  Internet connection.
+
+After connecting to Tor, a dialog informs you if you have to
+upgrade your USB stick using *Tails Cloner*
+to a newer version of Tails.
+
+[[!img upgrader_manual.png class="screenshot" alt=""]]
+
+<div class="tip">
+
+<p>You can also do a manual upgrade to reduce the size of future automatic
+upgrades.</p>
+
+<p>When doing automatic upgrades, the size of the download increases over time.
+If you do a manual upgrade, the size of future automatic upgrades will become
+smaller again.</p>
+
+<p>We estimated that, to actually reduce the
+overall download size, it's only worth it to do 1 manual upgrade every year if
+you apply all upgrades of Tails.</p>
+
+</div>
+
+To do a manual upgrade, you can either:
+
+- [[Download and upgrade|doc/upgrade/#download]] (below)
+
+- [[Upgrade by cloning from another Tails|doc/upgrade/#clone]] (below)
+
+- [[Burn a new Tails DVD|install/dvd]]
+
+<h2 id="download">Download and upgrade</h2>
+
+You need:
+
+- Your Tails USB stick
+
+- Another empty USB stick <small>(at least 8 GB)</small>&nbsp;[[!toggle id="why_extra" text="Why?"]]
+
+- ½ hour to download Tails (<small class="remove-extra-space">[[!inline pages="inc/stable_amd64_iso_size" raw="yes" sort="age"]]</small>)
+
+- ½ hour to upgrade
+
+[[!toggleable id="why_extra" text="""
+<span class="hide">[[!toggle id="why_extra" text=""]]</span>
+<p>It is currently impossible to manually upgrade a Tails USB stick
+while running from itself. This scenario requires creating an
+intermediary Tails on another USB stick, from which to upgrade your
+Tails.</p>
+"""]]
+
+See our instructions on how to do a manual upgrade by:
+
+- [[Downloading and upgrading from your Tails|upgrade/tails]] (more secure)
+
+- [[Downloading and upgrading from Windows|upgrade/windows]] (more convenient)
+
+- [[Downloading and upgrading from macOS|upgrade/mac]] (more convenient)
+
+- [[Downloading and upgrading from Linux|upgrade/linux]] (more convenient)
+
+<div class="caution">
+
+<p>Downloading and upgrading from Windows might be less secure if your
+Windows has viruses. But, it might be more convenient and faster.</p>
+
+</div>
+
+<h2 id="clone">Upgrade by cloning from another Tails</h2>
+
+If you know someone you trust who already did the upgrade, you can
+upgrade your Tails by cloning from their Tails.
+
+You need:
+
+- Your Tails USB stick
+
+- Another up-to-date Tails (USB stick or DVD)
+
+- ¼ hour to upgrade
+
+See our instructions on how to do a manual upgrade by:
+
+- [[Cloning from another Tails|upgrade/clone]]

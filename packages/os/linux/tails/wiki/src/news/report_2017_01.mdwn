@@ -1,0 +1,134 @@
+[[!meta title="Tails report for January, 2017"]]
+[[!meta date="Mon, 27 Feb 2017 08:57:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 2.10 was released on January 24th|news/version_2.10]] (minor release).
+
+* Tails 2.11 is [[scheduled for March 7th|contribute/calendar]].
+
+The following changes were introduced in Tails 2.10:
+
+  - We installed [[*OnionShare*|doc/anonymous_internet/onionshare]],
+    a tool for anonymous file sharing.
+
+    [[!img news/version_2.10/onionshare.png link="no"]]
+
+  - We enabled the
+    [[circuit view|doc/anonymous_internet/Tor_Browser#circuit-view]]
+    in *Tor Browser*.
+
+    [[!img doc/anonymous_internet/Tor_Browser/circuit-view.png link="no"]]
+
+  - Replace *AdBlock Plus* with *uBlock Origin*.
+
+  - Configure the *APT* package manage to use Debian's Onion services.
+
+  - Install the *AMDGPU* display driver. This should improve the
+    support for newer AMD graphics adapters.
+
+  - Renamed the *Boot Loader Menu* entries from "Live" to "Tails", and
+    replaced the confusing "failsafe" wording with "Troubleshooting
+    Mode".
+
+  - Add support for [[!wikipedia exFAT]].
+
+  - Remove *Nyx* (previously called *arm*).
+
+  - Rewrite *Tor control port filter* entirely. Now Tails can safely
+    support *OnionShare*, the circuit view of *Tor Browser*, and
+    similar. This also enabled Whonix to replace their own similar
+    piece of software with this one.
+
+Code
+====
+
+* We (almost) finished updating the AppArmor policy in Debian Stretch
+  so that it supports merged-/usr systems.
+* We started evaluating
+  [USBGuard](https://dkopecek.github.io/usbguard/), and
+  posted
+  suggestions to improve its user experience, that
+  upstream warmly welcomes.
+
+Documentation and website
+=========================
+
+* We documented how to use [[*OnionShare*|doc/anonymous_internet/onionshare]],
+  a tool for anonymous file sharing.
+
+* We documented the [[circuit view|doc/anonymous_internet/Tor_Browser#circuit-view]]
+  in *Tor Browser*.
+
+User experience
+===============
+
+* We've been working on improving the user experience of Tails Installer
+* For the Tails 3.0 test images, in Tails Greeter we will drop the read-only persistence option. We don't know yet if we will be able to re-add this option to Tails 3.0 once we release it, but we are working on it.
+
+Infrastructure
+==============
+
+* We started to set up a XMPP server to satisfy the need for private
+  communication tools expressed by one of our teams.
+* We enabled an Onion service for our APT repository
+  ([[!tails_ticket 11556]]).
+* We improved our systems so that they send less useless email to our
+  system administrators.
+* We started updating our Puppet modules to better support Debian Stretch.
+
+Funding
+=======
+
+* [LinuxFr: Tails, nous avons besoin de vos dons](https://linuxfr.org/news/tails-nous-avons-besoin-de-vos-dons) was published as a follow-up on our call for donations.
+* We received feedback from OTF about our concept note, and started
+  working on our answer.
+
+Outreach
+========
+
+Upcoming events
+---------------
+
+* We have a booth at [FOSDEM](https://fosdem.org/2017/) in Brussels.
+* Tails will be presented at a [cryptoparty](http://biblio.insa-rennes.fr/crypto) on March 4th 2017 in Rennes, France.
+* We started organizing a Debian event that will take place in Paris
+  on May 13-14. Stay tuned!
+
+On-going discussions
+====================
+
+* We've been discussing how to improve our memory erasure process.
+* We've announced that [[Tails 3.0 will require a 64-bit processor|news/Tails_3.0_will_require_a_64-bit_processor]].
+
+Translation
+===========
+
+## All the website
+
+  - de: 54% (3050) strings translated, 5% strings fuzzy, 49% words translated
+  - fa: 40% (2265) strings translated, 8% strings fuzzy, 45% words translated
+  - fr: 81% (4562) strings translated, 1% strings fuzzy, 80% words translated
+  - it: 28% (1602) strings translated, 3% strings fuzzy, 26% words translated
+  - pt: 27% (1551) strings translated, 8% strings fuzzy, 25% words translated
+
+Total original words: 57564
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 82% (1539) strings translated, 10% strings fuzzy, 83% words translated
+  - fa: 38% (710) strings translated, 10% strings fuzzy, 40% words translated
+  - fr: 98% (1842) strings translated, 1% strings fuzzy, 99% words translated
+  - it: 80% (1490) strings translated, 10% strings fuzzy, 79% words translated
+  - pt: 49% (924) strings translated, 13% strings fuzzy, 50% words translated
+
+Metrics
+=======
+
+* Tails has been started more than 662 874 times this month. This makes 21 383 boots a day on average.
+* 14 782 downloads of the OpenPGP signature of Tails ISO from our website.
+* 142 bug reports were received through WhisperBack.

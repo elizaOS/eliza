@@ -1,0 +1,20 @@
+[[!meta title="Translate Tails into German"]]
+
+[[!toc levels=2]]
+
+Currently there is no fixed team of German translators.
+
+# Glossaries used by the German translation team
+
+We try to follow the [GNOME Guidelines](https://wiki.gnome.org/de/Uebersetzung)
+and their glossaries:
+
+* <https://wiki.gnome.org/de/StandardUebersetzungen>
+* <https://wiki.gnome.org/de/Uebersetzung/Dokumentationen>
+
+For words not in these lists it is helpful to see
+how they are translated (or not translated) in Wikipedia.
+
+Often, we simply discuss on the [[mailing list for
+translators|https://www.autistici.org/mailman/listinfo/tails-l10n/]] if
+unsure which term applies best.

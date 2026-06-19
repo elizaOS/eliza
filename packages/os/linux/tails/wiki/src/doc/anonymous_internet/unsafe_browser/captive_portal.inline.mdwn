@@ -1,0 +1,10 @@
+[[!meta robots="noindex"]]
+
+A captive portal is a web page that is often displayed before you can
+access the Internet on public networks in airports, hotels, libraries,
+and other places.
+
+[[!img captive_portal.png link="no" class="svg" alt="Train station Wi-Fi. Click here for 60 minutes of free Wi-Fi" title="Example of a captive portal"]]
+
+Tails cannot connect to the Tor network when the Internet connection is
+initially blocked by a captive portal.

@@ -1,0 +1,17 @@
+#!/bin/sh
+
+set -e
+
+echo "Creating kernel and ramdisk symlinks"
+
+# Get version information for the (newest) installed kernel.
+KERNEL="$(/bin/ls -1 /boot/vmlinuz-* | tail -n 1)"
+INITRD="$(/bin/ls -1 /boot/initrd.img-* | tail -n 1)"
+
+if [ ! -e /vmlinuz ]; then
+   ln -s "$KERNEL" /vmlinuz
+fi
+
+if [ ! -e /initrd.img ]; then
+   ln -s "$INITRD" /initrd.img
+fi

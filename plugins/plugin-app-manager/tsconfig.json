@@ -1,0 +1,78 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "declarationMap": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "strictNullChecks": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "ignoreDeprecations": "6.0",
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["node"],
+    "outDir": "./dist",
+    "rootDir": "../..",
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/types": ["../../packages/shared/src/types/index.ts"],
+      "@elizaos/shared/brand": ["../../packages/shared/src/brand/index.ts"],
+      "@elizaos/shared/character-presets": ["../../packages/shared/src/character-presets.ts"],
+      "@elizaos/shared/runtime-env": ["../../packages/shared/src/runtime-env.ts"],
+      "@elizaos/shared/settings-debug": ["../../packages/shared/src/settings-debug.ts"],
+      "@elizaos/shared/api/agent-api-types": ["../../packages/shared/src/api/agent-api-types.ts"],
+      "@elizaos/shared/config/plugin-ui-spec": ["../../packages/shared/src/config/plugin-ui-spec.ts"],
+      "@elizaos/shared/contracts/conversation-routes": ["../../packages/shared/src/contracts/conversation-routes.ts"],
+      "@elizaos/shared/contracts/first-run-options": ["../../packages/shared/src/contracts/first-run-options.ts"],
+      "@elizaos/shared/elizacloud/cloud-secrets": ["../../packages/shared/src/elizacloud/cloud-secrets.ts"],
+      "@elizaos/shared/elizacloud/server-cloud-tts": ["../../packages/shared/src/elizacloud/server-cloud-tts.ts"],
+      "@elizaos/shared/utils/env": ["../../packages/shared/src/utils/env.ts"],
+      "@elizaos/shared/utils/number-parsing": ["../../packages/shared/src/utils/number-parsing.ts"],
+      "@elizaos/shared/utils/sql-compat": ["../../packages/shared/src/utils/sql-compat.ts"],
+      "@elizaos/plugin-registry": [
+        "../../plugins/plugin-registry/src/index.ts"
+      ],
+      "@elizaos/plugin-app-manager": ["./src/index.ts"],
+      "@elizaos/plugin-app-manager/*": ["./src/*"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/config/*": ["../../packages/agent/src/config/*.ts"],
+      "@elizaos/agent/utils/*": ["../../packages/agent/src/utils/*.ts"],
+      "@elizaos/agent/services/*": ["../../packages/agent/src/services/*.ts"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/app-core/agent-bridge": [
+        "../../packages/app-core/src/agent-bridge.ts"
+      ],
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
+      ],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/capacitor-bun-runtime": ["../../plugins/plugin-native-bun-runtime/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
+}

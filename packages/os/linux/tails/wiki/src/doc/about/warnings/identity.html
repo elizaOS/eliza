@@ -1,0 +1,69 @@
+<div>[[!meta title="Protecting your identity when using Tails"]]</div>
+
+<h1 class="embedded">Protecting your identity</h1>
+
+<div class="standalone">
+
+[[!inline pages="doc/about/warning/identity.inline" raw="yes" sort="age"]]
+
+[[!toc levels=2]]
+
+</div>
+
+<h2 id="metadata">Clean metadata from files before sharing them</h2>
+
+<p>Many files contain hidden data, or metadata:</p>
+
+<ul>
+
+<li><p>JPEG and other image files often contain information about
+where a picture was taken and which camera was used.</p></li>
+
+<li><p>Office documents often contain information
+about their author, and the date and time the document was
+created.</p></li>
+
+</ul>
+
+<p>To help you clean metadata, Tails include
+[[<i>Metadata Cleaner</i>|doc/sensitive_documents/metadata]], a tool to remove metadata
+in a wide range of file formats.</p>
+
+<div class="attack">
+
+<p>Metadata has been used in the past to locate people
+from pictures they took. For an example, see
+<a href="https://www.npr.org/sections/thetwo-way/2012/12/04/166487197/betrayed-by-metadata-john-mcafee-admits-hes-really-in-guatemala">NPR:
+Betrayed by metadata, John McAfee admits he's really in
+Guatemala</a>.</p>
+
+</div>
+
+<h2 id="contextual">Use Tails sessions for only one purpose at a time</h2>
+
+<p>If you use Tails sessions for more than one purpose at a time,
+an adversary could link your different
+activities together.</p>
+
+<p>For example, if you log into different accounts on the same website in a
+single Tails session, the website could determine that the accounts
+are used by the same person. This is because websites can tell when
+2 accounts are using the same Tor circuit.</p>
+
+<p>To prevent an adversary from linking your
+activities together while using Tails, restart Tails between
+different activities. For example, restart Tails between checking
+your work email and your whistleblowing email.</p>
+
+<div class="attack">
+
+<p>We are not aware of any such attacks to deanonymize people online who
+used Tails for different purposes at a time.</p>
+
+</div>
+
+<p>If you worry that the files in your [[Persistent
+Storage|doc/persistent_storage]] could be used to link your activities together,
+consider using a different Tails USB stick for each activity.
+For example, use one Tails USB stick for your activism work and another one
+for your journalism work.</p>

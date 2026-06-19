@@ -1,0 +1,59 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-26 18:01+0000\n"
+"PO-Revision-Date: 2015-10-26 09:49+0000\n"
+"Last-Translator: sprint5 <translation5@451f.org>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"sensitive_documentsindex/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.4-dev\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Removing metadata from files|sensitive_documents/metadata]]"
+msgstr ""
+"[[!traillink چاپ_و_اسکن_کردن|sensitive_documents/printing_and_scanning]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Office suite|sensitive_documents/office_suite]]"
+msgstr "[[!traillink بستهٔ_آفیس|sensitive_documents/office_suite]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Graphics|sensitive_documents/graphics]]"
+msgstr "[[!traillink گرافیک|sensitive_documents/graphics]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Sound and video|sensitive_documents/sound_and_video]]"
+msgstr "[[!traillink صدا_و_ویدیو|sensitive_documents/sound_and_video]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Editing PDFs|sensitive_documents/pdf]]"
+msgstr "[[!traillink گرافیک|sensitive_documents/graphics]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Printing and scanning|sensitive_documents/printing_and_scanning]]"
+msgstr ""
+"[[!traillink چاپ_و_اسکن_کردن|sensitive_documents/printing_and_scanning]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Screenshot and screencast|sensitive_documents/screenshot_and_screencast]]"
+msgstr ""
+"[[!traillink چاپ_و_اسکن_کردن|sensitive_documents/printing_and_scanning]]"

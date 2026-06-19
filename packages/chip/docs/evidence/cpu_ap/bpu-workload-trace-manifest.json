@@ -1,0 +1,820 @@
+{
+  "claim_boundary": "Local QEMU-RV64 workload-trace provenance only. This manifest does not satisfy SPEC2017, AOSP, browser/JS, or production GPU MPKI claims.",
+  "evidence_class": "qemu_rv64_workload_trace_manifest",
+  "generated_at_utc": "2026-05-28T20:41:18.671481+00:00",
+  "generated_utc": "2026-05-28T20:41:18.671458+00:00",
+  "missing_required_local_trace_names": [],
+  "phone_claim_allowed": false,
+  "present_required_local_trace_names": [
+    "agent_decode",
+    "agent_loop",
+    "audio_frames",
+    "browser_layout_proxy",
+    "build_compiler_proxy",
+    "compression_proxy",
+    "crypto_packet_proxy",
+    "database_btree_proxy",
+    "file_tlv",
+    "gc_runtime_proxy",
+    "gpu_control_proxy",
+    "gpu_irq_fence_scheduler_proxy",
+    "gpu_memory_residency_proxy",
+    "http_parser",
+    "kernel_syscall_proxy",
+    "mobile_ui_frame_scheduler_proxy",
+    "nn_delegate_fallback_proxy",
+    "text_log",
+    "video_blocks",
+    "wasm_jit_osr_proxy"
+  ],
+  "production_external_suites": [
+    {
+      "missing_dependency": "SPEC CPU2017 license and RV64 executable traces",
+      "name": "spec2017_intrate",
+      "required_for_claims": [
+        "spec2017_claim",
+        "workload_mpki_claim"
+      ],
+      "status": "missing_external_trace"
+    },
+    {
+      "missing_dependency": "AOSP/Cuttlefish RV64 system-server, launcher, and app traces",
+      "name": "aosp_system_server_and_launcher",
+      "required_for_claims": [
+        "android_claim",
+        "workload_mpki_claim"
+      ],
+      "status": "missing_external_trace"
+    },
+    {
+      "missing_dependency": "JetStream/Speedometer-class RV64 browser and JS-engine traces",
+      "name": "browser_js_engine",
+      "required_for_claims": [
+        "v8_claim",
+        "workload_mpki_claim"
+      ],
+      "status": "missing_external_trace"
+    },
+    {
+      "missing_dependency": "real mobile GPU driver/runtime command submission traces",
+      "name": "production_gpu_driver_runtime",
+      "required_for_claims": [
+        "workload_mpki_claim"
+      ],
+      "status": "missing_external_trace"
+    }
+  ],
+  "release_claim_allowed": false,
+  "required_local_trace_names": [
+    "agent_decode",
+    "agent_loop",
+    "audio_frames",
+    "browser_layout_proxy",
+    "build_compiler_proxy",
+    "compression_proxy",
+    "crypto_packet_proxy",
+    "database_btree_proxy",
+    "file_tlv",
+    "gc_runtime_proxy",
+    "gpu_control_proxy",
+    "gpu_irq_fence_scheduler_proxy",
+    "gpu_memory_residency_proxy",
+    "http_parser",
+    "kernel_syscall_proxy",
+    "mobile_ui_frame_scheduler_proxy",
+    "nn_delegate_fallback_proxy",
+    "text_log",
+    "video_blocks",
+    "wasm_jit_osr_proxy"
+  ],
+  "schema": "eliza.bpu_workload_trace_manifest.v1",
+  "total_branch_count": 25574792,
+  "total_instruction_count": 152035912,
+  "trace_count": 20,
+  "trace_dir": "external/workload-traces",
+  "traces": [
+    {
+      "branch_count": 6622719,
+      "bytes": 172273066,
+      "class_counts": {
+        "branch_count": 6622719,
+        "call_count": 2650,
+        "cond_branch_count": 6517113,
+        "direct_jump_count": 98386,
+        "indirect_branch_count": 1924,
+        "instruction_count": 38475498,
+        "return_count": 2646
+      },
+      "coverage_buckets": [
+        "agent_runtime",
+        "mode_1",
+        "qemu_rv64"
+      ],
+      "filename": "agent_decode.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 38475498,
+      "name": "agent_decode",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "39f8ad572df9dc8348d159a52b63ddad196db4a4355a33194059605cc4ab6478",
+      "source": {
+        "description": "decode-heavy: tokenizer/sampler/stream, minimal GEMV",
+        "isa": "rv64gc",
+        "mode": 1,
+        "note": "salvaged from execlog",
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "workload": "agent_loop"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 3839663,
+      "bytes": 99912384,
+      "class_counts": {
+        "branch_count": 3839663,
+        "call_count": 2046,
+        "cond_branch_count": 3811245,
+        "direct_jump_count": 22528,
+        "indirect_branch_count": 1803,
+        "instruction_count": 24817722,
+        "return_count": 2041
+      },
+      "coverage_buckets": [
+        "agent_runtime",
+        "qemu_rv64"
+      ],
+      "filename": "agent_loop.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 24817722,
+      "name": "agent_loop",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "3a3b6090229c290eb9320c33a946004b3dd3cde0b5ead0eab94a24e82bf2918d",
+      "source": {
+        "description": "llama.cpp agent duty-cycle proxy: UTF-8/BPE tokenizer, int8 GEMV, top-k sampler, streamed-JSON state machine",
+        "isa": "rv64gc",
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "steps": 64,
+        "toolchain": "riscv64-linux-gnu-gcc",
+        "workload": "agent_loop"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 432230,
+      "bytes": 11319143,
+      "class_counts": {
+        "branch_count": 432230,
+        "call_count": 1988,
+        "cond_branch_count": 373877,
+        "direct_jump_count": 52635,
+        "indirect_branch_count": 1747,
+        "instruction_count": 2890947,
+        "return_count": 1983
+      },
+      "coverage_buckets": [
+        "io_media",
+        "mode_4",
+        "qemu_rv64"
+      ],
+      "filename": "audio_frames.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 2890947,
+      "name": "audio_frames",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "0890ce2d36ba564c02ff775a87ea1a5a20cb24a83258a97f286a678d92e36756",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 4,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 3500,
+        "src": "io_stream.c",
+        "toolchain": "riscv64-linux-gnu-gcc",
+        "workload": "audio_frames"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 2680318,
+      "bytes": 69769412,
+      "class_counts": {
+        "branch_count": 2680318,
+        "call_count": 2004,
+        "cond_branch_count": 2495352,
+        "direct_jump_count": 179211,
+        "indirect_branch_count": 1752,
+        "instruction_count": 10753535,
+        "return_count": 1999
+      },
+      "coverage_buckets": [
+        "browser_layout_proxy",
+        "mode_5",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "browser_layout_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 10753535,
+      "name": "browser_layout_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "494a5d720a2937f29d28618983c4cf8b869c8f34aab13659a2fbe1381c4209b3",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 5,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 1400,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "browser_layout_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 1418554,
+      "bytes": 37093877,
+      "class_counts": {
+        "branch_count": 1418554,
+        "call_count": 45460,
+        "cond_branch_count": 991460,
+        "direct_jump_count": 265950,
+        "indirect_branch_count": 70229,
+        "instruction_count": 7784542,
+        "return_count": 45455
+      },
+      "coverage_buckets": [
+        "mode_0",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "build_compiler_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 7784542,
+      "name": "build_compiler_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "6c3edfa01dfc1a40dae1f2960eb530d37d12770a73031451a8b4a23e1b1740c7",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 0,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 1200,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "build_compiler_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 5396802,
+      "bytes": 140401565,
+      "class_counts": {
+        "branch_count": 5396802,
+        "call_count": 3202,
+        "cond_branch_count": 4877141,
+        "direct_jump_count": 511511,
+        "indirect_branch_count": 1751,
+        "instruction_count": 30273247,
+        "return_count": 3197
+      },
+      "coverage_buckets": [
+        "data_plane",
+        "mode_1",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "compression_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 30273247,
+      "name": "compression_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "e738dbffb97ce10b4bcffe4400d3fe6ac5bae82d238c9c6948d97c991ea8e4f9",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 1,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 1200,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "compression_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 1280333,
+      "bytes": 33369775,
+      "class_counts": {
+        "branch_count": 1280333,
+        "call_count": 2002,
+        "cond_branch_count": 1265054,
+        "direct_jump_count": 9529,
+        "indirect_branch_count": 1751,
+        "instruction_count": 17213991,
+        "return_count": 1997
+      },
+      "coverage_buckets": [
+        "data_plane",
+        "mode_2",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "crypto_packet_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 17213991,
+      "name": "crypto_packet_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "44f93c96e1e86e4c369175cabb61877dac6e85df19d0284b3881461d078d87b7",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 2,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 1600,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "crypto_packet_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 78001,
+      "bytes": 2109129,
+      "class_counts": {
+        "branch_count": 78001,
+        "call_count": 2004,
+        "cond_branch_count": 64629,
+        "direct_jump_count": 7617,
+        "indirect_branch_count": 1752,
+        "instruction_count": 383296,
+        "return_count": 1999
+      },
+      "coverage_buckets": [
+        "mode_3",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "database_btree_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 383296,
+      "name": "database_btree_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "b52e6212e58ccacf03f7fe7c2a24dfc37b1790eb0e42ad455b54a5d8c99a4255",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 3,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 1800,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "database_btree_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 471277,
+      "bytes": 12334303,
+      "class_counts": {
+        "branch_count": 471277,
+        "call_count": 1990,
+        "cond_branch_count": 452469,
+        "direct_jump_count": 13085,
+        "indirect_branch_count": 1748,
+        "instruction_count": 3139574,
+        "return_count": 1985
+      },
+      "coverage_buckets": [
+        "io_media",
+        "mode_2",
+        "qemu_rv64"
+      ],
+      "filename": "file_tlv.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 3139574,
+      "name": "file_tlv",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "d1178c9ba7abec8cc3795bc38d9efc1ec0f65315a44ddb799e211e898f1fd583",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 2,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 700,
+        "src": "io_stream.c",
+        "toolchain": "riscv64-linux-gnu-gcc",
+        "workload": "file_tlv"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 179229,
+      "bytes": 4741110,
+      "class_counts": {
+        "branch_count": 179229,
+        "call_count": 2003,
+        "cond_branch_count": 134127,
+        "direct_jump_count": 39350,
+        "indirect_branch_count": 1751,
+        "instruction_count": 1166690,
+        "return_count": 1998
+      },
+      "coverage_buckets": [
+        "mode_7",
+        "qemu_rv64",
+        "runtime_os",
+        "system_mix_proxy"
+      ],
+      "filename": "gc_runtime_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 1166690,
+      "name": "gc_runtime_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "6db710780b7d758d3a9ab0eadec564a49fc0713322d06fd65c16291b94671179",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 7,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 1200,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "gc_runtime_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 1352610,
+      "bytes": 35248972,
+      "class_counts": {
+        "branch_count": 1352610,
+        "call_count": 2002,
+        "cond_branch_count": 780519,
+        "direct_jump_count": 337483,
+        "indirect_branch_count": 230609,
+        "instruction_count": 5751285,
+        "return_count": 1997
+      },
+      "coverage_buckets": [
+        "gpu_control_proxy",
+        "mode_4",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "gpu_control_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 5751285,
+      "name": "gpu_control_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "ac542ecd9b29e8120e7fed121bf9959836559bac877a885d1789cd204e2d1b07",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 4,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 1800,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "gpu_control_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 38880,
+      "bytes": 1676247,
+      "class_counts": {
+        "branch_count": 38880,
+        "call_count": 2194,
+        "cond_branch_count": 29402,
+        "direct_jump_count": 3336,
+        "indirect_branch_count": 1759,
+        "instruction_count": 165444,
+        "return_count": 2189
+      },
+      "coverage_buckets": [
+        "gpu_control_proxy",
+        "mode_9",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "gpu_irq_fence_scheduler_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 165444,
+      "name": "gpu_irq_fence_scheduler_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "30fe283163d39f07f694323c68e10a1c82a701651fea3e316a63d3563f1a1588",
+      "source": {
+        "bpu_context": {
+          "asid": 0,
+          "priv": 0,
+          "secure": false,
+          "vmid": 0,
+          "workload_class": 1
+        },
+        "isa": "rv64gc",
+        "mode": 9,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 80,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "gpu_irq_fence_scheduler_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 56897,
+      "bytes": 2414371,
+      "class_counts": {
+        "branch_count": 56897,
+        "call_count": 2010,
+        "cond_branch_count": 46394,
+        "direct_jump_count": 4729,
+        "indirect_branch_count": 1759,
+        "instruction_count": 261199,
+        "return_count": 2005
+      },
+      "coverage_buckets": [
+        "gpu_control_proxy",
+        "mode_8",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "gpu_memory_residency_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 261199,
+      "name": "gpu_memory_residency_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "55e86ccaa6d798f476240f9b6c9fba9db309314f0f94a0f53616e380a9bb0690",
+      "source": {
+        "bpu_context": {
+          "asid": 0,
+          "priv": 0,
+          "secure": false,
+          "vmid": 0,
+          "workload_class": 1
+        },
+        "isa": "rv64gc",
+        "mode": 8,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 80,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "gpu_memory_residency_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 774042,
+      "bytes": 20210437,
+      "class_counts": {
+        "branch_count": 774042,
+        "call_count": 3389,
+        "cond_branch_count": 737472,
+        "direct_jump_count": 28050,
+        "indirect_branch_count": 1747,
+        "instruction_count": 2599051,
+        "return_count": 3384
+      },
+      "coverage_buckets": [
+        "io_media",
+        "mode_0",
+        "qemu_rv64"
+      ],
+      "filename": "http_parser.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 2599051,
+      "name": "http_parser",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "9af88ab9d32449acb167af4e33b5128858fc09778720d0bc78e5f4b287e80d40",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 0,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 1400,
+        "src": "io_stream.c",
+        "toolchain": "riscv64-linux-gnu-gcc",
+        "workload": "http_parser"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 66821,
+      "bytes": 1818507,
+      "class_counts": {
+        "branch_count": 66821,
+        "call_count": 2002,
+        "cond_branch_count": 52184,
+        "direct_jump_count": 6687,
+        "indirect_branch_count": 3951,
+        "instruction_count": 309029,
+        "return_count": 1997
+      },
+      "coverage_buckets": [
+        "mode_6",
+        "qemu_rv64",
+        "runtime_os",
+        "system_mix_proxy"
+      ],
+      "filename": "kernel_syscall_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 309029,
+      "name": "kernel_syscall_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "ef5aaac83aed2d182741460fb2eb854fb9c750ce44f38cda8aef96f774382ef4",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 6,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 2200,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "kernel_syscall_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 40547,
+      "bytes": 1744037,
+      "class_counts": {
+        "branch_count": 40547,
+        "call_count": 2010,
+        "cond_branch_count": 31164,
+        "direct_jump_count": 3253,
+        "indirect_branch_count": 2115,
+        "instruction_count": 173807,
+        "return_count": 2005
+      },
+      "coverage_buckets": [
+        "android_ui_proxy",
+        "mode_11",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "mobile_ui_frame_scheduler_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 173807,
+      "name": "mobile_ui_frame_scheduler_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "76181c7edb36a699b5d26063019bc6d63cd2355b1e79b1688592d45e8736c2f3",
+      "source": {
+        "bpu_context": {
+          "asid": 0,
+          "priv": 0,
+          "secure": false,
+          "vmid": 0,
+          "workload_class": 0
+        },
+        "isa": "rv64gc",
+        "mode": 11,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 80,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "mobile_ui_frame_scheduler_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 70921,
+      "bytes": 2989348,
+      "class_counts": {
+        "branch_count": 70921,
+        "call_count": 2010,
+        "cond_branch_count": 58087,
+        "direct_jump_count": 7060,
+        "indirect_branch_count": 1759,
+        "instruction_count": 410624,
+        "return_count": 2005
+      },
+      "coverage_buckets": [
+        "ml_runtime_proxy",
+        "mode_10",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "nn_delegate_fallback_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 410624,
+      "name": "nn_delegate_fallback_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "6c3e4a538076ac02f2ee3023fc68a79bb9cc0ceb574fd84f78d6415eade10251",
+      "source": {
+        "bpu_context": {
+          "asid": 0,
+          "priv": 0,
+          "secure": false,
+          "vmid": 0,
+          "workload_class": 2
+        },
+        "isa": "rv64gc",
+        "mode": 10,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 80,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "nn_delegate_fallback_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 461102,
+      "bytes": 12077856,
+      "class_counts": {
+        "branch_count": 461102,
+        "call_count": 4690,
+        "cond_branch_count": 411137,
+        "direct_jump_count": 38842,
+        "indirect_branch_count": 1748,
+        "instruction_count": 2668630,
+        "return_count": 4685
+      },
+      "coverage_buckets": [
+        "io_media",
+        "mode_1",
+        "qemu_rv64"
+      ],
+      "filename": "text_log.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 2668630,
+      "name": "text_log",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "c72289577727cd49868917762a82b6211d5a49bd759cc0092a033052a246e489",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 1,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 2700,
+        "src": "io_stream.c",
+        "toolchain": "riscv64-linux-gnu-gcc",
+        "workload": "text_log"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 275928,
+      "bytes": 7255284,
+      "class_counts": {
+        "branch_count": 275928,
+        "call_count": 1988,
+        "cond_branch_count": 262206,
+        "direct_jump_count": 8004,
+        "indirect_branch_count": 1747,
+        "instruction_count": 2641291,
+        "return_count": 1983
+      },
+      "coverage_buckets": [
+        "io_media",
+        "mode_3",
+        "qemu_rv64"
+      ],
+      "filename": "video_blocks.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 2641291,
+      "name": "video_blocks",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "689ab2a2e9347ad17ff477d0273840d945b1030ec3d016f6e36b3d6d3645b84a",
+      "source": {
+        "isa": "rv64gc",
+        "mode": 3,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 5000,
+        "src": "io_stream.c",
+        "toolchain": "riscv64-linux-gnu-gcc",
+        "workload": "video_blocks"
+      },
+      "trace_class": "qemu_rv64_workload"
+    },
+    {
+      "branch_count": 37918,
+      "bytes": 1636182,
+      "class_counts": {
+        "branch_count": 37918,
+        "call_count": 2011,
+        "cond_branch_count": 28963,
+        "direct_jump_count": 3179,
+        "indirect_branch_count": 1759,
+        "instruction_count": 156510,
+        "return_count": 2006
+      },
+      "coverage_buckets": [
+        "browser_js_proxy",
+        "mode_12",
+        "qemu_rv64",
+        "system_mix_proxy"
+      ],
+      "filename": "wasm_jit_osr_proxy.btrace.json",
+      "full_trace_available": true,
+      "instruction_count": 156510,
+      "name": "wasm_jit_osr_proxy",
+      "schema": "eliza.bpu_workload_trace.v1",
+      "sha256": "7240dd9253e6c3f0562a8fb3829fce22ad04757b1873aefd8dcf202fbbb7df5e",
+      "source": {
+        "bpu_context": {
+          "asid": 0,
+          "priv": 0,
+          "secure": false,
+          "vmid": 0,
+          "workload_class": 3
+        },
+        "isa": "rv64gc",
+        "mode": 12,
+        "qemu": "qemu-riscv64 user-mode + libexeclog",
+        "scale": 80,
+        "src": "system_mix.c",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
+        "workload": "wasm_jit_osr_proxy"
+      },
+      "trace_class": "qemu_rv64_workload"
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+[[!meta title="Tails report for August, 2019"]]
+[[!meta date="Mon, 09 Sep 2019 17:45:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+In August, we celebrated the [10 years
+birthday](https://twitter.com/torproject/status/1162386781515460614)
+of the first public announcement of _amnesia_, the project which would
+eventually give birth to Tails after the merger with Incognito 🎂 :)
+
+This led Edward Snowden to write [this
+testimonial](https://twitter.com/Snowden/status/1165297667490103302):
+<em>“In 2013, when a small team of journalists and I went head to head
+against @NSAGov to reveal the secret system of global mass
+surveillance, we used @Tails_Live to communicate—to reduce the risk
+of basic but deadly mistakes.<br/>
+The NSA only learned of our plan when it hit the news.”</em>
+
+Releases
+========
+
+* [[Tails 4.0~beta1 was released on August 7|news/test_4.0-beta1]].
+  This is the first beta for the upcoming version of Tails based on
+  Debian 10 (Buster).
+
+  Many thanks to everyone who tried it and gave us feedback!
+
+* Tails 3.16 and 4.0~beta2 are [[scheduled for September 3|contribute/calendar]].
+
+Code
+====
+
+- Preparations for Tails 4.0, based on Debian 10 "Buster"
+
+   - Decreased by 200-300 MiB the amount of memory used by Tails
+     ([[!tails_ticket 12092]]).
+   - Fixed a regression that made the login process slower than in
+     Tails 3.x ([[!tails_ticket 16805]]).
+
+- Test suite improvements
+
+   - We fixed a number of issues that lead our test suite to report
+     false positives ([[!tails_ticket 11592]], [[!tails_ticket
+     17004]], [[!tails_ticket 15321]]).
+   - Use a more recent Dogtail, run it with Python 3, and take benefit
+     from the new UTF-8 support ([[!tails_ticket 16976]]).
+
+- New automated tests
+
+   - Installing Tails from a USB image with GNOME Disks ([[!tails_ticket 16004]])
+   - VeraCrypt PIM feature ([[!tails_ticket 15946]])
+
+- We made good progress on persisting a seed for the [[!wikipedia
+  Pseudorandom number generator]] across boots ([[!tails_ticket
+  11897]]). There's now a good chance that this work is included
+  in a Tails release by the end of the year.
+
+- We completed the first iteration of our effort to [[!tails_ticket
+  7036 desc="move the source code for our custom software to our main
+  Git repository"]]: the Greeter [[!tails_ticket 16912 desc="was
+  migrated"]]. This will avoid quite some busywork, make it easier to
+  contribute to the affected code bases, and increase the value of our
+  reproducible builds, by removing some binary blobs from our set of
+  _de facto_ trusted inputs.
+
+Documentation and website
+=========================
+
+- We finished updating all of our documentation to Tails based on Debian
+  10 (Buster). ([[!tails_ticket 16282]])
+
+- We improved the troubleshooting section when Tails doesn't start on
+  Mac. ([[!tails_ticket 15127]])
+
+User experience
+===============
+
+- We reworked in depth our
+  plans to improve the user
+  experience of the network connection (configuration and startup).
+
+Infrastructure
+==============
+
+- We upgraded to Gitolite v3.
+
+- We fixed a number of bugs in our [web translation
+  platform](https://translate.tails.net/), thanks to feedback
+  from early adopters. It should soon be officially ready for
+  production usage.
+
+- We spent lots of time fighting a [[!wikipedia
+  Denial-of-service_attack desc="DDoS"]] against our Redmine. Not our
+  idea of fun :(
+
+- We scheduled the upgrade of our Jenkins ([[!tails_ticket 10068]]).
+
+Funding
+=======
+
+- We're working on a joint grant proposal with Tor and the
+  Guardian Project.
+
+Outreach
+========
+
+Past events
+-----------
+
+- [carlosm2](https://twitter.com/dospesosinc) organized a [testing of
+  Tails 4.0~beta1](https://twitter.com/dospesosinc/status/1160723565802602502)
+  at the Rancho Electrónico (Ciudad de Mexico) on Saturday August 17.
+
+Upcoming events
+---------------
+
+Press and testimonials
+======================
+
+* 2019-08-04: In Attorney for Daniel Hale blasts indictment for leaking
+  classified drone documents,
+  David Gilmour from The Daily Dot explains that the indictment of Daniel Hale
+  for the leaks of the [Drone Papers](https://theintercept.com/drone-papers/)
+  focuses his use of anonymity tools like Tails and Tor. According to Hale's
+  attorneys Jesselyn Radack <em>“These cases are criminalizing both
+  whistleblowing and journalistic best practices like using encryption and
+  protecting source anonymity”</em>.
+
+Translations
+============
+
+## All the website
+
+  - de: 41% (2301) strings translated, 9% strings fuzzy, 38% words translated
+  - es: 52% (2896) strings translated, 6% strings fuzzy, 44% words translated
+  - fa: 31% (1780) strings translated, 12% strings fuzzy, 34% words translated
+  - fr: 90% (5052) strings translated, 2% strings fuzzy, 89% words translated
+  - it: 33% (1849) strings translated, 7% strings fuzzy, 29% words translated
+  - pt: 25% (1436) strings translated, 9% strings fuzzy, 22% words translated
+
+Total original words: 58995
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 69% (1227) strings translated, 13% strings fuzzy, 71% words translated
+  - es: 79% (1404) strings translated, 10% strings fuzzy, 81% words translated
+  - fa: 34% (607) strings translated, 13% strings fuzzy, 32% words translated
+  - fr: 97% (1733) strings translated, 2% strings fuzzy, 97% words translated
+  - it: 61% (1094) strings translated, 17% strings fuzzy, 64% words translated
+  - pt: 44% (791) strings translated, 14% strings fuzzy, 47% words translated
+
+Total original words: 16629
+
+Metrics
+=======
+
+* Tails has been started more than 741&thinsp;964 times this month. This makes 23&thinsp;934 boots a day on average.
+

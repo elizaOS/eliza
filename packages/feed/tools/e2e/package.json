@@ -1,0 +1,16 @@
+{
+  "name": "@feed/e2e",
+  "private": true,
+  "scripts": {
+    "test": "sh -c 'if [ \"$RUN_FEED_E2E\" != \"1\" ]; then echo \"[skip] @feed/e2e browser E2E requires the MetaMask extension + app on :3000. Run download-extensions, start the stack, then set RUN_FEED_E2E=1.\" >&2; exit 0; fi; npx playwright test --config playwright.config.mjs'",
+    "test:headed": "npx playwright test --config playwright.config.mjs --headed",
+    "download-extensions": "npx chroma download-extensions --wallets metamask"
+  },
+  "devDependencies": {
+    "@avalix/chroma": "^1.0.1",
+    "@playwright/test": "1.61.0",
+    "@types/node": "24.12.0",
+    "playwright": "1.61.0",
+    "typescript": "^5.9.3"
+  }
+}

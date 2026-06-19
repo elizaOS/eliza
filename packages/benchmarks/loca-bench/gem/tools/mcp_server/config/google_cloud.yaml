@@ -1,0 +1,27 @@
+# Google Cloud MCP Server Configuration
+name: google_cloud
+display_name: Google Cloud MCP Server
+description: Mock Google Cloud Storage operations server for benchmarking
+
+execution:
+  command_type: uv
+  script:
+    primary: "mcp_convert/mcps/google_cloud/server.py"
+    fallbacks: []
+  requires_project_root: true
+
+parameters:
+  data_dir:
+    required: true
+    default: "./google_cloud_data"
+    env_var: "GOOGLE_CLOUD_DATA_DIR"
+    description: "Path to Google Cloud data directory"
+
+  server_script:
+    required: false
+    description: "Override server script path (for testing)"
+
+workspace:
+  set_cwd: false
+  supports_placeholders: true
+  mkdir_if_needed: true

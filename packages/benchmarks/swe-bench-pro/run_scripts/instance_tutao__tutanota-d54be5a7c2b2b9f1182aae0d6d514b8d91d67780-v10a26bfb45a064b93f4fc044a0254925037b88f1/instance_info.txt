@@ -1,0 +1,6 @@
+Instance ID: instance_tutao__tutanota-d54be5a7c2b2b9f1182aae0d6d514b8d91d67780-v10a26bfb45a064b93f4fc044a0254925037b88f1
+Repository: tutao/tutanota
+Base Commit: 035ebb12a6922d9c007f47374db1f2721713542d
+Test Files: ["test/TestBuilder.js", "test/api/Suite.ts"]
+FAIL_TO_PASS: ["test/api/Suite.ts | api tests (3549 assertions)", "test/api/Suite.ts | api tests (3031 assertions)"]
+PASS_TO_PASS: ["test/api/Suite.ts | api tests (11 assertions)", "test/api/Suite.ts | api tests (882 assertions)", "test/api/Suite.ts | api tests (234 assertions)"]

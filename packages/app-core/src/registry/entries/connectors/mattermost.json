@@ -1,0 +1,110 @@
+{
+  "id": "mattermost",
+  "name": "Mattermost",
+  "description": "Mattermost integration plugin for elizaOS agents - TypeScript implementation",
+  "npmName": "@elizaos/plugin-mattermost",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "social", "social-chat", "messaging", "mattermost"],
+  "config": {
+    "MATTERMOST_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "MATTERMOST_TEAM_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Team Id",
+      "help": "Team/tenant ID",
+      "advanced": false
+    },
+    "MATTERMOST_BOT_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Bot Token",
+      "help": "Bot token for Mattermost",
+      "advanced": false
+    },
+    "MATTERMOST_DM_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Dm Policy",
+      "help": "DM policy (e.g. allow, deny, allowlist)",
+      "advanced": false
+    },
+    "MATTERMOST_SERVER_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Server Url",
+      "help": "Server URL",
+      "advanced": false
+    },
+    "MATTERMOST_GROUP_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Group Policy",
+      "help": "Group message policy (e.g. allow, deny)",
+      "advanced": false
+    },
+    "MATTERMOST_ALLOWED_USERS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Allowed Users",
+      "help": "Comma-separated allowed user list",
+      "advanced": false
+    },
+    "MATTERMOST_REQUIRE_MENTION": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Require Mention",
+      "help": "Only respond when mentioned",
+      "advanced": false
+    },
+    "MATTERMOST_ALLOWED_CHANNELS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Allowed Channels",
+      "help": "Comma-separated room/channel list",
+      "advanced": false
+    },
+    "MATTERMOST_IGNORE_BOT_MESSAGES": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Ignore Bot Messages",
+      "help": "Ignore messages from other bots",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Diamond",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#mattermost"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": ["MATTERMOST_BOT_TOKEN"]
+  }
+}

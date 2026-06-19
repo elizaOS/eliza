@@ -1,0 +1,90 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Error Reading Data from Tails USB Stick\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "This page applies in 2 situations:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "If you get the following error message when starting Tails:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"      Error reading data from your Tails USB stick.\n"
+"      Please go to https://tails.net/ioerror for troubleshooting.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "If you get the following notification while using Tails:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "      Error Reading Data from Tails USB Stick\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "      The hardware of your USB stick is probably failing.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"      We recommend that you reinstall Tails on a different USB stick\n"
+"      and recover the data from your Persistent Storage as soon as possible.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"These alerts are displayed when Tails detects a problem reading or writing "
+"to your USB stick. Most likely, these alerts mean that the hardware of your "
+"USB stick is failing and might completely break soon."
+msgstr ""
+
+#. type: Plain text
+msgid "You should stop using this USB stick for Tails and install a new one."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If you don't have a Persistent Storage on this USB stick, we recommend that "
+"you [[reinstall Tails|install]] on a new USB stick."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If you have a Persistent Storage on this USB stick, we recommend that you "
+"stop using this Tails immediately, reinstall Tails on a new USB stick, and "
+"recover the data from your Persistent Storage as soon as possible."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  To do so, follow our instructions on [[recovering the Persistent Storage from\n"
+"  a broken Tails|doc/persistent_storage/recover]].\n"
+msgstr ""

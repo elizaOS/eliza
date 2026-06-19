@@ -1,0 +1,116 @@
+[[!meta title="Call for testing: 3.12~rc1"]]
+
+[[!meta date="Sun, 20 Jan 2019 16:17:18 +0000"]]
+
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails! The first release candidate for the upcoming
+version 3.12 is out. We are very excited and cannot wait to hear what
+you think about it, especially the new simplified USB installation
+method (see below). :)
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Make the USB image the main supported way to install Tails (refs:
+  [[!tails_ticket 15292]]). On first boot, grow the system partition
+  to a size that's a factor of the size of the boot medium and
+  randomize GUIDs (Closes: [[!tails_ticket 15319]]).
+- Upgrade Linux to 4.19, version 4.19.13-1 which fixes the issue where
+  Intel graphics cards booted to a black screen (Closes:
+  [[!tails_ticket 16073]], [[!tails_ticket 16224]]).  Fixes
+  CVE-2018-19985, CVE-2018-19406, CVE-2018-16862, CVE-2018-18397,
+  CVE-2018-18397, CVE-2018-18397, CVE-2018-18397, CVE-2018-19824,
+  CVE-2018-14625.
+- Remove Liferea (Closes: [[!tails_ticket 11082]], [[!tails_ticket
+  15776]]).
+- Tell the user they need to use sudo when they attempt to use su
+  (Closes: [[!tails_ticket 15583]]).
+
+## Fixed problems
+
+- Fix Totem's access to the Internet when it's started from the
+  Applications menu.
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+Known issues
+==============
+
+There are no known issues specific to Tails 3.12~rc1 so far.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# How to test Tails 3.12~rc1?
+
+**Keep in mind that this is a test image**. We tested that it is not
+broken in obvious ways, but it might still contain undiscovered
+issues.
+
+But test wildly!
+
+If you find anything that is not working as it should, please report to
+us on <tails-testers@boum.org>.
+
+Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+Upgrade from 3.11
+-----------------
+
+1. Start Tails 3.11 on a USB stick installed using *Tails Installer* and
+   [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Run this command in a *Terminal*
+   to select the "alpha" upgrade channel and start the upgrade:
+
+       echo TAILS_CHANNEL=\"alpha\" | sudo tee -a /etc/os-release && \
+            tails-upgrade-frontend-wrapper
+
+   and enter the administration password when asked for the "password
+   for amnesia".
+
+1. After the upgrade is installed, restart Tails and choose
+   **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+   to verify that you are running Tails 3.12~rc1.
+
+Download and install
+--------------------
+
+### If you intend to install Tails on a USB drive
+
+Tails 3.12 will be the first release to use our simplified USB
+installation method so we really would like you to try it out with
+this release candidate!
+
+First download the USB image:
+
+Tails 3.12~rc1 USB image
+<span class="openpgp-small-link">OpenPGP signature</span>
+
+Then follow [[the new installation instructions|news/test_usb_images]].
+
+### If you intend to burn Tails to a DVD
+
+You can also install 3.12~rc1 by following our old
+[[installation instructions|install]], skipping the **Download and
+verify** step.
+
+Tails 3.12~rc1 ISO image
+<span class="openpgp-small-link">OpenPGP signature</span>
+
+<a id="known_issues"></a>
+
+# What's coming up?
+
+Tails 3.12 is [[scheduled|contribute/calendar]] for January 29.
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.12-rc1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

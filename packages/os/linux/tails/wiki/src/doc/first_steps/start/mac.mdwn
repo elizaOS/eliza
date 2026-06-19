@@ -1,0 +1,47 @@
+[[!meta title="Starting Tails on Mac"]]
+[[!meta stylesheet="install/inc/stylesheets/hide" rel="stylesheet" title=""]]
+[[!meta stylesheet="install/inc/stylesheets/standalone" rel="stylesheet" title=""]]
+
+This page describes the technique to start Tails from a USB stick on Mac.
+
+[[!toc levels=2]]
+
+<h1 id="mac-start">Starting on Mac</h1>
+
+[[!inline pages="install/inc/steps/mac_startup_disks.inline" raw="yes" sort="age"]]
+
+<div class="next">
+<p>If the Boot Loader appears, you can follow our [[instructions
+on the Welcome Screen|install/mac#tails]].</p>
+</div>
+
+<h1 id="not-at-all">Troubleshooting Tails not starting at all</h1>
+
+Use this section if the computer does not start from the USB stick and the Boot Loader does not display:
+
+[[!img install/inc/screenshots/grub.png class="screenshot" alt="Black screen ('GNU GRUB') with Tails
+logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'."]]
+
+<h2 id="verify">Verify your Tails USB stick</h2>
+
+[[!inline pages="install/inc/steps/basic_troubleshooting.inline" raw="yes" sort="age"]]
+
+<div class="note">
+
+<p>If you get the following error message in macOS:</p>
+
+<p class="code">There may be a problem with this disk image. Are you sure you
+want to open it?</p>
+
+<p>Then, you have to [[install Tails using <i>balenaEtcher</i>|install/mac#etcher]].</p>
+
+</div>
+
+<h2 id="known-issues-not-at-all">Check our list of known issues</h2>
+
+Similar problems might have been reported already for your Mac model
+in our [[list of known issues about Tails not starting at all|support/known_issues#mac-not-at-all]].
+
+<h1 id="not-entirely">Troubleshooting Tails not starting after the Boot Loader</h1>
+
+[[!inline pages="doc/first_steps/start/not_entirely.inline" raw="yes" sort="age"]]

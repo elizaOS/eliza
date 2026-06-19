@@ -1,0 +1,55 @@
+[[!meta date="Tue, 08 Aug 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.1 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_3.0.1]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+  - Update *Tor Browser* to 7.0.4.
+  - Update *Linux* to 4.9.30-2+deb9u3.
+
+## Fixed problems
+
+  - Make sure that *Thunderbird* erases its temporary directory,
+    containing for example attachments opened in the past. [[!tails_ticket 13340]]
+
+  - Fix translations of the time synchronization and "*Tor is ready*"
+    notifications. [[!tails_ticket 13437]]
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.1
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.0 to 3.1. Due to the
+  [[!tails_ticket 13426]] bug, automatic upgrades from 3.0.1 are disabled.
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.1.|install/download]]
+
+# What's coming up?
+
+Tails 3.2 is [[scheduled|contribute/calendar]] for October 3.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

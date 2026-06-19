@@ -1,0 +1,953 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails-l10n-wiki\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-13 10:59+0200\n"
+"PO-Revision-Date: 2026-01-23 16:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails-l10n@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"OpenPGP keys\"]]\n"
+msgstr "[[!meta title=\"Paires de clés OpenPGP\"]]\n"
+
+#. type: Plain text
+msgid "Tails developers maintain several OpenPGP key pairs."
+msgstr ""
+"Les personnes développant Tails utilisent plusieurs paires de clés OpenPGP."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Make sure to verify the keys that you download.</p>\n"
+msgstr "<p>Assurez-vous de vérifier les clés que vous téléchargez.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>For example, if you first [[authenticate the Tails signing key\n"
+"through the OpenPGP Web of Trust|install/download#wot]], then\n"
+"you can verify our others keys as they are all certified by the Tails\n"
+"signing key.</p>\n"
+msgstr ""
+"<p>Par exemple, si en premier vous [[authentifiez la clé de signature de Tails\n"
+"via la Toile de Confiance OpenPGP|install/download#wot]], vous\n"
+"pourrez ensuite vérifier nos autres clés car elles ont toutes été certifiées par la\n"
+"clé de signature de Tails.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"signing\"></a>\n"
+msgstr "<a id=\"signing\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Signing key"
+msgstr "Clé de signature"
+
+#. type: Title -
+#, no-wrap
+msgid "Purpose"
+msgstr "Usage prévu"
+
+#. type: Plain text
+msgid ""
+"This key only has the capability to sign and certify: it has no encryption "
+"subkey."
+msgstr ""
+"Cette clé a uniquement la capacité de signer et de certifier : elle n'a pas "
+"de\n"
+"sous-clé de chiffrement."
+
+#. type: Plain text
+msgid "Its only purpose is:"
+msgstr "Son seul but est :"
+
+#. type: Bullet: '- '
+msgid "To sign Tails released images"
+msgstr "De signer les versions publiées de Tails"
+
+#. type: Bullet: '- '
+msgid "To certify other cryptographic public keys needed for Tails development"
+msgstr ""
+"De certifier d'autres clés cryptographiques nécessaires pour le "
+"développement de Tails"
+
+#. type: Title -
+#, no-wrap
+msgid "Policy"
+msgstr "Nos engagements"
+
+#. type: Plain text
+msgid ""
+"The secret key material will never be stored on an online server or on "
+"systems managed by anyone other than Tails core developers."
+msgstr ""
+"La clé secrète ne sera jamais stockée sur un serveur ou sur un système "
+"administré par une personne autre que les principales personnes développant "
+"Tails."
+
+#. type: Title ###
+#, no-wrap
+msgid "Primary key"
+msgstr "Clé primaire"
+
+#. type: Bullet: '- '
+msgid ""
+"Is not owned in a usable format by any single individual. It is split "
+"cryptographically using [gfshare](https://tracker.debian.org/pkg/libgfshare)."
+msgstr ""
+"Elle n'est pas conservée dans un format utilisable par une personne seule. "
+"Elle est découpée de manière cryptographique en utilisant [gfshare](https://"
+"tracker.debian.org/pkg/libgfshare)."
+
+#. type: Bullet: '- '
+msgid ""
+"Is only used offline, in an air-gapped Tails only communicating with the "
+"outside world through:"
+msgstr ""
+"Elle est utilisée uniquement hors ligne, dans un Tails hermétiquement clos "
+"ne communiquant avec le monde extérieur qu'à travers :"
+
+#. type: Bullet: '  * '
+msgid ""
+"Plugging the Tails flash media in another operating system to install Tails "
+"in the first place."
+msgstr ""
+"En branchant le média flash de Tails dans un autre système d'exploitation "
+"pour installer Tails en premier lieu."
+
+#. type: Bullet: '  * '
+msgid ""
+"Plugging other removable media in the air-gapped Tails to send the public "
+"key, secret key stubs, parts of the secret master key, and so on to the "
+"outside world."
+msgstr ""
+"En branchant un autre média amovible dans un Tails hermétiquement clos pour "
+"envoyer la clé publique, les talons des clés secrètes, parties de la clé "
+"secrète maître, et ainsi de suite vers le monde extérieur."
+
+#. type: Bullet: '  * '
+msgid ""
+"Plugging other removable media in the air-gapped Tails to receive Debian "
+"packages, public keys, and so on from the outside world."
+msgstr ""
+"En branchant un autre média amovible dans un Tails hermétiquement clos pour "
+"recevoir les paquets Debian, clés publiques, et ainsi de suite depuis le "
+"monde extérieur."
+
+#. type: Bullet: '- '
+msgid ""
+"Expires in less than one year. We will extend its validity as many times as "
+"we find reasonable."
+msgstr ""
+"Expire dans moins d'un an. Nous étendrons sa validité autant de fois que "
+"nous le trouverons raisonnable."
+
+#. type: Bullet: '- '
+msgid ""
+"Has a revocation certificate split amongst different people.  See the "
+"[[details of the mechanism|signing_key_revocation]]."
+msgstr ""
+"Elle possède un certificat de révocation réparti entre différentes "
+"personnes. Voir les [[détails du mécanisme|signing_key_revocation]]."
+
+#. type: Title ###
+#, no-wrap
+msgid "Signing subkeys"
+msgstr "Sous-clés de signature"
+
+#. type: Bullet: '- '
+msgid ""
+"Stored on OpenPGP smartcards owned by those who need them.  Smartcards "
+"ensure that the cryptographic operations are done on the smartcard itself "
+"and that the secret cryptographic material is not directly available to the "
+"operating system using it."
+msgstr ""
+"Stockée sur des smartcards OpenPGP en possession des personnes en ayant "
+"besoin. Les smartcards garantissent que les opérations cryptographiques sont "
+"faites directement sur la smartcard et que le secret cryptographique n'est "
+"pas directement disponible pour le système d'exploitation qui l'utilise."
+
+#. type: Bullet: '- '
+msgid "Expiration date: same as the primary key."
+msgstr "Date d'expiration : identique à celle de la clé primaire."
+
+#. type: Title -
+#, no-wrap
+msgid "Key details"
+msgstr "Détails de la clé"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    pub   rsa4096/0xDBB802B258ACD84F 2015-01-18 [SC] [expires: 2027-01-13]\n"
+"          A490D0F4D311A4153E2BB7CADBB802B258ACD84F\n"
+"    uid                   [ultimate] Tails developers <tails@boum.org>\n"
+"    uid                   [ultimate] Tails developers (offline long-term identity key) <tails@boum.org>\n"
+"    sub   ed25519/0x8E9567D327792707 2024-05-23 [S] [expires: 2027-01-13]\n"
+"    sub   ed25519/0xC69FF0E4C08F8209 2024-05-23 [S] [expires: 2027-01-13]\n"
+"    sub   ed25519/0xBC8BD3DAC9CD2979 2024-05-23 [S] [expires: 2027-01-13]\n"
+msgstr ""
+"    pub   rsa4096/0xDBB802B258ACD84F 2015-01-18 [SC] [expires: 2027-01-13]\n"
+"          A490D0F4D311A4153E2BB7CADBB802B258ACD84F\n"
+"    uid                   [ultimate] Tails developers <tails@boum.org>\n"
+"    uid                   [ultimate] Tails developers (offline long-term identity key) <tails@boum.org>\n"
+"    sub   ed25519/0x8E9567D327792707 2024-05-23 [S] [expires: 2027-01-13]\n"
+"    sub   ed25519/0xC69FF0E4C08F8209 2024-05-23 [S] [expires: 2027-01-13]\n"
+"    sub   ed25519/0xBC8BD3DAC9CD2979 2024-05-23 [S] [expires: 2027-01-13]\n"
+
+#. type: Title -
+#, no-wrap
+msgid "How to get the public key?"
+msgstr "Comment obtenir la clé publique ?"
+
+#. type: Plain text
+msgid ""
+"To get this OpenPGP public key, download it from this website: [[!"
+"tails_website tails-signing.key]]."
+msgstr ""
+"Pour obtenir cette clé publique OpenPGP, téléchargez-la depuis ce site : [[!"
+"tails_website tails-signing.key]]."
+
+#. type: Plain text
+msgid ""
+"If you already have Tails signing key but download it again, it can update "
+"the list of existing signatures of the key."
+msgstr ""
+"Si vous avez déjà la clé de signature de Tails mais que vous la téléchargez "
+"de nouveau, cela peut mettre à jour la liste des signatures existantes."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"support\"></a>\n"
+msgstr "<a id=\"support\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "User support key"
+msgstr "Clé pour l'assistance d'utilisation"
+
+#. type: Title ###
+#, no-wrap
+msgid "Encryption"
+msgstr "Chiffrement"
+
+#. type: Bullet: '- '
+msgid ""
+"Use this key to encrypt private support requests sent to [[support@tails.net|"
+"doc/about/contact#support]]."
+msgstr ""
+"Utilisez cette clé pour chiffrer les demandes d'aide privées adressées à "
+"[[support@tails.net|doc/about/contact#support]]."
+
+#. type: Bullet: '- '
+msgid ""
+"This same key is used to handle [[*WhisperBack* reports|first_steps/"
+"whisperback]]."
+msgstr ""
+"Cette clé est également utilisée pour les rapports envoyés avec "
+"[[*WhisperBack*|first_steps/whisperback]]."
+
+#. type: Plain text
+msgid ""
+"The secret key material and its passphrase are stored on the server that "
+"runs our encrypted mailing list software and on systems managed by core "
+"Tails developers."
+msgstr ""
+"La clé secrète et sa phrase de passe sont stockées sur le serveur qui fait "
+"tourner notre logiciel de liste de discussion chiffrée, ainsi que sur les "
+"ordinateurs des principales personnes développant Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    pub   rsa4096 2013-07-24 [SC] [expires: 2027-10-08]\n"
+"          1F56EDD30741048035DAC1C5EC57B56EF0C43132\n"
+"    uid           [ unknown] Tails user support <support@tails.net>\n"
+"    sub   rsa4096 2013-07-24 [E] [expires: 2027-10-08]\n"
+msgstr ""
+"    pub   rsa4096 2013-07-24 [SC] [expires: 2027-10-08]\n"
+"          1F56EDD30741048035DAC1C5EC57B56EF0C43132\n"
+"    uid           [ unknown] Tails user support <support@tails.net>\n"
+"    sub   rsa4096 2013-07-24 [E] [expires: 2027-10-08]\n"
+
+#. type: Plain text
+msgid "There are multiple ways to get this OpenPGP public key:"
+msgstr "Il existe différents moyens d'obtenir cette clé publique :"
+
+#. type: Bullet: '- '
+msgid "Download it from this website: [[!tails_website tails-bugs.key]]."
+msgstr "La télécharger depuis ce site : [[!tails_website tails-bugs.key]]."
+
+#. type: Bullet: '- '
+msgid "Fetch it from your favourite key server."
+msgstr "La prendre sur votre serveur de clés favori."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"foundations\"></a>\n"
+msgstr "<a id=\"foundations\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Foundations team key\n"
+"==================\n"
+msgstr ""
+"Clé de l'équipe fondations\n"
+"===================\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Use this key to encrypt private emails sent to [[foundations@tails.net|doc/"
+"about/contact#tails-foundations]]."
+msgstr ""
+"Utilisez cette clé pour chiffrer les courriers électroniques privés adressés "
+"à [[foundations@tails.net|doc/about/contact#tails-foundations]]."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    pub   rsa4096 2024-04-30 [SC]\n"
+"          621609457A166C993245FFCA5F6B02630DDDE331\n"
+"    uid           [ unknown] foundations@tails.net <foundations@tails.net>\n"
+"    uid           [ unknown] foundations@tails.net <foundations-request@tails.net>\n"
+"    uid           [ unknown] foundations@tails.net <foundations-owner@tails.net>\n"
+"    sub   rsa4096 2024-04-30 [E]\n"
+msgstr ""
+"    pub   rsa4096 2024-04-30 [SC]\n"
+"          621609457A166C993245FFCA5F6B02630DDDE331\n"
+"    uid           [ unknown] foundations@tails.net <foundations@tails.net>\n"
+"    uid           [ unknown] foundations@tails.net <foundations-request@tails.net>\n"
+"    uid           [ unknown] foundations@tails.net <foundations-owner@tails.net>\n"
+"    sub   rsa4096 2024-04-30 [E]\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Download it from this website: [[!tails_website foundations-tails-net.key]]."
+msgstr ""
+"La télécharger depuis ce site : [[!tails_website foundations-tails-net.key]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"sysadmins\"></a>\n"
+msgstr "<a id=\"sysadmins\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Sysadmins team key"
+msgstr "Clé de l'équipe d'administration système"
+
+#. type: Bullet: '- '
+msgid ""
+"Use this key to encrypt private emails sent to [[sysadmins@tails.net|doc/"
+"about/contact#tails-sysadmins]]."
+msgstr ""
+"Utilisez cette clé pour chiffrer les courriers électroniques privés adressés "
+"à [[sysadmins@tails.net|doc/about/contact#tails-sysadmins]]."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    pub   rsa4096 2024-04-26 [SC]\n"
+"          0082D4D63B722D1FA27518A5C8F12D2B1AE1CB26\n"
+"    uid           [ unknown] sysadmins@tails.net <sysadmins@tails.net>\n"
+"    uid           [ unknown] sysadmins@tails.net <sysadmins-request@tails.net>\n"
+"    uid           [ unknown] sysadmins@tails.net <sysadmins-owner@tails.net>\n"
+"    sub   rsa4096 2024-04-26 [E]\n"
+msgstr ""
+"    pub   rsa4096 2024-04-26 [SC]\n"
+"          0082D4D63B722D1FA27518A5C8F12D2B1AE1CB26\n"
+"    uid           [ unknown] sysadmins@tails.net <sysadmins@tails.net>\n"
+"    uid           [ unknown] sysadmins@tails.net <sysadmins-request@tails.net>\n"
+"    uid           [ unknown] sysadmins@tails.net <sysadmins-owner@tails.net>\n"
+"    sub   rsa4096 2024-04-26 [E]\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Download it from this website: [[!tails_website sysadmins-tails-net.key]]."
+msgstr ""
+"La télécharger depuis ce site : [[!tails_website sysadmins-tails-net.key]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"weblate\"></a>\n"
+msgstr "<a id=\"weblate\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Translation platform admins team key"
+msgstr "Clé de l'équipe d'administration de la plate-forme de traduction"
+
+#. type: Bullet: '- '
+msgid ""
+"Use this key to encrypt private emails sent to [[the admins of the "
+"translation platform at weblate@tails.net|doc/about/contact#tails-weblate]]."
+msgstr ""
+"Utilisez cette clé pour chiffrer les courriers électroniques privés adressés "
+"à [[l'équipe d'administration de la plateforme de traduction avec "
+"weblate@tails.net|doc/about/contact#tails-weblate]]."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    pub   rsa4096 2024-04-30 [SC]\n"
+"          EFECA896F429B066B83E0266B702FE73C485A41D\n"
+"    uid           [ unknown] weblate@tails.net <weblate@tails.net>\n"
+"    uid           [ unknown] weblate@tails.net <weblate-request@tails.net>\n"
+"    uid           [ unknown] weblate@tails.net <weblate-owner@tails.net>\n"
+"    sub   rsa4096 2024-04-30 [E]\n"
+msgstr ""
+"    pub   rsa4096 2024-04-30 [SC]\n"
+"          EFECA896F429B066B83E0266B702FE73C485A41D\n"
+"    uid           [ unknown] weblate@tails.net <weblate@tails.net>\n"
+"    uid           [ unknown] weblate@tails.net <weblate-request@tails.net>\n"
+"    uid           [ unknown] weblate@tails.net <weblate-owner@tails.net>\n"
+"    sub   rsa4096 2024-04-30 [E]\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Download it from this website: [[!tails_website weblate-tails-net.key]]."
+msgstr ""
+"La télécharger depuis ce site : [[!tails_website weblate-tails-net.key]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096 2013-07-24 [SC] [expires: 2025-11-07]\n"
+#~ "          1F56EDD30741048035DAC1C5EC57B56EF0C43132\n"
+#~ "    uid           [  full  ] Tails bug squad <tails-bugs@boum.org>\n"
+#~ "    uid           [  full  ] Tails bug squad (schleuder list) <tails-bugs-owner@boum.org>\n"
+#~ "    uid           [  full  ] Tails private user support <tails-support-private@boum.org>\n"
+#~ "    uid           [  full  ] Tails bug squad (schleuder list) <tails-bugs-request@boum.org>\n"
+#~ "    uid           [ unknown] Tails user support <support@tails.net>\n"
+#~ "    sub   rsa4096 2013-07-24 [E] [expires: 2025-11-07]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096 2013-07-24 [SC] [expires: 2025-11-07]\n"
+#~ "          1F56EDD30741048035DAC1C5EC57B56EF0C43132\n"
+#~ "    uid           [  full  ] Tails bug squad <tails-bugs@boum.org>\n"
+#~ "    uid           [  full  ] Tails bug squad (schleuder list) <tails-bugs-owner@boum.org>\n"
+#~ "    uid           [  full  ] Tails private user support <tails-support-private@boum.org>\n"
+#~ "    uid           [  full  ] Tails bug squad (schleuder list) <tails-bugs-request@boum.org>\n"
+#~ "    uid           [ unknown] Tails user support <support@tails.net>\n"
+#~ "    sub   rsa4096 2013-07-24 [E] [expires: 2025-11-07]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Make sure to verify the keys that you download, because there are\n"
+#~ "several fake and maybe malicious Tails keys on the key servers.</p>\n"
+#~ msgstr ""
+#~ "<p>Veillez à vérifier la clé que vous avez téléchargé car il y a\n"
+#~ "plusieurs clés Tails fausses et potentiellement malveillantes sur les serveurs de clés.</p>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"press\"></a>\n"
+#~ msgstr "<a id=\"press\"></a>\n"
+
+#, no-wrap
+#~ msgid "Press team key"
+#~ msgstr "Clé de l'équipe presse"
+
+#, fuzzy
+#~| msgid ""
+#~| "Use this key to encrypt private emails sent to [[press@tails.net|about/"
+#~| "contact#tails-press]]."
+#~ msgid ""
+#~ "Use this key to encrypt private emails sent to [[press@tails.net|doc/"
+#~ "about/contact#tails-press]]."
+#~ msgstr ""
+#~ "Utilisez cette clé pour chiffrer les courriers électroniques privés "
+#~ "adressés à [[press@tails.net|about/contact#tails-press]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096 2024-04-30 [SC]\n"
+#~ "          C54B2D6C229607035EECE4D83114691BD78DF1ED\n"
+#~ "    uid           [ unknown] press@tails.net <press@tails.net>\n"
+#~ "    uid           [ unknown] press@tails.net <press-request@tails.net>\n"
+#~ "    uid           [ unknown] press@tails.net <press-owner@tails.net>\n"
+#~ "    sub   rsa4096 2024-04-30 [E]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096 2024-04-30 [SC]\n"
+#~ "          C54B2D6C229607035EECE4D83114691BD78DF1ED\n"
+#~ "    uid           [ unknown] press@tails.net <press@tails.net>\n"
+#~ "    uid           [ unknown] press@tails.net <press-request@tails.net>\n"
+#~ "    uid           [ unknown] press@tails.net <press-owner@tails.net>\n"
+#~ "    sub   rsa4096 2024-04-30 [E]\n"
+
+#~ msgid ""
+#~ "Download it from this website: [[!tails_website press-tails-net.key]]."
+#~ msgstr ""
+#~ "La télécharger depuis ce site : [[!tails_website press-tails-net.key]]."
+
+#, no-wrap
+#~ msgid "<a id=\"board\"></a>\n"
+#~ msgstr "<a id=\"board\"></a>\n"
+
+#, no-wrap
+#~ msgid "Board key"
+#~ msgstr "Clé du Board"
+
+#~ msgid ""
+#~ "Use this key to encrypt private emails sent to the [[Board|about/"
+#~ "contact#board]]."
+#~ msgstr ""
+#~ "Utilisez cette clé pour chiffrer les courriers électroniques privés "
+#~ "adressés au [[Board|about/contact#board]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096 2024-04-30 [SC]\n"
+#~ "          2DC4FED9D88C30D95A92675788E24FE2064F1511\n"
+#~ "    uid           [ unknown] board@tails.net <board@tails.net>\n"
+#~ "    uid           [ unknown] board@tails.net <board-request@tails.net>\n"
+#~ "    uid           [ unknown] board@tails.net <board-owner@tails.net>\n"
+#~ "    sub   rsa4096 2024-04-30 [E]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096 2024-04-30 [SC]\n"
+#~ "          2DC4FED9D88C30D95A92675788E24FE2064F1511\n"
+#~ "    uid           [ unknown] board@tails.net <board@tails.net>\n"
+#~ "    uid           [ unknown] board@tails.net <board-request@tails.net>\n"
+#~ "    uid           [ unknown] board@tails.net <board-owner@tails.net>\n"
+#~ "    sub   rsa4096 2024-04-30 [E]\n"
+
+#~ msgid ""
+#~ "Download it from this website: [[!tails_website board-tails-net.key]]."
+#~ msgstr ""
+#~ "La télécharger depuis ce site : [[!tails_website board-tails-net.key]]."
+
+#, no-wrap
+#~ msgid "<a id=\"fundraising\"></a>\n"
+#~ msgstr "<a id=\"fundraising\"></a>\n"
+
+#, no-wrap
+#~ msgid "Fundraising team key"
+#~ msgstr "Clé de l'équipe de collecte de fonds"
+
+#, fuzzy
+#~| msgid ""
+#~| "Use this key to encrypt private emails sent to [[fundraising@tails.net|"
+#~| "about/contact#tails-fundraising]]."
+#~ msgid ""
+#~ "Use this key to encrypt private emails sent to [[fundraising@tails.net|"
+#~ "doc/about/contact#tails-fundraising]]."
+#~ msgstr ""
+#~ "Utilisez cette clé pour chiffrer les courriers électroniques privés "
+#~ "adressés à [[fundraising@tails.net|about/contact#tails-fundraising]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096 2024-04-30 [SC]\n"
+#~ "          DA1C7908D1C0DC9EAA5915BC3A5B5685A641297B\n"
+#~ "    uid           [ unknown] fundraising@tails.net <fundraising@tails.net>\n"
+#~ "    uid           [ unknown] fundraising@tails.net <fundraising-request@tails.net>\n"
+#~ "    uid           [ unknown] fundraising@tails.net <fundraising-owner@tails.net>\n"
+#~ "    sub   rsa4096 2024-04-30 [E]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096 2024-04-30 [SC]\n"
+#~ "          DA1C7908D1C0DC9EAA5915BC3A5B5685A641297B\n"
+#~ "    uid           [ unknown] fundraising@tails.net <fundraising@tails.net>\n"
+#~ "    uid           [ unknown] fundraising@tails.net <fundraising-request@tails.net>\n"
+#~ "    uid           [ unknown] fundraising@tails.net <fundraising-owner@tails.net>\n"
+#~ "    sub   rsa4096 2024-04-30 [E]\n"
+
+#~ msgid ""
+#~ "Download it from this website: [[!tails_website fundraising-tails-"
+#~ "net.key]]."
+#~ msgstr ""
+#~ "La télécharger depuis ce site : [[!tails_website fundraising-tails-"
+#~ "net.key]]."
+
+#, no-wrap
+#~ msgid "<a id=\"accounting\"></a>\n"
+#~ msgstr "<a id=\"accounting\"></a>\n"
+
+#, no-wrap
+#~ msgid "Accounting team key"
+#~ msgstr "Clé de l'équipe comptabilité"
+
+#~ msgid ""
+#~ "Use this key to encrypt private emails sent to [[accounting@tails.net|"
+#~ "about/contact#tails-accounting]]."
+#~ msgstr ""
+#~ "Utilisez cette clé pour chiffrer les courriers électroniques privés "
+#~ "adressés à [[accounting@tails.net|about/contact#tails-accounting]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096 2024-04-30 [SC]\n"
+#~ "          EC58494A6333D0384DD5744DA38F0F6E9A0A234E\n"
+#~ "    uid           [ unknown] accounting@tails.net <accounting@tails.net>\n"
+#~ "    uid           [ unknown] accounting@tails.net <accounting-request@tails.net>\n"
+#~ "    uid           [ unknown] accounting@tails.net <accounting-owner@tails.net>\n"
+#~ "    sub   rsa4096 2024-04-30 [E]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096 2024-04-30 [SC]\n"
+#~ "          EC58494A6333D0384DD5744DA38F0F6E9A0A234E\n"
+#~ "    uid           [ unknown] accounting@tails.net <accounting@tails.net>\n"
+#~ "    uid           [ unknown] accounting@tails.net <accounting-request@tails.net>\n"
+#~ "    uid           [ unknown] accounting@tails.net <accounting-owner@tails.net>\n"
+#~ "    sub   rsa4096 2024-04-30 [E]\n"
+
+#~ msgid ""
+#~ "- Download it from this website: [[!tails_website accounting-tails-"
+#~ "net.key]]."
+#~ msgstr ""
+#~ "- La télécharger depuis ce site : [[!tails_website accounting-tails-"
+#~ "net.key]]."
+
+#, no-wrap
+#~ msgid "<a id=\"private\"></a>\n"
+#~ msgstr "<a id=\"private\"></a>\n"
+
+#, no-wrap
+#~ msgid "Private mailing list key"
+#~ msgstr "Clé de la liste de discussion privée"
+
+#~ msgid ""
+#~ "This key has an encryption subkey. Please use it to send encrypted emails "
+#~ "to our contact address: [[info@tails.net|about/contact#tails]]."
+#~ msgstr ""
+#~ "Cette clé a une sous-clé de chiffrement. Merci de l'utiliser pour envoyer "
+#~ "des courriers électroniques chiffrés à notre adresse de contact : "
+#~ "[[info@tails.net|about/contact#tails]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096 2024-04-30 [SC]\n"
+#~ "          BDDC755D6B2D9FA09F0B92278C1487D924461904\n"
+#~ "    uid           [ unknown] info@tails.net <info@tails.net>\n"
+#~ "    uid           [ unknown] info@tails.net <info-request@tails.net>\n"
+#~ "    uid           [ unknown] info@tails.net <info-owner@tails.net>\n"
+#~ "    sub   rsa4096 2024-04-30 [E]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096 2024-04-30 [SC]\n"
+#~ "          BDDC755D6B2D9FA09F0B92278C1487D924461904\n"
+#~ "    uid           [ unknown] info@tails.net <info@tails.net>\n"
+#~ "    uid           [ unknown] info@tails.net <info-request@tails.net>\n"
+#~ "    uid           [ unknown] info@tails.net <info-owner@tails.net>\n"
+#~ "    sub   rsa4096 2024-04-30 [E]\n"
+
+#~ msgid "download it from this website: [[!tails_website info-tails-net.key]]"
+#~ msgstr ""
+#~ "la télécharger depuis ce site : [[!tails_website info-tails-net.key]]"
+
+#~ msgid "fetch it from your favourite key server"
+#~ msgstr "la prendre sur votre serveur de clés favori"
+
+#~ msgid "send an email to <info-sendkey@tails.net>."
+#~ msgstr "envoyer un courrier électronique à <info-sendkey@tails.net>."
+
+#~ msgid ""
+#~ "This means people other than Tails developers are in a position to use "
+#~ "this secret key. Tails developers trust these people enough to rely on "
+#~ "them for running our encrypted mailing list, but still: this key pair is "
+#~ "managed in a less safe way than our signing key."
+#~ msgstr ""
+#~ "Cela signifie que d'autres personnes que les développeurs Tails ont accès "
+#~ "à cette clé secrète et peuvent donc l'utiliser. Les développeurs de Tails "
+#~ "leur font confiance pour faire fonctionner la liste de discussion "
+#~ "chiffrée, mais notez tout de même que cette clé ne bénéficie pas d'un "
+#~ "niveau de sécurité équivalent à celui de la clé de signature."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096 2009-08-14 [SC] [expires: 2023-03-03]\n"
+#~ "          09F6 BC8F EEC9 D8EE 005D  BAA4 1D29 75ED F93E 735F\n"
+#~ "    uid           [  full  ] Tails developers (Schleuder mailing-list) <tails@boum.org>\n"
+#~ "    uid           [  full  ] Tails list (schleuder list) <tails-owner@boum.org>\n"
+#~ "    uid           [  full  ] Tails list (schleuder list) <tails-request@boum.org>\n"
+#~ "    sub   rsa4096 2009-08-14 [E] [expires: 2023-03-03]\n"
+#~ "          C394 8FE7 B604 C611 4E29  4DDF D843 C2F5 E893 82EB\n"
+#~ msgstr ""
+#~ "    pub   rsa4096 2009-08-14 [SC] [expires: 2023-03-03]\n"
+#~ "          09F6 BC8F EEC9 D8EE 005D  BAA4 1D29 75ED F93E 735F\n"
+#~ "    uid           [  full  ] Tails developers (Schleuder mailing-list) <tails@boum.org>\n"
+#~ "    uid           [  full  ] Tails list (schleuder list) <tails-owner@boum.org>\n"
+#~ "    uid           [  full  ] Tails list (schleuder list) <tails-request@boum.org>\n"
+#~ "    sub   rsa4096 2009-08-14 [E] [expires: 2023-03-03]\n"
+#~ "          C394 8FE7 B604 C611 4E29  4DDF D843 C2F5 E893 82EB\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096/0x457080B5A072CBE3 2014-07-11 [SCEA]\n"
+#~ "          Key fingerprint = F3CD 9B7B 4BDF 9995 DA22  088E 4570 80B5 A072 CBE3\n"
+#~ "    uid                   [  undef ] Tails press team (schleuder list) <tails-press@boum.org>\n"
+#~ "    uid                   [  undef ] Tails press team (schleuder list) <tails-press-owner@boum.org>\n"
+#~ "    uid                   [  undef ] Tails press team (schleuder list) <tails-press-request@boum.org>\n"
+#~ "    sub   rsa4096/0x5748DE3BC338BFFC 2014-07-11 [SEA]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096/0x457080B5A072CBE3 2014-07-11 [SCEA]\n"
+#~ "          Key fingerprint = F3CD 9B7B 4BDF 9995 DA22  088E 4570 80B5 A072 CBE3\n"
+#~ "    uid                   [  undef ] Tails press team (schleuder list) <tails-press@boum.org>\n"
+#~ "    uid                   [  undef ] Tails press team (schleuder list) <tails-press-owner@boum.org>\n"
+#~ "    uid                   [  undef ] Tails press team (schleuder list) <tails-press-request@boum.org>\n"
+#~ "    sub   rsa4096/0x5748DE3BC338BFFC 2014-07-11 [SEA]\n"
+
+#~ msgid "- Download it from this website: [[!tails_website tails-press.key]]."
+#~ msgstr ""
+#~ "- La télécharger depuis ce site : [[!tails_website tails-press.key]]."
+
+#~ msgid ""
+#~ "Use this key to encrypt private emails sent to [[tails-"
+#~ "fundraising@boum.org|about/contact#tails-fundraising]]."
+#~ msgstr ""
+#~ "Utilisez cette clé pour chiffrer les courriers électroniques privés "
+#~ "adressés à [[tails-fundraising@boum.org|about/contact#tails-fundraising]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096/0xFEB0D5A18EACAF99 2014-08-09 [SCEA]\n"
+#~ "          Key fingerprint = 3910 BD9D 690B A8C5 692F  93F8 FEB0 D5A1 8EAC AF99\n"
+#~ "    uid                   [ unknown] Tails fundraising team (schleuder list) <tails-fundraising@boum.org>\n"
+#~ "    uid                   [ unknown] Tails fundraising team (schleuder list) <tails-fundraising-owner@boum.org>\n"
+#~ "    uid                   [ unknown] Tails fundraising team (schleuder list) <tails-fundraising-request@boum.org>\n"
+#~ "    sub   rsa4096/0xEDC585308B7A9217 2014-08-09 [SEA]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096/0xFEB0D5A18EACAF99 2014-08-09 [SCEA]\n"
+#~ "          Key fingerprint = 3910 BD9D 690B A8C5 692F  93F8 FEB0 D5A1 8EAC AF99\n"
+#~ "    uid                   [ unknown] Tails fundraising team (schleuder list) <tails-fundraising@boum.org>\n"
+#~ "    uid                   [ unknown] Tails fundraising team (schleuder list) <tails-fundraising-owner@boum.org>\n"
+#~ "    uid                   [ unknown] Tails fundraising team (schleuder list) <tails-fundraising-request@boum.org>\n"
+#~ "    sub   rsa4096/0xEDC585308B7A9217 2014-08-09 [SEA]\n"
+
+#~ msgid ""
+#~ "- Download it from this website: [[!tails_website tails-fundraising.key]]."
+#~ msgstr ""
+#~ "- La télécharger depuis ce site : [[!tails_website tails-"
+#~ "fundraising.key]]."
+
+#, no-wrap
+#~ msgid "<a id=\"mirrors\"></a>\n"
+#~ msgstr "<a id=\"mirrors\"></a>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "Mirrors team key\n"
+#~ "===================\n"
+#~ msgstr ""
+#~ "Clé de l'équipe miroirs\n"
+#~ "===================\n"
+
+#~ msgid ""
+#~ "Use this key to encrypt private emails sent to [[tails-mirrors@boum.org|"
+#~ "about/contact#tails-mirrors]]."
+#~ msgstr ""
+#~ "Utilisez cette clé pour chiffrer les courriers électroniques privés "
+#~ "adressés à [[tails-mirrors@boum.org|about/contact#tails-mirrors]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096/0xD2EDA621B572DD73 2016-04-29 [SCEA]\n"
+#~ "          Key fingerprint = 0B08 8E31 D4F8 E59A 3D39  9137 D2ED A621 B572 DD73\n"
+#~ "    uid                   [ unknown] Tails mirror pool managers (schleuder list) <tails-mirrors@boum.org>\n"
+#~ "    uid                   [ unknown] Tails mirror pool managers (schleuder list) <tails-mirrors-request@boum.org>\n"
+#~ "    uid                   [ unknown] Tails mirror pool managers (schleuder list) <tails-mirrors-owner@boum.org>\n"
+#~ "    sub   rsa4096/0x3DCFC1EB1C62C73C 2016-04-29 [SEA]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096/0xD2EDA621B572DD73 2016-04-29 [SCEA]\n"
+#~ "          Key fingerprint = 0B08 8E31 D4F8 E59A 3D39  9137 D2ED A621 B572 DD73\n"
+#~ "    uid                   [ unknown] Tails mirror pool managers (schleuder list) <tails-mirrors@boum.org>\n"
+#~ "    uid                   [ unknown] Tails mirror pool managers (schleuder list) <tails-mirrors-request@boum.org>\n"
+#~ "    uid                   [ unknown] Tails mirror pool managers (schleuder list) <tails-mirrors-owner@boum.org>\n"
+#~ "    sub   rsa4096/0x3DCFC1EB1C62C73C 2016-04-29 [SEA]\n"
+
+#~ msgid ""
+#~ "- Download it from this website: [[!tails_website tails-mirrors.key]]."
+#~ msgstr ""
+#~ "- La télécharger depuis ce site : [[!tails_website tails-mirrors.key]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096/0x70F4F03116525F43 2012-08-23 [SC] [expires: 2024-10-11]\n"
+#~ "          D113CB6D5131D34BA5F0FE9E70F4F03116525F43\n"
+#~ "    uid                              Tails system administrators <tails-sysadmins@boum.org>\n"
+#~ "    uid                              Tails system administrators (schleuder list) <tails-sysadmins-request@boum.org>\n"
+#~ "    uid                              Tails system administrators (schleuder list) <tails-sysadmins-owner@boum.org>\n"
+#~ "    sub   rsa4096/0x58BA940CCA0A30B4 2012-08-23 [E] [expires: 2024-10-11]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096/0x70F4F03116525F43 2012-08-23 [SC] [expires: 2024-10-11]\n"
+#~ "          D113CB6D5131D34BA5F0FE9E70F4F03116525F43\n"
+#~ "    uid                              Tails system administrators <tails-sysadmins@boum.org>\n"
+#~ "    uid                              Tails system administrators (schleuder list) <tails-sysadmins-request@boum.org>\n"
+#~ "    uid                              Tails system administrators (schleuder list) <tails-sysadmins-owner@boum.org>\n"
+#~ "    sub   rsa4096/0x58BA940CCA0A30B4 2012-08-23 [E] [expires: 2024-10-11]\n"
+
+#~ msgid ""
+#~ "- Download it from this website: [[!tails_website tails-sysadmins.key]]."
+#~ msgstr ""
+#~ "- La télécharger depuis ce site : [[!tails_website tails-sysadmins.key]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096/0x0190E73C38F13068 2020-10-02 [SC]\n"
+#~ "          Key fingerprint = 6AA6 4D2B 7D77 AD46 6667  E7BD 0190 E73C 38F1 3068\n"
+#~ "    uid                      tails-weblate@boum.org <tails-weblate@boum.org>\n"
+#~ "    uid                      tails-weblate@boum.org <tails-weblate-request@boum.org>\n"
+#~ "    uid                      tails-weblate@boum.org <tails-weblate-owner@boum.org>\n"
+#~ "    sub   rsa4096/0x2F7EC378C628BE30 2020-10-02 [E]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096/0x0190E73C38F13068 2020-10-02 [SC]\n"
+#~ "          Key fingerprint = 6AA6 4D2B 7D77 AD46 6667  E7BD 0190 E73C 38F1 3068\n"
+#~ "    uid                      tails-weblate@boum.org <tails-weblate@boum.org>\n"
+#~ "    uid                      tails-weblate@boum.org <tails-weblate-request@boum.org>\n"
+#~ "    uid                      tails-weblate@boum.org <tails-weblate-owner@boum.org>\n"
+#~ "    sub   rsa4096/0x2F7EC378C628BE30 2020-10-02 [E]\n"
+
+#~ msgid ""
+#~ "- Download it from this website: [[!tails_website tails-weblate.key]]."
+#~ msgstr ""
+#~ "- La télécharger depuis ce site : [[!tails_website tails-weblate.key]]."
+
+#~ msgid ""
+#~ "Use this key to encrypt private emails sent to [[tails-"
+#~ "foundations@boum.org|about/contact#tails-foundations]]."
+#~ msgstr ""
+#~ "Utilisez cette clé pour chiffrer les courriers électroniques privés "
+#~ "adressés à [[tails-foundations@boum.org|about/contact#tails-foundations]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096/0xA827FE0D677E522C 2019-02-24 [SC]\n"
+#~ "          Key fingerprint = EFC9 4A11 CBF6 F00F 509C  EB0C A827 FE0D 677E 522C\n"
+#~ "    uid                   [ unknown] tails-foundations@boum.org <tails-foundations@boum.org>\n"
+#~ "    uid                   [ unknown] tails-foundations@boum.org <tails-foundations-request@boum.org>\n"
+#~ "    uid                   [ unknown] tails-foundations@boum.org <tails-foundations-owner@boum.org>\n"
+#~ "    sub   rsa4096/0x244F9D7C6DF90D6D 2019-02-24 [E]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096/0xA827FE0D677E522C 2019-02-24 [SC]\n"
+#~ "          Key fingerprint = EFC9 4A11 CBF6 F00F 509C  EB0C A827 FE0D 677E 522C\n"
+#~ "    uid                   [ unknown] tails-foundations@boum.org <tails-foundations@boum.org>\n"
+#~ "    uid                   [ unknown] tails-foundations@boum.org <tails-foundations-request@boum.org>\n"
+#~ "    uid                   [ unknown] tails-foundations@boum.org <tails-foundations-owner@boum.org>\n"
+#~ "    sub   rsa4096/0x244F9D7C6DF90D6D 2019-02-24 [E]\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "download it from this website: [[!tails_website tails-foundations.key]]"
+#~ msgid ""
+#~ "- Download it from this website: [[!tails_website tails-foundations.key]]."
+#~ msgstr ""
+#~ "la télécharger depuis ce site : [[!tails_website tails-foundations.key]]"
+
+#, fuzzy
+#~| msgid "download it from this website: [[!tails_website tails-board.key]]"
+#~ msgid "- Download it from this website: [[!tails_website tails-board.key]]."
+#~ msgstr "la télécharger depuis ce site : [[!tails_website tails-board.key]]"
+
+#, no-wrap
+#~ msgid ""
+#~ "    pub   rsa4096/0xC436090F4BB47C6F 2014-07-11 [SCEA]\n"
+#~ "          Key fingerprint = 256D EB90 7788 0CD6 8167  8528 C436 090F 4BB4 7C6F\n"
+#~ "    uid                   [  undef ] Tails accounting team (schleuder list) <tails-accounting@boum.org>\n"
+#~ "    uid                   [  undef ] Tails accounting team (schleuder list) <tails-accounting-owner@boum.org>\n"
+#~ "    uid                   [  undef ] Tails accounting team (schleuder list) <tails-accounting-request@boum.org>\n"
+#~ "    sub   rsa4096/0x289A5B45A9E89475 2014-07-11 [SEA]\n"
+#~ msgstr ""
+#~ "    pub   rsa4096/0xC436090F4BB47C6F 2014-07-11 [SCEA]\n"
+#~ "          Key fingerprint = 256D EB90 7788 0CD6 8167  8528 C436 090F 4BB4 7C6F\n"
+#~ "    uid                   [  undef ] Tails accounting team (schleuder list) <tails-accounting@boum.org>\n"
+#~ "    uid                   [  undef ] Tails accounting team (schleuder list) <tails-accounting-owner@boum.org>\n"
+#~ "    uid                   [  undef ] Tails accounting team (schleuder list) <tails-accounting-request@boum.org>\n"
+#~ "    sub   rsa4096/0x289A5B45A9E89475 2014-07-11 [SEA]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "* Is not owned in a usable format by any single individual. It is\n"
+#~ "  split cryptographically using\n"
+#~ "  [gfshare](https://git.gitano.org.uk/libgfshare.git/).\n"
+#~ "* Is only used offline, in an air-gapped Tails only communicating with\n"
+#~ "  the outside world through:\n"
+#~ "  - Plugging the Tails flash media in another operating system to install Tails\n"
+#~ "    in the first place.\n"
+#~ "  - Plugging other removable media in the air-gapped Tails to send the\n"
+#~ "    public key, secret key stubs, parts of the secret master key, and so on\n"
+#~ "    to the outside world.\n"
+#~ "  - Plugging other removable media in the air-gapped Tails to receive Debian\n"
+#~ "    packages, public keys, and so on from the outside world.\n"
+#~ "* Expires in less than one year. We will extend its validity as many\n"
+#~ "  times as we find reasonable.\n"
+#~ "* Has a revocation certificate split amongst different people.\n"
+#~ "  See the [[details of the mechanism|signing_key_revocation]].\n"
+#~ msgstr ""
+#~ "* Elle n'est pas détenue dans un format utilisable par une seule personne. Elle est\n"
+#~ "  divisée cryptographiquement en utilisant\n"
+#~ "  [gfshare](https://git.gitano.org.uk/libgfshare.git/).\n"
+#~ "* Elle est seulement utilisée hors-ligne, sur un Tails air-gap (isolé physiquement de tout réseau) communiquant avec\n"
+#~ "  le monde extérieur par :\n"
+#~ "  - Branchement du  média flash Tails sur un autre système d'exploitation pour installer Tails\n"
+#~ "    dans un premier temps.\n"
+#~ "  - Branchement d'un autre média amovible sur le Tails air-gap pour envoyer la\n"
+#~ "    clé publique, les stubs de la clé secrète, les parties de la clé maître secrète et ainsi de suite,\n"
+#~ "    vers le monde extérieur.\n"
+#~ "  - Branchement d'un autre média amovible sur le Tails air-gap pour recevoir les paquets\n"
+#~ "    Debian, les clés publiques et ainsi de suite, depuis le monde extérieur.\n"
+#~ "* Elle expire dans moins d'un an. Nous étendrons sa validité autant de\n"
+#~ "  fois que nous le jugerons raisonnable.\n"
+#~ "* Elle a un certificat de révocation divisé entre différentes personnes.\n"
+#~ "  Voir les [[détails de ce mécanisme|signing_key_revocation]].\n"
+
+#~ msgid "<a id=\"translations\"></a>\n"
+#~ msgstr "<a id=\"translations\"></a>\n"
+
+#~ msgid ""
+#~ "download it from this website: [[!tails_website tails-translations.key]]"
+#~ msgstr ""
+#~ "la télécharger depuis ce site : [[!tails_website tails-translations.key]]"
+
+#~ msgid "Signature"
+#~ msgstr "Signature"
+
+#~ msgid ""
+#~ "This key also has the capability to sign and certify. Until Tails 0.5 and "
+#~ "0.6~rc3, released images were signed by this key. This purpose is now "
+#~ "deprecated: further releases will be signed by a dedicated, safer signing "
+#~ "key. As of 2010 October 7th, our mailing list key signature only means "
+#~ "our mailing list software checked the signed content was originally "
+#~ "OpenPGP-signed by a Tails core developer."
+#~ msgstr ""
+#~ "Cette clé peut également signer et certifier. Jusqu'à Tails 0.5 et "
+#~ "0.6~rc3,\n"
+#~ "les images des versions étaient signées par cette clé. Dorénavant, les "
+#~ "versions\n"
+#~ "publiées seront signées par une clé dédiée, plus sûre. Depuis le 7 "
+#~ "octobre 2010,\n"
+#~ "la signature de la clé de notre liste de discussion signifie seulement "
+#~ "que le contenu\n"
+#~ "signé était originellement signé par un développeur principal de Tails."
+
+#~ msgid "[[!tails_website tails-bugs.key desc=\"Download the key\"]]\n"
+#~ msgstr "[[!tails_website tails-bugs.key desc=\"Téléchargez la clé\"]]\n"
+
+#~ msgid ""
+#~ "- download it from this website: [[!tails_website tails-signing.key]] - "
+#~ "fetch it from your favourite keyserver."
+#~ msgstr ""
+#~ "- la télécharger depuis ce site : [[!tails_website tails-signing.key]]\n"
+#~ "- la récupérer sur votre serveur de clefs favori."

@@ -1,0 +1,10 @@
+[Unit]
+Description=TCA portal socket
+
+[Socket]
+ListenStream=/run/tca-portal.sock
+SocketMode=0600
+
+[Install]
+WantedBy=sockets.target
+

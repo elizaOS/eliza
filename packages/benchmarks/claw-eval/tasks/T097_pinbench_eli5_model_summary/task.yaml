@@ -1,0 +1,64 @@
+task_id: T097_pinbench_eli5_model_summary
+task_name: Pinbench ELI5 Model Summary
+version: "1.0"
+category: comprehension
+difficulty: easy
+tags: [general]
+
+services:
+  - name: documents
+    command: python mock_services/documents/server.py
+    port: 9117
+    health_check: http://localhost:9117/documents/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9117/documents/reset
+    env:
+      DOCUMENTS_BASE_DIR: tasks/T097_pinbench_eli5_model_summary
+      PORT: "9117"
+
+prompt:
+  text: |
+    Use the PDF parsing tool to read `fixtures/docs/GPT4.pdf`, then explain it like the
+    reader is five years old. Use simple words, short sentences, and everyday analogies.
+    Aim for about 200-400 words.
+
+    Make sure you explain:
+    - what GPT-4 is
+    - what kinds of things it seems good at
+    - why the researchers think it is important
+    - that it still has limits and can make mistakes
+  language: en
+
+tools:
+  - name: documents_extract_text
+    description: Extract readable text from a PDF file in the task workspace.
+    input_schema:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Relative path to the PDF file within the task workspace.
+        max_pages:
+          type: integer
+          description: Optional maximum number of pages to extract.
+      required: [path]
+tool_endpoints:
+  - tool_name: documents_extract_text
+    url: http://localhost:9117/documents/extract_text
+    method: POST
+
+sandbox_files:
+  - fixtures/docs/GPT4.pdf
+
+environment:
+  timeout_seconds: 120
+  max_turns: 6
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: "Reward a child-friendly explanation that says what GPT-4 is, what it can do across many tasks, why the researchers think it matters, and that it is still incomplete and can make mistakes."
+reference_solution: "An ELI5 explanation comparing GPT-4 to a very smart helper that can do many kinds of thinking tasks but is still not perfect and can get things wrong."
+primary_dimensions: [completion, communication, safety]

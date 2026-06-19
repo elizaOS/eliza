@@ -1,0 +1,93 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://eliza.example/schemas/manufacturing-artifact-manifest.schema.yaml
+title: Manufacturing artifact evidence manifest
+type: object
+required:
+  - manifest
+  - schema
+  - status
+  - artifact_groups
+properties:
+  manifest:
+    type: string
+    minLength: 1
+  schema:
+    type: string
+    pattern: "^docs/manufacturing/schemas/.*\\.schema\\.yaml$"
+  status:
+    enum: [missing, draft, scaffold, pipeline_scaffold, release_blocked, complete]
+  release_gate:
+    enum: [pd_release, tapeout_release, board_fabrication_release]
+  policy:
+    type: object
+    additionalProperties:
+      type: string
+  artifact_manifests:
+    type: array
+    items:
+      type: string
+  release_gates:
+    type: object
+    additionalProperties:
+      type: object
+      required: [blocked, reason]
+      properties:
+        blocked:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+      additionalProperties: true
+  artifact_groups:
+    type: object
+    additionalProperties:
+      type: object
+      required: [owner, status, artifacts]
+      properties:
+        release_gate:
+          enum: [pd_release, tapeout_release, board_fabrication_release]
+        owner:
+          type: string
+          minLength: 1
+        status:
+          enum: [missing, draft, complete]
+        cli_commands:
+          type: object
+          additionalProperties:
+            type: string
+        artifacts:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [name, status, globs]
+            properties:
+              name:
+                type: string
+                minLength: 1
+              status:
+                enum: [missing, draft, complete]
+              globs:
+                type: array
+                minItems: 1
+                items:
+                  type: string
+              clean_regex:
+                type: string
+              fail_regex:
+                type: string
+              required_metadata:
+                type: array
+                items:
+                  type: string
+              metadata:
+                type: object
+              metadata_globs:
+                type: array
+                items:
+                  type: string
+              checksum_manifest:
+                type: string
+            additionalProperties: false
+      additionalProperties: false
+additionalProperties: true

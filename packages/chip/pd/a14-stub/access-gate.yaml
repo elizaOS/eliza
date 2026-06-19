@@ -1,0 +1,67 @@
+schema: eliza.pd_advanced_node_access_gate.v1
+pdk: TSMC_A14
+node_class: tsmc_a14_2nd_gen_gaa
+status: blocked_until_foundry_agreement
+evidence_class: procurement_blocked_no_artifacts
+
+role: stretch_production_target_2028
+
+reason:
+  - TSMC OIP / NDA agreement at A14 is not in place.
+  - A14 HVM begins 2028; mobile-mature mid-cycle 2028-2029.
+  - No commercial signoff EDA seat at A14 is held.
+  - LPDDR5X / LPDDR6 PHY licensing at A14 is in vendor delivery plans but not all
+    units are taped out yet.
+  - High-NA EUV is explicitly NOT used at A14 per TSMC; this is not a 14A
+    blocker but it is a process-technical difference.
+
+unblock_requires:
+  - executed_tsmc_open_innovation_platform_agreement_at_a14
+  - lpddr5x_or_lpddr6_phy_license_at_a14_synopsys_or_cadence_or_rambus
+  - usb32_or_usb4_phy_license_at_a14
+  - mipi_d_phy_v3_and_c_phy_v2_license_at_a14
+  - dsi2_and_csi2_controller_license_at_a14
+  - pll_hard_ip_license_at_a14
+  - sram_compiler_license_at_a14
+  - commercial_signoff_eda_seat_qualified_at_a14
+  - lvf_or_socv_corner_set_loaded
+  - nanoflex_pro_dtco_cell_mix_methodology
+  - mask_set_nre_budget_usd_45m_committed
+  - tapeout_nre_budget_usd_300m_to_500m_committed
+  - wafer_allocation_window_in_2028q1_to_2028q4
+
+procurement_economics:
+  wafer_usd_low: 40000
+  wafer_usd_high: 45000
+  mask_set_usd_estimate: 45000000
+  tapeout_nre_usd_low: 300000000
+  tapeout_nre_usd_high: 500000000
+  expected_lead_customer_window: "Apple, NVIDIA, AMD on A14 baseline 2028; mobile mid-cycle 2028-2029"
+
+process_technical_summary:
+  transistor: gaa_nanosheet_2nd_gen
+  dtco_methodology: NanoFlex_Pro
+  bspdn: a14_baseline_frontside_only
+  a14p_spr_bspdn_variant_eta: 2029
+  high_na_euv: no_per_tsmc_explicit
+  density_lift_vs_n2: ">1.2x logic"
+  perf_or_power_lift_vs_n2: "+15% perf @ iso-power OR -30% power @ iso-perf"
+  logic_density_lift_vs_n2_pct: 20
+
+corner_set: pd/corner-manifests/tsmc-a14.yaml
+library_set: pd/library-manifests/tsmc-a14.yaml
+
+forbidden_claims_until_unblocked:
+  - tsmc_a14_tapeout_ready
+  - tsmc_a14_signoff_clean
+  - tsmc_a14p_bspdn_signoff
+  - any_advanced_node_ppa_number_marked_as_signoff
+
+what_can_be_said_today:
+  - This project's stretch 2028 target is TSMC A14 baseline (frontside).
+  - A14P / SPR-BSPDN follow-on is documented as a 2029 variant, not 2028.
+
+next_commands:
+  preflight: make pdk-portability-check
+  projection: make ppa-projection
+  procurement_gate: make pdk-access-gate

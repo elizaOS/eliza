@@ -1,0 +1,24 @@
+#!/usr/bin/env node
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+
+if (process.argv[2] !== "root") {
+  console.error("operator npm shim only supports `npm root`.");
+  process.exit(1);
+}
+
+let dir = process.cwd();
+while (true) {
+  const candidate = resolve(dir, "node_modules");
+  if (existsSync(resolve(candidate, ".bin", "tsc"))) {
+    console.log(candidate);
+    process.exit(0);
+  }
+
+  const parent = dirname(dir);
+  if (parent === dir) break;
+  dir = parent;
+}
+
+console.error("operator npm shim could not find workspace node_modules.");
+process.exit(1);

@@ -1,0 +1,250 @@
+schema: eliza.e1_phone_procurement_readiness.v1
+status: blocked_preliminary_bom_not_avl_or_purchase_order
+date: 2026-05-20
+claim_boundary: >
+  Procurement readiness matrix only. This turns the preliminary phone BOM into
+  a machine-checkable list of sourcing, lifecycle, compliance, drawing, and
+  sample blockers. It is not an AVL, quote, purchase order, approved
+  substitute list, production BOM, or permission to freeze footprints.
+
+source_artifacts:
+  - board/kicad/e1-phone/preliminary-bom.yaml
+  - board/kicad/e1-phone/supplier-sourcing-audit.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - board/kicad/e1-phone/production-factory-release-execution.yaml
+  - board/kicad/e1-phone/cellular-space-saving-downselect.yaml
+  - board/kicad/e1-phone/production-readiness.yaml
+
+procurement_policy:
+  target_build: EVT1-routed-first-article
+  minimum_quote_quantity: 10
+  preferred_quote_quantity: 100
+  required_supplier_artifacts:
+    - manufacturer_part_number
+    - supplier_part_number_or_orderable_sku
+    - quoted_unit_price_and_moq
+    - lead_time_and_lifecycle_statement
+    - RoHS_REACH_or_material_compliance_statement
+    - dimensioned_2d_drawing
+    - recommended_footprint_or_connector_pinout
+    - 3d_step_or_height_keepout_model
+  common_release_blockers:
+    - no_supplier_quote
+    - no_samples_received
+    - no_incoming_inspection_record
+    - no_lifecycle_or_compliance_statement
+    - no_approved_substitute_strategy
+
+selected_supplier_response_procurement_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_prove_orderability_quotes_lifecycle_samples_and_avl_inputs
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_procurement_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  required_procurement_fields:
+    - orderable_manufacturer_part_number
+    - supplier_sku
+    - lifecycle_status
+    - MOQ
+    - unit_price_10
+    - unit_price_100
+    - unit_price_1000
+    - lead_time_days_10
+    - lead_time_days_100
+    - lead_time_days_1000
+    - compliance_pack_index_path
+    - sample_lot_tracking
+    - incoming_inspection_path
+    - approved_by_ee
+    - approved_by_me
+    - approved_by_ops
+  procurement_decisions_blocked:
+    - selected supplier cannot be treated as AVL-approved from public marketplace listings alone
+    - orderable MPN, supplier SKU, lifecycle, MOQ, lead-time, and price breaks are missing for EVT1 buy
+    - sample lot, incoming inspection, compliance, and approval records are missing before purchase order release
+    - selected cellular branch cannot be locked until the compact module alternate quote and regional SKU scope are returned
+    - display, camera, USB-C, side-key, cellular, and Wi-Fi/Bluetooth substitutes cannot be approved without normalized response packs
+  line_item_functions_blocked:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  all_selected_supplier_response_packs_absent: true
+  procurement_release_allowed_without_selected_supplier_packs: false
+alternate_display_procurement_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/production-factory-release-execution.yaml
+  status: blocked_until_alternate_display_quotes_lifecycle_samples_compliance_avl_and_promotion_review_exist
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      required_procurement_fields:
+        - orderable_manufacturer_part_number
+        - supplier_sku
+        - lifecycle_status
+        - MOQ
+        - unit_price_10
+        - unit_price_100
+        - lead_time_days_10
+        - lead_time_days_100
+        - compliance_pack_index_path
+        - sample_lot_tracking
+        - incoming_inspection_path
+        - approved_by_ee
+        - approved_by_me
+        - approved_by_ops
+      blocked_procurement_decisions:
+        - cannot create AVL row from public Alibaba listing alone
+        - cannot approve substitute until signed drawing, 40-pin pinout, connector, land pattern, STEP/B-rep, and samples exist
+        - cannot release purchase order until MOQ, price breaks, lead time, lifecycle, compliance, and inspection evidence exist
+        - cannot replace CH550FH01A-CT without promotion review covering supply, route, enclosure, and factory risk
+      procurement_release_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      required_procurement_fields:
+        - orderable_manufacturer_part_number
+        - supplier_sku
+        - lifecycle_status
+        - MOQ
+        - unit_price_10
+        - unit_price_100
+        - lead_time_days_10
+        - lead_time_days_100
+        - compliance_pack_index_path
+        - sample_lot_tracking
+        - incoming_inspection_path
+        - approved_by_ee
+        - approved_by_me
+        - approved_by_ops
+      blocked_procurement_decisions:
+        - cannot create AVL row from public Made-in-China listing alone
+        - cannot approve substitute until signed AMOLED drawing, FPC pinout, connector, land pattern, STEP/B-rep, RM67191/GT1151 data, and samples exist
+        - cannot release purchase order until MOQ, price breaks, lead time, lifecycle, compliance, burn-in/luminance, and inspection evidence exist
+        - cannot replace CH550FH01A-CT without promotion review covering supply, route, enclosure, power/thermal, and factory risk
+      procurement_release_allowed: false
+
+line_items:
+  - function: display_touch
+    selected_primary: Chenghao_CH550FH01A_CT_or_pin_compatible_5p5_FHD_MIPI_CTP
+    alternates: [META_055WU01_class, 5p5_ILI7807D_1200nit_MIPI_40pin_class, 5p5_AMOLED_RM67191_class]
+    risk_class: mechanical_anchor_high
+    procurement_status: blocked_supplier_quote_and_pinout_required
+    required_supplier_artifacts: [full_connector_pinout, fpc_exit_drawing, panel_init_sequence, touch_controller_data, backlight_or_bias_curve, cover_glass_stack]
+  - function: rear_camera
+    selected_primary: Sincere_First_SF_XR3855A_A0_OV13855_13MP_AF_MIPI
+    alternates: [AR1335_13MP_AF_4lane_MIPI_module]
+    risk_class: camera_image_quality_high
+    procurement_status: blocked_supplier_quote_and_pinout_required
+    required_supplier_artifacts: [exact_fpc_pinout, lens_z_height, lane_order, power_sequence, otp_calibration_flow, driver_plan]
+  - function: front_camera
+    selected_primary: Sincere_First_SF_G5035S60FY_GC5035_5MP_FF_MIPI
+    alternates: [Junde_IMX219_8MP_fixed_focus_MIPI_lab_or_front_alternate]
+    risk_class: camera_mechanical_medium
+    procurement_status: blocked_supplier_quote_and_pinout_required
+    required_supplier_artifacts: [exact_fpc_pinout, lens_z_height, lane_order, power_sequence, driver_plan]
+  - function: cellular
+    selected_primary: Quectel_RG255C_LGA_or_RM255C_M2_5G_RedCap
+    alternates: [Quectel_EG915Q_EG915U_LTE_Cat1bis_space_saving_branch, Quectel_EG916Q_GL_LTE_Cat1bis_global_branch, Fibocom_MC665_LTE_Cat1bis_second_vendor_branch, Quectel_RM520N_GL_M2_lab_fallback]
+    risk_class: certification_and_rf_high
+    procurement_status: blocked_region_sku_certification_scope_and_space_saving_module_decision_required
+    required_supplier_artifacts: [region_sku_band_matrix, hardware_design_guide, lga_or_m2_footprint, peak_current_profile, sim_esim_reference, certification_scope_statement, smaller_module_orderable_mpn_and_lifecycle, smaller_module_reference_layout_step_and_firmware_pack]
+  - function: wifi_bluetooth
+    selected_primary: Murata_LBEE5XV2EA_802_Type_2EA_WiFi6E_BT5p3
+    alternates: [Murata_Type_1DX_SDIO_UART_fallback]
+    risk_class: rf_firmware_regulatory_high
+    procurement_status: blocked_reference_layout_and_firmware_license_required
+    required_supplier_artifacts: [module_datasheet, land_pattern_dxf, hardware_design_guide, firmware_license, antenna_reference_layout, regulatory_note]
+  - function: usb_c_receptacle_evt0
+    selected_primary: GCT_USB4105_USB2_Type_C
+    alternates: [Molex_221632_or_217804_waterproof_24pin_if_USB3_required]
+    risk_class: mechanical_connector_high
+    procurement_status: blocked_variant_and_port_stack_required
+    required_supplier_artifacts: [recommended_footprint, shell_stake_drawing, step_model, mating_plug_clearance, usb2_or_usb3_variant_decision]
+  - function: side_buttons
+    selected_primary: Panasonic_EVQ_P7_or_EVQ_P3_side_push_tactile
+    alternates: [C_and_K_KMR2_with_enclosure_plunger]
+    risk_class: mechanical_lifetime_medium
+    procurement_status: blocked_actuator_stack_required
+    required_supplier_artifacts: [land_pattern, force_curve, lifecycle_rating, actuator_stack_drawing]
+  - function: usb_pd_controller
+    selected_primary: TI_TPS65987DDH
+    alternates: []
+    risk_class: firmware_power_policy_high
+    procurement_status: blocked_pd_policy_and_programming_flow_required
+    required_supplier_artifacts: [datasheet, reference_schematic, pd_policy_blob_or_tool_flow, layout_guidelines]
+  - function: charger_power_path
+    selected_primary: MAX77860_class
+    alternates: []
+    risk_class: battery_safety_high
+    procurement_status: blocked_charge_policy_and_thermal_review_required
+    required_supplier_artifacts: [datasheet, reference_schematic, thermal_layout_guidelines, jeita_policy, battery_ntc_compatibility]
+  - function: battery_pack
+    selected_primary: LiPol_LP566487_3p85V_5727mAh_22p05Wh_PCM_NTC_JST_SHR_03V_class
+    alternates: [LiPol_LP446487_4500mAh_baseline_outline_family, Made_in_China_custom_5727mAh_LiPo_family, Alibaba_custom_3p85V_5727mAh_pack_quote_pool]
+    risk_class: safety_logistics_high
+    procurement_status: blocked_pack_sample_quote_safety_docs_and_cavity_fit_required
+    required_supplier_artifacts: [dimensioned_pack_drawing, connector_pinout, ntc_curve, pcm_limits, max_charge_discharge_current, UN38_3_summary, MSDS, battery_cavity_fit_decision]
+  - function: pmic
+    selected_primary: DA9063_class
+    alternates: []
+    risk_class: rail_sequence_high
+    procurement_status: blocked_rail_budget_and_sequence_review_required
+    required_supplier_artifacts: [datasheet, reference_schematic, power_sequence_register_plan, thermal_layout_guidelines]
+  - function: audio_codec_amp_mics
+    selected_primary: v0_audio_codec_binding
+    alternates: []
+    risk_class: acoustic_medium
+    procurement_status: blocked_acoustic_stack_required
+    required_supplier_artifacts: [codec_datasheet, amp_reference_layout, speaker_box_drawing, microphone_port_drawing, acoustic_gasket_spec]
+  - function: top_bottom_interconnect
+    selected_primary: Hirose_BM28_hybrid_power_signal_fpc_bridge_class
+    alternates: [Hirose_FH58_signal_flex_plus_power_tabs, Molex_SlimStack_ACB6_Plus_or_equivalent]
+    risk_class: split_board_interconnect_high
+    procurement_status: blocked_connector_pair_flex_stackup_and_si_required
+    required_supplier_artifacts: [exact_mating_part_numbers, recommended_land_patterns, flex_stackup_and_stiffener_drawing, bend_radius_and_strain_relief, usb2_impedance_coupon, current_temperature_rise_data, assembly_retention_rating]
+
+cross_checks:
+  every_preliminary_bom_function_has_procurement_record: true
+  every_procurement_record_is_blocked: true
+  front_camera_no_longer_tbd: true
+  display_has_three_or_more_alternates: true
+  production_bom_not_ready: true
+  selected_supplier_response_procurement_gate_blocks_avl_release: true
+  alternate_display_procurement_gate_blocks_avl_release: true
+
+release_blockers:
+  - supplier_quotes_not_captured
+  - selected_supplier_response_packs_for_display_camera_usb_sidekey_cellular_and_wifi_bt_not_returned
+  - parseable_055WU01_and_E549_RM67191_display_alternates_missing_quotes_lifecycle_samples_compliance_avl_and_promotion_review
+  - samples_not_received
+  - AVL_not_approved
+  - lifecycle_and_compliance_not_verified
+  - production_BOM_not_generated_from_KiCad
+  - pinout_and_footprint_freeze_not_closed
+
+forbidden_claims:
+  - procurement_ready
+  - AVL_ready
+  - production_BOM_ready
+  - supplier_selected
+  - alternates_approved
+  - purchase_order_ready

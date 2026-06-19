@@ -1,0 +1,181 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2021-12-25 15:09+0000\n"
+"Last-Translator: dedmoroz <cj75300@gmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Accessing_the_internal_hard_disk|advanced_topics/"
+#| "internal_hard_disk]]"
+msgid "[[Running Tails in a virtual machine|advanced_topics/virtualization]]"
+msgstr ""
+"[[!traillink Доступ_к_внутреннему_жёсткому_диску|advanced_topics/"
+"internal_hard_disk]]"
+
+#. type: Bullet: '  * '
+msgid "[[*GNOME Boxes*|advanced_topics/virtualization/boxes]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Accessing_the_internal_hard_disk|advanced_topics/"
+#| "internal_hard_disk]]"
+msgid "[[*virt-manager*|advanced_topics/virtualization/virt-manager]]"
+msgstr ""
+"[[!traillink Доступ_к_внутреннему_жёсткому_диску|advanced_topics/"
+"internal_hard_disk]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Modifying_the_boot_options_using_the_Boot_Loader|"
+#| "advanced_topics/boot_options]]"
+msgid ""
+"[[Modifying the boot options using the Boot Loader|advanced_topics/"
+"boot_options]]"
+msgstr ""
+"[[!traillink Изменение_опций_загрузки_в_загрузчике|advanced_topics/"
+"boot_options]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Accessing_the_internal_hard_disk|advanced_topics/"
+#| "internal_hard_disk]]"
+msgid ""
+"[[Starting Tails from an external hard disk or problematic USB stick|"
+"advanced_topics/external_hard_disk]]"
+msgstr ""
+"[[!traillink Доступ_к_внутреннему_жёсткому_диску|advanced_topics/"
+"internal_hard_disk]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Accessing_the_internal_hard_disk|advanced_topics/"
+#| "internal_hard_disk]]"
+msgid "[[Accessing the internal hard disk|advanced_topics/internal_hard_disk]]"
+msgstr ""
+"[[!traillink Доступ_к_внутреннему_жёсткому_диску|advanced_topics/"
+"internal_hard_disk]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Protection_against_cold_boot_attacks|advanced_topics/"
+#| "cold_boot_attacks]]"
+msgid ""
+"[[Protection against cold boot attacks|advanced_topics/cold_boot_attacks]]"
+msgstr ""
+"[[!traillink Защита_от_атак_методом_холодной_перезагрузки|advanced_topics/"
+"cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Accessing_the_internal_hard_disk|advanced_topics/"
+#| "internal_hard_disk]]"
+msgid "[[Accessing resources on the local network|advanced_topics/lan]]"
+msgstr ""
+"[[!traillink Доступ_к_внутреннему_жёсткому_диску|advanced_topics/"
+"internal_hard_disk]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Accessing_the_internal_hard_disk|advanced_topics/"
+#| "internal_hard_disk]]"
+msgid "[[Enabling a wireless device|advanced_topics/wireless_devices]]"
+msgstr ""
+"[[!traillink Доступ_к_внутреннему_жёсткому_диску|advanced_topics/"
+"internal_hard_disk]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Accessing_the_internal_hard_disk|advanced_topics/"
+#| "internal_hard_disk]]"
+msgid "[[Chatting with *Dino* and OMEMO|advanced_topics/dino]]"
+msgstr ""
+"[[!traillink Доступ_к_внутреннему_жёсткому_диску|advanced_topics/"
+"internal_hard_disk]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Accessing_the_internal_hard_disk|advanced_topics/"
+#| "internal_hard_disk]]"
+msgid "[[Exchanging Monero with *Feather*|advanced_topics/feather]]"
+msgstr ""
+"[[!traillink Доступ_к_внутреннему_жёсткому_диску|advanced_topics/"
+"internal_hard_disk]]"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  - [[!traillink Running_Tails_in_a_virtual_machine|advanced_topics/virtualization]]\n"
+#~| "    - [[!traillink <span_class=\"application\">VirtualBox</span>|advanced_topics/virtualization/virtualbox]]\n"
+#~| "    - [[!traillink <span_class=\"application\">GNOME_Boxes</span>|advanced_topics/virtualization/boxes]]\n"
+#~| "    - [[!traillink <span_class=\"application\">virt-manager</span>|advanced_topics/virtualization/virt-manager]]\n"
+#~| "  - [[!traillink Starting_Tails_from_an_external_hard_disk|advanced_topics/external_hard_disk]]\n"
+#~| "  - Persistent Storage\n"
+#~| "    - [[!traillink Changing_the_passphrase_of_the_Persistent_Storage|advanced_topics/persistence/change_passphrase]]\n"
+#~| "    - [[!traillink Checking_the_file_system_of_the_Persistent_Storage|advanced_topics/persistence/check_file_system]]\n"
+#~| "  - [[!traillink Accessing_resources_on_the_local_network|advanced_topics/lan]]\n"
+#~| "  - [[!traillink Enabling_a_wireless_device|advanced_topics/wireless_devices]]\n"
+#~| "  - [[!traillink Chatting_with_*Dino*_and_OMEMO|advanced_topics/dino]]\n"
+#~| "  - [[!traillink Exchanging_Monero_with_*Feather*|advanced_topics/feather]]\n"
+#~ msgid ""
+#~ "  - [[!traillink Running_Tails_in_a_virtual_machine|advanced_topics/virtualization]]\n"
+#~ "    - [[!traillink <span_class=\"application\">VirtualBox</span>|advanced_topics/virtualization/virtualbox]]\n"
+#~ "    - [[!traillink <span_class=\"application\">GNOME_Boxes</span>|advanced_topics/virtualization/boxes]]\n"
+#~ "    - [[!traillink <span_class=\"application\">virt-manager</span>|advanced_topics/virtualization/virt-manager]]\n"
+#~ "  - [[!traillink Modifying_the_boot_options_using_the_Boot_Loader|advanced_topics/boot_options]]\n"
+#~ "  - [[!traillink Starting_Tails_from_an_external_hard_disk|advanced_topics/external_hard_disk]]\n"
+#~ "  - [[!traillink Accessing_the_internal_hard_disk|advanced_topics/internal_hard_disk]]\n"
+#~ "  - Persistent Storage\n"
+#~ "    - [[!traillink Changing_the_passphrase_of_the_Persistent_Storage|advanced_topics/persistence/change_passphrase]]\n"
+#~ "    - [[!traillink Checking_the_file_system_of_the_Persistent_Storage|advanced_topics/persistence/check_file_system]]\n"
+#~ "  - [[!traillink Protection_against_cold_boot_attacks|advanced_topics/cold_boot_attacks]]\n"
+#~ "  - [[!traillink Accessing_resources_on_the_local_network|advanced_topics/lan]]\n"
+#~ "  - [[!traillink Enabling_a_wireless_device|advanced_topics/wireless_devices]]\n"
+#~ "  - [[!traillink Chatting_with_*Dino*_and_OMEMO|advanced_topics/dino]]\n"
+#~ "  - [[!traillink Exchanging_Monero_with_*Feather*|advanced_topics/feather]]\n"
+#~ msgstr ""
+#~ "  - [[!traillink Запуск_Tails_на_виртуальной_машине|advanced_topics/virtualization]]\n"
+#~ "    - [[!traillink <span_class=\"application\">VirtualBox</span>|advanced_topics/virtualization/virtualbox]]\n"
+#~ "    - [[!traillink <span_class=\"application\">Боксы_GNOME</span>|advanced_topics/virtualization/boxes]]\n"
+#~ "    - [[!traillink <span_class=\"application\">virt-manager</span>|advanced_topics/virtualization/virt-manager]]\n"
+#~ "  - [[!traillink Запуск_Tails_с_внешнего_жёсткого_диска|advanced_topics/external_hard_disk]]\n"
+#~ "  - Постоянное хранилище\n"
+#~ "    - [[!traillink Изменение_пароля_Постоянного_хранилища|advanced_topics/persistence/change_passphrase]]\n"
+#~ "    - [[!traillink Проверка_файловой_системы_Постоянного_хранилища|advanced_topics/persistence/check_file_system]]\n"
+#~ "  - [[!traillink Доступ_к_ресурсам_в_локальной_сети|advanced_topics/lan]]\n"
+#~ "  - [[!traillink Включение_беспроводного_устройства|advanced_topics/wireless_devices]]\n"
+#~ "  - [[!traillink Общение_с_помощью_*Dino*_и_OMEMO|advanced_topics/dino]]\n"
+#~ "  - [[!traillink Обмен_Monero_с_помощью_*Feather*|advanced_topics/feather]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!traillink Installing_additional_software|first_steps/"
+#~ "additional_software]]"
+#~ msgstr ""
+#~ "[[!traillink Zusätzliche_Software_installieren|first_steps/"
+#~ "additional_software]]"

@@ -1,0 +1,52 @@
+{
+  "schema": "eliza.cpu_benchmark_manifest.v1",
+  "benchmark": "embench-iot",
+  "status": "pinned_not_run",
+  "claim_boundary": "build_only_until_real_core_runs_embench_on_verilator_or_silicon",
+  "upstream": {
+    "name": "Embench-IoT",
+    "vendor": "Embench / FOSSi",
+    "repo": "https://github.com/embench/embench-iot.git",
+    "license": "BSD-3-Clause",
+    "pinned_tag": "v1.0",
+    "pinned_commit": "BLOCKED_until_first_clone_resolves_tag"
+  },
+  "workload_set": [
+    "aha-mont64", "crc32", "cubic", "edn", "huffbench",
+    "matmult-int", "minver", "nbody", "nettle-aes",
+    "nettle-sha256", "nsichneu", "picojpeg", "primecount",
+    "qrduino", "sglib-combined", "slre", "st",
+    "statemate", "tarfind", "ud", "wikisort"
+  ],
+  "build_target": {
+    "isa": "rv64gc",
+    "abi": "lp64d",
+    "march": "rv64gc",
+    "mabi": "lp64d",
+    "optimization": "-O2",
+    "compiler_pinned": "riscv-none-elf-gcc 15.2.0 (xpack)"
+  },
+  "expected_results": {
+    "rocket_rv64gc_open_reference": {
+      "geometric_mean_score": "blocked",
+      "claim_status": "blocked_until_DUT_run"
+    },
+    "e1_premium_kunminghu_target_3.2_ghz": {
+      "geometric_mean_score": 1.4,
+      "claim_status": "blocked_until_silicon_evidence"
+    },
+    "e1_ultra_target_4.0_ghz": {
+      "geometric_mean_score": 2.0,
+      "claim_status": "blocked_until_silicon_evidence"
+    }
+  },
+  "scoring": "embench-iot speed score relative to STM32F4-176MHz baseline",
+  "result_artifact": "benchmarks/results/cpu/embench/result.json",
+  "run_command": "scripts/run_embench.sh",
+  "fail_closed_until": [
+    "external/embench-iot/ checkout at pinned tag",
+    "xpack riscv-none-elf-gcc available",
+    "DUT verilator simulator or silicon",
+    "benchmarks/results/cpu/embench/result.json exists and matches schema"
+  ]
+}

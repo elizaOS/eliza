@@ -1,0 +1,704 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-02 09:33+0000\n"
+"PO-Revision-Date: 2025-12-06 23:29+0000\n"
+"Last-Translator: la_r_go* <largo@tracciabi.li>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta title=\"Create and use LUKS encrypted volumes\"]]\n"
+msgid "[[!meta title=\"Creating and using LUKS encrypted volumes\"]]\n"
+msgstr "[[!meta title=\"Creare ed utilizzare volumi cifrati LUKS\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"luks\">Introduction to <i>LUKS</i></h1>\n"
+msgstr "<h1 id=\"luks\">Introduzione a <i>LUKS</i></h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>The simplest way to carry around the documents that you want to use\n"
+#| "with Tails encrypted is to use the [[encrypted persistent\n"
+#| "storage|first_steps/persistence]].</p>\n"
+msgid ""
+"<p>The simplest way to carry around the documents that you want to use\n"
+"with Tails encrypted is to use the [[Persistent\n"
+"Storage|persistent_storage]].</p>\n"
+msgstr ""
+"<p>Il modo più semplice per portare in giro i documenti che si desiderano utilizzare\n"
+"con Tails criptato è utilizzare lo [[storage\n"
+"criptato persistente|first_steps/persistence]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"You can create other encrypted volumes using *LUKS* to encrypt, for example, "
+"another USB stick or an external hard disk.  *LUKS* is the standard for disk "
+"encryption in Linux."
+msgstr ""
+"Potete creare altri volumi criptati utilizzando *LUKS* per criptare, per "
+"esempio, un'altra chiavetta USB o un hard disk esterno. *LUKS* è lo standard "
+"per la crittografia dischi in Linux."
+
+#. type: Bullet: '- '
+msgid "The *Disks* utility allows you to create encrypted volumes."
+msgstr "L'utilità *Disks* vi permette di aprire volumi criptati."
+
+#. type: Bullet: '- '
+msgid "The GNOME desktop allows you to open encrypted volumes."
+msgstr "Il desktop GNOME ti permette di aprire volumi criptati."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr "<div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Such encrypted volumes, like the Persistent Storage, are not hidden.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>An attacker in possession of the device can know that there is an encrypted\n"
+"volume on it. Take into consideration that you can be forced or tricked to give\n"
+"out its passphrase.</p>\n"
+msgstr ""
+"<p>Tali dispositivi cifrati non sono nascosti. Un attaccante in possesso del "
+"dispositivo può sapere che all'interno c'è un volume cifrato. \n"
+"Prendete in considerazione che potreste essere ingannati o costretti \n"
+"a fornire la frase d'accesso.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"comparison\">Comparison between <i>LUKS</i> and <i>VeraCrypt</i></h2>\n"
+msgstr "<h2 id=\"comparison\">Confronto tra <i>LUKS</i> e <i>VeraCrypt</i></h2>\n"
+
+#. type: Plain text
+msgid ""
+"You can also open *VeraCrypt* encrypted volumes in Tails. *VeraCrypt* is a "
+"disk encryption tool for Windows, macOS, and Linux. [[See our documentation "
+"about *VeraCrypt*.|veracrypt]]"
+msgstr ""
+"Potete anche aprire volumi criptati*VeraCrypt* all'interno di Tails. "
+"*VeraCrypt* è un tool per la crittografia del discorso per Windows, macOS e "
+"Linux. [[Guardate la nostra documentazione riguardo *VeraCrypt*.|veracrypt]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/encryption_and_privacy/luks_vs_veracrypt.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/encryption_and_privacy/luks_vs_veracrypt.inline.it\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"creating\">Creating an encrypted partition</h1>\n"
+msgstr "<h1 id=\"creating\">Creare una partizione criptata</h1>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Utilities&nbsp;▸ Disks** to open the *Disks* utility."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"identifying\">Identifying your external storage device</h2>\n"
+msgstr "<h2 id=\"identifying\">Identificate il vostro dispositivo di immagazzinamento esterno</h2>\n"
+
+#. type: Plain text
+msgid ""
+"The *Disks* utility lists all the current storage devices on the left side "
+"of the screen."
+msgstr ""
+"L'utilità *Dischi* mostra tutti i dispositivi di memoria\n"
+"sul lato sinistro dello schermo."
+
+#. type: Bullet: '  1. '
+msgid "Plug in the external storage device that you want to use."
+msgstr ""
+"Selezionate il dispositivo di memoria esterna che intendete utilizzare."
+
+#. type: Bullet: '  1. '
+msgid "A new device appears in the list of storage devices. Click on it."
+msgstr ""
+"Un nuovo dispositivo appare nella lista dei dispositivi di memoria. Cliccaci."
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img storage_devices_after.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "     [[!img storage_devices_after.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  1. Check that the description of the device on the right side of the screen\n"
+"  corresponds to your device: its brand, its size, etc.\n"
+msgstr ""
+"  1. Verificate che la descrizione del dispositivo sul lato destro dello schermo\n"
+"  corrisponda al vostro dispositivo: la sua marca, le sue dimensioni ecc.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"formatting\">Formatting the device</h2>\n"
+msgstr ""
+
+#. type: Bullet: '  1. '
+#, fuzzy
+#| msgid ""
+#| "Click on the <span class=\"guimenu\">[[!img lib/open-menu.png "
+#| "alt=\"Menu\" class=\"symbolic\" link=\"no\"]]</span> button in the "
+#| "titlebar and choose **Format Disk…** to erase all the existing partitions "
+#| "on the device."
+msgid ""
+"Click on the [[!img lib/view-more.png alt=\"Drive Options\" "
+"class=\"symbolic\" link=\"no\"]] button in the title bar and choose **Format "
+"Disk** to erase all the existing partitions on the device."
+msgstr ""
+"Clicca sul bottone <span class=\"guimenu\">[[!img lib/open-menu.png "
+"alt=\"Menu\" class=\"symbolic\" link=\"no\"]]</span> nella barra del titolo "
+"e selezionate **Formatta Disco...** per cancellare tutte le partizioni "
+"esistenti sul dispositivo."
+
+#. type: Bullet: '  1. '
+msgid "In the **Format Disk** dialog:"
+msgstr "Nella finestra di dialogo **Formatta disco**:"
+
+#. type: Bullet: '     - '
+msgid ""
+"If you want to overwrite all data on the device, choose **Overwrite existing "
+"data with zeroes** in the **Erase** menu."
+msgstr ""
+"Se desideri sovrascrivere tutti i dati sul dispositivo, scegli **Sovrascrivi "
+"i dati esistenti con zeri** nel menu **Cancella**."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         <div class=\"caution\">\n"
+"         <p>Overwriting existing data does not erase all data on flash\n"
+"         memories, such as USB sticks and SSDs (Solid-State Drives).</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "         <p>See the [[limitations of file deletion|doc/encryption_and_privacy/secure_deletion#spare]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "         </div>\n"
+msgstr "         </div>\n"
+
+#. type: Bullet: '     - '
+msgid ""
+"Choose **Compatible with all systems and devices (MBR/DOS)** in the "
+"**Partitioning** menu."
+msgstr ""
+"Scegli **Compatibile con tutti i sistemi e dispositivi (MBR/DOS)** nel menu "
+"**Partizionamento**."
+
+#. type: Bullet: '  1. '
+msgid "Click **Format**."
+msgstr "Clicca **Formatta**."
+
+#. type: Bullet: '  1. '
+msgid "In the confirmation dialog, make sure that the device is correct."
+msgstr "Nella finestra di conferma assicurati che il dispositivo sia corretto."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"partition\">Creating a new encrypted partition</h2>\n"
+msgstr "<h2 id=\"partition\">Creare una nuova partizione cifrata</h2>\n"
+
+#. type: Plain text
+msgid ""
+"Now the schema of the partitions in the middle of the screen shows an empty "
+"device:"
+msgstr ""
+"Adesso lo schema delle partizione al centro dello schermo mostra un "
+"dispositivo vuoto:"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img empty_device.png class=\"screenshot\" alt=\"Free Space 123 GB\"]]\n"
+msgstr ""
+"[[!img empty_device.png class=\"screenshot\" alt=\"Spazio libero 123 GB\"]]\n"
+
+#. type: Bullet: '  1. '
+msgid ""
+"Click on the **[[!img lib/list-add.png alt=\"Create partition\" "
+"class=\"symbolic\" link=\"no\"]]** button to create a new partition on the "
+"device."
+msgstr ""
+"Clicca sul bottone <span class=\"guimenu\">[[!img lib/list-add.png "
+"alt=\"Creare partizione\" class=\"symbolic\" link=\"no\"]]</span> per creare "
+"una nuova partizione sul\n"
+"dispositivo."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  1. Configure the various settings of your new partition in the\n"
+"  partition creation assistant:\n"
+msgstr ""
+
+#. type: Bullet: '     - '
+msgid "In the **Create Partition** screen:"
+msgstr "Nella finestra **Creare Partizione**:"
+
+#. type: Bullet: '       - '
+msgid ""
+"**Partition Size**: you can create a partition on the whole device or only "
+"on part of it."
+msgstr ""
+"**Dimensione Partizione**: potete creare una partizione sull'intero "
+"dispositivo o solo su una parte di esso."
+
+#. type: Plain text
+#, no-wrap
+msgid "         In the example below, we are creating a partition of 4.0 GB on a device of 8.1 GB.\n"
+msgstr ""
+
+#. type: Bullet: '     - '
+msgid "In the **Format Volume** dialog:"
+msgstr "Nella finestra **Formatta disco**:"
+
+#. type: Bullet: '       - '
+msgid "**Volume Name**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         You can give a name to the partition.\n"
+"         This name remains invisible until the partition is open but can help\n"
+"         you to identify it during use.\n"
+msgstr ""
+"         Puoi impostare un nome per la partizione\n"
+"                  Questo nome rimane invisibile finché non si apre la "
+"partizione ma può aiutarti\n"
+"                   ad identificarla durante l'utilizzo.\n"
+
+#. type: Bullet: '       - '
+msgid "**Erase**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "         You can choose to overwrite existing data on the partition.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "         <div class=\"caution\">\n"
+msgstr "         <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         <p>Overwriting existing data does not erase all data on flash\n"
+"         memories, such as USB sticks and SSDs (Solid-State Drives).</p>\n"
+msgstr ""
+
+#. type: Bullet: '       - '
+msgid "**Type**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         Choose **Internal disk for use with Linux systems\n"
+"         only (Ext4)** and **Password protect volume (LUKS)**.\n"
+msgstr ""
+"         *Seleziona **Cifrato, compatibile con sistemi Linux \n"
+"                  solo (Ext4)**  e **Partizione protetto da password "
+"(LUKS)**.\n"
+
+#. type: Bullet: '     - '
+msgid "In the **Set Password** screen:"
+msgstr "Nella finestra **Set Password**:"
+
+#. type: Bullet: '       - '
+msgid ""
+"**Password**: type a passphrase for the encrypted partition and repeat it to "
+"confirm."
+msgstr ""
+"**Password**: Scrivi una frase d'accesso per la partizione cifrata e "
+"ripetila per confermare."
+
+#. type: Plain text
+#, no-wrap
+msgid "         <div class=\"tip\">\n"
+msgstr "         <div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         <p>We recommend choosing a long passphrase made of 5 to 7 random words.\n"
+"         <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">Learn\n"
+"         about the maths behind memorizable and secure passphrases.</a></p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         <div class=\"caution\">\n"
+"         <p>It is impossible to recover your passphrase if you forget it!</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         <p>To help you remember your passphrase, you can write it on a piece of\n"
+"         paper, store it in your wallet for a few days, and destroy it once\n"
+"         you know it well.</p>\n"
+"         </div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "       Then click **Create**.\n"
+msgstr "       Dopo clicca **Creare**.\n"
+
+#. type: Bullet: '  1. '
+msgid ""
+"Creating the partition takes from a few seconds to a few minutes. After "
+"that, the new encrypted partition appears in the volumes on the device:"
+msgstr ""
+"La creazione della partizione potrebbe richiedere da pochi secondi ad alcuni "
+"minuti. Dopodiché la nuova partizione cifrata apparirà nei volumi sul "
+"dispositivo:"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img encrypted_partition.png class=\"screenshot\" alt=\"Partition 1 4.0 GB LUKS / Filesystem 4.0 GB Ext4\"]]\n"
+msgstr ""
+"     [[!img encrypted_partition.png class=\"screenshot\"  alt="
+"\"Partition 1 4.0 GB LUKS / secret 4.0 GB Ext4\"]]\n"
+
+#. type: Bullet: '  1. '
+msgid ""
+"If you want to create another partition in the free space on the device, "
+"click on the free space and then click on the **[[!img lib/list-add.png "
+"alt=\"Create partition\" class=\"symbolic\" link=\"no\"]]** button again."
+msgstr ""
+"Se volete creare un'altra partizione nello spazio libero sul dispositivo, "
+"cliccate sullo spazio libero e cliccate nuovamente sul bottone <span "
+"class=\"guimenu\">[[!img lib/list-add.png alt=\"Create partition\" "
+"class=\"symbolic\" link=\"no\"]]</span>."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"using\">Using the new partition</h2>\n"
+msgstr "<h2 id=\"using\">Usare la nuova partizione</h2>\n"
+
+#. type: Plain text
+msgid ""
+"You can open this new partition from the sidebar of the *Files* browser with "
+"the name you gave it."
+msgstr ""
+"Puoi aprire questa nuova partizione dalla barra laterale del *File* browser "
+"con il nome che le avete dato."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"opening\">Opening an existing encrypted partition</h1>\n"
+msgstr "<h1 id=\"opening\">Aprire una partizione cifrata esistente</h1>\n"
+
+#. type: Plain text
+msgid ""
+"When you plug in a device that has an encrypted partition, Tails offers to "
+"unlock the encryption automatically."
+msgstr ""
+"Quando si collega un dispositivo che ha una partizione cifrata, Tails offre "
+"di aprire automaticamente la partizione."
+
+#. type: Bullet: '1. '
+msgid "Plug in the external storage device that has the encrypted partition."
+msgstr ""
+"Inserisci il dispositivo di memoria esterna che ha la partizione cifrata."
+
+#. type: Bullet: '1. '
+msgid "A dialog appears, asking for the passphrase to unlock the partition."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img unlock.png class=\"screenshot\" alt=\"Authentication Required\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter the passphrase of the partition in the password prompt and click "
+"**Unlock**."
+msgstr ""
+"Inserite la frase d'accesso della partizione nel prompt della password e "
+"cliccate su **Sblocca**."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If you turn on the option **Remember Password**, Tails remembers the\n"
+"   passphrase of this partition only until you shut down. The passphrase is not\n"
+"   stored in your Persistent Storage.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"After unlocking, you can access the content of the partition from the "
+"sidebar of the *Files* browser."
+msgstr ""
+"Dopo averla sbloccata, puoi accedere al contenuto della partizione dalla "
+"barra laterale del *File* browser."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"After you finished using the partition, click on the [[!img lib/media-eject.png\n"
+"alt=\"Eject\" class=\"symbolic\" link=\"no\"]] button next to the partition in the\n"
+"sidebar of the *Files* browser to eject the partition safety and lock again the\n"
+"encryption.\n"
+msgstr ""
+"Dopo che hai finito di usare la partizione clicca sul bottone [[!img lib/"
+"media-eject.png\n"
+"alt=\"Eject\" class=\"symbolic\" link=\"no\"]] vicino alla partizione nella\n"
+"barra laterale del *File* browser per espellere la partizione e bloccare di "
+"nuovo correttamente\n"
+"la cifratura.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"os\">Opening encrypted volumes from other operating systems</h1>\n"
+msgstr "<h1 id=\"os\">Aprire volumi cifrati da altri sistemi operativi</h1>\n"
+
+#. type: Plain text
+msgid ""
+"It is possible to open such encrypted volumes from other operating systems. "
+"But, doing so might compromise the security provided by Tails."
+msgstr ""
+"E' possibile aprire questi volumi cifrati da altri sistemi operativi; "
+"tuttavia, facendolo potresti compromettere la sicurezza fornita da Tails."
+
+#. type: Plain text
+msgid ""
+"For example, image thumbnails might be created and saved by the other "
+"operating system. Or, the contents of files might be indexed by the other "
+"operating system."
+msgstr ""
+"Per esempio, l'altro sistema operativo potrebbe creare e salvare provini "
+"delle immagini. Oppure, il contenuto dei file potrebbe venire indicizzato "
+"dall'altro sistema operativo."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"changing\">Changing the passphrase of an existing encrypted partition</h1>\n"
+msgstr "<h1 id=\"changing\">Cambiare la frase d'accesso di una partizione cifrata esistente</h1>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Plug in the external storage device that contains the encrypted partition "
+"for which you want to change the passphrase."
+msgstr ""
+"Collega il dispositivo di archiviazione esterno contenente la partizione "
+"cifrata per la quale vuoi cambiare la frase d'accesso."
+
+#. type: Bullet: '1. '
+msgid "The device appears in the list of storage devices. Click on it."
+msgstr ""
+"Il dispositivo viene visualizzato nell'elenco dei dispositivi di "
+"archiviazione. Cliccaci sopra."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img storage_devices_after.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img storage_devices_after.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"1. Check that the description of the device on the right side of the screen\n"
+"corresponds to your device: its brand, its size, etc.\n"
+msgstr ""
+"1. Verificate che la descrizione del dispositivo sul lato destro dello schermo\n"
+"corrisponda al vostro dispositivo: la sua marca, le sue dimensioni ecc...\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the partition displaying a [[!img lib/network-wireless-"
+"encrypted.png alt=\"Partition LUKS\" class=\"symbolic\" link=\"no\"]] in the "
+"bottom-right corner."
+msgstr ""
+"Cliccate sulla partizione visualizzata nel bottone in basso a destra [[!img "
+"lib/network-wireless-encrypted.png alt=\"Partition LUKS\" class=\"symbolic\" "
+"link=\"no\"]]."
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the [[!img lib/system-run.png alt=\"Additional partition options\" "
+"class=\"symbolic\" link=\"no\"]] button and choose **Change Passphrase** in "
+"the shortcut menu."
+msgstr ""
+"Clicca sul bottone [[!img lib/system-run.png alt="
+"\"Più opzioni sulle partizioni\" class=\"symbolic\" link=\"no\"]] e scegli **"
+"Cambia frase d'accesso** nel menù contestuale."
+
+#~ msgid ""
+#~ "After opening the partition with the file browser, you can also access it "
+#~ "from the **Places** menu."
+#~ msgstr ""
+#~ "Dopo aver aperto la partizione con il file browser, potrete accedervi "
+#~ "anche dal menù **Posizioni**."
+
+#, no-wrap
+#~ msgid "<h1 id=\"storing\">Storing sensitive documents</h1>\n"
+#~ msgstr "<h1 id=\"storing\">Archiviare documenti sensibili</h1>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "After opening the partition with the file browser, you can also access it\n"
+#~ "from the **Places** menu.\n"
+#~ msgstr ""
+#~ "Dopo aver aperto la partizione con il file browser potrete accedervi anche\n"
+#~ "dal menù **Posizioni**.\n"
+
+#, no-wrap
+#~ msgid "       </div>\n"
+#~ msgstr "       </div>\n"
+
+#, fuzzy
+#~| msgid "In the **Format Disk** dialog:"
+#~ msgid "In the **Format Volume** screen:"
+#~ msgstr "Nella finestra di dialogo **Riavvia Disco**:"
+
+#, fuzzy
+#~| msgid ""
+#~| "**Passphrase**: type a passphrase for the encrypted partition and repeat "
+#~| "it to confirm."
+#~ msgid ""
+#~ "**Erase**: you can choose to securely erase all data on the partition."
+#~ msgstr ""
+#~ "**Frase d'accesso**: Scrivi una frase d'accesso per la partizione cifrata "
+#~ "e ripetila per confermare."
+
+#~ msgid "*GNOME Disks* allows you to create encrypted volumes."
+#~ msgstr "*Dischi GNOME* vi permette di creare volumi criptati."
+
+#, fuzzy, no-wrap
+#~| msgid "     Then click **Format…**.\n"
+#~ msgid "     Then click **Format…**.\n"
+#~ msgstr "     Dopodiché clicca su **Formatta...**.\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "1. Choose\n"
+#~| "   <span class=\"menuchoice\">\n"
+#~| "     **Places**&nbsp;▸\n"
+#~| "     **Computer**</span>\n"
+#~| "   to open the file browser.\n"
+#~ msgid ""
+#~ "1. Choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Places**&nbsp;▸\n"
+#~ "     **Computer**</span>\n"
+#~ "   to open the file browser.\n"
+#~ msgstr ""
+#~ "1. Selezionate\n"
+#~ "…<span class=\"menuchoice\">\n"
+#~ "……**Posizioni**&nbsp;▸\n"
+#~ "……**Computer**</span>\n"
+#~ "…per aprire il file browser.\n"
+
+#~ msgid ""
+#~ "Click on the encrypted partition that you want to open in the sidebar."
+#~ msgstr ""
+#~ "Nella barra laterale cliccate sulla partizione cifrata che volete aprire."
+
+#, no-wrap
+#~ msgid "   [[!img nautilus_encrypted.png link=\"no\" alt=\"File browser with '4.0 GB Encrypted' entry in the sidebar\"]]\n"
+#~ msgstr "   [[!img nautilus_encrypted.png link=\"no\" alt=\"File browser with '4.0 GB Encrypted' entry in the sidebar\"]]\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "To open *GNOME Disks* choose\n"
+#~| "<span class=\"menuchoice\">\n"
+#~| "  **Applications**&nbsp;▸\n"
+#~| "  **Utilities**&nbsp;▸\n"
+#~| "  **Disks**</span>.\n"
+#~ msgid ""
+#~ "To open *GNOME Disks* choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Utilities**&nbsp;▸\n"
+#~ "  **Disks**</span>.\n"
+#~ msgstr ""
+#~ "Per aprire *Dischi GNOME* selezionate\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "**Applicazioni**&nbsp;▸\n"
+#~ "**Utilità**&nbsp;▸\n"
+#~ "**Dischi**</span>.\n"
+
+#~ msgid "Click on the <span class=\"guimenu\">"
+#~ msgstr "Cliccate sul <span class=\"guimenu\">"
+
+#, fuzzy, no-wrap
+#~| msgid "   </span> button and choose **Change Passphrase…**\n"
+#~ msgid "   </span> button and choose **Change Passphrase…**\n"
+#~ msgstr "   </span> bottone e selezionate **Modifica frase d'accesso...**\n"
+
+#, no-wrap
+#~ msgid "<a id=\"format\"></a>\n"
+#~ msgstr "<a id=\"format\"></a>\n"
+
+#, fuzzy, no-wrap
+#~| msgid "Format the device\n"
+#~ msgid "Format the device"
+#~ msgstr "Formattare il dispositivo\n"
+
+#, no-wrap
+#~ msgid "<a id=\"change\"></a>\n"
+#~ msgstr "<a id=\"change\"></a>\n"
+
+#~ msgid ""
+#~ "     <div class=\"bug\">\n"
+#~ "     <p>If an error occurs while creating the new partition, try to "
+#~ "unplug the\n"
+#~ "     device, restart *GNOME Disks*,\n"
+#~ "     and follow all steps again from the beginning.</p>\n"
+#~ "     </div>\n"
+#~ msgstr ""
+#~ "     <div class=\"bug\">\n"
+#~ "     <p>Se si verifica un errore durante la creazione della nuova "
+#~ "partizione, provate a scollegare il\n"
+#~ "     dispositivo ed a riavviare <span class=\"application\">Dischi GNOME</"
+#~ "span>\n"
+#~ "     ripetendo nuovamente tutti i passi dall'inizio.</p>\n"
+#~ "     </div>\n"

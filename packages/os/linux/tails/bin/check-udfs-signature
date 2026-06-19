@@ -1,0 +1,79 @@
+#!/bin/bash
+
+set -eu
+
+UDFS_DIR=wiki/src/upgrade/v2
+SIGN_FAILING=false
+
+usage() {
+    echo "$0 [-suh]"
+    echo "   -s    sign again failing signatures"
+    echo "   -h    show this help"
+}
+
+while getopts 'sh' opt; do
+    case "$opt" in
+    s)
+        SIGN_FAILING=true
+        ;;
+    h)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+
+getUpgradesYml() {
+    thisVersion=${VERSION%%.*}
+    prevVersion=$((thisVersion - 1))
+    nextVersion=$((thisVersion + 1))
+    find "$UDFS_DIR/Tails/" \
+        -regextype posix-extended \
+        -regex ".*/Tails/(${thisVersion}|${prevVersion}|${nextVersion})[.].*" \
+        -type f -name upgrades.yml |
+        LC_ALL=C sort
+}
+
+error=false
+while read -r upgradesYml; do
+    if ! [ -f "${upgradesYml}.pgp" ]; then
+        error=true
+        echo "${upgradesYml}.pgp missing" >&2
+    fi
+done < <(getUpgradesYml)
+
+if $error; then
+    exit 1
+fi
+
+err() {
+    error=true
+    fpath="$1"
+    shift 1
+    echo "$(dirname "$fpath"): $*" >&2
+}
+
+while read -r upgradesYml; do
+    if ! sqopv verify "${upgradesYml}.pgp" wiki/src/tails-signing.key \
+        <"${upgradesYml}" &>/dev/null; then
+        err "${upgradesYml}.pgp" "invalid signature with tails-signing.key"
+        if "$SIGN_FAILING"; then
+            ./bin/sign-udfs "${upgradesYml}"
+        fi
+        continue
+    fi
+    if ! sqopv verify "${upgradesYml}.pgp" wiki/src/tails-signing-minimal.key \
+        <"${upgradesYml}" &>/dev/null; then
+        err "${upgradesYml}.pgp" "valid with tails-signing.key, but not with tails-signing-minimal.key"
+        "$SIGN_FAILING" && ./bin/sign-udfs "${upgradesYml}"
+    fi
+done < <(getUpgradesYml)
+
+if $error; then
+    exit 1
+fi
+exit 0

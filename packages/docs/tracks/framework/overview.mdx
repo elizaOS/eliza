@@ -1,0 +1,63 @@
+---
+title: Framework
+description: "Use @elizaos/core as a library inside your own TypeScript codebase."
+---
+
+The **Framework** track is for developers who want the elizaOS runtime as a library, not as an app. You import `@elizaos/core`, construct an `AgentRuntime` directly, and embed it in whatever surface you already own — a CLI, an HTTP server, a Discord bot, a background worker.
+
+## What you build
+
+A TypeScript application that links against `@elizaos/core`, loads a `Character` and the plugins you need, and drives the runtime programmatically. Nothing else from the elizaOS distribution is assumed — no dashboard, no Electrobun shell, no Cloud.
+
+## Minimal example
+
+```ts
+import { AgentRuntime } from '@elizaos/core';
+import sql from '@elizaos/plugin-sql';
+import anthropic from '@elizaos/plugin-anthropic';
+
+const runtime = new AgentRuntime({
+  character: {
+    name: 'Eliza',
+    bio: 'A helpful agent.',
+    plugins: [],
+  },
+  plugins: [sql, anthropic],
+});
+
+await runtime.initialize();
+// Send a message:
+await runtime.messageManager.handleMessage({ /* ... */ });
+```
+
+## Track contents
+
+<CardGroup cols={2}>
+  <Card title="Runtime" icon="gears" href="/tracks/framework/runtime">
+    The `AgentRuntime` class, its lifecycle, and its surface.
+  </Card>
+  <Card title="Actions, providers, evaluators" icon="diagram-project" href="/tracks/framework/actions-providers-evaluators">
+    The three composition primitives you'll use most.
+  </Card>
+  <Card title="Services" icon="server" href="/tracks/framework/services">
+    Long-lived subsystems registered with the runtime.
+  </Card>
+</CardGroup>
+
+## Where this comes from
+
+- Public entry: [`packages/core/src/index.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/index.ts)
+- Node entry: [`packages/core/src/index.node.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/index.node.ts)
+- Runtime: [`packages/core/src/runtime.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/runtime.ts)
+- Plugin types: [`packages/core/src/types/plugin.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/types/plugin.ts)
+
+## Deeper material
+
+- [Runtime core](/runtime/core)
+- [Models](/runtime/models)
+- [Memory](/runtime/memory)
+- [Services](/runtime/services)
+- [Providers](/runtime/providers)
+- [Events](/runtime/events)
+- [Types](/runtime/types)
+- [Architecture](/architecture)

@@ -1,0 +1,149 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-04-22 08:25+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Secure Boot certificates update\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc startlevel=2]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If the **Secure Boot Update Needed** notification below appears when "
+"starting Tails, it means that the Secure Boot certificates of this computer "
+"need to be updated."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img support/known_issues/secure_boot_certificates/secure_boot_update_needed.png class=\"screenshot\" alt=\"Notification: Secure Boot Update Needed\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Otherwise, Tails will no longer start on this computer after a future Tails "
+"upgrade. We cannot predict when such an upgrade will occur, because the "
+"timing depends on changes that Tails could inherit from Debian in any Tails "
+"upgrade."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"After this change in Tails occurs, the computer might display a **Secure "
+"Boot Violation** error or another error message when trying to start Tails."
+msgstr ""
+
+#. type: Title ##
+#, no-wrap
+msgid "Why is this happening?"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[[!wikipedia Secure Boot]] is a security measure that prevents starting "
+"malicious operating systems on a computer. Most computers running Windows "
+"have Secure Boot enabled. Linux distributions, including Tails, also support "
+"Secure Boot."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Since 2023, [[Microsoft has started replacing|https://support.microsoft.com/"
+"en-us/topic/windows-secure-boot-certificate-expiration-and-ca-"
+"updates-7ff40d33-95dc-4c3c-8725-a9b95457578e]] the Secure Boot certificates "
+"originally issued in 2011. These older certificates begin expiring in June "
+"2026."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails has detected that the computer still has outdated Secure Boot "
+"certificates and needs an update."
+msgstr ""
+
+#. type: Title ##
+#, no-wrap
+msgid "Updating the Secure Boot certificates"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To update the Secure Boot certificates of the computer, restart its regular "
+"operating system, Windows or Linux, and apply all available updates."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For Windows, select **Start&nbsp;▸ Settings&nbsp;▸ Windows Update&nbsp;▸ "
+"Check for Windows updates**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  See also [[Microsoft: Install Windows\n"
+"  updates|https://support.microsoft.com/en-us/windows/install-windows-updates-3c5ae7fc-9fb6-9af1-1984-b5e0412c556a]].\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "For Linux, such updates are applied by the [[!wikipedia fwupd]] daemon."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Linux distributions that use the GNOME desktop automatically apply this\n"
+"  update through GNOME Software.\n"
+msgstr ""
+
+#. type: Title ##
+#, no-wrap
+msgid "Disabling Secure Boot"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If the **Secure Boot Update Needed** notification persists when restarting "
+"Tails, it means that the Secure Boot certificates of the computer are still "
+"outdated."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Instead of updating the certificate, you can also disable Secure Boot. Even "
+"with Secure Boot disabled, the regular operating system should still start."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can usually disable Secure Boot through the BIOS settings of the "
+"computer, but the procedure varies by manufacturer. To learn how to edit the "
+"BIOS settings, search for the user manual of the computer on the support "
+"website of the manufacturer."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In the BIOS menu, find the **Secure Boot** setting and disable it. This "
+"option is usually in either the **Security** tab, the **Boot** tab, or the "
+"**Authentication** tab."
+msgstr ""

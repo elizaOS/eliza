@@ -1,0 +1,154 @@
+/**
+ * Provider breakdown component displaying cost and usage by AI provider.
+ * Shows cost distribution with progress bars and percentage breakdowns.
+ *
+ * @param props - Provider breakdown configuration
+ * @param props.providers - Array of provider usage data
+ */
+
+"use client";
+
+import { toSuccessRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Progress,
+} from "@elizaos/ui";
+import { useT } from "@/providers/I18nProvider";
+import type { EnhancedAnalyticsDataDto } from "@/types/cloud-api";
+
+interface ProviderBreakdownProps {
+  providers: EnhancedAnalyticsDataDto["providerBreakdown"];
+}
+
+const numberFormatter = new Intl.NumberFormat();
+
+const formatCurrency = (amount: number) => {
+  return `${amount.toFixed(2)}`;
+};
+
+export function ProviderBreakdown({ providers }: ProviderBreakdownProps) {
+  const t = useT();
+  if (providers.length === 0) {
+    return (
+      <Card className="border-border/70 bg-background/60 shadow-sm">
+        <CardHeader className="p-6 pb-5">
+          <CardTitle className="text-base font-semibold">
+            {t("cloud.analytics.providerBreakdown.title", {
+              defaultValue: "Provider breakdown",
+            })}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {t("cloud.analytics.providerBreakdown.noData", {
+              defaultValue:
+                "No provider data available for the selected period.",
+            })}
+          </p>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  const totalCost = providers.reduce(
+    (sum: number, p: (typeof providers)[0]) => sum + p.totalCost,
+    0,
+  );
+
+  return (
+    <Card className="border-border/70 bg-background/60 shadow-sm">
+      <CardHeader className="flex flex-col gap-3 p-6 pb-5">
+        <div className="flex items-center gap-3">
+          <CardTitle className="text-base font-semibold">
+            {t("cloud.analytics.providerBreakdown.title", {
+              defaultValue: "Provider breakdown",
+            })}
+          </CardTitle>
+          <Badge variant="outline" className="rounded-full text-xs">
+            {t("cloud.analytics.providerBreakdown.count", {
+              defaultValue: "{{n}} provider{{plural}}",
+              n: providers.length,
+              plural: providers.length !== 1 ? "s" : "",
+            })}
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {t("cloud.analytics.providerBreakdown.subtitle", {
+            defaultValue:
+              "Usage distribution across AI providers with cost allocation and success metrics.",
+          })}
+        </p>
+      </CardHeader>
+      <CardContent className="border-t border-border/60 p-6">
+        <div className="space-y-6">
+          {providers.map((provider: (typeof providers)[0], index: number) => (
+            <div key={provider.provider} className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">
+                      {provider.provider}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="rounded-full bg-background/80 text-xs"
+                    >
+                      {provider.percentage.toFixed(1)}%
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>
+                      {t("cloud.analytics.providerBreakdown.requestsCount", {
+                        defaultValue: "{{n}} requests",
+                        n: numberFormatter.format(provider.totalRequests),
+                      })}
+                    </span>
+                    <span>
+                      {t("cloud.analytics.providerBreakdown.spent", {
+                        defaultValue: "$" + "{{c}} spent",
+                        c: formatCurrency(provider.totalCost),
+                      })}
+                    </span>
+                    <span>
+                      {t("cloud.analytics.providerBreakdown.tokensCount", {
+                        defaultValue: "{{n}} tokens",
+                        n: numberFormatter.format(provider.totalTokens),
+                      })}
+                    </span>
+                    <span className="text-green-600 dark:text-green-400">
+                      {t("cloud.analytics.providerBreakdown.successPct", {
+                        defaultValue: "{{p}}% success",
+                        p: toSuccessRatePercent(provider.successRate).toFixed(
+                          1,
+                        ),
+                      })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <Progress value={provider.percentage} className="h-2" />
+              {index < providers.length - 1 && (
+                <div className="border-b border-border/50" />
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 rounded-sm border border-border/60 bg-muted/30 p-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium text-muted-foreground">
+              {t("cloud.analytics.providerBreakdown.totalAcross", {
+                defaultValue: "Total across all providers",
+              })}
+            </span>
+            <span className="font-semibold text-foreground">
+              ${formatCurrency(totalCost)}
+            </span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

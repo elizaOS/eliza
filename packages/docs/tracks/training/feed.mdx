@@ -1,0 +1,29 @@
+---
+title: Feed
+description: "The Eliza prediction-market simulation."
+---
+
+**Feed** is a closed-world social-simulation engine where Eliza agents trade alongside AI-driven NPCs in a prediction market. It produces narrative content, market data, and trajectory traces used to train and evaluate agent behavior under social and economic pressure.
+
+## What's in it
+
+- **Game engine** — tick loop, world generation, market resolution, perpetuals.
+- **NPCs** — AI-powered characters that generate posts, react to events, and trade.
+- **Eliza agents** — drop-in participants. Same `AgentRuntime`, different harness.
+- **ScamBench** — a curated evaluation harness inside Feed for testing agent susceptibility to social manipulation.
+
+## Why it exists
+
+- Generates large volumes of agent-vs-agent trajectory data for SFT.
+- Stress-tests agent decision-making under adversarial NPCs.
+- Provides a reproducible economic environment for RL experimentation.
+
+## Source
+
+- Engine: [`packages/feed/`](https://github.com/elizaOS/eliza/tree/develop/packages/feed)
+- ScamBench: under the Feed eval directory in `packages/benchmarks/`.
+
+## See also
+
+- [Benchmarks](/tracks/training/benchmarks)
+- [Eliza-1](/tracks/training/eliza-1)

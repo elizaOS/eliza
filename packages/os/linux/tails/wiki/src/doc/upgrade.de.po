@@ -1,0 +1,844 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-18 17:19+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails localization discussion <tails-l10n@boum.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Upgrading a Tails USB stick\"]]\n"
+msgstr "[[!meta title=\"Einen USB-Stick mit Tails aktualisieren\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails includes an automatic mechanism to upgrade a USB stick to the latest "
+"version of Tails. When an automatic upgrade is performed, only an *upgrade "
+"package* is downloaded. The upgrade package contains all the changes made to "
+"Tails since Tails was first installed or was last manually upgraded."
+msgstr ""
+"Tails enthält einen automatischen Mechanismus, um einen USB-Stick auf die "
+"neueste Version von Tails zu aktualisieren. Bei einem automatischen Upgrade "
+"wird nur ein *Upgrade-Paket* heruntergeladen. Das Upgrade-Paket enthält alle "
+"Änderungen an Tails, die seit der Erstinstallation oder dem letzten "
+"manuellen Upgrade vorgenommen wurden."
+
+#. type: Plain text
+msgid ""
+"In some cases, it is impossible to do an **automatic upgrade** and you might "
+"have to do a **manual upgrade**. This page describes both techniques."
+msgstr ""
+"Falls eine **automatische Aktualisierung** unmöglich ist, ist eine "
+"**manuelle Aktualisierung** durchzuführen. Diese Seite beschreibt beide "
+"Vorgehensweisen."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Your Persistent Storage will be preserved by both automatic and\n"
+"manual upgrades.</p>\n"
+msgstr "<p>Ihr persistenter Speicher wird sowohl durch automatische als auch manuelle Upgrades erhalten bleiben.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"If you use Tails from a DVD, you need to [[burn a new DVD|install/dvd]]."
+msgstr ""
+"Wenn Sie Tails von einer DVD aus benutzen, ist es notwendig [[eine neue DVD "
+"zu brennen|install/dvd]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"check-version\">Checking which version of Tails you are currently running</h1>\n"
+msgstr "<h1 id=\"check-version\">Überprüfung, welche Version von Tails Sie derzeit verwenden</h1>\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To check which version of Tails you are currently running, choose "
+#| "**Applications&nbsp;▸ Tails&nbsp;▸ About Tails**."
+msgid ""
+"To check which version of Tails you are currently running, choose "
+"**Apps&nbsp;▸ Tails&nbsp;▸ About Tails**."
+msgstr ""
+"Um zu überprüfen, welche Version von Tails Sie derzeit verwenden, wählen Sie "
+"**Anwendungen&nbsp;▸ Tails&nbsp;▸ Über Tails**."
+
+#. type: Plain text
+msgid ""
+"In the **About Tails** utility, you can click **Check for Upgrades** to "
+"check whether a new version of Tails is available. This check is also done "
+"automatically every time you start Tails and connect to the Tor network."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"automatic\">Automatic upgrade using <i>Tails Upgrader</i></h1>\n"
+msgstr "<h1 id=\"automatic\">Automatisches Upgrade mit dem <i>Tails Upgrader</i></h1>\n"
+
+#. type: Plain text
+msgid ""
+"After starting Tails and connecting to Tor, *Tails Upgrader* automatically "
+"checks if upgrades are available and then proposes you to upgrade your USB "
+"stick. The upgrades are checked for and downloaded through Tor."
+msgstr ""
+"Nach dem Start von Tails und dem Herstellen einer Verbindung zu Tor prüft "
+"der *Tails Upgrader* automatisch, ob Aktualisierungen verfügbar sind und "
+"schlägt Ihnen dann vor, Ihren USB-Stick zu aktualisieren. Die Suche nach "
+"Aktualisierungen und der Download werden über Tor durchgeführt."
+
+#. type: Plain text
+msgid "The advantages of automatic upgrades are the following:"
+msgstr "Die Vorteile automatischer Upgrades sind die folgenden:"
+
+#. type: Bullet: '- '
+msgid ""
+"You only need a single Tails USB stick. The upgrade is done on the fly from "
+"a running Tails. After upgrading, you can restart and use the new version."
+msgstr ""
+"Sie benötigen nur einen einzigen USB-Stick mit Tails. Die Aktualisierung "
+"wird während des Betriebes eines laufenden Tails durchgeführt.\n"
+"Nach der Aktualisierung können Sie einen Neustart durchführen und die neue "
+"Version verwenden."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- The upgrade is much smaller to download than a full USB image."
+msgid "The upgrade is much smaller to download than a full USB image."
+msgstr ""
+"- Die Aktualisierung ist viel kleiner als der Download eines kompletten USB-"
+"Images."
+
+#. type: Bullet: '- '
+msgid ""
+"The upgrade mechanism includes cryptographic verification of the upgrade.  "
+"You don't have to verify the USB image yourself anymore."
+msgstr ""
+"Der Aktualisierungsvorgang enthält eine kryptografische Verifizierung der "
+"Aktualisierung. Es ist nicht mehr nötig, dass Sie das USB-Image selbst "
+"verifizieren müssen."
+
+#. type: Plain text
+msgid "Requirements:"
+msgstr "Voraussetzungen:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- A Tails USB stick"
+msgid "A Tails USB stick"
+msgstr "- Ein Tails-USB-Stick"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- An Internet connection"
+msgid "An Internet connection"
+msgstr "- Eine Internetverbindung"
+
+#. type: Plain text
+msgid ""
+"After connecting to Tor, if an upgrade is available, a dialog appears and "
+"proposes you to upgrade your USB stick."
+msgstr ""
+"Nachdem eine Verbindung zu Tor aufgebaut wurde, wird, falls eine "
+"Aktualisierung verfügbar ist, ein Dialogfenster erscheinen und Ihnen "
+"vorschlagen, Ihren USB-Stick zu aktualisieren."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img upgrader_automatic.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img upgrader_automatic.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+msgid ""
+"If you decide to do the upgrade, click on **Upgrade now**, and follow the "
+"assistant through the upgrade process."
+msgstr ""
+"Wenn Sie sich zum Aktualisieren entscheiden, drücken Sie die **Jetzt "
+"aktualisieren** Schaltfläche und folgen Sie dem Assistenten durch den "
+"Aktualisierungsvorgang."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you cannot upgrade at startup, you can open <i>Tails Upgrader</i>\n"
+"later by choosing <b>Apps&nbsp;▸ Tails&nbsp;▸ About Tails</b> and clicking\n"
+"<b>Check for Upgrades</b>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"troubleshooting\">Troubleshooting</h2>\n"
+msgstr "<h2 id=\"troubleshooting\">Fehlerbehebung</h2>\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- If an error occurs while installing the upgrade:"
+msgid ""
+"If an error occurs while installing the upgrade, *Tails Upgrader* asks you "
+"to visit:"
+msgstr ""
+"- Falls ein Fehler während der Installation der Aktualisierung auftritt:"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[file:///usr/share/doc/tails/website/doc/upgrade/error/install.en.html|upgrade/error/install]]\n"
+msgstr "  [[file:///usr/share/doc/tails/website/doc/upgrade/error/install.de.html|upgrade/error/install]]\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "If your Tails USB stick fails to start after an automatic upgrade, see "
+#| "below how to do a manual upgrade."
+msgid ""
+"If another error occur while upgrading or if your Tails USB stick fails to "
+"start after an automatic upgrade, we recommend that you do a manual upgrade "
+"instead. See below."
+msgstr ""
+"Wenn Ihr Tails USB nach einem automatischen Upgrade nicht started, sehen Sie "
+"weiter unten nach, wie man ein manuelles Upgrade macht."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"manual\">Manual upgrade using <i>Tails Cloner</i></h1>\n"
+msgstr "<h1 id=\"manual\">Manuelles Upgrade mit dem <i>Tails Cloner</i></h1>\n"
+
+#. type: Plain text
+msgid ""
+"It might not always be possible to do an automatic upgrade as described "
+"[[above|upgrade#automatic]].  For example, when:"
+msgstr ""
+"Es ist eventuell nicht immer möglich, eine wie [[weiter oben|"
+"upgrade#automatic]] beschriebene Aktualisierung durchzuführen. Zum Beispiel "
+"wenn:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- No automatic upgrade is available from our website for this version."
+msgid "No automatic upgrade is available from our website for this version."
+msgstr ""
+"- Keine automatische Aktualisierung für diese Version auf unserer Webseite "
+"verfügbar ist."
+
+#. type: Bullet: '- '
+msgid ""
+"The automatic upgrade is impossible for technical reasons (not enough "
+"memory, not enough free space on the USB stick, and so on). For example, if "
+"you get the following error message:"
+msgstr ""
+"Das automatische Upgrade ist aus technischen Gründen nicht möglich (nicht "
+"genügend Speicherplatz, nicht genügend freier Platz auf dem USB-Stick usw.). "
+"Zum Beispiel, wenn Sie die folgende Fehlermeldung erhalten:"
+
+#. type: Plain text
+#, no-wrap
+msgid "       there is not enough free space on the Tails system partition\n"
+msgstr "       es gibt nicht genügend freien Speicherplatz auf der Tails-Systempartition\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- The automatic upgrade failed and you need to repair a Tails USB stick."
+msgid "The automatic upgrade failed and you need to repair a Tails USB stick."
+msgstr ""
+"- Das automatische Upgrade ist fehlgeschlagen und Sie müssen einen Tails-USB-"
+"Stick reparieren."
+
+#. type: Bullet: '- '
+msgid ""
+"You want to upgrade by cloning from another Tails USB stick which is already "
+"up-to-date, for example, when working offline or with a slow Internet "
+"connection."
+msgstr ""
+"Sie möchten ein Upgrade durchführen, indem Sie von einem anderen Tails-USB-"
+"Stick klonen, der bereits auf dem neuesten Stand ist, beispielsweise wenn "
+"Sie offline arbeiten oder eine langsame Internetverbindung haben."
+
+#. type: Plain text
+msgid ""
+"After connecting to Tor, a dialog informs you if you have to upgrade your "
+"USB stick using *Tails Cloner* to a newer version of Tails."
+msgstr ""
+"Nachdem Sie eine Verbindung zu Tor hergestellt haben, informiert Sie ein "
+"Dialogfeld, ob Sie Ihren USB-Stick mit *Tails Cloner* auf eine neuere "
+"Version von Tails aktualisieren müssen."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img upgrader_manual.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img upgrader_manual.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You can also do a manual upgrade to reduce the size of future automatic\n"
+"upgrades.</p>\n"
+msgstr "<p>Sie können auch ein manuelles Upgrade durchführen, um die Größe zukünftiger automatischer Upgrades zu reduzieren.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>When doing automatic upgrades, the size of the download increases over time.\n"
+"If you do a manual upgrade, the size of future automatic upgrades will become\n"
+"smaller again.</p>\n"
+msgstr ""
+"<p>Bei automatischen Updates wächst die Größe des Downloads im Laufe der Zeit.  \n"
+"Wenn Sie ein manuelles Upgrade durchführen, wird die Größe zukünftiger automatischer Updates wieder kleiner.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We estimated that, to actually reduce the\n"
+"overall download size, it's only worth it to do 1 manual upgrade every year if\n"
+"you apply all upgrades of Tails.</p>\n"
+msgstr ""
+"<p>Wir haben geschätzt, dass es nur dann sinnvoll ist, die Gesamtgröße des Downloads zu reduzieren,\n"
+"wenn Sie jedes Jahr 1 manuelles Upgrade durchführen und alle Tails-Updates anwenden.</p>\n"
+
+#. type: Plain text
+msgid "To do a manual upgrade, you can either:"
+msgstr "Um ein manuelles Upgrade durchzuführen, können Sie entweder:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Download and upgrade|doc/upgrade/#download]] (below)"
+msgid "[[Download and upgrade|doc/upgrade/#download]] (below)"
+msgstr "- [[Herunterladen und Upgraden|doc/upgrade/#download]] (weiter unten)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Upgrade by cloning from another Tails|doc/upgrade/#clone]] (below)"
+msgid "[[Upgrade by cloning from another Tails|doc/upgrade/#clone]] (below)"
+msgstr ""
+"- [[Upgrade durch Klonen von einem anderen Tails|doc/upgrade/#clone]] (siehe "
+"unten)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Burn a new Tails DVD|install/dvd]]"
+msgid "[[Burn a new Tails DVD|install/dvd]]"
+msgstr "- [[Brenne eine neue Tails DVD|install/dvd]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"download\">Download and upgrade</h2>\n"
+msgstr "<h2 id=\"download\">Download und Upgrade</h2>\n"
+
+#. type: Plain text
+msgid "You need:"
+msgstr "Sie brauchen:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Your Tails USB stick"
+msgid "Your Tails USB stick"
+msgstr "- Ihr Tails-USB-Stick"
+
+#. type: Bullet: '- '
+msgid ""
+"Another empty USB stick <small>(at least 8 GB)</small>&nbsp;[[!toggle "
+"id=\"why_extra\" text=\"Why?\"]]"
+msgstr ""
+"Ein weiterer leerer USB-Stick <small>(mindestens 8 GB)</small>&nbsp;[[!"
+"toggle id=\"why_extra\" text=\"Warum?\"]]"
+
+#. type: Bullet: '- '
+msgid ""
+"½ hour to download Tails (<small class=\"remove-extra-space\">[[!inline "
+"pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</small>)"
+msgstr ""
+"½ Stunde zum Herunterladen von Tails (<small class=\"remove-extra-space\">[[!"
+"inline pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</"
+"small>)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- ½ hour to upgrade"
+msgid "½ hour to upgrade"
+msgstr "- ½ Stunde zum Upgraden"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toggleable id=\"why_extra\" text=\"\"\"\n"
+msgstr "[[!toggleable id=\"why_extra\" text=\"\"\"\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<span class=\"hide\">[[!toggle id=\"why_extra\" text=\"\"]]</span>\n"
+"<p>It is currently impossible to manually upgrade a Tails USB stick\n"
+"while running from itself. This scenario requires creating an\n"
+"intermediary Tails on another USB stick, from which to upgrade your\n"
+"Tails.</p>\n"
+msgstr ""
+"<span class=\"hide\">[[!toggle id=\"why_extra\" text=\"\"]]</span>  \n"
+"<p>Es ist derzeit unmöglich, einen Tails-USB-Stick manuell zu aktualisieren,\n"
+"während Sie von ihm selbst aus arbeiten. Dieses Szenario erfordert die Erstellung eines\n"
+"Zwischen-Tails auf einem anderen USB-Stick, von dem aus Sie Ihr Tails aktualisieren können.</p>\n"
+
+#. type: Plain text
+msgid "See our instructions on how to do a manual upgrade by:"
+msgstr ""
+"Siehe unsere Anweisungen, wie Sie ein manuelles Upgrade durchführen können:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Downloading and upgrading from your Tails|upgrade/tails]] (more "
+#| "secure)"
+msgid ""
+"[[Downloading and upgrading from your Tails|upgrade/tails]] (more secure)"
+msgstr ""
+"- [[Herunterladen und Upgrade von Ihrem Tails|upgrade/tails]] (sicherer)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Downloading and upgrading from Windows|upgrade/windows]] (more "
+#| "convenient)"
+msgid ""
+"[[Downloading and upgrading from Windows|upgrade/windows]] (more convenient)"
+msgstr "- [[Herunterladen und Upgrade von Windows|upgrade/windows]] (bequemer)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Downloading and upgrading from macOS|upgrade/mac]] (more convenient)"
+msgid "[[Downloading and upgrading from macOS|upgrade/mac]] (more convenient)"
+msgstr "- [[Herunterladen und Upgrade von macOS|upgrade/mac]] (bequemer)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Downloading and upgrading from Linux|upgrade/linux]] (more convenient)"
+msgid ""
+"[[Downloading and upgrading from Linux|upgrade/linux]] (more convenient)"
+msgstr "- [[Herunterladen und Upgrade von Linux|upgrade/linux]] (komfortabler)"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Downloading and upgrading from Windows might be less secure if your\n"
+"Windows has viruses. But, it might be more convenient and faster.</p>\n"
+msgstr "<p>Das Herunterladen und Aktualisieren von Windows aus könnte weniger sicher sein, wenn Ihr Windows Viren hat. Aber es könnte bequemer und schneller sein.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"clone\">Upgrade by cloning from another Tails</h2>\n"
+msgstr "<h2 id=\"clone\">Upgrade durch Klonen von einem anderen Tails</h2>\n"
+
+#. type: Plain text
+msgid ""
+"If you know someone you trust who already did the upgrade, you can upgrade "
+"your Tails by cloning from their Tails."
+msgstr ""
+"Wenn Sie jemanden kennen, dem Sie vertrauen und der das Upgrade bereits "
+"durchgeführt hat, können Sie Ihr Tails durch Klonen von seinem Tails "
+"aktualisieren."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Another up-to-date Tails (USB stick or DVD)"
+msgid "Another up-to-date Tails (USB stick or DVD)"
+msgstr "- Ein weiteres aktuelles Tails (USB-Stick oder DVD)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- ¼ hour to upgrade"
+msgid "¼ hour to upgrade"
+msgstr "- ¼ Stunde für das Upgrade"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Cloning from another Tails|upgrade/clone]]"
+msgid "[[Cloning from another Tails|upgrade/clone]]"
+msgstr "- [[Klonen von einem anderen Tails|upgrade/clone]]"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>If you cannot upgrade at startup (for example, if you have no network\n"
+#~ "connection by then), you can start <i>Tails Upgrader</i>\n"
+#~ "later by opening a terminal and executing the following\n"
+#~ "command:</p>\n"
+#~ msgstr ""
+#~ "<p>Falls Sie beim Starten nicht aktualisieren können (zum Beispiel, wenn Sie\n"
+#~ "zu dem Zeitpunkt keine Netzwerkverbindung haben), können Sie den <span class=\"application\">Tails\n"
+#~ "Upgrader</span> später durch das Ausführen des folgenden Befehls\n"
+#~ "starten:</p>\n"
+
+#, no-wrap
+#~ msgid "<pre>tails-upgrade-frontend-wrapper</pre>\n"
+#~ msgstr "<pre>tails-upgrade-frontend-wrapper</pre>\n"
+
+#~ msgid ""
+#~ "If an error occurs during the upgrade, the assistant proposes you to read "
+#~ "one of the following pages:"
+#~ msgstr ""
+#~ "Sollte während des Upgrades ein Fehler auftreten, schlägt Ihnen der "
+#~ "Assistent vor, folgende Seiten zu lesen:"
+
+#~ msgid "- If an error occurs while checking for available upgrades:"
+#~ msgstr ""
+#~ "- Falls ein Fehler bei der Suche nach verfügbaren Aktualisierungen "
+#~ "auftritt:"
+
+#, no-wrap
+#~ msgid "  [[file:///usr/share/doc/tails/website/doc/upgrade/error/check.en.html|upgrade/error/check]]\n"
+#~ msgstr "  [[file:///usr/share/doc/tails/website/doc/upgrade/error/check.de.html|upgrade/error/check]]\n"
+
+#~ msgid "- If an error occurs while download the upgrade:"
+#~ msgstr ""
+#~ "- Falls ein Fehler während des Downloads der Aktualisierung auftritt:"
+
+#, no-wrap
+#~ msgid "  [[file:///usr/share/doc/tails/website/doc/upgrade/error/download.en.html|upgrade/error/download]]\n"
+#~ msgstr "  [[file:///usr/share/doc/tails/website/doc/upgrade/error/download.de.html|upgrade/error/download]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>To learn how Tails implements automatic upgrades, see our\n"
+#~ "[[design documentation about automatic upgrades|contribute/design/upgrades]].</p>\n"
+#~ msgstr ""
+#~ "<p>Um zu erfahren, wie Tails automatische Upgrades implementiert, lesen Sie unsere\n"
+#~ "[[Design-Dokumentation über automatische Upgrades|contribute/design/upgrades]].</p>\n"
+
+#, fuzzy, no-wrap
+#~| msgid "[[!img upgrader_manual.png link=no]]\n"
+#~ msgid "[[!img system.png link=\"no\" class=\"svg\" alt=\"\"]]\n"
+#~ msgstr "[[!img upgrader_manual.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~| msgid "[[!img upgrader_manual.png link=no]]\n"
+#~ msgid "[[!img incremental.png link=\"no\" class=\"svg\" alt=\"\"]]\n"
+#~ msgstr "[[!img upgrader_manual.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~| msgid "[[!img upgrader_manual.png link=no]]\n"
+#~ msgid "[[!img manual.png link=\"no\" class=\"svg\" alt=\"\"]]\n"
+#~ msgstr "[[!img upgrader_manual.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~| msgid "[[!inline pages=\"doc/upgrade/release_notes.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgid "[[!inline pages=\"install/inc/router/why_extra.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"doc/upgrade/release_notes.inline\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy
+#~| msgid "<a name=\"manual\"></a>\n"
+#~ msgid "<a name=\"check-version\"></a>\n"
+#~ msgstr "<a name=\"manual\"></a>\n"
+
+#~ msgid "<a name=\"automatic\"></a>\n"
+#~ msgstr "<a name=\"automatic\"></a>\n"
+
+#, fuzzy
+#~| msgid "Troubleshooting\n"
+#~ msgid "Troubleshooting"
+#~ msgstr "Fehlersuche\n"
+
+#~ msgid "<a name=\"manual\"></a>\n"
+#~ msgstr "<a name=\"manual\"></a>\n"
+
+#~ msgid "<a id=\"clone\"></a>\n"
+#~ msgstr "<a id=\"clone\"></a>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "If you missed an upgrade, each upgrade will be installed one after the "
+#~| "other. For example, if you have a Tails 1.3 and the current version is "
+#~| "1.3.2, then the upgrade to 1.3.1 will be installed, and after you "
+#~| "restart Tails, the upgrade to 1.3.2 will be installed."
+#~ msgid ""
+#~ "<p>For example, if you have a Tails 4.1 and the current version\n"
+#~ "is 4.5, then the upgrade to 4.3 will be installed, and after you restart "
+#~ "Tails, the\n"
+#~ "upgrade to 4.5 will be installed.</p>\n"
+#~ msgstr ""
+#~ "Falls Sie eine Aktualisierung verpasst haben, wird jede Aktualisierung "
+#~ "nacheinander installiert. Falls Sie zum Beispiel Tails 1.3 installiert "
+#~ "haben und die aktuelle Version 1.3.2 ist, dann wird die Aktualisierung "
+#~ "auf 1.3.1 installiert und nachdem Sie Tails neu gestartet haben, wird die "
+#~ "Aktualisierung auf 1.3.2 installiert."
+
+#~ msgid ""
+#~ "<p>We recommend you read the [[release notes|release_notes]] for the "
+#~ "latest version. They document all the changes in this new version:</p>\n"
+#~ msgstr ""
+#~ "<p>Wir empfehlen Ihnen, die [[Versionshinweise|release_notes]] für die "
+#~ "neueste Version zu lesen. Sie beschreiben alle Änderungen in dieser neuen "
+#~ "Version:</p>\n"
+
+#~ msgid ""
+#~ "<ul>\n"
+#~ "  <li>new features</li>\n"
+#~ "  <li>problems that were solved</li>\n"
+#~ "  <li>known issues that have already been identified</li>\n"
+#~ "</ul>\n"
+#~ msgstr ""
+#~ "<ul>\n"
+#~ "  <li>Neue Funktionen</li>\n"
+#~ "  <li>Fehler, die behoben wurden</li>\n"
+#~ "  <li>Bekannte Probleme, die bereits identifiziert wurden</li>\n"
+#~ "</ul>\n"
+
+#~ msgid ""
+#~ "Our upgrades always fix important security issues so it is important to "
+#~ "do them as soon as possible."
+#~ msgstr ""
+#~ "Unsere Aktualisierungen beheben immer wichtige Sicherheitslücken, es ist "
+#~ "also wichtig, diese so schnell wie möglich durchzuführen."
+
+#, fuzzy
+#~| msgid ""
+#~| "<ul>\n"
+#~| "<li>It is recommended to close all the open applications during the\n"
+#~| "upgrade.</li>\n"
+#~| "<li>Downloading the upgrade might take a long time, from several minutes "
+#~| "to a\n"
+#~| "few hours.</li>\n"
+#~| "<li>The networking will be disabled after downloading the upgrade.</li>\n"
+#~| "</ul>\n"
+#~ msgid ""
+#~ "<ul>\n"
+#~ "<li>We recommend you close all other applications during the upgrade.</"
+#~ "li>\n"
+#~ "<li>Downloading the upgrade might take a long time, from several minutes "
+#~ "to a\n"
+#~ "few hours.</li>\n"
+#~ "<li>The networking will be disabled after downloading the upgrade.</li>\n"
+#~ "</ul>\n"
+#~ msgstr ""
+#~ "<ul>\n"
+#~ "<li>Es wird empfohlen während der Aktualisierung alle Anwendungen zu\n"
+#~ "schließen.</li>\n"
+#~ "<li>Das Herunterladen der Aktualisierung kann eine lange Zeit in Anspruch "
+#~ "nehmen,\n"
+#~ "von ein paar Minuten bis zu einigen Stunden.</li>\n"
+#~ "<li>Die Netzwerkfunktionen werden nach dem Download der Aktualisierung "
+#~ "deaktiviert.</li>\n"
+#~ "</ul>\n"
+
+#~ msgid ""
+#~ "<p>They might also contain <strong>special instructions for upgrading</"
+#~ "strong>.</p>\n"
+#~ msgstr ""
+#~ "<p>Sie könnten auch <strong>besondere Anweisungen zum Aktualisieren</"
+#~ "strong> enthalten.</p>\n"
+
+#~ msgid ""
+#~ "Both techniques only work if the upgraded USB stick, was\n"
+#~ "installed using *Tails Installer*. **The\n"
+#~ "persistent storage on the USB stick will be preserved.**\n"
+#~ msgstr ""
+#~ "Beide Methoden funktionieren nur, wenn der zu aktualisierende USB-Stick\n"
+#~ "mithilfe des *Tails Installers* installiert\n"
+#~ "wurde. **Der beständige Speicherbereich auf dem USB-Stick bleibt "
+#~ "erhalten.**\n"
+
+#~ msgid ""
+#~ "<p>If you use Tails from a USB stick installed from macOS using the\n"
+#~ "command line, you need to [[reinstall|install/mac/usb-overview]].</p>\n"
+#~ msgstr ""
+#~ "<p>Wenn Sie Tails von einem USB-Stick aus benutzen, der unter macOS unter "
+#~ "Nutzung der\n"
+#~ "Kommandozeile installiert wurde, ist es notwendig Tails [[neu zu "
+#~ "installieren|install/mac/usb-overview]].</p>\n"
+
+#~ msgid ""
+#~ "A Tails USB stick, installed using <span class=\"application\">Tails "
+#~ "Installer</span>."
+#~ msgstr ""
+#~ "Einen USB-Stick mit Tails, der mithilfe des <span "
+#~ "class=\"application\">Tails Installers</span> installiert wurde."
+
+#, fuzzy
+#~| msgid "Manual upgrade using *Tails Installer*\n"
+#~ msgid "Using *Tails Installer* you can either:\n"
+#~ msgstr ""
+#~ "Manuelles Aktualisieren mit Hilfe des <span class=\"application\">Tails "
+#~ "Installers</span>\n"
+
+#~ msgid ""
+#~ "[[Upgrade from an ISO image|upgrade#from_iso]] of a newer version of "
+#~ "Tails."
+#~ msgstr ""
+#~ "[[Von einem ISO-Abbild|upgrade#from_iso]] einer neueren Version von Tails "
+#~ "aktualisieren."
+
+#~ msgid ""
+#~ "Like for installing, you need to start <span class=\"application\">Tails\n"
+#~ "Installer</span> from another media than the device that you want to "
+#~ "upgrade.\n"
+#~ msgstr ""
+#~ "Genauso wie zur Installation ist es notwendig den <span "
+#~ "class=\"application\">Tails Installer</span>\n"
+#~ "von einem anderen Speichermedium zu starten, als von dem, welches Sie "
+#~ "aktualisieren möchten.\n"
+
+#~ msgid ""
+#~ "Start Tails from the DVD, USB stick, or SD card, that you want to clone "
+#~ "from."
+#~ msgstr ""
+#~ "Starten Sie Tails von der DVD, dem USB-Stick oder der SD-Karte, von der "
+#~ "oder dem Sie klonen möchten."
+
+#~ msgid ""
+#~ "2. Choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applications**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Tails Installer**\n"
+#~ "   </span>\n"
+#~ "   to start *Tails Installer*.\n"
+#~ msgstr ""
+#~ "2. Wählen Sie\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Anwendungen**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Tails Installer**\n"
+#~ "   </span>\n"
+#~ "   um den *Tails Installer* zu starten.\n"
+
+#, fuzzy
+#~| msgid "Choose **Upgrade from ISO**."
+#~ msgid "Choose **Upgrade by cloning**."
+#~ msgstr "Wählen Sie **Von ISO aktualisieren**."
+
+#~ msgid "Plug the device that you want to upgrade."
+#~ msgstr "Schließen Sie das Speichermedium an, das Sie aktualisieren möchten."
+
+#~ msgid ""
+#~ "   A new device, which corresponds to the USB stick or SD card, appears "
+#~ "in the\n"
+#~ "   **Target Device** drop-down list.\n"
+#~ msgstr ""
+#~ "   Ein neues Speichermedium, welches dem USB-Stick oder der SD-Karte "
+#~ "entspricht, erscheint in der\n"
+#~ "   **Zielmedium** Auswahl-Liste.\n"
+
+#~ msgid "Choose the device from the **Target Device** drop-down list."
+#~ msgstr "Wählen Sie das Medium aus der **Zielmedium** Auswahl-Liste aus."
+
+#~ msgid ""
+#~ "To start the upgrade, click on the <span class=\"bold\">Install Tails</"
+#~ "span> button."
+#~ msgstr ""
+#~ "Um die Aktualisierung zu starten klicken Sie bitte auf die <span "
+#~ "class=\"bold\">Tails Installieren</span> Schaltfläche."
+
+#~ msgid ""
+#~ "Read the warning message in the pop-up window. Click on the <span "
+#~ "class=\"bold\">Yes</span> button to confirm."
+#~ msgstr ""
+#~ "Lesen Sie die Warnung im Pop-up-Fenster. Klicken Sie auf die <span "
+#~ "class=\"bold\">Ja</span>-Schaltfläche um zu bestätigen."
+
+#~ msgid "<a id=\"from_iso\"></a>\n"
+#~ msgstr "<a id=\"from_iso\"></a>\n"
+
+#~ msgid "Upgrade from ISO\n"
+#~ msgstr "Von ISO aktualisieren\n"
+
+#~ msgid ""
+#~ "Start Tails from another DVD, USB stick, or SD card, than the device that "
+#~ "you want to upgrade."
+#~ msgstr ""
+#~ "Starten Sie Tails von einer anderen DVD, USB-Stick oder SD-Karte, als von "
+#~ "dem Speichermedium, das Sie aktualisieren möchten."
+
+#~ msgid "Choose **Upgrade from ISO**."
+#~ msgstr "Wählen Sie **Von ISO aktualisieren**."
+
+#~ msgid ""
+#~ "Click on the **Browse** button to specify the location of the ISO image."
+#~ msgstr ""
+#~ "Wählen Sie die **Durchsuchen**-Schaltfläche aus, um den Speicherort des "
+#~ "ISO-Abbildes zu wählen."
+
+#~ msgid ""
+#~ "   If the ISO image is saved on another media, plug it if necessary and "
+#~ "click on\n"
+#~ "   the corresponding device in the **Places** column.\n"
+#~ msgstr ""
+#~ "   Falls das ISO-Abbild auf einem anderen Speichermedium gespeichert ist, "
+#~ "schließen Sie dieses, wenn nötig,\n"
+#~ "   an und wählen Sie das entsprechende Speichermedium in der Spalte <span "
+#~ "class=\"guilabel\">Orte</span> aus.\n"
+
+#~ msgid "   <div class=\"tip\">\n"
+#~ msgstr "   <div class=\"tip\">\n"
+
+#~ msgid ""
+#~ "   If the ISO image is stored in a persistent volume, the corresponding "
+#~ "device\n"
+#~ "   appears first as **Encrypted**. Click on the device\n"
+#~ "   and, in the popup window, enter the passphrase to unlock it.\n"
+#~ msgstr ""
+#~ "   Falls das ISO-Abbild im verschlüsselten beständigen Speicherbereich "
+#~ "gespeichert ist,\n"
+#~ "   wird das Medium zunächst als <span class=\"guilabel\">Verschlüsselt</"
+#~ "span> angezeigt.\n"
+#~ "   Wählen Sie das Speichermedium aus und geben Sie das Kennwort im Pop-up-"
+#~ "Fenster ein,\n"
+#~ "   um es zu entsperren.\n"
+
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"
+
+#~ msgid ""
+#~ "If you use Tails from a DVD or if your Tails device was not installed "
+#~ "using\n"
+#~ "*Tails Installer*, it is not possible to upgrade\n"
+#~ "and you need to follow our [[installation instructions|download#media]] "
+#~ "again\n"
+#~ "with the new ISO image.\n"
+#~ msgstr ""
+#~ "Falls Sie Tails von einer DVD benutzen oder wenn ihr Tails Medium nicht "
+#~ "mit Hilfe des\n"
+#~ "*Tails Installers* installiert wurde, ist es nicht möglich,\n"
+#~ "eine Aktualisierung durchzuführen und es ist nötig unseren "
+#~ "[[Installationsanweisungen|download#media]]\n"
+#~ "erneut mit dem neuen ISO-Abbild zu folgen.\n"
+
+#~ msgid "Clone & Upgrade\n"
+#~ msgstr "Klonen & Aktualisieren\n"
+
+#~ msgid "Choose **Clone & Upgrade**."
+#~ msgstr "Wählen Sie **Klonen & Aktualisieren** aus."

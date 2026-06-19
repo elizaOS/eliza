@@ -1,0 +1,107 @@
+acceptance_thresholds:
+  dynamic_ir_drop_pct_max: 10.0
+  pdn_impedance_1khz_to_1ghz_mohm_max: 15.0
+  pdn_impedance_dc_mohm_max: 5.0
+  static_ir_drop_pct_max: 5.0
+  static_ir_drop_pct_max_open_flow_waiver: 2.5
+check_command: python3 scripts/check_pdn_workload_signoff.py
+claim_boundary: 'Fail-closed gate for power-delivery-network signoff. Requires vector-driven
+  dynamic IR-drop, multi-corner, signed by a commercial tool (Voltus or RedHawk-SC)
+  OR an explicit open-flow waiver with the 2x extra margin documented in this manifest.
+  OpenROAD `psm` static-only is triage, not signoff.
+
+  '
+generated_utc: '2026-05-20T10:12:30Z'
+license_commercial_blocker: "No commercial Voltus / RedHawk-SC / PrimePower seat is\
+  \ procured. The combined annual seat cost (~$200k\u2013400k/yr per tool family per\
+  \ concurrent user) gates dynamic IR-drop signoff. Until a seat is in place the open-flow\
+  \ waiver path below is the only signoff route available, and it carries the 2x margin\
+  \ penalty.\n"
+multi_corner_requirements:
+  process_corners:
+  - SS
+  - TT
+  - FF
+  thermal_corners_c:
+  - 0
+  - 25
+  - 85
+  - 105
+  total_corner_runs_required: 36
+  voltage_corners_per_rail_count_minimum: 3
+open_flow_waiver_path:
+  description: 'If no commercial seat is available, the open-flow OpenROAD `psm` static
+    IR-drop is accepted ONLY with the following margin penalty AND with the waiver
+    YAML documented and reviewed.
+
+    '
+  margin_penalty:
+    dynamic_ir_skipped: true
+    em_skipped_unless_foundry_provides_psm_em_link: true
+    per_rail_decoupling_extra_factor: 2.0
+    rationale: 'OpenROAD `psm` does not produce vector-driven dynamic IR-drop or foundry-grade
+      EM closure. To accept the static-only result as a release gate, the per-rail
+      budget tightens by 2x on static IR-drop and per-rail decoupling capacitance
+      is doubled to absorb the missing dynamic-IR headroom. EM is treated as not-signed-off
+      unless the foundry separately provides a PSM-EM correlation table.
+
+      '
+    static_ir_budget_extra_factor: 2.0
+  required_artifacts:
+  - pd/openlane/runs/<run_id>/reports/pdn/ir_drop.rpt
+  - pd/openlane/runs/<run_id>/reports/pdn/em.rpt
+  - pd/signoff/waivers/pdn-open-flow-waiver.yaml
+  required_margin_factor: 2.0
+release_blockers:
+- No commercial Voltus / RedHawk-SC seat procured. Triage gate is OpenROAD psm-only.
+- Workload vectors (CPU INT burst, NPU GEMM saturation, LLM tok loop, idle, display
+  refresh) not generated as VCDs at rail granularity.
+- Multi-corner extracted parasitics (SPEF) per signoff corner not produced (36 corner-runs
+  required).
+- Package model with bond-wire / BGA inductance not folded into IR-drop loop.
+- PDN impedance Z(f) profile not generated.
+- EM signoff (foundry-mandated current density per PG layer) not produced.
+release_use: prohibited_until_external_review
+release_use_until_unblocked: prohibited
+required_commercial_signoff:
+  any_of:
+  - license_cost_source: vendor proposal range / industry teardown; not a quote
+    license_cost_usd_per_year_seat_estimate: 200000
+    license_status: not_procured
+    report_globs:
+    - pd/signoff/voltus/<run_id>/static_ir.rpt
+    - pd/signoff/voltus/<run_id>/dynamic_ir.rpt
+    - pd/signoff/voltus/<run_id>/em.rpt
+    - pd/signoff/voltus/<run_id>/signoff-manifest.yaml
+    tool: Ansys_Voltus
+    vendor: Ansys
+  - license_cost_source: vendor proposal range / industry teardown; not a quote
+    license_cost_usd_per_year_seat_estimate: 200000
+    license_status: not_procured
+    report_globs:
+    - pd/signoff/redhawk/<run_id>/static_ir.rpt
+    - pd/signoff/redhawk/<run_id>/dynamic_ir.rpt
+    - pd/signoff/redhawk/<run_id>/em.rpt
+    - pd/signoff/redhawk/<run_id>/signoff-manifest.yaml
+    tool: Ansys_RedHawk_SC
+    vendor: Ansys
+  - bridge_note: 'Synopsys PrimePower produces vector-driven activity; the Ansys RedHawk-SC
+      seat consumes it. Both seats must be present to use this path.
+
+      '
+    license_cost_source: vendor proposal range / industry teardown; not a quote
+    license_cost_usd_per_year_seat_estimate: 150000
+    license_status: not_procured
+    report_globs:
+    - pd/signoff/primepower/<run_id>/activity.tab
+    - pd/signoff/redhawk/<run_id>/static_ir.rpt
+    - pd/signoff/redhawk/<run_id>/dynamic_ir.rpt
+    tool: Synopsys_PrimePower_RedHawk_Bridge
+    vendor: Synopsys
+schema: eliza.pdn_signoff_gate.v1
+source_artifacts:
+- docs/architecture-optimization/sota-2028/power-delivery.md
+- docs/pd/rail-plan-2028.yaml
+- pd/signoff/pdn-current/local-budget.yaml
+- docs/pd/signoff/pdn-current/local-budget.md
+status: blocked

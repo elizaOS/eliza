@@ -1,0 +1,56 @@
+# PyTorch and related libraries
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Audio processing libraries
+soundfile>=0.12.0
+librosa>=0.9.0
+
+# Data processing and utilities
+numpy>=1.21.0
+pathlib
+psutil>=5.9.0
+
+# Progress bars and logging
+tqdm>=4.64.0
+wandb>=0.16.0  # Weights & Biases for experiment tracking (optional)
+
+# G2P and phoneme processing (for English training)
+g2p_en>=2.1.0      # ARPA phoneme converter (matches MFA alignments)
+nltk>=3.8.0        # Required by g2p_en
+textgrid>=1.5.0    # For parsing MFA alignment files
+inflect>=6.0.0     # Text normalization (numbers to words) for MFA compatibility
+
+# Important: Uninstall spacy-curated-transformers if present
+# It conflicts with transformers library needed by Misaki
+# Run: pip uninstall -y spacy-curated-transformers
+
+# TensorBoard and its dependencies
+tensorboard==2.20.0
+tensorboard-data-server<0.8.0,>=0.7.0
+torch_tb_profiler==0.4.3
+markdown>=2.6.8
+protobuf!=4.24.0,>=3.19.6
+grpcio>=1.48.2
+werkzeug>=1.0.1
+pillow
+absl-py>=0.4
+
+# torchcodec - REMOVED: requires FFmpeg, not needed for WAV files
+# torchaudio with soundfile backend is sufficient for LJSpeech
+
+typing-extensions
+
+# Standard library dependencies (usually included with Python)
+# os
+# json
+# logging
+# re
+# typing
+# dataclasses
+
+# Optional: For better performance (if using CUDA)
+# torch-audio  # Alternative audio processing
+
+# Development and debugging (optional)
+# matplotlib>=3.5.0  # For visualization during development

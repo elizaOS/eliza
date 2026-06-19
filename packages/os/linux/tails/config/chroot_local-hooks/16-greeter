@@ -1,0 +1,51 @@
+#! /bin/sh
+
+set -e
+set -u
+
+echo "Generate list of supported locales"
+
+OUTFILE="/usr/share/tails/greeter/supported_locales"
+LANGUAGES_FILE="/usr/share/tails/greeter/supported_languages"
+DEFAULT_LOCALES="$(cat /usr/share/tails/greeter/default_locales)"
+
+# Import ensure_hook_dependency_is_installed()
+. /usr/local/lib/tails-shell-library/build.sh
+
+# Install locales, which installs /usr/share/i18n/SUPPORTED
+ensure_hook_dependency_is_installed locales
+
+# Ensure that the output file is empty
+rm -f "${OUTFILE}"
+
+# Extract language and country part from the locales supported by Debian
+ALL_LOCALES="$(tr '.' ' ' < /usr/share/i18n/SUPPORTED | \
+               grep -E ".+_[^.@]+ " | \
+               awk '{print $1;}' | \
+               uniq)"
+
+# Filter the locales by the supported languages
+# shellcheck disable=SC2013
+for lang_code in $(cat ${LANGUAGES_FILE}); do
+  # First add our default locale for the language (i.e. the locale
+  # with the country code that should be used as the default for the
+  # language).
+  default_locale="$(echo "${DEFAULT_LOCALES}" | \
+                    grep -E "^${lang_code}_" || true)"
+  if [ -n "${default_locale}" ]; then
+    echo "${default_locale}" >> "${OUTFILE}"
+  fi
+
+  # Get all the locales for the language
+  locales="$(echo "${ALL_LOCALES}" | grep -E "^${lang_code}_")"
+
+  # Remove the default locale from this list to avoid duplicates
+  if [ -n "${default_locale}" ]; then
+    locales="$(echo "${locales}" | grep -v "${default_locale}" || true)"
+  fi
+
+  # Add the locales to the output
+  if [ -n "${locales}" ]; then
+    echo "${locales}" >> "${OUTFILE}"
+  fi
+done

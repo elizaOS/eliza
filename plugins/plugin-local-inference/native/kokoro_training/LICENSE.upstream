@@ -1,0 +1,88 @@
+Upstream: https://github.com/jonirajala/kokoro_training
+Commit:   f7815b9ebfe41e6d084e73c386e4dbd8042ae6e3 (2025-11-15)
+
+License status
+==============
+
+The upstream repository did NOT ship a LICENSE, COPYING, or any
+SPDX-Identifier header on its source files as of the commit above. We
+verified this against the cloned tree with:
+
+    find . -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'LICENCE*'
+
+(no matches).
+
+In the absence of an explicit license grant, US/EU copyright law
+treats the upstream code as "all rights reserved" by the author by
+default. That means we cannot safely redistribute it as part of a
+public, openly-licensed product release.
+
+How this vendor copy is used
+============================
+
+This vendor lives at:
+
+    plugins/plugin-local-inference/native/kokoro_training/
+
+It is used:
+  - At training time only, by `packages/training/scripts/kokoro/`
+    scripts running on our infra or on operator-controlled machines.
+  - As the canonical source-of-truth for a working Python training
+    loop against an alternate Kokoro-inspired architecture.
+
+It is NOT:
+  - Bundled into shipped Eliza-1 artifacts (`.bundle/` tiers, app
+    distribution, HF model repos under elizaos/*). Only the *trained
+    weights* (voice.bin, kokoro.onnx, manifest fragments) are
+    shipped — those are derived works of the upstream Kokoro-82M
+    (Apache-2.0) and our data, not of this trainer.
+  - Loaded at runtime by the desktop / mobile app.
+  - Referenced from any user-facing API.
+
+Action items if upstream changes license
+========================================
+
+If the upstream repo later adopts a permissive license (Apache-2.0,
+MIT, BSD), drop this file's "no LICENSE" interpretation and copy the
+upstream LICENSE in here verbatim.
+
+If upstream goes silent permanently or adopts a restrictive license,
+the safe path is to:
+
+  1. Re-implement the components we actually use (English phoneme
+     processor, LJSpeech dataset adapter, MFA alignment loader,
+     adaptive memory manager) against documented references.
+  2. Replace the vendored modules with our re-implementations.
+  3. Delete this vendor directory.
+
+The architecture details (encoder-decoder transformer, MFA-aligned
+duration prediction, HiFi-GAN vocoder) are not novel and are widely
+documented in published papers. The reimplementation cost is
+manageable but non-trivial.
+
+Provenance of dependencies the vendor pulls in (at runtime)
+===========================================================
+
+These are NOT vendored — they're listed in requirements.txt and
+resolved from PyPI. Their licenses apply to the dependency, not to
+this directory:
+
+  - torch / torchaudio       BSD-3-Clause
+  - librosa                  ISC
+  - soundfile                BSD-3-Clause
+  - g2p_en                   Apache-2.0
+  - nltk                     Apache-2.0
+  - textgrid                 Apache-2.0
+  - inflect                  MIT
+  - psutil                   BSD-3-Clause
+  - tqdm                     MIT / MPL-2.0
+  - tensorboard              Apache-2.0
+  - wandb                    MIT (optional)
+  - typing-extensions        PSF
+
+Models the trainer expects at runtime (downloaded separately, NOT
+vendored here):
+
+  - LJSpeech-1.1             Public domain (LJ Speech dataset)
+  - HiFi-GAN vocoder         MIT (jik876/hifi-gan)
+  - MFA english_us_arpa      Apache-2.0 (Montreal Forced Aligner)

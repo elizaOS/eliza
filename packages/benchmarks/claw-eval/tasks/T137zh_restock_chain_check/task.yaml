@@ -1,0 +1,181 @@
+task_id: T137zh_restock_chain_check
+task_name: 补货链路检查
+version: "1.0"
+category: ops
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: scheduler
+    command: python mock_services/scheduler/server.py
+    port: 9112
+    health_check: http://localhost:9112/scheduler/jobs
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9112/scheduler/reset
+    env:
+      SCHEDULER_FIXTURES: tasks/T137zh_restock_chain_check/fixtures/scheduler/jobs.json
+  - name: config
+    command: python mock_services/config/server.py
+    port: 9111
+    health_check: http://localhost:9111/config/integrations
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9111/config/reset
+    env:
+      CONFIG_FIXTURES: tasks/T137zh_restock_chain_check/fixtures/config/integrations.json
+  - name: inventory
+    command: python mock_services/inventory/server.py
+    port: 9108
+    health_check: http://localhost:9108/inventory/products
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9108/inventory/reset
+    env:
+      INVENTORY_FIXTURES: tasks/T137zh_restock_chain_check/fixtures/inventory/items.json
+
+prompt:
+  text: |
+    自动补货系统最近出了问题，多个品类缺货。请帮我排查：
+    1. 查看所有补货定时任务的状态
+    2. 检查相关API集成配置是否正常
+    3. 查看库存水位，找出低于安全线的品类
+    4. 追踪每条故障链：失败任务 → 配置问题 → 库存影响
+    5. 输出排查报告，包含根因分析和修复建议
+  language: zh
+
+tools:
+  - name: scheduler_list_jobs
+    description: 列出定时任务
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "按状态筛选(all/enabled/disabled)"
+        tag:
+          type: string
+          description: 按标签筛选
+      required: []
+  - name: scheduler_get_job
+    description: 获取定时任务详情
+    input_schema:
+      type: object
+      properties:
+        job_id:
+          type: string
+          description: 任务ID
+      required: [job_id]
+  - name: config_list_integrations
+    description: 查看集成配置列表
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "状态筛选(active/inactive/all)"
+      required: []
+  - name: config_get_integration
+    description: 获取集成配置详情
+    input_schema:
+      type: object
+      properties:
+        integration_id:
+          type: string
+          description: 集成ID
+      required: [integration_id]
+  - name: inventory_list_items
+    description: 查看库存列表
+    input_schema:
+      type: object
+      properties:
+        category:
+          type: string
+          description: 按分类筛选
+      required: []
+  - name: inventory_get_item
+    description: 获取库存品详情
+    input_schema:
+      type: object
+      properties:
+        product_id:
+          type: string
+          description: 产品ID
+      required: [product_id]
+
+tool_endpoints:
+  - tool_name: scheduler_list_jobs
+    url: http://localhost:9112/scheduler/jobs
+    method: POST
+  - tool_name: scheduler_get_job
+    url: http://localhost:9112/scheduler/jobs/get
+    method: POST
+  - tool_name: config_list_integrations
+    url: http://localhost:9111/config/integrations
+    method: POST
+  - tool_name: config_get_integration
+    url: http://localhost:9111/config/integrations/get
+    method: POST
+  - tool_name: inventory_list_items
+    url: http://localhost:9108/inventory/products
+    method: POST
+  - tool_name: inventory_get_item
+    url: http://localhost:9108/inventory/products/get
+    method: POST
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components:
+  - name: chain_tracing
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "是否正确追踪出3条故障链"
+  - name: root_cause_analysis
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "每条链的根因是否准确（高错误率/停用/凭证过期）"
+  - name: remediation_plan
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "修复建议是否具体可执行"
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  评估补货链路排查报告质量。
+
+  ## 3条故障链
+  链1: JOB-802(IT设备补货,API超时) → INT-802(错误率35%,服务不稳定) → INV-803(显示器,库存2<安全线5) + INV-804(键盘,库存3<安全线10)
+  修复: 联系IT设备供应商排查服务稳定性
+
+  链2: JOB-803(清洁用品,已禁用) → INT-803(已停用,合作终止) → INV-805(洗手液,库存5<安全线20) + INV-806(垃圾袋,库存10<安全线30)
+  修复: 寻找新的清洁用品供应商
+
+  链3: JOB-804(耗材补货,认证失败) → INT-804(API密钥过期) → INV-807(墨盒,库存1<安全线5)
+  修复: 更新耗材供应商的API密钥
+
+  ## 正常链路
+  JOB-801(文具) → INT-801(正常) → INV-801,802(正常) ✓
+  JOB-805(家具) → INT-801(正常) → INV-808(正常) ✓
+
+  评分：
+  - 0.8-1.0: 3条故障链全部正确，根因分析到位
+  - 0.5-0.7: 2条正确
+  - 0.2-0.4: 1条正确
+  - 0.0-0.1: 未完成
+
+reference_solution: |
+  1. scheduler_list_jobs() → 3个失败(802,803,804)
+  2. scheduler_get_job → 查看错误详情
+  3. config_list_integrations() → 发现INT-802高错误率,INT-803停用,INT-804过期
+  4. inventory_list_items() → 找出5个低库存品
+  5. 关联：任务→配置→库存
+  6. 输出3条故障链排查报告
+
+primary_dimensions: [completion, robustness, communication]

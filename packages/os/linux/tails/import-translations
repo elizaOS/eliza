@@ -1,0 +1,96 @@
+#!/bin/sh
+
+set -e
+set -u
+
+TAILS_PO_DIR='po'
+SCRIPT_DIR=$(readlink -f "$(dirname "$0")")
+TOR_TRANSLATION_REMOTE='https://gitlab.torproject.org/tpo/translation.git'
+TOR_TRANSLATION_DIR="$SCRIPT_DIR/tmp/tor-translation"
+GIT_IN_TOR_TRANSLATION_DIR="git \
+	--work-tree=\"$TOR_TRANSLATION_DIR\" \
+	--git-dir=\"$TOR_TRANSLATION_DIR/.git\""
+MINIMUM_PERCENT=25
+
+### External libraries
+. "$SCRIPT_DIR/config/chroot_local-includes/usr/local/lib/tails-shell-library/po.sh"
+
+# Defaults
+LANG_DOT_PO_LAYOUT=yes
+
+# Detect which project is in current folder,
+# and set parameters accordingly
+# shellcheck disable=SC2016
+if [ -f 'po/tails.pot' ]; then
+	POTFILE='po/tails.pot'
+	BRANCH='tails-misc'
+	AFTER_IMPORT='intltool_update_po $(po_languages)'
+elif [ -f 'po/onioncircuits.pot' ]; then
+	POTFILE='po/onioncircuits.pot'
+	LANG_DOT_PO_LAYOUT=no
+	BRANCH='tails-onioncircuits_release'
+	AFTER_IMPORT='./setup.py build_i18n && ( cd po && for po in *.po ; do msgmerge --update "$po" onioncircuits.pot ; done )'
+else
+	echo "Current folder is not a project known to this script!"
+	exit 1
+fi
+
+TOTAL=$(msgattrib --no-obsolete "$POTFILE" | count_msgids)
+
+# Clone or update the translation repository
+if [ -d "$TOR_TRANSLATION_DIR" ]; then
+	eval "$GIT_IN_TOR_TRANSLATION_DIR remote set-url origin ${TOR_TRANSLATION_REMOTE}"
+	eval "$GIT_IN_TOR_TRANSLATION_DIR fetch origin"
+else
+	mkdir -p "$SCRIPT_DIR/tmp"
+	git clone "$TOR_TRANSLATION_REMOTE" "$TOR_TRANSLATION_DIR"
+fi
+
+# Checkout the correct branch
+eval "$GIT_IN_TOR_TRANSLATION_DIR checkout \"$BRANCH\""
+eval "$GIT_IN_TOR_TRANSLATION_DIR reset --hard \"origin/$BRANCH\""
+
+# Ensure we only keep PO files that are still present in the
+# branch we import from.
+find "$TAILS_PO_DIR" -name '*.po' -delete
+
+po_import_filter() {
+	po_file="$1"
+	lang="$2"
+
+	# Always import the default locale, whose .mo file is needed
+	# at least by tailsgreeter.config.set_current_language.
+	if [ "$lang" = "en" ] || [ "$lang" = "en_US" ]; then
+		return 0
+	fi
+
+	translated_strings=$(count_translated_strings < "$po_file")
+	if [ $((100*translated_strings/TOTAL)) -lt "$MINIMUM_PERCENT" ]; then
+		echo "Skipping $lang, that has less than $MINIMUM_PERCENT translated strings."
+		return 1
+	fi
+
+	return 0
+}
+
+# Import PO files that have at least $MINIMUM_PERCENT % of strings translated
+if [ "$LANG_DOT_PO_LAYOUT" = yes ] ; then
+	find "$TOR_TRANSLATION_DIR" -name '*.po' | sort | while read -r po_file; do
+		lang=$(basename "$po_file" | tr - _ | sed 's/\.po$//')
+		po_import_filter "$po_file" "$lang" || continue
+		echo "Importing translation for $lang..."
+		cp "$po_file" "$TAILS_PO_DIR"
+	done
+else
+	find "$TOR_TRANSLATION_DIR" -name '*.pot' | sort | while read -r po_file; do
+		lang=$(basename "$(dirname "$po_file" | tr - _ | sed 's/\.pot$//')")
+		po_import_filter "$po_file" "$lang" || continue
+		echo "Importing translation for $lang..."
+		cp "$po_file" "$TAILS_PO_DIR/${lang}.po"
+	done
+fi
+
+# Update PO files
+if [ -n "${AFTER_IMPORT:-}" ]; then
+	eval "$AFTER_IMPORT"
+fi

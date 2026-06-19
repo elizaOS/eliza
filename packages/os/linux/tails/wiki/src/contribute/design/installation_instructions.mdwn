@@ -1,0 +1,187 @@
+[[!meta title="Installation instructions"]]
+
+[[!toc levels=2]]
+
+Our installation instructions are optimizing for first time and less technical users, while still
+being usable by expert users.
+
+The following scenarios are proposed:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux (all distributions)|install/linux]]
+  - [[Install from Debian, Ubuntu, or Mint using the command line and GnuPG|install/expert]]
+  - [[Clone from another Tails (for PC)|install/clone/pc]]
+  - [[Clone from another Tails (for Mac)|install/clone/mac]]
+  - [[Burn a DVD|install/dvd]]
+  - [[Download only for USB sticks|install/download]]
+  - [[Download only for DVDs and virtual machines|install/download-iso]]
+
+The installation instructions are also adapted to cover 5 [[manual upgrade
+scenarios|doc/upgrade#manual]]:
+
+  - [[Upgrade by cloning from another Tails|doc/upgrade/clone]]
+  - [[Upgrade from Tails|doc/upgrade/tails]]
+  - [[Upgrade from Windows|doc/upgrade/windows]]
+  - [[Upgrade from macOS|doc/upgrade/mac]]
+  - [[Upgrade from Linux|doc/upgrade/linux]]
+
+Related documents
+=================
+
+- [[Design document of *Tails Cloner*|installation]]
+- [[Design document of the download verification|download_verification]]
+- [Archive of our design artifacts](https://gitlab.tails.boum.org/tails/ux/-/tree/master/installation%20assistant)
+- [[!tails_ticket 18074 desc="Usability tests from December 2021"]]
+
+Implementation tricks
+=====================
+
+The installation instructions are presenting very similar content in many
+different scenarios with small variations: slightly different steps, slightly
+different terminology, etc.
+
+To reuse as much content as possible and reduce the quantity of text and
+translations, our implementation relies heavily on 2 tricks. Both are
+quite hackish but were the only solution we found to avoid duplicating
+massive amount of content in ikiwiki.
+
+### Ikiwiki inlines
+
+The [inline directive](https://ikiwiki.info/ikiwiki/directive/inline/) of
+ikiwiki allows embedding a file into another file to avoid duplicating content.
+It is quite limited and brittle, especially when used together with the PO
+plugin. See [[!tails_ticket 6907]].
+
+### Conditional CSS content
+
+To adapt a piece of content reused using ikiwiki inlines to the context
+where it appears we are using CSS classes. For example, to introduce the
+program used to install an intermediary Tails on Windows and Linux we
+wrote:
+
+<pre>
+&lt;span class="windows"&gt;a program called Rufus.&lt;/span&gt;
+&lt;span class="linux"&gt;a program called GNOME Disks.&lt;/span&gt;
+</pre>
+
+Elements with the `windows` class being only displayed in the Windows
+scenario and elements with the
+`linux` class being only displayed in the Linux scenario.
+
+- Classes for elements displayed only on one scenario:
+  - `windows` for [[/install/windows|/install/windows]]
+  - `mac` for [[/install/mac|/install/mac]]
+  - `linux` for [[/install/linux|/install/linux]]
+  - `expert` for [[/install/expert|/install/expert]]
+  - `dvd` for [[/install/dvd|/install/dvd]]
+  - `download-only-img` for [[/install/download|/install/download]]
+  - `download-only-iso` for [[/install/download|/install/download-iso]]
+  - `pc-clone` for [[/install/clone|/install/clone/pc]]
+  - `mac-clone` for [[/install/mac/clone|/install/clone/mac]]
+  - `upgrade-clone` for [[/upgrade/clone|/doc/upgrade/clone]]
+  - `upgrade-tails` for [[/upgrade/tails|/doc/upgrade/tails]]
+  - `upgrade-windows` for [[/upgrade/win|/doc/upgrade/windows]]
+  - `upgrade-mac` for [[/upgrade/mac|/doc/upgrade/mac]]
+  - `upgrade-linux` for [[/upgrade/linux|/doc/upgrade/linux]]
+
+- Classes for elements potentially displayed on different pages:
+  - `clone` for content involving cloning:
+     - `pc-clone`, `upgrade-clone`, `mac-clone`
+  - `usb` for content with a USB stick as destination device (only for installation):
+     - `windows`, `mac`, `linux`, `expert`
+  - `upgrade` for content for manual upgrade:
+     - `upgrade-clone`, `upgrade-tails`, `upgrade-os`
+  - `upgrade-os` for content for manual upgrade from another OS
+     - `upgrade-windows`, `upgrade-mac`, `upgrade-linux`
+
+- Other classes:
+  - `standalone` for content that should only be displayed outside of
+    the installation instructions. For example on
+    [[Starting Tails on PC|doc/first_steps/start/pc]].
+
+<a id="overview"></a>
+
+Overview
+========
+
+The *overview* is the first part of an installation scenario and summarizes graphically:
+
+  - The requirements of the installation scenario in terms of hardware
+    and time. This is important so that people get ready and make sure
+    beforehand that they have everything needed to complete the
+    scenario.
+  - The different steps. This give a rough idea of what will happen
+    next and how complex it is, with links to each step to ease navigation.
+
+<a id="download"></a>
+
+Download
+========
+
+The download of the ISO image is the 1st step of the most common installation scenarios.
+It is also available as a [[standalone page|install/download]].
+
+We only offer direct downloads over HTTPS.
+
+We stopped providing BitTorrent downloads in 2026. See [[!tails_ticket 19275]].
+
+See our [[design document on download
+verification|download_verification]] for a security analysis of the
+different verification techniques that we provide.
+
+<a id="steps"></a>
+
+Steps
+=====
+
+The detailed installation *steps* are given on the same page as the overview
+and download.
+
+- Everything is on a single page so that people can get a feeling of what is left
+  to be done and don't get lost between download and installation for example. During the tests, many people were scrolling up and down
+  the page, for example while waiting for an operation to complete or
+  when feeling that they missed something earlier.
+
+- The content of each step is written in an inline stored in
+  `install/inc/steps/*.inline.mdwn` which is inlined from the scenarios
+  themselves (for example `install/debian/usb.mdwn`) and adapted to each
+  scenario using CSS classes.
+
+<a id="rufus"></a>
+
+*Rufus*
+=======
+
+For Windows, we instruct people to use
+[*Rufus*](https://rufus.ie/) to copy the USB image onto
+their USB stick. On top of this, we self-host the downloads of *Rufus*
+on our own infrastructure. The
+<https://gitlab.tails.boum.org/tails/etcher-binary> repository is added as an
+[ikiwiki underlay](https://ikiwiki.info/plugins/underlay/) on our website.
+
+We self-host a copy of *Rufus* because:
+
+- It gives us more predictability on what users end up doing. This is useful in
+  terms of Help Desk.
+
+- It prevents 3rd parties from learning a bit more about who uses Tails.
+  Pointing to the upstream website would provide upstream direct referrers
+  about who is using *Rufus* to install Tails.
+
+- It prevents the upstream website from serving rogue downloads (targeted or not). We might
+  still get a rogue download ourselves but:
+
+  * We download *Rufus* twice from different locations to
+    prevent targeted attacks.
+
+  * We download *Rufus* in a limited time window, which might save our users some supply
+    chain issues. If our users were to download *Rufus* every time, a
+    short-time supply chain attack would definitely affect some of them.
+
+<div class="note">
+
+<p>The same logic applies to <i>balenaEtcher</i>, which we still instruct for
+macOS. ([[!tails_ticket 20855]])</p>
+
+</div>

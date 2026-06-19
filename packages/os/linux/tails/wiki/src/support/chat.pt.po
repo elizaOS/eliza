@@ -1,0 +1,71 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-02-04 23:28+0000\n"
+"PO-Revision-Date: 2021-02-03 17:43+0000\n"
+"Last-Translator: LucasPB <lucasperonicobarbotin@protonmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Content of: outside any tag (error?)
+#, fuzzy
+#| msgid "[[!meta title=\"Chat\"]]\n"
+msgid "[[!meta title=\"Tor users chat room\"]]"
+msgstr "[[!meta title=\"Bate papo\"]]\n"
+
+#. type: Content of: <p>
+msgid ""
+"Join the [[Tor users chat room on IRC|https://support.torproject.org/get-in-"
+"touch/chat-with-us/]] to ask questions about Tails."
+msgstr ""
+
+#, fuzzy
+#~| msgid ""
+#~| "To join it, use your preferred instant messaging client, e.g.  [[Pidgin|"
+#~| "http://www.pidgin.im/]], which runs on Windows, GNU/Linux and macOS."
+#~ msgid ""
+#~ "Then configure your preferred instant messaging client, for example "
+#~ "[[Pidgin|http://www.pidgin.im/]], which runs on Windows, GNU/Linux, and "
+#~ "macOS, to connect to:"
+#~ msgstr ""
+#~ "Para entrar nela, use seu cliente de mensagens instantâneas preferido, "
+#~ "como por exemplo o [[Pidgin|http://www.pidgin.im/]], que roda em Windows, "
+#~ "GNU/Linux e macOS."
+
+#, fuzzy
+#~| msgid "channel: `#tails`"
+#~ msgid "Room: `tails`"
+#~ msgstr "canal: `#tails`"
+
+#~ msgid "Use TLS/SSL to connect!"
+#~ msgstr "Use TLS/SSL para se conectar!"
+
+#~ msgid "server: `conference.riseup.net`"
+#~ msgstr "servidor: `conference.riseup.net`"
+
+#~ msgid "Our chatroom is an IRC one."
+#~ msgstr "Nossa sala de batepapo fica em um servidor IRC."
+
+#~ msgid "Here are the needed technical details:"
+#~ msgstr "Aqui estão os detalhes técnicos necessários."
+
+#~ msgid "port: `6697`"
+#~ msgstr "porta: `6697`"
+
+#~ msgid ""
+#~ "If you are using Tails, you can enable the predefined profile\n"
+#~ "in Pidgin in the \"Accounts menu -> Manage Accounts\" section.\n"
+#~ msgstr ""
+#~ "Se você estiver usando Tails, pode habilitar o perfil predefinido\n"
+#~ "no Pidgin acessando o menu \"Contas\", seção \"Gerenciar Contas\".\n"
