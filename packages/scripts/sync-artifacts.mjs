@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 /**
  * sync-artifacts.mjs
  *
@@ -16,45 +18,145 @@
  * On download failure it warns and exits 0 so a network blip never blocks
  * `bun install`; re-run `bun run sync:artifacts` to retry.
  */
-import { createWriteStream, existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { tmpdir } from 'node:os';
+import {
+  createWriteStream,
+  existsSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const MANIFEST = join(ROOT, 'packages', 'scripts', 'artifacts-manifest.json');
-const MARKER = join(ROOT, '.eliza-artifacts-version');
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const MANIFEST = join(ROOT, "packages", "scripts", "artifacts-manifest.json");
+const MARKER = join(ROOT, ".eliza-artifacts-version");
 const log = (m) => console.log(`[sync-artifacts] ${m}`);
 const warn = (m) => console.warn(`[sync-artifacts] WARNING: ${m}`);
 
-if (process.env.ELIZA_SKIP_ARTIFACT_SYNC === '1') { log('skipped (ELIZA_SKIP_ARTIFACT_SYNC=1)'); process.exit(0); }
-if (!existsSync(MANIFEST)) { log('no artifacts-manifest.json; nothing to sync'); process.exit(0); }
+if (process.env.ELIZA_SKIP_ARTIFACT_SYNC === "1") {
+  log("skipped (ELIZA_SKIP_ARTIFACT_SYNC=1)");
+  process.exit(0);
+}
+if (!existsSync(MANIFEST)) {
+  log("no artifacts-manifest.json; nothing to sync");
+  process.exit(0);
+}
 
-const m = JSON.parse(readFileSync(MANIFEST, 'utf8'));
+const m = JSON.parse(readFileSync(MANIFEST, "utf8"));
 const { version, asset } = m;
-if (existsSync(MARKER) && readFileSync(MARKER, 'utf8').trim() === version) {
+if (existsSync(MARKER) && readFileSync(MARKER, "utf8").trim() === version) {
   log(`artifacts already at ${version}; nothing to do`);
   process.exit(0);
 }
 
-const url = asset.url || `https://github.com/${asset.repo}/releases/download/${asset.tag}/${asset.name}`;
+const url =
+  asset.url ||
+  `https://github.com/${asset.repo}/releases/download/${asset.tag}/${asset.name}`;
 const tmp = join(tmpdir(), `eliza-artifacts-${process.pid}.tar.gz`);
+const PROGRESS_INTERVAL_MS = 5000;
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KiB", "MiB", "GiB"];
+  let value = bytes;
+  let unit = units[0];
+  for (let i = 1; i < units.length && value >= 1024; i++) {
+    value /= 1024;
+    unit = units[i];
+  }
+  return `${value >= 10 || unit === "B" ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
+}
+
+function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "unknown";
+  const seconds = Math.ceil(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}m ${remainder}s`;
+}
+
+function progressStatus(received, total, startedAt) {
+  const elapsedMs = Math.max(Date.now() - startedAt, 1);
+  const bytesPerSecond = received / (elapsedMs / 1000);
+  const parts = [`downloaded ${formatBytes(received)}`];
+  if (total > 0) {
+    const percent = Math.min((received / total) * 100, 100);
+    const remainingBytes = Math.max(total - received, 0);
+    const etaMs =
+      bytesPerSecond > 0 ? (remainingBytes / bytesPerSecond) * 1000 : NaN;
+    parts.push(
+      `of ${formatBytes(total)}`,
+      `(${percent.toFixed(1)}%)`,
+      `eta ${formatDuration(etaMs)}`,
+    );
+  }
+  parts.push(`at ${formatBytes(bytesPerSecond)}/s`);
+  return parts.join(" ");
+}
+
+async function streamToFileWithProgress(response, dest, expectedBytes) {
+  const headerBytes = Number(response.headers.get("content-length")) || 0;
+  const totalBytes = headerBytes || expectedBytes || 0;
+  const writer = createWriteStream(dest);
+  const reader = response.body.getReader();
+  const startedAt = Date.now();
+  let received = 0;
+  let lastLogAt = startedAt;
+
+  if (totalBytes > 0) {
+    log(
+      `artifact bundle size: ${formatBytes(totalBytes)}${m.fileCount ? ` across ${m.fileCount} files` : ""}`,
+    );
+  } else {
+    log(
+      "artifact bundle size unknown; reporting downloaded bytes until complete",
+    );
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (!writer.write(value)) {
+        await new Promise((resolve, reject) => {
+          writer.once("drain", resolve);
+          writer.once("error", reject);
+        });
+      }
+      const now = Date.now();
+      if (now - lastLogAt >= PROGRESS_INTERVAL_MS) {
+        log(progressStatus(received, totalBytes, startedAt));
+        lastLogAt = now;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  await new Promise((resolve, reject) => {
+    writer.end((err) => (err ? reject(err) : resolve()));
+    writer.once("error", reject);
+  });
+  log(`download complete: ${progressStatus(received, totalBytes, startedAt)}`);
+}
 
 async function download(dest) {
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
       log(`downloading ${url} (attempt ${attempt}/4)`);
-      const res = await fetch(url, { redirect: 'follow' });
+      const res = await fetch(url, { redirect: "follow" });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-      await pipeline(Readable.fromWeb(res.body), createWriteStream(dest));
+      await streamToFileWithProgress(res, dest, Number(asset.bytes) || 0);
       return true;
     } catch (err) {
       warn(`download failed: ${err.message}`);
-      try { rmSync(dest, { force: true }); } catch {}
+      try {
+        rmSync(dest, { force: true });
+      } catch {}
       if (attempt < 4) await new Promise((r) => setTimeout(r, attempt * 2000));
     }
   }
@@ -62,9 +164,9 @@ async function download(dest) {
 }
 
 function sha256(file) {
-  const h = createHash('sha256');
+  const h = createHash("sha256");
   h.update(readFileSync(file));
-  return h.digest('hex');
+  return h.digest("hex");
 }
 
 const ok = await download(tmp);
@@ -76,6 +178,7 @@ if (!ok) {
 }
 
 if (asset.sha256) {
+  log(`verifying sha256 for ${formatBytes(asset.bytes || 0)} artifact bundle`);
   const got = sha256(tmp);
   if (got !== asset.sha256) {
     warn(`sha256 mismatch (got ${got}, want ${asset.sha256}); not extracting.`);
@@ -84,24 +187,28 @@ if (asset.sha256) {
   }
 }
 
-log('extracting artifact bundle at repo root…');
+log(
+  `extracting artifact bundle at repo root${m.fileCount ? ` (${m.fileCount} files)` : ""}…`,
+);
 // Prefer the Windows system bsdtar (System32\tar.exe): a GNU tar that may be
 // first on PATH (Git-for-Windows / MSYS) misreads a `C:\...` archive path as an
 // rsh `host:path` and dies with "Cannot connect to C: resolve failed". bsdtar
 // (shipped with Windows 10 1803+/11) handles drive-letter paths natively.
 // Like the download step above, never let extraction failure block `bun install`.
 const tarBin =
-  process.platform === 'win32'
-    ? join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')
-    : 'tar';
+  process.platform === "win32"
+    ? join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe")
+    : "tar";
 try {
-  execFileSync(tarBin, ['-xzf', tmp, '-C', ROOT], { stdio: 'inherit' });
-  writeFileSync(MARKER, version + '\n');
+  execFileSync(tarBin, ["-xzf", tmp, "-C", ROOT], { stdio: "inherit" });
+  writeFileSync(MARKER, `${version}\n`);
   log(`done — artifacts synced to ${version}`);
 } catch (err) {
   warn(`extraction failed: ${err.message}`);
   warn(`the repo is usable, but large fixtures/binaries are absent.`);
   warn(`retry later with:  bun run sync:artifacts`);
 } finally {
-  try { rmSync(tmp, { force: true }); } catch {}
+  try {
+    rmSync(tmp, { force: true });
+  } catch {}
 }
