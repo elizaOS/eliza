@@ -826,10 +826,21 @@ try {
       (await p.getByTestId("chat-pill").count()) === 1,
       "PILL: the recoverable pill capsule is shown",
     );
-    assert(
-      (await p.getByTestId("chat-composer-textarea").count()) === 0,
-      "PILL: the input is fully hidden in pill mode",
-    );
+    // Persistent panel: the composer stays MOUNTED across pill↔input (so the
+    // morph is continuous, never a remount) but is hidden — opacity 0 + `inert`.
+    {
+      const contentOpacity = await p
+        .getByTestId("chat-content")
+        .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+      assert(
+        contentOpacity <= 0.05,
+        `PILL: the input is visually hidden in pill mode (content opacity ${contentOpacity})`,
+      );
+      assert(
+        (await p.getByTestId("chat-content").getAttribute("inert")) !== null,
+        "PILL: the input is inert (out of tab order / a11y tree) in pill mode",
+      );
+    }
     await snap(p, "state-pill");
     await p.getByTestId("chat-pill").click();
     await p.waitForTimeout(SETTLE);
