@@ -213,3 +213,27 @@ description = "Captured Android kernel/logcat/HAL evidence dumps (log tokens, no
 paths = [
   '''(^|/)packages/chip/docs/evidence/android/''',
 ]
+
+# cloud-frontend ships generated `llms.txt` / `llms-full.txt` under its static
+# `public/` dir (and `.well-known/` mirrors) — a concatenated dump of the public
+# product docs for LLM ingestion. They embed token-like strings from documented
+# API-key shapes and sample IDs but are generated, publicly served content with
+# no real credentials. Scoped to those exact generated files.
+[[allowlists]]
+description = "cloud-frontend generated LLM docs dumps (public generated content)"
+paths = [
+  '''(^|/)packages/cloud-frontend/public/(\.well-known/)*llms(-full)?\.txt$''',
+]
+
+# Benchmark/eval suite fixture DATA (not source). configbench, claw-eval,
+# loca-bench, qwen-claw-bench, nl2repo, openclaw, etc. ship synthetic
+# config/credential data by design — several scenarios specifically exercise
+# secret/config handling, so their JSON/env/yaml fixtures carry fake
+# api_key/token/password values. These are committed test data, not real
+# secrets. Scoped to fixture/data directories under packages/benchmarks; the
+# benchmark *source* (.ts) is still scanned.
+[[allowlists]]
+description = "Benchmark suite fixture data dirs (synthetic test credentials)"
+paths = [
+  '''(^|/)packages/benchmarks/.*/(fixtures|config|configs|data|assets|task-configs|task_configs|test_files|envs|gem)/.*\.(json|env|ya?ml|md|txt|csv)$''',
+]
