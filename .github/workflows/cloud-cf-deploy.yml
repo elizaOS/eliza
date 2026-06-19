@@ -20,10 +20,10 @@ name: Cloud CF Deploy
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
 #   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud-api/wrangler.toml
-#   BITROUTER_API_KEY      - BitRouter proxy bearer token for the API Worker
-# Optional provider secrets are published when configured:
-#   OPENAI_API_KEY, ANTHROPIC_API_KEY, CEREBRAS_API_KEY, GROQ_API_KEY,
-#   AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY, VAST_API_KEY, VAST_BASE_URL.
+# Provider secrets are published when configured (the Worker calls native
+# providers directly and uses OpenRouter as the backup):
+#   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
+#   GROQ_API_KEY, AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY, VAST_API_KEY, VAST_BASE_URL.
 #
 # Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
 
@@ -154,7 +154,6 @@ jobs:
         if: steps.cf.outputs.configured == 'true'
         working-directory: packages/cloud-api
         env:
-          BITROUTER_API_KEY: ${{ secrets.BITROUTER_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -187,7 +186,6 @@ jobs:
           }
 
           for name in \
-            BITROUTER_API_KEY \
             OPENROUTER_API_KEY \
             OPENAI_API_KEY \
             ANTHROPIC_API_KEY \

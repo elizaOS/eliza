@@ -11,7 +11,6 @@ is heading.
 | `cloud-api` (REST + auth + billing) | Cloudflare Worker | `packages/cloud-api/` | `apps/api/wrangler.toml` (env vars, secrets via `wrangler secret`) |
 | `headscale` (Tailscale coordination server for agents + customer tunnels) | Hetzner control-plane VM | `packages/cloud-services/headscale/` | armed via `arm-headscale-control-plane.yml` (ACL `acl.hujson`) |
 | `tunnel-proxy` (public HTTPS -> tailnet bridge, customer-tunnel path) | Railway | `packages/cloud-services/tunnel-proxy/` | `railway.toml`, `Dockerfile` |
-| `bitrouter` (Eliza Cloud model router) | Railway | `packages/cloud-infra/cloud/bitrouter/` | `railway.toml`, `Dockerfile` |
 | `gateway-discord` | Cloudflare Worker | `packages/cloud-services/gateway-discord/` | own `wrangler.toml` |
 | `gateway-webhook` | Cloudflare Worker | `packages/cloud-services/gateway-webhook/` | own `wrangler.toml` |
 | `agent-server` (per-customer agent runtime) | Hetzner containers | `packages/cloud-services/agent-server/` | provisioned via `container-control-plane` |
@@ -49,16 +48,14 @@ The previous Railway-hosted headscale runtime was decommissioned on 2026-06-17.
 - Public domain: `tunnel.elizacloud.ai` + wildcard `*.tunnel.elizacloud.ai`.
 - Provisioning runbook: [`packages/cloud-services/headscale/DEPLOY.md`](../../cloud-services/headscale/DEPLOY.md) (covers both services).
 
-### `bitrouter`
+### `bitrouter` — REMOVED
 
-- Builder: Dockerfile (`node:24-bookworm-slim` + npm `bitrouter`).
-- Healthcheck: `GET /health` on the public auth proxy.
-- Public auth: `Authorization: Bearer $BITROUTER_PROXY_TOKEN`; the proxy
-  replaces it with an internal BitRouter JWT before forwarding to the local
-  daemon.
-- Cloud API config: `BITROUTER_BASE_URL=https://<railway-domain>` and
-  `BITROUTER_API_KEY=<same value as BITROUTER_PROXY_TOKEN>`.
-- Service runbook: [`packages/cloud-infra/cloud/bitrouter/README.md`](./bitrouter/README.md).
+The Railway BitRouter model-router service was retired. The Cloudflare Worker
+(`cloud-api`) is now the model gateway: it calls native providers directly
+(Cerebras/OpenAI/Anthropic/Groq/Vast) and uses OpenRouter (BYOK,
+`OPENROUTER_API_KEY`) as the backup for models with no native key. See
+[`packages/cloud-infra/cloud/bitrouter/CLOUDFLARE_MIGRATION_PLAN.md`](./bitrouter/CLOUDFLARE_MIGRATION_PLAN.md).
+**Operator:** stop/delete the Railway `bitrouter` service.
 
 ## Where Railway is heading
 
