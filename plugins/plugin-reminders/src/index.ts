@@ -1,5 +1,5 @@
-export { remindersPlugin } from "./plugin.ts";
 export * from "./db/schema.ts";
+export { remindersPlugin } from "./plugin.ts";
 export {
   MIGRATED_REMINDER_TABLES,
   type MigratedReminderTable,

@@ -132,7 +132,7 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
     },
     async claimForFire({ taskId, firedAtIso }) {
       const existing = map.get(taskId);
-      if (!existing || existing.state.status !== "scheduled") {
+      if (existing?.state.status !== "scheduled") {
         return { kind: "raced" };
       }
       const next: ScheduledTask = structuredClone(existing);
@@ -199,6 +199,7 @@ export interface ScheduledTaskDispatchRecord {
 }
 
 export interface ScheduledTaskDispatcher {
+  // biome-ignore lint/suspicious/noConfusingVoidType: void marks "dispatched, produced no DispatchResult" — part of the contract (TestNoopScheduledTaskDispatcher returns void).
   dispatch(record: ScheduledTaskDispatchRecord): Promise<DispatchResult | void>;
 }
 
@@ -1077,6 +1078,7 @@ export function createScheduledTaskRunner(
       });
     }
 
+    // biome-ignore lint/suspicious/noConfusingVoidType: mirrors the dispatcher's DispatchResult | void return.
     let dispatchResult: DispatchResult | void | undefined;
     try {
       dispatchResult = await dispatcher.dispatch({

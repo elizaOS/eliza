@@ -466,7 +466,6 @@ export function AppWindowRenderer({
     return resolveInternalToolTabFromSlug(slug);
   }, [slug]);
 
-
   if (internalTab) {
     const view = renderInternalToolTab(internalTab);
     if (view) {

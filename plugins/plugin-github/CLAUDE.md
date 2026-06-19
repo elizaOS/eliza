@@ -95,7 +95,7 @@ bun run --cwd plugins/plugin-github clean       # rm dist .turbo
 | `GITHUB_OAUTH_CLIENT_SECRET` | OAuth only | GitHub OAuth app client secret |
 | `GITHUB_OAUTH_REDIRECT_URI` | OAuth only | OAuth redirect URI registered on the GitHub app |
 
-At least one of `GITHUB_ACCOUNTS`, `GITHUB_TOKEN`, `GITHUB_USER_PAT`, or `GITHUB_AGENT_PAT` must be set for the plugin to function. A missing `user` or `agent` account causes that role's operations to be rejected at runtime (logged as `[GitHubService] no GitHub <role> account configured`).
+At least one account source — `GITHUB_ACCOUNTS`, `GITHUB_USER_PAT`, `GITHUB_AGENT_PAT`, or a `character.settings.github.accounts` entry — must be set for the plugin's actions to resolve a client. A bare `GITHUB_TOKEN` is not itself an account source: it bootstraps `gh`/`git` subprocess auth (and takes precedence over any locally saved credential) but does not register a `user`/`agent` account on its own. A missing `user` or `agent` account causes that role's operations to be rejected at runtime (logged as `[GitHubService] no GitHub <role> account configured`).
 
 Character-level config is also supported under `character.settings.github.accounts` (array or object keyed by account ID).
 

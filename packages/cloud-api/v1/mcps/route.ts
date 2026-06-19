@@ -125,10 +125,7 @@ app.post("/", async (c) => {
         return c.json({ error: "Invalid external endpoint URL" }, 400);
       }
       if (parsedEndpoint.protocol !== "https:") {
-        return c.json(
-          { error: "External endpoint must use https" },
-          400,
-        );
+        return c.json({ error: "External endpoint must use https" }, 400);
       }
       const endpointHost = parsedEndpoint.hostname
         .replace(/^\[/, "")

@@ -51,6 +51,7 @@ and will not receive patches.
 
 In-scope:
 - Source code in this repository.
+- Installer scripts (`install.sh`, `install.ps1`).
 - Officially published packages on npm and PyPI.
 
 Out-of-scope:

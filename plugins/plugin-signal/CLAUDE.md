@@ -42,6 +42,7 @@ src/
   index.ts                      Plugin object; init/dispose; all public exports
   service.ts                    SignalService (core connector, daemon lifecycle, message I/O)
   types.ts                      All interfaces/enums/errors/constants (SignalMessage, SignalContact, etc.)
+  signal-native.d.ts            Type shim for optional @elizaos/signal-native peer dep
   accounts.ts                   Multi-account resolution; merges env + character settings
   config.ts                     SignalConfig / SignalActionConfig / SignalReactionLevel types
   rpc.ts                        HTTP client to signal-cli REST API (signalSend, signalRpcRequest, SSE stream)
