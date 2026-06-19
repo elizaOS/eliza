@@ -208,10 +208,20 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 			throw new Error(`[router] Unknown agent slot: ${slot}`);
 		}
 
+		// Global local-only override: ELIZA_LOCAL_ONLY=1 pins every slot to
+		// manual + eliza-local-inference, disabling cloud fallback entirely.
+		const globalLocalOnly =
+			process.env.ELIZA_LOCAL_ONLY === "1" ||
+			process.env.ELIZA_LOCAL_ONLY === "true";
+
 		// Read the user's policy for this slot. Absent = local-first fallback.
 		const prefs = await readRoutingPreferences();
-		const policy = prefs.policy[slot] ?? DEFAULT_ROUTING_POLICY;
-		const preferred = prefs.preferredProvider[slot] ?? null;
+		const policy = globalLocalOnly
+			? "manual"
+			: (prefs.policy[slot] ?? DEFAULT_ROUTING_POLICY);
+		const preferred = globalLocalOnly
+			? "eliza-local-inference"
+			: (prefs.preferredProvider[slot] ?? null);
 
 		// Ask the policy engine which handler to dispatch to. For automatic
 		// policies, honor the documented fallback behaviour: if the selected

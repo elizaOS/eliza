@@ -53,6 +53,8 @@ plugins/plugin-discord/
   data-routes.ts              HTTP routes for post-auth data (/api/discord/guilds, channels, subscriptions)
   slash-commands.ts           Slash command registry and dispatcher
   native-commands.ts          Utilities for building Discord slash commands with button/menu components
+  catalog-commands.ts         Registers connector-neutral catalog commands (think, reasoning, views, knowledge, plugins, ...) into the slash-command registry, deduplicating against hand-written built-ins
+  interactions.ts             Maps neutral agent InteractionBlock output to Discord ActionRow/button components; decodes callback custom_id on button click
   messaging.ts                Text helpers: chunkDiscordText, escapeDiscordMarkdown, extractAllUserMentions, etc.
   messages.ts                 Message creation/sending logic used by DiscordService
   message-coalesce.ts         Debouncing/coalescing of rapid inbound messages before processing
@@ -104,7 +106,7 @@ plugins/plugin-discord/
 Only scripts present in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-discord build       # compile with build.ts → dist/
+bun run --cwd plugins/plugin-discord build       # compile with build.ts -> dist/
 bun run --cwd plugins/plugin-discord dev         # hot-rebuild with bun --hot build.ts
 bun run --cwd plugins/plugin-discord test        # vitest run (unit tests)
 bun run --cwd plugins/plugin-discord typecheck   # tsc --noEmit
@@ -131,6 +133,9 @@ bun run --cwd plugins/plugin-discord clean       # rm dist + .turbo + generated 
 | `DISCORD_ALLOW_FROM` | No | Comma-separated Discord user IDs allowed under the `allowlist` DM policy |
 | `DISCORD_AUTO_REPLY` | No | `"true"` to auto-generate replies; default `false` (messages are ingested but not answered) |
 | `DISCORD_SYNC_PROFILE` | No | `"false"` to skip bot profile sync on startup (default: `true`) |
+| `DISCORD_IPC_DIR` | No | Override the IPC socket directory searched by `DiscordLocalService` when connecting to the Discord desktop app |
+| `DISCORD_GENERATION_TIMEOUT_MS` | No | Milliseconds cap for generation before the pending Discord message is discarded |
+| `MESSAGE_TIMEOUT_MS` | No | Fallback generation timeout in ms (used when `DISCORD_GENERATION_TIMEOUT_MS` is not set) |
 | `DISCORD_TEST_CHANNEL_ID` | No | Channel used by `DiscordTestSuite` |
 
 All settings can also be provided in the character file under `settings.discord` (as `DiscordConfig` / `DiscordAccountConfig`) — character settings override env vars.

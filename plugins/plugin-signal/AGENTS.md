@@ -45,11 +45,11 @@ src/
   accounts.ts                   Multi-account resolution; merges env + character settings
   config.ts                     SignalConfig / SignalActionConfig / SignalReactionLevel types
   rpc.ts                        HTTP client to signal-cli REST API (signalSend, signalRpcRequest, SSE stream)
+  local-client.ts               SignalLocalClientConfig + low-level HTTP helpers used by SignalService; publicly exported
   pairing-service.ts            SignalPairingSession — QR device linking via signal-cli or @elizaos/signal-native
   setup-routes.ts               HTTP route handlers for /api/setup/signal/* and QR override helper
   connector-account-provider.ts ConnectorAccountManager provider (list/create/patch/delete accounts)
   workflow-credential-provider.ts Workflow plugin credential bridge (httpHeaderAuth)
-  signal-native.d.ts            Type shim for optional @elizaos/signal-native peer dep
 auto-enable.ts                  Auto-enable check (loaded by plugin engine at boot; no heavy imports)
 ```
 
