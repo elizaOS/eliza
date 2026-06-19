@@ -603,6 +603,20 @@ export class ElizaClient {
       resumeRetries += 1;
       res = await this.rawRequestOnce(path, requestUrl, init, options, token);
     }
+    // Resume budget exhausted while the agent is still 202 (resuming): surface a
+    // distinguishable error instead of returning the empty 202 placeholder as a
+    // success — otherwise the chat/stream path renders an empty reply. allowNonOk
+    // callers and aborted requests still get the raw response.
+    if (res.status === 202 && !options?.allowNonOk && !init?.signal?.aborted) {
+      throw new ApiError({
+        kind: "http",
+        path,
+        status: 202,
+        message: "Agent is still starting up — please try again in a moment.",
+        code: "agent_resuming",
+        retryAfter: resumeRetryDelayMs(res) / 1000,
+      });
+    }
     if (!res.ok && !options?.allowNonOk) {
       const body = (await this.readBodyText(res, path, options?.timeoutMs, init)
         .then((text) => JSON.parse(text) as Record<string, unknown>)
@@ -1201,6 +1215,7 @@ export class ElizaClient {
   // --- Text normalization helpers (used by chat domain methods) ---
 
   normalizeAssistantText(text: string): string {
+    if (typeof text !== "string") return GENERIC_NO_RESPONSE_TEXT;
     const stripped = stripAssistantStageDirections(
       extractAssistantReplyText(text) ?? text,
     );

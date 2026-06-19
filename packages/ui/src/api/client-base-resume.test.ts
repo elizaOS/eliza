@@ -63,7 +63,7 @@ describe("ElizaClient 202 dedicated-agent resume handling", () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it("gives up after a bounded number of retries if still resuming", async () => {
+  it("throws a distinguishable agent_resuming error after the bounded retries", async () => {
     const request = vi
       .fn<AgentRequestTransport["request"]>()
       .mockResolvedValue(
@@ -71,12 +71,20 @@ describe("ElizaClient 202 dedicated-agent resume handling", () => {
       );
 
     const client = makeClient(request);
-    const pending = client.fetch("/api/status").catch(() => undefined);
+    let caught: unknown;
+    const pending = client.fetch("/api/status").catch((e) => {
+      caught = e;
+    });
     await vi.runAllTimersAsync();
     await pending;
 
     // 1 initial attempt + 6 bounded retries = 7 total; it does not loop forever.
     expect(request).toHaveBeenCalledTimes(7);
+    // ...and it surfaces a typed 202 "resuming" error instead of returning the
+    // empty 202 placeholder as a (silent) success.
+    expect(caught).toBeTruthy();
+    expect((caught as { status?: number }).status).toBe(202);
+    expect((caught as { code?: string }).code).toBe("agent_resuming");
   });
 
   it("stops waiting when the caller aborts mid-resume", async () => {

@@ -240,6 +240,7 @@ function isSimpleReplyPayload(
  * `shouldRespond`, so parse that shape without touching ordinary chat text.
  */
 export function extractAssistantReplyText(input: string): string | null {
+  if (typeof input !== "string") return null;
   const trimmed = input.trim();
 
   // Shape 1: a leaked response-handler payload keyed by `replyText` — either the
@@ -284,6 +285,7 @@ export function extractAssistantReplyText(input: string): string | null {
 }
 
 export function stripAssistantStageDirections(input: string): string {
+  if (typeof input !== "string") return "";
   let normalized = input;
   normalized = stripWrappedStageDirections(normalized, /\*([^*\n]+)\*/g);
   normalized = stripWrappedStageDirections(normalized, /_([^_\n]+)_/g);
