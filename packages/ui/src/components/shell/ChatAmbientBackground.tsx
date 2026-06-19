@@ -19,7 +19,10 @@ const EDGE_CSS = `
 .chat-amb-layer {
   position: absolute;
   inset: 0;
-  will-change: opacity;
+  /* No standing will-change: a running CSS opacity animation already self-promotes
+     to its own compositor layer for its duration, so the hint bought nothing during
+     motion and kept two full-viewport backing stores permanently promoted at rest
+     (pure waste under prefers-reduced-motion, where the animation is off). */
   animation-duration: 30s;
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
