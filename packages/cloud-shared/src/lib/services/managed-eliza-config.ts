@@ -232,6 +232,15 @@ export async function prepareManagedElizaBaseEnvironment(
       // normalizes that). An explicit per-agent override still wins.
       ELIZAOS_CLOUD_EMBEDDING_URL:
         existingEnv.ELIZAOS_CLOUD_EMBEDDING_URL ?? resolveCloudApiBaseUrl(),
+      // Match the agent's storage vector dimension to the cloud embedding model.
+      // The elizacloud handler returns 1536-dim vectors (text-embedding-3-small,
+      // ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS default 1536), but plugin-sql's storage
+      // defaults to dim_384 unless EMBEDDING_DIMENSION is set (core/provisioning.ts)
+      // → a 1536 vector is written to the dim_384 column → "Failed query: insert
+      // into embeddings" on every memory write. Pin both to 1536 so they agree.
+      EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? "1536",
+      ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS:
+        existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? "1536",
       // Pin the cloud's healthy Cerebras-direct models so the container never
       // resolves a tier to the `:nitro` default (which has no Cerebras route →
       // BitRouter→OpenRouter → 503 / wrong model). Mirrors the shared + eliza-app
