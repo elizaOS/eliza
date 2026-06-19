@@ -14,7 +14,7 @@
 # ---------------------------------------------------------------------------
 # All credentials below are read from environment variables (or .env in the
 # same directory). Copy .env.example -> .env and populate. .env is gitignored
-# at the repo root (see /Users/shawwalters/eliza-workspace/milady/.gitignore).
+# at the repo root (see the workspace-root .gitignore).
 #
 # Production: secrets are NOT supplied via this compose file. Production K8s
 # workloads receive secrets through external-secrets-operator (ESO) pulling

@@ -211,7 +211,7 @@ cannot release our keys without a matching golden measurement.
 | KMS attestation bypass / DevMode (dev KMS has no security guarantees) | **Pin** to a release with mandatory QE-identity + TCB-status enforcement; **forbid** DevMode in any production policy. | Production `TeeEvidencePolicy.allowedKinds` excludes dev kinds; `requiredClaims.debugDisabled=true`, `productionLifecycle=true`. Refuse keys if quote shows DevMode. |
 | Permissive DevMode auth | **Replace** dev auth with on-chain `AppAuth` code-hash allowlist; treat any non-allowlisted code hash as untrusted. | Agent policy `requiredMeasurements.agent`/`container` pinned to golden; `revokedMeasurements` for withdrawn versions. |
 | Disabled / opt-in TLS verification, client-controlled PCCS URL | **Pin** to the build that removed client-controlled PCCS and made TLS verify explicit; turn verification ON. | The bridge fetches evidence only over a verified channel; no `ELIZA_TEE_EVIDENCE_URL` to an unverified endpoint in prod. |
-| World-readable key material / decrypted env vars in the guest | **Harden**: env-encryption keys never persisted; secrets only in `mlock`ed pages (§3); no secrets in env dumps/logs (already a denied call in `tee-protected-agent-vm.md`). | dm-crypt user volume keyed off the unsealed key only; tmpfs `0700`; logger redaction; `MILADY_STATE_DIR` on the sealed volume. |
+| World-readable key material / decrypted env vars in the guest | **Harden**: env-encryption keys never persisted; secrets only in `mlock`ed pages (§3); no secrets in env dumps/logs (already a denied call in `tee-protected-agent-vm.md`). | dm-crypt user volume keyed off the unsealed key only; tmpfs `0700`; logger redaction; `ELIZA_STATE_DIR` on the sealed volume. |
 | Fake-quote pathways | **Pin** QE-identity verification as mandatory; reject quotes from unauthorized QE. | Independent agent-side quote shape check + nonce binding (`reportData = H(nonce‖epk)`). |
 | Decompression-bomb | **Harden** image/layer fetch with size/ratio limits in the build and in any in-CVM artifact pull. | Build-time only; confidential profile pulls no untrusted archives at runtime. |
 | Cert / constant-time concerns | **Track upstream**; do not depend on dstack-gateway for our crypto identity — derive the agent's signing identity from the OS key-ladder, not solely from dstack-KMS. | `RemoteSigningService` keys bound to the unsealed OS key, attested by our golden measurements. |
@@ -289,7 +289,7 @@ decrypted secrets *back out* of that boundary or leave them recoverable.
 
 ### 3.5a Attestation-bound sealed state-volume mount hook (agent ↔ OS contract)
 
-The dm-crypt/LUKS2 state volume in §3.4 (MILADY_STATE_DIR / ~/.milady — the
+The dm-crypt/LUKS2 state volume in §3.4 (ELIZA_STATE_DIR / ~/.eliza — the
 agent-session secret scope) must **not** be unlocked with a host-readable key
 (dstack LUKS2 advisory GHSA-jxq2-hpw3-m5wf; agent plan §5.5). Its key is
 released **only after a passing attestation** and is **bound to the measured
@@ -398,7 +398,7 @@ are single-tenant.
   Module signature enforcement on.
 - **dm-crypt for persistent user data**, keyed off the **unsealed key** released
   only after attestation (§2, §6). The data volume does not mount — and
-  `MILADY_STATE_DIR`/`~/.milady` is unavailable — until the quote verifies. This
+  `ELIZA_STATE_DIR`/`~/.eliza` is unavailable — until the quote verifies. This
   is the OS realization of the chip plan's "unseal binding" (06 §3.4).
 
 ### 4.5 Relevant research

@@ -42,7 +42,7 @@ function recordingRunner() {
 const baseConfig = {
   cryptDevice: "/dev/vdb",
   mapperName: "eliza_state",
-  mountPoint: "/home/eliza/.milady",
+  mountPoint: "/home/eliza/.eliza",
 };
 
 test("mounts on a released key: luksOpen with key on stdin, then mount", async () => {
@@ -69,7 +69,10 @@ test("mounts on a released key: luksOpen with key on stdin, then mount", async (
   assert.ok(!open.args.includes(RELEASED_KEY), "key must not appear in argv");
 
   assert.equal(mount.command, "mount");
-  assert.deepEqual(mount.args, ["/dev/mapper/eliza_state", "/home/eliza/.milady"]);
+  assert.deepEqual(mount.args, [
+    "/dev/mapper/eliza_state",
+    "/home/eliza/.eliza",
+  ]);
   // No key on stdin for the mount step.
   assert.equal(mount.keyMaterialHex, "");
 });

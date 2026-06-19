@@ -98,7 +98,7 @@ def main():
     # Tor Browser and the flatpak sandbox refuses the read). The fix is
     # not to weaken the Tor Browser sandbox; it is to route local help
     # through a different WebKit instance. elizaos-webkit-shell is the
-    # same WebKit2GTK widget the main Milady app uses, already runs as
+    # same WebKit2GTK widget the main elizaOS app uses, already runs as
     # the amnesia user, and has full file:// access.
     #
     # Remote https:// URIs continue to go through Tor Browser so external

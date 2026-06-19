@@ -66,8 +66,7 @@ export ELIZA_CONFIG_DIR_NAME="${ELIZA_CONFIG_DIR_NAME:-elizaOS}"
 
 export HOME=/home/amnesia
 export ELIZA_STATE_DIR="${ELIZA_STATE_DIR:-/home/amnesia/.eliza}"
-export MILADY_STATE_DIR="${MILADY_STATE_DIR:-${ELIZA_STATE_DIR}}"
-export MILADY_ELIZA_SOURCE="${MILADY_ELIZA_SOURCE:-local}"
+export ELIZA_SOURCE="${ELIZA_SOURCE:-local}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${ELIZA_STATE_DIR}/xdg-config}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${ELIZA_STATE_DIR}/xdg-cache}"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-${ELIZA_STATE_DIR}/xdg-data}"
@@ -222,10 +221,10 @@ export ELIZA_STARTUP_STATE_FILE="${ELIZA_STARTUP_STATE_FILE:-${ELIZA_STATE_DIR}/
 export ELIZA_STARTUP_EVENTS_FILE="${ELIZA_STARTUP_EVENTS_FILE:-${ELIZA_STATE_DIR}/logs/startup-events.jsonl}"
 
 if command -v flock >/dev/null 2>&1; then
-    lock_file="${XDG_RUNTIME_DIR:-/run/user/1000}/milady.lock"
+    lock_file="${XDG_RUNTIME_DIR:-/run/user/1000}/eliza.lock"
     exec 9>"${lock_file}"
     if ! flock -n 9; then
-        if [ "${MILADY_WAIT_FOR_LOCK:-0}" = "1" ]; then
+        if [ "${ELIZA_WAIT_FOR_LOCK:-0}" = "1" ]; then
             flock 9
 	    else
 	        echo "elizaOS is already running."
