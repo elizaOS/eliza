@@ -221,6 +221,17 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
+      // Pin embeddings to the elizacloud Worker (api.elizacloud.ai/api/v1), whose
+      // POST /embeddings serves OpenAI text-embedding-3-small (200, 1536-dim).
+      // Without this, the plugin's getEmbeddingBaseURL() falls back to the
+      // general/text base, which resolves to the Cerebras/BitRouter endpoint that
+      // has NO /embeddings route → 404→503 on every RAG/memory turn. No separate
+      // key is needed: getEmbeddingApiKey falls back to ELIZAOS_CLOUD_API_KEY (set
+      // above), which authenticates to the Worker route. The plugin appends
+      // "/embeddings", so this must end at /api/v1 (resolveCloudApiBaseUrl already
+      // normalizes that). An explicit per-agent override still wins.
+      ELIZAOS_CLOUD_EMBEDDING_URL:
+        existingEnv.ELIZAOS_CLOUD_EMBEDDING_URL ?? resolveCloudApiBaseUrl(),
       // Pin the cloud's healthy Cerebras-direct models so the container never
       // resolves a tier to the `:nitro` default (which has no Cerebras route →
       // BitRouter→OpenRouter → 503 / wrong model). Mirrors the shared + eliza-app
