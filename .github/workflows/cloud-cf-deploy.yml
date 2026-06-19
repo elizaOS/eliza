@@ -155,6 +155,7 @@ jobs:
         working-directory: packages/cloud-api
         env:
           BITROUTER_API_KEY: ${{ secrets.BITROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -167,8 +168,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          if [ -z "$BITROUTER_API_KEY" ]; then
-            echo "::error::BITROUTER_API_KEY is not configured. Add it at https://github.com/elizaOS/eliza/settings/secrets/actions."
+          # The Worker is the gateway: it calls native providers directly and
+          # uses OpenRouter (BYOK) as the backup. At least one provider key (the
+          # OpenRouter backup, or a native key) must be configured.
+          if [ -z "$OPENROUTER_API_KEY" ] && [ -z "$CEREBRAS_API_KEY" ] && [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::No model provider key configured. Set OPENROUTER_API_KEY (backup) and/or a native key (CEREBRAS/OPENAI/ANTHROPIC) at https://github.com/elizaOS/eliza/settings/secrets/actions."
             exit 1
           fi
 
@@ -184,6 +188,7 @@ jobs:
 
           for name in \
             BITROUTER_API_KEY \
+            OPENROUTER_API_KEY \
             OPENAI_API_KEY \
             ANTHROPIC_API_KEY \
             CEREBRAS_API_KEY \
