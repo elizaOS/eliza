@@ -1,6 +1,5 @@
 import {
   Button,
-  ChatSearchHint,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -375,7 +374,6 @@ export function ProductsPanel({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <ChatSearchHint noun="products" query={search} />
         <Button
           ref={createButton.ref}
           type="button"

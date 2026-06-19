@@ -1,4 +1,4 @@
-import { ChatSearchHint, formatShortDate, Skeleton } from "@elizaos/ui";
+import { formatShortDate, Skeleton } from "@elizaos/ui";
 import { useRegisterViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
 import {
   CalendarDays,
@@ -87,7 +87,6 @@ export function CustomersPanel({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <ChatSearchHint noun="customers" query={search} />
         {!loading ? (
           <span className="shrink-0 text-xs text-muted">
             {total.toLocaleString()} customer{total !== 1 ? "s" : ""}
