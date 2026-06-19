@@ -215,6 +215,7 @@ export function useShellController(): ShellController {
       content: message.text,
       createdAt: message.timestamp,
       failureKind: message.failureKind,
+      ...(message.reasoning ? { reasoning: message.reasoning } : {}),
     }));
   }, [conversationMessages]);
 

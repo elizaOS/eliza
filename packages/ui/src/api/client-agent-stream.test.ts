@@ -44,6 +44,78 @@ describe("ElizaClient agent streaming transport", () => {
     expect(cancel).toHaveBeenCalledWith("elizaos-sse-terminal-done");
   });
 
+  it("surfaces the done event's thought as reasoning", async () => {
+    const encoder = new TextEncoder();
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: encoder.encode(
+          'data: {"type":"token","text":"Sure.","fullText":"Sure."}\n\n' +
+            'data: {"type":"done","fullText":"Sure.","agentName":"Eliza","thought":"User wants a yes/no; keep it short."}\n\n',
+        ),
+      })
+      .mockRejectedValueOnce(new Error("read after terminal event"));
+    const cancel = vi.fn(async () => {});
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({ read, cancel }),
+        },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hello",
+      vi.fn(),
+    );
+
+    expect(result).toEqual({
+      text: "Sure.",
+      agentName: "Eliza",
+      completed: true,
+      reasoning: "User wants a yes/no; keep it short.",
+    });
+  });
+
+  it("omits reasoning when the done event has no thought", async () => {
+    const encoder = new TextEncoder();
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: encoder.encode(
+          'data: {"type":"done","fullText":"ok","agentName":"Eliza"}\n\n',
+        ),
+      })
+      .mockRejectedValueOnce(new Error("read after terminal event"));
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({ read, cancel: vi.fn(async () => {}) }),
+        },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hello",
+      vi.fn(),
+    );
+
+    expect(result).not.toHaveProperty("reasoning");
+    expect(result.completed).toBe(true);
+  });
+
   it("streams security audit events through the configured request transport", async () => {
     const globalFetch = vi.fn();
     vi.stubGlobal("fetch", globalFetch);

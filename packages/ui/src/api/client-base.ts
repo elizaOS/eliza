@@ -66,6 +66,7 @@ type StreamChatEvent = {
   fullText?: string;
   agentName?: string;
   message?: string;
+  thought?: string;
   noResponseReason?: string;
   failureKind?: ChatFailureKind;
   localInference?: LocalInferenceChatMetadata;
@@ -81,6 +82,7 @@ type StreamChatState = {
   fullText: string;
   doneText: string | null;
   doneAgentName: string | null;
+  doneThought: string | null;
   doneNoResponseReason: "ignored" | null;
   doneUsage: ChatTokenUsage | undefined;
   doneFailureKind: ChatFailureKind | undefined;
@@ -161,6 +163,9 @@ function applyStreamChatDoneEvent(
   if (typeof parsed.fullText === "string") state.doneText = parsed.fullText;
   if (typeof parsed.agentName === "string" && parsed.agentName.trim()) {
     state.doneAgentName = parsed.agentName;
+  }
+  if (typeof parsed.thought === "string" && parsed.thought.trim()) {
+    state.doneThought = parsed.thought;
   }
   if (parsed.noResponseReason === "ignored") {
     state.doneNoResponseReason = "ignored";
@@ -1245,6 +1250,7 @@ export class ElizaClient {
     text: string;
     agentName: string;
     completed: boolean;
+    reasoning?: string;
     noResponseReason?: "ignored";
     usage?: ChatTokenUsage;
     failureKind?: ChatFailureKind;
@@ -1285,6 +1291,7 @@ export class ElizaClient {
       fullText: "",
       doneText: null,
       doneAgentName: null,
+      doneThought: null,
       doneNoResponseReason: null,
       doneUsage: undefined,
       doneFailureKind: undefined,
@@ -1354,6 +1361,9 @@ export class ElizaClient {
       text: resolvedText,
       agentName: streamState.doneAgentName ?? "Eliza",
       completed: streamState.receivedDone,
+      ...(streamState.doneThought
+        ? { reasoning: streamState.doneThought }
+        : {}),
       ...(streamState.doneNoResponseReason
         ? { noResponseReason: streamState.doneNoResponseReason }
         : {}),

@@ -34,6 +34,7 @@ import {
   filesToImageAttachments,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
+import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import type { ShellMessage } from "./shell-state";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
@@ -647,6 +648,9 @@ const ThreadLine = React.memo(function ThreadLine({
         ) : (
           message.content
         )}
+        {isAssistant && message.reasoning?.trim() ? (
+          <ThinkingBlock reasoning={message.reasoning} />
+        ) : null}
         <AnimatePresence>
           {copied ? (
             <motion.span
