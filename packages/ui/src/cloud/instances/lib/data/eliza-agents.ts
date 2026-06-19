@@ -4,12 +4,12 @@
  * at the cloud shell's typed {@link api} client and the Instances auth gate.
  */
 
-import { useQuery } from "@tanstack/react-query";
 import type {
   AgentListItemDto,
   AgentResponse,
   AgentsResponse,
 } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../lib/api-client";
 import {
   authenticatedQueryKey,
