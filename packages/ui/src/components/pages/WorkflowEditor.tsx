@@ -406,7 +406,7 @@ export function WorkflowEditor({
   });
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pb-28 lg:overflow-hidden lg:pb-0">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border/40 pb-3">
         <div className="mr-auto flex items-center gap-2 min-w-0">
@@ -425,6 +425,7 @@ export function WorkflowEditor({
           size="sm"
           onClick={generatorModal.open}
           disabled={generating}
+          className="hidden sm:inline-flex"
         >
           <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden />
           Generate from prompt
@@ -525,7 +526,7 @@ export function WorkflowEditor({
             onChange={(e) => setText(e.target.value)}
             spellCheck={false}
             data-testid="workflow-editor-json"
-            className="min-h-[320px] flex-1 resize-none border-0 bg-transparent p-3 font-mono text-xs leading-relaxed text-txt outline-none"
+            className="min-h-[240px] flex-1 resize-none border-0 bg-transparent p-3 font-mono text-xs leading-relaxed text-txt outline-none sm:min-h-[320px]"
           />
         </PagePanel>
 
@@ -542,9 +543,7 @@ export function WorkflowEditor({
                 workflow={lastValidWorkflow}
                 loading={false}
                 isGenerating={generating}
-                emptyStateActionLabel="Generate from prompt"
-                emptyStateHelpText="Describe the trigger and the steps. The graph re-renders on every JSON change."
-                onEmptyStateAction={generatorModal.open}
+                emptyStateHelpText="Draft in chat. Review the graph, runs, and logs here."
               />
             </div>
           </PagePanel>
