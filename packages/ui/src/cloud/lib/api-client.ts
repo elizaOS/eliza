@@ -30,6 +30,13 @@ export class ApiError extends Error {
 }
 
 function getApiBaseUrl(): string {
+  // Deliberately same-origin-only in the browser: every `/api/*` call rides the
+  // page's own origin so the steward-token cookie + Bearer header stay scoped to
+  // Eliza Cloud. There is intentionally NO cross-origin fetch bridge here (the
+  // legacy cloud-frontend SPA had one — `installApiFetchBridge` — alongside its
+  // Pages proxy, which created two transports with contradictory cookie scoping;
+  // the app never adopted that, so that dual-path concern does not exist here).
+  // `resolveApiUrl` below enforces this by throwing on any cross-origin URL.
   if (typeof window !== "undefined") return "";
 
   const fromEnv =

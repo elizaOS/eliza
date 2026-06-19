@@ -28,6 +28,7 @@ import {
   useRef,
 } from "react";
 import { useLocation } from "react-router-dom";
+import { decodeJwtPayload } from "../lib/jwt";
 import { resolveBrowserStewardApiUrl } from "./steward-url";
 
 export function isPlaceholderValue(value: string | undefined): boolean {
@@ -171,37 +172,18 @@ export function readStoredToken(): string | null {
 }
 
 export function tokenIsExpired(token: string): boolean {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return true;
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(
-      base64.length + ((4 - (base64.length % 4)) % 4),
-      "=",
-    );
-    const payload = JSON.parse(atob(padded));
-    if (!payload.exp) return false;
-    return payload.exp * 1000 < Date.now();
-  } catch {
-    return true;
-  }
+  const payload = decodeJwtPayload(token);
+  // A token we can't read is treated as expired; a readable token without an
+  // `exp` claim never expires locally.
+  if (!payload) return true;
+  if (!payload.exp) return false;
+  return payload.exp * 1000 < Date.now();
 }
 
 export function tokenSecsRemaining(token: string): number | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(
-      base64.length + ((4 - (base64.length % 4)) % 4),
-      "=",
-    );
-    const payload = JSON.parse(atob(padded));
-    if (!payload.exp) return null;
-    return payload.exp - Date.now() / 1000;
-  } catch {
-    return null;
-  }
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return null;
+  return payload.exp - Date.now() / 1000;
 }
 
 /**
