@@ -131,3 +131,118 @@ describe("TurnAggregator", () => {
     expect(onCommit).toHaveBeenNthCalledWith(2, "thanks");
   });
 });
+
+// ── Adversarial / fuzz ───────────────────────────────────────────────────────
+// The end-of-turn layer sits on the raw STT output, which is noisy, partial, and
+// occasionally garbage. None of it may throw, hang, or commit a malformed turn.
+describe("end-of-turn — adversarial / fuzz", () => {
+  // Deterministic LCG so the fuzz corpus is reproducible (no Math.random).
+  function* lcg(seed: number) {
+    let s = seed >>> 0;
+    while (true) {
+      s = (1103515245 * s + 12345) >>> 0;
+      yield s;
+    }
+  }
+
+  it("scoreEndOfTurn never throws and stays in [0,1] for random byte soup", () => {
+    const rng = lcg(0xc0ffee);
+    const alphabet = "abcdefghijklmnopqrstuvwxyz ?!.,'-0123456789\n\téç你好🙂—";
+    for (let i = 0; i < 2000; i += 1) {
+      const len = rng.next().value % 80;
+      let s = "";
+      for (let j = 0; j < len; j += 1) {
+        s += alphabet[rng.next().value % alphabet.length];
+      }
+      const score = scoreEndOfTurn(s);
+      expect(Number.isFinite(score)).toBe(true);
+      expect(score).toBeGreaterThanOrEqual(0);
+      expect(score).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("handles unicode / emoji / CJK / numerals without misfiring", () => {
+    for (const s of [
+      "你好吗",
+      "😀😀😀",
+      "1 2 3 4 5",
+      "café crème brûlée",
+      "—",
+    ]) {
+      expect(() => scoreEndOfTurn(s)).not.toThrow();
+    }
+  });
+
+  it("handles a very long utterance", () => {
+    const long = `${"word ".repeat(4000)}done.`;
+    expect(scoreEndOfTurn(long)).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("a slow speaker emitting many trailing-conjunction fragments still forms one turn", () => {
+    let committed: string | null = null;
+    let pendingCb: (() => void) | null = null;
+    const agg = new TurnAggregator({
+      onCommit: (t) => {
+        committed = t;
+      },
+      setTimer: (cb) => {
+        pendingCb = cb;
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      },
+      clearTimer: () => {
+        pendingCb = null;
+      },
+    });
+    // Every fragment trails off → none should commit until a complete one.
+    for (const frag of ["i need to", "go to the store and", "also call the"]) {
+      expect(agg.addFinal(frag)).toBe(false);
+    }
+    expect(committed).toBeNull();
+    expect(agg.addFinal("dentist tomorrow")).toBe(true);
+    expect(committed).toBe(
+      "i need to go to the store and also call the dentist tomorrow",
+    );
+    expect(pendingCb).toBeNull(); // timer cleared on commit
+  });
+
+  it("a turn that NEVER completes is committed by the safety timer, not dropped", () => {
+    let committed: string | null = null;
+    let pendingCb: (() => void) | null = null;
+    const agg = new TurnAggregator({
+      onCommit: (t) => {
+        committed = t;
+      },
+      setTimer: (cb) => {
+        pendingCb = cb;
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      },
+      clearTimer: () => {},
+    });
+    agg.addFinal("um so basically i was like and then and");
+    expect(committed).toBeNull();
+    pendingCb?.(); // max-hold elapses
+    expect(committed).toBe("um so basically i was like and then and");
+  });
+
+  it("interleaved finals (two speakers heard by one recognizer) still segment coherently", () => {
+    const commits: string[] = [];
+    const agg = new TurnAggregator({
+      onCommit: (t) => commits.push(t),
+    });
+    // Speaker A asks a complete question, speaker B a complete one — each is a
+    // self-contained turn (no diarization here, but neither is dropped/merged
+    // wrongly because both read as complete).
+    agg.addFinal("what time is it?");
+    agg.addFinal("turn on the lights.");
+    expect(commits).toEqual(["what time is it?", "turn on the lights."]);
+  });
+
+  it("garbage/empty finals never commit a turn", () => {
+    const commits: string[] = [];
+    const agg = new TurnAggregator({ onCommit: (t) => commits.push(t) });
+    for (const junk of ["", "   ", "\n", "\t  \t"]) {
+      expect(agg.addFinal(junk)).toBe(false);
+    }
+    expect(commits).toHaveLength(0);
+  });
+});
