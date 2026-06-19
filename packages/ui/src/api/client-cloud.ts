@@ -1530,6 +1530,11 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     method: "POST",
     body: JSON.stringify({
       agentName: opts.agentName,
+      // The Eliza app provisions a DEDICATED (own-container, always-on) agent —
+      // the full experience, and the paid tier. New users have the signup credit
+      // grant so they get a real agent; out-of-credit users get the cloud's
+      // 402 add-credits prompt (the monetization path) rather than a shared agent.
+      alwaysOn: true,
       ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
       ...(opts.environmentVars
         ? { environmentVars: opts.environmentVars }
@@ -1574,6 +1579,8 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       method: "POST",
       body: JSON.stringify({
         agentName: opts.agentName,
+        // Dedicated (own-container, always-on) agent — see the direct-path note.
+        alwaysOn: true,
         ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
         ...(opts.environmentVars
           ? { environmentVars: opts.environmentVars }
