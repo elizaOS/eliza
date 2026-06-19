@@ -1,4 +1,4 @@
-import { Brain, RefreshCw, Store } from "lucide-react";
+import { Brain, Store } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
@@ -185,6 +185,18 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     void loadSkills();
   }, [loadSkills]);
 
+  // The skills list polls itself in the background instead of exposing a manual
+  // refresh control — silently revalidate on a slow interval and on window focus.
+  useEffect(() => {
+    const poll = () => void refreshSkills();
+    window.addEventListener("focus", poll);
+    const interval = window.setInterval(poll, 20_000);
+    return () => {
+      window.removeEventListener("focus", poll);
+      window.clearInterval(interval);
+    };
+  }, [refreshSkills]);
+
   const filteredSkills = useMemo(() => {
     const query = filterText.toLowerCase();
 
@@ -266,17 +278,6 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     group: "skills-toolbar",
     description: "Open the skill marketplace install dialog",
     onActivate: () => setInstallModalOpen(true),
-  });
-
-  const refreshButton = useAgentElement<HTMLButtonElement>({
-    id: "refresh-skills",
-    role: "button",
-    label: t("skillsview.RefreshSkillsList", {
-      defaultValue: "Refresh Skills List",
-    }),
-    group: "skills-toolbar",
-    description: "Reload the installed skills list",
-    onActivate: () => void refreshSkills(),
   });
 
   const createNameInput = useAgentElement<HTMLInputElement>({
@@ -402,23 +403,6 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 {...installButton.agentProps}
               >
                 {t("common.install", { defaultValue: "Install" })}
-              </Button>
-              <Button
-                ref={refreshButton.ref}
-                variant="ghost"
-                size="icon"
-                type="button"
-                className="h-9 w-9 rounded-full text-muted hover:text-txt"
-                onClick={() => void refreshSkills()}
-                title={t("skillsview.RefreshSkillsList", {
-                  defaultValue: "Refresh Skills List",
-                })}
-                aria-label={t("skillsview.RefreshSkillsList", {
-                  defaultValue: "Refresh Skills List",
-                })}
-                {...refreshButton.agentProps}
-              >
-                <RefreshCw className="h-4 w-4" />
               </Button>
             </SidebarContent.ToolbarActions>
           </SidebarContent.Toolbar>

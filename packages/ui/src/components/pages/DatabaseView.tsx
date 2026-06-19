@@ -330,8 +330,8 @@ export function DatabaseView({
   useRegisterViewChatBinding(chatBinding);
 
   // Revalidate the status + table list silently whenever the window regains
-  // focus (and on a slow interval), so the view stays fresh without a manual
-  // Refresh button.
+  // focus (and on a slow interval), so the view stays fresh on its own — there
+  // is no manual refresh control.
   const revalidate = useCallback(async () => {
     const status = await loadStatus();
     if (status?.connected) {
