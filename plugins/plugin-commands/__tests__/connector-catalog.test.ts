@@ -97,8 +97,8 @@ describe("connector catalog — client command surface filtering", () => {
 
 	it("tags client commands with a concrete clientAction", () => {
 		const clear = getConnectorCommands("gui").find((c) => c.name === "clear");
-		expect(clear?.target.kind === "client" ? clear.target.clientAction : null).toBe(
-			"clear-chat",
-		);
+		expect(
+			clear?.target.kind === "client" ? clear.target.clientAction : null,
+		).toBe("clear-chat");
 	});
 });

@@ -39,7 +39,13 @@ export type ClientCommandAction =
 /** Where a connector command executes. */
 export type ConnectorCommandTarget =
 	| { kind: "agent" }
-	| { kind: "navigate"; path: string; tab?: string; viewId?: string; section?: string }
+	| {
+			kind: "navigate";
+			path: string;
+			tab?: string;
+			viewId?: string;
+			section?: string;
+	  }
 	| { kind: "client"; clientAction: ClientCommandAction };
 
 /** A single argument of a connector command. */
@@ -138,7 +144,11 @@ function navigationCommands(): ConnectorCommand[] {
 		{
 			name: "orchestrator",
 			description: "Open the agent orchestrator",
-			target: { kind: "navigate", path: "/orchestrator", viewId: "orchestrator" },
+			target: {
+				kind: "navigate",
+				path: "/orchestrator",
+				viewId: "orchestrator",
+			},
 			options: [],
 		},
 		{
@@ -150,7 +160,11 @@ function navigationCommands(): ConnectorCommand[] {
 		{
 			name: "knowledge",
 			description: "Open the knowledge base",
-			target: { kind: "navigate", path: "/character/documents", tab: "documents" },
+			target: {
+				kind: "navigate",
+				path: "/character/documents",
+				tab: "documents",
+			},
 			options: [],
 		},
 		{

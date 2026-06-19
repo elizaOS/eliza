@@ -27,6 +27,49 @@ export const AGENT_TABS: AgentTab[] = [
   "codex",
 ];
 
+export const CODING_ACCOUNT_STRATEGIES: readonly CodingAccountStrategy[] = [
+  "least-used",
+  "round-robin",
+  "priority",
+  "quota-aware",
+];
+
+export const CODING_ACCOUNT_STRATEGY_OPTIONS: {
+  value: CodingAccountStrategy;
+  labelKey: string;
+  defaultLabel: string;
+}[] = [
+  {
+    value: "least-used",
+    labelKey: "codingagentsettingssection.AccountStrategyLeastUsed",
+    defaultLabel: "Least Used",
+  },
+  {
+    value: "round-robin",
+    labelKey: "codingagentsettingssection.AccountStrategyRoundRobin",
+    defaultLabel: "Round Robin",
+  },
+  {
+    value: "priority",
+    labelKey: "codingagentsettingssection.AccountStrategyPriority",
+    defaultLabel: "Priority",
+  },
+  {
+    value: "quota-aware",
+    labelKey: "codingagentsettingssection.AccountStrategyQuotaAware",
+    defaultLabel: "Quota Aware",
+  },
+];
+
+export function isCodingAccountStrategy(
+  value: unknown,
+): value is CodingAccountStrategy {
+  return (
+    typeof value === "string" &&
+    CODING_ACCOUNT_STRATEGIES.includes(value as CodingAccountStrategy)
+  );
+}
+
 export const APPROVAL_PRESETS: {
   value: ApprovalPreset;
   labelKey: string;

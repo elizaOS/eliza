@@ -6,23 +6,70 @@ import type { DetectedObject, PersonInfo } from "./types";
 // Lazy-loaded TensorFlow.js modules — the native addon may not be available
 // (e.g. when installed via bun or on platforms without prebuilt binaries).
 // We load them on first use so the rest of the plugin still works.
-// Types are `any` because @tensorflow/* are optionalDependencies and may not be installed.
-// biome-ignore lint/suspicious/noExplicitAny: optional native dep
-let tf: any = null;
-// biome-ignore lint/suspicious/noExplicitAny: optional native dep
-let cocoSsd: any = null;
-// biome-ignore lint/suspicious/noExplicitAny: optional native dep
-let poseDetection: any = null;
+interface TensorLike {
+  dataSync(): Uint8Array | Uint8ClampedArray | Float32Array | Int32Array;
+  dispose(): void;
+  expandDims(axis?: number): TensorLike;
+  squeeze(axis?: number[]): TensorLike;
+}
+
+interface TfjsNodeModule {
+  ready(): Promise<void>;
+  node: {
+    decodeImage(data: Buffer, channels: number): TensorLike;
+  };
+}
+
+interface CocoSsdPrediction {
+  class: string;
+  score: number;
+  bbox: [number, number, number, number];
+}
+
+interface CocoSsdModel {
+  detect(input: TensorLike): Promise<CocoSsdPrediction[]>;
+}
+
+interface CocoSsdModule {
+  load(config: { base: "mobilenet_v2" }): Promise<CocoSsdModel>;
+}
+
+interface PoseDetectionModule {
+  SupportedModels: { MoveNet: string };
+  createDetector(
+    model: string,
+    config: { modelType: "MultiPose.Lightning"; enableSmoothing: boolean },
+  ): Promise<PoseDetector>;
+}
+
+interface PoseDetector {
+  estimatePoses(image: ImageData): Promise<ModelPose[]>;
+  dispose(): void;
+}
+
+interface ModelPose {
+  keypoints: Array<{ name?: string; x: number; y: number; score?: number }>;
+  score?: number;
+}
+
+let tf: TfjsNodeModule | null = null;
+let cocoSsd: CocoSsdModule | null = null;
+let poseDetection: PoseDetectionModule | null = null;
+
+async function importOptionalModule<T>(specifier: string): Promise<T> {
+  return (await import(specifier)) as T;
+}
 
 async function loadTfModules(): Promise<boolean> {
   if (tf) return true;
   try {
-    // @ts-ignore — optional native dep; not installed on all platforms
-    tf = await import("@tensorflow/tfjs-node");
-    // @ts-ignore — optional native dep
-    cocoSsd = await import("@tensorflow-models/coco-ssd");
-    // @ts-ignore — optional native dep
-    poseDetection = await import("@tensorflow-models/pose-detection");
+    tf = await importOptionalModule<TfjsNodeModule>("@tensorflow/tfjs-node");
+    cocoSsd = await importOptionalModule<CocoSsdModule>(
+      "@tensorflow-models/coco-ssd",
+    );
+    poseDetection = await importOptionalModule<PoseDetectionModule>(
+      "@tensorflow-models/pose-detection",
+    );
     return true;
   } catch (_err) {
     logger.warn(
@@ -49,10 +96,8 @@ export interface PoseLandmark {
 }
 
 export class VisionModels {
-  // biome-ignore lint/suspicious/noExplicitAny: optional native dep
-  private objectDetectionModel: any = null;
-  // biome-ignore lint/suspicious/noExplicitAny: optional native dep
-  private poseDetector: any = null;
+  private objectDetectionModel: CocoSsdModel | null = null;
+  private poseDetector: PoseDetector | null = null;
   private initialized = false;
   private tfAvailable = false;
 
@@ -148,14 +193,8 @@ export class VisionModels {
 
       // Run detection - cocoSsd.detect expects specific input types
       // We squeeze the batch dimension back for detection
-      const squeezed = batched.squeeze([0]) as ReturnType<
-        typeof imageTensor.expandDims
-      > extends infer T
-        ? T
-        : never;
-      const predictions = await this.objectDetectionModel.detect(
-        squeezed as Parameters<typeof this.objectDetectionModel.detect>[0],
-      );
+      const squeezed = batched.squeeze([0]);
+      const predictions = await this.objectDetectionModel.detect(squeezed);
       squeezed.dispose();
 
       // Clean up tensors
@@ -443,12 +482,7 @@ export class VisionModels {
     return keypoints;
   }
 
-  convertPosesToPersonInfo(
-    poses: Array<{
-      keypoints: Array<{ name?: string; x: number; y: number; score?: number }>;
-      score?: number;
-    }>,
-  ): PersonInfo[] {
+  convertPosesToPersonInfo(poses: ModelPose[]): PersonInfo[] {
     return poses.map((pose, index) => {
       const keypoints = pose.keypoints;
 

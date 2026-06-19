@@ -359,6 +359,7 @@ const APP_CONTROL_MODE_SURFACE: Record<
     "current",
     "delete",
     "edit",
+    "icon",
     "interact",
     "list",
     "manager",

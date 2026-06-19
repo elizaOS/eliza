@@ -70,8 +70,8 @@ bun run --cwd plugins/plugin-xai clean        # rm -rf dist .turbo
 
 | Variable              | Required | Default                  | Description                              |
 | --------------------- | -------- | ------------------------ | ---------------------------------------- |
-| `XAI_API_KEY`         | yes*     | —                        | xAI API key. Checked first; falls back to `GROK_API_KEY`. |
-| `GROK_API_KEY`        | yes*     | —                        | Alias accepted by both auto-enable and `getConfig`; used if `XAI_API_KEY` is not set. |
+| `XAI_API_KEY`         | one-of   | —                        | xAI API key. Checked first; falls back to `GROK_API_KEY`. |
+| `GROK_API_KEY`        | one-of   | —                        | Alias accepted by both auto-enable and `getConfig`; used if `XAI_API_KEY` is not set. |
 | `XAI_MODEL`           | no       | `grok-3`                 | Large text model. Also aliased as `XAI_LARGE_MODEL`. |
 | `XAI_SMALL_MODEL`     | no       | `grok-3-mini`            | Small text model.                        |
 | `XAI_EMBEDDING_MODEL` | no       | `grok-embedding`         | Embedding model.                         |

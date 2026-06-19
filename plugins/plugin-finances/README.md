@@ -14,7 +14,7 @@ Owner-facing finance dashboard for elizaOS: balance summary, transactions, and r
 
 **Schema** — `pgSchema("app_finances")` (`financesDbSchema`) with five tables:
 - `lifePaymentSources` (`life_payment_sources`) — payment source records per agent.
-- `lifePaymentTransactions` (`life_payment_transactions`) — transactions; amounts stored as `amount_usd` (real), not minor units.
+- `lifePaymentTransactions` (`life_payment_transactions`) — transactions; amounts stored as `amount_usd` (real), not minor units, to preserve the original LifeOps schema during the non-destructive copy migration.
 - `lifeSubscriptionAudits` (`life_subscription_audits`) — subscription audit runs.
 - `lifeSubscriptionCandidates` (`life_subscription_candidates`) — detected subscription candidates.
 - `lifeSubscriptionCancellations` (`life_subscription_cancellations`) — cancellation records.
@@ -46,6 +46,6 @@ bun run --cwd plugins/plugin-finances clean
 
 - ESM only (`"type": "module"`).
 - Drizzle schema is registered through the `schema` field on the Plugin object; the elizaOS runtime owns migrations. No manual migration runner here.
-- Amounts are stored in USD (`amount_usd` real), not minor units.
+- Amounts are stored in USD (`amount_usd` real), not minor units. New UI and API code should round inbound decimal values at the boundary and convert to minor units only for display/export. A future schema migration can move storage to integer minor units once the LifeOps compatibility window closes.
 - Requires `@elizaos/plugin-sql` to be loaded first (peer dep + declared in the plugin `dependencies` array).
 - Do NOT import `@elizaos/plugin-personal-assistant` from this package.
