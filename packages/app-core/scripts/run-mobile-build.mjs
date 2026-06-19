@@ -226,11 +226,19 @@ function readAppIdentity() {
   if (!appId || !appName) {
     throw new Error("Could not parse appId/appName from app.config.ts");
   }
+  // Opaque background the icon mark is flattened onto (iOS app icon + Android
+  // legacy launcher + adaptive-icon background). Whitelabel seam: each app sets
+  // its own brand color in app.config.ts (web.iconBackgroundColor). Falls back
+  // to the upstream elizaOS accent so a config without the field is unchanged.
+  const iconBackgroundColor =
+    process.env.ELIZA_ICON_BACKGROUND?.trim() ||
+    src.match(/iconBackgroundColor:\s*["']([^"']+)["']/)?.[1] ||
+    "#FF5800";
   // android.userAgentMarkers is an optional array literal nested under
   // `android: { ... }`. Parse the array body via regex (rather than
   // executing the TS file) so this script stays bun-import-free.
   const userAgentMarkers = parseAndroidUserAgentMarkers(src);
-  return { appId, appName, urlScheme, userAgentMarkers };
+  return { appId, appName, urlScheme, iconBackgroundColor, userAgentMarkers };
 }
 
 function parseAndroidUserAgentMarkers(configSrc) {
@@ -4106,11 +4114,11 @@ function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
   }
 }
 
-// Brand accent (BRAND_COLORS.orange in @elizaos/shared) used as the opaque
-// app-icon background on iOS and the Android adaptive-icon background color.
-// Kept inline so this script stays import-free (it parses app.config.ts via
-// regex rather than executing TS).
-const BRAND_ICON_BACKGROUND = "#FF5800";
+// Opaque app-icon background on iOS and the Android adaptive-icon background
+// color. Resolved per-brand from app.config.ts (web.iconBackgroundColor) by
+// readAppIdentity so each whitelabel ships its own brand color; defaults to the
+// upstream elizaOS accent when the field is absent.
+const BRAND_ICON_BACKGROUND = APP.iconBackgroundColor;
 
 const ANDROID_LAUNCHER_ICON_SIZES = {
   "mipmap-mdpi": 48,
@@ -4276,11 +4284,12 @@ async function writeAndroidForegroundPng(tool, source, output, canvas) {
 
 function resolveBrandSources() {
   return {
-    // The icon mark must be a white face on a transparent background so iOS
-    // can flatten it onto BRAND_ICON_BACKGROUND and Android can drop it into
-    // the adaptive foreground/monochrome safe zone. The web favicons are an
-    // orange face on transparent — flattening those onto orange would erase
-    // the mark — so the dedicated brand/app-icon.png master comes first.
+    // The icon mark is a transparent-background face chosen to contrast with
+    // BRAND_ICON_BACKGROUND, so iOS can flatten it onto that color and Android
+    // can drop it into the adaptive foreground/monochrome safe zone. The web
+    // favicons share the accent hue, which would vanish when flattened onto it,
+    // so the dedicated brand/app-icon.png master (authored for contrast against
+    // the brand color) is preferred.
     iconSource: firstExisting([
       path.join(appDir, "public", "brand", "app-icon.png"),
       path.join(appDir, "public", "brand", "logos", "logo_white_nobg.svg"),
