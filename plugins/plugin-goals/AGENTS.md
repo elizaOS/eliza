@@ -76,7 +76,10 @@ pointer back to the LifeOps source.
 
 ### Schema
 - `goalsSchema` (`src/db/schema.ts`) — `pgSchema("app_goals")` with tables
-  `goals`, `routines`, `reminders`, `alarms`, `checkins`. Exported as
+  `goals` (the carve target for `app_lifeops.life_goal_*`). The vestigial
+  `routines`/`reminders`/`alarms`/`checkins` placeholder tables were removed —
+  they were never queried, and reminders/alarms/routines now live in
+  `@elizaos/plugin-reminders` (`app_reminders`). Exported as
   `schema` on the plugin object so the runtime registers migrations.
 
 ## Layout
