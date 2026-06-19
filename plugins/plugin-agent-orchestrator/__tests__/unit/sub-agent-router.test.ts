@@ -1022,6 +1022,60 @@ describe("SubAgentRouter", () => {
       expect(handleMessage).not.toHaveBeenCalled();
     });
 
+    it("suppresses a method-not-found on an auxiliary ACP method (terminal/fs)", async () => {
+      // The adapter lacking an auxiliary client method (terminal/*, fs/*) is
+      // internal protocol noise — the sub-agent keeps running and its real
+      // outcome still arrives via task_complete. The old cancel-only check
+      // surfaced these as task failures.
+      session = sessionWithTask("build a tiny app");
+      acp = makeAcpService(session);
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "error", {
+        message: "Method not found: terminal/create",
+        code: -32601,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(handleMessage).not.toHaveBeenCalled();
+    });
+
+    it("does surface a sub-agent build error that merely says 'method not found'", async () => {
+      // A real failure whose text happens to contain the words "method not
+      // found" (e.g. an upstream "405 Method Not Allowed") names no ACP method
+      // path and carries no -32601 code — it must reach the user, not be
+      // swallowed as internal protocol noise.
+      session = sessionWithTask("build a tiny app");
+      acp = makeAcpService(session);
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "error", {
+        message: "build failed: GET /api returned 405 method not found",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(handleMessage).toHaveBeenCalled();
+    });
+
+    it("does not suppress a -32601 on session/prompt (the task cannot run)", async () => {
+      // A method-not-found on the core prompt method means the adapter cannot
+      // run the task at all — swallowing it would hang the user until timeout.
+      session = sessionWithTask("build a tiny app");
+      acp = makeAcpService(session);
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "error", {
+        message: "session/prompt failed",
+        code: -32601,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(handleMessage).toHaveBeenCalled();
+    });
+
     it("stops retrying once the budget is exhausted and posts honestly", async () => {
       // Already at the default max (2) → no further retry.
       session = sessionWithTask(`build it at ${DEAD_URL}`, 2);
