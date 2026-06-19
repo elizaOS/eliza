@@ -614,14 +614,27 @@ class TalkModePlugin : Plugin() {
     }
 
     /**
-     * Avoid false interrupts: don't interrupt if the heard text is just a
-     * substring of what we're currently speaking (echo from speaker).
+     * Decide whether heard speech should barge in on the agent's TTS. Tuned to
+     * avoid FALSE interrupts (which cut the reply mid-sentence and read as
+     * "intermittent audio"): a one-word ASR blip, background noise, or the
+     * agent's own voice bleeding back into the mic must NOT interrupt — only a
+     * genuine couple-of-words utterance from the user does.
      */
     private fun shouldInterrupt(transcript: String): Boolean {
         val trimmed = transcript.trim()
-        if (trimmed.length < 3) return false
-        val spoken = lastSpokenText?.lowercase()
-        if (spoken != null && spoken.contains(trimmed.lowercase())) return false
+        val lower = trimmed.lowercase()
+        val words = lower.split(Regex("\\s+")).filter { it.isNotBlank() }
+        // Need real intent: at least two words, or one long word (≥ 8 chars).
+        if (words.size < 2 && trimmed.length < 8) return false
+        val spoken = lastSpokenText?.lowercase() ?: return true
+        // Exact echo of what we're saying → speaker bleed, not the user.
+        if (spoken.contains(lower)) return false
+        // Fuzzy echo: if most of the heard words appear in the text we're
+        // currently speaking, treat it as echo (ASR mishears of our own audio).
+        val echoed = words.count { spoken.contains(it) }
+        if (words.isNotEmpty() && echoed.toDouble() / words.size >= 0.6) {
+            return false
+        }
         return true
     }
 
