@@ -1,5 +1,9 @@
 import type { Evaluator, EvaluatorProcessor } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import {
+	logger,
+	ModelType,
+	resolveOptimizedPromptForRuntime,
+} from "@elizaos/core";
 import { createViewsClient } from "../actions/views-client.js";
 import { resolveIntentView } from "../actions/views-show.js";
 
@@ -39,6 +43,32 @@ export interface ViewContextOutput {
 	viewId: string;
 	reason?: string;
 }
+
+/**
+ * The optimizable INSTRUCTION half of the evaluator prompt (the per-turn user
+ * message is appended after it). This is the GEPA target for the `view_context`
+ * task — an optimized artifact under `<state>/optimized-prompts/view_context/`
+ * replaces it at runtime via {@link resolveOptimizedPromptForRuntime}. Exported
+ * so the GEPA harness can optimize against the exact baseline.
+ */
+export const BASELINE_VIEW_CONTEXT_INSTRUCTION = [
+	"Decide whether proactively opening ONE app view would clearly help the user right now, based on the situation/activity in their message.",
+	`Available views: ${CONTEXT_VIEWS.join(", ")}.`,
+	"Mapping guide:",
+	"- writing / fixing / building code, app features, bugs, plugins → task-coordinator",
+	"- meetings / appointments / scheduling / deadlines → calendar",
+	"- email or messages to read/triage/reply → inbox",
+	"- balances / crypto / tokens / portfolio → wallet",
+	"- spending / budget / expenses / subscriptions → finances",
+	"- tasks / to-dos / checklists → todos",
+	"- goals / routines / habits → goals",
+	"- sleep / workouts / health metrics → health",
+	"- documents / files / notes → documents",
+	"- contacts / people / relationships → relationships",
+	"- needing to concentrate / block distractions → focus",
+	'If no view clearly helps (small talk, a question you can simply answer, or ambiguous intent), return viewId "none".',
+	'Respond as JSON: {"viewId": <one listed view or "none">, "reason": <short>}.',
+].join("\n");
 
 /**
  * Navigate the shell to the situation-inferred view. Confirms the view is real
@@ -131,29 +161,17 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 		if (resolveIntentView(text)) return false;
 		return ACTIVITY_HINT_RE.test(text);
 	},
-	prompt({ message }) {
+	prompt({ runtime, message }) {
 		const text =
 			typeof message.content?.text === "string" ? message.content.text : "";
-		return [
-			`## ${"app-control.view-context"}`,
-			"Decide whether proactively opening ONE app view would clearly help the user right now, based on the situation/activity in their message.",
-			`Available views: ${CONTEXT_VIEWS.join(", ")}.`,
-			"Mapping guide:",
-			"- writing / fixing / building code, app features, bugs, plugins → task-coordinator",
-			"- meetings / appointments / scheduling / deadlines → calendar",
-			"- email or messages to read/triage/reply → inbox",
-			"- balances / crypto / tokens / portfolio → wallet",
-			"- spending / budget / expenses / subscriptions → finances",
-			"- tasks / to-dos / checklists → todos",
-			"- goals / routines / habits → goals",
-			"- sleep / workouts / health metrics → health",
-			"- documents / files / notes → documents",
-			"- contacts / people / relationships → relationships",
-			"- needing to concentrate / block distractions → focus",
-			'If no view clearly helps (small talk, a question you can simply answer, or ambiguous intent), return viewId "none".',
-			`User message: ${JSON.stringify(text)}`,
-			'Respond as JSON: {"viewId": <one listed view or "none">, "reason": <short>}.',
-		].join("\n");
+		// The instruction half is the GEPA-optimizable `view_context` prompt; the
+		// per-turn user message is appended after it.
+		const instruction = resolveOptimizedPromptForRuntime(
+			runtime,
+			"view_context",
+			BASELINE_VIEW_CONTEXT_INSTRUCTION,
+		);
+		return `${instruction}\nUser message: ${JSON.stringify(text)}`;
 	},
 	parse(output) {
 		if (!output || typeof output !== "object") return null;

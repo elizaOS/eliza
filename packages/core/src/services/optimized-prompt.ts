@@ -69,7 +69,8 @@ export type OptimizedPromptTask =
 	| "response"
 	| "media_description"
 	| "action_descriptions"
-	| "autonomy";
+	| "autonomy"
+	| "view_context";
 
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
@@ -78,6 +79,9 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"media_description",
 	"action_descriptions",
 	"autonomy",
+	// Contextual view-switching evaluator (plugin-app-control viewContextEvaluator):
+	// the situation→view judgment prompt is a GEPA optimization target.
+	"view_context",
 ] as const;
 
 export type OptimizerName =

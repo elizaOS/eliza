@@ -1,6 +1,10 @@
-import type { EvaluatorRunContext } from "@elizaos/core";
+import type {
+	EvaluatorPromptContext,
+	EvaluatorRunContext,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	BASELINE_VIEW_CONTEXT_INSTRUCTION,
 	type ViewContextOutput,
 	viewContextEvaluator,
 } from "./view-context.js";
@@ -146,6 +150,24 @@ describe("viewContextEvaluator.shouldRun — contextual gate", () => {
 				ctx("fix the login bug", { options: { didRespond: false } }),
 			),
 		).toBe(false);
+	});
+});
+
+describe("viewContextEvaluator.prompt — GEPA-optimizable instruction", () => {
+	it("falls back to the baseline instruction when no optimized artifact is registered", () => {
+		// resolveOptimizedPromptForRuntime returns the baseline when the service is
+		// absent (runtime.getService undefined), so the prompt = baseline + the
+		// per-turn user message.
+		const promptCtx = {
+			runtime: { actions: [{ name: "VIEWS" }] },
+			message: { content: { text: "fix the login bug" } },
+			state: { values: {}, data: {}, text: "" },
+			options: { didRespond: true },
+			prepared: undefined,
+		} as unknown as EvaluatorPromptContext;
+		const out = viewContextEvaluator.prompt(promptCtx);
+		expect(out).toContain(BASELINE_VIEW_CONTEXT_INSTRUCTION);
+		expect(out).toContain("fix the login bug");
 	});
 });
 

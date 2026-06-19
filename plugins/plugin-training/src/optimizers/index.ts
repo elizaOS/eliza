@@ -24,8 +24,10 @@ export {
   createPromptScorer,
   createRuntimeAdapter,
   extractPlannerAction,
+  extractPlannerView,
   scoreAgreement,
   scorePlannerAction,
+  scoreViewSelection,
   subsample,
   type UseModelHandler,
 } from "./scoring.js";
