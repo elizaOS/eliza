@@ -342,11 +342,11 @@ export async function runViewsShow({
 	callback,
 }: RunViewsShowInput): Promise<ActionResult> {
 	const messageText = message?.content?.text ?? "";
-	// Passive intent fallback: "what's on my calendar" / "I want to add a feature
-	// to my app" carry no explicit view name, so the verb scan yields nothing.
-	// Map the domain intent straight to a view id.
-	const target =
-		extractViewTarget(message, options) ?? resolveIntentView(messageText);
+	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
+	// no explicit view name, so the verb scan yields nothing — the domain intent
+	// supplies the view id. Either source is enough to proceed.
+	const intentViewId = resolveIntentView(messageText);
+	let target = extractViewTarget(message, options) ?? intentViewId;
 	if (!target) {
 		const text =
 			'Tell me which view to open. Try: "open wallet" or "show settings".';
@@ -357,12 +357,22 @@ export async function runViewsShow({
 	const views = await client.listViews({ viewType });
 	let resolution = resolveView(target, views);
 
-	// If an extracted/fuzzy target didn't match a view but the message expresses
-	// a known domain intent, fall back to that intent's view id (exact-id match).
-	if (resolution.kind === "none") {
-		const intentViewId = resolveIntentView(messageText);
-		if (intentViewId && intentViewId !== target) {
-			resolution = resolveView(intentViewId, views);
+	// The user's own words are authoritative: when the message names a known
+	// domain surface, prefer that deterministic intent view over a (possibly
+	// hallucinated) model-supplied `view` param — but ONLY when the intent view
+	// is actually registered in this deployment. A weak/local planner emitting
+	// view:"wallet" for "open my calendar" is corrected here; an intent that maps
+	// to a surface this build doesn't have (e.g. task-coordinator without the
+	// coding plugin loaded) leaves the planner's explicit, registered target in
+	// place. So the model never needs to correctly GUESS the surface.
+	if (intentViewId && intentViewId !== target) {
+		const intentResolution = resolveView(intentViewId, views);
+		const intentRegistered =
+			intentResolution.kind !== "none" &&
+			intentResolution.kind !== "ambiguous";
+		if (intentRegistered || resolution.kind === "none") {
+			resolution = intentResolution;
+			target = intentViewId;
 		}
 	}
 

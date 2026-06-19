@@ -21,6 +21,7 @@ import {
 	viewsAction,
 } from "./actions/views.js";
 import { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
+import { viewNavigationRoutingEvaluator } from "./evaluators/view-navigation-routing.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
@@ -48,6 +49,7 @@ export type { ViewSummary } from "./actions/views-client.js";
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
 export { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
+export { viewNavigationRoutingEvaluator } from "./evaluators/view-navigation-routing.js";
 export {
 	APP_REGISTRY_SERVICE_TYPE,
 	type AppRegistryEntry,
@@ -101,7 +103,10 @@ export const appControlPlugin: Plugin = {
 		closeAllViewsAction,
 		homescreenAction,
 	],
-	responseHandlerEvaluators: [viewFollowupRoutingEvaluator],
+	responseHandlerEvaluators: [
+		viewNavigationRoutingEvaluator,
+		viewFollowupRoutingEvaluator,
+	],
 	providers: [availableAppsProvider],
 	services: [
 		AppRegistryService,
