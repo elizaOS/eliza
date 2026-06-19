@@ -1262,6 +1262,26 @@ public class ElizaAgentService extends Service {
                 "LD_LIBRARY_PATH",
                 nativeLibraryDir().getAbsolutePath() + ":" + abiDir.getAbsolutePath()
             );
+            // Native voice libs (Silero VAD + WeSpeaker/pyannote voice classifier)
+            // ship as jniLibs and extract into nativeLibraryDir. The on-device bun
+            // agent's bun:ffi loaders (vad-ggml.ts / encoder-ggml.ts /
+            // diarizer-ggml.ts) honor these env overrides; without them they fall
+            // back to the repo-local CMake build dirs, which do not exist on a
+            // packaged install, so live diarization would report library-missing.
+            // Only export when the .so actually shipped, so a stale env never
+            // points the loader at a missing path.
+            File sileroVadLib = new File(nativeLibraryDir(), "libsilero_vad.so");
+            File voiceClassifierLib = new File(nativeLibraryDir(), "libvoice_classifier.so");
+            if (sileroVadLib.isFile() && !env.containsKey("ELIZA_SILERO_VAD_LIB")) {
+                agentEnv.put("ELIZA_SILERO_VAD_LIB", sileroVadLib.getAbsolutePath());
+                Log.i(TAG, "libsilero_vad.so present; exporting ELIZA_SILERO_VAD_LIB="
+                    + sileroVadLib.getAbsolutePath());
+            }
+            if (voiceClassifierLib.isFile() && !env.containsKey("ELIZA_VOICE_CLASSIFIER_LIB")) {
+                agentEnv.put("ELIZA_VOICE_CLASSIFIER_LIB", voiceClassifierLib.getAbsolutePath());
+                Log.i(TAG, "libvoice_classifier.so present; exporting ELIZA_VOICE_CLASSIFIER_LIB="
+                    + voiceClassifierLib.getAbsolutePath());
+            }
             agentEnv.put("AGENT_ROOT", root.getAbsolutePath());
             agentEnv.put("RUNTIME_DIR", abiDir.getAbsolutePath());
             agentEnv.put("DEVICE_DIR", abiDir.getAbsolutePath());
