@@ -23,6 +23,9 @@ export interface WorkerNeonEnvSlice {
   DATABASE_DIALECT?: string;
   DATABASE_ENGINE?: string;
   LOCAL_PG_POOL_MAX?: string;
+  DATABASE_SSL_NO_VERIFY?: string;
+  /** Cloudflare Hyperdrive binding (proxies to the origin Postgres). */
+  HYPERDRIVE?: { connectionString: string };
 }
 
 const neonCache = new WeakMap<object, WorkerDb>();
@@ -64,7 +67,13 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
 }
 
 function createPgPool(env: WorkerNeonEnvSlice): PgPool {
-  const url = env.DATABASE_URL;
+  // Prefer a Cloudflare Hyperdrive binding when present: workerd can't reliably
+  // open a direct node-pg TCP/TLS connection to an external Postgres, so the
+  // Worker connects to Hyperdrive's local endpoint and Hyperdrive proxies to the
+  // origin (pooling + TLS handled there). Fall back to a direct DATABASE_URL.
+  const hyperdriveUrl = env.HYPERDRIVE?.connectionString;
+  const url = hyperdriveUrl ?? env.DATABASE_URL;
+  const isLocal = isLocalTcpPostgresUrl(url);
   const options: PoolConfig = {
     connectionString: url,
     max: parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 4),
@@ -76,8 +85,19 @@ function createPgPool(env: WorkerNeonEnvSlice): PgPool {
     connectionTimeoutMillis: 30_000,
     allowExitOnIdle: true,
   };
+  if (!isLocal && !hyperdriveUrl) {
+    // Direct remote Postgres must use TLS. node-pg's connection-string `sslmode`
+    // parsing is unreliable on workerd, so set `ssl` explicitly. A self-signed
+    // managed proxy (e.g. Railway) needs verification relaxed when opted in via
+    // `DATABASE_SSL_NO_VERIFY=true` or `?sslmode=no-verify` — the connection
+    // stays encrypted; only CA verification is skipped. (Hyperdrive terminates
+    // origin TLS itself, so its local endpoint needs no `ssl` option here.)
+    const skipVerify =
+      env.DATABASE_SSL_NO_VERIFY === "true" || /[?&]sslmode=no-verify\b/.test(url);
+    options.ssl = { rejectUnauthorized: !skipVerify };
+  }
   const pool = new PgPool(options);
-  if (isLocalTcpPostgresUrl(url)) {
+  if (isLocal) {
     disableLocalPreparedStatements(pool, { simpleQueryMode: true });
   }
   return pool;

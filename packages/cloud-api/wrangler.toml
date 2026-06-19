@@ -314,6 +314,12 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 binding = "BLOB"
 bucket_name = "eliza-cloud-blob-staging"
 
+# Hyperdrive proxies the Worker's Postgres connection to Railway (workerd can't
+# reliably open a direct node-pg TCP/TLS connection to an external Postgres).
+[[env.staging.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "ef65eb94c74144a3a3848ad1945571fb"
+
 [env.production]
 name = "eliza-cloud-api-prod"
 workers_dev = false
