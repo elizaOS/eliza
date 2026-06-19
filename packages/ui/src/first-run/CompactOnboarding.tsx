@@ -9,8 +9,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import * as React from "react";
-import { getBootConfig } from "../config/boot-config-store";
 import { ElizaMark } from "../components/brand/eliza-mark";
+import { getBootConfig } from "../config/boot-config-store";
 import { TRAY_ACTION_EVENT } from "../events";
 import { openExternalUrl } from "../utils/openExternalUrl";
 import { AgentPicker } from "./AgentPicker";

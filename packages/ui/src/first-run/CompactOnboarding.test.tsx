@@ -96,7 +96,7 @@ describe("CompactOnboarding", () => {
 
     render(<CompactOnboarding />);
 
-    expect(screen.getByText("How should Eliza run?")).toBeTruthy();
+    expect(screen.getByText("How should elizaOS run?")).toBeTruthy();
     expect(screen.getByText("Eliza Cloud")).toBeTruthy();
     expect(screen.getByText("This device")).toBeTruthy();
     expect(screen.getByTestId("onboarding-option-cloud")).toBeTruthy();
