@@ -127,6 +127,14 @@ const CRLF = "\r\n";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8");
 
+// Hard ceiling for a single SocketRedis operation (connect + AUTH + command).
+// `cloudflare:sockets` connect()/read() never time out on their own, so an
+// unreachable or stalled origin (e.g. a Railway TCP proxy that accepts the
+// connection but never speaks RESP) would otherwise block the caller for the
+// whole request wall-clock. With this bound a stall throws instead, and
+// CacheClient falls back to revalidate/DB — the cache degrades, never hangs.
+const SOCKET_OP_TIMEOUT_MS = 1000;
+
 function encodeCommand(args: ReadonlyArray<string | number>): Uint8Array {
   let out = `*${args.length}${CRLF}`;
   for (const arg of args) {
@@ -263,10 +271,39 @@ class Connection {
     });
     try {
       await previous;
-      await this.ensureOpen();
-      return await this.sendRaw(commands);
+      return await this.withTimeout(async () => {
+        await this.ensureOpen();
+        return await this.sendRaw(commands);
+      });
     } finally {
       release();
+    }
+  }
+
+  /**
+   * Bound a single connect+command to {@link SOCKET_OP_TIMEOUT_MS}. On timeout
+   * the socket may be half-open or stalled, so it is closed (forcing a fresh
+   * reconnect next call) and the error propagates to the caller, which falls
+   * back to its non-cached path instead of hanging.
+   */
+  private async withTimeout<T>(fn: () => Promise<T>): Promise<T> {
+    const op = fn();
+    // The losing side of the race keeps running; swallow its late rejection so
+    // a post-timeout socket error doesn't surface as an unhandled rejection.
+    op.catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        reject(new Error(`SocketRedis operation timed out after ${SOCKET_OP_TIMEOUT_MS}ms`));
+      }, SOCKET_OP_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([op, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (timedOut) await this.close().catch(() => {});
     }
   }
 
