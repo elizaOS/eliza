@@ -1,8 +1,8 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
-import * as realAgentSandboxesRepository from "../../db/repositories/agent-sandboxes";
+import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import * as realDbSchemas from "../../db/schemas";
-import * as realElizaSandbox from "./eliza-sandbox";
+import { elizaSandboxService } from "./eliza-sandbox";
 
 const findByPhoneNumberWithOrganization = mock();
 const listByOrganization = mock();
@@ -68,12 +68,14 @@ mock.module("../../db/repositories/users", () => ({
   },
 }));
 
-mock.module("../../db/repositories/agent-sandboxes", () => ({
-  agentSandboxesRepository: {
-    listByOrganization,
-    findRunningSandbox,
-  },
-}));
+const listByOrganizationSpy = spyOn(
+  agentSandboxesRepository,
+  "listByOrganization",
+).mockImplementation((...args) => listByOrganization(...args) as never);
+const findRunningSandboxSpy = spyOn(
+  agentSandboxesRepository,
+  "findRunningSandbox",
+).mockImplementation((...args) => findRunningSandbox(...args) as never);
 
 mock.module("../../db/schemas", () => ({
   ...realDbSchemas,
@@ -133,11 +135,9 @@ mock.module("./agent-gateway-relay", () => ({
   },
 }));
 
-mock.module("./eliza-sandbox", () => ({
-  elizaSandboxService: {
-    bridge,
-  },
-}));
+const bridgeSpy = spyOn(elizaSandboxService, "bridge").mockImplementation(
+  (...args) => bridge(...args) as never,
+);
 
 mock.module("./eliza-agent-config", () => ({
   readManagedAgentDiscordBinding: mock(() => null),
@@ -145,8 +145,9 @@ mock.module("./eliza-agent-config", () => ({
 }));
 
 afterAll(() => {
-  mock.module("../../db/repositories/agent-sandboxes", () => realAgentSandboxesRepository);
-  mock.module("./eliza-sandbox", () => realElizaSandbox);
+  listByOrganizationSpy.mockRestore();
+  findRunningSandboxSpy.mockRestore();
+  bridgeSpy.mockRestore();
 });
 
 const { AgentGatewayRouterService } = await import("./agent-gateway-router");
