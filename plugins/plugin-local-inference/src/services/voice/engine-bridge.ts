@@ -664,6 +664,33 @@ export interface EngineVoiceBridgeOptions {
 	 * Has no effect when `runtime` is unset (no coordinator is constructed).
 	 */
 	slotAbort?: (slotId: number, reason: VoiceCancellationReason) => void;
+	/**
+	 * Live speaker-attribution gating. When set alongside a `profileStore` AND
+	 * a full `runtime` (with `emitEvent`), `runVoiceTurn` automatically:
+	 *   1. emits `VOICE_TURN_OBSERVED` for every attributed turn, and
+	 *   2. folds the diarization decision into the turn's `voiceTurnSignal`
+	 *      (stamped onto `output.turn.metadata`) so the server gate
+	 *      `core.voice_turn_signal` can suppress confident-bystander cross-talk.
+	 *
+	 * `knownSpeakerEntityIds` / `ownerEntityId` may be functions so the caller
+	 * can resolve the enrolled-speaker set lazily per turn (the household roster
+	 * changes as people are named). When omitted, attribution still emits
+	 * `VOICE_TURN_OBSERVED` and produces a fail-open signal (no bystander
+	 * suppression — every attribution is treated as potentially addressed to us).
+	 */
+	liveAttribution?: LiveAttributionConfig;
+}
+
+/** Gating inputs for the automatic live-attribution → voiceTurnSignal seam. */
+export interface LiveAttributionConfig {
+	/** Owner / primary-enrolled entity id (always allowed to speak). */
+	ownerEntityId?: string | (() => string | null | undefined);
+	/** Entity ids the agent answers without a wake word (owner + enrolled). */
+	knownSpeakerEntityIds?:
+		| readonly string[]
+		| (() => readonly string[] | undefined);
+	/** True when a wake word fired within the recent listen window. */
+	wakeWordActive?: boolean | (() => boolean);
 }
 
 export function createKokoroTtsBackend(
@@ -740,6 +767,50 @@ interface PendingCancellationWiring {
 	bindTtsStop(stop: () => void): void;
 }
 
+/**
+ * True when `runtime` is a full `IAgentRuntime` (exposes `emitEvent`) rather
+ * than the structural `CoordinatorRuntime` a test may pass. Only an
+ * event-capable runtime can drive the automatic `VOICE_TURN_OBSERVED` emit.
+ */
+function isEventRuntime(
+	runtime: IAgentRuntime | CoordinatorRuntime | undefined,
+): runtime is IAgentRuntime {
+	return (
+		runtime !== undefined &&
+		typeof (runtime as { emitEvent?: unknown }).emitEvent === "function"
+	);
+}
+
+/**
+ * Flatten the (possibly lazy) `LiveAttributionConfig` into the plain options
+ * the runtime helper consumes. Resolved per turn so a changing household roster
+ * is picked up without re-arming voice.
+ */
+function resolveLiveAttributionOptions(cfg: LiveAttributionConfig | null): {
+	ownerEntityId?: string | null;
+	knownSpeakerEntityIds?: readonly string[];
+	wakeWordActive?: boolean;
+} {
+	if (!cfg) return {};
+	const ownerEntityId =
+		typeof cfg.ownerEntityId === "function"
+			? cfg.ownerEntityId()
+			: cfg.ownerEntityId;
+	const knownSpeakerEntityIds =
+		typeof cfg.knownSpeakerEntityIds === "function"
+			? cfg.knownSpeakerEntityIds()
+			: cfg.knownSpeakerEntityIds;
+	const wakeWordActive =
+		typeof cfg.wakeWordActive === "function"
+			? cfg.wakeWordActive()
+			: cfg.wakeWordActive;
+	return {
+		...(ownerEntityId !== undefined ? { ownerEntityId } : {}),
+		...(knownSpeakerEntityIds !== undefined ? { knownSpeakerEntityIds } : {}),
+		...(wakeWordActive !== undefined ? { wakeWordActive } : {}),
+	};
+}
+
 function buildCancellationWiring(
 	opts: EngineVoiceBridgeOptions,
 ): PendingCancellationWiring | null {
@@ -797,6 +868,16 @@ export class EngineVoiceBridge {
 	 */
 	private readonly attributionPipeline: VoiceAttributionPipeline | null;
 	/**
+	 * Full agent runtime, retained only when `opts.runtime` supports
+	 * `emitEvent` (i.e. it is a real `IAgentRuntime`, not the structural
+	 * `CoordinatorRuntime` a test may pass). Used by the automatic
+	 * live-attribution seam in `runVoiceTurn` to emit `VOICE_TURN_OBSERVED`.
+	 * Null when no event-capable runtime was supplied.
+	 */
+	private readonly eventRuntime: IAgentRuntime | null;
+	/** Gating inputs for the live-attribution → voiceTurnSignal seam. */
+	private readonly liveAttribution: LiveAttributionConfig | null;
+	/**
 	 * W3-9 / F1 — voice cancellation coordinator. Populated when the bridge
 	 * was created with a `runtime` option. Owns one
 	 * `VoiceCancellationToken` per active `roomId` and fans abort out to
@@ -832,6 +913,8 @@ export class EngineVoiceBridge {
 		attributionPipeline: VoiceAttributionPipeline | null = null,
 		cancellationCoordinator: VoiceCancellationCoordinator | null = null,
 		optimisticGenerationPolicy: OptimisticGenerationPolicy | null = null,
+		eventRuntime: IAgentRuntime | null = null,
+		liveAttribution: LiveAttributionConfig | null = null,
 	) {
 		this.scheduler = scheduler;
 		this.backend = backend;
@@ -844,6 +927,8 @@ export class EngineVoiceBridge {
 		this.attributionPipeline = attributionPipeline;
 		this.cancellationCoordinator = cancellationCoordinator;
 		this.optimisticGenerationPolicy = optimisticGenerationPolicy;
+		this.eventRuntime = eventRuntime;
+		this.liveAttribution = liveAttribution;
 	}
 
 	get ffiCtx(): ElizaInferenceContextHandle | null {
@@ -1134,6 +1219,8 @@ export class EngineVoiceBridge {
 			attributionPipeline,
 			wiring?.coordinator ?? null,
 			wiring?.policy ?? null,
+			isEventRuntime(opts.runtime) ? opts.runtime : null,
+			opts.liveAttribution ?? null,
 		);
 		if (wiring) wiring.bindTtsStop(() => bridge.triggerBargeIn());
 		return bridge;
@@ -1639,16 +1726,38 @@ export class EngineVoiceBridge {
 		// but runs through the diarizer + encoder + profile-store independently.
 		// It is fire-and-forget from the pipeline's perspective: the result
 		// arrives via `onAttribution` asynchronously (possibly after onComplete).
-		if (this.attributionPipeline && events?.onAttribution) {
-			const onAttribution = events.onAttribution;
+		if (
+			this.attributionPipeline &&
+			(events?.onAttribution || this.eventRuntime)
+		) {
+			const onAttribution = events?.onAttribution;
 			const attribution = this.attributionPipeline;
+			const eventRuntime = this.eventRuntime;
+			const liveAttribution = this.liveAttribution;
 			const turnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 			void attribution
 				.attribute({
 					turnId,
 					pcm: audio.pcm,
 				})
-				.then(onAttribution)
+				.then(async (output) => {
+					// Automatic seam: when a full runtime is wired, emit
+					// VOICE_TURN_OBSERVED and fold the speaker decision into the
+					// turn's voiceTurnSignal BEFORE handing the (now-stamped)
+					// output to the caller. Any caller with a profileStore +
+					// runtime gets diarization-driven gating for free.
+					if (eventRuntime) {
+						const { handleLiveVoiceAttribution } = await import(
+							"../../runtime/voice-entity-binding.js"
+						);
+						await handleLiveVoiceAttribution(
+							eventRuntime,
+							output,
+							resolveLiveAttributionOptions(liveAttribution),
+						);
+					}
+					onAttribution?.(output);
+				})
 				.catch((err: unknown) => {
 					// Attribution failures must not crash the turn. Log and continue.
 					logger.warn(

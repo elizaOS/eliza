@@ -25,6 +25,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { handleLiveVoiceAttribution } from "../../../plugins/plugin-local-inference/src/runtime/voice-entity-binding.ts";
 import { VoiceProfileStore } from "../../../plugins/plugin-local-inference/src/services/voice/profile-store.ts";
 import { VoiceAttributionPipeline } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/attribution-pipeline.ts";
 import { PyannoteDiarizer } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/diarizer.ts";
@@ -229,6 +230,111 @@ console.log(
     "Pipeline re-matches the same speaker and carries the bound entityId",
     r2.primarySpeaker?.entityId === "entity-speaker-a",
     `entity=${r2.primarySpeaker?.entityId ?? "null"} conf=${r2.primarySpeaker?.confidence?.toFixed(3)}`,
+  );
+
+  // ── handleLiveVoiceAttribution against the REAL attribution output ──────────
+  // The runtime helper folds the diarization decision into the turn's
+  // voiceTurnSignal (the gate the server reads). Same real `r2` output, two
+  // gating contexts:
+  //   (1) the matched entity IS the owner            → agent speaks
+  //   (2) the matched entity is a CONFIDENT bystander → suppressed (no wake word)
+  const emitted: Array<Record<string, unknown>> = [];
+  const fakeRuntime = {
+    emitEvent: async (_type: unknown, payload: Record<string, unknown>) => {
+      emitted.push(payload);
+    },
+  } as never;
+
+  // HONEST real-model behavior: a freshly-enrolled profile caps re-match
+  // confidence well below the 0.7 bystander-suppress threshold (the profile's
+  // confidence grows with sampleCount via Welford). So on a SINGLE turn the
+  // confidence-based bystander gate does NOT fire — the agent fails OPEN
+  // (responds) rather than risk silencing the owner on an uncertain match. The
+  // gate becomes active only once a speaker's profile has refined over many
+  // turns / an explicit enrollment flow. The suppression LOGIC at high
+  // confidence is proven below (and in voice-entity-binding.test.ts).
+  const conf = r2.primarySpeaker?.confidence ?? 0;
+  ok(
+    "Real fresh-profile re-match confidence is modest (< 0.7 → fail-open, conservative)",
+    conf > 0 && conf < 0.7,
+    `conf=${conf.toFixed(3)} (bystander gate stays open until the profile refines)`,
+  );
+
+  const ownerSignal = await handleLiveVoiceAttribution(fakeRuntime, r2, {
+    ownerEntityId: "entity-speaker-a",
+    knownSpeakerEntityIds: ["entity-speaker-a"],
+    endOfTurnProbability: 0.95,
+  });
+  ok(
+    "handleLiveVoiceAttribution: enrolled OWNER turn → agent speaks",
+    ownerSignal.agentShouldSpeak === true &&
+      ownerSignal.nextSpeaker === "agent",
+    `agentShouldSpeak=${ownerSignal.agentShouldSpeak} next=${ownerSignal.nextSpeaker}`,
+  );
+  ok(
+    "handleLiveVoiceAttribution: stamps voiceTurnSignal onto the turn metadata",
+    (r2.turn.metadata as { voiceTurnSignal?: unknown } | undefined)
+      ?.voiceTurnSignal === ownerSignal,
+  );
+  ok(
+    "handleLiveVoiceAttribution: emits VOICE_TURN_OBSERVED for the attributed turn",
+    emitted.length === 1 && emitted[0]?.matchedEntityId === "entity-speaker-a",
+    `emits=${emitted.length} matchedEntityId=${String(emitted[0]?.matchedEntityId)}`,
+  );
+
+  // Same real turn, but the speaker is NOT the owner/enrolled. At the real
+  // fresh-profile confidence (~0.5) this is an UNCERTAIN attribution → the gate
+  // fails OPEN (agent still responds). This is the safe single-turn default.
+  const uncertainBystander = await handleLiveVoiceAttribution(fakeRuntime, r2, {
+    ownerEntityId: "entity-someone-else",
+    knownSpeakerEntityIds: ["entity-someone-else"], // speaker-a is NOT enrolled
+    endOfTurnProbability: 0.95,
+  });
+  ok(
+    "handleLiveVoiceAttribution: UNCERTAIN bystander (real ~0.5 conf) → fails open (agent speaks)",
+    uncertainBystander.agentShouldSpeak === true,
+    `agentShouldSpeak=${uncertainBystander.agentShouldSpeak} conf=${conf.toFixed(3)}`,
+  );
+
+  // A REFINED profile (many turns) pushes match confidence past 0.7. Simulate
+  // that by bumping the real output's confidence, and prove the bystander gate
+  // then fires: a confident non-owner with no wake word is suppressed.
+  const refined = {
+    ...r2,
+    primarySpeaker: r2.primarySpeaker
+      ? { ...r2.primarySpeaker, confidence: 0.9 }
+      : r2.primarySpeaker,
+    observation: r2.observation
+      ? { ...r2.observation, confidence: 0.9 }
+      : r2.observation,
+    turn: { ...r2.turn, metadata: { ...r2.turn.metadata } },
+  } as typeof r2;
+  const bystanderSignal = await handleLiveVoiceAttribution(
+    fakeRuntime,
+    refined,
+    {
+      ownerEntityId: "entity-someone-else",
+      knownSpeakerEntityIds: ["entity-someone-else"],
+      endOfTurnProbability: 0.95, // EOT says complete; bystander gate must win
+    },
+  );
+  ok(
+    "handleLiveVoiceAttribution: CONFIDENT bystander (refined profile, no wake word) → suppressed",
+    bystanderSignal.agentShouldSpeak === false &&
+      bystanderSignal.nextSpeaker === "user",
+    `agentShouldSpeak=${bystanderSignal.agentShouldSpeak} next=${bystanderSignal.nextSpeaker}`,
+  );
+
+  const wakeSignal = await handleLiveVoiceAttribution(fakeRuntime, refined, {
+    ownerEntityId: "entity-someone-else",
+    knownSpeakerEntityIds: ["entity-someone-else"],
+    endOfTurnProbability: 0.95,
+    wakeWordActive: true, // explicit address overrides bystander doubt
+  });
+  ok(
+    "handleLiveVoiceAttribution: wake word overrides bystander suppression",
+    wakeSignal.agentShouldSpeak === true && wakeSignal.nextSpeaker === "agent",
+    `agentShouldSpeak=${wakeSignal.agentShouldSpeak} next=${wakeSignal.nextSpeaker}`,
   );
 
   await encoder.dispose();
