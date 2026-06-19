@@ -1,13 +1,13 @@
 import {
   ArrowRight,
   ChevronLeft,
+  Cloud,
   Loader2,
   MailCheck,
   Mic,
   MicOff,
   Settings2,
   ShieldCheck,
-  Sparkles,
   Volume2,
 } from "lucide-react";
 import * as React from "react";
@@ -247,7 +247,9 @@ export function CompactOnboarding(): React.ReactElement {
                 <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/[0.12]">
                   <MailCheck className="h-6 w-6" />
                 </span>
-                <h1 className="text-[18px] font-semibold">Almost there</h1>
+                <h1 className="text-[18px] font-semibold">
+                  Sign in to Eliza Cloud
+                </h1>
                 <button
                   type="button"
                   data-testid="onboarding-cloud-open-signin"
@@ -257,9 +259,6 @@ export function CompactOnboarding(): React.ReactElement {
                   Open sign-in page
                   <ArrowRight className="h-4 w-4" />
                 </button>
-                <p className="text-[11px] text-white/50">
-                  Waiting for you to finish…
-                </p>
               </div>
             ) : (
               // WELCOME / CHOICE — one warm headline, one obvious primary action,
@@ -279,7 +278,7 @@ export function CompactOnboarding(): React.ReactElement {
                     className="group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-[transform,box-shadow,opacity] duration-200 ease-out hover:shadow-[0_12px_30px_-8px_rgba(0,0,0,0.45)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10">
-                      <Sparkles className="h-5 w-5 text-[#FF5800]" />
+                      <Cloud className="h-5 w-5 text-[#FF5800]" />
                     </span>
                     <span className="flex min-w-0 flex-1 items-center gap-2">
                       <span className="text-[17px] font-semibold leading-tight text-[#FF5800]">
