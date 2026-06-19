@@ -178,7 +178,7 @@ describe("PhraseChunker first-phrase budget (TTFA)", () => {
 	});
 
 	it("derives the first-phrase budget from maxAccumulationMs when unset (half, capped 350)", () => {
-		let now = 0;
+		const now = 0;
 		const clock: ClockMs = () => now;
 		// 700ms full → first-phrase budget = min(350, 350) = 350.
 		const chunker = new PhraseChunker(
@@ -222,7 +222,7 @@ describe("PhraseChunker first-phrase budget (TTFA)", () => {
 	});
 
 	it("clamps an explicit first-phrase budget to the full budget", () => {
-		let now = 0;
+		const now = 0;
 		const clock: ClockMs = () => now;
 		const chunker = new PhraseChunker(
 			{
