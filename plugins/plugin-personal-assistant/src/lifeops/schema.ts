@@ -321,6 +321,8 @@ export const lifeAuditEvents = appLifeopsPgSchema.table(
 // them in app_lifeops; the finances plugin owns + migrates them. PA's raw
 // finance SQL (repository.ts) targets app_finances directly.
 
+// Carved to @elizaos/plugin-inbox (`app_inbox`); kept here only as the
+// non-destructive migration source. See the inbox-triage note further down.
 export const lifeEmailUnsubscribes = appLifeopsPgSchema.table(
   "life_email_unsubscribes",
   {
@@ -867,6 +869,12 @@ export const lifeEscalationStates = appLifeopsPgSchema.table(
   ],
 );
 
+// NOTE: the inbox-triage tables (life_inbox_triage_entries /
+// life_inbox_triage_examples) and life_email_unsubscribes (above) were carved
+// out to @elizaos/plugin-inbox (`app_inbox`). These app_lifeops defs remain only
+// as the non-destructive migration SOURCE — plugin-inbox's repositories now
+// read/write the app_inbox copies. (The life_gmail_* / life_inbox_messages
+// projection tables stay PA-owned — they are not part of the triage domain.)
 export const lifeInboxTriageEntries = appLifeopsPgSchema.table(
   "life_inbox_triage_entries",
   {
