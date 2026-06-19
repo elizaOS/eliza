@@ -189,6 +189,12 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
   const tls = hyperdriveUrl ? { url: hyperdriveUrl, ssl: undefined } : enforceTlsForRemote(url);
   const options: PoolConfig = { connectionString: tls.url };
   if (tls.ssl) options.ssl = tls.ssl;
+  // Identify our connections in pg_stat_activity. Railway sets
+  // RAILWAY_SERVICE_NAME per service, so on a shared Postgres a connection leak
+  // (or a service hogging the pool) can be attributed to the right service
+  // instead of showing as an anonymous "" backend — which is exactly what made
+  // the 2026-06-19 "too many clients" incident hard to triage.
+  options.application_name = env.RAILWAY_SERVICE_NAME || "eliza-cloud-shared";
 
   if (inWorkerRuntime) {
     options.max = parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 1);

@@ -352,7 +352,10 @@ function getBitRouterLanguageModel(model: string) {
  * (402/429/5xx) do we fall over to OpenRouter. A no-op when OPENROUTER_API_KEY
  * is unset, so healthy paths and OpenRouter-less deployments are unchanged.
  */
-function withOpenRouterFallback(primaryModel: ReturnType<typeof getBitRouterLanguageModel>, model: string) {
+function withOpenRouterFallback(
+  primaryModel: ReturnType<typeof getBitRouterLanguageModel>,
+  model: string,
+) {
   if (!getOpenRouterApiKey()) {
     return primaryModel;
   }
@@ -560,7 +563,7 @@ export function hasGroqLanguageModelProviderConfigured(): boolean {
 
 export function resolveAiProviderSource(
   model: string,
-): "groq" | "vast" | "bitrouter" | "openrouter" | "gateway" | "cerebras" | "openai" | "anthropic" | null {
+): "groq" | "vast" | "bitrouter" | "gateway" | "cerebras" | "openai" | "anthropic" | null {
   if (isGroqNativeModel(model)) {
     return getProviderKey("GROQ_API_KEY") ? "groq" : null;
   }
@@ -582,8 +585,11 @@ export function resolveAiProviderSource(
     return "bitrouter";
   }
 
+  // OpenRouter shares BitRouter's catalog and pricing (its price rows are stored
+  // under billingSource "bitrouter" — see ai-pricing/providers/openrouter.ts), so
+  // when OpenRouter serves these (BitRouter unset), bill them as "bitrouter".
   if (requiresBitRouterRouting(model)) {
-    return getOpenRouterApiKey() ? "openrouter" : null;
+    return getOpenRouterApiKey() ? "bitrouter" : null;
   }
 
   if (getVercelAIGatewayApiKey()) {
@@ -598,8 +604,10 @@ export function resolveAiProviderSource(
     return "anthropic";
   }
 
+  // Catch-all: OpenRouter (BYOK) serves any remaining catalog model; its prices
+  // are catalogued under "bitrouter" (see comment above).
   if (getOpenRouterApiKey()) {
-    return "openrouter";
+    return "bitrouter";
   }
 
   return null;

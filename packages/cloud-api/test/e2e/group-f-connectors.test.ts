@@ -5,7 +5,6 @@
  *   /api/eliza-app/connections
  *   /api/eliza-app/connections/:platform/initiate
  *   /api/eliza-app/gateway/:agentId
- *   /api/eliza-app/provision-agent
  *   /api/eliza-app/user/me
  *   /api/eliza-app/webhook/blooio        (forwards to webhook gateway)
  *   /api/eliza-app/webhook/discord       (forwards to Discord webhook handler)
@@ -24,7 +23,6 @@
  *   - /api/eliza-app/webhook/* — public (no global auth gate)
  *   - /api/eliza-app/user/*   — public (handler does its own session check)
  *   - /api/eliza-app/gateway/* — public
- *   - /api/eliza-app/provision-agent — public
  *   - /api/eliza/* — public
  *   - /api/webhooks/* — public
  *   - /api/eliza-app/connections requires an eliza-app session token
@@ -244,53 +242,6 @@ describe("POST /api/eliza-app/gateway/:agentId", () => {
       },
     );
     expect([400, 500]).toContain(res.status);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// /api/eliza-app/provision-agent
-// ---------------------------------------------------------------------------
-
-describe("POST /api/eliza-app/provision-agent", () => {
-  // Public path — no auth gate.
-
-  test("missing userId → 400", async () => {
-    const res = await api.post("/api/eliza-app/provision-agent", {
-      name: "Test Agent",
-      mode: "Chat",
-    });
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { success?: boolean; error?: string };
-    expect(body.success).toBe(false);
-    expect(body.error).toMatch(/missing required fields/i);
-  });
-
-  test("missing mode → 400", async () => {
-    const res = await api.post("/api/eliza-app/provision-agent", {
-      userId: "user-123",
-      name: "Test Agent",
-    });
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { success?: boolean };
-    expect(body.success).toBe(false);
-  });
-
-  test("valid body → 200 with agentId", async () => {
-    const res = await api.post("/api/eliza-app/provision-agent", {
-      userId: "user-test-123",
-      name: "My Test Agent",
-      mode: "Chat",
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      success?: boolean;
-      agentId?: string;
-      gatewayUrl?: string;
-    };
-    expect(body.success).toBe(true);
-    expect(typeof body.agentId).toBe("string");
-    expect(body.agentId?.startsWith("agent-")).toBe(true);
-    expect(typeof body.gatewayUrl).toBe("string");
   });
 });
 
