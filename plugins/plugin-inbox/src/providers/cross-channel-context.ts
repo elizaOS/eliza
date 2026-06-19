@@ -47,8 +47,7 @@ async function resolveSenderLabel(
       const entity = await runtime.getEntityById?.(entityId);
       const metaName = entity?.metadata?.name;
       name =
-        entity?.names?.[0] ??
-        (typeof metaName === "string" ? metaName : null);
+        entity?.names?.[0] ?? (typeof metaName === "string" ? metaName : null);
     } catch {
       // entity lookup is best-effort
     }
@@ -77,13 +76,31 @@ function matchesSender(
   return false;
 }
 
+function escapeMarkdownText(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("`", "\\`")
+    .replaceAll("*", "\\*")
+    .replaceAll("_", "\\_")
+    .replaceAll("[", "\\[")
+    .replaceAll("]", "\\]")
+    .replaceAll("(", "\\(")
+    .replaceAll(")", "\\)")
+    .replaceAll("#", "\\#")
+    .replaceAll(">", "\\>")
+    .replaceAll("|", "\\|")
+    .replaceAll("\n", " ");
+}
+
 function formatEntry(entry: TriageEntry): string {
   const when = entry.createdAt
-    ? new Date(entry.createdAt).toLocaleDateString()
+    ? new Date(entry.createdAt).toISOString().slice(0, 10)
     : "recently";
-  const snippet = entry.snippet.slice(0, 80);
+  const channelName = escapeMarkdownText(entry.channelName);
+  const source = escapeMarkdownText(entry.source);
+  const snippet = escapeMarkdownText(entry.snippet.slice(0, 80));
   const tag = entry.classification === "urgent" ? " ⚠️" : "";
-  return `- **${entry.channelName}** (${entry.source}, ${when})${tag}: "${snippet}"`;
+  return `- **${channelName}** (${source}, ${when})${tag}: "${snippet}"`;
 }
 
 export const crossChannelContextProvider: Provider = {
@@ -124,22 +141,24 @@ export const crossChannelContextProvider: Provider = {
 
     let entries: TriageEntry[];
     try {
-      entries = await repo.getUnresolved({ limit: 200 });
+      entries = await repo.getUnresolvedForSender({
+        sourceEntityId: entityId,
+        senderName: name,
+        excludeSource: currentSource,
+        limit: MAX_ENTRIES,
+      });
     } catch (error) {
-      logger.debug(
-        "[cross-channel-context] DB query failed:",
-        String(error),
-      );
+      logger.debug("[cross-channel-context] DB query failed:", String(error));
       return EMPTY;
     }
 
-    const matched = entries
-      .filter((e) => matchesSender(e, entityId, name, currentSource))
-      .slice(0, MAX_ENTRIES);
+    const matched = entries.filter((e) =>
+      matchesSender(e, entityId, name, currentSource),
+    );
 
     if (matched.length === 0) return EMPTY;
 
-    const senderLabel = name ?? entityId ?? "this sender";
+    const senderLabel = escapeMarkdownText(name ?? entityId ?? "this sender");
     const lines: string[] = [
       `# ${senderLabel} — cross-channel activity (${matched.length} threads)`,
     ];
