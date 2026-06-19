@@ -90,7 +90,7 @@ jobs:
       - name: Setup Bun workspace
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.10"
+          bun-version: "canary"
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           install-native-deps: "false"
           run-postinstall: "false"
@@ -110,7 +110,7 @@ jobs:
 
       - name: Build preload bridge
         working-directory: packages/app-core/platforms/electrobun
-        # Invoke node directly to sidestep the Bun 1.3.x Windows bin-remap bug
-        # that breaks `bun run <script>` when the script alias shells out to
-        # another bin (node). The package.json script is literally this command.
+        # Invoke node directly because the package.json script is literally
+        # this command, and keeping the smoke minimal makes Windows failures
+        # easier to attribute to preload generation.
         run: node ../../scripts/build-electrobun-preload.mjs

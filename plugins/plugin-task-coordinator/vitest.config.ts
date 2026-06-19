@@ -6,6 +6,7 @@ const rootDir = dirname(fileURLToPath(import.meta.url));
 const toVitePath = (value: string): string => value.replaceAll("\\", "/");
 const pluginBrowserSrc = resolve(rootDir, "../plugin-browser/src");
 const pluginTrainingSrc = resolve(rootDir, "../plugin-training/src");
+const tuiSrc = resolve(rootDir, "../../packages/tui/src");
 
 export default defineConfig({
   resolve: {
@@ -15,6 +16,14 @@ export default defineConfig({
         replacement: toVitePath(
           resolve(rootDir, "../../packages/ui/src/index.ts"),
         ),
+      },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: toVitePath(resolve(tuiSrc, "index.ts")),
+      },
+      {
+        find: /^@elizaos\/tui\/(.+)$/,
+        replacement: `${toVitePath(tuiSrc)}/$1`,
       },
       {
         find: /^@elizaos\/ui\/(.+)$/,
