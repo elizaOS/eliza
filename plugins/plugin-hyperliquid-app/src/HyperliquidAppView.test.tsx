@@ -125,8 +125,19 @@ const positions: HyperliquidPositionsResponse = {
       marginUsed: null,
       leverageType: "cross",
       leverageValue: 10,
+      markPx: "70000",
+      distanceToLiquidationPct: null,
     },
   ],
+  summary: {
+    accountValue: "996.19",
+    totalNotionalPosition: "7000",
+    totalMarginUsed: "700",
+    totalRawUsd: "996.19",
+    withdrawable: "296.19",
+    totalUnrealizedPnl: "10.00",
+    effectiveLeverage: 7000 / 996.19,
+  },
   readBlockedReason: null,
   fetchedAt: "2026-05-18T12:00:00.000Z",
 };
@@ -184,9 +195,11 @@ describe("HyperliquidAppView (standard/XR)", () => {
       container.querySelector('[data-testid="hyperliquid-shell"]'),
     ).toBeTruthy();
 
-    // Market rows render specific data: name + leverage + szDecimals.
-    const btc = await screen.findByText("BTC");
-    expect(btc).toBeTruthy();
+    // Market rows render specific data: name + leverage + szDecimals. BTC also
+    // appears in the positions panel (held BTC position), so match all and
+    // assert the market row is present alongside its unique leverage/sz cells.
+    const btc = await screen.findAllByText("BTC");
+    expect(btc.length).toBeGreaterThan(0);
     expect(screen.getByText("ETH")).toBeTruthy();
     expect(screen.getByText("40x")).toBeTruthy(); // BTC maxLeverage 40
     expect(screen.getByText("—")).toBeTruthy(); // ETH maxLeverage null -> em dash
@@ -221,7 +234,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
       makeStatus({ credentialMode: "managed_vault", signerReady: true }),
     );
     render(React.createElement(HyperliquidAppView, ctx()));
-    await screen.findByText("BTC");
+    await screen.findByText("ETH");
     const tile = screen.getByText("Managed vault");
     expect(tile).toBeTruthy();
     // ready=signerReady=true -> tile icon uses text-ok; the icon is the tile's
@@ -233,7 +246,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
   it("maps credentialMode -> Local key label", async () => {
     mockReads(makeStatus({ credentialMode: "local_key", signerReady: true }));
     render(React.createElement(HyperliquidAppView, ctx()));
-    await screen.findByText("BTC");
+    await screen.findByText("ETH");
     expect(screen.getByText("Local key")).toBeTruthy();
   });
 
@@ -245,7 +258,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
       }),
     );
     render(React.createElement(HyperliquidAppView, ctx()));
-    await screen.findByText("BTC");
+    await screen.findByText("ETH");
     expect(screen.getByText("No account")).toBeTruthy();
   });
 
@@ -254,7 +267,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
       makeStatus({ executionBlockedReason: "Execution is intentionally off." }),
     );
     render(React.createElement(HyperliquidAppView, ctx()));
-    await screen.findByText("BTC");
+    await screen.findByText("ETH");
     expect(screen.getByText("Execution is intentionally off.")).toBeTruthy();
   });
 
@@ -271,7 +284,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
       }),
     );
     render(React.createElement(HyperliquidAppView, ctx()));
-    await screen.findByText("BTC");
+    await screen.findByText("ETH");
     expect(screen.getByText("Connect a vault to sign requests.")).toBeTruthy();
   });
 
@@ -289,7 +302,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
       }),
     );
     render(React.createElement(HyperliquidAppView, ctx()));
-    await screen.findByText("BTC");
+    await screen.findByText("ETH");
     expect(screen.queryByText("Connect a vault to sign requests.")).toBeNull();
   });
 
@@ -300,6 +313,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
     hyperliquidClient.hyperliquidPositions.mockResolvedValue({
       accountAddress: null,
       positions: [],
+      summary: null,
       readBlockedReason: "Connect an account to read positions.",
       fetchedAt: null,
     });
@@ -311,7 +325,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
     });
 
     render(React.createElement(HyperliquidAppView, ctx()));
-    await screen.findByText("BTC");
+    await screen.findByText("ETH");
 
     expect(
       screen.getByText("Connect an account to read positions."),
@@ -333,7 +347,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
   it("re-invokes the read methods when the refresh button is clicked", async () => {
     mockReads();
     render(React.createElement(HyperliquidAppView, ctx()));
-    await screen.findByText("BTC");
+    await screen.findByText("ETH");
 
     expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
     expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(1);
@@ -369,7 +383,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
     mockReads();
     const exitToApps = vi.fn();
     render(React.createElement(HyperliquidAppView, ctx({ exitToApps })));
-    await screen.findByText("BTC");
+    await screen.findByText("ETH");
 
     fireEvent.click(screen.getByLabelText("Back"));
     expect(exitToApps).toHaveBeenCalledTimes(1);

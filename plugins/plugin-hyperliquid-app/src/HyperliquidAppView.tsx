@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import "./client";
 import { loadHyperliquidTuiState } from "./HyperliquidAppView.interact";
+import { HyperliquidPositionsPanel } from "./HyperliquidPositionsPanel";
 import { useHyperliquidState } from "./useHyperliquidState";
 
 function ReadinessPill({ ready, label }: { ready: boolean; label: string }) {
@@ -201,30 +202,11 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
               </section>
 
               <section className="grid gap-4">
-                <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-semibold text-txt">
-                      Positions
-                    </h2>
-                    <ReadinessPill
-                      ready={!positions?.readBlockedReason}
-                      label={
-                        positions?.readBlockedReason
-                          ? "Blocked"
-                          : "Positions readable"
-                      }
-                    />
-                  </div>
-                  {positions?.readBlockedReason ? (
-                    <div className="mt-2 truncate text-xs text-muted">
-                      {positions.readBlockedReason}
-                    </div>
-                  ) : (
-                    <div className="mt-2 text-2xl font-semibold text-txt">
-                      {positions?.positions.length ?? 0}
-                    </div>
-                  )}
-                </div>
+                <HyperliquidPositionsPanel
+                  positions={positions?.positions ?? []}
+                  summary={positions?.summary ?? null}
+                  readBlockedReason={positions?.readBlockedReason ?? null}
+                />
 
                 <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
                   <div className="flex items-center justify-between gap-3">

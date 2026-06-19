@@ -10,6 +10,7 @@ import {
   HYPERLIQUID_LOCAL_KEY_GUIDANCE,
   HYPERLIQUID_VAULT_GUIDANCE,
   type HyperliquidAccountSource,
+  type HyperliquidAccountSummary,
   type HyperliquidApiWalletStatus,
   type HyperliquidCredentialMode,
   type HyperliquidExecutionDisabledResponse,
@@ -52,10 +53,17 @@ interface HyperliquidConfig {
   apiWallet: HyperliquidApiWalletStatus;
 }
 
+interface HyperliquidClearinghouseSnapshot {
+  positions: HyperliquidPosition[];
+  summary: HyperliquidAccountSummary;
+}
+
 interface HyperliquidInfoClient {
   getMarkets(): Promise<HyperliquidMarket[]>;
   getFundingRates(): Promise<HyperliquidFundingRate[]>;
-  getPositions(accountAddress: string): Promise<HyperliquidPosition[]>;
+  getPositions(
+    accountAddress: string,
+  ): Promise<HyperliquidClearinghouseSnapshot>;
   getOpenOrders(accountAddress: string): Promise<HyperliquidOrder[]>;
 }
 
@@ -170,6 +178,7 @@ export async function handleHyperliquidRoute(
       const payload: HyperliquidPositionsResponse = {
         accountAddress: null,
         positions: [],
+        summary: null,
         readBlockedReason: config.accountBlockedReason,
         fetchedAt: null,
       };
@@ -178,9 +187,11 @@ export async function handleHyperliquidRoute(
     }
 
     try {
+      const snapshot = await client.getPositions(config.accountAddress);
       const payload: HyperliquidPositionsResponse = {
         accountAddress: config.accountAddress,
-        positions: await client.getPositions(config.accountAddress),
+        positions: snapshot.positions,
+        summary: snapshot.summary,
         readBlockedReason: null,
         fetchedAt: now().toISOString(),
       };
@@ -268,7 +279,7 @@ export function createHyperliquidInfoClient({
         type: "clearinghouseState",
         user: accountAddress,
       });
-      return parsePositions(state);
+      return parseClearinghouseState(state);
     },
     async getOpenOrders(accountAddress) {
       const orders = await infoRequest<unknown>({
@@ -436,13 +447,7 @@ function parseFundingRates(value: unknown): HyperliquidFundingRate[] {
   });
 }
 
-function parsePositions(value: unknown): HyperliquidPosition[] {
-  const record = asRecord(value, "Hyperliquid clearinghouseState response");
-  const assetPositions = record.assetPositions;
-  if (!Array.isArray(assetPositions)) {
-    throw new Error("Hyperliquid clearinghouseState missing assetPositions");
-  }
-
+function parsePositions(assetPositions: unknown[]): HyperliquidPosition[] {
   return assetPositions.map((entry) => {
     const item = asRecord(entry, "Hyperliquid asset position entry");
     const position = asRecord(item.position, "Hyperliquid position");
@@ -451,19 +456,164 @@ function parsePositions(value: unknown): HyperliquidPosition[] {
         ? null
         : asRecord(position.leverage, "Hyperliquid leverage");
 
+    const size = readRequiredString(position, "szi");
+    const positionValue = readOptionalString(position, "positionValue");
+    const liquidationPx = readOptionalString(position, "liquidationPx");
+    const markPx = computeMarkPx(positionValue, size);
+
     return {
       coin: readRequiredString(position, "coin"),
-      size: readRequiredString(position, "szi"),
+      size,
       entryPx: readOptionalString(position, "entryPx"),
-      positionValue: readOptionalString(position, "positionValue"),
+      positionValue,
       unrealizedPnl: readOptionalString(position, "unrealizedPnl"),
       returnOnEquity: readOptionalString(position, "returnOnEquity"),
-      liquidationPx: readOptionalString(position, "liquidationPx"),
+      liquidationPx,
       marginUsed: readOptionalString(position, "marginUsed"),
       leverageType: leverage ? readOptionalString(leverage, "type") : null,
       leverageValue: leverage ? readOptionalNumber(leverage, "value") : null,
+      markPx: markPx === null ? null : String(markPx),
+      distanceToLiquidationPct: computeDistanceToLiquidationPct(
+        markPx,
+        liquidationPx,
+        size,
+      ),
     };
   });
+}
+
+/**
+ * Current mark price = |positionValue| / |size|. Hyperliquid's clearinghouse
+ * snapshot already carries the live position value, so the mark is derivable
+ * without a second markets fetch. Null when either input is unreadable or the
+ * size is effectively zero.
+ */
+function computeMarkPx(
+  positionValue: string | null,
+  size: string,
+): number | null {
+  if (positionValue === null) return null;
+  const value = Number(positionValue);
+  const szi = Number(size);
+  if (!Number.isFinite(value) || !Number.isFinite(szi)) return null;
+  if (Math.abs(szi) < 1e-12) return null;
+  return Math.abs(value) / Math.abs(szi);
+}
+
+/**
+ * Distance from the current mark to the liquidation price as a percent of mark.
+ * Longs liquidate below mark ((mark - liq) / mark); shorts above ((liq - mark)
+ * / mark). The position side is read from `size` (negative szi = short). Uses
+ * the real mark, not the entry price. Null when mark/liq are unreadable.
+ */
+function computeDistanceToLiquidationPct(
+  markPx: number | null,
+  liquidationPx: string | null,
+  size: string,
+): number | null {
+  if (markPx === null || liquidationPx === null) return null;
+  const liq = Number(liquidationPx);
+  const szi = Number(size);
+  if (
+    !Number.isFinite(markPx) ||
+    !Number.isFinite(liq) ||
+    !Number.isFinite(szi) ||
+    markPx <= 0
+  ) {
+    return null;
+  }
+  const isLong = szi >= 0;
+  const distance = isLong ? (markPx - liq) / markPx : (liq - markPx) / markPx;
+  return distance * 100;
+}
+
+/**
+ * Sum each position's `unrealizedPnl` (stringified USD) into a single
+ * aggregate, returned as a fixed-2 string so the AppView renders one honest
+ * "unrealized PnL" hero stat. Returns null when no position carries a
+ * parseable PnL (e.g. a freshly funded account with no open positions).
+ */
+function sumUnrealizedPnl(positions: HyperliquidPosition[]): string | null {
+  let total = 0;
+  let seen = false;
+  for (const position of positions) {
+    if (position.unrealizedPnl === null) continue;
+    const value = Number(position.unrealizedPnl);
+    if (!Number.isFinite(value)) continue;
+    total += value;
+    seen = true;
+  }
+  return seen ? total.toFixed(2) : null;
+}
+
+function parseAccountSummary(
+  positions: HyperliquidPosition[],
+  marginSummary: Record<string, unknown> | null,
+  withdrawable: string | null,
+): HyperliquidAccountSummary {
+  const accountValue = marginSummary
+    ? readOptionalString(marginSummary, "accountValue")
+    : null;
+  const totalNotionalPosition = marginSummary
+    ? readOptionalString(marginSummary, "totalNtlPos")
+    : null;
+  return {
+    accountValue,
+    totalNotionalPosition,
+    totalMarginUsed: marginSummary
+      ? readOptionalString(marginSummary, "totalMarginUsed")
+      : null,
+    totalRawUsd: marginSummary
+      ? readOptionalString(marginSummary, "totalRawUsd")
+      : null,
+    withdrawable,
+    totalUnrealizedPnl: sumUnrealizedPnl(positions),
+    effectiveLeverage: computeEffectiveLeverage(
+      totalNotionalPosition,
+      accountValue,
+    ),
+  };
+}
+
+/**
+ * Effective account leverage = totalNotionalPosition / accountValue, computed
+ * server-side so the view only renders the number. Null when either input is
+ * unreadable or account value is non-positive.
+ */
+function computeEffectiveLeverage(
+  totalNotionalPosition: string | null,
+  accountValue: string | null,
+): number | null {
+  if (totalNotionalPosition === null || accountValue === null) return null;
+  const notional = Number(totalNotionalPosition);
+  const value = Number(accountValue);
+  if (!Number.isFinite(notional) || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return notional / value;
+}
+
+function parseClearinghouseState(value: unknown): {
+  positions: HyperliquidPosition[];
+  summary: HyperliquidAccountSummary;
+} {
+  const record = asRecord(value, "Hyperliquid clearinghouseState response");
+  const assetPositions = record.assetPositions;
+  if (!Array.isArray(assetPositions)) {
+    throw new Error("Hyperliquid clearinghouseState missing assetPositions");
+  }
+
+  const positions = parsePositions(assetPositions);
+  const marginSummary =
+    record.marginSummary === undefined || record.marginSummary === null
+      ? null
+      : asRecord(record.marginSummary, "Hyperliquid marginSummary");
+  const withdrawable = readOptionalString(record, "withdrawable");
+
+  return {
+    positions,
+    summary: parseAccountSummary(positions, marginSummary, withdrawable),
+  };
 }
 
 function parseOrders(value: unknown): HyperliquidOrder[] {
