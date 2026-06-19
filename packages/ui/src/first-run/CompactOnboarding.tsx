@@ -375,7 +375,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-option-local"
                     disabled={busy || cloudOnly}
                     onClick={chooseLocal}
-                    className="group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-4 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100"
+                    className={`group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-4 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100 ${cloudOnly ? "hidden" : ""}`}
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]">
                       <ShieldCheck className="h-5 w-5 text-white/90" />
