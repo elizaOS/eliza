@@ -5,7 +5,10 @@ import {
   type CodexAuth,
   isExpired,
 } from "../src/codex-auth";
-import { CodexBackend, translateMessagesToCodexInput } from "../src/codex-backend";
+import {
+  CodexBackend,
+  translateMessagesToCodexInput,
+} from "../src/codex-backend";
 import { parseSSE } from "../src/sse-parser";
 import { toOpenAITool } from "../src/tool-format-openai";
 
@@ -38,11 +41,17 @@ describe("codex auth helpers", () => {
 
   it("detects expired JWT access tokens with a buffer", () => {
     __setCodexAuthDeps({ now: () => 1_000_000 });
-    expect(isExpired({ ...auth, tokens: { ...auth.tokens, access_token: jwtWithExp(900) } })).toBe(
-      true
-    );
     expect(
-      isExpired({ ...auth, tokens: { ...auth.tokens, access_token: jwtWithExp(2_000) } })
+      isExpired({
+        ...auth,
+        tokens: { ...auth.tokens, access_token: jwtWithExp(900) },
+      }),
+    ).toBe(true);
+    expect(
+      isExpired({
+        ...auth,
+        tokens: { ...auth.tokens, access_token: jwtWithExp(2_000) },
+      }),
     ).toBe(false);
   });
 });
@@ -50,11 +59,12 @@ describe("codex auth helpers", () => {
 describe("SSE parser", () => {
   it("parses named events with multiline data", async () => {
     const stream = new Response(
-      'event: response.output_text.delta\ndata: {"delta":"hel"}\ndata: {"delta":"lo"}\n\n'
+      'event: response.output_text.delta\ndata: {"delta":"hel"}\ndata: {"delta":"lo"}\n\n',
     ).body;
     expect(stream).toBeTruthy();
     const events = [];
-    for await (const event of parseSSE(stream as ReadableStream<Uint8Array>)) events.push(event);
+    for await (const event of parseSSE(stream as ReadableStream<Uint8Array>))
+      events.push(event);
     expect(events).toEqual([
       {
         event: "response.output_text.delta",
@@ -71,7 +81,7 @@ describe("tool translation", () => {
         name: "search",
         description: "Search the web",
         parameters: { type: "object", properties: { q: { type: "string" } } },
-      })
+      }),
     ).toEqual({
       type: "function",
       name: "search",
@@ -120,17 +130,100 @@ describe("CodexBackend", () => {
           {
             role: "assistant",
             content: "",
-            toolCalls: [{ id: "call_1", name: "lookup", arguments: { q: "x" } }],
+            toolCalls: [
+              { id: "call_1", name: "lookup", arguments: { q: "x" } },
+            ],
           },
           { role: "tool", toolCallId: "call_1", content: "result" },
         ],
-        "fallback"
-      )
+        "fallback",
+      ),
     ).toEqual([
-      { type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] },
-      { type: "function_call", call_id: "call_1", name: "lookup", arguments: '{"q":"x"}' },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "hello" }],
+      },
+      {
+        type: "function_call",
+        call_id: "call_1",
+        name: "lookup",
+        arguments: '{"q":"x"}',
+      },
       { type: "function_call_output", call_id: "call_1", output: "result" },
-      { type: "message", role: "user", content: [{ type: "input_text", text: "fallback" }] },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "fallback" }],
+      },
+    ]);
+  });
+
+  it("preserves tool-call and tool-result CONTENT PARTS (the planner's transcript format)", () => {
+    // The planner renders prior steps as `tool-call` / `tool-result` content
+    // parts, NOT the `toolCalls` field + plain-text tool message. Dropping
+    // these made codex blind to its own fetches ("I don't have the fetched
+    // contents visible here") and re-issue the same call in a loop.
+    expect(
+      translateMessagesToCodexInput(
+        [
+          { role: "user", content: "newest nodejs version?" },
+          {
+            role: "assistant",
+            content: [
+              { type: "text", text: "Fetching the dist index." },
+              {
+                type: "tool-call",
+                toolCallId: "call_1",
+                toolName: "WEB_FETCH",
+                input: { url: "https://nodejs.org/dist/index.json" },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: [
+              {
+                type: "tool-result",
+                toolCallId: "call_1",
+                toolName: "WEB_FETCH",
+                output: {
+                  type: "text",
+                  value: 'text: [{"version":"v26.3.1"}]',
+                },
+              },
+            ],
+          },
+        ],
+        "newest nodejs version?",
+      ),
+    ).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "newest nodejs version?" }],
+      },
+      {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Fetching the dist index." }],
+      },
+      {
+        type: "function_call",
+        call_id: "call_1",
+        name: "WEB_FETCH",
+        arguments: '{"url":"https://nodejs.org/dist/index.json"}',
+      },
+      {
+        type: "function_call_output",
+        call_id: "call_1",
+        output: 'text: [{"version":"v26.3.1"}]',
+      },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "newest nodejs version?" }],
+      },
     ]);
   });
 
@@ -142,9 +235,15 @@ describe("CodexBackend", () => {
       loadAuth: async () => auth,
       fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
         bodies.push(JSON.parse(String(init?.body)));
-        expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer access");
-        expect((init?.headers as Record<string, string>)["chatgpt-account-id"]).toBe("acct_123");
-        expect((init?.headers as Record<string, string>).originator).toBe("codex_cli_rs");
+        expect((init?.headers as Record<string, string>).Authorization).toBe(
+          "Bearer access",
+        );
+        expect(
+          (init?.headers as Record<string, string>)["chatgpt-account-id"],
+        ).toBe("acct_123");
+        expect((init?.headers as Record<string, string>).originator).toBe(
+          "codex_cli_rs",
+        );
         return sseResponse([
           'event: response.output_text.delta\ndata: {"delta":"hi"}\n\n',
           'event: response.output_item.added\ndata: {"item":{"id":"item_1","type":"function_call","call_id":"call_1","name":"lookup"}}\n\n',
@@ -163,13 +262,26 @@ describe("CodexBackend", () => {
 
     expect(result).toEqual({
       text: "hi",
-      toolCalls: [{ id: "call_1", name: "lookup", arguments: { q: "x" }, type: "function" }],
+      toolCalls: [
+        {
+          id: "call_1",
+          name: "lookup",
+          arguments: { q: "x" },
+          type: "function",
+        },
+      ],
       finishReason: "tool_calls",
       usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
     });
     expect(bodies[0]).toMatchObject({
       model: "gpt-5.5",
-      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }],
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "hello" }],
+        },
+      ],
       tools: [{ type: "function", name: "lookup" }],
       tool_choice: { type: "function", name: "lookup" },
     });

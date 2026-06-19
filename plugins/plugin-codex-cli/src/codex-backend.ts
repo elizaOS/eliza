@@ -1,4 +1,10 @@
-import { logger, type ChatMessage, type JsonValue, type ToolCall, type ToolDefinition } from "@elizaos/core";
+import {
+  logger,
+  type ChatMessage,
+  type JsonValue,
+  type ToolCall,
+  type ToolDefinition,
+} from "@elizaos/core";
 import { parseSSE } from "./sse-parser";
 import { toOpenAITool, type OpenAITool } from "./tool-format-openai";
 import {
@@ -72,7 +78,11 @@ interface CodexResponseBody {
   store: false;
   stream: true;
   tools?: OpenAITool[];
-  tool_choice?: "auto" | "none" | "required" | { type: "function"; name: string };
+  tool_choice?:
+    | "auto"
+    | "none"
+    | "required"
+    | { type: "function"; name: string };
   text?: { format: { type: "json_object" } };
   // NB: the ChatGPT codex backend rejects `temperature` and `max_output_tokens`
   // (gpt-5.x reasoning models) with 400 "Unsupported parameter" — never include
@@ -96,17 +106,29 @@ export class CodexBackend {
   private readonly jitterMaxMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly loadAuth: (path: string) => Promise<CodexAuth>;
-  private readonly refreshAuth: (currentAuth: CodexAuth, path: string) => Promise<CodexAuth>;
+  private readonly refreshAuth: (
+    currentAuth: CodexAuth,
+    path: string,
+  ) => Promise<CodexAuth>;
   private readonly toolTranslator: (tool: ToolDefinition) => OpenAITool;
   private tail: Promise<unknown> = Promise.resolve();
 
   constructor(config: CodexBackendConfig = {}) {
-    this.authPath = config.authPath ?? process.env.CODEX_AUTH_PATH ?? defaultAuthPath();
+    this.authPath =
+      config.authPath ?? process.env.CODEX_AUTH_PATH ?? defaultAuthPath();
     this.model = config.model ?? process.env.CODEX_MODEL ?? DEFAULT_MODEL;
-    this.baseUrl = validateBaseUrl(stripTrailingSlash(config.baseUrl ?? process.env.CODEX_BASE_URL ?? DEFAULT_BASE_URL));
-    this.userAgent = config.userAgent ?? process.env.CODEX_USER_AGENT ?? DEFAULT_USER_AGENT;
-    this.originator = config.originator ?? process.env.CODEX_ORIGINATOR ?? DEFAULT_ORIGINATOR;
-    this.jitterMaxMs = config.jitterMaxMs ?? envInt("CODEX_JITTER_MS_MAX", DEFAULT_JITTER_MAX_MS);
+    this.baseUrl = validateBaseUrl(
+      stripTrailingSlash(
+        config.baseUrl ?? process.env.CODEX_BASE_URL ?? DEFAULT_BASE_URL,
+      ),
+    );
+    this.userAgent =
+      config.userAgent ?? process.env.CODEX_USER_AGENT ?? DEFAULT_USER_AGENT;
+    this.originator =
+      config.originator ?? process.env.CODEX_ORIGINATOR ?? DEFAULT_ORIGINATOR;
+    this.jitterMaxMs =
+      config.jitterMaxMs ??
+      envInt("CODEX_JITTER_MS_MAX", DEFAULT_JITTER_MAX_MS);
     this.fetchImpl = config.fetchImpl ?? fetch;
     this.loadAuth = config.loadAuth ?? loadCodexAuthDefault;
     this.refreshAuth = config.refreshAuth ?? refreshCodexAuthDefault;
@@ -132,11 +154,16 @@ export class CodexBackend {
     if (this.jitterMaxMs <= 0) return;
     const lo = Math.min(DEFAULT_JITTER_MIN_MS, this.jitterMaxMs);
     const span = Math.max(0, this.jitterMaxMs - lo);
-    await new Promise((resolve) => setTimeout(resolve, lo + Math.floor(Math.random() * (span + 1))));
+    await new Promise((resolve) =>
+      setTimeout(resolve, lo + Math.floor(Math.random() * (span + 1))),
+    );
   }
 
-  private async generateInner(params: CodexGenerateParams): Promise<CodexGenerateResult> {
-    const systemPrompt = params.system ?? extractSystemPrompt(params.messages) ?? "";
+  private async generateInner(
+    params: CodexGenerateParams,
+  ): Promise<CodexGenerateResult> {
+    const systemPrompt =
+      params.system ?? extractSystemPrompt(params.messages) ?? "";
     const body: CodexResponseBody = {
       model: params.model ?? this.model,
       instructions: systemPrompt,
@@ -154,24 +181,37 @@ export class CodexBackend {
     // never sends them. The runtime's planner/response-handler calls always pass
     // maxTokens (and often temperature), so forwarding them 400'd every codex
     // turn → empty result → no reply. Never send them to the codex backend.
-    if (isJsonResponse(params.responseFormat)) body.text = { format: { type: "json_object" } };
+    if (isJsonResponse(params.responseFormat))
+      body.text = { format: { type: "json_object" } };
 
     let auth = await this.loadAuth(this.authPath);
     let res = await this.postResponses(auth, body, params.abortSignal);
     if (res.status === 401) {
-      logger.warn("[codex-cli] 401 from /responses, refreshing OAuth and retrying once");
+      logger.warn(
+        "[codex-cli] 401 from /responses, refreshing OAuth and retrying once",
+      );
       auth = await this.refreshAuth(auth, this.authPath);
       res = await this.postResponses(auth, body, params.abortSignal);
     }
     if (!res.ok) {
       const errText = await safeReadText(res);
-      throw new Error(`codex /responses returned ${res.status} ${res.statusText} :: ${errText.slice(0, 512)}`);
+      throw new Error(
+        `codex /responses returned ${res.status} ${res.statusText} :: ${errText.slice(0, 512)}`,
+      );
     }
     if (!res.body) throw new Error("codex /responses returned no body");
-    return consumeResponseStream(res.body, params.abortSignal, params.onTextDelta);
+    return consumeResponseStream(
+      res.body,
+      params.abortSignal,
+      params.onTextDelta,
+    );
   }
 
-  private async postResponses(auth: CodexAuth, body: CodexResponseBody, signal?: AbortSignal): Promise<Response> {
+  private async postResponses(
+    auth: CodexAuth,
+    body: CodexResponseBody,
+    signal?: AbortSignal,
+  ): Promise<Response> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${auth.tokens.access_token}`,
       "Content-Type": "application/json",
@@ -180,7 +220,8 @@ export class CodexBackend {
       "OpenAI-Beta": "responses=v1",
       Accept: "text/event-stream",
     };
-    if (auth.tokens.account_id) headers["chatgpt-account-id"] = auth.tokens.account_id;
+    if (auth.tokens.account_id)
+      headers["chatgpt-account-id"] = auth.tokens.account_id;
     return this.fetchImpl(`${this.baseUrl}/responses`, {
       method: "POST",
       headers,
@@ -190,24 +231,74 @@ export class CodexBackend {
   }
 }
 
-export function translateMessagesToCodexInput(messages: ChatMessage[] | undefined, prompt: string): CodexInputItem[] {
+export function translateMessagesToCodexInput(
+  messages: ChatMessage[] | undefined,
+  prompt: string,
+): CodexInputItem[] {
   const out: CodexInputItem[] = [];
   if (!messages || messages.length === 0) {
     if (prompt.trim().length > 0) {
-      out.push({ type: "message", role: "user", content: [{ type: "input_text", text: prompt }] });
+      out.push({
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: prompt }],
+      });
     }
     return out;
   }
 
   let lastText = "";
+  // function_call ids emitted but not yet paired with their output, in order.
+  // The Responses API rejects a function_call_output whose call_id has no
+  // matching function_call ("No tool call found for function call output with
+  // call_id ..."), so every output must reference a real preceding call.
+  const pendingCallIds: string[] = [];
   for (const message of messages) {
     if (message.role === "system" || message.role === "developer") continue;
     if (message.role === "tool") {
-      out.push({
-        type: "function_call_output",
-        call_id: message.toolCallId ?? "tool_call",
-        output: contentToText(message.content),
-      });
+      // A tool turn carries one or more results. The planner renders them as
+      // `tool-result` CONTENT PARTS (toolCallId + output on the part); older
+      // callers put a single result in plain-text content keyed by the
+      // message-level toolCallId. Handle both so the fetched data actually
+      // reaches the model — dropping it makes the model believe its own tool
+      // call never ran ("I don't have the fetched contents visible here").
+      const resultParts = toolResultPartsFromContent(message.content);
+      const results =
+        resultParts.length > 0
+          ? resultParts
+          : [
+              {
+                toolCallId: message.toolCallId,
+                text: contentToText(message.content),
+              },
+            ];
+      for (const result of results) {
+        const wantId = result.toolCallId ?? message.toolCallId;
+        let callId: string | undefined;
+        const idx = wantId ? pendingCallIds.indexOf(wantId) : -1;
+        if (idx >= 0) {
+          callId = pendingCallIds[idx];
+          pendingCallIds.splice(idx, 1);
+        } else if (pendingCallIds.length > 0) {
+          callId = pendingCallIds.shift();
+        }
+        if (callId) {
+          out.push({
+            type: "function_call_output",
+            call_id: callId,
+            output: result.text,
+          });
+        } else if (result.text.trim().length > 0) {
+          // Orphaned tool result (no preceding function_call in this
+          // transcript): render its content as plain context instead of an
+          // unmatched function_call_output that the backend would 400 on.
+          out.push({
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: result.text }],
+          });
+        }
+      }
       continue;
     }
 
@@ -215,32 +306,65 @@ export function translateMessagesToCodexInput(messages: ChatMessage[] | undefine
       const text = contentToText(message.content);
       if (text.length > 0) {
         lastText = text;
-        out.push({ type: "message", role: "assistant", content: [{ type: "output_text", text }] });
+        out.push({
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text }],
+        });
       }
-      for (const toolCall of message.toolCalls ?? []) {
+      // Tool calls arrive either as a structured `toolCalls` field or as
+      // `tool-call` content parts (what the planner renders). Emit both,
+      // deduped by id, so the assistant's prior calls are preserved and the
+      // following tool results have a real function_call to pair with.
+      const seen = new Set<string>();
+      const toolCalls = [
+        ...(message.toolCalls ?? []).map((toolCall) => ({
+          id: toolCall.id,
+          name: toolCall.name,
+          arguments:
+            typeof toolCall.arguments === "string"
+              ? toolCall.arguments
+              : JSON.stringify(toolCall.arguments ?? {}),
+        })),
+        ...toolCallPartsFromContent(message.content),
+      ];
+      for (const toolCall of toolCalls) {
+        if (!toolCall.id || seen.has(toolCall.id)) continue;
+        seen.add(toolCall.id);
         out.push({
           type: "function_call",
           call_id: toolCall.id,
           name: toolCall.name,
-          arguments: typeof toolCall.arguments === "string" ? toolCall.arguments : JSON.stringify(toolCall.arguments ?? {}),
+          arguments: toolCall.arguments,
         });
+        pendingCallIds.push(toolCall.id);
       }
       continue;
     }
 
     const text = contentToText(message.content);
     lastText = text;
-    out.push({ type: "message", role: "user", content: [{ type: "input_text", text }] });
+    out.push({
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text }],
+    });
   }
   if (prompt.trim().length > 0 && prompt !== lastText) {
-    out.push({ type: "message", role: "user", content: [{ type: "input_text", text: prompt }] });
+    out.push({
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: prompt }],
+    });
   }
   return out;
 }
 
 function extractSystemPrompt(messages?: ChatMessage[]): string | undefined {
   const parts = messages
-    ?.filter((message) => message.role === "system" || message.role === "developer")
+    ?.filter(
+      (message) => message.role === "system" || message.role === "developer",
+    )
     .map((message) => contentToText(message.content))
     .filter(Boolean);
   return parts && parts.length > 0 ? parts.join("\n\n") : undefined;
@@ -250,9 +374,63 @@ function contentToText(content: ChatMessage["content"]): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
-    .map((part) => (part.type === "text" && typeof part.text === "string" ? part.text : ""))
+    .map((part) =>
+      part.type === "text" && typeof part.text === "string" ? part.text : "",
+    )
     .filter(Boolean)
     .join("\n");
+}
+
+/** Flatten a tool-result part's `output`/`result` into a single string. */
+function toolOutputText(output: unknown): string {
+  if (output == null) return "";
+  if (typeof output === "string") return output;
+  if (Array.isArray(output))
+    return contentToText(output as ChatMessage["content"]);
+  if (isRecord(output)) {
+    if (typeof output.value === "string") return output.value;
+    if (typeof output.text === "string") return output.text;
+    return JSON.stringify(output);
+  }
+  return String(output);
+}
+
+/** Extract `tool-result` content parts (toolCallId + flattened output text). */
+function toolResultPartsFromContent(
+  content: ChatMessage["content"],
+): Array<{ toolCallId?: string; text: string }> {
+  if (!Array.isArray(content)) return [];
+  const results: Array<{ toolCallId?: string; text: string }> = [];
+  for (const part of content) {
+    if (!isRecord(part) || part.type !== "tool-result") continue;
+    results.push({
+      toolCallId:
+        typeof part.toolCallId === "string" ? part.toolCallId : undefined,
+      text: toolOutputText(part.output ?? part.result),
+    });
+  }
+  return results;
+}
+
+/** Extract `tool-call` content parts as codex function-call descriptors. */
+function toolCallPartsFromContent(
+  content: ChatMessage["content"],
+): Array<{ id: string; name: string; arguments: string }> {
+  if (!Array.isArray(content)) return [];
+  const calls: Array<{ id: string; name: string; arguments: string }> = [];
+  for (const part of content) {
+    if (!isRecord(part) || part.type !== "tool-call") continue;
+    const argSource = part.input ?? part.args ?? {};
+    calls.push({
+      id: typeof part.toolCallId === "string" ? part.toolCallId : "",
+      name: typeof part.toolName === "string" ? part.toolName : "",
+      arguments:
+        typeof argSource === "string"
+          ? argSource
+          : JSON.stringify(argSource ?? {}),
+    });
+  }
+  return calls;
 }
 
 interface ActiveFunctionCall {
@@ -265,12 +443,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function stringProperty(record: Record<string, unknown>, key: string): string | undefined {
+function stringProperty(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
   const value = record[key];
   return typeof value === "string" ? value : undefined;
 }
 
-function recordProperty(record: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
+function recordProperty(
+  record: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> | undefined {
   const value = record[key];
   return isRecord(value) ? value : undefined;
 }
@@ -282,7 +466,12 @@ function isJsonRecord(value: unknown): value is Record<string, JsonValue> {
 
 function isJsonValue(value: unknown): value is JsonValue {
   if (value === null) return true;
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  )
+    return true;
   if (Array.isArray(value)) return value.every(isJsonValue);
   return isJsonRecord(value);
 }
@@ -290,7 +479,7 @@ function isJsonValue(value: unknown): value is JsonValue {
 async function consumeResponseStream(
   body: ReadableStream<Uint8Array>,
   abortSignal?: AbortSignal,
-  onTextDelta?: (delta: string) => void
+  onTextDelta?: (delta: string) => void,
 ): Promise<CodexGenerateResult> {
   let text = "";
   const toolCalls: ToolCall[] = [];
@@ -312,7 +501,9 @@ async function consumeResponseStream(
   try {
     while (true) {
       if (abortSignal?.aborted) throw new Error("codex stream aborted");
-      const next = abortPromise ? await Promise.race([iter.next(), abortPromise]) : await iter.next();
+      const next = abortPromise
+        ? await Promise.race([iter.next(), abortPromise])
+        : await iter.next();
       if (next.done) break;
       if (!next.value.data) continue;
       let payload: unknown;
@@ -327,7 +518,8 @@ async function consumeResponseStream(
         continue;
       }
       const payloadRecord = isRecord(payload) ? payload : {};
-      const evType = next.value.event ?? stringProperty(payloadRecord, "type") ?? "";
+      const evType =
+        next.value.event ?? stringProperty(payloadRecord, "type") ?? "";
       switch (evType) {
         case "response.output_text.delta": {
           const delta = payloadRecord.delta;
@@ -340,7 +532,8 @@ async function consumeResponseStream(
         case "response.output_item.added": {
           const item = recordProperty(payloadRecord, "item");
           if (item?.type === "function_call") {
-            const itemId = stringProperty(item, "id") ?? stringProperty(item, "call_id");
+            const itemId =
+              stringProperty(item, "id") ?? stringProperty(item, "call_id");
             const callId = stringProperty(item, "call_id");
             const name = stringProperty(item, "name");
             if (itemId && callId && name) {
@@ -359,7 +552,8 @@ async function consumeResponseStream(
         case "response.output_item.done": {
           const item = recordProperty(payloadRecord, "item");
           if (item?.type === "function_call") {
-            const itemId = stringProperty(item, "id") ?? stringProperty(item, "call_id");
+            const itemId =
+              stringProperty(item, "id") ?? stringProperty(item, "call_id");
             const call = itemId ? activeByItemId.get(itemId) : undefined;
             if (call) {
               const argStr = stringProperty(item, "arguments") ?? call.args;
@@ -374,7 +568,12 @@ async function consumeResponseStream(
               } catch {
                 // keep raw string
               }
-              toolCalls.push({ id: call.id, name: call.name, arguments: parsed, type: "function" });
+              toolCalls.push({
+                id: call.id,
+                name: call.name,
+                arguments: parsed,
+                type: "function",
+              });
               if (itemId) activeByItemId.delete(itemId);
             }
           }
@@ -388,7 +587,11 @@ async function consumeResponseStream(
           if (respUsage) {
             const inputTokens = numOrZero(respUsage.input_tokens);
             const outputTokens = numOrZero(respUsage.output_tokens);
-            usage = { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
+            usage = {
+              inputTokens,
+              outputTokens,
+              totalTokens: inputTokens + outputTokens,
+            };
           }
           return { text, toolCalls, finishReason, usage };
         }
@@ -399,14 +602,17 @@ async function consumeResponseStream(
             code: error ? stringProperty(error, "code") : undefined,
             message: error ? stringProperty(error, "message") : undefined,
           };
-          throw new Error(`codex response.failed: ${failed.code ?? "unknown"} ${failed.message ?? ""}`.trim());
+          throw new Error(
+            `codex response.failed: ${failed.code ?? "unknown"} ${failed.message ?? ""}`.trim(),
+          );
         }
         default:
           break;
       }
     }
   } finally {
-    if (abortSignal && onAbort) abortSignal.removeEventListener("abort", onAbort);
+    if (abortSignal && onAbort)
+      abortSignal.removeEventListener("abort", onAbort);
     void iter.return?.(undefined).catch(() => {});
     if (!body.locked) void body.cancel().catch(() => {});
   }
@@ -424,8 +630,14 @@ function validateBaseUrl(value: string): string {
   const url = new URL(value);
   const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
   if (url.hostname === "chatgpt.com" && url.protocol === "https:") return value;
-  if (localHosts.has(url.hostname) && (url.protocol === "http:" || url.protocol === "https:")) return value;
-  throw new Error("CODEX_BASE_URL may only target https://chatgpt.com or localhost to avoid OAuth token exfiltration");
+  if (
+    localHosts.has(url.hostname) &&
+    (url.protocol === "http:" || url.protocol === "https:")
+  )
+    return value;
+  throw new Error(
+    "CODEX_BASE_URL may only target https://chatgpt.com or localhost to avoid OAuth token exfiltration",
+  );
 }
 
 function envInt(name: string, fallback: number): number {
@@ -439,15 +651,26 @@ function numOrZero(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function isJsonResponse(responseFormat: CodexGenerateParams["responseFormat"]): boolean {
-  return responseFormat === "json_object" || (typeof responseFormat === "object" && responseFormat?.type === "json_object");
+function isJsonResponse(
+  responseFormat: CodexGenerateParams["responseFormat"],
+): boolean {
+  return (
+    responseFormat === "json_object" ||
+    (typeof responseFormat === "object" &&
+      responseFormat?.type === "json_object")
+  );
 }
 
 function toCodexToolChoice(
-  toolChoice: CodexGenerateParams["toolChoice"]
+  toolChoice: CodexGenerateParams["toolChoice"],
 ): CodexResponseBody["tool_choice"] | undefined {
   if (!toolChoice) return undefined;
-  if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
+  if (
+    toolChoice === "auto" ||
+    toolChoice === "none" ||
+    toolChoice === "required"
+  )
+    return toolChoice;
   if ("name" in toolChoice) return { type: "function", name: toolChoice.name };
   return { type: "function", name: toolChoice.function.name };
 }
