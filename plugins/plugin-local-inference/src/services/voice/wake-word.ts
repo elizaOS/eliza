@@ -82,7 +82,7 @@ export const OPENWAKEWORD_DEFAULT_HEAD = "hey-eliza";
  * definition — it is the wrong phrase.
  *
  * A real "hey eliza" head HAS been trained and verified end-to-end through
- * this exact runtime — ~98.7% true-accept / ~3.3% false-accept on a held-out
+ * this exact runtime — ~98.8% true-accept / ~3.6% false-accept on a held-out
  * set scored via `libwakeword.so` (see
  * `packages/training/scripts/wakeword/HEY_ELIZA_HEAD_PROVENANCE.md`). It must
  * be trained with `train_eliza1_wakeword_head.py --no-mel-rescale` to match

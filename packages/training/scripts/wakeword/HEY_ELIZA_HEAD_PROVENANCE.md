@@ -71,11 +71,12 @@ Measured on the held-out set through the real `libwakeword.so` FFI
 | Head featurization        | true-accept | false-accept | positive score shape |
 | ------------------------- | ----------- | ------------ | -------------------- |
 | WITH `mel/10+2` (default) | 30.8%       | 2.1%         | bimodal — fires ~1.0 or ~0 |
-| WITHOUT rescale (parity)  | **98.7%**   | **3.3%**     | confident — p10=0.999, p50=1.0 |
+| WITHOUT rescale (parity)  | **98.8%**   | **3.6%**     | confident — p10=0.999, p50=1.0 |
 
-(WITH-rescale is the full 480+800 held-out run; WITHOUT-rescale figures are the
-150+150 sample — TA holds 97–99% across thresholds 0.3–0.9. Replace with the
-full 480+800 number when re-run.)
+(WITH-rescale = full 480+800 held-out run. WITHOUT-rescale = 250 pos + 250 neg
+held-out; the 150+150 subset agrees at 98.7% / 3.3%. True-accept holds
+98.0–98.8% across thresholds 0.3–0.9; best operating point t=0.6 gives 98.8% TA
+/ 3.2% FA.)
 
 Root cause cross-checked in pure ONNX (no C runtime): scoring the held-out
 positives through the front-end WITH the rescale and the WITH-rescale head gives
