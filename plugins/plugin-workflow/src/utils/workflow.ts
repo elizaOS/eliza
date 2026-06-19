@@ -529,6 +529,14 @@ export function correctOptionParameters(workflow: WorkflowDefinition): number {
   return corrections;
 }
 
+export function normalizeWorkflowNodeParameterShapes(workflow: WorkflowDefinition): number {
+  let corrections = 0;
+  for (const node of workflow.nodes) {
+    corrections += normalizeSetNodeAssignments(node);
+  }
+  return corrections;
+}
+
 function normalizeSetNodeAssignments(node: WorkflowDefinition['nodes'][0]): number {
   if (node.type !== 'workflows-nodes-base.set' || !isRecord(node.parameters)) {
     return 0;

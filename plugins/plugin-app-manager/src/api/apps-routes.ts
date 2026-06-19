@@ -69,6 +69,16 @@ const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
+const APP_HERO_REGISTRY_CACHE_TTL_MS = 30_000;
+
+const appHeroRegistryCache = new WeakMap<
+  PluginManagerLike,
+  {
+    expiresAt: number;
+    promise: Promise<Map<string, RegistryPluginInfo>>;
+  }
+>();
+
 async function rewriteAppActionText(args: {
   runtime: IAgentRuntime;
   actionName: string;
@@ -348,11 +358,33 @@ type ResolvedAppHero =
   | { kind: "file"; absolutePath: string; contentType: string }
   | { kind: "generated"; svg: string };
 
+function refreshAppHeroRegistry(
+  pluginManager: PluginManagerLike,
+): Promise<Map<string, RegistryPluginInfo>> {
+  const now = Date.now();
+  const cached = appHeroRegistryCache.get(pluginManager);
+  if (cached && cached.expiresAt > now) {
+    return cached.promise;
+  }
+
+  const promise = pluginManager.refreshRegistry().catch((error: unknown) => {
+    if (appHeroRegistryCache.get(pluginManager)?.promise === promise) {
+      appHeroRegistryCache.delete(pluginManager);
+    }
+    throw error;
+  });
+  appHeroRegistryCache.set(pluginManager, {
+    expiresAt: now + APP_HERO_REGISTRY_CACHE_TTL_MS,
+    promise,
+  });
+  return promise;
+}
+
 async function resolveAppHero(
   pluginManager: PluginManagerLike,
   slug: string,
 ): Promise<ResolvedAppHero | null> {
-  const registry = await pluginManager.refreshRegistry();
+  const registry = await refreshAppHeroRegistry(pluginManager);
   for (const entry of registry.values()) {
     const entrySlugs = new Set<string>();
     const nameSlug = packageNameToAppRouteSlug(entry.name);

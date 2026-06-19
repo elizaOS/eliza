@@ -40,6 +40,7 @@ import {
   ensureExpressionPrefix,
   injectMissingCredentialBlocks,
   normalizeTriggerSimpleParam,
+  normalizeWorkflowNodeParameterShapes,
   positionNodes,
   validateNodeInputs,
   validateNodeParameters,
@@ -130,6 +131,19 @@ function filterPromptCandidateNodes(prompt: string, nodes: NodeSearchResult[]): 
     return nodes;
   }
   return nodes.filter((result) => result.node.name !== 'workflows-nodes-base.httpRequest');
+}
+
+function normalizeGeneratedNodeParameterShapes(
+  workflow: WorkflowDefinition,
+  context: 'generated workflow' | 'modified workflow'
+): void {
+  const fixes = normalizeWorkflowNodeParameterShapes(workflow);
+  if (fixes > 0) {
+    logger.debug(
+      { src: 'plugin:workflow:service:main' },
+      `Normalized ${fixes} node parameter shape(s) in ${context}`
+    );
+  }
 }
 
 /**
@@ -491,6 +505,7 @@ export class WorkflowService extends Service {
     }
 
     normalizeTriggerSimpleParam(workflow);
+    normalizeGeneratedNodeParameterShapes(workflow, 'generated workflow');
 
     const optionFixes = correctOptionParameters(workflow);
     if (optionFixes > 0) {
@@ -507,6 +522,7 @@ export class WorkflowService extends Service {
         `Found ${unknownParams.length} node(s) with unknown parameters, auto-correcting...`
       );
       workflow = await correctParameterNames(this.runtime, workflow, unknownParams);
+      normalizeGeneratedNodeParameterShapes(workflow, 'generated workflow');
     }
 
     const invalidRefs = validateOutputReferences(workflow);
@@ -516,6 +532,7 @@ export class WorkflowService extends Service {
         `Found ${invalidRefs.length} invalid field reference(s), auto-correcting...`
       );
       workflow = await correctFieldReferences(this.runtime, workflow, invalidRefs);
+      normalizeGeneratedNodeParameterShapes(workflow, 'generated workflow');
     }
 
     const exprPrefixed = ensureExpressionPrefix(workflow);
@@ -663,6 +680,7 @@ export class WorkflowService extends Service {
     }
 
     normalizeTriggerSimpleParam(workflow);
+    normalizeGeneratedNodeParameterShapes(workflow, 'modified workflow');
 
     const optionFixes = correctOptionParameters(workflow);
     if (optionFixes > 0) {
@@ -679,6 +697,7 @@ export class WorkflowService extends Service {
         `Found ${unknownParams.length} node(s) with unknown parameters in modified workflow, auto-correcting...`
       );
       workflow = await correctParameterNames(this.runtime, workflow, unknownParams);
+      normalizeGeneratedNodeParameterShapes(workflow, 'modified workflow');
     }
 
     const invalidRefs = validateOutputReferences(workflow);
@@ -688,6 +707,7 @@ export class WorkflowService extends Service {
         `Found ${invalidRefs.length} invalid field reference(s) in modified workflow, auto-correcting...`
       );
       workflow = await correctFieldReferences(this.runtime, workflow, invalidRefs);
+      normalizeGeneratedNodeParameterShapes(workflow, 'modified workflow');
     }
 
     const exprPrefixed = ensureExpressionPrefix(workflow);
