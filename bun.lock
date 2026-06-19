@@ -5013,6 +5013,27 @@
         "vite": "^8.0.0",
       },
     },
+    "plugins/plugin-scheduling": {
+      "name": "@elizaos/plugin-scheduling",
+      "version": "2.0.3-beta.14",
+      "dependencies": {
+        "@elizaos/agent": "workspace:*",
+        "@elizaos/app-core": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/node": "^25.0.6",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "@elizaos/plugin-sql": "workspace:*",
+      },
+    },
     "plugins/plugin-screenshare": {
       "name": "@elizaos/plugin-screenshare",
       "version": "2.0.3-beta.14",
@@ -6775,6 +6796,8 @@
     "@elizaos/plugin-roblox": ["@elizaos/plugin-roblox@workspace:plugins/plugin-roblox"],
 
     "@elizaos/plugin-scape": ["@elizaos/plugin-scape@workspace:plugins/plugin-scape"],
+
+    "@elizaos/plugin-scheduling": ["@elizaos/plugin-scheduling@workspace:plugins/plugin-scheduling"],
 
     "@elizaos/plugin-screenshare": ["@elizaos/plugin-screenshare@workspace:plugins/plugin-screenshare"],
 
