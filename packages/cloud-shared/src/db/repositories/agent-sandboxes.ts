@@ -270,6 +270,53 @@ export class AgentSandboxesRepository {
     return r;
   }
 
+  /**
+   * `disconnected` dedicated agents that are candidates for auto-recovery: they
+   * still have a tailnet bridge to dial, are not soft-deleted, and dropped
+   * recently enough (`updated_at` within `maxAgeMs`) that the container is
+   * plausibly still alive. The reconcile cycle re-probes these and restores
+   * reachable ones to `running` — the heartbeat cycle only dials `running` rows,
+   * so this is the sole automatic path back from a transient drop. Bounding by
+   * recency stops the worker re-dialing long-dead agents every cycle forever.
+   */
+  async listReconcilableDisconnected(
+    maxAgeMs = 24 * 60 * 60 * 1000,
+  ): Promise<Array<{ id: string; organization_id: string }>> {
+    const cutoff = new Date(Date.now() - maxAgeMs);
+    return dbRead
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.status, "disconnected"),
+          ne(agentSandboxes.execution_tier, "shared"),
+          sql`${agentSandboxes.bridge_url} IS NOT NULL`,
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+          sql`${agentSandboxes.updated_at} > ${cutoff}`,
+        ),
+      );
+  }
+
+  async findDisconnectedSandbox(id: string, orgId: string): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    // Primary read: the reconcile worker must see its own status writes.
+    const [r] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.organization_id, orgId),
+          eq(agentSandboxes.status, "disconnected"),
+        ),
+      )
+      .limit(1);
+    return r;
+  }
+
   async findByManagedDiscordGuildId(guildId: string): Promise<AgentSandbox[]> {
     await ensureAgentSandboxSchema();
     const trimmedGuildId = guildId.trim();

@@ -391,3 +391,99 @@ describe("ElizaSandboxService wake", () => {
     },
   );
 });
+
+describe("ElizaSandboxService reconcileDisconnected", () => {
+  function disconnectedSandbox(): AgentSandbox {
+    return { ...customSandbox(), status: "disconnected" };
+  }
+
+  test("restores a reachable disconnected agent to running and bumps heartbeat", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = disconnectedSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findDisconnectedSandbox").mockResolvedValue(
+      sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(
+      undefined as never,
+    );
+    const probed: string[] = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      probed.push(fetchUrl(input));
+      return new Response("ok", { status: 200 });
+    });
+
+    try {
+      const recovered = await new ElizaSandboxService().reconcileDisconnected(
+        sandbox.id,
+        sandbox.organization_id,
+      );
+
+      expect(recovered).toBe(true);
+      expect(probed).toEqual(["https://legacy-bridge.example/api/health"]);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      const [updatedId, patch] = updateSpy.mock.calls[0] as [string, Record<string, unknown>];
+      expect(updatedId).toBe(sandbox.id);
+      expect(patch.status).toBe("running");
+      expect(patch.last_heartbeat_at).toBeInstanceOf(Date);
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
+
+  test("leaves an unreachable disconnected agent untouched", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = disconnectedSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findDisconnectedSandbox").mockResolvedValue(
+      sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(
+      undefined as never,
+    );
+    globalThis.fetch = mock(async () => {
+      throw new Error("fetch failed");
+    });
+
+    try {
+      const recovered = await new ElizaSandboxService().reconcileDisconnected(
+        sandbox.id,
+        sandbox.organization_id,
+      );
+
+      expect(recovered).toBe(false);
+      expect(updateSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
+
+  test("no-ops when the agent is no longer disconnected", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const findSpy = spyOn(agentSandboxesRepository, "findDisconnectedSandbox").mockResolvedValue(
+      undefined,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(
+      undefined as never,
+    );
+    let fetched = false;
+    globalThis.fetch = mock(async () => {
+      fetched = true;
+      return new Response("ok", { status: 200 });
+    });
+
+    try {
+      const recovered = await new ElizaSandboxService().reconcileDisconnected(
+        "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+        "22222222-2222-4222-8222-222222222222",
+      );
+
+      expect(recovered).toBe(false);
+      expect(fetched).toBe(false);
+      expect(updateSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
+});
