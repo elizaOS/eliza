@@ -6,6 +6,7 @@
 // forward pass.
 
 import { promises as fs } from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
@@ -38,8 +39,7 @@ function defaultLibraryPath(): string {
 
 export function defaultYoloWeightsPath(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR ??
-    path.join(process.env.HOME ?? "/tmp", ".eliza");
+    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
   return (
     process.env.ELIZA_YOLO_GGUF ??
     path.join(stateDir, "models", "vision", "yolov8n.gguf")
@@ -120,7 +120,7 @@ export async function loadYoloBindings(): Promise<YoloBindings | null> {
             ],
             returns: FFIType.i32,
           },
-          yolo_classes: { args: [FFIType.pointer], returns: FFIType.cstring },
+          yolo_classes: { args: [FFIType.pointer], returns: FFIType.pointer },
           yolo_free: { args: [FFIType.pointer], returns: FFIType.void },
         });
       } catch (error) {
@@ -176,10 +176,18 @@ export async function loadYoloBindings(): Promise<YoloBindings | null> {
         },
 
         async classes(gguf) {
-          const ctx = await ensureCtx(gguf);
-          const ptrChars = lib.symbols.yolo_classes(ctx as never);
-          if (!ptrChars) return "";
-          return new CString(ptrChars as never).toString();
+          try {
+            const ctx = await ensureCtx(gguf);
+            const ptrChars = lib.symbols.yolo_classes(ctx as never);
+            if (!ptrChars) return "";
+            // returns: FFIType.pointer → ptrChars is a numeric char* address;
+            // CString reads the NUL-terminated UTF-8 from it. (A cstring return
+            // type would hand back a CString that must NOT be re-wrapped.)
+            return new CString(ptrChars as never).toString();
+          } catch {
+            // Non-fatal: the detector falls back to the hardcoded COCO list.
+            return "";
+          }
         },
 
         async dispose() {
