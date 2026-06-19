@@ -1338,6 +1338,31 @@ try {
     }
     await p.close();
   }
+
+  // ── STREAMING (bug 2): the in-flight (empty) assistant turn breathes the dots
+  // ANCHORED inside its own bubble, not as a detached "..." sibling — so the
+  // streamed text fills in right there.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(`${url}?streaming`);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(500);
+    // Open the thread so the in-flight assistant bubble is on screen.
+    await gesture(p, 400, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    const dotsInBubble = await p
+      .locator(
+        '[data-testid="thread-line"][data-role="assistant"] [data-testid="typing-dots"]',
+      )
+      .count();
+    assert(
+      dotsInBubble >= 1,
+      `STREAMING: dots are anchored inside the in-flight assistant bubble (found ${dotsInBubble})`,
+    );
+    await snap(p, "state-streaming-dots-in-bubble");
+    await p.close();
+  }
 } finally {
   await browser.close();
 }

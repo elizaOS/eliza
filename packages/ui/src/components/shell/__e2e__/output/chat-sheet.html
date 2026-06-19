@@ -26163,14 +26163,30 @@
       }
     );
   }
+  function TypingDotsInner() {
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+      "span",
+      {
+        className: "flex gap-1.5 py-1",
+        "data-testid": "typing-dots",
+        role: "status",
+        "aria-label": "assistant is responding",
+        children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          "span",
+          {
+            className: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
+            style: { animationDelay: `${i * 180}ms` }
+          },
+          i
+        ))
+      }
+    );
+  }
   function TypingDots({ reduce }) {
     return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       motion.div,
       {
         className: "mb-2.5 flex w-full justify-start",
-        "data-testid": "typing-dots",
-        role: "status",
-        "aria-label": "assistant is responding",
         initial: { opacity: 0 },
         animate: { opacity: 1 },
         exit: { opacity: 0 },
@@ -26182,14 +26198,7 @@
               "rounded-2xl rounded-bl-md border border-white/10 bg-black/45 px-3.5 py-2 text-white/90",
               FLOAT_SHADOW2
             ),
-            children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "flex gap-1.5", children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-              "span",
-              {
-                className: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
-                style: { animationDelay: `${i * 180}ms` }
-              },
-              i
-            )) })
+            children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDotsInner, {})
           }
         )
       }
@@ -26329,7 +26338,12 @@
               ) : isUser ? "bg-white/20 text-white" : "bg-white/10 text-white/90"
             ),
             children: [
-              message.content,
+              isAssistant && !message.content.trim() ? (
+                // The in-flight assistant turn (kept by visibleMessages only while
+                // responding): breathe the dots INSIDE the bubble so they're anchored
+                // where the streamed text fills in — then the text replaces them.
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDotsInner, {})
+              ) : message.content,
               /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                 motion.span,
                 {
@@ -26414,8 +26428,10 @@
     const threadRef = React7.useRef(null);
     const focusThreadRef = React7.useRef(false);
     const visibleMessages = React7.useMemo(
-      () => messages.filter((m2) => m2.content.trim()).slice(-MAX_RENDERED_MESSAGES),
-      [messages]
+      () => messages.filter(
+        (m2) => m2.content.trim() || m2.role === "assistant" && phase === "responding"
+      ).slice(-MAX_RENDERED_MESSAGES),
+      [messages, phase]
     );
     const lastId = visibleMessages.at(-1)?.id ?? null;
     const lastContent = visibleMessages.at(-1)?.content ?? "";
@@ -27263,7 +27279,7 @@
                                         },
                                         m2.id
                                       )) }),
-                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: responding ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDots, { reduce }) : null }),
+                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: responding && !(visibleMessages.at(-1)?.role === "assistant" && !visibleMessages.at(-1)?.content.trim()) ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDots, { reduce }) : null }),
                                       /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { ref: endRef })
                                     ] })
                                   }
@@ -27559,7 +27575,8 @@
   ];
   var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
   var startEmpty = params.has("empty");
-  var initialPhase = params.get("phase") ?? "summoned";
+  var streaming = params.has("streaming");
+  var initialPhase = params.get("phase") ?? (streaming ? "responding" : "summoned");
   var initialRecording = params.has("recording");
   var initialTranscript = params.get("transcript") ?? (initialRecording ? "tell me the plan for\u2026" : "");
   var initialSpeaking = params.has("speaking");
@@ -27578,7 +27595,10 @@
   ] : SEED;
   function Harness() {
     const [messages, setMessages] = React8.useState(
-      startEmpty ? [] : SEED_WITH_FAILURE
+      startEmpty ? [] : streaming ? [
+        ...SEED,
+        { id: "m-inflight", role: "assistant", content: "", createdAt: 13 }
+      ] : SEED_WITH_FAILURE
     );
     const [phase, setPhase] = React8.useState(initialPhase);
     const [recording, setRecording] = React8.useState(initialRecording);

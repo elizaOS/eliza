@@ -415,13 +415,32 @@ function PillHandle({
 }
 
 /** Three quiet, borderless dots that breathe while the assistant is replying. */
+// Just the three breathing dots — rendered INSIDE a bubble (the in-flight
+// assistant turn, so "thinking" is anchored where the reply will appear) or
+// wrapped in its own bubble by TypingDots for the pre-placeholder gap.
+function TypingDotsInner(): React.JSX.Element {
+  return (
+    <span
+      className="flex gap-1.5 py-1"
+      data-testid="typing-dots"
+      role="status"
+      aria-label="assistant is responding"
+    >
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none"
+          style={{ animationDelay: `${i * 180}ms` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
   return (
     <motion.div
       className="mb-2.5 flex w-full justify-start"
-      data-testid="typing-dots"
-      role="status"
-      aria-label="assistant is responding"
       // Fade in/out so the dots dissolve with the reply rather than popping.
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -434,15 +453,7 @@ function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
           FLOAT_SHADOW,
         )}
       >
-        <span className="flex gap-1.5">
-          {[0, 1, 2].map((i) => (
-            <span
-              key={i}
-              className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none"
-              style={{ animationDelay: `${i * 180}ms` }}
-            />
-          ))}
-        </span>
+        <TypingDotsInner />
       </div>
     </motion.div>
   );
@@ -616,7 +627,14 @@ const ThreadLine = React.memo(function ThreadLine({
               : "bg-white/10 text-white/90",
         )}
       >
-        {message.content}
+        {isAssistant && !message.content.trim() ? (
+          // The in-flight assistant turn (kept by visibleMessages only while
+          // responding): breathe the dots INSIDE the bubble so they're anchored
+          // where the streamed text fills in — then the text replaces them.
+          <TypingDotsInner />
+        ) : (
+          message.content
+        )}
         <AnimatePresence>
           {copied ? (
             <motion.span
@@ -762,8 +780,18 @@ export function ContinuousChatOverlay({
   // Filter empty turns, then keep only the most recent window (cap DOM nodes).
   const visibleMessages = React.useMemo(
     () =>
-      messages.filter((m) => m.content.trim()).slice(-MAX_RENDERED_MESSAGES),
-    [messages],
+      messages
+        // Drop empty turns — EXCEPT the in-flight assistant turn while a reply is
+        // streaming, so its bubble can show the breathing dots anchored where the
+        // text fills in (then the text replaces them). It's dropped again the
+        // moment we leave `responding`, so a failed/empty turn never lingers.
+        .filter(
+          (m) =>
+            m.content.trim() ||
+            (m.role === "assistant" && phase === "responding"),
+        )
+        .slice(-MAX_RENDERED_MESSAGES),
+    [messages, phase],
   );
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
@@ -2012,7 +2040,17 @@ export function ContinuousChatOverlay({
                       ))}
                     </AnimatePresence>
                     <AnimatePresence>
-                      {responding ? <TypingDots reduce={reduce} /> : null}
+                      {/* Fallback dots for the brief window where we're
+                          responding but the assistant placeholder turn isn't in
+                          the thread yet. Once the in-flight assistant bubble
+                          exists it carries its own dots, so don't double up. */}
+                      {responding &&
+                      !(
+                        visibleMessages.at(-1)?.role === "assistant" &&
+                        !visibleMessages.at(-1)?.content.trim()
+                      ) ? (
+                        <TypingDots reduce={reduce} />
+                      ) : null}
                     </AnimatePresence>
                     <div ref={endRef} />
                   </div>
