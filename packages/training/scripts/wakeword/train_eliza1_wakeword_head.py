@@ -387,14 +387,31 @@ def write_provenance(
     tts_source: str,
     n_positives: int,
     n_negatives: int,
+    mel_rescale: bool,
     openwakeword_release: str = OPENWAKEWORD_RELEASE,
 ) -> None:
+    # Record the exact mel preprocessing the head was trained with. This is
+    # load-bearing: the wakeword-cpp C runtime feeds the raw log-mel into the
+    # embedding model, so a head must be trained `--no-mel-rescale` to run
+    # correctly through it. Claiming the wrong featurization here would make the
+    # provenance lie about whether the head is runtime-compatible.
+    front_end = (
+        "melspectrogram.onnx -> embedding_model.onnx"
+        + (
+            " (mel/10 + 2 rescale before the embedding model — upstream openWakeWord "
+            "Python path; NOT what the wakeword-cpp C runtime feeds)"
+            if mel_rescale
+            else " (raw log-mel into the embedding model, no rescale — matches the "
+            "wakeword-cpp C runtime; required for runtime parity)"
+        )
+    )
     blob = {
         "wakePhrase": phrase,
         "headOnnx": str(head_onnx),
         "headSha256": _sha256(head_onnx) if head_onnx.is_file() else None,
         "openWakeWordRelease": openwakeword_release,
         "frontEndGraphs": list(FRONT_END_GRAPHS),
+        "melRescale": mel_rescale,
         "ttsSource": tts_source,
         "license": {
             "openWakeWord": "Apache-2.0",
@@ -407,8 +424,8 @@ def write_provenance(
         "runtimeContract": {
             "inputShape": [1, HEAD_WINDOW_EMBEDDINGS, EMBEDDING_DIM],
             "output": "scalar P(wake) in [0, 1]",
-            "frontEnd": "melspectrogram.onnx -> embedding_model.onnx (x/10 + 2 rescale before the embedding model)",
-            "consumer": "packages/app-core/src/services/local-inference/voice/wake-word.ts",
+            "frontEnd": front_end,
+            "consumer": "plugins/plugin-local-inference/src/services/voice/wake-word.ts",
         },
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -513,6 +530,7 @@ def main(argv: list[str] | None = None) -> int:
         tts_source=args.tts_source,
         n_positives=len(list(args.positives_dir.glob("*.wav"))),
         n_negatives=len(list(args.negatives_dir.glob("*.wav"))),
+        mel_rescale=not args.no_mel_rescale,
     )
     print(f"[wakeword-train] wrote provenance -> {prov}")
     print(

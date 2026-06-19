@@ -151,9 +151,14 @@ def test_tiny_real_fit_separates_synthetic_classes(tmp_path: Path) -> None:
         tts_source="synthetic (unit test)",
         n_positives=120,
         n_negatives=120,
+        mel_rescale=False,
     )
     import json
 
     blob = json.loads(prov.read_text())
     assert blob["wakePhrase"] == "hey eliza"
     assert blob["runtimeContract"]["inputShape"] == [1, 16, 96]
+    # The provenance must honestly record the mel preprocessing — a head trained
+    # `--no-mel-rescale` (runtime parity) must not claim the upstream rescale.
+    assert blob["melRescale"] is False
+    assert "no rescale" in blob["runtimeContract"]["frontEnd"]
