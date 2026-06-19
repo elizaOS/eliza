@@ -82,6 +82,7 @@ vi.mock("../platform/init", () => ({
 vi.mock("../state", () => ({
   addAgentProfile: mocks.addAgentProfile,
   createPersistedActiveServer: mocks.createPersistedActiveServer,
+  loadPersistedActiveServer: () => null,
   savePersistedActiveServer: mocks.savePersistedActiveServer,
   useApp: () => ({
     completeFirstRun: mocks.completeFirstRun,

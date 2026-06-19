@@ -142,6 +142,25 @@ describe("first-run flow", () => {
     expect(loadPersistedFirstRunState(fallbackDraft)).toBeNull();
   });
 
+  it('coerces a persisted "pick-agent" step back to "runtime" on load', () => {
+    const draft: FirstRunProfileDraft = {
+      agentName: "Eliza",
+      runtime: "cloud",
+      localInference: "all-local",
+      remoteApiBase: "",
+      remoteToken: "",
+    };
+    // "pick-agent" is a transient step whose agent list lives only in memory,
+    // so a reload mid-pick must restart the cloud flow at "runtime" rather than
+    // restore a picker with no agents. It is deliberately not in FIRST_RUN_STEPS
+    // nor whitelisted by isFirstRunStep, which is what produces this coercion.
+    window.localStorage.setItem(
+      "eliza:first-run",
+      JSON.stringify({ step: "pick-agent", draft }),
+    );
+    expect(loadPersistedFirstRunState(fallbackDraft)?.step).toBe("runtime");
+  });
+
   it("fuzzes corrupted persisted first-run state into a safe normalized draft", () => {
     fc.assert(
       fc.property(fc.jsonValue(), (value) => {

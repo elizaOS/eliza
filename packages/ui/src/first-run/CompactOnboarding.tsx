@@ -9,10 +9,11 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import * as React from "react";
-import { getBootConfig } from "../config/boot-config-store";
 import { ElizaMark } from "../components/brand/eliza-mark";
+import { getBootConfig } from "../config/boot-config-store";
 import { TRAY_ACTION_EVENT } from "../events";
 import { openExternalUrl } from "../utils/openExternalUrl";
+import { AgentPicker } from "./AgentPicker";
 import { trayActionToOnboardingChoice } from "./onboarding-intent";
 import { useFirstRunController } from "./use-first-run-controller";
 
@@ -222,6 +223,20 @@ export function CompactOnboarding(): React.ReactElement {
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
+            ) : step === "pick-agent" ? (
+              // PICK AGENT — after cloud sign-in, when the user already has cloud
+              // agents, choose an existing one or create a new one.
+              <AgentPicker
+                agents={c.pickerAgents}
+                activeAgentId={c.pickerActiveAgentId}
+                phase={c.pickerPhase}
+                errorMessage={c.pickerError}
+                bindingAgentId={c.pickerBindingId}
+                onPick={c.onPickAgent}
+                onCreateNew={c.onCreateNewAgent}
+                onRetry={c.onRetryPicker}
+                onBack={c.onBackFromPicker}
+              />
             ) : onInference ? (
               // INFERENCE — after picking the on-device agent, choose where it
               // thinks: Eliza Cloud (recommended — fast, best models) or fully
