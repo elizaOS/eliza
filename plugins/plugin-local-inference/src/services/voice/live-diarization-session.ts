@@ -1,23 +1,27 @@
 /**
  * Live on-device diarization session — the agent-process owner of an
- * {@link AudioFrameConsumer} wired to the REAL ggml VAD / encoder / diarizer /
+ * {@link AudioFrameConsumer} wired to the REAL fused VAD / encoder / diarizer /
  * attribution stack.
  *
  * The Android `audioFrame` PCM stream is produced in the Capacitor WebView
- * (JS renderer) but the bun:ffi voice libs only run in the embedded bun agent
- * process. The agent's `/api/voice/audio-frames` route pumps batched frames
- * into the single session this module owns, where the consumer segments turns,
- * runs diarization + speaker attribution, and emits VOICE_TURN_OBSERVED.
+ * (JS renderer) but the voice FFI runs in the embedded bun agent process. The
+ * agent's `/api/voice/audio-frames` route pumps batched frames into the single
+ * session this module owns, where the consumer segments turns, runs
+ * diarization + speaker attribution, and emits VOICE_TURN_OBSERVED.
  *
  * This module is the agent-side mirror of the host smoke harness
  * (`packages/app-core/scripts/voice-attribution-smoke.ts`): same real models,
  * same consumer, fed live frames over HTTP instead of a WAV.
  *
- * Model + library resolution (all bun:ffi loaders honor env overrides):
- *   - native libs: `$ELIZA_SILERO_VAD_LIB`, `$ELIZA_VOICE_CLASSIFIER_LIB`
- *     (exported by ElizaAgentService on Android to the app nativeLibraryDir).
- *   - GGUFs: `<state-dir>/models/voice/{silero-vad-v5,wespeaker-resnet34-lm,
- *     pyannote-segmentation-3.0}.gguf` (overridable via `$ELIZA_VOICE_MODEL_DIR`).
+ * Single fused engine: VAD, the WeSpeaker speaker encoder, and the pyannote
+ * diarizer all run through the ONE fused `libelizainference` handle via its
+ * `eliza_inference_vad_*` / `_speaker_*` / `_diariz_*` ABI (the user directive:
+ * no separate bun:ffi-musl libs). Resolution:
+ *   - fused lib: `$ELIZA_INFERENCE_LIBRARY` (exact) or `$ELIZA_INFERENCE_LIB_DIR`
+ *     (dir) — both exported by ElizaAgentService on Android to the app
+ *     nativeLibraryDir.
+ *   - context bundle root: `$ELIZA_VOICE_MODEL_DIR` (the same dir the GGUFs
+ *     live under); the fused runtime resolves the per-model GGUFs from there.
  */
 
 import { existsSync } from "node:fs";
@@ -30,43 +34,64 @@ import {
 	type AudioFrameEvent,
 	type RuntimeEventSink,
 } from "./audio-frame-consumer.js";
+import type {
+	ElizaInferenceContextHandle,
+	ElizaInferenceFfi,
+} from "./ffi-bindings.js";
+import { loadElizaInferenceFfi } from "./ffi-bindings.js";
 import { VoiceProfileStore } from "./profile-store.js";
 import { VoiceAttributionPipeline } from "./speaker/attribution-pipeline.js";
-import { PyannoteDiarizer } from "./speaker/diarizer.js";
-import { SpeakerEncoderGgmlImpl } from "./speaker/encoder-ggml.js";
-import { VadDetector } from "./vad.js";
-import { SileroVadGgml } from "./vad-ggml.js";
+import { FusedDiarizer } from "./speaker/diarizer-fused.js";
+import { FusedSpeakerEncoder } from "./speaker/encoder-fused.js";
+import { GgmlSileroVad, VadDetector } from "./vad.js";
 
 export type { RuntimeEventSink } from "./audio-frame-consumer.js";
 
-/** Canonical voice-GGUF filenames inside `<state-dir>/models/voice/`. */
-const VOICE_GGUF = {
-	vad: "silero-vad-v5.gguf",
-	encoder: "wespeaker-resnet34-lm.gguf",
-	diarizer: "pyannote-segmentation-3.0.gguf",
-} as const;
-
-/** Resolve the on-device voice-model directory (env override wins). */
+/** Resolve the on-device voice-model directory (env override wins). Doubles as
+ *  the fused context bundle root — the runtime resolves per-model GGUFs from it. */
 function voiceModelDir(): string {
 	const override = process.env.ELIZA_VOICE_MODEL_DIR?.trim();
 	if (override) return override;
 	return path.join(resolveStateDir(process.env), "models", "voice");
 }
 
+/** Candidate filenames for the fused library on this platform. */
+function fusedLibraryFilenames(): string[] {
+	if (process.platform === "darwin") return ["libelizainference.dylib"];
+	if (process.platform === "win32") {
+		return ["elizainference.dll", "libelizainference.dll"];
+	}
+	return ["libelizainference.so"];
+}
+
+/**
+ * Resolve the fused `libelizainference` path from the environment. Returns
+ * `null` when neither an exact path nor a containing dir yields a file —
+ * the session then surfaces that as a structured build error.
+ */
+function resolveFusedLibrary(): string | null {
+	const exact = process.env.ELIZA_INFERENCE_LIBRARY?.trim();
+	if (exact && existsSync(exact)) return exact;
+	const dir = process.env.ELIZA_INFERENCE_LIB_DIR?.trim();
+	if (dir) {
+		for (const name of fusedLibraryFilenames()) {
+			const candidate = path.join(dir, name);
+			if (existsSync(candidate)) return candidate;
+		}
+	}
+	return null;
+}
+
 export interface LiveDiarizationStatus {
-	/** True once the consumer + real ggml deps are loaded and accepting frames. */
+	/** True once the consumer + real fused deps are loaded and accepting frames. */
 	ready: boolean;
-	/** Resolved native-library paths (null when a lib could not be resolved). */
+	/** Resolved fused-library path (null when it could not be resolved). */
 	libs: {
-		sileroVad: string | null;
-		voiceClassifier: string | null;
+		fusedInference: string | null;
 	};
-	/** Resolved GGUF paths and whether each exists on disk. */
+	/** Resolved context-bundle dir for the fused runtime. */
 	models: {
 		dir: string;
-		vad: { path: string; present: boolean };
-		encoder: { path: string; present: boolean };
-		diarizer: { path: string; present: boolean };
 	};
 	/** Frames received from the WebView across this session. */
 	framesReceived: number;
@@ -103,17 +128,16 @@ const MAX_RECENT_TURNS = 20;
  */
 export class LiveDiarizationSession {
 	private consumer: AudioFrameConsumer | null = null;
-	private encoder: SpeakerEncoderGgmlImpl | null = null;
-	private diarizer: PyannoteDiarizer | null = null;
-	private vadGgml: SileroVadGgml | null = null;
+	private ffi: ElizaInferenceFfi | null = null;
+	private ctx: ElizaInferenceContextHandle | null = null;
+	private encoder: FusedSpeakerEncoder | null = null;
+	private diarizer: FusedDiarizer | null = null;
+	private vad: GgmlSileroVad | null = null;
 	private building: Promise<void> | null = null;
 	private framesReceived = 0;
 	private turnsObserved = 0;
 	private readonly recentTurns: LiveDiarizationTurnSummary[] = [];
-	private readonly resolvedLibs: {
-		sileroVad: string | null;
-		voiceClassifier: string | null;
-	} = { sileroVad: null, voiceClassifier: null };
+	private resolvedLibPath: string | null = null;
 	private buildError: string | null = null;
 
 	constructor(private readonly runtime: RuntimeEventSink) {}
@@ -131,41 +155,52 @@ export class LiveDiarizationSession {
 
 	private async build(): Promise<void> {
 		const dir = voiceModelDir();
-		const vadGguf = path.join(dir, VOICE_GGUF.vad);
-		const encGguf = path.join(dir, VOICE_GGUF.encoder);
-		const diaGguf = path.join(dir, VOICE_GGUF.diarizer);
-		const missing = [
-			[vadGguf, "VAD"],
-			[encGguf, "encoder"],
-			[diaGguf, "diarizer"],
-		].filter(([p]) => !existsSync(p));
-		if (missing.length > 0) {
+		const libPath = resolveFusedLibrary();
+		if (!libPath) {
 			throw new Error(
-				`voice GGUFs missing on device: ${missing
-					.map(([p, label]) => `${label}=${p}`)
-					.join(", ")}. Stage them under ${dir}.`,
+				`fused libelizainference not found on device. Set $ELIZA_INFERENCE_LIBRARY (exact path) or $ELIZA_INFERENCE_LIB_DIR (containing one of ${fusedLibraryFilenames().join(", ")}).`,
+			);
+		}
+		this.resolvedLibPath = libPath;
+		const ffi = loadElizaInferenceFfi(libPath);
+		this.ffi = ffi;
+		// One context anchored at the voice-model dir; the fused runtime resolves
+		// the VAD / speaker / diarizer GGUFs from it.
+		const ctx = ffi.create(dir);
+		this.ctx = ctx;
+
+		if (!GgmlSileroVad.isSupported(ffi)) {
+			throw new Error(
+				"fused libelizainference does not export the VAD ABI (eliza_inference_vad_supported() == 0). Rebuild with the fused voice runtime linked in.",
+			);
+		}
+		if (!FusedSpeakerEncoder.isSupported(ffi)) {
+			throw new Error(
+				"fused libelizainference does not export the speaker ABI (eliza_inference_speaker_supported() == 0).",
+			);
+		}
+		if (!FusedDiarizer.isSupported(ffi)) {
+			throw new Error(
+				"fused libelizainference does not export the diarizer ABI (eliza_inference_diariz_supported() == 0).",
 			);
 		}
 
-		const vadGgml = await SileroVadGgml.load({ ggufPath: vadGguf });
-		this.vadGgml = vadGgml;
-		this.resolvedLibs.sileroVad = vadGgml.libraryPath ?? null;
-		const detector = new VadDetector(vadGgml, {
+		const vad = await GgmlSileroVad.load({ ffi, ctx });
+		this.vad = vad;
+		const detector = new VadDetector(vad, {
 			onsetThreshold: 0.5,
 			pauseHangoverMs: 120,
 			endHangoverMs: 500,
 			minSpeechMs: 250,
 		});
-		const encoder = new SpeakerEncoderGgmlImpl({ ggufPath: encGguf });
+		const encoder = await FusedSpeakerEncoder.load({ ffi, ctx });
 		this.encoder = encoder;
-		const diarizer = await PyannoteDiarizer.load(diaGguf);
+		const diarizer = await FusedDiarizer.load({ ffi, ctx });
 		this.diarizer = diarizer;
 		const store = new VoiceProfileStore({
 			rootDir: path.join(resolveStateDir(process.env), "voice-profiles"),
 		});
 		await store.init();
-		this.resolvedLibs.voiceClassifier =
-			process.env.ELIZA_VOICE_CLASSIFIER_LIB?.trim() ?? null;
 
 		const pipeline = new VoiceAttributionPipeline({
 			encoder,
@@ -227,20 +262,10 @@ export class LiveDiarizationSession {
 		} catch {
 			// Surface the blocker in the status payload rather than throwing.
 		}
-		const dir = voiceModelDir();
-		const mk = (name: string) => {
-			const p = path.join(dir, name);
-			return { path: p, present: existsSync(p) };
-		};
 		return {
 			ready: this.consumer != null,
-			libs: { ...this.resolvedLibs },
-			models: {
-				dir,
-				vad: mk(VOICE_GGUF.vad),
-				encoder: mk(VOICE_GGUF.encoder),
-				diarizer: mk(VOICE_GGUF.diarizer),
-			},
+			libs: { fusedInference: this.resolvedLibPath },
+			models: { dir: voiceModelDir() },
 			framesReceived: this.framesReceived,
 			framesDropped: this.consumer?.droppedFrames ?? 0,
 			turnsObserved: this.turnsObserved,
@@ -253,8 +278,12 @@ export class LiveDiarizationSession {
 	async close(): Promise<void> {
 		await this.consumer?.close();
 		await this.encoder?.dispose();
-		await this.diarizer?.dispose?.();
-		this.vadGgml?.close();
+		await this.diarizer?.dispose();
+		this.vad?.close();
+		if (this.ffi && this.ctx !== null) this.ffi.destroy(this.ctx);
+		this.ffi?.close();
 		this.consumer = null;
+		this.ffi = null;
+		this.ctx = null;
 	}
 }

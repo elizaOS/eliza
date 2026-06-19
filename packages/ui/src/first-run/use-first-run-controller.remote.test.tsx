@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   setTab: vi.fn(),
   setBaseUrl: vi.fn(),
   setState: vi.fn(),
+  switchAgentProfile: vi.fn(),
   setToken: vi.fn(),
   submitFirstRun: vi.fn(async () => null),
   synthesizeFirstRunSpeech: vi.fn(async () => new ArrayBuffer(0)),
@@ -93,6 +94,7 @@ vi.mock("../state", () => ({
     showActionBanner: mocks.showActionBanner,
     setTab: mocks.setTab,
     setState: mocks.setState,
+    switchAgentProfile: mocks.switchAgentProfile,
     uiLanguage: "en",
   }),
 }));
@@ -200,6 +202,7 @@ function resetMocks(): void {
     mocks.savePersistedActiveServer,
     mocks.setBaseUrl,
     mocks.setState,
+    mocks.switchAgentProfile,
     mocks.setToken,
     mocks.submitFirstRun,
   ]) {
@@ -207,6 +210,14 @@ function resetMocks(): void {
   }
   mocks.getAuthStatus.mockResolvedValue(okAuth);
   mocks.getFirstRunStatus.mockResolvedValue({ complete: false });
+  // addAgentProfile returns the persisted profile (with a generated id) so the
+  // pairing hand-off can switch to it.
+  mocks.addAgentProfile.mockReturnValue({
+    id: "remote-profile-1",
+    kind: "remote",
+    label: "https://agent.example.com",
+    apiBase: "https://agent.example.com",
+  });
 }
 
 describe("useFirstRunController remote first-run", () => {
@@ -259,7 +270,7 @@ describe("useFirstRunController remote first-run", () => {
     expect(result.current.error).toBeNull();
   });
 
-  it("surfaces the access-token error when the remote agent requires auth", async () => {
+  it("surfaces the access-token error when a pairing-disabled remote requires auth", async () => {
     mocks.getAuthStatus.mockResolvedValue({
       required: true,
       pairingEnabled: false,
@@ -278,11 +289,56 @@ describe("useFirstRunController remote first-run", () => {
     });
 
     expect(result.current.error).toBe(
-      "This remote agent requires an access token.",
+      "This remote agent requires an access token. Enter the host's connection key, or enable pairing on the host.",
     );
-    // Auth gate aborts before persistence + submit + complete.
+    // Auth gate aborts before persistence + submit + complete, and never enters
+    // the pairing hand-off (pairing is disabled).
     expect(mocks.getFirstRunStatus).not.toHaveBeenCalled();
     expect(mocks.savePersistedActiveServer).not.toHaveBeenCalled();
+    expect(mocks.submitFirstRun).not.toHaveBeenCalled();
+    expect(mocks.completeFirstRun).not.toHaveBeenCalled();
+    expect(mocks.switchAgentProfile).not.toHaveBeenCalled();
+  });
+
+  it("hands off to pairing when a pairing-enabled remote requires auth", async () => {
+    // Host has device pairing on (ELIZA_API_TOKEN set) and the user supplied no
+    // pre-shared token: finishRemote must NOT dead-end. It persists the remote
+    // profile and switches to it, which drives the startup poll into the
+    // PairingView (BACKEND_AUTH_REQUIRED → pairing-required).
+    mocks.getAuthStatus.mockResolvedValue({
+      required: true,
+      pairingEnabled: true,
+      expiresAt: Date.now() + 600_000,
+    });
+    const { result } = renderHook(() => useFirstRunController());
+
+    act(() => {
+      result.current.updateDraft("runtime", "remote");
+      result.current.updateDraft("remoteApiBase", "https://agent.example.com");
+      result.current.updateDraft("remoteToken", "");
+    });
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+
+    // No error, no dead-end: persists the profile and switches into pairing.
+    expect(result.current.error).toBeNull();
+    expect(mocks.addAgentProfile).toHaveBeenCalledWith({
+      kind: "remote",
+      label: "https://agent.example.com",
+      apiBase: "https://agent.example.com",
+    });
+    expect(mocks.persistMobileRuntimeModeForServerTarget).toHaveBeenCalledWith(
+      "remote",
+    );
+    expect(mocks.setState).toHaveBeenCalledWith(
+      "firstRunRuntimeTarget",
+      "remote",
+    );
+    expect(mocks.switchAgentProfile).toHaveBeenCalledWith("remote-profile-1");
+    // The pairing hand-off does not run the token-connect tail.
+    expect(mocks.getFirstRunStatus).not.toHaveBeenCalled();
     expect(mocks.submitFirstRun).not.toHaveBeenCalled();
     expect(mocks.completeFirstRun).not.toHaveBeenCalled();
   });

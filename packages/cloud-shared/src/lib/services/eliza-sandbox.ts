@@ -1,6 +1,6 @@
 /**
  * Agent Sandbox Service — orchestrates cloud agent lifecycle:
- * Neon DB provisioning, Docker sandbox creation, bridge proxy, backups, heartbeat.
+ * Agent database assignment (shared Railway Postgres), Docker sandbox creation, bridge proxy, backups, heartbeat.
  */
 
 import crypto from "node:crypto";
@@ -59,7 +59,6 @@ import {
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
-import { getNeonClient, NeonClientError } from "./neon-client";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
@@ -70,9 +69,6 @@ import {
   type SharedAgentCharacter,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
-
-/** Shared Neon project used as branch parent for per-agent databases. */
-const NEON_PARENT_PROJECT_ID: string = process.env.NEON_PARENT_PROJECT_ID ?? "";
 
 export interface CreateAgentParams {
   organizationId: string;
@@ -674,7 +670,6 @@ export class ElizaSandboxService {
 
       logger.info("[agent-sandbox] Deleting agent", {
         agentId,
-        neon: rec.neon_project_id,
         sandbox: rec.sandbox_id,
       });
 
@@ -700,21 +695,6 @@ export class ElizaSandboxService {
             status: rec.status,
             error: errorMessage,
           });
-        }
-      }
-      if (rec.neon_project_id) {
-        try {
-          await this.cleanupNeon(rec.neon_project_id, rec.neon_branch_id);
-        } catch (e) {
-          logger.warn("[agent-sandbox] Neon cleanup failed during delete", {
-            projectId: rec.neon_project_id,
-            branchId: rec.neon_branch_id,
-            error: e instanceof Error ? e.message : String(e),
-          });
-          return {
-            success: false,
-            error: "Failed to delete database project",
-          } as const;
         }
       }
 
@@ -755,7 +735,7 @@ export class ElizaSandboxService {
    * tell apart "container survived stop" (ops needed) from "row delete
    * failed" (probably retried by next attempt).
    *
-   * Wraps `deleteAgent` so the SSH/Neon/DB sequence stays in one place,
+   * Wraps `deleteAgent` so the SSH/DB sequence stays in one place,
    * but maps the return shape to what the queue handler expects and
    * tracks whether the container actually went down before the row was
    * removed. The row delete happens iff `stop` either succeeded or the
@@ -843,7 +823,7 @@ export class ElizaSandboxService {
     // 1. Database
     let dbUri = rec.database_uri;
     if (rec.database_status !== "ready" || !dbUri) {
-      const db = await this.provisionNeon(rec);
+      const db = await this.provisionAgentDatabase(rec);
       if (!db.success) {
         await this.markError(rec, `Database provisioning failed: ${db.error}`);
         return {
@@ -853,7 +833,7 @@ export class ElizaSandboxService {
         };
       }
       dbUri = db.connectionUri!;
-      // Neon provision updates DB but doesn't return the full record; re-fetch to avoid stale data
+      // DB assignment updates the row but doesn't return the full record; re-fetch to avoid stale data
       const refreshed = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
       if (refreshed) {
         rec = refreshed;
@@ -898,7 +878,7 @@ export class ElizaSandboxService {
         const callerEnv = (rec.environment_vars as Record<string, string>) ?? {};
         // DATABASE_URL precedence: a self-contained image (e.g. a coding
         // container running its own bot) can ship its OWN database. Do not
-        // silently clobber it with the managed Neon URL — that would force the
+        // silently clobber it with the managed shared DB URL — that would force the
         // image onto a DB it never asked for. If the caller already set
         // DATABASE_URL, keep it and expose the managed URL under a distinct
         // name (ELIZA_MANAGED_DATABASE_URL) so the image can opt in. Only when
@@ -3524,7 +3504,7 @@ export class ElizaSandboxService {
   /**
    * Daemon-side handler for the `agent_resume` job. Delegates to
    * `provision()` which restores `bridge_url` / `health_url` from the
-   * provider's sandbox handle and reuses the existing Neon DB
+   * provider's sandbox handle and reuses the existing shared DB
    * (`sandbox_id` is retained across suspend). `provision()` acquires
    * its own advisory lock, so two concurrent resume jobs serialize.
    *
@@ -3579,7 +3559,7 @@ export class ElizaSandboxService {
    *      node).
    *   3. Clear the compute identity (`sandbox_id`, `node_id`, `container_name`,
    *      ports, bridge/health URLs) so the slot is freed; the node autoscaler
-   *      reclaims a now-empty Hetzner box on its next pass. The Neon DB,
+   *      reclaims a now-empty Hetzner box on its next pass. The shared DB,
    *      `environment_vars`, and `docker_image` are retained for wake.
    *   4. Flip status to `sleeping`. No compute cost accrues while sleeping.
    *
@@ -4207,13 +4187,12 @@ export class ElizaSandboxService {
     });
   }
 
-  private async provisionNeon(
+  private async provisionAgentDatabase(
     rec: AgentSandbox,
   ): Promise<{ success: boolean; connectionUri?: string; error?: string }> {
-    // Use the shared cloud database instead of creating per-agent Neon projects.
+    // Use the shared Railway cloud database instead of per-agent databases.
     // ElizaOS plugin-sql tables scope all data by agent UUID, so multiple agents
-    // safely coexist in one database. This avoids Neon project/branch limits
-    // (BRANCHES_LIMIT_EXCEEDED at 100 projects / 10 branches per project).
+    // safely coexist in one database.
     const sharedDbUrl = process.env.DATABASE_URL;
     if (!sharedDbUrl) {
       return {
@@ -4229,31 +4208,6 @@ export class ElizaSandboxService {
     });
 
     return { success: true, connectionUri: sharedDbUrl };
-  }
-
-  private async cleanupNeon(projectId: string | null | undefined, branchId?: string | null) {
-    // In shared-DB mode no per-agent Neon project exists; nothing to clean up.
-    if (!projectId) return;
-
-    const neon = getNeonClient();
-    try {
-      if (projectId === NEON_PARENT_PROJECT_ID && branchId) {
-        // Branch-based: delete the branch, not the shared project
-        await neon.deleteBranch(NEON_PARENT_PROJECT_ID, branchId);
-      } else if (projectId !== NEON_PARENT_PROJECT_ID) {
-        // Legacy project-based: delete the entire project
-        await neon.deleteProject(projectId);
-      }
-    } catch (error) {
-      if (error instanceof NeonClientError && error.statusCode === 404) {
-        logger.info("[agent-sandbox] Neon resource already absent during cleanup", {
-          projectId,
-          branchId,
-        });
-        return;
-      }
-      throw error;
-    }
   }
 
   private isIgnorableSandboxStopError(error: unknown): boolean {

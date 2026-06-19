@@ -44,6 +44,7 @@ export * from "./app-shell-registry";
 export { registerAppShellPage } from "./app-shell-registry";
 export * from "./backgrounds/index";
 export * from "./bridge/index";
+export * from "./cache-telemetry";
 export {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
@@ -254,6 +255,11 @@ export {
   type ChatSurfaceProps,
 } from "./components/shell/ChatSurface";
 export { HomePill, type HomePillProps } from "./components/shell/HomePill";
+export {
+  HomeScreen,
+  type HomeScreenProps,
+  type HomeTileTarget,
+} from "./components/shell/HomeScreen";
 export type {
   ShellMessage,
   ShellPhase,

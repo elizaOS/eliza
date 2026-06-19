@@ -7,7 +7,7 @@
  *
  * Run: bun run --cwd packages/ui test:onboarding-e2e
  */
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -16,15 +16,6 @@ import { chromium } from "playwright";
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");
 await mkdir(outDir, { recursive: true });
-
-// CompactOnboarding renders <img src="./brand/logos/logo_white_nobg.svg">;
-// mirror the real brand asset next to the HTML so review screenshots aren't
-// littered with a broken-image glyph (it resolves at runtime in the app).
-await mkdir(join(outDir, "brand", "logos"), { recursive: true });
-await copyFile(
-  join(here, "..", "..", "..", "..", "shared", "assets", "logos", "logo_white_nobg.svg"),
-  join(outDir, "brand", "logos", "logo_white_nobg.svg"),
-).catch(() => {});
 
 let failures = 0;
 function assert(cond, msg) {
@@ -79,6 +70,7 @@ const STATES = [
   { q: "", name: "choose", desktop: true },
   { q: "?nolocal", name: "choose-no-local-runtime", desktop: true },
   { q: "?connected", name: "choose-cloud-connected", desktop: true },
+  { q: "?step=inference", name: "inference", desktop: true },
   { q: "?step=remote", name: "remote", desktop: true },
   { q: "?cloudlogin", name: "cloud-signin", desktop: true },
   { q: "?busy=Starting+your+agent%E2%80%A6", name: "busy", desktop: true },
@@ -116,6 +108,17 @@ try {
   assert(await p.getByTestId("onboarding-option-remote").isVisible(), "remote option card shown");
   assert(await p.getByTestId("onboarding-option-local").isVisible(), "local option card shown");
   await p.close();
+
+  // Inference sub-step (reached after picking the on-device runtime): both the
+  // recommended cloud-inference option and the on-device option must render.
+  const inf = await browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2 });
+  attachConsole(inf);
+  await inf.goto(`${url}?step=inference`);
+  await inf.waitForSelector('[data-testid="onboarding-toast"]');
+  await inf.waitForTimeout(300);
+  assert(await inf.getByTestId("onboarding-inference-cloud").isVisible(), "cloud inference option shown");
+  assert(await inf.getByTestId("onboarding-inference-local").isVisible(), "on-device inference option shown");
+  await inf.close();
 } finally {
   await browser.close();
 }

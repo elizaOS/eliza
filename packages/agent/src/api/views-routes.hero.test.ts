@@ -1,7 +1,9 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import {
+  listViews,
   registerBuiltinViews,
   registerPluginViews,
   unregisterPluginViews,
@@ -12,9 +14,8 @@ import {
   type ViewsRouteContext,
 } from "./views-routes.ts";
 
-// Unit test for GET /api/views/:id/hero (views-routes.ts ~L710). When no hero
-// image exists on disk, the route calls sendGeneratedHero (~L1077), which
-// writes an SVG via res.writeHead(200, …) + res.end(data) — NOT the `json`
+// Unit test for GET /api/views/:id/hero (views-routes.ts ~L710). The route
+// streams image bytes directly via res.writeHead/setHeader/end — NOT the `json`
 // helper. So the mock res here captures writeHead/setHeader/end directly.
 
 const TEST_PLUGIN = "@test/views-hero";
@@ -32,6 +33,7 @@ function makeHeroCtx(id: string): {
   error: ReturnType<typeof vi.fn>;
 } {
   const req = Readable.from([]) as unknown as http.IncomingMessage;
+  req.headers = {};
   // sendGeneratedHero prefers writeHead; include setHeader so either code path
   // is observable, and end captures the streamed body.
   const res: CapturedRes = {
@@ -75,7 +77,14 @@ function bodyFrom(res: CapturedRes): string {
   return "";
 }
 
-describe("GET /api/views/:id/hero generated SVG fallback", () => {
+function bodyBufferFrom(res: CapturedRes): Buffer {
+  const chunk = res.end.mock.calls[0]?.[0];
+  if (chunk instanceof Buffer) return chunk;
+  if (typeof chunk === "string") return Buffer.from(chunk);
+  return Buffer.alloc(0);
+}
+
+describe("GET /api/views/:id/hero", () => {
   beforeEach(async () => {
     registerBuiltinViews();
     clearCurrentViewState();
@@ -116,23 +125,36 @@ describe("GET /api/views/:id/hero generated SVG fallback", () => {
 
     const body = bodyFrom(res);
     expect(body).toContain("<svg");
-    // The view's icon and label are rendered into the SVG text nodes.
-    expect(body).toContain("Sparkles");
     expect(body).toContain("No Hero View");
   });
 
-  it("serves the generated fallback for a builtin view (no pluginDir on disk)", async () => {
-    // Builtin views have pluginDir === undefined → findHeroOnDisk short-circuits
-    // to null and the route falls straight through to sendGeneratedHero.
-    const { ctx, res } = makeHeroCtx("settings");
+  it("marks every builtin view as having a real hero image", () => {
+    const builtinViews = listViews({ developerMode: true }).filter(
+      (view) => view.pluginName === "@elizaos/builtin",
+    );
 
-    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+    expect(builtinViews).toHaveLength(BUILTIN_VIEWS.length);
+    for (const view of builtinViews) {
+      expect(view.hasHeroImage).toBe(true);
+      expect(view.heroImageUrl).toBe(
+        `/api/views/${encodeURIComponent(view.id)}/hero`,
+      );
+    }
+  });
 
-    const headers = headersFrom(res);
-    expect(headers["Content-Type"]).toBe("image/svg+xml");
-    const body = bodyFrom(res);
-    expect(body).toContain("<svg");
-    expect(body).toContain("Settings");
+  it("serves packaged PNG heroes for every builtin view", async () => {
+    for (const view of BUILTIN_VIEWS) {
+      const { ctx, res } = makeHeroCtx(view.id);
+
+      await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+      const headers = headersFrom(res);
+      expect(headers["Content-Type"]).toBe("image/png");
+      expect(headers["Content-Length"]).toBeGreaterThan(0);
+      expect(bodyBufferFrom(res).subarray(0, 8)).toEqual(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      );
+    }
   });
 
   it("404s through the error helper for an unregistered view id", async () => {

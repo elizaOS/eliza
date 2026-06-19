@@ -33,8 +33,6 @@ describe("toCompatStatus", () => {
           healthCheckPath: "/api/health",
         },
       },
-      neon_project_id: null,
-      neon_branch_id: null,
       database_uri: null,
       database_status: "ready",
       database_error: null,

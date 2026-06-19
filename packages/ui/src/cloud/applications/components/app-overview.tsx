@@ -8,13 +8,16 @@
 import {
   Activity,
   Check,
+  CheckCircle2,
   ChevronRight,
   Coins,
   Copy,
   ExternalLink,
   Eye,
   EyeOff,
+  FileEdit,
   Globe,
+  Hammer,
   Key,
   Loader2,
   Mail,
@@ -22,8 +25,9 @@ import {
   Rocket,
   Shield,
   TrendingUp,
+  XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type JSX, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { DashboardStatCard } from "../../../cloud-ui/components/brand";
@@ -39,6 +43,7 @@ import {
   AlertDialogTrigger,
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
+import { StatusBadge } from "../../../components/ui/status-badge";
 import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
@@ -48,6 +53,73 @@ import { regenerateAppApiKey } from "../lib/apps";
 interface AppOverviewProps {
   app: App;
   showApiKey?: string;
+}
+
+type DeploymentStatus =
+  | "deployed"
+  | "deploying"
+  | "building"
+  | "failed"
+  | "draft";
+
+function _DeploymentStatusBadge({
+  status,
+}: {
+  status: DeploymentStatus;
+}): JSX.Element {
+  const t = useCloudT();
+  switch (status) {
+    case "deployed":
+      return (
+        <StatusBadge
+          status="success"
+          label={t("cloud.apps.overview.deploymentDeployed", {
+            defaultValue: "Deployed",
+          })}
+          icon={<CheckCircle2 />}
+        />
+      );
+    case "deploying":
+      return (
+        <StatusBadge
+          status="processing"
+          label={t("cloud.apps.overview.deploymentDeploying", {
+            defaultValue: "Deploying",
+          })}
+          icon={<Rocket />}
+        />
+      );
+    case "building":
+      return (
+        <StatusBadge
+          status="processing"
+          label={t("cloud.apps.overview.deploymentBuilding", {
+            defaultValue: "Building",
+          })}
+          icon={<Hammer />}
+        />
+      );
+    case "failed":
+      return (
+        <StatusBadge
+          status="error"
+          label={t("cloud.apps.overview.deploymentFailed", {
+            defaultValue: "Failed",
+          })}
+          icon={<XCircle />}
+        />
+      );
+    default:
+      return (
+        <StatusBadge
+          status="neutral"
+          label={t("cloud.apps.overview.deploymentDraft", {
+            defaultValue: "Draft",
+          })}
+          icon={<FileEdit />}
+        />
+      );
+  }
 }
 
 export function AppOverview({ app, showApiKey }: AppOverviewProps) {

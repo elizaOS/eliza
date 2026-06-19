@@ -37,6 +37,9 @@ export function registerHealthDefaultPacks(runtime: IAgentRuntime): void {
     return;
   }
   for (const pack of HEALTH_DEFAULT_PACKS) {
+    if (registry.get(pack.key)) {
+      continue;
+    }
     registry.register(pack);
   }
   logger.info(

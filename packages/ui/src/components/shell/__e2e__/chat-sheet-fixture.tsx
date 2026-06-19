@@ -255,6 +255,9 @@ function Harness(): React.JSX.Element {
     speaking: initialSpeaking,
     agentVoiceMuted,
     needsAudioUnlock: false,
+    // The overlay reads `modelStatus.kind` unconditionally; "ready" keeps the
+    // local-model status strip dormant in the fixture.
+    modelStatus: { kind: "ready" },
     send,
     toggleRecording,
     toggleHandsFree,

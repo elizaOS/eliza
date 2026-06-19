@@ -73,9 +73,11 @@ describe("first-run flow", () => {
     expect(DEFAULT_AGENT_NAME).toBe("Eliza");
   });
 
-  it("moves through the runtime → remote steps without name capture", () => {
-    expect(nextFirstRunStep("runtime")).toBe("remote");
+  it("branches off the runtime step (inference + remote both return to it)", () => {
+    expect(nextFirstRunStep("runtime")).toBe("inference");
+    expect(nextFirstRunStep("inference")).toBeNull();
     expect(nextFirstRunStep("remote")).toBeNull();
+    expect(previousFirstRunStep("inference")).toBe("runtime");
     expect(previousFirstRunStep("remote")).toBe("runtime");
     expect(previousFirstRunStep("runtime")).toBeNull();
   });
@@ -335,14 +337,57 @@ describe("first-run flow", () => {
       action: "none",
     });
 
+    // Picking the local runtime advances to the inference sub-choice rather
+    // than finishing — the user must still pick cloud vs on-device inference.
     const local = applyFirstRunVoiceTranscript({
       step: "runtime",
       draft: fallbackDraft,
       transcript: "start local",
     });
     expect(local).toMatchObject({
-      step: "runtime",
+      step: "inference",
       draft: { runtime: "local" },
+      action: "none",
+    });
+  });
+
+  it("picks an inference target by voice and finishes from the inference step", () => {
+    const localDraft: FirstRunProfileDraft = {
+      ...fallbackDraft,
+      runtime: "local",
+    };
+
+    const cloud = applyFirstRunVoiceTranscript({
+      step: "inference",
+      draft: localDraft,
+      transcript: "cloud inference",
+    });
+    expect(cloud).toMatchObject({
+      step: "inference",
+      draft: { localInference: "cloud-inference" },
+      action: "finish",
+    });
+
+    const onDevice = applyFirstRunVoiceTranscript({
+      step: "inference",
+      draft: localDraft,
+      transcript: "on device",
+    });
+    expect(onDevice).toMatchObject({
+      step: "inference",
+      draft: { localInference: "all-local" },
+      action: "finish",
+    });
+
+    // A bare finish command on the inference step takes the recommended default.
+    const bareStart = applyFirstRunVoiceTranscript({
+      step: "inference",
+      draft: localDraft,
+      transcript: "start",
+    });
+    expect(bareStart).toMatchObject({
+      step: "inference",
+      draft: { localInference: "cloud-inference" },
       action: "finish",
     });
   });

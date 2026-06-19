@@ -4,7 +4,14 @@ Recorded 2026-06-18. These answers supersede the corresponding parts of `PLAN.md
 
 ---
 
-## D1 — Topology: **App IS the `elizacloud.ai` apex** ✅ (Topology A)
+## D1 — Topology: **App IS the `elizacloud.ai` apex** ✅ (Topology A) — ⚠️ SUPERSEDED by D5
+
+> **SUPERSEDED 2026-06-19 by [D5](#d5--topology-split-console-at-apex-app-on-its-own-subdomain).**
+> Topology A was briefly cut over (the app shipped to the `eliza-cloud` Pages
+> project at the apex) and it **buried the lander + dashboard under the agent
+> app's local-first onboarding** — exactly what an anonymous `elizacloud.ai`
+> visitor must NOT see. The owner reversed it: the apex goes back to the console
+> (`cloud-frontend`); the agent app moves to its own subdomain. Read D5.
 
 Confirmed. The Eliza web app replaces the cloud-frontend deploy in the existing Cloudflare Pages project at the apex, reusing `functions/_proxy.ts` same-origin `/api`+`/steward` proxy. **No backend env / CORS / redirect / agent-subdomain changes.** Obligation: the app serves every existing SPA route path + the internal `<Navigate>` redirect map.
 
@@ -81,4 +88,47 @@ These have sensible defaults and do not block starting Phase 0.
 
 ---
 
-**Status: prepared and revised per owner decisions. Awaiting explicit "go" before any code changes.**
+## D5 — Topology split: console at apex, app on its own subdomain ✅ (supersedes D1)
+
+Recorded 2026-06-19. Reverses the single-project reuse in D1 after the Topology-A
+cutover buried the lander + dashboard under the agent app's onboarding.
+
+**Two Pages projects, two domains, two builds from one repo:**
+
+| Domain | Pages project | Builds | Is |
+|---|---|---|---|
+| `elizacloud.ai` / `staging.elizacloud.ai` | `eliza-cloud` (existing) | `packages/cloud-frontend` | the lander + dashboard ("the cloud console"). Steward login → dashboard. **No agent stuff, no onboarding.** |
+| `app.elizacloud.ai` / `app-staging.elizacloud.ai` | `eliza-app` (new) | `packages/app` (`build:web`) | the Eliza agent app — the same web UI as `bun run dev` (chat + views). |
+
+**Flow:** anonymous → apex lander → Steward login → apex dashboard (the console),
+which carries a **"Talk to your agent / Open Eliza"** CTA → `app.elizacloud.ai`.
+The Steward session cookie is scoped to the parent `.elizacloud.ai` zone
+(`cloud-shared auth/cookie-domain.ts`), so the user lands on the app already
+signed in — no token handoff.
+
+**Why this is NOT "no backend changes" (unlike D1):** the app now serves from a
+**new origin** (`app.elizacloud.ai`), so per REVISION-2 §B6 the origin must be
+added to the first-party allowlists. Done: `cors/cloud-api-hono-cors.ts`
+(`STATIC_ALLOWED_ORIGINS`), `utils/cors.ts` (`ALLOWED_ORIGINS`),
+`security/redirect-validation.ts` (`DEFAULT_PLATFORM_REDIRECT_ORIGINS`). The
+Steward CSRF check (`PERMITTED_ORIGIN_HOSTS` in the 3 `auth/steward-*` routes)
+already allows any `*.elizacloud.ai` via suffix match — no edit. The dedicated
+agent-subdomain CORS (`pairing-token-domains.ts`) is a separate concern —
+untouched.
+
+**The in-app `/dashboard/*` routes** migrated into `packages/app`
+(`packages/ui/cloud/*`) stay for now (owner: "keep both"); cloud-frontend is the
+canonical dashboard at the apex. Reconcile later.
+
+**Deploy:** `.github/workflows/cloud-cf-deploy.yml` now has two Pages jobs —
+`deploy-console` (cloud-frontend → `eliza-cloud`) and `deploy-app`
+(`packages/app` → `eliza-app`). Cloudflare setup for `eliza-app` (project +
+custom domains + DNS): see CUTOVER-RUNBOOK.md.
+
+**Rollback** is independent per project: the apex (console) is untouched by the
+app deploy and vice-versa.
+
+---
+
+**Status: D5 split implemented in-repo (workflow + wrangler + allowlists + console
+CTA). Cloudflare `eliza-app` project + `app.*` domains pending (CUTOVER-RUNBOOK).**

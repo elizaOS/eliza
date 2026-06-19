@@ -191,6 +191,11 @@ function buildAnchorContribution(anchorKey: string): AnchorContribution {
     anchorKey,
     description: `plugin-health anchor: ${anchorKey}`,
     source: "plugin-health",
+    describe: {
+      label: `plugin-health anchor: ${anchorKey}`,
+      provider: "plugin-health",
+    },
+    resolve: async () => null,
   };
 }
 
@@ -232,6 +237,9 @@ export function registerHealthConnectors(
     return;
   }
   for (const kind of HEALTH_CONNECTOR_KINDS) {
+    if (registry.get(kind)) {
+      continue;
+    }
     registry.register(buildConnectorContribution(kind));
   }
   logger.info(
@@ -283,6 +291,9 @@ export function registerHealthBusFamilies(
     return;
   }
   for (const family of HEALTH_BUS_FAMILIES) {
+    if (registry.list().some((contribution) => contribution.family === family)) {
+      continue;
+    }
     registry.register(buildBusFamilyContribution(family));
   }
   logger.info(

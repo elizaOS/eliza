@@ -6,7 +6,7 @@
  *
  * Short answer: `containers` = user-controlled arbitrary workloads with
  * persistent volumes and public URLs. `agent_sandboxes` = system-managed
- * full-lifecycle Eliza agent instances with Neon DB, bridge proxy, and backups.
+ * full-lifecycle Eliza agent instances with a managed Postgres DB, bridge proxy, and backups.
  * They share the Hetzner-Docker compute pool but nothing else.
  */
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";

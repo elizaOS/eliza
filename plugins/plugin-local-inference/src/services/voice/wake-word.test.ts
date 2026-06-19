@@ -19,6 +19,9 @@
  * advertised.
  */
 
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type {
 	ElizaInferenceContextHandle,
@@ -27,6 +30,7 @@ import type {
 } from "./ffi-bindings";
 import {
 	GgmlWakeWordModel,
+	loadBundledWakeWordModel,
 	OpenWakeWordDetector,
 	resolveWakeWordModel,
 	type WakeWordModel,
@@ -252,6 +256,41 @@ describe("GgmlWakeWordModel", () => {
 			name: "WakeWordUnavailableError",
 			code: "model-load-failed",
 		});
+	});
+});
+
+describe("loadBundledWakeWordModel", () => {
+	it("prefers the fused GgmlWakeWordModel when the bundle GGUF is present and FFI supports it", async () => {
+		const dir = mkdtempSync(path.join(os.tmpdir(), "fused-wake-"));
+		try {
+			const gguf = path.join(dir, "wake", "openwakeword.gguf");
+			mkdirSync(path.dirname(gguf), { recursive: true });
+			writeFileSync(gguf, "");
+			const ffi = makeMockFfi(true);
+			const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
+			const model = await loadBundledWakeWordModel({
+				ffi,
+				ctx,
+				bundleRoot: dir,
+			});
+			expect(model).toBeInstanceOf(GgmlWakeWordModel);
+			// The fused path opened a session via the shared FFI handle — the
+			// standalone wakeword-cpp build was never consulted.
+			expect(ffi.wakewordOpen).toHaveBeenCalledTimes(1);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("returns null when the bundle has no wake-word GGUF and no standalone build", async () => {
+		const ffi = makeMockFfi(true);
+		const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
+		const model = await loadBundledWakeWordModel({
+			ffi,
+			ctx,
+			bundleRoot: "/nonexistent/bundle",
+		});
+		expect(model).toBeNull();
 	});
 });
 

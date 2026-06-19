@@ -153,16 +153,73 @@ describe("CompactOnboarding", () => {
     await waitFor(() => expect(finishRuntime).toHaveBeenCalledTimes(1));
   });
 
-  it("starts the local runtime from the Local option", async () => {
+  it("advances to the inference choice from the Local option", () => {
     const updateDraft = vi.fn();
+    const setStep = vi.fn();
     const finishRuntime = vi.fn(async () => {});
-    controllerMock.current = controller({ updateDraft, finishRuntime });
+    controllerMock.current = controller({
+      updateDraft,
+      setStep,
+      finishRuntime,
+    });
 
     render(<CompactOnboarding />);
     fireEvent.click(screen.getByTestId("onboarding-option-local"));
 
-    await waitFor(() => expect(finishRuntime).toHaveBeenCalledTimes(1));
     expect(updateDraft).toHaveBeenCalledWith("runtime", "local");
+    expect(setStep).toHaveBeenCalledWith("inference");
+    // The local agent is not provisioned until an inference target is chosen.
+    expect(finishRuntime).not.toHaveBeenCalled();
+  });
+
+  it("offers cloud + on-device inference on the inference step and finishes", async () => {
+    const updateDraft = vi.fn();
+    const finishRuntime = vi.fn(async () => {});
+    controllerMock.current = controller({
+      step: "inference",
+      draft: {
+        agentName: "Eliza",
+        runtime: "local",
+        localInference: "cloud-inference",
+        remoteApiBase: "",
+        remoteToken: "",
+      },
+      updateDraft,
+      finishRuntime,
+    });
+
+    render(<CompactOnboarding />);
+    expect(screen.getByText("Where should it think?")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("onboarding-inference-cloud"));
+    await waitFor(() => expect(finishRuntime).toHaveBeenCalledTimes(1));
+    expect(updateDraft).toHaveBeenCalledWith(
+      "localInference",
+      "cloud-inference",
+    );
+
+    fireEvent.click(screen.getByTestId("onboarding-inference-local"));
+    expect(updateDraft).toHaveBeenCalledWith("localInference", "all-local");
+  });
+
+  it("returns to the runtime choice from the inference step's Back link", () => {
+    const setStep = vi.fn();
+    controllerMock.current = controller({
+      step: "inference",
+      draft: {
+        agentName: "Eliza",
+        runtime: "local",
+        localInference: "cloud-inference",
+        remoteApiBase: "",
+        remoteToken: "",
+      },
+      setStep,
+    });
+
+    render(<CompactOnboarding />);
+    fireEvent.click(screen.getByText("Back"));
+
+    expect(setStep).toHaveBeenCalledWith("runtime");
   });
 
   it("surfaces the cloud login link as a tappable button, not raw text", () => {

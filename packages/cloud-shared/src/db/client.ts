@@ -15,6 +15,7 @@ import { drizzle as drizzlePGlite, type PgliteDatabase } from "drizzle-orm/pglit
 import type { ExtractTablesWithRelations } from "drizzle-orm/relations";
 import { Pool as PgPool, type PoolConfig } from "pg";
 import { getCloudAwareEnv, getCloudBinding } from "../lib/runtime/cloud-bindings";
+import { logger } from "../lib/utils/logger";
 import { applyDatabaseUrlFallback } from "./database-url";
 import { disableLocalPreparedStatements } from "./local-pg-query";
 import * as schema from "./schemas";
@@ -188,6 +189,12 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
   const tls = hyperdriveUrl ? { url: hyperdriveUrl, ssl: undefined } : enforceTlsForRemote(url);
   const options: PoolConfig = { connectionString: tls.url };
   if (tls.ssl) options.ssl = tls.ssl;
+  // Identify our connections in pg_stat_activity. Railway sets
+  // RAILWAY_SERVICE_NAME per service, so on a shared Postgres a connection leak
+  // (or a service hogging the pool) can be attributed to the right service
+  // instead of showing as an anonymous "" backend — which is exactly what made
+  // the 2026-06-19 "too many clients" incident hard to triage.
+  options.application_name = env.RAILWAY_SERVICE_NAME || "eliza-cloud-shared";
 
   if (inWorkerRuntime) {
     options.max = parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 1);
@@ -210,6 +217,16 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
     options.connectionTimeoutMillis = 30_000;
   }
   const pool = new PgPool(options);
+  // node-pg emits 'error' on an IDLE pooled client that the server/proxy drops
+  // (Railway/Hyperdrive recycling a connection, or the PGlite socket bridge
+  // closing one mid-suite). Without a listener, that 'error' is unhandled and
+  // crashes the whole worker request/process. Swallow+log it: the pool evicts
+  // the dead client and the next query transparently opens a fresh one.
+  pool.on("error", (err) => {
+    logger.warn("[db] idle pg client error (evicted, will reconnect)", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
   if (isLocalTcp) {
     disableLocalPreparedStatements(pool, { simpleQueryMode: inWorkerRuntime });
   }

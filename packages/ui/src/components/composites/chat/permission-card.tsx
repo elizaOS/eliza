@@ -63,6 +63,7 @@ export function PermissionCard({
     initialState ?? registry?.get(permission) ?? defaultStateFor(permission),
   );
   const [requesting, setRequesting] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
   const handleGrant = useCallback(async () => {
@@ -81,6 +82,20 @@ export function PermissionCard({
       setRequesting(false);
     }
   }, [registry, permission, reason, feature, onGranted]);
+
+  const handleCheckAgain = useCallback(async () => {
+    if (!registry) return;
+    setChecking(true);
+    try {
+      const next = await registry.check(permission);
+      setState(next);
+      if (next.status === "granted") {
+        onGranted?.(next);
+      }
+    } finally {
+      setChecking(false);
+    }
+  }, [registry, permission, onGranted]);
 
   const handleOpenSettings = useCallback(() => {
     if (onOpenSettings) {
@@ -148,6 +163,7 @@ export function PermissionCard({
     (state.status === "denied" || state.status === "not-determined");
 
   const title = getPermissionLabel(permission);
+  const guidance = permissionGuidance(permission, state);
   const resolvedFallbackLabel =
     fallbackLabel ??
     (permission === "reminders" ? "Use internal reminder" : "Use fallback");
@@ -166,11 +182,15 @@ export function PermissionCard({
     >
       <header className="mb-1 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-txt-strong">{title}</h3>
-        <span className="text-[10px] font-medium uppercase tracking-wide text-muted">
-          Permission
+        <span className="rounded-full border border-border/50 px-2 py-0.5 text-[10px] font-medium uppercase text-muted">
+          {statusLabel(state)}
         </span>
       </header>
       <p className="mb-3 text-sm leading-snug text-txt">{reason}</p>
+      <div className="mb-3 rounded-sm border border-border/40 bg-surface/60 p-2 text-xs leading-relaxed text-muted">
+        <p className="font-medium text-txt">{guidance.primary}</p>
+        <p className="mt-1">{guidance.secondary}</p>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         {isRestrictedEntitlement ? (
           <Button
@@ -213,6 +233,17 @@ export function PermissionCard({
               : (labels.grantAccess ?? "Grant access")}
           </Button>
         )}
+        {registry ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleCheckAgain()}
+            disabled={checking || requesting}
+            data-testid="permission-card-check-again"
+          >
+            {checking ? "Checking..." : "Check again"}
+          </Button>
+        ) : null}
         {fallbackOffered ? (
           <Button
             variant="outline"
@@ -234,4 +265,81 @@ export function PermissionCard({
       </div>
     </section>
   );
+}
+
+function statusLabel(state: PermissionState): string {
+  if (state.status === "not-determined") return "Not asked";
+  if (state.status === "not-applicable") return "Unavailable";
+  return state.status.replace(/-/g, " ");
+}
+
+function platformSettingsLabel(platform: PermissionState["platform"]): string {
+  if (platform === "darwin") return "System Settings > Privacy & Security";
+  if (platform === "ios") return "Settings > Eliza";
+  if (platform === "android") return "Settings > Apps > Eliza > Permissions";
+  if (platform === "win32") return "Windows privacy settings";
+  if (platform === "linux") return "system privacy settings";
+  return "browser settings";
+}
+
+function permissionGuidance(
+  permission: PermissionId,
+  state: PermissionState,
+): { primary: string; secondary: string } {
+  const title = getPermissionLabel(permission);
+  const settings = platformSettingsLabel(state.platform);
+
+  if (state.status === "denied" || state.canRequest === false) {
+    return {
+      primary: `Turn on ${title} in ${settings}.`,
+      secondary:
+        "After enabling it, return here and choose Check again. If you changed your mind, you can leave it off and use any offered fallback.",
+    };
+  }
+
+  if (state.status === "restricted") {
+    return {
+      primary: `${title} is blocked by the current OS policy or app entitlement.`,
+      secondary:
+        "This device may need a different build, entitlement, profile, or administrator setting before the feature can work.",
+    };
+  }
+
+  if (state.status === "not-applicable") {
+    return {
+      primary: `${title} is not available on this platform.`,
+      secondary:
+        "The agent can continue only if there is a fallback that does not use this device capability.",
+    };
+  }
+
+  if (permission === "usage-access") {
+    return {
+      primary: "Open Android Usage Access and allow Eliza.",
+      secondary:
+        "This lets app blocking and Screen Time features read foreground app usage. Return here and choose Check again when done.",
+    };
+  }
+
+  if (permission === "overlay") {
+    return {
+      primary: "Allow Eliza to draw over other apps in Android settings.",
+      secondary:
+        "The blocking screen needs this to appear above distracting apps. If you cancel, press Grant access again.",
+    };
+  }
+
+  if (permission === "write-settings") {
+    return {
+      primary: "Open Android Write Settings and allow Eliza.",
+      secondary:
+        "Android requires this separate settings screen for brightness and device-setting changes.",
+    };
+  }
+
+  return {
+    primary: `When the OS prompt appears, choose Allow for ${title}.`,
+    secondary:
+      "If you cancel by accident, press Grant access again. If the OS stops prompting, open settings, enable it for Eliza, then check again.",
+  };
 }

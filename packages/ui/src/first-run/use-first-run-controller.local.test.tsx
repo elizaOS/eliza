@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
     pairingEnabled: false,
     expiresAt: null,
   })),
+  getCloudStatus: vi.fn(async () => ({ connected: false, reason: undefined })),
+  getRestAuthToken: vi.fn(() => null),
   getDesktopRuntimeMode: vi.fn(async () => null),
   handleCloudLogin: vi.fn(async () => {}),
   invokeDesktopBridgeRequest: vi.fn(async () => null),
@@ -45,6 +47,8 @@ vi.mock("@capacitor/core", () => ({
 vi.mock("../api", () => ({
   client: {
     getAuthStatus: mocks.getAuthStatus,
+    getCloudStatus: mocks.getCloudStatus,
+    getRestAuthToken: mocks.getRestAuthToken,
     setBaseUrl: mocks.setBaseUrl,
     setToken: mocks.setToken,
     submitFirstRun: mocks.submitFirstRun,
@@ -176,6 +180,13 @@ function resetMocks(): void {
   mocks.autoDownloadRecommendedLocalModelInBackground.mockClear();
   mocks.completeFirstRun.mockClear();
   mocks.getAuthStatus.mockClear();
+  mocks.getCloudStatus.mockReset();
+  mocks.getCloudStatus.mockResolvedValue({
+    connected: false,
+    reason: undefined,
+  });
+  mocks.getRestAuthToken.mockReset();
+  mocks.getRestAuthToken.mockReturnValue(null);
   mocks.getDesktopRuntimeMode.mockClear();
   mocks.getDesktopRuntimeMode.mockResolvedValue(null);
   mocks.handleCloudLogin.mockClear();
@@ -273,7 +284,9 @@ describe("useFirstRunController local first-run", () => {
     });
 
     // Hybrid needs the Eliza Cloud account first: it flags the hybrid target +
-    // provider, opens login, and returns without finishing setup.
+    // provider, opens login, re-checks the connection, and — still
+    // disconnected (login pending / browser handoff) — returns without
+    // finishing setup.
     expect(mocks.setState).toHaveBeenCalledWith(
       "firstRunRuntimeTarget",
       "elizacloud-hybrid",
@@ -283,10 +296,55 @@ describe("useFirstRunController local first-run", () => {
       "elizacloud",
     );
     expect(mocks.handleCloudLogin).toHaveBeenCalledTimes(1);
+    expect(mocks.getCloudStatus).toHaveBeenCalledTimes(1);
 
     expect(mocks.submitFirstRun).not.toHaveBeenCalled();
     expect(mocks.completeFirstRun).not.toHaveBeenCalled();
     expect(mocks.invokeDesktopBridgeRequest).not.toHaveBeenCalled();
+    expect(
+      mocks.autoDownloadRecommendedLocalModelInBackground,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("provisions the hybrid agent once cloud login completes in the same run", async () => {
+    // Disconnected at first, but the in-app Steward sign-in resolves and the
+    // post-login status check reports connected — so finishLocal falls through
+    // and starts the on-device agent without a second tap.
+    mocks.getCloudStatus.mockResolvedValueOnce({
+      connected: true,
+      reason: undefined,
+    });
+    const { result } = renderHook(() => useFirstRunController());
+
+    act(() => {
+      result.current.updateDraft("runtime", "local");
+      result.current.updateDraft("localInference", "cloud-inference");
+    });
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+
+    expect(mocks.handleCloudLogin).toHaveBeenCalledTimes(1);
+    expect(mocks.getCloudStatus).toHaveBeenCalledTimes(1);
+    // Falls through to start the local agent and finish.
+    expect(mocks.invokeDesktopBridgeRequest).toHaveBeenCalledWith({
+      rpcMethod: "agentStart",
+      ipcChannel: "agent:start",
+    });
+    expect(mocks.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
+      launchCompanionOverlay: true,
+    });
+    // The hybrid path persists the cloud-hybrid target, not plain "local", and
+    // never downloads an on-device model.
+    expect(mocks.persistMobileRuntimeModeForServerTarget).toHaveBeenCalledWith(
+      "elizacloud-hybrid",
+    );
+    expect(mocks.setState).toHaveBeenCalledWith(
+      "firstRunRuntimeTarget",
+      "elizacloud-hybrid",
+    );
     expect(
       mocks.autoDownloadRecommendedLocalModelInBackground,
     ).not.toHaveBeenCalled();

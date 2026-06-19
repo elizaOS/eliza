@@ -10,9 +10,8 @@
  * It joins the two payloads into a per-entity projection (each entity with its
  * outbound edges) at the fetch boundary, then renders display-only. The view
  * has four distinct states (loading, error, empty, populated) and instruments
- * its entity-kind filter controls through the agent surface so the floating
- * chat can drive them. There is no manual refresh control: the graph stays
- * fresh via a quiet background poll. The default fetcher builds its URL from
+ * its refresh + entity-kind filter controls through the agent surface so the
+ * floating chat can drive them. The default fetcher builds its URL from
  * `client.getBaseUrl()`; tests inject the fetcher seam so they stay offline.
  *
  * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
@@ -108,9 +107,6 @@ const defaultFetchers: RelationshipsFetchers = {
   fetchRelationships: getRelationships,
 };
 
-/** Background poll cadence — the only way server-side graph edits reach this view. */
-const RELATIONSHIPS_POLL_INTERVAL_MS = 20_000;
-
 export interface RelationshipsViewProps {
   /** Owner display name. Accepted for host compatibility; not rendered. */
   ownerName?: string;
@@ -202,7 +198,7 @@ function edgeMeta(edge: RelationshipEdgeItem): string {
 }
 
 // ---------------------------------------------------------------------------
-// Styling — CSS vars with light fallbacks, orange accent only.
+// Styling — dark theme, CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "relationships-view-styles";
@@ -224,13 +220,25 @@ const RELATIONSHIPS_VIEW_CSS = `
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .relationships-view-btn-primary {
-  background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #fff);
-  border: 1px solid var(--primary, #ff8a24);
+  background: var(--primary, #ff6a00);
+  color: var(--primary-foreground, #0a0a0a);
+  border: 1px solid var(--primary, #ff6a00);
 }
 .relationships-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+}
+.relationships-view-btn-neutral {
+  background: var(--surface, rgba(255, 255, 255, 0.04));
+  color: var(--foreground, #f5f5f5);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+}
+.relationships-view-btn-neutral:hover {
+  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+}
+.relationships-view-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .relationships-view-chip {
   min-height: 44px;
@@ -243,24 +251,21 @@ const RELATIONSHIPS_VIEW_CSS = `
   font-family: inherit;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
-  background: var(--surface, rgba(0, 0, 0, 0.04));
-  color: var(--foreground, #000);
-  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  background: var(--surface, rgba(255, 255, 255, 0.04));
+  color: var(--foreground, #f5f5f5);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
 }
 .relationships-view-chip:hover {
-  background: color-mix(in srgb, var(--foreground, #000) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
 }
 .relationships-view-chip[aria-pressed="true"] {
-  background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #fff);
-  border-color: var(--primary, #ff8a24);
+  background: var(--primary, #ff6a00);
+  color: var(--primary-foreground, #0a0a0a);
+  border-color: var(--primary, #ff6a00);
 }
 .relationships-view-chip[aria-pressed="true"]:hover {
-  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
-}
-.relationships-view-nodes > * + * {
-  border-top: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
 }
 `;
 
@@ -283,8 +288,8 @@ const containerStyle: CSSProperties = {
   height: "100%",
   boxSizing: "border-box",
   overflowY: "auto",
-  background: "var(--background, #fff)",
-  color: "var(--foreground, #000)",
+  background: "var(--background, #0a0a0a)",
+  color: "var(--foreground, #f5f5f5)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -305,10 +310,11 @@ const headerRowStyle: CSSProperties = {
 const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
 const h2Style: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600 };
 
-// Entity nodes are separated by whitespace and a single hairline divider, not a
-// box-per-node. No border, no surface fill — one panel edge max for the view.
-const nodeStyle: CSSProperties = {
-  padding: "16px 0",
+const cardStyle: CSSProperties = {
+  padding: 16,
+  borderRadius: 8,
+  border: "1px solid var(--border, rgba(255,255,255,0.08))",
+  background: "var(--surface, rgba(255,255,255,0.02))",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -318,15 +324,6 @@ const dimStyle: CSSProperties = {
   opacity: 0.65,
   fontSize: 13,
   lineHeight: 1.5,
-};
-
-// Single-message states (loading / error / empty / no-match) render flat — a
-// heading + dim line + button, no box.
-const messageStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-  padding: "8px 0",
 };
 
 const chipRowStyle: CSSProperties = {
@@ -348,7 +345,8 @@ const edgeRowStyle: CSSProperties = {
   justifyContent: "space-between",
   alignItems: "baseline",
   gap: 12,
-  padding: "4px 0",
+  padding: "8px 0",
+  borderBottom: "1px solid var(--border, rgba(255,255,255,0.06))",
   fontSize: 14,
 };
 
@@ -368,7 +366,7 @@ const metaStyle: CSSProperties = {
 };
 
 const kindBadgeStyle: CSSProperties = {
-  opacity: 0.6,
+  color: "var(--primary, #ff6a00)",
   fontSize: 12,
   fontWeight: 600,
 };
@@ -376,6 +374,59 @@ const kindBadgeStyle: CSSProperties = {
 // ---------------------------------------------------------------------------
 // Agent-instrumented controls (hooks cannot run inside .map()).
 // ---------------------------------------------------------------------------
+
+function RefreshButton({
+  onActivate,
+  disabled,
+}: {
+  onActivate: () => void;
+  disabled: boolean;
+}): ReactNode {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "relationships-refresh",
+    role: "button",
+    label: "Refresh relationships",
+    group: "relationships-toolbar",
+    description: "Reload the owner's entities and relationship edges",
+    onActivate,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="relationships-view-btn relationships-view-btn-neutral"
+      onClick={onActivate}
+      disabled={disabled}
+      aria-label="Refresh"
+      {...agentProps}
+    >
+      <RefreshIcon />
+    </button>
+  );
+}
+
+/** Inline refresh glyph (no icon-package dependency in this plugin). */
+function RefreshIcon(): ReactNode {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
+  );
+}
 
 function KindChip({
   kind,
@@ -414,11 +465,18 @@ function KindChip({
   );
 }
 
-function RelationshipsHeader(): ReactNode {
+function RelationshipsHeader({
+  refetch,
+  busy,
+}: {
+  refetch: () => void;
+  busy: boolean;
+}): ReactNode {
   return (
     <header style={sectionStyle}>
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Relationships</h1>
+        <RefreshButton onActivate={refetch} disabled={busy} />
       </div>
     </header>
   );
@@ -471,7 +529,7 @@ function EntityCard({ node }: { node: EntityNodeItem }): ReactNode {
           .join(" · ")
       : null;
   return (
-    <div style={nodeStyle} data-testid={`relationships-entity-${node.id}`}>
+    <div style={cardStyle} data-testid={`relationships-entity-${node.id}`}>
       <div style={headerRowStyle}>
         <h2 style={h2Style}>{node.name}</h2>
         <span style={kindBadgeStyle}>
@@ -521,13 +579,9 @@ export function RelationshipsView(
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
 
-  // `quiet` poll refreshes update in place: they don't flip the view back to
-  // the loading state, and a transient poll failure is swallowed rather than
-  // replacing a populated graph with an error. The initial (non-quiet) load
-  // drives the full loading/error/ready state machine.
-  const load = useCallback((quiet = false) => {
+  const load = useCallback(() => {
     let cancelled = false;
-    if (!quiet) setState({ kind: "loading" });
+    setState({ kind: "loading" });
     Promise.all([
       fetchersRef.current.fetchEntities(),
       fetchersRef.current.fetchRelationships(),
@@ -543,7 +597,7 @@ export function RelationshipsView(
         });
       })
       .catch((error: unknown) => {
-        if (cancelled || quiet) return;
+        if (cancelled) return;
         setState({
           kind: "error",
           message:
@@ -557,22 +611,7 @@ export function RelationshipsView(
     };
   }, []);
 
-  // No manual refresh control: load once on mount, then keep the graph fresh
-  // with a quiet background poll. The view has no store subscription, so the
-  // poll is how server-side graph changes reach the UI.
-  useEffect(() => {
-    const cancelInitial = load();
-    const interval = setInterval(
-      () => load(true),
-      RELATIONSHIPS_POLL_INTERVAL_MS,
-    );
-    return () => {
-      cancelInitial();
-      clearInterval(interval);
-    };
-  }, [load]);
-
-  const retry = useCallback(() => load(), [load]);
+  useEffect(() => load(), [load]);
 
   const toggleKind = useCallback((kind: EntityKindFilter) => {
     setActiveKinds((prev) => {
@@ -597,11 +636,9 @@ export function RelationshipsView(
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="relationships-loading">
-        <RelationshipsHeader />
+        <RelationshipsHeader refetch={load} busy={true} />
         <KindFilters active={activeKinds} onToggle={toggleKind} />
-        <div style={{ ...messageStyle, ...dimStyle }}>
-          Loading relationships…
-        </div>
+        <div style={{ ...cardStyle, ...dimStyle }}>Loading relationships…</div>
       </div>
     );
   }
@@ -609,16 +646,16 @@ export function RelationshipsView(
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="relationships-error">
-        <RelationshipsHeader />
+        <RelationshipsHeader refetch={load} busy={false} />
         <KindFilters active={activeKinds} onToggle={toggleKind} />
-        <div style={messageStyle}>
+        <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load relationships</div>
           <div style={dimStyle}>{state.message}</div>
           <div>
             <button
               type="button"
               className="relationships-view-btn relationships-view-btn-primary"
-              onClick={retry}
+              onClick={load}
               aria-label="Retry loading relationships"
             >
               Retry
@@ -634,8 +671,8 @@ export function RelationshipsView(
   if (state.nodes.length === 0) {
     return (
       <div style={containerStyle} data-testid="relationships-empty">
-        <RelationshipsHeader />
-        <div style={messageStyle}>
+        <RelationshipsHeader refetch={load} busy={false} />
+        <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>No people or relationships yet</div>
           <div style={dimStyle}>
             Eliza hasn’t learned about anyone in your network yet. Tell her
@@ -659,20 +696,16 @@ export function RelationshipsView(
 
   return (
     <div style={containerStyle} data-testid="relationships-populated">
-      <RelationshipsHeader />
+      <RelationshipsHeader refetch={load} busy={false} />
       <KindFilters active={activeKinds} onToggle={toggleKind} />
       {visibleNodes.length > 0 ? (
-        <section
-          className="relationships-view-nodes"
-          style={sectionStyle}
-          aria-label="Relationships graph"
-        >
+        <section style={sectionStyle} aria-label="Relationships graph">
           {visibleNodes.map((node) => (
             <EntityCard key={node.id} node={node} />
           ))}
         </section>
       ) : (
-        <div style={{ ...messageStyle, ...dimStyle }}>
+        <div style={{ ...cardStyle, ...dimStyle }}>
           No entities match the selected kind filters.
         </div>
       )}

@@ -88,6 +88,7 @@ const repoRoot = process.env.ELIZA_MOBILE_REPO_ROOT?.trim()
       fallbackToCwd: true,
     });
 const appCoreRoot = path.resolve(__dirname, "..");
+const elizaCheckoutRoot = path.resolve(appCoreRoot, "..", "..");
 const packagesRoot = path.resolve(appCoreRoot, "..");
 const elizaRepoRoot = path.resolve(packagesRoot, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
@@ -225,11 +226,19 @@ function readAppIdentity() {
   if (!appId || !appName) {
     throw new Error("Could not parse appId/appName from app.config.ts");
   }
+  // Opaque background the icon mark is flattened onto (iOS app icon + Android
+  // legacy launcher + adaptive-icon background). Whitelabel seam: each app sets
+  // its own brand color in app.config.ts (web.iconBackgroundColor). Falls back
+  // to the upstream elizaOS accent so a config without the field is unchanged.
+  const iconBackgroundColor =
+    process.env.ELIZA_ICON_BACKGROUND?.trim() ||
+    src.match(/iconBackgroundColor:\s*["']([^"']+)["']/)?.[1] ||
+    "#FF5800";
   // android.userAgentMarkers is an optional array literal nested under
   // `android: { ... }`. Parse the array body via regex (rather than
   // executing the TS file) so this script stays bun-import-free.
   const userAgentMarkers = parseAndroidUserAgentMarkers(src);
-  return { appId, appName, urlScheme, userAgentMarkers };
+  return { appId, appName, urlScheme, iconBackgroundColor, userAgentMarkers };
 }
 
 function parseAndroidUserAgentMarkers(configSrc) {
@@ -505,21 +514,32 @@ function resolvePackageAbsolutePath(
   pkgName,
   { appDirValue = appDir, repoRootValue = repoRoot } = {},
 ) {
-  const appPackage = path.join(
+  const candidates = resolvePackageAbsolutePathCandidates(pkgName, {
     appDirValue,
-    "node_modules",
-    ...pkgName.split("/"),
-  );
-  const rootNodeModulesPackage = path.join(
     repoRootValue,
-    "node_modules",
-    ...pkgName.split("/"),
+  });
+  const linked = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!linked) return null;
+  return fs.realpathSync(linked);
+}
+
+function resolvePackageAbsolutePathCandidates(
+  pkgName,
+  { appDirValue = appDir, repoRootValue = repoRoot } = {},
+) {
+  const roots = [
+    ...new Set(
+      [appDirValue, repoRootValue, elizaCheckoutRoot].map((root) =>
+        path.resolve(root),
+      ),
+    ),
+  ];
+  const candidates = roots.map((root) =>
+    path.join(root, "node_modules", ...pkgName.split("/")),
   );
-  const candidates = [appPackage, rootNodeModulesPackage];
-  for (const bunStore of [
-    path.join(appDirValue, "node_modules", ".bun"),
-    path.join(repoRootValue, "node_modules", ".bun"),
-  ]) {
+  for (const bunStore of roots.map((root) =>
+    path.join(root, "node_modules", ".bun"),
+  )) {
     if (!fs.existsSync(bunStore)) continue;
     for (const entry of fs.readdirSync(bunStore, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
@@ -528,9 +548,13 @@ function resolvePackageAbsolutePath(
       );
     }
   }
-  const linked = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!linked) return null;
-  return fs.realpathSync(linked);
+  return [
+    ...new Set(
+      candidates
+        .filter((candidate) => fs.existsSync(candidate))
+        .map((candidate) => fs.realpathSync(candidate)),
+    ),
+  ];
 }
 
 function resolveNativePluginPackagePath(pkgName, relativeTo) {
@@ -1844,12 +1868,12 @@ const ANDROID_OFFICIAL_CAPACITOR_PACKAGES = [
 ];
 
 function patchInstalledCapacitorPluginGradleForAgp9(pkgName) {
-  const pkgRel = resolvePackagePath(pkgName, androidDir);
-  if (!pkgRel) return;
-  patchGradleFileForAgp9(
-    path.resolve(androidDir, pkgRel, "android", "build.gradle"),
-    pkgName,
-  );
+  for (const pkgRoot of resolvePackageAbsolutePathCandidates(pkgName)) {
+    patchGradleFileForAgp9(
+      path.join(pkgRoot, "android", "build.gradle"),
+      pkgName,
+    );
+  }
 }
 
 function patchOfficialCapacitorGradleForAgp9() {
@@ -1859,12 +1883,14 @@ function patchOfficialCapacitorGradleForAgp9() {
 }
 
 function patchLlamaCppCapacitorGradle() {
-  const pkgRel = resolvePackagePath("llama-cpp-capacitor", androidDir);
-  if (!pkgRel) return;
-  patchGradleFileForAgp9(
-    path.resolve(androidDir, pkgRel, "android", "build.gradle"),
+  for (const pkgRoot of resolvePackageAbsolutePathCandidates(
     "llama-cpp-capacitor",
-  );
+  )) {
+    patchGradleFileForAgp9(
+      path.join(pkgRoot, "android", "build.gradle"),
+      "llama-cpp-capacitor",
+    );
+  }
 }
 
 export function injectAndroidBackgroundRunnerAarFlatDir(content) {
@@ -2002,6 +2028,57 @@ function removeXmlCommentsContaining(xml, markers) {
         "g",
       ),
       "\n",
+    );
+  }
+  return patched;
+}
+
+function ensureManifestToolsNamespace(xml) {
+  if (/\bxmlns:tools=/.test(xml)) return xml;
+  return xml.replace(
+    /<manifest\b([^>]*)>/,
+    '<manifest$1 xmlns:tools="http://schemas.android.com/tools">',
+  );
+}
+
+function hasAndroidPermissionRequest(xml, fullPermissionName) {
+  const escaped = escapeRegExp(fullPermissionName);
+  const re = new RegExp(
+    `<uses-permission\\b(?=[^>]*android:name="${escaped}")[^>]*>`,
+    "g",
+  );
+  for (const match of xml.matchAll(re)) {
+    if (!/\btools:node\s*=\s*"remove"/.test(match[0])) return true;
+  }
+  return false;
+}
+
+function removeAndroidPermissionRequests(xml, permissions) {
+  let patched = xml;
+  for (const perm of permissions) {
+    const escaped = escapeRegExp(`android.permission.${perm}`);
+    const re = new RegExp(
+      `\\n\\s*<uses-permission\\b(?=[^>]*android:name="${escaped}")(?![^>]*tools:node="remove")[^>]*/>\\s*`,
+      "g",
+    );
+    patched = patched.replace(re, "\n");
+  }
+  return patched;
+}
+
+function ensureAndroidPermissionRemovalMarkers(xml, permissions) {
+  let patched = ensureManifestToolsNamespace(xml);
+  for (const perm of permissions) {
+    const full = `android.permission.${perm}`;
+    const escaped = escapeRegExp(full);
+    const removalRe = new RegExp(
+      `<uses-permission\\b(?=[^>]*android:name="${escaped}")(?=[^>]*tools:node="remove")[^>]*/>`,
+      "m",
+    );
+    if (removalRe.test(patched)) continue;
+    patched = patched.replace(
+      "</manifest>",
+      `    <uses-permission android:name="${full}" tools:node="remove" />\n</manifest>`,
     );
   }
   return patched;
@@ -2363,7 +2440,11 @@ function syncAndroidAppActionsResources() {
   const targetResDir = path.join(androidDir, "app", "src", "main", "res");
   const resourceFiles = [
     path.join("xml", "shortcuts.xml"),
+    path.join("xml", "eliza_quick_actions_widget.xml"),
     path.join("xml", "eliza_accessibility_service.xml"),
+    path.join("layout", "eliza_quick_actions_widget.xml"),
+    path.join("drawable", "eliza_widget_background.xml"),
+    path.join("drawable", "eliza_widget_button_background.xml"),
     path.join("values", "android_app_actions.xml"),
   ];
   for (const relPath of resourceFiles) {
@@ -2542,6 +2623,9 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       "MainActivity.java",
       "ElizaAgentService.java",
       "ElizaAssistActivity.java",
+      "ElizaQuickActionsWidgetProvider.java",
+      "ElizaShareActivity.java",
+      "ElizaVoiceTileService.java",
       "ElizaAccessibilityService.java",
       "ElizaBootReceiver.java",
       "ElizaNotificationListenerService.java",
@@ -2709,6 +2793,9 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
     for (const component of [
       "ElizaDialActivity",
       "ElizaAssistActivity",
+      "ElizaQuickActionsWidgetProvider",
+      "ElizaShareActivity",
+      "ElizaVoiceTileService",
       "ElizaAccessibilityService",
       "ElizaInCallService",
       "ElizaNotificationListenerService",
@@ -2736,6 +2823,9 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
     for (const component of [
       "ElizaDialActivity",
       "ElizaAssistActivity",
+      "ElizaQuickActionsWidgetProvider",
+      "ElizaShareActivity",
+      "ElizaVoiceTileService",
       "ElizaAccessibilityService",
       "ElizaInCallService",
       "ElizaNotificationListenerService",
@@ -2801,6 +2891,60 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaShareActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaShareActivity"
+            android:exported="true"
+            android:label="@string/app_action_smart_reply_long"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaVoiceTileService`,
+      `
+        <service
+            android:name="${androidPackage}.ElizaVoiceTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_monochrome"
+            android:label="@string/app_action_voice_long"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="false" />
+        </service>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaQuickActionsWidgetProvider`,
+      `
+        <receiver
+            android:name="${androidPackage}.ElizaQuickActionsWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/eliza_quick_actions_widget" />
+        </receiver>`,
     );
     xml = appendMissingApplicationBlock(
       xml,
@@ -3196,7 +3340,7 @@ const IOS_PERMISSION_KEYS = [
   ],
   [
     "NSLocalNetworkUsageDescription",
-    "This app discovers and connects to your elizaOS gateway on the local network.",
+    `This app discovers and connects to your ${APP.appName} gateway on the local network.`,
   ],
 ];
 
@@ -3944,6 +4088,9 @@ function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
     "ElizaAgentService",
     "ElizaDialActivity",
     "ElizaAssistActivity",
+    "ElizaQuickActionsWidgetProvider",
+    "ElizaShareActivity",
+    "ElizaVoiceTileService",
     "ElizaInCallService",
     "ElizaSmsReceiver",
     "ElizaMmsReceiver",
@@ -3967,11 +4114,11 @@ function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
   }
 }
 
-// Brand accent (BRAND_COLORS.orange in @elizaos/shared) used as the opaque
-// app-icon background on iOS and the Android adaptive-icon background color.
-// Kept inline so this script stays import-free (it parses app.config.ts via
-// regex rather than executing TS).
-const BRAND_ICON_BACKGROUND = "#FF5800";
+// Opaque app-icon background on iOS and the Android adaptive-icon background
+// color. Resolved per-brand from app.config.ts (web.iconBackgroundColor) by
+// readAppIdentity so each whitelabel ships its own brand color; defaults to the
+// upstream elizaOS accent when the field is absent.
+const BRAND_ICON_BACKGROUND = APP.iconBackgroundColor;
 
 const ANDROID_LAUNCHER_ICON_SIZES = {
   "mipmap-mdpi": 48,
@@ -4137,11 +4284,12 @@ async function writeAndroidForegroundPng(tool, source, output, canvas) {
 
 function resolveBrandSources() {
   return {
-    // The icon mark must be a white face on a transparent background so iOS
-    // can flatten it onto BRAND_ICON_BACKGROUND and Android can drop it into
-    // the adaptive foreground/monochrome safe zone. The web favicons are an
-    // orange face on transparent — flattening those onto orange would erase
-    // the mark — so the dedicated brand/app-icon.png master comes first.
+    // The icon mark is a transparent-background face chosen to contrast with
+    // BRAND_ICON_BACKGROUND, so iOS can flatten it onto that color and Android
+    // can drop it into the adaptive foreground/monochrome safe zone. The web
+    // favicons share the accent hue, which would vanish when flattened onto it,
+    // so the dedicated brand/app-icon.png master (authored for contrast against
+    // the brand color) is preferred.
     iconSource: firstExisting([
       path.join(appDir, "public", "brand", "app-icon.png"),
       path.join(appDir, "public", "brand", "logos", "logo_white_nobg.svg"),
@@ -4961,6 +5109,14 @@ export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "BIND_DEVICE_ADMIN",
 ];
 
+// Some kept Capacitor plugins can reintroduce source-stripped permissions via
+// library manifest merge. Add removal markers only for verified merge offenders;
+// the artifact audit below still fails if any other stripped permission leaks.
+export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
+  "ACCESS_BACKGROUND_LOCATION",
+  "RECEIVE_BOOT_COMPLETED",
+];
+
 // Java sources removed from the merged sources tree so they don't
 // reference manifest-stripped classes and break compilation.
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
@@ -5585,7 +5741,7 @@ function auditAndroidCloudSource(phase) {
     }
     for (const perm of ANDROID_CLOUD_STRIPPED_PERMISSIONS) {
       const full = `android.permission.${perm}`;
-      if (xml.includes(full)) {
+      if (hasAndroidPermissionRequest(xml, full)) {
         failures.push(`AndroidManifest.xml still requests ${full}`);
       }
     }
@@ -5882,14 +6038,14 @@ function stripAndroidForCloud() {
     xml = removeXmlCommentsContaining(xml, ANDROID_CLOUD_STRIPPED_COMPONENTS);
     xml = ensureManifestApplicationClosedBeforeTopLevelEntries(xml);
 
-    for (const perm of ANDROID_CLOUD_STRIPPED_PERMISSIONS) {
-      const escaped = escapeRegExp(`android.permission.${perm}`);
-      const re = new RegExp(
-        `\\n\\s*<uses-permission\\b[^>]*android:name="${escaped}"[^>]*/>\\s*`,
-        "g",
-      );
-      xml = xml.replace(re, "\n");
-    }
+    xml = removeAndroidPermissionRequests(
+      xml,
+      ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+    );
+    xml = ensureAndroidPermissionRemovalMarkers(
+      xml,
+      ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
+    );
     xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
 
     if (xml !== original) {
@@ -5998,14 +6154,16 @@ function stripAndroidForSmsGateway() {
       xml = removeApplicationComponentClassBlock(xml, component);
     }
 
-    for (const perm of ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS) {
-      const escaped = escapeRegExp(`android.permission.${perm}`);
-      const re = new RegExp(
-        `\\n\\s*<uses-permission\\b[^>]*android:name="${escaped}"[^>]*/>\\s*`,
-        "g",
-      );
-      xml = xml.replace(re, "\n");
-    }
+    xml = removeAndroidPermissionRequests(
+      xml,
+      ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
+    );
+    xml = ensureAndroidPermissionRemovalMarkers(
+      xml,
+      ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter((permission) =>
+        ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS.includes(permission),
+      ),
+    );
     xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
 
     if (xml !== original) {
@@ -6356,6 +6514,25 @@ function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
     throw new Error(
       `[mobile-build] android-cloud artifact contains local runtime payloads:\n` +
         offenders.map((entry) => `  - ${entry}`).join("\n"),
+    );
+  }
+  const aapt = resolveAndroidBuildTool(resolveAndroidSdkRoot(), "aapt");
+  if (!aapt) {
+    throw new Error(
+      "[mobile-build] Could not find aapt under Android SDK build-tools for android-cloud artifact audit.",
+    );
+  }
+  const badging = dumpAndroidArtifactBadging(aapt, artifact);
+  const permissionOffenders = ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
+    (perm) =>
+      badging.includes(`uses-permission: name='android.permission.${perm}'`),
+  );
+  if (permissionOffenders.length > 0) {
+    throw new Error(
+      "[mobile-build] android-cloud artifact still requests stripped permissions:\n" +
+        permissionOffenders
+          .map((perm) => `  - android.permission.${perm}`)
+          .join("\n"),
     );
   }
   // Cloud is a thin client (no on-device agent), but it must still ship the

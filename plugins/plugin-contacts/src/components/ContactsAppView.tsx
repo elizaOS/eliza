@@ -24,6 +24,7 @@ import {
   navigateToMessagesWithNumber,
   navigateToPhoneWithNumber,
 } from "@elizaos/ui/app-navigate-view";
+import { PermissionRecoveryCallout } from "@elizaos/ui/components/permissions/PermissionRecoveryCallout";
 import { isNative } from "@elizaos/ui/platform";
 import {
   ArrowLeft,
@@ -83,6 +84,16 @@ function dedupePreservingOrder(values: string[]): string[] {
     result.push(value);
   }
   return result;
+}
+
+function isPermissionRecoveryError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("permission") ||
+    normalized.includes("denied") ||
+    normalized.includes("access is needed") ||
+    normalized.includes("read_contacts")
+  );
 }
 
 export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
@@ -299,14 +310,26 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
       )}
 
       <div className="chat-native-scrollbar flex-1 overflow-y-auto">
-        {error && (
+        {error && isPermissionRecoveryError(error) ? (
+          <PermissionRecoveryCallout
+            permission="contacts"
+            title={t("contacts.permissionTitle", {
+              defaultValue: "Contacts access is off",
+            })}
+            description={error}
+            onRetry={refresh}
+            retryLabel={t("actions.retry", { defaultValue: "Try again" })}
+            className="mx-4 mt-4"
+            testId="contacts-permission-callout"
+          />
+        ) : error ? (
           <div
             role="alert"
             className="mx-4 mt-4 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
           >
             {error}
           </div>
-        )}
+        ) : null}
 
         {mode === "list" && (
           <ContactList

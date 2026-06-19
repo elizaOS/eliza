@@ -1,8 +1,9 @@
 /**
  * User Database Service
  *
- * High-level business logic for managing user app databases.
- * Coordinates between Neon API and our apps database.
+ * High-level business logic for managing user app databases. Provisions either
+ * an isolated per-tenant database (when a tenant-DB backend is wired) or the
+ * shared cloud DATABASE_URL, and coordinates teardown on app delete.
  */
 
 import { appDatabasesRepository } from "../../db/repositories/app-databases";
@@ -10,7 +11,6 @@ import { appsRepository } from "../../db/repositories/apps";
 import type { App, UserDatabaseStatus } from "../../db/schemas/apps";
 import { logger } from "../utils/logger";
 import { fieldEncryption } from "./field-encryption";
-import { getNeonClient } from "./neon-client";
 import type { TenantDbProvisioning } from "./tenant-db/tenant-db-provisioning";
 
 /**
@@ -22,12 +22,6 @@ export interface ProvisionResult {
 
   /** Connection URI (only if success=true) */
   connectionUri?: string;
-
-  /** Neon project ID (only if success=true) */
-  projectId?: string;
-
-  /** Neon branch ID (only if success=true) */
-  branchId?: string;
 
   /** AWS region where database was created */
   region?: string;
@@ -100,13 +94,10 @@ export class UserDatabaseService {
   /**
    * Provision a database for an app.
    *
-   * Uses the shared cloud DATABASE_URL instead of creating per-app Neon
-   * projects. ElizaOS plugin-sql tables scope data by agent/app UUID so
-   * multiple apps safely coexist. This avoids Neon project/branch limits
-   * (BRANCHES_LIMIT_EXCEEDED).
-   *
-   * Legacy per-app Neon projects with existing neon_project_id still get
-   * their credentials returned correctly.
+   * Provisions an isolated per-tenant database when a tenant-DB backend is
+   * wired; otherwise falls back to the shared cloud DATABASE_URL. ElizaOS
+   * plugin-sql tables scope data by agent/app UUID so multiple apps safely
+   * coexist on the shared database.
    *
    * @param appId App ID
    * @param appName App name (used for logging)
@@ -139,8 +130,6 @@ export class UserDatabaseService {
       return {
         success: true,
         connectionUri: decryptedUri || undefined,
-        projectId: database.user_database_project_id || undefined,
-        branchId: database.user_database_branch_id || undefined,
         region: database.user_database_region || region,
       };
     }
@@ -163,8 +152,6 @@ export class UserDatabaseService {
         return {
           success: true,
           connectionUri: decryptedUri || undefined,
-          projectId: currentDatabase.user_database_project_id || undefined,
-          branchId: currentDatabase.user_database_branch_id || undefined,
           region: currentDatabase.user_database_region || region,
         };
       }
@@ -314,25 +301,6 @@ export class UserDatabaseService {
         });
       }
     }
-
-    // NEON (legacy shared-host path): delete the user's Neon project.
-    if (database.user_database_project_id) {
-      try {
-        const neonClient = getNeonClient();
-        await neonClient.deleteProject(database.user_database_project_id);
-        logger.info("Database cleaned up successfully", {
-          appId,
-          projectId: database.user_database_project_id,
-        });
-      } catch (error) {
-        // Log but don't fail - database might already be deleted
-        logger.warn("Failed to delete Neon project (may already be deleted)", {
-          appId,
-          projectId: database.user_database_project_id,
-          error: error instanceof Error ? error.message : "Unknown",
-        });
-      }
-    }
   }
 
   /**
@@ -387,7 +355,7 @@ export class UserDatabaseService {
    * Retry provisioning for an app that previously failed.
    *
    * @param appId App ID
-   * @param appName App name (used for Neon project name)
+   * @param appName App name (used for logging)
    * @param region Optional AWS region
    * @returns Provision result
    */
@@ -414,8 +382,6 @@ export class UserDatabaseService {
         return {
           success: true,
           connectionUri: decryptedUri || undefined,
-          projectId: database.user_database_project_id || undefined,
-          branchId: database.user_database_branch_id || undefined,
           region: database.user_database_region || region,
         };
       }

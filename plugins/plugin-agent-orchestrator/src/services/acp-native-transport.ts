@@ -56,7 +56,7 @@ export type NativeAcpClientOptions = {
 export function parseAcpMcpServersEnv(
   raw: string | undefined = process.env.ELIZA_ACP_MCP_SERVERS,
 ): AcpMcpServerConfig[] {
-  if (!raw || !raw.trim()) return [];
+  if (!raw?.trim()) return [];
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);

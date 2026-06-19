@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PERMISSION_IDS, type PermissionId } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 
 import type { Prober } from "../contracts.ts";
@@ -20,24 +21,7 @@ import {
 } from "./_bridge.ts";
 import { ALL_PROBERS, PROBERS_BY_ID } from "./index.ts";
 
-const EXPECTED_IDS = [
-  "accessibility",
-  "automation",
-  "calendar",
-  "camera",
-  "contacts",
-  "full-disk",
-  "health",
-  "location",
-  "microphone",
-  "notes",
-  "notifications",
-  "reminders",
-  "screen-recording",
-  "screentime",
-  "shell",
-  "website-blocking",
-] as const;
+const EXPECTED_IDS = PERMISSION_IDS;
 
 describe("permission probers", () => {
   it("registers exactly one prober per PermissionId", () => {
@@ -177,17 +161,29 @@ describe("permission probers", () => {
 
   it("non-darwin: macOS-only probers short-circuit to not-applicable", async () => {
     if (IS_DARWIN) return; // skip on macOS
-    const macOnly: Array<(typeof EXPECTED_IDS)[number]> = [
+    const macOnly: PermissionId[] = [
       "accessibility",
+      "app-blocking",
       "automation",
+      "battery-optimization",
+      "bluetooth",
       "calendar",
       "contacts",
       "full-disk",
       "health",
+      "local-network",
+      "messages",
       "notes",
+      "overlay",
+      "phone",
+      "photos",
       "reminders",
       "screen-recording",
       "screentime",
+      "speech-recognition",
+      "usage-access",
+      "wifi",
+      "write-settings",
     ];
     for (const id of macOnly) {
       const prober = PROBERS_BY_ID.get(id) as Prober;

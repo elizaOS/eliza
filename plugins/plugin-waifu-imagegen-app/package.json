@@ -42,7 +42,8 @@
   "elizaos": {
     "app": {
       "displayName": "Image Generation",
-      "category": "creative"
+      "category": "creative",
+      "heroImage": "assets/hero.png"
     }
   },
   "publishConfig": {
@@ -58,6 +59,7 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
+    "assets",
     "dist"
   ],
   "devDependencies": {

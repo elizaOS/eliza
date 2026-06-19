@@ -483,7 +483,9 @@ const stubCatalogApps = [
     description:
       "Run tasks, reminders, calendar, inbox, and connected workflows.",
     capabilities: ["lifeops", "tasks", "calendar", "gmail"],
-    heroImage: "/app-heroes/lifeops.png",
+    // No heroImage: the lifeops surface was removed and /app-heroes/lifeops.png
+    // does not exist; the catalog renders the hero conditionally, so omitting it
+    // avoids the 404 console error (which the visual smoke asserts against).
   }),
   stubCatalogApp({
     name: "@elizaos/app-plugin-viewer",

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>ElizaBunEngine</string>
+  <key>CFBundleIdentifier</key><string>ai.eliza.ElizaBunEngine</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>ElizaBunEngine</string>
+  <key>CFBundlePackageType</key><string>FMWK</string>
+  <key>CFBundleShortVersionString</key><string>0.0.0</string>
+  <key>CFBundleVersion</key><string>0</string>
+  <key>ElizaBunEngineABIVersion</key><string>3</string>
+  <key>ElizaBunEngineNoJIT</key><true/>
+  <key>ElizaBunEngineExecutionProfile</key><string>ios-app-store-nojit</string>
+  <key>MinimumOSVersion</key><string>16.0</string>
+</dict>
+</plist>

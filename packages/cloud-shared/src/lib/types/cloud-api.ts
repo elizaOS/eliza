@@ -143,8 +143,6 @@ export interface AppDto {
   promotional_assets: unknown;
   user_database_status: UserDatabaseStatus;
   user_database_uri: string | null;
-  user_database_project_id: string | null;
-  user_database_branch_id: string | null;
   user_database_region: string | null;
   user_database_error: string | null;
   email_notifications: boolean | null;

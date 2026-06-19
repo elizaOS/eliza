@@ -77,7 +77,7 @@ test("first-run onboarding renders without a render loop and lets the runtime be
   // outer container testid is stable across the redesign.
   const onboarding = page.getByTestId("onboarding-toast");
   await expect(onboarding).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("Let's get you started")).toBeVisible({
+  await expect(page.getByText("How should Eliza run?")).toBeVisible({
     timeout: 15_000,
   });
 
@@ -108,6 +108,16 @@ test("first-run onboarding renders without a render loop and lets the runtime be
     await page.getByRole("button", { name: "Back" }).click();
     await expect(cloud).toBeVisible({ timeout: 10_000 });
   }
+
+  // Local advances to the inference sub-choice (cloud vs on-device), then Back
+  // returns to the runtime cards — the same re-render churn, on the newer step.
+  await local.click();
+  const inferenceCloud = page.getByTestId("onboarding-inference-cloud");
+  const inferenceLocal = page.getByTestId("onboarding-inference-local");
+  await expect(inferenceCloud).toBeVisible({ timeout: 10_000 });
+  await expect(inferenceLocal).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(cloud).toBeVisible({ timeout: 10_000 });
 
   // Cloud remains the always-offered resting choice after the churn.
   await expect(cloud).toBeVisible({ timeout: 15_000 });

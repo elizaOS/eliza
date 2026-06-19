@@ -3,6 +3,11 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { type ReactElement, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MODULE_CACHE_TELEMETRY_EVENT,
+  type ModuleCacheTelemetryEvent,
+} from "../../cache-telemetry";
+import { APP_PAUSE_EVENT } from "../../events";
 import { DynamicViewLoader } from "./DynamicViewLoader";
 
 const { sendWsMessage } = vi.hoisted(() => ({
@@ -541,7 +546,7 @@ describe("DynamicViewLoader", () => {
     expect(fetchHead).not.toHaveBeenCalled();
   });
 
-  it("unregisters the previous interact handler and cleans up when the loaded view is replaced", async () => {
+  it("unregisters the previous interact handler when the loaded view is replaced", async () => {
     const cleanupFirst = vi.fn();
     const firstInteract = vi.fn(async () => ({ version: "first" }));
     const secondInteract = vi.fn(async () => ({ version: "second" }));
@@ -583,7 +588,6 @@ describe("DynamicViewLoader", () => {
       />,
     );
     await screen.findByText("Second dynamic panel");
-    await waitFor(() => expect(cleanupFirst).toHaveBeenCalledTimes(1));
 
     const { dispatchViewInteract } = await import("./view-interact-registry");
     await dispatchViewInteract(
@@ -619,6 +623,10 @@ describe("DynamicViewLoader", () => {
       success: true,
       result: { version: "second" },
     });
+    expect(cleanupFirst).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new Event("memorypressure"));
+    await waitFor(() => expect(cleanupFirst).toHaveBeenCalledTimes(1));
   });
 
   it("renders the error state when a bundle does not export a component", async () => {
@@ -672,7 +680,7 @@ describe("DynamicViewLoader", () => {
     consoleError.mockRestore();
   });
 
-  it("runs cleanup on unmount and ignores cleanup failures", async () => {
+  it("retains inactive bundles after unmount and cleans them up under pressure", async () => {
     const bundleUrl = "https://capability.example.test/assets/cleanup.js";
     const cleanupBundle = vi.fn(() => {
       throw new Error("cleanup failed");
@@ -690,10 +698,12 @@ describe("DynamicViewLoader", () => {
     await screen.findByText("Cleanup panel");
 
     expect(() => rendered.unmount()).not.toThrow();
+    expect(cleanupBundle).not.toHaveBeenCalled();
+    window.dispatchEvent(new Event("memorypressure"));
     await waitFor(() => expect(cleanupBundle).toHaveBeenCalledTimes(1));
   });
 
-  it("cleans up a bundle that resolves after the loader has unmounted", async () => {
+  it("retains then evicts a bundle that resolves after the loader has unmounted", async () => {
     const bundleUrl = "https://capability.example.test/assets/late.js";
     const cleanupLateBundle = vi.fn();
     let resolveImport:
@@ -722,7 +732,90 @@ describe("DynamicViewLoader", () => {
       });
     });
 
+    await waitFor(() => expect(cleanupLateBundle).not.toHaveBeenCalled());
+    window.dispatchEvent(new Event("memorypressure"));
     await waitFor(() => expect(cleanupLateBundle).toHaveBeenCalledTimes(1));
     expect(screen.queryByText("Late panel")).toBeNull();
+  });
+
+  it("cleans up a pending bundle that is evicted before import resolution", async () => {
+    const bundleUrl =
+      "https://capability.example.test/assets/late-pressure.js";
+    const cleanupLateBundle = vi.fn();
+    let resolveImport:
+      | ((module: { default: () => ReactElement; cleanup: () => void }) => void)
+      | null = null;
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(
+      () =>
+        new Promise<Record<string, unknown>>((resolve) => {
+          resolveImport = resolve;
+        }),
+    );
+
+    const rendered = render(
+      <DynamicViewLoader bundleUrl={bundleUrl} viewId="late.pressure.view" />,
+    );
+    rendered.unmount();
+    window.dispatchEvent(new Event("memorypressure"));
+
+    act(() => {
+      resolveImport?.({
+        default: function LatePressurePanel() {
+          return <div>Late pressure panel</div>;
+        },
+        cleanup: cleanupLateBundle,
+      });
+    });
+
+    await waitFor(() => expect(cleanupLateBundle).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Late pressure panel")).toBeNull();
+  });
+
+  it("evicts inactive bundles on app pause and emits cache telemetry", async () => {
+    const bundleUrl = "https://capability.example.test/assets/pause.js";
+    const cleanupBundle = vi.fn();
+    const events: ModuleCacheTelemetryEvent[] = [];
+    const onTelemetry = (event: Event) => {
+      events.push((event as CustomEvent<ModuleCacheTelemetryEvent>).detail);
+    };
+    window.addEventListener(MODULE_CACHE_TELEMETRY_EVENT, onTelemetry);
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
+      default: function PausePanel() {
+        return <div>Pause panel</div>;
+      },
+      cleanup: cleanupBundle,
+    }));
+
+    const rendered = render(
+      <DynamicViewLoader bundleUrl={bundleUrl} viewId="pause.view" />,
+    );
+    await screen.findByText("Pause panel");
+    rendered.unmount();
+
+    document.dispatchEvent(new Event(APP_PAUSE_EVENT));
+    await waitFor(() => expect(cleanupBundle).toHaveBeenCalledTimes(1));
+    window.removeEventListener(MODULE_CACHE_TELEMETRY_EVENT, onTelemetry);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "dynamic-view",
+          action: "load",
+          key: `${bundleUrl}::default`,
+        }),
+        expect.objectContaining({
+          source: "dynamic-view",
+          action: "evict",
+          reason: "app-pause",
+          key: `${bundleUrl}::default`,
+        }),
+        expect.objectContaining({
+          source: "dynamic-view",
+          action: "cleanup",
+          reason: "app-pause",
+          key: `${bundleUrl}::default`,
+        }),
+      ]),
+    );
   });
 });

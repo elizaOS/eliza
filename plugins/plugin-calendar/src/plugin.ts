@@ -1,6 +1,4 @@
 import type { Plugin } from "@elizaos/core";
-import { calendarAction } from "./actions/calendar.js";
-import { conflictDetectAction } from "./actions/conflict-detect.js";
 import { CalendarService } from "./service/CalendarService.js";
 import { CalendarMigrationService } from "./service/migration.js";
 import { calendarSchema } from "./service/schema.js";
@@ -20,7 +18,10 @@ export const calendarPlugin: Plugin = {
     "Calendar feed and event management (Google + Apple) for Eliza agents.",
   schema: calendarSchema,
   services: [CalendarService, CalendarMigrationService],
-  actions: [calendarAction, conflictDetectAction],
+  // Host-adapted action factories live in ./actions. The standalone plugin
+  // should not register scaffold action handlers; PA registers the owner-gated
+  // CALENDAR / CONFLICT_DETECT actions after injecting its LifeOps adapters.
+  actions: [],
   providers: [],
   views: [
     {

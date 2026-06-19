@@ -313,6 +313,12 @@ export interface HomeScreenProps {
   onOpenTile: (target: HomeTileTarget) => void;
   /** Render the AOSP-only phone/contacts tiles (native OS surfaces). */
   showNativeOsTiles?: boolean;
+  /**
+   * Optional content rendered to the right of the clock (e.g. a brand wallet
+   * widget). Whitelabel seam: a host can inject a brand-specific accessory via
+   * the `homeScreen` boot-config slot without forking the whole home screen.
+   */
+  clockAccessory?: React.ReactNode;
 }
 
 /**
@@ -324,6 +330,7 @@ export interface HomeScreenProps {
 export function HomeScreen({
   onOpenTile,
   showNativeOsTiles = false,
+  clockAccessory,
 }: HomeScreenProps): React.JSX.Element {
   // Gate tiles on what actually resolves: native-OS tiles need an AOSP build,
   // and view tiles need their path registered (from /api/views) so a tap never
@@ -357,8 +364,11 @@ export function HomeScreen({
     >
       <style>{HOME_ENTER_CSS}</style>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-        <div className="home-enter">
+        <div className="home-enter flex items-start justify-between gap-3">
           <ClockBlock />
+          {clockAccessory ? (
+            <div className="shrink-0">{clockAccessory}</div>
+          ) : null}
         </div>
 
         {recentActivity.length > 0 ? (

@@ -128,19 +128,24 @@ describe("handleLiveDiarizationRoute", () => {
 		expect(res.statusCode).toBe(200);
 		const status = res.json() as {
 			ready: boolean;
-			models: { dir: string; vad: { path: string; present: boolean } };
+			libs: { fusedInference: string | null };
+			models: { dir: string };
 			framesReceived: number;
 			turnsObserved: number;
 			error?: string;
 		};
-		// On CI/host there are no on-device voice GGUFs, so readiness fails with a
-		// precise blocker rather than a silent default — the device-evidence read.
+		// On CI/host there is no fused libelizainference, so readiness fails with
+		// a precise blocker rather than a silent default — the device-evidence
+		// read. The session now runs the whole stack (VAD/encoder/diarizer)
+		// through the one fused FFI handle, not separate bun:ffi-musl libs.
 		expect(typeof status.models.dir).toBe("string");
-		expect(status.models.vad.path).toContain("silero-vad-v5.gguf");
+		expect("fusedInference" in status.libs).toBe(true);
 		expect(status.framesReceived).toBe(0);
 		expect(status.turnsObserved).toBe(0);
 		if (!status.ready) {
-			expect(status.error).toMatch(/voice GGUFs missing|GGUF/i);
+			expect(status.error).toMatch(
+				/fused libelizainference|ABI|FFI|libelizainference/i,
+			);
 		}
 	});
 

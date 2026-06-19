@@ -1185,6 +1185,7 @@ async function handleBuiltinOptionalRoutes(
 }
 
 // ---------------------------------------------------------------------------
+import { serveMediaFile } from "./media-store.ts";
 import {
   injectApiBaseIntoHtml,
   isAuthProtectedRoute,
@@ -1832,6 +1833,10 @@ async function handleRequest(
   // while steward-managed containers can still reach the built-in dashboard.
   if (method === "GET" || method === "HEAD") {
     if (serveStaticUi(req, res, pathname)) return;
+    // Chat media (uploaded + generated). Content-addressed sha256 filenames act
+    // as unguessable capabilities, so media loads from <img>/<audio> without an
+    // auth header — same rationale as static assets above.
+    if (serveMediaFile(req, res, pathname)) return;
   }
 
   if (
@@ -2741,10 +2746,11 @@ async function handleRequest(
   // ── BlueBubbles routes (/api/bluebubbles/*, /webhooks/bluebubbles) ──
   // Extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
 
-  // ── Inbox routes (/api/inbox/*) ───────────────────────────────
-  // Cross-channel read-only feed that merges connector messages
-  // (imessage, telegram, discord, whatsapp, etc.) into a single
-  // time-ordered view. See api/inbox-routes.ts for details.
+  // ── Notification + inbox routes (/api/notifications/*, /api/inbox/*) ──
+  // Notifications: the unified notification center backed by the runtime
+  // NotificationService (see api/notification-routes.ts). Inbox: a
+  // cross-channel read-only feed that merges connector messages (imessage,
+  // telegram, discord, whatsapp, etc.) into a single time-ordered view.
   if (
     await handleInboxAndCloudRelayRouteGroup({
       req,

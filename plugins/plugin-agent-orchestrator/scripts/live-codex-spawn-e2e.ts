@@ -178,7 +178,7 @@ async function main() {
   );
   log(`real credential injected into CODEX_HOME: ${codexHome ? "YES" : "no"}`);
   log(
-    `built LIVE_PROOF.txt: ${built ? "YES — " + readFileSync(proofPath, "utf-8").trim() : "no"}`,
+    `built LIVE_PROOF.txt: ${built ? `YES — ${readFileSync(proofPath, "utf-8").trim()}` : "no"}`,
   );
   const errs = events
     .filter((e) => e.event === "error")

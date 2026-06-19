@@ -401,7 +401,7 @@ test("Android App Actions template covers ask, chat, voice, daily brief, and tas
 
   assert.deepEqual(
     validateAndroidAppActionsXmlResource(shortcuts, {
-      androidPackage: "app.eliza",
+      androidPackage: "ai.elizaos.app",
       urlScheme: "elizaos",
     }),
     [],

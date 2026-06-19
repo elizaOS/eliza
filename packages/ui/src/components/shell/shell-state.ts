@@ -1,4 +1,4 @@
-import type { ChatFailureKind } from "../../api";
+import type { ChatFailureKind, MessageAttachment } from "../../api";
 
 /**
  * Shell phase for the device-shell foundation (HomePill + AssistantOverlay +
@@ -26,4 +26,6 @@ export interface ShellMessage {
   failureKind?: ChatFailureKind;
   /** Agent reasoning/thought for this turn, rendered as a collapsed block. */
   reasoning?: string;
+  /** Media attached to this turn — user uploads and agent-generated media. */
+  attachments?: MessageAttachment[];
 }

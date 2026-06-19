@@ -6,14 +6,15 @@ import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
-  type LazyExoticComponent,
   lazy,
+  type LazyExoticComponent,
   type ReactNode,
   Suspense,
   useCallback,
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   type ActiveViewLayout,
@@ -49,6 +50,7 @@ import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay"
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
+import { NotificationCenter } from "./components/shell/NotificationCenter";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
@@ -78,6 +80,7 @@ import {
   shouldUseHashNavigation,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
+import { RetainedLazyComponent } from "./retained-lazy";
 import { type ActionNotice, useApp } from "./state";
 import { isShellPaintable } from "./state/startup-coordinator";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
@@ -118,8 +121,11 @@ import { fetchWithCsrf } from "./api/csrf-client";
 // `app-shell-components` barrel — that barrel statically re-exports every page
 // view, so importing through it folds all of them back into the main chunk.
 import {
+  type AppShellPageLoader,
   type AppShellPageRegistration,
+  getAppShellPageRegistrySnapshot,
   listAppShellPages,
+  subscribeAppShellPages,
 } from "./app-shell-registry";
 // CharacterEditor, DesktopTabBar, and FineTuningView stay static: they are
 // already pulled eagerly elsewhere in the app graph (main.tsx / plugin-loader /
@@ -224,13 +230,74 @@ const TrajectoriesView = lazyNamedView(
   "TrajectoriesView",
 );
 
-// Once the shell is interactive, warm the lazy route chunks during idle time so
-// the first navigation to each view is instant instead of waiting on a chunk
-// fetch. Iterates the loaders registered by lazyNamedView() above — the same
-// thunks the lazy() boundaries use, so the bundler reuses the same chunks and
-// the list can't drift. Failures are ignored — this is best-effort warming.
-function prefetchRouteViewChunks(): void {
-  for (const load of routeViewLoaders) void load().catch(() => {});
+const ROUTE_PREFETCH_MAX_CHUNKS = 4;
+
+function shouldWarmRouteViewChunks(): boolean {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return false;
+  }
+  if (document.visibilityState === "hidden") return false;
+  const navigatorWithHints = navigator as Navigator & {
+    connection?: { effectiveType?: string; saveData?: boolean };
+    deviceMemory?: number;
+  };
+  if (navigatorWithHints.connection?.saveData) return false;
+  if (
+    navigatorWithHints.connection?.effectiveType === "slow-2g" ||
+    navigatorWithHints.connection?.effectiveType === "2g"
+  ) {
+    return false;
+  }
+  if (
+    typeof navigatorWithHints.deviceMemory === "number" &&
+    navigatorWithHints.deviceMemory <= 4
+  ) {
+    return false;
+  }
+  return true;
+}
+
+// Once the shell is interactive, warm a small number of lazy route chunks
+// during idle time on capable devices. Full views still stay lazy by default:
+// this is a bounded best-effort path, not an eager import of the whole shell.
+function scheduleRouteViewChunkPrefetch(): () => void {
+  if (!shouldWarmRouteViewChunks()) return () => {};
+  const loaders = [...routeViewLoaders].slice(0, ROUTE_PREFETCH_MAX_CHUNKS);
+  if (loaders.length === 0) return () => {};
+  let cancelled = false;
+  let scheduledId: number | null = null;
+  const w = window as Window & {
+    requestIdleCallback?: (
+      cb: () => void,
+      options?: { timeout?: number },
+    ) => number;
+    cancelIdleCallback?: (id: number) => void;
+  };
+
+  const scheduleNext = () => {
+    if (cancelled || loaders.length === 0) return;
+    const run = () => {
+      scheduledId = null;
+      if (cancelled) return;
+      const load = loaders.shift();
+      if (load) void load().catch(() => {});
+      scheduleNext();
+    };
+    scheduledId =
+      w.requestIdleCallback?.(run, { timeout: 2_000 }) ??
+      window.setTimeout(run, 750);
+  };
+
+  scheduleNext();
+  return () => {
+    cancelled = true;
+    if (scheduledId === null) return;
+    if (w.cancelIdleCallback) {
+      w.cancelIdleCallback(scheduledId);
+    } else {
+      window.clearTimeout(scheduledId);
+    }
+  };
 }
 
 function LazyViewBoundary({ children }: { children: ReactNode }) {
@@ -404,6 +471,14 @@ interface ResolvedDynamicPage {
   componentExport?: string;
 }
 
+function useAppShellPageRegistryVersion(): number {
+  return useSyncExternalStore(
+    subscribeAppShellPages,
+    getAppShellPageRegistrySnapshot,
+    getAppShellPageRegistrySnapshot,
+  );
+}
+
 /**
  * Resolve a tab id against the dynamic registry: first the in-process
  * `registerAppShellPage` registrations, then any loaded plugin's
@@ -411,6 +486,7 @@ interface ResolvedDynamicPage {
  */
 function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
   const { plugins } = useApp();
+  const registryVersion = useAppShellPageRegistryVersion();
   return useMemo(() => {
     const registrations = listAppShellPages();
     const registered = registrations.find((entry) => entry.id === tab);
@@ -441,7 +517,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
       }
     }
     return null;
-  }, [plugins, tab]);
+  }, [plugins, registryVersion, tab]);
 }
 
 /**
@@ -454,10 +530,43 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
  * a small loading fallback until the import resolves. Plugins can avoid this
  * path by self-registering with `registerAppShellPage` at boot.
  */
+function RegisteredAppShellPage({
+  registration,
+}: {
+  registration: AppShellPageRegistration;
+}) {
+  if (registration.Component) {
+    const Component = registration.Component;
+    return <Component />;
+  }
+  if (registration.loader) {
+    return (
+      <RetainedLazyComponent
+        loader={registration.loader}
+        componentProps={{}}
+        fallback={
+          <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
+            Loading {registration.label}…
+          </div>
+        }
+        onError={(error) => (
+          <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center px-4 text-center text-sm text-destructive">
+            Failed to load {registration.label}: {error.message}
+          </div>
+        )}
+      />
+    );
+  }
+  return (
+    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
+      {registration.label} is not available in this build.
+    </div>
+  );
+}
+
 function DynamicPluginPage({ resolved }: { resolved: ResolvedDynamicPage }) {
   if (resolved.registration) {
-    const Component = resolved.registration.Component;
-    return <Component />;
+    return <RegisteredAppShellPage registration={resolved.registration} />;
   }
   // No bundled registration — display a lightweight loading fallback
   // so the shell stays responsive. Plugins that ship bundled components
@@ -480,8 +589,7 @@ function WalletInventoryPage() {
       </div>
     );
   }
-  const Component = registration.Component;
-  return <Component />;
+  return <RegisteredAppShellPage registration={registration} />;
 }
 
 function visibleDynamicPage(
@@ -498,12 +606,13 @@ function visibleDynamicPage(
  * keep the normal chrome.
  */
 function useTabIsFullBleed(tab: string): boolean {
+  const registryVersion = useAppShellPageRegistryVersion();
   return useMemo(
     () =>
       listAppShellPages().some(
         (entry) => entry.id === tab && entry.fullBleed === true,
       ),
-    [tab],
+    [registryVersion, tab],
   );
 }
 
@@ -1150,6 +1259,9 @@ function ContinuousChatOverlayMount(): ReactNode {
  */
 function HomeScreenMount(): ReactNode {
   const { setTab } = useApp();
+  // Host apps can override the home screen via the `homeScreen` boot-config slot
+  // (whitelabel seam); fall back to the built-in HomeScreen.
+  const { homeScreen: HomeScreenOverride } = useBootConfig();
   const onOpenTile = useCallback(
     (target: HomeTileTarget) => {
       if (target.kind === "tab") {
@@ -1164,11 +1276,9 @@ function HomeScreenMount(): ReactNode {
     },
     [setTab],
   );
+  const Home = HomeScreenOverride ?? HomeScreen;
   return (
-    <HomeScreen
-      onOpenTile={onOpenTile}
-      showNativeOsTiles={isAospShellEnabled()}
-    />
+    <Home onOpenTile={onOpenTile} showNativeOsTiles={isAospShellEnabled()} />
   );
 }
 
@@ -1221,22 +1331,13 @@ export function App() {
 
   useSecretsManagerShortcut();
 
-  // Warm lazy route chunks during idle once the shell is ready, so the first
-  // navigation to a code-split view is instant rather than waiting on a fetch.
+  // Warm a small, device-aware subset of lazy route chunks once the shell is
+  // ready. The scheduler itself skips hidden/low-memory/save-data sessions.
   useEffect(() => {
     if (startupCoordinator.phase !== "ready" || typeof window === "undefined") {
       return;
     }
-    const w = window as Window & {
-      requestIdleCallback?: (cb: () => void) => number;
-      cancelIdleCallback?: (id: number) => void;
-    };
-    const schedule =
-      w.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 200));
-    const cancel =
-      w.cancelIdleCallback ?? ((id: number) => window.clearTimeout(id));
-    const id = schedule(() => prefetchRouteViewChunks());
-    return () => cancel(id);
+    return scheduleRouteViewChunkPrefetch();
   }, [startupCoordinator.phase]);
 
   useEffect(() => {
@@ -1276,27 +1377,29 @@ export function App() {
     if (startupCoordinator.phase !== "ready") return;
     if (backendConnection?.state !== "connected") return;
 
-    const report = () => {
+    const report = (appName: string | null) => {
       void fetchWithCsrf("/api/apps/overlay-presence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appName: activeOverlayApp }),
+        body: JSON.stringify({ appName }),
       }).catch(() => {
         /* ignore */
       });
     };
 
-    report();
-    const intervalId = window.setInterval(report, 25_000);
+    if (activeOverlayApp === null) {
+      report(null);
+      return;
+    }
+
+    report(activeOverlayApp);
+    const intervalId = window.setInterval(
+      () => report(activeOverlayApp),
+      25_000,
+    );
     return () => {
       window.clearInterval(intervalId);
-      void fetchWithCsrf("/api/apps/overlay-presence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appName: null }),
-      }).catch(() => {
-        /* ignore */
-      });
+      report(null);
     };
   }, [activeOverlayApp, backendConnection?.state, startupCoordinator.phase]);
 
@@ -1718,6 +1821,19 @@ export function App() {
             only when the tutorial is active (launched from the home Tutorial
             tile or the Help view). */}
         <TutorialOverlay />
+        {/* Persistent notification center — a floating bell + unread badge,
+            top-right, reachable from every view. Self-boots the notification
+            store (hydrate + live stream) and routes interrupt toasts through
+            ActionNotice. HomePill owns bottom-center, so top-right is free. */}
+        <div
+          className="fixed right-2 top-2 z-40"
+          style={{
+            top: "max(0.5rem, env(safe-area-inset-top))",
+            right: "max(0.5rem, env(safe-area-inset-right))",
+          }}
+        >
+          <NotificationCenter />
+        </div>
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

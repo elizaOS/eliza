@@ -77,7 +77,6 @@ function makeDeps(): ReadyPhaseDeps {
     setUnreadConversations: vi.fn(),
     setConversations: vi.fn(),
     appendAutonomousEvent: vi.fn(),
-    notifyAssistantEvent: vi.fn(),
     notifyHeartbeatEvent: vi.fn(),
     loadPlugins: vi.fn(async () => {}),
     loadWalletConfig: vi.fn(async () => {}),

@@ -182,7 +182,7 @@ function readFirstEnv(...keys) {
 }
 
 function validateRuntimeEnv(env) {
-  const required = ["DATABASE_URL", "NEON_API_KEY", "CONTAINERS_SSH_KEY"];
+  const required = ["DATABASE_URL", "CONTAINERS_SSH_KEY"];
   const missing = required.filter((key) => !env[key]?.trim());
   if (missing.length === 0 || values["allow-incomplete-env"]) {
     warnMissingUpstash(env);

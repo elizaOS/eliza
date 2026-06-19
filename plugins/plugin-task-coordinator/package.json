@@ -59,6 +59,7 @@
     "test:e2e:manual": "vitest run --config vitest.live.config.ts"
   },
   "files": [
+    "assets",
     "dist"
   ],
   "devDependencies": {

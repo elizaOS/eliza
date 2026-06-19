@@ -99,7 +99,13 @@ afterAll(async () => {
   }
 });
 
-// TODO(mcp): re-enable once the create path is verified against real Railway Postgres.
+// NOTE: the 8 DB-WRITE tests below are `test.skip`'d — they 500 ONLY under the
+// workerd + PGlite-over-TCP e2e harness (a large INSERT...RETURNING trips a
+// PGlite socket). The create path is correct and works on real Postgres/Railway
+// (verified: the exact drizzle insert(userMcps).returning() over node-pg
+// succeeds; create errors are now logged in v1/mcps/route.ts). The read / auth-
+// gate / validation tests run normally. TODO(mcp): drop the skips once the
+// harness handles workerd writes, or run this group against a real Railway DB.
 // The user_mcps table + migration (0147) are correct and the read endpoints
 // work, but every write (create/update/publish/delete) 500s ONLY under the
 // e2e's PGlite-over-TCP harness — the INSERT...RETURNING (48 cols incl.

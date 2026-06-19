@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { IAgentRuntime, Service, Task, UUID } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import { ServiceType, stringToUuid } from "@elizaos/core";
 import {
   buildTriggerMetadata,
   DISABLED_TRIGGER_INTERVAL_MS,
@@ -45,6 +45,26 @@ export interface TriggerExecutionResult {
   // Present when a workflow-kind trigger dispatches to WORKFLOW_DISPATCH and
   // the service returns an execution id.
   executionId?: string;
+}
+
+interface NotificationEmitter {
+  notify: (input: {
+    title: string;
+    body?: string;
+    category?: string;
+    priority?: string;
+    source?: string;
+    deepLink?: string;
+    groupKey?: string;
+    data?: Record<string, unknown>;
+  }) => Promise<unknown>;
+}
+
+function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
+  const svc = runtime.getService(
+    ServiceType.NOTIFICATION,
+  ) as NotificationEmitter | null;
+  return svc && typeof svc.notify === "function" ? svc : null;
 }
 
 const metricsByAgent = new Map<UUID, TriggerMetricsState>();
@@ -293,6 +313,20 @@ export async function executeTriggerTask(
       },
       "Workflow trigger dispatch failed",
     );
+    // Scheduled automations run without the user in the chat loop, so a
+    // dispatch failure is otherwise invisible. Surface it on the notification
+    // rail (fire-and-forget; never let a notify failure mask the trigger error).
+    void getNotifier(runtime)
+      ?.notify({
+        title: `Automation "${trigger.displayName}" failed`,
+        body: errorMessage.slice(0, 200),
+        category: "workflow",
+        priority: "high",
+        source: "trigger",
+        groupKey: `trigger:${task.id ?? trigger.triggerId}`,
+        data: { taskId: task.id, triggerId: trigger.triggerId, error: errorMessage },
+      })
+      .catch(() => {});
   }
 
   if (status === "success") {

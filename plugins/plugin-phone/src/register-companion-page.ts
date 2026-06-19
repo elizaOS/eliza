@@ -1,16 +1,16 @@
 /**
  * Side-effect entry point — registers the Phone Companion page with the app
- * shell's in-process page registry so it mounts without a dynamic import.
+ * shell's in-process page registry.
  *
  * The plugin manifest's `app.navTabs` declaration carries a `componentExport`
  * specifier as a fallback for hosts that don't side-effect-import this file,
- * but bundling the component directly avoids the lazy-load fallback path.
+ * while this registry entry keeps startup metadata lightweight and loads the
+ * companion surface only when the route is activated.
  *
  * Load this module once during app startup to register the page.
  */
 
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { PhoneCompanionApp } from "./companion/components/PhoneCompanionApp";
 
 registerAppShellPage({
   id: "phone-companion",
@@ -18,5 +18,8 @@ registerAppShellPage({
   label: "Phone Companion",
   icon: "Smartphone",
   path: "/phone-companion",
-  Component: PhoneCompanionApp,
+  loader: () =>
+    import("./companion/components/PhoneCompanionApp").then((module) => ({
+      default: module.PhoneCompanionApp,
+    })),
 });

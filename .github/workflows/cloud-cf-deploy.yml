@@ -1,11 +1,20 @@
 name: Cloud CF Deploy
 
-# Cloudflare deployment for the eliza-cloud app (Eliza web app) + Workers API.
-# As of the Topology-A cutover, the eliza-cloud Pages project serves the hosted
-# web Eliza app (packages/app) at the elizacloud.ai apex — it replaced the old
-# packages/cloud-frontend SPA. The project name, domain, and env carry over.
-# - push to develop  -> staging   (api-staging.elizacloud.ai + Pages preview "develop")
-# - push to main     -> production (api.elizacloud.ai + Pages production)
+# Cloudflare deployment for the Eliza Cloud surfaces + Workers API.
+#
+# The web frontend is split across TWO Pages projects (two domains, two builds
+# from one repo):
+#   - `eliza-cloud`  ->  packages/cloud-frontend  ->  elizacloud.ai apex
+#       The lander + dashboard ("the cloud console"). Steward login + dashboard.
+#   - `eliza-app`    ->  packages/app (build:web)  ->  app.elizacloud.ai
+#       The Eliza agent app (chat + views) — the same web UI as `bun run dev`.
+# This reverses the brief Topology-A apex swap (which buried the lander/dashboard
+# under the agent app's local-first onboarding). The agent app now lives on its
+# own subdomain; the apex stays the console we've always had.
+#
+# Per environment (both projects):
+# - push to develop  -> staging   (api-staging.elizacloud.ai; staging.* / app-staging.*)
+# - push to main     -> production (api.elizacloud.ai; elizacloud.ai / app.elizacloud.ai)
 # - pull_request     -> preview    (Pages preview branch backed by staging API)
 #
 # Required repo secrets:
@@ -197,10 +206,11 @@ jobs:
         run: bunx wrangler deploy ${{ steps.env.outputs.wrangler_args }}
 
   # ---------------------------------------------------------------------------
-  # Frontend (Cloudflare Pages)
+  # Console frontend (Cloudflare Pages) — cloud-frontend at the elizacloud.ai apex.
+  # The lander + dashboard. Deploys to the `eliza-cloud` Pages project.
   # ---------------------------------------------------------------------------
-  deploy-frontend:
-    name: Deploy App (Pages)
+  deploy-console:
+    name: Deploy Console (Pages · elizacloud.ai)
     runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -223,18 +233,20 @@ jobs:
       - name: Build linked elizaOS core workspace
         run: bun run build:core
 
-      # Topology A cutover: the hosted-web Eliza app (packages/app) replaces
-      # cloud-frontend as the eliza-cloud Pages deploy at the elizacloud.ai apex.
-      # The vite build is the gate (it resolves @elizaos/* to source); typecheck
-      # is enforced by the separate verify workflow, not here.
-      - name: Build app
-        run: bun run --cwd packages/app build:web
+      # The lander + dashboard. The vite build is the gate (it resolves
+      # @elizaos/* to source); typecheck is enforced by the separate verify
+      # workflow, not here.
+      - name: Build console (cloud-frontend)
+        run: bun run --cwd packages/cloud-frontend build
         env:
-          # Pages preview/staging/prod all share the same API host today;
-          # override per-env if that changes.
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          # The console's own canonical origin (OG/canonical tags, returnTo base).
+          VITE_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
+          # The Eliza agent app the console's "launch / talk to your agent" CTA
+          # sends users to (separate Pages project / subdomain).
+          VITE_ELIZA_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
           # Staging uses a separate Steward tenant (`elizacloud-staging`) so its
           # `magicLinkBaseUrl` redirects email callbacks back to staging.elizacloud.ai.
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
@@ -245,6 +257,14 @@ jobs:
           # the only thing the bundle can see at runtime.
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
+
+      # Gate: refuse to deploy a bundle where Rolldown folded the bn.js/crypto
+      # graph into an eager chunk — that ships the "Class constructor cannot be
+      # invoked without 'new'" Buffer.allocUnsafe crash that blanks every route.
+      # This regression has reached prod multiple times; fail the deploy instead.
+      - name: Verify bundle chunk safety
+        working-directory: packages/cloud-frontend
+        run: node scripts/verify-chunk-safety.mjs
 
       - name: Resolve Pages branch
         id: pages
@@ -286,7 +306,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true'
-        working-directory: packages/app
+        working-directory: packages/cloud-frontend
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -342,3 +362,109 @@ jobs:
             echo "::warning::Steward providers (DB-backed) check failed after retries. The Worker deployed; this points at a database/infra issue — investigate the DB, do not assume the deploy is bad."
             echo "⚠️ Steward providers (DB-backed) health check failed post-deploy — likely a downstream DB incident, not this deploy." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # ---------------------------------------------------------------------------
+  # App frontend (Cloudflare Pages) — packages/app (the Eliza agent app) at
+  # app.elizacloud.ai. The same web UI as `bun run dev`. Deploys to the
+  # `eliza-app` Pages project (custom domains app.elizacloud.ai /
+  # app-staging.elizacloud.ai map to the production / develop branches in the
+  # Cloudflare Pages project config).
+  # ---------------------------------------------------------------------------
+  deploy-app:
+    name: Deploy App (Pages · app.elizacloud.ai)
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Install dependencies
+        run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
+
+      - name: Build linked elizaOS core workspace
+        run: bun run build:core
+
+      # The Eliza agent app. The vite build is the gate (it resolves @elizaos/*
+      # to source); typecheck is enforced by the separate verify workflow.
+      - name: Build app
+        run: bun run --cwd packages/app build:web
+        env:
+          VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          # The app's own canonical origin — its own subdomain, NOT the apex.
+          NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
+          # Steward tenant pin (same tenant as the console; one identity across
+          # the .elizacloud.ai cookie zone).
+          NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
+          VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
+
+      - name: Resolve Pages branch
+        id: pages
+        env:
+          PR_HEAD_REF: ${{ github.head_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "branch=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
+            echo "branch=main" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "branch=develop" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=${GITHUB_REF#refs/heads/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Cloudflare credentials
+        id: cf
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ACCOUNT" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            MSG="CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not configured. Add them at https://github.com/elizaOS/eliza/settings/secrets/actions."
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              echo "::warning::$MSG Skipping Pages deploy (PR event)." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$MSG Refusing to silently skip Pages deploy on $EVENT_NAME event." >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::$MSG Refusing to silently skip Pages deploy on $EVENT_NAME event."
+              exit 1
+            fi
+          fi
+
+      # Self-bootstrap the project so the first deploy on a fresh account works.
+      # Idempotent: a "project already exists" error is expected and ignored.
+      # NOTE: custom domains (app.elizacloud.ai / app-staging.elizacloud.ai) are
+      # attached once via the Cloudflare dashboard / API — see
+      # docs/cloud-into-eliza/CUTOVER-RUNBOOK.md.
+      - name: Ensure eliza-app Pages project exists
+        if: steps.cf.outputs.configured == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx wrangler pages project create eliza-app --production-branch=main 2>/dev/null || true
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.cf.outputs.configured == 'true'
+        working-directory: packages/app
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Do NOT pass a positional `dist` argument: wrangler.toml already sets
+        # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
+        # ignore wrangler.toml — which silently drops the `functions/` upload.
+        run: bunx wrangler pages deploy --project-name=eliza-app --branch=${{ steps.pages.outputs.branch }}

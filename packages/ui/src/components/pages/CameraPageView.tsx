@@ -3,16 +3,10 @@ import {
   type CameraDirection,
   type PhotoResult,
 } from "@elizaos/capacitor-camera";
-import {
-  AlertTriangle,
-  Camera as CameraIcon,
-  Loader2,
-  RotateCcw,
-  SwitchCamera,
-} from "lucide-react";
+import { AlertTriangle, Loader2, RotateCcw, SwitchCamera } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { PermissionRecoveryCallout } from "../permissions/PermissionRecoveryCallout";
 import { Button } from "../ui/button";
 
 /**
@@ -39,6 +33,15 @@ function photoDataUrl(photo: PhotoResult): string {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function isPermissionDeniedError(err: unknown): boolean {
+  const message = errorMessage(err).toLowerCase();
+  return (
+    message.includes("permission") ||
+    message.includes("notallowed") ||
+    message.includes("denied")
+  );
 }
 
 export function CameraPageView(): React.JSX.Element {
@@ -77,6 +80,10 @@ export function CameraPageView(): React.JSX.Element {
         setStatus("live");
       } catch (err) {
         if (cancelled) return;
+        if (isPermissionDeniedError(err)) {
+          setStatus("denied");
+          return;
+        }
         setError(errorMessage(err));
         setStatus("error");
       }
@@ -102,6 +109,10 @@ export function CameraPageView(): React.JSX.Element {
       await Camera.startPreview({ element, direction: facing, mirror: false });
       setStatus("live");
     } catch (err) {
+      if (isPermissionDeniedError(err)) {
+        setStatus("denied");
+        return;
+      }
       setError(errorMessage(err));
       setStatus("error");
     }
@@ -140,44 +151,6 @@ export function CameraPageView(): React.JSX.Element {
     setPhoto(null);
   }, []);
 
-  // Agent-controllable controls so "take a photo" / "flip the camera" work.
-  const capture = useAgentElement<HTMLButtonElement>({
-    id: "camera.capture",
-    role: "button",
-    label: t("camera.capture", { defaultValue: "Take photo" }),
-    description: "Capture a still photo from the live camera preview",
-    status: busy ? "busy" : "active",
-    onActivate: () => void handleCapture(),
-  });
-  const switchControl = useAgentElement<HTMLButtonElement>({
-    id: "camera.switch",
-    role: "button",
-    label: t("camera.switch", { defaultValue: "Switch camera" }),
-    description: "Flip between the front and back camera",
-    onActivate: () => void handleSwitch(),
-  });
-  const grant = useAgentElement<HTMLButtonElement>({
-    id: "camera.grant",
-    role: "button",
-    label: t("camera.grant", { defaultValue: "Grant access" }),
-    description: "Request camera permission and start the preview",
-    onActivate: () => void retryStart(),
-  });
-  const retry = useAgentElement<HTMLButtonElement>({
-    id: "camera.retry",
-    role: "button",
-    label: t("camera.retry", { defaultValue: "Try again" }),
-    description: "Retry starting the camera preview",
-    onActivate: () => void retryStart(),
-  });
-  const retake = useAgentElement<HTMLButtonElement>({
-    id: "camera.retake",
-    role: "button",
-    label: t("camera.retake", { defaultValue: "Retake" }),
-    description: "Discard the captured photo and return to the live preview",
-    onActivate: handleRetake,
-  });
-
   return (
     <div
       data-testid="camera-view"
@@ -194,7 +167,7 @@ export function CameraPageView(): React.JSX.Element {
       {status === "starting" ? (
         <div
           data-testid="camera-starting"
-          className="absolute inset-0 grid place-items-center bg-[var(--background)] text-[#ff8a24]"
+          className="absolute inset-0 grid place-items-center text-white/80"
         >
           <Loader2 className="h-7 w-7 animate-spin" aria-hidden />
         </div>
@@ -203,50 +176,42 @@ export function CameraPageView(): React.JSX.Element {
       {status === "denied" ? (
         <div
           data-testid="camera-denied"
-          className="absolute inset-0 grid place-items-center bg-[var(--background)] p-6 text-center"
+          className="absolute inset-0 grid place-items-center p-6 text-center"
         >
-          <div className="flex max-w-xs flex-col items-center gap-3">
-            <CameraIcon
-              className="h-8 w-8 text-[var(--muted-foreground)]"
-              aria-hidden
-            />
-            <p className="text-sm text-[var(--foreground)]">
-              {t("camera.denied", {
-                defaultValue:
-                  "Camera access is off. Enable it to take photos and video.",
-              })}
-            </p>
-            <Button
-              ref={grant.ref}
-              {...grant.agentProps}
-              onClick={retryStart}
-              data-testid="camera-grant"
-            >
-              {t("camera.grant", { defaultValue: "Grant access" })}
-            </Button>
-          </div>
+          <PermissionRecoveryCallout
+            permission="camera"
+            title={t("camera.deniedTitle", {
+              defaultValue: "Camera access is off",
+            })}
+            description={t("camera.denied", {
+              defaultValue:
+                "Enable camera access for Eliza, then return here to start the preview.",
+            })}
+            retryLabel={t("camera.retry", { defaultValue: "Try again" })}
+            settingsLabel={t("camera.openSettings", {
+              defaultValue: "Open Settings",
+            })}
+            onRetry={retryStart}
+            className="max-w-sm border-white/20 bg-bg/95 shadow-2xl"
+            testId="camera-permission-callout"
+          />
         </div>
       ) : null}
 
       {status === "error" ? (
         <div
           data-testid="camera-error-state"
-          className="absolute inset-0 grid place-items-center bg-[var(--background)] p-6 text-center"
+          className="absolute inset-0 grid place-items-center p-6 text-center"
         >
           <div className="flex max-w-xs flex-col items-center gap-3">
-            <AlertTriangle className="h-8 w-8 text-[#ff8a24]" aria-hidden />
-            <p className="text-sm text-[var(--foreground)]">
+            <AlertTriangle className="h-8 w-8 text-white/70" aria-hidden />
+            <p className="text-sm text-white/80">
               {error ??
                 t("camera.unavailable", {
                   defaultValue: "The camera is unavailable on this device.",
                 })}
             </p>
-            <Button
-              ref={retry.ref}
-              {...retry.agentProps}
-              onClick={retryStart}
-              data-testid="camera-retry"
-            >
+            <Button onClick={retryStart} data-testid="camera-retry">
               {t("camera.retry", { defaultValue: "Try again" })}
             </Button>
           </div>
@@ -263,8 +228,6 @@ export function CameraPageView(): React.JSX.Element {
           />
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 p-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
             <Button
-              ref={retake.ref}
-              {...retake.agentProps}
               variant="secondary"
               onClick={handleRetake}
               data-testid="camera-retake"
@@ -281,14 +244,12 @@ export function CameraPageView(): React.JSX.Element {
         <>
           <div className="absolute right-4 top-[calc(env(safe-area-inset-top,0px)+1rem)]">
             <button
-              ref={switchControl.ref}
-              {...switchControl.agentProps}
               type="button"
               data-testid="camera-switch"
               aria-label={t("camera.switch", { defaultValue: "Switch camera" })}
               onClick={handleSwitch}
               disabled={busy}
-              className="grid h-11 w-11 place-items-center rounded-full bg-black/35 text-white backdrop-blur-2xl transition-colors hover:bg-black/50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff8a24]"
+              className="grid h-11 w-11 place-items-center rounded-full border border-white/[0.18] bg-black/35 text-white backdrop-blur-2xl transition-colors hover:bg-white/[0.16] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
             >
               <SwitchCamera className="h-5 w-5" aria-hidden />
             </button>
@@ -296,18 +257,16 @@ export function CameraPageView(): React.JSX.Element {
 
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-center p-[calc(env(safe-area-inset-bottom,0px)+1.75rem)]">
             <button
-              ref={capture.ref}
-              {...capture.agentProps}
               type="button"
               data-testid="camera-capture"
               aria-label={t("camera.capture", { defaultValue: "Take photo" })}
               onClick={handleCapture}
               disabled={busy}
-              className="grid h-[72px] w-[72px] place-items-center rounded-full border-4 border-white/90 bg-white/10 backdrop-blur-sm transition-transform active:scale-95 disabled:opacity-60 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff8a24]"
+              className="grid h-[72px] w-[72px] place-items-center rounded-full border-4 border-white/90 bg-white/10 backdrop-blur-sm transition-transform active:scale-95 disabled:opacity-60 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             >
               {busy ? (
                 <Loader2
-                  className="h-6 w-6 animate-spin text-[#ff8a24]"
+                  className="h-6 w-6 animate-spin text-white"
                   aria-hidden
                 />
               ) : (
@@ -323,7 +282,7 @@ export function CameraPageView(): React.JSX.Element {
         <div
           data-testid="camera-error"
           role="alert"
-          className="absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+1rem)] mx-auto w-fit max-w-[90%] rounded-full bg-[#ef4444] px-3 py-1.5 text-center text-xs text-white"
+          className="absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+1rem)] mx-auto w-fit max-w-[90%] rounded-full bg-red-500/90 px-3 py-1.5 text-center text-xs text-white"
         >
           {error}
         </div>

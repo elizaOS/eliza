@@ -1,228 +1,199 @@
-# Cutover runbook — point `elizacloud.ai` at the Eliza app
+# Runbook — split the apex (console) from the agent app (subdomain)
 
-**Topology A (DECISIONS.md D1):** the Eliza web app (`packages/app`) becomes the
-production deploy of the existing Cloudflare Pages project at the apex, replacing
-`packages/cloud-frontend`. **Single cutover** (DECISIONS.md D2): the full
-experience is validated on a Pages preview against `api-staging` first, then the
-apex flips once. cloud-frontend stays deployable the whole time for instant
-rollback.
+**Topology: D5 (supersedes Topology A / D1).** Two Cloudflare Pages projects,
+two domains, two builds from one repo:
 
-This runbook covers only the **deploy flip** — it assumes Phases 0–7 are landed
-and validated on the preview. It does not cover building the in-app surfaces.
+| Domain | Pages project | Builds | Is |
+|---|---|---|---|
+| `elizacloud.ai` / `staging.elizacloud.ai` | `eliza-cloud` (existing) | `packages/cloud-frontend` | the lander + dashboard ("the console") |
+| `app.elizacloud.ai` / `app-staging.elizacloud.ai` | **`eliza-app` (new)** | `packages/app` (`build:web`) | the Eliza agent app (chat + views) |
+
+This runbook covers the **one-time Cloudflare setup for the new `eliza-app`
+project** and the apex restoration. The in-repo wiring (deploy workflow, wrangler,
+origin allowlists, console "Talk to your agent" CTA) is already landed — see
+DECISIONS.md D5.
 
 ---
 
-## 0. What does and does not change
+## 0. What changes
 
-| Thing | Changes at cutover? |
+| Thing | Changes? |
 |---|---|
-| Pages project name (`eliza-cloud`) | No — reused |
-| Apex domain (`elizacloud.ai`) + DNS | No — already on the project |
-| `API_UPSTREAM` env (`api.elizacloud.ai` prod / `api-staging.elizacloud.ai` preview) | No — same values, set on the project |
-| Steward tenant pin (`NEXT_PUBLIC_STEWARD_TENANT_ID` on preview) | No — same value |
-| Backend Worker (`cloud-api`), CORS/CSRF/redirect allowlists, cookie domain | No — same apex origin, same upstream (this is the whole point of Topology A) |
-| Agent-subdomain routing (`*.elizacloud.ai`) | No — the Worker still owns it |
-| **Pages build command + build output** | **Yes** — repointed from cloud-frontend's build to `packages/app`'s web build |
-| **Same-origin proxy Functions** | Yes — served by `packages/app/functions/*` instead of `packages/cloud-frontend/functions/*` (byte-identical proxy logic) |
-| **`_redirects` / `_headers`** | Yes — served from `packages/app/public/*` (SPA fallback + app-tuned CSP) |
-
-Because origin, upstream, and the JWT secret are unchanged, **no backend
-redeploy is required** and every `${NEXT_PUBLIC_APP_URL}/...` link the backend
-already issues keeps resolving.
+| `eliza-cloud` Pages project → `packages/cloud-frontend` at the apex | **Restored** — the `deploy-console` job builds cloud-frontend again (it had been repointed at `packages/app` during the brief Topology-A cutover) |
+| Apex domain (`elizacloud.ai` / `staging.elizacloud.ai`) + DNS | No — already on `eliza-cloud` |
+| **`eliza-app` Pages project** | **New** — created once (§2) |
+| **`app.elizacloud.ai` / `app-staging.elizacloud.ai` domains + DNS** | **New** — attached once (§3–4) |
+| Backend Worker (`cloud-api`) origin allowlists | **Yes, small** — `app.*` added to CORS + redirect allowlists (D5); already landed in `cloud-shared`. A `cloud-api` redeploy ships them. |
+| Steward CSRF (`PERMITTED_ORIGIN_HOSTS`) + cookie domain | No — `*.elizacloud.ai` already allowed; cookie already scoped to `.elizacloud.ai` |
+| Agent-subdomain routing (`*.elizacloud.ai` containers) | No |
 
 ---
 
-## 1. Prerequisites (gate the cutover — all must be true)
+## 1. Prerequisites
 
-1. **Phases 0–7 landed** and the full experience validated on the Pages preview
-   against `api-staging` (see DECISIONS.md revised phase order).
-2. **Deep-link contract smoke test green** against the preview deploy:
-   ```bash
-   bun run --cwd packages/app build:web
-   node packages/app/scripts/smoke-deeplinks.mjs https://<preview>.eliza-cloud.pages.dev
-   ```
-   Must report `… / … deep links resolved — contract intact` (exit 0). See §3
-   for the contract and §2 for how the proxy/SPA-fallback is wired.
-3. **Aesthetic-audit verdicts** for every touched/reachable page are `good`
-   (no `needs-work` / `broken`). Orange accent only, no blue.
-4. **Auth verified on the preview** for all three connection kinds
-   (DECISIONS.md D3): Cloud = Steward (web same-origin cookie+JWT AND native
-   Bearer), Local = loopback no-auth, Remote = device-code/pairing.
-5. **The two backend auth bugs** (PLAN.md §1.6) are fixed and deployed to the
-   backend (they gate the public approve / ballot / sensitive-request pages).
-6. **Rollback rehearsed** — confirm you can repoint the Pages project back to
-   cloud-frontend in one action (§5) and that cloud-frontend still builds.
+- `CLOUDFLARE_API_TOKEN` with **Pages: Edit** + **DNS: Edit** on the elizaOS
+  account (same token the GH Actions deploy uses).
+- `CLOUDFLARE_ACCOUNT_ID` (matches `packages/cloud-api/wrangler.toml`).
+- The `elizacloud.ai` zone id (fetched in §3).
+
+```bash
+export CLOUDFLARE_API_TOKEN=...        # Pages:Edit + DNS:Edit
+export CLOUDFLARE_ACCOUNT_ID=...
+ZONE_ID=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+  "https://api.cloudflare.com/client/v4/zones?name=elizacloud.ai" | jq -r '.result[0].id')
+echo "elizacloud.ai zone: $ZONE_ID"
+```
 
 ---
 
-## 2. The same-origin proxy + SPA fallback (how the app serves the contract)
+## 2. Create the `eliza-app` Pages project
 
-The app reproduces cloud-frontend's hosting contract with files already added
-under `packages/app`:
+The `deploy-app` job self-bootstraps this (`wrangler pages project create eliza-app
+--production-branch=main`), so the **first deploy creates it automatically**. To
+create it ahead of time (so you can attach domains before the first deploy):
 
-- `packages/app/functions/_middleware.ts` + `_proxy.ts` — Cloudflare Pages
-  Function that reverse-proxies same-origin `/api/*` and `/steward/*` to the
-  Workers API (`API_UPSTREAM`). Byte-for-byte the same logic as
-  cloud-frontend's, so the Steward cookie/JWT stays first-party and there is no
-  CORS preflight. Single global `_middleware.ts` (not `[[path]].ts`) to dodge
-  the path-to-regexp v8 bug in the Pages runtime.
-- `packages/app/public/_redirects` — `/assets/* → /index.html 404` (stale-asset
-  MIME guard) then `/* → /index.html 200` (SPA fallback). Copied into `dist/` by
-  Vite at build (the app's `publicDir` is `public/`).
-- `packages/app/public/_headers` — edge CSP + caching (no-cache HTML, immutable
-  hashed `/assets/*`, relaxed COOP on `/app-auth/*` for OAuth popups). Adds
-  `wss://*.elizacloud.ai` + `https://*.elizacloud.ai` (dedicated-agent
-  containers) vs cloud-frontend.
-- `packages/app/wrangler.toml` — INERT description of the target Pages build;
-  the live `eliza-cloud` project is repointed at cutover (§4), it does not
-  create a second project.
+```bash
+bunx wrangler pages project create eliza-app --production-branch=main
+```
 
-> **Note on `vite preview`:** a plain `vite preview` of `dist/` does **not**
-> apply `_redirects`, so unknown paths can 404 there. Run the smoke test against
-> a real Cloudflare Pages preview (which honours `functions/` + `_redirects`) or
-> an SPA-fallback static server. The Pages preview is the source of truth.
+`packages/app/wrangler.toml` already pins `name = "eliza-app"`, the
+`pages_build_output_dir`, `API_UPSTREAM` (prod + `[env.preview]` staging), and the
+Steward tenant. The same-origin `/api` + `/steward` proxy ships from
+`packages/app/functions/{_middleware,_proxy}.ts`.
 
 ---
 
-## 3. Deep-link contract (must all resolve — PLAN.md §6.2)
+## 3. Attach the custom domains (`wrangler pages` has no `domain` subcommand → CF API)
 
-Every path below is backend-issued (email links, Stripe/OAuth redirects, shared
-links) or otherwise in the wild. Each must resolve in the app at the **same
-path** (SPA 200 shell, or a redirect into the app). `scripts/smoke-deeplinks.mjs`
-asserts the full set automatically.
+```bash
+add_domain () {  # $1 = fqdn
+  curl -s -X POST \
+    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/eliza-app/domains" \
+    --data "{\"name\":\"$1\"}" | jq '.success, .errors'
+}
+add_domain app.elizacloud.ai          # → serves the eliza-app PRODUCTION (main) deploy
+add_domain app-staging.elizacloud.ai  # → serves the develop branch (see §4 note)
+```
 
-| Path | Source / purpose | Expected |
-|---|---|---|
-| `/` | apex landing / open-app | SPA |
-| `/login` | Steward login surface | SPA |
-| `/auth/cli-login` | device-code (Remote) handoff | SPA |
-| `/auth/callback/email` | email magic-link callback | SPA |
-| `/auth/success` | OAuth success redirect target | SPA |
-| `/app-auth/authorize` | app OAuth authorize | SPA |
-| `/invite/accept` (`?token=`) | org invite | SPA |
-| `/payment/success` | payment provider redirect | SPA |
-| `/payment/:paymentRequestId` | external payment request (id IS the link) | SPA |
-| `/payment/app-charge/:appId/:chargeId` | app-charge payment | SPA |
-| `/chat/:characterRef` | public shared chat (no-login funnel) | SPA |
-| `/approve/:approvalId` | public approval link | SPA |
-| `/ballot/:ballotId` | public ballot link | SPA |
-| `/sensitive-requests/:requestId` | public sensitive-request link | SPA |
-| `/dashboard` | authed landing — redirects to my-agents | SPA/redirect |
-| `/terms-of-service` | legal | SPA |
-| `/privacy-policy` | legal | SPA |
-| `/bsc` | bsc promo | SPA |
-
-Additional backend-issued shapes the SPA fallback covers (no extra config; the
-`/*` rule serves them — the in-app router resolves the query/redirect):
-`/dashboard/billing`, `/dashboard/settings?tab=connections`, `/payment/cancel`.
-
-### 3.1 `<Navigate>` redirect map to carry over (from cloud-frontend `src/App.tsx`)
-
-The app's client router must reproduce these in-app redirects so existing links
-that point at removed/renamed routes still land somewhere sensible:
-
-| From | To |
-|---|---|
-| `/dashboard` (index) | `/dashboard/my-agents` |
-| `/dashboard/build/*` | `/dashboard/my-agents` |
-| `/dashboard/apps/create` | `/dashboard/apps` |
-| `/dashboard/chat` | (dashboard chat redirect) |
-| `/dashboard/image` | `/dashboard/api-explorer` |
-| `/dashboard/video` | `/dashboard/api-explorer` |
-| `/dashboard/gallery` | `/dashboard/api-explorer` |
-| `/dashboard/voices` | `/dashboard/api-explorer` |
-| `/dashboard/containers` | `/dashboard/agents` |
-| `/dashboard/containers/:id` | `/dashboard/agents/:id` |
-| `/dashboard/containers/agents/:id` | `/dashboard/agents/:id` |
-| `/accept-invitation` | `/invite/accept` (same handler) |
-| `/checkout` | (Eliza OS checkout redirect) |
-
-Carry the `location.search` (query string) through every redirect, as
-cloud-frontend does, so `?token=` / `?tab=` survive.
+> **Staging → develop branch.** A Pages custom domain serves the **production**
+> deployment. To make `app-staging.elizacloud.ai` serve the `develop` branch,
+> mirror exactly how the existing `staging.elizacloud.ai` is wired on
+> `eliza-cloud` (download its config first to copy the pattern):
+> ```bash
+> bunx wrangler pages download config eliza-cloud   # inspect the staging wiring
+> ```
+> The conventional pattern is a DNS `CNAME app-staging → develop.eliza-app.pages.dev`
+> (the stable branch alias) rather than a Pages custom domain. Use whichever the
+> apex already uses so the two projects behave identically.
 
 ---
 
-## 4. Cutover procedure (single flip)
+## 4. DNS records
 
-> Performed in the Cloudflare dashboard / via `wrangler` against the **existing**
-> `eliza-cloud` Pages project. Do not create a new project.
+Create the `CNAME`s in the `elizacloud.ai` zone (proxied / orange-cloud, matching
+the apex's existing records):
 
-1. **Freeze** — announce a short change window; stop merges that would change
-   either deploy.
-2. **Final preview validation** — re-run §1 gates against the latest preview
-   build of `packages/app`. Smoke test green, audit green, auth green.
-3. **Repoint the Pages project build** — set the `eliza-cloud` project's build
-   to produce `packages/app`'s web build and serve `packages/app/dist`:
-   - Build command: `bun run --cwd packages/app build:web`
-     (runs Vite; copies `public/_redirects` + `public/_headers` into `dist/`).
-   - Build output directory: `packages/app/dist`.
-   - Functions: `packages/app/functions` (auto-detected by Pages).
-   - Env vars on the project are unchanged (`API_UPSTREAM`,
-     `NEXT_PUBLIC_STEWARD_TENANT_ID` on preview, `VITE_ENVIRONMENT`).
-4. **Deploy to production branch** — trigger the production deploy from `main`.
-5. **Verify against production apex:**
-   ```bash
-   node packages/app/scripts/smoke-deeplinks.mjs https://elizacloud.ai
-   ```
-   Must be green. Then manually spot-check:
-   - Steward login → land in chat (new + returning user).
-   - A real payment link, a shared `/chat/:ref` link, an `/approve/:id` link.
-   - `/api/v1/...` proxied call returns from the Worker (Network tab, same-origin).
-   - Agent-subdomain WS to a dedicated container connects.
-6. **Watch** — error rates, 404 rate on the apex, support channel, for an agreed
-   soak window (default per DECISIONS.md open item; treat 24–48h as the floor).
+```bash
+add_cname () {  # $1 = name (app | app-staging), $2 = target
+  curl -s -X POST \
+    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+    --data "{\"type\":\"CNAME\",\"name\":\"$1\",\"content\":\"$2\",\"proxied\":true}" \
+    | jq '.success, .errors'
+}
+add_cname app         eliza-app.pages.dev
+add_cname app-staging develop.eliza-app.pages.dev
+```
+
+(If §3's "custom domain" path is used for `app.elizacloud.ai`, Cloudflare may
+create/validate the apex-style record for you; only add what's missing.)
 
 ---
 
-## 5. Rollback (instant — cloud-frontend stays deployable)
+## 5. Steward OAuth redirect allowlist (steward-side config)
 
-If any §4.5 check fails or error/404 rates spike during the soak:
+The repo-side redirect allowlist already includes `app.*`
+(`security/redirect-validation.ts`). The **Steward tenant** (the `elizacloud` /
+`elizacloud-staging` tenant in the Steward backend) must also list the app
+origins as allowed OAuth `redirect_uri`s, so a login *initiated on the app
+subdomain* can bounce back to it:
 
-1. **Repoint the `eliza-cloud` Pages project back to cloud-frontend:**
-   - Build command: `bun run --cwd packages/cloud-frontend build`.
-   - Build output directory: `packages/cloud-frontend/dist`.
-   - Functions: `packages/cloud-frontend/functions`.
-   - (These are the project's pre-cutover values — capture them BEFORE step §4.3
-     so the rollback is a literal restore.)
-2. **Redeploy production from `main`.** No backend change, no DNS change, no env
-   change — origin and upstream are identical, so rollback is a deploy flip only.
-3. **Confirm** the apex serves cloud-frontend again (its `/dashboard/agents`
-   landing) and the smoke test passes against cloud-frontend's route set.
-4. **Triage** the failure on a preview before re-attempting cutover.
+- `https://app.elizacloud.ai` (tenant `elizacloud`)
+- `https://app-staging.elizacloud.ai` (tenant `elizacloud-staging`)
 
-Because nothing on the backend or DNS moved, rollback exposure is one Pages
-deploy (minutes), not a multi-system revert.
+> In the common path this is not exercised — users log in on the apex and the
+> `.elizacloud.ai` cookie carries them into the app already authenticated — but
+> add it so direct app-subdomain logins work too.
 
 ---
 
-## 6. Gate criteria (go / no-go checklist)
+## 6. Deploy
 
-**GO only if all are true:**
+CI does both on push (`develop` → staging, `main` → prod) via
+`.github/workflows/cloud-cf-deploy.yml`: `deploy-console` (cloud-frontend →
+`eliza-cloud`) and `deploy-app` (`packages/app` → `eliza-app`). A `cloud-api`
+redeploy ships the new origin allowlists.
 
-- [ ] `scripts/smoke-deeplinks.mjs` green against the **preview** deploy.
-- [ ] Aesthetic-audit verdicts `good` for every touched/reachable page; no blue.
-- [ ] Auth verified on preview for Cloud (web + native), Local, Remote.
-- [ ] The two backend auth bugs (PLAN.md §1.6) fixed + deployed.
-- [ ] `<Navigate>` redirect map (§3.1) reproduced in the app's router.
-- [ ] Rollback values for the Pages project captured (§5.1) and rehearsed.
-- [ ] cloud-frontend still builds and is one flip away.
+Manual (from a clean checkout):
 
-**Post-cutover, before declaring done:**
+```bash
+# Console (apex)
+bun run --cwd packages/cloud-frontend build
+bunx wrangler pages deploy --project-name=eliza-cloud --branch=main \
+  --cwd packages/cloud-frontend
 
-- [ ] `scripts/smoke-deeplinks.mjs` green against **production** apex.
-- [ ] Manual spot-checks (§4.5) pass.
-- [ ] Error / 404 rates flat through the soak window.
-
-**Decommission cloud-frontend** (Phase 9) only after the app has served apex
-traffic cleanly for the agreed window (DECISIONS.md open item).
+# App (subdomain)
+bun run --cwd packages/app build:web
+bunx wrangler pages deploy --project-name=eliza-app --branch=main \
+  --cwd packages/app
+```
 
 ---
 
-## 7. Artifacts this runbook depends on
+## 7. Verify
 
-- `packages/app/functions/_middleware.ts`, `packages/app/functions/_proxy.ts`
-- `packages/app/public/_redirects`, `packages/app/public/_headers`
-- `packages/app/wrangler.toml` (target Pages config; inert until cutover)
-- `packages/app/scripts/smoke-deeplinks.mjs` (the automated gate)
-- `docs/cloud-into-eliza/PLAN.md` §6 (topology), §6.2 (contract)
-- `docs/cloud-into-eliza/DECISIONS.md` D1 (Topology A), D2 (single cutover), D3 (auth)
+1. **Apex is the console again** — `https://staging.elizacloud.ai` shows the
+   lander (anonymous) → Steward login → dashboard. **No agent onboarding, no
+   `/api/views` / `/api/apps/favorites` 404s, no `<uuid>.elizacloud.ai` CORS
+   noise** (those belonged to the agent app, which is no longer at the apex).
+2. **Console deep-link contract** (cloud-frontend's own routes — unchanged from
+   before the cutover): payment / approve / ballot / magic-link land on the apex.
+3. **App subdomain** — `https://app-staging.elizacloud.ai` boots the agent app;
+   `node packages/app/scripts/smoke-deeplinks.mjs https://app-staging.elizacloud.ai`
+   is green.
+4. **Cross-subdomain SSO** — log in on `staging.elizacloud.ai`, click "Talk to
+   your agent" → land on `app-staging.elizacloud.ai` **already signed in**
+   (the `.elizacloud.ai` Steward cookie carried over).
+5. **First-party API** — a `/api/v1/...` call from the app subdomain returns from
+   the Worker (same-origin via the app's `_proxy.ts`); no CORS preflight failure.
+
+---
+
+## 8. Rollback
+
+The two projects are independent — rollback is per surface:
+
+- **Console** — redeploy the previous `eliza-cloud` (cloud-frontend) deployment
+  (or `wrangler pages deployment` rollback). The apex never depended on the app.
+- **App** — the `eliza-app` project / `app.*` domains can be removed entirely
+  with zero apex impact (DNS + the Pages project are net-new). The agent app also
+  still ships in desktop/mobile, unaffected.
+
+No backend revert is required for rollback; the added origin allowlist entries are
+additive and harmless if `app.*` is taken down.
+
+---
+
+## 9. Artifacts this runbook depends on
+
+- `.github/workflows/cloud-cf-deploy.yml` (`deploy-console` + `deploy-app` jobs)
+- `packages/app/wrangler.toml` (`name = "eliza-app"`), `packages/app/functions/*`
+- `packages/cloud-frontend/wrangler.toml` (`name = "eliza-cloud"`), its `functions/*`
+- `packages/cloud-frontend/src/lib/eliza-app-url.ts` + the console "Talk to your
+  agent" CTA in `src/dashboard/Page.tsx`
+- Origin allowlists in `packages/cloud-shared/src/lib/{cors,utils,security}/`
+- `packages/app/scripts/smoke-deeplinks.mjs`
+- `docs/cloud-into-eliza/DECISIONS.md` D5

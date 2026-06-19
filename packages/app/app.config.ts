@@ -20,7 +20,7 @@ interface AppWebConfig {
 
 const config = {
   appName: "Eliza",
-  appId: "ai.elizaos.app",
+  appId: "ai.milady.milady",
   orgName: "elizaos",
   repoName: "eliza",
   cliName: "eliza",

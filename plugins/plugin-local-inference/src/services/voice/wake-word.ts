@@ -420,26 +420,24 @@ export function resolveWakeWordStandalonePaths(opts: {
 }
 
 /**
- * Open a wake-word session, preferring the standalone `wakeword-cpp`
- * build when its library + three GGUFs are present. Falls back to the
- * fused `libelizainference` wake-word path bundled with the
- * local-inference engine. Returns `null` when neither provider can
- * serve a session (no GGUFs anywhere, no fallback runtime).
+ * Open a wake-word session, preferring the fused `libelizainference`
+ * wake-word path (the single native engine the whole voice pipeline runs
+ * through — the user directive: no separate bun:ffi-musl libs). Falls back to
+ * the standalone `wakeword-cpp` build only when the fused build does not carry
+ * the wake-word GGUF. Returns `null` when neither provider can serve a session.
  *
- * Provider order (Phase 2):
- *   1. `OpenWakeWordGgmlModel` from `./wake-word-ggml.ts` — the
- *      standalone `packages/native/plugins/wakeword-cpp` build, three
- *      GGUFs converted via `scripts/wakeword_to_gguf.py`. Tried first.
- *   2. `GgmlWakeWordModel` (this file) — the older fused-`libelizainference`
- *      path that consumes `wake/openwakeword.gguf` from the bundle
- *      cache. Used when the standalone build is not on disk, or when
- *      it raises a recoverable load error (e.g. running under Node
- *      where `bun:ffi` is not available).
+ * Provider order:
+ *   1. `GgmlWakeWordModel` (this file) — the fused-`libelizainference` path
+ *      that consumes `wake/openwakeword.gguf` from the bundle cache via the
+ *      `eliza_inference_wakeword_*` ABI. Tried first whenever the bundled GGUF
+ *      is on disk; uses the same `ffi`/`ctx` as VAD / speaker / TTS / ASR.
+ *   2. `OpenWakeWordGgmlModel` from `./wake-word-ggml.ts` — the standalone
+ *      `packages/native/plugins/wakeword-cpp` build (three GGUFs). Guarded
+ *      fallback for paths where the fused build lacks the wake-word runtime.
  *
  * `ffi` and `ctx` come from the voice lifecycle — they are the same
- * `ElizaInferenceFfi` handle and context the VAD / TTS / ASR paths
- * use, and are required for the fused fallback. The standalone path
- * uses neither.
+ * `ElizaInferenceFfi` handle and context the VAD / speaker / TTS / ASR paths
+ * use. The standalone fallback uses neither.
  */
 export async function loadBundledWakeWordModel(opts: {
 	ffi: ElizaInferenceFfi;
@@ -447,6 +445,20 @@ export async function loadBundledWakeWordModel(opts: {
 	bundleRoot?: string;
 	head?: string;
 }): Promise<WakeWordModel | null> {
+	const paths = resolveWakeWordModel({
+		...(opts.bundleRoot !== undefined ? { bundleRoot: opts.bundleRoot } : {}),
+		...(opts.head !== undefined ? { head: opts.head } : {}),
+	});
+	if (paths && GgmlWakeWordModel.isSupported(opts.ffi)) {
+		return GgmlWakeWordModel.load({
+			ffi: opts.ffi,
+			ctx: opts.ctx,
+			headName: paths.head,
+		});
+	}
+
+	// Fused build lacks the wake-word GGUF/runtime — fall back to the standalone
+	// wakeword-cpp build when its library + three GGUFs are present.
 	const standalone = resolveWakeWordStandalonePaths({
 		...(opts.bundleRoot !== undefined ? { bundleRoot: opts.bundleRoot } : {}),
 		...(opts.head !== undefined ? { head: opts.head } : {}),
@@ -466,18 +478,17 @@ export async function loadBundledWakeWordModel(opts: {
 				err instanceof WakeWordGgmlUnavailableError &&
 				err.code === "not-bun"
 			) {
-				/* The standalone path needs Bun for `bun:ffi`; under
-				 * Node we silently fall through to the fused path. */
+				/* The standalone path needs Bun for `bun:ffi`; under Node
+				 * we fall through to the fused path below. */
 			} else {
 				throw err;
 			}
 		}
 	}
 
-	const paths = resolveWakeWordModel({
-		...(opts.bundleRoot !== undefined ? { bundleRoot: opts.bundleRoot } : {}),
-		...(opts.head !== undefined ? { head: opts.head } : {}),
-	});
+	// Last resort: the fused GGUF is present but the build did not advertise
+	// support — let GgmlWakeWordModel.load surface the structured
+	// runtime-not-ready error rather than silently returning null.
 	if (!paths) return null;
 	return GgmlWakeWordModel.load({
 		ffi: opts.ffi,

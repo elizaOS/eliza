@@ -10,6 +10,10 @@
     <string name="app_action_new_task_long">Create LifeOps task</string>
     <string name="app_action_tasks_short">Tasks</string>
     <string name="app_action_tasks_long">Open LifeOps tasks</string>
+    <string name="app_action_smart_reply_short">Reply</string>
+    <string name="app_action_smart_reply_long">Draft with Eliza</string>
+    <string name="app_widget_quick_actions_title">Eliza</string>
+    <string name="app_widget_quick_actions_description">Quick actions for chat, voice, daily brief, and tasks</string>
 
     <string-array name="app_action_chat_features">
         <item>chat</item>

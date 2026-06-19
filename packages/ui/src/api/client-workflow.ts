@@ -42,10 +42,12 @@ declare module "./client-base" {
     activateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deactivateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deleteWorkflowDefinition(id: string): Promise<{ ok: boolean }>;
+    runWorkflowDefinition(id: string): Promise<WorkflowExecution>;
     getWorkflowExecutions(
       id: string,
       limit?: number,
     ): Promise<WorkflowExecution[]>;
+    getWorkflowExecution(id: string): Promise<WorkflowExecution>;
   }
 }
 
@@ -171,6 +173,21 @@ ElizaClient.prototype.deleteWorkflowDefinition = async function (
   );
 };
 
+ElizaClient.prototype.runWorkflowDefinition = async function (
+  this: ElizaClient,
+  id: string,
+): Promise<WorkflowExecution> {
+  const result = await this.fetch<{
+    execution?: WorkflowExecution;
+  }>(`/api/workflow/workflows/${encodeURIComponent(id)}/run`, {
+    method: "POST",
+  });
+  if (!result.execution) {
+    throw new Error("Workflow run response did not include an execution.");
+  }
+  return result.execution;
+};
+
 ElizaClient.prototype.getWorkflowExecutions = async function (
   this: ElizaClient,
   id: string,
@@ -180,4 +197,19 @@ ElizaClient.prototype.getWorkflowExecutions = async function (
     `/api/workflow/workflows/${encodeURIComponent(id)}/executions?limit=${limit}`,
   );
   return result.executions ?? [];
+};
+
+ElizaClient.prototype.getWorkflowExecution = async function (
+  this: ElizaClient,
+  id: string,
+): Promise<WorkflowExecution> {
+  const result = await this.fetch<{
+    execution?: WorkflowExecution;
+  }>(`/api/workflow/executions/${encodeURIComponent(id)}`);
+  if (!result.execution) {
+    throw new Error(
+      "Workflow execution response did not include an execution.",
+    );
+  }
+  return result.execution;
 };

@@ -530,7 +530,7 @@ public final class KokoroPhonemizer {
                 let lastOffset = step * vocabSize
                 var maxId = 0
                 var maxVal: Float = -.infinity
-                if logits.dataType == .float16 {
+                if #available(iOS 16.0, *), logits.dataType == .float16 {
                     let lPtr = logits.dataPointer.assumingMemoryBound(to: Float16.self)
                     for v in 0..<vocabSize {
                         let val = Float(lPtr[lastOffset + v])

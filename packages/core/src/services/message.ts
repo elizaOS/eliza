@@ -21,6 +21,7 @@ import {
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
+import { describeImageCached } from "../media";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import { checkSenderRole } from "../roles";
 import {
@@ -10931,74 +10932,35 @@ export class DefaultMessageService implements IMessageService {
 						imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 					}
 
+					// Describe via the shared content-addressed cache: identical image
+					// bytes reuse one stored description across messages and across the
+					// other describe paths (read action, basic-capabilities helper)
+					// instead of re-invoking the vision model every turn.
 					const resolvedImagePrompt = resolveOptimizedPromptForRuntime(
 						runtime,
 						"media_description",
 						imageDescriptionTemplate,
 					);
-					const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-						prompt: resolvedImagePrompt,
+					const described = await describeImageCached(
+						runtime,
 						imageUrl,
-					});
-
-					if (typeof response === "string") {
-						const parsedJson = parseJSONObjectFromText(response);
-
-						if (parsedJson && (parsedJson.description || parsedJson.text)) {
-							processedAttachment.description =
-								(typeof parsedJson.description === "string"
-									? parsedJson.description
-									: "") || "";
-							processedAttachment.title =
-								(typeof parsedJson.title === "string"
-									? parsedJson.title
-									: "Image") || "Image";
-							processedAttachment.text =
-								(typeof parsedJson.text === "string" ? parsedJson.text : "") ||
-								(typeof parsedJson.description === "string"
-									? parsedJson.description
-									: "") ||
-								"";
-
-							runtime.logger.debug(
-								{
-									src: "service:message",
-									descriptionPreview:
-										processedAttachment.description?.substring(0, 100),
-								},
-								"Generated image description",
-							);
-						} else {
-							runtime.logger.warn(
-								{ src: "service:message" },
-								"Failed to parse JSON response for image description",
-							);
-						}
-					} else if (
-						response &&
-						typeof response === "object" &&
-						"description" in response
-					) {
-						// Handle object responses for backwards compatibility
-						const objResponse = response as ImageDescriptionResponse;
-						processedAttachment.description = objResponse.description;
-						processedAttachment.title = objResponse.title || "Image";
-						processedAttachment.text = objResponse.description;
-
+						resolvedImagePrompt,
+					);
+					if (described) {
+						processedAttachment.description = described.description;
+						processedAttachment.title = described.title || "Image";
+						processedAttachment.text = described.text;
 						runtime.logger.debug(
 							{
 								src: "service:message",
-								descriptionPreview: processedAttachment.description?.substring(
-									0,
-									100,
-								),
+								descriptionPreview: described.description?.substring(0, 100),
 							},
 							"Generated image description",
 						);
 					} else {
 						runtime.logger.warn(
 							{ src: "service:message" },
-							"Unexpected response format for image description",
+							"Image description unavailable for attachment",
 						);
 					}
 				} else if (

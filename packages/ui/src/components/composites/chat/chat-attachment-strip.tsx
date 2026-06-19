@@ -1,5 +1,5 @@
-// biome-ignore lint/correctness/noUnusedImports: Required for this package's JSX transform in tests.
-import * as React from "react";
+import { FileText, Film, Music } from "lucide-react";
+import type * as React from "react";
 import { Button } from "../../ui/button";
 import type { ChatAttachmentItem, ChatVariant } from "./chat-types";
 
@@ -10,10 +10,27 @@ export interface ChatAttachmentStripProps {
   variant?: ChatVariant;
 }
 
+function NonImageTile({
+  item,
+}: {
+  item: ChatAttachmentItem;
+}): React.JSX.Element {
+  const Icon =
+    item.kind === "audio" ? Music : item.kind === "video" ? Film : FileText;
+  return (
+    <div className="flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-sm border border-border bg-bg/40 px-1 text-center">
+      <Icon className="h-5 w-5 text-muted" />
+      <span className="w-full truncate text-2xs text-muted" title={item.name}>
+        {item.name}
+      </span>
+    </div>
+  );
+}
+
 export function ChatAttachmentStrip({
   items,
   onRemove,
-  removeLabel = (item) => `Remove image ${item.name}`,
+  removeLabel = (item) => `Remove ${item.name}`,
   variant = "default",
 }: ChatAttachmentStripProps) {
   if (items.length === 0) {
@@ -30,11 +47,15 @@ export function ChatAttachmentStrip({
     >
       {items.map((item, index) => (
         <div key={item.id} className="relative h-16 w-16 shrink-0 group">
-          <img
-            src={item.src}
-            alt={item.alt}
-            className="h-16 w-16 rounded-sm border border-border object-cover"
-          />
+          {!item.kind || item.kind === "image" ? (
+            <img
+              src={item.src}
+              alt={item.alt}
+              className="h-16 w-16 rounded-sm border border-border object-cover"
+            />
+          ) : (
+            <NonImageTile item={item} />
+          )}
           <Button
             variant={
               variant === "game-modal" ? "surfaceDestructive" : "destructive"

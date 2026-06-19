@@ -46,8 +46,6 @@ function customSandbox(): AgentSandbox {
     health_url: "https://legacy-bridge.example/health",
     agent_name: "bnancy",
     agent_config: {},
-    neon_project_id: null,
-    neon_branch_id: null,
     database_uri: "postgres://agent-db.example",
     database_status: "ready",
     database_error: null,
@@ -599,6 +597,97 @@ describe("ElizaSandboxService heartbeat", () => {
     } finally {
       findSpy.mockRestore();
       updateSpy.mockRestore();
+    }
+  });
+});
+
+// The daemon handler for the `agent_resume` job. Covers the branch logic the
+// piece-wise suites don't: idempotency (an already-running agent is never
+// rebuilt), delegation to provision() for a stopped agent, not-found, and
+// surfacing a provision failure. Pure spy-based + ?actual import so it stays
+// order-independent in the single-process cloud-shared suite. (executeSuspend /
+// deleteAgent run inside dbWrite.transaction and are exercised by the live
+// provisioning lifecycle in prod.)
+describe("ElizaSandboxService.executeResume", () => {
+  const RESUME_AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const RESUME_ORG = "22222222-2222-4222-8222-222222222222";
+
+  function resumeRow(status: AgentSandbox["status"]): AgentSandbox {
+    return {
+      ...customSandbox(),
+      id: RESUME_AGENT,
+      organization_id: RESUME_ORG,
+      status,
+    };
+  }
+
+  test("an already-running agent is a no-op — never re-provisioned", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+      resumeRow("running"),
+    );
+    const provisionSpy = spyOn(svc, "provision");
+    try {
+      const res = await svc.executeResume(RESUME_AGENT, RESUME_ORG);
+      expect(res).toEqual({ success: true, containerStarted: true, reprovisioned: false });
+      // Re-provisioning a live agent would needlessly rebuild its container.
+      expect(provisionSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
+  test("a stopped agent is resumed by delegating to provision()", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+      resumeRow("stopped"),
+    );
+    const provisionSpy = spyOn(svc, "provision").mockResolvedValue({ success: true } as never);
+    try {
+      const res = await svc.executeResume(RESUME_AGENT, RESUME_ORG);
+      expect(res).toEqual({ success: true, containerStarted: true, reprovisioned: true });
+      expect(provisionSpy).toHaveBeenCalledTimes(1);
+      expect(provisionSpy).toHaveBeenCalledWith(RESUME_AGENT, RESUME_ORG);
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
+  test("an unknown agent returns not-found without provisioning", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(undefined);
+    const provisionSpy = spyOn(svc, "provision");
+    try {
+      const res = await svc.executeResume(RESUME_AGENT, RESUME_ORG);
+      expect(res.success).toBe(false);
+      expect(res.error).toBe("Agent not found");
+      expect(provisionSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
+  test("a provision failure during resume is surfaced, not swallowed", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+      resumeRow("stopped"),
+    );
+    const provisionSpy = spyOn(svc, "provision").mockResolvedValue({
+      success: false,
+      error: "no capacity",
+    } as never);
+    try {
+      const res = await svc.executeResume(RESUME_AGENT, RESUME_ORG);
+      expect(res.success).toBe(false);
+      expect(res.reprovisioned).toBe(true);
+      expect(res.error).toBe("no capacity");
+      expect(provisionSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      findSpy.mockRestore();
     }
   });
 });

@@ -347,6 +347,38 @@ describe('correctOptionParameters', () => {
     expect(correctOptionParameters(workflow)).toBe(0);
   });
 
+  test('normalizes generated Set node assignments.values into executable assignments', () => {
+    const workflow = validWorkflow({
+      nodes: [
+        schedule(),
+        setNode({
+          parameters: {
+            mode: 'manual',
+            assignments: {
+              values: [
+                { name: 'source', value: 'cerebras' },
+                { name: 'verified', value: true },
+              ],
+            },
+          },
+        }),
+      ],
+      connections: {
+        'Schedule Trigger': {
+          main: [[{ node: 'Set', type: 'main', index: 0 }]],
+        },
+      },
+    });
+
+    expect(correctOptionParameters(workflow)).toBe(1);
+    expect(workflow.nodes[1].parameters.assignments).toEqual({
+      assignments: [
+        { name: 'source', value: 'cerebras' },
+        { name: 'verified', value: true },
+      ],
+    });
+  });
+
   test('skips unknown node types', () => {
     const workflow: WorkflowDefinition = {
       name: 'Unknown',

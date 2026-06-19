@@ -38,6 +38,7 @@ import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
 import { initializeStorageBridge } from "@elizaos/ui/bridge/storage-bridge";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
+import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -171,10 +172,30 @@ function importAppCore() {
   );
 }
 
-function importAppCompanion() {
+function importCompanionAppRegistration() {
   return cachedDynamicImport(
-    "@elizaos/plugin-companion",
-    () => import("@elizaos/plugin-companion"),
+    "@elizaos/plugin-companion/components/companion/companion-app",
+    () => import("@elizaos/plugin-companion/components/companion/companion-app"),
+  );
+}
+
+function importCompanionSceneStatusContext() {
+  return cachedDynamicImport(
+    "@elizaos/plugin-companion/components/companion/companion-scene-status-context",
+    () =>
+      import(
+        "@elizaos/plugin-companion/components/companion/companion-scene-status-context"
+      ),
+  );
+}
+
+function importCompanionInferenceNotice() {
+  return cachedDynamicImport(
+    "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice",
+    () =>
+      import(
+        "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice"
+      ),
   );
 }
 
@@ -227,16 +248,44 @@ function lazyNamedComponent<TProps>(
 }
 
 const CompanionShell = lazyNamedComponent<CompanionShellComponentProps>(
-  async () => (await importAppCompanion()).CompanionShell,
+  async () =>
+    (
+      await cachedDynamicImport(
+        "@elizaos/plugin-companion/components/companion/CompanionShell",
+        () =>
+          import(
+            "@elizaos/plugin-companion/components/companion/CompanionShell"
+          ),
+      )
+    ).CompanionShell,
 );
 const GlobalEmoteOverlay = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppCompanion()).GlobalEmoteOverlay,
+  async () =>
+    (
+      await cachedDynamicImport(
+        "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay",
+        () =>
+          import(
+            "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay"
+          ),
+      )
+    ).GlobalEmoteOverlay,
 );
 const InferenceCloudAlertButton = lazyNamedComponent<{
   notice: CompanionInferenceNotice;
   onClick: () => void;
   onPointerDown?: (...args: unknown[]) => unknown;
-}>(async () => (await importAppCompanion()).InferenceCloudAlertButton);
+}>(async () =>
+  (
+    await cachedDynamicImport(
+      "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
+      () =>
+        import(
+          "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton"
+        ),
+    )
+  ).InferenceCloudAlertButton,
+);
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
@@ -452,6 +501,7 @@ const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
   .map((p) => ({ title: p.name, slug: `eliza-${p.avatarIndex}` }));
 
 let appModulesInitialized: Promise<void> | null = null;
+const SIDE_EFFECT_APP_MODULE_LOAD_CONCURRENCY = 2;
 
 function importSideEffectAppModule(
   key: string,
@@ -460,11 +510,57 @@ function importSideEffectAppModule(
   return cachedDynamicImport(key, loader);
 }
 
+function scheduleAppModuleIdleWork(work: () => void): void {
+  if (typeof window === "undefined") {
+    work();
+    return;
+  }
+  const w = window as Window & {
+    requestIdleCallback?: (
+      cb: () => void,
+      options?: { timeout?: number },
+    ) => number;
+  };
+  if (typeof w.requestIdleCallback === "function") {
+    w.requestIdleCallback(work, { timeout: 3_000 });
+    return;
+  }
+  window.setTimeout(work, 50);
+}
+
+function scheduleSideEffectAppModuleLoads(): void {
+  let nextIndex = 0;
+  let activeCount = 0;
+
+  const pump = () => {
+    while (
+      activeCount < SIDE_EFFECT_APP_MODULE_LOAD_CONCURRENCY &&
+      nextIndex < SIDE_EFFECT_APP_MODULE_LOADERS.length
+    ) {
+      const registration = SIDE_EFFECT_APP_MODULE_LOADERS[nextIndex];
+      if (!registration) break;
+      const { key, load } = registration;
+      nextIndex += 1;
+      activeCount += 1;
+      void importSideEffectAppModule(key, load)
+        .catch((error) => {
+          console.warn(`${APP_LOG_PREFIX} Failed to load ${key}:`, error);
+        })
+        .finally(() => {
+          activeCount -= 1;
+          if (nextIndex < SIDE_EFFECT_APP_MODULE_LOADERS.length) {
+            scheduleAppModuleIdleWork(pump);
+          }
+        });
+    }
+  };
+
+  scheduleAppModuleIdleWork(pump);
+}
+
 function buildAppBootConfig({
-  companionVectorRuntime,
   resolveCompanionInferenceNotice,
 }: {
-  companionVectorRuntime: AppBootConfig["companionVectorBrowser"];
   resolveCompanionInferenceNotice: (
     args: ResolveCompanionInferenceNoticeArgs,
   ) => CompanionInferenceNotice | null;
@@ -487,7 +583,6 @@ function buildAppBootConfig({
     companionInferenceAlertButton: InferenceCloudAlertButton,
     companionGlobalOverlay: GlobalEmoteOverlay,
     useCompanionSceneStatus: useLoadedCompanionSceneStatus,
-    companionVectorBrowser: companionVectorRuntime,
     codingAgentTasksPanel: CodingAgentTasksPanel,
     codingAgentSettingsSection: CodingAgentSettingsSection,
     codingAgentControlChip: CodingAgentControlChip,
@@ -512,8 +607,14 @@ function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
     await importAppCore();
 
-    const [companionModule] = await Promise.all([
-      importAppCompanion(),
+    const [
+      companionRegistrationModule,
+      companionSceneStatusModule,
+      companionInferenceNoticeModule,
+    ] = await Promise.all([
+      importCompanionAppRegistration(),
+      importCompanionSceneStatusContext(),
+      importCompanionInferenceNotice(),
       // Side-effect import for the PA HTTP client + Blocker settings cards.
       importAppLifeOps(),
       // Imported for its self-registration side effect (Vincent overlay app).
@@ -524,18 +625,14 @@ function initializeAppModules(): Promise<void> {
       importAppTraining(),
     ]);
 
-    companionModule.registerCompanionApp();
-    loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
+    companionRegistrationModule.registerCompanionApp();
+    loadedCompanionSceneStatusHook =
+      companionSceneStatusModule.useCompanionSceneStatus;
 
     setBootConfig(
       buildAppBootConfig({
-        companionVectorRuntime: {
-          THREE: companionModule.THREE,
-          createVectorBrowserRenderer:
-            companionModule.createVectorBrowserRenderer,
-        },
         resolveCompanionInferenceNotice:
-          companionModule.resolveCompanionInferenceNotice,
+          companionInferenceNoticeModule.resolveCompanionInferenceNotice,
       }),
     );
 
@@ -544,11 +641,7 @@ function initializeAppModules(): Promise<void> {
     // config doesn't depend on them — load them OFF the first-paint critical
     // path so the initial render isn't blocked on ~20 extra module loads. Their
     // nav tabs / overlay apps register a tick later; React.lazy covers the gap.
-    void Promise.all(
-      SIDE_EFFECT_APP_MODULE_LOADERS.map(({ key, load }) =>
-        importSideEffectAppModule(key, load),
-      ),
-    );
+    scheduleSideEffectAppModuleLoads();
   })();
 
   return appModulesInitialized;
@@ -1784,7 +1877,11 @@ function mountReactApp(): void {
   createRoot(rootEl).render(
     <ErrorBoundary>
       <StrictMode>
-        <Suspense fallback={null}>{mainTree}</Suspense>
+        <Suspense fallback={null}>
+          <RenderTelemetryProfiler id="AppRoot">
+            {mainTree}
+          </RenderTelemetryProfiler>
+        </Suspense>
       </StrictMode>
     </ErrorBoundary>,
   );
@@ -2431,10 +2528,15 @@ async function main(): Promise<void> {
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();
-    // Expose window.__diarizationPump so the WebView→agent PCM pump (live
-    // on-device speaker diarization) can be driven + read on-device via CDP.
-    const { installDiarizationPumpHarness } = await import("@elizaos/ui/voice");
+    // Expose window.__diarizationPump (WebView→bun-agent PCM pump) and
+    // window.__jniVoice (the in-process JNI voice pipeline — the four fused
+    // voice classifiers running IN the bionic app process via the ElizaVoice
+    // host, replacing the musl bun-agent transport) so both can be driven +
+    // read on-device via CDP.
+    const { installDiarizationPumpHarness, installJniVoiceHarness } =
+      await import("@elizaos/ui/voice");
     installDiarizationPumpHarness();
+    installJniVoiceHarness();
   }
   mountReactApp();
   await initializePlatform();

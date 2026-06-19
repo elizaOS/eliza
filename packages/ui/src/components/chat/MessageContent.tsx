@@ -10,6 +10,7 @@ import {
 import { client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
+import { splitLeadingSlashCommand } from "../../chat/slash-menu";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { PatchOp, UiSpec } from "../../config/ui-spec";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
@@ -32,6 +33,7 @@ import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { paramsToSchema } from "../pages/plugin-list-utils";
 import { Button } from "../ui/button";
+import { MessageAttachments } from "./MessageAttachments";
 import { ThinkingBlock } from "./ThinkingBlock";
 import type { FormResultValue } from "./widgets/form-request";
 // Side effect: registers the built-in inline widgets (choice/followups/form/task).
@@ -87,6 +89,39 @@ type Segment =
   | { kind: "widget"; widgetKind: string; data: unknown }
   | { kind: "permission"; payload: PermissionCardPayload }
   | { kind: "analysis-xml"; tag: string; content: string };
+
+/**
+ * Render a plain-text message body. When the message is a user-typed slash
+ * command (e.g. `/imagine a cat`), the leading `/command` token is rendered in
+ * bold so it reads as a command in the transcript — matching the inline
+ * autocomplete the composer shows while typing.
+ */
+function MessageTextBody({
+  text,
+  boldSlashCommand,
+}: {
+  text: string;
+  boldSlashCommand: boolean;
+}) {
+  const slash = boldSlashCommand ? splitLeadingSlashCommand(text) : null;
+  return (
+    <div className="whitespace-pre-wrap">
+      {slash ? (
+        <>
+          <span
+            className="font-bold text-txt"
+            data-testid="slash-command-token"
+          >
+            {slash.command}
+          </span>
+          {slash.rest}
+        </>
+      ) : (
+        text
+      )}
+    </div>
+  );
+}
 
 // ── Detection ───────────────────────────────────────────────────────
 
@@ -1334,7 +1369,12 @@ export function MessageContent({
 
   // Fast path: single plain-text segment (most messages)
   if (segments.length === 1 && segments[0].kind === "text") {
-    return <div className="whitespace-pre-wrap">{segments[0].text}</div>;
+    return (
+      <MessageTextBody
+        text={segments[0].text}
+        boldSlashCommand={message.role === "user"}
+      />
+    );
   }
 
   return (
@@ -1369,9 +1409,11 @@ export function MessageContent({
           switch (seg.kind) {
             case "text":
               return (
-                <div key={segmentKey} className="whitespace-pre-wrap">
-                  {seg.text}
-                </div>
+                <MessageTextBody
+                  key={segmentKey}
+                  text={seg.text}
+                  boldSlashCommand={message.role === "user"}
+                />
               );
             case "analysis-xml":
               return (
@@ -1437,6 +1479,9 @@ export function MessageContent({
           }
         });
       })()}
+      {message.attachments?.length ? (
+        <MessageAttachments attachments={message.attachments} />
+      ) : null}
       {analysisMode && message.actionName && (
         <div className="my-2 border border-purple-500/20 rounded-sm bg-purple-500/5 overflow-hidden">
           <div className="bg-purple-500/10 px-3 py-1 text-xs font-mono font-bold text-purple-500 uppercase tracking-wider">

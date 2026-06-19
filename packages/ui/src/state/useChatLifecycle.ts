@@ -531,36 +531,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     [showDesktopNotification],
   );
 
-  const notifyAssistantEvent = useCallback(
-    (event: StreamEventEnvelope) => {
-      if (event.type !== "agent_event" || event.stream !== "assistant") {
-        return;
-      }
-      const payload =
-        event.payload && typeof event.payload === "object"
-          ? (event.payload as Record<string, unknown>)
-          : null;
-      if (!payload) {
-        return;
-      }
-
-      const source =
-        typeof payload.source === "string" ? payload.source.trim() : "";
-      const text = typeof payload.text === "string" ? payload.text.trim() : "";
-      if (!text || source !== "lifeops-reminder") {
-        return;
-      }
-
-      void showDesktopNotification({
-        title: "Reminder",
-        body: text,
-        urgency: "normal",
-        silent: false,
-      });
-    },
-    [showDesktopNotification],
-  );
-
   // Until the agent can respond, keep refreshing its status so readiness
   // (`canRespond`) flips the moment it becomes true — e.g. a slow on-device
   // model still warming after boot, or a status snapshot that landed before
@@ -1167,7 +1137,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     restartBackend,
     relaunchDesktop,
     showDesktopNotification,
-    notifyAssistantEvent,
     notifyHeartbeatEvent,
     completeResetLocalStateAfterServerWipe,
     handleResetAppliedFromMain,

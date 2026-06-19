@@ -392,6 +392,26 @@ async function handleListExecutions(
   sendJson(ctx, 200, { executions: response.data });
 }
 
+async function handleRunWorkflow(
+  ctx: WorkflowRouteContext,
+  service: WorkflowService,
+  id: string
+): Promise<void> {
+  const execution = await service.runWorkflow(id, {
+    mode: 'manual',
+    throwOnError: false,
+  });
+  sendJson(ctx, 200, { execution });
+}
+
+async function handleGetExecution(
+  ctx: WorkflowRouteContext,
+  service: WorkflowService,
+  id: string
+): Promise<void> {
+  sendJson(ctx, 200, { execution: await service.getExecutionDetail(id) });
+}
+
 export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<void> {
   const path = normalizePath(ctx.pathname);
   const method = ctx.method.toUpperCase();
@@ -433,6 +453,14 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       return;
     }
 
+    if (method === 'GET' && path.startsWith('/executions/')) {
+      const executionId = decodeURIComponent(path.slice('/executions/'.length));
+      if (executionId) {
+        await handleGetExecution(ctx, service, executionId);
+        return;
+      }
+    }
+
     const id = readId(path);
     if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}`) {
       await handleGet(ctx, service, id);
@@ -453,6 +481,10 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     }
     if (id && method === 'POST' && path === `/workflows/${encodeURIComponent(id)}/deactivate`) {
       await handleToggle(ctx, service, id, false);
+      return;
+    }
+    if (id && method === 'POST' && path === `/workflows/${encodeURIComponent(id)}/run`) {
+      await handleRunWorkflow(ctx, service, id);
       return;
     }
     if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}/executions`) {

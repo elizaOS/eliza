@@ -28,11 +28,22 @@ export function AgentElementOverlay() {
   const highlighting = registry?.isHighlighting() ?? false;
   useEffect(() => {
     if (!highlighting || typeof window === "undefined") return;
-    const onChange = () => setTick((t) => t + 1);
-    window.addEventListener("scroll", onChange, true);
+    let frameId: number | null = null;
+    const onChange = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        setTick((t) => t + 1);
+      });
+    };
+    const scrollOptions = { capture: true, passive: true };
+    window.addEventListener("scroll", onChange, scrollOptions);
     window.addEventListener("resize", onChange);
     return () => {
-      window.removeEventListener("scroll", onChange, true);
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      window.removeEventListener("scroll", onChange, scrollOptions);
       window.removeEventListener("resize", onChange);
     };
   }, [highlighting]);

@@ -10,7 +10,7 @@
 import crypto from "node:crypto";
 import { getAgentEventService } from "@elizaos/agent";
 import { getHostExecutionCapabilities } from "@elizaos/app-core/services/task-host-capabilities";
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { type IAgentRuntime, ServiceType, logger } from "@elizaos/core";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
 
@@ -213,6 +213,26 @@ function normalizeChannelTarget(
   return target.startsWith(prefix) ? target.slice(prefix.length) : target;
 }
 
+interface NotificationEmitter {
+  notify: (input: {
+    title: string;
+    body?: string;
+    category?: string;
+    priority?: string;
+    source?: string;
+    deepLink?: string;
+    groupKey?: string;
+    data?: Record<string, unknown>;
+  }) => Promise<unknown>;
+}
+
+function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
+  const svc = runtime.getService(
+    ServiceType.NOTIFICATION,
+  ) as NotificationEmitter | null;
+  return svc && typeof svc.notify === "function" ? svc : null;
+}
+
 function deniedDecisionToDispatchResult(
   decision: Awaited<
     ReturnType<
@@ -282,6 +302,28 @@ export function createProductionScheduledTaskDispatcher(opts: {
                 : {}),
             },
           });
+          const isUrgent = record.intensity === "urgent";
+          void getNotifier(opts.runtime)
+            ?.notify({
+              title: isUrgent ? "Approval needed" : "Reminder",
+              body: record.promptInstructions,
+              category: isUrgent ? "approval" : "reminder",
+              priority: isUrgent ? "urgent" : "normal",
+              source: "lifeops",
+              groupKey: `lifeops:${record.taskId}`,
+              deepLink: "/chat",
+              data: {
+                taskId: record.taskId,
+                firedAtIso: record.firedAtIso,
+                channelKey: record.channelKey,
+              },
+            })
+            .catch((error: unknown) => {
+              logger.debug(
+                { src: "lifeops:scheduled-task", error },
+                "Notification emit failed",
+              );
+            });
           return {
             ok: true,
             messageId: `in_app:${record.taskId}:${record.firedAtIso}`,
