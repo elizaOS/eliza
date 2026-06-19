@@ -3,6 +3,11 @@ export {
   mergeAggregatedCalendarFeedEvents,
 } from "./CalendarService.js";
 export {
+  CALENDAR_MIGRATION_SERVICE_TYPE,
+  CalendarMigrationService,
+  MIGRATED_CALENDAR_TABLES,
+} from "./migration.js";
+export {
   CalendarRepository,
   createLifeOpsCalendarSyncState,
   type LifeOpsCalendarSyncState,
@@ -21,7 +26,7 @@ export {
   setCalendarFeedIncluded,
 } from "./feed-preferences.js";
 export {
-  appLifeopsPgSchema,
+  calendarPgSchema,
   calendarEvents,
   calendarSchema,
   calendarSyncStates,

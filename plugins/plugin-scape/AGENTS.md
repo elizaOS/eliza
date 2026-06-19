@@ -46,6 +46,7 @@ All providers require `minRole: ADMIN`. `SCAPE_BOT_STATE`, `SCAPE_INVENTORY`, an
 ### Views (registered as elizaOS UI views)
 - `ScapeOperatorSurface` — default desktop/XR tab at `/scape`
 - `ScapeTuiView` — terminal surface at `/scape/tui`
+- `ScapeSpatialView` — cross-modality operator surface authored with the spatial vocabulary; renders in GUI/XR via `<SpatialSurface>` and in the terminal via `registerSpatialTerminalView` (see `src/register-terminal-view.tsx`). Purely presentational (snapshot + action callback in, spatial primitives out).
 
 ### App lifecycle exports (consumed by elizaOS app-manager)
 - `resolveLaunchSession` — builds initial session state
@@ -60,10 +61,13 @@ src/
   index.ts                      Plugin entry; exports createAppScapePlugin(), appScapePlugin (gated)
   routes.ts                     All HTTP route handlers; app lifecycle exports
   shared-state.ts               Module-scope shared state (latest LLM response, action text resolver)
+  register-terminal-view.tsx    Registers ScapeSpatialView in the terminal via registerSpatialTerminalView
   actions/
     index.ts                    scapeActions array (single element: scapeAction)
     scape.ts                    SCAPE action — op dispatch, param parsing, timeout
     param-parser.ts             Shared coercion helpers (also used inline in scape.ts)
+  components/
+    ScapeSpatialView.tsx        Cross-modality operator surface (GUI/XR + TUI) using spatial primitives
   providers/
     index.ts                    scapeProviders array (5 providers)
     bot-state.ts                SCAPE_BOT_STATE
@@ -87,6 +91,9 @@ src/
   ui/
     index.ts                    Re-exports ScapeOperatorSurface; registers it via registerOperatorSurface
     ScapeOperatorSurface.tsx    React operator UI (ScapeOperatorSurface + ScapeTuiView both exported from here)
+    ScapeOperatorSurface.interact.ts  View-bundle interact capability handler (split out for Fast-Refresh compatibility)
+    scape-view-bundle.ts        Vite view-bundle entry; re-exports ScapeOperatorSurface, ScapeTuiView, interact
+    game-surface-shell.tsx      Shared visual shell (hero banner, stat chips, content zone) used by the operator surface
 ```
 
 ## Commands
@@ -147,5 +154,7 @@ Agent identity (name, password, agentId) is persisted to `~/.eliza/scape-agent-i
 - **Session ID.** The session ID is keyed on `runtime.agentId` (stable across the lifetime of the agent process). Stale session IDs from old refresh cycles return 404 with `expected` / `received` so the host can re-resolve.
 - **Autonomous loop timing.** The first LLM step fires on the first perception frame (not at service start) to avoid prompting with an empty snapshot.
 - **Operator pause.** `pause()` / `resume()` survive reconnects — the bot-SDK connection stays open during a pause so perception keeps updating.
-- **Views are built separately.** `build:views` uses `vite.config.views.ts` and bundles `ScapeOperatorSurface` + `ScapeTuiView` into `dist/views/bundle.js`. This is separate from the main `tsup` JS build.
+- **Views are built separately.** `build:views` uses `vite.config.views.ts` and bundles `ScapeOperatorSurface` + `ScapeTuiView` into `dist/views/bundle.js`. The bundle entry is `src/ui/scape-view-bundle.ts`, which also re-exports the `interact` capability handler. This is separate from the main `tsup` JS build.
 - **App gating.** The default export `appScapePlugin` is wrapped in `gatePluginSessionForHostedApp`. Use `createAppScapePlugin()` directly in tests to bypass the gate.
+- **ScapeSpatialView vs ScapeTuiView.** `ScapeSpatialView` (`src/components/`) is the unified cross-modality surface; it renders in the terminal via `register-terminal-view.tsx`. `ScapeTuiView` (`src/ui/ScapeOperatorSurface.tsx`) is the legacy TUI surface still exported from the view bundle for backward compatibility.
+- **interact split.** `ScapeOperatorSurface.interact.ts` is kept separate from the React component file so Vite's Fast-Refresh does not full-reload the component file on non-component changes.

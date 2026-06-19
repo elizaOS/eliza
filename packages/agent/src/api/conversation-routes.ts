@@ -1822,6 +1822,7 @@ export async function handleConversationRoutes(
             type: "done",
             fullText: resolvedText,
             agentName: result.agentName,
+            ...(result.thought ? { thought: result.thought } : {}),
             ...(result.usage ? { usage: result.usage } : {}),
           });
           deferredPersistence = (async () => {

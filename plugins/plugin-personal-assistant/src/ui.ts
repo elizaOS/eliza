@@ -9,11 +9,6 @@ import React from "react";
 import { AppBlockerSettingsCard as AppBlockerSettingsCardImpl } from "./components/AppBlockerSettingsCard.js";
 import { WebsiteBlockerSettingsCard as WebsiteBlockerSettingsCardImpl } from "./components/WebsiteBlockerSettingsCard.js";
 
-export {
-  LifeOpsPageView,
-  LifeOpsTuiView,
-} from "./components/LifeOpsPageView.js";
-
 import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "./platform/lifeops-github.js";
 import type {
   AppBlockerSettingsCardProps,

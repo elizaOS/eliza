@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import { Pool } from "pg";
 import {
   generateProjectionAlerts,
@@ -102,7 +103,11 @@ async function loadDashboardInputs(
   startDate: Date,
   endDate: Date,
 ): Promise<{ historicalData: TimeSeriesRow[]; creditBalance: number | null }> {
-  const pool = new Pool({ connectionString: databaseUrl() });
+  const { url: poolUrl, ssl: poolSsl } = enforceTlsForRemote(databaseUrl());
+  const pool = new Pool({
+    connectionString: poolUrl,
+    ...(poolSsl ? { ssl: poolSsl } : {}),
+  });
   try {
     const [usage, org] = await Promise.all([
       pool.query<{
@@ -182,7 +187,11 @@ async function persistAlertEvents(input: {
 }): Promise<AlertEventRow[]> {
   if (input.alerts.length === 0) return [];
 
-  const pool = new Pool({ connectionString: databaseUrl() });
+  const { url: poolUrl, ssl: poolSsl } = enforceTlsForRemote(databaseUrl());
+  const pool = new Pool({
+    connectionString: poolUrl,
+    ...(poolSsl ? { ssl: poolSsl } : {}),
+  });
   try {
     const rows: AlertEventRow[] = [];
     for (const alert of input.alerts) {

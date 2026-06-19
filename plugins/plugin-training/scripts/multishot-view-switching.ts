@@ -14,8 +14,9 @@
  *     (resolveIntentView: 100%, multilingual, phrasing-robust), not the model.
  *
  * This is the reproducible evidence. It is a measurement script, not a product
- * path. Run: `bun run plugins/plugin-training/scripts/multishot-view-switching.ts`
- *   M=elizatest:latest OLLAMA_URL=... to compare a larger tier.
+ * path. Start a llama-server (see lib/llamacpp.ts), then run:
+ *   LLAMACPP_URL=http://127.0.0.1:8080 LABEL=eliza-1-2b \
+ *     bun run plugins/plugin-training/scripts/multishot-view-switching.ts
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -26,8 +27,11 @@ import {
   scorePlannerAction,
 } from "../src/optimizers/scoring.js";
 
-const OLLAMA = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
-const MODEL = process.env.M ?? "eliza-1-0_8b:latest";
+// llama.cpp llama-server (eliza fork), NOT Ollama. Start a server with one GGUF
+// loaded; LABEL is for display only (the served model is whatever llama-server
+// has). See lib/llamacpp.ts.
+const LLAMACPP_URL = process.env.LLAMACPP_URL ?? "http://127.0.0.1:8080";
+const LABEL = process.env.LABEL ?? "eliza-1-2b";
 const DATASET = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -94,21 +98,27 @@ const DEMO_INPUTS = new Set(DEMOS.map((d) => d[0]));
 async function call(
   messages: Array<{ role: string; content: string }>,
 ): Promise<string> {
-  const res = await fetch(`${OLLAMA}/api/chat`, {
+  const res = await fetch(`${LLAMACPP_URL}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: MODEL,
-      stream: false,
-      format: SCHEMA,
-      options: { temperature: 0, num_predict: 80 },
       messages,
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "out", schema: SCHEMA, strict: true },
+      },
+      chat_template_kwargs: { enable_thinking: false },
+      temperature: 0,
+      max_tokens: 80,
     }),
   });
-  if (!res.ok) throw new Error(`ollama ${res.status}`);
+  if (!res.ok) throw new Error(`llama-server ${res.status}`);
   return (
-    ((await res.json()) as { message?: { content?: string } }).message
-      ?.content ?? ""
+    (
+      (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      }
+    ).choices?.[0]?.message?.content ?? ""
   );
 }
 
@@ -133,7 +143,7 @@ function loadEnglish() {
 async function main() {
   const english = loadEnglish();
   console.log(
-    `${MODEL}: eval on ${english.length} english rows (demos excluded)`,
+    `${LABEL}: eval on ${english.length} english rows (demos excluded)`,
   );
   const demoTurns = DEMOS.flatMap(([u, o]) => [
     { role: "user", content: u },

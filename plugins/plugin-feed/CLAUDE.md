@@ -40,19 +40,25 @@ The TUI view declares capabilities: `get-state`, `refresh-agent-status`, `open-l
 ```
 plugins/plugin-feed/
   src/
-    index.ts          Plugin object: view registrations + re-exports
-    feed-auth.ts      Auth helpers: resolveFeedConfig, proxyFeedRequest,
-                      persistFeedCredential, resolveSettingLike, FeedConfig
-    routes.ts         Full HTTP proxy layer — all /api/apps/feed/* routes
+    index.ts                        Plugin object: view registrations + re-exports
+    feed-auth.ts                    Auth helpers: resolveFeedConfig, proxyFeedRequest,
+                                    persistFeedCredential, resolveSettingLike, FeedConfig
+    routes.ts                       Full HTTP proxy layer — all /api/apps/feed/* routes
+    feed-data.ts                    Pure data helpers: extractAgentSummary,
+                                    extractTeamDashboard, summarizeFeedActivity, etc.
+    feed-view-bundle.ts             View bundle entry point
+    register-terminal-view.tsx      Terminal view registration helper
+    game-surface-shell.tsx          Game surface shell component
+    FeedOperatorSurface.interact.ts Interactive logic for FeedOperatorSurface
+    components/
+      FeedSpatialView.tsx           Spatial/XR view component
     ui/
-      index.ts        Registers operator surface + detail extension
-      FeedOperatorSurface.tsx  Main React dashboard component
-      FeedDetailExtension.tsx  Detail panel extension component
-      feed-data.ts    Pure data helpers: extractAgentSummary,
-                      extractTeamDashboard, summarizeFeedActivity, etc.
+      index.ts                      Registers operator surface + detail extension
+      FeedOperatorSurface.tsx       Main React dashboard component
+      FeedDetailExtension.tsx       Detail panel extension component
   assets/
-    hero.png          App store hero image
-  vite.config.views.ts  Vite config for the view bundle (dist/views/bundle.js)
+    hero.png                        App store hero image
+  vite.config.views.ts              Vite config for the view bundle (dist/views/bundle.js)
   tsconfig.build.json
 ```
 
@@ -66,9 +72,8 @@ bun run --cwd plugins/plugin-feed build:js       # tsup (../tsup.plugin-packages
 bun run --cwd plugins/plugin-feed build:views    # Vite: src/ui/FeedOperatorSurface.tsx → dist/views/bundle.js
 bun run --cwd plugins/plugin-feed build:types    # tsc: type declarations
 bun run --cwd plugins/plugin-feed clean          # rm -rf dist
+bun run --cwd plugins/plugin-feed test           # vitest run
 ```
-
-No test script is defined in this package.
 
 ## Config / env vars
 

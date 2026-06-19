@@ -69,6 +69,12 @@ interface CachedStewardClaims {
 export interface StewardVerifyEnv {
   STEWARD_SESSION_SECRET?: string;
   STEWARD_JWT_SECRET?: string;
+  /**
+   * Org tenant this deployment serves. When set, a token is rejected unless its
+   * tenant is exactly this OR the caller's own `personal-<userId>` tenant — so
+   * a token minted for another tenant can't authenticate here.
+   */
+  STEWARD_TENANT_ID?: string;
 }
 
 // Cache the encoded secret keyed by raw value, so repeated requests with the
@@ -216,6 +222,25 @@ export async function verifyStewardTokenCached(
 
     if (!claims.userId) {
       logger.warn("[StewardClient] JWT valid but missing userId/sub claim");
+      return null;
+    }
+
+    // 2b. Tenant scoping. Steward issues per-user `personal-<userId>` tenants
+    // scoped inside the org tenant; accept the configured org tenant OR the
+    // caller's own personal tenant, reject any other tenant. Done before
+    // caching so a cross-tenant token is never cached, and applied in this one
+    // shared verifier so routes and the auth middleware agree (a token accepted
+    // at a route can no longer be rejected by getCurrentUser, or vice-versa).
+    const expectedTenant = env.STEWARD_TENANT_ID;
+    if (
+      expectedTenant &&
+      claims.tenantId &&
+      claims.tenantId !== expectedTenant &&
+      claims.tenantId !== `personal-${claims.userId}`
+    ) {
+      logger.debug("[StewardClient] Token tenant not permitted for this deployment", {
+        tokenHash: tokenHash.substring(0, 8),
+      });
       return null;
     }
 

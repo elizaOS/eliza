@@ -1,13 +1,16 @@
 /**
  * REAL-LLM view-switching tests — gated to the post-merge / live lane
- * (`*.real.test.ts`). Runs the actual local eliza model through the real
- * optimizer harness over Ollama, with SCHEMA-CONSTRAINED decoding mirroring the
- * production planner grammar.
+ * (`*.real.test.ts`). Runs the actual local eliza-1 model through the real
+ * optimizer harness over the eliza llama.cpp fork's `llama-server` (NOT Ollama —
+ * stock Ollama can't load the eliza-1 qwen3.5 tiers above 2b), with
+ * SCHEMA-CONSTRAINED decoding (json_schema) mirroring the production planner
+ * grammar and qwen3.5 thinking disabled.
  *
- * Skips automatically when Ollama is unreachable or the model is absent, so it
- * never fails CI lanes without a local model. Run locally with:
- *   TEST_LANE=post-merge bun run --cwd plugins/plugin-training test src/optimizers/view-switching.real.test.ts
- *   REAL_LLM_MODEL=eliza-1-0_8b:latest OLLAMA_URL=http://127.0.0.1:11434 ...
+ * Skips automatically when llama-server is unreachable, so it never fails CI
+ * lanes without a local model. Run locally with a server up (see
+ * scripts/lib/llamacpp.ts):
+ *   TEST_LANE=post-merge LLAMACPP_URL=http://127.0.0.1:8080 \
+ *     bun run --cwd plugins/plugin-training test src/optimizers/view-switching.real.test.ts
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -21,8 +24,11 @@ import {
 } from "./scoring.js";
 import type { LlmAdapter } from "./types.js";
 
-const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
-const MODEL = process.env.REAL_LLM_MODEL ?? "eliza-1-0_8b:latest";
+// llama.cpp (eliza-fork llama-server), NOT Ollama. Start a server with one
+// eliza-1 GGUF loaded; MODEL is a display label (the served model is whatever
+// llama-server has). See scripts/lib/llamacpp.ts.
+const LLAMACPP_URL = process.env.LLAMACPP_URL ?? "http://127.0.0.1:8080";
+const MODEL = process.env.REAL_LLM_MODEL ?? "eliza-1-2b";
 const DATASET = join(
   dirname(fileURLToPath(import.meta.url)),
   "__fixtures__",
@@ -60,29 +66,33 @@ const PLANNER_SCHEMA = {
   required: ["action"],
 };
 
-function schemaAdapter(model: string): LlmAdapter {
+function schemaAdapter(_model: string): LlmAdapter {
   return {
     async complete({ system, user, temperature, maxTokens }) {
-      const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+      const res = await fetch(`${LLAMACPP_URL}/v1/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model,
-          stream: false,
-          format: PLANNER_SCHEMA,
-          options: {
-            temperature: temperature ?? 0,
-            num_predict: maxTokens ?? 80,
-          },
           messages: [
             ...(system ? [{ role: "system", content: system }] : []),
             { role: "user", content: user },
           ],
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "out", schema: PLANNER_SCHEMA, strict: true },
+          },
+          // eliza-1 is qwen3.5 (a thinking model); disable thinking so the token
+          // budget produces the JSON answer, not reasoning_content.
+          chat_template_kwargs: { enable_thinking: false },
+          temperature: temperature ?? 0,
+          max_tokens: maxTokens ?? 80,
         }),
       });
-      if (!res.ok) throw new Error(`ollama ${res.status}`);
-      const data = (await res.json()) as { message?: { content?: string } };
-      return data.message?.content ?? "";
+      if (!res.ok) throw new Error(`llama-server ${res.status}`);
+      const data = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      return data.choices?.[0]?.message?.content ?? "";
     },
   };
 }
@@ -108,27 +118,26 @@ function loadExamples(): Example[] {
     });
 }
 
-let ollamaUp = false;
+let serverUp = false;
 beforeAll(async () => {
   try {
-    const res = await fetch(`${OLLAMA_URL}/api/tags`, {
+    const res = await fetch(`${LLAMACPP_URL}/health`, {
       signal: AbortSignal.timeout(2000),
     });
-    const data = (await res.json()) as { models?: Array<{ name: string }> };
-    ollamaUp = Boolean(data.models?.some((m) => m.name === MODEL));
+    serverUp = res.ok;
   } catch {
-    ollamaUp = false;
+    serverUp = false;
   }
-  if (!ollamaUp) {
+  if (!serverUp) {
     console.warn(
-      `[view-switching.real] SKIP — Ollama@${OLLAMA_URL} model ${MODEL} unavailable`,
+      `[view-switching.real] SKIP — llama-server@${LLAMACPP_URL} unavailable (start it with an eliza-1 GGUF)`,
     );
   }
 });
 
 describe("real local LLM — schema-constrained planner output is always gradeable", () => {
   it("emits valid, scorer-parseable JSON for every navigation input", async () => {
-    if (!ollamaUp) return;
+    if (!serverUp) return;
     const adapter = schemaAdapter(MODEL);
     const examples = loadExamples().slice(0, 8);
     for (const ex of examples) {
@@ -154,7 +163,7 @@ describe("real local LLM — schema-constrained planner output is always gradeab
 
 describe("real local LLM — prompt routing lifts the harness score", () => {
   it("a view-routing prompt scores >= the bare baseline on the dataset", async () => {
-    if (!ollamaUp) return;
+    if (!serverUp) return;
     const examples = loadExamples();
     const scorer = createPromptScorer(schemaAdapter(MODEL), {
       // reuse the production view-aware comparator

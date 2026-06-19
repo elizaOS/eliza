@@ -5,11 +5,11 @@
  * runtime over a bare PGlite instance and CREATEs the tables by hand), this
  * suite boots a REAL PGLite-backed AgentRuntime via {@link createRealTestRuntime}
  * and materializes the calendar tables the way the runtime does in production:
- * the calendar store reads/writes the shared `app_lifeops.life_calendar_*`
- * tables (the "inbox pattern" — shared schema, the calendar plugin itself
- * registers no `schema`), so we register a schema-only test plugin that exposes
- * `calendarSchema`, letting the SQL plugin's migration runner create the tables
- * on `runtime.initialize()`.
+ * the calendar store reads/writes the carved `app_calendar.life_calendar_*`
+ * tables. We register a schema-only test plugin that exposes `calendarSchema`
+ * (rather than the full calendar plugin) to keep the test runtime minimal,
+ * letting the SQL plugin's migration runner create the tables on
+ * `runtime.initialize()`.
  *
  * Two layers are round-tripped against the live DB:
  *   1. `CalendarRepository` — upsert an event/sync-state, read it back.
@@ -40,10 +40,11 @@ import {
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
 
 /**
- * Schema-only test plugin. The calendar plugin registers no `schema` of its own
- * (LifeOps owns the `app_lifeops` tables in production); we register
- * `calendarSchema` here so `runtime.initialize()` runs the SQL plugin migration
- * that creates `life_calendar_events` + `life_calendar_sync_states`.
+ * Schema-only test plugin. In production the calendar plugin registers
+ * `calendarSchema` (the carved `app_calendar` tables) itself; here we register
+ * just the schema (not the full plugin's services/actions) so
+ * `runtime.initialize()` runs the SQL plugin migration that creates
+ * `life_calendar_events` + `life_calendar_sync_states` with minimal surface.
  */
 const calendarSchemaPlugin: Plugin = {
   name: "calendar-real-db-schema",

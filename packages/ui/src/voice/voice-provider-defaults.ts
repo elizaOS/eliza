@@ -6,10 +6,11 @@
  *
  *   - Desktop running a local agent → on-device models
  *     (TTS: `local-inference` / OmniVoice, ASR: `local-inference` / Qwen3-ASR).
- *   - Mobile running a local agent → Eliza Cloud
- *     (TTS: `elevenlabs` via Cloud, ASR: `eliza-cloud`). The phone still
- *     hosts the agent but offloads the audio pipelines because mobile
- *     hardware doesn't comfortably run them yet.
+ *   - Mobile running a local agent → on-device Kokoro TTS
+ *     (TTS: `local-inference`; Kokoro is ~82M params and runs comfortably on
+ *     phones — see `selectVoiceBackend({ mobile: true })`). ASR still routes
+ *     to Eliza Cloud (`eliza-cloud`) because on-device speech recognition is
+ *     heavier than TTS.
  *   - Cloud agents (any device) → always Eliza Cloud.
  *   - Remote-controller surfaces (UI hitting a remote API base) → Eliza
  *     Cloud, same rationale as cloud agents.
@@ -53,11 +54,16 @@ export function pickDefaultVoiceProvider(
     return { tts: "elevenlabs", asr: "eliza-cloud" };
   }
 
-  // Local / local-only: split by platform. Desktop has the CPU/GPU
-  // budget for OmniVoice + Qwen3-ASR; mobile (and any web shell hosting a
-  // local agent) leans on Eliza Cloud for both TTS and ASR.
+  // Local / local-only: split by platform. Desktop has the CPU/GPU budget
+  // for OmniVoice + Qwen3-ASR. Mobile runs on-device Kokoro for TTS (small +
+  // fast) but offloads the heavier ASR pipeline to Eliza Cloud. A web shell
+  // hosting a local agent can't run on-device audio, so it stays on Cloud.
   if (platform === "desktop") {
     return { tts: "local-inference", asr: "local-inference" };
+  }
+
+  if (platform === "mobile") {
+    return { tts: "local-inference", asr: "eliza-cloud" };
   }
 
   return { tts: "elevenlabs", asr: "eliza-cloud" };

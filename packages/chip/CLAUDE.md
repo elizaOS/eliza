@@ -31,6 +31,7 @@ treat that as a bug to fix.
 - `compiler/runtime/` — Python NPU runtime and simulation-scale contract checks.
 - `fw/` — boot ROM, bare-metal, and OpenSBI payload scaffolds.
 - `sw/` — Linux, Buildroot, OpenSBI, U-Boot, and AOSP BSP scaffolds.
+- `sim/` — Renode and Verilator simulation orchestration.
 - `benchmarks/` — benchmark plans, parsers, local model generators, power
   estimates, metadata, dry-run harnesses.
 - `scripts/` — local gates, evidence capture, simulator orchestration, release
@@ -41,6 +42,13 @@ treat that as a bug to fix.
   manifests.
 - `board/`, `package/` — KiCad, FPGA, pinout, bonding, Wi-Fi interface, and
   artifact manifests.
+- `generators/` — Chipyard and XiangShan generator configurations.
+- `viewer/` — chip viewer HTML app and associated data artifacts.
+- `dts/` — device tree sources for Eliza E1 platform targets.
+- `mechanical/` — mechanical design artifacts.
+- `docker/` — Dockerfiles for KiCad tools and Chipyard; used as documented
+  fallback when native binaries are absent.
+- `tests/` — security negative tests and other non-RTL test suites.
 - `research/` — macro-placement and chip-design research notes (inform, do not
   replace, checked implementation evidence).
 - `tools/`, `external/` — `tools/env.sh` + vendored EDA toolchains (above).

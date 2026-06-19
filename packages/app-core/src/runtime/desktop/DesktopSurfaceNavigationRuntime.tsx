@@ -8,7 +8,6 @@ const MAIN_NAVIGATION_TABS = new Set<Tab>([
   "chat",
   "plugins",
   "triggers",
-  "lifeops",
   "settings",
 ]);
 

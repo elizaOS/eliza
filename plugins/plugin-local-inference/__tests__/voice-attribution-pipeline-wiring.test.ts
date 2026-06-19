@@ -15,6 +15,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { IAgentRuntime } from "@elizaos/core";
+import { EventType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	EngineVoiceBridge,
@@ -27,6 +29,32 @@ import type {
 	RefCountedResource,
 } from "../src/services/voice/shared-resources";
 import { writeVoicePresetFile } from "../src/services/voice/voice-preset-format";
+
+// Make the lazily-imported GGML encoder return a deterministic unit-norm
+// embedding without any native FFI, so the automatic live-attribution path can
+// resolve in the unit env (no GGUF/.so on disk). The bridge dynamically imports
+// this module from `start()`'s lazy encoder closure.
+vi.mock("../src/services/voice/speaker/encoder-ggml", () => {
+	class FakeSpeakerEncoderGgmlImpl {
+		readonly embeddingDim = 256;
+		readonly sampleRate = 16_000;
+		readonly modelId = "wespeaker-resnet34-lm-int8";
+		constructor(_opts: { ggufPath: string }) {}
+		async encode(_pcm: Float32Array): Promise<Float32Array> {
+			// A fixed unit vector — every turn matches the same enrolled cluster.
+			const v = new Float32Array(256);
+			v[0] = 1;
+			return v;
+		}
+		async dispose(): Promise<void> {}
+	}
+	return {
+		SPEAKER_GGML_EMBEDDING_DIM: 256,
+		SPEAKER_GGML_SAMPLE_RATE: 16_000,
+		SPEAKER_GGML_MIN_SAMPLES: 16_000,
+		SpeakerEncoderGgmlImpl: FakeSpeakerEncoderGgmlImpl,
+	};
+});
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -172,6 +200,63 @@ describe("EngineVoiceBridge — VoiceProfileStore attribution wiring (W3-1 item 
 		// Wait a tick for any async attribution to fire (there should be none).
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(onAttribution).not.toHaveBeenCalled();
+	});
+
+	it("AUTOMATIC: emits VOICE_TURN_OBSERVED purely from profileStore + event runtime (no caller onAttribution)", async () => {
+		// This proves the seam: with a real event-capable runtime wired, the
+		// bridge fires VOICE_TURN_OBSERVED on its own — no caller `onAttribution`
+		// is supplied. The mocked encoder makes attribution resolve in-env; the
+		// turn creates a fresh imprint cluster (a brand-new speaker → unbound).
+		await store.init();
+		const emitEvent = vi.fn(async () => {});
+		const runtime = { emitEvent } as unknown as IAgentRuntime;
+
+		const bridge = EngineVoiceBridge.start({
+			bundleRoot: root,
+			useFfiBackend: false,
+			profileStore: store,
+			runtime,
+			liveAttribution: {
+				ownerEntityId: "ent_owner",
+				knownSpeakerEntityIds: ["ent_owner"],
+			},
+			lifecycleLoaders: lifecycleLoadersOk(),
+		});
+		await bridge.arm();
+
+		vi.spyOn(bridge, "buildPipeline").mockImplementation(() => {
+			return {
+				run: vi.fn().mockResolvedValue("done"),
+				cancel: vi.fn(),
+				isRunning: vi.fn().mockReturnValue(false),
+				getPartialStabilizer: vi.fn().mockReturnValue(null),
+			} as never;
+		});
+
+		// NOTE: no `onAttribution` callback — the seam must fire purely from the
+		// presence of profileStore + event runtime.
+		const result = await bridge.runVoiceTurn(
+			{ pcm: new Float32Array(16_000 * 2), sampleRate: 16_000 },
+			{} as never,
+			{ maxDraftTokens: 2 },
+		);
+		expect(result).toBe("done");
+
+		// Wait for the async attribution + emit to settle.
+		for (let i = 0; i < 40 && emitEvent.mock.calls.length === 0; i++) {
+			await new Promise((r) => setTimeout(r, 25));
+		}
+
+		expect(emitEvent).toHaveBeenCalledTimes(1);
+		const [eventType, payload] = emitEvent.mock.calls[0] as [
+			unknown,
+			Record<string, unknown>,
+		];
+		expect(eventType).toBe(EventType.VOICE_TURN_OBSERVED);
+		// A brand-new speaker → a fresh cluster, no bound entity yet.
+		expect(typeof payload.imprintClusterId).toBe("string");
+		expect(payload.matchedEntityId).toBeNull();
+		expect(payload.isOwner).toBe(false);
 	});
 
 	it("attribution fires asynchronously when profileStore is wired", async () => {

@@ -45,14 +45,19 @@ Local inference probes call `@elizaos/plugin-local-inference/services` directly 
 
 ```
 src/
-  index.ts               — package entry; re-exports plugin + app + routes + view
-  plugin.ts              — defines modelTesterPlugin (Plugin object): routes + views
-  routes.ts              — handleModelTesterRoute() + all probe logic + static HTML shell
-  model-tester-app.ts    — registerOverlayApp + registerAppShellPage (runs at import)
-  ModelTesterAppView.tsx — React UI: ModelTesterAppView, ModelTesterTuiView, interact()
-  ui.ts                  — thin re-export of ModelTesterAppView + modelTesterApp for consumers
+  index.ts                      — package entry; re-exports plugin + app + routes + view
+  plugin.ts                     — defines modelTesterPlugin (Plugin object): routes + views
+  routes.ts                     — handleModelTesterRoute() + all probe logic + static HTML shell
+  model-tester-app.ts           — registerOverlayApp + registerAppShellPage (runs at import)
+  ModelTesterAppView.tsx        — React UI: ModelTesterAppView, ModelTesterTuiView
+  ModelTesterAppView.interact.ts — interact() TUI capability handler (split out for Fast Refresh compatibility)
+  model-tester-view-bundle.ts   — Vite view-bundle entry: re-exports components + interact for dist/views/bundle.js
+  register-terminal-view.tsx    — registers ModelTesterSpatialView in the @elizaos/tui terminal registry
+  components/
+    ModelTesterSpatialView.tsx  — cross-modality spatial view (renders in GUI, XR, and terminal)
+  ui.ts                         — thin re-export of ModelTesterAppView + modelTesterApp for consumers
 scripts/
-  model-tester-e2e.mjs   — Node e2e harness (used by test:e2e)
+  model-tester-e2e.mjs          — Node e2e harness (used by test:e2e)
 ```
 
 ## Commands
@@ -80,7 +85,7 @@ No plugin-specific env vars are read at load time. Model provider credentials (A
 2. Add a `MODEL_TESTS` entry in `src/routes.ts` with the matching `ModelType` constant.
 3. Add a `case` branch in `runModelTest()` (`src/routes.ts`) that calls `runtime.useModel(...)` and returns a plain serialisable object.
 4. Add a `TEST_COPY` entry in `src/ModelTesterAppView.tsx` for the UI label/subtitle.
-5. If the probe should be reachable from the TUI, add its `capability` to the `views` entry in `plugin.ts` and handle it in `interact()` and `MODEL_TESTER_COMMAND_TO_TEST` in `ModelTesterAppView.tsx`.
+5. If the probe should be reachable from the TUI, add its `capability` to the `views` entry in `plugin.ts` and handle it in `interact()` and `MODEL_TESTER_COMMAND_TO_TEST` in `src/ModelTesterAppView.interact.ts`.
 
 **Add a new route:**
 1. Define a `Route` object in `plugin.ts` and push it into `modelTesterRoutes`.
@@ -94,4 +99,6 @@ No plugin-specific env vars are read at load time. Model provider credentials (A
 - **VAD is always available:** the `vad` probe is pure JavaScript (RMS framing in `detectVoiceActivity()`); it has no `ModelType` and is marked `available: true` in the status response unconditionally.
 - **Audio defaults:** when no audio is uploaded the transcription probe synthesises speech from the prompt using local TTS and feeds that back as the transcription input (`source: "local-tts-loopback"`). The VAD probe falls back to a 1-second 440 Hz sine tone at 16 kHz.
 - **Module-side-effect registration:** importing `src/model-tester-app.ts` (or the package root) calls `registerOverlayApp` and `registerAppShellPage` immediately. This is intentional; do not tree-shake these imports.
+- **interact() split:** `interact()` lives in `src/ModelTesterAppView.interact.ts`, not `ModelTesterAppView.tsx`, so the component file exports only React components and remains Fast Refresh-compatible. The view bundle re-exports it via `model-tester-view-bundle.ts`.
+- **Spatial view:** `components/ModelTesterSpatialView.tsx` is a cross-modality presentational component (pure snapshot + callback in, spatial primitives out). It is registered in the TUI terminal registry by `register-terminal-view.tsx` and is safe to render in the Node agent process (no browser/Capacitor imports).
 - See the root `AGENTS.md` for repo-wide conventions (logger-only, ESM, architecture rules, naming).

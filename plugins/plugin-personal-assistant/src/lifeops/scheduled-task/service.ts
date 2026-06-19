@@ -23,7 +23,7 @@
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 
-import type { ScheduledTaskRunnerHandle } from "./runner.js";
+import type { ScheduledTaskRunnerHandle } from "@elizaos/plugin-scheduling";
 import {
   type CreateRuntimeRunnerOptions,
   createRuntimeScheduledTaskRunner,

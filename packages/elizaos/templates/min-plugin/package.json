@@ -21,6 +21,7 @@
     }
   },
   "files": [
+    "assets",
     "dist"
   ],
   "dependencies": {

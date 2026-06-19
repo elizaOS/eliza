@@ -16,7 +16,8 @@ Parallel implementations for other platforms live in sibling packages:
 ```
 packages/plugin-host-shim-electrobun/
   src/
-    index.ts          Single entry point — exports installElectrobunShim()
+    index.ts          Single entry point — exports installElectrobunShim() and resetElectrobunShimForTests()
+    index.test.ts     Unit tests for installElectrobunShim
   dist/               Compiled output (tsc, not bundled)
   tsconfig.json       Typecheck config (lib: ES2022 + DOM)
   tsconfig.build.json Build config (noCheck, emits .js + .d.ts)
@@ -26,12 +27,13 @@ packages/plugin-host-shim-electrobun/
 ## Key exports
 
 ```ts
-import { installElectrobunShim } from "@elizaos/plugin-host-shim-electrobun";
+import { installElectrobunShim, resetElectrobunShimForTests } from "@elizaos/plugin-host-shim-electrobun";
 ```
 
 | Export | Description |
 |---|---|
-| `installElectrobunShim()` | Reads `globalThis.__elizaosElectrobunBridge`, builds the `PluginHostShim`, installs it as the singleton via `installHostShim`, and returns it. Throws if the bridge global is absent. |
+| `installElectrobunShim(options?)` | Reads `globalThis.__elizaosElectrobunBridge`, builds the `PluginHostShim`, installs it as the singleton via `installHostShim`, and returns it. Throws if the bridge global is absent. Accepts optional `{ requestTimeoutMs?: number }` (default 30 s). Idempotent — returns the existing shim if already installed. |
+| `resetElectrobunShimForTests()` | Resets the installed singleton and cleans up bridge listeners. For use in tests only. |
 
 `PluginHostShim` surface (defined in `@elizaos/plugin-host-shim`):
 
@@ -45,8 +47,8 @@ import { installElectrobunShim } from "@elizaos/plugin-host-shim-electrobun";
 
 The Electrobun bridge exchanges plain JSON objects over the preload channel:
 
-- Host → view response: `{ id: number; ok: boolean; payload?: JsonValue; error?: string }`
-- Host → view event: `{ event: string; data: JsonValue }`
+- Host → view response: `{ kind: "response"; id: number; ok: boolean; payload?: JsonValue; error?: string }`
+- Host → view event: `{ kind: "event"; event: string; data: JsonValue }`
 - View → host request: `{ kind: "request"; id: number; method: string; params: JsonValue }`
 
 Method names follow the `surface.target` convention from the remote-plugin wire spec (e.g., `provider.spotify`, `action.search`, `event.ready`).
@@ -82,6 +84,7 @@ This package has one function and one runtime assumption (the bridge global). Co
 ## Conventions / gotchas
 
 - **Call `installElectrobunShim()` before any `getHostShim()` call.** The singleton starts null; `getHostShim()` throws if nothing has been installed.
+- **`installElectrobunShim()` is idempotent** — calling it more than once returns the already-installed shim without re-wiring the bridge.
 - **Must run inside an Electrobun BrowserView.** The function throws immediately if `__elizaosElectrobunBridge` is undefined, which happens in any non-Electrobun context (browser, Node, Bun CLI, iOS, Android). Platform detection is intentionally fail-fast.
 - **`private: true` package** — not published to npm. It is bundled into view bundles at app build time.
 - **DOM lib required** — `tsconfig.json` includes `"lib": ["ES2022", "DOM"]` because view bundles run in a webview. Do not strip the DOM lib.

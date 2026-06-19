@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import { Pool } from "pg";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -129,7 +130,11 @@ async function listBillingRecords(args: Args): Promise<BillingRecordRow[]> {
     throw new Error("DATABASE_URL or TEST_DATABASE_URL is required");
   }
 
-  const pool = new Pool({ connectionString: databaseUrl });
+  const { url: poolUrl, ssl: poolSsl } = enforceTlsForRemote(databaseUrl);
+  const pool = new Pool({
+    connectionString: poolUrl,
+    ...(poolSsl ? { ssl: poolSsl } : {}),
+  });
   try {
     const values: unknown[] = [args.startDate, args.endDate];
     const conditions = ["created_at >= $1", "created_at <= $2"];

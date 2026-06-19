@@ -16,6 +16,10 @@
  *      OmniVoice ≈ 200ms on the fused build).
  *   - `auto`      — apply the documented heuristic below.
  *
+ * Mobile precedence: when `mobile === true` the selector returns Kokoro
+ * unconditionally (it is smaller + faster and the only backend shipped in
+ * mobile-class bundles). This short-circuits every mode and heuristic below.
+ *
  * `auto` heuristic (deterministic, no model probes — those go through the
  * autotune layer in `voice/scheduler.ts`):
  *
@@ -60,6 +64,14 @@ export interface VoiceBackendInputs {
   /** Whether the OmniVoice FFI library is present on disk. */
   omnivoiceAvailable: boolean;
   /**
+   * True on mobile (iOS / Android) builds. Mobile uses Kokoro exclusively —
+   * it is smaller and faster than OmniVoice and is the only TTS backend
+   * shipped in mobile-class bundles. When set, the selector returns Kokoro
+   * unconditionally (ignoring `mode`, RTF, and TTFA heuristics) and throws
+   * if Kokoro artifacts are missing rather than falling back to OmniVoice.
+   */
+  mobile?: boolean;
+  /**
    * The active bundle's per-tier voice backend policy, as declared in
    * `ELIZA_1_VOICE_BACKENDS`. First entry is the catalog default for
    * the tier; later entries are also bundled. The selector reads this
@@ -97,6 +109,21 @@ export function readVoiceBackendModeFromEnv(
 export function selectVoiceBackend(
   inputs: VoiceBackendInputs,
 ): VoiceBackendDecision {
+  // Mobile is Kokoro-exclusive: it is smaller + faster and is the only TTS
+  // backend shipped in mobile-class bundles. This wins over every mode and
+  // heuristic below — no OmniVoice fallback on phones.
+  if (inputs.mobile) {
+    if (!inputs.kokoroAvailable) {
+      throw new Error(
+        "[voice] mobile builds use Kokoro exclusively but its model artifacts are not present on disk",
+      );
+    }
+    return {
+      backend: "kokoro",
+      reason: "mobile platform — Kokoro exclusively (OmniVoice not shipped on mobile)",
+    };
+  }
+
   const mode = inputs.mode ?? "auto";
 
   if (mode === "kokoro") {

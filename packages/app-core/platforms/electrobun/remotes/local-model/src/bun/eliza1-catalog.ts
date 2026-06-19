@@ -70,7 +70,6 @@ const TIER_SNAPSHOTS: TierSnapshot[] = [
     minRamGb: 4,
     contextLength: 131072,
     activeTier: true,
-    defaultTier: true,
     roles: ["chat", "voice", "tts", "stt", "vad", "vision", "image"],
     capabilities: [
       "text-generation",
@@ -87,9 +86,10 @@ const TIER_SNAPSHOTS: TierSnapshot[] = [
     params: "4B",
     displayName: "Eliza-1 4B",
     sizeGb: 2.6,
-    minRamGb: 10,
+    minRamGb: 6,
     contextLength: 131072,
     activeTier: true,
+    defaultTier: true,
     roles: [
       "chat",
       "embedding",

@@ -105,7 +105,7 @@ See `packages/plugin-host-shim-electrobun/src/index.ts` for a concrete reference
 - **One shim per page.** `installHostShim` overwrites the singleton; calling it twice from two different platform packages in the same page will silently discard the first one.
 - **`resetHostShim()` is test-only.** Calling it in production leaves `getHostShim()` in a throwing state for the rest of the page lifetime.
 - **View bundles must be served at `/api/views/:id/bundle.js`** (or the platform-equivalent URL). The `resolveViewUrl` method in each shim knows the per-platform asset URL scheme — use it rather than constructing URLs manually.
-- **`installWebShim` options:** `parentOrigin` defaults to `"*"` for dev convenience; pin it to the dashboard origin in production. `viewsBasePath` defaults to `"/api/views"`.
+- **`installWebShim` options:** `parentOrigin` defaults to `"*"` for dev convenience; pin it to the dashboard origin in production. `requestTimeoutMs` defaults to `30_000` (30 s); pin to a tighter value for latency-sensitive views. `viewsBasePath` defaults to `"/api/views"`.
 - `JsonValue` comes from `@elizaos/plugin-remote-manifest`, not from a local definition — do not redefine it.
 - This package is `"private": true` and lives only in the monorepo workspace. It is not published to npm independently.
 - For repo-wide conventions (logging, ESM, architecture rules, naming), see the root `AGENTS.md`.

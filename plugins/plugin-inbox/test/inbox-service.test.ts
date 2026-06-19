@@ -140,7 +140,7 @@ describe("InboxService.triage", () => {
     // Persisted exactly one triage entry into the app_lifeops table.
     expect(
       db.inserted.filter((s) =>
-        s.includes("INSERT INTO app_lifeops.life_inbox_triage_entries"),
+        s.includes("INSERT INTO app_inbox.life_inbox_triage_entries"),
       ),
     ).toHaveLength(1);
     expect(triaged.entry?.classification).toBe("needs_reply");

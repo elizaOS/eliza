@@ -49,9 +49,13 @@ const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
+  // 4B is the shipped mobile minimum — the 0.8B/2B tiers are too small for a
+  // quality chat experience, so the mobile ladder floors at 4B for both slots.
+  // If a low-RAM phone genuinely can't fit 4B, `fallbackCandidates` still
+  // degrades to a smaller eligible tier rather than failing outright.
   mobile: {
-    TEXT_SMALL: [TIER_0_8B],
-    TEXT_LARGE: [TIER_4B, TIER_2B, TIER_0_8B],
+    TEXT_SMALL: [TIER_4B],
+    TEXT_LARGE: [TIER_4B],
   },
   "apple-silicon": {
     TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],

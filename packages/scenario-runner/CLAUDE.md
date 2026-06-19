@@ -19,14 +19,16 @@ packages/scenario-runner/
     cli.ts                   # `eliza-scenarios run|list` — arg parsing + orchestration
     executor.ts              # runScenario() — core execution loop (message/action/api/tick turns)
     runtime-factory.ts       # createScenarioRuntime() — boots AgentRuntime with PGLite + LLM
-    loader.ts                # discoverScenarios / loadAllScenarios / listScenarioMetadata
+    loader.ts                # discoverScenarios / loadAllScenarios / listScenarioMetadata / expandScenarioDefinition / countScenarioCorpus / validateScenarioCorpus
     interceptor.ts           # attachInterceptor() — wraps action handlers to capture CapturedAction[]
     judge.ts                 # judgeTextWithLlm() — LLM-as-judge (Cerebras gpt-oss-120b or fallback)
+    cerebras-judge.ts        # CerebrasJudge class — low-level Cerebras API transport + verdict parsing
     reporter.ts              # buildAggregate / writeReport / writeScenarioRunViewer
     native-export.ts         # exportScenarioNativeJsonl — converts trajectories to training corpus rows
     seeds.ts                 # applyScenarioSeedStep — seed dispatch (todo / contact / memory / gmailInbox)
     action-families.ts       # actionsAreScenarioEquivalent — fuzzy action-name matching
     types.ts                 # TurnReport / ScenarioReport / AggregateReport / RunnerContext
+    utils.ts                 # toRecord / isLoopbackUrl — internal utility helpers
     final-checks/
       index.ts               # runFinalCheck — dispatches named final-check type handlers
     types/                   # Supporting internal type files
@@ -47,6 +49,9 @@ import { judgeTextWithLlm }  from "@elizaos/scenario-runner";
 import {
   discoverScenarios, loadAllScenarios, loadScenarioFile,
   listScenarioMetadata, loadScenarioMetadataFile,
+  countScenarioCorpus, validateScenarioCorpus,
+  expandScenarioDefinition, expandScenarioMetadata,
+  SCENARIO_EDGE_VARIANTS,
 } from "@elizaos/scenario-runner";
 
 // Reporting
@@ -59,6 +64,7 @@ import {
   exportScenarioNativeJsonl, recordedTrajectoryToNativeRows,
   SCENARIO_NATIVE_EXPORT_SCHEMA, SCENARIO_NATIVE_EXPORT_VERSION,
 } from "@elizaos/scenario-runner";
+import type { NativeBoundaryRow, ScenarioNativeExportManifest } from "@elizaos/scenario-runner";
 
 // Types
 import type { ScenarioReport, AggregateReport, TurnReport, FinalCheckReport }

@@ -45,10 +45,10 @@ enable_testing()
 
 # Build-only smoke for the public ABI (now backed by the real runtime —
 # `wakeword_open` against a missing path returns -ENOENT, etc.).
-add_executable(wakeword_stub_smoke test/wakeword_stub_smoke.c)
-target_link_libraries(wakeword_stub_smoke PRIVATE wakeword)
-target_compile_options(wakeword_stub_smoke PRIVATE -O2 -Wall -Wextra)
-add_test(NAME wakeword_stub_smoke COMMAND wakeword_stub_smoke)
+add_executable(wakeword_abi_smoke test/wakeword_abi_smoke.c)
+target_link_libraries(wakeword_abi_smoke PRIVATE wakeword)
+target_compile_options(wakeword_abi_smoke PRIVATE -O2 -Wall -Wextra)
+add_test(NAME wakeword_abi_smoke COMMAND wakeword_abi_smoke)
 
 # Spectral correctness: legacy mode (no GGUF) on a 1 kHz / 4 kHz tone.
 add_executable(wakeword_melspec_test test/wakeword_melspec_test.c)

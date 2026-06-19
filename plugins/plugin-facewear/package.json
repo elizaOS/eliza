@@ -131,6 +131,7 @@
   },
   "types": "./dist/index.d.ts",
   "files": [
+    "assets",
     "dist",
     "docs"
   ]

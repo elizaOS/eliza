@@ -6,16 +6,25 @@
  */
 
 import type { Context } from "hono";
+import type { KvNamespaceLike } from "../lib/cache/adapters/kv-cache-adapter";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
 
 export interface Bindings {
-  // ---- Database (Neon Postgres in cloud, PGlite locally) ----
+  // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
   DATABASE_URL_UNPOOLED?: string;
 
   // ---- Cloudflare R2 ----
   /** Object storage for voice samples, avatars, and other binary blobs. */
   BLOB: RuntimeR2Bucket;
+
+  // ---- Cloudflare KV (Worker cache backend) ----
+  /**
+   * The Worker's cache store. KV is the only Worker-reachable cache backend
+   * (raw TCP to an external Redis is unreliable from Workers), so CacheClient
+   * prefers it when bound. Read via getCloudBinding("CACHE_KV").
+   */
+  CACHE_KV?: KvNamespaceLike;
 
   // ---- Cloudflare Registrar/DNS ----
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -71,7 +80,10 @@ export interface Bindings {
   RPC_URL?: string;
   CHAIN_ID?: string;
 
-  // ---- Redis (Upstash REST in cloud, Wadis embedded locally) ----
+  // ---- Redis (Railway TCP via REDIS_URL + in-Worker SocketRedis in cloud;
+  //      Upstash REST is a legacy fallback; Wadis embedded locally) ----
+  REDIS_URL?: string;
+  KV_URL?: string;
   KV_REST_API_URL?: string;
   KV_REST_API_TOKEN?: string;
   UPSTASH_REDIS_REST_URL?: string;
