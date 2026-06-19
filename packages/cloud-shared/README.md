@@ -16,7 +16,7 @@ src/
   index.ts        top barrel — re-exports billing/db/lib/types as namespaces
   billing/        pure, isomorphic markup math (applyMarkup, credit markup, Twilio SMS)
   db/             Drizzle layer — schemas/ (97), repositories/ (66, CQRS), migrations/,
-                  client.ts, worker-neon-http.ts, database-url.ts, crypto/, utils/
+                  client.ts, database-url.ts, crypto/, utils/
   lib/            SERVER-ONLY services + use-cases — services/ (207), auth*.ts,
                   api/ middleware/ cors/ http/ session/, stripe.ts, pricing.ts,
                   promotion-pricing.ts, utils/logger.ts

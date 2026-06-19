@@ -250,7 +250,9 @@ function createConnection(url: string): Database {
   // Non-Neon remote Postgres (e.g. Railway): on workerd a direct node-pg TCP
   // connection terminates mid-query, so prefer a Cloudflare Hyperdrive binding
   // when present and let it proxy to the origin.
-  const hyperdriveUrl = getCloudBinding<{ connectionString?: string }>("HYPERDRIVE")?.connectionString;
+  const hyperdriveUrl = getCloudBinding<{ connectionString?: string }>(
+    "HYPERDRIVE",
+  )?.connectionString;
   const pool = createPgPool(url, hyperdriveUrl);
   return registerDatabaseCloser(drizzleNode(pool, { schema }) as Database, () => pool.end());
 }
