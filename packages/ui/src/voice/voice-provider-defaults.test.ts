@@ -21,16 +21,16 @@ describe("pickDefaultVoiceProvider", () => {
     ).toEqual({ tts: "local-inference", asr: "local-inference" });
   });
 
-  it("mobile + local agent falls back to Eliza Cloud audio", () => {
+  it("mobile + local agent uses on-device Kokoro TTS with Cloud ASR", () => {
     expect(
       pickDefaultVoiceProvider({ platform: "mobile", runtimeMode: "local" }),
-    ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+    ).toEqual({ tts: "local-inference", asr: "eliza-cloud" });
     expect(
       pickDefaultVoiceProvider({
         platform: "mobile",
         runtimeMode: "local-only",
       }),
-    ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+    ).toEqual({ tts: "local-inference", asr: "eliza-cloud" });
   });
 
   it("web + local agent also leans on Eliza Cloud audio (mobile-like)", () => {

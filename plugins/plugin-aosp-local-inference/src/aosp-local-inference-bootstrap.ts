@@ -1120,9 +1120,12 @@ const AOSP_RECOMMENDED_MODELS: Record<
   AospRecommendedModel
 > = {
   chat: {
-    id: "eliza-1-2b",
+    // The quantized 4B is the shipped mobile minimum/default chat model;
+    // 0.8B/2B are too small for quality chat. Mirrors the capacitor bridge
+    // and the catalog FIRST_RUN_DEFAULT_MODEL_ID.
+    id: "eliza-1-4b",
     hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
+    ggufFile: "bundles/4b/text/eliza-1-4b-128k.gguf",
   },
   embedding: {
     id: "eliza-1-embedding",
