@@ -759,6 +759,7 @@ async function handleCompatRouteInner(
   // boundary violation (app-core must not statically import plugin packages).
   {
     const {
+      handleLiveDiarizationRoute,
       handleLocalInferenceAsrRoute,
       handleLocalInferenceCompatRoutes,
       handleLocalInferenceTtsRoute,
@@ -766,6 +767,8 @@ async function handleCompatRouteInner(
     if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
     if (await handleLocalInferenceAsrRoute(req, res, state)) return true;
     if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
+    // WebView → agent PCM transport for live on-device speaker diarization.
+    if (await handleLiveDiarizationRoute(req, res, state)) return true;
   }
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
