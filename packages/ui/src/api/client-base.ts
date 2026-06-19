@@ -235,17 +235,20 @@ function shouldTreatAsConnectedWithoutWebSocket(
   return (
     isIosInProcessLocalAgentBase(value) ||
     isLocalAgentIpcBase(value) ||
-    isSharedRuntimeRestAdapterBase(value)
+    isSharedRuntimeRestAdapterBase(value) ||
+    isDedicatedCloudAgentBase(value)
   );
 }
 
 // A dedicated cloud agent lives on its own subdomain (<id>.elizacloud.ai) and
-// serves chat over REST as well as the realtime WS. Unlike the shared-runtime
-// adapter it DOES have a usable `/ws`, so we still attempt the WebSocket — but
-// if it can't connect (cold start, resume window, a slow backend) the agent is
-// still usable over REST. So on WS-reconnect exhaustion we degrade to a
-// non-fatal connected-over-REST state instead of raising the catastrophic
-// full-screen "Lost backend connection" overlay (see connectWs.onclose).
+// serves chat over REST. Its `/ws` upgrade is NOT currently proxied by the
+// agent-router (the upgrade returns 404), so attempting the WebSocket only
+// produced a "Reconnecting… (N/15)" header for ~95s before degrading. Treat
+// these bases like the shared-runtime adapter — connected-over-REST with no WS
+// attempt — so there is no reconnect churn. (The WS-reconnect-exhaustion degrade
+// in connectWs.onclose is kept as a safety net; revisit once the agent-router
+// proxies the `/ws` upgrade and the agent advertises it via /api/config so we
+// can re-enable realtime.)
 function isDedicatedCloudAgentBase(value: string | null | undefined): boolean {
   const normalized = normalizeBaseUrl(value);
   if (!normalized) return false;
