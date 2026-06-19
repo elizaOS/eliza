@@ -1102,10 +1102,44 @@ export function ensureZigDrivers({
         'done\n'
       : null;
 
+  // arm64: the ggml-cpu CMakeLists emits the GCC-style ISA string
+  // `-march=armv8.2-a+dotprod+fp16+i8mm` (from GGML_CPU_ARM_ARCH). Zig 0.13's
+  // bundled LLVM rejects that for the aarch64 target — it tries to translate
+  // `armv8.2-a` to a `-mcpu=` value and dies with "unknown CPU: 'armv8.2'"
+  // (the same class of breakage the riscv64 filter handles). Zig instead
+  // speaks `-mcpu=<cpu>+<feature>` with its OWN feature names. Rewrite the
+  // GCC `-march=armv8.x-a+...` into the equivalent zig `-mcpu=generic+...`:
+  // dotprod→dotprod, i8mm→i8mm, fp16→fullfp16. This sets exactly the same
+  // __ARM_FEATURE_DOTPROD / __ARM_FEATURE_MATMUL_INT8 /
+  // __ARM_FEATURE_FP16_VECTOR_ARITHMETIC macros (verified), so the live QJL
+  // NEON-dotprod / i8mm / fp16 kernel bodies survive preprocessing and the
+  // ggml ARM-feature configure probes pass. Any other `-march=` is passed
+  // through untouched (there shouldn't be one for arm64).
+  const arm64ArgFilter =
+    abi === "arm64-v8a"
+      ? '_n=$#\n' +
+        'i=0\n' +
+        'while [ $i -lt $_n ]; do\n' +
+        '  arg=$1\n' +
+        '  shift\n' +
+        '  i=$((i+1))\n' +
+        '  case "$arg" in\n' +
+        '    -march=armv8.*-a+*)\n' +
+        '      _feats=""\n' +
+        '      case "$arg" in *+dotprod*) _feats="${_feats}+dotprod" ;; esac\n' +
+        '      case "$arg" in *+i8mm*) _feats="${_feats}+i8mm" ;; esac\n' +
+        '      case "$arg" in *+fp16*) _feats="${_feats}+fullfp16" ;; esac\n' +
+        '      set -- "$@" "-mcpu=generic${_feats}" ;;\n' +
+        '    *) set -- "$@" "$arg" ;;\n' +
+        '  esac\n' +
+        'done\n'
+      : null;
+
+  const argFilter = riscv64ArgFilter ?? arm64ArgFilter;
   const exec =
-    riscv64ArgFilter !== null
+    argFilter !== null
       ? (subcmd) =>
-          riscv64ArgFilter +
+          argFilter +
           `exec "${zigBin}" ${subcmd} --target=${target.zigTarget} "$@"\n`
       : (subcmd) =>
           `exec "${zigBin}" ${subcmd} --target=${target.zigTarget} "$@"\n`;
