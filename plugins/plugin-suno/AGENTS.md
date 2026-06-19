@@ -41,6 +41,7 @@ plugins/plugin-suno/
                                #   ExtendParams, GenerationResponse) — canonical definitions
                                #   live in providers/suno.ts
     index.test.ts              # Plugin smoke tests
+    suno.behavior.test.ts      # Behaviour/integration tests for SunoProvider and sunoGenerateMusicHandler
   auto-enable.ts               # shouldEnable() — read by the auto-enable engine at boot
   package.json
 ```

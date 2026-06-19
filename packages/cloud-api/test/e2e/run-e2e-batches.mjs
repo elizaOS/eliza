@@ -122,6 +122,48 @@ async function waitForTcp(processRef, host, port) {
   );
 }
 
+function listenerPidsOnPort(port) {
+  const lsof = spawnSync("lsof", ["-ti", `tcp:${port}`, "-sTCP:LISTEN"], {
+    encoding: "utf8",
+  });
+  if (lsof.status === 0 && lsof.stdout.trim()) {
+    return lsof.stdout.trim().split(/\s+/);
+  }
+  const fuser = spawnSync("fuser", [`${port}/tcp`], { encoding: "utf8" });
+  const fuserOut = `${fuser.stdout ?? ""} ${fuser.stderr ?? ""}`.trim();
+  if (fuserOut) return fuserOut.split(/\s+/);
+  return [];
+}
+
+// Reclaim a port held by an orphaned listener. Self-hosted CI runners are
+// persistent: when Actions cancels a run mid-flight it SIGKILLs the job, so the
+// `finally` cleanup below never runs and the spawned pglite-server child is left
+// holding the port — wedging every subsequent run with "already running".
+// Kill the orphan and wait for the port to free so the next run self-heals.
+async function reclaimPort(host, port) {
+  const pids = listenerPidsOnPort(port);
+  for (const pid of pids) {
+    const numeric = Number(pid);
+    if (!Number.isInteger(numeric) || numeric <= 0) continue;
+    try {
+      process.kill(numeric, "SIGKILL");
+      console.log(
+        `[api-e2e] killed orphan PGlite listener pid=${numeric} on ${host}:${port}`,
+      );
+    } catch (error) {
+      console.warn(
+        `[api-e2e] could not kill pid=${numeric} on ${host}:${port}: ${error?.message ?? error}`,
+      );
+    }
+  }
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    if (!(await tcpOk(host, port))) return true;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+  }
+  return false;
+}
+
 async function ensurePGliteBridge() {
   const usingPGliteBridge =
     !configuredDatabaseUrl || configuredDatabaseUrl.startsWith("pglite://");
@@ -132,13 +174,19 @@ async function ensurePGliteBridge() {
     !configuredDatabaseUrl &&
     process.env.TEST_PGLITE_PERSIST !== "1" &&
     Boolean(dataDir);
-  const alreadyRunning = await tcpOk(pgliteHost, pglitePort);
+  let alreadyRunning = await tcpOk(pgliteHost, pglitePort);
 
   if (shouldResetDefaultPGlite) {
     if (alreadyRunning) {
-      throw new Error(
-        `[api-e2e] default PGlite server is already running at ${pgliteHost}:${pglitePort}; stop it before running isolated tests, or set TEST_PGLITE_PERSIST=1 to reuse it.`,
+      console.warn(
+        `[api-e2e] default PGlite server already running at ${pgliteHost}:${pglitePort}; reclaiming the port before reset`,
       );
+      alreadyRunning = !(await reclaimPort(pgliteHost, pglitePort));
+      if (alreadyRunning) {
+        throw new Error(
+          `[api-e2e] default PGlite server is already running at ${pgliteHost}:${pglitePort} and could not be reclaimed; stop it before running isolated tests, or set TEST_PGLITE_PERSIST=1 to reuse it.`,
+        );
+      }
     }
     rmSync(resolve(repoRoot, dataDir), { recursive: true, force: true });
   }

@@ -22,32 +22,32 @@ import {
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
-} from "../src/lifeops/scheduled-task/completion-check-registry.ts";
+} from "@elizaos/plugin-scheduling";
 import {
   createAnchorRegistry,
   createConsolidationRegistry,
-} from "../src/lifeops/scheduled-task/consolidation-policy.ts";
+} from "@elizaos/plugin-scheduling";
 import {
   createEscalationLadderRegistry,
   registerDefaultEscalationLadders,
-} from "../src/lifeops/scheduled-task/escalation.ts";
+} from "@elizaos/plugin-scheduling";
 import {
   createTaskGateRegistry,
   registerBuiltInGates,
-} from "../src/lifeops/scheduled-task/gate-registry.ts";
+} from "@elizaos/plugin-scheduling";
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   TestNoopScheduledTaskDispatcher,
-} from "../src/lifeops/scheduled-task/runner.ts";
-import { createInMemoryScheduledTaskLogStore } from "../src/lifeops/scheduled-task/state-log.ts";
+} from "@elizaos/plugin-scheduling";
+import { createInMemoryScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
   OwnerFactsView,
   ScheduledTask,
   SubjectStoreView,
-} from "../src/lifeops/scheduled-task/types.ts";
+} from "@elizaos/plugin-scheduling";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
 
 function makeFreshRunner() {

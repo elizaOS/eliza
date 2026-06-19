@@ -35,15 +35,16 @@ test("Tutorial + Help are pinned to home and both work", async ({ page }) => {
   expect(tileIds[0]).toBe("tutorial");
   expect(tileIds).toContain("help");
 
-  // 2. Tutorial tile → the /tutorial launcher starts the overlay directly (no
-  // separate splash) → the interactive spotlight overlay's welcome step appears.
+  // 2. Tutorial → launcher → Start → the interactive spotlight overlay appears.
   await tutorialTile.click();
+  await expect(page.getByTestId("tutorial-launcher")).toBeVisible();
+  await page.getByTestId("tutorial-start").click();
   const card = page.getByTestId("tutorial-card");
   await expect(card).toBeVisible();
-  await expect(card).toContainText(/Step 1 of/i);
+  await expect(card).toContainText(/Meet Eliza/i);
 
   // It can be dismissed.
-  await page.getByText("Skip tutorial").click();
+  await page.getByTestId("tutorial-skip").click();
   await expect(card).toHaveCount(0);
 
   // 3. Help → the floating chat is its search box; typing filters + expands the
@@ -70,5 +71,5 @@ test("the tour auto-launches once for a first-time user", async ({ page }) => {
   await expect(page.getByTestId("tutorial-card")).toBeVisible({
     timeout: 25_000,
   });
-  await expect(page.getByTestId("tutorial-card")).toContainText(/Step 1 of/i);
+  await expect(page.getByTestId("tutorial-card")).toContainText(/Meet Eliza/i);
 });

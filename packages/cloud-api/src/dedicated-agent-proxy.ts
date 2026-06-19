@@ -62,6 +62,7 @@ function proxyToOrigin(
   env: Bindings,
   url: URL,
   injectBearer?: string,
+  injectQueryToken = false,
 ): Promise<Response> {
   const targetUrl = new URL(request.url);
   targetUrl.hostname = resolveOriginHost(env);
@@ -72,6 +73,13 @@ function proxyToOrigin(
   if (injectBearer) {
     headers.set("authorization", `Bearer ${injectBearer}`);
     headers.delete("x-api-key");
+    // The realtime WebSocket carries the token as `?token=` (browsers can't set
+    // headers on `new WebSocket()`); the container reads it via
+    // ELIZA_ALLOW_WS_QUERY_TOKEN. Rewrite that query param to the agent token
+    // too so the upgrade authenticates the same way the header does.
+    if (injectQueryToken) {
+      targetUrl.searchParams.set("token", injectBearer);
+    }
   }
   const init: RequestInit = {
     method: request.method,
@@ -165,6 +173,21 @@ async function resumeAndRespond(
 }
 
 /**
+ * The cloud token arrives in the Authorization header (or `x-api-key`) for HTTP
+ * requests, but the realtime WebSocket can't set headers on `new WebSocket()` —
+ * so the app passes it as a `?token=` query param (gated on the container by
+ * ELIZA_ALLOW_WS_QUERY_TOKEN). Detect a query-only token so we validate it the
+ * same way and inject the swapped agent token back on the same channel.
+ */
+function extractQueryToken(request: Request, url: URL): string | null {
+  // A header already carries auth → let the normal request validation handle it.
+  if (request.headers.get("authorization") || request.headers.get("x-api-key")) {
+    return null;
+  }
+  return url.searchParams.get("token")?.trim() || null;
+}
+
+/**
  * Auth-unify + proxy a request bound for `https://<agentId>.elizacloud.ai/*`.
  */
 export function handleDedicatedAgentProxy(
@@ -175,13 +198,23 @@ export function handleDedicatedAgentProxy(
 ): Promise<Response> {
   return runWithCloudBindingsAsync(env, async () => {
     try {
-      // 1. Validate the CLOUD token. No valid cloud token → pass through
-      //    unchanged (web UI assets, the pairing exchange, the agent's own
-      //    token); the container's auth is the backstop.
+      // 1. Validate the CLOUD token. It rides in the Authorization header for
+      //    HTTP, or as `?token=` for the WebSocket upgrade. No valid token →
+      //    pass through unchanged (web UI assets, the pairing exchange, the
+      //    agent's own token); the container's auth is the backstop.
+      const queryToken = extractQueryToken(request, url);
+      // Header/cookie auth validates the ORIGINAL request (preserves every
+      // existing auth method); a query-only (WS) token validates through a
+      // synthetic header request so it takes the exact same path.
+      const authRequest = queryToken
+        ? new Request(request.url, {
+            headers: { authorization: `Bearer ${queryToken}` },
+          })
+        : request;
       let orgId: string;
       let userId: string;
       try {
-        const { user } = await requireAuthOrApiKeyWithOrg(request);
+        const { user } = await requireAuthOrApiKeyWithOrg(authRequest);
         orgId = user.organization_id;
         userId = user.id;
       } catch {
@@ -205,11 +238,18 @@ export function handleDedicatedAgentProxy(
       }
 
       // 4. Unified auth — swap the validated owner's cloud token for the agent's
-      //    own ELIZA_API_TOKEN so the container accepts the request.
+      //    own ELIZA_API_TOKEN so the container accepts the request. For a WS
+      //    upgrade the token rode in `?token=`, so rewrite that too.
       const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
       const agentToken = envVars.ELIZA_API_TOKEN?.trim();
       // No managed token (older / not-yet-provisioned agent) → pass through.
-      return proxyToOrigin(request, env, url, agentToken || undefined);
+      return proxyToOrigin(
+        request,
+        env,
+        url,
+        agentToken || undefined,
+        queryToken !== null,
+      );
     } catch (error) {
       // Fail-closed: any unexpected error → pass through WITHOUT injecting, so
       // the container's own auth still gates access.

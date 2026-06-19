@@ -315,6 +315,10 @@ tasks/
 # But cloud-frontend uses src/lib/data/ as legitimate source — un-ignore it
 !packages/cloud-frontend/src/lib/data/
 !packages/cloud-frontend/src/lib/data/**
+# The in-app cloud surfaces (packages/ui/src/cloud) likewise use data/ dirs as
+# legitimate source (ported react-query hooks) — un-ignore them too.
+!packages/ui/src/cloud/**/data/
+!packages/ui/src/cloud/**/data/**
 # plugin-mysticism ships data/*.json fixtures alongside the engines —
 # tarot, iching, and astrology all import their data tables from those JSONs.
 !plugins/plugin-mysticism/src/engines/*/data/

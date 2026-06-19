@@ -12,6 +12,11 @@ export type ApprovalPreset =
   | "permissive"
   | "autonomous";
 export type AgentSelectionStrategy = "fixed" | "ranked";
+export type CodingAccountStrategy =
+  | "priority"
+  | "round-robin"
+  | "least-used"
+  | "quota-aware";
 export type LlmProvider = "subscription" | "api_keys" | "cloud";
 
 export const AGENT_TABS: AgentTab[] = [

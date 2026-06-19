@@ -163,6 +163,19 @@ function validateUrlSyntax(rawUrl: string): URL {
 }
 
 /**
+ * Synchronous SSRF guard: validates URL syntax, requires http(s), and rejects
+ * credentials, localhost, and private/reserved IP *literals* — WITHOUT resolving
+ * DNS. Use at registration time (storing a URL), where a momentarily
+ * unresolvable host must not block the write and the Worker runtime is not a
+ * reliable place for outbound DNS. Full DNS-based SSRF enforcement (which also
+ * defeats DNS rebinding) must still run at fetch/proxy time via
+ * {@link assertSafeOutboundUrl}.
+ */
+export function assertSafeOutboundUrlSync(rawUrl: string): URL {
+  return validateUrlSyntax(rawUrl);
+}
+
+/**
  * Validates an outbound URL against SSRF-sensitive destinations.
  * For hostnames, DNS is resolved at call time so rebinding to private ranges
  * cannot bypass creation-time validation.

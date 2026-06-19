@@ -6,6 +6,11 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "bun": {
         "types": "./src/index.ts",
         "import": "./src/index.ts",
@@ -32,6 +37,11 @@
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -65,6 +75,7 @@
     "test": "vitest run --config ./vitest.config.ts"
   },
   "files": [
+    "assets",
     "dist"
   ],
   "devDependencies": {

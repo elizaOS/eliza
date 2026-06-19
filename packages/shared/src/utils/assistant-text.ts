@@ -199,6 +199,36 @@ function isResponseHandlerPayload(
   );
 }
 
+// Structural keys an elizaOS reply object may legitimately carry alongside the
+// user-facing `reply`. When a parsed object's keys are ALL within this set and
+// it has a string `reply`, the model emitted its whole response object as text
+// (e.g. `{"reply":"107"}` or `{"reply":"…","action":"NONE"}`) — unwrap it. The
+// allow-list keeps us from stripping real chat content that merely happens to be
+// JSON with a `reply` field plus unrelated data.
+const REPLY_PAYLOAD_KEYS = new Set([
+  "reply",
+  "text",
+  "message",
+  "thought",
+  "action",
+  "actions",
+  "simple",
+  "providers",
+  "evaluators",
+  "inReplyTo",
+  "attachments",
+]);
+
+function isSimpleReplyPayload(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & { reply: string } {
+  if (typeof value.reply !== "string") return false;
+  for (const key of Object.keys(value)) {
+    if (!REPLY_PAYLOAD_KEYS.has(key)) return false;
+  }
+  return true;
+}
+
 /**
  * Extracts the user-facing reply from a response-handler payload that leaked as
  * plain text. Local models can emit tool arguments as text when function-call
@@ -210,29 +240,52 @@ function isResponseHandlerPayload(
  * `shouldRespond`, so parse that shape without touching ordinary chat text.
  */
 export function extractAssistantReplyText(input: string): string | null {
+  if (typeof input !== "string") return null;
   const trimmed = input.trim();
-  if (!trimmed.includes("replyText")) return null;
 
-  const candidates = [trimmed];
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-    candidates.push(`{"shouldRespond":${trimmed}}`);
-    if (trimmed.endsWith("}")) {
-      candidates.push(`{"shouldRespond":${trimmed.slice(0, -1)}}`);
+  // Shape 1: a leaked response-handler payload keyed by `replyText` — either the
+  // full object or a bare argument fragment (`"RESPOND", "replyText": "Hi"`).
+  if (trimmed.includes("replyText")) {
+    const candidates = [trimmed];
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+      candidates.push(`{"shouldRespond":${trimmed}}`);
+      if (trimmed.endsWith("}")) {
+        candidates.push(`{"shouldRespond":${trimmed.slice(0, -1)}}`);
+      }
+    }
+
+    for (const candidate of candidates) {
+      const parsed = tryParseObject(candidate);
+      if (!parsed || !isResponseHandlerPayload(parsed)) continue;
+      const replyText = parsed.replyText.trim();
+      if (!replyText) return null;
+      return stripAssistantStageDirections(replyText).trim() || null;
     }
   }
 
-  for (const candidate of candidates) {
-    const parsed = tryParseObject(candidate);
-    if (!parsed || !isResponseHandlerPayload(parsed)) continue;
-    const replyText = parsed.replyText.trim();
-    if (!replyText) return null;
-    return stripAssistantStageDirections(replyText).trim() || null;
+  // Shape 2: the model emitted its whole reply object as text, e.g.
+  // `{"reply":"107"}` or `{"reply":"…","action":"NONE"}` (observed from
+  // gpt-oss/glm on cloud agents). Only unwrap a well-formed object whose keys
+  // are all known response-shape keys, so ordinary chat text that merely
+  // contains JSON is never rewritten.
+  if (
+    trimmed.startsWith("{") &&
+    trimmed.endsWith("}") &&
+    trimmed.includes('"reply"')
+  ) {
+    const parsed = tryParseObject(trimmed);
+    if (parsed && isSimpleReplyPayload(parsed)) {
+      const reply = parsed.reply.trim();
+      if (!reply) return null;
+      return stripAssistantStageDirections(reply).trim() || null;
+    }
   }
 
   return null;
 }
 
 export function stripAssistantStageDirections(input: string): string {
+  if (typeof input !== "string") return "";
   let normalized = input;
   normalized = stripWrappedStageDirections(normalized, /\*([^*\n]+)\*/g);
   normalized = stripWrappedStageDirections(normalized, /_([^_\n]+)_/g);

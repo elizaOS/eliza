@@ -6,26 +6,33 @@ Unified cross-channel inbox triage with unresolved-item tracking, snooze, archiv
 
 Adds the inbox-zero workflow to an agent: a single `INBOX` umbrella action (op-based dispatch), `INBOX_TRIAGE` + `CROSS_CHANNEL_CONTEXT` providers that surface unresolved threads to the planner each turn, and a registered `/inbox` view for human review. Aggregates threads across email, Discord, Telegram, WhatsApp, Slack, X, Farcaster, iMessage, and similar non-SMS channels. Android SMS stays in `@elizaos/plugin-messages`.
 
-The extraction from `plugin-personal-assistant` is complete. The action, service, and providers are fully implemented. The cross-channel inbox read route (`GET /api/lifeops/inbox`) remains in `@elizaos/plugin-personal-assistant` (it is coupled to PA's connector sources and LLM priority scoring); the `InboxView` calls that route. The triage domain (classify, persist, search, list, curate) lives here and is imported by PA.
+This package is being extracted from `plugin-lifeops`. The current scaffold is a stub — actions return `not_implemented` and providers return empty results, but every handler has a TODO comment pointing at the file in `plugin-lifeops` it will absorb. See `README.md` for the migration mapping.
 
 ## Plugin surface
 
 ### Action
 
-- `INBOX` (`src/actions/inbox.ts`) — umbrella action with op-based dispatch. Ops: `list`, `search`, `summarize`. Fans out to every connected platform fetcher (gmail, discord, telegram, signal, imessage, whatsapp), dedupes by message id and thread topic, orders by recency. Fetchers are injectable via `setInboxFetchers` for tests.
+- `INBOX` (`src/actions/inbox.ts`) — single umbrella action with op-based dispatch. Accepted ops: `list`, `triage`, `reply`, `snooze`, `archive`, `approve`. Contexts: `inbox`, `messaging`, `communication`. Each op currently returns a `not_implemented` failure with the source path to port from.
 
 ### Providers
 
-- `inboxTriage` (`src/providers/inbox-triage.ts`) — position `14`. Injects pending triage items (urgent, needs_reply, recent auto-replies) into owner context from the `InboxRepository`.
-- `crossChannelContext` (`src/providers/cross-channel-context.ts`) — position `-3`. Injects recent triage entries from the current message sender across other channels (resolved by entityId then senderName). Owner-only, silently empty when no cross-channel history exists.
+- `INBOX_TRIAGE` (`src/providers/inbox-triage.ts`) — position `-4`. Will emit the user's pending cross-channel triage queue.
+- `CROSS_CHANNEL_CONTEXT` (`src/providers/cross-channel-context.ts`) — position `-3`. Will emit recent activity for the current counterparty across other channels.
 
-### Service
+### Schema
 
-- `InboxService` (`src/inbox/service.ts`) — `triage()`, `curate()`, `triageWithCuration()`, `search()`, `list()`, `digest()`, `resolve()`. No dependency on `@elizaos/plugin-personal-assistant`.
-
-### Database
-
-The plugin uses raw SQL helpers (`src/db/sql.ts`) rather than a drizzle schema. There is no `pgSchema` registration; tables are queried directly via `executeRawSql` against the runtime's database adapter.
+- `inboxSchema` (`src/db/schema.ts`) — `pgSchema("app_inbox")` with the three
+  inbox-triage tables carved out of PA's `app_lifeops` (column shape verbatim):
+  - `life_inbox_triage_entries` — per-thread triage decisions + draft replies.
+  - `life_inbox_triage_examples` — owner-labeled few-shot classification examples.
+  - `life_email_unsubscribes` — email unsubscribe attempts + outcomes.
+  Registered via the plugin `schema` field; `InboxMigrationService`
+  (`src/inbox/migration.ts`) does the non-destructive `app_lifeops -> app_inbox`
+  copy (skip if source missing / target non-empty, never drop the source). PA
+  auto-registers this plugin (`ensureLifeOpsInboxPluginRegistered`) so the schema
+  exists + the migration runs whenever PA is loaded. The gmail sync/projection
+  tables (`life_gmail_*`, `life_inbox_messages`) are NOT part of this domain —
+  they stay PA-owned in `app_lifeops`.
 
 ### View
 
@@ -36,31 +43,16 @@ The plugin uses raw SQL helpers (`src/db/sql.ts`) rather than a drizzle schema. 
 ```
 src/
   index.ts                            Public API barrel
-  plugin.ts                           inboxPlugin definition (action + providers + view)
+  plugin.ts                           inboxPlugin definition (action + providers + schema + view)
   types.ts                            TriageDecision, ThreadSummary, channel + decision enums
   actions/
-    inbox.ts                          INBOX umbrella action — list/search/summarize fan-out
+    inbox.ts                          INBOX umbrella action — op dispatch (STUB)
   providers/
-    inbox-triage.ts                   inboxTriage provider — pending triage queue (position 14)
-    cross-channel-context.ts          crossChannelContext provider — sender's cross-channel history (position -3)
-  inbox/
-    service.ts                        InboxService — triage/curate/search/list/digest/resolve
-    repository.ts                     InboxRepository — raw SQL over app_lifeops.life_inbox_triage_*
-    types.ts                          InboundMessage, TriageEntry, TriageClassification, etc.
-    triage-classifier.ts              LLM classification of inbound messages
-    email-curation.ts                 Email curation engine (save/archive/delete decisions)
-    email-unsubscribe-types.ts        Types for email unsubscribe flows
-    unsubscribe-repository.ts         Persistence for unsubscribe records
-    unsubscribe-service.ts            Unsubscribe orchestration service
-    gmail-normalize.ts                Gmail message normalizer
-    google-gmail-seam.ts              Gmail API integration seam
-    message-fetcher.ts                Cross-channel message fetcher abstraction
-    channel-deep-links.ts             Deep-link builders per channel
-    reflection.ts                     Inbox reflection / self-assessment helpers
-    config.ts                         loadInboxTriageConfig()
+    inbox-triage.ts                   INBOX_TRIAGE provider (STUB)
+    cross-channel-context.ts          CROSS_CHANNEL_CONTEXT provider (STUB)
   db/
-    index.ts                          re-exports sql.ts
-    sql.ts                            Raw SQL helpers (executeRawSql, encode helpers — no drizzle schema)
+    index.ts                          re-exports schema.ts
+    schema.ts                         drizzle pgSchema('app_inbox') + 3 tables
   components/
     inbox/
       InboxView.tsx                   Minimal React inbox view (placeholder)
@@ -96,10 +88,10 @@ None at the scaffold stage. Channel credentials are read from each provider plug
 
 ## Conventions / gotchas
 
-- **`GET /api/lifeops/inbox` lives in PA.** The `InboxView` fetches from this route (served by `plugin-personal-assistant`). The triage domain (classify/persist/search) lives here; the connector-coupled cross-channel feed builder stays in PA. This is intentional — PA imports from plugin-inbox, not the reverse.
-- **`@elizaos/plugin-sql` must be loaded first.** The raw SQL helpers rely on the runtime's `runtime.adapter.db`. The plugin declares this in `dependencies: ["@elizaos/plugin-sql"]`.
+- **Scaffold, not feature-complete.** Every action op currently returns a `not_implemented` failure with the source path it should pull from. Treat this package as the registration shell; the live triage logic still runs out of `plugin-lifeops` until the follow-up migration pass.
+- **`@elizaos/plugin-sql` must be loaded first.** The schema registration relies on the runtime's `runtime.db`. The plugin declares this in `dependencies: ["@elizaos/plugin-sql"]`.
 - **No Android SMS.** SMS routing intentionally stays in `plugin-messages`. Do not add SMS channel handling here.
-- **Raw SQL, not drizzle schema.** The plugin uses `src/db/sql.ts` helpers (`executeRawSql`) instead of a registered drizzle schema. There is no `pgSchema("app_inbox")` — tables are queried directly against the existing database.
+- **Schema name is `app_inbox`** (not `inbox`) to avoid collisions with any host-app `inbox` table the runtime might also surface.
 - **Two build steps.** The JS/types build (tsup + tsc) and the Vite views build are separate. The views bundle (`dist/views/bundle.js`) is what the view registration's `bundlePath` points to. Both must be run for a complete build.
 - **Peer deps.** React 19 and react-dom 19 are peer dependencies. The host app must provide them.
 - See the root `AGENTS.md` for repo-wide architecture rules, logger requirements, ESM/module standards, and the cloud-frontend visual-review gate (if any of this plugin's UI ends up in `cloud-frontend`).

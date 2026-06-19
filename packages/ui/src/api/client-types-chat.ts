@@ -214,6 +214,12 @@ export interface ConversationMessage {
   /** True when the SSE stream was interrupted before receiving a "done" event. */
   interrupted?: boolean;
   /**
+   * Agent reasoning/thought for this turn, rendered as a collapsed-by-default
+   * block separate from `text`. Sourced from the SSE `done` event's `thought`
+   * field; absent when the model emitted no reasoning.
+   */
+  reasoning?: string;
+  /**
    * When set, this assistant turn is the server's no-provider /
    * provider-issue / insufficient-credits fallback. The renderer can
    * substitute a structured gate UI (e.g. "Connect a provider →

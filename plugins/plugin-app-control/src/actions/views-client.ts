@@ -248,6 +248,17 @@ export interface ViewsClient {
 		viewType?: ViewType;
 	}): Promise<ViewSummary[]>;
 	getCurrentView(): Promise<CurrentViewSummary | null>;
+	/**
+	 * Navigate the active shell to a view. Shared by the VIEWS action's show
+	 * handler and the contextual view evaluator so both go through one loopback
+	 * seam (`POST /api/views/:id/navigate`). Returns true when the shell
+	 * confirmed (or the route is unsupported — a soft success), false on a real
+	 * failure.
+	 */
+	navigate(
+		viewId: string,
+		opts?: { path?: string; viewType?: ViewType },
+	): Promise<boolean>;
 }
 
 export function createViewsClient(): ViewsClient {
@@ -281,6 +292,20 @@ export function createViewsClient(): ViewsClient {
 			}
 			const body: unknown = await response.json();
 			return parseCurrentView(body);
+		},
+
+		async navigate(viewId, opts = {}) {
+			const response = await fetch(
+				`${getApiBase()}/api/views/${encodeURIComponent(viewId)}/navigate`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ path: opts.path, viewType: opts.viewType }),
+					signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+				},
+			);
+			// 501/404 = the shell has no navigate route; opening still succeeded.
+			return response.ok || response.status === 501 || response.status === 404;
 		},
 	};
 }

@@ -4,32 +4,45 @@
  * Unlike `goals-service.test.ts` (which fakes `runtime.adapter.db.execute`),
  * this suite boots a REAL PGLite-backed AgentRuntime via
  * {@link createRealTestRuntime} and materializes the goal tables the way the
- * runtime does in production: the goal CRUD reads/writes PA's shared
- * `app_lifeops.life_goal_*` tables (the "inbox pattern" — shared schema, no
- * migration of its own), so we call `LifeOpsRepository.bootstrapSchema` to
- * create the `app_lifeops` schema, exactly like
- * `plugin-personal-assistant/test/relationships-graph.e2e.test.ts` does.
+ * runtime does in production: the goal CRUD reads/writes the carved
+ * `app_goals.life_goal_*` tables, so we register a schema-only goals plugin
+ * (`goalsDbSchema`) and let the SQL plugin's migration runner create them. The
+ * goals back-end also cross-writes PA's `app_lifeops.life_audit_events` /
+ * `life_task_definitions`, so we additionally call
+ * `LifeOpsRepository.bootstrapSchema` to create the `app_lifeops` schema.
  *
- * The PA import is a TEST-ONLY relative import for schema bootstrap; the goals
- * SOURCE carries no dependency on `@elizaos/plugin-personal-assistant`.
+ * The PA import is a TEST-ONLY relative import for the app_lifeops bootstrap;
+ * the goals SOURCE carries no dependency on `@elizaos/plugin-personal-assistant`.
  *
  * Every assertion is an insert-then-read-back round-trip against the live DB.
  * Hermetic: no network, no credentials, no LLM (GoalsService CRUD is rule-based).
  */
 
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/test/helpers/real-runtime.ts";
-// Test-only: PA owns the app_lifeops goal tables + the schema bootstrap. The
-// goals plugin SOURCE never imports PA (verified by the boundary contract).
+// Test-only: PA owns the app_lifeops audit/task tables + their schema bootstrap.
+// The goals plugin SOURCE never imports PA (verified by the boundary contract).
 import { LifeOpsRepository } from "../../plugin-personal-assistant/src/lifeops/repository.ts";
+import { goalsDbSchema } from "../src/db/schema.ts";
 import { GoalsRepository } from "../src/db/goals-repository.ts";
 import { executeRawSql } from "../src/db/sql.ts";
 import { createOwnerGoalsService } from "../src/goals-runtime.ts";
 import type { GoalsService } from "../src/goals-service.ts";
+
+/**
+ * Schema-only test plugin so `runtime.initialize()` runs the SQL plugin
+ * migration that creates the carved `app_goals.life_goal_*` tables (we register
+ * just the schema, not the full goals plugin's services/actions/views).
+ */
+const goalsSchemaPlugin: Plugin = {
+  name: "goals-real-db-schema",
+  description: "Test-only goals table bootstrap.",
+  schema: goalsDbSchema,
+};
 
 describe("GoalsService + GoalsRepository — real PGLite", () => {
   let runtime: AgentRuntime;
@@ -40,10 +53,12 @@ describe("GoalsService + GoalsRepository — real PGLite", () => {
   beforeAll(async () => {
     testResult = await createRealTestRuntime({
       characterName: "goals-real-db-tests",
+      plugins: [goalsSchemaPlugin],
     });
     runtime = testResult.runtime;
-    // Creates app_lifeops (incl. life_goal_definitions / life_goal_links /
-    // life_audit_events / life_task_definitions) on the real PGLite DB.
+    // The goals schema plugin creates app_goals.life_goal_* via the SQL
+    // migration runner; bootstrapSchema creates app_lifeops (audit + task) for
+    // the goals back-end's cross-schema audit/FK-nullout writes.
     await LifeOpsRepository.bootstrapSchema(runtime);
     service = createOwnerGoalsService(runtime);
     repository = new GoalsRepository(runtime);

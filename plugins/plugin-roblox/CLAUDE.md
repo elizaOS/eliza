@@ -49,6 +49,7 @@ plugins/plugin-roblox/
     providers.json            Prompt fragments (providers)
   __tests__/
     suite.ts                  RobloxTestSuite (registered in plugin.tests)
+    integration.test.ts       Integration-style vitest tests for robloxAction, robloxPlugin, and gameStateProvider
 ```
 
 ## Commands

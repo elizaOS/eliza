@@ -237,6 +237,20 @@ export function scorePlannerAction(actual: string, expected: string): number {
 }
 
 /**
+ * View-selection comparator for the contextual view evaluator (`view_context`
+ * task). Both outputs are `{viewId, reason}` (or "none"); credit is 1.0 when the
+ * chosen view id matches the reference, 0.0 otherwise. Case-insensitive, and a
+ * matching "none" (correctly declining to navigate) scores 1.0 — so it rewards
+ * both opening the right surface AND staying put on non-navigational turns.
+ */
+export function scoreViewSelection(actual: string, expected: string): number {
+  const expectedView = extractPlannerView(expected);
+  const actualView = extractPlannerView(actual);
+  if (expectedView === null && actualView === null) return 1;
+  return expectedView === actualView ? 1 : 0;
+}
+
+/**
  * Jaccard similarity over normalized token sets, in `[0, 1]`. Empty inputs
  * collapse to 0 (no overlap to measure).
  */

@@ -6,16 +6,22 @@ import type { DetectedObject, PersonInfo } from "./types";
 // Lazy-loaded TensorFlow.js modules — the native addon may not be available
 // (e.g. when installed via bun or on platforms without prebuilt binaries).
 // We load them on first use so the rest of the plugin still works.
-let tf: typeof import("@tensorflow/tfjs-node") | null = null;
-let cocoSsd: typeof import("@tensorflow-models/coco-ssd") | null = null;
-let poseDetection: typeof import("@tensorflow-models/pose-detection") | null =
-  null;
+// Types are `any` because @tensorflow/* are optionalDependencies and may not be installed.
+// biome-ignore lint/suspicious/noExplicitAny: optional native dep
+let tf: any = null;
+// biome-ignore lint/suspicious/noExplicitAny: optional native dep
+let cocoSsd: any = null;
+// biome-ignore lint/suspicious/noExplicitAny: optional native dep
+let poseDetection: any = null;
 
 async function loadTfModules(): Promise<boolean> {
   if (tf) return true;
   try {
+    // @ts-ignore — optional native dep; not installed on all platforms
     tf = await import("@tensorflow/tfjs-node");
+    // @ts-ignore — optional native dep
     cocoSsd = await import("@tensorflow-models/coco-ssd");
+    // @ts-ignore — optional native dep
     poseDetection = await import("@tensorflow-models/pose-detection");
     return true;
   } catch (_err) {
@@ -43,12 +49,10 @@ export interface PoseLandmark {
 }
 
 export class VisionModels {
-  private objectDetectionModel: Awaited<
-    ReturnType<NonNullable<typeof cocoSsd>["load"]>
-  > | null = null;
-  private poseDetector: Awaited<
-    ReturnType<NonNullable<typeof poseDetection>["createDetector"]>
-  > | null = null;
+  // biome-ignore lint/suspicious/noExplicitAny: optional native dep
+  private objectDetectionModel: any = null;
+  // biome-ignore lint/suspicious/noExplicitAny: optional native dep
+  private poseDetector: any = null;
   private initialized = false;
   private tfAvailable = false;
 

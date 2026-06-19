@@ -20,6 +20,8 @@ This is a Capacitor plugin, not an elizaOS plugin. It does not register elizaOS 
 | `AppBlocker.unblockApps()` | Removes all active blocks |
 | `AppBlocker.getStatus()` | Returns full `AppBlockerStatus` including active state, blocked count, engine, and permission details |
 
+`src/backend.ts` exports `NativeAppBlockerBackend` (interface) and `createNativeAppBlockerBackend(plugin)` (factory). Pass the registered `AppBlocker` Capacitor plugin to get an adapter shaped for `@elizaos/plugin-blocker`'s `registerNativeAppBlockerBackend()`. This is the integration seam between the Capacitor native layer and the elizaOS blocker engine.
+
 ## Layout
 
 ```
@@ -29,6 +31,10 @@ plugins/plugin-native-appblocker/
     definitions.ts         All TypeScript types: AppBlockerPlugin, AppBlockerStatus,
                            BlockAppsOptions, InstalledApp, SelectAppsResult, etc.
     web.ts                 Web fallback — all methods return not-applicable/unavailable
+    web.test.ts            Vitest tests for web fallback contracts
+    backend.ts             Backend adapter — wraps AppBlockerPlugin as NativeAppBlockerBackend
+                           for registerNativeAppBlockerBackend() in @elizaos/plugin-blocker
+    backend.test.ts        Vitest tests for the backend adapter
   android/src/main/
     AndroidManifest.xml    Declares permissions (PACKAGE_USAGE_STATS, SYSTEM_ALERT_WINDOW,
                            FOREGROUND_SERVICE, POST_NOTIFICATIONS) and ForegroundService

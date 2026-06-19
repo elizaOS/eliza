@@ -111,13 +111,43 @@ const publicPathPrefixes = [
   "/api/eliza-app/gateway",
 ];
 
-function isPublicPath(pathname: string): boolean {
+// Out-of-band token pages (sensitive-request links, approval-signer links,
+// ballot links) are visited by sessionless recipients. Only the signer-facing
+// subpaths bypass the session gate; the per-org list/create/admin endpoints on
+// the same resources stay gated, and the handlers themselves enforce the token
+// (sensitive-requests/ballots) or the redacted `?public=1` view + signature
+// (approval-requests). The session gate must NOT short-circuit them first.
+function isPublicOutOfBandTokenPath(pathname: string): boolean {
+  // GET sensitive request detail + POST submit — both gated on the URL/body
+  // token by the route handler (single-use token hash).
+  if (/^\/api\/v1\/sensitive-requests\/[^/]+\/?$/.test(pathname)) return true;
+  if (/^\/api\/v1\/sensitive-requests\/[^/]+\/submit\/?$/.test(pathname)) {
+    return true;
+  }
+  // Approval-request signer flow: redacted public detail (?public=1), approve
+  // (signature-verified), deny. Cancel stays gated (challenger-only).
+  if (/^\/api\/v1\/approval-requests\/[^/]+\/?$/.test(pathname)) return true;
+  if (/^\/api\/v1\/approval-requests\/[^/]+\/approve\/?$/.test(pathname)) {
+    return true;
+  }
+  if (/^\/api\/v1\/approval-requests\/[^/]+\/deny\/?$/.test(pathname)) {
+    return true;
+  }
+  // Ballot participant flow: redacted public detail (?public=1) + vote (gated
+  // on the scoped per-participant token). Tally/distribute/cancel stay gated.
+  if (/^\/api\/v1\/ballots\/[^/]+\/?$/.test(pathname)) return true;
+  if (/^\/api\/v1\/ballots\/[^/]+\/vote\/?$/.test(pathname)) return true;
+  return false;
+}
+
+export function isPublicPath(pathname: string): boolean {
   if (pathname === "/api/v1/oauth/callback") return true;
   if (/^\/api\/v1\/oauth\/[^/]+\/callback\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/generate-image\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/public\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/charges\/[^/]+\/?$/.test(pathname)) return true;
   if (/^\/api\/characters\/[^/]+\/public\/?$/.test(pathname)) return true;
+  if (isPublicOutOfBandTokenPath(pathname)) return true;
   return publicPathPrefixes.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );

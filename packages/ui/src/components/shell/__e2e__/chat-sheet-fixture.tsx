@@ -74,7 +74,12 @@ const params =
     ? new URLSearchParams(location.search)
     : new URLSearchParams();
 const startEmpty = params.has("empty");
-const initialPhase = (params.get("phase") as ShellController["phase"]) ?? "summoned";
+// `?streaming` seeds an EMPTY in-flight assistant turn + responding, so its
+// bubble shows the breathing dots anchored where the streamed text fills in.
+const streaming = params.has("streaming");
+const initialPhase =
+  (params.get("phase") as ShellController["phase"]) ??
+  (streaming ? "responding" : "summoned");
 const initialRecording = params.has("recording");
 const initialTranscript =
   params.get("transcript") ?? (initialRecording ? "tell me the plan for…" : "");
@@ -101,7 +106,14 @@ const SEED_WITH_FAILURE: ShellMessage[] =
 
 function Harness(): React.JSX.Element {
   const [messages, setMessages] = React.useState<ShellMessage[]>(
-    startEmpty ? [] : SEED_WITH_FAILURE,
+    startEmpty
+      ? []
+      : streaming
+        ? [
+            ...SEED,
+            { id: "m-inflight", role: "assistant", content: "", createdAt: 13 },
+          ]
+        : SEED_WITH_FAILURE,
   );
   const [phase, setPhase] =
     React.useState<ShellController["phase"]>(initialPhase);
@@ -230,6 +242,11 @@ function Harness(): React.JSX.Element {
 
   const controller = {
     phase,
+    // Raw in-flight predicate — mirrors the real controller's `chatSending ||
+    // speaking`. In the fixture, "responding" phase stands in for chatSending and
+    // `?speaking` for the spoken reply, so the trailing control + voice-gating
+    // behave exactly as they do in the app.
+    responding: phase === "responding" || initialSpeaking,
     messages,
     canSend: initialCanSend && phase !== "booting",
     recording,

@@ -93,17 +93,21 @@ All are optional. The plugin stays inactive if no streaming destination is confi
 | `ELIZAOS_CLOUD_API_KEY` | Eliza Cloud API key — required for cloud relay mode |
 | `ELIZAOS_CLOUD_BASE_URL` | Override Eliza Cloud base URL (default `https://www.elizacloud.ai/api/v1`) |
 | `ELIZAOS_CLOUD_ENABLED` | Enable cloud connection check for auto backend selection |
+| `ELIZAOS_CLOUD_USE_TTS` | Set to `true` to force-enable Eliza Cloud TTS in the stream bridge; set to `false` to force-disable |
+| `ELIZA_CLOUD_TTS_DISABLED` | Set to `true` to prevent the TTS bridge from using Eliza Cloud TTS |
 | `STREAM_MODE` | Override capture mode: `pipe`, `x11grab`, `avfoundation`, `screen`, `file` |
 | `STREAM_AUDIO_SOURCE` | Audio source: `silent`, `system`, `microphone`, `tts`, or file path |
 | `STREAM_AUDIO_DEVICE` | Platform-specific audio device identifier |
 | `STREAM_VOLUME` | Volume 0–100 (default `80`) |
 | `STREAM_DISPLAY` | X11 display for x11grab mode (default `:99`) |
+| `DISPLAY` | X11 display identifier; auto-detected for x11grab capture mode and managed by `ensureXvfb()` |
 | `STREAM_VIDEO_DEVICE` | avfoundation video device index (default `3`) |
 | `STREAM_CAPTURE_URL` | URL for headless browser capture (file/x11grab fallback) |
 | `STREAM_THEME` | Overlay theme (fallback if not in stream-settings.json) |
 | `STREAM_AVATAR_INDEX` | Overlay avatar index (fallback if not in stream-settings.json) |
 | `ELEVENLABS_API_KEY` | ElevenLabs API key (TTS audio for streams) |
 | `OPENAI_API_KEY` | OpenAI API key (TTS audio for streams) |
+| `SERVER_PORT` / `PORT` | HTTP server port used to build internal API URLs (default `2138`) |
 | `ELIZA_DATA_DIR` | Data root; stream settings + overlay layouts land in `<dir>/stream/` |
 
 Overlay layout and visual settings are persisted in `<ELIZA_DATA_DIR>/stream/` (default `./data/stream/`). Per-destination layout files are named `overlay-layout-<destId>.json`.

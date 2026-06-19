@@ -14,12 +14,9 @@ import * as React from "react";
 const COMPLETED_KEY = "eliza:tutorial-completed";
 const AUTOLAUNCH_KEY = "eliza:tutorial-autolaunched";
 
-export type TutorialMode = "text" | "voice";
-
 export interface TutorialState {
   active: boolean;
   stepIndex: number;
-  mode: TutorialMode;
 }
 
 interface TutorialStore {
@@ -33,7 +30,7 @@ function store(): TutorialStore {
   const existing = g[k] as TutorialStore | undefined;
   if (existing) return existing;
   const created: TutorialStore = {
-    state: { active: false, stepIndex: 0, mode: "text" },
+    state: { active: false, stepIndex: 0 },
     listeners: new Set(),
   };
   g[k] = created;
@@ -46,8 +43,8 @@ function set(next: Partial<TutorialState>): void {
   for (const l of s.listeners) l();
 }
 
-export function startTutorial(mode?: TutorialMode): void {
-  set({ active: true, stepIndex: 0, mode: mode ?? store().state.mode });
+export function startTutorial(): void {
+  set({ active: true, stepIndex: 0 });
 }
 
 /** Stop + mark complete so it never nags again (but stays re-runnable from the tile). */
@@ -62,10 +59,6 @@ export function stopTutorial(): void {
 
 export function goToStep(index: number): void {
   set({ stepIndex: Math.max(0, index) });
-}
-
-export function setTutorialMode(mode: TutorialMode): void {
-  set({ mode });
 }
 
 export function isTutorialCompleted(): boolean {

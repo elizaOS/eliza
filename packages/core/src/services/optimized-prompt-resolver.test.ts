@@ -170,6 +170,7 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 			optimizedPrompt: "OPT_ACTION_DESCRIPTIONS",
 		},
 		{ task: "autonomy", optimizedPrompt: "OPT_AUTONOMY" },
+		{ task: "view_context", optimizedPrompt: "OPT_VIEW_CONTEXT" },
 	];
 
 	test("covers every OPTIMIZED_PROMPT_TASKS entry", () => {

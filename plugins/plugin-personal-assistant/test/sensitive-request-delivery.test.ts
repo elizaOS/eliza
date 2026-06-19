@@ -10,26 +10,26 @@ import type { DispatchResult } from "../src/lifeops/connectors/contract.js";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
-} from "../src/lifeops/scheduled-task/completion-check-registry.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createAnchorRegistry,
   createConsolidationRegistry,
-} from "../src/lifeops/scheduled-task/consolidation-policy.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createEscalationLadderRegistry,
   registerDefaultEscalationLadders,
-} from "../src/lifeops/scheduled-task/escalation.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createTaskGateRegistry,
   registerBuiltInGates,
-} from "../src/lifeops/scheduled-task/gate-registry.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
-} from "../src/lifeops/scheduled-task/runner.js";
+} from "@elizaos/plugin-scheduling";
 import { createProductionScheduledTaskDispatcher } from "../src/lifeops/scheduled-task/runtime-wiring.js";
-import { createInMemoryScheduledTaskLogStore } from "../src/lifeops/scheduled-task/state-log.js";
-import type { ScheduledTask } from "../src/lifeops/scheduled-task/types.js";
+import { createInMemoryScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
+import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import {
   createSendPolicyRegistry,
   registerSendPolicyRegistry,

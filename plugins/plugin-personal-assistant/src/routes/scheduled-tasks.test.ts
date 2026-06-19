@@ -34,19 +34,19 @@ import {
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
-} from "../lifeops/scheduled-task/completion-check-registry.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createAnchorRegistry,
   createConsolidationRegistry,
-} from "../lifeops/scheduled-task/consolidation-policy.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createEscalationLadderRegistry,
   registerDefaultEscalationLadders,
-} from "../lifeops/scheduled-task/escalation.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createTaskGateRegistry,
   registerBuiltInGates,
-} from "../lifeops/scheduled-task/gate-registry.js";
+} from "@elizaos/plugin-scheduling";
 import {
   createInMemoryScheduledTaskLogStore,
   createInMemoryScheduledTaskStore,
