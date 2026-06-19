@@ -370,18 +370,17 @@ describe("view switching — VIEWS action resolver", () => {
 			["muéstrame mi calendario", "wallet", "calendar"],
 			["我的钱包", "calendar", "wallet"],
 		];
-		it.each(HALLUCINATION_CASES)(
-			'"%s" + bogus view param "%s" still navigates to "%s"',
-			async (phrase, bogusView, expected) => {
-				const { navigated } = installNavigateCapture();
-				const { result } = await runShow(REGISTRY, phrase, {
-					action: "show",
-					view: bogusView,
-				});
-				expect(result?.success).toBe(true);
-				expect(navigated).toEqual([expected]);
-			},
-		);
+		it.each(
+			HALLUCINATION_CASES,
+		)('"%s" + bogus view param "%s" still navigates to "%s"', async (phrase, bogusView, expected) => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, phrase, {
+				action: "show",
+				view: bogusView,
+			});
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual([expected]);
+		});
 
 		// But when the intent maps to a surface this deployment does NOT have, the
 		// planner's explicit, registered target is honored (no over-correction).
