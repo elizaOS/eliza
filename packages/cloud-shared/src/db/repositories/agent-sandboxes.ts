@@ -469,6 +469,34 @@ export class AgentSandboxesRepository {
     return r;
   }
 
+  /**
+   * Atomically restore a still-disconnected agent to `running` after a
+   * successful bridge re-probe. The recovery read -> probe -> write window spans
+   * seconds, during which the row may move to `deletion_pending` (delete
+   * enqueue), `stopped` (shutdown nulls `bridge_url`), or `provisioning`
+   * (re-provision). This compare-and-set only flips a row that is STILL
+   * `disconnected` with a live bridge and not soft-deleted, so a stale probe can
+   * never resurrect a being-deleted agent or wedge a stopped one at `running`
+   * with a dead bridge. Returns the row when it won, undefined when it lost the
+   * race (and the caller must NOT treat it as recovered).
+   */
+  async markReconnectedFromDisconnected(id: string): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    const [r] = await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "running", last_heartbeat_at: new Date(), updated_at: new Date() })
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.status, "disconnected"),
+          sql`${agentSandboxes.bridge_url} IS NOT NULL`,
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+        ),
+      )
+      .returning();
+    return r;
+  }
+
   async delete(id: string, orgId: string): Promise<boolean> {
     await ensureAgentSandboxSchema();
     const r = await dbWrite

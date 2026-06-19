@@ -391,3 +391,111 @@ describe("ElizaSandboxService wake", () => {
     },
   );
 });
+
+describe("ElizaSandboxService recoverDisconnected", () => {
+  function disconnectedSandbox(): AgentSandbox {
+    return { ...customSandbox(), status: "disconnected" };
+  }
+
+  test("recovers a reachable disconnected agent via guarded compare-and-set", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = disconnectedSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
+    const casSpy = spyOn(
+      agentSandboxesRepository,
+      "markReconnectedFromDisconnected",
+    ).mockResolvedValue({ ...sandbox, status: "running" });
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
+
+    try {
+      const result = await new ElizaSandboxService().recoverDisconnected(
+        sandbox.id,
+        sandbox.organization_id,
+      );
+      expect(result).toBe("recovered");
+      expect(casSpy).toHaveBeenCalledTimes(1);
+      expect(casSpy.mock.calls[0]?.[0]).toBe(sandbox.id);
+    } finally {
+      findSpy.mockRestore();
+      casSpy.mockRestore();
+    }
+  });
+
+  test("does NOT revive when the row left disconnected mid-probe (CAS loses -> gone)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = disconnectedSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
+    // Probe succeeds, but the agent was deleted/stopped/re-provisioned during the
+    // probe → guarded update matches 0 rows. Must report "gone", never resurrect.
+    const casSpy = spyOn(
+      agentSandboxesRepository,
+      "markReconnectedFromDisconnected",
+    ).mockResolvedValue(undefined);
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
+
+    try {
+      const result = await new ElizaSandboxService().recoverDisconnected(
+        sandbox.id,
+        sandbox.organization_id,
+      );
+      expect(result).toBe("gone");
+      expect(casSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      findSpy.mockRestore();
+      casSpy.mockRestore();
+    }
+  });
+
+  test("reports unreachable without writing when the bridge does not answer", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = disconnectedSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
+    const casSpy = spyOn(
+      agentSandboxesRepository,
+      "markReconnectedFromDisconnected",
+    ).mockResolvedValue(undefined);
+    globalThis.fetch = mock(async () => new Response("nope", { status: 502 }));
+
+    try {
+      const result = await new ElizaSandboxService().recoverDisconnected(
+        sandbox.id,
+        sandbox.organization_id,
+      );
+      expect(result).toBe("unreachable");
+      expect(casSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      casSpy.mockRestore();
+    }
+  });
+
+  test("reports gone (and never probes) when the row is no longer disconnected", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue({
+      ...customSandbox(),
+      status: "running",
+    });
+    const casSpy = spyOn(
+      agentSandboxesRepository,
+      "markReconnectedFromDisconnected",
+    ).mockResolvedValue(undefined);
+    let probed = false;
+    globalThis.fetch = mock(async () => {
+      probed = true;
+      return new Response("ok", { status: 200 });
+    });
+
+    try {
+      const result = await new ElizaSandboxService().recoverDisconnected(
+        "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+        "22222222-2222-4222-8222-222222222222",
+      );
+      expect(result).toBe("gone");
+      expect(probed).toBe(false);
+      expect(casSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      casSpy.mockRestore();
+    }
+  });
+});
