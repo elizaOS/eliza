@@ -206,6 +206,20 @@ function isCerebrasNativeModel(model: string): boolean {
   );
 }
 
+/**
+ * Canonicalize a requested model id for pricing AND routing. Dedicated agents
+ * emit decorated ids like "openai/gpt-oss-120b:nitro" / "openai/zai-glm-4.7:nitro"
+ * for what are really the bare Cerebras models. Collapse those to the bare
+ * Cerebras id at the route entry so the pricing lookup (which only carries the
+ * Cerebras row — "openai/zai-glm-4.7" is not an OpenRouter model → 500 "pricing
+ * unavailable") and the provider routing (cerebras-direct) agree. Non-Cerebras
+ * ids are returned unchanged so their normal BitRouter/gateway routing + pricing
+ * is untouched.
+ */
+export function canonicalizeCerebrasModelId(model: string): string {
+  return isCerebrasNativeModel(model) ? normalizeCerebrasModelId(model) : model;
+}
+
 function normalizeBitRouterLanguageModelId(model: string): string {
   if (isCerebrasNativeModel(model)) {
     return `cerebras:${normalizeCerebrasModelId(model)}`;
