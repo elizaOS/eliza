@@ -234,6 +234,27 @@ function shouldTreatAsConnectedWithoutWebSocket(
   );
 }
 
+// A dedicated cloud agent lives on its own subdomain (<id>.elizacloud.ai) and
+// serves chat over REST as well as the realtime WS. Unlike the shared-runtime
+// adapter it DOES have a usable `/ws`, so we still attempt the WebSocket — but
+// if it can't connect (cold start, resume window, a slow backend) the agent is
+// still usable over REST. So on WS-reconnect exhaustion we degrade to a
+// non-fatal connected-over-REST state instead of raising the catastrophic
+// full-screen "Lost backend connection" overlay (see connectWs.onclose).
+function isDedicatedCloudAgentBase(value: string | null | undefined): boolean {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized) return false;
+  try {
+    const host = new URL(normalized).hostname.toLowerCase();
+    return (
+      host.endsWith(".elizacloud.ai") &&
+      !ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(host)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function getInjectedWsBase(): string | undefined {
   if (typeof window === "undefined") return undefined;
   const values = [
@@ -1020,7 +1041,17 @@ export class ElizaClient {
       this.reconnectAttempt++;
       // Update state based on attempt count
       if (this.reconnectAttempt >= this.maxReconnectAttempts) {
-        this.connectionState = "failed";
+        // A dedicated cloud agent serves chat over REST independently of the
+        // realtime WS, so a WS that can't connect must NOT raise the fatal
+        // full-screen "Lost backend connection" overlay. Degrade to a non-fatal
+        // connected-over-REST state and keep probing in the background (see
+        // scheduleReconnect's 30s loop) so live updates resume on WS recovery.
+        if (isDedicatedCloudAgentBase(this.baseUrl)) {
+          this.connectionState = "connected";
+          this.disconnectedAt = null;
+        } else {
+          this.connectionState = "failed";
+        }
       } else {
         this.connectionState = "reconnecting";
       }
