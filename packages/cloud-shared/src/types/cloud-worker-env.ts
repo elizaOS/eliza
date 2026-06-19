@@ -38,6 +38,9 @@ export interface Bindings {
   CEREBRAS_API_KEY?: string;
   BITROUTER_API_KEY?: string;
   BITROUTER_BASE_URL?: string;
+  /** BYOK OpenRouter key — the fallback when BitRouter fails, and the catch-all router when BitRouter is unset. */
+  OPENROUTER_API_KEY?: string;
+  OPENROUTER_BASE_URL?: string;
   ATLASCLOUD_API_KEY?: string;
   ATLASCLOUD_BASE_URL?: string;
   OPENAI_API_KEY?: string;

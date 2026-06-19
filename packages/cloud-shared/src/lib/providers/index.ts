@@ -12,6 +12,7 @@ import { AnthropicDirectProvider } from "./anthropic-direct";
 import { BitRouterProvider } from "./bitrouter";
 import { GroqProvider } from "./groq";
 import { OpenAIDirectProvider } from "./openai-direct";
+import { OpenRouterProvider } from "./openrouter";
 import { getProviderKey, getRequiredProviderKey } from "./provider-env";
 import type { AIProvider } from "./types";
 import { VastProvider } from "./vast";
@@ -27,6 +28,7 @@ export { BitRouterProvider } from "./bitrouter";
 export { withProviderFallback } from "./failover";
 export { GroqProvider } from "./groq";
 export { OpenAIDirectProvider } from "./openai-direct";
+export { OpenRouterProvider } from "./openrouter";
 export * from "./types";
 export { VastProvider } from "./vast";
 export * from "./vast-endpoints";
@@ -49,6 +51,7 @@ let bitRouterProviderInstance: BitRouterProviderSingleton | null = null;
 let groqProviderInstance: ProviderSingleton | null = null;
 let openAIDirectProviderInstance: OpenAIDirectProviderSingleton | null = null;
 let anthropicDirectProviderInstance: ProviderSingleton | null = null;
+let openRouterProviderInstance: OpenAIDirectProviderSingleton | null = null;
 let vercelAIGatewayProviderInstance: ProviderSingleton | null = null;
 let vastProviderInstances = new Map<string, AIProvider>();
 
@@ -137,6 +140,32 @@ function getAnthropicDirectProvider(): AIProvider {
   return anthropicDirectProviderInstance.provider;
 }
 
+export function hasOpenRouterProviderConfigured(): boolean {
+  return Boolean(getProviderKey("OPENROUTER_API_KEY"));
+}
+
+/**
+ * OpenRouter direct provider — the BYOK fallback used when the primary router
+ * (BitRouter) returns a retryable upstream error. See
+ * `getProviderForModelWithFallback`.
+ */
+export function getOpenRouterProvider(): AIProvider {
+  const apiKey = getRequiredProviderKey("OPENROUTER_API_KEY");
+  const baseUrl = getProviderKey("OPENROUTER_BASE_URL") ?? undefined;
+  if (
+    !openRouterProviderInstance ||
+    openRouterProviderInstance.apiKey !== apiKey ||
+    openRouterProviderInstance.baseUrl !== baseUrl
+  ) {
+    openRouterProviderInstance = {
+      apiKey,
+      baseUrl,
+      provider: new OpenRouterProvider(apiKey, baseUrl),
+    };
+  }
+  return openRouterProviderInstance.provider;
+}
+
 export function hasVastProviderConfigured(model = "vast/eliza-1-27b"): boolean {
   return resolveVastEndpointConfig(model) !== null;
 }
@@ -215,7 +244,13 @@ export function getProviderForModel(model: string): AIProvider {
  *     configured (27B -> 9B -> 2B by default).
  *   - `openai/*`: OpenAI direct fallback when OPENAI_API_KEY is set.
  *   - `anthropic/*`: Anthropic direct fallback when ANTHROPIC_API_KEY is set.
- *   - All other models (xai, google, mistral, …): no fallback.
+ *   - All other models (xai, google, mistral, …): OpenRouter (BYOK) fallback
+ *     when OPENROUTER_API_KEY is set, else no fallback.
+ *
+ * OpenRouter is the universal backup when BitRouter fails: per-family direct
+ * providers win (they use our own keys against the upstream), and OpenRouter
+ * covers everything else (xai, google, mistral, …) that previously had no
+ * fallback at all.
  */
 export function getProviderForModelWithFallback(model: string): {
   primary: AIProvider;
@@ -243,5 +278,8 @@ export function getProviderForModelWithFallback(model: string): {
     return { primary, fallback: getAnthropicDirectProvider() };
   }
 
-  return { primary, fallback: null };
+  return {
+    primary,
+    fallback: hasOpenRouterProviderConfigured() ? getOpenRouterProvider() : null,
+  };
 }

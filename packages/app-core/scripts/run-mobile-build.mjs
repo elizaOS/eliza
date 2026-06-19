@@ -2429,7 +2429,11 @@ function syncAndroidAppActionsResources() {
   const targetResDir = path.join(androidDir, "app", "src", "main", "res");
   const resourceFiles = [
     path.join("xml", "shortcuts.xml"),
+    path.join("xml", "eliza_quick_actions_widget.xml"),
     path.join("xml", "eliza_accessibility_service.xml"),
+    path.join("layout", "eliza_quick_actions_widget.xml"),
+    path.join("drawable", "eliza_widget_background.xml"),
+    path.join("drawable", "eliza_widget_button_background.xml"),
     path.join("values", "android_app_actions.xml"),
   ];
   for (const relPath of resourceFiles) {
@@ -2608,6 +2612,9 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       "MainActivity.java",
       "ElizaAgentService.java",
       "ElizaAssistActivity.java",
+      "ElizaQuickActionsWidgetProvider.java",
+      "ElizaShareActivity.java",
+      "ElizaVoiceTileService.java",
       "ElizaAccessibilityService.java",
       "ElizaBootReceiver.java",
       "ElizaNotificationListenerService.java",
@@ -2775,6 +2782,9 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
     for (const component of [
       "ElizaDialActivity",
       "ElizaAssistActivity",
+      "ElizaQuickActionsWidgetProvider",
+      "ElizaShareActivity",
+      "ElizaVoiceTileService",
       "ElizaAccessibilityService",
       "ElizaInCallService",
       "ElizaNotificationListenerService",
@@ -2802,6 +2812,9 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
     for (const component of [
       "ElizaDialActivity",
       "ElizaAssistActivity",
+      "ElizaQuickActionsWidgetProvider",
+      "ElizaShareActivity",
+      "ElizaVoiceTileService",
       "ElizaAccessibilityService",
       "ElizaInCallService",
       "ElizaNotificationListenerService",
@@ -2867,6 +2880,60 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaShareActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaShareActivity"
+            android:exported="true"
+            android:label="@string/app_action_smart_reply_long"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaVoiceTileService`,
+      `
+        <service
+            android:name="${androidPackage}.ElizaVoiceTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_monochrome"
+            android:label="@string/app_action_voice_long"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="false" />
+        </service>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaQuickActionsWidgetProvider`,
+      `
+        <receiver
+            android:name="${androidPackage}.ElizaQuickActionsWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/eliza_quick_actions_widget" />
+        </receiver>`,
     );
     xml = appendMissingApplicationBlock(
       xml,
@@ -4010,6 +4077,9 @@ function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
     "ElizaAgentService",
     "ElizaDialActivity",
     "ElizaAssistActivity",
+    "ElizaQuickActionsWidgetProvider",
+    "ElizaShareActivity",
+    "ElizaVoiceTileService",
     "ElizaInCallService",
     "ElizaSmsReceiver",
     "ElizaMmsReceiver",

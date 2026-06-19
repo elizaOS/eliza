@@ -70,7 +70,7 @@ export const facewearPlugin: Plugin = {
       description:
         "Manage all connected XR devices and smartglasses — Meta Quest, XReal, Even Realities, Apple Vision Pro.",
       icon: "Glasses",
-      heroImagePath: "assets/hero-facewear.svg",
+      heroImagePath: "assets/hero-facewear.png",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearView",
       tags: ["facewear", "xr", "smartglasses", "wearable"],
@@ -101,7 +101,7 @@ export const facewearPlugin: Plugin = {
       path: "/apps/facewear/tui",
       label: "Facewear TUI",
       description: "Terminal UI for facewear device management.",
-      heroImagePath: "assets/hero-facewear.svg",
+      heroImagePath: "assets/hero-facewear.png",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearTuiView",
       tags: ["facewear", "xr", "smartglasses", "tui"],
@@ -112,7 +112,7 @@ export const facewearPlugin: Plugin = {
       path: "/apps/facewear/xr",
       label: "Facewear XR",
       description: "XR view for facewear device status and control.",
-      heroImagePath: "assets/hero-facewear.svg",
+      heroImagePath: "assets/hero-facewear.png",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearView",
       tags: ["facewear", "xr", "smartglasses", "wearable"],
@@ -125,7 +125,7 @@ export const facewearPlugin: Plugin = {
       description:
         "Pair, test, configure, and export diagnostics for a complete Even Realities headset.",
       icon: "Glasses",
-      heroImagePath: "assets/hero-smartglasses.svg",
+      heroImagePath: "assets/hero-smartglasses.png",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesView",
       tags: [
@@ -170,7 +170,7 @@ export const facewearPlugin: Plugin = {
       description:
         "Terminal UI for smartglasses setup, status, and diagnostics.",
       icon: "Glasses",
-      heroImagePath: "assets/hero-smartglasses.svg",
+      heroImagePath: "assets/hero-smartglasses.png",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesTuiView",
       tags: [
@@ -191,7 +191,7 @@ export const facewearPlugin: Plugin = {
       description:
         "XR smartglasses setup and diagnostics panel from the same component as the GUI view.",
       icon: "Glasses",
-      heroImagePath: "assets/hero-smartglasses.svg",
+      heroImagePath: "assets/hero-smartglasses.png",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesView",
       tags: [

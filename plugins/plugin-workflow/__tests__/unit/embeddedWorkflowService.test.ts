@@ -1,6 +1,5 @@
-import { Database } from 'bun:sqlite';
 import { describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
@@ -40,16 +39,6 @@ async function persistentRuntime(
       await rm(dir, { recursive: true, force: true });
     },
   };
-}
-
-function firstRunJson(
-  execution: { data?: { resultData?: { runData?: Record<string, unknown[]> } } },
-  nodeName: string
-): Record<string, unknown> | undefined {
-  const run = execution.data?.resultData?.runData?.[nodeName]?.[0] as
-    | { data?: { main?: Array<Array<{ json?: Record<string, unknown> }>> } }
-    | undefined;
-  return run?.data?.main?.[0]?.[0]?.json;
 }
 
 describe('EmbeddedWorkflowService', () => {
@@ -187,42 +176,115 @@ describe('EmbeddedWorkflowService', () => {
   }, 60_000);
 
   test('runs Code node in the QuickJS sandbox', async () => {
+    const pluginRoot = join(import.meta.dir, '../..');
+    const resultDir = await mkdtemp(join(tmpdir(), 'embedded-workflows-code-result-'));
+    const resultPath = join(resultDir, 'result.json');
+    const script = `
+      import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+      import { tmpdir } from 'node:os';
+      import { join } from 'node:path';
+      import { PGlite } from '@electric-sql/pglite';
+      import { drizzle } from 'drizzle-orm/pglite';
+      import { EmbeddedWorkflowService } from './src/services/embedded-workflow-service.ts';
+      import * as dbSchema from './src/db/schema.ts';
+      const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-code-'));
+      const client = new PGlite({ dataDir: join(dir, 'pglite') });
+      const db = drizzle(client, { schema: dbSchema });
+      const runtime = { agentId: 'agent-test', character: { settings: {} }, db, getSetting: () => null, getService: () => null };
+      const service = await EmbeddedWorkflowService.start(runtime);
+      try {
+        const created = await service.createWorkflow({
+          name: 'QuickJS code',
+          nodes: [
+            { id: 'manual', name: 'Manual Trigger', type: 'workflows-nodes-base.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+            { id: 'code', name: 'Code', type: 'workflows-nodes-base.code', typeVersion: 2, position: [200, 0], parameters: { jsCode: 'return items.map((item) => ({ json: { ok: true, trigger: item.json.trigger } }));' } },
+          ],
+          connections: {
+            'Manual Trigger': { main: [[{ node: 'Code', type: 'main', index: 0 }]] },
+          },
+        });
+        const execution = await service.executeWorkflow(created.id);
+        const item = execution.data?.resultData?.runData?.Code?.[0]?.data?.main?.[0]?.[0]?.json;
+        if (execution.status !== 'success') throw new Error('Expected successful Code execution');
+        if (item?.ok !== true) throw new Error('Expected Code node to set ok=true');
+        if (item?.trigger !== 'manual') throw new Error('Expected manual trigger data to reach Code node');
+        await writeFile(process.env.WORKFLOW_CODE_RESULT_PATH, JSON.stringify({ status: execution.status, item }));
+      } finally {
+        await service.stop();
+        await client.close();
+        await rm(dir, { recursive: true, force: true });
+      }
+    `;
+
+    try {
+      const proc = Bun.spawn([process.execPath, '-e', script], {
+        cwd: pluginRoot,
+        env: {
+          ...process.env,
+          WORKFLOW_CODE_RESULT_PATH: resultPath,
+          WORKFLOW_DIAGNOSTICS_ENABLED: 'false',
+        },
+        stdout: 'ignore',
+        stderr: 'pipe',
+      });
+      const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+
+      expect(stderr).toBe('');
+      expect(exitCode).toBe(0);
+      const result = JSON.parse(await readFile(resultPath, 'utf8')) as {
+        status?: string;
+        item?: { ok?: boolean; trigger?: string };
+      };
+      expect(result.status).toBe('success');
+      expect(result.item?.ok).toBe(true);
+      expect(result.item?.trigger).toBe('manual');
+    } finally {
+      await rm(resultDir, { recursive: true, force: true });
+    }
+  }, 90_000);
+
+  test('returns persisted error executions for non-throwing planning failures', async () => {
     const harness = await persistentRuntime();
     const service = await EmbeddedWorkflowService.start(harness.runtime);
     try {
       const created = await service.createWorkflow({
-        name: 'QuickJS code',
+        name: 'Cyclic graph',
         nodes: [
           {
-            id: 'manual',
-            name: 'Manual Trigger',
-            type: 'workflows-nodes-base.manualTrigger',
-            typeVersion: 1,
+            id: 'set-a',
+            name: 'Set A',
+            type: 'workflows-nodes-base.set',
+            typeVersion: 3.4,
             position: [0, 0],
-            parameters: {},
+            parameters: { assignments: { assignments: [{ name: 'a', value: true }] } },
           },
           {
-            id: 'code',
-            name: 'Code',
-            type: 'workflows-nodes-base.code',
-            typeVersion: 2,
+            id: 'set-b',
+            name: 'Set B',
+            type: 'workflows-nodes-base.set',
+            typeVersion: 3.4,
             position: [200, 0],
-            parameters: {
-              jsCode:
-                'return items.map((item) => ({ json: { ok: true, trigger: item.json.trigger } }));',
-            },
+            parameters: { assignments: { assignments: [{ name: 'b', value: true }] } },
           },
         ],
         connections: {
-          'Manual Trigger': { main: [[{ node: 'Code', type: 'main', index: 0 }]] },
+          'Set A': { main: [[{ node: 'Set B', type: 'main', index: 0 }]] },
+          'Set B': { main: [[{ node: 'Set A', type: 'main', index: 0 }]] },
         },
       });
-      const execution = await service.executeWorkflow(created.id);
-      const item = firstRunJson(execution, 'Code');
 
-      expect(execution.status).toBe('success');
-      expect(item?.ok).toBe(true);
-      expect(item?.trigger).toBe('manual');
+      const execution = await service.executeWorkflow(created.id, { throwOnError: false });
+      const persisted = await service.getExecution(execution.id);
+
+      expect(execution.status).toBe('error');
+      expect(execution.finished).toBe(true);
+      expect(execution.data?.resultData?.error?.message).toContain(
+        'Unable to resolve workflow execution order'
+      );
+      expect(persisted.status).toBe('error');
+      expect(persisted.data?.resultData?.error?.message).toContain(
+        'Unable to resolve workflow execution order'
+      );
     } finally {
       await service.stop();
       await harness.close();
@@ -230,114 +292,167 @@ describe('EmbeddedWorkflowService', () => {
   }, 60_000);
 
   test('persists node execution through Smithers step storage', async () => {
-    const harness = await persistentRuntime();
-    const service = await EmbeddedWorkflowService.start(harness.runtime);
-    let smithersDbPath: string | null = null;
-    try {
-      const created = await service.createWorkflow({
-        name: 'Smithers persistence',
-        nodes: [
-          {
-            id: 'manual',
-            name: 'Manual Trigger',
-            type: 'workflows-nodes-base.manualTrigger',
-            typeVersion: 1,
-            position: [0, 0],
-            parameters: {},
-          },
-          {
-            id: 'set',
-            name: 'Set',
-            type: 'workflows-nodes-base.set',
-            typeVersion: 3.4,
-            position: [200, 0],
-            parameters: {
-              assignments: { assignments: [{ name: 'smithersRecorded', value: true }] },
-            },
-          },
-        ],
-        connections: {
-          'Manual Trigger': { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
-        },
-      });
-
-      const execution = await service.executeWorkflow(created.id);
-      const item = firstRunJson(execution, 'Set');
-      smithersDbPath = join(process.cwd(), '.eliza', 'smithers', `${created.id}.sqlite`);
-      const smithersDb = new Database(smithersDbPath, { readonly: true });
+    const pluginRoot = join(import.meta.dir, '../..');
+    const resultDir = await mkdtemp(join(tmpdir(), 'embedded-workflows-smithers-result-'));
+    const resultPath = join(resultDir, 'result.json');
+    const script = `
+      import { Database } from 'bun:sqlite';
+      import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+      import { tmpdir } from 'node:os';
+      import { join } from 'node:path';
+      import { PGlite } from '@electric-sql/pglite';
+      import { drizzle } from 'drizzle-orm/pglite';
+      import { EmbeddedWorkflowService } from './src/services/embedded-workflow-service.ts';
+      import * as dbSchema from './src/db/schema.ts';
+      const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-smithers-'));
+      const client = new PGlite({ dataDir: join(dir, 'pglite') });
+      const db = drizzle(client, { schema: dbSchema });
+      const runtime = { agentId: 'agent-test', character: { settings: {} }, db, getSetting: () => null, getService: () => null };
+      const service = await EmbeddedWorkflowService.start(runtime);
+      let smithersDbPath = null;
       try {
-        const tables = smithersDb
-          .query<{ name: string }, []>(
-            "select name from sqlite_master where type = 'table' and name like 'smithers_%' order by name"
-          )
-          .all()
-          .map((row) => row.name);
-        const persistedSetRows = smithersDb
-          .query<{ payload: unknown }, []>(
-            'select payload from smithers_0001_set where node_id = ? order by iteration'
-          )
-          .all('0001-set');
+        const created = await service.createWorkflow({
+          name: 'Smithers persistence',
+          nodes: [
+            { id: 'manual', name: 'Manual Trigger', type: 'workflows-nodes-base.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+            { id: 'set', name: 'Set', type: 'workflows-nodes-base.set', typeVersion: 3.4, position: [200, 0], parameters: { assignments: { assignments: [{ name: 'smithersRecorded', value: true }] } } },
+          ],
+          connections: {
+            'Manual Trigger': { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
+          },
+        });
 
-        expect(execution.status).toBe('success');
-        expect(item?.smithersRecorded).toBe(true);
-        expect(tables).toContain('smithers_0000_manual');
-        expect(tables).toContain('smithers_0001_set');
-        expect(tables).toContain('smithers_eliza_workflow_result');
-        expect(persistedSetRows.length).toBe(1);
+        const execution = await service.executeWorkflow(created.id);
+        const item = execution.data?.resultData?.runData?.Set?.[0]?.data?.main?.[0]?.[0]?.json;
+        smithersDbPath = join(process.cwd(), '.eliza', 'smithers', created.id + '.sqlite');
+        const smithersDb = new Database(smithersDbPath, { readonly: true });
+        try {
+          const tables = smithersDb
+            .query("select name from sqlite_master where type = 'table' and name like 'smithers_%' order by name")
+            .all()
+            .map((row) => row.name);
+          const persistedSetRows = smithersDb
+            .query('select payload from smithers_0001_set where node_id = ? order by iteration')
+            .all('0001-set');
+          await writeFile(
+            process.env.WORKFLOW_SMITHERS_RESULT_PATH,
+            JSON.stringify({
+              status: execution.status,
+              item,
+              tables,
+              persistedSetRowsLength: persistedSetRows.length,
+            })
+          );
+        } finally {
+          smithersDb.close();
+        }
       } finally {
-        smithersDb.close();
+        await service.stop();
+        await client.close();
+        await rm(dir, { recursive: true, force: true });
+        if (smithersDbPath) {
+          await Promise.all([
+            rm(smithersDbPath, { force: true }),
+            rm(smithersDbPath + '-wal', { force: true }),
+            rm(smithersDbPath + '-shm', { force: true }),
+          ]);
+        }
       }
+    `;
+    try {
+      const proc = Bun.spawn([process.execPath, '-e', script], {
+        cwd: pluginRoot,
+        env: {
+          ...process.env,
+          WORKFLOW_SMITHERS_RESULT_PATH: resultPath,
+          WORKFLOW_DIAGNOSTICS_ENABLED: 'false',
+        },
+        stdout: 'ignore',
+        stderr: 'pipe',
+      });
+      const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+
+      expect(stderr).toBe('');
+      expect(exitCode).toBe(0);
+      const result = JSON.parse(await readFile(resultPath, 'utf8')) as {
+        status?: string;
+        item?: { smithersRecorded?: boolean };
+        tables?: string[];
+        persistedSetRowsLength?: number;
+      };
+      expect(result.status).toBe('success');
+      expect(result.item?.smithersRecorded).toBe(true);
+      expect(result.tables).toContain('smithers_0000_manual');
+      expect(result.tables).toContain('smithers_0001_set');
+      expect(result.tables).toContain('smithers_eliza_workflow_result');
+      expect(result.persistedSetRowsLength).toBe(1);
     } finally {
-      await service.stop();
-      await harness.close();
-      if (smithersDbPath) {
-        await Promise.all([
-          rm(smithersDbPath, { force: true }),
-          rm(`${smithersDbPath}-wal`, { force: true }),
-          rm(`${smithersDbPath}-shm`, { force: true }),
-        ]);
-      }
+      await rm(resultDir, { recursive: true, force: true });
     }
   }, 60_000);
 
   test('executes active embedded webhooks through the plugin service', async () => {
-    const harness = await persistentRuntime();
-    const service = await EmbeddedWorkflowService.start(harness.runtime);
+    const pluginRoot = join(import.meta.dir, '../..');
+    const resultDir = await mkdtemp(join(tmpdir(), 'embedded-workflows-webhook-result-'));
+    const resultPath = join(resultDir, 'result.json');
+    const script = `
+      import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+      import { tmpdir } from 'node:os';
+      import { join } from 'node:path';
+      import { PGlite } from '@electric-sql/pglite';
+      import { drizzle } from 'drizzle-orm/pglite';
+      import { EmbeddedWorkflowService } from './src/services/embedded-workflow-service.ts';
+      import * as dbSchema from './src/db/schema.ts';
+      const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-webhook-'));
+      const client = new PGlite({ dataDir: join(dir, 'pglite') });
+      const db = drizzle(client, { schema: dbSchema });
+      const runtime = { agentId: 'agent-test', character: { settings: {} }, db, getSetting: () => null, getService: () => null };
+      const service = await EmbeddedWorkflowService.start(runtime);
+      try {
+        const created = await service.createWorkflow({
+          name: 'Webhook workflow',
+          nodes: [
+            { id: 'webhook', name: 'Webhook', type: 'workflows-nodes-base.webhook', typeVersion: 2, position: [0, 0], parameters: { path: 'incoming', httpMethod: 'POST' } },
+            { id: 'set', name: 'Set', type: 'workflows-nodes-base.set', typeVersion: 3.4, position: [200, 0], parameters: { assignments: { assignments: [{ name: 'handled', value: true }] } } },
+          ],
+          connections: {
+            Webhook: { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
+          },
+        });
+        await service.activateWorkflow(created.id);
+        const execution = await service.executeWebhook('incoming', { payload: 'ok' }, 'POST');
+        const item = execution.data?.resultData?.runData?.Set?.[0]?.data?.main?.[0]?.[0]?.json;
+        await writeFile(process.env.WORKFLOW_WEBHOOK_RESULT_PATH, JSON.stringify({ status: execution.status, item }));
+      } finally {
+        await service.stop();
+        await client.close();
+        await rm(dir, { recursive: true, force: true });
+      }
+    `;
     try {
-      const created = await service.createWorkflow({
-        name: 'Webhook workflow',
-        nodes: [
-          {
-            id: 'webhook',
-            name: 'Webhook',
-            type: 'workflows-nodes-base.webhook',
-            typeVersion: 2,
-            position: [0, 0],
-            parameters: { path: 'incoming', httpMethod: 'POST' },
-          },
-          {
-            id: 'set',
-            name: 'Set',
-            type: 'workflows-nodes-base.set',
-            typeVersion: 3.4,
-            position: [200, 0],
-            parameters: { assignments: { assignments: [{ name: 'handled', value: true }] } },
-          },
-        ],
-        connections: {
-          Webhook: { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
+      const proc = Bun.spawn([process.execPath, '-e', script], {
+        cwd: pluginRoot,
+        env: {
+          ...process.env,
+          WORKFLOW_WEBHOOK_RESULT_PATH: resultPath,
+          WORKFLOW_DIAGNOSTICS_ENABLED: 'false',
         },
+        stdout: 'ignore',
+        stderr: 'pipe',
       });
-      await service.activateWorkflow(created.id);
-      const execution = await service.executeWebhook('incoming', { payload: 'ok' }, 'POST');
-      const item = firstRunJson(execution, 'Set');
+      const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
 
-      expect(execution.status).toBe('success');
-      expect(item?.payload).toBe('ok');
-      expect(item?.handled).toBe(true);
+      expect(stderr).toBe('');
+      expect(exitCode).toBe(0);
+      const result = JSON.parse(await readFile(resultPath, 'utf8')) as {
+        status?: string;
+        item?: { payload?: string; handled?: boolean };
+      };
+      expect(result.status).toBe('success');
+      expect(result.item?.payload).toBe('ok');
+      expect(result.item?.handled).toBe(true);
     } finally {
-      await service.stop();
-      await harness.close();
+      await rm(resultDir, { recursive: true, force: true });
     }
   }, 60_000);
 });

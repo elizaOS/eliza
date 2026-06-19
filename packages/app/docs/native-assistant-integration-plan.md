@@ -13,6 +13,10 @@ feel like real system citizens rather than a WebView with a chat box.
   brief, new task, and task list.
 - Android sideload/AOSP assistant entry via `ACTION_ASSIST` and
   `VOICE_COMMAND`; Play/cloud builds strip default-role and privileged surfaces.
+- Android Share Sheet and selected-text `PROCESS_TEXT` route into Smart Reply.
+- Android Quick Settings tile opens voice chat with source-tagged metadata.
+- Android home-screen quick-actions widget exposes Ask, Voice, Daily Brief, and
+  New Task as direct deep links.
 - iOS App Intents/App Shortcuts for Ask Eliza, Voice, Daily Brief, New Task,
   and Smart Reply.
 - iOS local notifications, BGTaskScheduler, APNs silent-push wake plumbing,
@@ -42,10 +46,10 @@ feel like real system citizens rather than a WebView with a chat box.
 | Start voice chat | App Shortcut opens `elizaos://voice` | Static shortcut + App Actions `OPEN_APP_FEATURE` + `VOICE_COMMAND` | P0 |
 | Daily brief | App Shortcut opens LifeOps overview | Static shortcut + App Actions inline inventory | P0 |
 | Create task/reminder | App Shortcut with text parameter routes to LifeOps planner | Static shortcut + App Actions feature open, then planner confirmation | P0 |
-| Smart reply | App Shortcut accepts dictated/copied context and opens chat with `action=smart-reply` | Keyboard/notification reply action routes selected text to chat with `action=smart-reply` | P1 |
-| Home-screen widgets | WidgetKit small/medium: Ask, Voice, Camera, Daily Brief | App Widget: Ask, Voice, Camera, Daily Brief | P1 |
-| Lock Screen / Action Button | App Shortcuts automatically available to Action Button and Spotlight | Quick Settings tile for voice/listen, launcher shortcuts | P1 |
-| Share target | Share Sheet extension for text, URLs, images, files | Android Sharesheet target for text/images/files | P1 |
+| Smart reply | App Shortcut accepts dictated/copied context and opens chat with `action=smart-reply` | Share Sheet + selected-text `PROCESS_TEXT` route to chat with `action=smart-reply`; keyboard/notification chips next | P1 |
+| Home-screen widgets | WidgetKit small/medium: Ask, Voice, Camera, Daily Brief | App Widget: Ask, Voice, Daily Brief, New Task implemented; Camera next | P1 |
+| Lock Screen / Action Button | App Shortcuts automatically available to Action Button and Spotlight | Quick Settings voice tile, launcher shortcuts | P1 |
+| Share target | Share Sheet extension for text, URLs, images, files | Android Sharesheet target for text and selected text; images/files preserve URI grants for follow-up handling | P1 |
 | Keyboard smart reply | iOS custom keyboard extension with explicit network/local-mode disclosure | Android IME with inline smart reply chips | P2 |
 | Notification actions | Reply, summarize, snooze, create task | Direct reply, summarize, snooze, create task | P2 |
 | Car mode | CarPlay voice-only template, if entitlement/product fit | Android Auto media/assistant-safe voice surfaces, if policy fit | P3 |
@@ -97,12 +101,17 @@ Use a platform router, not a single runtime everywhere.
 - Keep Android `shortcuts.xml` and manifest metadata validated in unit tests.
 - Keep deep-link routing fuzz tests for assistant paths.
 - Add source metadata to every assistant/shortcut entry point.
+- Keep Android Share Sheet, `PROCESS_TEXT`, and Quick Settings tile contracts
+  covered by static native-entry tests.
+- Keep Android widget provider/resource contracts covered by static
+  native-entry tests.
 
 ### Phase 1: First-Class User Surfaces
 
 - Add WidgetKit extension with Ask, Voice, Camera, Daily Brief, and New Task.
-- Add Android app widget with matching actions.
-- Add native share targets for text, URL, image, PDF, and arbitrary file.
+- Extend Android app widget with Camera and dynamic/pinned-agent variants.
+- Extend Android share handling from text/selection into full image, PDF, and
+  arbitrary-file ingestion; add the iOS Share Sheet extension.
 - Add in-app SiriTip-style education and Android in-app shortcut promotion.
 - Add settings screen for assistant integrations and privacy controls.
 

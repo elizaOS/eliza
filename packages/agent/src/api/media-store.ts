@@ -99,6 +99,99 @@ function extForMime(mimeType: string): string {
   return EXT_BY_MIME[mimeType.trim().toLowerCase()] ?? "bin";
 }
 
+// ---------------------------------------------------------------------------
+// Size-capped eviction
+// ---------------------------------------------------------------------------
+
+const DEFAULT_MAX_STORE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
+const EVICT_INTERVAL_MS = 30_000;
+let lastEvictAt = 0;
+
+function maxStoreBytes(): number {
+  const raw =
+    process.env.MILADY_MEDIA_STORE_MAX_BYTES ??
+    process.env.ELIZA_MEDIA_STORE_MAX_BYTES;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_MAX_STORE_BYTES;
+}
+
+export interface MediaFileStat {
+  name: string;
+  size: number;
+  mtimeMs: number;
+}
+
+/**
+ * Pure eviction policy: given the current files and a byte cap, return the
+ * names to delete (oldest-by-mtime first) so the store drops to 90% of the
+ * cap. Returns [] when already within budget. Exported for unit tests.
+ */
+export function selectMediaToEvict(
+  files: MediaFileStat[],
+  cap: number,
+): string[] {
+  let total = files.reduce((sum, file) => sum + file.size, 0);
+  if (total <= cap) return [];
+  const target = Math.floor(cap * 0.9);
+  const oldestFirst = [...files].sort((a, b) => a.mtimeMs - b.mtimeMs);
+  const evict: string[] = [];
+  for (const file of oldestFirst) {
+    if (total <= target) break;
+    evict.push(file.name);
+    total -= file.size;
+  }
+  return evict;
+}
+
+/**
+ * Best-effort FIFO eviction so the local media store never grows without
+ * bound. Throttled to once per {@link EVICT_INTERVAL_MS}; when the directory
+ * exceeds the cap it deletes oldest-by-mtime files down to 90% of the cap.
+ * Content is immutable + content-addressed, so an evicted file simply re-saves
+ * if the same bytes are uploaded again. A message that references evicted media
+ * renders a broken tile — the cap defaults to 2 GB so this only bites under
+ * heavy use, and is tunable via `MILADY_MEDIA_STORE_MAX_BYTES`.
+ */
+function maybeEvict(): void {
+  const now = Date.now();
+  if (now - lastEvictAt < EVICT_INTERVAL_MS) return;
+  lastEvictAt = now;
+  try {
+    const dir = mediaDir();
+    const files: MediaFileStat[] = [];
+    for (const name of fs.readdirSync(dir)) {
+      try {
+        const stat = fs.statSync(path.join(dir, name));
+        if (!stat.isFile()) continue;
+        files.push({ name, size: stat.size, mtimeMs: stat.mtimeMs });
+      } catch {
+        // file vanished mid-scan — ignore
+      }
+    }
+    const evict = selectMediaToEvict(files, maxStoreBytes());
+    let evicted = 0;
+    for (const name of evict) {
+      try {
+        fs.unlinkSync(path.join(dir, name));
+        evicted += 1;
+      } catch {
+        // ignore
+      }
+    }
+    if (evicted > 0) {
+      logger.info(`[media-store] evicted ${evicted} file(s) over size cap`);
+    }
+  } catch (err) {
+    logger.warn(
+      `[media-store] eviction scan failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
 export interface PersistedMedia {
   /** Served URL (`/api/media/<sha256>.<ext>`) for the stored bytes. */
   url: string;
@@ -117,6 +210,7 @@ export function persistMediaBytes(
   const filePath = path.join(mediaDir(), fileName);
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, buffer);
+    maybeEvict();
   }
   return { url: `${MEDIA_URL_PREFIX}${fileName}`, hash, fileName };
 }

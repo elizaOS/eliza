@@ -207,7 +207,9 @@ ElizaClient.prototype.getWorkflowExecution = async function (
     execution?: WorkflowExecution;
   }>(`/api/workflow/executions/${encodeURIComponent(id)}`);
   if (!result.execution) {
-    throw new Error("Workflow execution response did not include an execution.");
+    throw new Error(
+      "Workflow execution response did not include an execution.",
+    );
   }
   return result.execution;
 };

@@ -242,6 +242,10 @@ Implemented safe findings:
   and Model Tester now register metadata-first lazy loaders. Facewear keeps
   lightweight deferred compatibility exports for fallback hosts that import
   named view components directly.
+- The wallet side-effect registration now imports the explicit register subpath
+  instead of the package root/inventory barrel.
+- Bulk side-effect app-module imports now run through a two-at-a-time idle
+  scheduler instead of one immediate `Promise.all` burst.
 
 Deferred findings:
 
@@ -291,13 +295,29 @@ Validation run:
   passed: 3 files, 22 tests after app-pause and telemetry coverage.
 - `bun run --cwd packages/ui test -- retained-lazy.test.tsx components/views/DynamicViewLoader.test.tsx components/apps/AppWindowRenderer.helpers.test.tsx App.navigate-view-wiring.test.tsx`
   passed: 4 files, 27 tests after exporting module-cache telemetry.
+- `bun run --cwd packages/ui test -- retained-lazy.test.tsx components/views/DynamicViewLoader.test.tsx components/apps/AppWindowRenderer.helpers.test.tsx App.navigate-view-wiring.test.tsx app-shell-registry.test.ts`
+  passed: 5 files, 28 tests after broadening app-shell loader props.
+- `bun run --cwd packages/ui test -- components/composites/chat/chat-transcript.memoization.test.tsx components/composites/chat/chat-message.voice-speaker.test.tsx components/views/DynamicViewLoader.test.tsx retained-lazy.test.tsx components/apps/AppWindowRenderer.helpers.test.tsx App.navigate-view-wiring.test.tsx app-shell-registry.test.ts`
+  passed: 7 files, 33 tests after the chat memoization, polling, and overlay
+  throttling pass.
 - `bun run --cwd packages/ui typecheck`
   passed after adding the retained lazy-module cache and overlay/app-shell
   retained wrappers.
 - `bun run --cwd packages/ui typecheck`
   passed again after app-pause pruning and telemetry exports.
+- `bun run --cwd packages/ui typecheck`
+  passed after the Facewear loader type adjustment.
 - `bun run --cwd packages/app test -- plugin-registrations.test.ts`
   passed: 1 file, 3 tests.
+- `bun run --cwd packages/app test -- plugin-registrations.test.ts`
+  passed again after the explicit wallet register import and side-effect loader
+  scheduler changes.
+- `bun run --cwd plugins/plugin-facewear typecheck`
+  passed after converting Facewear app-shell registrations to loaders.
+- `bun run --cwd plugins/app-model-tester test -- model-tester-app.test.ts`
+  passed after converting Model Tester shell pages to loaders.
+- `bun run --cwd plugins/plugin-phone test -- PhoneCompanionApp.test.tsx`
+  passed after converting Phone Companion shell registration to a loader.
 - `bun run --cwd plugins/plugin-task-coordinator test`
   passed: 15 files, 177 tests.
 - `bunx tsc --noEmit -p plugins/plugin-task-coordinator/tsconfig.build.json`
@@ -321,7 +341,12 @@ Validation limitation from the previous round:
   `CSSProperties` declaration issue across many existing UI/cloud files
   (`position`, `fontFamily`, `backgroundColor`, etc. reported as unknown CSS
   properties). The focused tests and package typechecks above cover the touched
-  performance paths, and the narrower `packages/ui typecheck` now passes.
+  performance paths.
+- A later `bun run --cwd packages/ui typecheck` run is currently blocked by
+  unrelated existing errors in `../core/src/features/basic-capabilities/index.ts`
+  (`describeImageCached`) and
+  `packages/ui/src/components/pages/WorkflowEditor.tsx`
+  (`handleActivateRun`, `Play`). Focused UI tests for the changed paths pass.
 
 ## Remaining optimization backlog
 

@@ -346,7 +346,6 @@ export function AutomationsFeed({
       <WorkflowEditorLoader
         workflowId={editor.workflowId}
         onSaved={() => {
-          setEditor({ kind: "none" });
           void refresh();
         }}
         onCancel={() => setEditor({ kind: "none" })}
@@ -505,9 +504,7 @@ export function AutomationsFeed({
                     if (row.kind !== "workflow" || !row.source.workflowId)
                       return;
                     try {
-                      await client.activateWorkflowDefinition(
-                        row.source.workflowId,
-                      );
+                      await client.runWorkflowDefinition(row.source.workflowId);
                       await refresh();
                     } catch (e) {
                       setError(
@@ -935,7 +932,7 @@ function ChooserSheet({
               <div className="text-xs text-muted-strong">
                 {t("automationsfeed.workflowOptionDesc", {
                   defaultValue:
-                    "Multi-step. Trigger → actions → integrations. Edit JSON or generate from a prompt.",
+                    "Multi-step. Draft in chat, then review the graph, run it, and inspect logs.",
                 })}
               </div>
             </div>

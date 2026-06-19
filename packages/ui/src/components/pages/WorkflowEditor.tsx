@@ -124,7 +124,7 @@ export function WorkflowEditor({
     setExecutionError(null);
     setExecutions([]);
     setSelectedExecutionId(null);
-  }, [initial?.id]);
+  }, [initial]);
 
   // Re-parse on debounced text change.
   useEffect(() => {
@@ -253,7 +253,7 @@ export function WorkflowEditor({
       try {
         res = await client.generateWorkflowDefinition({
           prompt,
-          workflowId: initial?.id,
+          workflowId: persistedWorkflowId ?? undefined,
         });
       } catch (e) {
         throw e instanceof Error
@@ -280,7 +280,7 @@ export function WorkflowEditor({
       void refreshExecutions();
       return definition;
     });
-  }, [generatorPrompt, generatorModal, initial?.id, refreshExecutions]);
+  }, [generatorPrompt, generatorModal, persistedWorkflowId, refreshExecutions]);
 
   const lineErrorBanner = useMemo(() => {
     if (parseState.ok) return null;
@@ -666,9 +666,9 @@ export function WorkflowEditor({
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {selectedRunRows.map((row, index) => (
+                        {selectedRunRows.map((row) => (
                           <div
-                            key={`${row.nodeName}-${index}`}
+                            key={`${row.nodeName}-${row.startTime ?? row.preview}`}
                             className="rounded-sm border border-border/50 bg-bg/40 p-2"
                           >
                             <div className="flex min-w-0 items-center gap-2">

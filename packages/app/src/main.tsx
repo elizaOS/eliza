@@ -537,7 +537,9 @@ function scheduleSideEffectAppModuleLoads(): void {
       activeCount < SIDE_EFFECT_APP_MODULE_LOAD_CONCURRENCY &&
       nextIndex < SIDE_EFFECT_APP_MODULE_LOADERS.length
     ) {
-      const { key, load } = SIDE_EFFECT_APP_MODULE_LOADERS[nextIndex];
+      const registration = SIDE_EFFECT_APP_MODULE_LOADERS[nextIndex];
+      if (!registration) break;
+      const { key, load } = registration;
       nextIndex += 1;
       activeCount += 1;
       void importSideEffectAppModule(key, load)

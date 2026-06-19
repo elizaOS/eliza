@@ -17,8 +17,13 @@ afterAll(() => {
 });
 
 // Imported after env is set so resolveStateDir resolves to the temp dir.
-const { persistMediaBytes, persistDataUrl, isStoredMediaUrl, serveMediaFile } =
-  await import("./media-store.ts");
+const {
+  persistMediaBytes,
+  persistDataUrl,
+  isStoredMediaUrl,
+  serveMediaFile,
+  selectMediaToEvict,
+} = await import("./media-store.ts");
 
 /** Minimal ServerResponse stub capturing status + body for serve tests. */
 function makeRes(): {
@@ -161,5 +166,35 @@ describe("media-store", () => {
         "/api/health",
       ),
     ).toBe(false);
+  });
+});
+
+describe("selectMediaToEvict", () => {
+  it("evicts nothing when within the cap", () => {
+    const files = [
+      { name: "a", size: 10, mtimeMs: 1 },
+      { name: "b", size: 20, mtimeMs: 2 },
+    ];
+    expect(selectMediaToEvict(files, 100)).toEqual([]);
+  });
+
+  it("evicts oldest-first down to 90% of the cap", () => {
+    const files = [
+      { name: "newest", size: 40, mtimeMs: 300 },
+      { name: "oldest", size: 40, mtimeMs: 100 },
+      { name: "middle", size: 40, mtimeMs: 200 },
+    ];
+    // total 120 > cap 100, target 90 → drop oldest (80 left), still >90? no, 80<=90 stop
+    expect(selectMediaToEvict(files, 100)).toEqual(["oldest"]);
+  });
+
+  it("evicts multiple oldest files when far over cap", () => {
+    const files = [
+      { name: "f1", size: 50, mtimeMs: 1 },
+      { name: "f2", size: 50, mtimeMs: 2 },
+      { name: "f3", size: 50, mtimeMs: 3 },
+    ];
+    // total 150, cap 60, target 54 → drop f1 (100), f2 (50<=54) stop
+    expect(selectMediaToEvict(files, 60)).toEqual(["f1", "f2"]);
   });
 });

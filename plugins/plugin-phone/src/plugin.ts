@@ -12,7 +12,6 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { voiceCallAction } from "./actions/voice-call";
 import { phoneCallLogProvider } from "./providers/call-log";
 
 const PHONE_APP_NAME = "@elizaos/plugin-phone";
@@ -25,7 +24,9 @@ export const appPhonePlugin: Plugin = {
     "routes through the canonical VOICE_CALL surface when a provider is wired. " +
     "Also hosts the Phone Companion (Capacitor pairing + remote-session) " +
     "surface.",
-  actions: [voiceCallAction],
+  // VOICE_CALL is still host-adapted by plugin-personal-assistant. Keep this
+  // app plugin read-only until the Android dialer provider is wired.
+  actions: [],
   providers: [phoneCallLogProvider],
   views: [
     {

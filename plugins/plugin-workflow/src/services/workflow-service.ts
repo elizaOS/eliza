@@ -1,6 +1,7 @@
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
 import type {
   NodeDefinition,
+  NodeSearchResult,
   RuntimeContext,
   TriggerContext,
   WorkflowCreationResult,
@@ -93,6 +94,42 @@ function isWorkflowCredentialStoreApi(service: unknown): service is WorkflowCred
     typeof (service as { get?: unknown }).get === 'function' &&
     typeof (service as { set?: unknown }).set === 'function'
   );
+}
+
+const FIELD_TRANSFORM_VERB_PATTERN =
+  /\b(adds?|adding|sets?|setting|assigns?|assigning|writes?|writing|maps?|mapping|appends?|appending|enrich(?:es|ing)?)\b/;
+const FIELD_TRANSFORM_TARGET_PATTERN =
+  /\b(field|fields|value|values|data|item|items|metadata|json|property|properties)\b/;
+const NETWORK_REQUEST_PATTERN =
+  /\b(http|https|url|api|request|fetch|call|post|get|put|patch|delete|webhook)\b/;
+
+function buildWorkflowSearchKeywords(prompt: string, keywords: string[]): string[] {
+  const normalized = new Set(keywords.map((keyword) => keyword.toLowerCase()));
+  const addKeyword = (keyword: string): void => {
+    if (!normalized.has(keyword)) {
+      keywords.unshift(keyword);
+      normalized.add(keyword);
+    }
+  };
+  const lowerPrompt = prompt.toLowerCase();
+  if (FIELD_TRANSFORM_VERB_PATTERN.test(lowerPrompt)) {
+    if (FIELD_TRANSFORM_TARGET_PATTERN.test(lowerPrompt)) {
+      addKeyword('set');
+    }
+  }
+  return keywords;
+}
+
+function filterPromptCandidateNodes(prompt: string, nodes: NodeSearchResult[]): NodeSearchResult[] {
+  const lowerPrompt = prompt.toLowerCase();
+  const looksLikeFieldTransform =
+    FIELD_TRANSFORM_VERB_PATTERN.test(lowerPrompt) &&
+    FIELD_TRANSFORM_TARGET_PATTERN.test(lowerPrompt);
+  const looksLikeNetworkRequest = NETWORK_REQUEST_PATTERN.test(lowerPrompt);
+  if (!looksLikeFieldTransform || looksLikeNetworkRequest) {
+    return nodes;
+  }
+  return nodes.filter((result) => result.node.name !== 'workflows-nodes-base.httpRequest');
 }
 
 /**
@@ -292,13 +329,18 @@ export class WorkflowService extends Service {
     const earlyContext = await this.fetchRuntimeContext([], opts?.userId ?? 'local');
     const preferredProviders = earlyContext?.preferredProviders;
 
-    const keywords = await extractKeywords(this.runtime, prompt, preferredProviders);
+    const keywords = buildWorkflowSearchKeywords(
+      prompt,
+      await extractKeywords(this.runtime, prompt, preferredProviders)
+    );
     logger.debug(
       { src: 'plugin:workflow:service:main' },
       `Extracted keywords: ${keywords.join(', ')}${preferredProviders?.length ? ` (with bias: ${preferredProviders.join(', ')})` : ''}`
     );
 
-    let relevantNodes = this.filterForEmbeddedBackend(searchNodes(keywords, 15));
+    let relevantNodes = this.filterForEmbeddedBackend(
+      filterPromptCandidateNodes(prompt, searchNodes(keywords, 15))
+    );
     logger.debug(
       { src: 'plugin:workflow:service:main' },
       `Found ${relevantNodes.length} relevant nodes`
@@ -517,8 +559,13 @@ export class WorkflowService extends Service {
     const existingDefs = collectExistingNodeDefinitions(existingWorkflow);
 
     // Search for new nodes the modification might need
-    const keywords = await extractKeywords(this.runtime, modificationRequest);
-    const searchResults = this.filterForEmbeddedBackend(searchNodes(keywords, 10));
+    const keywords = buildWorkflowSearchKeywords(
+      modificationRequest,
+      await extractKeywords(this.runtime, modificationRequest)
+    );
+    const searchResults = this.filterForEmbeddedBackend(
+      filterPromptCandidateNodes(modificationRequest, searchNodes(keywords, 10))
+    );
     const newDefs = searchResults.map((r) => r.node);
 
     // Deduplicate: merge existing + new, preferring existing (already in workflow)
