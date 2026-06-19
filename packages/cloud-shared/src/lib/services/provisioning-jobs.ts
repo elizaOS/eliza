@@ -2214,6 +2214,43 @@ export class ProvisioningJobService {
     return { total, succeeded, failed };
   }
 
+  /**
+   * Re-probe `disconnected` dedicated agents and restore reachable ones to
+   * `running`. Complements processRunningHeartbeats (which only dials `running`
+   * rows): an always-on agent that drops past the grace window would otherwise
+   * stay disconnected forever, with no automatic path back. Runs from the
+   * on-prem worker only (HTTP over the Headscale tunnel).
+   */
+  async processDisconnectedReconcile(concurrency = 5): Promise<ReconcileResult> {
+    const candidates = await agentSandboxesRepository.listReconcilableDisconnected();
+    const total = candidates.length;
+    if (total === 0) return { total: 0, recovered: 0, stillDown: 0 };
+
+    let recovered = 0;
+    let stillDown = 0;
+    const queue = [...candidates];
+    const workers = Array.from({ length: Math.min(concurrency, total) }, async () => {
+      while (true) {
+        const r = queue.shift();
+        if (!r) break;
+        const ok = await elizaSandboxService
+          .reconcileDisconnected(r.id, r.organization_id)
+          .catch((error: unknown) => {
+            logger.warn("[provisioning-jobs] reconcile threw", {
+              agentId: r.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return false;
+          });
+        if (ok) recovered += 1;
+        else stillDown += 1;
+      }
+    });
+    await Promise.all(workers);
+
+    return { total, recovered, stillDown };
+  }
+
   private async recoverStaleJobs(
     jobTypes: readonly ProvisioningJobType[] = Object.values(JOB_TYPES),
   ): Promise<number> {
@@ -2341,6 +2378,12 @@ export interface HeartbeatResult {
   total: number;
   succeeded: number;
   failed: number;
+}
+
+export interface ReconcileResult {
+  total: number;
+  recovered: number;
+  stillDown: number;
 }
 
 export interface ProcessingResult {
