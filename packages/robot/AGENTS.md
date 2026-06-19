@@ -15,27 +15,44 @@ src/                    TS surface — entry: src/index.ts
 
 eliza_robot/            Python package (pip: eliza-robot)
   __init__.py           Top-level re-exports: RobotProfile, list_profiles, load_profile, ...
+  interfaces.py         Shared Python interfaces
   bridge/               Websocket server (robot ↔ runtime)
     server.py           asyncio websocket server; --backend mock|mujoco|ros|isaac
     protocol.py         CommandEnvelope, EventEnvelope, ResponseEnvelope, parse_command
     safety.py           CommandRateLimiter, PolicyHeartbeatMonitor, motion-bounds check
-    backends/           BridgeBackend ABC + concrete backends (mock, mujoco, ros, isaac)
+    backends/           BridgeBackend ABC + concrete backends (mock, mujoco, ros, isaac, etc.)
     validation.py       validate_command_payload
     types.py            JsonDict / JsonValue aliases
+    openpi_adapter.py   OpenPI model adapter
+    openpi_loop.py      OpenPI inference loop
+    rosbridge_server.py ROS bridge server
+    launch.py           Launch helpers
+    async_compat.py     Async compatibility shim
+    trace_log.py        Trace logging
   sim/
     mujoco/             MJX scenes, env wrappers, sim_loop entry point
   rl/
     alberta/            Alberta continual-RL trainer (streaming, no catastrophic forgetting)
       train_robot.py    CLI entry → eliza-robot-train-alberta
       benchmark.py      CLI entry → eliza-robot-benchmark-alberta
+      classic_control_benchmark.py  CLI entry → eliza-robot-benchmark-classic-control
     text_conditioned/   Text-conditioned multi-task RL; train.py → eliza-robot-train
     locomotion_metrics.py
+    meta/               Meta-learning utilities
+    skills/             Skill library
+    walk_proof.py       Walk proof validation
+    multi_action_eval.py
   perception/           Camera frames, ASR, ONNX inference, SLAM, world model
+  policy/               Policy definitions
+  curriculum/           Curriculum learning utilities
+  datasets/             Dataset loaders and utilities
+  sim2real/             Sim-to-real transfer utilities
   trajectory_db/        SQLite-backed trajectory store (db.py, models.py, schema.py)
   profiles/             Profile loader (__init__.py = load_profile/list_profiles/DEFAULT_PROFILE_ID)
     schema.py           RobotProfile Pydantic v2 model (canonical source of truth)
   asimov_1/             ASIMOV-1 integration (CAD edit loop, MuJoCo assets, bridge targets)
   schema/               AiNex canonical constants and adapters (canonical.py, embodied_context.py, hyperscape_adapter.py)
+  erobot/               eRobot integration
 
 profiles/               Per-robot profile manifests (profile.yaml + per-profile config)
   hiwonder-ainex/
@@ -46,6 +63,10 @@ profiles/               Per-robot profile manifests (profile.yaml + per-profile 
   erobot/
 assets/                 Binary assets (URDF, STL, MJCF XML) — never commit large blobs
   profiles/<id>/        Per-profile binaries
+cad/                    CAD files for robot bodies (asimov-feminine, erobot, unitree-r1-bodykit, etc.)
+calibration/            Calibration data and scripts
+mechanical/             Mechanical design files
+vendor/                 Vendored Python dependencies
 scripts/                CLI helpers and CI gates (e.g. check-no-large-binaries.sh)
 tests/                  pytest suite
 docs/                   Architecture notes (asimov-1.md, ALBERTA_PRODUCTION_READINESS.md, SSD_PORT_ASSESSMENT.md)
@@ -73,7 +94,7 @@ from eliza_robot.profiles.schema import JointSpec, GaitParams, SafetyLimits, Act
 
 `load_profile(profile_id)` is the single entry point for all robot-specific config. Every code path that touches a robot MUST resolve config via this function — no hardcoded `if robot == "ainex"` branches.
 
-**Python CLI entry points (from pyproject.toml):**
+**Python CLI entry points (from pyproject.toml) — core set:**
 
 | Entry point | Module |
 |---|---|
@@ -81,6 +102,17 @@ from eliza_robot.profiles.schema import JointSpec, GaitParams, SafetyLimits, Act
 | `eliza-robot-bridge` | `eliza_robot.bridge.server:main` |
 | `eliza-robot-train` | `eliza_robot.rl.text_conditioned.train:main` |
 | `eliza-robot-train-alberta` | `eliza_robot.rl.alberta.train_robot:main` |
+| `eliza-robot-benchmark-alberta` | `eliza_robot.rl.alberta.benchmark:main` |
+| `eliza-robot-benchmark-classic-control` | `eliza_robot.rl.alberta.classic_control_benchmark:main` |
+| `eliza-robot-compare-backends` | `scripts.compare_text_conditioned_backends:main` |
+| `eliza-robot-prepare-full-training` | `scripts.prepare_end_to_end_full_training:main` |
+| `eliza-robot-run-full-training-bundle` | `scripts.run_end_to_end_full_training_bundle:main` |
+| `eliza-robot-monitor-nebius-full-training` | `scripts.monitor_nebius_full_training_run:main` |
+| `eliza-robot-finalize-nebius-full-training` | `scripts.finalize_nebius_full_training_run:main` |
+| `eliza-robot-generate-nebius-training-report` | `scripts.generate_nebius_training_report:main` |
+| `eliza-robot-generate-alberta-report` | `scripts.generate_alberta_end_to_end_report:main` |
+
+Many additional `eliza-robot-validate-*`, `eliza-robot-closeout-*`, and Nebius management scripts are also registered — see `pyproject.toml [project.scripts]` for the full list.
 
 ## Commands
 

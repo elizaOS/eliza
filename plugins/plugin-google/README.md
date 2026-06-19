@@ -68,11 +68,11 @@ Set these environment variables (or provide them via agent `pluginParameters`):
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GOOGLE_CLIENT_ID` | Yes | OAuth 2.0 client ID from Google Cloud Console |
-| `GOOGLE_CLIENT_SECRET` | Yes | OAuth 2.0 client secret (keep private) |
-| `GOOGLE_REDIRECT_URI` | Yes | Redirect URI registered in Google Cloud Console |
+| `GOOGLE_CLIENT_ID` | No (required for OAuth) | OAuth 2.0 client ID from Google Cloud Console |
+| `GOOGLE_CLIENT_SECRET` | No (required for OAuth) | OAuth 2.0 client secret (keep private) |
+| `GOOGLE_REDIRECT_URI` | No (required for OAuth) | Redirect URI registered in Google Cloud Console |
 
-The plugin reads these via `runtime.getSetting()`. Without all three the OAuth flow throws an error; the service itself still starts (read-only agents that inject pre-issued tokens can skip OAuth).
+Without all three the OAuth flow throws an error; the service itself still starts (read-only agents that inject pre-issued tokens can skip OAuth).
 
 ## Enabling the plugin
 

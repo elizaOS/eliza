@@ -20,6 +20,7 @@ src/
   components/            Cross-route shared UI (landing, layout, chat, agents, onboarding, security).
   providers/             React context providers:
                            StewardProvider.tsx        Steward auth session, syncs JWT to api client.
+                           StewardProviderRuntime.tsx Runtime variant of the Steward provider.
                            ConditionalWalletProviders  wagmi/rainbowkit + solana wallet adapters.
                            CreditsProvider.tsx         polls /api/credits/balance, useCredits().
                            I18nProvider.tsx            language resolution + useT/useI18n.
@@ -31,6 +32,7 @@ src/
     data/                React Query hooks per domain (apps.ts, agents.ts, billing via credits.ts, analytics.ts, ...).
     steward-session.ts   Steward token storage glue.
     security/            audit-client, consent-store.
+  runtime/               Render-telemetry utilities (currently a test-only file).
   types/                 ambient *.d.ts for untyped deps (canvas-confetti, web3icons, ...).
   shims/                 browser polyfills aliased in vite.config (process, inherits, wagmi-tempo).
 functions/               Cloudflare Pages Functions: _middleware.ts, _proxy.ts (proxies /api to the Cloud API worker).
@@ -76,9 +78,10 @@ All custom env vars must be read by their **literal name** — Vite inlines `imp
 
 - `VITE_API_URL` / `NEXT_PUBLIC_API_URL` — API base for SSR/scripts; browser always uses same-origin.
 - `VITE_APP_URL` / `NEXT_PUBLIC_APP_URL` — canonical site origin for OG/canonical tags.
-- `NEXT_PUBLIC_STEWARD_API_URL` / `NEXT_PUBLIC_STEWARD_TENANT_ID` — Steward overrides (default: same-origin `/steward` mount).
+- `NEXT_PUBLIC_STEWARD_TENANT_ID` — Steward tenant override (default: `"elizacloud"`).
 - `VITE_PLAYWRIGHT_TEST_AUTH` / `NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH` — enables the synthetic-JWT auth bypass for e2e.
 - `VITE_ELIZA_CLOUD_LOCAL_DEV_ADMIN` — exposes admin pages to any authenticated user in local dev (prod keeps the role gate).
+- `VITE_ELIZA_RENDER_TELEMETRY` — enables render telemetry (read in `main.tsx`).
 - Wallet/RPC: `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`, `NEXT_PUBLIC_ALCHEMY_API_KEY`, `NEXT_PUBLIC_HELIUS_API_KEY`, `NEXT_PUBLIC_SOLANA_RPC_URL`, `NEXT_PUBLIC_DEVNET`.
 - `functions/_proxy.ts` reads Cloudflare `API_UPSTREAM` (set in `wrangler.toml`) to forward `/api/*` to the Cloud API worker.
 

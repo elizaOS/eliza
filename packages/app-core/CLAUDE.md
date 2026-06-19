@@ -25,6 +25,11 @@ src/
     auth-bootstrap-routes.ts, auth-session-routes.ts, auth-pairing-routes.ts  first-run + device pairing auth
     response.ts             sendJson / sendJsonError helpers
     secrets-*-routes.ts, server-wallet-trade.ts, *-compat-routes.ts
+  dispatch/                 Connector/channel dispatch layer
+    index.ts                barrel
+    channel-registry.ts     channel registry
+    connector-registry.ts   connector registry
+    approval-queue.ts       approval queue for dispatched actions
   runtime/                  Runtime loading + lifecycle
     eliza.ts                Eliza agent loader — boots AgentRuntime, loads plugins, starts API server
     dev-server.ts           Dev orchestration entry + startup timing
@@ -50,7 +55,7 @@ platforms/{android,ios,electrobun}/   native shell projects + Apple Store entitl
 ## Key exports / surface
 
 - Default `.` import → `src/index.ts`: `startApiServer`, the Eliza runtime loader (`runtime/eliza`), `loadRegistry`/`getApps`/`getPlugins`/`getConnectors`/`getEntry`, `registerCuratedApp`, auth helpers, security stores, vault + steward services.
-- Subpath exports (see `package.json` `exports`): `./agent-bridge`, `./api/auth`, `./api/response`, `./api/automation-node-contributors`, `./api/compat-route-shared`, `./api/ios-local-agent-transport`, `./registry`, `./first-run/first-run-config`, `./security/agent-vault-id`, `./security/platform-secure-store`, `./security/platform-secure-store-node`, `./services/vault-mirror`, `./services/steward-credentials`, `./services/steward-sidecar/helpers`, `./services/task-host-capabilities`, `./services/app-updates/update-policy`, `./platform/native-plugin-entrypoints`, `./platform/ios-runtime-backends`, `./platform/empty-node-module`, `./platform/native-library-policy`, `./ui-compat`.
+- Subpath exports (see `package.json` `exports`): `./entry`, `./agent-bridge`, `./api/auth`, `./api/response`, `./api/automation-node-contributors`, `./api/compat-route-shared`, `./api/cloud-pair-route`, `./api/ios-local-agent-transport`, `./registry`, `./first-run/first-run-config`, `./security/agent-vault-id`, `./security/platform-secure-store`, `./security/platform-secure-store-node`, `./services/vault-mirror`, `./services/steward-credentials`, `./services/steward-sidecar/helpers`, `./services/task-host-capabilities`, `./services/app-updates/update-policy`, `./platform/native-plugin-entrypoints`, `./platform/ios-runtime-backends`, `./platform/empty-node-module`, `./platform/native-library-policy`, `./ui-compat`.
 - `src/browser.ts` is the browser-safe surface; it re-exports React/UI from `@elizaos/ui` and the desktop runtimes from `runtime/desktop`.
 
 ## Commands

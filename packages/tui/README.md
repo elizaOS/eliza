@@ -9,7 +9,7 @@ Minimal terminal UI framework with differential rendering and synchronized outpu
 - **Bracketed Paste Mode**: Handles large pastes correctly with markers for >10 line pastes
 - **Component-based**: Simple Component interface with render() method
 - **Theme Support**: Components accept theme interfaces for customizable styling
-- **Built-in Components**: Text, TruncatedText, Input, Editor, Markdown, Loader, SelectList, SettingsList, Spacer, Image, Box, Container
+- **Built-in Components**: Text, TruncatedText, Input, Editor, Markdown, Loader, SelectList, SettingsList, Spacer, Image, Box, Container, Toast, ProgressBar
 - **Inline Images**: Renders images in terminals that support Kitty or iTerm2 graphics protocols
 - **Autocomplete Support**: File paths and slash commands
 
@@ -505,6 +505,29 @@ tui.addChild(image);
 
 Supported formats: PNG, JPEG, GIF, WebP. Dimensions are parsed from the image headers automatically.
 
+### Toast
+
+Transient notification overlay that appears and automatically dismisses.
+
+```typescript
+import { Toast } from "@elizaos/tui";
+
+const toast = new Toast(message, options);
+tui.addChild(toast);
+```
+
+### ProgressBar
+
+Horizontal progress indicator.
+
+```typescript
+import { ProgressBar } from "@elizaos/tui";
+
+const bar = new ProgressBar(options);
+bar.setProgress(0.75); // 0.0 to 1.0
+tui.addChild(bar);
+```
+
 ## Autocomplete
 
 ### CombinedAutocompleteProvider
@@ -736,7 +759,7 @@ See `test/chat-simple.ts` for a complete chat interface example with:
 
 Run it:
 ```bash
-npx tsx test/chat-simple.ts
+bun run test/chat-simple.ts
 ```
 
 ## Development

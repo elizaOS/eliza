@@ -21,12 +21,11 @@ Do not edit configs to point at Qwen base names or OpenAI judges —
 the lock above is the product contract.
 
 
-The inference-side companion is at [`packages/inference/AGENTS.md`](../inference/AGENTS.md).
-**Read it first.** The product mandates (three runtime modes, mandatory
-optimizations, fused pipeline, manifest schema, HF publishing flow,
-verification gates) live there, and this file does not repeat them.
-This file describes what training has to *do* to satisfy that
-contract.
+The inference-side companion contract lives in the inference package.
+**Read it first if it exists.** The product mandates (three runtime modes,
+mandatory optimizations, fused pipeline, manifest schema, HF publishing
+flow, verification gates) live there, and this file does not repeat them.
+This file describes what training has to *do* to satisfy that contract.
 
 ---
 
@@ -46,9 +45,8 @@ contract.
 
 This package does NOT own:
 
-- The runtime engine, downloader, or routing — those are
-  `packages/app-core/src/services/local-inference/`.
-- Kernels — those are `packages/inference/`.
+- The runtime engine, downloader, or routing — those are in
+  `packages/app-core/` (see `packages/app-core/scripts/` for build hooks).
 - The build hook or kernel patches — that is
   `packages/app-core/scripts/build-llama-cpp-mtp.mjs`.
 
@@ -74,17 +72,16 @@ its metadata.
 
 OmniVoice singing weights can ship in default Eliza-1 bundles under the
 current non-commercial open-source mandate. The prior research-only gate
-is lifted per `packages/inference/AGENTS.md`; if the project pivots to
-commercial licensing, the CC-BY-NC-SA training-data lineage must be
-re-evaluated before any commercial bundle is published.
+is lifted; if the project pivots to commercial licensing, the CC-BY-NC-SA
+training-data lineage must be re-evaluated before any commercial bundle
+is published.
 
 ---
 
 ## 3. Quantization (mandatory recipes)
 
 Quantization is not optional for Eliza-1. Every published bundle MUST
-flow through every applicable recipe. The required kernel set per
-inference/AGENTS.md §3 dictates which recipes run.
+flow through every applicable recipe.
 
 Pipeline order (binding):
 
@@ -117,8 +114,7 @@ Hard rules:
   MUST fail loudly. No silent passes, no skip-and-continue.
 
 The reference implementations and on-device kernels live in
-`packages/native/plugins/{qjl-cpu,polarquant-cpu}` and
-`packages/inference/{vulkan,metal,reference}`. The Python recipes here
+`packages/native/plugins/{qjl-cpu,polarquant-cpu}`. The Python recipes here
 MUST stay byte-for-byte compatible with those references — when a
 recipe's block layout, codebook, or sign-vector seed changes, the
 references and kernels must be updated in lockstep, in the same PR.
@@ -171,8 +167,10 @@ entry points for training and publishing:
   `publish_eliza1_model` (fused single-GGUF, used by the nightly CI).
   `publish_all_eliza1.sh` is the per-tier matrix driver. These MUST be the
   *only* paths that push app-facing bundles to `elizaos/eliza-1`. The older
-  `push_to_hf.py` / `push_pipeline_to_hf.py` were deleted; `push_model_to_hf.py`
-  is now a deprecation shim that redirects to the new entry points.
+  `push_to_hf.py` / `push_pipeline_to_hf.py` were deleted;
+  `publish_pipeline_to_hf.py` publishes the training pipeline source to HF Hub
+  (not production model bundles); `push_model_to_hf.py` is now a deprecation
+  shim that redirects to the new entry points.
 - `inference/serve_local.py` / `inference/serve_vllm.py` — eval-time
   serving harnesses (not production runtime — that is app-core).
 
@@ -189,15 +187,14 @@ Every Eliza-1 bundle published to `elizaos/eliza-1/bundles/<tier>` MUST go
 through `publish_all_eliza1.sh` (or the per-tier publish script it
 calls). That script:
 
-1. Assembles files matching the layout in inference/AGENTS.md §2.
+1. Assembles files matching the bundle layout contract.
 2. Runs every quantization recipe required for the tier.
 3. Calls `make -C ../../inference/verify reference-test` and the
    relevant `metal_verify` / `vulkan_verify` runs against the
-   quantized artifacts. **Hardware verification is required** — see
-   inference/AGENTS.md §8.
+   quantized artifacts. **Hardware verification is required.**
 4. Runs the eval harness: text-eval, voice-rtf, e2e-loop, 30-turn.
 5. Generates `eliza-1.manifest.json` from the verification + eval
-   results. Schema is defined in inference/AGENTS.md §6.
+   results.
 6. Generates `README.md` in the HF repo from the manifest (do not
    hand-edit the README on the HF side).
 7. Pushes weights, manifest, README, licenses, and eval blobs.
@@ -280,8 +277,8 @@ shipped bundle.
   hyperparameters, training commit. The drafter's manifest records
   its target text checkpoint's hash.
 - **Bit-exact with kernels.** When a quantization recipe and a kernel
-  reference disagree, the kernel reference (`packages/inference/reference/`,
-  `packages/native/plugins/{qjl-cpu,polarquant-cpu}`) is canonical.
+  reference disagree, the kernel reference
+  (`packages/native/plugins/{qjl-cpu,polarquant-cpu}`) is canonical.
   Update the recipe to match, not the other way around.
 - **Branding.** Published HF repos and READMEs say `Eliza-1`. Internal
   training logs, dataset names, and source-checkpoint references may
@@ -294,16 +291,11 @@ shipped bundle.
 ## 10. Files to read before making changes
 
 - `packages/training/README.md` — pipeline overview.
-- `packages/training/scripts/HF_PUBLISHING.md` — current HF publishing
-  flow. When this and the AGENTS.md disagree, AGENTS.md is canonical;
-  update HF_PUBLISHING.md to match.
-- `packages/training/scripts/CLOUD_VAST.md`,
-  `scripts/CHECKPOINT_SYNC.md`, `scripts/RL_TRAINING.md` — operational
-  references for cloud training.
+- `packages/training/docs/FINETUNING_PIPELINE.md` — finetuning pipeline
+  reference.
+- `packages/training/scripts/cloud/README.md` — cloud training
+  operational reference (Vast, Nebius dispatch).
 - `packages/training/scripts/quantization/README.md` — recipe-level
   reference.
-- `packages/inference/AGENTS.md` — the inference-side contract
-  (mandates, manifest, verification gates).
-- `/Users/shawwalters/eliza-workspace/eliza/CLAUDE.md` and
-  `/Users/shawwalters/eliza-workspace/eliza/AGENTS.md` — repo-wide
-  conventions and cleanup mandate.
+- Root `CLAUDE.md` / `AGENTS.md` — repo-wide conventions and cleanup
+  mandate.

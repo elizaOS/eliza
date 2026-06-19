@@ -7,7 +7,7 @@ Infrastructure-as-code and local-dev tooling for the elizaOS Cloud stack: Kubern
 `cloud-infra` owns two classes of artifacts:
 
 1. **Local dev cluster** — everything needed to spin up a `kind` Kubernetes cluster that mirrors the cloud services on a developer workstation (`cloud/local/`).
-2. **Production Terraform** — Hetzner Cloud control-plane VMs (`cloud/terraform/hetzner/control-plane/`) and experimental GCP roots (`cloud/terraform/gcp/`).
+2. **Production Terraform** — Hetzner Cloud control-plane VMs (`cloud/terraform/hetzner/control-plane/`), Hetzner apps-data-plane and apps-shared roots, and experimental GCP roots (`cloud/terraform/gcp/`).
 
 Nothing in this package is imported by TypeScript code. The YAML/Terraform/shell files are consumed directly by `kubectl`, `helm`, `terraform`, `docker compose`, and the chainsaw integration-test runner.
 
@@ -20,6 +20,13 @@ packages/cloud-infra/
     docker-compose.yml             # Self-hosted Supabase Storage (Postgres + storage-api)
     AWS_RETIREMENT.md              # AWS → Hetzner/Railway migration status (agent-launch headscale moved off Railway onto the CP VMs)
     RAILWAY.md                     # Canonical map of where each service runs
+    bitrouter/                     # Railway service: OSS bitrouter proxy for model routing
+      auth-proxy.mjs               # Public-facing proxy: requires BITROUTER_PROXY_TOKEN, swaps JWT, forwards to local bitrouter
+      bitrouter.yaml               # BitRouter service catalog / model routing config
+      Dockerfile                   # Container image definition
+      entrypoint.sh                # Startup: initialises SQLite wallet, signs 30-day JWT, launches bitrouter + proxy
+      railway.toml                 # Railway service config
+      README.md                    # Runtime shape, routing policy, env vars, deploy commands
     charts/
       README.md                    # Charts overview (gateway-discord chart is service-local)
     local/                         # kind cluster setup for local development
@@ -48,6 +55,7 @@ packages/cloud-infra/
           outputs.tf               # VM IPs, DNS names
           providers.tf             # hcloud + cloudflare providers
           versions.tf              # Terraform + provider version constraints
+          import.tf                # Terraform import blocks for existing resources
           backend-staging.hcl      # Cloudflare R2 remote state (staging)
           backend-production.hcl   # Cloudflare R2 remote state (production)
           tfvars/
@@ -55,6 +63,18 @@ packages/cloud-infra/
             production.tfvars.example
           cloud-init/
             bootstrap.yaml.tftpl   # cloud-init template: installs Docker, sets up systemd units
+        apps-data-plane/           # Hetzner data-plane app servers Terraform root
+          main.tf
+          outputs.tf
+          backend-staging.hcl
+          backend-production.hcl
+          cloud-init/
+        apps-shared/               # Hetzner shared-apps Terraform root
+          main.tf
+          outputs.tf
+          providers.tf
+          backend.hcl
+          cloud-init/
       gcp/
         01-foundation/             # GCP foundation (VPC, IAM, GKE module) — experimental, not CI-wired
         02-k8s/                    # GKE cluster resources — experimental, not CI-wired
@@ -66,6 +86,10 @@ packages/cloud-infra/
     local-values.test.ts           # Validates CNPG + Redis Helm values YAML structure
     local-manifests.test.ts        # Validates K8s manifests (apiVersion/kind/metadata)
     chainsaw-config.test.ts        # Validates cloud/tests/.chainsaw.yaml shape (kind/timeouts/parallelism)
+    chainsaw-suites.test.ts        # Static checks for Chainsaw suites (YAML well-formed, local file refs valid)
+    bitrouter-service.test.ts      # Validates bitrouter.yaml service catalog structure
+    docker-compose.test.ts         # Static coverage for local docker-compose.yml (env placeholders, service shape)
+    terraform-static.test.ts       # Lightweight Terraform file invariants (no provider init required)
 ```
 
 ## Key subsystems
@@ -80,9 +104,20 @@ The `shared-eliza.yaml` manifest is a `eliza.ai/v1alpha1` Server custom resource
 
 Self-hosted Supabase Storage (postgres:18-alpine + supabase/storage-api:v1.58.4) providing an S3-compatible API at `localhost:54321/storage/v1/s3`. Use this to run object-storage paths offline without a real Cloudflare R2 bucket. Requires secrets from `.env` (copy from `.env.example`).
 
-### Hetzner Terraform (`cloud/terraform/hetzner/control-plane/`)
+### BitRouter Railway service (`cloud/bitrouter/`)
 
-Manages the **control-plane** VMs only — one per env (`eliza-staging-1`, `eliza-production-1`). The **data plane** is not in this Terraform: dedicated robot nodes (`eliza-core-{env}-N`, e.g. `eliza-core-staging-1`, `eliza-core-prod-2..6`) are registered in the `docker_nodes` table — the authoritative source of truth, with `CONTAINERS_DOCKER_NODES` env only seeding it when empty — and extra burst capacity (`eliza-core-<hex>`) is minted at runtime by `packages/cloud-shared/src/lib/services/containers/node-autoscaler.ts` via the Hetzner Cloud API.
+A Railway-deployed proxy for OSS `bitrouter` model routing. `bitrouter serve` binds to `127.0.0.1:4356` inside the container; `auth-proxy.mjs` is the only public listener (binds to Railway `$PORT`). The proxy requires `Authorization: Bearer $BITROUTER_PROXY_TOKEN`, replaces it with an internal 30-day JWT signed at startup, and forwards to local BitRouter. The Cloud API connects via `BITROUTER_BASE_URL` + `BITROUTER_API_KEY`.
+
+Routing policy: `gpt-oss-120b` routes Cerebras-first with OpenRouter fallback; `openai/gpt-oss-120b` and `openai/gpt-oss-120b:nitro` are legacy aliases that follow the same policy. See `cloud/bitrouter/README.md` for full deploy commands.
+
+### Hetzner Terraform (`cloud/terraform/hetzner/`)
+
+Three Terraform roots:
+- **`control-plane/`** — manages the control-plane VMs only (one per env: `eliza-staging-1`, `eliza-production-1`).
+- **`apps-data-plane/`** — manages Hetzner data-plane app server resources.
+- **`apps-shared/`** — manages shared Hetzner infrastructure.
+
+The **data plane** is not in Terraform: dedicated robot nodes (`eliza-core-{env}-N`) are registered in the `docker_nodes` table (authoritative; `CONTAINERS_DOCKER_NODES` env only seeds when empty) and extra burst capacity (`eliza-core-<hex>`) is minted at runtime by `packages/cloud-shared/src/lib/services/containers/node-autoscaler.ts` via the Hetzner Cloud API.
 
 Each control-plane VM runs:
 - `eliza-provisioning-worker` — job queue consumer (systemd unit, deployed by CI)
@@ -127,6 +162,12 @@ Local cluster service env vars (copy from `.env.*.example`):
 - `DATABASE_URL`, `REDIS_URL`, `OPENAI_API_KEY` (`.env.agents.example`)
 - `ELIZA_CLOUD_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `GATEWAY_BOOTSTRAP_SECRET` (`.env.gateway.example`)
 - Telegram / WhatsApp / Twilio / Blooio tokens (`.env.gateway-webhook.example`)
+
+BitRouter Railway service (`cloud/bitrouter/`):
+- `BITROUTER_PROXY_TOKEN` — shared bearer token accepted by the public auth proxy (required)
+- `BITROUTER_API_KEY` — BitRouter Cloud key (`brk_...`) for cloud-managed routing
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `BITROUTER_CEREBRAS_API_KEY` — BYOK provider keys
+- `OTEL_EXPORTER_OTLP_ENDPOINT` — optional observability export
 
 ## How to extend
 

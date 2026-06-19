@@ -34,8 +34,8 @@ shim.on("playback.changed", (data) => { /* ... */ });
 | Direction | Envelope shape |
 |---|---|
 | View → host | `{ kind: "request", id: number, method: string, params: JsonValue }` |
-| Host → view (response) | `{ id: number, ok: boolean, payload?: JsonValue, error?: string }` |
-| Host → view (event) | `{ event: string, data: JsonValue }` |
+| Host → view (response) | `{ kind: "response", id: number, ok: boolean, payload?: JsonValue, error?: string }` |
+| Host → view (event) | `{ kind: "event", event: string, data: JsonValue }` |
 
 View asset URLs are resolved via the `views://` URL scheme: `views://<pluginName>/<relativePath>`.
 

@@ -14,7 +14,7 @@ src/
   index.node.ts         Full Node API surface (the real export list — start here)
   index.browser.ts      Browser-safe subset (no fs/process-bound modules)
   index.edge.ts         Edge-runtime subset
-  runtime.ts            AgentRuntime class (~9000 lines, `class AgentRuntime implements IAgentRuntime` at L703); the central orchestrator
+  runtime.ts            AgentRuntime class (~9000 lines, `class AgentRuntime implements IAgentRuntime` at L718); the central orchestrator
   runtime-composition.ts  loadCharacters / createRuntimes / settings merge (Node-only boot helpers)
   runtime-env.ts        Runtime environment + state resolution
   plugin.ts             Plugin load/validate/resolve: loadPlugin, resolvePlugins, validatePlugin, resolvePluginDependencies
@@ -25,7 +25,10 @@ src/
   types/                Canonical type system. types/index.ts is the barrel; types/runtime.ts has IAgentRuntime;
                         plugin.ts, model.ts, memory.ts, state.ts, service.ts, task.ts, events.ts, schema*.ts, etc.
   services/             Built-in services: task / task-scheduler, evaluator, message, relationships,
-                        pairing, hook, optimized-prompt, tool-policy, trajectories, triggerScheduling, approval
+                        pairing, pairing-integration, pairing-migration, hook, plugin-hooks, optimized-prompt,
+                        optimized-prompt-resolver, tool-policy, trajectories, trajectory-export, trajectory-types,
+                        triggerScheduling, approval, embedding, followUp, analysis-mode-handler, agentEvent,
+                        runtime-capability-service, setup-cli, setup-rpc, setup-state
   features/             Self-contained capability bundles, each its own dir:
                         basic-capabilities (the core action/provider/evaluator/service bundle),
                         advanced-capabilities, advanced-memory, advanced-planning, approvals, autonomy, ballots,
@@ -39,9 +42,23 @@ src/
   generated/            Build-time generated action/provider/evaluator docs + spec-helpers (do not hand-edit)
   i18n/                 validation + action-search keyword data (some generated; see prebuild)
   security/             redact, ssrf-adjacent input policy, spawn-env-policy, external-content, incoming-message-security
+  sensitive-requests/   Sensitive request policy helpers
   network/              SSRF guard + secure fetch (fetch-guard, ssrf)
   markdown/  media/     markdown IR/chunking; media fetch + mime/type detection
   testing/              Test harness exports (live-provider, integration-runtime, http, mocks) — `@elizaos/core/testing`
+  capabilities/         Runtime capability index
+  connectors/           Connector abstractions (account-manager, connector-config, oauth-role, privacy)
+  plugins/              Plugin-related helpers
+  registries/           Registry utilities
+  sessions/             Session management
+  sandbox/              Sandbox policy
+  optimization/         Optimization utilities
+  scheduled-task/       Scheduled task helpers
+  validation/           Input validation utilities
+  constants/            Shared constants
+  api/                  API helpers
+  owner-state/          Owner state tracking
+  messaging/            Messaging utilities
   search.ts             In-memory/embedding search utilities
   utils.ts  utils/      Shared helpers: prompts (composePromptFromState, parseKeyValueXml), batch-queue,
                         confirmation, read-env, state-dir, streaming, environment, plugin-loader
