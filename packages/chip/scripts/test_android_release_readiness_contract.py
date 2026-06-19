@@ -1344,8 +1344,8 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                     gate.ANDROID_APK_PAYLOAD_REPORT,
                     (
                         '{"status":"pass","evidence":{'
-                        '"provenance_android_package":"ai.milady.milady",'
-                        '"vendor_ro_elizaos_home":"ai.milady.milady"}}\n'
+                        '"provenance_android_package":"ai.example.stale",'
+                        '"vendor_ro_elizaos_home":"ai.example.stale"}}\n'
                     ),
                 )
                 write(
@@ -1376,13 +1376,14 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             "android_release_manifest_launcher_package_mismatch",
             {finding["code"] for finding in report["findings"]},
         )
-        self.assertEqual(report["evidence"]["expected_android_package"], "ai.milady.milady")
+        self.assertEqual(report["evidence"]["expected_android_package"], "ai.example.stale")
 
     def test_report_provenance_sanitizer_strips_host_local_paths(self) -> None:
+        repo_root = str(gate.REPO_ROOT)
         payload = {
             "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/vendor.img",
-            "repo": "/home/shaw/milady/eliza/packages/chip/docs/evidence/android/log.txt",
-            "command": "AOSP_DIR=/home/shaw/aosp python3 /home/shaw/milady/eliza/packages/chip/scripts/check.py",
+            "repo": f"{repo_root}/packages/chip/docs/evidence/android/log.txt",
+            "command": f"AOSP_DIR=/home/shaw/aosp python3 {repo_root}/packages/chip/scripts/check.py",
             "nested": ["/tmp/aosp/out/target/product/eliza_ai_soc/system.img"],
         }
 

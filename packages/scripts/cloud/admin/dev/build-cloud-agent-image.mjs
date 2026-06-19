@@ -5,7 +5,7 @@
  *
  *   bun run --cwd packages/cloud-api agent:build
  *
- * The build context root is /Users/.../milady (one level above this repo) so
+ * The build context root is one level above this repo so
  * the Dockerfile's `COPY eliza/packages/...` paths resolve. The tag is
  * `eliza-cloud-agent:local` to match the default `ELIZA_AGENT_IMAGE` used
  * by the local provider.

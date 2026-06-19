@@ -34,7 +34,7 @@ function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   const store = new Map<string, string>(Object.entries(settings));
   return {
     agentId: AGENT_ID,
-    character: { name: "Milady", settings: { secrets: {} }, secrets: {} },
+    character: { name: "Example", settings: { secrets: {} }, secrets: {} },
     getSetting: (key: string) => store.get(key) ?? null,
     setSetting: (key: string, value: string) => {
       store.set(key, value);
@@ -140,7 +140,7 @@ describe("resolveLaunchSession — Hyperscape live-data parser", () => {
   it("parses the four live endpoints into a contract-valid AppSessionState DTO", async () => {
     const runtime = makeRuntime({
       HYPERSCAPE_API_URL: API_BASE,
-      HYPERSCAPE_CHARACTER_ID: "milady-character",
+      HYPERSCAPE_CHARACTER_ID: "example-character",
     });
     const session = (await resolveLaunchSession({
       appName: "@elizaos/plugin-hyperscape",
@@ -160,8 +160,8 @@ describe("resolveLaunchSession — Hyperscape live-data parser", () => {
     expect(session.controls).toEqual(["pause"]);
     expect(session.canSendCommands).toBe(true);
     // followEntity + characterId come from HYPERSCAPE_CHARACTER_ID.
-    expect(session.characterId).toBe("milady-character");
-    expect(session.followEntity).toBe("milady-character");
+    expect(session.characterId).toBe("example-character");
+    expect(session.followEntity).toBe("example-character");
     // running → no "Connecting session..." summary.
     expect(session.summary).toBeNull();
     // goalLabel = goal.description.
@@ -255,7 +255,7 @@ describe("resolveLaunchSession — Hyperscape live-data parser", () => {
   it("returns null when no agentId can be resolved", async () => {
     const runtime = {
       agentId: "",
-      character: { name: "Milady" },
+      character: { name: "Example" },
       getSetting: (key: string) =>
         key === "HYPERSCAPE_API_URL" ? API_BASE : null,
     } as unknown as IAgentRuntime;
@@ -278,7 +278,7 @@ describe("refreshRunSession — reuses the existing session's agentId", () => {
       mode: "spectate-and-steer",
       status: "running",
       agentId: AGENT_ID,
-      characterId: "milady-character",
+      characterId: "example-character",
     } as AppSessionState;
 
     const session = (await refreshRunSession({
@@ -319,7 +319,7 @@ describe("resolveViewerAuthMessage — HYPERSCAPE_AUTH credential", () => {
   it("builds the HYPERSCAPE_AUTH message with token + agentId + characterId", async () => {
     const runtime = makeRuntime({
       HYPERSCAPE_AUTH_TOKEN: "tok-abc",
-      HYPERSCAPE_CHARACTER_ID: "milady-character",
+      HYPERSCAPE_CHARACTER_ID: "example-character",
     });
     const message = (await resolveViewerAuthMessage({
       runtime,
@@ -329,8 +329,8 @@ describe("resolveViewerAuthMessage — HYPERSCAPE_AUTH credential", () => {
       type: "HYPERSCAPE_AUTH",
       authToken: "tok-abc",
       agentId: AGENT_ID,
-      characterId: "milady-character",
-      followEntity: "milady-character",
+      characterId: "example-character",
+      followEntity: "example-character",
     });
   });
 

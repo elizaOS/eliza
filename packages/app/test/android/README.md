@@ -32,7 +32,7 @@ start, model won't download/run, a route won't render, cloud won't provision
 - A WebView-debuggable debug APK. Build it from the nested eliza checkout:
 
   ```bash
-  ELIZA_MOBILE_REPO_ROOT=/home/shaw/milady/eliza \
+  ELIZA_MOBILE_REPO_ROOT=/home/example/eliza \
   ELIZA_WEBVIEW_DEBUG=1 \
   ELIZA_BUN_RISCV64_OPTIONAL=1 \
   ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 \
@@ -41,7 +41,7 @@ start, model won't download/run, a route won't render, cloud won't provision
   ```
 
   - `ELIZA_MOBILE_REPO_ROOT` pins repo-root resolution to the eliza checkout
-    (else it walks up to the milady parent and builds the wrong app).
+    (else it walks up to the parent and builds the wrong app).
   - `ELIZA_WEBVIEW_DEBUG=1` flips `webContentsDebuggingEnabled` on so Playwright
     can attach to the WebView. Off for production/store builds.
   - `ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1` skips the arm64 MTP/vulkan llama lib

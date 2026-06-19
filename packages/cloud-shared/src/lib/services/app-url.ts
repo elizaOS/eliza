@@ -7,7 +7,7 @@
  * to e.g. `apps.elizacloud.ai` on the apps data plane by terraform). It
  * deliberately does NOT use the shared `publicBaseDomain()`, which falls back to
  * the agent sandbox domain (`ELIZA_CLOUD_AGENT_BASE_DOMAIN`) — apps must live on
- * their own domain and never silently inherit the agent/milady domain.
+ * their own domain and never silently inherit the agent sandbox domain.
  *
  * Returns null when the apps base domain isn't configured (e.g. local dev, or a
  * host that only has the agent domain), so callers skip URL stamping rather than

@@ -8,9 +8,9 @@ import type { StartupShellProps } from "./startup-shell-types";
 
 const FONT = "'Poppins', Arial, system-ui, sans-serif";
 
-// Brand surface for the startup splash: the active theme's accent (gold for
-// Milady via brand-gold.css; the elizaOS accent otherwise) with its readable
-// foreground. Whitelabel seam — no hardcoded brand color.
+// Brand surface for the startup splash: the active theme's accent (the
+// elizaOS accent by default) with its readable foreground. Whitelabel seam —
+// no hardcoded brand color.
 const BRAND_SURFACE =
   "bg-[var(--accent,#FF5800)] text-[var(--accent-foreground,#fff)]";
 

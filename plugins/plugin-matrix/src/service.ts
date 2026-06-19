@@ -237,15 +237,11 @@ const ROOM_KEY_NONCE_BYTES = 12;
 
 /**
  * Resolve the per-user state root the runtime already uses for on-disk state.
- * Matches the MILADY_STATE_DIR / ELIZA_STATE_DIR convention so the encrypted
+ * Matches the ELIZA_STATE_DIR convention so the encrypted
  * room-key files land next to the rest of the agent's persistent state.
  */
 function resolveStateDir(): string {
-  return (
-    process.env.MILADY_STATE_DIR ||
-    process.env.ELIZA_STATE_DIR ||
-    join(homedir(), ".local/state/milady")
-  );
+  return process.env.ELIZA_STATE_DIR || join(homedir(), ".local/state/eliza");
 }
 
 /**

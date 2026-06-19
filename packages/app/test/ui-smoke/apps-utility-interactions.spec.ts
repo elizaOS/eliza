@@ -449,7 +449,7 @@ test("shopify utility controls exercise commerce workflows", async ({
     page.getByRole("tab", { name: /Products/i }),
     "Shopify products tab",
   );
-  await expect(page.getByText("Milady Hoodie")).toBeVisible();
+  await expect(page.getByText("Example Hoodie")).toBeVisible();
   await page.getByPlaceholder("Search products…").fill("Sticker");
   await expect(page.getByText("Agent Sticker Pack")).toBeVisible();
   await clickRequired(

@@ -55,7 +55,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         system_ui = tmp / "os/android/system-ui"
         native = system_ui / "native"
-        vendor = tmp / "os/android/vendor/milady"
+        vendor = tmp / "os/android/vendor/eliza"
         chip = tmp / "chip"
         bridge_kt = write(
             native / "src/main/java/ai/elizaos/system/bridge/SystemBridge.kt",
@@ -111,7 +111,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             "PRODUCT_PACKAGES += Eliza\n",
         )
         launcher_main = write(
-            tmp / "app-core/platforms/android/app/src/main/java/ai/milady/milady/MainActivity.java",
+            tmp / "app-core/platforms/android/app/src/main/java/ai/elizaos/app/MainActivity.java",
             'class MainActivity { void onCreate(){ webView.addJavascriptInterface(new ElizaNativeBridge(), "ElizaNative"); } }\n',
         )
         local_manifest = write(
@@ -120,27 +120,27 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         )
         patches = [
             mock.patch.object(gate, "WORKSPACE", tmp),
-            mock.patch.object(gate, "APP_PACKAGE", "ai.milady.milady"),
-            mock.patch.object(gate, "APP_NAME", "Milady"),
-            mock.patch.object(gate, "VENDOR_DIR_NAME", "milady"),
+            mock.patch.object(gate, "APP_PACKAGE", "ai.elizaos.app"),
+            mock.patch.object(gate, "APP_NAME", "Eliza"),
+            mock.patch.object(gate, "VENDOR_DIR_NAME", "eliza"),
             mock.patch.object(
                 gate,
                 "REQUIRED_MATERIALIZED_LOCAL_MANIFEST_DESTS",
                 {
-                    "vendor/milady/apps/Milady/Milady.apk",
-                    "vendor/milady/bootanimation/bootanimation.zip",
-                    "vendor/milady/init/init.milady.rc",
-                    "vendor/milady/permissions/default-permissions-ai.milady.milady.xml",
-                    "vendor/milady/permissions/privapp-permissions-ai.milady.milady.xml",
-                    "vendor/milady/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
+                    "vendor/eliza/apps/Eliza/Eliza.apk",
+                    "vendor/eliza/bootanimation/bootanimation.zip",
+                    "vendor/eliza/init/init.eliza.rc",
+                    "vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml",
+                    "vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml",
+                    "vendor/eliza/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
                 },
             ),
             mock.patch.object(
                 gate,
                 "EXPECTED_RUNTIME_PERMISSION_XMLS",
                 {
-                    "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml",
-                    "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml",
+                    "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml",
+                    "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml",
                     "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
                 },
             ),
@@ -332,16 +332,16 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
   "launcher_consumed_live_state": true,
   "production_mock_fallback_absent": true,
   "permission_xml_host_symlink_absent": true,
-  "launcher_package": "ai.milady.milady",
+  "launcher_package": "ai.elizaos.app",
   "observations": {
     "permission_file_probes": {
-      "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml": "-rw-r--r-- default-permissions-ai.milady.milady.xml",
-      "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml": "-rw-r--r-- privapp-permissions-ai.milady.milady.xml",
+      "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml": "-rw-r--r-- default-permissions-ai.elizaos.app.xml",
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml": "-rw-r--r-- privapp-permissions-ai.elizaos.app.xml",
       "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": "-rw-r--r-- privapp-permissions-ai.elizaos.system.bridge.xml"
     },
     "permission_file_symlink_targets": {
-      "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml": {"readlink": "", "readlink_f": "", "readlink_ok": "false", "readlink_f_ok": "false"},
-      "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml": {"readlink": "", "readlink_f": "", "readlink_ok": "false", "readlink_f_ok": "false"},
+      "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml": {"readlink": "", "readlink_f": "", "readlink_ok": "false", "readlink_f_ok": "false"},
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml": {"readlink": "", "readlink_f": "", "readlink_ok": "false", "readlink_f_ok": "false"},
       "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": {"readlink": "", "readlink_f": "", "readlink_ok": "false", "readlink_f_ok": "false"}
     }
   },
@@ -414,14 +414,14 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                 )
                 gate.LOCAL_MANIFEST.write_text(
                     "<manifest><project>"
-                    '<linkfile dest="vendor/milady/system-ui/native/build.gradle.kts" />'
-                    '<linkfile dest="vendor/milady/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt" />'
-                    '<copyfile dest="vendor/milady/apps/Milady/Milady.apk" />'
-                    '<copyfile dest="vendor/milady/bootanimation/bootanimation.zip" />'
-                    '<copyfile dest="vendor/milady/init/init.milady.rc" />'
-                    '<copyfile dest="vendor/milady/permissions/default-permissions-ai.milady.milady.xml" />'
-                    '<copyfile dest="vendor/milady/permissions/privapp-permissions-ai.milady.milady.xml" />'
-                    '<copyfile dest="vendor/milady/permissions/privapp-permissions-ai.elizaos.system.bridge.xml" />'
+                    '<linkfile dest="vendor/eliza/system-ui/native/build.gradle.kts" />'
+                    '<linkfile dest="vendor/eliza/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt" />'
+                    '<copyfile dest="vendor/eliza/apps/Eliza/Eliza.apk" />'
+                    '<copyfile dest="vendor/eliza/bootanimation/bootanimation.zip" />'
+                    '<copyfile dest="vendor/eliza/init/init.eliza.rc" />'
+                    '<copyfile dest="vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml" />'
+                    '<copyfile dest="vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml" />'
+                    '<copyfile dest="vendor/eliza/permissions/privapp-permissions-ai.elizaos.system.bridge.xml" />'
                     "</project></manifest>\n",
                     encoding="utf-8",
                 )
@@ -523,12 +523,12 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             gradle = write(
                 Path(tmpdir) / "build.gradle",
-                'android { namespace "ai.old.namespace"; defaultConfig { applicationId "ai.milady.milady" } }\n',
+                'android { namespace "ai.old.namespace"; defaultConfig { applicationId "ai.elizaos.app" } }\n',
             )
             with mock.patch.object(gate, "ANDROID_APP_GRADLE", gradle):
                 self.assertEqual(
                     gate.read_android_gradle_identity(),
-                    {"appId": "ai.milady.milady"},
+                    {"appId": "ai.elizaos.app"},
                 )
 
 

@@ -88,7 +88,7 @@ describe("HyperscapeDetailExtension", () => {
     // Viewer metric = run.viewerAttachment.
     expect(screen.getByText("attached")).toBeTruthy();
     // Follow metric = session.followEntity.
-    expect(screen.getAllByText("milady-character").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("example-character").length).toBeGreaterThan(0);
     // Relay metric = canSendCommands → "Ready".
     expect(screen.getByText("Ready")).toBeTruthy();
     // Health metric = run.health.state.
@@ -112,7 +112,7 @@ describe("HyperscapeDetailExtension", () => {
     // goalLabel null, run.summary null → "Host ready".
     expect(screen.getByText("Host ready")).toBeTruthy();
     // followEntity falls back to viewer.authMessage.followEntity.
-    expect(screen.getAllByText("milady-character").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("example-character").length).toBeGreaterThan(0);
     // canSendCommands false → relay "Waiting".
     expect(screen.getByText("Waiting")).toBeTruthy();
   });

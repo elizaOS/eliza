@@ -7,7 +7,9 @@ import { resolveRuntimeEntryPath } from "./agent";
 const tmpDirs: string[] = [];
 
 function makeRuntimeDist(): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "milady-runtime-layout-"));
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "example-runtime-layout-"),
+  );
   tmpDirs.push(root);
   return root;
 }

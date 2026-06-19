@@ -417,8 +417,7 @@ if (!hasBun && !which("npx")) {
 // coerceBoolean — imported from ./lib/dev-ui-onchain.mjs
 
 function resolveElizaStateDir() {
-  const explicitStateDir =
-    process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
+  const explicitStateDir = process.env.ELIZA_STATE_DIR?.trim();
   if (explicitStateDir) return path.resolve(explicitStateDir);
 
   const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
@@ -436,9 +435,7 @@ function resolveElizaNamespace() {
 }
 
 function resolveElizaConfigPath() {
-  const explicitConfigPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    process.env.MILADY_CONFIG_PATH?.trim();
+  const explicitConfigPath = process.env.ELIZA_CONFIG_PATH?.trim();
   if (explicitConfigPath) {
     return path.resolve(explicitConfigPath);
   }
@@ -1220,7 +1217,6 @@ if (uiOnly) {
     childEnv.NODE_COMPILE_CACHE?.trim() ||
     path.join(
       process.env.ELIZA_STATE_DIR?.trim() ||
-        process.env.MILADY_STATE_DIR?.trim() ||
         path.join(os.homedir(), ".local", "state", cliName),
       "cache",
       "node-compile",
@@ -1251,8 +1247,8 @@ if (uiOnly) {
         // swap-dying. Healthy boots sit ~230-440MB; only a stuck/looping child
         // exceeds this. Most of a stuck child's RSS is native/WASM (PGlite,
         // llama) living OUTSIDE old-space, so this is a backstop, not the
-        // primary bound. Override with MILADY_DEV_API_MAX_OLD_SPACE_MB.
-        `--max-old-space-size=${process.env.MILADY_DEV_API_MAX_OLD_SPACE_MB?.trim() || "4096"}`,
+        // primary bound. Override with ELIZA_DEV_API_MAX_OLD_SPACE_MB.
+        `--max-old-space-size=${process.env.ELIZA_DEV_API_MAX_OLD_SPACE_MB?.trim() || "4096"}`,
         // Let the dev heap-report timer force a GC for an accurate heapUsed.
         "--expose-gc",
       ].reduce(appendNodeOption, childEnv.NODE_OPTIONS),

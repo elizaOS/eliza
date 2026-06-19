@@ -44,11 +44,11 @@ export function makeHyperscapeSession(
     agentId: "hyper-agent-1",
     characterId:
       overrides.characterId === undefined
-        ? "milady-character"
+        ? "example-character"
         : overrides.characterId,
     followEntity:
       overrides.followEntity === undefined
-        ? "milady-character"
+        ? "example-character"
         : overrides.followEntity,
     canSendCommands: overrides.canSendCommands ?? true,
     controls: overrides.controls ?? ["pause"],
@@ -113,12 +113,12 @@ export function makeHyperscapeRun(
         type: "HYPERSCAPE_AUTH",
         authToken: "tok-abc",
         agentId: "hyper-agent-1",
-        characterId: "milady-character",
-        followEntity: "milady-character",
+        characterId: "example-character",
+        followEntity: "example-character",
       },
     },
     session,
-    characterId: "milady-character",
+    characterId: "example-character",
     agentId: "hyper-agent-1",
     status: overrides.status ?? session?.status ?? "running",
     summary: session?.summary ?? null,

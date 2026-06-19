@@ -115,13 +115,13 @@ describe("HyperscapeTuiView", () => {
       activeRunCount: 1,
       sessionId: "hyper-agent-1",
       canSend: true,
-      followEntity: "milady-character",
-      characterId: "milady-character",
+      followEntity: "example-character",
+      characterId: "example-character",
       suggestedPromptCount: 3,
     });
     expect(screen.getByText("run hyper-run")).toBeTruthy();
     expect(screen.getByText("session hyper-agent-1")).toBeTruthy();
-    expect(screen.getByText("follow milady-character")).toBeTruthy();
+    expect(screen.getByText("follow example-character")).toBeTruthy();
     expect(screen.getByText("commands available")).toBeTruthy();
     // meta line: "running | attached | healthy".
     expect(screen.getByText("running | attached | healthy")).toBeTruthy();

@@ -60,7 +60,7 @@ const VOICE_MODELS = (() => {
     path.join(home, ".cache/eliza/asr-model");
   const ttsDir =
     process.env.ELIZA_ANDROID_TTS_MODEL_DIR ??
-    path.join(home, ".local/state/milady/local-inference/models/omnivoice");
+    path.join(home, ".local/state/eliza/local-inference/models/omnivoice");
   const dev = "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
   return [
     {

@@ -1,7 +1,7 @@
 # Critical Assessment: SSD AiNex Codebase Port to elizaOS/Eliza
 
 **Scope**: `/media/shaw/Extreme SSD/hyperscape-robot-workspace/` and sibling directories.  
-**Target**: Porting to `/home/shaw/milady/eliza/packages/robot/` (Python) and `/home/shaw/milady/eliza/plugins/plugin-ainex/` (TypeScript).  
+**Target**: Porting to `/path/to/eliza/packages/robot/` (Python) and `/path/to/eliza/plugins/plugin-ainex/` (TypeScript).  
 **Assessment Date**: 2025-05-18  
 **Total SSD Codebase Size**: 14G  
 
@@ -22,7 +22,7 @@
 | `printables/` | STL/printable parts for physical assembly | **SKIP** | Hardware CAD; separate CAM process |
 | `fleet/` | Multi-robot orchestration (if any) | **SKIP** | Not in core path for single-robot MVP |
 | `turboquant/` | KV-cache compression library (PyTorch) | **REFERENCE-ONLY** | Optional optimization; document as future enhancement |
-| `eliza/` | Parallel Hyperscape-fork eliza repo | **SKIP** | Use main `/home/shaw/milady/eliza` instead |
+| `eliza/` | Parallel Hyperscape-fork eliza repo | **SKIP** | Use main `/path/to/eliza` instead |
 | `GAIT_SOURCE_CODE.py` | Root file: Hiwonder gait primitives (Bezier, cubic spline) | **DIRECT** | Self-contained numpy; ~360 LOC; critical for gait baseline |
 | `report.md` | Architecture narrative + prior art analysis | **REFERENCE-ONLY** | Excellent framing; 200+ lines of design rationale |
 
@@ -351,7 +351,7 @@ Total files per checkpoint: config.json (~1.7K), metrics.json (~1.3K)
 ### Port Strategy for TypeScript
 
 **Current**: Python ElizaOS plugin (elizaos Python interop)  
-**Target**: Rewrite as TypeScript plugin in `/home/shaw/milady/eliza/plugins/plugin-ainex/`
+**Target**: Rewrite as TypeScript plugin in `/path/to/eliza/plugins/plugin-ainex/`
 
 **Feature parity needed**:
 1. Bridge client (WebSocket, command/event model) → adapt existing plugin-websocket patterns

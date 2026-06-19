@@ -119,7 +119,7 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
                     "name": "AOSP_DIR",
                     "value": "/home/shaw/aosp",
                     "command_hint": {
-                        "capture_command": "/home/shaw/milady/eliza/packages/chip/script.sh /home/shaw/aosp"
+                        "capture_command": "/path/to/eliza/packages/chip/script.sh /home/shaw/aosp"
                     },
                 }
             ],

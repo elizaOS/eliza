@@ -1,6 +1,6 @@
 # Plugin Views — Productivity / LifeOps / Comms / Social (UX + Code + State Inventory)
 
-Repo: `/home/shaw/milady/eliza`. Scope: 16 plugin views (productivity, lifeops, comms, social/game).
+Repo: `/home/shaw/eliza`. Scope: 16 plugin views (productivity, lifeops, comms, social/game).
 Redesign direction judged against: **minimalism** (cut text/borders/cards/badges/inputs/slop; icons+color+whitespace over text), **lighter single look** (move off heavy black bg; orange `#ff8a24` accent, blue `#1d91e8` info, white/black/gray; flat futuristic), **chat-first** (floating chat overlay is the PRIMARY interface on top of every view; views should be glanceable, voice-forward, show only essential info, expose view-dependent actions, surface proactive agent context).
 
 ---

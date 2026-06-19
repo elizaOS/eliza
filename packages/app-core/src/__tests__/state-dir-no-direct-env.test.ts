@@ -2,7 +2,7 @@
  * Guard: stale state-dir alias migrations should not leave duplicate fallback
  * duplicate self-fallback chains in app-core source.
  * The canonical resolver lives in `@elizaos/core/utils/state-dir.ts` and
- * honors `ELIZA_STATE_DIR`/`MILADY_STATE_DIR` > `$XDG_STATE_HOME/<namespace>` >
+ * honors `ELIZA_STATE_DIR` > `$XDG_STATE_HOME/<namespace>` >
  * `~/.local/state/<namespace>`.
  */
 
