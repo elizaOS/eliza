@@ -58,12 +58,7 @@ export default defineConfig({
     timeout: 15_000,
   },
   fullyParallel: false,
-  // Heavy plugin view bundles (e.g. hyperliquid's charting libs, the views
-  // catalog) occasionally lose the cold first-fetch and render the dynamic-view
-  // "Failed to load view" fallback, which a warm retry resolves. Retry to
-  // absorb that intermittent cold-load timing — a genuinely broken view still
-  // fails after the retries.
-  retries: 2,
+  retries: 0,
   workers: 1,
   reporter: "list",
   outputDir: recording
