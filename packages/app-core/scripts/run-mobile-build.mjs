@@ -1314,7 +1314,29 @@ function reconcilePluginManifestWithGradle(targetAssets) {
   };
   const kept = plugins.filter(isCompiledAndUsable);
 
-  if (kept.length !== plugins.length) {
+  // `cap sync` wires `@capacitor/local-notifications` into the gradle project
+  // (capacitor.settings.gradle / capacitor.build.gradle) but does NOT emit its
+  // auto-register entry into capacitor.plugins.json — so the compiled
+  // LocalNotificationsPlugin class never auto-registers and the JS bridge
+  // (`Capacitor.Plugins.LocalNotifications`) resolves to undefined on-device.
+  // Add it back when its module is compiled. (Verified on Pixel 9a: without
+  // this entry LocalNotifications.schedule is unavailable; with it, native
+  // notifications fire.)
+  const LOCAL_NOTIFICATIONS_PKG = "@capacitor/local-notifications";
+  if (
+    compiledProjects.has("capacitor-local-notifications") &&
+    !kept.some((plugin) => plugin?.pkg === LOCAL_NOTIFICATIONS_PKG)
+  ) {
+    kept.push({
+      pkg: LOCAL_NOTIFICATIONS_PKG,
+      classpath:
+        "com.capacitorjs.plugins.localnotifications.LocalNotificationsPlugin",
+    });
+  }
+
+  const before = JSON.stringify(plugins);
+  const after = JSON.stringify(kept);
+  if (before !== after) {
     const dropped = plugins
       .filter((plugin) => !isCompiledAndUsable(plugin))
       .map((plugin) => plugin?.pkg)
@@ -1325,7 +1347,7 @@ function reconcilePluginManifestWithGradle(targetAssets) {
       "utf8",
     );
     console.log(
-      `[mobile-build] Reconciled capacitor.plugins.json with capacitor.settings.gradle (dropped ${plugins.length - kept.length} plugin(s): ${dropped}).`,
+      `[mobile-build] Reconciled capacitor.plugins.json with capacitor.settings.gradle (${dropped ? `dropped: ${dropped}; ` : ""}ensured LocalNotifications).`,
     );
   }
 }
