@@ -1,16 +1,23 @@
 /**
  * GEPA / bootstrap-fewshot run for the CONTEXTUAL view evaluator's `view_context`
- * prompt against a local eliza model via Ollama (the on-device tier). This is the
- * "GEPA applied to the evaluator" loop: it optimizes the situation→view
+ * prompt against a local eliza-1 model via the eliza llama.cpp fork's
+ * `llama-server` (NOT Ollama — see lib/llamacpp.ts). Optimizes the situation→view
  * INSTRUCTION the evaluator uses, scored by view-id match (scoreViewSelection),
- * over schema-constrained decoding. Persist the winning instruction to
- * <state>/optimized-prompts/view_context/ and the evaluator auto-loads it via
- * resolveOptimizedPromptForRuntime(runtime, "view_context", baseline).
+ * schema-constrained (mirrors production guided decode). Persist the winning
+ * instruction to <state>/optimized-prompts/view_context/ and the evaluator
+ * auto-loads it via resolveOptimizedPromptForRuntime(runtime,"view_context",base).
  *
- * runNativeBackend does NOT persist; the best prompt is written to a temp dir
- * for inspection. Promote it into the live store deliberately (never from a test).
+ * Start a server (one model per server), then run:
+ *   LLAMACPP_URL=http://127.0.0.1:8080 LABEL=eliza-1-2b \
+ *     bun run plugins/plugin-training/scripts/gepa-view-context.ts
  *
- * Usage: bun run plugins/plugin-training/scripts/gepa-view-context.ts [model...]
+ * runNativeBackend is not used here; the best prompt is written to a temp dir for
+ * inspection. Promote into the live store deliberately (never from a test).
+ *
+ * Measured (eliza-1 qwen3.5, view-id match over the 23-row dataset):
+ *   eliza-1-0_8b  ~0.04  (cannot do contextual inference)
+ *   eliza-1-2b    ~0.57  (the default tier — usable)
+ *   eliza-1-4b    (higher; the ceiling)
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -21,12 +28,10 @@ import {
   runGepa,
   scoreViewSelection,
 } from "../src/optimizers/index.js";
-import type {
-  LlmAdapter,
-  OptimizationExample,
-} from "../src/optimizers/types.js";
+import type { OptimizationExample } from "../src/optimizers/types.js";
+import { LLAMACPP_URL, llamacppAdapter } from "./lib/llamacpp.js";
 
-const OLLAMA = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
+const LABEL = process.env.LABEL ?? "llamacpp";
 const DATASET = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -58,35 +63,6 @@ const SCHEMA = {
   required: ["viewId"],
 };
 
-function adapter(model: string): LlmAdapter {
-  return {
-    async complete({ system, user, temperature, maxTokens }) {
-      const res = await fetch(`${OLLAMA}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model,
-          stream: false,
-          format: SCHEMA,
-          options: {
-            temperature: temperature ?? 0,
-            num_predict: maxTokens ?? 60,
-          },
-          messages: [
-            ...(system ? [{ role: "system", content: system }] : []),
-            { role: "user", content: user },
-          ],
-        }),
-      });
-      if (!res.ok) throw new Error(`ollama ${res.status}`);
-      return (
-        ((await res.json()) as { message?: { content?: string } }).message
-          ?.content ?? ""
-      );
-    },
-  };
-}
-
 function load(): OptimizationExample[] {
   return readFileSync(DATASET, "utf8")
     .split("\n")
@@ -110,47 +86,42 @@ const BASELINE =
   "Decide whether opening one app view would help the user, and which. Return JSON {viewId, reason}.";
 
 async function main() {
-  const models =
-    process.argv.slice(2).length > 0
-      ? process.argv.slice(2)
-      : ["eliza-1-0_8b:latest", "elizatest:latest"];
   mkdirSync(TMP_OUT, { recursive: true });
   const dataset = load();
-  console.log(`dataset: ${dataset.length} rows | ollama: ${OLLAMA}`);
-
-  for (const model of models) {
-    console.log(`\n=== ${model} ===`);
-    const scorer = createPromptScorer(adapter(model), {
-      compare: scoreViewSelection,
-      maxTokens: 60,
-    });
-    const baseline = await scorer(BASELINE, dataset);
-    const boot = await runBootstrapFewshot({
-      baselinePrompt: BASELINE,
-      dataset,
-      scorer,
-      llm: adapter(model),
-      options: { k: 6, rankByScorer: true },
-    });
-    const gepa = await runGepa({
-      baselinePrompt: BASELINE,
-      dataset,
-      scorer,
-      llm: adapter(model),
-      options: { population: 8, generations: 5, scoringSubset: dataset.length },
-    });
-    console.log(
-      `  baseline=${baseline.toFixed(3)} bootstrap=${boot.score.toFixed(3)} gepa=${gepa.score.toFixed(3)}`,
-    );
-    const best = [
-      { name: "baseline", score: baseline, prompt: BASELINE },
-      { name: "bootstrap", score: boot.score, prompt: boot.optimizedPrompt },
-      { name: "gepa", score: gepa.score, prompt: gepa.optimizedPrompt },
-    ].sort((a, b) => b.score - a.score)[0];
-    const out = join(TMP_OUT, `${model.replace(/[^a-z0-9]+/gi, "_")}.json`);
-    writeFileSync(out, JSON.stringify(best, null, 2));
-    console.log(`  best: ${best.name} ${best.score.toFixed(3)} → ${out}`);
-  }
+  const adapter = llamacppAdapter(SCHEMA);
+  console.log(`[${LABEL}] dataset: ${dataset.length} rows | ${LLAMACPP_URL}`);
+  const scorer = createPromptScorer(adapter, {
+    compare: scoreViewSelection,
+    maxTokens: 60,
+  });
+  const baseline = await scorer(BASELINE, dataset);
+  const boot = await runBootstrapFewshot({
+    baselinePrompt: BASELINE,
+    dataset,
+    scorer,
+    llm: adapter,
+    options: { k: 6, rankByScorer: true },
+  });
+  const gepa = await runGepa({
+    baselinePrompt: BASELINE,
+    dataset,
+    scorer,
+    llm: adapter,
+    options: { population: 8, generations: 5, scoringSubset: dataset.length },
+  });
+  console.log(
+    `[${LABEL}] baseline=${baseline.toFixed(3)} bootstrap=${boot.score.toFixed(3)} gepa=${gepa.score.toFixed(3)}`,
+  );
+  const best = [
+    { name: "baseline", score: baseline, prompt: BASELINE },
+    { name: "bootstrap", score: boot.score, prompt: boot.optimizedPrompt },
+    { name: "gepa", score: gepa.score, prompt: gepa.optimizedPrompt },
+  ].sort((a, b) => b.score - a.score)[0];
+  const out = join(TMP_OUT, `${LABEL.replace(/[^a-z0-9]+/gi, "_")}.json`);
+  writeFileSync(out, JSON.stringify(best, null, 2));
+  console.log(
+    `[${LABEL}] best: ${best.name} ${best.score.toFixed(3)} → ${out}`,
+  );
 }
 main().catch((err) => {
   console.error(err);
