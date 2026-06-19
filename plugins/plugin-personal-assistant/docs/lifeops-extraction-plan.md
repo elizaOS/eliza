@@ -762,3 +762,48 @@ test, are the non-negotiable tripwires — do not advance a slice until both pas
 - **Slices 8–19 — the spine + reminders engine extraction.** This is the bulk of "scheduling → plugin-scheduling, reminders → plugin-reminders" and is an **atomic multi-PR effort**: moving ~7k LOC of spine + a 5,468-LOC reminders mixin out of a 137k-LOC monolith fused to an 8.4k-LOC `repository.ts`, with the per-tick reminder delivery interleaved in one `processScheduledWork` method. Rushing it on the shared `develop` branch (where PA's typecheck baseline is already ~472 errors, masking new breakage) risks silently breaking the agent's scheduling + reminders. It must land as the tight, reviewed slice series in §2, each gated by the §0/§2 tripwires (no inward import leak; `reminderAttempts` shape preserved; the "scheduling-alone ⇒ [] / scheduling+reminders ⇒ populated" integration test).
 
 **Recommendation:** land slices 3–6 next (each a clean single PR), then the spine arc (8–12) as one reviewed PR, then the reminders arc (13–19) as one reviewed PR.
+
+---
+
+## 7. Execution status update (2026-06-18, cont.)
+
+**✅ Slice 8 LANDED (`ada0c9a61d`, pushed)** — the storage-agnostic scheduling
+spine core is now in `@elizaos/plugin-scheduling`: types, runner, the
+gate/completion-check/escalation registries, consolidation-policy, due/
+next-fire-at math, state-log, the barrel, and the anchor registry. The
+`DispatchResult` type is re-homed there. The tick driver
+(`processDueScheduledTasks`), the runner Service, and `runtime-wiring` stay
+PA-side and import the spine from the new package; PA keeps a thin
+`lifeops/scheduled-task/index` barrel re-exporting the package + the local
+scheduler/service so existing importers are unchanged. **Verified:**
+plugin-scheduling typecheck clean + 72 spine tests; PA build:types clean, tsgo
+470 (≤ baseline), decomposition 6/6, 6 spine-consuming PA test files (72 tests)
+green; tripwire (no PA import in plugin-scheduling/src) holds.
+
+**Architecture reached:** `@elizaos/plugin-scheduling` is the reusable
+scheduling-spine *library*; PA is the host that injects its
+repository/owner-facts/channels and drives the tick. This is a clean, defensible
+decomposition — the substantive "scheduling → plugin-scheduling."
+
+**Remaining (atomic, must each land as one reviewed PR):**
+- Slices 9–12 — move the tick driver + runner Service + `SCHEDULED_TASKS` action
+  into plugin-scheduling (PA injects production deps). High-risk wiring
+  inversion; marginal benefit over slice 8 (the reusable library is already
+  extracted). Optional.
+- Slices 13–19 — **reminders → plugin-reminders.** The largest lift: it MUST be
+  atomic (the `app_lifeops.life_reminder_*` → `app_reminders` migration + the
+  `ReminderRepository` repoint must land in the same change or reminder data
+  splits across two schemas), and it lifts the delivery/escalation engine out of
+  the 5,468-LOC `service-mixin-reminders.ts` while preserving the per-tick
+  `reminderAttempts` shape. Reminder tables verified at `schema.ts:224`
+  (life_reminder_plans), `:246` (life_reminder_attempts), `:833`
+  (life_escalation_states). Recommended approach (finances pattern): scaffold
+  plugin-reminders (depends on plugin-scheduling + plugin-sql) → `app_reminders`
+  schema (copy the 3 tables verbatim) → non-destructive `RemindersMigrationService`
+  → self-contained `ReminderRepository` over `app_reminders` → PA's
+  `LifeOpsRepository` reminder methods delegate to it → PA registers
+  plugin-reminders via `ensureLifeOpsRemindersPluginRegistered`. The
+  service-mixin engine can stay PA-resident, delegating through the repository
+  (consistent with how the spine wiring stays PA-side).
+- Slices 3–6 (runtime-service promotions; goals/calendar schema carves) —
+  independent, finances-proven, landable as separate clean PRs.
