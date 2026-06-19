@@ -10,6 +10,19 @@ export {
 export * from "./character-voice-config";
 export * from "./emotion";
 export {
+  installJniVoiceHarness,
+  type JniVoiceControl,
+  type JniVoiceStatus,
+  type JniVoiceTurnSummary,
+} from "./jni-voice-harness";
+export {
+  type JniAttributedTurn,
+  type JniTurnListener,
+  JniVoicePipeline,
+  type JniVoicePipelineOptions,
+  type SpeakerResolver,
+} from "./jni-voice-pipeline";
+export {
   type TranscribeWavOptions,
   type TranscribeWavResult,
   transcribeLocalInferenceWav,

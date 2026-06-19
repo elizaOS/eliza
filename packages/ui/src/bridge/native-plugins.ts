@@ -668,7 +668,83 @@ export interface TalkModePluginLike extends NativePlugin {
   isSpeaking(): Promise<{ speaking: boolean }>;
 }
 
+/**
+ * `ElizaVoice` — the in-process bionic JNI voice host (the normal Android APK).
+ *
+ * Drives the fused `libelizainference` voice runtimes (VAD, wake-word, speaker
+ * encoder, diarizer) directly inside the `ai.elizaos.app` Capacitor process via
+ * the JNI bridge, replacing the musl bun-agent `/api/voice/audio-frames`
+ * transport for the four voice classifiers. The streaming pipeline runs the VAD
+ * hot-loop + turn segmentation natively (zero per-window bridge chatter) and
+ * returns turn-level results (speaker embedding + diariz labels) to JS.
+ *
+ * PCM and the float/int8 payloads are base64-encoded (LE-s16 for PCM, LE-fp32
+ * for the embedding, raw int8 for the labels) — see the JNI host.
+ */
+export interface ElizaVoiceTurn {
+  turnId: string;
+  samples: number;
+  durationMs: number;
+  hasEmbedding: boolean;
+  embNorm: number;
+  diarizFrames: number;
+  diarizDistinctClasses: number;
+  /** base64 LE-fp32 256-d speaker embedding ("" when none). */
+  embedding: string;
+  embeddingDim: number;
+  /** base64 int8 per-frame pyannote powerset labels ("" when none). */
+  labels: string;
+  labelCount: number;
+}
+
+export interface ElizaVoicePluginLike extends NativePlugin {
+  /** ABI + per-classifier capability probe. */
+  voiceAbiVersion(): Promise<{
+    loaded: boolean;
+    abi?: string;
+    vad?: number;
+    wakeword?: number;
+    speaker?: number;
+    diariz?: number;
+    error?: string;
+  }>;
+  /** Create a fused context anchored at the on-device bundle dir. */
+  contextCreate(options?: {
+    bundleDir?: string;
+  }): Promise<{ handle: string; bundleDir: string }>;
+  contextDestroy(options: { handle: string }): Promise<void>;
+  /** Open the native VAD+speaker+diariz streaming pipeline on a context. */
+  pipelineOpen(options: { ctx: string }): Promise<{ handle: string }>;
+  /** Feed one audioFrame batch (base64 LE-s16 16 kHz mono); returns completed turns. */
+  pipelineProcess(options: {
+    handle: string;
+    pcm16: string;
+  }): Promise<{ turns: ElizaVoiceTurn[] }>;
+  /** Force-finalize an open turn; returns any flushed turn. */
+  pipelineFlush(options: {
+    handle: string;
+  }): Promise<{ turns: ElizaVoiceTurn[] }>;
+  pipelineReset(options: { handle: string }): Promise<void>;
+  pipelineClose(options: { handle: string }): Promise<void>;
+  /** Open a wake-word session on a context. */
+  wakewordOpen(options: {
+    ctx: string;
+    headName?: string;
+  }): Promise<{ handle: string }>;
+  /** Score a base64 LE-s16 frame batch; returns per-frame P(wake). */
+  wakewordScore(options: {
+    handle: string;
+    pcm16: string;
+  }): Promise<{ scores: number[] }>;
+  wakewordReset(options: { handle: string }): Promise<void>;
+  wakewordClose(options: { handle: string }): Promise<void>;
+}
+
 export type GenericNativePlugin = NativePlugin;
+
+export function getElizaVoicePlugin(): ElizaVoicePluginLike {
+  return getNativePlugin<ElizaVoicePluginLike>("ElizaVoice");
+}
 
 export function getGatewayPlugin(): GenericNativePlugin {
   return getNativePlugin<GenericNativePlugin>("Gateway");
