@@ -46,6 +46,7 @@ export {
   EmptyWidgetState,
   WidgetSection,
 } from "./components/chat/widgets/shared.tsx";
+export { ChatSearchHint } from "./components/composites/chat-search-hint.tsx";
 export { PagePanel } from "./components/composites/page-panel/index.ts";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content.tsx";
 export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel.tsx";

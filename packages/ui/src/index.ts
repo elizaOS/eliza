@@ -161,6 +161,7 @@ export {
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
   maybeCompressDocumentUploadImage,
 } from "./components";
+export { ChatSearchHint } from "./components/composites/chat-search-hint";
 export * from "./components/apps/AppWindowRenderer";
 export * from "./components/apps/AppWindowRenderer.helpers";
 export * from "./components/apps/extensions/registry";
