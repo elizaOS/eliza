@@ -2,7 +2,6 @@ import {
   Brain,
   FileText,
   MessageSquareText,
-  RefreshCw,
   Search,
   Sparkles,
 } from "lucide-react";
@@ -15,6 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
   MemoryBrowseItem,
@@ -36,7 +36,6 @@ import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarHeader } from "../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
@@ -104,6 +103,8 @@ const MEMORY_FEED_EMPTY_FEATURES = [
 const FEED_PAGE_SIZE = 50;
 /** Max retained feed items (10 pages) so long sessions stay bounded. */
 const FEED_MAX_ITEMS = 500;
+/** Poll interval to keep the feed fresh in place of a manual refresh button. */
+const FEED_POLL_MS = 30_000;
 const BROWSE_PAGE_SIZE = 50;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -161,20 +162,19 @@ function MemoryCard({
   return (
     <button
       type="button"
-      className="w-full text-left rounded-sm border border-border/24 bg-card/32 px-3.5 py-3 transition-colors hover:border-border/40 hover:bg-card/50"
+      className="w-full text-left rounded-sm px-3.5 py-3 transition-colors hover:bg-bg-hover"
       onClick={onToggle}
       data-testid={`memory-card-${memory.id}`}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={`memory-type-badge-${typeKey} inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.12em]`}
-        >
+        <span className="inline-flex items-center gap-1.5 text-xs-tight text-muted">
+          <span
+            className={`memory-type-dot-${typeKey} inline-block h-2 w-2 rounded-full`}
+          />
           {typeLabel(memory.type, t)}
         </span>
         {memory.source ? (
-          <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-            {memory.source}
-          </span>
+          <span className="text-xs-tight text-muted/70">{memory.source}</span>
         ) : null}
         <span className="ml-auto text-xs-tight text-muted">
           {formatRelativeTime(memory.createdAt, t)}
@@ -187,7 +187,7 @@ function MemoryCard({
         <div className="mt-3 space-y-1.5 pt-3">
           {memory.entityId ? (
             <div className="text-xs-tight text-muted">
-              <span className="font-semibold uppercase tracking-[0.12em]">
+              <span className="text-muted/70">
                 {t("memoryviewer.field.entity", { defaultValue: "Entity" })}
               </span>{" "}
               <span className="font-mono text-2xs">{memory.entityId}</span>
@@ -195,14 +195,14 @@ function MemoryCard({
           ) : null}
           {memory.roomId ? (
             <div className="text-xs-tight text-muted">
-              <span className="font-semibold uppercase tracking-[0.12em]">
+              <span className="text-muted/70">
                 {t("memoryviewer.field.room", { defaultValue: "Room" })}
               </span>{" "}
               <span className="font-mono text-2xs">{memory.roomId}</span>
             </div>
           ) : null}
           <div className="text-xs-tight text-muted">
-            <span className="font-semibold uppercase tracking-[0.12em]">
+            <span className="text-muted/70">
               {t("memoryviewer.field.created", { defaultValue: "Created" })}
             </span>{" "}
             {formatDateTime(memory.createdAt, {
@@ -210,7 +210,7 @@ function MemoryCard({
             })}
           </div>
           <div className="text-xs-tight text-muted">
-            <span className="font-semibold uppercase tracking-[0.12em]">
+            <span className="text-muted/70">
               {t("memoryviewer.field.id", { defaultValue: "ID" })}
             </span>{" "}
             <span className="font-mono text-2xs">{memory.id}</span>
@@ -281,10 +281,15 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   );
 
   useEffect(() => {
-    // Revalidate silently when a cached page is already on screen.
+    // Revalidate silently when a cached page is already on screen, then poll
+    // for fresh memories so the feed stays current without a manual refresh.
     void loadFeed(undefined, {
       silent: getCached<MemoryFeedResponse>(feedCacheKey) != null,
     });
+    const interval = setInterval(() => {
+      if (!loadingMore.current) void loadFeed(undefined, { silent: true });
+    }, FEED_POLL_MS);
+    return () => clearInterval(interval);
   }, [loadFeed, feedCacheKey]);
 
   const loadMore = () => {
@@ -322,28 +327,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   }
 
   return (
-    <div className="space-y-3" data-testid="memory-feed">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-          {t("memoryviewer.recentActivity", {
-            count: feed.length,
-            more: hasMore ? "+" : "",
-            defaultValue: "Recent activity ({{count}}{{more}})",
-          })}
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="h-7 w-7 p-0"
-          onClick={() => void loadFeed()}
-          aria-label={t("memoryviewer.refreshFeed", {
-            defaultValue: "Refresh feed",
-          })}
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+    <div className="divide-y divide-border/15" data-testid="memory-feed">
       {feed.map((memory) => (
         <MemoryCard
           key={memory.id}
@@ -359,7 +343,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
           type="button"
           size="sm"
           variant="outline"
-          className="w-full"
+          className="mt-3 w-full"
           onClick={loadMore}
         >
           {t("memoryviewer.loadOlder", { defaultValue: "Load older" })}
@@ -465,6 +449,23 @@ function MemoryBrowserPanel({
     void loadMemories(newOffset);
   };
 
+  const prevControl = useAgentElement<HTMLButtonElement>({
+    id: "memory-page-prev",
+    role: "button",
+    label: t("memoryviewer.prev", { defaultValue: "Prev" }),
+    group: "memory-pager",
+    description: "Go to the previous page of memories",
+    onActivate: () => handlePage("prev"),
+  });
+  const nextControl = useAgentElement<HTMLButtonElement>({
+    id: "memory-page-next",
+    role: "button",
+    label: t("memoryviewer.next", { defaultValue: "Next" }),
+    group: "memory-pager",
+    description: "Go to the next page of memories",
+    onActivate: () => handlePage("next"),
+  });
+
   return (
     <div className="space-y-3" data-testid="memory-browser">
       {entityId ? null : <ChatSearchHint noun="memories" query={searchInput} />}
@@ -482,12 +483,15 @@ function MemoryBrowserPanel({
             defaultValue: "No memories found",
           })}
         >
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
             {TYPE_KEYS.slice(0, 4).map((type) => (
               <span
                 key={type}
-                className={`memory-type-badge-${type} rounded-full px-2.5 py-1 text-2xs font-semibold uppercase tracking-[0.12em]`}
+                className="inline-flex items-center gap-1.5 text-xs-tight text-muted"
               >
+                <span
+                  className={`memory-type-dot-${type} inline-block h-2 w-2 rounded-full`}
+                />
                 {typeLabel(type, t)}
               </span>
             ))}
@@ -506,20 +510,24 @@ function MemoryBrowserPanel({
             </span>
             <div className="flex gap-2">
               <Button
+                ref={prevControl.ref}
                 type="button"
                 size="sm"
                 variant="ghost"
                 disabled={offset === 0}
                 onClick={() => handlePage("prev")}
+                {...prevControl.agentProps}
               >
                 {t("memoryviewer.prev", { defaultValue: "Prev" })}
               </Button>
               <Button
+                ref={nextControl.ref}
                 type="button"
                 size="sm"
                 variant="ghost"
                 disabled={offset + BROWSE_PAGE_SIZE >= result.total}
                 onClick={() => handlePage("next")}
+                {...nextControl.agentProps}
               >
                 {t("memoryviewer.next", { defaultValue: "Next" })}
               </Button>
@@ -541,6 +549,94 @@ function MemoryBrowserPanel({
   );
 }
 
+// ── Sidebar controls ─────────────────────────────────────────────────────
+
+function TypeFilterButton({
+  label,
+  type,
+  active,
+  onSelect,
+}: {
+  label: string;
+  type: string | null;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `memory-filter-${type ?? "all"}`,
+    role: "button",
+    label: `Filter memories: ${label}`,
+    group: "memory-type-filter",
+    status: active ? "active" : "inactive",
+    description: `Show only ${label} memories`,
+    onActivate: onSelect,
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      size="sm"
+      variant="outline"
+      className={`h-7 rounded-full px-3 text-2xs font-semibold ${
+        active ? "border-accent/40 bg-accent/14 text-txt" : ""
+      }`}
+      onClick={onSelect}
+      {...agentProps}
+    >
+      {type ? (
+        <span
+          className={`memory-type-dot-${memoryTypeKey(type)} mr-1.5 inline-block h-2 w-2 rounded-full`}
+        />
+      ) : null}
+      {label}
+    </Button>
+  );
+}
+
+function PersonItem({
+  person,
+  active,
+  onSelect,
+  noPlatformsLabel,
+}: {
+  person: RelationshipsPersonSummary;
+  active: boolean;
+  onSelect: () => void;
+  noPlatformsLabel: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLElement>({
+    id: `memory-person-${person.primaryEntityId}`,
+    role: "list-item",
+    label: `Browse memories for ${person.displayName}`,
+    group: "memory-people",
+    status: active ? "active" : "inactive",
+    description: `Filter memories to ${person.displayName}`,
+    onActivate: onSelect,
+  });
+  return (
+    <SidebarContent.Item
+      ref={ref}
+      active={active}
+      onClick={onSelect}
+      aria-current={active ? "page" : undefined}
+      {...agentProps}
+    >
+      <SidebarContent.ItemIcon active={active}>
+        {person.displayName.charAt(0).toUpperCase()}
+      </SidebarContent.ItemIcon>
+      <span className="min-w-0 flex-1 text-left">
+        <SidebarContent.ItemTitle>
+          {person.displayName}
+        </SidebarContent.ItemTitle>
+        <SidebarContent.ItemDescription>
+          {person.platforms.join(" · ") || noPlatformsLabel}
+        </SidebarContent.ItemDescription>
+      </span>
+      <MetaPill compact>{person.factCount}</MetaPill>
+    </SidebarContent.Item>
+  );
+}
+
 // ── Main View ────────────────────────────────────────────────────────────
 
 export function MemoryViewerView({
@@ -553,8 +649,6 @@ export function MemoryViewerView({
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [stats, setStats] = useState<MemoryStatsResponse | null>(null);
   const [statsError, setStatsError] = useState(false);
-  const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search);
 
   // People list for person-centric view
   const [people, setPeople] = useState<RelationshipsPersonSummary[]>([]);
@@ -581,12 +675,6 @@ export function MemoryViewerView({
       .catch(() => setPeople([]))
       .finally(() => setPeopleLoading(false));
   }, []);
-
-  const filteredPeople = deferredSearch
-    ? people.filter((p) =>
-        p.displayName.toLowerCase().includes(deferredSearch.toLowerCase()),
-      )
-    : people;
 
   const selectedPerson = selectedPersonId
     ? (people.find((p) => p.primaryEntityId === selectedPersonId) ?? null)
@@ -617,95 +705,75 @@ export function MemoryViewerView({
     },
   ];
 
+  const viewModeControl = useAgentElement<HTMLDivElement>({
+    id: "memory-view-mode",
+    role: "toggle",
+    label: t("memoryviewer.viewMode", { defaultValue: "Memory view mode" }),
+    group: "memory-toolbar",
+    status: viewMode === "browse" ? "active" : "inactive",
+    description: "Switch between the memory feed and the memory browser",
+    onActivate: () =>
+      setViewMode((prev) => (prev === "feed" ? "browse" : "feed")),
+  });
+
   const sidebar = (
     <AppPageSidebar
       testId="memory-viewer-sidebar"
       collapsible
       contentIdentity="memory-viewer"
     >
-      <SidebarHeader
-        search={{
-          value: search,
-          onChange: (e) => setSearch(e.target.value),
-          placeholder: t("memoryviewer.SearchPeople", {
-            defaultValue: "Search people…",
-          }),
-          "aria-label": t("memoryviewer.SearchPeople", {
-            defaultValue: "Search people…",
-          }),
-          onClear: () => setSearch(""),
-        }}
-      />
       <SidebarPanel>
         {/* Stats + type filter */}
         <PagePanel.SummaryCard compact className="mt-2 space-y-3">
           {stats ? (
             <>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-sm border border-border/24 bg-card/35 px-2.5 py-2">
-                  <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
+              <div className="space-y-1">
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-muted">
                     {t("memoryviewer.total", { defaultValue: "Total" })}
-                  </div>
-                  <div className="mt-1 text-sm font-semibold text-txt">
-                    {stats.total}
-                  </div>
+                  </span>
+                  <span className="font-semibold text-txt">{stats.total}</span>
                 </div>
                 {Object.entries(stats.byType).map(([type, count]) => (
                   <div
                     key={type}
-                    className="rounded-sm border border-border/24 bg-card/35 px-2.5 py-2"
+                    className="flex items-baseline justify-between gap-3 text-xs-tight"
                   >
-                    <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
+                    <span className="inline-flex items-center gap-1.5 text-muted">
+                      <span
+                        className={`memory-type-dot-${memoryTypeKey(type)} inline-block h-2 w-2 rounded-full`}
+                      />
                       {typeLabel(type, t)}
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-txt">
-                      {count}
-                    </div>
+                    </span>
+                    <span className="font-semibold text-txt">{count}</span>
                   </div>
                 ))}
               </div>
 
               <div>
-                <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                <div className="text-xs-tight text-muted">
                   {t("memoryviewer.filterByType", {
                     defaultValue: "Filter by type",
                   })}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className={`h-7 rounded-full px-3 text-2xs font-semibold tracking-[0.12em] ${
-                      typeFilter === null
-                        ? "border-accent/40 bg-accent/14 text-txt"
-                        : ""
-                    }`}
-                    onClick={() => setTypeFilter(null)}
-                  >
-                    {t("memoryviewer.all", { defaultValue: "All" })}
-                  </Button>
-                  {Object.keys(stats.byType).map((type) => {
-                    const typeKey = memoryTypeKey(type);
-                    const active = typeFilter === type;
-                    return (
-                      <Button
-                        key={type}
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className={`h-7 rounded-full px-3 text-2xs font-semibold tracking-[0.12em] ${
-                          active ? "border-accent/40 bg-accent/14 text-txt" : ""
-                        }`}
-                        onClick={() => setTypeFilter(active ? null : type)}
-                      >
-                        <span
-                          className={`memory-type-dot-${typeKey} mr-1.5 inline-block h-2 w-2 rounded-full`}
-                        />
-                        {typeLabel(type, t)}
-                      </Button>
-                    );
-                  })}
+                  <TypeFilterButton
+                    label={t("memoryviewer.all", { defaultValue: "All" })}
+                    type={null}
+                    active={typeFilter === null}
+                    onSelect={() => setTypeFilter(null)}
+                  />
+                  {Object.keys(stats.byType).map((type) => (
+                    <TypeFilterButton
+                      key={type}
+                      label={typeLabel(type, t)}
+                      type={type}
+                      active={typeFilter === type}
+                      onSelect={() =>
+                        setTypeFilter(typeFilter === type ? null : type)
+                      }
+                    />
+                  ))}
                 </div>
               </div>
             </>
@@ -725,9 +793,9 @@ export function MemoryViewerView({
         </PagePanel.SummaryCard>
 
         {/* People list */}
-        <SidebarContent.SectionLabel className="mt-3">
+        <div className="mt-3 px-1 text-xs-tight text-muted">
           {t("memoryviewer.people", { defaultValue: "People" })}
-        </SidebarContent.SectionLabel>
+        </div>
 
         {selectedPersonId ? (
           <div className="mt-2 flex gap-1.5 px-1">
@@ -760,42 +828,24 @@ export function MemoryViewerView({
               <div className="px-2 text-xs text-muted">
                 {t("memoryviewer.loading", { defaultValue: "Loading…" })}
               </div>
-            ) : filteredPeople.length === 0 ? (
+            ) : people.length === 0 ? (
               <div className="px-2 text-xs text-muted">
-                {deferredSearch
-                  ? t("memoryviewer.noMatch", { defaultValue: "No match." })
-                  : t("memoryviewer.noPeopleYet", {
-                      defaultValue: "No people yet.",
-                    })}
+                {t("memoryviewer.noPeopleYet", {
+                  defaultValue: "No people yet.",
+                })}
               </div>
             ) : (
-              filteredPeople.map((person) => {
-                const active = person.primaryEntityId === selectedPersonId;
-                return (
-                  <SidebarContent.Item
-                    key={person.groupId}
-                    active={active}
-                    onClick={() => handleSelectPerson(person)}
-                    aria-current={active ? "page" : undefined}
-                  >
-                    <SidebarContent.ItemIcon active={active}>
-                      {person.displayName.charAt(0).toUpperCase()}
-                    </SidebarContent.ItemIcon>
-                    <span className="min-w-0 flex-1 text-left">
-                      <SidebarContent.ItemTitle>
-                        {person.displayName}
-                      </SidebarContent.ItemTitle>
-                      <SidebarContent.ItemDescription>
-                        {person.platforms.join(" · ") ||
-                          t("memoryviewer.noPlatforms", {
-                            defaultValue: "No platforms",
-                          })}
-                      </SidebarContent.ItemDescription>
-                    </span>
-                    <MetaPill compact>{person.factCount}</MetaPill>
-                  </SidebarContent.Item>
-                );
-              })
+              people.map((person) => (
+                <PersonItem
+                  key={person.groupId}
+                  person={person}
+                  active={person.primaryEntityId === selectedPersonId}
+                  onSelect={() => handleSelectPerson(person)}
+                  noPlatformsLabel={t("memoryviewer.noPlatforms", {
+                    defaultValue: "No platforms",
+                  })}
+                />
+              ))
             )}
           </div>
         </SidebarScrollRegion>
@@ -813,12 +863,14 @@ export function MemoryViewerView({
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           {/* View mode toggle + person context */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <SegmentedControl
-              value={viewMode}
-              onValueChange={(v) => setViewMode(v as ViewMode)}
-              items={viewModeItems}
-              buttonClassName="min-h-8 px-4 py-2"
-            />
+            <div ref={viewModeControl.ref} {...viewModeControl.agentProps}>
+              <SegmentedControl
+                value={viewMode}
+                onValueChange={(v) => setViewMode(v as ViewMode)}
+                items={viewModeItems}
+                buttonClassName="min-h-8 px-4 py-2"
+              />
+            </div>
             {selectedPerson ? (
               <div className="flex items-center gap-2 text-sm text-muted">
                 {t("memoryviewer.filteredTo", { defaultValue: "Filtered to" })}

@@ -1,7 +1,9 @@
 import { Sparkles } from "lucide-react";
 import * as React from "react";
 
+import { useAgentElement } from "../../../agent-surface";
 import { useApp } from "../../../state";
+import { Button } from "../../ui/button";
 import { startTutorial } from "./tutorial-controller";
 
 /**
@@ -11,8 +13,6 @@ import { startTutorial } from "./tutorial-controller";
  * each frame aloud; the tour can be muted from its card.
  */
 
-const BRAND = "#FF5800";
-
 export function TutorialView(): React.ReactElement {
   const { setTab } = useApp();
 
@@ -21,6 +21,14 @@ export function TutorialView(): React.ReactElement {
     setTab("chat"); // return home so the tour overlays the real chat
   }, [setTab]);
 
+  const start = useAgentElement<HTMLButtonElement>({
+    id: "tutorial-start",
+    role: "button",
+    label: "Start quick tour",
+    description: "Launch the interactive walkthrough of the basics",
+    onActivate: begin,
+  });
+
   return (
     <div
       className="flex h-full w-full flex-col items-center justify-center overflow-y-auto px-6 py-10 text-center"
@@ -28,35 +36,30 @@ export function TutorialView(): React.ReactElement {
     >
       <div className="flex max-w-sm flex-col items-center">
         <div
-          className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl"
+          className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-subtle"
           style={{
-            backgroundColor: "rgba(255,88,0,0.14)",
-            boxShadow: "0 0 28px 4px rgba(255,88,0,0.35)",
+            boxShadow:
+              "0 0 28px 4px color-mix(in srgb, var(--accent) 35%, transparent)",
           }}
           aria-hidden
         >
-          <Sparkles className="h-7 w-7" style={{ color: BRAND }} />
+          <Sparkles className="h-7 w-7 text-accent" />
         </div>
         <h1 className="text-2xl font-semibold text-txt-strong">Quick tour</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-txt/70">
           A hands-on walkthrough of the basics — about a minute.
         </p>
 
-        <button
-          type="button"
+        <Button
+          ref={start.ref}
+          {...start.agentProps}
           onClick={begin}
           data-testid="tutorial-start"
-          className="mt-7 rounded-xl px-6 py-2.5 text-[15px] font-semibold text-white transition-colors"
-          style={{ backgroundColor: BRAND }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "#D44A00";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = BRAND;
-          }}
+          size="lg"
+          className="mt-7 text-[15px] font-semibold"
         >
           Start
-        </button>
+        </Button>
       </div>
     </div>
   );

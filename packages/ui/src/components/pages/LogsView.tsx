@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { LogEntry } from "../../api";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
@@ -69,13 +70,19 @@ function LogsViewBody() {
   );
   useRegisterViewChatBinding(chatBinding);
 
+  // Initial load + quiet live tail: poll instead of a user-facing refresh
+  // button so the view stays current without an extra control to reason about.
   useEffect(() => {
     let cancelled = false;
     void loadLogs().finally(() => {
       if (!cancelled) setInitialLoading(false);
     });
+    const interval = setInterval(() => {
+      void loadLogs();
+    }, 5000);
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, [loadLogs]);
 
@@ -85,6 +92,45 @@ function LogsViewBody() {
     setState("logSourceFilter", "");
     setSearchQuery("");
   };
+
+  const levelControl = useAgentElement<HTMLButtonElement>({
+    id: "logs-filter-level",
+    role: "select",
+    label: t("logsview.AllLevels"),
+    group: "logs",
+    options: ["all", "debug", "info", "warn", "error"],
+    getValue: () => (logLevelFilter === "" ? "all" : logLevelFilter),
+    onFill: (value) => setState("logLevelFilter", value === "all" ? "" : value),
+  });
+
+  const sourceControl = useAgentElement<HTMLButtonElement>({
+    id: "logs-filter-source",
+    role: "select",
+    label: t("logsview.AllSources"),
+    group: "logs",
+    options: ["all", ...logSources],
+    getValue: () => (logSourceFilter === "" ? "all" : logSourceFilter),
+    onFill: (value) =>
+      setState("logSourceFilter", value === "all" ? "" : value),
+  });
+
+  const tagControl = useAgentElement<HTMLButtonElement>({
+    id: "logs-filter-tag",
+    role: "select",
+    label: t("logsview.AllTags"),
+    group: "logs",
+    options: ["all", ...logTags],
+    getValue: () => (logTagFilter === "" ? "all" : logTagFilter),
+    onFill: (value) => setState("logTagFilter", value === "all" ? "" : value),
+  });
+
+  const clearControl = useAgentElement<HTMLButtonElement>({
+    id: "logs-clear",
+    role: "button",
+    label: t("logsview.ClearFilters"),
+    group: "logs",
+    onActivate: handleClearFilters,
+  });
 
   const hasActiveFilters =
     logTagFilter !== "" ||
@@ -109,24 +155,32 @@ function LogsViewBody() {
     });
   }, [logs, normalizedSearch]);
 
-  const activeFilterCount = [
-    logTagFilter !== "",
-    logLevelFilter !== "",
-    logSourceFilter !== "",
-    normalizedSearch !== "",
-  ].filter(Boolean).length;
+  const errorCount = useMemo(
+    () => logs.filter((entry) => entry.level === "error").length,
+    [logs],
+  );
 
   return (
     <div className="flex h-full flex-col gap-3" data-testid="logs-view">
-      {/* Filters row — filters left, refresh right */}
+      {/* Filters row — filters left, count beside the title */}
       <PagePanel variant="surface" className="space-y-3 p-3 sm:p-4">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-txt">
-            {t("logsview.FilterLogs")}
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-semibold text-txt">
+              {t("logsview.FilterLogs")}
+            </span>
+            <span className="text-xs text-muted tabular-nums">
+              {filteredLogs.length}
+            </span>
           </div>
-          <div className="rounded-full border border-border/40 bg-bg-hover/60 px-2.5 py-1 text-xs text-muted tabular-nums">
-            {filteredLogs.length}
-          </div>
+          {errorCount > 0 ? (
+            <span className="text-xs text-danger tabular-nums">
+              {t("logsview.ErrorCount", {
+                count: errorCount,
+                defaultValue: "{{count}} errors",
+              })}
+            </span>
+          ) : null}
         </div>
         <ChatSearchHint noun="logs" query={searchQuery} />
         <div className="flex flex-wrap items-center gap-2">
@@ -136,7 +190,11 @@ function LogsViewBody() {
               setState("logLevelFilter", val === "all" ? "" : val);
             }}
           >
-            <SelectTrigger className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ">
+            <SelectTrigger
+              ref={levelControl.ref}
+              className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+              {...levelControl.agentProps}
+            >
               <SelectValue placeholder={t("logsview.AllLevels")} />
             </SelectTrigger>
             <SelectContent>
@@ -154,7 +212,11 @@ function LogsViewBody() {
               setState("logSourceFilter", val === "all" ? "" : val);
             }}
           >
-            <SelectTrigger className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ">
+            <SelectTrigger
+              ref={sourceControl.ref}
+              className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+              {...sourceControl.agentProps}
+            >
               <SelectValue placeholder={t("logsview.AllSources")} />
             </SelectTrigger>
             <SelectContent>
@@ -174,7 +236,11 @@ function LogsViewBody() {
                 setState("logTagFilter", val === "all" ? "" : val);
               }}
             >
-              <SelectTrigger className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ">
+              <SelectTrigger
+                ref={tagControl.ref}
+                className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+                {...tagControl.agentProps}
+              >
                 <SelectValue placeholder={t("logsview.AllTags")} />
               </SelectTrigger>
               <SelectContent>
@@ -190,41 +256,16 @@ function LogsViewBody() {
 
           {hasActiveFilters && (
             <Button
+              ref={clearControl.ref}
               variant="outline"
               size="sm"
               className="logs-toolbar-button"
               onClick={handleClearFilters}
+              {...clearControl.agentProps}
             >
               {t("logsview.ClearFilters")}
             </Button>
           )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            className="logs-toolbar-button ml-auto"
-            onClick={() => void loadLogs()}
-          >
-            {t("common.refresh")}
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <div className="rounded-full border border-border/40 bg-bg-hover/60 px-2.5 py-1 text-muted tabular-nums">
-            {t(
-              filteredLogs.length === 1
-                ? "logsview.ShowingEntry"
-                : "logsview.ShowingEntries",
-              { count: filteredLogs.length },
-            )}
-          </div>
-          <div className="rounded-full border border-border/35 bg-bg/80 px-2.5 py-1 text-muted tabular-nums">
-            {t(
-              activeFilterCount === 1
-                ? "logsview.ActiveFilter"
-                : "logsview.ActiveFilters",
-              { count: activeFilterCount },
-            )}
-          </div>
         </div>
         {logLoadError ? (
           <div
@@ -264,13 +305,6 @@ function LogsViewBody() {
           />
         ) : (
           <PagePanel variant="inset" className="overflow-hidden rounded-sm">
-            <div className="hidden grid-cols-[5.75rem_3.5rem_5rem_14rem_minmax(0,1fr)] gap-3 px-3 py-2 text-xs-tight font-medium uppercase tracking-[0.08em] text-muted md:grid">
-              <span>{t("logsview.Time")}</span>
-              <span>{t("logsview.Level")}</span>
-              <span>{t("logsview.Source")}</span>
-              <span>{t("logsview.Tags")}</span>
-              <span>{t("common.message")}</span>
-            </div>
             {filteredLogs.map((entry: LogEntry) => (
               <div
                 key={`${entry.timestamp}-${entry.source}-${entry.level}-${entry.message}`}
@@ -315,15 +349,9 @@ function LogsViewBody() {
                             {
                               agent:
                                 "border-accent/25 bg-accent/10 text-accent-fg",
-                              server: "border-ok/25 bg-ok/10 text-ok",
-                              system:
-                                "border-border/40 bg-bg-hover text-muted-strong",
                               cloud: "border-accent/20 bg-accent/8 text-accent",
                               plugins:
                                 "border-accent/25 bg-accent/10 text-accent-fg",
-                              autonomy:
-                                "border-warning/30 bg-warning/10 text-warning",
-                              websocket: "border-ok/20 bg-ok/8 text-ok",
                             } as Record<string, string>
                           )[t] ??
                           "border-border/35 bg-bg-hover text-muted-strong"

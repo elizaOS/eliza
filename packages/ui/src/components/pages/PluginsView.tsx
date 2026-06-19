@@ -876,9 +876,9 @@ function PluginListView({
     [],
   );
 
-  /** Render a grid of plugin cards. */
+  /** Render plugins as flat rows separated by a single hairline divider. */
   const renderPluginGrid = (plugins: PluginInfo[]) => (
-    <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <ul className="m-0 flex list-none flex-col divide-y divide-border/40 p-0">
       {plugins.map((p: PluginInfo) => (
         <PluginCard
           key={p.id}

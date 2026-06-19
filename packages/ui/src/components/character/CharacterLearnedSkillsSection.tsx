@@ -1,4 +1,3 @@
-import { RefreshCw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
@@ -8,7 +7,6 @@ import {
   useTranslation,
 } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
-import { Card, CardContent } from "../ui/card";
 
 type TranslateFn = TranslationContextValue["t"];
 
@@ -99,61 +97,26 @@ export function CharacterLearnedSkillsSection() {
     grouped.active.length === 0 &&
     grouped.disabled.length === 0;
 
-  const { ref: refreshRef, agentProps: refreshAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "learned-skills-refresh",
-      role: "button",
-      label: t("learnedskills.refresh", { defaultValue: "Refresh" }),
-      group: "learned-skills",
-      description: "Reload the list of learned skills",
-      onActivate: () => {
-        setActionErrorMessage(null);
-        refresh();
-      },
-    });
-
   return (
     <section
-      className="flex min-w-0 flex-col gap-4 rounded-sm border border-border/40 bg-bg/70 px-4 py-4"
+      className="flex min-w-0 flex-col gap-4"
       data-testid="character-learned-skills-panel"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-txt">
-            {t("learnedskills.title", { defaultValue: "Skills" })}
-          </h2>
-          <div className="mt-1 text-2xs text-muted">
-            {loading
-              ? t("learnedskills.loading", { defaultValue: "Loading" })
-              : t("learnedskills.summary", {
-                  proposed: grouped.proposed.length,
-                  active: grouped.active.length,
-                  disabled: grouped.disabled.length,
-                  defaultValue:
-                    "{{proposed}} proposed · {{active}} active · {{disabled}} disabled",
-                })}
-          </div>
+      <div className="min-w-0">
+        <h2 className="text-lg font-semibold text-txt">
+          {t("learnedskills.title", { defaultValue: "Skills" })}
+        </h2>
+        <div className="mt-1 text-2xs text-muted">
+          {loading
+            ? t("learnedskills.loading", { defaultValue: "Loading" })
+            : t("learnedskills.summary", {
+                proposed: grouped.proposed.length,
+                active: grouped.active.length,
+                disabled: grouped.disabled.length,
+                defaultValue:
+                  "{{proposed}} proposed · {{active}} active · {{disabled}} disabled",
+              })}
         </div>
-        <Button
-          ref={refreshRef}
-          variant="outline"
-          size="icon"
-          className="h-8 w-8 rounded-sm"
-          onClick={() => {
-            setActionErrorMessage(null);
-            refresh();
-          }}
-          disabled={loading}
-          aria-label={t("learnedskills.refreshAria", {
-            defaultValue: "Refresh learned skills",
-          })}
-          title={t("learnedskills.refresh", { defaultValue: "Refresh" })}
-          {...refreshAgentProps}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-          />
-        </Button>
       </div>
 
       <div className="flex flex-col gap-4">
@@ -275,91 +238,88 @@ function SkillSection({
 }: SkillSectionProps) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-2xs font-semibold uppercase tracking-wide text-muted">
-        {title}
-      </div>
-      <ul className="flex flex-col gap-2">
+      <div className="text-sm font-medium text-muted">{title}</div>
+      <ul className="flex flex-col">
         {skills.map((skill) => (
-          <li key={skill.name}>
-            <Card className="border-border/50 bg-bg-hover/60 shadow-none">
-              <CardContent className="flex flex-col gap-2 px-3 py-3 text-xs-tight">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex flex-col gap-1">
-                    <div className="font-mono text-sm font-semibold text-txt">
-                      {skill.name}
-                    </div>
-                    <div className="text-xs-tight text-muted">
-                      {skill.description}
-                    </div>
-                    <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs uppercase tracking-wide text-muted">
-                      <span>{skill.source}</span>
-                      <span>
-                        {t("learnedskills.refinements", {
-                          count: skill.refinedCount,
-                          defaultValue: "{{count}} refinements",
-                        })}
-                      </span>
-                      <span>
-                        {t("learnedskills.score", {
-                          score: formatScore(skill.lastEvalScore),
-                          defaultValue: "{{score}} score",
-                        })}
-                      </span>
-                      <span>{formatDate(skill.createdAt)}</span>
-                    </div>
-                    {skill.derivedFromTrajectory ? (
-                      <div className="text-2xs text-muted">
-                        {t("learnedskills.derivedFrom", {
-                          defaultValue: "Derived from trajectory:",
-                        })}{" "}
-                        <a
-                          href={`/trajectories/${skill.derivedFromTrajectory}`}
-                          className="underline"
-                        >
-                          {skill.derivedFromTrajectory.slice(0, 8)}…
-                        </a>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 flex-col gap-1">
-                    {onPromote ? (
-                      <SkillActionButton
-                        skill={skill.name}
-                        action="promote"
-                        label={t("learnedskills.promote", {
-                          defaultValue: "Promote",
-                        })}
-                        variant="default"
-                        disabled={busyName === skill.name}
-                        onActivate={() => onPromote(skill.name)}
-                      />
-                    ) : null}
-                    {onDisable ? (
-                      <SkillActionButton
-                        skill={skill.name}
-                        action="disable"
-                        label={t("learnedskills.disable", {
-                          defaultValue: "Disable",
-                        })}
-                        variant="outline"
-                        disabled={busyName === skill.name}
-                        onActivate={() => onDisable(skill.name)}
-                      />
-                    ) : null}
-                    <SkillActionButton
-                      skill={skill.name}
-                      action="delete"
-                      label={t("learnedskills.delete", {
-                        defaultValue: "Delete",
-                      })}
-                      variant="ghost"
-                      disabled={busyName === skill.name}
-                      onActivate={() => onDelete(skill.name)}
-                    />
-                  </div>
+          <li
+            key={skill.name}
+            className="border-b border-border/15 py-3 last:border-b-0"
+          >
+            <div className="flex items-start justify-between gap-3 text-xs-tight">
+              <div className="flex flex-col gap-1">
+                <div className="font-mono text-sm font-semibold text-txt">
+                  {skill.name}
                 </div>
-              </CardContent>
-            </Card>
+                <div className="text-xs-tight text-muted">
+                  {skill.description}
+                </div>
+                <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs text-muted">
+                  <span>{skill.source}</span>
+                  <span>
+                    {t("learnedskills.refinements", {
+                      count: skill.refinedCount,
+                      defaultValue: "{{count}} refinements",
+                    })}
+                  </span>
+                  <span>
+                    {t("learnedskills.score", {
+                      score: formatScore(skill.lastEvalScore),
+                      defaultValue: "{{score}} score",
+                    })}
+                  </span>
+                  <span>{formatDate(skill.createdAt)}</span>
+                </div>
+                {skill.derivedFromTrajectory ? (
+                  <div className="text-2xs text-muted">
+                    {t("learnedskills.derivedFrom", {
+                      defaultValue: "Derived from trajectory:",
+                    })}{" "}
+                    <a
+                      href={`/trajectories/${skill.derivedFromTrajectory}`}
+                      className="underline"
+                    >
+                      {skill.derivedFromTrajectory.slice(0, 8)}…
+                    </a>
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 flex-col gap-1">
+                {onPromote ? (
+                  <SkillActionButton
+                    skill={skill.name}
+                    action="promote"
+                    label={t("learnedskills.promote", {
+                      defaultValue: "Promote",
+                    })}
+                    variant="default"
+                    disabled={busyName === skill.name}
+                    onActivate={() => onPromote(skill.name)}
+                  />
+                ) : null}
+                {onDisable ? (
+                  <SkillActionButton
+                    skill={skill.name}
+                    action="disable"
+                    label={t("learnedskills.disable", {
+                      defaultValue: "Disable",
+                    })}
+                    variant="outline"
+                    disabled={busyName === skill.name}
+                    onActivate={() => onDisable(skill.name)}
+                  />
+                ) : null}
+                <SkillActionButton
+                  skill={skill.name}
+                  action="delete"
+                  label={t("learnedskills.delete", {
+                    defaultValue: "Delete",
+                  })}
+                  variant="ghost"
+                  disabled={busyName === skill.name}
+                  onActivate={() => onDelete(skill.name)}
+                />
+              </div>
+            </div>
           </li>
         ))}
       </ul>

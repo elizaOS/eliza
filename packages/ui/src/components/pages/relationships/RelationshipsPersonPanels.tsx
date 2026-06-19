@@ -7,17 +7,14 @@ import {
   Crown,
   FileText,
   Fingerprint,
-  Frown,
   Gauge,
   Globe2,
   Link2,
   Mail,
-  Meh,
   MessageCircle,
   Pencil,
   Phone,
   Shield,
-  Smile,
   Sparkles,
   User,
 } from "lucide-react";
@@ -120,22 +117,10 @@ function relationshipCounterpartName(
     : relationship.sourcePersonName;
 }
 
-function sentimentClasses(sentiment: string): string {
-  if (sentiment === "positive") {
-    return "border-success/28 bg-success/10 text-success";
-  }
-  if (sentiment === "negative") {
-    return "border-danger/28 bg-danger/10 text-danger";
-  }
-  return "border-warning/28 bg-warning/10 text-warning";
-}
-
-function sentimentIcon(
-  sentiment: string,
-): ComponentType<{ className?: string }> {
-  if (sentiment === "positive") return Smile;
-  if (sentiment === "negative") return Frown;
-  return Meh;
+function sentimentDotColor(sentiment: string): string {
+  if (sentiment === "positive") return "bg-success";
+  if (sentiment === "negative") return "bg-danger";
+  return "bg-warning";
 }
 
 type TranslateFn = TranslationContextValue["t"];
@@ -403,19 +388,19 @@ function ProfileCard({
       : null);
 
   return (
-    <li className="flex min-w-0 items-center gap-2 rounded-sm border border-border/24 bg-card/30 px-2.5 py-1.5 text-xs">
+    <li
+      className="flex min-w-0 items-center gap-2 rounded-sm bg-card/30 px-2.5 py-1.5 text-xs"
+      title={profileSourceLabel(profile.source)}
+    >
       {profile.avatarUrl ? (
         <img
           src={profile.avatarUrl}
           alt=""
-          className="h-7 w-7 shrink-0 rounded-full border border-border/24 object-cover"
+          className="h-7 w-7 shrink-0 rounded-full object-cover"
         />
       ) : (
-        <AtSign className="h-3 w-3 shrink-0 text-accent" />
+        <AtSign className="h-3 w-3 shrink-0 text-muted" />
       )}
-      <span className="shrink-0 rounded-full bg-card/60 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-[0.1em] text-muted">
-        {profileSourceLabel(profile.source)}
-      </span>
       <span className="min-w-0 truncate font-semibold text-txt">
         {primaryValue}
       </span>
@@ -585,18 +570,6 @@ export function RelationshipsPersonSummaryPanel({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <MetaPill compact>
-            <Fingerprint className="mr-1 h-3 w-3" />
-            {person.memberEntityIds.length}
-          </MetaPill>
-          <MetaPill compact>
-            <Link2 className="mr-1 h-3 w-3" />
-            {person.relationshipCount}
-          </MetaPill>
-          <MetaPill compact>
-            <Brain className="mr-1 h-3 w-3" />
-            {person.factCount}
-          </MetaPill>
           {onViewMemories ? (
             <Button
               ref={viewMemoriesButton.ref}
@@ -625,12 +598,21 @@ export function RelationshipsPersonSummaryPanel({
       ) : null}
 
       {labels.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {labels.map((label) => (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {visibleItems(labels, 3).map((label) => (
             <MetaPill key={`label:${label}`} compact>
               {label}
             </MetaPill>
           ))}
+          <MoreItems count={overflowCount(labels, 3)}>
+            <div className="flex flex-wrap gap-1.5">
+              {labels.slice(3).map((label) => (
+                <MetaPill key={`label-overflow:${label}`} compact>
+                  {label}
+                </MetaPill>
+              ))}
+            </div>
+          </MoreItems>
         </div>
       ) : null}
 
@@ -646,7 +628,7 @@ export function RelationshipsPersonSummaryPanel({
             return (
               <div
                 key={`${contact.label}:${contact.value}`}
-                className="flex items-center gap-2 rounded-sm border border-border/24 bg-card/30 px-2.5 py-1.5 text-xs"
+                className="flex items-center gap-2 rounded-sm bg-card/30 px-2.5 py-1.5 text-xs"
               >
                 <Icon className="h-3 w-3 shrink-0 text-accent" />
                 <span className="min-w-0 truncate text-txt">
@@ -694,7 +676,6 @@ function OwnerRelationshipSection({
 }) {
   const { t } = useTranslation();
   const sentiment = ownerEdge?.sentiment ?? "neutral";
-  const SentimentIcon = sentimentIcon(sentiment);
   const memoryCount = person.relevantMemories.length;
   const interactionCount = ownerEdge?.interactionCount ?? 0;
   const strengthPercent = ownerEdge
@@ -721,9 +702,11 @@ function OwnerRelationshipSection({
           <span
             role="img"
             aria-label={sentimentAriaLabel(sentiment, t)}
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold ${sentimentClasses(sentiment)}`}
+            className="inline-flex items-center gap-1.5 text-2xs font-semibold text-muted"
           >
-            <SentimentIcon className="h-3 w-3" />
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${sentimentDotColor(sentiment)}`}
+            />
             {strengthPercent !== null ? `${strengthPercent}%` : "—"}
           </span>
           <MetaPill compact>
@@ -753,10 +736,7 @@ export function RelationshipsFactsPanel({
     const evidenceCount = fact.evidenceMessageIds?.length ?? 0;
     const SourceIcon = sourceTypeIcon(fact.sourceType);
     return (
-      <div
-        key={fact.id}
-        className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
-      >
+      <div key={fact.id} className="rounded-sm bg-card/32 px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <IconPill
             icon={SourceIcon}
@@ -826,19 +806,17 @@ export function RelationshipsConnectionsPanel({
   const renderRelationship = (
     relationship: (typeof person.relationships)[number],
   ) => {
-    const SentimentIcon = sentimentIcon(relationship.sentiment);
     return (
-      <div
-        key={relationship.id}
-        className="rounded-sm border border-border/24 bg-card/32 px-3 py-2"
-      >
+      <div key={relationship.id} className="rounded-sm bg-card/32 px-3 py-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span
             role="img"
             aria-label={sentimentAriaLabel(relationship.sentiment, t)}
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold ${sentimentClasses(relationship.sentiment)}`}
+            className="inline-flex items-center gap-1.5 text-2xs font-semibold text-muted"
           >
-            <SentimentIcon className="h-3 w-3" />
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${sentimentDotColor(relationship.sentiment)}`}
+            />
             {Math.round(relationship.strength * 100)}%
           </span>
           <span className="inline-flex items-center gap-1 text-2xs font-semibold text-muted">
@@ -906,7 +884,7 @@ export function RelationshipsConversationsPanel({
   ) => (
     <div
       key={conversation.roomId}
-      className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
+      className="rounded-sm bg-card/32 px-3 py-2.5"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 truncate text-sm font-semibold text-txt">
@@ -989,10 +967,7 @@ export function RelationshipsRelevantMemoriesPanel({
   const renderMemory = (memory: (typeof person.relevantMemories)[number]) => {
     const SourceIcon = sourceTypeIcon(memory.sourceType);
     return (
-      <div
-        key={memory.id}
-        className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
-      >
+      <div key={memory.id} className="rounded-sm bg-card/32 px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <IconPill icon={SourceIcon} ariaLabel={memory.sourceType} />
           {memory.createdAt ? (
@@ -1052,10 +1027,7 @@ export function RelationshipsUserPreferencesPanel({
   const renderPreference = (
     preference: (typeof person.userPersonalityPreferences)[number],
   ) => (
-    <div
-      key={preference.id}
-      className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
-    >
+    <div key={preference.id} className="rounded-sm bg-card/32 px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-1.5">
         <IconPill
           icon={Sparkles}
@@ -1247,10 +1219,7 @@ export function RelationshipsDocumentsPanel({
             ? Globe2
             : User;
     return (
-      <div
-        key={doc.id}
-        className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
-      >
+      <div key={doc.id} className="rounded-sm bg-card/32 px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <IconPill
             icon={FileText}

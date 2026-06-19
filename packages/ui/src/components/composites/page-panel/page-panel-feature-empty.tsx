@@ -25,7 +25,7 @@ export function PagePanelFeatureEmpty({
   description,
   features = [],
   icon: Icon,
-  iconTone = "border-info/25 bg-info/12 text-info",
+  iconTone = "border-border/40 bg-bg-hover text-muted",
   title,
   variant = "surface",
   ...props
@@ -55,20 +55,18 @@ export function PagePanelFeatureEmpty({
           </p>
         ) : null}
         {features.length > 0 ? (
-          <div className="mt-5 grid gap-2 sm:grid-cols-3">
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2.5">
             {features.map((item) => {
               const FeatureIcon = item.icon;
               return (
                 <div
                   key={item.id}
-                  className="rounded-sm border border-border/24 bg-bg/45 px-3 py-3"
+                  className="inline-flex items-center gap-1.5 text-xs text-muted"
                 >
                   <FeatureIcon
-                    className={cn("mx-auto h-4 w-4", item.tone ?? "text-muted")}
+                    className={cn("h-4 w-4", item.tone ?? "text-muted")}
                   />
-                  <div className="mt-2 text-xs font-semibold text-muted">
-                    {item.label}
-                  </div>
+                  <span>{item.label}</span>
                 </div>
               );
             })}

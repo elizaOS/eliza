@@ -329,21 +329,25 @@ export function DatabaseView({
   );
   useRegisterViewChatBinding(chatBinding);
 
-  const handleRefresh = useCallback(async () => {
+  // Revalidate the status + table list silently whenever the window regains
+  // focus (and on a slow interval), so the view stays fresh without a manual
+  // Refresh button.
+  const revalidate = useCallback(async () => {
     const status = await loadStatus();
     if (status?.connected) {
-      await loadTables();
+      await loadTables({ silent: true });
     }
   }, [loadStatus, loadTables]);
 
-  const refresh = useAgentElement<HTMLButtonElement>({
-    id: "refresh-database",
-    role: "button",
-    label: t("common.refresh"),
-    group: "database-actions",
-    description: "Reload the database status and table list",
-    onActivate: handleRefresh,
-  });
+  useEffect(() => {
+    const onFocus = () => void revalidate();
+    window.addEventListener("focus", onFocus);
+    const interval = window.setInterval(onFocus, 30_000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(interval);
+    };
+  }, [revalidate]);
 
   const editorModes: Array<{ value: DbView; label: string }> = [
     { value: "tables", label: t("databaseview.TableEditor") },
@@ -374,44 +378,14 @@ export function DatabaseView({
   );
 
   const sidebarSummary = (
-    <PagePanel.SummaryCard className="mt-4">
-      <div className="flex items-center gap-2 text-sm font-medium text-txt">
-        <span
-          className={`h-2.5 w-2.5 rounded-full ${
-            dbStatus?.connected ? "bg-ok " : "bg-danger"
-          }`}
-        />
-        <span>{dbStatus?.provider ?? t("game.connecting")}</span>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/75">
-        <MetaPill>
-          {tables.length} {t("databaseview.tables")}
-        </MetaPill>
-        <MetaPill>
-          {view === "tables"
-            ? t("databaseview.TableEditor")
-            : t("databaseview.SQLEditor")}
-        </MetaPill>
-        {selectedTable ? (
-          <span className="rounded-full border border-accent/25 bg-accent/8 px-2.5 py-1 text-accent">
-            {selectedTable}
-          </span>
-        ) : null}
-      </div>
-    </PagePanel.SummaryCard>
-  );
-
-  const refreshButton = (
-    <Button
-      ref={refresh.ref}
-      {...refresh.agentProps}
-      variant="outline"
-      size="sm"
-      className="h-10 w-full justify-start rounded-sm px-4 text-xs font-semibold border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
-      onClick={handleRefresh}
-    >
-      {t("common.refresh")}
-    </Button>
+    <div className="mt-4 flex items-center gap-2 px-1 text-sm font-medium text-txt">
+      <span
+        className={`h-2.5 w-2.5 rounded-full ${
+          dbStatus?.connected ? "bg-ok" : "bg-danger"
+        }`}
+      />
+      <span>{dbStatus?.provider ?? t("game.connecting")}</span>
+    </div>
   );
 
   // Shared SQL editor props
@@ -448,7 +422,6 @@ export function DatabaseView({
             {leftNav}
             {viewToggle}
             {sidebarSummary}
-            {refreshButton}
           </div>
 
           <div className="mt-4 h-px bg-border/30" />
@@ -456,8 +429,8 @@ export function DatabaseView({
           {view === "tables" ? (
             <>
               <div className="space-y-3 pt-4">
-                <div className="text-2xs text-muted uppercase font-bold tracking-widest px-2 bg-bg/50 py-1.5 rounded-sm border border-border/30 inline-flex items-center ">
-                  {t("databaseview.Tables")} ({filteredTables.length})
+                <div className="px-1 text-xs-tight font-medium text-muted">
+                  {t("databaseview.Tables")} · {filteredTables.length}
                 </div>
               </div>
 
@@ -514,7 +487,7 @@ export function DatabaseView({
 
               {queryHistory.length > 0 ? (
                 <SidebarScrollRegion className="mt-3 space-y-1.5">
-                  <div className="text-2xs text-muted uppercase tracking-[0.16em]">
+                  <div className="px-1 text-xs-tight font-medium text-muted">
                     {t("databaseview.RecentQueries")}
                   </div>
                   {queryHistory.slice(0, 8).map((q) => (
@@ -556,10 +529,7 @@ export function DatabaseView({
                 as="section"
                 className="px-5 py-5 sm:px-6"
               >
-                <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                  {t("common.database")}
-                </div>
-                <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
+                <h1 className="text-2xl font-semibold text-txt-strong">
                   {t("databaseview.TableBrowser")}
                 </h1>
               </PagePanel>
@@ -581,10 +551,7 @@ export function DatabaseView({
                     as="section"
                     className="px-5 py-5 sm:px-6"
                   >
-                    <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                      {t("common.database")}
-                    </div>
-                    <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
+                    <h1 className="text-2xl font-semibold text-txt-strong">
                       {t("databaseview.TableBrowser")}
                     </h1>
                     <ChatSearchHint
@@ -617,10 +584,7 @@ export function DatabaseView({
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                          {t("common.database")}
-                        </div>
-                        <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
+                        <h1 className="text-2xl font-semibold text-txt-strong">
                           {selectedTable}
                         </h1>
                         <ChatSearchHint
@@ -696,18 +660,14 @@ export function DatabaseView({
   return (
     <div className="flex flex-col h-full gap-4">
       {!showExternalSidebar && (
-        <div className="flex items-center gap-3 p-3 bg-card/60 backdrop-blur-xl border border-border/40 rounded-sm flex-wrap">
-          <div className="flex items-center gap-2 text-xs text-muted font-medium bg-bg/50 px-3 py-1.5 rounded-sm border border-border/30">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-xs text-muted font-medium">
             {dbStatus ? (
               <>
                 <span
-                  className={`h-2 w-2 rounded-full ${dbStatus.connected ? "bg-ok text-ok" : "bg-danger text-danger"}`}
+                  className={`h-2 w-2 rounded-full ${dbStatus.connected ? "bg-ok" : "bg-danger"}`}
                 />
                 <span className="tracking-wide">{dbStatus.provider}</span>
-                <span className="opacity-40">·</span>
-                <span>
-                  {dbStatus.tableCount} {t("databaseview.tables")}
-                </span>
               </>
             ) : (
               <span>{t("game.connecting")}</span>
@@ -717,20 +677,6 @@ export function DatabaseView({
           <div className="flex-1" />
 
           {!showExternalSidebar && viewToggle}
-
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-auto min-h-[2.25rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 px-4 py-1.5 text-xs font-medium backdrop-blur-md transition-[border-color,color,transform,box-shadow] duration-300 hover:border-accent hover:text-txt "
-            onClick={async () => {
-              const status = await loadStatus();
-              if (status?.connected) {
-                await loadTables();
-              }
-            }}
-          >
-            {t("common.refresh")}
-          </Button>
         </div>
       )}
 
@@ -783,26 +729,13 @@ export function DatabaseView({
                     <div className="space-y-3 pt-4">
                       {viewToggle}
                       {leftNav}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-10 w-full justify-start rounded-sm px-4 text-xs font-semibold "
-                        onClick={async () => {
-                          const status = await loadStatus();
-                          if (status?.connected) {
-                            await loadTables();
-                          }
-                        }}
-                      >
-                        {t("common.refresh")}
-                      </Button>
                     </div>
                     <div className="h-px bg-border/30" />
                   </>
                 )}
 
-                <div className="text-2xs text-muted uppercase font-bold tracking-widest px-2 bg-bg/50 py-1.5 rounded-sm border border-border/30 inline-flex items-center ">
-                  {t("databaseview.Tables")} ({filteredTables.length})
+                <div className="px-1 text-xs-tight font-medium text-muted">
+                  {t("databaseview.Tables")} · {filteredTables.length}
                 </div>
                 {loading && tables.length === 0 ? (
                   <div className="text-xs text-muted px-2 py-4 italic text-center opacity-70">
@@ -878,10 +811,7 @@ export function DatabaseView({
                   as="section"
                   className="px-5 py-5 sm:px-6"
                 >
-                  <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                    {t("common.database")}
-                  </div>
-                  <div className="mt-1 text-2xl font-semibold text-txt-strong">
+                  <div className="text-2xl font-semibold text-txt-strong">
                     {t("databaseview.TableBrowser")}
                   </div>
                   <ChatSearchHint
@@ -914,10 +844,7 @@ export function DatabaseView({
                 >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                        {t("common.database")}
-                      </div>
-                      <div className="mt-1 text-2xl font-semibold text-txt-strong">
+                      <div className="text-2xl font-semibold text-txt-strong">
                         {selectedTable}
                       </div>
                       <ChatSearchHint
@@ -925,12 +852,6 @@ export function DatabaseView({
                         query={sidebarSearch}
                         className="mt-2"
                       />
-                      <div className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
-                        {t("databaseview.TableWorkspaceDescription", {
-                          defaultValue:
-                            "Inspect rows, sort columns, and review table structure in one place.",
-                        })}
-                      </div>
                     </div>
                     {columnMeta.size > 0 && (
                       <div className="flex flex-wrap gap-2">
@@ -997,7 +918,6 @@ export function DatabaseView({
                 <div className="space-y-3 pt-4">
                   {viewToggle}
                   {leftNav}
-                  {refreshButton}
                 </div>
                 <div className="h-px bg-border/30" />
                 <PagePanel
@@ -1011,7 +931,7 @@ export function DatabaseView({
                 </PagePanel>
                 {queryHistory.length > 0 ? (
                   <SidebarScrollRegion className="space-y-1.5">
-                    <div className="text-2xs text-muted uppercase tracking-[0.16em]">
+                    <div className="px-1 text-xs-tight font-medium text-muted">
                       {t("databaseview.RecentQueries")}
                     </div>
                     {queryHistory.slice(0, 8).map((q) => (
@@ -1038,18 +958,9 @@ export function DatabaseView({
             >
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                    {t("common.database")}
-                  </div>
-                  <div className="mt-1 text-2xl font-semibold text-txt-strong">
+                  <div className="text-2xl font-semibold text-txt-strong">
                     {t("databaseview.SQLWorkspace", {
                       defaultValue: "SQL Workspace",
-                    })}
-                  </div>
-                  <div className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
-                    {t("databaseview.SQLWorkspaceDescription", {
-                      defaultValue:
-                        "Run ad-hoc queries, inspect results, and reuse recent SQL from the sidebar.",
                     })}
                   </div>
                 </div>

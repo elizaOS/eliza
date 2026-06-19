@@ -1,4 +1,4 @@
-import { Brain, Plus, RefreshCw, Sparkles, Store } from "lucide-react";
+import { Brain, RefreshCw, Store } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
@@ -499,12 +499,8 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
         <div data-testid="skills-detail">
           <PagePanel variant="section">
             <PagePanel.Header
-              eyebrow={t("nav.advanced")}
               heading={t("advancedpageview.Skills", {
                 defaultValue: "Skills",
-              })}
-              description={t("advancedpageview.SkillsDescription", {
-                defaultValue: "Custom agent skills",
               })}
               className="border-border/35"
               actions={
@@ -523,13 +519,12 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
 
             <div className="bg-bg/18 px-4 py-4 sm:px-5">
               {skills.length === 0 && !skillCreateFormOpen ? (
-                <PagePanel
+                <div
                   data-testid="skills-empty-state"
-                  variant="surface"
-                  className="grid min-h-[20rem] place-items-center rounded-sm px-6 py-10"
+                  className="grid min-h-[20rem] place-items-center px-6 py-10"
                 >
                   <div className="w-full max-w-2xl text-center">
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-sm border border-accent/25 bg-accent/12 text-accent">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-sm bg-accent/12 text-accent">
                       <Brain className="h-7 w-7" />
                     </div>
                     <h2 className="mt-4 text-base font-semibold text-txt">
@@ -537,54 +532,19 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                         defaultValue: "No Skills Installed",
                       })}
                     </h2>
-                    <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                      {[
-                        { label: "Install", icon: Store, tone: "text-info" },
-                        { label: "Create", icon: Plus, tone: "text-ok" },
-                        {
-                          label: "Review",
-                          icon: Sparkles,
-                          tone: "text-warning",
-                        },
-                      ].map((item) => {
-                        const Icon = item.icon;
-                        return (
-                          <div
-                            key={item.label}
-                            className="rounded-sm border border-border/24 bg-bg/45 px-3 py-3"
-                          >
-                            <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
-                            <div className="mt-2 text-xs font-semibold text-muted">
-                              {item.label}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex w-full flex-col justify-center gap-2 sm:w-auto sm:flex-row sm:gap-3">
+                    <div className="mt-6 flex w-full flex-col justify-center gap-2 sm:w-auto sm:flex-row sm:gap-3">
                       <Button
                         variant="default"
                         size="sm"
-                        className="mt-5 h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:w-auto"
+                        className="h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:w-auto"
                         onClick={() => setInstallModalOpen(true)}
                       >
                         <Store className="mr-2 h-4 w-4" />
                         {t("skillsview.BrowseMarketplace")}
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-0 h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:mt-5 sm:w-auto"
-                        onClick={() => setState("skillCreateFormOpen", true)}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        {t("skillsview.createSkill", {
-                          defaultValue: "Create Skill",
-                        })}
-                      </Button>
                     </div>
                   </div>
-                </PagePanel>
+                </div>
               ) : filteredSkills.length === 0 && !skillCreateFormOpen ? (
                 <PagePanel.Empty
                   data-testid="skills-filter-empty"
@@ -600,12 +560,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 />
               ) : skillCreateFormOpen ? (
                 <PagePanel variant="surface" className="overflow-hidden">
-                  <PagePanel.Header
-                    eyebrow={t("skillsview.skillBuilder", {
-                      defaultValue: "Skill Builder",
-                    })}
-                    heading={t("skillsview.CreateNewSkill")}
-                  />
+                  <PagePanel.Header heading={t("skillsview.CreateNewSkill")} />
                   <div className="bg-bg/18 px-4 py-4 sm:px-5">
                     <div className="flex flex-col gap-3">
                       <div>
@@ -708,29 +663,21 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                         >
                           {selectedSkill.name}
                         </div>
-                        <StatusBadge
-                          label={
-                            selectedSkill.scanStatus === "blocked" ||
-                            selectedSkill.scanStatus === "critical"
-                              ? t("skillsview.statusBlocked")
-                              : selectedSkill.scanStatus === "warning"
+                        {selectedNeedsAttention ? (
+                          <StatusBadge
+                            label={
+                              selectedSkill.scanStatus === "warning"
                                 ? t("skillsview.statusWarning")
-                                : selectedSkill.enabled
-                                  ? t("common.active")
-                                  : t("common.inactive")
-                          }
-                          variant={
-                            selectedSkill.scanStatus === "warning"
-                              ? "warning"
-                              : selectedSkill.scanStatus === "blocked" ||
-                                  selectedSkill.scanStatus === "critical"
-                                ? "danger"
-                                : selectedSkill.enabled
-                                  ? "success"
-                                  : "muted"
-                          }
-                          withDot
-                        />
+                                : t("skillsview.statusBlocked")
+                            }
+                            variant={
+                              selectedSkill.scanStatus === "warning"
+                                ? "warning"
+                                : "danger"
+                            }
+                            withDot
+                          />
+                        ) : null}
                         <span className="min-w-0 break-all text-xs-tight font-mono text-muted/80">
                           {selectedSkill.id}
                         </span>
@@ -787,17 +734,6 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                         {t("skillsview.EditSource", {
                           defaultValue: "Edit Source",
                         })}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        type="button"
-                        className="h-9 w-9 rounded-full text-muted hover:text-txt"
-                        onClick={() => void refreshSkills()}
-                        title={t("common.refresh")}
-                        aria-label={t("common.refresh")}
-                      >
-                        <RefreshCw className="h-4 w-4" />
                       </Button>
                       <ConfirmDelete
                         triggerClassName="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em] !bg-transparent text-danger hover:!bg-danger/15 hover:text-danger-foreground transition-colors border border-danger/30"
@@ -884,12 +820,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       </PagePanel.Notice>
                     ) : (
                       <PagePanel variant="inset" className="p-4 sm:p-5">
-                        <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted/60">
-                          {t("skillsview.EditSource", {
-                            defaultValue: "Edit Source",
-                          })}
-                        </div>
-                        <div className="mt-2 text-sm leading-relaxed text-muted">
+                        <div className="text-sm leading-relaxed text-muted">
                           {t("skillsview.SkillSourceEditorDescription", {
                             defaultValue:
                               "Open the skill source editor to inspect or modify `SKILL.md`, or review findings here when a skill needs attention.",

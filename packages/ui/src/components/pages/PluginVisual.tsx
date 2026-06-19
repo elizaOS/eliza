@@ -41,7 +41,7 @@ const PROVIDER_LOGO_IDS = new Set([
  * Resolve the strongest available visual for a plugin and render it as a square
  * tile. Resolution order: brand SVG logo (connectors) → AI-provider brand PNG →
  * explicit plugin image → registry Lucide glyph → deterministic monogram tile
- * (initials over a name-hashed, accent-adjacent gradient — never blue).
+ * (initials over a name-hashed orange-family gradient).
  */
 export function PluginVisual({
   plugin,
