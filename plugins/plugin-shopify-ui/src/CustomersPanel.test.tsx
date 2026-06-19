@@ -7,30 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@elizaos/ui", () => ({
   Skeleton: (props: React.HTMLAttributes<HTMLDivElement>) =>
     React.createElement("div", { ...props, "data-skeleton": true }),
-  // The customer search box moved to the floating chat; the panel renders a
-  // query-aware hint. Render the active/resting copy so tests can assert it.
-  ChatSearchHint: ({ noun, query }: { noun: string; query?: string }) =>
-    React.createElement(
-      "p",
-      { "data-testid": "chat-search-hint" },
-      query?.trim()
-        ? `Showing ${noun} for “${query.trim()}”`
-        : `Search ${noun} by typing in the chat.`,
-    ),
   // formatShortDate is rendered verbatim so we can assert on a stable value.
   formatShortDate: (iso: string) => `date:${iso}`,
-}));
-
-// Capture the registered chat binding so the search-moved-to-chat behaviour can
-// be exercised without an in-view input.
-let lastChatBinding: {
-  placeholder?: string;
-  onQuery?: (q: string) => void;
-} | null = null;
-vi.mock("@elizaos/ui/state/view-chat-binding", () => ({
-  useRegisterViewChatBinding: (binding: typeof lastChatBinding) => {
-    lastChatBinding = binding;
-  },
 }));
 
 import { CustomersPanel } from "./CustomersPanel";
@@ -63,7 +41,6 @@ const customers: ShopifyCustomer[] = [
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  lastChatBinding = null;
 });
 
 describe("CustomersPanel", () => {
@@ -75,7 +52,6 @@ describe("CustomersPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
       }),
     );
 
@@ -100,7 +76,6 @@ describe("CustomersPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
       }),
     );
     expect(screen.getByText("1 customer")).toBeTruthy();
@@ -114,7 +89,6 @@ describe("CustomersPanel", () => {
         loading: false,
         error: null,
         search: "zzz",
-        onSearchChange: vi.fn(),
       }),
     );
     expect(screen.getByText("No customers match your search.")).toBeTruthy();
@@ -128,7 +102,6 @@ describe("CustomersPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
       }),
     );
     expect(screen.getByText("No customers found.")).toBeTruthy();
@@ -142,7 +115,6 @@ describe("CustomersPanel", () => {
         loading: true,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
       }),
     );
     expect(
@@ -150,8 +122,7 @@ describe("CustomersPanel", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("registers a chat-search binding that forwards the query (no in-view input)", () => {
-    const onSearchChange = vi.fn();
+  it("renders the chat-search hint instead of an in-view search box", () => {
     render(
       React.createElement(CustomersPanel, {
         customers,
@@ -159,36 +130,13 @@ describe("CustomersPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange,
       }),
     );
     // No in-view search box — the floating chat is the panel's search bar.
     expect(
       screen.queryByPlaceholderText("Search customers by name or email…"),
     ).toBeNull();
-    expect(
-      screen.getByText("Search customers by typing in the chat."),
-    ).toBeTruthy();
-
-    // Drive the binding the chat composer would feed us.
-    expect(lastChatBinding?.placeholder).toBe(
-      "Search customers by name or email…",
-    );
-    lastChatBinding?.onQuery?.("Grace");
-    expect(onSearchChange).toHaveBeenCalledWith("Grace");
-  });
-
-  it("confirms the active query in the chat-search hint", () => {
-    render(
-      React.createElement(CustomersPanel, {
-        customers,
-        total: 2,
-        loading: false,
-        error: null,
-        search: "Grace",
-        onSearchChange: vi.fn(),
-      }),
-    );
-    expect(screen.getByText("Showing customers for “Grace”")).toBeTruthy();
+    const hint = screen.getByTestId("chat-search-hint");
+    expect(hint.textContent).toBe("Search customers by typing in the chat.");
   });
 });

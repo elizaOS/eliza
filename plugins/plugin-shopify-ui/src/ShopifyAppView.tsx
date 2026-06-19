@@ -378,7 +378,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
     productsLoading,
     productsError,
     productSearch,
-    setProductSearch,
     setProductsPage,
 
     orders,
@@ -398,7 +397,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
     customersLoading,
     customersError,
     customerSearch,
-    setCustomerSearch,
 
     counts,
   } = useShopifyDashboard();
@@ -682,7 +680,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                   loading={productsLoading}
                   error={productsError}
                   search={productSearch}
-                  onSearchChange={setProductSearch}
                   onPageChange={setProductsPage}
                 />
               </TabsContent>
@@ -714,7 +711,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                   loading={customersLoading}
                   error={customersError}
                   search={customerSearch}
-                  onSearchChange={setCustomerSearch}
                 />
               </TabsContent>
             </Tabs>

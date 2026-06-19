@@ -104,24 +104,11 @@ vi.mock("@elizaos/ui", () => ({
         ),
       ),
     ),
-  // The per-view search box moved to the floating chat; views now render a
-  // static hint. Render the resting copy so tabs that own a chat-search can be
-  // identified by it.
-  ChatSearchHint: ({ noun }: { noun: string; query?: string }) =>
-    React.createElement(
-      "p",
-      { "data-testid": "chat-search-hint" },
-      `Search ${noun} by typing in the chat.`,
-    ),
   formatShortDate: (iso: string) => `date:${iso}`,
 }));
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
-}));
-
-vi.mock("@elizaos/ui/state/view-chat-binding", () => ({
-  useRegisterViewChatBinding: () => {},
 }));
 
 import { ShopifyAppView } from "./ShopifyAppView";

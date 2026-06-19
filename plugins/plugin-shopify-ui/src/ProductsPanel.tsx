@@ -1,6 +1,5 @@
 import {
   Button,
-  ChatSearchHint,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -10,9 +9,8 @@ import {
   Skeleton,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { useRegisterViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
 import { ChevronLeft, ChevronRight, Image, Package, Plus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ShopifyProduct } from "./useShopifyDashboard";
 
 function ProductStatusBadge({ status }: { status: ShopifyProduct["status"] }) {
@@ -314,7 +312,6 @@ interface ProductsPanelProps {
   loading: boolean;
   error: string | null;
   search: string;
-  onSearchChange: (q: string) => void;
   onPageChange: (page: number) => void;
 }
 
@@ -327,26 +324,10 @@ export function ProductsPanel({
   loading,
   error,
   search,
-  onSearchChange,
   onPageChange,
 }: ProductsPanelProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  // The floating chat composer is this panel's product search: while the
-  // products tab is open it takes over the composer placeholder and feeds the
-  // live draft into the server query (?q=). Reset to page 1 on each new query.
-  const chatBinding = useMemo(
-    () => ({
-      placeholder: "Search products by name…",
-      onQuery: (q: string) => {
-        onSearchChange(q);
-        onPageChange(1);
-      },
-    }),
-    [onSearchChange, onPageChange],
-  );
-  useRegisterViewChatBinding(chatBinding);
 
   const createButton = useAgentElement<HTMLButtonElement>({
     id: "action-create-product",
@@ -375,7 +356,12 @@ export function ProductsPanel({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <ChatSearchHint noun="products" query={search} />
+        <p
+          data-testid="chat-search-hint"
+          className="text-[13px] leading-relaxed text-txt/60"
+        >
+          Search products by typing in the chat.
+        </p>
         <Button
           ref={createButton.ref}
           type="button"

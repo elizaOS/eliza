@@ -1,12 +1,10 @@
-import { ChatSearchHint, formatShortDate, Skeleton } from "@elizaos/ui";
-import { useRegisterViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
+import { formatShortDate, Skeleton } from "@elizaos/ui";
 import {
   CalendarDays,
   CircleDollarSign,
   ShoppingCart,
   Users,
 } from "lucide-react";
-import { useMemo } from "react";
 import type { ShopifyCustomer } from "./useShopifyDashboard";
 
 function CustomerRow({ customer }: { customer: ShopifyCustomer }) {
@@ -61,7 +59,6 @@ interface CustomersPanelProps {
   loading: boolean;
   error: string | null;
   search: string;
-  onSearchChange: (q: string) => void;
 }
 
 export function CustomersPanel({
@@ -70,24 +67,16 @@ export function CustomersPanel({
   loading,
   error,
   search,
-  onSearchChange,
 }: CustomersPanelProps) {
-  // The floating chat composer is this panel's customer search: while the
-  // customers tab is open it takes over the composer placeholder and feeds the
-  // live draft into the server query (?q=).
-  const chatBinding = useMemo(
-    () => ({
-      placeholder: "Search customers by name or email…",
-      onQuery: onSearchChange,
-    }),
-    [onSearchChange],
-  );
-  useRegisterViewChatBinding(chatBinding);
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <ChatSearchHint noun="customers" query={search} />
+        <p
+          data-testid="chat-search-hint"
+          className="text-[13px] leading-relaxed text-txt/60"
+        >
+          Search customers by typing in the chat.
+        </p>
         {!loading ? (
           <span className="shrink-0 text-xs text-muted">
             {total.toLocaleString()} customer{total !== 1 ? "s" : ""}
