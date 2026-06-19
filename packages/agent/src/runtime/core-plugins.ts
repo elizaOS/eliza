@@ -127,6 +127,43 @@ export const CORE_PLUGINS: readonly string[] = [
 ];
 
 /**
+ * Minimal plugin set for a dedicated, chat-only cloud agent (#8434). A dedicated
+ * agent boots a full local AgentRuntime inside its container; the default
+ * CORE_PLUGINS set carries heavy coding/automation surfaces (shell, coding-tools,
+ * browser, the orchestrator, gitpathologist) that a purely conversational agent
+ * never uses and that dominate its cold-boot time. Opt in per agent by setting
+ * `ELIZA_PLUGIN_SET=lean-chat` in the container environment.
+ *
+ * Browser is intentionally excluded — it stays OFF for lean chat until the
+ * browser surface is production-ready. This set is for dedicated agents only;
+ * cloud-PROXIED (shared-runtime) agents boot zero plugins by construction.
+ */
+export const LEAN_CHAT_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-sql", // database adapter — required
+  "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
+  "@elizaos/plugin-companion", // VRM companion emotes for the app chat surface
+  "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
+  "@elizaos/plugin-device-filesystem", // mobile-safe FILE target
+  "@elizaos/plugin-agent-skills", // skill execution + enabled-skills provider
+  "@elizaos/plugin-commands", // slash commands
+];
+
+/**
+ * Heavy surfaces force-excluded under `ELIZA_PLUGIN_SET=lean-chat` even when some
+ * other gate would otherwise add them (ELIZA_AGENT_ORCHESTRATOR, gitpathologist
+ * .git auto-detect, config allow-lists). Guarantees a lean chat agent stays lean.
+ * Browser is listed per the "browser disabled until ready" decision.
+ */
+export const LEAN_CHAT_EXCLUDED_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-shell",
+  "@elizaos/plugin-coding-tools",
+  "@elizaos/plugin-browser",
+  "agent-orchestrator",
+  "@elizaos/plugin-agent-orchestrator",
+  "@elizaos/plugin-gitpathologist",
+];
+
+/**
  * Core plugins that must be imported and registered before the runtime can be
  * considered ready. Keep this list intentionally small: everything else in
  * CORE_PLUGINS should load in the deferred phase so slow feature/provider
