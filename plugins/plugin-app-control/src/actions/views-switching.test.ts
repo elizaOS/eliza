@@ -586,6 +586,115 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(ok).toBe(true);
 			expect(owner).not.toHaveBeenCalled();
 		});
+
+		// #8613: on a text connector with no view surface for the asker, a
+		// desktop-only nav/layout op (show/open/close/split/…) is a silent
+		// non-answer if chosen as the terminal action. validate() must drop it so
+		// the turn falls back to a REPLY the connector actually delivers.
+		function sourcedMessage(text: string, source: string) {
+			return {
+				entityId: "user-1",
+				roomId: "room-1",
+				agentId: "agent-1",
+				content: { text, source },
+			};
+		}
+
+		it.each([
+			["discord", { action: "show", view: "wallet" }, "show me my wallet"],
+			["telegram", { action: "open", view: "calendar" }, "open my calendar"],
+			["matrix", { action: "close" }, "close this view"],
+			["slack", { action: "split", view: "wallet" }, "split the wallet view"],
+			["whatsapp", { action: "tile" }, "tile my views"],
+			["x", { action: "manager" }, "show the view manager"],
+		])("gates desktop-only mode off the %s connector (no view surface)", async (source, options, text) => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				sourcedMessage(text, source) as never,
+				undefined as never,
+				options as never,
+			);
+			expect(ok).toBe(false);
+		});
+
+		it("keeps text-producing read modes available on a text connector", async () => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			for (const options of [
+				{ action: "list" },
+				{ action: "current" },
+				{ action: "search", query: "wallet" },
+			]) {
+				const ok = await action.validate(
+					{ agentId: "agent-1" } as never,
+					sourcedMessage("list my views", "discord") as never,
+					undefined as never,
+					options as never,
+				);
+				expect(ok).toBe(true);
+			}
+		});
+
+		it("keeps capability/content ops (interact) available on a text connector", async () => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				sourcedMessage("add a calendar event", "discord") as never,
+				undefined as never,
+				{
+					action: "interact",
+					view: "calendar",
+					capability: "create-calendar-event",
+				} as never,
+			);
+			expect(ok).toBe(true);
+		});
+
+		it("still navigates on a local view-capable surface (no source / dashboard)", async () => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			for (const source of [undefined, "chat", "user_chat", "app"]) {
+				const ok = await action.validate(
+					{ agentId: "agent-1" } as never,
+					{
+						entityId: "user-1",
+						roomId: "room-1",
+						agentId: "agent-1",
+						content: { text: "show my wallet", ...(source ? { source } : {}) },
+					} as never,
+					undefined as never,
+					{ action: "show", view: "wallet" } as never,
+				);
+				expect(ok).toBe(true);
+			}
+		});
+
+		it("owner gate still applies to authoring ops on a text connector", async () => {
+			const owner = vi.fn(async () => false);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: owner,
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				sourcedMessage("delete the wallet plugin", "discord") as never,
+				undefined as never,
+				{ action: "delete", view: "wallet" } as never,
+			);
+			expect(ok).toBe(false);
+			expect(owner).toHaveBeenCalled();
+		});
 	});
 
 	describe("BUG PROBE: developerMode-gated views reachable by ACTIVE command", () => {
