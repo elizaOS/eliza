@@ -2,8 +2,8 @@ import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import {
   createHyperliquidInfoClient,
-  handleHyperliquidRoute,
   type HyperliquidFetch,
+  handleHyperliquidRoute,
 } from "../src/routes";
 
 function responseRecorder() {
@@ -36,19 +36,26 @@ function fixedNow() {
 
 describe("Hyperliquid route and info client behavior", () => {
   it("fetches markets through the Info API and returns parsed route payloads", async () => {
-    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      expect(init).toMatchObject({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "meta" }),
-      });
-      return Response.json({
-        universe: [
-          { name: "BTC", szDecimals: 5, maxLeverage: 50 },
-          { name: "ETH", szDecimals: 4, onlyIsolated: true, isDelisted: false },
-        ],
-      });
-    }) as HyperliquidFetch;
+    const fetchImpl = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        expect(init).toMatchObject({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "meta" }),
+        });
+        return Response.json({
+          universe: [
+            { name: "BTC", szDecimals: 5, maxLeverage: 50 },
+            {
+              name: "ETH",
+              szDecimals: 4,
+              onlyIsolated: true,
+              isDelisted: false,
+            },
+          ],
+        });
+      },
+    ) as HyperliquidFetch;
     const res = responseRecorder();
 
     await expect(
@@ -61,7 +68,10 @@ describe("Hyperliquid route and info client behavior", () => {
       ),
     ).resolves.toBe(true);
 
-    expect(fetchImpl).toHaveBeenCalledWith("https://api.hyperliquid.xyz/info", expect.any(Object));
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://api.hyperliquid.xyz/info",
+      expect.any(Object),
+    );
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toEqual({
       markets: [
@@ -244,7 +254,10 @@ describe("Hyperliquid route and info client behavior", () => {
                 coin: "ETH",
                 szi: "1.25",
                 entryPx: "3000",
-                positionValue: "3750",
+                // positionValue 4000 / size 1.25 => mark 3200, deliberately
+                // above the 3000 entry so the derived mark (not entry) drives
+                // the distance-to-liquidation calc.
+                positionValue: "4000",
                 unrealizedPnl: "12.5",
                 returnOnEquity: "0.05",
                 liquidationPx: "2400",
@@ -253,6 +266,13 @@ describe("Hyperliquid route and info client behavior", () => {
               },
             },
           ],
+          marginSummary: {
+            accountValue: "5000",
+            totalNtlPos: "4000",
+            totalMarginUsed: "1000",
+            totalRawUsd: "5012.5",
+          },
+          withdrawable: "4000",
         }),
       )
       .mockResolvedValueOnce(
@@ -270,24 +290,41 @@ describe("Hyperliquid route and info client behavior", () => {
           },
         ]),
       )
-      .mockResolvedValueOnce(Response.json({ notUniverse: [] })) as unknown as vi.MockedFunction<HyperliquidFetch>;
+      .mockResolvedValueOnce(
+        Response.json({ notUniverse: [] }),
+      ) as unknown as vi.MockedFunction<HyperliquidFetch>;
     const client = createHyperliquidInfoClient({ fetchImpl });
     const account = "0x0000000000000000000000000000000000000001";
 
-    await expect(client.getPositions(account)).resolves.toEqual([
-      {
-        coin: "ETH",
-        size: "1.25",
-        entryPx: "3000",
-        positionValue: "3750",
-        unrealizedPnl: "12.5",
-        returnOnEquity: "0.05",
-        liquidationPx: "2400",
-        marginUsed: "1000",
-        leverageType: "cross",
-        leverageValue: 3,
+    await expect(client.getPositions(account)).resolves.toEqual({
+      positions: [
+        {
+          coin: "ETH",
+          size: "1.25",
+          entryPx: "3000",
+          positionValue: "4000",
+          unrealizedPnl: "12.5",
+          returnOnEquity: "0.05",
+          liquidationPx: "2400",
+          marginUsed: "1000",
+          leverageType: "cross",
+          leverageValue: 3,
+          // mark = 4000 / 1.25 = 3200; (3200 - 2400) / 3200 = 25% to liq.
+          markPx: "3200",
+          distanceToLiquidationPct: 25,
+        },
+      ],
+      summary: {
+        accountValue: "5000",
+        totalNotionalPosition: "4000",
+        totalMarginUsed: "1000",
+        totalRawUsd: "5012.5",
+        withdrawable: "4000",
+        totalUnrealizedPnl: "12.50",
+        // effective leverage = totalNtlPos 4000 / accountValue 5000 = 0.8.
+        effectiveLeverage: 0.8,
       },
-    ]);
+    });
     await expect(client.getOpenOrders(account)).resolves.toEqual([
       {
         coin: "BTC",
@@ -302,7 +339,9 @@ describe("Hyperliquid route and info client behavior", () => {
         cloid: null,
       },
     ]);
-    await expect(client.getMarkets()).rejects.toThrow("Hyperliquid meta response missing universe");
+    await expect(client.getMarkets()).rejects.toThrow(
+      "Hyperliquid meta response missing universe",
+    );
 
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,

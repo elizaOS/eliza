@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import "./client";
 import { loadHyperliquidTuiState } from "./HyperliquidAppView.interact";
+import { HyperliquidPositionsPanel } from "./HyperliquidPositionsPanel";
 import { useHyperliquidState } from "./useHyperliquidState";
 
 function BlockedPill({ label }: { label: string }) {
@@ -204,21 +205,11 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
               </section>
 
               <section className="divide-y divide-border/14">
-                <div className="flex items-center justify-between gap-3 py-3">
-                  <h2 className="text-sm font-semibold text-txt">Positions</h2>
-                  {positions?.readBlockedReason ? (
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="min-w-0 truncate text-xs text-muted">
-                        {positions.readBlockedReason}
-                      </span>
-                      <BlockedPill label="Blocked" />
-                    </div>
-                  ) : (
-                    <span className="text-sm font-semibold text-txt">
-                      {positions?.positions.length ?? 0}
-                    </span>
-                  )}
-                </div>
+                <HyperliquidPositionsPanel
+                  positions={positions?.positions ?? []}
+                  summary={positions?.summary ?? null}
+                  readBlockedReason={positions?.readBlockedReason ?? null}
+                />
 
                 <div className="flex items-center justify-between gap-3 py-3">
                   <h2 className="text-sm font-semibold text-txt">Orders</h2>

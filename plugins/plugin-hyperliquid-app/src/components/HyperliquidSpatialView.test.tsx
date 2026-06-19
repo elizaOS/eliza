@@ -52,6 +52,8 @@ const snapshot: HyperliquidSnapshot = {
       marginUsed: "3000",
       leverageType: "cross",
       leverageValue: 10,
+      markPx: "60000",
+      distanceToLiquidationPct: 25,
     },
   ],
   orders: [

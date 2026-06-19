@@ -103,11 +103,52 @@ export interface HyperliquidPosition {
   marginUsed: string | null;
   leverageType: string | null;
   leverageValue: number | null;
+  /**
+   * Current mark price, derived server-side as `|positionValue| / |size|`.
+   * Stringified USD; null when either input is unreadable.
+   */
+  markPx: string | null;
+  /**
+   * Distance from the current mark to the liquidation price, as a percent of
+   * mark (bigger = safer). Computed server-side against the real mark (not the
+   * entry price), so the view never does financial math. Null when mark or
+   * liquidation price are unreadable.
+   */
+  distanceToLiquidationPct: number | null;
+}
+
+/**
+ * Account-level margin summary derived from the Hyperliquid
+ * `clearinghouseState` `marginSummary` block. Mirrors the waifu patron
+ * "account health" strip (account value, withdrawable, total notional,
+ * aggregate unrealized PnL) so the AppView can render the same hero stats.
+ * All values are stringified USD as returned by Hyperliquid; null when the
+ * account has never traded or the field is absent.
+ */
+export interface HyperliquidAccountSummary {
+  accountValue: string | null;
+  totalNotionalPosition: string | null;
+  totalMarginUsed: string | null;
+  totalRawUsd: string | null;
+  withdrawable: string | null;
+  /** Sum of per-position unrealized PnL, in USD. Null when unreadable. */
+  totalUnrealizedPnl: string | null;
+  /**
+   * Effective account leverage = `totalNotionalPosition / accountValue`,
+   * computed server-side. Null when either input is unreadable or account value
+   * is non-positive.
+   */
+  effectiveLeverage: number | null;
 }
 
 export interface HyperliquidPositionsResponse {
   accountAddress: string | null;
   positions: HyperliquidPosition[];
+  /**
+   * Account margin/value summary. Optional for back-compat: older route
+   * builds and the no-account path omit it (null).
+   */
+  summary: HyperliquidAccountSummary | null;
   readBlockedReason: string | null;
   fetchedAt: string | null;
 }
