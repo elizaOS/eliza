@@ -150,8 +150,8 @@ function DetailList({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-border/50 bg-bg-accent/20 p-2.5">
-      <div className="mb-2 text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+    <div className="space-y-1.5">
+      <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
         {title}
       </div>
       {children}
@@ -226,7 +226,7 @@ function ThreadDetailContent({
   const pendingDecisions = (detail.pendingDecisions ?? []).slice(-4).reverse();
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-3 text-2xs text-muted">
         <span>
           {t("codingagenttaskspanel.sessionsCount", {
@@ -560,7 +560,7 @@ function ThreadDetailPane({
         onClick={onBack}
         testId="task-detail-back"
       />
-      <div className="flex items-start gap-3 rounded-2xl border border-border/50 bg-bg-accent/30 p-3">
+      <div className="flex items-start gap-3 rounded-2xl bg-bg-accent/20 p-3">
         <TaskStatusMedallion status={thread.status} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-txt-strong">
