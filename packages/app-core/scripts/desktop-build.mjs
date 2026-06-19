@@ -1047,7 +1047,33 @@ function runtimeCopyLabel() {
     : `Bundling runtime node_modules into dist (profile=${buildProfile})`;
 }
 
+function formatGiB(bytes) {
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GiB`;
+}
+
+function assertRuntimeCopyDiskHeadroom() {
+  if (typeof fs.statfsSync !== "function") return;
+
+  const stat = fs.statfsSync(ROOT);
+  const availableBytes = Number(stat.bavail) * Number(stat.bsize);
+  const minimumBytes = Number.parseInt(
+    process.env.ELIZA_DESKTOP_MIN_FREE_BYTES ?? `${4 * 1024 * 1024 * 1024}`,
+    10,
+  );
+  if (!Number.isFinite(minimumBytes) || minimumBytes <= 0) return;
+  if (availableBytes >= minimumBytes) return;
+
+  fail(
+    [
+      `Desktop runtime bundling needs at least ${formatGiB(minimumBytes)} free before copying node_modules; only ${formatGiB(availableBytes)} is available.`,
+      "Free disk space, remove stale build outputs such as dist/.turbo, or rerun with ELIZA_DESKTOP_MIN_FREE_BYTES=0 if you intentionally want to risk a partial copy.",
+    ].join(" "),
+  );
+}
+
 function copyRuntimeNodeModulesWithRetry() {
+  assertRuntimeCopyDiskHeadroom();
+
   const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const result = runBunStatus(runtimeCopyArgs(), {

@@ -51,6 +51,7 @@ bun run --cwd plugins/plugin-native-macosalarm clean          # rm -rf dist bin
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
 | `ELIZA_MACOSALARM_HELPER_BIN` | No | `bin/macosalarm-helper` relative to package root | Override path to the compiled Swift binary |
+| `ELIZA_MACOSALARM_FORCE_HELPER_BUILD` | No | unset | Set to `1` to force recompiling the tracked Swift helper binary even when it is newer than the source |
 | `ELIZA_VERBOSE_PLUGIN_BUILD` | No | unset | Set to `1` to log the binary output path during `build:helper` |
 
 No runtime config keys are read from the agent runtime settings object. The only env var consumed at runtime is `ELIZA_MACOSALARM_HELPER_BIN`.
