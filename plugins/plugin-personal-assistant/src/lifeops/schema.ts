@@ -171,6 +171,10 @@ export const lifeTaskOccurrences = appLifeopsPgSchema.table(
   ],
 );
 
+// NOTE: the goal tables (life_goal_definitions / life_goal_links) were carved
+// out to @elizaos/plugin-goals (`app_goals`). These app_lifeops defs remain
+// only as the non-destructive migration SOURCE — PA's repository (incl. the
+// reminder/scheduling goal-link reads/writes) now targets the app_goals copies.
 export const lifeGoalDefinitions = appLifeopsPgSchema.table(
   "life_goal_definitions",
   {

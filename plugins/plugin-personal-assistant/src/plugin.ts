@@ -18,6 +18,7 @@ import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import { calendarPlugin } from "@elizaos/plugin-calendar";
 import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { financesPlugin } from "@elizaos/plugin-finances";
+import { goalsPlugin } from "@elizaos/plugin-goals";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
 import { inboxPlugin } from "@elizaos/plugin-inbox";
@@ -631,18 +632,26 @@ export async function ensureLifeOpsRemoteDesktopPluginRegistered(
   await runtime.registerPlugin(remoteDesktopPlugin);
 }
 
-// Goals: the goal CRUD back-end (`GoalsService`) moved to
-// `@elizaos/plugin-goals`, but — unlike finances/inbox — the goal TABLES
-// (life_goal_definitions / life_goal_links) deliberately stay registered by PA
-// in the `app_lifeops` schema, because PA's reminder/scheduling subsystem also
-// reads and writes goal links (see service-mixin-reminders.ts: getGoal /
-// upsertGoalLink / deleteGoalLinksForLinked). plugin-goals' GoalsRepository
-// reaches those existing tables via the runtime DB handle. So PA does NOT
-// auto-register the plugin-goals plugin (its own `app_goals` schema + view +
-// stub actions are for the decomposed PA-free topology); PA just imports the
-// `GoalsService` class and delegates its goal CRUD to it (see
-// service-mixin-goals.ts). There is intentionally no
-// `ensureLifeOpsGoalsPluginRegistered`.
+/**
+ * Register `@elizaos/plugin-goals` if it is not already in the runtime. The
+ * goal TABLES (life_goal_definitions / life_goal_links) were carved into
+ * plugin-goals' own `app_goals` schema; PA's reminder/scheduling subsystem
+ * still reads + writes goal links (service-mixin-reminders.ts: getGoal /
+ * upsertGoalLink / deleteGoalLinksForLinked), but it does so through the
+ * repository, whose SQL now targets `app_goals` — so a single owner of the
+ * tables (plugin-goals) backs every reader. plugin-goals MUST be loaded
+ * whenever PA is, both to create the `app_goals` schema and to run the
+ * non-destructive app_lifeops -> app_goals migration. Hard dependency, static
+ * import.
+ */
+export async function ensureLifeOpsGoalsPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some((plugin) => plugin.name === goalsPlugin.name)) {
+    return;
+  }
+  await runtime.registerPlugin(goalsPlugin);
+}
 
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
   "eliza:lifeops:plugin:init-failures";
@@ -796,6 +805,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     await ensureLifeOpsCalendarPluginRegistered(runtime);
     await ensureLifeOpsFinancesPluginRegistered(runtime);
     await ensureLifeOpsRemindersPluginRegistered(runtime);
+    await ensureLifeOpsGoalsPluginRegistered(runtime);
     await ensureLifeOpsInboxPluginRegistered(runtime);
     await ensureLifeOpsRemoteDesktopPluginRegistered(runtime);
 
