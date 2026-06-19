@@ -26163,14 +26163,30 @@
       }
     );
   }
+  function TypingDotsInner() {
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+      "span",
+      {
+        className: "flex gap-1.5 py-1",
+        "data-testid": "typing-dots",
+        role: "status",
+        "aria-label": "assistant is responding",
+        children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          "span",
+          {
+            className: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
+            style: { animationDelay: `${i * 180}ms` }
+          },
+          i
+        ))
+      }
+    );
+  }
   function TypingDots({ reduce }) {
     return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       motion.div,
       {
         className: "mb-2.5 flex w-full justify-start",
-        "data-testid": "typing-dots",
-        role: "status",
-        "aria-label": "assistant is responding",
         initial: { opacity: 0 },
         animate: { opacity: 1 },
         exit: { opacity: 0 },
@@ -26182,14 +26198,7 @@
               "rounded-2xl rounded-bl-md border border-white/10 bg-black/45 px-3.5 py-2 text-white/90",
               FLOAT_SHADOW2
             ),
-            children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "flex gap-1.5", children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-              "span",
-              {
-                className: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
-                style: { animationDelay: `${i * 180}ms` }
-              },
-              i
-            )) })
+            children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDotsInner, {})
           }
         )
       }
@@ -26329,7 +26338,12 @@
               ) : isUser ? "bg-white/20 text-white" : "bg-white/10 text-white/90"
             ),
             children: [
-              message.content,
+              isAssistant && !message.content.trim() ? (
+                // The in-flight assistant turn (kept by visibleMessages only while
+                // responding): breathe the dots INSIDE the bubble so they're anchored
+                // where the streamed text fills in — then the text replaces them.
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDotsInner, {})
+              ) : message.content,
               /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                 motion.span,
                 {
@@ -26399,7 +26413,9 @@
     const threadHeight = useMotionValue(0);
     const openProgress = useMotionValue(pilled ? 0 : 1);
     const draggingRef = React7.useRef(false);
-    const [pushToTalkActive, setPushToTalkActive] = React7.useState(false);
+    const pttRef = React7.useRef({ kind: "idle" });
+    const [pttHolding, setPttHolding] = React7.useState(false);
+    const suppressNextClickRef = React7.useRef(false);
     const [pendingImages, setPendingImages] = React7.useState(
       []
     );
@@ -26411,12 +26427,11 @@
     const panelRef = React7.useRef(null);
     const threadRef = React7.useRef(null);
     const focusThreadRef = React7.useRef(false);
-    const pushToTalkTimerRef = React7.useRef(null);
-    const pushToTalkActiveRef = React7.useRef(false);
-    const suppressMicClickRef = React7.useRef(false);
     const visibleMessages = React7.useMemo(
-      () => messages.filter((m2) => m2.content.trim()).slice(-MAX_RENDERED_MESSAGES),
-      [messages]
+      () => messages.filter(
+        (m2) => m2.content.trim() || m2.role === "assistant" && phase === "responding"
+      ).slice(-MAX_RENDERED_MESSAGES),
+      [messages, phase]
     );
     const lastId = visibleMessages.at(-1)?.id ?? null;
     const lastContent = visibleMessages.at(-1)?.content ?? "";
@@ -26432,9 +26447,11 @@
     });
     React7.useEffect(
       () => () => {
-        if (pushToTalkTimerRef.current !== null) {
-          window.clearTimeout(pushToTalkTimerRef.current);
-        }
+        const phase2 = pttRef.current;
+        if (phase2.kind === "pending") window.clearTimeout(phase2.timer);
+        if (phase2.kind === "holding") stopRecording();
+        pttRef.current = { kind: "idle" };
+        suppressNextClickRef.current = false;
       },
       []
     );
@@ -26524,42 +26541,45 @@
     const removeImage = React7.useCallback((index) => {
       setPendingImages((prev) => prev.filter((_, i) => i !== index));
     }, []);
-    const clearPushToTalkTimer = React7.useCallback(() => {
-      if (pushToTalkTimerRef.current === null) return;
-      window.clearTimeout(pushToTalkTimerRef.current);
-      pushToTalkTimerRef.current = null;
-    }, []);
     const beginPushToTalkPress = React7.useCallback(
       (event) => {
-        if (hasDraft || recording || event.button !== 0) return;
-        event.currentTarget.setPointerCapture(event.pointerId);
-        clearPushToTalkTimer();
-        pushToTalkTimerRef.current = window.setTimeout(() => {
-          pushToTalkTimerRef.current = null;
-          pushToTalkActiveRef.current = true;
-          setPushToTalkActive(true);
+        if (pttRef.current.kind !== "idle" || event.button !== 0 || hasDraft || recording)
+          return;
+        const { pointerId } = event;
+        try {
+          event.currentTarget.setPointerCapture(pointerId);
+        } catch {
+        }
+        const timer = window.setTimeout(() => {
+          const phase2 = pttRef.current;
+          if (phase2.kind !== "pending" || phase2.pointerId !== pointerId) return;
+          pttRef.current = { kind: "holding", pointerId };
+          setPttHolding(true);
           startRecording("dictate");
         }, 200);
+        pttRef.current = { kind: "pending", pointerId, timer };
       },
-      [clearPushToTalkTimer, hasDraft, recording, startRecording]
+      [hasDraft, recording, startRecording]
     );
-    const endPushToTalkPress = React7.useCallback(
-      (event) => {
-        clearPushToTalkTimer();
-        if (!pushToTalkActiveRef.current) return;
-        suppressMicClickRef.current = true;
-        pushToTalkActiveRef.current = false;
-        setPushToTalkActive(false);
-        stopRecording();
+    const finishPushToTalkPress = React7.useCallback(
+      (event, cancelled) => {
+        const phase2 = pttRef.current;
+        if (phase2.kind === "pending") window.clearTimeout(phase2.timer);
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
           event.currentTarget.releasePointerCapture(event.pointerId);
         }
+        pttRef.current = { kind: "idle" };
+        if (phase2.kind === "holding") {
+          stopRecording();
+          setPttHolding(false);
+          if (!cancelled) suppressNextClickRef.current = true;
+        }
       },
-      [clearPushToTalkTimer, stopRecording]
+      [stopRecording]
     );
     const handleMicClick = React7.useCallback(() => {
-      if (suppressMicClickRef.current) {
-        suppressMicClickRef.current = false;
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
         return;
       }
       toggleHandsFree();
@@ -26637,6 +26657,17 @@
     const panelScale = useTransform(openProgress, [0, 1], [0.9, 1]);
     const glassOpacity = useTransform(openProgress, [0, 1], [0, 1]);
     const pillOpacity = useTransform(openProgress, [0, 0.55], [1, 0], {
+      clamp: true
+    });
+    const headerOpacity = useTransform(
+      threadHeight,
+      [halfH - 64, halfH],
+      [0, 1],
+      {
+        clamp: true
+      }
+    );
+    const headerMaxH = useTransform(threadHeight, [halfH - 64, halfH], [0, 100], {
       clamp: true
     });
     const settleDrag = React7.useCallback(() => {
@@ -27074,6 +27105,7 @@
                     "data-maximized": fullBleed ? "true" : void 0,
                     "data-revealed": sheetOpen ? "true" : "false",
                     "data-chat-state": chatState,
+                    "data-header-shown": headerVisible ? "true" : "false",
                     style: {
                       maxHeight: panelMaxH,
                       // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
@@ -27087,10 +27119,11 @@
                       pointerEvents: pilled ? "none" : "auto"
                     },
                     className: cn(
-                      "relative m-0 flex w-full min-w-0 flex-col border-0 p-0",
-                      // overflow-hidden clips the thread when open; visible while pilled so
-                      // the pill's tall upward grab zone isn't cut off.
-                      pilled ? "overflow-visible" : "overflow-hidden"
+                      // overflow-VISIBLE on the outer fieldset: the glass layer's soft drop
+                      // shadow + the pill's tall grab zone must bleed past the box. The
+                      // rounded thread-clip lives on the inner content wrapper instead, so
+                      // clipping the scroll never clips the shadow into a hard square edge.
+                      "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0"
                     ),
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -27099,9 +27132,18 @@
                           "aria-hidden": "true",
                           className: cn(
                             "pointer-events-none absolute inset-0 z-0",
-                            fullBleed ? "border-0" : "border border-white/[0.14]",
-                            "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
-                            fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
+                            fullBleed ? "border-0" : "border border-white/[0.16]",
+                            // Liquid glass: a near-clear tint that lets the backdrop show
+                            // through, BLURRED + over-saturated + brightness-knocked-down so
+                            // bright content (the orange ambient) stops white text from washing
+                            // out — instead of a heavy dark fill. blur(16px)+saturate+brightness
+                            // compose into ONE backdrop-filter pass (blur radius never animated,
+                            // so it stays cheap on the per-frame-resizing surface). The base
+                            // bg-black/45 is the legible fallback when backdrop-filter is
+                            // unavailable; the supports- rule thins it to glass once the filter
+                            // is doing the darkening.
+                            "bg-black/45 backdrop-blur-lg backdrop-saturate-[1.8] backdrop-brightness-[0.68] supports-[backdrop-filter]:bg-black/[0.12]",
+                            fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.26),inset_0_0_0_0.5px_rgba(255,255,255,0.08),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
                           ),
                           style: {
                             opacity: glassOpacity,
@@ -27109,17 +27151,18 @@
                           }
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
                         motion.div,
                         {
                           "data-testid": "chat-content",
                           inert: pilled || void 0,
-                          className: "relative z-10 flex min-h-0 w-full flex-col",
+                          className: "relative z-10 flex min-h-0 w-full flex-col overflow-hidden",
                           style: {
                             opacity: glassOpacity,
-                            pointerEvents: pilled ? "none" : "auto"
+                            pointerEvents: pilled ? "none" : "auto",
+                            borderRadius: fullBleed ? 0 : panelRadius
                           },
-                          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+                          children: [
                             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                               "div",
                               {
@@ -27147,11 +27190,13 @@
                                 transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                               }
                             ),
-                            headerVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-                              "div",
+                            !pilled ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                              motion.div,
                               {
+                                inert: !headerVisible || void 0,
+                                style: { opacity: headerOpacity, maxHeight: headerMaxH },
                                 className: cn(
-                                  "relative z-10 flex shrink-0 items-center justify-between gap-1.5 px-3",
+                                  "relative z-10 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
                                   // Maximized goes edge-to-edge under the status bar, so the
                                   // buttons must clear the safe-area inset (the clock/battery)
                                   // or they sit under it and become untappable.
@@ -27243,7 +27288,7 @@
                                         },
                                         m2.id
                                       )) }),
-                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: responding ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDots, { reduce }) : null }),
+                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: responding && !(visibleMessages.at(-1)?.role === "assistant" && !visibleMessages.at(-1)?.content.trim()) ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDots, { reduce }) : null }),
                                       /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { ref: endRef })
                                     ] })
                                   }
@@ -27445,19 +27490,19 @@
                                     SoftButton,
                                     {
                                       icon: Mic,
-                                      label: pushToTalkActive ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
+                                      label: pttHolding ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
                                       active: recording || handsFree,
                                       onClick: handleMicClick,
                                       onPointerDown: beginPushToTalkPress,
-                                      onPointerUp: endPushToTalkPress,
-                                      onPointerCancel: endPushToTalkPress,
+                                      onPointerUp: (e) => finishPushToTalkPress(e, false),
+                                      onPointerCancel: (e) => finishPushToTalkPress(e, true),
                                       testId: "chat-composer-mic"
                                     }
                                   ) })
                                 ]
                               }
                             )
-                          ] })
+                          ]
                         }
                       ),
                       /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -27539,7 +27584,8 @@
   ];
   var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
   var startEmpty = params.has("empty");
-  var initialPhase = params.get("phase") ?? "summoned";
+  var streaming = params.has("streaming");
+  var initialPhase = params.get("phase") ?? (streaming ? "responding" : "summoned");
   var initialRecording = params.has("recording");
   var initialTranscript = params.get("transcript") ?? (initialRecording ? "tell me the plan for\u2026" : "");
   var initialSpeaking = params.has("speaking");
@@ -27558,7 +27604,10 @@
   ] : SEED;
   function Harness() {
     const [messages, setMessages] = React8.useState(
-      startEmpty ? [] : SEED_WITH_FAILURE
+      startEmpty ? [] : streaming ? [
+        ...SEED,
+        { id: "m-inflight", role: "assistant", content: "", createdAt: 13 }
+      ] : SEED_WITH_FAILURE
     );
     const [phase, setPhase] = React8.useState(initialPhase);
     const [recording, setRecording] = React8.useState(initialRecording);

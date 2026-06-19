@@ -1,11 +1,24 @@
 /**
- * Authenticated sensitive request submit endpoint.
+ * Sensitive request submit endpoint.
+ *
+ * POST /api/v1/sensitive-requests/:id/submit
+ *
+ * The submitter may be:
+ *   - a sessionless out-of-band recipient who proves access with the single-use
+ *     token from the link (token in body and/or `?token=` query), or
+ *   - an authenticated org member submitting on their own behalf.
+ *
+ * We resolve the session best-effort and always forward the token. The service
+ * (`authorizeSubmit`) decides which path is permitted from the request's
+ * persisted policy: token-only submit is allowed only when the request was
+ * created without `requireAuthenticatedLink`; otherwise the org actor is
+ * required and the service rejects an unauthenticated caller.
  */
 
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -15,7 +28,7 @@ import {
   sensitiveRequestsService,
 } from "@/lib/services/sensitive-requests";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv, AuthedUser } from "@/types/cloud-worker-env";
 
 const SubmitSensitiveRequestSchema = z.object({
   token: z.string().trim().min(1).optional(),
@@ -24,7 +37,7 @@ const SubmitSensitiveRequestSchema = z.object({
 });
 
 function actorFromUser(
-  user: Awaited<ReturnType<typeof requireUserOrApiKeyWithOrg>>,
+  user: AuthedUser & { organization_id: string },
 ): SensitiveRequestActor {
   return {
     type: "user",
@@ -40,7 +53,6 @@ app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id");
     if (!id)
       return c.json({ success: false, error: "Missing request id" }, 400);
@@ -58,10 +70,19 @@ app.post("/", async (c) => {
       );
     }
 
+    const token = parsed.data.token ?? c.req.query("token");
+    const user = await getCurrentUser(c).catch(() => null);
+    const actor =
+      user && user.organization_id
+        ? actorFromUser({ ...user, organization_id: user.organization_id })
+        : undefined;
+
     const request = await sensitiveRequestsService.submit({
       id,
-      actor: actorFromUser(user),
-      ...parsed.data,
+      token,
+      actor,
+      value: parsed.data.value,
+      fields: parsed.data.fields,
     });
 
     return c.json({ success: true, request });

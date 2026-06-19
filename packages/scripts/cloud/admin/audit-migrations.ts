@@ -20,6 +20,7 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import pg from "pg";
 
 const { Client } = pg;
@@ -149,7 +150,11 @@ async function main() {
   }
 
   console.log("\n📊 DATABASE STATE:");
-  const client = new Client({ connectionString: databaseUrl });
+  const { url: clientUrl, ssl: clientSsl } = enforceTlsForRemote(databaseUrl);
+  const client = new Client({
+    connectionString: clientUrl,
+    ...(clientSsl ? { ssl: clientSsl } : {}),
+  });
 
   try {
     await client.connect();

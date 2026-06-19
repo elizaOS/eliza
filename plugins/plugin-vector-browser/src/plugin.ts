@@ -17,6 +17,7 @@ export const vectorBrowserPlugin: Plugin = {
     {
       id: "vector-browser",
       label: "Vector Browser",
+      developerOnly: true,
       description:
         "Browse agent memories and visualise their embeddings as a 2D or 3D projection",
       icon: "ScatterChart",

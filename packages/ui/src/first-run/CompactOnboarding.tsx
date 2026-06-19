@@ -4,11 +4,8 @@ import {
   Cloud,
   Loader2,
   MailCheck,
-  Mic,
-  MicOff,
   Settings2,
   ShieldCheck,
-  Volume2,
 } from "lucide-react";
 import * as React from "react";
 import { TRAY_ACTION_EVENT } from "../events";
@@ -18,20 +15,7 @@ import { useFirstRunController } from "./use-first-run-controller";
 
 export function CompactOnboarding(): React.ReactElement {
   const c = useFirstRunController();
-  const {
-    busyText,
-    cloudError,
-    error,
-    submitting,
-    step,
-    draft,
-    localRuntimeAvailable,
-    cloudOnly,
-    voice,
-    microphone,
-    onPromptReady,
-    stopVoice,
-  } = c;
+  const { busyText, cloudError, error, submitting, step, draft, cloudOnly } = c;
   const busy = submitting;
 
   // Detect whether this component is running inside the onboarding overlay
@@ -102,46 +86,6 @@ export function CompactOnboarding(): React.ReactElement {
     : (error ?? (cloudLoginUrl ? null : cloudError));
 
   const onRemote = step === "remote" && !cloudOnly;
-
-  // ── "Her"-style conversational voice (opt-in) ────────────────────────────
-  // When enabled, Eliza speaks each setup question and the user answers by
-  // voice; the controller's onPromptReady → startVoice → applyVoiceTranscript
-  // loop drives the actual runtime choice. The tap cards still work alongside.
-  const [voiceMode, setVoiceMode] = React.useState(false);
-  const promptedLineRef = React.useRef<string | null>(null);
-
-  const enableVoice = React.useCallback(async () => {
-    await microphone.request();
-    try {
-      // Share the chat surface's voice preference so voice carries past setup.
-      window.localStorage.setItem(
-        "eliza:voice:continuous-chat-mode",
-        "vad-gated",
-      );
-    } catch {
-      // localStorage may be unavailable (private mode) — voice still works now.
-    }
-    promptedLineRef.current = null;
-    setVoiceMode(true);
-  }, [microphone]);
-
-  const disableVoice = React.useCallback(() => {
-    setVoiceMode(false);
-    void stopVoice();
-  }, [stopVoice]);
-
-  // Speak the question for the current step, then listen — once per step.
-  React.useEffect(() => {
-    if (!voiceMode) return;
-    const lineId = step === "remote" ? "remote" : "runtime";
-    if (promptedLineRef.current === lineId) return;
-    promptedLineRef.current = lineId;
-    const promptText =
-      step === "remote"
-        ? "Where is the remote agent?"
-        : "Where should Eliza run?";
-    onPromptReady(promptText, lineId);
-  }, [voiceMode, step, onPromptReady]);
 
   return (
     <div className="first-run-screen pointer-events-none fixed inset-0 p-6 text-white">
@@ -314,12 +258,6 @@ export function CompactOnboarding(): React.ReactElement {
                     <ArrowRight className="h-4 w-4 shrink-0 text-white/40 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" />
                   </button>
 
-                  {!localRuntimeAvailable ? (
-                    <p className="-mt-1 px-1 text-[11px] leading-snug text-white/45">
-                      One-time download
-                    </p>
-                  ) : null}
-
                   {/* TERTIARY — the technical path, demoted to a quiet link. Kept
                       always-present (testid + handler stable) so it stays
                       reachable for power users. */}
@@ -336,63 +274,6 @@ export function CompactOnboarding(): React.ReactElement {
                     </button>
                   ) : null}
                 </div>
-
-                {/* HER-STYLE VOICE — opt-in. Off by default; tapping it asks for
-                    the mic and starts a spoken, hands-free setup conversation. */}
-                {voiceMode ? (
-                  <div
-                    data-testid="onboarding-voice-panel"
-                    className="mt-1 flex flex-col items-center gap-3"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={`grid h-16 w-16 place-items-center rounded-full bg-white/15 ${
-                        voice.listening || voice.speaking
-                          ? "motion-safe:animate-pulse"
-                          : ""
-                      }`}
-                    >
-                      {voice.speaking ? (
-                        <Volume2 className="h-7 w-7 text-white" />
-                      ) : (
-                        <Mic className="h-7 w-7 text-white" />
-                      )}
-                    </span>
-                    <p
-                      role="status"
-                      aria-live="polite"
-                      className="min-h-5 max-w-[18rem] text-[13px] leading-snug text-white/80"
-                    >
-                      {voice.error
-                        ? voice.error
-                        : voice.speaking
-                          ? "Speaking…"
-                          : voice.listening
-                            ? voice.transcript || "Listening…"
-                            : "Starting…"}
-                    </p>
-                    <button
-                      type="button"
-                      data-testid="onboarding-voice-off"
-                      onClick={disableVoice}
-                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white/85"
-                    >
-                      <MicOff className="h-3.5 w-3.5" />
-                      Turn off
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    data-testid="onboarding-enable-voice"
-                    disabled={busy}
-                    onClick={() => void enableVoice()}
-                    className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
-                  >
-                    <Mic className="h-4 w-4" />
-                    Set up by voice
-                  </button>
-                )}
               </>
             )}
 

@@ -17,8 +17,16 @@
  * `submitFirstRunAndComplete`, which is defined later in AppContext's render order).
  */
 
+import {
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
+import {
+  cloudTokenSecsRemaining,
+  refreshCloudStewardSession,
+} from "../api/client-cloud";
 import {
   invokeDesktopBridgeRequestWithTimeout,
   isElectrobunRuntime,
@@ -34,6 +42,10 @@ import {
   openExternalUrl,
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
+import {
+  hasStewardLoginLauncher,
+  launchStewardLogin,
+} from "./cloud-steward-login";
 import { isPrivateNetworkHost } from "./private-network-host";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -42,6 +54,13 @@ const ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS = 1000;
 const ELIZA_CLOUD_LOGIN_TIMEOUT_MS = 300_000;
 const ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS = 3;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
+
+/** Cloud=Steward token-lifecycle: how often to check the JWT for expiry. */
+const STEWARD_REFRESH_CHECK_INTERVAL_MS = 60_000;
+/** Refresh the Steward session this many seconds before the JWT `exp`. */
+const STEWARD_REFRESH_AHEAD_SECS = 120;
+/** Same-origin Steward refresh endpoint (web cookie path). */
+const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -142,6 +161,32 @@ function hasCloudLoginBackend(): boolean {
     );
   }
   return isSameOriginLocalHttpBackend();
+}
+
+/**
+ * Resolve the Steward refresh endpoint for the current target. On hosted web
+ * the same-origin cookie path works (the HttpOnly `steward-refresh-token`
+ * cookie travels automatically). On native (`capacitor://localhost`) there is
+ * no same-origin cookie, so refresh against the configured cloud API base
+ * (Bearer-refresh). Returns `undefined` to use the shared default.
+ */
+function resolveStewardRefreshEndpoint(): string | undefined {
+  if (!isCapacitorNativeRuntime()) return undefined;
+  const cloudBase =
+    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
+  try {
+    const url = new URL(cloudBase);
+    const host = url.hostname.toLowerCase();
+    const apiHost =
+      host === "elizacloud.ai" ||
+      host === "www.elizacloud.ai" ||
+      host === "dev.elizacloud.ai"
+        ? "api.elizacloud.ai"
+        : host;
+    return `${url.protocol}//${apiHost}${STEWARD_REFRESH_PATH}`;
+  } catch {
+    return undefined;
+  }
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -407,8 +452,45 @@ export function useCloudState({
       };
       elizaCloudLoginCompletionRef.current = loginCompletion;
 
-      // Determine if we should use direct cloud auth (no local backend) or
-      // go through the local agent's proxy.
+      // Cloud = Steward everywhere (DECISIONS.md D3). When the shell-router has
+      // mounted the Steward provider it registers a launcher; drive the in-app
+      // Steward sign-in (passkey / email / OAuth / wallet) instead of the
+      // legacy device-code browser window. Same identity on web (same-origin
+      // cookie + localStorage JWT) and native (Bearer-from-localStorage).
+      const existingStewardToken = readStoredStewardToken()?.trim();
+      if (existingStewardToken || hasStewardLoginLauncher()) {
+        try {
+          prePoppedWindow?.close();
+        } catch {
+          // Cross-origin — ignore.
+        }
+        try {
+          await launchStewardLogin();
+          await pollCloudCredits();
+          await loadWalletConfig().catch(() => undefined);
+          setElizaCloudConnected(true);
+          setElizaCloudLoginError(null);
+          setActionNotice(
+            "Logged in to Eliza Cloud successfully.",
+            "success",
+            6000,
+          );
+        } catch (err) {
+          setElizaCloudLoginError(
+            err instanceof Error ? err.message : "Eliza Cloud login failed",
+          );
+        } finally {
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
+          completeLogin();
+        }
+        return loginCompletion;
+      }
+
+      // Legacy device-code fallback (retired for Cloud; preserved for the
+      // Remote / self-hosted pairing handshake and for desktop/CLI builds where
+      // the Steward surface is not yet mounted). Determine if we should use
+      // direct cloud auth (no local backend) or go through the agent proxy.
       const hasBackend = hasCloudLoginBackend();
       const cloudApiBase =
         getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
@@ -829,6 +911,50 @@ export function useCloudState({
       elizaCloudAuthNoticeSentRef.current = false;
     }
   }, [elizaCloudAuthRejected, setActionNotice, t]);
+
+  // Cloud=Steward token lifecycle (mirrors cloud-frontend's AuthTokenSync).
+  // While a Steward session token is present, refresh it ahead of its JWT `exp`
+  // so an authenticated cloud connection never silently expires. Web refreshes
+  // via the same-origin cookie path; native refreshes against the cloud API
+  // base (Bearer-refresh). A 401 / no-token outcome is left for the next
+  // pollCloudCredits() to surface as auth-rejected.
+  useEffect(() => {
+    if (!elizaCloudConnected) return;
+    if (!readStoredStewardToken()?.trim()) return;
+
+    let disposed = false;
+    const checkAndRefresh = async () => {
+      const token = readStoredStewardToken()?.trim();
+      if (!token) return;
+      const secs = cloudTokenSecsRemaining(token);
+      // No `exp` (opaque token / device-code session) → nothing to refresh.
+      if (secs === null) return;
+      if (secs >= STEWARD_REFRESH_AHEAD_SECS) return;
+      const result = await refreshCloudStewardSession({
+        endpoint: resolveStewardRefreshEndpoint(),
+      }).catch(() => null);
+      if (disposed) return;
+      if (result?.token) {
+        writeStoredStewardToken(result.token);
+      }
+    };
+
+    void checkAndRefresh();
+    const interval = window.setInterval(() => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+      void checkAndRefresh();
+    }, STEWARD_REFRESH_CHECK_INTERVAL_MS);
+
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+    };
+  }, [elizaCloudConnected]);
 
   // ── Return ─────────────────────────────────────────────────────────
 

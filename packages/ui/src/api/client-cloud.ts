@@ -4,6 +4,10 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import {
+  readStoredStewardToken,
+  STEWARD_REFRESH_ENDPOINT,
+} from "@elizaos/shared/steward-session-client";
 import { getBootConfig } from "../config/boot-config";
 import {
   buildCloudSharedAgentApiBase,
@@ -282,15 +286,84 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   return null;
 }
 
-function readDirectCloudToken(client: ElizaClient): string | null {
+/**
+ * Resolve the Cloud auth bearer token. Per DECISIONS.md D3 the Cloud
+ * connection is unified on Steward across every target (hosted web AND
+ * native), so the Steward session JWT in `localStorage.steward_session_token`
+ * is the canonical source. On web the same JWT also rides the same-origin
+ * `steward-token` cookie; on native (`capacitor://localhost` / loopback) it is
+ * sent as `Authorization: Bearer`.
+ *
+ * The legacy `__ELIZA_CLOUD_AUTH_TOKEN__` global and the client REST token are
+ * kept only as fallbacks for the Remote (device-code/pairing) flow, which still
+ * mints its own session token via `cloudLoginPollDirect`.
+ */
+export function getCloudAuthToken(client?: ElizaClient): string | null {
+  const stewardToken = readStoredStewardToken()?.trim();
+  if (stewardToken) return stewardToken;
+
   const globalToken = (globalThis as Record<string, unknown>)
     .__ELIZA_CLOUD_AUTH_TOKEN__;
   if (typeof globalToken === "string" && globalToken.trim()) {
     return globalToken.trim();
   }
 
-  const clientToken = client.getRestAuthToken()?.trim();
+  const clientToken = client?.getRestAuthToken()?.trim();
   return clientToken || null;
+}
+
+function readDirectCloudToken(client: ElizaClient): string | null {
+  return getCloudAuthToken(client);
+}
+
+/**
+ * Decode a JWT `exp` (seconds until expiry), or `null` when the token is not a
+ * JWT / has no `exp`. Used by the Cloud Steward token-lifecycle refresh.
+ */
+export function cloudTokenSecsRemaining(token: string): number | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "=",
+    );
+    const payload = JSON.parse(atob(padded)) as { exp?: number };
+    if (typeof payload.exp !== "number") return null;
+    return payload.exp - Date.now() / 1000;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cookie-backed Steward session refresh, mirroring cloud-frontend's
+ * `AuthTokenSync` semantics. Sends an empty POST to the Steward refresh
+ * endpoint with `credentials: "include"` so the HttpOnly
+ * `steward-refresh-token` cookie travels automatically (web same-origin). The
+ * server rotates the session and, for trusted Cloud origins / native callers,
+ * returns the short-lived access token so the SPA can refresh its localStorage
+ * Bearer mirror. Returns the fresh token when one was issued, else `null`.
+ *
+ * On native the same endpoint is reached via the configured cloud API base
+ * (Bearer-refresh); the caller passes the absolute endpoint via `endpoint`.
+ */
+export async function refreshCloudStewardSession(opts?: {
+  endpoint?: string;
+}): Promise<{ token?: string; expiresAt?: number; expiresIn?: number } | null> {
+  if (typeof fetch === "undefined") return null;
+  const endpoint = opts?.endpoint ?? STEWARD_REFRESH_ENDPOINT;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) return null;
+  return (await response.json().catch(() => null)) as {
+    token?: string;
+    expiresAt?: number;
+    expiresIn?: number;
+  } | null;
 }
 
 function isNativeDirectCloudAuthMissing(client: ElizaClient): boolean {

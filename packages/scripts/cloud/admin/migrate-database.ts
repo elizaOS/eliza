@@ -26,6 +26,7 @@
 
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import pg from "pg";
 import { loadEnvFiles } from "./local-dev-helpers";
 
@@ -1061,7 +1062,16 @@ function runDestMigrations(newUrl: string): void {
   console.log("→ Applying drizzle migrations to destination…");
   const child = spawnSync(
     "bun",
-    ["run", path.join("packages", "scripts", "migrate-with-diagnostics.ts")],
+    [
+      "run",
+      path.join(
+        "packages",
+        "scripts",
+        "cloud",
+        "admin",
+        "migrate-with-diagnostics.ts",
+      ),
+    ],
     {
       stdio: "inherit",
       env: {
@@ -1206,8 +1216,16 @@ async function main(): Promise<void> {
   }
 
   // 2. Connect.
-  const source = new Client({ connectionString: sourceUrl });
-  const dest = new Client({ connectionString: destUrl });
+  const { url: sourceConnUrl, ssl: sourceSsl } = enforceTlsForRemote(sourceUrl);
+  const { url: destConnUrl, ssl: destSsl } = enforceTlsForRemote(destUrl);
+  const source = new Client({
+    connectionString: sourceConnUrl,
+    ...(sourceSsl ? { ssl: sourceSsl } : {}),
+  });
+  const dest = new Client({
+    connectionString: destConnUrl,
+    ...(destSsl ? { ssl: destSsl } : {}),
+  });
   await source.connect();
   await dest.connect();
 

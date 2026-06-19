@@ -208,6 +208,45 @@ export class AgentSandboxesRepository {
   }
 
   /**
+   * `disconnected` always-on (paid) agents that should be reconciled back to
+   * `running`. A `dedicated-always` agent is contractually meant to stay up, so
+   * a transient tailnet drop that flipped it to `disconnected` must self-heal —
+   * the recovery cycle re-probes the bridge and either flips it back to
+   * `running` (still reachable) or re-provisions it (truly down). Scoped to
+   * `dedicated-always` because `dedicated-lazy`/`shared` are NOT meant to hold
+   * an always-on container. Deleted rows are excluded.
+   */
+  async listRecoverable(limit = 100): Promise<
+    Array<{
+      id: string;
+      organization_id: string;
+      user_id: string;
+      agent_name: string | null;
+      bridge_url: string | null;
+      updated_at: Date;
+    }>
+  > {
+    return dbRead
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+        agent_name: agentSandboxes.agent_name,
+        bridge_url: agentSandboxes.bridge_url,
+        updated_at: agentSandboxes.updated_at,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.status, "disconnected"),
+          eq(agentSandboxes.execution_tier, "dedicated-always"),
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+        ),
+      )
+      .limit(limit);
+  }
+
+  /**
    * Find running, non-deleted agents whose stored `image_digest` differs
    * from `targetDigest` (treating NULL as different). Used by the
    * fleet-upgrade reconciler to enqueue blue/green swaps onto the
@@ -424,6 +463,34 @@ export class AgentSandboxesRepository {
         and(
           eq(agentSandboxes.id, id),
           sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'stopped', 'sleeping', 'disconnected', 'error')`,
+        ),
+      )
+      .returning();
+    return r;
+  }
+
+  /**
+   * Atomically restore a still-disconnected agent to `running` after a
+   * successful bridge re-probe. The recovery read -> probe -> write window spans
+   * seconds, during which the row may move to `deletion_pending` (delete
+   * enqueue), `stopped` (shutdown nulls `bridge_url`), or `provisioning`
+   * (re-provision). This compare-and-set only flips a row that is STILL
+   * `disconnected` with a live bridge and not soft-deleted, so a stale probe can
+   * never resurrect a being-deleted agent or wedge a stopped one at `running`
+   * with a dead bridge. Returns the row when it won, undefined when it lost the
+   * race (and the caller must NOT treat it as recovered).
+   */
+  async markReconnectedFromDisconnected(id: string): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    const [r] = await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "running", last_heartbeat_at: new Date(), updated_at: new Date() })
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.status, "disconnected"),
+          sql`${agentSandboxes.bridge_url} IS NOT NULL`,
+          sql`${agentSandboxes.deleted_at} IS NULL`,
         ),
       )
       .returning();

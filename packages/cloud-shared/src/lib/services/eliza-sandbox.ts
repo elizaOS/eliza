@@ -632,20 +632,14 @@ export class ElizaSandboxService {
     orgId: string,
     input: { agentName?: string; agentConfig?: Record<string, unknown> },
   ): Promise<AgentSandbox | undefined> {
-    const rec = await agentSandboxesRepository.findByIdAndOrgForWrite(
-      agentId,
-      orgId,
-    );
+    const rec = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
     if (!rec) return undefined;
 
-    const updates: { agent_name?: string; agent_config?: Record<string, unknown> } =
-      {};
+    const updates: { agent_name?: string; agent_config?: Record<string, unknown> } = {};
     if (input.agentName !== undefined) updates.agent_name = input.agentName;
     if (input.agentConfig !== undefined) {
       const existing =
-        rec.agent_config &&
-        typeof rec.agent_config === "object" &&
-        !Array.isArray(rec.agent_config)
+        rec.agent_config && typeof rec.agent_config === "object" && !Array.isArray(rec.agent_config)
           ? (rec.agent_config as Record<string, unknown>)
           : {};
       updates.agent_config = { ...existing, ...input.agentConfig };
@@ -3269,44 +3263,9 @@ export class ElizaSandboxService {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec?.bridge_url) return false;
 
-    // The agent is reached over the headscale tailnet, where an idle path goes
-    // cold; a single cold-path miss must not evict a healthy agent. Retry the
-    // probe (the first attempt re-warms the path), then apply hysteresis before
-    // giving up — seen live: a freshly-running agent was marked disconnected
-    // ~1 min after boot by one transient "fetch failed".
-    // Liveness must dial the BRIDGE port over the headscale tailnet. The
-    // container serves its full HTTP API there (and `/api/health` unauthed —
-    // the same endpoint provisioning's health probe passes on); `web_ui_port`
-    // is a host-only docker port mapping that is NOT reachable over the tailnet,
-    // so the web-base-url path `getAgentApiEndpoint` prefers is a dead poll for
-    // the on-prem worker and was flipping every running agent to `disconnected`.
-    // `bridge_url` is the trusted tailnet bridge (verified non-null above); build
-    // the health URL from it directly (this exact form is verified live in prod —
-    // a dedicated-always agent holds `running` and its subdomain proxies 200/401).
-    const heartbeatEndpoint = new URL("/api/health", rec.bridge_url).toString();
-    let res: Response | null = null;
-    for (let attempt = 0; attempt < HEARTBEAT_PROBE_ATTEMPTS; attempt++) {
-      if (attempt > 0) {
-        await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_PROBE_RETRY_MS));
-      }
-      try {
-        res = await fetch(heartbeatEndpoint, {
-          method: "GET",
-          headers: this.getAgentJsonHeaders(rec),
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (res.ok) break;
-      } catch (error) {
-        logger.debug("[agent-sandbox] Heartbeat probe attempt failed, retrying", {
-          agentId,
-          attempt,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        res = null;
-      }
-    }
+    const reachable = await this.probeBridgeHealth(rec);
 
-    if (!res?.ok) {
+    if (!reachable) {
       // Hysteresis: one failed cycle is not enough to evict. last_heartbeat_at
       // is bumped only on success, so its age is how long the agent has been
       // continuously unreachable. Stay running inside the grace window (the next
@@ -3336,6 +3295,78 @@ export class ElizaSandboxService {
       last_heartbeat_at: new Date(),
     });
     return true;
+  }
+
+  /**
+   * Probe the agent's bridge `/api/health` over the headscale tailnet with
+   * retries. Shared by `heartbeat` (running agents) and `recoverDisconnected`
+   * (disconnected always-on agents).
+   *
+   * The first attempt re-warms a cold tailnet path, so a single miss does not
+   * mean the agent is down. Liveness MUST dial the BRIDGE port: the container
+   * serves its full HTTP API there (and `/api/health` unauthed — the same
+   * endpoint provisioning's health probe passes on); `web_ui_port` is a
+   * host-only docker mapping NOT reachable over the tailnet. This exact form is
+   * verified live in prod (a dedicated-always agent holds `running` and its
+   * subdomain proxies 200/401).
+   */
+  private async probeBridgeHealth(
+    rec: Pick<AgentSandbox, "id" | "environment_vars" | "bridge_url">,
+  ): Promise<boolean> {
+    if (!rec.bridge_url) return false;
+    const endpoint = new URL("/api/health", rec.bridge_url).toString();
+    for (let attempt = 0; attempt < HEARTBEAT_PROBE_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_PROBE_RETRY_MS));
+      }
+      try {
+        const res = await fetch(endpoint, {
+          method: "GET",
+          headers: this.getAgentJsonHeaders(rec),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (res.ok) return true;
+      } catch (error) {
+        logger.debug("[agent-sandbox] Bridge health probe attempt failed, retrying", {
+          agentId: rec.id,
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Reconcile a `disconnected` always-on (paid) agent back to health. A
+   * `dedicated-always` agent is contractually meant to stay up, so the recovery
+   * cycle calls this to self-heal a transient drop: re-probe the bridge and, if
+   * the container answers, flip it straight back to `running` (the agent-router
+   * only routes `running`, so this also restores its subdomain). If it stays
+   * unreachable the caller re-provisions it. The guarded compare-and-set write
+   * (not a blind update-by-id) makes this safe to run concurrently with the
+   * heartbeat cycle AND with shutdown/delete/provision: the read -> probe -> write
+   * window spans seconds, so we only flip a row that is STILL `disconnected` at
+   * write time.
+   */
+  async recoverDisconnected(
+    agentId: string,
+    orgId: string,
+  ): Promise<"recovered" | "unreachable" | "gone"> {
+    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!rec || rec.status !== "disconnected") return "gone";
+    const reachable = await this.probeBridgeHealth(rec);
+    if (!reachable) return "unreachable";
+    // Guarded CAS: the row can move to deletion_pending / stopped (which nulls
+    // bridge_url) / provisioning during the multi-second probe. Only flip it if
+    // it is STILL disconnected with a live bridge — otherwise we'd resurrect a
+    // being-deleted agent or wedge a stopped one at `running` with a dead bridge.
+    const restored = await agentSandboxesRepository.markReconnectedFromDisconnected(rec.id);
+    if (!restored) return "gone";
+    logger.info("[agent-sandbox] Recovered disconnected agent back to running", {
+      agentId,
+    });
+    return "recovered";
   }
 
   // Shutdown

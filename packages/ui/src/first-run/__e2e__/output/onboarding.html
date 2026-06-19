@@ -12891,36 +12891,17 @@
   ];
   var MailCheck = createLucideIcon("mail-check", __iconNode5);
 
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/mic-off.mjs
-  var __iconNode6 = [
-    ["path", { d: "M12 19v3", key: "npa21l" }],
-    ["path", { d: "M15 9.34V5a3 3 0 0 0-5.68-1.33", key: "1gzdoj" }],
-    ["path", { d: "M16.95 16.95A7 7 0 0 1 5 12v-2", key: "cqa7eg" }],
-    ["path", { d: "M18.89 13.23A7 7 0 0 0 19 12v-2", key: "16hl24" }],
-    ["path", { d: "m2 2 20 20", key: "1ooewy" }],
-    ["path", { d: "M9 9v3a3 3 0 0 0 5.12 2.12", key: "r2i35w" }]
-  ];
-  var MicOff = createLucideIcon("mic-off", __iconNode6);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/mic.mjs
-  var __iconNode7 = [
-    ["path", { d: "M12 19v3", key: "npa21l" }],
-    ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
-    ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
-  ];
-  var Mic = createLucideIcon("mic", __iconNode7);
-
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings-2.mjs
-  var __iconNode8 = [
+  var __iconNode6 = [
     ["path", { d: "M14 17H5", key: "gfn3mx" }],
     ["path", { d: "M19 7h-9", key: "6i9tg" }],
     ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
     ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
   ];
-  var Settings2 = createLucideIcon("settings-2", __iconNode8);
+  var Settings2 = createLucideIcon("settings-2", __iconNode6);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/shield-check.mjs
-  var __iconNode9 = [
+  var __iconNode7 = [
     [
       "path",
       {
@@ -12930,21 +12911,7 @@
     ],
     ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
   ];
-  var ShieldCheck = createLucideIcon("shield-check", __iconNode9);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/volume-2.mjs
-  var __iconNode10 = [
-    [
-      "path",
-      {
-        d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z",
-        key: "uqj9uw"
-      }
-    ],
-    ["path", { d: "M16 9a5 5 0 0 1 0 6", key: "1q6k2b" }],
-    ["path", { d: "M19.364 18.364a9 9 0 0 0 0-12.728", key: "ijwkga" }]
-  ];
-  var Volume2 = createLucideIcon("volume-2", __iconNode10);
+  var ShieldCheck = createLucideIcon("shield-check", __iconNode7);
 
   // packages/ui/src/first-run/CompactOnboarding.tsx
   var React2 = __toESM(require_react(), 1);
@@ -13625,20 +13592,7 @@
   var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
   function CompactOnboarding() {
     const c = useFirstRunController();
-    const {
-      busyText,
-      cloudError,
-      error,
-      submitting,
-      step,
-      draft,
-      localRuntimeAvailable,
-      cloudOnly,
-      voice,
-      microphone,
-      onPromptReady,
-      stopVoice
-    } = c;
+    const { busyText, cloudError, error, submitting, step, draft, cloudOnly } = c;
     const busy = submitting;
     const isOverlayShell = React2.useMemo(
       () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("shellMode") === "onboarding-overlay",
@@ -13679,32 +13633,6 @@
     }, [cloudError]);
     const statusMessage = busy ? busyText : error ?? (cloudLoginUrl ? null : cloudError);
     const onRemote = step === "remote" && !cloudOnly;
-    const [voiceMode, setVoiceMode] = React2.useState(false);
-    const promptedLineRef = React2.useRef(null);
-    const enableVoice = React2.useCallback(async () => {
-      await microphone.request();
-      try {
-        window.localStorage.setItem(
-          "eliza:voice:continuous-chat-mode",
-          "vad-gated"
-        );
-      } catch {
-      }
-      promptedLineRef.current = null;
-      setVoiceMode(true);
-    }, [microphone]);
-    const disableVoice = React2.useCallback(() => {
-      setVoiceMode(false);
-      void stopVoice();
-    }, [stopVoice]);
-    React2.useEffect(() => {
-      if (!voiceMode) return;
-      const lineId = step === "remote" ? "remote" : "runtime";
-      if (promptedLineRef.current === lineId) return;
-      promptedLineRef.current = lineId;
-      const promptText = step === "remote" ? "Where is the remote agent?" : "Where should Eliza run?";
-      onPromptReady(promptText, lineId);
-    }, [voiceMode, step, onPromptReady]);
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "first-run-screen pointer-events-none fixed inset-0 p-6 text-white", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mx-auto flex h-full w-full max-w-[24rem] flex-col items-center justify-start pt-[calc(var(--safe-area-top,0px)+3rem)] text-center", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "div",
       {
@@ -13869,7 +13797,6 @@
                     ]
                   }
                 ),
-                !localRuntimeAvailable ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "-mt-1 px-1 text-[11px] leading-snug text-white/45", children: "One-time download" }) : null,
                 !cloudOnly ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                   "button",
                   {
@@ -13884,59 +13811,7 @@
                     ]
                   }
                 ) : null
-              ] }),
-              voiceMode ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-                "div",
-                {
-                  "data-testid": "onboarding-voice-panel",
-                  className: "mt-1 flex flex-col items-center gap-3",
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                      "span",
-                      {
-                        "aria-hidden": "true",
-                        className: `grid h-16 w-16 place-items-center rounded-full bg-white/15 ${voice.listening || voice.speaking ? "motion-safe:animate-pulse" : ""}`,
-                        children: voice.speaking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Volume2, { className: "h-7 w-7 text-white" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Mic, { className: "h-7 w-7 text-white" })
-                      }
-                    ),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                      "p",
-                      {
-                        role: "status",
-                        "aria-live": "polite",
-                        className: "min-h-5 max-w-[18rem] text-[13px] leading-snug text-white/80",
-                        children: voice.error ? voice.error : voice.speaking ? "Speaking\u2026" : voice.listening ? voice.transcript || "Listening\u2026" : "Starting\u2026"
-                      }
-                    ),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-                      "button",
-                      {
-                        type: "button",
-                        "data-testid": "onboarding-voice-off",
-                        onClick: disableVoice,
-                        className: "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white/85",
-                        children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MicOff, { className: "h-3.5 w-3.5" }),
-                          "Turn off"
-                        ]
-                      }
-                    )
-                  ]
-                }
-              ) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-                "button",
-                {
-                  type: "button",
-                  "data-testid": "onboarding-enable-voice",
-                  disabled: busy,
-                  onClick: () => void enableVoice(),
-                  className: "mx-auto inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50",
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Mic, { className: "h-4 w-4" }),
-                    "Set up by voice"
-                  ]
-                }
-              )
+              ] })
             ] })
           ),
           statusMessage ? (
@@ -14050,11 +13925,8 @@ lucide-react/dist/esm/icons/chevron-left.mjs:
 lucide-react/dist/esm/icons/cloud.mjs:
 lucide-react/dist/esm/icons/loader-circle.mjs:
 lucide-react/dist/esm/icons/mail-check.mjs:
-lucide-react/dist/esm/icons/mic-off.mjs:
-lucide-react/dist/esm/icons/mic.mjs:
 lucide-react/dist/esm/icons/settings-2.mjs:
 lucide-react/dist/esm/icons/shield-check.mjs:
-lucide-react/dist/esm/icons/volume-2.mjs:
 lucide-react/dist/esm/lucide-react.mjs:
   (**
    * @license lucide-react v1.18.0 - ISC

@@ -99,6 +99,16 @@ class TalkModePlugin : Plugin() {
     private var audioSessionActive = false
     private var savedAudioMode = AudioManager.MODE_NORMAL
     private var savedSpeakerphoneOn = false
+    // Streams we mute for the session to suppress the platform recognizer's
+    // start/stop earcons (the "on/off" beeps heard as it re-arms continuously).
+    // TTS plays on STREAM_VOICE_CALL (USAGE_VOICE_COMMUNICATION) so it stays
+    // audible. Tracked so we only unmute streams we muted.
+    private val earconStreams = intArrayOf(
+        AudioManager.STREAM_MUSIC,
+        AudioManager.STREAM_SYSTEM,
+        AudioManager.STREAM_NOTIFICATION,
+    )
+    private var earconStreamsMuted = false
 
     // Config
     private var apiKey: String? = null
@@ -483,21 +493,13 @@ class TalkModePlugin : Plugin() {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-            // On-device recognizer (no network round-trip; works offline).
+            // On-device recognizer (no network round-trip; works offline). The
+            // platform recognizer's open/close cadence during continuous use is
+            // intrinsic and not controllable via the silence-length extras (the
+            // on-device SODA engine ignores them); we silence the AUDIBLE part of
+            // that churn by muting the earcon streams for the session instead
+            // (see configureVoiceAudioSession).
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            // Keep the session patient during quiet so the mic doesn't audibly
-            // re-arm every ~2s of silence (the "on/off" churn). Our 700ms silence
-            // monitor still finalizes a real turn snappily; these only stop the
-            // platform recognizer from bailing out (NO_MATCH) when nobody is
-            // talking yet. End-of-turn after speech is ~800ms.
-            // These extras are read with getIntExtra → they MUST be Int (a Long
-            // is silently ignored).
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 800)
-            putExtra(
-                RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
-                800,
-            )
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 6000)
             sttLanguage?.let { putExtra(RecognizerIntent.EXTRA_LANGUAGE, it) }
         }
 
@@ -612,14 +614,27 @@ class TalkModePlugin : Plugin() {
     }
 
     /**
-     * Avoid false interrupts: don't interrupt if the heard text is just a
-     * substring of what we're currently speaking (echo from speaker).
+     * Decide whether heard speech should barge in on the agent's TTS. Tuned to
+     * avoid FALSE interrupts (which cut the reply mid-sentence and read as
+     * "intermittent audio"): a one-word ASR blip, background noise, or the
+     * agent's own voice bleeding back into the mic must NOT interrupt — only a
+     * genuine couple-of-words utterance from the user does.
      */
     private fun shouldInterrupt(transcript: String): Boolean {
         val trimmed = transcript.trim()
-        if (trimmed.length < 3) return false
-        val spoken = lastSpokenText?.lowercase()
-        if (spoken != null && spoken.contains(trimmed.lowercase())) return false
+        val lower = trimmed.lowercase()
+        val words = lower.split(Regex("\\s+")).filter { it.isNotBlank() }
+        // Need real intent: at least two words, or one long word (≥ 8 chars).
+        if (words.size < 2 && trimmed.length < 8) return false
+        val spoken = lastSpokenText?.lowercase() ?: return true
+        // Exact echo of what we're saying → speaker bleed, not the user.
+        if (spoken.contains(lower)) return false
+        // Fuzzy echo: if most of the heard words appear in the text we're
+        // currently speaking, treat it as echo (ASR mishears of our own audio).
+        val echoed = words.count { spoken.contains(it) }
+        if (words.isNotEmpty() && echoed.toDouble() / words.size >= 0.6) {
+            return false
+        }
         return true
     }
 
@@ -719,13 +734,13 @@ class TalkModePlugin : Plugin() {
                             put("usedSystemTts", false)
                         })
                     } else {
-                        Log.e(TAG, "Local inference TTS failed", e)
-                        call.resolve(JSObject().apply {
-                            put("completed", false)
-                            put("interrupted", false)
-                            put("usedSystemTts", false)
-                            put("error", e.message ?: "Local inference TTS failed")
-                        })
+                        // The on-device OmniVoice TTS assets aren't always staged
+                        // (it 502s "TEXT_TO_SPEECH not available"). Rather than go
+                        // silent — the JS browser-SpeechSynthesis fallback doesn't
+                        // exist in the Android WebView — fall back to the platform
+                        // TextToSpeech so replies are always spoken aloud.
+                        Log.w(TAG, "Local inference TTS failed, falling back to system TTS", e)
+                        speakWithSystemTts(text, call)
                     }
                 }
             } else if (canUseElevenLabs) {
@@ -1393,8 +1408,32 @@ class TalkModePlugin : Plugin() {
 
         am.mode = AudioManager.MODE_IN_COMMUNICATION
         routeVoiceOutput(am)
+        muteEarconStreams(am)
         audioSessionActive = true
         Log.d(TAG, "Voice audio session active (communication mode)")
+    }
+
+    /** Mute the recognizer earcon streams for the session; idempotent. */
+    private fun muteEarconStreams(am: AudioManager) {
+        if (earconStreamsMuted) return
+        for (stream in earconStreams) {
+            try {
+                am.adjustStreamVolume(stream, AudioManager.ADJUST_MUTE, 0)
+            } catch (_: Throwable) {
+                // Some OEMs disallow muting certain streams without DND access.
+            }
+        }
+        earconStreamsMuted = true
+    }
+
+    private fun unmuteEarconStreams(am: AudioManager) {
+        if (!earconStreamsMuted) return
+        for (stream in earconStreams) {
+            try {
+                am.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0)
+            } catch (_: Throwable) {}
+        }
+        earconStreamsMuted = false
     }
 
     /**
@@ -1428,6 +1467,7 @@ class TalkModePlugin : Plugin() {
     private fun releaseVoiceAudioSession() {
         if (!audioSessionActive) return
         val am = audioManager ?: return
+        unmuteEarconStreams(am)
         audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
         audioFocusRequest = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.clearCommunicationDevice()

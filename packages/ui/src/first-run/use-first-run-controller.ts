@@ -1,7 +1,10 @@
 import { Capacitor } from "@capacitor/core";
 import * as React from "react";
 import { client } from "../api";
-import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
+import {
+  getCloudAuthToken,
+  isDirectCloudSharedAgentBase,
+} from "../api/client-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
 import {
@@ -584,15 +587,20 @@ export function useFirstRunController(): FirstRunController {
           Boolean(cloudStatus?.connected),
           cloudStatus?.reason,
         );
+        // Cloud = Steward: a present session token is authoritative even if the
+        // status proxy lags right after sign-in.
+        if (!cloudConnectedForFinish && getCloudAuthToken(client)) {
+          cloudConnectedForFinish = true;
+        }
         if (!cloudConnectedForFinish) {
           return;
         }
       }
       setBusyText("Setting up your cloud agent");
-      const authToken = String(
-        (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ ??
-          "",
-      ).trim();
+      // Cloud = Steward everywhere (DECISIONS.md D3): the cloud agent is
+      // provisioned with the Steward session JWT (same-origin cookie+JWT on web,
+      // Bearer-from-localStorage on native), not a device-code token.
+      const authToken = getCloudAuthToken(client) ?? "";
       if (!authToken) {
         throw new Error("Eliza Cloud authentication required.");
       }

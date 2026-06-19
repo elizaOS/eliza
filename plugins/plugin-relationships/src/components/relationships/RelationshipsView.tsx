@@ -108,7 +108,7 @@ const defaultFetchers: RelationshipsFetchers = {
 };
 
 export interface RelationshipsViewProps {
-  /** Owner display name shown in the header subtitle. */
+  /** Owner display name. Accepted for host compatibility; not rendered. */
   ownerName?: string;
   /** Test/host injection seam. Defaults to the real graph GETs. */
   fetchers?: RelationshipsFetchers;
@@ -326,8 +326,6 @@ const dimStyle: CSSProperties = {
   lineHeight: 1.5,
 };
 
-const subtitleStyle: CSSProperties = { ...dimStyle, marginTop: 2 };
-
 const chipRowStyle: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
@@ -371,8 +369,6 @@ const kindBadgeStyle: CSSProperties = {
   color: "var(--primary, #ff6a00)",
   fontSize: 12,
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: 0.4,
 };
 
 // ---------------------------------------------------------------------------
@@ -401,11 +397,34 @@ function RefreshButton({
       className="relationships-view-btn relationships-view-btn-neutral"
       onClick={onActivate}
       disabled={disabled}
-      aria-label="Refresh relationships"
+      aria-label="Refresh"
       {...agentProps}
     >
-      Refresh
+      <RefreshIcon />
     </button>
+  );
+}
+
+/** Inline refresh glyph (no icon-package dependency in this plugin). */
+function RefreshIcon(): ReactNode {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
   );
 }
 
@@ -447,11 +466,9 @@ function KindChip({
 }
 
 function RelationshipsHeader({
-  ownerName,
   refetch,
   busy,
 }: {
-  ownerName: string;
   refetch: () => void;
   busy: boolean;
 }): ReactNode {
@@ -460,9 +477,6 @@ function RelationshipsHeader({
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Relationships</h1>
         <RefreshButton onActivate={refetch} disabled={busy} />
-      </div>
-      <div style={subtitleStyle}>
-        {`People, organizations, and the relationship edges Eliza tracks for ${ownerName}.`}
       </div>
     </header>
   );
@@ -556,7 +570,6 @@ export function RelationshipsView(
 ): ReactNode {
   useRelationshipsViewStyles();
 
-  const ownerName = props.ownerName ?? "Owner";
   const fetchers = props.fetchers ?? defaultFetchers;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [activeKinds, setActiveKinds] = useState<Set<EntityKindFilter>>(
@@ -623,7 +636,7 @@ export function RelationshipsView(
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="relationships-loading">
-        <RelationshipsHeader ownerName={ownerName} refetch={load} busy={true} />
+        <RelationshipsHeader refetch={load} busy={true} />
         <KindFilters active={activeKinds} onToggle={toggleKind} />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading relationships…</div>
       </div>
@@ -634,7 +647,6 @@ export function RelationshipsView(
     return (
       <div style={containerStyle} data-testid="relationships-error">
         <RelationshipsHeader
-          ownerName={ownerName}
           refetch={load}
           busy={false}
         />
@@ -663,7 +675,6 @@ export function RelationshipsView(
     return (
       <div style={containerStyle} data-testid="relationships-empty">
         <RelationshipsHeader
-          ownerName={ownerName}
           refetch={load}
           busy={false}
         />
@@ -691,7 +702,7 @@ export function RelationshipsView(
 
   return (
     <div style={containerStyle} data-testid="relationships-populated">
-      <RelationshipsHeader ownerName={ownerName} refetch={load} busy={false} />
+      <RelationshipsHeader refetch={load} busy={false} />
       <KindFilters active={activeKinds} onToggle={toggleKind} />
       {visibleNodes.length > 0 ? (
         <section style={sectionStyle} aria-label="Relationships graph">
