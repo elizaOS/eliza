@@ -20,7 +20,7 @@ Registered in `appContactsPlugin` (`src/plugin.ts`):
 | Provider | `androidContacts` | Read-only: fetches up to 50 contacts (id, displayName, phones, emails, starred) from `@elizaos/capacitor-contacts` and emits JSON context. Dynamic; contexts: `contacts`, `messaging`; roleGate: ADMIN; cacheScope: turn. |
 | View | `contacts` (default) | Full-screen overlay app — `ContactsAppView` component, path `/contacts`. |
 | View | `contacts` (xr) | Same component, `viewType: "xr"`. |
-| View | `contacts` (tui) | Terminal surface — `ContactsTuiView` component, path `/contacts/tui`. |
+| View | `contacts` (tui) | Terminal surface — `ContactsTuiView` component export, path `/contacts/tui`. Rendered by `ContactsSpatialView` via `register-terminal-view.tsx`. |
 
 No actions, services, evaluators, events, or routes are registered.
 
@@ -28,18 +28,26 @@ No actions, services, evaluators, events, or routes are registered.
 
 ```
 src/
-  index.ts                      Public package entry — re-exports plugin, app, register, ui
-  plugin.ts                     appContactsPlugin definition (providers + views)
-  register.ts                   Side-effect: calls registerContactsApp() when isElizaOS()
-  ui.ts                         Re-exports ContactsAppView, contactsApp, registerContactsApp
+  index.ts                          Public package entry — re-exports plugin, app, register, ui
+  plugin.ts                         appContactsPlugin definition (providers + views)
+  register.ts                       Side-effect: calls registerContactsApp() when isElizaOS()
+  register-terminal-view.tsx        Registers contacts view for terminal rendering via ContactsSpatialView
+  ui.ts                             Re-exports ContactsAppView, contactsApp, registerContactsApp
   providers/
-    contacts.ts                 androidContacts provider implementation
-    contacts.test.ts            Vitest unit tests for the provider
+    contacts.ts                     androidContacts provider implementation
+    contacts.test.ts                Vitest unit tests for the provider
   components/
-    contacts-app.ts             OverlayApp descriptor + registerContactsApp()
-    ContactsAppView.tsx         Full-screen overlay UI (list / detail / new modes)
-                                Also exports ContactsTuiView and interact() for TUI capabilities
-    ContactsTuiView.test.ts     TUI view tests
+    contacts-app.ts                 OverlayApp descriptor + registerContactsApp()
+    contacts-app.test.ts            Tests for OverlayApp descriptor
+    contacts-view-bundle.ts         View bundle registration helpers
+    contacts-contract.test.ts       Contract tests for the overlay-app view surface
+    ContactsAppView.tsx             Full-screen overlay UI (list / detail / new modes)
+    ContactsAppView.helpers.ts      Helper utilities for ContactsAppView
+    ContactsAppView.interact.ts     Exports interact(capability, params) for TUI programmatic interface
+    ContactsAppView.test.ts         Tests for ContactsAppView
+    ContactsSpatialView.tsx         Spatial/XR/TUI-compatible view (renders in GUI, XR, and terminal)
+    ContactsSpatialView.test.tsx    Tests for ContactsSpatialView
+    ContactsTuiView.test.ts         TUI view tests
 ```
 
 The `./plugin` export (declared in `package.json` exports map) resolves to `dist/plugin.js` / `dist/plugin.d.ts` and is the entry the runtime adapter imports directly.
@@ -79,7 +87,8 @@ The provider limit is a hardcoded constant `CONTACTS_PROVIDER_LIMIT = 50` in `sr
 - **No update or delete.** The `@elizaos/capacitor-contacts` native plugin does not expose contact mutation beyond create and import. The detail panel is read-only; the "Edit" path was intentionally omitted.
 - **In-app Call/Text linking.** The detail view phone rows do not use a `tel:` OS handoff. Each number renders "Call" and "Text" controls that link to the in-app Phone and Messages views via `navigateToPhoneWithNumber` / `navigateToMessagesWithNumber` from `@elizaos/ui/app-navigate-view` (dispatches `eliza:navigate:view`, pre-seeding the target). Email keeps its `mailto:` anchor (there is no in-app email view). Do not reintroduce `tel:`.
 - **Provider roleGate.** `roleGate: { minRole: "ADMIN" }` means the `androidContacts` provider only fires in admin-role sessions. Do not change this without reviewing the address-book privacy model.
-- **TUI interact() function.** `ContactsAppView.tsx` also exports `interact(capability, params)` which handles `terminal-list-contacts`, `terminal-create-contact`, and `terminal-import-vcard` capability strings — used by the TUI view's programmatic interface.
+- **TUI interact() function.** `src/components/ContactsAppView.interact.ts` exports `interact(capability, params)` which handles `terminal-list-contacts`, `terminal-create-contact`, and `terminal-import-vcard` capability strings — used by the TUI view's programmatic interface.
+- **Spatial/TUI view.** `ContactsSpatialView.tsx` is authored with the spatial-UI vocabulary and renders in GUI, XR, and terminal (via `register-terminal-view.tsx` + `registerSpatialTerminalView`). It is purely presentational (snapshot + action callback) with no Capacitor runtime imports, so it is safe to run in a Node agent process.
 - **Views bundle.** The overlay UI is built separately via `vite.config.views.ts` into `dist/views/bundle.js`. `bundlePath` in the view descriptors points there. The tsup build (`build:js`) and the vite build (`build:views`) are independent steps.
 - **Peer deps.** React 19 and react-dom 19 are peer dependencies. The host app must provide them.
 - See the root `AGENTS.md` for repo-wide architecture rules, logging conventions, and git workflow.

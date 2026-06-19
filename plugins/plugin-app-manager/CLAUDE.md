@@ -77,7 +77,7 @@ src/
 bun run --cwd plugins/plugin-app-manager build       # compile to dist/
 bun run --cwd plugins/plugin-app-manager dev         # same as build (no watch)
 bun run --cwd plugins/plugin-app-manager typecheck   # tsgo --noEmit
-bun run --cwd plugins/plugin-app-manager test        # vitest run --passWithNoTests
+bun run --cwd plugins/plugin-app-manager test        # vitest run --config vitest.config.ts
 bun run --cwd plugins/plugin-app-manager clean       # rm -rf dist
 ```
 

@@ -13,7 +13,7 @@ LifeOps must not become the implementation home for adjacent domains:
 - **Native Apple Calendar / Reminders bridge policy** belongs in native packages (`@elizaos/capacitor-calendar`, `@elizaos/macosreminders`). LifeOps may call those helpers and map results into assistant DTOs.
 - **Personal assistant code, views, scenarios, default packs, owner policy, approvals, and executive workflows** belong here.
 
-The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's plugin list. It depends on `@elizaos/plugin-google` for current calendar/inbox projections (auto-registered at init if absent).
+The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's plugin list. It depends on `@elizaos/plugin-google` for current calendar/inbox projections (auto-registered at init if absent). `@elizaos/plugin-calendar`, `@elizaos/plugin-finances`, `@elizaos/plugin-inbox`, and `@elizaos/plugin-remote-desktop` are also auto-registered in `init()` if absent.
 
 ## Plugin surface
 
@@ -42,17 +42,16 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 | `CONFLICT_DETECT` | `src/actions/conflict-detect.ts` | Detect scheduling conflicts |
 | `RESOLVE_REQUEST` | `src/actions/resolve-request.ts` | Resolve owner approval requests |
 | `VOICE_CALL` | `src/actions/voice-call.ts` | Initiate/manage voice calls via Twilio |
-| `REMOTE_DESKTOP` | `src/actions/remote-desktop.ts` | Remote desktop session control |
 | `WORK_THREAD` | `src/actions/work-thread.ts` | Long-running work thread lifecycle |
 | `SCHEDULED_TASKS` | `src/actions/scheduled-task.ts` | Scheduled-task CRUD for owner |
+
+Note: Remote desktop functionality is provided by `@elizaos/plugin-remote-desktop`, which is auto-registered in `init()`. Several additional action files exist in `src/actions/` (e.g. `app-block.ts`, `autofill.ts`, `book-travel.ts`, `health.ts`, `life.ts`, `money.ts`, `password-manager.ts`, `payments.ts`, `schedule.ts`, `screen-time.ts`, `subscriptions.ts`, `website-block.ts`) but are not currently imported into the plugin actions array.
 
 ### Providers
 
 | Provider name | File | What it injects |
 |---|---|---|
 | `lifeops_browser` | `src/provider.ts` | Browser companion projection; browser bridge implementation lives in `@elizaos/plugin-browser` |
-| `websiteBlocker` | `src/providers/website-blocker.ts` | Current website-blocker status |
-| `appBlocker` | `src/providers/app-blocker.ts` | Current app-blocker status |
 | `firstRun` | `src/providers/first-run.ts` | First-run completion state and affordances |
 | `roomPolicy` | `src/providers/room-policy.ts` | Per-room handoff/policy state |
 | `lifeops` | `src/providers/lifeops.ts` | Aggregated owner context for assistant planning |
@@ -69,7 +68,6 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 | Service type | Class | File | Role |
 |---|---|---|---|
 | `lifeops_browser_plugin` | `BrowserBridgePluginService` | `src/service.ts` | Legacy LifeOps facade for browser companion state; implementation should continue moving to `@elizaos/plugin-browser` |
-| `website_blocker` | `WebsiteBlockerService` | `src/website-blocker/service.ts` | Hosts-file blocking (SelfControl) lifecycle |
 | `activity_tracker` | `ActivityTrackerService` | `src/activity-profile/activity-tracker-service.ts` | Legacy activity projection for assistant context; health/screen-time domain logic belongs in `@elizaos/plugin-health` |
 | `presence_signal_bridge` | `PresenceSignalBridgeService` | `src/activity-profile/presence-signal-bridge-service.ts` | Device presence signal forwarding |
 | `lifeops_scheduled_task_runner` | `ScheduledTaskRunnerService` | `src/lifeops/scheduled-task/service.ts` | Scheduled-task execution engine |
@@ -83,7 +81,9 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 
 ### Views
 
-No views — the domain views moved to per-domain plugins (plugin-todos, plugin-inbox, plugin-goals, plugin-health, plugin-calendar, plugin-documents, plugin-blocker, plugin-finances, plugin-relationships) during the lifeops decomposition. PA exports only the Blocker settings cards via `src/ui.ts`.
+| View ID | Label | Description |
+|---|---|---|
+| `lifeops` | LifeOps | Personal assistant workspace for briefs, approvals, schedule repair, and owner operations |
 
 ## Layout
 
@@ -112,8 +112,19 @@ src/
     resolve-request.ts          RESOLVE_REQUEST
     scheduled-task.ts           SCHEDULED_TASKS
     voice-call.ts               VOICE_CALL
-    remote-desktop.ts           REMOTE_DESKTOP
     work-thread.ts              WORK_THREAD
+    app-block.ts                App blocking (not yet wired into plugin actions array)
+    autofill.ts                 Autofill (not yet wired into plugin actions array)
+    book-travel.ts              Travel booking (not yet wired into plugin actions array)
+    health.ts                   Health action (not yet wired into plugin actions array)
+    life.ts                     Life operation dispatcher (not yet wired into plugin actions array)
+    money.ts                    Money/finance (not yet wired into plugin actions array)
+    password-manager.ts         Password manager (not yet wired into plugin actions array)
+    payments.ts                 Payments (not yet wired into plugin actions array)
+    schedule.ts                 Schedule action (not yet wired into plugin actions array)
+    screen-time.ts              Screen-time (not yet wired into plugin actions array)
+    subscriptions.ts            Subscriptions (not yet wired into plugin actions array)
+    website-block.ts            Website blocking action (not yet wired into plugin actions array)
     lib/                        Shared action helpers (calendly-handler, etc.)
 
   providers/                    All provider implementations (see table above)
@@ -173,7 +184,6 @@ src/
   platform/                     Platform detection helpers (isDarwin, etc.)
   routes/                       HTTP route handlers (lifeops, website-blocker, cloud-features, travel-relay)
   types/                        Shared TypeScript types
-  widgets/                      Embeddable widgets (side-effectful entry)
   api/                          Client-side API helpers (client-lifeops.ts)
   components/                   React components
   ui.ts                         UI entry (side-effectful)
@@ -182,8 +192,9 @@ src/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-personal-assistant build              # Full build (JS + types)
+bun run --cwd plugins/plugin-personal-assistant build              # Full build (JS + views + types)
 bun run --cwd plugins/plugin-personal-assistant build:js           # tsup bundling only
+bun run --cwd plugins/plugin-personal-assistant build:views        # Vite view bundle
 bun run --cwd plugins/plugin-personal-assistant build:types        # tsc declaration emit
 bun run --cwd plugins/plugin-personal-assistant test               # Unit tests (vitest)
 bun run --cwd plugins/plugin-personal-assistant test:background-real  # Long-running real e2e tests
@@ -200,23 +211,26 @@ bun run --cwd plugins/plugin-personal-assistant clean              # Remove dist
 | `ELIZA_DISABLE_LIFEOPS_SCHEDULER` | No | Set to `1` to skip the LifeOps scheduler task |
 | `LIFEOPS_USE_MOCKOON` | No | Set to `1` to redirect all connector base URLs to local Mockoon mock servers |
 | `LIFEOPS_DUFFEL_API_BASE` | No | Override Duffel travel-booking API base URL |
-| `SELFCONTROL_HOSTS_FILE_PATH` | No | Override hosts-file path for website blocking (default: `/etc/hosts`) |
-| `WEBSITE_BLOCKER_HOSTS_FILE_PATH` | No | Alternative hosts-file path override |
 | `ELIZA_DISABLE_ACTIVITY_TRACKER` | No | Set to `1` to skip native activity tracker |
 | `ELIZA_NATIVE_PERMISSIONS_DYLIB` | No | Path to native permissions dylib (macOS screen-time) |
 | `ELIZA_HEALTHKIT_CLI_PATH` | No | HealthKit CLI path consumed by plugin-health; LifeOps may only observe its projections |
-| `ELIZA_IMESSAGE_BACKEND` | No | iMessage backend selector |
-| `ELIZA_REMOTE_ACCESS_TOKEN` | No | Token for remote desktop access |
-| `ELIZA_REMOTE_LOCAL_MODE` | No | Set to `1` for local-only remote desktop mode |
-| `ELIZA_BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS` | No | TTL for browser-bridge companion tokens |
+| `ELIZA_IMESSAGE_BACKEND` | No | iMessage backend selector (also read as `IMESSAGE_BACKEND`) |
+| `IMESSAGE_BACKEND` | No | Alias for `ELIZA_IMESSAGE_BACKEND` |
+| `IMESSAGE_DB_PATH` | No | Override iMessage SQLite DB path |
 | `ELIZA_WHATSAPP_ACCESS_TOKEN` | No | WhatsApp API access token |
 | `ELIZA_WHATSAPP_PHONE_NUMBER_ID` | No | WhatsApp phone number ID |
 | `ELIZA_GOOGLE_FIT_ACCESS_TOKEN` | No | Google Fit token consumed by plugin-health |
 | `GOOGLE_MAPS_API_KEY` | No | Google Maps API key (travel-time calculations) |
-| `TWILIO_SMS_COST_PER_SEGMENT_USD` | No | Override Twilio SMS cost estimate |
+| `TWILIO_ACCOUNT_SID` | No | Twilio account SID (SMS and voice reminders) |
+| `TWILIO_AUTH_TOKEN` | No | Twilio auth token |
+| `TWILIO_PHONE_NUMBER` | No | Twilio sender phone number |
+| `DUFFEL_API_KEY` | No | Duffel travel API key (required when `ELIZA_DUFFEL_DIRECT=1`) |
+| `ELIZA_DUFFEL_DIRECT` | No | Set to `1` to call Duffel API directly instead of via cloud proxy |
 | `ELIZAOS_CLOUD_API_KEY` | No | Eliza Cloud API key (cloud features route) |
 | `ELIZAOS_CLOUD_BASE_URL` | No | Eliza Cloud base URL override |
+| `ELIZAOS_CLOUD_SERVICE_KEY` | No | Eliza Cloud service key |
 | `ELIZA_LIFEOPS_CONTEXT_WINDOW` | No | Override provider context window size (tokens) |
+| `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS` | No | Set to `true` to allow destructive DB migrations in lifeops repository |
 
 `ELIZA_DEVICE_KIND` (`desktop` / `mobile`) is read for device-specific gating. `ELIZA_DEVICE_ID` is the stable device identifier.
 
@@ -255,4 +269,5 @@ bun run --cwd plugins/plugin-personal-assistant clean              # Remove dist
 - **`LifeOpsService` is composed from mixins.** Core logic lives in `src/lifeops/service-mixin-*.ts` files. `src/lifeops/service.ts` composes them. Add a new domain capability as a mixin.
 - **Default packs must pass lint.** `bun run lint:default-packs` (also `pretest`) enforces the rules embedded in `scripts/lint-default-packs.mjs`. CI blocks packs that fail.
 - **plugin-google is auto-registered.** If `@elizaos/plugin-google` is not already in the runtime's plugin list, `init()` dynamically imports and registers it. Ensure it is installed in the workspace.
+- **Remote desktop is auto-registered.** `@elizaos/plugin-remote-desktop` is dynamically registered in `init()` if not already present. Remote desktop actions are not in this plugin's own actions array.
 - See root `AGENTS.md` for repo-wide architecture commandments, logger conventions, ESM rules, and naming.
