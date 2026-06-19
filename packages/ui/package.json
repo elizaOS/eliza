@@ -71,6 +71,16 @@
       "import": "./dist/cloud-ui/*.js",
       "default": "./dist/cloud-ui/*.js"
     },
+    "./cloud": {
+      "types": "./dist/cloud/index.d.ts",
+      "import": "./dist/cloud/index.js",
+      "default": "./dist/cloud/index.js"
+    },
+    "./cloud/*": {
+      "types": "./dist/cloud/*.d.ts",
+      "import": "./dist/cloud/*.js",
+      "default": "./dist/cloud/*.js"
+    },
     "./agent-surface": {
       "types": "./dist/agent-surface/index.d.ts",
       "import": "./dist/agent-surface/index.js",
@@ -273,6 +283,7 @@
   "dependencies": {
     "@capacitor/core": "8.4.0",
     "@elizaos/cloud-sdk": "workspace:*",
+    "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",
     "@elizaos/shared": "workspace:*",

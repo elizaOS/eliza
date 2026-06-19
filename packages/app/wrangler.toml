@@ -1,0 +1,32 @@
+# Cloudflare Pages config for the hosted-web Eliza app (Topology A target).
+#
+# INERT until the apex cutover. cloud-frontend stays the live deploy of the
+# `eliza-cloud` Pages project at elizacloud.ai; this file describes the app
+# build that will REPLACE it. At cutover the existing `eliza-cloud` Pages
+# project is repointed to build/deploy `packages/app` (see
+# docs/cloud-into-eliza/CUTOVER-RUNBOOK.md) — the project NAME stays
+# `eliza-cloud` so the apex domain, env vars (API_UPSTREAM, the Steward tenant
+# pin), and DNS carry over untouched.
+#
+# Mirrors packages/cloud-frontend/wrangler.toml. Do NOT change the live
+# cloud-frontend wrangler.toml or cloud-api/wrangler.toml; this is a separate,
+# additive artifact owned by packages/app.
+
+name = "eliza-cloud"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-04-29"
+
+[vars]
+API_UPSTREAM = "https://api.elizacloud.ai"
+# Per-env signal consumed by isomorphic code so the SPA can branch on
+# deployment env. Mirrors the cloud-frontend convention.
+VITE_ENVIRONMENT = "production"
+
+[env.preview.vars]
+API_UPSTREAM = "https://api-staging.elizacloud.ai"
+# Pin the Steward tenant for the staging build so the SPA initialises the SDK
+# with tenantId=elizacloud-staging and OAuth /authorize carries
+# tenant_id=elizacloud-staging (Steward resolves the OAuth tenant from the
+# query param, not the proxy X-Steward-Tenant header).
+NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud-staging"
+VITE_ENVIRONMENT = "staging"
