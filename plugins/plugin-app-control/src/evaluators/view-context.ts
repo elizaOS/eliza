@@ -1,5 +1,5 @@
 import type { Evaluator, EvaluatorProcessor } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import { createViewsClient } from "../actions/views-client.js";
 import { resolveIntentView } from "../actions/views-show.js";
 
@@ -100,6 +100,11 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 	name: "app-control.view-context",
 	description:
 		"Proactively opens the app view that fits the user's current situation when they did not directly name one (e.g. coding work → task-coordinator). Separate from the VIEWS action, which handles direct navigation commands.",
+	// Contextual view inference is a cheap classification — run it on the small
+	// model. (The post-turn EvaluatorService currently routes the whole merged
+	// call to TEXT_SMALL; this records intent + future-proofs per-evaluator
+	// model selection.)
+	modelType: ModelType.TEXT_SMALL,
 	priority: 60,
 	providers: ["RECENT_MESSAGES"],
 	schema: {
