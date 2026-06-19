@@ -47,9 +47,7 @@ bun run --cwd plugins/plugin-remote-desktop clean        # rm -rf dist .turbo
 | Variable | Where used | Required |
 |---|---|---|
 | `ELIZA_REMOTE_LOCAL_MODE` | `RemoteSessionService.startSession` — `1` skips pairing-code requirement | No |
-| `ELIZA_REMOTE_ACCESS_TOKEN` | External client attach token | No |
-| `ELIZA_TAILSCALE_NODE` | Override Tailscale hostname for VNC/SSH URLs | No |
-| `ELIZA_NGROK_AUTH_TOKEN` | ngrok auth token (passed via env, never argv) | No |
+| `ELIZA_STATE_DIR` | `resolveStateDir()` — overrides the default base directory for `lifeops/remote-sessions.json` | No |
 | `ELIZA_TEST_REMOTE_DESKTOP_BACKEND` | Force mock mode for tests | No |
 
 All variables are read by this plugin's engine (`src/lifeops/remote-desktop.ts`) and control-plane service (`src/remote/remote-session-service.ts`).

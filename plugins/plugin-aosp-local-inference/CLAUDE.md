@@ -74,18 +74,21 @@ All env vars are read at call time (no module-load side effects).
 | `ELIZA_MTP` | No | Boolean — enable in-process MTP speculative decoding. |
 | `ELIZA_MTP_REQUIRED` | No | Boolean — require MTP; fail if unavailable. |
 | `ELIZA_MTP_DRAFTER_PATH` | No | Explicit path to the MTP drafter GGUF. |
-| `ELIZA_MTP_DRAFT_N_CTX` | No | Draft context size (default: `min(2048, targetCtx)`). |
+| `ELIZA_MTP_DRAFT_N_CTX` | No | Draft context size (default: 2048). |
 | `ELIZA_MTP_DRAFT_N_BATCH` / `ELIZA_MTP_DRAFT_N_UBATCH` | No | Batch sizes for the draft model. |
 | `ELIZA_MTP_DRAFT_MIN` / `ELIZA_MTP_DRAFT_MAX` | No | Min/max draft tokens (defaults 1/16). |
 | `ELIZA_MTP_DRAFT_P_MIN` | No | Minimum token probability for MTP draft acceptance (default 0.25). |
+| `ELIZA_SPEC_TYPE` / `ELIZA_SPECULATIVE_TYPE` | No | Speculative-decoding type selector (e.g. `"draft-mtp"`). `ELIZA_SPEC_TYPE` is checked first; `ELIZA_SPECULATIVE_TYPE` is the legacy alias. |
 | `OMNIVOICE_LIB_PATH` | No | Override path to `libomnivoice.so`. Auto-resolved from ABI dir. |
 | `OMNIVOICE_MODEL_PATH` / `OMNIVOICE_CODEC_PATH` | No | Override TTS model/codec GGUF paths. Auto-resolved from active bundle's `tts/` dir. |
 | `ELIZA_AOSP_TTS_BACKEND` / `ELIZA_LOCAL_TTS_BACKEND` | No | TTS backend selector. Currently only `"omnivoice"` (fused `libelizainference.so`) is active. |
 | `ELIZA_AOSP_TTS_PREWARM` | No | Set to `"true"` to pre-warm TTS on a timer after boot. |
 | `ELIZA_AOSP_TTS_PREWARM_DELAY_MS` / `ELIZA_AOSP_TTS_PREWARM_TIMEOUT_MS` | No | Pre-warm delay (default 5000 ms) and timeout (default 45000 ms). |
+| `ELIZA_AOSP_TTS_PREWARM_TEXT` | No | Custom utterance used during TTS pre-warm (default `"Hello from Eliza."`). |
 | `ELIZA_AOSP_OMNIVOICE_MASKGIT_STEPS` / `ELIZA_TTS_MASKGIT_STEPS` | No | Override MaskGit decode steps (1–64). |
 | `ELIZA_AOSP_TTS_MAX_SECONDS` | No | Maximum synthesized audio duration (default 30 s). |
 | `ELIZA_AOSP_LLAMA_DEBUG_LOG` | No | Path to append line-delimited debug events. Set to `"1"` to use `$ELIZA_STATE_DIR/aosp-llama-debug.log`. |
+| `ELIZA_AOSP_LLAMA_DEBUG_OUTPUT_TAIL` | No | Set to `"0"` to suppress tail-of-output debug logging even when the debug log is active. |
 | `ELIZA_STATE_DIR` | No | State root for model storage. Resolved by `@elizaos/core`'s `resolveStateDir()`. |
 
 ## How to extend

@@ -55,7 +55,10 @@ plugins/plugin-anthropic-proxy/
     ├── proxy.test.ts
     ├── auto-enable.test.ts
     ├── eliza-fingerprint.test.ts
-    └── manifest-engine.integration.test.ts
+    ├── manifest-engine.integration.test.ts
+    ├── process-body.edge.test.ts
+    ├── proxy-server.routing.test.ts
+    └── sse-rewrite.test.ts
 ```
 
 ## Commands
@@ -78,6 +81,7 @@ bun run --cwd plugins/plugin-anthropic-proxy clean       # rm dist .turbo
 | `CLAUDE_MAX_PROXY_UPSTREAM` | — | Yes (shared mode) | Upstream proxy base URL, e.g. `http://172.18.0.1:18801`. Must be HTTPS or a private/loopback host. |
 | `CLAUDE_MAX_PROXY_AUTH_TOKEN` | — | Conditionally | Required when `CLAUDE_MAX_PROXY_BIND_HOST` is not loopback. Checked via `Authorization: Bearer <token>` or `x-claude-max-proxy-token` header. |
 | `CLAUDE_MAX_PROXY_VERBOSE` | `false` | No | Log each proxied request. |
+| `CLAUDE_MAX_PROXY_CONFIG_PATH` | — | No | Explicit path to a `config.json` fingerprint override file. Takes precedence over a `config.json` found next to the agent root. If set and the file is missing, `resolveConfig()` records a `configError` but the agent keeps running. |
 | `CLAUDE_MAX_CREDENTIALS_PATH` | — | No | Explicit path to `.credentials.json`. Defaults to `~/.claude/.credentials.json`. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | — | No | Bearer token directly; takes precedence over the file. |
 | `ANTHROPIC_BASE_URL` | (auto-set) | No | Leave unset and the plugin sets it. Set to `auto` to allow the plugin to override an existing value. Any other value is left untouched. |
@@ -100,7 +104,7 @@ If credentials are missing the service degrades to `off` mode and logs a warning
 Edit `src/proxy/eliza-fingerprint.ts`. The four arrays (`ELIZA_REPLACEMENTS`, `ELIZA_TOOL_RENAMES`, `ELIZA_PROP_RENAMES`, `ELIZA_REVERSE_MAP`) are re-exported as the `DEFAULT_*` constants in `constants.ts` and picked up automatically by `ProxyServer`.
 
 **Custom dictionaries for a non-elizaOS tool surface:**
-Drop a `config.json` (shape: `config.json.example`) next to the agent root. Any of the four dictionary arrays (`replacements`, `toolRenames`, `propRenames`, `reverseMap`) is merged over the eliza defaults at startup.
+Drop a `config.json` (shape: `config.json.example`) next to the agent root, or point `CLAUDE_MAX_PROXY_CONFIG_PATH` at the file. Any of the four dictionary arrays (`replacements`, `toolRenames`, `propRenames`, `reverseMap`) is merged over the eliza defaults at startup.
 
 ## Conventions / gotchas
 

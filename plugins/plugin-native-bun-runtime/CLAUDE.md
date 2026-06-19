@@ -89,12 +89,7 @@ Scripts that exist in `package.json`:
 bun run --cwd plugins/plugin-native-bun-runtime build   # clean + tsc + rollup
 bun run --cwd plugins/plugin-native-bun-runtime clean   # remove dist/
 bun run --cwd plugins/plugin-native-bun-runtime watch   # tsc --watch
-```
-
-There is no standalone test script in package.json; tests use vitest directly:
-
-```bash
-bun run --cwd plugins/plugin-native-bun-runtime vitest run
+bun run --cwd plugins/plugin-native-bun-runtime test    # vitest run
 ```
 
 ## Config / env vars

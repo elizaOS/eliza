@@ -4,7 +4,7 @@ User-scoped persistent todos with CRUD for Eliza agents.
 
 ## Purpose / role
 
-Adds a structured todo list capability to any Eliza agent: a single `TODO` umbrella action (op-based dispatch), a `CURRENT_TODOS` provider that injects active todos into the planner context each turn, and a `TodosService` backed by a drizzle `pgSchema('todos')` table. The plugin is opt-in — add it to the agent's plugin list. It hard-depends on `@elizaos/plugin-sql` (declared as a peer dep and in `dependencies: ["@elizaos/plugin-sql"]`); the service will throw at runtime if `runtime.db` is absent.
+Adds a structured todo list capability to any Eliza agent: a single `TODO` umbrella action (op-based dispatch), a `CURRENT_TODOS` provider that injects active todos into the planner context each turn, a `TodosService` backed by a drizzle `pgSchema('todos')` table, and a `TodosView` UI component registered as a dashboard view. The plugin is opt-in — add it to the agent's plugin list. It hard-depends on `@elizaos/plugin-sql` (declared as a peer dep and in `dependencies: ["@elizaos/plugin-sql"]`); the service will throw at runtime if `runtime.db` is absent.
 
 ## Plugin surface
 
@@ -17,6 +17,9 @@ Adds a structured todo list capability to any Eliza agent: a single `TODO` umbre
 **Service**
 - `TodosService` (`src/service.ts`) — `serviceType = "todos"`. Wraps drizzle queries for `create`, `get`, `list`, `update`, `delete`, `writeList` (bulk-replace), and `clear`. Scoped by `(agentId, entityId)`; `roomId`/`worldId` are optional narrowing keys.
 
+**Views**
+- `TodosView` (`src/components/todos/TodosView.tsx`) — three-lane todo board (Today / Upcoming / Someday). Registered as a dashboard view with id `"todos"`, path `/todos`, bundled to `dist/views/bundle.js`. Enabled in desktop tab and visible in manager.
+
 **Schema**
 - `todosSchema` / `todosTable` (`src/db/schema.ts`) — `pgSchema("todos")` with table `todos`. Indexes on `(entityId, status)`, `(agentId, entityId)`, `roomId`. Exported from `src/index.ts` as `schema` (the drizzle schema object the runtime registers migrations from).
 
@@ -24,7 +27,7 @@ Adds a structured todo list capability to any Eliza agent: a single `TODO` umbre
 
 ```
 src/
-  index.ts                  Plugin export; wires action + provider + service + schema
+  index.ts                  Plugin export; wires action + provider + service + schema + view
   types.ts                  TODO_STATUSES, TODO_ACTIONS, Todo interface, constants
   service.ts                TodosService class + CreateTodoInput/UpdateTodoInput/TodoFilter
   actions/
@@ -32,6 +35,11 @@ src/
     todo.test.ts            Unit tests
   providers/
     current-todos.ts        currentTodosProvider — per-turn context injection
+  components/
+    todos/
+      TodosView.tsx         Three-lane board UI component (Today / Upcoming / Someday)
+      todos-view-bundle.ts  Vite entry point for bundling TodosView
+      TodosView.test.tsx    Component tests
   db/
     schema.ts               drizzle pgSchema + todosTable + TodoRow/TodoInsert types
     index.ts                re-exports schema.ts
@@ -43,7 +51,7 @@ src/
 bun run --cwd plugins/plugin-todos build        # bun build → dist/ (ESM) + tsc --emitDeclarationOnly
 bun run --cwd plugins/plugin-todos dev          # hot-rebuild via build.ts
 bun run --cwd plugins/plugin-todos test         # vitest run
-bun run --cwd plugins/plugin-todos typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-todos typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-todos check        # typecheck + test
 bun run --cwd plugins/plugin-todos clean        # rm -rf dist .turbo
 ```

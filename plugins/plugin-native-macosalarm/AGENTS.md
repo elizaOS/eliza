@@ -31,7 +31,8 @@ plugins/plugin-native-macosalarm/
   bin/
     macosalarm-helper  Compiled Swift binary (darwin only, produced by build:helper)
   __tests__/
-    integration.macos.test.ts  Integration tests (darwin only)
+    helper.test.ts               Unit tests for runHelper IPC layer (mock spawn, no binary needed)
+    integration.macos.test.ts    Integration tests (darwin only)
 ```
 
 ## Commands

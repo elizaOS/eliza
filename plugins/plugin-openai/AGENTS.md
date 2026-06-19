@@ -4,7 +4,7 @@ OpenAI model-provider plugin for elizaOS: text generation, embeddings, image gen
 
 ## Purpose / role
 
-Registers model handlers on the elizaOS `AgentRuntime` so Eliza agents can call `runtime.useModel(ModelType.*, ...)` backed by OpenAI (or any OpenAI-compatible endpoint — Cerebras, OpenRouter, local servers). Auto-enables when `OPENAI_API_KEY` or `CEREBRAS_API_KEY` is present in the environment. No actions, providers, services, or evaluators — only model handlers.
+Registers model handlers on the elizaOS `AgentRuntime` so Eliza agents can call `runtime.useModel(ModelType.*, ...)` backed by OpenAI (or any OpenAI-compatible endpoint — Cerebras, EvoLink, OpenRouter, local servers). Auto-enables when `OPENAI_API_KEY`, `CEREBRAS_API_KEY`, or `EVOLINK_API_KEY` is present in the environment. No actions, providers, services, or evaluators — only model handlers.
 
 ## Plugin surface
 
@@ -25,7 +25,7 @@ This plugin registers **model handlers only** (no actions, providers, services, 
 | `IMAGE` | `dall-e-3` | `handleImageGeneration` |
 | `IMAGE_DESCRIPTION` | `gpt-5-mini` | `handleImageDescription` |
 | `TRANSCRIPTION` | `gpt-5-mini-transcribe` | `handleTranscription` |
-| `TEXT_TO_SPEECH` | `tts-1` / voice `nova` | `handleTextToSpeech` |
+| `TEXT_TO_SPEECH` | `gpt-5-mini-tts` / voice `nova` | `handleTextToSpeech` |
 | `RESEARCH` | `o3-deep-research` | `handleResearch` (Responses API) |
 
 All text handlers support streaming (`params.stream = true`) and structured output (`params.responseSchema`).
@@ -37,7 +37,7 @@ plugins/plugin-openai/
   index.ts               # Plugin object (openaiPlugin); registers all model handlers
   index.node.ts          # Node entrypoint
   index.browser.ts       # Browser entrypoint
-  auto-enable.ts         # shouldEnable(): true when OPENAI_API_KEY or CEREBRAS_API_KEY set
+  auto-enable.ts         # shouldEnable(): true when OPENAI_API_KEY, CEREBRAS_API_KEY, or EVOLINK_API_KEY set
   init.ts                # initializeOpenAI(): validates API key on startup; browser skips server-only validation
   build.ts               # Bun.build config (node ESM + browser ESM) + tsc declarations
   models/
@@ -52,7 +52,7 @@ plugins/plugin-openai/
     openai.ts            # createOpenAIClient(): @ai-sdk/openai factory (proxy-aware)
     index.ts
   utils/
-    config.ts            # All getSetting/getModel/getBaseURL helpers; Cerebras detection
+    config.ts            # All getSetting/getModel/getBaseURL helpers; Cerebras/EvoLink detection
     events.ts            # emitModelUsageEvent: fires model-usage telemetry on runtime
     audio.ts             # detectAudioMimeType, getFilenameForMimeType
     tokenization.ts      # tiktoken helpers
@@ -85,6 +85,7 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 |---|---|---|---|
 | `OPENAI_API_KEY` | yes* | — | Auth for all OpenAI endpoints |
 | `CEREBRAS_API_KEY` | yes* | — | Auth when using Cerebras endpoint |
+| `EVOLINK_API_KEY` | yes* | — | Auth when using EvoLink endpoint |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | Override API endpoint |
 | `OPENAI_SMALL_MODEL` / `SMALL_MODEL` | no | `gpt-5.4-mini` | TEXT_SMALL model |
 | `OPENAI_NANO_MODEL` / `NANO_MODEL` | no | falls back to small | TEXT_NANO model |
@@ -102,7 +103,7 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `OPENAI_IMAGE_DESCRIPTION_API_KEY` | no | `OPENAI_API_KEY` | Separate vision auth |
 | `OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS` | no | `8192` | Max tokens for vision output |
 | `OPENAI_IMAGE_MODEL` | no | `dall-e-3` | Image generation model |
-| `OPENAI_TTS_MODEL` | no | `tts-1` | Text-to-speech model |
+| `OPENAI_TTS_MODEL` | no | `gpt-5-mini-tts` | Text-to-speech model |
 | `OPENAI_TTS_VOICE` | no | `nova` | TTS voice (alloy/echo/fable/onyx/nova/shimmer) |
 | `OPENAI_TTS_INSTRUCTIONS` | no | — | Style instructions for TTS |
 | `OPENAI_TRANSCRIPTION_MODEL` | no | `gpt-5-mini-transcribe` | Audio transcription model |
@@ -113,11 +114,13 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `OPENAI_BROWSER_BASE_URL` | no | — | Browser-only proxy URL (keeps key server-side) |
 | `OPENAI_BROWSER_EMBEDDING_URL` | no | — | Browser-only embeddings proxy URL |
 | `OPENAI_ALLOW_BROWSER_API_KEY` | no | `false` | Send auth header in browser (opt-in) |
-| `ELIZA_PROVIDER` | no | — | Set to `cerebras` to force Cerebras mode |
+| `ELIZA_PROVIDER` | no | — | Set to `cerebras` or `evolink` to force that provider mode |
 | `CEREBRAS_BASE_URL` | no | `https://api.cerebras.ai/v1` | Cerebras API base |
 | `CEREBRAS_MODEL` | no | — | Override model name in Cerebras mode |
+| `EVOLINK_BASE_URL` | no | `https://direct.evolink.ai/v1` | EvoLink API base |
+| `EVOLINK_MODEL` | no | `gpt-5.2` | Override model name in EvoLink mode |
 
-*Either `OPENAI_API_KEY` or `CEREBRAS_API_KEY` is required; the plugin will not auto-enable without one.
+*Either `OPENAI_API_KEY`, `CEREBRAS_API_KEY`, or `EVOLINK_API_KEY` is required; the plugin will not auto-enable without one.
 
 ## How to extend
 
@@ -136,6 +139,7 @@ Model tiers (nano/medium/mega/response-handler/action-planner) all call the shar
 
 - **Dual build (node + browser).** Exports differ: `dist/node/index.node.js` and `dist/browser/index.browser.js`. Browser build avoids sending `Authorization` headers by default; set `OPENAI_BROWSER_BASE_URL` to a server-side proxy.
 - **Cerebras mode.** Detected automatically from `ELIZA_PROVIDER=cerebras`, `OPENAI_BASE_URL` matching `*.cerebras.ai`, or presence of `CEREBRAS_API_KEY` without `OPENAI_API_KEY`. In Cerebras mode: structured output via `response_format: json_object` (not `json_schema`); `reasoning_effort` defaults to `"low"` for reasoning-capable models; `promptCacheRetention` is stripped (Cerebras rejects it); embeddings fall back to a deterministic local hash when no explicit embedding URL is set.
+- **EvoLink mode.** Detected automatically from `ELIZA_PROVIDER=evolink`, `OPENAI_BASE_URL` matching `*.evolink.ai`, or presence of `EVOLINK_API_KEY` without a conflicting key. Uses `EVOLINK_BASE_URL` (default `https://direct.evolink.ai/v1`) and defaults to `gpt-5.2` as the model.
 - **Reasoning models.** Pass `OPENAI_REASONING_EFFORT=low|medium|high` to control o-series / gpt-oss reasoning budgets. Valid values: `minimal`, `low`, `medium`, `high`.
 - **Prompt caching.** Pass `providerOptions: { openai: { promptCacheKey: "...", promptCacheRetention: "24h" } }` on any `GenerateTextParams` call to enable OpenAI prompt caching.
 - **Deep research.** `ModelType.RESEARCH` uses the OpenAI Responses API (`POST /responses`), not Chat Completions. It defaults to `o3-deep-research` and can take minutes to hours; use `params.background = true` for long jobs.

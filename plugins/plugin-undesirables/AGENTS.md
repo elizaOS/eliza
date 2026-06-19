@@ -15,7 +15,7 @@ Adds a personality layer ("soul workspace") and live trading-card market intelli
 | `UNDESIRABLE_MARKET_ANALYSIS` | Personality-driven market/token analysis with conviction score |
 | `UNDESIRABLE_BUSINESS_PILOT` | AI business automation recommendations (phone answering, SMS, invoicing) |
 | `UNDESIRABLE_MEME_MACHINE` | Meme concepts, brand voice content, content calendars |
-| `UNDESIRABLE_LOAD_SKILL` | Keyword-routes the user's message to one of 24 soul skills |
+| `UNDESIRABLE_LOAD_SKILL` | Keyword-routes the user's message to one of 26 soul skills (24 have keyword matchers; all 26 are accessible by name) |
 | `UNDESIRABLE_WHALE_TRACKER` | Whale wallet movement and smart money flow analysis |
 | `UNDESIRABLE_ENTRY_SIGNAL` | GO / WAIT / NO-GO entry evaluation with support/resistance levels |
 | `UNDESIRABLE_PORTFOLIO_CHECK` | Portfolio health assessment, A–F rating, concentration risk |
@@ -99,7 +99,7 @@ The workspace directory is expected to contain:
 - **YAML parsing:** frontmatter is parsed with `js-yaml` `JSON_SCHEMA` mode (no function tags). `__proto__`, `constructor`, `prototype` keys are explicitly stripped.
 - **Skill content prompt injection:** user-provided skill `.md` files are wrapped in `<untrusted_skill_data>` with a security notice. Do not remove this wrapper when adding skill context to prompts.
 - **Oracle fetch:** `oracleFetch()` enforces an 8-second `AbortSignal` timeout and `redirect: "error"`. Always use this helper for Oracle API calls.
-- **Demo soul:** the `DEMO_SOUL` constant in `index.ts` is the fallback personality. It ships with all 26 skill descriptions inline (no files). This is the path taken when `UNDESIRABLES_WORKSPACE` is unset or invalid.
+- **Demo soul:** the `DEMO_SOUL` constant in `index.ts` is the fallback personality. It ships with all 26 skill descriptions inline (no files). This is the path taken when `UNDESIRABLES_WORKSPACE` is unset or invalid. The `UNDESIRABLE_LOAD_SKILL` action provides keyword matchers for 24 of those 26 skills.
 - **No npm scope:** this package is published as `plugin-undesirables` (not `@elizaos/plugin-undesirables`). It is a community plugin, not a first-party elizaOS package.
 - **License:** BUSL-1.1 — not MIT/Apache. Review before redistributing.
 - **`MemeTrendService`** starts with cached fallback templates, refreshes from Imgflip's public template feed on startup and every six hours, and is read by `UNDESIRABLE_MEME_MACHINE` for current template hints.

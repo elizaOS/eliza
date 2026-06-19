@@ -43,7 +43,7 @@ Token is accepted via: `?token=` query param, `X-Screenshare-Token` header, or `
 - `refreshRunSession` — returns current `AppSessionState` or `null` if session is gone/stopped
 - `stopRun` — stops the session by ID
 
-### Registered TUI capabilities (via `interact` export in `ui/ScreenshareOperatorSurface.tsx`)
+### Registered TUI capabilities (via `interact` export in `ui/ScreenshareOperatorSurface.interact.ts`)
 
 - `terminal-screenshare-state`
 - `terminal-screenshare-start`
@@ -59,10 +59,20 @@ src/
   index.ts                     Plugin definition; wraps raw plugin with gatePluginSessionForHostedApp
   routes.ts                    All HTTP route handlers + app lifecycle hooks (prepareLaunch, stopRun, etc.)
   session-store.ts             In-process session store (globalThis-keyed); session CRUD + capability detection
+  register-terminal-view.tsx   Registers ScreenshareSpatialView as the terminal/TUI view
+  components/
+    ScreenshareSpatialView.tsx       Shared spatial operator surface component (used by TUI and other views)
+    ScreenshareSpatialView.test.tsx  Unit tests for ScreenshareSpatialView
   ui/
-    index.ts                   Registers ScreenshareOperatorSurface with @elizaos/ui registerOperatorSurface
-    ScreenshareOperatorSurface.tsx  React operator surface (host panel + connect panel + TUI view + interact())
-    ScreenshareTuiView.test.tsx     Unit tests for TUI view
+    index.ts                              Registers ScreenshareOperatorSurface with @elizaos/ui registerOperatorSurface
+    ScreenshareOperatorSurface.tsx        React operator surface (host panel + connect panel + TUI view)
+    ScreenshareOperatorSurface.helpers.ts Helper utilities for the operator surface
+    ScreenshareOperatorSurface.interact.ts  interact() TUI capability handler (split from main component file)
+    ScreenshareOperatorSurface.interact.test.ts  Tests for interact()
+    ScreenshareOperatorSurface.contract.test.ts  Contract tests for the operator surface
+    ScreenshareOperatorSurface.test.tsx   Unit tests for ScreenshareOperatorSurface
+    ScreenshareTuiView.test.tsx           Unit tests for TUI view
+    screenshare-view-bundle.ts            View bundle entry point
 ```
 
 ## Commands
@@ -92,7 +102,7 @@ The `GET /capabilities` route reports all three capability flags along with whic
 
 **Add a new input type:** Add a branch in `executeInput` in `src/routes.ts`. Dispatch to the appropriate `@elizaos/plugin-computeruse` primitive (e.g. `performDesktopScroll`, `performDesktopKeypress`).
 
-**Add a new TUI capability:** Add a branch in the `interact` function in `src/ui/ScreenshareOperatorSurface.tsx`.
+**Add a new TUI capability:** Add a branch in the `interact` function in `src/ui/ScreenshareOperatorSurface.interact.ts`.
 
 **Add operator UI controls:** Add `ScreenshareActionButton` or `ScreenshareField` elements inside `ScreenshareOperatorSurface` in `src/ui/ScreenshareOperatorSurface.tsx`.
 
@@ -107,4 +117,5 @@ The `GET /capabilities` route reports all three capability flags along with whic
 - **Desktop primitives come from `@elizaos/plugin-computeruse`.** Do not reach into OS APIs directly. All screenshot and input calls go through that package.
 - **Views build separately from the runtime.** `build:js` (tsup) and `build:views` (Vite) are independent steps. Both must run for a complete build.
 - **Viewer HTML is inline.** `renderViewerHtml()` in `routes.ts` returns a self-contained HTML string with embedded CSS and JS — no external assets needed. It polls for frames at 500 ms intervals.
+- **`interact` is a separate module.** The TUI capability handler lives in `ScreenshareOperatorSurface.interact.ts`, not in the main component file, so the component file exports only React components.
 - See root `AGENTS.md` for architecture rules (logger-only, ESM, naming, layer boundaries) that apply repo-wide.
