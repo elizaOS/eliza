@@ -11,7 +11,9 @@ import {
   type AgentSelectionStrategy,
   APPROVAL_PRESETS,
   type ApprovalPreset,
+  CODING_ACCOUNT_STRATEGY_OPTIONS,
   type CodingAccountStrategy,
+  isCodingAccountStrategy,
 } from "./coding-agent-settings-shared";
 
 function CodingDirInput({
@@ -52,6 +54,12 @@ export function GlobalPrefsSection({
   setPref,
 }: GlobalPrefsSectionProps) {
   const { t } = useApp();
+  const accountStrategy: CodingAccountStrategy = isCodingAccountStrategy(
+    prefs.ELIZA_CODING_ACCOUNT_STRATEGY,
+  )
+    ? prefs.ELIZA_CODING_ACCOUNT_STRATEGY
+    : "least-used";
+
   return (
     <>
       <SettingsControls.Field>
@@ -90,44 +98,30 @@ export function GlobalPrefsSection({
           })}
         </SettingsControls.FieldLabel>
         <Select
-          value={
-            (prefs.ELIZA_CODING_ACCOUNT_STRATEGY as CodingAccountStrategy) ||
-            "least-used"
-          }
-          onValueChange={(value: string) =>
-            setPref("ELIZA_CODING_ACCOUNT_STRATEGY", value)
-          }
+          value={accountStrategy}
+          onValueChange={(value: string) => {
+            if (isCodingAccountStrategy(value)) {
+              setPref("ELIZA_CODING_ACCOUNT_STRATEGY", value);
+            }
+          }}
         >
           <SettingsControls.SelectTrigger variant="compact">
             <SelectValue />
           </SettingsControls.SelectTrigger>
           <SelectContent>
-            <SelectItem value="least-used">
-              {t("codingagentsettingssection.AccountStrategyLeastUsed", {
-                defaultValue: "Least Used",
-              })}
-            </SelectItem>
-            <SelectItem value="round-robin">
-              {t("codingagentsettingssection.AccountStrategyRoundRobin", {
-                defaultValue: "Round Robin",
-              })}
-            </SelectItem>
-            <SelectItem value="priority">
-              {t("codingagentsettingssection.AccountStrategyPriority", {
-                defaultValue: "Priority",
-              })}
-            </SelectItem>
-            <SelectItem value="quota-aware">
-              {t("codingagentsettingssection.AccountStrategyQuotaAware", {
-                defaultValue: "Quota Aware",
-              })}
-            </SelectItem>
+            {CODING_ACCOUNT_STRATEGY_OPTIONS.map((strategy) => (
+              <SelectItem key={strategy.value} value={strategy.value}>
+                {t(strategy.labelKey, {
+                  defaultValue: strategy.defaultLabel,
+                })}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <SettingsControls.FieldDescription className="mt-1.5">
           {t("codingagentsettingssection.AccountPoolStrategyDesc", {
             defaultValue:
-              "How to select between multiple accounts for the same coding agent. Overrides ELIZA_CODING_ACCOUNT_STRATEGY.",
+              "How to select between multiple accounts for the same coding agent. This sets ELIZA_CODING_ACCOUNT_STRATEGY for spawned agents.",
           })}
         </SettingsControls.FieldDescription>
       </SettingsControls.Field>

@@ -45,7 +45,7 @@ const CODING_AGENT_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
   "eliza.account-pool.coding-agent.v1",
 );
 
-const VALID_CODING_STRATEGIES = new Set([
+const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "priority",
   "round-robin",
   "least-used",
@@ -54,8 +54,17 @@ const VALID_CODING_STRATEGIES = new Set([
 
 /** Default selection strategy — overridable via ELIZA_CODING_ACCOUNT_STRATEGY env var. */
 function getDefaultCodingStrategy(): Strategy {
-  const env = process.env.ELIZA_CODING_ACCOUNT_STRATEGY?.trim();
-  if (env && VALID_CODING_STRATEGIES.has(env)) return env as Strategy;
+  const env =
+    typeof process !== "undefined"
+      ? process.env.ELIZA_CODING_ACCOUNT_STRATEGY?.trim()
+      : undefined;
+  if (!env) return "least-used";
+  if (VALID_CODING_STRATEGIES.has(env as Strategy)) return env as Strategy;
+  logger.warn(
+    `[coding-account-bridge] ignoring invalid ELIZA_CODING_ACCOUNT_STRATEGY=${JSON.stringify(
+      env,
+    )}; using least-used`,
+  );
   return "least-used";
 }
 

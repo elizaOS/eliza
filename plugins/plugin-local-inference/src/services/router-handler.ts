@@ -86,6 +86,15 @@ export const ROUTER_PROVIDER = "eliza-router";
  */
 const ROUTER_PRIORITY = Number.MAX_SAFE_INTEGER;
 
+function readBooleanEnv(name: string): boolean {
+	const value =
+		typeof process !== "undefined" ? process.env[name]?.trim() : undefined;
+	if (!value) {
+		return false;
+	}
+	return value === "1" || value.toLowerCase() === "true";
+}
+
 /**
  * Runtime's registerModel type, narrowed for our use. The core signature
  * lets the handler return any model type; for routing we only care that
@@ -210,9 +219,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 
 		// Global local-only override: ELIZA_LOCAL_ONLY=1 pins every slot to
 		// manual + eliza-local-inference, disabling cloud fallback entirely.
-		const globalLocalOnly =
-			process.env.ELIZA_LOCAL_ONLY === "1" ||
-			process.env.ELIZA_LOCAL_ONLY === "true";
+		const globalLocalOnly = readBooleanEnv("ELIZA_LOCAL_ONLY");
 
 		// Read the user's policy for this slot. Absent = local-first fallback.
 		const prefs = await readRoutingPreferences();

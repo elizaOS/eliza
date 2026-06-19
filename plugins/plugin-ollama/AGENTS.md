@@ -70,8 +70,8 @@ All vars are read by `utils/config.ts` via `runtime.getSetting(key)` first, then
 
 | Var | Default | Required | Notes |
 |---|---|---|---|
-| `OLLAMA_API_ENDPOINT` / `OLLAMA_API_URL` | `http://localhost:11434` | Yes (implicit) | Normalized to `…/api` internally. Absence triggers a warn but doesn't block start. `getBaseURL` tries these keys first, then `OLLAMA_BASE_URL`, then the default. |
-| `OLLAMA_BASE_URL` | — | For auto-enable; also used by getBaseURL | `shouldEnable()` checks this for auto-enable. `getBaseURL` also reads this as a fallback after `OLLAMA_API_ENDPOINT` / `OLLAMA_API_URL`. |
+| `OLLAMA_API_ENDPOINT` / `OLLAMA_API_URL` | `http://localhost:11434` | No | Normalized to `…/api` internally. Absence triggers a warn but doesn't block start. `getBaseURL` tries these keys first, then `OLLAMA_BASE_URL`, then the default. |
+| `OLLAMA_BASE_URL` | — | No | Optional auto-enable gate for `shouldEnable()`. `getBaseURL` also reads this as a fallback after `OLLAMA_API_ENDPOINT` / `OLLAMA_API_URL`. |
 | `OLLAMA_SMALL_MODEL` / `SMALL_MODEL` | `eliza-1-2b` | No | TEXT_SMALL, fallback for NANO/MEDIUM/MEGA when unset. |
 | `OLLAMA_LARGE_MODEL` / `LARGE_MODEL` | `eliza-1-4b` | No | TEXT_LARGE, fallback for MEGA when unset. |
 | `OLLAMA_NANO_MODEL` / `NANO_MODEL` | → small model | No | TEXT_NANO. |

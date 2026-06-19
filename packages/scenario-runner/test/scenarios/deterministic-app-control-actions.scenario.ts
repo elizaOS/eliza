@@ -83,6 +83,11 @@ function expectActionTurn(
 const appLoadDirectory = "/tmp/eliza-app-control-scenario-load/apps";
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
+const remoteLedgerPluginDir = path.join(
+  repoRoot,
+  "plugins",
+  "plugin-remote-ledger",
+);
 
 const views = [
   {
@@ -370,8 +375,26 @@ export default scenario({
           force: true,
           recursive: true,
         });
+        await fs.rm(remoteLedgerPluginDir, {
+          force: true,
+          recursive: true,
+        });
         const loadedAppDir = path.join(appLoadDirectory, "app-loaded-console");
         await fs.mkdir(loadedAppDir, { recursive: true });
+        await fs.mkdir(remoteLedgerPluginDir, { recursive: true });
+        await fs.writeFile(
+          path.join(remoteLedgerPluginDir, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/plugin-remote-ledger",
+              version: "1.0.0",
+              files: ["dist"],
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
         await fs.writeFile(
           path.join(loadedAppDir, "package.json"),
           `${JSON.stringify(
@@ -699,6 +722,34 @@ export default scenario({
     },
     {
       kind: "action",
+      name: "regenerate remote ledger icon",
+      text: "Regenerate the remote ledger view icon",
+      actionName: "VIEWS",
+      options: { action: "icon", view: "remote-ledger" },
+      responseIncludesAny: [
+        "Regenerated a fresh branded icon for Remote Ledger",
+      ],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: { action: "icon", view: "remote-ledger" },
+          responseText:
+            "Regenerated a fresh branded icon for Remote Ledger. It is served at /api/views/remote-ledger/hero.",
+          resultFields: {
+            "values.mode": "icon",
+            "values.viewId": "remote-ledger",
+            "values.label": "Remote Ledger",
+            "data.heroUrl": "/api/views/remote-ledger/hero",
+            "data.heroPath": path.join(
+              remoteLedgerPluginDir,
+              "assets",
+              "hero.svg",
+            ),
+          },
+        }),
+    },
+    {
+      kind: "action",
       name: "broadcast view refresh",
       text: "Tell the wallet view to refresh",
       actionName: "VIEWS",
@@ -974,7 +1025,7 @@ export default scenario({
       type: "actionCalled",
       actionName: "VIEWS",
       status: "success",
-      minCount: 13,
+      minCount: 14,
     },
     {
       type: "actionCalled",
@@ -994,6 +1045,7 @@ export default scenario({
         /"tile"/,
         /"close"/,
         /"current"/,
+        /"icon"/,
         /"broadcast"/,
         /wallet:refresh/,
         /remote-ledger/,
@@ -1251,7 +1303,10 @@ export default scenario({
             method: "POST",
             pathname: "/api/plugins/uninstall",
             response: {
-              body: { ok: true, message: "Plugin @elizaos/plugin-feed unloaded." },
+              body: {
+                ok: true,
+                message: "Plugin @elizaos/plugin-feed unloaded.",
+              },
               status: 200,
             },
             search: "",
@@ -1268,7 +1323,10 @@ export default scenario({
             method: "POST",
             pathname: "/api/plugins/uninstall",
             response: {
-              body: { ok: true, message: "Plugin @elizaos/plugin-feed unloaded." },
+              body: {
+                ok: true,
+                message: "Plugin @elizaos/plugin-feed unloaded.",
+              },
               status: 200,
             },
             search: "",
