@@ -205,7 +205,7 @@
     "build:riscv64-artifacts": "node packages/scripts/run-bash-linux-only.mjs scripts/build-riscv64-artifacts.sh",
     "check:riscv64-artifacts": "node packages/scripts/run-bash-linux-only.mjs scripts/check-riscv64-artifacts.sh",
     "db:cloud:generate": "bun run --cwd packages/cloud-shared db:generate",
-    "db:cloud:migrate": "bun run packages/scripts/cloud/admin/migrate-with-diagnostics.ts",
+    "db:cloud:migrate": "bun --conditions=eliza-source packages/scripts/cloud/admin/migrate-with-diagnostics.ts",
     "db:cloud:studio": "bun run --cwd packages/cloud-shared db:studio",
     "db:cloud:pglite": "bun run packages/scripts/cloud/admin/dev/pglite-server.ts",
     "publish:dry-run": "bun packages/scripts/publish-from-dist.mjs",
