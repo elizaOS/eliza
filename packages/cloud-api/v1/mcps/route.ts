@@ -155,6 +155,14 @@ app.post("/", async (c) => {
 
     return c.json({ mcp }, 201);
   } catch (error) {
+    // TODO(mcp): the create path 500s in the cloud-api e2e (the user_mcps table
+    // exists — migration 0147 applies — but the worker INSERT fails against
+    // PGlite with a "Broken pipe" connection error). Log the real cause so the
+    // next run / prod hit is debuggable instead of an opaque 500.
+    logger.error("[API] Failed to create user MCP", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return failureResponse(c, error);
   }
 });
