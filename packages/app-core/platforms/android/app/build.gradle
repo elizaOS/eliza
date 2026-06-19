@@ -33,7 +33,28 @@ android {
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
+
+        // Phase 3a fused-voice JNI bridge (libelizavoicejni.so). Built by the
+        // NDK (bionic) from src/main/elizavoice-jni; links the prebuilt,
+        // self-contained libelizainference.so staged into jniLibs/arm64-v8a by
+        // stage-elizavoice-lib.mjs. Pass the fork FFI header dir to the shim's
+        // CMake. arm64-v8a only in Phase 3a (other ABIs build a no-op stub).
+        externalNativeBuild {
+            cmake {
+                def elizaRepoRoot = rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile()
+                arguments "-DELIZAVOICE_FFI_INCLUDE_DIR=${new File(elizaRepoRoot, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include').absolutePath}"
+            }
+        }
     }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/elizavoice-jni/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    ndkVersion "28.2.13676358"
 
     signingConfigs {
         release {

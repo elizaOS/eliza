@@ -2599,6 +2599,50 @@ android smoke model works`,
 		expect(earlyReply).not.toHaveBeenCalled();
 	});
 
+	it("reads the voice turn signal from content.metadata (chat-client nested shape)", async () => {
+		// Web/mobile clients persist their request `metadata` object at
+		// content.metadata (see agent/api buildUserMessages), so an ambient
+		// turn's voiceTurnSignal lands at content.metadata.voiceTurnSignal — not
+		// the top-level field the in-process voice path uses. The gate must read
+		// both.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The model would otherwise answer.",
+				contexts: ["general"],
+				replyText: "I'll jump in.",
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: {
+				...makeMessage(),
+				content: {
+					...makeMessage().content,
+					channelType: ChannelType.VOICE_DM,
+					metadata: {
+						voiceSource: "talkmode",
+						voiceTurnSignal: {
+							endOfTurnProbability: 0.08,
+							nextSpeaker: "user",
+							agentShouldSpeak: false,
+							source: "client-ambient",
+						},
+					},
+				},
+			},
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+		expect(earlyReply).not.toHaveBeenCalled();
+	});
+
 	it("preserves the parsed response-handler reply for early delivery even when a repair clears plan.reply", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

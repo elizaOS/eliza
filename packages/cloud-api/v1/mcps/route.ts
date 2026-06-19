@@ -125,10 +125,7 @@ app.post("/", async (c) => {
         return c.json({ error: "Invalid external endpoint URL" }, 400);
       }
       if (parsedEndpoint.protocol !== "https:") {
-        return c.json(
-          { error: "External endpoint must use https" },
-          400,
-        );
+        return c.json({ error: "External endpoint must use https" }, 400);
       }
       const endpointHost = parsedEndpoint.hostname
         .replace(/^\[/, "")
@@ -158,7 +155,7 @@ app.post("/", async (c) => {
     // TODO(mcp): the create path 500s in the cloud-api e2e (the user_mcps table
     // exists — migration 0147 applies — but the worker INSERT fails against
     // PGlite with a "Broken pipe" connection error). Log the real cause so the
-    // next run / prod hit is debuggable instead of an opaque 500.
+    // next run / prod (Railway) hit is debuggable instead of an opaque 500.
     logger.error("[API] Failed to create user MCP", {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,

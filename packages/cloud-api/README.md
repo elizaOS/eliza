@@ -36,7 +36,7 @@ bun install
 bun run dev          # wrangler dev (writes .dev.vars from repo .env/.env.local)
 ```
 
-`.dev.vars.example` is a reference template; `.dev.vars` and `.dev.vars.example` are both gitignored. Real secrets belong in the repo `.env.local`. Talking to live services (Neon, R2, Stripe, providers) requires the corresponding bindings/secrets.
+`.dev.vars.example` is a reference template; `.dev.vars` and `.dev.vars.example` are both gitignored. Real secrets belong in the repo `.env.local`. Talking to live services (Railway Postgres, R2, Stripe, providers) requires the corresponding bindings/secrets.
 
 ## Scripts
 

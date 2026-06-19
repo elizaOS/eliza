@@ -46,8 +46,6 @@ function customSandbox(): AgentSandbox {
     health_url: "https://legacy-bridge.example/health",
     agent_name: "bnancy",
     agent_config: {},
-    neon_project_id: null,
-    neon_branch_id: null,
     database_uri: "postgres://agent-db.example",
     database_status: "ready",
     database_error: null,
@@ -400,11 +398,13 @@ describe("ElizaSandboxService recoverDisconnected", () => {
   test("recovers a reachable disconnected agent via guarded compare-and-set", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = disconnectedSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+      async () => sandbox,
+    );
     const casSpy = spyOn(
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
-    ).mockResolvedValue({ ...sandbox, status: "running" });
+    ).mockImplementation(async () => ({ ...sandbox, status: "running" }));
     globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
 
     try {
@@ -424,13 +424,15 @@ describe("ElizaSandboxService recoverDisconnected", () => {
   test("does NOT revive when the row left disconnected mid-probe (CAS loses -> gone)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = disconnectedSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+      async () => sandbox,
+    );
     // Probe succeeds, but the agent was deleted/stopped/re-provisioned during the
     // probe → guarded update matches 0 rows. Must report "gone", never resurrect.
     const casSpy = spyOn(
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
-    ).mockResolvedValue(undefined);
+    ).mockImplementation(async () => undefined);
     globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
 
     try {
@@ -449,11 +451,13 @@ describe("ElizaSandboxService recoverDisconnected", () => {
   test("reports unreachable without writing when the bridge does not answer", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = disconnectedSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+      async () => sandbox,
+    );
     const casSpy = spyOn(
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
-    ).mockResolvedValue(undefined);
+    ).mockImplementation(async () => undefined);
     globalThis.fetch = mock(async () => new Response("nope", { status: 502 }));
 
     try {
@@ -471,14 +475,16 @@ describe("ElizaSandboxService recoverDisconnected", () => {
 
   test("reports gone (and never probes) when the row is no longer disconnected", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue({
-      ...customSandbox(),
-      status: "running",
-    });
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+      async () => ({
+        ...customSandbox(),
+        status: "running",
+      }),
+    );
     const casSpy = spyOn(
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
-    ).mockResolvedValue(undefined);
+    ).mockImplementation(async () => undefined);
     let probed = false;
     globalThis.fetch = mock(async () => {
       probed = true;
@@ -513,11 +519,11 @@ describe("ElizaSandboxService heartbeat", () => {
       ...customSandbox(),
       last_heartbeat_at: new Date(Date.now() - 30_000),
     };
-    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
-      sandbox,
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
     );
-    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(
-      undefined as never,
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async () => undefined as never,
     );
     globalThis.fetch = mock(async () => {
       throw new Error("fetch failed");
@@ -540,11 +546,11 @@ describe("ElizaSandboxService heartbeat", () => {
       ...customSandbox(),
       last_heartbeat_at: new Date(Date.now() - 200_000),
     };
-    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
-      sandbox,
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
     );
-    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(
-      undefined as never,
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async () => undefined as never,
     );
     globalThis.fetch = mock(async () => {
       throw new Error("fetch failed");
@@ -567,11 +573,11 @@ describe("ElizaSandboxService heartbeat", () => {
   test("probe that succeeds on a retry bumps last_heartbeat_at and leaves status alone", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = customSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
-      sandbox,
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
     );
-    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(
-      undefined as never,
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async () => undefined as never,
     );
     let calls = 0;
     globalThis.fetch = mock(async () => {

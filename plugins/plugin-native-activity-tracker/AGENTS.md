@@ -28,6 +28,7 @@ This package exports a **library API**, not a registered elizaOS plugin. There a
 plugins/plugin-native-activity-tracker/
   src/
     index.ts                 Entire TypeScript driver: types, parseCollectorLine, startActivityCollector
+    index.test.ts            Vitest unit tests for the TypeScript driver
   native/
     macos/
       activity-collector.swift   Swift source — NSWorkspace notifications + HID idle timer
@@ -45,9 +46,10 @@ bun run --cwd plugins/plugin-native-activity-tracker build
 
 # Compile the Swift helper binary (Darwin only, requires Xcode command-line tools)
 bun run --cwd plugins/plugin-native-activity-tracker build:swift
-```
 
-No test script is defined in this package's `package.json`.
+# Run unit tests
+bun run --cwd plugins/plugin-native-activity-tracker test
+```
 
 ## Config / env vars
 

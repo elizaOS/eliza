@@ -38,6 +38,7 @@ import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPan
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { TutorialOverlay } from "./components/pages/tutorial/TutorialOverlay";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
+import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { ChatAmbientBackground } from "./components/shell/ChatAmbientBackground";
@@ -728,13 +729,11 @@ function renderStaticViewRouterTab({
   androidPhoneSurfaceEnabled,
   navigationPath,
   settingsInitialSection,
-  LifeOpsPageView,
 }: {
   tab: string;
   androidPhoneSurfaceEnabled: boolean;
   navigationPath: string;
   settingsInitialSection?: string | null;
-  LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     tutorial: (
@@ -822,9 +821,6 @@ function renderStaticViewRouterTab({
       </TabContentView>
     ),
   };
-  if (tab === "lifeops") {
-    return LifeOpsPageView ? <LifeOpsPageView /> : <ViewUnavailableFallback />;
-  }
   if (tab === "phone") {
     return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
   }
@@ -874,7 +870,6 @@ function renderViewRouterContent({
   availableViews,
   appSlug,
   androidPhoneSurfaceEnabled,
-  LifeOpsPageView,
   settingsInitialSection,
 }: {
   tab: string;
@@ -885,7 +880,6 @@ function renderViewRouterContent({
   availableViews: ViewRegistryEntry[];
   appSlug: string | null;
   androidPhoneSurfaceEnabled: boolean;
-  LifeOpsPageView: ComponentType | null | undefined;
   settingsInitialSection?: string | null;
 }): ReactNode {
   if (visibleDynamicPage(dynamicPage, developerModeEnabled)) {
@@ -914,7 +908,6 @@ function renderViewRouterContent({
     androidPhoneSurfaceEnabled,
     navigationPath,
     settingsInitialSection,
-    LifeOpsPageView,
   });
 }
 
@@ -924,7 +917,6 @@ function ViewRouter({
   settingsInitialSection?: string | null;
 }) {
   const { tab } = useApp();
-  const { lifeOpsPageView: LifeOpsPageView } = useBootConfig();
   const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
   const [navigationPath, setNavigationPath] = useState(() =>
@@ -959,7 +951,6 @@ function ViewRouter({
     availableViews,
     appSlug,
     androidPhoneSurfaceEnabled,
-    LifeOpsPageView,
     settingsInitialSection,
   });
 
@@ -1683,6 +1674,7 @@ export function App() {
         <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden">
           <ConnectionFailedBanner />
           <SystemWarningBanner />
+          <ActionBanner />
           {shellContent}
         </div>
         {/* Full-screen overlay app — renders whichever overlay app is active */}

@@ -1351,6 +1351,99 @@ try {
     await p.close();
   }
 
+  // ── PILL → INPUT on a short SLOW pull: a slow drag up from the pill that only
+  // forms the input bar (past the halfway-open mark but short of the thread)
+  // must settle at the INPUT state, NOT overshoot to the half detent. Regression
+  // guard for the onSettleFree pill branch (it used to force half on any open).
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(500);
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "pill", "PILL-INPUT: collapsed to pill first");
+    // SLOW pull up ~80px: past the 60px halfway-open mark (commits to leaving the
+    // pill) but under PILL_OPEN_DISTANCE (120px), so only the input bar forms.
+    await gesture(p, 80, {
+      pointer: "mouse",
+      slow: true,
+      steps: 10,
+      target: "chat-pill",
+    });
+    await p.waitForTimeout(SETTLE);
+    const st = await chatState(p);
+    assert(
+      st === "INPUT",
+      `PILL-INPUT: short slow pull from pill settles at INPUT, not half (got ${st})`,
+    );
+    await snap(p, "transition-pill-slow-pull-to-input");
+    await p.close();
+  }
+
+  // ── ROTATION re-settles to a single CLEAN bar (flip-to-side): a viewport SIZE
+  // change must never leave the pill↔input morph stranded mid-crossfade. The
+  // crossfade math already prevents two bars at once, but a rotation that fires
+  // MID-DRAG (rotation often orphans the pointer → draggingRef stuck +
+  // openProgress frozen) would leave a half-formed bar and a stuck drag. Assert
+  // the morph snaps to a clean resting end (one bar at full opacity).
+  {
+    const barOpacities = async (pg) => {
+      const grabO = await pg
+        .getByTestId("chat-sheet-grabber")
+        .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+      const pillO = await pg
+        .getByTestId("chat-pill")
+        .evaluate((el) =>
+          Number.parseFloat(getComputedStyle(el.parentElement).opacity),
+        );
+      return { grabO, pillO, two: grabO > 0.15 && pillO > 0.15 };
+    };
+
+    // Rotate MID-MORPH with the pointer HELD — the orphaned-drag case. Flick to
+    // pill, start a slow pill drag and HOLD it mid-crossfade, then rotate WITHOUT
+    // releasing. The resize must force-settle: pill fully back, grabber gone.
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(500);
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "pill", "ROTATION: collapsed to pill first");
+    await gesture(p, 60, {
+      pointer: "mouse",
+      slow: true,
+      hold: true,
+      steps: 8,
+      target: "chat-pill",
+    });
+    const midContent = await p
+      .getByTestId("chat-content")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+    assert(
+      midContent > 0.05 && midContent < 0.95,
+      `ROTATION: held mid-crossfade before rotating (content ${midContent})`,
+    );
+    await p.setViewportSize({ width: 874, height: 402 }); // rotate to landscape
+    await p.waitForTimeout(SETTLE);
+    {
+      const b = await barOpacities(p);
+      assert(
+        !b.two,
+        `ROTATION: never two bars after rotating mid-morph (grab ${b.grabO}, pill ${b.pillO})`,
+      );
+      assert(
+        b.pillO > 0.85 && b.grabO < 0.15,
+        `ROTATION: morph re-settled to the single pill bar (grab ${b.grabO}, pill ${b.pillO})`,
+      );
+    }
+    await release(p, "mouse");
+    await snap(p, "rotation-mid-morph-resettled");
+    await p.close();
+  }
+
   // ── HEADER tracks the LIVE height (bug 1): dragging the panel below half must
   // HIDE the top buttons MID-DRAG, not keep them on a too-short panel. And the
   // MAXIMIZED enum can never disagree with the full-bleed layout.

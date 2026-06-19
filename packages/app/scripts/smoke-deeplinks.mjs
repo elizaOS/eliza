@@ -55,12 +55,32 @@ const SAMPLE = {
 const REQUIRED_PATHS = [
   { path: "/", expect: "spa", note: "apex landing / open-app" },
   { path: "/login", expect: "spa", note: "Steward login" },
-  { path: "/auth/cli-login", expect: "spa", note: "device-code (Remote) handoff" },
-  { path: "/auth/callback/email", expect: "spa", note: "email magic-link callback" },
-  { path: "/auth/success", expect: "spa", note: "OAuth success redirect target" },
+  {
+    path: "/auth/cli-login",
+    expect: "spa",
+    note: "device-code (Remote) handoff",
+  },
+  {
+    path: "/auth/callback/email",
+    expect: "spa",
+    note: "email magic-link callback",
+  },
+  {
+    path: "/auth/success",
+    expect: "spa",
+    note: "OAuth success redirect target",
+  },
   { path: "/app-auth/authorize", expect: "spa", note: "app OAuth authorize" },
-  { path: "/invite/accept", expect: "spa", note: "org invite (token in query)" },
-  { path: "/payment/success", expect: "spa", note: "payment provider redirect" },
+  {
+    path: "/invite/accept",
+    expect: "spa",
+    note: "org invite (token in query)",
+  },
+  {
+    path: "/payment/success",
+    expect: "spa",
+    note: "payment provider redirect",
+  },
   {
     path: `/payment/${SAMPLE.paymentRequestId}`,
     expect: "spa",
@@ -139,7 +159,12 @@ async function checkOne(baseUrl, spec) {
   // A 3xx is always acceptable (server/edge redirect into the app).
   if (status >= 300 && status < 400) {
     const location = res.headers.get("location") ?? "";
-    return { ...spec, ok: true, status, detail: `redirect → ${location || "(no location)"}` };
+    return {
+      ...spec,
+      ok: true,
+      status,
+      detail: `redirect → ${location || "(no location)"}`,
+    };
   }
 
   // 404 is the failure we exist to catch.
@@ -148,7 +173,12 @@ async function checkOne(baseUrl, spec) {
   }
 
   if (status !== 200) {
-    return { ...spec, ok: false, status, detail: `unexpected status (want 200 SPA shell or 3xx)` };
+    return {
+      ...spec,
+      ok: false,
+      status,
+      detail: `unexpected status (want 200 SPA shell or 3xx)`,
+    };
   }
 
   const body = await res.text();

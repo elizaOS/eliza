@@ -467,12 +467,14 @@ export function vadProviderOrder(
 	prefer: VadProviderPreference = "auto",
 ): VadProviderId[] {
 	if (prefer !== "auto") return [prefer];
-	// `silero-cpp` is the new standalone, GGUF-backed pure-C runtime
-	// (packages/native/plugins/silero-vad-cpp). It wins when both the
-	// shared library and the converted GGUF are present. The legacy
-	// `silero-ggml` (libelizainference's whisper-style VAD ABI) stays
-	// as a fallback until `silero-cpp` has soaked in production.
-	return ["qwen-toolkit", "silero-cpp", "silero-ggml"];
+	// `silero-ggml` is the fused `libelizainference` VAD ABI — the single
+	// native engine the whole voice pipeline runs through (the user directive:
+	// no separate bun:ffi-musl libs). It is preferred whenever the fused FFI
+	// handle is available and advertises VAD support. `silero-cpp` (the
+	// standalone GGUF-backed `packages/native/plugins/silero-vad-cpp` runtime)
+	// remains only as a guarded fallback for paths that do not thread the fused
+	// handle (e.g. a desktop test harness with no engine bridge).
+	return ["qwen-toolkit", "silero-ggml", "silero-cpp"];
 }
 
 export async function resolveVadProvider(

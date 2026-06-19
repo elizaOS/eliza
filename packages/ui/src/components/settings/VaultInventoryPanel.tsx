@@ -317,7 +317,7 @@ function CategoryGroup({
 }) {
   return (
     <div data-testid={`vault-category-${category}`} className="space-y-1">
-      <p className="text-2xs font-semibold uppercase tracking-wide text-muted">
+      <p className="text-2xs font-semibold text-muted">
         {CATEGORY_LABEL[category]}
       </p>
       <ul className="space-y-1 rounded-sm border border-border/40 bg-card/30 p-1">
@@ -739,7 +739,7 @@ function ProfilesPanel({
       className="mt-2 space-y-2 rounded-sm border border-border/40 bg-bg/30 p-2"
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-2xs font-semibold uppercase text-muted">
+        <p className="text-2xs font-semibold text-muted">
           {t("vaultinventory.profiles.title", { defaultValue: "Profiles" })}
         </p>
         <div className="flex items-center gap-1">

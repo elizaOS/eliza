@@ -184,7 +184,7 @@ function SectionBackButton({ onBack }: { onBack: () => void }) {
       ref={ref}
       type="button"
       onClick={onBack}
-      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-txt transition-colors hover:border-accent/40 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      className="-mx-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
       {...agentProps}
     >
       <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
@@ -296,7 +296,7 @@ function DesktopLayout({
           </h1>
           {grouped.map(({ group, label, items }) => (
             <div key={group}>
-              <h2 className="mb-1 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+              <h2 className="mb-1 px-2.5 text-xs font-medium text-muted">
                 {label}
               </h2>
               <div className="space-y-0.5">

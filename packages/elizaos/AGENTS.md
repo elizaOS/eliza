@@ -65,7 +65,7 @@ bun run --cwd packages/elizaos lint:check     # biome check (no write)
 
 - `ELIZAOS_UPSTREAM_REPO` / `ELIZAOS_UPSTREAM_BRANCH` — override a template's `upstream` git-submodule repo/branch in `resolveTemplateUpstream` (`scaffold.ts`). Used by `create` and `upgrade`; the smoke test sets these to point the project template's upstream at the local checkout.
 - `capability-router connect` reads `ELIZA_API_BASE_URL` / `ELIZA_API_BASE` (else `http://127.0.0.1:<ELIZA_API_PORT|ELIZA_PORT|2138>`) and `ELIZA_API_TOKEN` for the agent API call.
-- `deploy` reads `ELIZAOS_CLOUD_API_KEY`, `ELIZA_CLOUD_API_KEY`, `ELIZACLOUD_API_KEY`, or `~/.elizaos/credentials.json`; `ELIZA_CLOUD_API_BASE_URL` / `ELIZAOS_CLOUD_API_BASE_URL` / `ELIZACLOUD_API_BASE_URL` / `ELIZA_CLOUD_BASE_URL` override the default cloud API base.
+- `deploy` reads `ELIZAOS_CLOUD_API_KEY`, `ELIZA_CLOUD_API_KEY`, `ELIZACLOUD_API_KEY`, or `~/.elizaos/credentials.json`; `ELIZA_CLOUD_API_BASE_URL` / `ELIZAOS_CLOUD_API_BASE_URL` / `ELIZACLOUD_API_BASE_URL` / `ELIZA_CLOUD_BASE_URL` override the default cloud API base. `ELIZAOS_DEPLOY_POLL_INTERVAL_MS` and `ELIZAOS_DEPLOY_TIMEOUT_MS` override the default status-polling interval and maximum wait time.
 - `packaged-smoke.mjs` honors `ELIZAOS_SMOKE_*` flags (`KEEP_TEMP`, `EJECT`, `REMOTE_UPSTREAM`, `SKIP_GLOBAL_INSTALL`, `FULLSTACK_INSTALL`, `TMPDIR`).
 
 Generated projects record state in `.elizaos/template.json` (`ProjectTemplateMetadata`): `cliVersion`, `templateId`, `templateVersion`, `values`, and a `managedFiles` map of relative-path → sha256. `upgrade` uses these hashes to classify each file as updated / created / deleted / unchanged / conflict; locally-modified files become conflicts and are left untouched.

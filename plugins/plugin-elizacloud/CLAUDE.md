@@ -116,6 +116,7 @@ plugins/plugin-elizacloud/
       cloud-coding-container-routes.ts  Coding-container management
       cloud-compat-routes.ts        Compat route shims
       cloud-features-routes.ts      Feature-flag routes
+      travel-provider-relay-routes.ts   Travel provider relay routes
       home-remote-runner-access-url.ts  Remote runner access URL helper
     cloud/
       auth.ts                       Auth helpers
@@ -132,6 +133,11 @@ plugins/plugin-elizacloud/
       setup-observer.ts             CloudSetupObserver interface
       reconnect.ts                  Reconnect helpers
       validate-url.ts               validateCloudBaseUrl
+      duffel-client.ts              Duffel travel/flight booking client (searchFlights, createOrder, readDuffelConfigFromEnv, DuffelConfigError)
+      lifeops-schedule-sync-client.ts  LifeOps schedule sync client (resolveLifeOpsScheduleSyncConfig)
+      lifeops-schedule-sync-contracts.ts  LifeOps schedule sync contract types
+      managed-payment-clients.ts    Managed payment client helpers
+      x402-payment-handler.ts       x402 payment protocol handler (parseX402Response, requestPayment, PaymentRequiredError)
       index.ts                      Barrel
     lib/
       cloud-connection.ts           CloudAuthLike interface

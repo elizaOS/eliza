@@ -221,6 +221,25 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
+      // Pin embeddings to the elizacloud Worker (api.elizacloud.ai/api/v1), whose
+      // POST /embeddings serves OpenAI text-embedding-3-small (200, 1536-dim).
+      // Without this, the plugin's getEmbeddingBaseURL() falls back to the
+      // general/text base, which resolves to the Cerebras/BitRouter endpoint that
+      // has NO /embeddings route → 404→503 on every RAG/memory turn. No separate
+      // key is needed: getEmbeddingApiKey falls back to ELIZAOS_CLOUD_API_KEY (set
+      // above), which authenticates to the Worker route. The plugin appends
+      // "/embeddings", so this must end at /api/v1 (resolveCloudApiBaseUrl already
+      // normalizes that). An explicit per-agent override still wins.
+      ELIZAOS_CLOUD_EMBEDDING_URL:
+        existingEnv.ELIZAOS_CLOUD_EMBEDDING_URL ?? resolveCloudApiBaseUrl(),
+      // Match the agent's storage vector dimension to the cloud embedding model.
+      // The elizacloud handler returns 1536-dim vectors (text-embedding-3-small,
+      // ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS default 1536), but plugin-sql's storage
+      // defaults to dim_384 unless EMBEDDING_DIMENSION is set (core/provisioning.ts)
+      // → a 1536 vector is written to the dim_384 column → "Failed query: insert
+      // into embeddings" on every memory write. Pin both to 1536 so they agree.
+      EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? "1536",
+      ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? "1536",
       // Pin the cloud's healthy Cerebras-direct models so the container never
       // resolves a tier to the `:nitro` default (which has no Cerebras route →
       // BitRouter→OpenRouter → 503 / wrong model). Mirrors the shared + eliza-app
@@ -230,6 +249,14 @@ export async function prepareManagedElizaBaseEnvironment(
         existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
       ELIZAOS_CLOUD_LARGE_MODEL:
         existingEnv.ELIZAOS_CLOUD_LARGE_MODEL ?? CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+      // Lean multi-tenant Postgres pool. Every dedicated agent container pools
+      // against the shared cloud Postgres, so the default per-agent pool
+      // (max 20 / min 2) exhausts the server's max_connections at scale (50
+      // idle agents × min 2 = 100 connections). Cap bursts at 8 and let idle
+      // agents release ALL connections (min 0). plugin-sql reads POSTGRES_POOL_*.
+      POSTGRES_POOL_MAX: existingEnv.POSTGRES_POOL_MAX ?? "8",
+      POSTGRES_POOL_MIN: existingEnv.POSTGRES_POOL_MIN ?? "0",
+      POSTGRES_POOL_IDLE_TIMEOUT_MS: existingEnv.POSTGRES_POOL_IDLE_TIMEOUT_MS ?? "15000",
       ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
       PUBLIC_BASE_URL: mergeManagedPublicBaseUrl(
         existingEnv.PUBLIC_BASE_URL,

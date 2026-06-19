@@ -292,6 +292,137 @@ public class ElizaAgentService extends Service {
         ).toString();
     }
 
+    /**
+     * Streaming variant of {@link #requestLocalAgent}. Where that buffers the
+     * whole loopback response into one JSON string (so an SSE body's token
+     * frames arrive all at once and the chat reply never streams on mobile),
+     * this opens the same request and reads the response InputStream
+     * INCREMENTALLY, pushing each fragment to {@code onEvent} as a small JSON
+     * envelope the AgentPlugin maps to Capacitor events:
+     *   {"type":"response","status":..,"statusText":..,"headers":{..}}  (once, first)
+     *   {"type":"chunk","dataBase64":".."}                              (per read)
+     *   {"type":"complete"}  or  {"type":"complete","error":".."}        (terminal)
+     *
+     * Single attempt by design: a connect failure emits a terminal error event
+     * and the WebView falls back to the buffered {@link #requestLocalAgent}
+     * (which carries the cold-load connect retry), so non-idempotent POSTs are
+     * never replayed here. Runs on the caller's thread (AgentPlugin spawns one).
+     */
+    public static void requestLocalAgentStream(String requestJson, java.util.function.Consumer<String> onEvent) {
+        try {
+            JSONObject request = requestJson == null || requestJson.trim().isEmpty()
+                ? new JSONObject()
+                : new JSONObject(requestJson);
+            String path = request.optString("path", "").trim();
+            if (!isSafeLocalAgentPath(path)) {
+                throw new IllegalArgumentException("Local agent request requires a path that starts with /");
+            }
+            String method = request.optString("method", "GET").trim().toUpperCase(Locale.US);
+            if (!method.matches("^[A-Z]{1,16}$")) {
+                throw new IllegalArgumentException("Unsupported HTTP method");
+            }
+            int timeoutMs = request.optInt("timeoutMs", LOCAL_REQUEST_DEFAULT_TIMEOUT_MS);
+            if (isLongRunningInferencePath(path)) {
+                timeoutMs = Math.max(timeoutMs, LOCAL_INFERENCE_REQUEST_TIMEOUT_MS);
+            }
+            timeoutMs = Math.max(1_000, Math.min(timeoutMs, LOCAL_REQUEST_MAX_TIMEOUT_MS));
+            JSONObject headers = request.optJSONObject("headers");
+            if (headers == null) headers = new JSONObject();
+            Object rawBody = request.opt("body");
+            String body = rawBody == null || rawBody == JSONObject.NULL ? null : rawBody.toString();
+            streamLocalAgentRequest(method, path, headers, body, timeoutMs, currentLocalAgentToken, onEvent);
+        } catch (Exception error) {
+            emitStreamComplete(onEvent, error.getMessage() == null ? "Local agent stream failed" : error.getMessage());
+        }
+    }
+
+    private static void streamLocalAgentRequest(
+        String method,
+        String path,
+        JSONObject headers,
+        String body,
+        int timeoutMs,
+        String token,
+        java.util.function.Consumer<String> onEvent
+    ) throws IOException, JSONException {
+        byte[] bodyBytes = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
+        if (bodyBytes != null && bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
+            throw new IOException("Request body is too large");
+        }
+
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(LOCAL_AGENT_BASE_URL + path);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod(method);
+            conn.setConnectTimeout(timeoutMs);
+            conn.setReadTimeout(timeoutMs);
+            conn.setInstanceFollowRedirects(false);
+            conn.setUseCaches(false);
+            applyLocalAgentHeaders(conn, headers);
+            if (token != null && !token.trim().isEmpty() && !hasHeader(headers, "authorization")) {
+                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            }
+            if (bodyBytes != null && !"GET".equals(method) && !"HEAD".equals(method)) {
+                if (!hasHeader(headers, "content-type")) {
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                }
+                conn.setDoOutput(true);
+                try (OutputStream out = conn.getOutputStream()) {
+                    out.write(bodyBytes);
+                    out.flush();
+                }
+            }
+
+            int status = conn.getResponseCode();
+            JSONObject responseHeaders = new JSONObject();
+            for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet()) {
+                String key = entry.getKey();
+                List<String> values = entry.getValue();
+                if (key == null || values == null || values.isEmpty()) continue;
+                responseHeaders.put(key.toLowerCase(Locale.US), String.join(", ", values));
+            }
+            onEvent.accept(new JSONObject()
+                .put("type", "response")
+                .put("status", status)
+                .put("statusText", conn.getResponseMessage() == null ? "" : conn.getResponseMessage())
+                .put("headers", responseHeaders)
+                .toString());
+
+            // Read the body as it arrives. The agent flushes each SSE frame, so a
+            // blocking read returns per-frame rather than waiting for the whole
+            // body — that is exactly the incremental delivery the WebView needs.
+            InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            if (stream != null) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = stream.read(buffer)) != -1) {
+                    if (read == 0) continue;
+                    String dataBase64 = android.util.Base64.encodeToString(
+                        java.util.Arrays.copyOf(buffer, read), android.util.Base64.NO_WRAP);
+                    onEvent.accept(new JSONObject()
+                        .put("type", "chunk")
+                        .put("dataBase64", dataBase64)
+                        .toString());
+                }
+            }
+            emitStreamComplete(onEvent, null);
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private static void emitStreamComplete(java.util.function.Consumer<String> onEvent, String error) {
+        try {
+            JSONObject complete = new JSONObject().put("type", "complete");
+            if (error != null) complete.put("error", error);
+            onEvent.accept(complete.toString());
+        } catch (JSONException ignored) {
+            // A complete event with no error is the worst case if JSON fails.
+            onEvent.accept("{\"type\":\"complete\"}");
+        }
+    }
+
     private static boolean isSafeLocalAgentPath(String path) {
         return path != null
             && path.startsWith("/")
@@ -1131,6 +1262,26 @@ public class ElizaAgentService extends Service {
                 "LD_LIBRARY_PATH",
                 nativeLibraryDir().getAbsolutePath() + ":" + abiDir.getAbsolutePath()
             );
+            // Native voice libs (Silero VAD + WeSpeaker/pyannote voice classifier)
+            // ship as jniLibs and extract into nativeLibraryDir. The on-device bun
+            // agent's bun:ffi loaders (vad-ggml.ts / encoder-ggml.ts /
+            // diarizer-ggml.ts) honor these env overrides; without them they fall
+            // back to the repo-local CMake build dirs, which do not exist on a
+            // packaged install, so live diarization would report library-missing.
+            // Only export when the .so actually shipped, so a stale env never
+            // points the loader at a missing path.
+            File sileroVadLib = new File(nativeLibraryDir(), "libsilero_vad.so");
+            File voiceClassifierLib = new File(nativeLibraryDir(), "libvoice_classifier.so");
+            if (sileroVadLib.isFile() && !env.containsKey("ELIZA_SILERO_VAD_LIB")) {
+                agentEnv.put("ELIZA_SILERO_VAD_LIB", sileroVadLib.getAbsolutePath());
+                Log.i(TAG, "libsilero_vad.so present; exporting ELIZA_SILERO_VAD_LIB="
+                    + sileroVadLib.getAbsolutePath());
+            }
+            if (voiceClassifierLib.isFile() && !env.containsKey("ELIZA_VOICE_CLASSIFIER_LIB")) {
+                agentEnv.put("ELIZA_VOICE_CLASSIFIER_LIB", voiceClassifierLib.getAbsolutePath());
+                Log.i(TAG, "libvoice_classifier.so present; exporting ELIZA_VOICE_CLASSIFIER_LIB="
+                    + voiceClassifierLib.getAbsolutePath());
+            }
             agentEnv.put("AGENT_ROOT", root.getAbsolutePath());
             agentEnv.put("RUNTIME_DIR", abiDir.getAbsolutePath());
             agentEnv.put("DEVICE_DIR", abiDir.getAbsolutePath());
@@ -1242,6 +1393,7 @@ public class ElizaAgentService extends Service {
             File abiLibllama = new File(abiDir, "libllama.so");
             File abiLlamaShim = new File(abiDir, "libeliza-llama-shim.so");
             File abiSpeculativeShim = new File(abiDir, "libeliza-llama-speculative-shim.so");
+            File abiGgmlVulkan = new File(abiDir, "libggml-vulkan.so");
             boolean nativeLlamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
             boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
             if (nativeLlamaBundled && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
@@ -1250,6 +1402,19 @@ public class ElizaAgentService extends Service {
                     + "/libllama.so + shim present; enabling native bun:ffi inference (ELIZA_LOCAL_LLAMA=1)");
             }
             if (nativeLlamaBundled) {
+                // When the Vulkan ggml backend (libggml-vulkan.so) is bundled —
+                // i.e. the arm64 GPU build — offload the model to the GPU. The
+                // aosp-llama-adapter pins n_gpu_layers=0 by default, so without
+                // this a Vulkan-capable libllama still runs entirely on CPU. CPU-
+                // only builds (riscv64, or arm64 without the Vulkan backend) ship
+                // no libggml-vulkan.so, so they correctly stay on CPU.
+                if (abiGgmlVulkan.isFile()
+                        && !env.containsKey("ELIZA_AOSP_LLAMA_USE_GPU")
+                        && !env.containsKey("ELIZA_LLAMA_N_GPU_LAYERS")) {
+                    agentEnv.put("ELIZA_AOSP_LLAMA_USE_GPU", "true");
+                    Log.i(TAG, "agent/" + abiDir.getName()
+                        + "/libggml-vulkan.so present; offloading inference to GPU (ELIZA_AOSP_LLAMA_USE_GPU=true)");
+                }
                 if (!env.containsKey("ELIZA_MOBILE_LOCAL_DIRECT_REPLY")) {
                     agentEnv.put("ELIZA_MOBILE_LOCAL_DIRECT_REPLY", "1");
                 }

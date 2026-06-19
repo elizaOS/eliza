@@ -725,9 +725,7 @@ export class AgentSandboxesRepository {
           bridge_url: pool.bridge_url,
           health_url: pool.health_url,
           sandbox_id: pool.sandbox_id,
-          // Neon database transfer — pool row's database is now the user's.
-          neon_project_id: pool.neon_project_id,
-          neon_branch_id: pool.neon_branch_id,
+          // Database transfer — pool row's database is now the user's.
           database_uri: pool.database_uri,
           database_status: pool.database_status,
           agent_name: params.agentName,

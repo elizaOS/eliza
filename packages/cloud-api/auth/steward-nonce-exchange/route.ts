@@ -111,15 +111,16 @@ function shouldReturnClientToken(
 ): boolean {
   const origin =
     originHost(c.req.header("origin")) ?? originHost(c.req.header("referer"));
+  const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
   if (!origin) return false;
   // The SPA reads localStorage to decide `isAuthenticated` on /dashboard
   // mount. Without returning the JWT here, OAuth users bounce back to /login.
-  // All permitted CSRF origins are trusted to receive the token.
-  if (PERMITTED_ORIGIN_HOSTS.has(origin)) return true;
-  if (origin.endsWith(".elizacloud.ai") || origin.endsWith(".elizaos.ai")) {
-    return true;
-  }
-  return !isProduction && LOCAL_DEV_ORIGIN_HOSTS.has(origin);
+  // Mirror the token for every origin the CSRF check already accepted — incl.
+  // same-origin custom hosts via `origin === host`. Diverging from the CSRF
+  // gate (as the static-set-only check did) silently dropped the token on hosts
+  // that are accepted by Origin-match, so a valid login bounced to /login.
+  // Matches steward-refresh's shouldReturnClientToken.
+  return isPermittedOrigin(origin, host, isProduction);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -146,8 +147,11 @@ function logExchange(outcome: string): void {
 }
 
 function resolveStewardBaseUrl(env: AppEnv["Bindings"]): string | null {
-  const candidates = [env.STEWARD_API_URL, env.NEXT_PUBLIC_STEWARD_API_URL];
-  for (const candidate of candidates) {
+  const candidates: Array<[string, string | undefined]> = [
+    ["STEWARD_API_URL", env.STEWARD_API_URL],
+    ["NEXT_PUBLIC_STEWARD_API_URL", env.NEXT_PUBLIC_STEWARD_API_URL],
+  ];
+  for (const [key, candidate] of candidates) {
     if (typeof candidate !== "string") continue;
     const trimmed = candidate.trim().replace(/\/+$/, "");
     if (trimmed.length === 0) continue;
@@ -155,7 +159,15 @@ function resolveStewardBaseUrl(env: AppEnv["Bindings"]): string | null {
       const url = new URL(trimmed);
       if (url.protocol !== "https:" && url.protocol !== "http:") continue;
       return trimmed;
-    } catch {}
+    } catch (error) {
+      // A non-empty candidate that fails to parse is a misconfiguration, not a
+      // missing value. Name the env var so the resulting 503 is debuggable; never
+      // log the value itself (it may contain credentials).
+      logger.warn("[StewardAuth] Ignoring unparseable Steward base URL", {
+        envVar: key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
   return null;
 }
@@ -460,7 +472,7 @@ app.post("/", async (c) => {
     sameSite: "Lax",
     path: "/",
     ...(domain ? { domain } : {}),
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
   });
 
   logExchange("ok");

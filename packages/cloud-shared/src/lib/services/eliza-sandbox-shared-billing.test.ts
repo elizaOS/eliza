@@ -140,8 +140,6 @@ function sharedSandbox(): AgentSandbox {
     health_url: null,
     agent_name: "shared-nancy",
     agent_config: { system: "You are shared-nancy." },
-    neon_project_id: null,
-    neon_branch_id: null,
     database_uri: "postgres://agent-db.example",
     database_status: "ready",
     database_error: null,

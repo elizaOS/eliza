@@ -265,7 +265,8 @@ export function useFirstRunController(): FirstRunController {
     elizaCloudLoginError,
     handleCloudLogin,
     firstRunName,
-    setActionNotice,
+    showActionBanner,
+    setTab,
     setState,
     uiLanguage,
   } = useApp();
@@ -443,14 +444,14 @@ export function useFirstRunController(): FirstRunController {
       });
       await client.submitFirstRun(plan.payload);
       if (plan.runtimeConfig.needsProviderSetup) {
-        setActionNotice(
-          "Choose a model provider in Settings before sending the first message.",
-          "info",
-          7000,
-        );
+        showActionBanner({
+          text: "Choose a model provider in Settings before sending the first message.",
+          actionLabel: "Open Settings",
+          onAction: () => setTab("settings"),
+        });
       }
     },
-    [setActionNotice, uiLanguage],
+    [showActionBanner, setTab, uiLanguage],
   );
 
   const finishLocal = React.useCallback(

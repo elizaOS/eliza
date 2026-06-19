@@ -14,8 +14,7 @@ manifest, kernel ABI, GGML pin).
 
 **Fork source.** The patched llama.cpp ships in-tree as a git submodule at
 [`plugins/plugin-local-inference/native/llama.cpp`](llama.cpp) — `elizaOS/llama.cpp`
-tracking the `v1.2.0-eliza` line (gitlink currently `33c888a7b`, with
-`ce85787c` as the validated MTP/SWA build base; resolve via
+tracking the `v1.2.0-eliza` line (resolve the current gitlink via
 `git -C plugins/plugin-local-inference/native/llama.cpp describe --always`; the
 `v1.0.0-eliza` / `08032d57` pin documented previously is **stale** — do not copy
 that pin into new tooling or scripts). `git submodule update --init --recursive`
@@ -595,7 +594,7 @@ Publishing flow (training side, see [`packages/training/AGENTS.md`](../../../pac
 
 A bundle is shippable when, on each supported backend:
 
-- `make -C packages/inference/verify reference-test` is clean.
+- `make -C plugins/plugin-local-inference/native/verify reference-test` is clean.
 - `verify/metal_verify` reports 8/8 PASS for `turbo3`, `turbo4`,
   `turbo3_tcq`, `qjl`, `polar` against the bundle's quantized weights
   (not just synthetic fixtures — fixtures regenerated from the actual
@@ -629,7 +628,7 @@ backend nightly.
   ship one optimized path, not three with conditional branches.
 - **Mirror the references bit-for-bit.** Metal/Vulkan kernels MUST
   produce numerically identical output (within published tolerance) to
-  the C reference in `packages/inference/reference/` and to the
+  the C reference in `plugins/plugin-local-inference/native/reference/` and to the
   upstream CUDA implementation in
   `packages/native/plugins/{qjl-cpu,polarquant-cpu}` and the `elizaOS/llama.cpp`
   fork. New kernels follow the same pattern: ship the C reference and
@@ -707,14 +706,12 @@ deprecated and will be removed from the runtime path once all native ports land.
 
 **Rule:** do NOT remove `onnxruntime-node` from `plugin-local-inference/package.json`
 until every compute-gated head above is replaced. Premature removal crashes the
-voice pipeline. The per-model migration protocol (flip `manifest.json` runtime field,
-rename GGML variant to canonical, delete ONNX file, run verify gate) is documented
-in `.swarm/impl/I1-single-runtime.md §F` and `.swarm/impl/K7-no-onnx.md §D`.
+voice pipeline. For each per-model migration, update the manifest runtime from
+`onnx` to the native/GGUF runtime, rename the promoted artifact to the canonical
+manifest path, remove the ONNX entry from the shipped bundle, run the relevant
+gate from `native/verify/PLATFORM_MATRIX.md`, and keep the HF ONNX artifact for
+one release cycle as described below.
 
 **HF deprecation runway:** ONNX model files remain on HF alongside GGUFs for one
 release after each native port lands. Do not delete ONNX from HF until the GGUF
 path has been in production for one release cycle.
-
-**K7 tracker:** `packages/training/reports/onnx-to-ggml-tracker.json` is the
-machine-readable source of truth for which package.json entries are still justified.
-The audit script `scripts/onnx-dep-audit.mjs` enforces this at CI time.

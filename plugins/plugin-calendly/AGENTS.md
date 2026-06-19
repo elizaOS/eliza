@@ -43,7 +43,10 @@ src/
                                   createSingleUseLink, getBookingUrl, cancelBooking,
                                   getCachedUserUri, attach (test hook)
   calendly-client.test.ts         Unit tests for the HTTP client
+  calendly-client.contract.test.ts  Contract tests for the HTTP client
+  calendly-client.real.test.ts    Live integration tests (gated on CALENDLY_LIVE_TEST=1 or TEST_LANE=post-merge)
   connector-account-provider.test.ts  Unit tests for the connector-account provider
+  lifeops-message-adapter.test.ts Unit tests for the LifeOps message adapter
 ```
 
 ## Commands
@@ -62,16 +65,20 @@ bun run --cwd plugins/plugin-calendly clean      # rm -rf dist .turbo
 | Env var | Required | Purpose |
 |---------|----------|---------|
 | `CALENDLY_ACCESS_TOKEN` | Required (or `CALENDLY_ACCOUNTS`) | Personal access token for a single Calendly account |
+| `ELIZA_CALENDLY_TOKEN` | Alt alias | Fallback alias for `CALENDLY_ACCESS_TOKEN` (checked second) |
 | `CALENDLY_ACCOUNTS` | Alt to above | JSON array/object of multiple account configs (each with `accountId` + `accessToken`) |
 | `CALENDLY_ACCOUNT_ID` | Optional | Explicit account ID when using single-token mode |
 | `CALENDLY_DEFAULT_ACCOUNT_ID` | Optional | Default account when multiple accounts are configured |
 | `CALENDLY_USER_URI` | Optional | Override user URI (skips `/users/me` lookup) |
+| `ELIZA_CALENDLY_USER_URI` | Optional | Fallback alias for `CALENDLY_USER_URI` |
 | `CALENDLY_ORGANIZATION_URI` | Optional | Override organization URI |
+| `ELIZA_CALENDLY_ORG_URI` | Optional | Fallback alias for `CALENDLY_ORGANIZATION_URI` |
 | `CALENDLY_OAUTH_CLIENT_ID` | Required for OAuth | Calendly OAuth app client ID |
 | `CALENDLY_OAUTH_CLIENT_SECRET` | Required for OAuth | Calendly OAuth app client secret |
 | `CALENDLY_OAUTH_REDIRECT_URI` | Required for OAuth | OAuth redirect URI registered in Calendly app |
 | `ELIZA_E2E_CALENDLY_ACCESS_TOKEN` | E2E only | Fallback token for integration tests |
 | `ELIZA_MOCK_CALENDLY_BASE` | Test only | Override `https://api.calendly.com` base URL for mocking |
+| `CALENDLY_LIVE_TEST` | Test only | Set to `1` to enable live integration tests in `calendly-client.real.test.ts` |
 
 The `autoEnable.envKeys` check uses `CALENDLY_ACCESS_TOKEN`, `CALENDLY_ACCOUNTS`, and `ELIZA_E2E_CALENDLY_ACCESS_TOKEN`.
 

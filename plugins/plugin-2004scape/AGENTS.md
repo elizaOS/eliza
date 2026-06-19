@@ -61,6 +61,7 @@ src/
   index.ts                    Plugin export; registers service, actions, providers, views
   routes.ts                   HTTP route handlers (viewer proxy + session bridge)
   shared-state.ts             Module-level LLM response slot (setCurrentLlmResponse / getCurrentLlmResponse)
+  register-terminal-view.tsx  Lazy terminal-host view registration (no-DOM guard)
   actions/
     index.ts                  Exports rsSdkActions = [rs2004Action]
     rs2004.ts                 RS_2004 action — op normalization, alias mapping, dispatch
@@ -83,10 +84,17 @@ src/
     types.ts                  All shared types (BotState, BotWorldState, BotAction union, ActionResult, etc.)
   gateway/
     index.ts                  startGateway — Bun WS server bridging bot client ↔ SDK
+  components/
+    TwoThousandFourScapeSpatialView.tsx  Spatial/XR view component
+    TwoThousandFourScapeSpatialView.test.tsx
   ui/
     index.ts                  Re-exports UI components
-    TwoThousandFourScapeOperatorSurface.tsx  Operator dashboard React component
-    TwoThousandFourScapeDetailExtension.tsx  Detail panel UI extension
+    2004scape-view-bundle.ts  View bundle entry point
+    game-surface-shell.tsx    Shell wrapper for the game surface iframe
+    TwoThousandFourScapeOperatorSurface.tsx        Operator dashboard React component
+    TwoThousandFourScapeOperatorSurface.helpers.ts Helper utilities for the operator surface
+    TwoThousandFourScapeOperatorSurface.interact.ts Interaction handlers for the operator surface
+    TwoThousandFourScapeDetailExtension.tsx        Detail panel UI extension
 ```
 
 ## Commands
@@ -98,10 +106,9 @@ bun run --cwd plugins/plugin-2004scape build        # tsup JS + vite views + tsc
 bun run --cwd plugins/plugin-2004scape build:js     # tsup only
 bun run --cwd plugins/plugin-2004scape build:views  # vite views bundle only
 bun run --cwd plugins/plugin-2004scape build:types  # tsc type declarations only
+bun run --cwd plugins/plugin-2004scape test         # vitest run
 bun run --cwd plugins/plugin-2004scape clean        # rm -rf dist
 ```
-
-No test script is defined in this package.
 
 ## Config / env vars
 

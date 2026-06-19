@@ -54,7 +54,7 @@ plugins/plugin-imessage/
     connector-account-provider.ts  ConnectorAccountProvider adapter
     setup-routes.ts             /api/setup/imessage/* route handlers
     data-routes.ts              /api/imessage/* CRUD route handlers
-    node-sqlite.d.ts            Type shim for node:sqlite
+    node-sqlite.d.ts            Type shim for node:sqlite (gitignored)
     providers/
       index.ts                  (reserved)
     api/
@@ -90,11 +90,13 @@ All read via `runtime.getSetting(key)` with `process.env[key]` fallback. None re
 | `IMESSAGE_CLI_PATH` | `"imsg"` | Path to an iMessage CLI binary; fallback to AppleScript when absent or path not found |
 | `IMESSAGE_DB_PATH` | `~/Library/Messages/chat.db` | Override chat.db path |
 | `IMESSAGE_POLL_INTERVAL_MS` | `5000` | How often (ms) to poll chat.db for new rows; `0` disables polling |
+| `IMESSAGE_HEARTBEAT_INTERVAL_MS` | `60000` | How often (ms) to run the heartbeat health check against chat.db |
 | `IMESSAGE_DM_POLICY` | `"pairing"` | `open` / `pairing` / `allowlist` / `disabled` |
 | `IMESSAGE_GROUP_POLICY` | `"allowlist"` | `open` / `allowlist` / `disabled` |
 | `IMESSAGE_ALLOW_FROM` | `""` | Comma-separated E.164 phones or iCloud emails for allowlist |
 | `IMESSAGE_ENABLED` | `"true"` | Set to `"false"` to disable |
 | `IMESSAGE_BACKFILL` | `0` | Number of rows before the current DB tip to replay on startup |
+| `ELIZA_NATIVE_PERMISSIONS_DYLIB` | `""` | Path to the native permissions dylib used for CNContactStore access |
 
 Config block in character settings:
 

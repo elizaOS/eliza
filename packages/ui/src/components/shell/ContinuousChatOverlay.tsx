@@ -26,6 +26,10 @@ import {
   type SlashExecution,
 } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
+import {
+  TUTORIAL_CHAT_CONTROL_EVENT,
+  type TutorialChatControlDetail,
+} from "../../events";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { useViewChatBinding } from "../../state/view-chat-binding";
@@ -34,6 +38,7 @@ import {
   filesToImageAttachments,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
+import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import type { ShellMessage } from "./shell-state";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
@@ -647,6 +652,9 @@ const ThreadLine = React.memo(function ThreadLine({
         ) : (
           message.content
         )}
+        {isAssistant && message.reasoning?.trim() ? (
+          <ThinkingBlock reasoning={message.reasoning} />
+        ) : null}
         <AnimatePresence>
           {copied ? (
             <motion.span
@@ -769,6 +777,10 @@ export function ContinuousChatOverlay({
   // re-render. Drives the glass/content crossfade + scale; `threadHeight` stays
   // 0 until the input is fully formed, then takes over for input → chat.
   const openProgress = useMotionValue(pilled ? 0 : 1);
+  // Latest `settleDrag` (defined below) exposed to the viewport-resize effect
+  // (which runs earlier). A rotation can orphan an in-flight drag — re-settling
+  // the morph keeps the pill↔input crossfade from stranding both bars visible.
+  const settleDragRef = React.useRef<(() => void) | null>(null);
   const draggingRef = React.useRef(false);
   // Push-to-talk phase (single source of truth) + a label-only mirror.
   const pttRef = React.useRef<PttPhase>({ kind: "idle" });
@@ -1084,14 +1096,26 @@ export function ContinuousChatOverlay({
         );
       }
     };
-    sync();
+    // A viewport SIZE change (rotation) must never strand the pill↔input morph
+    // mid-crossfade — rotation often cancels the in-flight pointer with no
+    // pointerup, leaving the drag orphaned (openProgress frozen mid-range = BOTH
+    // the grabber bar and the pill bar visible). Re-settle to a clean 0/1 end so
+    // the crossfade always resolves to exactly one bar. (No-op at rest; a live
+    // legit drag rotating is rare and settling is the right call there too.)
+    // Plain `sync` (no settle) stays on vv `scroll` — that fires constantly while
+    // the keyboard animates and must not interrupt an open sheet.
+    const syncAndSettle = () => {
+      sync();
+      settleDragRef.current?.();
+    };
+    syncAndSettle();
     const vv = window.visualViewport;
-    window.addEventListener("resize", sync);
-    vv?.addEventListener("resize", sync);
+    window.addEventListener("resize", syncAndSettle);
+    vv?.addEventListener("resize", syncAndSettle);
     vv?.addEventListener("scroll", sync);
     return () => {
-      window.removeEventListener("resize", sync);
-      vv?.removeEventListener("resize", sync);
+      window.removeEventListener("resize", syncAndSettle);
+      vv?.removeEventListener("resize", syncAndSettle);
       vv?.removeEventListener("scroll", sync);
     };
   }, [readViewport]);
@@ -1254,6 +1278,9 @@ export function ContinuousChatOverlay({
       animate(openProgress, open, OPEN_SPRING);
     }
   }, [threadHeight, openProgress, baseH, pilled, reduce]);
+  // Keep the ref the (earlier-declared) viewport-resize effect calls pointing at
+  // the latest settleDrag, so a rotation re-settles with current pilled/baseH.
+  settleDragRef.current = settleDrag;
 
   // Drive openProgress from the pilled flag for NON-drag transitions (tap the
   // pill, programmatic open/close): a live finger drag owns openProgress itself
@@ -1376,6 +1403,41 @@ export function ContinuousChatOverlay({
     // Open to at least HALF; if already at half/full, keep the taller detent.
     setDetent((d) => (d === "input" ? "half" : d));
   }, [hasThread, sheetOpen]);
+
+  // Interactive tour control: the tutorial drives the chat into a clean, known
+  // state at the start of each frame (so the spotlight always lands on the right
+  // control) and pre-fills the composer for the guided "ask to navigate" demo.
+  // Decoupled via a window event so the tour never reaches into these internals.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onControl = (event: Event) => {
+      const detail = (event as CustomEvent<TutorialChatControlDetail>).detail;
+      if (!detail) return;
+      switch (detail.action) {
+        case "pill":
+          closeSheet();
+          setPilled(true);
+          inputRef.current?.blur();
+          break;
+        case "rest":
+          setPilled(false);
+          goToDetent("collapsed");
+          break;
+        case "expand":
+          setPilled(false);
+          goToDetent("full");
+          break;
+        case "prefill":
+          setPilled(false);
+          setDraft(detail.text ?? "");
+          requestAnimationFrame(() => inputRef.current?.focus());
+          break;
+      }
+    };
+    window.addEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
+    return () =>
+      window.removeEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
+  }, [closeSheet, goToDetent]);
 
   // Push-to-talk dictation drops its final transcript into the composer draft
   // (no send): register the sink with the controller while this overlay is
@@ -1646,26 +1708,24 @@ export function ContinuousChatOverlay({
     onSettleFree: (direction) => {
       draggingRef.current = false;
       if (pilled) {
-        // From the pill: lerp-to-nearest. A slow drag that crossed at least the
-        // halfway open (openProgress ≥ 0.5) commits to opening; a shorter pull
-        // springs back to the capsule. An opening drag flows straight into the
-        // chat — half, or full if the same pull already pushed the thread past
-        // the half mark — so pill → input → chat is one continuous motion.
+        // From the pill: a slow drag under the halfway-open mark (openProgress
+        // < 0.5) springs back to the capsule; past it we commit to LEAVING the
+        // pill — but we must NOT force the half detent. A short pull only forms
+        // the input bar (threadHeight stays ~0 until the drag exceeds
+        // PILL_OPEN_DISTANCE), so clear `pilled` and FALL THROUGH to the shared
+        // detent magnetism below: a release near the input (threadHeight within
+        // SHEET_DETENT_MAGNET of 0) settles at the INPUT state, and only a pull
+        // that actually reached up into the thread opens to half/full. This is
+        // what makes pill → input → chat one continuum instead of skipping the
+        // input state straight to half on a short slow pull.
         const opened = direction === "up" && openProgress.get() >= 0.5;
         if (!opened) {
           settleDrag(); // springs openProgress → 0 (pilled still true) + thread → 0
           return;
         }
         setPilled(false);
-        if (hasThread) {
-          focusThreadRef.current = true;
-          goToDetent(threadHeight.get() >= halfH ? "full" : "half");
-        } else if (reduce) {
-          threadHeight.set(0);
-        } else {
-          animate(threadHeight, 0, SHEET_SPRING);
-        }
-        return;
+        if (hasThread) focusThreadRef.current = true;
+        // fall through to the magnetism ↓ (threadHeight decides input vs half/full)
       }
       // From the collapsed input, a downward drag has nothing to "size" below
       // it — collapse straight to the pill (matches the flick-down path).
@@ -1936,6 +1996,17 @@ export function ContinuousChatOverlay({
             style={{
               opacity: glassOpacity,
               borderRadius: fullBleed ? 0 : panelRadius,
+              // Full-bleed: extend the glass UP through the safe-area-top so the
+              // dark background reaches the true top of the screen. The panel
+              // height comes from visualViewport (which excludes the Android
+              // status bar) while the panel sits in a screen-top fixed container,
+              // so without this the glass starts a status-bar-height below the top
+              // (the "safe-area gap" above maximized chat). overflow-visible on the
+              // panel lets it bleed up; content (header, with its own safe-area
+              // padding) is untouched. Harmless when the inset is 0.
+              ...(fullBleed
+                ? { top: "calc(-1 * env(safe-area-inset-top, 0px))" }
+                : null),
             }}
           />
           {/* CONTENT — sheen, glow, thread, composer. Crossfades with the glass

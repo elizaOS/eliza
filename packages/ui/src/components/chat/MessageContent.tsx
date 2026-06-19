@@ -32,17 +32,15 @@ import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { paramsToSchema } from "../pages/plugin-list-utils";
 import { Button } from "../ui/button";
-import { findChoiceRegions } from "./message-choice-parser";
+import { ThinkingBlock } from "./ThinkingBlock";
+import type { FormResultValue } from "./widgets/form-request";
+// Side effect: registers the built-in inline widgets (choice/followups/form/task).
+import "./widgets/inline-builtins";
 import {
-  type FollowupOption,
-  findFollowupsRegions,
-} from "./message-followups-parser";
-import { type FormRequestSpec, findFormRegions } from "./message-form-parser";
-import { findTaskRegions } from "./message-task-parser";
-import { type ChoiceOption, ChoiceWidget } from "./widgets/ChoiceWidget";
-import { FollowupsWidget } from "./widgets/followups";
-import { FormRequest, type FormResultValue } from "./widgets/form-request";
-import { TaskWidget } from "./widgets/task-widget";
+  getInlineWidget,
+  getInlineWidgets,
+  type InlineWidgetContext,
+} from "./widgets/inline-registry";
 
 /** Reject prototype-pollution keys that should never be traversed or rendered. */
 const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);
@@ -85,16 +83,8 @@ type Segment =
   | { kind: "text"; text: string }
   | { kind: "config"; pluginId: string }
   | { kind: "ui-spec"; spec: UiSpec; raw: string }
-  | {
-      kind: "choice";
-      id: string;
-      scope: string;
-      options: ChoiceOption[];
-      allowCustom: boolean;
-    }
-  | { kind: "followups"; id: string; options: FollowupOption[] }
-  | { kind: "form"; form: FormRequestSpec }
-  | { kind: "task-widget"; threadId: string; title: string }
+  // Any registry-driven inline widget (choice/followups/form/task/plugin).
+  | { kind: "widget"; widgetKind: string; data: unknown }
   | { kind: "permission"; payload: PermissionCardPayload }
   | { kind: "analysis-xml"; tag: string; content: string };
 
@@ -370,54 +360,21 @@ function parseSegments(text: string, analysisMode: boolean): Segment[] {
     m = CONFIG_RE.exec(targetText);
   }
 
-  // 1b. Find [CHOICE:scope id=...] ... [/CHOICE] blocks
-  for (const choice of findChoiceRegions(targetText)) {
-    regions.push({
-      start: choice.start,
-      end: choice.end,
-      segment: {
-        kind: "choice",
-        id: choice.id,
-        scope: choice.scope,
-        options: choice.options,
-        allowCustom: choice.allowCustom,
-      },
-    });
-  }
-
-  // 1c. Find [FOLLOWUPS id=...] ... [/FOLLOWUPS] suggestion-chip blocks
-  for (const followups of findFollowupsRegions(targetText)) {
-    regions.push({
-      start: followups.start,
-      end: followups.end,
-      segment: {
-        kind: "followups",
-        id: followups.id,
-        options: followups.options,
-      },
-    });
-  }
-
-  // 1d. Find [FORM] ... [/FORM] generic in-chat form blocks
-  for (const form of findFormRegions(targetText)) {
-    regions.push({
-      start: form.start,
-      end: form.end,
-      segment: { kind: "form", form: form.form },
-    });
-  }
-
-  // 1e. Find [TASK:<threadId>]<title>[/TASK] orchestrator task widgets
-  for (const task of findTaskRegions(targetText)) {
-    regions.push({
-      start: task.start,
-      end: task.end,
-      segment: {
-        kind: "task-widget",
-        threadId: task.threadId,
-        title: task.title,
-      },
-    });
+  // 1b. Registry-driven inline widgets (choice/followups/form/task and any
+  // plugin-registered marker). Each widget owns its parsing semantics; we only
+  // collect the regions and tag them with the widget kind for render dispatch.
+  for (const widget of getInlineWidgets()) {
+    for (const match of widget.parse(targetText)) {
+      regions.push({
+        start: match.start,
+        end: match.end,
+        segment: {
+          kind: "widget",
+          widgetKind: widget.kind,
+          data: match.data,
+        },
+      });
+    }
   }
 
   // 2. Find fenced JSON that is a UiSpec (Generate Mode / legacy format)
@@ -1242,6 +1199,18 @@ export function MessageContent({
     [sendActionMessage],
   );
 
+  // Handlers handed to every inline widget at render. Self-contained widgets
+  // (the task card) ignore them; interactive ones drive the chat surface.
+  const inlineWidgetCtx = useMemo<InlineWidgetContext>(
+    () => ({
+      sendAction: handleChoice,
+      navigate: handleNavigate,
+      prefillComposer: handlePrompt,
+      submitForm: handleFormSubmit,
+    }),
+    [handleChoice, handleNavigate, handlePrompt, handleFormSubmit],
+  );
+
   const permissionRegistry = useMemo(
     () =>
       isNative && !isDesktopPlatform()
@@ -1370,6 +1339,9 @@ export function MessageContent({
 
   return (
     <div>
+      {message.role === "assistant" && message.reasoning?.trim() ? (
+        <ThinkingBlock reasoning={message.reasoning} />
+      ) : null}
       {(() => {
         const keyCounts = new Map<string, number>();
         const nextKey = (base: string) => {
@@ -1384,19 +1356,14 @@ export function MessageContent({
               ? `text:${seg.text.slice(0, 80)}`
               : seg.kind === "config"
                 ? `config:${seg.pluginId}`
-                : seg.kind === "choice"
-                  ? `choice:${seg.id}`
-                  : seg.kind === "followups"
-                    ? `followups:${seg.id}`
-                    : seg.kind === "form"
-                      ? `form:${seg.form.id}`
-                      : seg.kind === "task-widget"
-                        ? `task:${seg.threadId}`
-                        : seg.kind === "permission"
-                          ? `permission:${seg.payload.feature}`
-                          : seg.kind === "analysis-xml"
-                            ? `analysis:${seg.tag}`
-                            : `ui:${seg.raw.slice(0, 80)}`;
+                : seg.kind === "widget"
+                  ? (getInlineWidget(seg.widgetKind)?.keyFor?.(seg.data) ??
+                    `widget:${seg.widgetKind}`)
+                  : seg.kind === "permission"
+                    ? `permission:${seg.payload.feature}`
+                    : seg.kind === "analysis-xml"
+                      ? `analysis:${seg.tag}`
+                      : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -1431,44 +1398,12 @@ export function MessageContent({
               return (
                 <UiSpecBlock key={segmentKey} spec={seg.spec} raw={seg.raw} />
               );
-            case "choice":
-              return (
-                <ChoiceWidget
-                  key={segmentKey}
-                  id={seg.id}
-                  scope={seg.scope}
-                  options={seg.options}
-                  allowCustom={seg.allowCustom}
-                  onChoose={handleChoice}
-                />
-              );
-            case "followups":
-              return (
-                <FollowupsWidget
-                  key={segmentKey}
-                  id={seg.id}
-                  options={seg.options}
-                  onChoose={handleChoice}
-                  onNavigate={handleNavigate}
-                  onPrompt={handlePrompt}
-                />
-              );
-            case "form":
-              return (
-                <FormRequest
-                  key={segmentKey}
-                  form={seg.form}
-                  onSubmit={handleFormSubmit}
-                />
-              );
-            case "task-widget":
-              return (
-                <TaskWidget
-                  key={segmentKey}
-                  threadId={seg.threadId}
-                  fallbackTitle={seg.title}
-                />
-              );
+            case "widget": {
+              const widget = getInlineWidget(seg.widgetKind);
+              return widget
+                ? widget.render(seg.data, inlineWidgetCtx, segmentKey)
+                : null;
+            }
             case "permission":
               return (
                 <PermissionCard

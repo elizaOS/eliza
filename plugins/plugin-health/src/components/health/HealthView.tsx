@@ -8,8 +8,9 @@
  *   GET {base}/api/lifeops/sleep/baseline?windowDays               (enrich)
  *
  * It renders one of four distinct states (loading, error, empty, populated)
- * and instruments its window-range control and refresh button through the
- * agent surface so the floating chat can drive them.
+ * and instruments its window-range control through the agent surface so the
+ * floating chat can drive it. The data is kept fresh by a quiet background
+ * poll; there is no manual refresh control.
  *
  * The default fetchers build URLs from `client.getBaseUrl()`; tests inject the
  * fetcher seams so they stay offline.
@@ -17,7 +18,6 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -77,8 +77,11 @@ export interface HealthViewProps {
 export type WindowDays = 7 | 14 | 30;
 const WINDOW_OPTIONS: readonly WindowDays[] = [7, 14, 30];
 
+/** Quiet background-poll cadence that keeps the view fresh. */
+const POLL_INTERVAL_MS = 20_000;
+
 // ---------------------------------------------------------------------------
-// Styling — dark theme, CSS vars, orange accent only.
+// Styling — light surface, CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "health-view-styles";
@@ -100,21 +103,21 @@ const HEALTH_VIEW_CSS = `
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .health-view-btn-primary {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border: 1px solid var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #ffffff);
+  border: 1px solid var(--primary, #ff8a24);
 }
 .health-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
 }
 .health-view-btn-neutral {
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(0, 0, 0, 0.03));
+  color: var(--foreground, #0a0a0a);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
 }
 .health-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
 }
 .health-view-btn:disabled {
   opacity: 0.5;
@@ -129,22 +132,22 @@ const HEALTH_VIEW_CSS = `
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(0, 0, 0, 0.03));
+  color: var(--foreground, #0a0a0a);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .health-view-range-btn:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
 }
 .health-view-range-btn[aria-pressed="true"] {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border-color: var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #ffffff);
+  border-color: var(--primary, #ff8a24);
 }
 .health-view-range-btn[aria-pressed="true"]:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
 }
 `;
 
@@ -167,8 +170,8 @@ const containerStyle: CSSProperties = {
   height: "100%",
   boxSizing: "border-box",
   overflowY: "auto",
-  background: "var(--background, #0a0a0a)",
-  color: "var(--foreground, #f5f5f5)",
+  background: "var(--background, #eef8ff)",
+  color: "var(--foreground, #0a0a0a)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -190,10 +193,6 @@ const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
 const h2Style: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600 };
 
 const cardStyle: CSSProperties = {
-  padding: 16,
-  borderRadius: 8,
-  border: "1px solid var(--border, rgba(255,255,255,0.08))",
-  background: "var(--surface, rgba(255,255,255,0.02))",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -218,10 +217,17 @@ const statValueStyle: CSSProperties = { fontWeight: 600 };
 const gridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: 12,
+  gap: 24,
 };
 
 const subtitleStyle: CSSProperties = { ...dimStyle, marginTop: 2 };
+
+const dividerStyle: CSSProperties = {
+  height: 1,
+  border: 0,
+  margin: "8px 0",
+  background: "var(--border, rgba(0,0,0,0.08))",
+};
 
 const visuallyHiddenStyle: CSSProperties = {
   position: "absolute",
@@ -238,36 +244,6 @@ const visuallyHiddenStyle: CSSProperties = {
 // ---------------------------------------------------------------------------
 // Agent-instrumented controls (hooks cannot run inside .map()).
 // ---------------------------------------------------------------------------
-
-function RefreshButton({
-  onActivate,
-  disabled,
-}: {
-  onActivate: () => void;
-  disabled: boolean;
-}): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "health-refresh",
-    role: "button",
-    label: "Refresh sleep data",
-    group: "health-toolbar",
-    description: "Reload sleep history, regularity, and baseline",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="health-view-btn health-view-btn-neutral"
-      onClick={onActivate}
-      disabled={disabled}
-      aria-label="Refresh sleep data"
-      {...agentProps}
-    >
-      <RefreshCw className="h-4 w-4" aria-hidden />
-    </button>
-  );
-}
 
 function RangeButton({
   days,
@@ -343,27 +319,22 @@ function HealthHeader({
   ownerName,
   windowDays,
   onSelectWindow,
-  refetch,
   busy,
 }: {
   ownerName: string;
   windowDays: WindowDays;
   onSelectWindow: (days: WindowDays) => void;
-  refetch: () => void;
   busy: boolean;
 }): ReactNode {
   return (
     <header style={sectionStyle}>
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Health</h1>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <WindowRange
-            windowDays={windowDays}
-            onSelect={onSelectWindow}
-            disabled={busy}
-          />
-          <RefreshButton onActivate={refetch} disabled={busy} />
-        </div>
+        <WindowRange
+          windowDays={windowDays}
+          onSelect={onSelectWindow}
+          disabled={busy}
+        />
       </div>
       <div style={subtitleStyle}>
         {`Sleep, circadian rhythm, and the rolling baseline for ${ownerName}.`}
@@ -406,6 +377,24 @@ const REGULARITY_LABELS: Record<LifeOpsRegularityClass, string> = {
   very_irregular: "Very irregular",
   insufficient_data: "Insufficient data",
 };
+
+/**
+ * Quiet proactive line for the top of the view: the agent only speaks up when
+ * the loaded regularity classification reads as off-rhythm. Returns null (render
+ * nothing) for regular/very-regular nights and when there isn't enough data to
+ * judge — no placeholder, no "all good" banner.
+ */
+function sleepProactiveLine(
+  regularity: LifeOpsSleepRegularityResponse,
+): string | null {
+  if (regularity.classification === "very_irregular") {
+    return "Sleep was very irregular this window — bedtime and wake times drifted a lot.";
+  }
+  if (regularity.classification === "irregular") {
+    return "Sleep was irregular this window — bedtime and wake times varied.";
+  }
+  return null;
+}
 
 function StatRow({
   label,
@@ -554,9 +543,29 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
     };
   }, []);
 
+  // Initial load + reload on window change.
   useEffect(() => load(windowDays), [load, windowDays]);
 
-  const refetch = useCallback(() => load(windowDays), [load, windowDays]);
+  // Quiet background poll keeps the view fresh without a manual refresh control:
+  // it swaps in newer data on success and never flashes the loading state or
+  // clobbers a populated view with a transient fetch error.
+  useEffect(() => {
+    const id = setInterval(() => {
+      Promise.all([
+        fetchersRef.current.fetchHistory(windowDays),
+        fetchersRef.current.fetchRegularity(windowDays),
+        fetchersRef.current.fetchBaseline(windowDays),
+      ])
+        .then(([history, regularity, baseline]) => {
+          setState({ kind: "ready", data: { history, regularity, baseline } });
+        })
+        .catch(() => {});
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [windowDays]);
+
+  // Error-state recovery only: re-run the full load (with loading flash).
+  const retry = useCallback(() => load(windowDays), [load, windowDays]);
 
   if (state.kind === "loading") {
     return (
@@ -565,7 +574,6 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
           ownerName={ownerName}
           windowDays={windowDays}
           onSelectWindow={setWindowDays}
-          refetch={refetch}
           busy={true}
         />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading sleep data…</div>
@@ -580,7 +588,6 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
           ownerName={ownerName}
           windowDays={windowDays}
           onSelectWindow={setWindowDays}
-          refetch={refetch}
           busy={false}
         />
         <div style={cardStyle}>
@@ -590,7 +597,7 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
             <button
               type="button"
               className="health-view-btn health-view-btn-primary"
-              onClick={refetch}
+              onClick={retry}
               aria-label="Retry loading sleep data"
             >
               Retry
@@ -603,6 +610,7 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
 
   const { history, regularity, baseline } = state.data;
   const [latest] = history.episodes;
+  const proactiveLine = sleepProactiveLine(regularity);
 
   // No sleep episodes recorded → no linked source yet. Honest connect-a-source
   // affordance; this doubles as the disconnected state.
@@ -613,7 +621,6 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
           ownerName={ownerName}
           windowDays={windowDays}
           onSelectWindow={setWindowDays}
-          refetch={refetch}
           busy={false}
         />
         <div style={cardStyle}>
@@ -637,9 +644,13 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
         ownerName={ownerName}
         windowDays={windowDays}
         onSelectWindow={setWindowDays}
-        refetch={refetch}
         busy={false}
       />
+      {proactiveLine ? (
+        <div style={dimStyle} data-testid="health-proactive">
+          {proactiveLine}
+        </div>
+      ) : null}
       <section style={sectionStyle}>
         <div style={gridStyle}>
           <LatestNightCard episode={latest} />
@@ -647,8 +658,9 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
           <BaselineCard baseline={baseline} />
         </div>
       </section>
+      <hr style={dividerStyle} />
       <section style={sectionStyle}>
-        <div style={{ ...cardStyle }} data-testid="health-window-summary">
+        <div style={cardStyle} data-testid="health-window-summary">
           <h2 style={h2Style}>Window summary</h2>
           <StatRow
             label="Nights recorded"

@@ -275,7 +275,8 @@ describe("TransactionHistory — interactive controls", () => {
     expect(screen.getByText("Page 1 of 2")).toBeTruthy();
   });
 
-  it("Refresh re-invokes getStewardHistory", async () => {
+  it("polls getStewardHistory on an interval to stay fresh", async () => {
+    vi.useFakeTimers();
     const getStewardHistory = vi.fn(async () => ({
       records: [makeRecord(1)],
       total: 1,
@@ -289,15 +290,23 @@ describe("TransactionHistory — interactive controls", () => {
         setActionNotice: vi.fn(),
       }),
     );
-    await screen.findByText("1 transaction");
-    const callsBefore = getStewardHistory.mock.calls.length;
 
+    // Initial load.
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole("button", { name: "Refresh transactions" }),
-      );
+      await Promise.resolve();
     });
-    expect(getStewardHistory.mock.calls.length).toBeGreaterThan(callsBefore);
+    const callsAfterMount = getStewardHistory.mock.calls.length;
+    expect(callsAfterMount).toBeGreaterThan(0);
+
+    // Advancing past the poll interval triggers a background refetch.
+    await act(async () => {
+      vi.advanceTimersByTime(20_000);
+      await Promise.resolve();
+    });
+
+    expect(getStewardHistory.mock.calls.length).toBeGreaterThan(callsAfterMount);
+
+    vi.useRealTimers();
   });
 
   it("copy-address button copies the destination address", async () => {

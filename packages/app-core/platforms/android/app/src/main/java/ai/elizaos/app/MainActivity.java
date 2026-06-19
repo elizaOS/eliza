@@ -84,6 +84,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AgentPlugin.class);
         registerPlugin(BatteryOptimizationPlugin.class);
         registerPlugin(VoiceCapturePlugin.class);
+        registerPlugin(ElizaVoicePlugin.class);
         super.onCreate(savedInstanceState);
 
         // Keep the screen on while the agent app is in the foreground.

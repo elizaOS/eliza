@@ -27,7 +27,11 @@ export type PolymarketClient = ElizaClient & {
   polymarketMarketBySlug(slug: string): Promise<PolymarketMarketResponse>;
   polymarketOrderbook(tokenId: string): Promise<PolymarketOrderbookResponse>;
   polymarketOrders(): Promise<PolymarketDisabledResponse>;
-  polymarketPositions(user: string): Promise<PolymarketPositionsResponse>;
+  /**
+   * Read open positions for `user`, or for the agent's configured Polygon
+   * wallet when `user` is omitted (the route resolves the fallback address).
+   */
+  polymarketPositions(user?: string): Promise<PolymarketPositionsResponse>;
 };
 
 const elizaClientPrototype =
@@ -71,9 +75,12 @@ elizaClientPrototype.polymarketOrders = async function () {
   return this.fetch("/api/polymarket/orders");
 };
 
-elizaClientPrototype.polymarketPositions = async function (user: string) {
-  const params = new URLSearchParams({ user });
-  return this.fetch(`/api/polymarket/positions?${params.toString()}`);
+elizaClientPrototype.polymarketPositions = async function (user?: string) {
+  const trimmed = user?.trim();
+  const query = trimmed
+    ? `?${new URLSearchParams({ user: trimmed }).toString()}`
+    : "";
+  return this.fetch(`/api/polymarket/positions${query}`);
 };
 
 function appendParam(

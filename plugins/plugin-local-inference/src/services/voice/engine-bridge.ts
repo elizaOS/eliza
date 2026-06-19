@@ -86,6 +86,13 @@ import {
 	VoiceAttributionPipeline,
 } from "./speaker/attribution-pipeline";
 import {
+	type Diarizer,
+	PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+} from "./speaker/diarizer";
+import { FusedDiarizer } from "./speaker/diarizer-fused";
+import type { SpeakerEncoder } from "./speaker/encoder";
+import { FusedSpeakerEncoder } from "./speaker/encoder-fused";
+import {
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";
@@ -660,6 +667,33 @@ export interface EngineVoiceBridgeOptions {
 	 * Has no effect when `runtime` is unset (no coordinator is constructed).
 	 */
 	slotAbort?: (slotId: number, reason: VoiceCancellationReason) => void;
+	/**
+	 * Live speaker-attribution gating. When set alongside a `profileStore` AND
+	 * a full `runtime` (with `emitEvent`), `runVoiceTurn` automatically:
+	 *   1. emits `VOICE_TURN_OBSERVED` for every attributed turn, and
+	 *   2. folds the diarization decision into the turn's `voiceTurnSignal`
+	 *      (stamped onto `output.turn.metadata`) so the server gate
+	 *      `core.voice_turn_signal` can suppress confident-bystander cross-talk.
+	 *
+	 * `knownSpeakerEntityIds` / `ownerEntityId` may be functions so the caller
+	 * can resolve the enrolled-speaker set lazily per turn (the household roster
+	 * changes as people are named). When omitted, attribution still emits
+	 * `VOICE_TURN_OBSERVED` and produces a fail-open signal (no bystander
+	 * suppression — every attribution is treated as potentially addressed to us).
+	 */
+	liveAttribution?: LiveAttributionConfig;
+}
+
+/** Gating inputs for the automatic live-attribution → voiceTurnSignal seam. */
+export interface LiveAttributionConfig {
+	/** Owner / primary-enrolled entity id (always allowed to speak). */
+	ownerEntityId?: string | (() => string | null | undefined);
+	/** Entity ids the agent answers without a wake word (owner + enrolled). */
+	knownSpeakerEntityIds?:
+		| readonly string[]
+		| (() => readonly string[] | undefined);
+	/** True when a wake word fired within the recent listen window. */
+	wakeWordActive?: boolean | (() => boolean);
 }
 
 export function createKokoroTtsBackend(
@@ -736,6 +770,50 @@ interface PendingCancellationWiring {
 	bindTtsStop(stop: () => void): void;
 }
 
+/**
+ * True when `runtime` is a full `IAgentRuntime` (exposes `emitEvent`) rather
+ * than the structural `CoordinatorRuntime` a test may pass. Only an
+ * event-capable runtime can drive the automatic `VOICE_TURN_OBSERVED` emit.
+ */
+function isEventRuntime(
+	runtime: IAgentRuntime | CoordinatorRuntime | undefined,
+): runtime is IAgentRuntime {
+	return (
+		runtime !== undefined &&
+		typeof (runtime as { emitEvent?: unknown }).emitEvent === "function"
+	);
+}
+
+/**
+ * Flatten the (possibly lazy) `LiveAttributionConfig` into the plain options
+ * the runtime helper consumes. Resolved per turn so a changing household roster
+ * is picked up without re-arming voice.
+ */
+function resolveLiveAttributionOptions(cfg: LiveAttributionConfig | null): {
+	ownerEntityId?: string | null;
+	knownSpeakerEntityIds?: readonly string[];
+	wakeWordActive?: boolean;
+} {
+	if (!cfg) return {};
+	const ownerEntityId =
+		typeof cfg.ownerEntityId === "function"
+			? cfg.ownerEntityId()
+			: cfg.ownerEntityId;
+	const knownSpeakerEntityIds =
+		typeof cfg.knownSpeakerEntityIds === "function"
+			? cfg.knownSpeakerEntityIds()
+			: cfg.knownSpeakerEntityIds;
+	const wakeWordActive =
+		typeof cfg.wakeWordActive === "function"
+			? cfg.wakeWordActive()
+			: cfg.wakeWordActive;
+	return {
+		...(ownerEntityId !== undefined ? { ownerEntityId } : {}),
+		...(knownSpeakerEntityIds !== undefined ? { knownSpeakerEntityIds } : {}),
+		...(wakeWordActive !== undefined ? { wakeWordActive } : {}),
+	};
+}
+
 function buildCancellationWiring(
 	opts: EngineVoiceBridgeOptions,
 ): PendingCancellationWiring | null {
@@ -793,6 +871,16 @@ export class EngineVoiceBridge {
 	 */
 	private readonly attributionPipeline: VoiceAttributionPipeline | null;
 	/**
+	 * Full agent runtime, retained only when `opts.runtime` supports
+	 * `emitEvent` (i.e. it is a real `IAgentRuntime`, not the structural
+	 * `CoordinatorRuntime` a test may pass). Used by the automatic
+	 * live-attribution seam in `runVoiceTurn` to emit `VOICE_TURN_OBSERVED`.
+	 * Null when no event-capable runtime was supplied.
+	 */
+	private readonly eventRuntime: IAgentRuntime | null;
+	/** Gating inputs for the live-attribution → voiceTurnSignal seam. */
+	private readonly liveAttribution: LiveAttributionConfig | null;
+	/**
 	 * W3-9 / F1 — voice cancellation coordinator. Populated when the bridge
 	 * was created with a `runtime` option. Owns one
 	 * `VoiceCancellationToken` per active `roomId` and fans abort out to
@@ -828,6 +916,8 @@ export class EngineVoiceBridge {
 		attributionPipeline: VoiceAttributionPipeline | null = null,
 		cancellationCoordinator: VoiceCancellationCoordinator | null = null,
 		optimisticGenerationPolicy: OptimisticGenerationPolicy | null = null,
+		eventRuntime: IAgentRuntime | null = null,
+		liveAttribution: LiveAttributionConfig | null = null,
 	) {
 		this.scheduler = scheduler;
 		this.backend = backend;
@@ -840,6 +930,8 @@ export class EngineVoiceBridge {
 		this.attributionPipeline = attributionPipeline;
 		this.cancellationCoordinator = cancellationCoordinator;
 		this.optimisticGenerationPolicy = optimisticGenerationPolicy;
+		this.eventRuntime = eventRuntime;
+		this.liveAttribution = liveAttribution;
 	}
 
 	get ffiCtx(): ElizaInferenceContextHandle | null {
@@ -1038,10 +1130,17 @@ export class EngineVoiceBridge {
 		let attributionPipeline: VoiceAttributionPipeline | null = null;
 		if (opts.profileStore) {
 			const bundleRootForEncoder = opts.bundleRoot;
-			// Lazy encoder: resolves on first encode() call.
-			let resolvedEncoder:
-				| import("./speaker/encoder-ggml").SpeakerEncoderGgml
-				| null = null;
+			const fusedFfi = ffiHandle;
+			const fusedCtx = ffiContextRef;
+			// Lazy encoder: resolves on first encode() call. Prefers the FUSED
+			// `eliza_inference_speaker_*` path off the same `ffi`/`ctx` as
+			// VAD / TTS / ASR (the user directive: one native engine, no separate
+			// bun:ffi-musl libs). Falls back to the standalone
+			// `SpeakerEncoderGgmlImpl` (`voice/speaker-encoder/...gguf` via
+			// libvoice_classifier) only when the fused build does not advertise
+			// the speaker ABI.
+			let resolvedEncoder: import("./speaker/encoder").SpeakerEncoder | null =
+				null;
 			let encoderLoadError: Error | null = null;
 			const lazyEncoder: import("./speaker/encoder").SpeakerEncoder = {
 				embeddingDim: 256,
@@ -1049,14 +1148,12 @@ export class EngineVoiceBridge {
 				async encode(pcm: Float32Array): Promise<Float32Array> {
 					if (encoderLoadError) throw encoderLoadError;
 					if (!resolvedEncoder) {
-						const { SpeakerEncoderGgmlImpl } = await import(
-							"./speaker/encoder-ggml"
-						);
-						const ggufPath = `${bundleRootForEncoder}/voice/speaker-encoder/wespeaker-resnet34-lm.gguf`;
 						try {
-							const impl = new SpeakerEncoderGgmlImpl({ ggufPath });
-							// Warm the FFI handle on first call.
-							resolvedEncoder = impl;
+							resolvedEncoder = await resolveSpeakerEncoder(
+								fusedFfi,
+								fusedCtx,
+								bundleRootForEncoder,
+							);
 						} catch (err) {
 							encoderLoadError =
 								err instanceof Error ? err : new Error(String(err));
@@ -1069,8 +1166,47 @@ export class EngineVoiceBridge {
 					await resolvedEncoder?.dispose();
 				},
 			};
+			// Lazy diarizer. Prefers the FUSED `eliza_inference_diariz_*` path off
+			// the shared `ffi`/`ctx`; only when the fused build lacks it does it
+			// fall back to the standalone `PyannoteDiarizer`
+			// (`voice/diarizer/...gguf` via libvoice_classifier), and only when
+			// that GGUF is on disk. The diarizer is optional — a single-speaker
+			// turn collapses to one segment without it (attribution-pipeline's
+			// localSpeakerId=0 fallback).
+			const diarizerGgufPath = `${opts.bundleRoot}/voice/diarizer/pyannote-segmentation-3.0.gguf`;
+			const fusedDiarizerAvailable = FusedDiarizer.isSupported(fusedFfi);
+			let lazyDiarizer: Diarizer | undefined;
+			if (fusedDiarizerAvailable || existsSync(diarizerGgufPath)) {
+				let resolvedDiarizer: Diarizer | null = null;
+				let diarizerLoadError: Error | null = null;
+				lazyDiarizer = {
+					modelId: PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+					sampleRate: 16_000,
+					async diarizeWindow(pcm: Float32Array) {
+						if (diarizerLoadError) throw diarizerLoadError;
+						if (!resolvedDiarizer) {
+							try {
+								resolvedDiarizer = await resolveDiarizer(
+									fusedFfi,
+									fusedCtx,
+									diarizerGgufPath,
+								);
+							} catch (err) {
+								diarizerLoadError =
+									err instanceof Error ? err : new Error(String(err));
+								throw diarizerLoadError;
+							}
+						}
+						return resolvedDiarizer.diarizeWindow(pcm);
+					},
+					async dispose(): Promise<void> {
+						await resolvedDiarizer?.dispose();
+					},
+				};
+			}
 			attributionPipeline = new VoiceAttributionPipeline({
 				encoder: lazyEncoder,
+				...(lazyDiarizer ? { diarizer: lazyDiarizer } : {}),
 				profileStore: opts.profileStore,
 			});
 		}
@@ -1093,6 +1229,8 @@ export class EngineVoiceBridge {
 			attributionPipeline,
 			wiring?.coordinator ?? null,
 			wiring?.policy ?? null,
+			isEventRuntime(opts.runtime) ? opts.runtime : null,
+			opts.liveAttribution ?? null,
 		);
 		if (wiring) wiring.bindTtsStop(() => bridge.triggerBargeIn());
 		return bridge;
@@ -1598,16 +1736,38 @@ export class EngineVoiceBridge {
 		// but runs through the diarizer + encoder + profile-store independently.
 		// It is fire-and-forget from the pipeline's perspective: the result
 		// arrives via `onAttribution` asynchronously (possibly after onComplete).
-		if (this.attributionPipeline && events?.onAttribution) {
-			const onAttribution = events.onAttribution;
+		if (
+			this.attributionPipeline &&
+			(events?.onAttribution || this.eventRuntime)
+		) {
+			const onAttribution = events?.onAttribution;
 			const attribution = this.attributionPipeline;
+			const eventRuntime = this.eventRuntime;
+			const liveAttribution = this.liveAttribution;
 			const turnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 			void attribution
 				.attribute({
 					turnId,
 					pcm: audio.pcm,
 				})
-				.then(onAttribution)
+				.then(async (output) => {
+					// Automatic seam: when a full runtime is wired, emit
+					// VOICE_TURN_OBSERVED and fold the speaker decision into the
+					// turn's voiceTurnSignal BEFORE handing the (now-stamped)
+					// output to the caller. Any caller with a profileStore +
+					// runtime gets diarization-driven gating for free.
+					if (eventRuntime) {
+						const { handleLiveVoiceAttribution } = await import(
+							"../../runtime/voice-entity-binding.js"
+						);
+						await handleLiveVoiceAttribution(
+							eventRuntime,
+							output,
+							resolveLiveAttributionOptions(liveAttribution),
+						);
+					}
+					onAttribution?.(output);
+				})
 				.catch((err: unknown) => {
 					// Attribution failures must not crash the turn. Log and continue.
 					logger.warn(
@@ -1819,6 +1979,43 @@ function ensureContext(
 	if (ref === null) return null;
 	if (typeof ref === "object" && "ensure" in ref) return ref.ensure();
 	return ref;
+}
+
+/**
+ * Resolve the speaker encoder, preferring the FUSED `libelizainference`
+ * path (`eliza_inference_speaker_*`) off the same `ffi`/`ctx` the rest of the
+ * voice pipeline uses. Only when the fused build does not advertise the
+ * speaker ABI does it fall back to the standalone `SpeakerEncoderGgmlImpl`
+ * (libvoice_classifier), and only when that GGUF is on disk.
+ */
+async function resolveSpeakerEncoder(
+	ffi: ElizaInferenceFfi | null,
+	ctxRef: FfiContextRef | null,
+	bundleRoot: string | undefined,
+): Promise<SpeakerEncoder> {
+	if (ffi && ctxRef && FusedSpeakerEncoder.isSupported(ffi)) {
+		return FusedSpeakerEncoder.load({ ffi, ctx: () => ctxRef.ensure() });
+	}
+	const { SpeakerEncoderGgmlImpl } = await import("./speaker/encoder-ggml");
+	const ggufPath = `${bundleRoot}/voice/speaker-encoder/wespeaker-resnet34-lm.gguf`;
+	return new SpeakerEncoderGgmlImpl({ ggufPath });
+}
+
+/**
+ * Resolve the diarizer, preferring the FUSED `libelizainference` path
+ * (`eliza_inference_diariz_*`). Falls back to the standalone `PyannoteDiarizer`
+ * (libvoice_classifier) when the fused build lacks the diarizer ABI.
+ */
+async function resolveDiarizer(
+	ffi: ElizaInferenceFfi | null,
+	ctxRef: FfiContextRef | null,
+	standaloneGgufPath: string,
+): Promise<Diarizer> {
+	if (ffi && ctxRef && FusedDiarizer.isSupported(ffi)) {
+		return FusedDiarizer.load({ ffi, ctx: () => ctxRef.ensure() });
+	}
+	const { PyannoteDiarizer } = await import("./speaker/diarizer");
+	return PyannoteDiarizer.load(standaloneGgufPath);
 }
 
 /**

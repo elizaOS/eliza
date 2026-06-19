@@ -23,16 +23,28 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
+  const stewardToken = getCookie(c, "steward-token");
+
+  // Clear cookies FIRST. Clearing them is what actually logs the user out, and
+  // it must happen even if the server-side teardown below fails (a transient DB
+  // error during logout must not leave the session cookies in place — that was
+  // the prior behavior, which left users "still logged in" after a failed
+  // logout). The session-record teardown + cache invalidation are best-effort
+  // hygiene (caches expire on their own TTL).
+  const domain = cookieDomainForHost(c.req.header("host"));
+  const stewardOpts = domain ? { path: "/", domain } : { path: "/" };
+  deleteCookie(c, "steward-token", stewardOpts);
+  deleteCookie(c, "steward-refresh-token", stewardOpts);
+  deleteCookie(c, "steward-authed", stewardOpts);
+  deleteCookie(c, "eliza-anon-session", { path: "/" });
+
   try {
-    const stewardToken = getCookie(c, "steward-token");
-
-    const user = await getCurrentUser(c);
-
     if (stewardToken) {
       await invalidateSessionCaches(stewardToken);
       logger.debug("[Logout] Invalidated session caches for token");
     }
 
+    const user = await getCurrentUser(c);
     if (user) {
       await userSessionsService.endAllUserSessions(user.id);
       await getAuditDispatcher()
@@ -54,25 +66,19 @@ app.post("/", async (c) => {
           });
         });
     }
-
-    const domain = cookieDomainForHost(c.req.header("host"));
-    const stewardOpts = domain ? { path: "/", domain } : { path: "/" };
-    deleteCookie(c, "steward-token", stewardOpts);
-    deleteCookie(c, "steward-refresh-token", stewardOpts);
-    deleteCookie(c, "steward-authed", stewardOpts);
-    deleteCookie(c, "eliza-anon-session", { path: "/" });
-
-    return c.json({ success: true, message: "Logged out successfully" });
   } catch (error) {
-    logger.error("Error during logout:", error);
-    return c.json(
+    // Cookies are already cleared, so the user is logged out client-side; a
+    // failed server-side teardown must not turn logout into a 500 that strands
+    // stale cookies.
+    logger.warn(
+      "[Logout] server-side teardown failed (cookies already cleared)",
       {
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to logout",
+        error: error instanceof Error ? error.message : String(error),
       },
-      500,
     );
   }
+
+  return c.json({ success: true, message: "Logged out successfully" });
 });
 
 export default app;

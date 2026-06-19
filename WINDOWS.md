@@ -39,6 +39,16 @@ helper under `packages/scripts/`), don't paper over it in CI.
    Cross-platform launcher lives at
    [`packages/scripts/run-python.mjs`](packages/scripts/run-python.mjs).
 
+## Installer Scripts
+
+The public Windows installer lives at
+[`packages/homepage/public/install.ps1`](packages/homepage/public/install.ps1).
+Keep it aligned with
+[`packages/homepage/public/install.sh`](packages/homepage/public/install.sh)
+where the install flow is equivalent, and call out intentional platform
+differences near the branch that handles them. Installer security issues are in
+scope for `SECURITY.md` because these scripts bootstrap user machines.
+
 ## What works on Windows
 
 Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):

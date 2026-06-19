@@ -44,7 +44,7 @@ export function FeedDetailExtension({ app }: AppDetailExtensionProps) {
             <div className="truncate text-sm font-semibold text-txt">
               {session?.goalLabel ?? run.summary ?? "Market agent"}
             </div>
-            <div className="text-2xs uppercase tracking-[0.16em] text-muted">
+            <div className="text-2xs text-muted">
               {matchingRuns.length} run{matchingRuns.length === 1 ? "" : "s"}
             </div>
           </div>
@@ -133,10 +133,10 @@ function formatCurrency(value: number, signed = false): string {
 function StatusDot({ state }: { state: string }) {
   const color =
     state === "online"
-      ? "bg-emerald-400"
+      ? "bg-ok"
       : state === "degraded"
-        ? "bg-amber-400"
-        : "bg-rose-400";
+        ? "bg-accent"
+        : "bg-danger";
   return <span className={`h-3 w-3 shrink-0 rounded-full ${color}`} />;
 }
 
@@ -153,19 +153,17 @@ function Metric({
 }) {
   const rail =
     tone === "success"
-      ? "bg-emerald-400"
+      ? "bg-ok"
       : tone === "warn"
-        ? "bg-amber-400"
+        ? "bg-accent"
         : tone === "danger"
-          ? "bg-rose-400"
+          ? "bg-danger"
           : "bg-muted";
   return (
-    <div className="grid grid-cols-[4px_1fr_auto] items-center gap-3 rounded-xl border border-border/35 bg-bg/65 px-3 py-2">
+    <div className="grid grid-cols-[4px_1fr_auto] items-center gap-3 rounded-xl bg-bg/65 px-3 py-2">
       <span className={`h-9 rounded-full ${rail}`} />
       <div className="min-w-0">
-        <div className="text-2xs uppercase tracking-[0.16em] text-muted">
-          {label}
-        </div>
+        <div className="text-2xs text-muted">{label}</div>
         <div className="truncate text-sm font-semibold text-txt">{value}</div>
       </div>
       {detail ? (
@@ -189,7 +187,7 @@ function ActivityList({
 }) {
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-border/35 bg-bg/65 px-3 py-2 text-xs text-muted">
+      <div className="bg-bg/65 px-3 py-2 text-xs text-muted">
         No market activity yet.
       </div>
     );
@@ -198,11 +196,8 @@ function ActivityList({
   return (
     <div className="space-y-2">
       {items.map((item) => (
-        <div
-          key={item.id}
-          className="rounded-xl border border-border/35 bg-bg/65 px-3 py-2"
-        >
-          <div className="flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-muted">
+        <div key={item.id} className="bg-bg/65 px-3 py-2">
+          <div className="flex items-center gap-2 text-2xs text-muted">
             <span className="truncate">{item.label}</span>
             <span className="ml-auto shrink-0">
               {formatDetailTimestamp(item.timestamp)}

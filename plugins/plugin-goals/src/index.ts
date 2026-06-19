@@ -10,10 +10,12 @@ export {
   GoalsRepository,
 } from "./db/goals-repository.ts";
 export {
-  type GoalInsert,
-  type GoalRow,
+  type GoalDefinitionRow,
+  type GoalLinkRow,
+  goalsDbSchema,
   goalsSchema,
-  goalsTable,
+  lifeGoalDefinitions,
+  lifeGoalLinks,
 } from "./db/schema.ts";
 export * from "./goal-grounding.ts";
 export {

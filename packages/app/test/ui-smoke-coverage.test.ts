@@ -72,6 +72,11 @@ const LIVE_ONLY: Readonly<Record<string, string>> = {
     "/api/provider/switch and re-derive the active provider " +
     "(ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless stub neither restarts the agent " +
     "nor reflects the switched provider. Guarded by test.skip(!LIVE_STACK).",
+  "view-switching-local-llm-e2e.spec.ts":
+    "drives real chat through a local llama.cpp model planner and requires a " +
+    "running llama-server (LLAMACPP_URL, usually with an eliza-1 GGUF loaded); " +
+    "the keyless PR lane cannot provide that model daemon or GPU/CPU budget, so " +
+    "it is a manual/live local-model report spec rather than a secret-free PR gate.",
 };
 
 /**

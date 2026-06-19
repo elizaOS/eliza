@@ -17,6 +17,7 @@ import {
   type ViewDeclaration,
   type ViewType,
 } from "@elizaos/core";
+import { generateViewHeroSvgFor } from "@elizaos/shared";
 import type { AgentPlatform } from "./platform-detect.ts";
 
 export type { ViewRegistryEntry } from "./view-registry-types.ts";
@@ -36,15 +37,6 @@ const HERO_CONTENT_TYPES: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".svg": "image/svg+xml",
 };
-
-function escapeSvgText(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
 
 const DEFAULT_VIEW_TYPE: ViewType = "gui";
 
@@ -208,29 +200,14 @@ export async function findHeroOnDisk(
 }
 
 /**
- * Build a minimal generated SVG fallback when no hero image is available.
+ * Build a branded generated SVG fallback when no hero image is on disk. Shares
+ * the exact art (frame, no-blue palette, line-icon glyph) used for the heroes
+ * committed into plugins, so a view without a packaged hero still renders a
+ * cohesive card instead of a placeholder. `icon` is the view's Lucide icon name,
+ * used as a hint to pick the matching glyph.
  */
 export function generateViewHeroSvg(label: string, icon?: string): string {
-  const displayIcon = escapeSvgText(icon ?? label.slice(0, 2).toUpperCase());
-  const displayLabel = escapeSvgText(label);
-  // Use a simple gradient tile — readable at any size.
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">
-  <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-  <rect width="400" height="300" fill="url(#g)" rx="12"/>
-  <text x="200" y="130" font-family="system-ui,sans-serif" font-size="64"
-        text-anchor="middle" dominant-baseline="middle" fill="#6c63ff" opacity="0.85">
-    ${displayIcon}
-  </text>
-  <text x="200" y="210" font-family="system-ui,sans-serif" font-size="20"
-        text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" opacity="0.7">
-    ${displayLabel}
-  </text>
-</svg>`;
+  return generateViewHeroSvgFor({ label, icon });
 }
 
 /**

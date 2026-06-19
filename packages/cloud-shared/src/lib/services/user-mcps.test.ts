@@ -10,9 +10,10 @@
  * the service singleton is imported so it binds to the mocked modules.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { UserMcp } from "../../db/schemas/user-mcps";
+import * as realOutboundUrl from "../security/outbound-url";
 
 // ---------------------------------------------------------------------------
 // In-memory store backing the mocked repository.
@@ -186,8 +187,12 @@ mock.module("../cache/client", () => ({
   },
 }));
 
+const REAL_OUTBOUND_URL = { ...realOutboundUrl };
+
 mock.module("../security/outbound-url", () => ({
+  ...REAL_OUTBOUND_URL,
   assertSafeOutboundUrl: async (raw: string) => new URL(raw),
+  assertSafeOutboundUrlSync: (raw: string) => new URL(raw),
 }));
 
 mock.module("./containers", () => ({
@@ -228,6 +233,10 @@ function baseCreateParams(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   store = new Map();
   idCounter = 0;
+});
+
+afterAll(() => {
+  mock.module("../security/outbound-url", () => REAL_OUTBOUND_URL);
 });
 
 // ---------------------------------------------------------------------------

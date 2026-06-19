@@ -1,4 +1,13 @@
-import { Bot, Check, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  Bot,
+  Check,
+  Pencil,
+  Play,
+  Plus,
+  Power,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import { resolveCloudAgentApiBase } from "../../api/client-cloud";
@@ -208,6 +217,68 @@ export function CloudAgentsSection() {
     [editName, setActionNotice],
   );
 
+  const setLocalStatus = useCallback((agentId: string, status: string) => {
+    setAgents((prev) =>
+      prev.map((a) => (a.agent_id === agentId ? { ...a, status } : a)),
+    );
+  }, []);
+
+  const suspendAgent = useCallback(
+    async (agent: CloudCompatAgent) => {
+      setBusyId(agent.agent_id);
+      try {
+        const res = await client.suspendCloudCompatAgent(agent.agent_id);
+        if (!res.success) {
+          throw new Error("Shutdown failed");
+        }
+        // Async job — show the transition optimistically; a Refresh reflects the
+        // daemon flipping it to "stopped" once the container is actually stopped.
+        setLocalStatus(agent.agent_id, "stopping");
+        setActionNotice(
+          `Shutting down ${agent.agent_name || "agent"}…`,
+          "success",
+          3000,
+        );
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error ? err.message : "Failed to shut down agent.",
+          "error",
+          4000,
+        );
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [setActionNotice, setLocalStatus],
+  );
+
+  const resumeAgent = useCallback(
+    async (agent: CloudCompatAgent) => {
+      setBusyId(agent.agent_id);
+      try {
+        const res = await client.resumeCloudCompatAgent(agent.agent_id);
+        if (!res.success) {
+          throw new Error("Start failed");
+        }
+        setLocalStatus(agent.agent_id, "provisioning");
+        setActionNotice(
+          `Starting ${agent.agent_name || "agent"}…`,
+          "success",
+          3000,
+        );
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error ? err.message : "Failed to start agent.",
+          "error",
+          4000,
+        );
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [setActionNotice, setLocalStatus],
+  );
+
   const hasToken = Boolean(currentCloudToken());
   if (!elizaCloudConnected && !hasToken) {
     return (
@@ -221,7 +292,7 @@ export function CloudAgentsSection() {
     <SettingsStack>
       <SettingsGroup
         title="Your cloud agents"
-        description="Switch the active agent, or remove one you no longer need."
+        description="Switch the active agent, shut one down (or start it back up), rename, or remove one you no longer need."
       >
         {loading ? (
           <p className="px-4 py-3 text-sm text-txt-muted">Loading agents…</p>
@@ -233,6 +304,12 @@ export function CloudAgentsSection() {
           agents.map((agent) => {
             const isActive = agent.agent_id === activeId;
             const busy = busyId === agent.agent_id;
+            const status = (agent.status || "").toLowerCase();
+            const canSuspend = status === "running";
+            const canResume =
+              status === "stopped" ||
+              status === "sleeping" ||
+              status === "suspended";
             if (editingId === agent.agent_id) {
               return (
                 <div
@@ -243,7 +320,6 @@ export function CloudAgentsSection() {
                     className="h-5 w-5 shrink-0 text-txt-muted"
                     aria-hidden
                   />
-                  {/* biome-ignore lint/a11y/noAutofocus: focus the rename field on open */}
                   <Input
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
@@ -297,6 +373,30 @@ export function CloudAgentsSection() {
                         onClick={() => switchTo(agent)}
                       >
                         {busy ? "Switching…" : "Use"}
+                      </Button>
+                    )}
+                    {canSuspend && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy}
+                        aria-label={`Shut down ${agent.agent_name || agent.agent_id}`}
+                        title="Shut down"
+                        onClick={() => void suspendAgent(agent)}
+                      >
+                        <Power className="h-4 w-4" aria-hidden />
+                      </Button>
+                    )}
+                    {canResume && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy}
+                        aria-label={`Start ${agent.agent_name || agent.agent_id}`}
+                        title="Start"
+                        onClick={() => void resumeAgent(agent)}
+                      >
+                        <Play className="h-4 w-4" aria-hidden />
                       </Button>
                     )}
                     <Button

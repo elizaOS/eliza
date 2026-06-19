@@ -130,6 +130,8 @@
     "@elizaos/plugin-trajectory-logger": "workspace:*",
     "@elizaos/plugin-vector-browser": "workspace:*",
     "@elizaos/plugin-vincent": "workspace:*",
+    "@elizaos/plugin-waifu-imagegen-app": "workspace:*",
+    "@elizaos/plugin-waifu-swap-app": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-wallet-ui": "workspace:*",
     "@elizaos/plugin-wifi": "workspace:*",

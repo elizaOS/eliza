@@ -20,7 +20,7 @@ const HEARTBEAT_SET_TIMEOUT_MS = 5_000;
  *
  * The daemon writes; the cloud-api Worker reads. Both processes already
  * share an Upstash/Redis instance via `buildRedisClient`, so this is
- * cheaper than a Neon round-trip and gives self-healing via TTL.
+ * cheaper than a DB round-trip and gives self-healing via TTL.
  */
 export const PROVISIONING_WORKER_HEARTBEAT_KEY = "provisioning_worker:health";
 
@@ -68,14 +68,15 @@ export async function checkProvisioningWorkerHealth(): Promise<ProvisioningWorke
   }
 
   if (!redis) {
-    return {
-      ok: false,
-      required: true,
-      status: 503,
-      code: "PROVISIONING_WORKER_NOT_CONFIGURED",
-      error:
-        "Redis is not configured. Set REDIS_URL or KV_REST_API_URL/KV_REST_API_TOKEN so the provisioning worker can publish heartbeats.",
-    };
+    // The daemon publishes its liveness to Redis; THIS reader (the cloud-api
+    // Worker) having no Redis binding is a config gap in the READER, not
+    // evidence the daemon is down. Hard-503'ing here blocks ALL provisioning
+    // whenever the Worker's Redis binding is missing (e.g. mid Redis-cutover) —
+    // even though the daemon is alive and claiming jobs. Fall open instead, the
+    // same way the rate-limiter does when Redis is unconfigured. When the
+    // Worker's Redis IS configured, a stale/missing heartbeat still fails closed
+    // below — so this only relaxes the unconfigured-reader case.
+    return { ok: true, required: false };
   }
 
   let raw: string | null;

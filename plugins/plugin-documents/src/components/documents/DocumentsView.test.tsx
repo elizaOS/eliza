@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // `@elizaos/ui` is the giant renderer barrel; DocumentsView only touches
@@ -149,17 +143,26 @@ describe("DocumentsView", () => {
     expect(await screen.findByTestId("documents-populated")).toBeTruthy();
   });
 
-  it("refetches when the header refresh control is activated", async () => {
-    let calls = 0;
-    const fetchDocuments = async () => {
-      calls += 1;
-      return documentsList();
-    };
-    render(<DocumentsView fetchers={makeFetchers({ fetchDocuments })} />);
-    await screen.findByTestId("documents-populated");
-    expect(calls).toBe(1);
-    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
-    await waitFor(() => expect(calls).toBe(2));
+  it("refetches on the background poll (no manual Refresh button)", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const fetchDocuments = async () => {
+        calls += 1;
+        return documentsList();
+      };
+      render(<DocumentsView fetchers={makeFetchers({ fetchDocuments })} />);
+      // Flush the initial mount load's microtasks without firing the poll timer.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toBe(1);
+      // There is no user-facing Refresh control in the chat-forward redesign.
+      expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
+      // Advancing past the poll interval triggers a quiet refetch.
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(calls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("runs a search and renders the results from /api/documents/search", async () => {

@@ -1,12 +1,4 @@
-import {
-  Braces,
-  Download,
-  FileJson,
-  RefreshCw,
-  Route,
-  Trash2,
-  XCircle,
-} from "lucide-react";
+import { Download, Route, Trash2, XCircle } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -49,40 +41,18 @@ import { ListSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
-const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  // active uses the --info status color (blue is a legitimate status here).
-  active: {
-    bg: "color-mix(in srgb, var(--info) 15%, transparent)",
-    fg: "var(--info)",
-  },
-  completed: { bg: "rgba(34, 197, 94, 0.15)", fg: "rgb(34, 197, 94)" },
-  error: { bg: "rgba(239, 68, 68, 0.15)", fg: "rgb(239, 68, 68)" },
+const NEUTRAL_FG = "var(--muted)";
+
+// Only `error` is an alert; `active` rides the --info status color (info blue is
+// allowed). `completed` is a terminal, non-alert state, so it stays neutral.
+const STATUS_COLORS: Record<string, string> = {
+  active: "var(--info)",
+  completed: NEUTRAL_FG,
+  error: "var(--danger)",
 };
 
-const SOURCE_COLORS: Record<string, { bg: string; fg: string }> = {
-  // Source tags are decorative — route blue/indigo/violet through accent/muted.
-  chat: {
-    bg: "color-mix(in srgb, var(--accent) 15%, transparent)",
-    fg: "var(--accent)",
-  },
-  autonomy: { bg: "rgba(245, 158, 11, 0.15)", fg: "rgb(245, 158, 11)" },
-  telegram: { bg: "rgba(34, 197, 94, 0.15)", fg: "rgb(34, 197, 94)" },
-  discord: {
-    bg: "color-mix(in srgb, var(--muted) 15%, transparent)",
-    fg: "var(--muted)",
-  },
-  api: { bg: "rgba(156, 163, 175, 0.15)", fg: "rgb(156, 163, 175)" },
-  orchestrator: {
-    bg: "color-mix(in srgb, var(--muted) 15%, transparent)",
-    fg: "var(--muted)",
-  },
-};
-
-const TRAJECTORY_EMPTY_FEATURES = [
-  { id: "json", label: "JSON", icon: FileJson, tone: "text-info" },
-  { id: "calls", label: "Calls", icon: Braces, tone: "text-accent" },
-  { id: "refresh", label: "Refresh", icon: RefreshCw, tone: "text-ok" },
-] as const;
+// Source tags are decorative metadata, not status — keep them all neutral.
+const SOURCE_FG = NEUTRAL_FG;
 
 function formatTrajectorySourceLabel(trajectory: TrajectoryRecord): string {
   const parts = [trajectory.source];
@@ -192,6 +162,14 @@ export function TrajectoriesView({
       silent: getCached<TrajectoryListResult>(cacheKey) != null,
     });
   }, [loadTrajectories, cacheKey]);
+
+  useEffect(() => {
+    // Poll for new turns in the background instead of a manual refresh button.
+    const interval = setInterval(() => {
+      void loadTrajectories({ silent: true });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [loadTrajectories]);
 
   useEffect(() => {
     const previousSearchQuery = previousSearchQueryRef.current;
@@ -394,25 +372,12 @@ export function TrajectoriesView({
       <SidebarScrollRegion>
         <SidebarPanel>
           <SidebarContent.Toolbar className="mb-3 items-center justify-between gap-2">
-            <SidebarContent.SectionLabel>
+            <span className="text-sm font-medium text-txt-strong">
               {t("trajectoriesview.Entries", {
                 defaultValue: "Entries",
               })}
-            </SidebarContent.SectionLabel>
+            </span>
             <SidebarContent.ToolbarActions>
-              <Button
-                variant="outline"
-                size="icon"
-                type="button"
-                className="h-7 w-7 rounded-full"
-                onClick={() => void loadTrajectories()}
-                disabled={loading}
-                title={t("common.refresh")}
-              >
-                <RefreshCw
-                  className={`h-3 w-3${loading ? " animate-spin" : ""}`}
-                />
-              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -509,8 +474,6 @@ export function TrajectoriesView({
                 const selected = selectedTrajectoryId === trajectory.id;
                 const statusColor =
                   STATUS_COLORS[trajectory.status] ?? STATUS_COLORS.completed;
-                const sourceColor =
-                  SOURCE_COLORS[trajectory.source] ?? SOURCE_COLORS.api;
 
                 return (
                   <TrajectorySidebarItem
@@ -523,9 +486,9 @@ export function TrajectoriesView({
                       "smart",
                     )}
                     sourceLabel={formatTrajectorySourceLabel(trajectory)}
-                    sourceColor={sourceColor.fg}
+                    sourceColor={SOURCE_FG}
                     statusLabel={trajectory.status}
-                    statusColor={statusColor.fg}
+                    statusColor={statusColor}
                     tokenLabel={`${formatTrajectoryTokenCount(
                       trajectory.totalPromptTokens +
                         trajectory.totalCompletionTokens,
@@ -603,12 +566,19 @@ export function TrajectoriesView({
         ) : !loading && trajectories.length === 0 ? (
           <PagePanel.FeatureEmpty
             className="rounded-sm"
-            features={TRAJECTORY_EMPTY_FEATURES}
             icon={Route}
             title={
               hasActiveFilters
                 ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
                 : t("trajectoriesview.NoTrajectoriesYet")
+            }
+            description={
+              hasActiveFilters
+                ? undefined
+                : t("trajectoriesview.EmptyHint", {
+                    defaultValue:
+                      "Run the agent and turns will show up here.",
+                  })
             }
           />
         ) : detailTrajectoryId ? (

@@ -36,6 +36,7 @@
     }
   },
   "files": [
+    "assets",
     "dist"
   ],
   "keywords": [

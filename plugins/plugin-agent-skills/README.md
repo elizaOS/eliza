@@ -188,7 +188,7 @@ Instructions here...
 Canonical entry point for invoking an enabled skill. Dispatches to the skill's bundled script or returns its SKILL.md guidance based on `mode`. Similes: `INVOKE_SKILL`, `RUN_SKILL`, `EXECUTE_SKILL`, `CALL_SKILL`, `USE_AGENT_SKILL`, `RUN_AGENT_SKILL`, `USE_CAPABILITY`, `RUN_CAPABILITY`.
 
 ### SKILL
-Catalog management parent action. Use `op=search`, `op=details`, `op=sync`, `op=toggle`, `op=install`, or `op=uninstall`.
+Catalog management parent action. Use `action=search`, `action=details`, `action=sync`, `action=toggle`, `action=install`, or `action=uninstall`.
 
 ## Providers
 

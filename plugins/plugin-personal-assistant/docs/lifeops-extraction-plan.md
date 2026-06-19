@@ -744,3 +744,106 @@ inward-only architecture law and silently breaking the per-tick reminder deliver
 and `rg "@elizaos/plugin-reminders" plugins/plugin-scheduling/src` (ZERO), plus the
 "scheduling ALONE ⇒ reminderAttempts=[] / scheduling+reminders ⇒ populated" integration
 test, are the non-negotiable tripwires — do not advance a slice until both pass.
+
+---
+
+## 6. Execution status (2026-06-18)
+
+**Landed (committed + pushed to develop):**
+- ✅ **Slice 1** — LifeOps overview view + builtin tab removed across PA / packages-ui / app-core; route-coverage 10/10, decomposition 6/6, all typecheck clean. (`2cd13115b4`)
+- ✅ **Slice 2** — vestigial `app_goals` routines/reminders/alarms/checkins tables deleted. (`d286dbae73`)
+- ✅ **Slice 7** — `@elizaos/plugin-scheduling` scaffolded (empty Plugin shell + package/tsconfig/CLAUDE; `bun install` links it; typechecks). (`5b12de8344`)
+- ✅ **Slice 20** — dead `@elizaos/core` scheduled-task stub deleted. (`33d9918038`)
+- Plus the earlier review: `lifeops-cleanup-review.md` + 3,578 LOC of dead graph/identity code removed (context-graph, identity-observations).
+
+**Not yet executed (the deep arcs — DELIBERATELY deferred as careful, reviewed PRs):**
+- Slices 3, 4 — runtime-service promotions (pending-prompts/global-pause/handoff/approval-queue → `@elizaos/agent`). Standalone SAFE-NOW; next-up.
+- Slices 5, 6 — goals/calendar schema carve-outs (atomic dual-writer migrations).
+- **Slices 8–19 — the spine + reminders engine extraction.** This is the bulk of "scheduling → plugin-scheduling, reminders → plugin-reminders" and is an **atomic multi-PR effort**: moving ~7k LOC of spine + a 5,468-LOC reminders mixin out of a 137k-LOC monolith fused to an 8.4k-LOC `repository.ts`, with the per-tick reminder delivery interleaved in one `processScheduledWork` method. Rushing it on the shared `develop` branch (where PA's typecheck baseline is already ~472 errors, masking new breakage) risks silently breaking the agent's scheduling + reminders. It must land as the tight, reviewed slice series in §2, each gated by the §0/§2 tripwires (no inward import leak; `reminderAttempts` shape preserved; the "scheduling-alone ⇒ [] / scheduling+reminders ⇒ populated" integration test).
+
+**Recommendation:** land slices 3–6 next (each a clean single PR), then the spine arc (8–12) as one reviewed PR, then the reminders arc (13–19) as one reviewed PR.
+
+---
+
+## 7. Execution status update (2026-06-18, cont.)
+
+**✅ Slice 8 LANDED (`ada0c9a61d`, pushed)** — the storage-agnostic scheduling
+spine core is now in `@elizaos/plugin-scheduling`: types, runner, the
+gate/completion-check/escalation registries, consolidation-policy, due/
+next-fire-at math, state-log, the barrel, and the anchor registry. The
+`DispatchResult` type is re-homed there. The tick driver
+(`processDueScheduledTasks`), the runner Service, and `runtime-wiring` stay
+PA-side and import the spine from the new package; PA keeps a thin
+`lifeops/scheduled-task/index` barrel re-exporting the package + the local
+scheduler/service so existing importers are unchanged. **Verified:**
+plugin-scheduling typecheck clean + 72 spine tests; PA build:types clean, tsgo
+470 (≤ baseline), decomposition 6/6, 6 spine-consuming PA test files (72 tests)
+green; tripwire (no PA import in plugin-scheduling/src) holds.
+
+**Architecture reached:** `@elizaos/plugin-scheduling` is the reusable
+scheduling-spine *library*; PA is the host that injects its
+repository/owner-facts/channels and drives the tick. This is a clean, defensible
+decomposition — the substantive "scheduling → plugin-scheduling."
+
+**Remaining (atomic, must each land as one reviewed PR):**
+- Slices 9–12 — move the tick driver + runner Service + `SCHEDULED_TASKS` action
+  into plugin-scheduling (PA injects production deps). High-risk wiring
+  inversion; marginal benefit over slice 8 (the reusable library is already
+  extracted). Optional.
+- Slices 13–19 — **reminders → plugin-reminders.** The largest lift: it MUST be
+  atomic (the `app_lifeops.life_reminder_*` → `app_reminders` migration + the
+  `ReminderRepository` repoint must land in the same change or reminder data
+  splits across two schemas), and it lifts the delivery/escalation engine out of
+  the 5,468-LOC `service-mixin-reminders.ts` while preserving the per-tick
+  `reminderAttempts` shape. Reminder tables verified at `schema.ts:224`
+  (life_reminder_plans), `:246` (life_reminder_attempts), `:833`
+  (life_escalation_states). Recommended approach (finances pattern): scaffold
+  plugin-reminders (depends on plugin-scheduling + plugin-sql) → `app_reminders`
+  schema (copy the 3 tables verbatim) → non-destructive `RemindersMigrationService`
+  → self-contained `ReminderRepository` over `app_reminders` → PA's
+  `LifeOpsRepository` reminder methods delegate to it → PA registers
+  plugin-reminders via `ensureLifeOpsRemindersPluginRegistered`. The
+  service-mixin engine can stay PA-resident, delegating through the repository
+  (consistent with how the spine wiring stays PA-side).
+- Slices 3–6 (runtime-service promotions; goals/calendar schema carves) —
+  independent, finances-proven, landable as separate clean PRs.
+
+## 8. Execution status update (2026-06-19) — data-layer carves complete
+
+**✅ All LifeOps data-layer carves LANDED + pushed.** Every dual-writer /
+shared-schema-squat in the LifeOps domain is now eliminated; each domain plugin
+owns its own `app_*` schema with a non-destructive `app_lifeops → app_*`
+migration (the finances carve pattern: `to_regclass` source guard +
+target-empty check + `INSERT … SELECT s.*`, source never dropped). PA keeps the
+`app_lifeops` defs only as the dormant migration source and auto-registers each
+plugin so the schema exists + the migration runs.
+
+| Carve | Schema | Tables | Migration service | Notes |
+|---|---|---|---|---|
+| reminders (slice 14-ish) | `app_reminders` | life_reminder_plans / _attempts / life_escalation_states | `RemindersMigrationService` | PA-exclusive tables; data layer only (engine stays PA-resident) |
+| calendar (slice 6) | `app_calendar` | life_calendar_events / _sync_states | `CalendarMigrationService` | killed the PA↔plugin-calendar dual-writer; schema was an unregistered squat |
+| goals (slice 5) | `app_goals` | life_goal_definitions / _links | `GoalsMigrationService` | resolved the documented shared-schema counter-position by carving cleanly; replaced the dead `app_goals.goals` placeholder; reminder/scheduling goal-link reads follow the repository to app_goals |
+| inbox | `app_inbox` | life_inbox_triage_entries / _examples / life_email_unsubscribes | `InboxMigrationService` | sole writer was plugin-inbox (PA's src/inbox/repository.ts is a shim); gmail projection tables stay PA-owned; 22 lifeops.* scenarios + bootstrapSchema repointed |
+
+Each: plugin typecheck clean + migration unit test (3-4 guard cases); PA
+build:types clean; PA tsgo **470 == baseline** (zero net new errors); full PA
+suite **548/548**; decomposition-integration **6/6** (no migration-serviceType
+collision across reminders/calendar/goals/inbox/finances); tripwire holds (no PA
+import in the carved plugin's `src`); no live writer/reader left on the
+`app_lifeops` source tables.
+
+**Deliberately NOT done (each needs an owner decision or a dedicated focused
+effort — out of scope for a high-confidence cleanup sweep):**
+- Slices 3–4 (promote pending-prompts / global-pause / handoff / approval-queue
+  → `@elizaos/agent`). This moves assistant-workflow state INWARD into the core
+  runtime (every agent would carry it), the opposite direction from the carves
+  above, and its main stated rationale was enabling the deferred spine-engine
+  move. Architecturally debatable — wants an owner call on whether the runtime is
+  the right home, not a unilateral sweep.
+- Slices 9–12 (move the tick driver + runner Service + `SCHEDULED_TASKS` into
+  plugin-scheduling; invert runtime-wiring) — high-risk wiring inversion,
+  marginal benefit over the slice-8 library extraction.
+- Slices 13/16–19 (lift the reminders delivery/escalation ENGINE out of the
+  5,468-LOC `service-mixin-reminders.ts` behind plugin-scheduling tick-hook
+  ports) — the riskiest tick/engine surgery; the reminders *data* layer is
+  already carved, so the headline ("reminders → plugin-reminders") is delivered.

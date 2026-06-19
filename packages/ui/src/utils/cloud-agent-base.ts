@@ -89,7 +89,7 @@ export function buildCloudSharedAgentApiBase(
 export function isCloudAgentsCollectionBase(
   value: string | null | undefined,
 ): boolean {
-  if (!value || !value.trim()) return true;
+  if (!value?.trim()) return true;
   const url = normalizeHttpUrl(value.trim());
   if (!url) return false;
   const path = stripTrailingSlash(url.pathname);

@@ -34,35 +34,6 @@ const WIDGET_ICONS = {
   relationships: Network,
 } satisfies Record<OverviewSection, LucideIcon>;
 
-/**
- * Deterministic warm-family hue per section (no blue). Each is a warm RGB triple
- * — vivid orange, peach, terracotta, amber, warm sand — layered as a generated
- * gradient over the card surface so it reads distinct in both light + dark
- * themes while staying inside the brand's warm range. The base accent orange is
- * reused for `personality` so the hub still anchors to brand color.
- */
-const SECTION_HUE: Record<OverviewSection, string> = {
-  personality: "255, 88, 0", // vivid orange (brand accent)
-  relationships: "255, 138, 76", // peach
-  documents: "201, 92, 56", // terracotta
-  skills: "245, 166, 35", // amber
-  experience: "200, 150, 96", // warm sand
-};
-
-function sectionTileBackground(section: OverviewSection): string {
-  const hue = SECTION_HUE[section];
-  return [
-    `radial-gradient(130% 115% at 6% -8%, rgba(${hue}, 0.5), transparent 55%)`,
-    `radial-gradient(120% 120% at 100% 108%, rgba(${hue}, 0.34), transparent 62%)`,
-    `linear-gradient(150deg, rgba(${hue}, 0.26), rgba(${hue}, 0.1) 78%)`,
-  ].join(", ");
-}
-
-function sectionMedallionBackground(section: OverviewSection): string {
-  const hue = SECTION_HUE[section];
-  return `linear-gradient(140deg, rgba(${hue}, 0.98), rgba(${hue}, 0.62))`;
-}
-
 function HubTile({
   onOpenSection,
   size,
@@ -81,26 +52,20 @@ function HubTile({
     <button
       type="button"
       onClick={() => onOpenSection(widget.section)}
-      className="group relative flex h-full w-full min-h-[12rem] min-w-0 flex-col overflow-hidden rounded-2xl border border-border/40 bg-card/60 p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+      className="group relative flex h-full w-full min-h-[12rem] min-w-0 flex-col overflow-hidden rounded-2xl bg-card/60 p-5 text-left transition-colors hover:bg-accent/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       aria-label={`Open ${widget.title}`}
     >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-95 transition-opacity group-hover:opacity-100"
-        style={{ background: sectionTileBackground(widget.section) }}
-      />
       {/* Top cluster: medallion + stat chip on one row, title directly below —
           a single cohesive group anchored to the top of the tile. */}
       <div className="relative flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <span
-            className={`inline-flex ${medallionSize} shrink-0 items-center justify-center rounded-2xl text-white shadow-sm ring-1 ring-inset ring-white/20 transition-transform group-hover:scale-105`}
-            style={{ background: sectionMedallionBackground(widget.section) }}
+            className={`inline-flex ${medallionSize} shrink-0 items-center justify-center rounded-2xl bg-accent/10 text-accent transition-transform group-hover:scale-105`}
           >
             <Icon className={iconSize} aria-hidden />
           </span>
           {widget.meta ? (
-            <span className="shrink-0 rounded-full border border-border/40 bg-bg/70 px-2.5 py-1 text-2xs font-semibold uppercase tracking-wide text-txt backdrop-blur-sm">
+            <span className="shrink-0 text-xs font-medium text-muted">
               {widget.meta}
             </span>
           ) : null}

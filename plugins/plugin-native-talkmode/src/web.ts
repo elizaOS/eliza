@@ -6,6 +6,8 @@ import type {
   SpeechRecognitionWindow,
 } from "@elizaos/native-plugin-shared-types";
 import type {
+  AudioFrameOptions,
+  AudioFrameResult,
   SpeakOptions,
   SpeakResult,
   TalkModeConfig,
@@ -212,6 +214,25 @@ export class TalkModeWeb extends WebPlugin {
 
   async isSpeaking(): Promise<{ speaking: boolean }> {
     return { speaking: this.synthesis?.speaking ?? false };
+  }
+
+  async startAudioFrames(
+    _options?: AudioFrameOptions,
+  ): Promise<AudioFrameResult> {
+    // Raw PCM frame capture is a native-only diarization path; on web the Web
+    // Speech API gives transcripts only, with no raw-PCM hook.
+    return {
+      started: false,
+      error: "audioFrame capture is not supported on web",
+    };
+  }
+
+  async stopAudioFrames(): Promise<void> {
+    // no-op on web
+  }
+
+  async isCapturingAudioFrames(): Promise<{ capturing: boolean }> {
+    return { capturing: false };
   }
 
   async checkPermissions(): Promise<TalkModePermissionStatus> {

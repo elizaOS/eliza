@@ -5,7 +5,7 @@ type EnvLike = Record<string, string | undefined>;
 /**
  * Default PGlite data directory used when no DATABASE_URL is set in local
  * (non-CI, non-production) execution. PGlite is an in-process Postgres in
- * WASM — the cloud package uses Neon in production and PGlite for local dev,
+ * WASM — the cloud package uses Railway Postgres in production and PGlite for local dev,
  * so a missing DATABASE_URL silently falls back to a file-backed PGlite store
  * under `.eliza/.pgdata` instead of trying to reach a Docker container.
  */

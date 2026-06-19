@@ -77,14 +77,13 @@ const overlayCtx = () => ({
     opts?.defaultValue ?? key,
 });
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
+// Under fake timers, the initial load chains several microtasks
+// (requestPermissions → listContacts → setState). advanceTimersByTimeAsync(0)
+// flushes one microtask checkpoint; loop it to drain the whole chain.
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 5; i += 1) {
+    await vi.advanceTimersByTimeAsync(0);
+  }
 }
 
 beforeEach(() => {
@@ -145,19 +144,20 @@ describe("ContactsAppView — populated list", () => {
   });
 });
 
-describe("ContactsAppView — search", () => {
-  it("filters the list to a matching substring and shows the no-matches state otherwise", async () => {
+describe("ContactsAppView — search moved to chat", () => {
+  it("renders no in-view search box, just a chat-search hint, and shows the full list", async () => {
     await renderView();
-    const searchBox = screen.getByTestId("contacts-search") as HTMLInputElement;
 
-    fireEvent.change(searchBox, { target: { value: "grace" } });
+    // The inline search input is gone — search now happens in the floating chat.
+    expect(screen.queryByTestId("contacts-search")).toBeNull();
+    expect(screen.getByTestId("contacts-search-hint").textContent).toContain(
+      "by typing in the chat",
+    );
+
+    // The full list renders unfiltered.
+    expect(screen.getByText("Ada Lovelace")).toBeTruthy();
     expect(screen.getByText("Grace Hopper")).toBeTruthy();
-    expect(screen.queryByText("Ada Lovelace")).toBeNull();
-    expect(screen.queryByText("Katherine Johnson")).toBeNull();
-
-    fireEvent.change(searchBox, { target: { value: "zzzz-nobody" } });
-    expect(screen.getByText("No contacts match your search.")).toBeTruthy();
-    expect(screen.queryByText("Grace Hopper")).toBeNull();
+    expect(screen.getByText("Katherine Johnson")).toBeTruthy();
   });
 });
 
@@ -253,28 +253,31 @@ describe("ContactsAppView — back button", () => {
   });
 });
 
-describe("ContactsAppView — refresh", () => {
-  it("re-fetches on click and is disabled while loading", async () => {
-    const initial = deferred<{ contacts: typeof fixtures }>();
-    contactsBridge.listContacts.mockReturnValueOnce(initial.promise);
+describe("ContactsAppView — background poll (no manual refresh control)", () => {
+  it("re-fetches on the poll interval and never renders a Refresh button", async () => {
+    vi.useFakeTimers();
+    try {
+      render(React.createElement(ContactsAppView, overlayCtx()));
 
-    render(React.createElement(ContactsAppView, overlayCtx()));
+      // Flush the initial on-mount load (requestPermissions → listContacts →
+      // setState is a chain of microtasks, so flush the queue a few times).
+      await flushMicrotasks();
+      expect(screen.getByText("Ada Lovelace")).toBeTruthy();
+      expect(contactsBridge.listContacts).toHaveBeenCalledTimes(1);
 
-    // While the initial load is pending, the refresh button is disabled.
-    const refreshBtn = screen.getByTestId(
-      "contacts-refresh",
-    ) as HTMLButtonElement;
-    expect(refreshBtn.disabled).toBe(true);
+      // The slop Refresh control is gone — assert it never renders.
+      expect(screen.queryByTestId("contacts-refresh")).toBeNull();
+      expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
 
-    initial.resolve({ contacts: fixtures });
-    await screen.findByText("Ada Lovelace");
-    expect(refreshBtn.disabled).toBe(false);
-    expect(contactsBridge.listContacts).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(refreshBtn);
-    await waitFor(() =>
-      expect(contactsBridge.listContacts).toHaveBeenCalledTimes(2),
-    );
+      // Advancing past one poll interval triggers a quiet refetch in place,
+      // staying on the populated list.
+      await vi.advanceTimersByTimeAsync(20000);
+      await flushMicrotasks();
+      expect(contactsBridge.listContacts).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("Ada Lovelace")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

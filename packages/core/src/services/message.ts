@@ -1596,7 +1596,19 @@ type VoiceTurnSignalMetadata = {
 function getVoiceTurnSignalMetadata(
 	message: Pick<Memory, "content">,
 ): VoiceTurnSignalMetadata | null {
-	const value = message.content?.voiceTurnSignal;
+	const content = message.content;
+	// The in-process voice path writes `content.voiceTurnSignal` at top level,
+	// but chat clients nest custom fields under `content.metadata` — that's where
+	// the conversation route persists a request's `metadata` object (see
+	// buildUserMessages in agent/api/server-helpers). Read both so the gate sees
+	// the ambient signal regardless of which entry point produced the turn.
+	const nested =
+		content?.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata)
+			? (content.metadata as Record<string, unknown>).voiceTurnSignal
+			: undefined;
+	const value = content?.voiceTurnSignal ?? nested;
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		return null;
 	}
@@ -6330,22 +6342,51 @@ export async function runV5MessageRuntimeStage1(args: {
 		endStatus = "errored";
 		throw err;
 	} finally {
-		const factsOutcome = await factsTask;
-		if (recorder && trajectoryId && factsOutcome) {
-			await recordFactsAndRelationshipsStage({
-				recorder,
-				trajectoryId,
-				outcome: factsOutcome,
-				logger: args.runtime.logger,
-			});
-		}
-		if (recorder && trajectoryId) {
-			await recorder.endTrajectory(trajectoryId, endStatus).catch((err) => {
+		// Finalize the trajectory: record the FACTS_AND_RELATIONSHIPS side-effect
+		// stage, then end the trajectory.
+		//
+		// CRITICAL (latency): factsTask is the FACTS_AND_RELATIONSHIPS stage — a
+		// heavy background TEXT_LARGE call that is launched in parallel precisely
+		// so it does NOT block the user reply (see the launch comment above). The
+		// facts/relationships are persisted *inside* runFactsAndRelationshipsStage
+		// independently of this await, so the only thing awaiting it here buys is
+		// the trajectory record's facts-stage entry. Awaiting it in `finally`
+		// gated EVERY reply on the slow facts model — dedicated cloud agents took
+		// 30s+ per turn for a reply that was already ready in ~3s. So run the
+		// finalize in the background by default and let the turn return as soon as
+		// the reply is decided. Await it only when deterministic trajectory
+		// ordering is required (e.g. the scenario-runner) via ELIZA_AWAIT_FACTS_STAGE.
+		const finalizeTrajectory = async () => {
+			try {
+				const factsOutcome = await factsTask;
+				if (recorder && trajectoryId && factsOutcome) {
+					await recordFactsAndRelationshipsStage({
+						recorder,
+						trajectoryId,
+						outcome: factsOutcome,
+						logger: args.runtime.logger,
+					});
+				}
+			} catch (factsErr) {
 				args.runtime.logger?.warn?.(
-					{ err: (err as Error).message, trajectoryId },
-					"[TrajectoryRecorder] endTrajectory failed",
+					{ err: (factsErr as Error).message, trajectoryId },
+					"[facts] background facts-stage recording failed",
 				);
-			});
+			} finally {
+				if (recorder && trajectoryId) {
+					await recorder.endTrajectory(trajectoryId, endStatus).catch((err) => {
+						args.runtime.logger?.warn?.(
+							{ err: (err as Error).message, trajectoryId },
+							"[TrajectoryRecorder] endTrajectory failed",
+						);
+					});
+				}
+			}
+		};
+		if (process.env.ELIZA_AWAIT_FACTS_STAGE === "true") {
+			await finalizeTrajectory();
+		} else {
+			void finalizeTrajectory();
 		}
 	}
 }

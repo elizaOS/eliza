@@ -11,7 +11,7 @@
  *   - Gmail access via {@link createInboxGmailGateway} (the `@elizaos/plugin-google`
  *     runtime service).
  *   - Persistence via {@link InboxUnsubscribeRepository} (raw SQL over the
- *     `app_lifeops.life_email_unsubscribes` table PA registers).
+ *     `app_inbox.life_email_unsubscribes` table PA registers).
  *
  * Authorization: `unsubscribeEmailSender` requires `userAuthorization === true`.
  * The two-phase confirmation gate (`requireConfirmation`) lives in the PA route

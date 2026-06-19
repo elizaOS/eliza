@@ -939,9 +939,8 @@ export class CacheClient {
       return false;
     }
 
-    logger.warn(
-      `[Cache] Circuit breaker OPEN (${this.failureCount} failures, retry in ${Math.ceil((this.CIRCUIT_BREAKER_TIMEOUT - timeSinceLastFailure) / 1000)}s)`,
-    );
+    // Breaker is open: degrade to cache-miss silently. The closed->open transition
+    // is logged once in recordFailure(); logging on every blocked call would spam.
     return true;
   }
 
@@ -949,8 +948,14 @@ export class CacheClient {
     this.failureCount++;
     this.lastFailureTime = Date.now();
 
+    // Log exactly on the closed->open transition (failureCount keeps climbing past
+    // MAX_FAILURES while open, so `=== MAX_FAILURES` fires once per open). Include the
+    // failure count + cooldown so a Redis brownout is distinguishable from a DB one.
     if (this.failureCount === this.MAX_FAILURES) {
-      logger.error(`[Cache] Circuit breaker OPENED after ${this.MAX_FAILURES} failures`);
+      logger.warn("[Cache] Circuit breaker OPENED - degrading to cache-miss", {
+        failureCount: this.failureCount,
+        cooldownMs: this.CIRCUIT_BREAKER_TIMEOUT,
+      });
     }
   }
 

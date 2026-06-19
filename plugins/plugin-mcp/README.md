@@ -40,7 +40,7 @@ Add the plugin and declare servers in your character file:
 }
 ```
 
-Config lives entirely in `settings.mcp`, not in environment variables. The host `PATH` is forwarded to stdio child processes automatically. Every server config is validated by `@elizaos/agent` (`validateMcpServerConfig`) before connect/spawn; configs that fail validation are skipped and logged at error level.
+Config lives entirely in `settings.mcp`, not in environment variables. The host `PATH` is forwarded to stdio child processes automatically. Every server config is validated by `@elizaos/security/mcp-server-config` (`validateMcpServerConfig`) before connect/spawn; configs that fail validation are skipped and logged at error level.
 
 ## Configuration
 
@@ -91,7 +91,7 @@ bun run clean         # rm -rf dist .turbo
 
 ## Security
 
-MCP servers can execute arbitrary code, so only connect to servers you trust. Spawn/connect of every configured server is gated on `validateMcpServerConfig`.
+MCP servers can execute arbitrary code, so only connect to servers you trust. Spawn/connect of every configured server is gated on `validateMcpServerConfig` from `@elizaos/security/mcp-server-config`.
 
 ## License
 

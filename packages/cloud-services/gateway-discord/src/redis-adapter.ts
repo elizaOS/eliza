@@ -75,8 +75,13 @@ export class UpstashCompatRedis {
     }
   }
 
-  async set(key: string, value: unknown, options?: SetOptions): Promise<string | null> {
-    const serialized = typeof value === "string" ? value : JSON.stringify(value);
+  async set(
+    key: string,
+    value: unknown,
+    options?: SetOptions,
+  ): Promise<string | null> {
+    const serialized =
+      typeof value === "string" ? value : JSON.stringify(value);
     const args: Array<string | number> = [key, serialized];
     if (options?.ex !== undefined) args.push("EX", options.ex);
     if (options?.px !== undefined) args.push("PX", options.px);
@@ -138,5 +143,7 @@ export function createMockRedis(): UpstashCompatRedis {
 export function createNativeRedis(url: string): UpstashCompatRedis {
   // lazyConnect: defer the socket until the first command (the gateway issues
   // one immediately) so construction never throws on a transient outage.
-  return new UpstashCompatRedis(new IORedis(url, { lazyConnect: true }) as unknown as IoRedisLike);
+  return new UpstashCompatRedis(
+    new IORedis(url, { lazyConnect: true }) as unknown as IoRedisLike,
+  );
 }

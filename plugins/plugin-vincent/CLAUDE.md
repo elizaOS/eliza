@@ -40,23 +40,29 @@ No actions, providers, services, or evaluators are registered.
 
 ```
 src/
-  index.ts                 Package re-exports (everything public)
-  plugin.ts                vincentPlugin object — routes + views declarations
-  register.ts              Side-effect: self-registers overlay app at import time
-  register-routes.ts       registerAppRoutePluginLoader (lazy plugin load)
-  routes.ts                handleVincentRoute — all OAuth + API route logic
-  vincent-contracts.ts     Shared TS types/interfaces for all Vincent API shapes
-  vincent-app.ts           vincentApp OverlayApp descriptor + registerOverlayApp call
-  client.ts                ElizaClient prototype extensions (vincentClient)
-  VincentAppView.tsx        Full-screen overlay React component + VincentTuiView + interact()
-  VincentConnectionCard.tsx OAuth connect/disconnect card
-  TradingStrategyPanel.tsx  Strategy config UI panel
-  TradingProfileCard.tsx    P&L analytics card
-  WalletStatusCard.tsx      Agent wallet addresses + balances card
-  useVincentDashboard.ts   Aggregated data hook (polls every 15 s when connected)
-  useVincentState.ts        OAuth login-flow state hook (open external URL, poll for connection)
-  ui.ts                    Re-exports of all UI components (for views bundle entry)
-  VincentTuiView.test.tsx  Unit tests for VincentTuiView
+  index.ts                     Package re-exports (everything public)
+  plugin.ts                    vincentPlugin object — routes + views declarations
+  register.ts                  Side-effect: self-registers overlay app at import time
+  register-routes.ts           registerAppRoutePluginLoader (lazy plugin load)
+  register-terminal-view.tsx   Registers the Vincent TUI view with @elizaos/tui terminal registry
+  routes.ts                    handleVincentRoute — all OAuth + API route logic
+  vincent-contracts.ts         Shared TS types/interfaces for all Vincent API shapes
+  vincent-app.ts               vincentApp OverlayApp descriptor + registerOverlayApp call
+  vincent-view-bundle.ts       Vite views-bundle entry — re-exports VincentAppView, VincentTuiView, and interact
+  client.ts                    ElizaClient prototype extensions (vincentClient)
+  VincentAppView.tsx           Full-screen overlay React component
+  VincentAppView.helpers.ts    Shared helper utilities for VincentAppView
+  VincentAppView.interact.ts   interact() capability handler for TUI agent-driven interaction
+  VincentConnectionCard.tsx    OAuth connect/disconnect card
+  TradingStrategyPanel.tsx     Strategy config UI panel
+  TradingProfileCard.tsx       P&L analytics card
+  WalletStatusCard.tsx         Agent wallet addresses + balances card
+  useVincentDashboard.ts       Aggregated data hook (polls every 15 s when connected)
+  useVincentState.ts           OAuth login-flow state hook (open external URL, poll for connection)
+  ui.ts                        Re-exports of all UI components
+  VincentTuiView.test.tsx      Unit tests for VincentTuiView
+  components/
+    VincentSpatialView.tsx     Spatial/XR view component using @elizaos/ui/spatial vocabulary
 ```
 
 ## Commands
@@ -102,7 +108,7 @@ The external OAuth endpoint is hardcoded: `https://heyvincent.ai`. No env overri
 **Add a new view:**
 
 1. Create the React component in `src/`.
-2. Export it from `src/ui.ts` (the Vite views bundle entry).
+2. Export it from `src/ui.ts` and `src/vincent-view-bundle.ts` (the Vite views bundle entry).
 3. Add a view descriptor to the `views` array in `src/plugin.ts`.
 
 ## Conventions / gotchas
@@ -113,5 +119,5 @@ The external OAuth endpoint is hardcoded: `https://heyvincent.ai`. No env overri
 - **OAuth redirect URI is always `http://<host>/callback/vincent`** using the `Host` header from the inbound request. This is intentionally HTTP/loopback since the redirect lands on the local agent server.
 - **Views bundle is built separately** via `vite.config.views.ts`. The `build:views` step must run for the dashboard UI to work; `build:js` alone is insufficient.
 - **Client prototype patching** in `src/client.ts` mutates `ElizaClient.prototype` at import time — import order matters if multiple plugins do this.
-- **`interact()` in `VincentAppView.tsx`** provides TUI capabilities (`terminal-vincent-state`, `terminal-vincent-start-login`, `terminal-vincent-disconnect`, `terminal-vincent-update-strategy`) for agent-driven terminal interaction.
+- **`interact()` in `VincentAppView.interact.ts`** provides TUI capabilities (`terminal-vincent-state`, `terminal-vincent-start-login`, `terminal-vincent-disconnect`, `terminal-vincent-update-strategy`) for agent-driven terminal interaction. It is split from `VincentAppView.tsx` to keep that file Fast-Refresh-compatible; the views bundle re-exports it via `vincent-view-bundle.ts`.
 - Dependencies: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/core`, `@elizaos/shared`, `@elizaos/ui`, React 19, lucide-react.

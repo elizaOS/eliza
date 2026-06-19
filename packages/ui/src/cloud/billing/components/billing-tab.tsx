@@ -20,7 +20,7 @@ import {
   Loader2,
   Wallet,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ApiError, api } from "../../lib/api-client";
@@ -32,7 +32,19 @@ import type {
   InvoiceDisplay,
 } from "../types";
 import { AutoTopUpCard } from "./auto-top-up-card";
-import { DirectCryptoCreditCard } from "./direct-crypto-credit-card";
+
+// Lazy-loaded so its @solana/spl-token + @solana/web3.js imports — which eval
+// top-level PublicKey program-id constants through safe-buffer's Buffer() at
+// module load — stay OUT of the app boot graph (they crashed boot with
+// "Class constructor Buffer cannot be invoked without 'new'"). They now load
+// only when the crypto payment UI actually renders, matching the existing
+// ConditionalWalletProviders lazy-gating intent.
+const DirectCryptoCreditCard = lazy(() =>
+  import("./direct-crypto-credit-card").then((m) => ({
+    default: m.DirectCryptoCreditCard,
+  })),
+);
+
 import { PayAsYouGoCard } from "./pay-as-you-go-card";
 
 interface BillingTabProps {
@@ -382,15 +394,17 @@ export function BillingTab({ user }: BillingTabProps) {
 
                 {paymentMethod === "crypto" &&
                   cryptoStatus?.directWallet?.enabled && (
-                    <DirectCryptoCreditCard
-                      amount={amountValue}
-                      status={cryptoStatus}
-                      accountWalletAddress={user.wallet_address ?? null}
-                      onSuccess={async () => {
-                        await fetchBalance(true);
-                        await fetchInvoices();
-                      }}
-                    />
+                    <Suspense fallback={null}>
+                      <DirectCryptoCreditCard
+                        amount={amountValue}
+                        status={cryptoStatus}
+                        accountWalletAddress={user.wallet_address ?? null}
+                        onSuccess={async () => {
+                          await fetchBalance(true);
+                          await fetchInvoices();
+                        }}
+                      />
+                    </Suspense>
                   )}
               </div>
             </div>

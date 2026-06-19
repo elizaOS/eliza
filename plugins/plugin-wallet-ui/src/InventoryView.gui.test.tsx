@@ -489,14 +489,18 @@ describe("InventoryView GUI — address copy buttons", () => {
   });
 });
 
-describe("InventoryView GUI — refresh + RPC settings", () => {
-  it("refresh reloads config/balances/nfts and re-fetches profile + overview", async () => {
+describe("InventoryView GUI — background poll + RPC settings", () => {
+  it("quietly re-loads config/balances/nfts and re-fetches profile + overview on the poll interval", async () => {
     const state = makeAppState();
     appHooks.useApp.mockReturnValue(state);
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
     render(React.createElement(InventoryView));
-    const sidebar = await screen.findByTestId("wallets-sidebar");
+    await screen.findByTestId("wallets-sidebar");
 
-    // Wait for initial loads to settle, then clear so we count the click only.
+    // No user-facing refresh affordance — freshness comes from the poll.
+    expect(screen.queryByLabelText("Refresh wallet")).toBeNull();
+
+    // Let the initial mount loads settle, then clear so we count the poll only.
     await waitFor(() =>
       expect(walletClient.getWalletTradingProfile).toHaveBeenCalled(),
     );
@@ -506,7 +510,14 @@ describe("InventoryView GUI — refresh + RPC settings", () => {
     walletClient.getWalletTradingProfile.mockClear();
     walletClient.getWalletMarketOverview.mockClear();
 
-    fireEvent.click(within(sidebar).getByLabelText("Refresh wallet"));
+    // The view registered a background poll; invoke its callback directly to
+    // assert the same load fns fire again without the manual refresh button.
+    const pollCall = setIntervalSpy.mock.calls.find(
+      ([, delay]) => delay === 20_000,
+    );
+    expect(pollCall).toBeTruthy();
+    const pollFn = pollCall?.[0] as () => void;
+    pollFn();
 
     expect(state.loadWalletConfig).toHaveBeenCalled();
     expect(state.loadBalances).toHaveBeenCalled();
@@ -515,6 +526,8 @@ describe("InventoryView GUI — refresh + RPC settings", () => {
       expect(walletClient.getWalletTradingProfile).toHaveBeenCalled(),
     );
     expect(walletClient.getWalletMarketOverview).toHaveBeenCalled();
+
+    setIntervalSpy.mockRestore();
   });
 
   it("RPC button title shows provider labels and opens settings", async () => {

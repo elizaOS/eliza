@@ -1,9 +1,7 @@
-import { formatShortDate, Input, Skeleton } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { formatShortDate, Skeleton } from "@elizaos/ui";
 import {
   CalendarDays,
   CircleDollarSign,
-  Search,
   ShoppingCart,
   Users,
 } from "lucide-react";
@@ -61,7 +59,6 @@ interface CustomersPanelProps {
   loading: boolean;
   error: string | null;
   search: string;
-  onSearchChange: (q: string) => void;
 }
 
 export function CustomersPanel({
@@ -70,30 +67,16 @@ export function CustomersPanel({
   loading,
   error,
   search,
-  onSearchChange,
 }: CustomersPanelProps) {
-  const searchInput = useAgentElement<HTMLInputElement>({
-    id: "input-customer-search",
-    role: "text-input",
-    label: "Search customers",
-    group: "customers",
-    description: "Filter customers by name or email",
-  });
-
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted/60" />
-          <Input
-            ref={searchInput.ref}
-            placeholder="Search customers by name or email…"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-8"
-            {...searchInput.agentProps}
-          />
-        </div>
+      <div className="flex items-center justify-between gap-2">
+        <p
+          data-testid="chat-search-hint"
+          className="text-[13px] leading-relaxed text-txt/60"
+        >
+          Search customers by typing in the chat.
+        </p>
         {!loading ? (
           <span className="shrink-0 text-xs text-muted">
             {total.toLocaleString()} customer{total !== 1 ? "s" : ""}

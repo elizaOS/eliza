@@ -8,34 +8,26 @@ Aggregates threads across email, Discord, Telegram, WhatsApp, Slack, X, Farcaste
 
 **Out of scope:** Android SMS — that remains in `@elizaos/plugin-messages`.
 
-## Migration mapping from `plugin-lifeops`
-
-This plugin is being extracted out of the monolithic `plugin-lifeops`. The current scaffold is a stub: every action handler, provider body, and repository call returns or references its eventual source. The next pass will physically move the implementation files. The mapping is:
-
-| New (plugin-inbox)                                  | Source (plugin-lifeops)                                       |
-| --------------------------------------------------- | ------------------------------------------------------------- |
-| `src/actions/inbox.ts`                              | `plugins/plugin-personal-assistant/src/actions/inbox.ts`                 |
-| `src/providers/inbox-triage.ts`                     | `plugins/plugin-personal-assistant/src/providers/inbox-triage.ts`        |
-| `src/providers/cross-channel-context.ts`            | `plugins/plugin-personal-assistant/src/providers/cross-channel-context.ts` |
-| `src/db/schema.ts` (`app_inbox.triage_decisions`)   | `plugins/plugin-personal-assistant/src/inbox/repository.ts`              |
-| `src/db/schema.ts` (`app_inbox.snoozed`)            | `plugins/plugin-personal-assistant/src/inbox/repository.ts`              |
-| `src/db/schema.ts` (`app_inbox.archived`)           | `plugins/plugin-personal-assistant/src/inbox/repository.ts`              |
-| (planned) `src/inbox/triage-classifier.ts`          | `plugins/plugin-personal-assistant/src/inbox/triage-classifier.ts`       |
-| (planned) `src/inbox/message-fetcher.ts`            | `plugins/plugin-personal-assistant/src/inbox/message-fetcher.ts`         |
-| (planned) `src/inbox/channel-deep-links.ts`         | `plugins/plugin-personal-assistant/src/inbox/channel-deep-links.ts`      |
-| (planned) `src/inbox/reflection.ts`                 | `plugins/plugin-personal-assistant/src/inbox/reflection.ts`              |
-| `src/components/inbox/InboxView.tsx`                | (new — replaces inbox UI living inside the lifeops view bundle) |
-
 ## Plugin surface
 
 ### Action
 
-`INBOX` — op-based dispatch. Ops: `list`, `triage`, `reply`, `snooze`, `archive`, `approve`. All ops currently return `not_implemented`; the handler bodies are TODOs pointing at the lifeops source they will absorb.
+`INBOX` — op-based dispatch. Ops: `list`, `search`, `summarize`.
+
+- `list` — fan-out fetch across all connected platform adapters (gmail, discord, telegram, signal, imessage, whatsapp), dedupe by message id and thread topic, return merged feed ordered by recency.
+- `search` — search across selected platforms by `query`.
+- `summarize` — return a per-platform count plus a single rolled-up summary.
+
+Fetchers are injectable via `setInboxFetchers` for tests. Owner-only.
 
 ### Providers
 
-- `INBOX_TRIAGE` — injects the user's pending triage queue into the planner.
-- `CROSS_CHANNEL_CONTEXT` — surfaces recent activity for the current counterparty across other channels.
+- `inboxTriage` (position `14`) — injects the user's pending triage queue (urgent, needs_reply, recent auto-replies) into owner context from the `InboxRepository`.
+- `crossChannelContext` (position `-3`) — injects recent triage entries from the current message sender across other channels (resolved by entityId then senderName). Owner-only, silently empty when no cross-channel history exists.
+
+### Service
+
+`InboxService` (`src/inbox/service.ts`) — `triage()`, `curate()`, `triageWithCuration()`, `search()`, `list()`, `digest()`, `resolve()`. No dependency on `@elizaos/plugin-personal-assistant`.
 
 ### Schema
 
@@ -55,12 +47,22 @@ This plugin is being extracted out of the monolithic `plugin-lifeops`. The curre
 src/
   index.ts                            Public API barrel
   plugin.ts                           inboxPlugin Plugin object
-  types.ts                            TriageDecision, ThreadSummary, channel enums
+  types.ts                            TriageDecision, ThreadSummary, channel + decision enums
   actions/
-    inbox.ts                          INBOX umbrella action (op dispatch — stub)
+    inbox.ts                          INBOX umbrella action (list/search/summarize fan-out)
   providers/
-    inbox-triage.ts                   INBOX_TRIAGE provider (stub)
-    cross-channel-context.ts          CROSS_CHANNEL_CONTEXT provider (stub)
+    inbox-triage.ts                   inboxTriage provider — pending triage queue (position 14)
+    cross-channel-context.ts          crossChannelContext provider — sender cross-channel history (position -3)
+  inbox/
+    service.ts                        InboxService — triage/curate/search/list/digest/resolve
+    repository.ts                     InboxRepository — raw SQL over app_lifeops.life_inbox_triage_*
+    types.ts                          InboundMessage, TriageEntry, TriageClassification, etc.
+    triage-classifier.ts              LLM classification of inbound messages
+    email-curation.ts                 Email curation engine (save/archive/delete decisions)
+    config.ts                         loadInboxTriageConfig()
+    message-fetcher.ts                Per-platform message fetchers
+    channel-deep-links.ts             Channel deep-link helpers
+    reflection.ts                     Inbox reflection utilities
   db/
     index.ts                          re-exports schema.ts
     schema.ts                         drizzle pgSchema('app_inbox') + tables
@@ -85,11 +87,13 @@ bun run --cwd plugins/plugin-inbox clean        # rm -rf dist
 
 ## Config / env vars
 
-None at the scaffold stage. Channel credentials are read from each provider plugin (`plugin-discord`, `plugin-telegram`, etc.).
+None. Channel credentials are read from each provider plugin (`plugin-discord`, `plugin-telegram`, etc.).
 
 ## Conventions / gotchas
 
-- **Not yet feature-complete.** Every action op currently returns a `not_implemented` failure with the source path it should pull from. Treat this package as the registration shell; the live triage logic still runs out of `plugin-lifeops` until the follow-up migration pass.
-- **No Android SMS.** SMS routing intentionally stays in `plugin-messages`. Do not add SMS handling here.
+- **`GET /api/lifeops/inbox` lives in `plugin-personal-assistant`.** The `InboxView` fetches from this route (served by PA). The triage domain (classify/persist/search) lives here and is imported by PA.
+- **`@elizaos/plugin-sql` must be loaded first.** The schema registration relies on `runtime.db`.
+- **No Android SMS.** SMS routing intentionally stays in `plugin-messages`. Do not add SMS channel handling here.
 - **Schema name is `app_inbox`** to avoid collision with any host-app `inbox` table the runtime might also surface.
+- **Two build steps.** The JS/types build (tsup + tsc) and the Vite views build are separate. Both must be run for a complete build.
 - See the root `AGENTS.md` for repo-wide architecture rules, logger requirements, ESM/module standards, and the cloud-frontend visual-review gate (if any of this plugin's UI ends up in `cloud-frontend`).

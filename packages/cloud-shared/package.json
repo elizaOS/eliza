@@ -48,7 +48,6 @@
     "@elizaos/security": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@neondatabase/serverless": "^1.1.0",
     "@octokit/rest": "^22.0.1",
     "@sendgrid/mail": "^8.1.6",
     "@solana/kit": "^6.0.0",

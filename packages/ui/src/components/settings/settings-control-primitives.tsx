@@ -32,16 +32,14 @@ export function AdvancedSettingsDisclosure({
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
       className={cn(
-        "group rounded-sm border border-border/60 bg-card/45 px-3 py-2",
+        "group rounded-sm bg-card/45 px-3 py-2",
         className,
       )}
     >
-      <summary className="cursor-pointer select-none list-none text-xs font-semibold uppercase tracking-wide text-muted transition-colors hover:text-txt">
+      <summary className="cursor-pointer select-none list-none text-xs font-medium text-muted transition-colors hover:text-txt">
         {title}
       </summary>
-      {shouldRenderChildren ? (
-        <div className="mt-3 border-t border-border/40 pt-3">{children}</div>
-      ) : null}
+      {shouldRenderChildren ? <div className="mt-3">{children}</div> : null}
     </details>
   );
 }

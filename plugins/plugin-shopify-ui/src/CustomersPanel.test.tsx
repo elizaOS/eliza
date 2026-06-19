@@ -1,20 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/ui", () => ({
-  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
-    React.createElement("input", props),
   Skeleton: (props: React.HTMLAttributes<HTMLDivElement>) =>
     React.createElement("div", { ...props, "data-skeleton": true }),
   // formatShortDate is rendered verbatim so we can assert on a stable value.
   formatShortDate: (iso: string) => `date:${iso}`,
-}));
-
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 
 import { CustomersPanel } from "./CustomersPanel";
@@ -58,7 +52,6 @@ describe("CustomersPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
       }),
     );
 
@@ -83,7 +76,6 @@ describe("CustomersPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
       }),
     );
     expect(screen.getByText("1 customer")).toBeTruthy();
@@ -97,7 +89,6 @@ describe("CustomersPanel", () => {
         loading: false,
         error: null,
         search: "zzz",
-        onSearchChange: vi.fn(),
       }),
     );
     expect(screen.getByText("No customers match your search.")).toBeTruthy();
@@ -111,7 +102,6 @@ describe("CustomersPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
       }),
     );
     expect(screen.getByText("No customers found.")).toBeTruthy();
@@ -125,7 +115,6 @@ describe("CustomersPanel", () => {
         loading: true,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
       }),
     );
     expect(
@@ -133,8 +122,7 @@ describe("CustomersPanel", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("invokes onSearchChange when the search input changes", () => {
-    const onSearchChange = vi.fn();
+  it("renders the chat-search hint instead of an in-view search box", () => {
     render(
       React.createElement(CustomersPanel, {
         customers,
@@ -142,13 +130,13 @@ describe("CustomersPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange,
       }),
     );
-    const input = screen.getByPlaceholderText(
-      "Search customers by name or email…",
-    );
-    fireEvent.change(input, { target: { value: "Grace" } });
-    expect(onSearchChange).toHaveBeenCalledWith("Grace");
+    // No in-view search box — the floating chat is the panel's search bar.
+    expect(
+      screen.queryByPlaceholderText("Search customers by name or email…"),
+    ).toBeNull();
+    const hint = screen.getByTestId("chat-search-hint");
+    expect(hint.textContent).toBe("Search customers by typing in the chat.");
   });
 });

@@ -13,6 +13,8 @@ const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-hyperliquid-app",
   "@elizaos/plugin-polymarket-app",
+  "@elizaos/plugin-waifu-imagegen-app",
+  "@elizaos/plugin-waifu-swap-app",
   "@elizaos/plugin-wallet-ui",
   "@elizaos/app-model-tester",
   "@elizaos/plugin-vector-browser/register",

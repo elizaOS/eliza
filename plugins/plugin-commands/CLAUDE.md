@@ -22,19 +22,28 @@ No actions, services, evaluators, routes, or events are registered directly by t
 
 ```
 src/
-  index.ts      Plugin entry — exports commandsPlugin, commandRegistryProvider,
-                formatCommandResult, isAuthorized, isElevated, and re-exports
-                parser/registry/types
-  registry.ts   Per-runtime command store: DEFAULT_COMMANDS (25 built-in defs),
-                initForRuntime(), useRuntime(), registerCommand(), registerCommands(),
-                unregisterCommand(), resetCommands(), getCommands(),
-                getEnabledCommands(), getCommandsByCategory(),
-                findCommandByAlias(), findCommandByKey(), startsWithCommand()
-  parser.ts     Text parsing: hasCommand(), detectCommand(), parseCommand(),
-                normalizeCommandBody(), extractCommand(), isCommandOnly()
-  types.ts      Shared types: CommandDefinition, CommandContext, CommandResult,
-                ParsedCommand, CommandDetectionResult, ResolvedCommand,
-                CommandScope, CommandCategory, CommandArgDefinition
+  index.ts              Plugin entry — exports commandsPlugin, commandRegistryProvider,
+                        formatCommandResult, isAuthorized, isElevated, and re-exports
+                        parser/registry/types/connector-catalog/settings-sections
+  registry.ts           Per-runtime command store: DEFAULT_COMMANDS (25 built-in defs),
+                        initForRuntime(), useRuntime(), registerCommand(), registerCommands(),
+                        unregisterCommand(), resetCommands(), getCommands(),
+                        getEnabledCommands(), getCommandsByCategory(),
+                        findCommandByAlias(), findCommandByKey(), startsWithCommand()
+  parser.ts             Text parsing: hasCommand(), detectCommand(), parseCommand(),
+                        normalizeCommandBody(), extractCommand(), isCommandOnly()
+  types.ts              Shared types: CommandDefinition, CommandContext, CommandResult,
+                        ParsedCommand, CommandDetectionResult, ResolvedCommand,
+                        CommandScope, CommandCategory, CommandArgDefinition
+  connector-catalog.ts  Connector-neutral command catalog: ConnectorCommand,
+                        ConnectorCommandTarget, ConnectorCommandOption,
+                        ClientCommandAction, getConnectorCommands(surface)
+                        — re-projects the text
+                        command registry into a shape connectors (Discord, Telegram, …)
+                        map onto their native command surfaces.
+  settings-sections.ts  Settings section registry: SettingsSection, SETTINGS_SECTIONS,
+                        resolveSettingsSection(), getSettingsSectionChoices() — canonical
+                        destination tokens for the /settings <section> command.
 
 auto-enable.ts  Lightweight shouldEnable() — reads config.features.commands;
                 loaded by the auto-enable engine at boot (no full plugin import)
@@ -112,3 +121,4 @@ registerCommand({
 - **Provider context-gates itself.** For non-command messages the provider returns an empty string to keep the prompt clean.
 - **Parser accepts `/` or `!` prefix.** The `!` prefix is treated the same as `/`.
 - **`auto-enable.ts` is a separate entry point** — it must stay lightweight (no plugin runtime imports) because it is loaded by the auto-enable engine for every plugin at boot.
+- **`connector-catalog.ts` for remote connectors.** Use `getConnectorCommands(surface)` to get a connector-neutral view of all commands; `kind: "client"` targets are already filtered off remote connectors (Discord, Telegram, etc.).

@@ -6,8 +6,6 @@ import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
 type LegacyAppDatabaseFields =
   | "user_database_status"
   | "user_database_uri"
-  | "user_database_project_id"
-  | "user_database_branch_id"
   | "user_database_region"
   | "user_database_error";
 

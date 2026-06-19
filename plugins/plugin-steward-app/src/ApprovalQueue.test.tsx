@@ -235,22 +235,26 @@ describe("ApprovalQueue — interactive controls", () => {
     );
   });
 
-  it("Refresh re-invokes getStewardPending", async () => {
+  it("polls getStewardPending on an interval to stay fresh", async () => {
+    vi.useFakeTimers();
     const props = makeProps([makeApproval({ id: "tx-1" })]);
     render(React.createElement(ApprovalQueue, props));
 
-    await screen.findByText("1 ETH");
-    const callsBefore = props.getStewardPending.mock.calls.length;
-
-    const refreshBtn = screen.getByRole("button", {
-      name: "Refresh approvals",
-    });
+    // Initial load.
     await act(async () => {
-      fireEvent.click(refreshBtn);
+      await Promise.resolve();
+    });
+    const callsAfterMount = props.getStewardPending.mock.calls.length;
+    expect(callsAfterMount).toBeGreaterThan(0);
+
+    // Advancing past the poll interval triggers a background refetch.
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
     });
 
     expect(props.getStewardPending.mock.calls.length).toBeGreaterThan(
-      callsBefore,
+      callsAfterMount,
     );
   });
 });

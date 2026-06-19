@@ -51,11 +51,15 @@ pointer back to the LifeOps source.
   here — it aggregates PA's definition / occurrence / reminder / calendar graph
   and stays in PA's `withGoals` mixin, which delegates its goal CRUD here.
 - **`GoalsRepository`** (`src/db/goals-repository.ts`) — raw SQL over the goal
-  tables. The tables (`life_goal_definitions` / `life_goal_links`) stay
-  registered by PA in the `app_lifeops` schema (the "inbox pattern" — shared
-  schema, no migration) because PA's reminder/scheduling subsystem also reads +
-  writes goal links; this repository reaches them through the runtime DB handle
-  via the self-contained `src/db/sql.ts` helpers.
+  tables (`life_goal_definitions` / `life_goal_links`), now owned by this plugin
+  in the `app_goals` schema (carved out of PA's `app_lifeops` via
+  `GoalsMigrationService`). PA's reminder/scheduling subsystem still reads +
+  writes goal links, but it does so through PA's repository, whose SQL was
+  repointed to `app_goals` in the same carve — so a single owner backs every
+  reader. The cross-schema writes to `app_lifeops.life_task_definitions` (the
+  spine FK-nullout in `deleteGoal`) and `app_lifeops.life_audit_events` (audit)
+  stay on `app_lifeops`. Reaches the DB through the self-contained
+  `src/db/sql.ts` helpers.
 - **`goal-grounding.ts`** / **`goal-semantic-evaluator.ts`** — goal grounding
   metadata + the LLM-backed `evaluateGoalProgressWithLlm`. PA re-exports these
   from here for back-compat (`plugin-personal-assistant/src/lifeops/goal-grounding.ts`
@@ -75,12 +79,14 @@ pointer back to the LifeOps source.
   panel.
 
 ### Schema
-- `goalsSchema` (`src/db/schema.ts`) — `pgSchema("app_goals")` with tables
-  `goals` (the carve target for `app_lifeops.life_goal_*`). The vestigial
-  `routines`/`reminders`/`alarms`/`checkins` placeholder tables were removed —
-  they were never queried, and reminders/alarms/routines now live in
-  `@elizaos/plugin-reminders` (`app_reminders`). Exported as
-  `schema` on the plugin object so the runtime registers migrations.
+- `goalsSchema` (`src/db/schema.ts`) — `pgSchema("app_goals")` with the carved
+  goal tables `life_goal_definitions` + `life_goal_links` (lifted from PA's
+  `app_lifeops`, column shape verbatim). `GoalsMigrationService`
+  (`src/services/migration.ts`) does the non-destructive copy. The vestigial
+  `routines`/`reminders`/`alarms`/`checkins` and the old placeholder `goals`
+  table were removed — reminders/alarms/routines now live in
+  `@elizaos/plugin-reminders` (`app_reminders`). Exported as `schema` on the
+  plugin object so the runtime registers migrations.
 
 ## Layout
 
@@ -105,7 +111,7 @@ src/
     index.ts                     Re-exports schema
     schema.ts                    Drizzle pgSchema('app_goals')
     sql.ts                       Self-contained raw-SQL helpers (runtime DB)
-    goals-repository.ts          GoalsRepository (raw SQL over app_lifeops.life_goal_*)
+    goals-repository.ts          GoalsRepository (raw SQL over app_goals.life_goal_*)
   components/
     goals/
       GoalsView.tsx              React view (sections + self-care)
@@ -146,23 +152,31 @@ re-export from this package once the bodies move.
 - `@elizaos/plugin-goals` MUST NOT import `@elizaos/plugin-personal-assistant`
   (verify: `rg 'from "@elizaos/plugin-personal-assistant"' plugins/plugin-goals/src`
   stays empty). Shared contract types come from `@elizaos/shared`.
-- PA owns the goal **tables** (`life_goal_definitions` / `life_goal_links` in
-  `app_lifeops`) because its reminder/scheduling subsystem also reads + writes
-  goal links. PA delegates its goal CRUD to this plugin's `GoalsService` (so the
+- This plugin owns the goal **tables** (`life_goal_definitions` /
+  `life_goal_links` in `app_goals`, carved out of PA's `app_lifeops`). PA's
+  reminder/scheduling subsystem still reads + writes goal links, but through
+  PA's repository, whose SQL was repointed to `app_goals` in the same carve.
+  PA delegates its goal CRUD to this plugin's `GoalsService` (so the
   `/api/lifeops/goals*` routes + the `GoalsView` wire shape stay byte-identical),
-  and re-exports the goal grounding/evaluator modules from here. PA does NOT
-  auto-register this plugin (its `app_goals` schema + stub actions are the
-  decomposed PA-free topology); it imports the `GoalsService` class directly.
+  and re-exports the goal grounding/evaluator modules from here. PA
+  auto-registers this plugin (`ensureLifeOpsGoalsPluginRegistered`) so the
+  `app_goals` schema exists and the non-destructive migration runs whenever PA
+  is loaded.
 - Cross-domain goal **review / overview / experience-loop** stays in PA's
   `withGoals` mixin (it aggregates the definition / occurrence / reminder /
   calendar graph PA owns).
 
 ## Conventions / gotchas
 
-- **Schema namespace is `app_goals`.** Do not collide with other
-  decomposed plugins; keep all goals/routine/reminder/alarm/checkin tables in
-  this namespace. NOTE: the goal CRUD back-end deliberately reads/writes PA's
-  `app_lifeops.life_goal_*` tables (shared with reminders), NOT `app_goals`.
+- **Schema namespace is `app_goals`.** The goal tables
+  (`life_goal_definitions` / `life_goal_links`) were carved out of PA's
+  `app_lifeops` into `app_goals`, owned here, registered via the plugin `schema`
+  field; `GoalsMigrationService` performs the non-destructive one-time copy of
+  any existing `app_lifeops` rows (finances/reminders/calendar carve pattern:
+  skip if source missing / target non-empty, never drop the source). Requires
+  `@elizaos/plugin-sql` loaded first. PA auto-registers this plugin
+  (`ensureLifeOpsGoalsPluginRegistered`) so `app_goals` exists and the migration
+  runs whenever PA is loaded.
 - **`src/db/sql.ts` is a self-contained copy** of PA's raw-SQL helpers (so the
   back-end carries no PA dependency). Keep it in sync only if a correctness fix
   applies to both; do not add goals-specific logic.

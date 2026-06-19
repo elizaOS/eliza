@@ -35,7 +35,6 @@ describe("cleanupDatabase — isolated tenant DB teardown enqueue", () => {
   test("enqueues a deprovision job carrying the ENCRYPTED uri (survives cascade-delete)", async () => {
     findStateByAppIdForWrite.mockResolvedValue({
       user_database_uri: "enc:v1:ciphertext",
-      user_database_project_id: null,
     });
     const { svc, enqueued } = makeService();
     await svc.cleanupDatabase("app-1", { organizationId: "org-1", userId: "u-1" });
@@ -47,7 +46,6 @@ describe("cleanupDatabase — isolated tenant DB teardown enqueue", () => {
   test("no enqueue when the app has no isolated DB", async () => {
     findStateByAppIdForWrite.mockResolvedValue({
       user_database_uri: null,
-      user_database_project_id: null,
     });
     const { svc, enqueued } = makeService();
     await svc.cleanupDatabase("app-2", { organizationId: "org-1" });
@@ -57,7 +55,6 @@ describe("cleanupDatabase — isolated tenant DB teardown enqueue", () => {
   test("no enqueue when the owning org is unknown (can't form the job row)", async () => {
     findStateByAppIdForWrite.mockResolvedValue({
       user_database_uri: "enc:v1:ciphertext",
-      user_database_project_id: null,
     });
     const { svc, enqueued } = makeService();
     await svc.cleanupDatabase("app-3"); // no opts

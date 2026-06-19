@@ -27,10 +27,10 @@ export interface ProviderCardProps {
 }
 
 const CATEGORY_CHIP_CLASSES: Record<ProviderCategory, string> = {
-  cloud: "border-accent/30 bg-accent/10 text-accent",
-  subscription: "border-border bg-surface text-txt",
-  key: "border-border bg-surface text-muted",
-  local: "border-ok/30 bg-ok/10 text-ok",
+  cloud: "text-accent",
+  subscription: "text-txt",
+  key: "text-muted",
+  local: "text-ok",
 };
 
 const CATEGORY_LABEL: Record<ProviderCategory, string> = {
@@ -108,7 +108,7 @@ export function ProviderCard({
         </span>
       </span>
       <span
-        className={`hidden shrink-0 rounded-full border px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wider sm:inline-flex ${CATEGORY_CHIP_CLASSES[category]}`}
+        className={`hidden shrink-0 text-xs sm:inline-flex ${CATEGORY_CHIP_CLASSES[category]}`}
         aria-hidden
       >
         {CATEGORY_LABEL[category]}

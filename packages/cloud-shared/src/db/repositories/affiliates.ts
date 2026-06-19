@@ -9,13 +9,6 @@ import {
   userAffiliates,
 } from "../schemas/affiliates";
 
-function isNeonHttpTransactionUnsupported(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    error.message.toLowerCase().includes("no transactions support in neon-http driver")
-  );
-}
-
 export class AffiliatesRepository {
   async createAffiliateCode(data: NewAffiliateCode): Promise<AffiliateCode> {
     const result = await dbWrite.insert(affiliateCodes).values(data).returning();
@@ -23,52 +16,26 @@ export class AffiliatesRepository {
   }
 
   async createAffiliateCodeIfNotExists(data: NewAffiliateCode): Promise<AffiliateCode | null> {
-    try {
-      return await dbWrite.transaction(async (tx) => {
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtext(${`affiliate_code:${data.user_id}`}))`,
-        );
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`affiliate_code:${data.user_id}`}))`,
+      );
 
-        const [existing] = await tx
-          .select()
-          .from(affiliateCodes)
-          .where(eq(affiliateCodes.user_id, data.user_id))
-          .orderBy(asc(affiliateCodes.created_at))
-          .limit(1);
+      const [existing] = await tx
+        .select()
+        .from(affiliateCodes)
+        .where(eq(affiliateCodes.user_id, data.user_id))
+        .orderBy(asc(affiliateCodes.created_at))
+        .limit(1);
 
-        if (existing) {
-          return existing;
-        }
-
-        const [created] = await tx.insert(affiliateCodes).values(data).returning();
-
-        return created ?? null;
-      });
-    } catch (error) {
-      if (!isNeonHttpTransactionUnsupported(error)) {
-        throw error;
+      if (existing) {
+        return existing;
       }
 
-      return this.createAffiliateCodeIfNotExistsWithoutTransaction(data);
-    }
-  }
+      const [created] = await tx.insert(affiliateCodes).values(data).returning();
 
-  private async createAffiliateCodeIfNotExistsWithoutTransaction(
-    data: NewAffiliateCode,
-  ): Promise<AffiliateCode | null> {
-    const [existing] = await dbRead
-      .select()
-      .from(affiliateCodes)
-      .where(eq(affiliateCodes.user_id, data.user_id))
-      .orderBy(asc(affiliateCodes.created_at))
-      .limit(1);
-
-    if (existing) {
-      return existing;
-    }
-
-    const [created] = await dbWrite.insert(affiliateCodes).values(data).returning();
-    return created ?? null;
+      return created ?? null;
+    });
   }
 
   async updateAffiliateCode(

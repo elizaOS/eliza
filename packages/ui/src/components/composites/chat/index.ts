@@ -12,6 +12,5 @@ export * from "./chat-source.helpers";
 export * from "./chat-thread-layout";
 export * from "./chat-transcript";
 export * from "./chat-types";
-export * from "./create-task-popover";
 export * from "./permission-card";
 export * from "./permission-card.helpers";

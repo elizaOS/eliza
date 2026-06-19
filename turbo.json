@@ -193,6 +193,18 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": [".next/**", "!.next/cache/**"]
     },
+    "@elizaos/example-browser-extension-chrome#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/registry#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["generated-registry.json"]
+    },
+    "elizaos-plugin-echo#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
     "@elizaos/example-browser-extension#build": {
       "dependsOn": [
         "@elizaos/core#build",
@@ -416,7 +428,10 @@
       "outputs": []
     },
     "@elizaos/app#typecheck": {
-      "dependsOn": ["@elizaos/plugin-personal-assistant#build", "@elizaos/ui#build"],
+      "dependsOn": [
+        "@elizaos/plugin-personal-assistant#build",
+        "@elizaos/ui#build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-contacts#typecheck": {

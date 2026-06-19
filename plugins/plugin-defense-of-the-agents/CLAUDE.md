@@ -20,8 +20,9 @@ No elizaOS actions, providers, evaluators, or model handlers are registered. The
 | `views[2]` (id `defense-of-the-agents`, viewType `tui`) | `DefenseAgentsTuiView` terminal view |
 
 The UI components are registered via `@elizaos/app-core/ui-compat`:
-- `DefenseAgentsOperatorSurface` — full operator panel (game telemetry, activity feed, strategy controls)
+- `DefenseAgentsOperatorSurface` — full operator panel (game telemetry, activity feed, strategy controls); also exports `DefenseAgentsTuiView`
 - `DefenseAgentsDetailExtension` — sidebar detail panel, registered as `"defense-agent-control"`
+- `DefenseAgentsSpatialView` — unified spatial/terminal rendering surface used by `register-terminal-view.tsx`
 
 ### Route handlers (exported from `src/routes.ts`, consumed by the host app router)
 
@@ -41,10 +42,14 @@ plugins/plugin-defense-of-the-agents/
   src/
     index.ts                 Plugin object (createAppDefenseOfTheAgentsPlugin), re-exports routes + ui
     routes.ts                All game logic: session lifecycle, game loop, strategy, HTTP route handler
+    register-terminal-view.tsx  Registers the TUI view for @elizaos/tui terminal rendering
+    components/
+      DefenseAgentsSpatialView.tsx   Unified spatial/terminal rendering component
     ui/
       index.ts               registerOperatorSurface + registerDetailExtension calls
-      DefenseAgentsOperatorSurface.tsx   Main dashboard React component
+      DefenseAgentsOperatorSurface.tsx   Main dashboard React component (also exports DefenseAgentsTuiView)
       DefenseAgentsDetailExtension.tsx   Sidebar detail panel React component
+      defense-of-the-agents-view-bundle.ts  Vite entry: re-exports DefenseAgentsOperatorSurface, DefenseAgentsTuiView, interact
   vite.config.views.ts       Vite config for the dist/views/bundle.js UI bundle
   vitest.config.ts           Test config
 ```

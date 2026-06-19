@@ -367,4 +367,43 @@ describe("CalendarSection", () => {
 
     expect(screen.getByText("Calendar failed to load.")).toBeTruthy();
   });
+
+  it("surfaces the next upcoming event as one quiet proactive line", () => {
+    const start = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    calendarState.current = makeResult({
+      events: [
+        evt({
+          id: "soon",
+          title: "Dentist",
+          startAt: start.toISOString(),
+          endAt: end.toISOString(),
+        }),
+      ],
+    });
+
+    render(<CalendarSection {...noopProps} />);
+
+    const line = screen.getByTestId("lifeops-calendar-proactive");
+    expect(line.textContent).toMatch(/^Next: Dentist at /);
+  });
+
+  it("renders no proactive line when every event is in the past", () => {
+    const start = new Date(Date.now() - 4 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    calendarState.current = makeResult({
+      events: [
+        evt({
+          id: "past",
+          title: "Done already",
+          startAt: start.toISOString(),
+          endAt: end.toISOString(),
+        }),
+      ],
+    });
+
+    render(<CalendarSection {...noopProps} />);
+
+    expect(screen.queryByTestId("lifeops-calendar-proactive")).toBeNull();
+  });
 });

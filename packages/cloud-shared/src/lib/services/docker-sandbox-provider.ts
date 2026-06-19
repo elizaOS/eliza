@@ -941,7 +941,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const proxyEnv = buildStewardProxyEnv();
 
     // Propagate the orchestrator's KMS configuration into the container so
-    // field-level encryption (per-agent Neon DB) uses the same backend + root
+    // field-level encryption (per-agent DB) uses the same backend + root
     // key on both ends. Without this the container's resolveKmsBackend() falls
     // through to the `steward` default and crashes at boot when no steward
     // config is present:
@@ -1055,17 +1055,34 @@ export class DockerSandboxProvider implements SandboxProvider {
         stewardTenant.apiKey,
       );
 
-      // Pass the shared Upstash credentials through to the sandbox so it can
-      // self-register `agent:<id>:server` + `server:<name>:url` keys that
-      // gateway-discord / gateway-webhook resolve for inbound platform
-      // messages. Omit when the orchestrator env doesn't carry them — the
-      // sandbox will skip registration silently in that case.
-      const registryRedisUrl = process.env.KV_REST_API_URL?.trim() ?? "";
-      const registryRedisToken = process.env.KV_REST_API_TOKEN?.trim() ?? "";
-      const canSelfRegister = registryRedisUrl !== "" && registryRedisToken !== "";
+      // Pass a registry backend through to the sandbox so it can self-register
+      // `agent:<id>:server` + `server:<name>:url` keys that gateway-discord /
+      // gateway-webhook resolve for inbound platform messages. The sandbox runs
+      // on a Hetzner core node, so the URL must be reachable FROM THERE — a
+      // public-proxy `redis://` URL (e.g. Railway) or an Upstash REST endpoint,
+      // never a `*.railway.internal` host. Resolution order:
+      //   1. SANDBOX_REGISTRY_REDIS_URL (+ optional _TOKEN): explicit operator
+      //      override. A `redis://` / `rediss://` URL carries its own auth, so
+      //      no token is needed; an `https://` Upstash URL needs the token.
+      //   2. KV_REST_API_URL + KV_REST_API_TOKEN: legacy Upstash REST.
+      // Omit when neither is configured — the sandbox skips registration.
+      const explicitRegistryUrl = process.env.SANDBOX_REGISTRY_REDIS_URL?.trim() ?? "";
+      const explicitRegistryToken = process.env.SANDBOX_REGISTRY_REDIS_TOKEN?.trim() ?? "";
+      const kvRestUrl = process.env.KV_REST_API_URL?.trim() ?? "";
+      const kvRestToken = process.env.KV_REST_API_TOKEN?.trim() ?? "";
+      const registryRedisUrl = explicitRegistryUrl || kvRestUrl;
+      const registryRedisToken = explicitRegistryUrl ? explicitRegistryToken : kvRestToken;
+      const registryIsTcp = /^rediss?:\/\//i.test(registryRedisUrl);
+      // TCP URLs carry auth inline; REST endpoints require a bearer token.
+      const canSelfRegister =
+        registryRedisUrl !== "" && (registryIsTcp || registryRedisToken !== "");
       if (!canSelfRegister) {
         logger.warn(
-          "[docker-sandbox] KV_REST_API_URL / KV_REST_API_TOKEN missing from orchestrator env — sandbox will not register in Redis and gateways will not route inbound platform messages to it",
+          "[docker-sandbox] No sandbox registry backend configured — set SANDBOX_REGISTRY_REDIS_URL to a sandbox-reachable redis:// proxy, or KV_REST_API_URL/KV_REST_API_TOKEN to an Upstash REST endpoint. Sandbox will not register in Redis and gateways will not route inbound platform (Discord/Telegram) messages to it",
+        );
+      } else if (!registryIsTcp && !/^https?:\/\//i.test(registryRedisUrl)) {
+        logger.warn(
+          `[docker-sandbox] Sandbox registry URL has an unexpected scheme (${registryRedisUrl.split(":")[0]}:) — expected redis(s):// or http(s)://. Registration may fail`,
         );
       }
 
@@ -1119,7 +1136,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         ...(canSelfRegister
           ? {
               SANDBOX_REGISTRY_REDIS_URL: registryRedisUrl,
-              SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken,
+              // Only the REST transport needs a token; a redis:// URL omits it.
+              ...(registryRedisToken ? { SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken } : {}),
               SANDBOX_AGENT_ID: agentId,
               // The gateways route by the platform character_id, so the
               // container must register under (and answer as) that id, not

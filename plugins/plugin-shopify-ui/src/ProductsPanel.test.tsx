@@ -88,7 +88,6 @@ describe("ProductsPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
         onPageChange: vi.fn(),
       }),
     );
@@ -111,9 +110,7 @@ describe("ProductsPanel", () => {
     expect(screen.getByLabelText("Draft")).toBeTruthy();
   });
 
-  it("resets to page 1 and forwards the query when searching", () => {
-    const onSearchChange = vi.fn();
-    const onPageChange = vi.fn();
+  it("renders the chat-search hint instead of an in-view search box", () => {
     render(
       React.createElement(ProductsPanel, {
         products: [activeProduct],
@@ -122,14 +119,13 @@ describe("ProductsPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange,
-        onPageChange,
+        onPageChange: vi.fn(),
       }),
     );
-    const input = screen.getByPlaceholderText("Search products…");
-    fireEvent.change(input, { target: { value: "Sticker" } });
-    expect(onSearchChange).toHaveBeenCalledWith("Sticker");
-    expect(onPageChange).toHaveBeenCalledWith(1);
+    // No in-view search box — the floating chat is the panel's search bar.
+    expect(screen.queryByPlaceholderText("Search products…")).toBeNull();
+    const hint = screen.getByTestId("chat-search-hint");
+    expect(hint.textContent).toBe("Search products by typing in the chat.");
   });
 
   it("renders the pagination label + buttons and respects disabled bounds", () => {
@@ -143,7 +139,6 @@ describe("ProductsPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
         onPageChange,
       }),
     );
@@ -166,7 +161,6 @@ describe("ProductsPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
         onPageChange,
       }),
     );
@@ -187,7 +181,6 @@ describe("ProductsPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
         onPageChange: vi.fn(),
       }),
     );
@@ -203,7 +196,6 @@ describe("ProductsPanel", () => {
         loading: false,
         error: null,
         search: "xyz",
-        onSearchChange: vi.fn(),
         onPageChange: vi.fn(),
       }),
     );
@@ -216,7 +208,6 @@ describe("ProductsPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
         onPageChange: vi.fn(),
       }),
     );
@@ -237,7 +228,6 @@ describe("ProductsPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
         onPageChange: vi.fn(),
       }),
     );
@@ -303,7 +293,6 @@ describe("ProductsPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
         onPageChange: vi.fn(),
       }),
     );
@@ -328,7 +317,6 @@ describe("ProductsPanel", () => {
         loading: false,
         error: null,
         search: "",
-        onSearchChange: vi.fn(),
         onPageChange: vi.fn(),
       }),
     );

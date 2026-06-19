@@ -215,9 +215,7 @@ function AccessInfoRow({
 }) {
   return (
     <div className="grid gap-1 border-t border-border/30 py-2.5 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-3">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted">
-        {label}
-      </div>
+      <div className="text-xs font-medium text-muted">{label}</div>
       <div className="min-w-0 space-y-0.5">
         <div className="break-words text-sm font-medium text-txt-strong">
           {value}
@@ -702,7 +700,7 @@ function SessionRow({
             {session.kind}
           </span>
           {session.current && (
-            <span className="rounded-full border border-ok/35 bg-ok/12 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.08em] text-ok">
+            <span className="rounded-full border border-ok/35 bg-ok/12 px-2 py-0.5 text-xs font-medium text-ok">
               {t("security.sessions.thisSession", {
                 defaultValue: "This session",
               })}
@@ -967,7 +965,7 @@ function RemotePasswordSection({
           <div className="flex flex-col gap-1.5">
             <Label
               htmlFor={displayNameId}
-              className="text-xs uppercase tracking-wide text-muted"
+              className="text-xs text-muted"
             >
               {t("security.password.field.displayName", {
                 defaultValue: "Display name",
@@ -994,7 +992,7 @@ function RemotePasswordSection({
           <div className="flex flex-col gap-1.5">
             <Label
               htmlFor={currentPasswordId}
-              className="text-xs uppercase tracking-wide text-muted"
+              className="text-xs text-muted"
             >
               {t("security.password.field.current", {
                 defaultValue: "Current password",
@@ -1020,7 +1018,7 @@ function RemotePasswordSection({
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor={newPasswordId}
-            className="text-xs uppercase tracking-wide text-muted"
+            className="text-xs text-muted"
           >
             {t("security.password.field.new", {
               defaultValue: "New password",
@@ -1048,7 +1046,7 @@ function RemotePasswordSection({
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor={confirmPasswordId}
-            className="text-xs uppercase tracking-wide text-muted"
+            className="text-xs text-muted"
           >
             {t("security.password.field.confirm", {
               defaultValue: "Confirm new password",

@@ -7,6 +7,7 @@ import {
   offloadJsonField,
   offloadTextField,
 } from "../../lib/storage/object-store";
+import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import type { Job, NewJob } from "../schemas/jobs";
@@ -500,12 +501,28 @@ export class JobsRepository {
    * Marks as failed if max attempts reached.
    * Implements exponential backoff for retries.
    *
+   * When the increment exhausts retries (status flips to `failed`), an optional
+   * `onFailedInTx` callback runs INSIDE the same transaction as the job-status
+   * write. This lets callers flip dependent rows (e.g. an agent sandbox to
+   * `error`, or an app deployment to `failed`) atomically with the job failure,
+   * so a partial commit can never leave the sandbox stuck in `provisioning`
+   * after the job is already `failed` (the 10-min stuck-recovery cron is the
+   * backstop, not the primary signal).
+   *
    * @param id - Job ID to update.
    * @param error - Error message.
    * @param maxAttempts - Maximum allowed attempts.
+   * @param onFailedInTx - Optional callback run in-transaction when the job
+   *   flips to `failed`. Receives the transaction handle and the hydrated job.
+   *   Throwing rolls back BOTH the job-status flip and the dependent write.
    * @returns Updated job record or undefined if not found.
    */
-  async incrementAttempt(id: string, error: string, maxAttempts: number): Promise<Job | undefined> {
+  async incrementAttempt(
+    id: string,
+    error: string,
+    maxAttempts: number,
+    onFailedInTx?: (tx: DbTransaction, job: Job) => Promise<void>,
+  ): Promise<Job | undefined> {
     const job = await this.findById(id);
     if (!job) return undefined;
 
@@ -516,26 +533,42 @@ export class JobsRepository {
     const backoffMs = isFailed ? 0 : 4 ** (newAttempts - 1) * 30 * 1000;
     const scheduledFor = new Date(Date.now() + backoffMs);
 
-    const [updated] = await dbWrite
-      .update(jobs)
-      .set({
-        status: isFailed ? "failed" : "pending",
-        ...(await prepareJobPayload(
-          { error },
-          {
-            id: job.id,
-            organization_id: job.organization_id,
-            created_at: job.created_at,
-          },
-        )),
-        attempts: newAttempts,
-        updated_at: new Date(),
-        scheduled_for: isFailed ? job.scheduled_for : scheduledFor,
-      })
-      .where(eq(jobs.id, id))
-      .returning();
+    const payload = await prepareJobPayload(
+      { error },
+      {
+        id: job.id,
+        organization_id: job.organization_id,
+        created_at: job.created_at,
+      },
+    );
 
-    return updated ? await hydrateJob(updated) : undefined;
+    const hydrated = await dbWrite.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(jobs)
+        .set({
+          status: isFailed ? "failed" : "pending",
+          ...payload,
+          attempts: newAttempts,
+          updated_at: new Date(),
+          scheduled_for: isFailed ? job.scheduled_for : scheduledFor,
+        })
+        .where(eq(jobs.id, id))
+        .returning();
+
+      if (!updated) return undefined;
+
+      const result = await hydrateJob(updated);
+
+      // Same-transaction dependent write on permanent failure: commits
+      // atomically with the `failed` flip above.
+      if (isFailed && onFailedInTx) {
+        await onFailedInTx(tx, result);
+      }
+
+      return result;
+    });
+
+    return hydrated;
   }
 
   /**

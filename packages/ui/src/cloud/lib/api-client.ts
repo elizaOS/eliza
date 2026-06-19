@@ -30,6 +30,13 @@ export class ApiError extends Error {
 }
 
 function getApiBaseUrl(): string {
+  // Deliberately same-origin-only in the browser: every `/api/*` call rides the
+  // page's own origin so the steward-token cookie + Bearer header stay scoped to
+  // Eliza Cloud. There is intentionally NO cross-origin fetch bridge here (the
+  // legacy cloud-frontend SPA had one — `installApiFetchBridge` — alongside its
+  // Pages proxy, which created two transports with contradictory cookie scoping;
+  // the app never adopted that, so that dual-path concern does not exist here).
+  // `resolveApiUrl` below enforces this by throwing on any cross-origin URL.
   if (typeof window !== "undefined") return "";
 
   const fromEnv =
@@ -173,6 +180,19 @@ export async function apiFetch(
   });
 
   if (!res.ok) {
+    // A 401 on an authed call means our session was rejected (token revoked or
+    // expired out from under the proactive refresh). Nudge the Steward runtime
+    // to refresh-or-clear so a stale session self-heals instead of leaving the
+    // UI "authed" until the next interaction. Purely additive — the call still
+    // throws ApiError exactly as before; the listener is single-flight and never
+    // retries the request.
+    if (res.status === 401 && !skipAuth && typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(new CustomEvent("steward-unauthorized"));
+      } catch {
+        // no-op: event dispatch is best-effort
+      }
+    }
     const payload = await readPayload(res, false);
     const { code, message } = errorDetails(payload, res.status);
     throw new ApiError(res.status, code, message, payload);

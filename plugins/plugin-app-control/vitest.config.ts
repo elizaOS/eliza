@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config";
 const sharedSrc = path.resolve(__dirname, "../../packages/shared/src");
 const coreSrc = path.resolve(__dirname, "../../packages/core/src");
 const loggerSrc = path.resolve(__dirname, "../../packages/logger/src");
+const tuiSrc = path.resolve(__dirname, "../../packages/tui/src");
 const uiSrc = path.resolve(__dirname, "../../packages/ui/src");
 const require = createRequire(import.meta.url);
 // react-dom is not a direct dependency of this plugin; resolve it through the
@@ -67,6 +68,10 @@ export default defineConfig({
 			{
 				find: "@elizaos/ui/spatial",
 				replacement: path.join(uiSrc, "spatial/index.ts"),
+			},
+			{
+				find: "@elizaos/tui",
+				replacement: path.join(tuiSrc, "index.ts"),
 			},
 			// Use workspace source for @elizaos/shared and @elizaos/core so
 			// recently-added exports resolve at test time without requiring

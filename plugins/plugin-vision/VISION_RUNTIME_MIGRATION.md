@@ -1,5 +1,22 @@
 # plugin-vision runtime migration: ONNX / TF.js / face-api / tesseract → ggml
 
+## Status (update)
+
+- **TensorFlow.js: REMOVED.** `@tensorflow/tfjs-node`,
+  `@tensorflow-models/coco-ssd`, and `@tensorflow-models/pose-detection` are
+  gone from `package.json`; `src/vision-models.ts` is deleted.
+- **Object detection: LIVE on ggml.** `native/yolo.cpp` now implements the full
+  YOLOv8n forward pass on ggml (built + numerically verified against the
+  PyTorch reference — box max |Δ| ≈ 0.001 px, classes exact). Build it with
+  `bun run build:native` and convert weights with `bun run build:weights`; the
+  self-contained `libyolo.<ext>` links ggml statically.
+- **Pose: deferred to the heuristic path.** MoveNet is removed; a ggml MoveNet
+  port remains the open item (Phase 3 below). `service.ts` falls back to
+  motion-derived person detection when pose is requested.
+- **Remaining legacy:** `face-api.js` (pure-JS `tfjs-core`, not the native
+  addon) still backs face recognition; doCTR/RetinaFace/MobileFaceNet ggml
+  ports are scaffolded pending weights.
+
 ## Charter
 
 Every local vision model in `plugin-vision` must run through a ggml-based C++

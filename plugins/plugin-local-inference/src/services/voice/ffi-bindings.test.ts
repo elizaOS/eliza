@@ -158,8 +158,8 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-	it("ELIZA_INFERENCE_ABI_VERSION is 5 for reference profiles and wake-word", () => {
-		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(5);
+	it("ELIZA_INFERENCE_ABI_VERSION is 6 (reference profiles, wake-word, speaker + diarizer)", () => {
+		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(6);
 	});
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {
@@ -314,10 +314,18 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
 		expect(statSync(STUB_DYLIB).size).toBeGreaterThan(1024);
 	});
 
-	it("loads the stub, reports ABI v3, completes a create/destroy round-trip", () => {
+	it("loads the committed v5 stub at degraded capability (no v6 speaker/diariz classifiers) and completes a create/destroy round-trip", () => {
 		const report = runBunHarness({ scenario: "create-destroy" });
 		expectHarnessOk(report);
-		expect(report.libraryAbiVersion).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
+		// The committed stub predates the ABI-v6 speaker/diarizer fusion: it
+		// reports "5" and exports the v5 symbol set (no eliza_inference_speaker_*
+		// / _diariz_*). The binding accepts it at degraded capability — the v6
+		// classifier surfaces report unsupported — so older fused builds still
+		// load instead of hard-failing the ABI check.
+		expect(report.libraryAbiVersion).toBe("5");
+		expect(Number(report.libraryAbiVersion)).toBeLessThanOrEqual(
+			ELIZA_INFERENCE_ABI_VERSION,
+		);
 		expect(report.contextWasNonNull).toBe(true);
 	});
 

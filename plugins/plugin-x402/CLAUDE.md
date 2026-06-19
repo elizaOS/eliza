@@ -42,7 +42,9 @@ src/
   index.ts                    Re-exports all public API; x402Plugin object
   payment-config.ts           Network/token/address registry; PAYMENT_CONFIGS; atomicAmountForPriceInCents
   payment-wrapper.ts          applyPaymentProtection; createPaymentAwareHandler; verifyPayment (all strategies)
+  payment-wrapper.test.ts     Unit tests for payment-wrapper
   startup-validator.ts        validateX402Startup; validateAndThrowIfInvalid
+  startup-validator.test.ts   Unit tests for startup-validator
   x402-resolve.ts             resolveEffectiveX402; event name constants
   x402-types.ts               Accepts / X402Response types and validators; createAccepts / createX402Response
   x402-standard-payment.ts    Standard X-Payment header decoding; facilitator verify+settle POST helpers
@@ -51,6 +53,7 @@ src/
   x402-replay-keys.ts         Canonical key derivation from payment proofs / payment IDs
   x402-facilitator-binding.ts Strict/relaxed binding checks on facilitator verify responses
   types.ts                    Internal types (X402Runtime, EIP712*, PaymentVerification*)
+  __tests__/                  Additional test suites
 ```
 
 ## Commands
@@ -60,6 +63,7 @@ Only scripts that exist in this package's `package.json`:
 ```bash
 bun run --cwd plugins/plugin-x402 build        # compile via build.ts (bun build)
 bun run --cwd plugins/plugin-x402 clean        # rm -rf dist
+bun run --cwd plugins/plugin-x402 test         # vitest run
 bun run --cwd plugins/plugin-x402 typecheck    # tsgo --noEmit
 bun run --cwd plugins/plugin-x402 lint         # currently aliases typecheck
 ```
@@ -159,4 +163,3 @@ Edit `verifyPayment` in `src/payment-wrapper.ts`. Each strategy must call `repla
 - **Standard X-Payment payloads (x402-fetch / CDP style) take priority** in `verifyPayment`. A decoded standard payload that fails facilitator verification is rejected outright — it does not fall through to legacy paths.
 - **Double-wrap guard.** HTTP dispatch checks `isRoutePaymentWrapped` before calling `createPaymentAwareHandler`; the `X402_ROUTE_PAYMENT_WRAPPED` symbol prevents double-wrapping if routes are processed more than once.
 - **Token price math is rational, not float.** `atomicAmountForPriceInCents` uses `BigInt` arithmetic; env price overrides are parsed as exact decimal strings.
-- **No built-in test suite.** The package has no `test` script. Integration testing happens at the agent/plugin level.

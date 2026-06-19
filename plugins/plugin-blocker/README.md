@@ -1,8 +1,8 @@
 # @elizaos/plugin-blocker
 
 Focus / distraction control for Eliza agents: website blocking via a
-SelfControl-style hosts engine and macOS / mobile app blocking. Exposes the
-`BLOCK` umbrella action, two providers (`WEBSITE_BLOCKER`, `APP_BLOCKER`),
+SelfControl-style hosts engine and macOS / mobile app blocking. Exposes
+two providers (`websiteBlocker`, `appBlocker`),
 `WebsiteBlockerService` + `AppBlockerService`, a drizzle `pgSchema('app_blocker')`,
 and a `focus` overlay view for the dashboard shell.
 
@@ -10,10 +10,12 @@ and a `focus` overlay view for the dashboard shell.
 
 This is the initial scaffold landed as part of decomposing the giant
 `@elizaos/plugin-personal-assistant` into focused plugins. The plugin compiles standalone
-and registers with the runtime; the action / providers / services are
+and registers with the runtime; the providers / services are
 intentional stubs that point at the live implementations still resident in
-`plugin-lifeops`. The next pass moves that code over and removes the lifeops
-copies.
+`plugin-lifeops`. The `BLOCK` umbrella action is still registered by the
+personal-assistant plugin (its persistence couples to the lifeops SQL layer) and
+is intentionally not registered here to avoid double-registration. The next pass
+moves that code over and removes the lifeops copies.
 
 ## Migration mapping from `@elizaos/plugin-personal-assistant`
 
@@ -29,14 +31,9 @@ copies.
 
 ## Surface
 
-### Action
-- `BLOCK` — target/subaction matrix:
-  - `app`: `block`, `unblock`, `status`
-  - `website`: `block`, `unblock`, `status`, `request_permission`, `release`, `list_active`
-
 ### Providers
-- `WEBSITE_BLOCKER` — active website block sessions and override state.
-- `APP_BLOCKER` — active app block sessions and override state.
+- `websiteBlocker` — active website block sessions and override state.
+- `appBlocker` — active app block sessions and override state.
 
 Both gate to `contexts: ["focus", "automation"]`.
 
@@ -54,6 +51,11 @@ Both gate to `contexts: ["focus", "automation"]`.
 - `focus` — path `/focus`, component `FocusView`, bundled to
   `dist/views/bundle.js` by `vite.config.views.ts`.
 
+### Action (not yet registered)
+- `BLOCK` (`src/actions/block.ts`) — stub; target/subaction matrix exists but
+  the action is not yet added to the plugin object. It is currently registered
+  by `@elizaos/plugin-personal-assistant`.
+
 ## Commands
 
 ```bash
@@ -68,6 +70,6 @@ bun run --cwd plugins/plugin-blocker clean       # rm -rf dist
 
 - Hard-depends on `@elizaos/plugin-sql` for migrations and `runtime.db`.
 - Services log with the `[Blocker]` prefix.
-- Two providers, one schema, one umbrella action — the same shape as the other
+- Two providers, one schema — the same shape as the other
   decomposed lifeops plugins.
 - See the root `AGENTS.md` for repo-wide architecture rules.

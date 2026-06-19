@@ -175,6 +175,41 @@ export interface VoiceModelVersion {
  */
 export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   {
+    id: "wakeword",
+    version: "0.3.0",
+    parentVersion: "0.2.0",
+    publishedToHfAt: "2026-06-19T18:05:39Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "c544bb4c78a601a0da8372b9399dfe668fbadb1e",
+    ggufAssets: [
+      {
+        filename: "voice/wakeword/hey-eliza.melspec.gguf",
+        sha256:
+          "98bd2d5e3cc09e416626cd1a6a758cb92bb8096766d25ecf57d4c99927db682d",
+        sizeBytes: 543584,
+        quant: "fp16",
+      },
+      {
+        filename: "voice/wakeword/hey-eliza.embedding.gguf",
+        sha256:
+          "9cfcb0d9f1939c68cc9e63f5ac9e0f09b8e8568ee1085dbb50e7391e874a1dc5",
+        sizeBytes: 659904,
+        quant: "fp16",
+      },
+      {
+        filename: "voice/wakeword/hey-eliza.classifier.gguf",
+        sha256:
+          "4502c92664b18d598753114f09925921ddd065d72871607c3a842fa70510a350",
+        sizeBytes: 315456,
+        quant: "fp16",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry:
+      "0.3.0 - real hey-eliza head (no-mel-rescale, ~98pct TA / ~4-7pct FA held-out)",
+    minBundleVersion: "0.0.0",
+  },
+  {
     id: "turn-detector-intl",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T11:15:08Z",

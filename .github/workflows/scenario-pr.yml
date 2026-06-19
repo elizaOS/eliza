@@ -268,7 +268,7 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Actual app all-pages render + click-safety browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/all-pages-clicksafe.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/all-pages-clicksafe.spec.ts test/ui-smoke/builtin-views-visual.spec.ts --project=chromium
 
       - name: Upload app browser all-pages artifacts
         if: always()

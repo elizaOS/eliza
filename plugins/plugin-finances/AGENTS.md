@@ -29,6 +29,12 @@ and on `@elizaos/plugin-elizacloud` for the managed Plaid / PayPal clients.
   candidates / cancellations). Uses the self-contained `src/db/sql.ts` helpers
   (runtime DB handle). PA's `LifeOpsRepository` delegates its finance methods
   here so the PA subscriptions mixin reaches the finance tables unchanged.
+- `SubscriptionsService` (`src/services/subscriptions-service.ts`) — standalone
+  successor to PA's `withSubscriptions` mixin. Handles subscription audit /
+  cancellation; reaches Gmail via `SubscriptionsGmailGateway`
+  (`src/services/gmail-seam.ts`) and the browser bridge via
+  `SubscriptionsBrowserGateway` (`src/services/browser-bridge-seam.ts`) through
+  runtime-service seams instead of PA internals.
 - `runPaymentsHandler`, `MONEY_PARAMETERS`, `OWNER_FINANCE_SIMILES`,
   `MONEY_TAGS`, `MONEY_CONTEXTS` (`src/actions/finances.ts`) — the payments
   OWNER_FINANCES dispatch + parameter schema. PA imports these; the registered
@@ -74,6 +80,9 @@ src/
     index.ts                      re-exports schema.ts
   services/
     migration.ts                  FinancesMigrationService (app_lifeops → app_finances copy)
+    subscriptions-service.ts      SubscriptionsService (subscription audit / cancellation back-end)
+    browser-bridge-seam.ts        SubscriptionsBrowserGateway runtime-service seam
+    gmail-seam.ts                 SubscriptionsGmailGateway runtime-service seam
   components/
     finances/
       FinancesView.tsx            Dashboard view (fetches /api/lifeops/money/*)
@@ -85,11 +94,12 @@ src/
 - `@elizaos/plugin-finances` MUST NOT import `@elizaos/plugin-personal-assistant`.
 - PA delegates the payments back-end here (routes via `runFinancesRoute` →
   `FinancesService`; `actions/payments.ts` re-exports `runPaymentsHandler`).
-- **Subscription audit / cancellation stays in PA** (`withSubscriptions` mixin):
-  it orchestrates the agent's Gmail triage + browser-bridge + computer-use
-  surfaces and reads PA's `app_lifeops` browser-session table, so it cannot be a
-  PA-import-free finances service. It reaches the finance tables through PA's
-  `LifeOpsRepository`, which delegates to `FinancesRepository`.
+- **Subscription audit / cancellation lives in `SubscriptionsService`**
+  (`src/services/subscriptions-service.ts`), a standalone successor to PA's
+  `withSubscriptions` mixin. It reaches cross-domain surfaces through
+  runtime-service seams (`gmail-seam.ts` via `@elizaos/plugin-google`,
+  `browser-bridge-seam.ts` via `@elizaos/plugin-browser`) rather than PA
+  internals, so it carries no PA dependency.
 
 ## Commands
 
@@ -120,9 +130,9 @@ bun run --cwd plugins/plugin-finances clean        # rm -rf dist
 | Finance schema (`app_finances`) + migration | plugin-finances |
 | Payment / subscription types, recurring detection, CSV parse, token crypto, playbooks | plugin-finances |
 | `runPaymentsHandler` + OWNER_FINANCES param schema / similes | plugin-finances (`src/actions/finances.ts`) |
+| Subscription audit / cancellation (`SubscriptionsService`) | plugin-finances (`src/services/subscriptions-service.ts`) |
 | Registered `OWNER_FINANCES` umbrella action + `runMoneyHandler` dispatch | PA (`owner-surfaces.ts` / `money.ts`) — routes `subscription_*` to PA |
 | `/api/lifeops/money/*` routes | PA (`lifeops-routes.ts`, `runFinancesRoute` → `FinancesService`) |
-| Subscription audit / cancellation (`withSubscriptions` mixin) | PA (Gmail + browser-bridge orchestration) |
 
 ## How to extend
 
@@ -156,8 +166,8 @@ bun run --cwd plugins/plugin-finances clean        # rm -rf dist
   entity from the request context.
 - **Currency amounts are stored in USD** (`amount_usd` real), not minor units.
 - **No import of `@elizaos/plugin-personal-assistant`.** Cross-domain capability
-  the finance back-end can't own (Gmail triage, browser bridge) stays in PA;
-  subscription orchestration lives there for that reason.
+  the finance back-end needs (Gmail, browser bridge) is accessed via runtime-service
+  seams, not PA internals.
 - **`src/db/sql.ts` is a self-contained copy** of PA's raw-SQL helpers (so the
   back-end carries no PA dependency). Keep it in sync only if a correctness fix
   applies to both; do not add PA-specific logic.

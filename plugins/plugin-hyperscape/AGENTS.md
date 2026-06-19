@@ -43,7 +43,7 @@ All exported from `src/routes.ts` and re-exported from `src/index.ts`.
 
 ### TUI interact capabilities
 
-`HyperscapeOperatorSurface.tsx` exports a top-level `interact` function for terminal surface automation:
+`HyperscapeOperatorSurface.interact.ts` exports a top-level `interact` function for terminal surface automation:
 
 - `terminal-hyperscape-state` — returns current TUI view metadata
 - `terminal-hyperscape-command` — sends an operator message (`runId`, `content` required)
@@ -53,14 +53,19 @@ All exported from `src/routes.ts` and re-exported from `src/index.ts`.
 
 ```
 src/
-  index.ts                          Plugin entry; Plugin object (views) + re-exports
-  routes.ts                         All app-manager lifecycle route hooks; Hyperscape API fetch logic
+  index.ts                                Plugin entry; Plugin object (views) + re-exports; lazy-loads register-terminal-view in non-DOM hosts
+  routes.ts                               All app-manager lifecycle route hooks; Hyperscape API fetch logic
+  register-terminal-view.tsx              Registers HyperscapeSpatialView as the terminal view in Node/non-DOM hosts
+  components/
+    HyperscapeSpatialView.tsx             Unified spatial view rendered in the terminal host
   ui/
-    index.ts                        Registers operator surfaces + detail extension at import time
-    HyperscapeOperatorSurface.tsx   Main operator surface (web + XR + TUI views, pause/resume, relay)
-    HyperscapeDetailExtension.tsx   Detail-panel wrapper; renders HyperscapeOperatorSurface in "detail" variant
+    index.ts                              Registers operator surfaces + detail extension at import time
+    HyperscapeOperatorSurface.tsx         Main operator surface (web + XR + TUI views, pause/resume, relay); also exports HyperscapeTuiView
+    HyperscapeOperatorSurface.interact.ts Interact capability handler (terminal-hyperscape-state/command/control); split from the TSX file
+    HyperscapeDetailExtension.tsx         Detail-panel wrapper; renders HyperscapeOperatorSurface in "detail" variant
+    hyperscape-view-bundle.ts             Vite view-bundle entry; re-exports view components + interact for dist/views/bundle.js
 assets/
-  hero.png                          App hero image referenced in package.json elizaos.app.heroImage
+  hero.png                                App hero image referenced in package.json elizaos.app.heroImage
 ```
 
 ## Commands
@@ -104,11 +109,11 @@ If neither `HYPERSCAPE_API_URL` nor `HYPERSCAPE_CLIENT_URL` is set, live session
 1. Create the component in `src/ui/`.
 2. Export it from `src/ui/index.ts`.
 3. If it should be a new view, add a view entry to the `views` array in `src/index.ts` with a unique `id`, `path`, `componentExport` name, and `bundlePath` pointing to `dist/views/bundle.js`.
-4. Ensure the component is exported from the Vite views entry so the bundle includes it.
+4. Ensure the component is exported from the Vite views entry (`src/ui/hyperscape-view-bundle.ts`) so the bundle includes it.
 
 ### Add a new TUI capability
 
-Add a new `if (capability === "...")` branch to the `interact` function in `HyperscapeOperatorSurface.tsx` and document the expected `params` shape inline.
+Add a new `if (capability === "...")` branch to the `interact` function in `HyperscapeOperatorSurface.interact.ts` and document the expected `params` shape inline.
 
 ## Conventions / gotchas
 

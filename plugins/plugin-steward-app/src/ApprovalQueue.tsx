@@ -5,7 +5,7 @@
 
 import { Button, PagePanel, Spinner } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Check, Clock, Copy, RefreshCw, X } from "lucide-react";
+import { Check, Clock, Copy, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatWeiValue, getChainName, truncateAddress } from "./chain-utils";
 import type {
@@ -64,7 +64,7 @@ function PendingApprovalActions({
         {...approveElement.agentProps}
         variant="default"
         size="sm"
-        className="h-9 rounded-xl bg-ok px-4 text-xs font-semibold text-white shadow-sm hover:bg-ok"
+        className="h-9 rounded-xl bg-accent px-4 text-xs font-semibold text-accent-fg hover:bg-accent/90"
         onClick={() => onApprove(txId)}
         aria-label={`Approve transaction ${txId}`}
       >
@@ -230,14 +230,6 @@ export function ApprovalQueue({
   const [rejectReason, setRejectReason] = useState("");
   const prevCountRef = useRef(0);
 
-  const refreshElement = useAgentElement<HTMLButtonElement>({
-    id: "action-refresh",
-    role: "button",
-    label: "Refresh approvals",
-    group: "approval-actions",
-    description: "Reload the pending approval queue",
-  });
-
   const loadData = useCallback(async () => {
     try {
       const data = await getStewardPending();
@@ -395,35 +387,18 @@ export function ApprovalQueue({
       ) : null}
 
       {items.length > 0 ? (
-        <PagePanel.Toolbar className="justify-between">
+        <PagePanel.Toolbar>
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-txt">Pending</span>
             <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-accent px-1.5 py-0.5 text-2xs font-bold text-accent-fg">
               {items.length}
             </span>
           </div>
-          <Button
-            ref={refreshElement.ref}
-            {...refreshElement.agentProps}
-            variant="outline"
-            size="icon"
-            className="h-8 w-8 rounded-xl"
-            onClick={() => {
-              setLoading(true);
-              void loadData();
-            }}
-            disabled={loading}
-            aria-label="Refresh approvals"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-            />
-          </Button>
         </PagePanel.Toolbar>
       ) : null}
 
-      {/* Approval cards */}
-      <div className="space-y-3">
+      {/* Approval rows */}
+      <div className="divide-y divide-border/15">
         {items.map((item) => {
           const tx = item.transaction;
           const reasons = getPolicyReasons(tx.policyResults ?? []);
@@ -432,7 +407,7 @@ export function ApprovalQueue({
           return (
             <div
               key={item.queueId}
-              className={`rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-opacity ${
+              className={`px-1 py-4 transition-opacity ${
                 isProcessing ? "opacity-60 pointer-events-none" : ""
               }`}
             >
@@ -442,48 +417,36 @@ export function ApprovalQueue({
                   <div className="flex items-center gap-2 text-xs text-muted">
                     <Clock className="h-3 w-3" />
                     <span>{formatTime(item.requestedAt)}</span>
-                    <span className="rounded-full border border-border/30 bg-card/60 px-2 py-0.5 text-2xs font-medium">
+                    <span className="text-2xs font-medium">
                       {getChainName(tx.request?.chainId ?? 0)}
                     </span>
                   </div>
 
                   {/* Destination + amount */}
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div>
-                      <span className="text-2xs uppercase tracking-wider text-muted/60">
-                        To
-                      </span>
-                      <ApprovalAddressButton
-                        txId={tx.id}
-                        address={tx.request?.to ?? ""}
-                        onCopy={() =>
-                          void handleCopy(tx.request?.to ?? "", "Address")
-                        }
-                      />
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <div className="text-base font-semibold text-txt">
+                      {formatWeiValue(
+                        tx.request?.value ?? "0",
+                        tx.request?.chainId ?? 8453,
+                      )}
                     </div>
-                    <div>
-                      <span className="text-2xs uppercase tracking-wider text-muted/60">
-                        Amount
-                      </span>
-                      <div className="text-sm font-semibold text-txt">
-                        {formatWeiValue(
-                          tx.request?.value ?? "0",
-                          tx.request?.chainId ?? 8453,
-                        )}
-                      </div>
-                    </div>
+                    <span className="text-muted">→</span>
+                    <ApprovalAddressButton
+                      txId={tx.id}
+                      address={tx.request?.to ?? ""}
+                      onCopy={() =>
+                        void handleCopy(tx.request?.to ?? "", "Address")
+                      }
+                    />
                   </div>
 
                   {/* Policy reasons */}
                   {reasons.length > 0 && (
                     <div className="space-y-1">
-                      <span className="text-2xs uppercase tracking-wider text-muted/60">
-                        Policy reason
-                      </span>
                       {reasons.map((reason) => (
                         <div
                           key={reason}
-                          className="rounded-lg border border-status-warning/15 bg-status-warning-bg px-2.5 py-1.5 text-xs text-status-warning"
+                          className="rounded-lg bg-status-warning-bg px-2.5 py-1.5 text-xs text-status-warning"
                         >
                           {reason}
                         </div>
@@ -508,10 +471,10 @@ export function ApprovalQueue({
 
               {/* Reject reason dialog inline */}
               {rejectDialogTxId === tx.id && (
-                <div className="mt-3 flex items-end gap-2 border-t border-border/20 pt-3">
+                <div className="mt-3 flex items-end gap-2 border-t border-border/15 pt-3">
                   <div className="flex-1">
                     <label
-                      className="block text-2xs font-semibold uppercase tracking-wider text-muted/60 mb-1"
+                      className="block text-2xs font-medium text-muted mb-1"
                       htmlFor={`reject-reason-${tx.id}`}
                     >
                       Rejection reason (optional)

@@ -123,9 +123,6 @@ describe("HealthView (fetch-driven)", () => {
 
     expect(screen.getByTestId("health-loading")).toBeTruthy();
     expect(screen.getByText(/Loading sleep data/i)).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Refresh sleep data" }),
-    ).toBeTruthy();
   });
 
   it("renders the error state and refetches when Retry is clicked", async () => {
@@ -194,6 +191,31 @@ describe("HealthView (fetch-driven)", () => {
     expect(within(summary).getByText("Nights recorded")).toBeTruthy();
   });
 
+  it("shows a quiet proactive line only when regularity reads as off-rhythm", async () => {
+    const irregular: LifeOpsSleepRegularityResponse = {
+      ...REGULARITY,
+      classification: "very_irregular",
+    };
+    const fetchers: SleepFetchers = {
+      fetchHistory: vi.fn(async () => populatedHistory()),
+      fetchRegularity: vi.fn(async () => irregular),
+      fetchBaseline: vi.fn(async () => BASELINE),
+    };
+    render(<HealthView fetchers={fetchers} />);
+
+    const populated = await screen.findByTestId("health-populated");
+    expect(
+      within(populated).getByTestId("health-proactive").textContent,
+    ).toMatch(/very irregular/i);
+  });
+
+  it("renders no proactive line when regularity is regular", async () => {
+    render(<HealthView fetchers={makeFetchers(populatedHistory())} />);
+
+    const populated = await screen.findByTestId("health-populated");
+    expect(within(populated).queryByTestId("health-proactive")).toBeNull();
+  });
+
   it("refetches all three endpoints when the window-range control changes", async () => {
     const fetchers = makeFetchers(populatedHistory());
     render(<HealthView fetchers={fetchers} initialWindowDays={14} />);
@@ -210,15 +232,26 @@ describe("HealthView (fetch-driven)", () => {
     expect(fetchers.fetchBaseline).toHaveBeenLastCalledWith(30);
   });
 
-  it("refetches when the header Refresh control is clicked", async () => {
-    const fetchers = makeFetchers(populatedHistory());
-    render(<HealthView fetchers={fetchers} />);
+  it("refetches in the background on the quiet poll interval", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchers = makeFetchers(populatedHistory());
+      render(<HealthView fetchers={fetchers} />);
 
-    await screen.findByTestId("health-populated");
-    expect(fetchers.fetchHistory).toHaveBeenCalledTimes(1);
+      // Flush the initial mount load's microtasks WITHOUT advancing to the
+      // poll boundary (advanceTimersByTimeAsync(0) drains microtasks only).
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchers.fetchHistory).toHaveBeenCalledTimes(1);
+      expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(14);
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh sleep data" }));
-    await waitFor(() => expect(fetchers.fetchHistory).toHaveBeenCalledTimes(2));
+      // Advancing exactly one interval triggers the quiet background poll —
+      // there is no manual refresh control.
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(fetchers.fetchHistory).toHaveBeenCalledTimes(2);
+      expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(14);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("interpolates the supplied ownerName into the subtitle", async () => {

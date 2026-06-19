@@ -7,7 +7,7 @@ import { apps, userDatabaseStatusEnum } from "./apps";
  *
  * Canonical storage for app database provisioning state.
  *
- * Stores Neon/shared database provisioning state for stateful apps.
+ * Stores per-tenant / shared database provisioning state for stateful apps.
  * Split from the main apps table to reduce row size on the heavily-read core table.
  */
 export const appDatabases = pgTable(
@@ -20,16 +20,10 @@ export const appDatabases = pgTable(
       .references(() => apps.id, { onDelete: "cascade" }),
 
     /**
-     * Encrypted connection URI to the user's provisioned Neon database.
+     * Encrypted connection URI to the user's provisioned database.
      * SENSITIVE: Never expose to client code or logs.
      */
     user_database_uri: text("user_database_uri"),
-
-    /** Neon project ID for API operations. */
-    user_database_project_id: text("user_database_project_id"),
-
-    /** Neon branch ID (primary branch). */
-    user_database_branch_id: text("user_database_branch_id"),
 
     /** Provisioning target region recorded for compatibility; not used for DB read routing. */
     user_database_region: text("user_database_region").default("aws-us-east-1"),

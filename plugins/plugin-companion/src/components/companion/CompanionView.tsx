@@ -55,7 +55,6 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
           background: "var(--bg-elevated)",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
-          boxShadow: "0 8px 28px rgba(0,0,0,0.18)",
         }}
         title="Companion avatar surface"
       >
@@ -276,7 +275,7 @@ export function CompanionTuiView() {
         padding: 20,
       }}
     >
-      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+      <div style={{ color: "#ff8a24", marginBottom: 4 }}>
         elizaos://companion --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
@@ -294,7 +293,7 @@ export function CompanionTuiView() {
         <section
           aria-label="Companion state"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 6,
             padding: 16,
             minHeight: 360,
@@ -316,7 +315,7 @@ export function CompanionTuiView() {
         <section
           aria-label="Companion controls"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
+            border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 6,
             padding: 16,
             minHeight: 360,
@@ -376,8 +375,8 @@ const buttonStyle = {
   width: "100%",
   margin: "8px 0",
   background: "transparent",
-  color: "#a7f3d0",
-  border: "1px solid rgba(167,243,208,0.45)",
+  color: "#cbd5e1",
+  border: "1px solid rgba(255,255,255,0.14)",
   borderRadius: 4,
   padding: "6px 8px",
   cursor: "pointer",
