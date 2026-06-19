@@ -1,7 +1,6 @@
 export * from "./app-state.js";
 export * from "./apple-reminders.js";
 export * from "./bulk-review.js";
-export * from "./context-graph.js";
 export * from "./defaults.js";
 export * from "./document-review.js";
 export * from "./email-curation.js";
@@ -13,7 +12,6 @@ export * from "./google-plugin-delegates.js";
 export * from "./intent-sync.js";
 export * from "./owner-profile.js";
 export * from "./policy-memory.js";
-export * from "./remote-desktop.js";
 export * from "./repository.js";
 export * from "./runtime.js";
 export * from "./schedule-sync-config.js";

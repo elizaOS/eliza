@@ -79,7 +79,7 @@ Read from `runtime.getSetting()` / `process.env`. All are declared in `package.j
 | Var | Required | Purpose |
 |-----|----------|---------|
 | `BIRDEYE_API_KEY` | Yes | Token price/security/trade data (Solana) |
-| `DEXSCREENER_API_KEY` | Yes | DEX pair data, ticker resolution |
+| `DEXSCREENER_API_KEY` | Yes (declared) | DEX pair data, ticker resolution (declared in agentConfig but not actively read from settings in current code paths — DexscreenerClient uses no API key) |
 | `HELIUS_API_KEY` | Yes | Solana token holder lists (optional at runtime — service degrades gracefully) |
 | `JUPITER_API_KEY` | Yes (declared) | Jupiter swap quotes (not actively used in current code paths) |
 | `COINGECKO_API_KEY` | Yes (declared) | CoinGecko data (not actively used in current code paths) |

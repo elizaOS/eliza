@@ -143,6 +143,29 @@ describe("SSE wire format", () => {
     expect(frames[tokens.length].payload.fullText).toBe(acc);
   });
 
+  it("carries an optional thought field on the done frame", () => {
+    const mock = createMockResponse();
+    initSse(mock.res);
+
+    writeChatTokenSse(mock.res, "Yes.", "Yes.");
+    writeSseJson(mock.res, {
+      type: "done",
+      fullText: "Yes.",
+      agentName: "Bot",
+      thought: "Short binary question; a one-word answer suffices.",
+    });
+
+    const frames = parseFrames(mock.writes);
+    const done = frames.at(-1);
+    expect(done?.payload.type).toBe("done");
+    // Reasoning rides the additive `thought` field; the visible reply stays
+    // in `fullText` and is never polluted by the thought.
+    expect(done?.payload.thought).toBe(
+      "Short binary question; a one-word answer suffices.",
+    );
+    expect(done?.payload.fullText).toBe("Yes.");
+  });
+
   it("does not buffer: each writeChatTokenSse produces exactly one write call", () => {
     const mock = createMockResponse();
     initSse(mock.res);

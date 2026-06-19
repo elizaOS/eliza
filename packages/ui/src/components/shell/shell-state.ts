@@ -24,4 +24,6 @@ export interface ShellMessage {
   createdAt: number;
   /** Set on assistant turns the server flagged as failed (e.g. no provider). */
   failureKind?: ChatFailureKind;
+  /** Agent reasoning/thought for this turn, rendered as a collapsed block. */
+  reasoning?: string;
 }

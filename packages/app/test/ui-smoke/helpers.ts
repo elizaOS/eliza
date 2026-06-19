@@ -184,6 +184,10 @@ const DEFAULT_APP_STORAGE: Record<string, string> = {
   "eliza:first-run-complete": "1",
   "eliza:setup:step": "activate",
   "eliza:ui-shell-mode": "native",
+  // Opt every seeded spec out of the once-ever first-run tour so its spotlight
+  // (and its navigation lock) never pops mid-test. The dedicated auto-launch
+  // test deliberately does NOT seed storage, so it still exercises auto-launch.
+  "eliza:tutorial-autolaunched": "1",
   "elizaos:active-server": JSON.stringify({
     id: "local:embedded",
     kind: "local",

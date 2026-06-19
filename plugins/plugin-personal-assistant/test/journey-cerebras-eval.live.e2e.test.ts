@@ -22,29 +22,29 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
-} from "../src/lifeops/scheduled-task/completion-check-registry.ts";
+} from "@elizaos/plugin-scheduling";
 import {
   createAnchorRegistry,
   createConsolidationRegistry,
-} from "../src/lifeops/scheduled-task/consolidation-policy.ts";
+} from "@elizaos/plugin-scheduling";
 import {
   createEscalationLadderRegistry,
   registerDefaultEscalationLadders,
-} from "../src/lifeops/scheduled-task/escalation.ts";
+} from "@elizaos/plugin-scheduling";
 import {
   createTaskGateRegistry,
   registerBuiltInGates,
-} from "../src/lifeops/scheduled-task/gate-registry.ts";
+} from "@elizaos/plugin-scheduling";
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
   TestNoopScheduledTaskDispatcher,
-} from "../src/lifeops/scheduled-task/runner.ts";
+} from "@elizaos/plugin-scheduling";
 import {
   createInMemoryScheduledTaskLogStore,
   type ScheduledTaskLogStore,
-} from "../src/lifeops/scheduled-task/state-log.ts";
+} from "@elizaos/plugin-scheduling";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
@@ -55,7 +55,7 @@ import type {
   ScheduledTaskPriority,
   ScheduledTaskTrigger,
   SubjectStoreView,
-} from "../src/lifeops/scheduled-task/types.ts";
+} from "@elizaos/plugin-scheduling";
 import {
   type CerebrasChatResponse,
   type EvalModelClient,

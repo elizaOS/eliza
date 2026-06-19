@@ -3,7 +3,7 @@
  *
  * Standalone successor to the inbox-domain logic that lived in PA's
  * `service-mixin-inbox` + `inbox/` modules. It holds its own runtime and
- * {@link InboxRepository} (raw SQL over the `app_lifeops.life_inbox_triage_*`
+ * {@link InboxRepository} (raw SQL over the `app_inbox.life_inbox_triage_*`
  * tables PA still registers), classifies inbound messages with the LLM, and
  * answers the triage-queue reads the INBOX action and inboxTriage provider need.
  * It carries no dependency on `@elizaos/plugin-personal-assistant`.

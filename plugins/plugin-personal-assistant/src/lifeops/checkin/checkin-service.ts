@@ -609,7 +609,7 @@ async function collectTodaysMeetings(
     const rows = await executeRawSql(
       runtime,
       `SELECT id, title, start_at, end_at
-         FROM app_lifeops.life_calendar_events
+         FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND start_at >= ${sqlQuote(day.start.toISOString())}
           AND start_at < ${sqlQuote(day.end.toISOString())}
@@ -629,7 +629,7 @@ async function collectTodaysMeetings(
     const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "todays-meetings",
-      `meetings collector unavailable (app_lifeops.life_calendar_events not ready): ${message}`,
+      `meetings collector unavailable (app_calendar.life_calendar_events not ready): ${message}`,
     );
     return { rows: [], error: message };
   }
@@ -937,7 +937,7 @@ async function collectCalendarChangeSection(
     const rows = await executeRawSql(
       runtime,
       `SELECT title, start_at, end_at, status, html_link, updated_at
-         FROM app_lifeops.life_calendar_events
+         FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND side = 'owner'
           AND (

@@ -7,6 +7,21 @@ export {
   setInboxFetchers,
 } from "./actions/inbox.ts";
 export { InboxView } from "./components/inbox/InboxView.tsx";
+export {
+  type EmailUnsubscribeRow,
+  inboxDbSchema,
+  type InboxTriageEntryRow,
+  type InboxTriageExampleRow,
+  inboxSchema,
+  lifeEmailUnsubscribes,
+  lifeInboxTriageEntries,
+  lifeInboxTriageExamples,
+} from "./db/schema.ts";
+export {
+  INBOX_MIGRATION_SERVICE_TYPE,
+  InboxMigrationService,
+  MIGRATED_INBOX_TABLES,
+} from "./inbox/migration.ts";
 // Email-curation decision engine. Pure (email + context → save/archive/delete/
 // review with evidence and citations); takes injected identity/policy hooks.
 // Also consumable via the narrow subpath

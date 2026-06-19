@@ -100,7 +100,7 @@ export default scenario({
         const agentId = String(runtime.agentId);
         await executeRawSql(
           runtime,
-          `DELETE FROM app_lifeops.life_inbox_triage_entries WHERE agent_id = ${sqlQuote(agentId)}`,
+          `DELETE FROM app_inbox.life_inbox_triage_entries WHERE agent_id = ${sqlQuote(agentId)}`,
         );
         return undefined;
       },

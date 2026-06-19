@@ -83,7 +83,7 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 
 ### Views
 
-No views — the domain views moved to per-domain plugins (plugin-todos, plugin-inbox, plugin-goals, plugin-health, plugin-calendar, plugin-documents, plugin-blocker, plugin-finances, plugin-relationships) during the lifeops decomposition. PA exports only the Blocker settings cards via `src/ui.ts`.
+No views — the LifeOps overview surface was removed (owner: "no need for an overview"). The personal assistant is the chat itself (the `PERSONAL_ASSISTANT` action); the `GET /api/lifeops/overview` route + `getOverview()` service stay (reused by the todos projection + reminder delivery). The *domain* views live in the per-domain plugins (plugin-todos, plugin-inbox, plugin-goals, plugin-health, plugin-calendar, plugin-documents, plugin-blocker, plugin-finances, plugin-relationships). PA also exports the Blocker settings cards via `src/ui.ts`.
 
 ## Layout
 

@@ -128,6 +128,8 @@
       ],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/cloud-shared": ["../cloud-shared/src/index.ts"],
+      "@elizaos/cloud-shared/*": ["../cloud-shared/src/*"],
       "react": ["../../node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
       "react/jsx-dev-runtime": [

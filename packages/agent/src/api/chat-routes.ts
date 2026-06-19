@@ -644,6 +644,8 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
 export interface ChatGenerationResult {
   text: string;
   agentName: string;
+  /** The agent's internal reasoning for this turn, when the model emitted one. */
+  thought?: string;
   noResponseReason?: "ignored";
   failureKind?: ChatFailureKind;
   localInference?: LocalInferenceChatMetadata;
@@ -2527,9 +2529,16 @@ export async function generateChatResponse(
         ? rawFailureKind
         : undefined;
 
+    const thought =
+      typeof responseContent?.thought === "string" &&
+      responseContent.thought.trim()
+        ? responseContent.thought
+        : undefined;
+
     return {
       text: finalText,
       agentName,
+      ...(thought ? { thought } : {}),
       ...(intentionalNoResponse
         ? { noResponseReason: "ignored" as const }
         : {}),

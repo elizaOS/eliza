@@ -9,6 +9,7 @@ import {
   type UserWithOrganization,
   usersRepository,
 } from "../../db/repositories";
+import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
@@ -93,7 +94,15 @@ export class UsersService {
     }
 
     try {
-      const user = await usersRepository.findByStewardIdWithOrganization(stewardUserId);
+      // Auth hot path: this resolves on every authenticated request. A transient
+      // DB connection blip (a Worker→Hyperdrive connection terminated mid-query,
+      // an SSL-handshake EOF under load) must not turn a valid session into a
+      // 500 — retry transient connection failures with bounded backoff before
+      // surfacing. Non-transient errors are not retried.
+      const user = await retryOnTransientDbError(
+        () => usersRepository.findByStewardIdWithOrganization(stewardUserId),
+        { attempts: 3 },
+      );
       if (user) {
         await cache.set(cacheKey, user, CacheTTL.user.byStewardId);
         logger.debug("[UsersService] Cached user data by stewardId");
@@ -108,7 +117,9 @@ export class UsersService {
       });
 
       try {
-        return await this.getByStewardIdForWrite(stewardUserId);
+        return await retryOnTransientDbError(() => this.getByStewardIdForWrite(stewardUserId), {
+          attempts: 2,
+        });
       } catch (fallbackError) {
         logger.error("[UsersService] Primary Steward lookup retry failed", {
           stewardUserId,

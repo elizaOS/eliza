@@ -12,8 +12,6 @@
  * changes, which are outside this coding sub-agent dispatch path.
  */
 
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import type {
 	ActionResult,
 	HandlerCallback,
@@ -25,9 +23,8 @@ import { logger, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { isRestrictedPlatform } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
+import { locatePluginSourceDir } from "./views-plugin-source.js";
 import { scoreView } from "./views-search.js";
-
-const PLUGINS_DIR_CANDIDATES = ["eliza/plugins", "plugins"] as const;
 
 export interface ViewsEditInput {
 	runtime: IAgentRuntime;
@@ -42,7 +39,7 @@ export interface ViewsEditInput {
 // View resolution
 // ---------------------------------------------------------------------------
 
-function resolveTargetView(
+export function resolveTargetView(
 	target: string,
 	views: readonly ViewSummary[],
 ):
@@ -118,28 +115,6 @@ function extractTargetFromText(text: string): string | null {
 		while (i < tokens.length && FILLER.has(tokens[i].toLowerCase())) i++;
 		const candidate = tokens.slice(i).join(" ").toLowerCase();
 		if (candidate && !FILLER.has(candidate)) return candidate;
-	}
-	return null;
-}
-
-// ---------------------------------------------------------------------------
-// Source dir lookup
-// ---------------------------------------------------------------------------
-
-async function locatePluginSourceDir(
-	repoRoot: string,
-	view: ViewSummary,
-): Promise<string | null> {
-	const pluginBasename = view.pluginName.replace(/^@[^/]+\//, "").trim();
-	const candidates = [
-		...PLUGINS_DIR_CANDIDATES.map((d) =>
-			path.join(repoRoot, d, pluginBasename),
-		),
-		path.join(repoRoot, "eliza", "apps", pluginBasename),
-	];
-	for (const candidate of candidates) {
-		const stat = await fs.stat(candidate).catch(() => null);
-		if (stat?.isDirectory()) return candidate;
 	}
 	return null;
 }

@@ -39,6 +39,7 @@ import {
 } from "./message-followups-parser";
 import { type FormRequestSpec, findFormRegions } from "./message-form-parser";
 import { findTaskRegions } from "./message-task-parser";
+import { ThinkingBlock } from "./ThinkingBlock";
 import { type ChoiceOption, ChoiceWidget } from "./widgets/ChoiceWidget";
 import { FollowupsWidget } from "./widgets/followups";
 import { FormRequest, type FormResultValue } from "./widgets/form-request";
@@ -1370,6 +1371,9 @@ export function MessageContent({
 
   return (
     <div>
+      {message.role === "assistant" && message.reasoning?.trim() ? (
+        <ThinkingBlock reasoning={message.reasoning} />
+      ) : null}
       {(() => {
         const keyCounts = new Map<string, number>();
         const nextKey = (base: string) => {

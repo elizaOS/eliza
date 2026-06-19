@@ -38,28 +38,47 @@ Opt-in elizaOS plugin. Load it by adding `@elizaos/plugin-polymarket-app` to the
 ### Views
 - **`PolymarketAppView`** — desktop and XR view, path `/polymarket`.
 - **`PolymarketTuiView`** — terminal (TUI) view, path `/polymarket/tui`.
-- Both bundle from `dist/views/bundle.js`.
+- **`PolymarketSpatialView`** — unified spatial component (in `src/components/`) used by both the XR surface and the TUI terminal registration (`register-terminal-view.tsx`).
+- Both `PolymarketAppView` and `PolymarketTuiView` bundle from `dist/views/bundle.js` (via `polymarket-view-bundle.ts`).
 
 ## Layout
 
 ```
 src/
-  index.ts              Public re-exports
-  plugin.ts             Exported `polymarketPlugin` (Plugin object); wires actions, services, providers, routes, views
-  actions.ts            PREDICTION_MARKET action + PredictionMarketService class + polymarketActions[]
-  provider.ts           polymarketStatusProvider
-  provider-text.ts      derivePolymarketStatusText() — pure env-to-text helper used by provider
-  routes.ts             handlePolymarketRoute() — all HTTP route logic; fetches Gamma/CLOB/Data APIs
-  polymarket-contracts.ts  All shared interfaces and API base URL constants
-  orderbook.ts          derivePolymarketTopOfBook() — best-bid/ask derivation from raw CLOB levels
-  client.ts             PolymarketClient — type intersection of ElizaClient with typed fetch helpers for each route (methods patched onto ElizaClient.prototype)
-  polymarket-app.ts     registerOverlayApp() call; exports polymarketApp + POLYMARKET_APP_NAME
-  register.ts           Side-effect import of polymarket-app (triggers overlay registration)
-  register-routes.ts    registerAppRoutePluginLoader() — lazy-loads polymarketPlugin for app-route mounting
-  ui.ts                 View entry re-exporting PolymarketAppView, polymarketApp, usePolymarketState
-  PolymarketAppView.tsx Exports PolymarketAppView (desktop/XR), PolymarketTuiView (terminal), and interact()
-  usePolymarketState.ts usePolymarketState() React hook for view state
+  index.ts                    Public re-exports
+  plugin.ts                   Exported `polymarketPlugin` (Plugin object); wires actions, services, providers, routes, views
+  actions.ts                  PREDICTION_MARKET action + PredictionMarketService class + polymarketActions[]
+  provider.ts                 polymarketStatusProvider
+  provider-text.ts            derivePolymarketStatusText() — pure env-to-text helper used by provider
+  routes.ts                   handlePolymarketRoute() — all HTTP route logic; fetches Gamma/CLOB/Data APIs
+  polymarket-contracts.ts     All shared interfaces and API base URL constants
+  orderbook.ts                derivePolymarketTopOfBook() — best-bid/ask derivation from raw CLOB levels
+  client.ts                   PolymarketClient — type intersection of ElizaClient with typed fetch helpers for each route (methods patched onto ElizaClient.prototype)
+  polymarket-app.ts           registerOverlayApp() call; exports polymarketApp + POLYMARKET_APP_NAME
+  register.ts                 Side-effect import of polymarket-app (triggers overlay registration)
+  register-routes.ts          registerAppRoutePluginLoader() — lazy-loads polymarketPlugin for app-route mounting
+  register-terminal-view.tsx  registerPolymarketTerminalView() + setPolymarketTerminalSnapshot() — mounts PolymarketSpatialView in the terminal
+  ui.ts                       View entry re-exporting PolymarketAppView, polymarketApp, usePolymarketState
+  PolymarketAppView.tsx       Exports PolymarketAppView (desktop/XR) and PolymarketTuiView (terminal)
+  PolymarketAppView.helpers.ts  loadPolymarketTuiState() and postPolymarketCommand() — async helpers used by views
+  PolymarketAppView.interact.ts  interact() — TUI interaction handler; re-exported by polymarket-view-bundle
+  polymarket-view-bundle.ts   Vite view-bundle entry: re-exports PolymarketAppView, PolymarketTuiView, interact
+  usePolymarketState.ts       usePolymarketState() React hook for view state
+  components/
+    PolymarketSpatialView.tsx  Unified spatial/terminal view component (PolymarketSpatialView, PolymarketSnapshot)
+  __fixtures__/
+    contract.ts               Test fixture contracts
+    polymarket-real.recorded.json  Recorded API responses for tests
+  actions.test.ts             Unit tests for actions
+  polymarket-app.test.ts      Unit tests for polymarket-app
+  PolymarketAppView.desktop.test.tsx  Desktop view tests
   PolymarketTuiView.test.tsx  Unit test for PolymarketTuiView/interact
+  PolymarketVisualCopy.test.ts  Visual copy tests
+  routes.contract.test.ts     Contract tests for routes
+  routes.real.test.ts         Live API integration tests (gated on POLYMARKET_LIVE_TEST=1)
+  routes.test.ts              Unit tests for routes
+  components/
+    PolymarketSpatialView.test.tsx  Tests for PolymarketSpatialView
 ```
 
 ## Commands
@@ -105,7 +124,7 @@ Public reads (markets, orderbook, positions) require no credentials. The `GET /a
 
 - **Orderbook token id vs condition id.** Use the CLOB `token_id` for orderbook queries, not the Gamma `conditionId`. A market has one condition id but one or more CLOB token ids (one per outcome).
 - **Signed trading is disabled.** `POST /api/polymarket/orders` returns 501. The `place_order` action reports readiness only; it does not place trades.
-- **Views use a separate Vite build.** `build:js` (tsup) produces the runtime entry; `build:views` (Vite) produces `dist/views/bundle.js` consumed by the view registry. Both must run for a complete build.
+- **Views use a separate Vite build.** `build:js` (tsup) produces the runtime entry; `build:views` (Vite) produces `dist/views/bundle.js` consumed by the view registry. Both must run for a complete build. The Vite entry is `src/polymarket-view-bundle.ts` (not `PolymarketAppView.tsx` directly); `interact` is re-exported from `PolymarketAppView.interact.ts` through that bundle.
 - **Route handler receives Node `http.IncomingMessage` / `ServerResponse`.** The plugin.ts adapter casts `RouteRequest` / `RouteResponse` to Node types; routes.ts depends on real Node HTTP objects.
 - **Context gating.** The action fires only when the agent context includes `finance`, `crypto`, `prediction-market`, or `payments`, or when the message contains recognized keywords (multilingual list in actions.ts). Outside those contexts the action is skipped.
 - **API base URLs** are constants in `src/polymarket-contracts.ts` (`POLYMARKET_GAMMA_API_BASE`, `POLYMARKET_DATA_API_BASE`, `POLYMARKET_CLOB_API_BASE`). Change there to target a different environment.

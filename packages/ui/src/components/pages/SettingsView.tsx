@@ -2,6 +2,10 @@ import { ArrowLeft } from "lucide-react";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
+// Importing the cloud settings barrel registers the Cloud group + the cloud
+// settings sections (side effect), then exposes the extra-group list the
+// grouping below reads — so the cloud sections render whenever Settings mounts.
+import { listExtraSettingsGroups } from "../../cloud/settings";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
@@ -20,7 +24,6 @@ import {
   SETTINGS_GROUP_LABEL,
   SETTINGS_GROUP_ORDER,
   type SettingsSectionDef,
-  type SettingsSectionGroup,
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
@@ -29,18 +32,51 @@ import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
 
 type GroupedSections = {
-  group: SettingsSectionGroup;
+  group: string;
+  label: string;
   items: SettingsSectionDef[];
 }[];
 
+/**
+ * Group sections for display. Built-in groups keep their pinned order + labels;
+ * any extra group a section declares (e.g. the `cloud` group) is interleaved by
+ * its registered order with a registered label. A section whose group is neither
+ * built-in nor registered falls into an "Other" bucket so it is never dropped.
+ */
 function groupSections(sections: SettingsSectionDef[]): GroupedSections {
-  const map = new Map<SettingsSectionGroup, SettingsSectionDef[]>();
-  for (const group of SETTINGS_GROUP_ORDER) map.set(group, []);
-  for (const section of sections) map.get(section.group)?.push(section);
-  return SETTINGS_GROUP_ORDER.map((group) => ({
-    group,
-    items: map.get(group) ?? [],
-  })).filter((entry) => entry.items.length > 0);
+  const extra = listExtraSettingsGroups();
+  // Built-in groups order by their position in the pinned list (0,1,2). Extra
+  // groups slot between them by their declared order (e.g. cloud at 1.5 between
+  // System=1 and Security=2).
+  const orderOf = new Map<string, number>();
+  const labels = new Map<string, string>();
+  SETTINGS_GROUP_ORDER.forEach((group, index) => {
+    orderOf.set(group, index);
+    labels.set(group, SETTINGS_GROUP_LABEL[group]);
+  });
+  for (const group of extra) {
+    orderOf.set(group.id, group.order);
+    labels.set(group.id, group.label);
+  }
+
+  const buckets = new Map<string, SettingsSectionDef[]>();
+  for (const section of sections) {
+    const bucket = buckets.get(section.group);
+    if (bucket) bucket.push(section);
+    else buckets.set(section.group, [section]);
+  }
+
+  const FALLBACK_ORDER = Number.MAX_SAFE_INTEGER;
+  return [...buckets.entries()]
+    .map(([group, items]) => ({
+      group,
+      label: labels.get(group) ?? "Other",
+      items,
+      order: orderOf.get(group) ?? FALLBACK_ORDER,
+    }))
+    .filter((entry) => entry.items.length > 0)
+    .sort((a, b) => a.order - b.order)
+    .map(({ group, label, items }) => ({ group, label, items }));
 }
 
 /** Status chip shown on a nav row when cheap to derive. */
@@ -216,8 +252,8 @@ function MobileHub({
         {t("nav.settings", { defaultValue: "Settings" })}
       </h1>
       <SettingsStack>
-        {grouped.map(({ group, items }) => (
-          <SettingsGroup key={group} title={SETTINGS_GROUP_LABEL[group]}>
+        {grouped.map(({ group, label, items }) => (
+          <SettingsGroup key={group} title={label}>
             {items.map((section) => (
               <SettingsNavItem
                 key={section.id}
@@ -258,10 +294,10 @@ function DesktopLayout({
           <h1 className="px-2.5 text-lg font-semibold tracking-tight text-txt-strong">
             {t("nav.settings", { defaultValue: "Settings" })}
           </h1>
-          {grouped.map(({ group, items }) => (
+          {grouped.map(({ group, label, items }) => (
             <div key={group}>
               <h2 className="mb-1 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
-                {SETTINGS_GROUP_LABEL[group]}
+                {label}
               </h2>
               <div className="space-y-0.5">
                 {items.map((section) => (

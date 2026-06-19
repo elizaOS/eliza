@@ -133,6 +133,10 @@ import { SIDE_EFFECT_APP_MODULE_LOADERS } from "./plugin-registrations";
 import { registerViewServiceWorker } from "./sw-registration";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
+// Set by vite.config.ts `define`. `true` for the web/desktop bundle, `false`
+// for Capacitor mobile builds so the entire cloud router shell + Steward/wallet
+// + public-page chunks tree-shake out of the native bundle.
+declare const __ELIZA_WEB_SHELL__: boolean | undefined;
 
 declare global {
   interface Window {
@@ -1694,6 +1698,43 @@ function shouldLoadModelTesterShellRoute(): boolean {
   return path === "/model-tester" || path === "/model-tester/tui";
 }
 
+/**
+ * Top-level cloud/public/auth router shell. Web build only — lazy so the chunk
+ * (and its react-router / Steward / cloud-provider transitive deps) never lands
+ * on the native critical path. The `__ELIZA_WEB_SHELL__` define is a literal
+ * `false` in the Capacitor mobile build, so the guarded dynamic import below is
+ * statically unreachable there and the bundler drops the whole shell chunk.
+ */
+const CloudRouterShell = lazy(async () => {
+  if (__ELIZA_WEB_SHELL__ !== true) {
+    throw new Error("CloudRouterShell is web-build-only");
+  }
+  // Populate the cloud-route + settings-section registries before the shell
+  // mounts and reads `listCloudRoutes()`; without this the registry is empty and
+  // no cloud/auth/payment route resolves.
+  const [{ registerAllCloudSurfaces }, mod] = await Promise.all([
+    import("@elizaos/ui/cloud/register-all"),
+    import("@elizaos/ui/cloud/shell/CloudRouterShell"),
+  ]);
+  registerAllCloudSurfaces();
+  return { default: mod.CloudRouterShell };
+});
+
+/**
+ * The shell owns the parametric cloud / public / auth / payment routes and
+ * renders the tab/view app as the catch-all. It applies only to the main
+ * window on the web platform — native (Capacitor) and the desktop Electrobun
+ * shell mount the tab/view app directly with no bundle growth, and the special
+ * window shells (phone companion / detached / app window) are never cloud
+ * surfaces.
+ */
+function shouldMountWebShell(): boolean {
+  if (__ELIZA_WEB_SHELL__ !== true) return false;
+  if (isNative) return false;
+  if (isElectrobunRuntime()) return false;
+  return true;
+}
+
 function mountReactApp(): void {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Root element #root not found");
@@ -1701,31 +1742,49 @@ function mountReactApp(): void {
   const phoneCompanion = isPhoneCompanionMode();
   const detachedShell = isDetachedWindowShell(windowShellRoute);
   const appWindowSlug = detachedShell ? null : resolveAppWindowSlug();
+  const isSpecialWindowShell =
+    phoneCompanion || detachedShell || appWindowSlug !== null;
+
+  // The normal main-window tab/view app subtree (the existing default render).
+  // Kept verbatim so the tab system is untouched; on the web platform it
+  // becomes the router shell's catch-all `appElement`.
+  const appSubtree = (
+    <>
+      <DesktopSurfaceNavigationRuntime />
+      <DesktopTrayRuntime />
+      <App />
+    </>
+  );
+
+  const mainTree =
+    shouldMountWebShell() && !isSpecialWindowShell ? (
+      <CloudRouterShell
+        appElement={
+          <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
+        }
+      />
+    ) : (
+      <AppProvider branding={APP_BRANDING}>
+        {phoneCompanion ? (
+          <PhoneCompanionApp />
+        ) : detachedShell ? (
+          <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
+            <DetachedShellRoot route={windowShellRoute} />
+          </div>
+        ) : appWindowSlug ? (
+          <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
+            <AppWindowRenderer slug={appWindowSlug} />
+          </div>
+        ) : (
+          appSubtree
+        )}
+      </AppProvider>
+    );
 
   createRoot(rootEl).render(
     <ErrorBoundary>
       <StrictMode>
-        <Suspense fallback={null}>
-          <AppProvider branding={APP_BRANDING}>
-            {phoneCompanion ? (
-              <PhoneCompanionApp />
-            ) : detachedShell ? (
-              <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
-                <DetachedShellRoot route={windowShellRoute} />
-              </div>
-            ) : appWindowSlug ? (
-              <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
-                <AppWindowRenderer slug={appWindowSlug} />
-              </div>
-            ) : (
-              <>
-                <DesktopSurfaceNavigationRuntime />
-                <DesktopTrayRuntime />
-                <App />
-              </>
-            )}
-          </AppProvider>
-        </Suspense>
+        <Suspense fallback={null}>{mainTree}</Suspense>
       </StrictMode>
     </ErrorBoundary>,
   );
@@ -1761,6 +1820,24 @@ function isLoopbackApiHost(host: string): boolean {
     host === "127.0.0.1" ||
     host === "[::1]" ||
     host === "::1"
+  );
+}
+
+/**
+ * Dedicated Cloud agents serve their full runtime at a per-agent subdomain
+ * (`https://<agentId>.elizacloud.ai`). Trust those HTTPS subdomains so the join
+ * flow can connect to a dedicated container's real `/ws` + `/api/conversations`
+ * (the full Eliza experience) — the apex `elizacloud.ai` / `api.elizacloud.ai`
+ * control-plane hosts are already trusted via `isConfiguredCloudApiHost` /
+ * `isCurrentOriginHost`. Caller enforces `protocol === "https:"`.
+ */
+function isElizaCloudAgentSubdomain(host: string): boolean {
+  const normalized = host.toLowerCase();
+  return (
+    normalized.endsWith(".elizacloud.ai") &&
+    normalized !== "www.elizacloud.ai" &&
+    normalized !== "api.elizacloud.ai" &&
+    normalized !== "dev.elizacloud.ai"
   );
 }
 
@@ -1820,13 +1897,18 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
     if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
       return false;
     }
-    return isCurrentOriginHost(host) || isConfiguredCloudApiHost(host);
+    return (
+      isCurrentOriginHost(host) ||
+      isConfiguredCloudApiHost(host) ||
+      isElizaCloudAgentSubdomain(host)
+    );
   }
   if (isPopoutWindow() && parsed.protocol === "https:") return true;
   return (
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
     (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
+    (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host)) ||
     isTrustedPrivateHttpHost(host)
   );
 }
@@ -1841,13 +1923,15 @@ function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
     }
     return (
       isCurrentOriginHost(host) ||
-      (parsed.protocol === "https:" && isConfiguredCloudApiHost(host))
+      (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
+      (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host))
     );
   }
   return (
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
     (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
+    (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host)) ||
     isTrustedPrivateHttpHost(host)
   );
 }

@@ -1,6 +1,7 @@
 {
   "name": "@elizaos/example-clone-ur-crush",
   "version": "1.0.0",
+  "type": "module",
   "description": "Clone Ur Crush — standalone Next.js example showing AI-powered character creation against Eliza Cloud (image gen, scene gen, character analysis).",
   "scripts": {
     "dev": "next dev --port 3012",

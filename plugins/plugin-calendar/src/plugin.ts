@@ -2,6 +2,8 @@ import type { Plugin } from "@elizaos/core";
 import { calendarAction } from "./actions/calendar.js";
 import { conflictDetectAction } from "./actions/conflict-detect.js";
 import { CalendarService } from "./service/CalendarService.js";
+import { CalendarMigrationService } from "./service/migration.js";
+import { calendarSchema } from "./service/schema.js";
 
 /**
  * First-class calendar plugin. Owns the calendar domain that previously lived
@@ -16,7 +18,8 @@ export const calendarPlugin: Plugin = {
   name: "calendar",
   description:
     "Calendar feed and event management (Google + Apple) for Eliza agents.",
-  services: [CalendarService],
+  schema: calendarSchema,
+  services: [CalendarService, CalendarMigrationService],
   actions: [calendarAction, conflictDetectAction],
   providers: [],
   views: [
