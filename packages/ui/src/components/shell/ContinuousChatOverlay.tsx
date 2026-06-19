@@ -1813,10 +1813,11 @@ export function ContinuousChatOverlay({
             pointerEvents: pilled ? "none" : "auto",
           }}
           className={cn(
-            "relative m-0 flex w-full min-w-0 flex-col border-0 p-0",
-            // overflow-hidden clips the thread when open; visible while pilled so
-            // the pill's tall upward grab zone isn't cut off.
-            pilled ? "overflow-visible" : "overflow-hidden",
+            // overflow-VISIBLE on the outer fieldset: the glass layer's soft drop
+            // shadow + the pill's tall grab zone must bleed past the box. The
+            // rounded thread-clip lives on the inner content wrapper instead, so
+            // clipping the scroll never clips the shadow into a hard square edge.
+            "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0",
           )}
         >
           {/* GLASS SURFACE — absolute fill; the blur/bg/border/shadow + the live
@@ -1844,10 +1845,14 @@ export function ContinuousChatOverlay({
           <motion.div
             data-testid="chat-content"
             inert={pilled || undefined}
-            className="relative z-10 flex min-h-0 w-full flex-col"
+            // overflow-hidden + the live radius clips the sheen/thread to the
+            // panel's rounded shape (the clip the fieldset used to do) WITHOUT
+            // touching the sibling glass layer's shadow.
+            className="relative z-10 flex min-h-0 w-full flex-col overflow-hidden"
             style={{
               opacity: glassOpacity,
               pointerEvents: pilled ? "none" : "auto",
+              borderRadius: fullBleed ? 0 : panelRadius,
             }}
           >
             <>
