@@ -108,6 +108,13 @@ export type ChatState =
   | "OPEN_HALF_OR_OVER"
   | "MAXIMIZED";
 
+/** Push-to-talk lifecycle. idle → pending (timer armed) → holding (dictating) →
+ *  idle. A release while still `pending` is a quick tap (no capture started). */
+type PttPhase =
+  | { kind: "idle" }
+  | { kind: "pending"; pointerId: number; timer: number }
+  | { kind: "holding"; pointerId: number };
+
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // px kept clear above the panel. Sized to clear an edge-to-edge status bar
 // (~58px) plus a buffer so the grabber sits BELOW the notification-shade pull
@@ -735,7 +742,11 @@ export function ContinuousChatOverlay({
   // 0 until the input is fully formed, then takes over for input → chat.
   const openProgress = useMotionValue(pilled ? 0 : 1);
   const draggingRef = React.useRef(false);
-  const [pushToTalkActive, setPushToTalkActive] = React.useState(false);
+  // Push-to-talk phase (single source of truth) + a label-only mirror.
+  const pttRef = React.useRef<PttPhase>({ kind: "idle" });
+  const [pttHolding, setPttHolding] = React.useState(false);
+  // Swallow exactly the one click that follows a held PTT release.
+  const suppressNextClickRef = React.useRef(false);
   const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
     [],
   );
@@ -747,9 +758,6 @@ export function ContinuousChatOverlay({
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
   const focusThreadRef = React.useRef(false);
-  const pushToTalkTimerRef = React.useRef<number | null>(null);
-  const pushToTalkActiveRef = React.useRef(false);
-  const suppressMicClickRef = React.useRef(false);
   // Recomputed only when the thread changes — NOT on every drag/draft re-render.
   // Filter empty turns, then keep only the most recent window (cap DOM nodes).
   const visibleMessages = React.useMemo(
@@ -790,11 +798,16 @@ export function ContinuousChatOverlay({
     enabled: suggestionsVisible,
   });
 
+  // Defensive unmount: clear a pending timer and stop a stuck dictation capture
+  // if the overlay unmounts mid-press (the controller outlives the overlay).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stopRecording is stable; this runs once on unmount
   React.useEffect(
     () => () => {
-      if (pushToTalkTimerRef.current !== null) {
-        window.clearTimeout(pushToTalkTimerRef.current);
-      }
+      const phase = pttRef.current;
+      if (phase.kind === "pending") window.clearTimeout(phase.timer);
+      if (phase.kind === "holding") stopRecording();
+      pttRef.current = { kind: "idle" };
+      suppressNextClickRef.current = false;
     },
     [],
   );
@@ -926,50 +939,71 @@ export function ContinuousChatOverlay({
     setPendingImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const clearPushToTalkTimer = React.useCallback(() => {
-    if (pushToTalkTimerRef.current === null) return;
-    window.clearTimeout(pushToTalkTimerRef.current);
-    pushToTalkTimerRef.current = null;
-  }, []);
-
+  // ── Push-to-talk state machine ──────────────────────────────────────────────
+  // ONE phase ref is the source of truth: idle → (press) pending → (200ms hold)
+  // holding → (release) idle. `pttHolding` mirrors only what the label needs.
+  // A quick tap releases while still "pending" (never started a capture) and
+  // falls through to handleMicClick → toggleHandsFree. A held release stops the
+  // dictation and suppresses the trailing click so it doesn't ALSO toggle.
   const beginPushToTalkPress = React.useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
-      // No `booting` guard: voice capture is independent of agent-respond
-      // readiness (the transcript fills the draft for dictation; converse sends
-      // through the warm-tolerant path), so push-to-talk works while warming.
-      if (hasDraft || recording || event.button !== 0) return;
-      event.currentTarget.setPointerCapture(event.pointerId);
-      clearPushToTalkTimer();
-      pushToTalkTimerRef.current = window.setTimeout(() => {
-        pushToTalkTimerRef.current = null;
-        pushToTalkActiveRef.current = true;
-        setPushToTalkActive(true);
-        // Press-and-hold = dictation: the transcript fills the composer draft
-        // (no send, no spoken reply) so the user can edit before sending.
+      // Only arm from idle, primary button, no draft, and no capture already
+      // live (a tap while hands-free toggles it off — handleMicClick). No
+      // `booting` guard: voice capture is independent of agent-respond readiness.
+      if (
+        pttRef.current.kind !== "idle" ||
+        event.button !== 0 ||
+        hasDraft ||
+        recording
+      )
+        return;
+      const { pointerId } = event;
+      try {
+        event.currentTarget.setPointerCapture(pointerId);
+      } catch {
+        // Synthetic/detached pointer — capture is best-effort.
+      }
+      const timer = window.setTimeout(() => {
+        // Promote to holding only if still pending for THIS pointer.
+        const phase = pttRef.current;
+        if (phase.kind !== "pending" || phase.pointerId !== pointerId) return;
+        pttRef.current = { kind: "holding", pointerId };
+        setPttHolding(true);
+        // Press-and-hold = dictation: fills the composer draft (no send).
         startRecording("dictate");
       }, 200);
+      pttRef.current = { kind: "pending", pointerId, timer };
     },
-    [clearPushToTalkTimer, hasDraft, recording, startRecording],
+    [hasDraft, recording, startRecording],
   );
 
-  const endPushToTalkPress = React.useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
-      clearPushToTalkTimer();
-      if (!pushToTalkActiveRef.current) return;
-      suppressMicClickRef.current = true;
-      pushToTalkActiveRef.current = false;
-      setPushToTalkActive(false);
-      stopRecording();
+  // One funnel for BOTH pointerup (cancelled=false) and pointercancel
+  // (cancelled=true). Always clears the pending timer + releases pointer capture
+  // FIRST — before any early return — so a quick tap can never leak a stuck timer
+  // or a captured pointer (the bug that mis-routed later events).
+  const finishPushToTalkPress = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>, cancelled: boolean) => {
+      const phase = pttRef.current;
+      if (phase.kind === "pending") window.clearTimeout(phase.timer);
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
+      pttRef.current = { kind: "idle" };
+      if (phase.kind === "holding") {
+        stopRecording();
+        setPttHolding(false);
+        // A real click follows a pointer-UP (never a cancel); suppress it so the
+        // dictation release doesn't also toggle hands-free. Setting it ONLY here
+        // means it can never leak true into the next legitimate tap.
+        if (!cancelled) suppressNextClickRef.current = true;
+      }
     },
-    [clearPushToTalkTimer, stopRecording],
+    [stopRecording],
   );
 
   const handleMicClick = React.useCallback(() => {
-    if (suppressMicClickRef.current) {
-      suppressMicClickRef.current = false;
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
       return;
     }
     // Quick tap = hands-free conversation: the agent speaks its replies back and
@@ -2186,7 +2220,7 @@ export function ContinuousChatOverlay({
                     <SoftButton
                       icon={Mic}
                       label={
-                        pushToTalkActive
+                        pttHolding
                           ? "release to send"
                           : handsFree
                             ? "end conversation"
@@ -2197,8 +2231,8 @@ export function ContinuousChatOverlay({
                       active={recording || handsFree}
                       onClick={handleMicClick}
                       onPointerDown={beginPushToTalkPress}
-                      onPointerUp={endPushToTalkPress}
-                      onPointerCancel={endPushToTalkPress}
+                      onPointerUp={(e) => finishPushToTalkPress(e, false)}
+                      onPointerCancel={(e) => finishPushToTalkPress(e, true)}
                       testId="chat-composer-mic"
                     />
                   )}

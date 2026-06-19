@@ -720,6 +720,39 @@ try {
     await p.close();
   }
 
+  // PTT CANCEL must NOT leak the click-suppress (the "next tap eaten" bug): a
+  // held press ended by pointercancel (not pointerup) stops dictation but leaves
+  // the NEXT quick tap free to toggle hands-free.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForTimeout(500);
+    const mic = p.getByTestId("chat-composer-mic");
+    const n0 = sink.logs.length;
+    await mic.dispatchEvent("pointerdown", { pointerId: 7, button: 0 });
+    await p.waitForTimeout(280); // > 200ms → dictation starts
+    await mic.dispatchEvent("pointercancel", { pointerId: 7 });
+    await p.waitForTimeout(150);
+    assert(
+      sink.logs.slice(n0).some((l) => l.includes("startRecording(dictate)")),
+      "PTT-CANCEL: the hold started dictation",
+    );
+    assert(
+      sink.logs.slice(n0).some((l) => l.includes("stopRecording")),
+      "PTT-CANCEL: pointercancel stops the capture",
+    );
+    const n1 = sink.logs.length;
+    await mic.click();
+    await p.waitForTimeout(150);
+    assert(
+      sink.logs.slice(n1).some((l) => l.includes("toggleHandsFree")),
+      "PTT-CANCEL: the NEXT tap still toggles hands-free (suppress did not leak)",
+    );
+    await p.close();
+  }
+
   // TYPING-PAUSE: while the hands-free loop is on, typing a draft must signal the
   // controller (setComposerHasDraft -> true) so the always-on mic pauses over the
   // keyboard; clearing it resumes.
