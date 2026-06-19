@@ -1252,7 +1252,9 @@ export function ContinuousChatOverlay({
   // Inline command autocomplete: the menu derives from the draft + the loaded
   // catalog; Escape dismisses it (without clearing the draft); typing reopens.
   const slashMenu = useSlashMenu(draft, slash);
-  const isSlashDraft = parseSlashDraft(draft).isSlash;
+  // Short-circuit the slash parse on the common (non-slash) keystroke path — a
+  // draft that doesn't start with "/" is never a slash command, so skip the work.
+  const isSlashDraft = draft.startsWith("/") && parseSlashDraft(draft).isSlash;
   const slashOpen = slashMenu.open && !slashDismissed;
   // Combobox a11y for the composer input — only when a slash catalog is wired
   // in. Spread so the input is a plain message box (no role) otherwise.
