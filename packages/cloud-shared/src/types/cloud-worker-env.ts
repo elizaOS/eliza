@@ -9,7 +9,7 @@ import type { Context } from "hono";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
 
 export interface Bindings {
-  // ---- Database (Neon Postgres in cloud, PGlite locally) ----
+  // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
   DATABASE_URL_UNPOOLED?: string;
 
@@ -71,7 +71,10 @@ export interface Bindings {
   RPC_URL?: string;
   CHAIN_ID?: string;
 
-  // ---- Redis (Upstash REST in cloud, Wadis embedded locally) ----
+  // ---- Redis (Railway TCP via REDIS_URL + in-Worker SocketRedis in cloud;
+  //      Upstash REST is a legacy fallback; Wadis embedded locally) ----
+  REDIS_URL?: string;
+  KV_URL?: string;
   KV_REST_API_URL?: string;
   KV_REST_API_TOKEN?: string;
   UPSTASH_REDIS_REST_URL?: string;
