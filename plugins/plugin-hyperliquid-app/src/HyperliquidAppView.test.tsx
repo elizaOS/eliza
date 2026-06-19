@@ -127,6 +127,14 @@ const positions: HyperliquidPositionsResponse = {
       leverageValue: 10,
     },
   ],
+  summary: {
+    accountValue: "996.19",
+    totalNotionalPosition: "7000",
+    totalMarginUsed: "700",
+    totalRawUsd: "996.19",
+    withdrawable: "296.19",
+    totalUnrealizedPnl: "10.00",
+  },
   readBlockedReason: null,
   fetchedAt: "2026-05-18T12:00:00.000Z",
 };
@@ -300,6 +308,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
     hyperliquidClient.hyperliquidPositions.mockResolvedValue({
       accountAddress: null,
       positions: [],
+      summary: null,
       readBlockedReason: "Connect an account to read positions.",
       fetchedAt: null,
     });

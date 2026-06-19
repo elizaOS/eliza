@@ -10,6 +10,7 @@ import {
   HYPERLIQUID_LOCAL_KEY_GUIDANCE,
   HYPERLIQUID_VAULT_GUIDANCE,
   type HyperliquidAccountSource,
+  type HyperliquidAccountSummary,
   type HyperliquidApiWalletStatus,
   type HyperliquidCredentialMode,
   type HyperliquidExecutionDisabledResponse,
@@ -52,10 +53,17 @@ interface HyperliquidConfig {
   apiWallet: HyperliquidApiWalletStatus;
 }
 
+interface HyperliquidClearinghouseSnapshot {
+  positions: HyperliquidPosition[];
+  summary: HyperliquidAccountSummary;
+}
+
 interface HyperliquidInfoClient {
   getMarkets(): Promise<HyperliquidMarket[]>;
   getFundingRates(): Promise<HyperliquidFundingRate[]>;
-  getPositions(accountAddress: string): Promise<HyperliquidPosition[]>;
+  getPositions(
+    accountAddress: string,
+  ): Promise<HyperliquidClearinghouseSnapshot>;
   getOpenOrders(accountAddress: string): Promise<HyperliquidOrder[]>;
 }
 
@@ -170,6 +178,7 @@ export async function handleHyperliquidRoute(
       const payload: HyperliquidPositionsResponse = {
         accountAddress: null,
         positions: [],
+        summary: null,
         readBlockedReason: config.accountBlockedReason,
         fetchedAt: null,
       };
@@ -178,9 +187,11 @@ export async function handleHyperliquidRoute(
     }
 
     try {
+      const snapshot = await client.getPositions(config.accountAddress);
       const payload: HyperliquidPositionsResponse = {
         accountAddress: config.accountAddress,
-        positions: await client.getPositions(config.accountAddress),
+        positions: snapshot.positions,
+        summary: snapshot.summary,
         readBlockedReason: null,
         fetchedAt: now().toISOString(),
       };
@@ -268,7 +279,7 @@ export function createHyperliquidInfoClient({
         type: "clearinghouseState",
         user: accountAddress,
       });
-      return parsePositions(state);
+      return parseClearinghouseState(state);
     },
     async getOpenOrders(accountAddress) {
       const orders = await infoRequest<unknown>({
@@ -436,13 +447,7 @@ function parseFundingRates(value: unknown): HyperliquidFundingRate[] {
   });
 }
 
-function parsePositions(value: unknown): HyperliquidPosition[] {
-  const record = asRecord(value, "Hyperliquid clearinghouseState response");
-  const assetPositions = record.assetPositions;
-  if (!Array.isArray(assetPositions)) {
-    throw new Error("Hyperliquid clearinghouseState missing assetPositions");
-  }
-
+function parsePositions(assetPositions: unknown[]): HyperliquidPosition[] {
   return assetPositions.map((entry) => {
     const item = asRecord(entry, "Hyperliquid asset position entry");
     const position = asRecord(item.position, "Hyperliquid position");
@@ -464,6 +469,71 @@ function parsePositions(value: unknown): HyperliquidPosition[] {
       leverageValue: leverage ? readOptionalNumber(leverage, "value") : null,
     };
   });
+}
+
+/**
+ * Sum each position's `unrealizedPnl` (stringified USD) into a single
+ * aggregate, returned as a fixed-2 string so the AppView renders one honest
+ * "unrealized PnL" hero stat. Returns null when no position carries a
+ * parseable PnL (e.g. a freshly funded account with no open positions).
+ */
+function sumUnrealizedPnl(positions: HyperliquidPosition[]): string | null {
+  let total = 0;
+  let seen = false;
+  for (const position of positions) {
+    if (position.unrealizedPnl === null) continue;
+    const value = Number(position.unrealizedPnl);
+    if (!Number.isFinite(value)) continue;
+    total += value;
+    seen = true;
+  }
+  return seen ? total.toFixed(2) : null;
+}
+
+function parseAccountSummary(
+  positions: HyperliquidPosition[],
+  marginSummary: Record<string, unknown> | null,
+  withdrawable: string | null,
+): HyperliquidAccountSummary {
+  return {
+    accountValue: marginSummary
+      ? readOptionalString(marginSummary, "accountValue")
+      : null,
+    totalNotionalPosition: marginSummary
+      ? readOptionalString(marginSummary, "totalNtlPos")
+      : null,
+    totalMarginUsed: marginSummary
+      ? readOptionalString(marginSummary, "totalMarginUsed")
+      : null,
+    totalRawUsd: marginSummary
+      ? readOptionalString(marginSummary, "totalRawUsd")
+      : null,
+    withdrawable,
+    totalUnrealizedPnl: sumUnrealizedPnl(positions),
+  };
+}
+
+function parseClearinghouseState(value: unknown): {
+  positions: HyperliquidPosition[];
+  summary: HyperliquidAccountSummary;
+} {
+  const record = asRecord(value, "Hyperliquid clearinghouseState response");
+  const assetPositions = record.assetPositions;
+  if (!Array.isArray(assetPositions)) {
+    throw new Error("Hyperliquid clearinghouseState missing assetPositions");
+  }
+
+  const positions = parsePositions(assetPositions);
+  const marginSummary =
+    record.marginSummary === undefined || record.marginSummary === null
+      ? null
+      : asRecord(record.marginSummary, "Hyperliquid marginSummary");
+  const withdrawable = readOptionalString(record, "withdrawable");
+
+  return {
+    positions,
+    summary: parseAccountSummary(positions, marginSummary, withdrawable),
+  };
 }
 
 function parseOrders(value: unknown): HyperliquidOrder[] {

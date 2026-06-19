@@ -105,9 +105,32 @@ export interface HyperliquidPosition {
   leverageValue: number | null;
 }
 
+/**
+ * Account-level margin summary derived from the Hyperliquid
+ * `clearinghouseState` `marginSummary` block. Mirrors the waifu patron
+ * "account health" strip (account value, withdrawable, total notional,
+ * aggregate unrealized PnL) so the AppView can render the same hero stats.
+ * All values are stringified USD as returned by Hyperliquid; null when the
+ * account has never traded or the field is absent.
+ */
+export interface HyperliquidAccountSummary {
+  accountValue: string | null;
+  totalNotionalPosition: string | null;
+  totalMarginUsed: string | null;
+  totalRawUsd: string | null;
+  withdrawable: string | null;
+  /** Sum of per-position unrealized PnL, in USD. Null when unreadable. */
+  totalUnrealizedPnl: string | null;
+}
+
 export interface HyperliquidPositionsResponse {
   accountAddress: string | null;
   positions: HyperliquidPosition[];
+  /**
+   * Account margin/value summary. Optional for back-compat: older route
+   * builds and the no-account path omit it (null).
+   */
+  summary: HyperliquidAccountSummary | null;
   readBlockedReason: string | null;
   fetchedAt: string | null;
 }

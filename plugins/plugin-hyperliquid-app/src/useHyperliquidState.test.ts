@@ -65,6 +65,7 @@ const markets: HyperliquidMarketsResponse = {
 const positions: HyperliquidPositionsResponse = {
   accountAddress: "0xabc",
   positions: [],
+  summary: null,
   readBlockedReason: null,
   fetchedAt: "2026-05-18T12:00:00.000Z",
 };
