@@ -45,6 +45,23 @@ export interface FfiStreamingGenerateArgs {
 	/** Reserved for separate draft-model speculation; null for Eliza-1 MTP. */
 	draftModelPath: string | null;
 	/**
+	 * Per-load GPU offload (ABI v8). Forwarded into the native session config
+	 * on `llmStreamOpen`. The fused libelizainference path loads the text model
+	 * once per ctx, so the FIRST session's value wins; later sessions reuse the
+	 * resident model. `undefined` selects the runtime default (all layers).
+	 * The desktop libllama path already applies gpuLayers at `loadModel()`, so
+	 * it ignores this field — it is load-time config, threaded here only so the
+	 * fused runner can mirror the libllama load decision.
+	 */
+	gpuLayers?: number;
+	/**
+	 * KV-cache K/V quant type names (ABI v8), e.g. "qjl1_256" / "q4_polar".
+	 * Same load-time semantics as `gpuLayers`: forwarded into the fused
+	 * session config so the first `llmStreamOpen` applies the quantized cache.
+	 */
+	cacheTypeK?: string | null;
+	cacheTypeV?: string | null;
+	/**
 	 * GBNF grammar source forcing the structured-reply envelope. Passed to
 	 * the native session's `llmStreamOpen` config so sampling is
 	 * grammar-constrained. `null` disables the constraint (free generation).
@@ -265,6 +282,9 @@ export class FfiStreamingRunner {
 				draftMax: args.draftMax,
 				draftModelPath: args.draftModelPath,
 				gbnfGrammar: args.gbnfGrammar ?? null,
+				gpuLayers: args.gpuLayers,
+				cacheTypeK: args.cacheTypeK,
+				cacheTypeV: args.cacheTypeV,
 			},
 		});
 

@@ -106,6 +106,10 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 			mtp: plan.catalog?.runtime?.mtp ?? null,
 			draftModelPath: plan.overrides?.draftModelPath ?? null,
 			mmprojPath,
+			// libllama applies gpuLayers + KV-cache quant at loadModel() above,
+			// so the per-call config must NOT re-apply them (the model is already
+			// resident). The fused runtime sets this instead.
+			loadConfig: null,
 		};
 		this.active = { adapter: result.adapter, session };
 		return session;

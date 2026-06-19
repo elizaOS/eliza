@@ -42,7 +42,7 @@ import {
 	type ConversationHandle,
 	conversationRegistry,
 } from "./conversation-registry";
-import { desktopFfiBackendRuntime } from "./desktop-ffi-backend-runtime";
+import { desktopGatedFfiBackendRuntime } from "./desktop-gated-ffi-backend-runtime";
 import { FfiStreamingBackend } from "./ffi-streaming-backend";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
@@ -855,21 +855,22 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 export class LocalInferenceEngine {
 	private readonly nodeBackend = new NodeLlamaCppBackend();
 	/**
-	 * In-process FFI backend (libllama + eliza-llama-shim via bun:ffi).
-	 * Production wiring of the desktop adapter — see
-	 * `services/desktop-llama-adapter.ts` +
-	 * `services/desktop-ffi-backend-runtime.ts`. When the desktop dylib
-	 * pair is present on disk AND bun:ffi resolves, this is the active
-	 * path for `decideBackend() === "llama-cpp"`. There is no server
-	 * fallback for Eliza-1.
+	 * In-process FFI backend for `decideBackend() === "llama-cpp"`. The single
+	 * runtime is the gate (`desktop-gated-ffi-backend-runtime.ts`) that picks,
+	 * per load, between the FUSED `libelizainference` text path (preferred when
+	 * its ABI-v8 MTP + KV-quant probes pass) and the libllama + eliza-llama-shim
+	 * runtime (the optimization-carrying fallback, and the vision-describe path).
+	 * The fused lib lacking MTP/KV-quant is refused → falls back to libllama,
+	 * never to an unoptimized fused loop. There is no server fallback for
+	 * Eliza-1.
 	 */
 	private readonly ffiBackend = new FfiStreamingBackend(
-		desktopFfiBackendRuntime,
+		desktopGatedFfiBackendRuntime,
 	);
 	private readonly dispatcher = new BackendDispatcher(
 		this.nodeBackend,
 		this.ffiBackend,
-		() => desktopFfiBackendRuntime.supported(),
+		() => desktopGatedFfiBackendRuntime.supported(),
 		() => null,
 	);
 	/**
@@ -1161,7 +1162,7 @@ export class LocalInferenceEngine {
 			// specific kernels (kernel-required) — that's the production Eliza-1
 			// contract that should not be silently degraded.
 			const decision = this.dispatcher.decide(plan);
-			const ffiAvailable = desktopFfiBackendRuntime.supported();
+			const ffiAvailable = desktopGatedFfiBackendRuntime.supported();
 			const canFallback =
 				!ffiAvailable ||
 				(decision.backend === "llama-cpp" &&
