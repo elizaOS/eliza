@@ -239,8 +239,7 @@ export async function prepareManagedElizaBaseEnvironment(
       // → a 1536 vector is written to the dim_384 column → "Failed query: insert
       // into embeddings" on every memory write. Pin both to 1536 so they agree.
       EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? "1536",
-      ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS:
-        existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? "1536",
+      ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? "1536",
       // Pin the cloud's healthy Cerebras-direct models so the container never
       // resolves a tier to the `:nitro` default (which has no Cerebras route →
       // BitRouter→OpenRouter → 503 / wrong model). Mirrors the shared + eliza-app
