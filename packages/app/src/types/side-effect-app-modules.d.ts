@@ -8,6 +8,8 @@ declare module "@elizaos/plugin-trajectory-logger";
 declare module "@elizaos/plugin-shopify-ui";
 declare module "@elizaos/plugin-hyperliquid-app";
 declare module "@elizaos/plugin-polymarket-app";
+declare module "@elizaos/plugin-waifu-imagegen-app";
+declare module "@elizaos/plugin-waifu-swap-app";
 declare module "@elizaos/plugin-wallet-ui";
 declare module "@elizaos/app-model-tester";
 declare module "@elizaos/plugin-vector-browser/register";
