@@ -28,3 +28,15 @@ Verdicts: `good` · `needs-work` · `broken`. Newest at bottom.
 
 ## P5 — e2e coverage
 - Added `packages/app/test/ui-smoke/builtin-views-visual.spec.ts`: screenshots every App.tsx-rendered builtin view (views/settings/plugins/character/automations/memories/database/logs/camera/help) at **desktop + mobile**, asserting the view mounts, renders readable content, and throws no uncaught page error. 20/20 pass against the stub live stack. Complements the existing plugin-views-visual.spec (plugin bundles). Production-build screenshots confirm the launcher/settings/plugins redesigns render correctly at both viewports.
+
+## Validation summary (production build, both viewports)
+- **Builtin views**: builtin-views-visual.spec 20/20 pass (10 views × desktop+mobile). Production-build screenshots reviewed — views/settings/plugins/character/automations/memories/database/logs/camera/help all render light, minimal, on-brand. Memories neutral-icon + ViewCatalog launcher + Plugins de-slop confirmed in the built dist at both viewports.
+- **Plugin views (riskiest edits)**: plugin-views-visual.spec pass (exit 0) for social-alpha + feed (hero removals), finances, inbox — fresh bundle build, no page errors.
+- The single light look + brand normalization is verified end-to-end; the "lots of black" is resolved by the pin (most views were already token-light; Finances/feed/social dark/hero treatments are now light/flat).
+
+## Honest remaining (lower value / out-of-scope-for-redesign)
+- Games (scape/2004scape/clawville/hyperscape/defense): fullscreen game canvases — the view IS the game; only chrome applies.
+- XR/facewear ViewDeclarations: research flags these as dead duplicates → cleanup, not redesign.
+- Dev/diagnostic views (Runtime/Trajectories/Database deep-clean): render light; recommend demote-behind-Advanced (product decision) over polish. Database has a double-render hazard.
+- Comms TUI-twin dead code removal (ContactsTuiView/PhoneTuiView/MessagesTuiView): verify-dead first.
+- Plugin-view full visual sweep at scale + "every input" e2e: the spec harness now exists to extend.
