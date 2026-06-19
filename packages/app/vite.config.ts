@@ -1171,6 +1171,57 @@ function elizaCoreBrowserEntryFallbackPlugin(): Plugin {
   };
 }
 
+// The cloud dashboard (packages/ui/src/cloud) is WEB-BUILD-ONLY. On a Capacitor
+// mobile build it must be excluded entirely: it reaches the bundle via several
+// static paths — the ui barrel's `export * as cloud from "./cloud"`, the lazy
+// `import("@elizaos/ui/cloud/…")` in main.tsx (runtime-guarded by
+// __ELIZA_WEB_SHELL__ but still graph-resolved by Rollup), and intra-package
+// relative imports — and it pulls heavy web-only deps (@tanstack/react-query,
+// wagmi, @solana/*, @rainbow-me/rainbowkit, recharts, …) that aren't in the
+// mobile dependency set, breaking `build:web`. This plugin stubs ANY import that
+// resolves to a file under `packages/ui/src/cloud/` to an empty module on mobile,
+// catching every path. Safe because cloud surfaces self-register lazily via
+// `@elizaos/ui/cloud/register-all` (only reached on web, behind the runtime
+// guard), so nothing is registered on mobile to begin with. Does NOT match
+// `packages/ui/src/cloud-ui/` (the shared cloud component set, which mobile uses).
+function cloudDashboardMobileStubPlugin(): Plugin {
+  const STUB_ID = "\0eliza-cloud-dashboard-mobile-stub";
+  const cloudDirRe = /[\\/]packages[\\/]ui[\\/]src[\\/]cloud[\\/]/;
+  return {
+    name: "eliza-cloud-dashboard-mobile-stub",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (!IS_CAPACITOR_MOBILE_BUILD) return null;
+      if (source === STUB_ID) return STUB_ID;
+      // Fast path: the `@elizaos/ui/cloud/*` package subpath (the lazy imports).
+      if (/^@elizaos\/ui\/cloud(?:\/|$)/.test(source)) return STUB_ID;
+      // Catch-all: anything that resolves to a file under packages/ui/src/cloud/
+      // (the barrel's `./cloud`, relative cross-imports, etc.).
+      const resolved = await this.resolve(source, importer, {
+        ...options,
+        skipSelf: true,
+      });
+      if (resolved && cloudDirRe.test(resolved.id.replace(/\\/g, "/"))) {
+        return STUB_ID;
+      }
+      return null;
+    },
+    load(id) {
+      if (id === STUB_ID) {
+        // Empty cloud-dashboard module. The barrel's `export * as cloud` becomes
+        // `cloud = {}`, and the lazy import's named reads are never reached (the
+        // runtime throw guard). One light helper is genuinely imported by
+        // mobile-bundled code — SettingsView reads `listExtraSettingsGroups()` to
+        // render extra settings groups — so provide it as a no-op returning none
+        // (no cloud settings sections are registered on mobile anyway, since the
+        // cloud registries only run via the web-only lazy `register-all`).
+        return "export default {};\nexport const listExtraSettingsGroups = () => [];\n";
+      }
+      return null;
+    },
+  };
+}
+
 // The dev script sets the branded API port env; default to 31337 for standalone vite dev.
 const apiPort = resolveDesktopApiPort(process.env);
 const uiPort = resolveDesktopUiPort(process.env);
@@ -1810,6 +1861,9 @@ export default defineConfig({
     ),
   },
   plugins: [
+    // Exclude the web-only cloud dashboard from Capacitor mobile builds (no-op on
+    // web/desktop). Must run before resolution so its web deps never enter the graph.
+    cloudDashboardMobileStubPlugin(),
     // es-toolkit@1.47's `./compat/*` export map exposes only a CJS condition
     // (no ESM `import`), so `import get from "es-toolkit/compat/get"` (recharts
     // default-imports 11 such subpaths) resolves to a CJS shim Vite can't
