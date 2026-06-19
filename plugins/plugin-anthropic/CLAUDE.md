@@ -38,6 +38,8 @@ plugins/plugin-anthropic/
 │   ├── index.ts              # Re-exports all handler functions
 │   ├── text.ts               # generateTextWithModel() + all text/reasoning handlers
 │   └── image.ts              # handleImageDescription()
+├── prompts/
+│   └── evaluators.json       # Evaluator prompt scaffolding (currently empty)
 ├── providers/
 │   └── anthropic.ts          # createAnthropicClientWithTopPSupport() — Anthropic SDK client
 │                             #   factory; handles API key, OAuth, and topP/temperature patch
@@ -51,7 +53,8 @@ plugins/plugin-anthropic/
 │   ├── events.ts             # emitModelUsageEvent() — fires EventType.MODEL_USED after each call
 │   └── retry.ts              # executeWithRetry(), formatModelError(), sanitizeUrlForLogs()
 └── __tests__/                # credential-store.test.ts, native-plumbing.shape.test.ts,
-                              #   native-plumbing.live.test.ts (live API; excluded by default)
+                              #   native-plumbing.live.test.ts (live API; excluded by default),
+                              #   image-description.shape.test.ts, provider-fetch.shape.test.ts
 ```
 
 ## Commands

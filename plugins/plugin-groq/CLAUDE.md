@@ -34,11 +34,11 @@ plugins/plugin-groq/
   index.browser.ts      Browser entry — re-exports index.ts
   build.ts              Bun.build script (node + browser targets)
   __tests__/
-    smoke.test.ts              Plugin registration contract shape tests
-    retry.test.ts              classifyRetryError unit tests
-    model-usage.test.ts        Token usage normalisation tests
+    behavior.test.ts            Plugin registration contract shape tests
+    retry.test.ts               classifyRetryError unit tests
+    model-usage.test.ts         Token usage normalisation tests
     native-plumbing.shape.test.ts  Native tool-call / structured-output plumbing
-    core-test-mock.ts          Shared mock helpers
+    core-test-mock.ts           Shared mock helpers
   prompts/
     evaluators.json     (bundled prompt data)
 ```
