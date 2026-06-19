@@ -348,8 +348,8 @@ app.post("/", async (c) => {
     const provider = getImageProvider(definition.billingSource);
     const env = getCloudAwareEnv();
     const apiKeys = {
-      BITROUTER_API_KEY: env.BITROUTER_API_KEY,
-      BITROUTER_BASE_URL: env.BITROUTER_BASE_URL,
+      OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
+      OPENROUTER_BASE_URL: env.OPENROUTER_BASE_URL,
       ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
       ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
       FAL_KEY: env.FAL_KEY,
@@ -357,7 +357,7 @@ app.post("/", async (c) => {
     };
     if (
       definition.billingSource === "bitrouter" &&
-      !apiKeys.BITROUTER_API_KEY
+      !apiKeys.OPENROUTER_API_KEY
     ) {
       return jsonError(
         c,

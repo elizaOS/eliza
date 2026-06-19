@@ -13,7 +13,7 @@ import {
 } from "../models";
 import { logger } from "../utils/logger";
 import { RETRYABLE_UPSTREAM_STATUSES } from "./failover";
-import { stripOpenRouterRoutingSuffix, toBitRouterModelId } from "./model-id-translation";
+import { toBitRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
 import { hasAnyVastProviderConfigured, resolveVastEndpointConfig } from "./vast-endpoints";
 
@@ -25,7 +25,6 @@ let openAIClient: {
   client: ReturnType<typeof createOpenAI>;
 } | null = null;
 let cerebrasClient: ReturnType<typeof createOpenAI> | null = null;
-let bitRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let anthropicClient: ReturnType<typeof createAnthropic> | null = null;
 let vercelAIGatewayClient: GatewayProvider | null = null;
@@ -101,18 +100,6 @@ function getCerebrasClient() {
   return cerebrasClient;
 }
 
-function getBitRouterApiKey(): string | null {
-  return getProviderKey("BITROUTER_API_KEY");
-}
-
-function getBitRouterBaseURL(): string {
-  const baseUrl = (getProviderKey("BITROUTER_BASE_URL") ?? "https://api.bitrouter.ai/v1").replace(
-    /\/+$/,
-    "",
-  );
-  return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-}
-
 function getOpenRouterApiKey(): string | null {
   return getProviderKey("OPENROUTER_API_KEY");
 }
@@ -131,22 +118,6 @@ function getVercelAIGatewayApiKey(): string | null {
 
 function getVercelAIGatewayBaseURL(): string | undefined {
   return getProviderKey("AI_GATEWAY_BASE_URL") ?? undefined;
-}
-
-function getBitRouterClient() {
-  if (!bitRouterClient) {
-    const apiKey = getBitRouterApiKey();
-    if (!apiKey) {
-      throw new Error("BITROUTER_API_KEY environment variable is required");
-    }
-
-    bitRouterClient = createOpenAI({
-      apiKey,
-      baseURL: getBitRouterBaseURL(),
-    });
-  }
-
-  return bitRouterClient;
 }
 
 function getOpenRouterClient() {
@@ -266,14 +237,6 @@ export function canonicalizeCerebrasModelId(model: string): string {
   return isCerebrasNativeModel(model) ? normalizeCerebrasModelId(model) : model;
 }
 
-function normalizeBitRouterLanguageModelId(model: string): string {
-  if (isCerebrasNativeModel(model)) {
-    return `cerebras:${normalizeCerebrasModelId(model)}`;
-  }
-
-  return toBitRouterModelId(model);
-}
-
 /** HTTP status of an AI-SDK provider error, unwrapping the retry envelope. */
 function aiSdkErrorStatus(error: unknown): number | null {
   const unwrapped = RetryError.isInstance(error) ? error.lastError : error;
@@ -289,71 +252,15 @@ function isRetryableAiSdkError(error: unknown): boolean {
 }
 
 /**
- * Resolves a BitRouter language model, adding a same-gateway routing-suffix
- * failover for OpenRouter `:nitro` / `:floor` ids: if the throughput-/price-
- * priority upstream fails with a retryable error, retry against the base model
- * id (gateway default routing) instead of hard-failing — see
- * bitrouter/bitrouter#572. Models without a routing suffix are returned as-is.
- */
-function getBitRouterLanguageModel(model: string) {
-  const client = getBitRouterClient();
-  const primaryId = normalizeBitRouterLanguageModelId(model);
-  const baseId = stripOpenRouterRoutingSuffix(primaryId);
-  const primaryModel = client.chat(primaryId);
-  if (!baseId) {
-    return primaryModel;
-  }
-
-  const baseModel = client.chat(baseId);
-  const middleware: LanguageModelMiddleware = {
-    specificationVersion: "v3",
-    wrapGenerate: async ({ doGenerate, params }) => {
-      try {
-        return await doGenerate();
-      } catch (error) {
-        if (!isRetryableAiSdkError(error)) {
-          throw error;
-        }
-        logger.warn(
-          "[BitRouter] Routing-suffixed model %s failed (%d); retrying base %s",
-          primaryId,
-          aiSdkErrorStatus(error),
-          baseId,
-        );
-        return await baseModel.doGenerate(params);
-      }
-    },
-    wrapStream: async ({ doStream, params }) => {
-      try {
-        return await doStream();
-      } catch (error) {
-        if (!isRetryableAiSdkError(error)) {
-          throw error;
-        }
-        logger.warn(
-          "[BitRouter] Routing-suffixed model %s stream failed (%d); retrying base %s",
-          primaryId,
-          aiSdkErrorStatus(error),
-          baseId,
-        );
-        return await baseModel.doStream(params);
-      }
-    },
-  };
-
-  return wrapLanguageModel({ model: primaryModel, middleware });
-}
-
-/**
- * Wraps a primary language model so that, on a retryable upstream error, the
- * request is retried against OpenRouter (BYOK). This is the "OpenRouter is our
- * backup if the primary router fails" path: the primary (BitRouter today) runs
- * its own internal failover first; only if it still returns a retryable error
- * (402/429/5xx) do we fall over to OpenRouter. A no-op when OPENROUTER_API_KEY
- * is unset, so healthy paths and OpenRouter-less deployments are unchanged.
+ * Wraps a native primary language model so that, on a retryable upstream error
+ * (402/429/5xx), the request fails over to OpenRouter (BYOK) for the same model.
+ * This is the "OpenRouter is the backup" path: the Worker calls the native
+ * provider directly (no hop) on the happy path; OpenRouter is only reached when
+ * the native call returns a retryable error. A no-op when OPENROUTER_API_KEY is
+ * unset, so direct-only deployments are unchanged.
  */
 function withOpenRouterFallback(
-  primaryModel: ReturnType<typeof getBitRouterLanguageModel>,
+  primaryModel: Parameters<typeof wrapLanguageModel>[0]["model"],
   model: string,
 ) {
   if (!getOpenRouterApiKey()) {
@@ -398,13 +305,19 @@ function withOpenRouterFallback(
   return wrapLanguageModel({ model: primaryModel, middleware });
 }
 
-function requiresBitRouterRouting(model: string): boolean {
-  const bitRouterModel = toBitRouterModelId(model);
+/**
+ * True for OpenRouter-catalog ids that NO native provider can serve directly —
+ * routing-suffix variants (`:nitro`/`:floor`), the free tier, and `openai/gpt-oss-120b`
+ * (an OpenRouter id, not an OpenAI-API model). These must go to the OpenRouter
+ * backup even though they carry an `openai/` prefix.
+ */
+function requiresGatewayRouting(model: string): boolean {
+  const catalogModel = toBitRouterModelId(model);
   return (
-    bitRouterModel === BITROUTER_RECOMMENDED_TEXT_MODEL ||
-    bitRouterModel === BITROUTER_DEFAULT_FREE_MODEL ||
-    bitRouterModel === "openai/gpt-oss-120b" ||
-    (bitRouterModel.includes("/") && bitRouterModel.split("/")[1]?.includes(":"))
+    catalogModel === BITROUTER_RECOMMENDED_TEXT_MODEL ||
+    catalogModel === BITROUTER_DEFAULT_FREE_MODEL ||
+    catalogModel === "openai/gpt-oss-120b" ||
+    (catalogModel.includes("/") && catalogModel.split("/")[1]?.includes(":"))
   );
 }
 
@@ -417,15 +330,11 @@ function normalizeAnthropicModelId(model: string): string {
 }
 
 /**
- * True iff a gateway-style provider is configured. BitRouter stays first
- * when present; Vercel AI Gateway is the local/dev fallback.
+ * True iff a gateway-style backup provider is configured: OpenRouter (BYOK) is
+ * the backup for non-native models; Vercel AI Gateway is the local/dev fallback.
  */
 export function hasGatewayProviderConfigured(): boolean {
-  return (
-    getBitRouterApiKey() !== null ||
-    getOpenRouterApiKey() !== null ||
-    getVercelAIGatewayApiKey() !== null
-  );
+  return getOpenRouterApiKey() !== null || getVercelAIGatewayApiKey() !== null;
 }
 
 export function hasLanguageModelProviderConfigured(model: string): boolean {
@@ -437,20 +346,13 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
     return resolveVastEndpointConfig(model) !== null;
   }
 
-  if (getBitRouterApiKey()) {
+  if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
     return true;
   }
 
-  if (requiresBitRouterRouting(model)) {
-    return Boolean(getOpenRouterApiKey());
-  }
-
-  if (isCerebrasNativeModel(model)) {
-    return Boolean(getProviderKey("CEREBRAS_API_KEY"));
-  }
-
-  if (getVercelAIGatewayApiKey()) {
-    return true;
+  // OpenRouter-catalog ids no native provider can serve → need the backup.
+  if (requiresGatewayRouting(model)) {
+    return Boolean(getOpenRouterApiKey()) || Boolean(getVercelAIGatewayApiKey());
   }
 
   if (isOpenAINativeModel(model)) {
@@ -461,13 +363,12 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
     return Boolean(getProviderKey("ANTHROPIC_API_KEY")) || Boolean(getOpenRouterApiKey());
   }
 
-  return Boolean(getOpenRouterApiKey());
+  // Anything else is served by the OpenRouter backup (or the dev gateway).
+  return Boolean(getOpenRouterApiKey()) || Boolean(getVercelAIGatewayApiKey());
 }
 
 export function hasTextEmbeddingProviderConfigured(): boolean {
-  return Boolean(
-    getBitRouterApiKey() || getVercelAIGatewayApiKey() || getProviderKey("OPENAI_API_KEY"),
-  );
+  return Boolean(getProviderKey("OPENAI_API_KEY") || getVercelAIGatewayApiKey());
 }
 
 export function getLanguageModel(model: string) {
@@ -480,66 +381,66 @@ export function getLanguageModel(model: string) {
     return client.languageModel(apiModelId);
   }
 
-  // Cerebras-native default IDs (gpt-oss-120b, zai-glm-4.7) are bare and are NOT
-  // in BitRouter's catalog, so they must route to Cerebras BEFORE the BitRouter
-  // catch-all — otherwise toBitRouterModelId passes them through unchanged and
-  // BitRouter rejects them. Mirrors the Groq/Vast native checks above.
+  // Cerebras-native default IDs (gpt-oss-120b, zai-glm-4.7) → Cerebras direct.
   if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
     return getCerebrasClient().chat(normalizeCerebrasModelId(model));
   }
 
-  if (getBitRouterApiKey()) {
-    return withOpenRouterFallback(getBitRouterLanguageModel(model), model);
-  }
-
-  if (requiresBitRouterRouting(model)) {
-    // BitRouter not configured: OpenRouter serves the same catalog and the
-    // same `:nitro`/`:floor` suffixes natively, so it's the BYOK substitute.
+  // OpenRouter-catalog ids no native provider can serve (`:nitro`/`:floor`,
+  // `openai/gpt-oss-120b` as an OpenRouter id) → OpenRouter backup (or dev gateway).
+  if (requiresGatewayRouting(model)) {
     if (getOpenRouterApiKey()) {
       return getOpenRouterLanguageModel(model);
     }
-    throw new Error("BITROUTER_API_KEY or OPENROUTER_API_KEY is required for this model");
+    if (getVercelAIGatewayApiKey()) {
+      return getVercelAIGatewayClient().languageModel(model as never);
+    }
+    throw new Error("OPENROUTER_API_KEY is required for this model");
   }
 
+  // Native, DIRECT providers (no hop) when we hold the key, with OpenRouter as
+  // an on-error backup for the same model.
+  if (isOpenAINativeModel(model) && getProviderKey("OPENAI_API_KEY")) {
+    const modelId = normalizeOpenAIModelId(model);
+    const primary = getProviderKey("OPENAI_BASE_URL")
+      ? getOpenAIClient().chat(modelId)
+      : getOpenAIClient().languageModel(modelId);
+    return withOpenRouterFallback(primary, model);
+  }
+
+  if (isAnthropicNativeModel(model) && getProviderKey("ANTHROPIC_API_KEY")) {
+    return withOpenRouterFallback(
+      getAnthropicClient().languageModel(normalizeAnthropicModelId(model)),
+      model,
+    );
+  }
+
+  // Dev convenience gateway.
   if (getVercelAIGatewayApiKey()) {
     return getVercelAIGatewayClient().languageModel(model as never);
   }
 
-  if (isOpenAINativeModel(model) && getProviderKey("OPENAI_API_KEY")) {
-    const modelId = normalizeOpenAIModelId(model);
-    return getProviderKey("OPENAI_BASE_URL")
-      ? getOpenAIClient().chat(modelId)
-      : getOpenAIClient().languageModel(modelId);
-  }
-
-  if (isAnthropicNativeModel(model) && getProviderKey("ANTHROPIC_API_KEY")) {
-    return getAnthropicClient().languageModel(normalizeAnthropicModelId(model));
-  }
-
-  // Universal BYOK catch-all: OpenRouter serves any remaining catalog model.
+  // Backup: OpenRouter (BYOK) serves any model we have no native key for.
   if (getOpenRouterApiKey()) {
     return getOpenRouterLanguageModel(model);
   }
 
-  throw new Error("AI language model provider is not configured");
+  throw new Error(
+    "AI language model provider is not configured (set a native provider key or OPENROUTER_API_KEY)",
+  );
 }
 
 export function getTextEmbeddingModel(model: string) {
   // Embeddings are OpenAI-native (`text-embedding-*`). Prefer a real OpenAI key
-  // FIRST: prod carries a valid OPENAI_API_KEY but a stale/invalid
-  // AI_GATEWAY_API_KEY (the gateway 401s "Invalid API key"), and BitRouter has
-  // no `/v1/embeddings` route at all (404 → 503). So: OpenAI native → AI Gateway
-  // → BitRouter (last resort). This is what unbreaks every memory/RAG turn.
+  // Embeddings are OpenAI-native (`text-embedding-*`): OpenAI direct, then the
+  // dev gateway. OpenRouter has no `/v1/embeddings` route, so it is not an
+  // embedding backup.
   if (getProviderKey("OPENAI_API_KEY")) {
     return getOpenAIClient().textEmbeddingModel(normalizeOpenAIModelId(model));
   }
 
   if (getVercelAIGatewayApiKey()) {
     return getVercelAIGatewayClient().embeddingModel(model as never);
-  }
-
-  if (getBitRouterApiKey()) {
-    return getBitRouterClient().textEmbeddingModel(toBitRouterModelId(model));
   }
 
   throw new Error("AI text embedding provider is not configured");
@@ -572,28 +473,19 @@ export function resolveAiProviderSource(
     return resolveVastEndpointConfig(model) ? "vast" : null;
   }
 
-  // Match getLanguageModel: Cerebras-native defaults are served by Cerebras
-  // before the BitRouter catch-all, so bill them to cerebras (not bitrouter).
+  // Mirror getLanguageModel: native providers serve their own models directly.
   if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
     return "cerebras";
   }
 
-  // BitRouter is the primary when configured; OpenRouter is its fallback, but a
-  // fallback is the exceptional path, so steady-state attribution stays
-  // "bitrouter" (cost math is model-id-driven either way).
-  if (getBitRouterApiKey()) {
-    return "bitrouter";
-  }
-
-  // OpenRouter shares BitRouter's catalog and pricing (its price rows are stored
-  // under billingSource "bitrouter" — see ai-pricing/providers/openrouter.ts), so
-  // when OpenRouter serves these (BitRouter unset), bill them as "bitrouter".
-  if (requiresBitRouterRouting(model)) {
-    return getOpenRouterApiKey() ? "bitrouter" : null;
-  }
-
-  if (getVercelAIGatewayApiKey()) {
-    return "gateway";
+  // OpenRouter-catalog ids served by the backup. OpenRouter prices are catalogued
+  // under billingSource "bitrouter" (the shared catalog key — see
+  // ai-pricing/providers/openrouter.ts), so attribute them to "bitrouter".
+  if (requiresGatewayRouting(model)) {
+    if (getOpenRouterApiKey()) {
+      return "bitrouter";
+    }
+    return getVercelAIGatewayApiKey() ? "gateway" : null;
   }
 
   if (isOpenAINativeModel(model) && getProviderKey("OPENAI_API_KEY")) {
@@ -604,8 +496,11 @@ export function resolveAiProviderSource(
     return "anthropic";
   }
 
-  // Catch-all: OpenRouter (BYOK) serves any remaining catalog model; its prices
-  // are catalogued under "bitrouter" (see comment above).
+  if (getVercelAIGatewayApiKey()) {
+    return "gateway";
+  }
+
+  // Backup: OpenRouter (BYOK), billed to the shared "bitrouter" price catalog.
   if (getOpenRouterApiKey()) {
     return "bitrouter";
   }
@@ -613,9 +508,8 @@ export function resolveAiProviderSource(
   return null;
 }
 
-export function resolveEmbeddingProviderSource(): "bitrouter" | "gateway" | "openai" | null {
-  // Mirror getTextEmbeddingModel's order so billing attributes the embedding to
-  // the provider that actually served it: OpenAI native → gateway → BitRouter.
+export function resolveEmbeddingProviderSource(): "gateway" | "openai" | null {
+  // Mirror getTextEmbeddingModel: OpenAI native → dev gateway.
   if (getProviderKey("OPENAI_API_KEY")) {
     return "openai";
   }
@@ -624,17 +518,12 @@ export function resolveEmbeddingProviderSource(): "bitrouter" | "gateway" | "ope
     return "gateway";
   }
 
-  if (getBitRouterApiKey()) {
-    return "bitrouter";
-  }
-
   return null;
 }
 
 export function hasAnyAiProviderConfigured(): boolean {
   return Boolean(
-    getBitRouterApiKey() ||
-      getOpenRouterApiKey() ||
+    getOpenRouterApiKey() ||
       getVercelAIGatewayApiKey() ||
       getProviderKey("CEREBRAS_API_KEY") ||
       getProviderKey("OPENAI_API_KEY") ||
@@ -646,7 +535,6 @@ export function hasAnyAiProviderConfigured(): boolean {
 
 export function getAiProviderConfigurationStatus() {
   return {
-    bitrouter: Boolean(getBitRouterApiKey()),
     openrouter: Boolean(getOpenRouterApiKey()),
     gateway: Boolean(getVercelAIGatewayApiKey()),
     cerebras: Boolean(getProviderKey("CEREBRAS_API_KEY")),
