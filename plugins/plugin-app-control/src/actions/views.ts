@@ -63,6 +63,68 @@ export type ViewsMode =
 	| "split"
 	| "tile";
 
+// Connectors that deliver the agent's turn over an EXTERNAL chat surface which
+// does NOT render Eliza desktop views to the person who sent the message. On
+// these, a VIEWS navigation/layout op (show/open/close/split/…) is invisible to
+// the asker: it only drives the local desktop shell. If VIEWS is then chosen as
+// the turn's terminal action, the chat user gets no reply at all (#8613). We
+// exclude the desktop-only modes from the planner surface for these sources so
+// the turn falls back to a real text REPLY the connector reliably delivers.
+// Text-producing modes (list/current/search), capability/content ops (interact)
+// and owner authoring ops (create/edit/icon/delete) stay available everywhere.
+// Local view-capable surfaces (dashboard / desktop / mobile app chat, identified
+// by sources like "chat"/"user_chat"/"app" or no source) are intentionally NOT
+// listed, so their view-switching UX is unchanged. This is a fail-open denylist:
+// an unknown source keeps today's behavior.
+const VIEWLESS_TEXT_CONNECTOR_SOURCES = new Set([
+	"discord",
+	"telegram",
+	"matrix",
+	"slack",
+	"signal",
+	"whatsapp",
+	"twitter",
+	"x",
+	"instagram",
+	"imessage",
+	"bluebubbles",
+	"line",
+	"wechat",
+	"nostr",
+	"feishu",
+	"google-chat",
+	"farcaster",
+]);
+
+// VIEWS modes whose ONLY effect is a desktop UI navigation/layout change with no
+// inherent text answer. Invisible (and so a silent non-answer) on a connector
+// that can't surface views to the asker — see VIEWLESS_TEXT_CONNECTOR_SOURCES.
+const DESKTOP_ONLY_VIEW_MODES = new Set<ViewsMode>([
+	"show",
+	"open",
+	"close",
+	"manager",
+	"broadcast",
+	"pin",
+	"window",
+	"split",
+	"tile",
+]);
+
+/**
+ * True when the incoming message arrived over an external text connector that
+ * has no Eliza view surface for the user who sent it. Used to keep desktop-only
+ * VIEWS modes off the planner surface so a text-connector turn never resolves to
+ * a silent view navigation with no chat reply (#8613).
+ */
+export function messageHasNoViewSurface(message: Memory): boolean {
+	const source =
+		typeof message.content?.source === "string"
+			? message.content.source.toLowerCase()
+			: "";
+	return VIEWLESS_TEXT_CONNECTOR_SOURCES.has(source);
+}
+
 const MODES: readonly ViewsMode[] = [
 	"list",
 	"current",
@@ -2085,6 +2147,19 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				mode === "remove"
 			) {
 				return ownerCheck(runtime, message);
+			}
+
+			// Desktop-only navigation/layout ops are invisible on a text connector
+			// that can't render views for the asker. Offering them there lets the
+			// planner pick VIEWS as a silent terminal action (no chat reply) — drop
+			// them so the turn falls back to a real REPLY. Text/content modes stay
+			// available everywhere. (#8613)
+			if (
+				mode &&
+				DESKTOP_ONLY_VIEW_MODES.has(mode) &&
+				messageHasNoViewSurface(message)
+			) {
+				return false;
 			}
 
 			// Read modes are visible to all users.
