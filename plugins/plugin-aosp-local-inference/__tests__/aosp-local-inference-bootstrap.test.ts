@@ -16,7 +16,6 @@ import {
   makeAospTextToSpeechHandler,
   parseMemAvailableMb,
   readAssignedBundledModels,
-  resolveAospOmnivoiceConfig,
   shouldEvictChatForAvailMb,
   VOICE_COLOAD_KEEP_AVAIL_MB,
 } from "../src/aosp-local-inference-bootstrap";
@@ -612,24 +611,6 @@ describe("AOSP TEXT_TO_SPEECH backend selection", () => {
     await handler({} as never, "one");
     await handler({} as never, "two");
     expect(foreground).toBe(2);
-  });
-
-  it("resolves explicitly configured OmniVoice artifacts", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-omnivoice-"));
-    const libPath = path.join(root, "libomnivoice.so");
-    const modelPath = path.join(root, "omnivoice-base-Q4_K_M.gguf");
-    const codecPath = path.join(root, "omnivoice-tokenizer-Q4_K_M.gguf");
-    writeFileSync(libPath, "lib");
-    writeFileSync(modelPath, "model");
-    writeFileSync(codecPath, "codec");
-
-    expect(
-      resolveAospOmnivoiceConfig({
-        OMNIVOICE_LIB_PATH: libPath,
-        OMNIVOICE_MODEL_PATH: modelPath,
-        OMNIVOICE_CODEC_PATH: codecPath,
-      } as NodeJS.ProcessEnv),
-    ).toEqual({ libPath, modelPath, codecPath });
   });
 });
 

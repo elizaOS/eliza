@@ -56,10 +56,8 @@ import {
 } from "@elizaos/core";
 // @elizaos/shared/local-inference is no longer imported here: every AOSP TTS
 // path now flows through `makeAospFusedOmnivoiceTextToSpeechHandler` below,
-// which dlopen's `libomnivoice.so` via bun:ffi. The legacy Kokoro/ONNX
-// import block (KokoroOnnxRuntime, KokoroTtsBackend, KokoroEngineDiscoveryResult,
-// resolveKokoroEngineConfig, findKokoroVoice, KokoroRuntime) and the matching
-// `onnxruntime-web` dependency were removed in the GGUF-only migration.
+// which dlopen's `libelizainference.so` via bun:ffi and synthesizes OmniVoice
+// TTS in-process through the fused `eliza_inference_tts_*` ABI.
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 import {
   registerAospLlamaLoader,
@@ -282,29 +280,9 @@ interface AospOmnivoicePrewarmOptions {
   shouldSkip?: () => boolean;
 }
 
-interface AospOmnivoiceConfig {
-  libPath: string;
-  modelPath: string;
-  codecPath: string;
-}
-
 interface AospFusedOmnivoiceConfig {
   libPath: string;
   bundleRoot: string;
-}
-
-type OmnivoicePluginModule = {
-  omnivoicePlugin?: {
-    models?: Record<string, unknown>;
-  };
-  default?: {
-    models?: Record<string, unknown>;
-  };
-};
-
-interface AospOmnivoiceTtsHandlerOptions {
-  resolveConfig?: () => AospOmnivoiceConfig | null;
-  loadPlugin?: () => Promise<OmnivoicePluginModule>;
 }
 
 type TranscriptionHandler = (
@@ -1712,41 +1690,6 @@ export function prewarmAospOmnivoiceTextToSpeechHandler(
   }, delayMs);
 }
 
-function firstExistingPath(
-  paths: Array<string | undefined | null>,
-): string | null {
-  for (const p of paths) {
-    if (p && existsSync(p)) return p;
-  }
-  return null;
-}
-
-function findOmnivoiceTtsFile(
-  ttsDir: string,
-  kind: "model" | "codec",
-): string | null {
-  if (!existsSync(ttsDir)) return null;
-  const entries = readdirSync(ttsDir, { withFileTypes: true });
-  const match = entries.find((entry) => {
-    if (!entry.isFile()) return false;
-    const name = entry.name.toLowerCase();
-    if (!name.endsWith(".gguf")) return false;
-    if (kind === "model") {
-      return (
-        name.includes("omnivoice") &&
-        name.includes("base") &&
-        !name.includes("tokenizer") &&
-        !name.includes("codec")
-      );
-    }
-    return (
-      name.includes("omnivoice") &&
-      (name.includes("tokenizer") || name.includes("codec"))
-    );
-  });
-  return match ? path.join(ttsDir, match.name) : null;
-}
-
 function resolveAssignedChatBundleRoot(): string {
   const modelsDir = resolveBundledModelsDir();
   const assigned = readAssignedBundledModels(modelsDir);
@@ -1759,125 +1702,6 @@ function resolveAssignedChatBundleRoot(): string {
     );
   }
   return resolveBundleRootFromModelPath(chatModel);
-}
-
-export function resolveAospOmnivoiceConfig(
-  env: NodeJS.ProcessEnv = process.env,
-): AospOmnivoiceConfig | null {
-  const libPath = firstExistingPath([
-    env.OMNIVOICE_LIB_PATH?.trim(),
-    (() => {
-      try {
-        return path.join(
-          path.dirname(resolveLibllamaPath()),
-          "libomnivoice.so",
-        );
-      } catch {
-        return null;
-      }
-    })(),
-  ]);
-
-  let bundleRoot: string | null = null;
-  try {
-    bundleRoot = resolveAssignedChatBundleRoot();
-  } catch {
-    bundleRoot = null;
-  }
-
-  const ttsDir = bundleRoot ? path.join(bundleRoot, "tts") : null;
-  const modelPath = firstExistingPath([
-    env.OMNIVOICE_MODEL_PATH?.trim(),
-    ttsDir ? findOmnivoiceTtsFile(ttsDir, "model") : null,
-  ]);
-  const codecPath = firstExistingPath([
-    env.OMNIVOICE_CODEC_PATH?.trim(),
-    ttsDir ? findOmnivoiceTtsFile(ttsDir, "codec") : null,
-  ]);
-
-  if (!libPath || !modelPath || !codecPath) return null;
-  return { libPath, modelPath, codecPath };
-}
-
-// TTS backend selection used to gate Kokoro/OmniVoice. With ONNX deleted
-// the AOSP build only supports the fused OmniVoice (libomnivoice.so via
-// libelizainference.so) path; the env knob is kept for forward-compat
-// logging but currently has no behavioural effect.
-function resolveAospTtsBackend(env: NodeJS.ProcessEnv = process.env): string {
-  const explicit =
-    env.ELIZA_AOSP_TTS_BACKEND?.trim() || env.ELIZA_LOCAL_TTS_BACKEND?.trim();
-  return (explicit ?? "omnivoice").toLowerCase();
-}
-
-async function loadOmnivoicePluginModule(): Promise<OmnivoicePluginModule> {
-  return (await import("@elizaos/plugin-omnivoice")) as OmnivoicePluginModule;
-}
-
-export function makeAospOmnivoiceTextToSpeechHandler(
-  opts: AospOmnivoiceTtsHandlerOptions = {},
-): TextToSpeechHandler {
-  let handlerPromise: Promise<{
-    handler: TextToSpeechHandler;
-    config: AospOmnivoiceConfig;
-  }> | null = null;
-
-  async function ensureHandler(): Promise<{
-    handler: TextToSpeechHandler;
-    config: AospOmnivoiceConfig;
-  }> {
-    if (handlerPromise) return handlerPromise;
-    handlerPromise = Promise.resolve()
-      .then(async () => {
-        const config = (opts.resolveConfig ?? resolveAospOmnivoiceConfig)();
-        if (!config) {
-          throw new Error(
-            "[aosp-local-inference] OmniVoice TEXT_TO_SPEECH is not available: expected libomnivoice.so plus omnivoice base/tokenizer GGUFs in the active Eliza-1 bundle.",
-          );
-        }
-        process.env.OMNIVOICE_LIB_PATH = config.libPath;
-        process.env.OMNIVOICE_MODEL_PATH = config.modelPath;
-        process.env.OMNIVOICE_CODEC_PATH = config.codecPath;
-
-        const mod = await (opts.loadPlugin ?? loadOmnivoicePluginModule)();
-        const plugin = mod.omnivoicePlugin ?? mod.default;
-        const rawHandler = plugin?.models?.[ModelType.TEXT_TO_SPEECH];
-        if (typeof rawHandler !== "function") {
-          throw new Error(
-            "[aosp-local-inference] @elizaos/plugin-omnivoice did not expose a TEXT_TO_SPEECH handler",
-          );
-        }
-        logger.info(
-          `[aosp-local-inference] OmniVoice TEXT_TO_SPEECH backend ready (lib=${config.libPath}, model=${path.basename(config.modelPath)}, codec=${path.basename(config.codecPath)})`,
-        );
-        return {
-          handler: rawHandler as TextToSpeechHandler,
-          config,
-        };
-      })
-      .catch((err) => {
-        handlerPromise = null;
-        throw err;
-      });
-    return handlerPromise;
-  }
-
-  return async (runtime, params) => {
-    const started = Date.now();
-    const { handler, config } = await ensureHandler();
-    const audio = await handler(runtime, params);
-    const bytes =
-      audio instanceof Uint8Array
-        ? audio
-        : new Uint8Array(
-            (audio as Buffer).buffer,
-            (audio as Buffer).byteOffset,
-            (audio as Buffer).byteLength,
-          );
-    logger.info(
-      `[aosp-local-inference] OmniVoice TEXT_TO_SPEECH completed in ${Date.now() - started}ms (model=${path.basename(config.modelPath)}, bytes=${bytes.byteLength})`,
-    );
-    return bytes;
-  };
 }
 
 function isFfiNullPointer(value: unknown): boolean {
