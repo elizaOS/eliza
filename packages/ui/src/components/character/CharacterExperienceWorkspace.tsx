@@ -249,9 +249,9 @@ function graphNodeColor(experience: CharacterExperienceRecord): {
       };
     default:
       return {
-        fill: "rgb(56 189 248)",
-        glow: "rgba(56,189,248,0.38)",
-        ring: "rgba(125,211,252,0.85)",
+        fill: "rgb(148 163 184)",
+        glow: "rgba(148,163,184,0.35)",
+        ring: "rgba(203,213,225,0.85)",
       };
   }
 }
@@ -552,10 +552,9 @@ function ExperienceGraphPanel({
   return (
     <div
       data-testid="experience-graph-panel"
-      className="relative h-[24rem] overflow-hidden rounded-sm border border-border/40 bg-[radial-gradient(circle_at_18%_16%,rgba(56,189,248,0.18),transparent_30%),radial-gradient(circle_at_82%_24%,rgba(245,158,11,0.16),transparent_28%),radial-gradient(circle_at_50%_92%,rgba(34,197,94,0.12),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.24),rgba(2,6,23,0.04))]"
+      className="relative h-[24rem] overflow-hidden rounded-sm border border-border/40 bg-bg-accent/40"
     >
       <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:34px_34px]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(2,6,23,0.22)_72%)]" />
       <svg
         aria-hidden="true"
         className="absolute inset-0 h-full w-full"

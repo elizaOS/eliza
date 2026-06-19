@@ -17,3 +17,11 @@ Verdicts: `good` · `needs-work` · `broken`. Newest at bottom.
 
 ## Infra note
 - Builtin views (App.tsx-rendered) hot-reload in the app vite dev server → full screenshot loop. Plugin views load as pre-built bundles via the stub API → source edits need a bundle/live-stack rebuild to verify visually; rely on typecheck + review in the meantime.
+
+## P3 — brand/color fixes (builtin, verified)
+- **Memories** empty-state tiles: blue (text-info) + green (text-ok) → neutral; orange Brain stays focal. Verdict: good.
+- **CharacterExperienceWorkspace** graph: blue default node rgb(56,189,248) → neutral slate (positive/negative/mixed stay semantic green/red/amber); busy blue/green/dark radial-gradient + dark vignette background → clean light surface. Verdict: good.
+
+## P2 — plugin sweep wave 2 (typecheck-verified)
+- **Steward** (ApprovalQueue, TransactionHistory): text Refresh → icon-only (16/16 tests pass).
+- Wallet-ui / Vincent / Screenshare / Model-tester: audited, already clean (icon refresh, functional chips, no restating subtitles). Model-tester category swatches kept (they distinguish presets).
