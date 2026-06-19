@@ -154,4 +154,7 @@ final class ElizaVoiceNative {
 
     /** Open wake-word + score a positive and a negative clip; logs both maxP. */
     static native String nativeWakewordSelfTest(String bundleDir, float[] pos, float[] neg);
+
+    /** Run the whole pipeline (ctx→open→feed→flush) on one PCM buffer in one call. */
+    static native String nativePipelineSelfTest(String bundleDir, float[] pcm, int feedSamples);
 }

@@ -383,6 +383,15 @@ std::string drain_turns_json(PipelineSession* s) {
     return out;
 }
 
+// Close a self-test session's classifier handles + its owning context.
+void cleanup_session_for_selftest(PipelineSession* s, EliInferenceContext* ctx) {
+    if (s->diariz) eliza_inference_diariz_close(s->diariz);
+    if (s->speaker) eliza_inference_speaker_close(s->speaker);
+    if (s->vad) eliza_inference_vad_close(s->vad);
+    delete s;
+    if (ctx) eliza_inference_destroy(ctx);
+}
+
 }  // namespace
 
 extern "C" {
@@ -836,6 +845,80 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineClose(JNIEnv*, jclass,
     if (s->speaker) eliza_inference_speaker_close(s->speaker);
     if (s->vad) eliza_inference_vad_close(s->vad);
     delete s;
+}
+
+// ── Pipeline self-test (one native call: ctx→open→feed→flush) ────────────
+//
+// Runs the WHOLE native pipeline on a complete PCM buffer in ONE call: creates
+// a context, opens the VAD+speaker+diariz pipeline, streams the PCM through the
+// native VAD hot-loop + turn segmentation, flushes, and returns the turn JSON
+// (the per-op TURN logcat lines are the in-process evidence). Single call so it
+// does not depend on chained Capacitor awaits. `feedSamples` chunks the feed to
+// mimic the live audioFrame batching (0 = feed the whole buffer at once).
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineSelfTest(JNIEnv* env, jclass,
+                                                            jstring jBundleDir,
+                                                            jfloatArray jPcm,
+                                                            jint feedSamples) {
+    const std::string bundleDir = from_jstring(env, jBundleDir);
+    char* outError = nullptr;
+    EliInferenceContext* ctx =
+        eliza_inference_create(bundleDir.c_str(), &outError);
+    if (!ctx) {
+        throw_runtime(env, "pipelineSelfTest: create", outError);
+        return nullptr;
+    }
+    auto* s = new PipelineSession();
+    s->ctx = ctx;
+    s->vad = eliza_inference_vad_open(ctx, kSampleRate, &outError);
+    if (!s->vad) { delete s; eliza_inference_destroy(ctx);
+        throw_runtime(env, "pipelineSelfTest: vad_open", outError); return nullptr; }
+    s->speaker = eliza_inference_speaker_open(ctx, nullptr, &outError);
+    if (!s->speaker) { eliza_inference_vad_close(s->vad); delete s;
+        eliza_inference_destroy(ctx);
+        throw_runtime(env, "pipelineSelfTest: speaker_open", outError); return nullptr; }
+    s->diariz = eliza_inference_diariz_open(ctx, nullptr, &outError);
+    if (!s->diariz) { eliza_inference_speaker_close(s->speaker);
+        eliza_inference_vad_close(s->vad); delete s; eliza_inference_destroy(ctx);
+        throw_runtime(env, "pipelineSelfTest: diariz_open", outError); return nullptr; }
+
+    const std::vector<float> pcm = read_float_array(env, jPcm);
+    LOGI("pipelineSelfTest: feeding %zu samples (%.2fs), chunk=%d",
+         pcm.size(), pcm.size() / (double)kSampleRate, feedSamples);
+    const size_t chunk = feedSamples > 0 ? static_cast<size_t>(feedSamples)
+                                         : pcm.size();
+    std::vector<std::string> allTurns;
+    for (size_t off = 0; off < pcm.size(); off += chunk) {
+        const size_t end = std::min(off + chunk, pcm.size());
+        s->pending.insert(s->pending.end(), pcm.begin() + off, pcm.begin() + end);
+        s->turns.clear(); s->turnEmbeddings.clear(); s->turnLabels.clear();
+        if (!drain_windows(s, &outError)) {
+            cleanup_session_for_selftest(s, ctx);
+            throw_runtime(env, "pipelineSelfTest: drain", outError);
+            return nullptr;
+        }
+        for (auto& t : s->turns) allTurns.push_back(t);
+    }
+    // Flush any open turn (the speech-end via end-hangover may already have
+    // fired mid-stream; a force-flush catches a turn still open at EOF).
+    s->turns.clear(); s->turnEmbeddings.clear(); s->turnLabels.clear();
+    if (s->seg.forceEnd()) {
+        s->capturing = false;
+        eliza_inference_vad_reset(s->vad, &outError);
+        if (outError) { std::free(outError); outError = nullptr; }
+        if (finalize_turn(s, &outError)) {
+            for (auto& t : s->turns) allTurns.push_back(t);
+        } else if (outError) { std::free(outError); outError = nullptr; }
+    }
+    std::string json = "[";
+    for (size_t i = 0; i < allTurns.size(); ++i) {
+        if (i) json += ",";
+        json += allTurns[i];
+    }
+    json += "]";
+    LOGI("pipelineSelfTest: %zu total turn(s)", allTurns.size());
+    cleanup_session_for_selftest(s, ctx);
+    return to_jstring(env, json);
 }
 
 // ── Wake-word self-test (one native call: open + score pos + score neg) ──

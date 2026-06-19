@@ -146,6 +146,24 @@ public class ElizaVoicePlugin extends Plugin {
         }
     }
 
+    @PluginMethod
+    public void pipelineSelfTest(PluginCall call) {
+        if (!ensureLoadedOrReject(call)) return;
+        String bundleDir = resolveBundleDir(call.getString("bundleDir"));
+        Integer feed = call.getInt("feedSamples", 16000);
+        try {
+            float[] pcm = decodePcm16(call.getString("pcm16", ""));
+            String json = ElizaVoiceNative.nativePipelineSelfTest(
+                bundleDir, pcm, feed != null ? feed : 16000);
+            Log.i(TAG, "pipelineSelfTest -> " + json);
+            JSObject r = new JSObject();
+            r.put("turns", json);
+            call.resolve(r);
+        } catch (Throwable e) {
+            call.reject("pipelineSelfTest failed: " + e.getMessage());
+        }
+    }
+
     private String resolveBundleDir(String requested) {
         if (requested != null && !requested.isEmpty()) return requested;
         Context context = getContext();
