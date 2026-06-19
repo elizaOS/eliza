@@ -26,6 +26,10 @@ import {
   type SlashExecution,
 } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
+import {
+  TUTORIAL_CHAT_CONTROL_EVENT,
+  type TutorialChatControlDetail,
+} from "../../events";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { useViewChatBinding } from "../../state/view-chat-binding";
@@ -1376,6 +1380,41 @@ export function ContinuousChatOverlay({
     // Open to at least HALF; if already at half/full, keep the taller detent.
     setDetent((d) => (d === "input" ? "half" : d));
   }, [hasThread, sheetOpen]);
+
+  // Interactive tour control: the tutorial drives the chat into a clean, known
+  // state at the start of each frame (so the spotlight always lands on the right
+  // control) and pre-fills the composer for the guided "ask to navigate" demo.
+  // Decoupled via a window event so the tour never reaches into these internals.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onControl = (event: Event) => {
+      const detail = (event as CustomEvent<TutorialChatControlDetail>).detail;
+      if (!detail) return;
+      switch (detail.action) {
+        case "pill":
+          closeSheet();
+          setPilled(true);
+          inputRef.current?.blur();
+          break;
+        case "rest":
+          setPilled(false);
+          goToDetent("collapsed");
+          break;
+        case "expand":
+          setPilled(false);
+          goToDetent("full");
+          break;
+        case "prefill":
+          setPilled(false);
+          setDraft(detail.text ?? "");
+          requestAnimationFrame(() => inputRef.current?.focus());
+          break;
+      }
+    };
+    window.addEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
+    return () =>
+      window.removeEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
+  }, [closeSheet, goToDetent]);
 
   // Push-to-talk dictation drops its final transcript into the composer draft
   // (no send): register the sink with the controller while this overlay is
