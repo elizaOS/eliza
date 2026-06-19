@@ -75,11 +75,19 @@ describe("assistant text helpers", () => {
     );
   });
 
-  it("does NOT unwrap a reply object carrying unrelated data (preserve content)", () => {
+  it("does NOT unwrap a reply object carrying unrelated data or a non-primitive reply", () => {
     expect(
       extractAssistantReplyText('{"reply":"hi","userData":{"id":1}}'),
     ).toBeNull();
-    expect(extractAssistantReplyText('{"reply":42}')).toBeNull();
+    // an object/array reply is not user-facing text → leave it alone
+    expect(extractAssistantReplyText('{"reply":{"x":1}}')).toBeNull();
+    expect(extractAssistantReplyText('{"reply":[1,2]}')).toBeNull();
+  });
+
+  it("unwraps a primitive (number/boolean) reply the model emitted as text", () => {
+    expect(extractAssistantReplyText('{"reply":42}')).toBe("42");
+    expect(extractAssistantReplyText('{"reply":true}')).toBe("true");
+    expect(extractAssistantReplyText('{"reply":7,"action":"NONE"}')).toBe("7");
   });
 
   it("does not rewrite ordinary chat text that merely contains the word reply", () => {

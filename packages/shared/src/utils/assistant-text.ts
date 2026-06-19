@@ -221,8 +221,17 @@ const REPLY_PAYLOAD_KEYS = new Set([
 
 function isSimpleReplyPayload(
   value: Record<string, unknown>,
-): value is Record<string, unknown> & { reply: string } {
-  if (typeof value.reply !== "string") return false;
+): value is Record<string, unknown> & { reply: string | number | boolean } {
+  const reply = value.reply;
+  // Allow a primitive reply: models emit `{"reply":42}` / `{"reply":true}` too,
+  // not just `{"reply":"…"}`. Objects/arrays aren't user-facing text — reject.
+  if (
+    typeof reply !== "string" &&
+    typeof reply !== "number" &&
+    typeof reply !== "boolean"
+  ) {
+    return false;
+  }
   for (const key of Object.keys(value)) {
     if (!REPLY_PAYLOAD_KEYS.has(key)) return false;
   }
@@ -275,7 +284,7 @@ export function extractAssistantReplyText(input: string): string | null {
   ) {
     const parsed = tryParseObject(trimmed);
     if (parsed && isSimpleReplyPayload(parsed)) {
-      const reply = parsed.reply.trim();
+      const reply = String(parsed.reply).trim();
       if (!reply) return null;
       return stripAssistantStageDirections(reply).trim() || null;
     }
