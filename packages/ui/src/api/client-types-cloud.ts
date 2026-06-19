@@ -1280,6 +1280,48 @@ export interface OrchestratorAccountOverview {
   assignments: OrchestratorAccountAssignment[];
 }
 
+export type OrchestratorRoomParticipantKind =
+  | "orchestrator"
+  | "user"
+  | "sub_agent";
+
+/** One participant in a task room. `sub_agent` rows carry their pooled account
+ * + live spend; `orchestrator`/`user` rows identify the two human-facing ends. */
+export interface OrchestratorRoomParticipant {
+  kind: OrchestratorRoomParticipantKind;
+  id: string;
+  label: string;
+  framework?: string;
+  status?: string;
+  active?: boolean;
+  activeTool?: string;
+  accountProviderId?: string;
+  accountId?: string;
+  accountLabel?: string;
+  totalTokens?: number;
+  usageState?: "measured" | "estimated" | "unavailable";
+}
+
+/** A single task room with its grouped participant roster — the orchestrator,
+ * the owning user, and every sub-agent attached to THIS room. */
+export interface OrchestratorRoomRoster {
+  taskId: string;
+  taskTitle: string;
+  status: string;
+  roomId?: string;
+  taskRoomId?: string;
+  activeAgentCount: number;
+  multiParty: boolean;
+  participants: OrchestratorRoomParticipant[];
+}
+
+/** Payload for `GET /api/orchestrator/rooms`: per-room participant rosters
+ * (orchestrator + user + each sub-agent grouped by task room) — the room-scoped
+ * counterpart to the flat `/accounts` assignment map. */
+export interface OrchestratorRoomRosterOverview {
+  rooms: OrchestratorRoomRoster[];
+}
+
 /** Structured payload for creating a task via `POST /api/orchestrator/tasks`. */
 export interface CodingAgentCreateTaskInput {
   title: string;
