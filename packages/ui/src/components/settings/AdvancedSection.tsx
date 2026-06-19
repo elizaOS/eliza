@@ -171,7 +171,7 @@ export function AdvancedSection() {
               variant="outline"
               type="button"
               onClick={openExportModal}
-              className="min-h-[5.5rem] h-auto rounded-lg border border-border bg-card p-5 text-left transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent"
+              className="min-h-[5.5rem] h-auto rounded-lg border border-border bg-card p-5 text-left transition-[border-color,background-color] group hover:border-accent"
               aria-haspopup="dialog"
               {...exportOpenAgentProps}
             >
@@ -190,7 +190,7 @@ export function AdvancedSection() {
               variant="outline"
               type="button"
               onClick={openImportModal}
-              className="min-h-[5.5rem] h-auto rounded-lg border border-border bg-card p-5 text-left transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent"
+              className="min-h-[5.5rem] h-auto rounded-lg border border-border bg-card p-5 text-left transition-[border-color,background-color] group hover:border-accent"
               aria-haspopup="dialog"
               {...importOpenAgentProps}
             >
