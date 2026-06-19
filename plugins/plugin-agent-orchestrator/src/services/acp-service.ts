@@ -12,6 +12,7 @@ import {
   resolveCodingAccountStrategy,
   selectCodingAccount,
 } from "./coding-account-selection.js";
+import { readConfigMcpServers } from "./config-env.js";
 import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
@@ -1174,6 +1175,10 @@ export class AcpService extends Service {
         opts.model,
         session.agentType,
       ),
+      // Auto-inherit the parent runtime's configured MCP servers (config
+      // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
+      // none are configured → the transport falls back to ELIZA_ACP_MCP_SERVERS.
+      mcpServers: readConfigMcpServers(),
       onEvent: (event, protocolSessionId) => {
         this.handleAcpEvent(
           event,

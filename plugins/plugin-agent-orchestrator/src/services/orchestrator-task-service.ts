@@ -86,6 +86,7 @@ import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
+import { captureChangeSet, type WorkspaceChangeSet } from "./workspace-diff.js";
 
 /**
  * Recoverable operator-recovery conflict.
@@ -125,6 +126,12 @@ export interface SpawnAgentForTaskOptions {
   /** Concrete first instruction; defaults to the task goal. */
   task?: string;
   approvalPreset?: ApprovalPreset;
+  /**
+   * Recursion depth for nested spawns. 0 (default) = spawned by the main agent;
+   * a sub-agent spawning its own child passes parentDepth + 1. Enforced against
+   * the max-nesting-depth cap so self-spawning can't run away.
+   */
+  nestingDepth?: number;
 }
 
 export interface AddMessageInput {
@@ -221,6 +228,22 @@ function num(value: unknown): number {
 
 function truncate(text: string, max = 2000): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/**
+ * Read a persisted {@link WorkspaceChangeSet} off arbitrary session metadata,
+ * validating its shape the same way the CODING_SESSION_CHANGES provider does so
+ * a malformed value never reaches the DTO. Returns undefined when absent or
+ * malformed.
+ */
+function readLastChangeSet(
+  metadata: Record<string, unknown> | undefined,
+): WorkspaceChangeSet | undefined {
+  const raw = metadata?.lastChangeSet;
+  if (!isRecord(raw)) return undefined;
+  if (!Array.isArray(raw.changedFiles)) return undefined;
+  if (typeof raw.capturedAt !== "number") return undefined;
+  return raw as unknown as WorkspaceChangeSet;
 }
 
 function findPlanRevision(
@@ -632,6 +655,7 @@ export class OrchestratorTaskService extends Service {
           completionSummary: summary ? truncate(summary) : undefined,
           stoppedAt: Date.now(),
         });
+        await this.mirrorChangeSetToStore(sessionId);
         await this.advanceTaskStatus(taskId, "validating");
         // Issue #8124: the orchestrator should always behave like `/goal` —
         // confirm the sub-agent met every acceptance criterion before marking
@@ -677,6 +701,60 @@ export class OrchestratorTaskService extends Service {
       }
       default:
         break;
+    }
+  }
+
+  /**
+   * Mirror the real git change set a sub-agent produced into the durable task
+   * store session record's metadata, so the existing `/api/orchestrator/tasks/:id`
+   * detail route serves it (`TaskSessionDto.metadata.lastChangeSet`) and the
+   * task view can render a read-only diff without a new endpoint.
+   *
+   * Source of truth is the change set the router captured onto the LIVE ACP
+   * session metadata at `task_complete`. Because the router's capture and this
+   * event-bridge handler run on the same ACP event with no guaranteed ordering,
+   * fall back to capturing it here from the same session-scoped signals (spawn
+   * baseline + agent-written tool paths) when the ACP write hasn't landed yet.
+   *
+   * Additive and null-safe: when there is no change set (unchanged completion,
+   * non-git workdir), nothing is written and the DTO simply omits it.
+   */
+  private async mirrorChangeSetToStore(sessionId: string): Promise<void> {
+    try {
+      const acp = this.acp();
+      if (!acp) return;
+      const session = await acp.getSession(sessionId);
+      if (!session) return;
+
+      let changeSet = readLastChangeSet(session.metadata);
+      if (!changeSet) {
+        const meta = session.metadata as Record<string, unknown> | undefined;
+        const baseline = str(meta?.codingBaselineSha);
+        const baselineDirty = Array.isArray(meta?.codingBaselineDirty)
+          ? (meta.codingBaselineDirty as unknown[]).map(String)
+          : [];
+        changeSet = await captureChangeSet(
+          session.workdir,
+          baseline,
+          acp.getChangedPaths(sessionId),
+          baselineDirty,
+        );
+      }
+      if (!changeSet) return;
+
+      const found = await this.store.findSession(sessionId);
+      if (!found) return;
+      await this.store.updateSession(sessionId, {
+        metadata: {
+          ...(found.session.metadata ?? {}),
+          lastChangeSet: changeSet,
+        },
+      });
+    } catch (err) {
+      this.log("debug", "mirror change-set to store failed", {
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -1565,6 +1643,18 @@ export class OrchestratorTaskService extends Service {
   ): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    // Nested-spawn guard: a sub-agent can spawn its own children, but only up to
+    // a bounded depth so a misbehaving agent can't self-spawn without limit.
+    const nestingDepth = opts.nestingDepth ?? 0;
+    const maxNestingDepth = ((): number => {
+      const raw = Number(process.env.ELIZA_ACP_MAX_NESTING_DEPTH);
+      return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 3;
+    })();
+    if (nestingDepth > maxNestingDepth) {
+      throw new Error(
+        `sub-agent nesting depth ${nestingDepth} exceeds the max of ${maxNestingDepth} (raise ELIZA_ACP_MAX_NESTING_DEPTH to allow deeper nesting)`,
+      );
+    }
     const acp = this.acp();
     if (!acp) throw new Error("ACP service unavailable");
     const workdir = opts.workdir
@@ -1634,6 +1724,9 @@ export class OrchestratorTaskService extends Service {
         // Orchestrator sessions outlive their first prompt so follow-ups and
         // validation re-dispatch can reuse them.
         keepAliveAfterComplete: true,
+        // Carried so a child this sub-agent spawns can compute its own depth
+        // (parent depth + 1) and the nesting guard above can enforce the cap.
+        nestingDepth,
       },
     });
 
