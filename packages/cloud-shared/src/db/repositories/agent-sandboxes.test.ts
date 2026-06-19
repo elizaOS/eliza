@@ -80,6 +80,30 @@ describe("AgentSandboxesRepository", () => {
     expect(query.params).toContain("shared");
   });
 
+  test("reconcile selection targets recent disconnected dedicated agents with a bridge", async () => {
+    capturedWhere = undefined;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().listReconcilableDisconnected();
+
+    if (!capturedWhere)
+      throw new Error("listReconcilableDisconnected did not build a where clause");
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+    // Only disconnected, non-shared rows are reconcile candidates...
+    expect(sql).toContain("status");
+    expect(sql).toContain("execution_tier");
+    expect(sql).toContain("<>");
+    // ...that still have a tailnet bridge to dial, are not soft-deleted, and
+    // dropped recently enough to plausibly still be alive.
+    expect(sql).toContain("bridge_url");
+    expect(sql).toContain("deleted_at");
+    expect(sql).toContain("updated_at");
+    expect(query.params).toContain("disconnected");
+    expect(query.params).toContain("shared");
+  });
+
   test("marks only orphaned user-owned pending rows with no provision job as error", async () => {
     capturedWhere = undefined;
     set.mockClear();

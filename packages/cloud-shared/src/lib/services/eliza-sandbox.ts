@@ -3265,48 +3265,55 @@ export class ElizaSandboxService {
 
   // Heartbeat
 
-  async heartbeat(agentId: string, orgId: string): Promise<boolean> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec?.bridge_url) return false;
-
-    // The agent is reached over the headscale tailnet, where an idle path goes
-    // cold; a single cold-path miss must not evict a healthy agent. Retry the
-    // probe (the first attempt re-warms the path), then apply hysteresis before
-    // giving up — seen live: a freshly-running agent was marked disconnected
-    // ~1 min after boot by one transient "fetch failed".
-    // Liveness must dial the BRIDGE port over the headscale tailnet. The
-    // container serves its full HTTP API there (and `/api/health` unauthed —
-    // the same endpoint provisioning's health probe passes on); `web_ui_port`
-    // is a host-only docker port mapping that is NOT reachable over the tailnet,
-    // so the web-base-url path `getAgentApiEndpoint` prefers is a dead poll for
-    // the on-prem worker and was flipping every running agent to `disconnected`.
-    // `bridge_url` is the trusted tailnet bridge (verified non-null above); build
-    // the health URL from it directly (this exact form is verified live in prod —
-    // a dedicated-always agent holds `running` and its subdomain proxies 200/401).
-    const heartbeatEndpoint = new URL("/api/health", rec.bridge_url).toString();
-    let res: Response | null = null;
+  /**
+   * Dial an agent's bridge health endpoint over the headscale tailnet, with
+   * retry. The tailnet path goes cold when idle, so a single miss must not be
+   * read as "down" — the first attempt re-warms the path. Returns true on the
+   * first `2xx`.
+   *
+   * Liveness must dial the BRIDGE port: the container serves its full HTTP API
+   * there (and `/api/health` unauthed — the same endpoint provisioning's health
+   * probe passes on). `web_ui_port` is a host-only docker port mapping NOT
+   * reachable over the tailnet, so the web-base-url path `getAgentApiEndpoint`
+   * prefers is a dead poll for the on-prem worker and was flipping every
+   * running agent to `disconnected`. `bridge_url` is the trusted tailnet bridge
+   * (callers verify it is non-null); this exact form is verified live in prod —
+   * a dedicated-always agent holds `running` and its subdomain proxies 200/401.
+   */
+  private async probeBridgeHealth(
+    rec: Pick<AgentSandbox, "id" | "environment_vars" | "bridge_url">,
+  ): Promise<boolean> {
+    if (!rec.bridge_url) return false;
+    const endpoint = new URL("/api/health", rec.bridge_url).toString();
     for (let attempt = 0; attempt < HEARTBEAT_PROBE_ATTEMPTS; attempt++) {
       if (attempt > 0) {
         await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_PROBE_RETRY_MS));
       }
       try {
-        res = await fetch(heartbeatEndpoint, {
+        const res = await fetch(endpoint, {
           method: "GET",
           headers: this.getAgentJsonHeaders(rec),
           signal: AbortSignal.timeout(10_000),
         });
-        if (res.ok) break;
+        if (res.ok) return true;
       } catch (error) {
-        logger.debug("[agent-sandbox] Heartbeat probe attempt failed, retrying", {
-          agentId,
+        logger.debug("[agent-sandbox] Bridge health probe attempt failed, retrying", {
+          agentId: rec.id,
           attempt,
           error: error instanceof Error ? error.message : String(error),
         });
-        res = null;
       }
     }
+    return false;
+  }
 
-    if (!res?.ok) {
+  async heartbeat(agentId: string, orgId: string): Promise<boolean> {
+    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    if (!rec?.bridge_url) return false;
+
+    const alive = await this.probeBridgeHealth(rec);
+
+    if (!alive) {
       // Hysteresis: one failed cycle is not enough to evict. last_heartbeat_at
       // is bumped only on success, so its age is how long the agent has been
       // continuously unreachable. Stay running inside the grace window (the next
@@ -3334,6 +3341,31 @@ export class ElizaSandboxService {
     }
     await agentSandboxesRepository.update(rec.id, {
       last_heartbeat_at: new Date(),
+    });
+    return true;
+  }
+
+  /**
+   * Re-probe a single `disconnected` dedicated agent and, if its bridge answers
+   * again, restore it to `running`. The heartbeat cycle only dials `running`
+   * rows, so without this an always-on agent that drops past the grace window
+   * (a transient tailnet blip, a node reboot) would stay `disconnected` forever:
+   * its public subdomain 404s and the only recovery was a manual re-provision.
+   * Returns true when the agent was recovered.
+   */
+  async reconcileDisconnected(agentId: string, orgId: string): Promise<boolean> {
+    const rec = await agentSandboxesRepository.findDisconnectedSandbox(agentId, orgId);
+    if (!rec?.bridge_url) return false;
+
+    const alive = await this.probeBridgeHealth(rec);
+    if (!alive) return false;
+
+    await agentSandboxesRepository.update(rec.id, {
+      status: "running",
+      last_heartbeat_at: new Date(),
+    });
+    logger.info("[agent-sandbox] Disconnected agent reachable again, restored to running", {
+      agentId,
     });
     return true;
   }
