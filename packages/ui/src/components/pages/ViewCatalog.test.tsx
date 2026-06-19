@@ -20,8 +20,8 @@ import { useViewCatalog } from "../../hooks/useViewCatalog";
 import { getActiveViewModality } from "../../platform/platform-guards";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import {
-  type ViewChatBinding,
   useViewChatBinding,
+  type ViewChatBinding,
 } from "../../state/view-chat-binding";
 import { ViewCatalog } from "./ViewCatalog";
 
