@@ -166,24 +166,35 @@
           // the entry graph; use a shadow instead of `window` so libraries
           // can assign Node-ish fields without mutating read-only DOM globals.
           const safeGlobal = Object.create(globalThis);
-          for (const key of [
-            "close",
-            "open",
-            "name",
-            "status",
-            "self",
-            "top",
-            "parent",
-            "frames",
-            "window",
-            "document",
-          ]) {
-            Object.defineProperty(safeGlobal, key, {
-              configurable: true,
-              enumerable: false,
-              get: () => globalThis[key],
-              set: () => {},
-            });
+          // Native DOM globals (navigator, location, history, crypto,
+          // localStorage, name, self, ...) are *accessor* properties on
+          // Window.prototype. Reading one through this derived shadow invokes
+          // the getter with the wrong receiver and throws "Illegal invocation"
+          // (e.g. MetaMask's connect-multichain reads `global.navigator.product`
+          // at module init). Re-install every inherited accessor as a
+          // pass-through to globalThis so reads resolve correctly; writes are
+          // swallowed so Node shims that assign `global.x` never mutate the
+          // read-only DOM globals.
+          for (
+            let obj = globalThis;
+            obj && obj !== Object.prototype;
+            obj = Object.getPrototypeOf(obj)
+          ) {
+            for (const key of Object.getOwnPropertyNames(obj)) {
+              if (Object.hasOwn(safeGlobal, key)) {
+                continue;
+              }
+              const desc = Object.getOwnPropertyDescriptor(obj, key);
+              if (!desc || typeof desc.get !== "function") {
+                continue;
+              }
+              Object.defineProperty(safeGlobal, key, {
+                configurable: true,
+                enumerable: false,
+                get: () => globalThis[key],
+                set: () => {},
+              });
+            }
           }
           if (!safeGlobal.process) {
             safeGlobal.process = {
