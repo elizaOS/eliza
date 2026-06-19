@@ -83,7 +83,7 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 
 ### Views
 
-No views — the domain views moved to per-domain plugins (plugin-todos, plugin-inbox, plugin-goals, plugin-health, plugin-calendar, plugin-documents, plugin-blocker, plugin-finances, plugin-relationships) during the lifeops decomposition. PA exports only the Blocker settings cards via `src/ui.ts`.
+One view — the **chief-of-staff brief hub** (`LifeOpsPageView`, id `lifeops`, GUI/XR/TUI), a read-only surface over `GET /api/lifeops/overview` that renders the owner's prioritized day, active reminders, goals, and the circadian hint. This is the legitimate cross-domain aggregation the README reserves for PA — it is NOT a domain view. The *domain* views moved to per-domain plugins (plugin-todos, plugin-inbox, plugin-goals, plugin-health, plugin-calendar, plugin-documents, plugin-blocker, plugin-finances, plugin-relationships) during the lifeops decomposition. PA also exports the Blocker settings cards via `src/ui.ts`.
 
 ## Layout
 

@@ -34,6 +34,19 @@ describe("scoreEndOfTurn", () => {
     expect(scoreEndOfTurn("buy milk and eggs")).toBeGreaterThanOrEqual(0.5);
   });
 
+  it("treats a 2-word trailing function-word as UNFINISHED (rule-ordering fix)", () => {
+    // These must NOT be misread as complete 2-word commands.
+    expect(scoreEndOfTurn("going to")).toBeLessThan(0.5); // trailing preposition
+    expect(scoreEndOfTurn("and so")).toBeLessThan(0.5); // trailing conjunction
+    expect(scoreEndOfTurn("set the")).toBeLessThan(0.5); // trailing article
+  });
+
+  it("treats a trailing ellipsis as UNFINISHED", () => {
+    expect(scoreEndOfTurn("so i was thinking...")).toBeLessThan(0.5);
+    expect(scoreEndOfTurn("hmm…")).toBeLessThan(0.5);
+    expect(scoreEndOfTurn("wait..")).toBeLessThan(0.5);
+  });
+
   it("does not misfire on punctuation/whitespace/garbage (fuzz)", () => {
     for (const junk of ["", "   ", "...", "?!", "\n\t", "—", "123 456"]) {
       const s = scoreEndOfTurn(junk);
@@ -107,6 +120,23 @@ describe("TurnAggregator", () => {
     agg.reset();
     expect(agg.pending).toBe("");
     expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("seed() carries a held turn into a fresh aggregator and appends the continuation", () => {
+    const { agg, onCommit } = makeAgg();
+    agg.seed("schedule a meeting with"); // carried from a prior one-shot capture
+    expect(agg.pending).toBe("schedule a meeting with");
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(agg.addFinal("bob")).toBe(true);
+    expect(onCommit).toHaveBeenCalledWith("schedule a meeting with bob");
+  });
+
+  it("seed() arms the max-hold timer so a carried-but-abandoned turn still commits", () => {
+    const { agg, onCommit, fireTimer } = makeAgg();
+    agg.seed("i was going to");
+    expect(onCommit).not.toHaveBeenCalled();
+    fireTimer();
+    expect(onCommit).toHaveBeenCalledWith("i was going to");
   });
 
   it("flush() commits a held partial (e.g. push-to-talk release)", () => {

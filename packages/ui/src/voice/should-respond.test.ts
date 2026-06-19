@@ -65,6 +65,18 @@ describe("shouldRespondToVoiceTurn", () => {
     ).toBe(true);
   });
 
+  it("applies the echo guard while the agent is still speaking, even for an 'old' reply", () => {
+    // A long reply: its message is old (age past the window) but the agent is
+    // still speaking it, so the echo bleeding into the mic must be suppressed.
+    expect(
+      shouldRespondToVoiceTurn("turn on the lights", {
+        recentAgentReply: "turn on the lights",
+        replyAgeMs: 60_000,
+        agentSpeaking: true,
+      }),
+    ).toBe(false);
+  });
+
   it("does not suppress a one-word turn just because it appears in the reply", () => {
     expect(
       shouldRespondToVoiceTurn("stop", {

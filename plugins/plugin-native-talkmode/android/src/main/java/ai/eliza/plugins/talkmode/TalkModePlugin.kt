@@ -314,6 +314,13 @@ class TalkModePlugin : Plugin() {
                 })
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start", e)
+                // Recognizer creation failed AFTER the audio session was
+                // configured — release it so the earcon streams aren't left
+                // muted and the device isn't stuck in MODE_IN_COMMUNICATION.
+                enabled = false
+                listeningMode = false
+                releaseVoiceAudioSession()
+                setState("idle", "Off")
                 call.resolve(JSObject().apply {
                     put("started", false)
                     put("error", e.message ?: "Failed to start")

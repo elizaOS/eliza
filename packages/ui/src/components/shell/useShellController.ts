@@ -26,6 +26,11 @@ export type CaptureIntent = "converse" | "dictate";
 
 export interface ShellController {
   phase: ShellPhase;
+  /** Raw "a reply is in flight" predicate — text streaming OR being spoken aloud.
+   *  Unlike `phase === "responding"`, stays true after the mic opens (which flips
+   *  phase to "listening"), so the composer reads one honest busy signal: send
+   *  stays enabled (queue another turn) while voice input is gated. */
+  responding: boolean;
   messages: readonly ShellMessage[];
   canSend: boolean;
   /** Local text-model readiness for the home surface. Gates send while not ready. */
@@ -130,6 +135,10 @@ export function useShellController(): ShellController {
   // greeted one (handleNewConversation resets draft state + creates a new
   // conversation with a bootstrap greeting).
   const clearConversation = React.useCallback(() => {
+    // A fresh conversation's bootstrap greeting is NOT a reply to a voice turn —
+    // clear the voice flag so the greeting isn't spoken aloud after a prior
+    // voice session.
+    setLastTurnVoice(false);
     void handleNewConversation();
   }, [handleNewConversation]);
 
@@ -154,6 +163,13 @@ export function useShellController(): ShellController {
   // appends the speaker's continuation, so a slow speaker is not cut off and
   // sent prematurely. One per converse capture; reset on stop/barge-in.
   const turnAggregatorRef = React.useRef<TurnAggregator | null>(null);
+  // True while a stop is user-initiated (toggle-off / barge-in / typing-pause)
+  // vs a clean VAD auto-stop. A one-shot backend (local-inference) ends the
+  // capture on end-of-turn silence; if the turn was still held (unfinished) we
+  // carry it into the NEXT capture so the continuation appends — but an explicit
+  // stop discards it. Without this, a held mid-clause turn is silently dropped.
+  const explicitStopRef = React.useRef(false);
+  const turnCarryoverRef = React.useRef("");
   // Hands-free conversation loop (tap the mic): the mic re-opens after each
   // spoken reply. A ref mirrors the state so the debounced re-listen timer reads
   // the live value at fire time.
@@ -249,8 +265,11 @@ export function useShellController(): ShellController {
   const stopCapture = React.useCallback(() => {
     const handle = captureRef.current;
     captureRef.current = null;
-    // Discard any turn still held for continuation — a toggle-off / barge-in
-    // must not submit a half-finished utterance.
+    // Mark this as a user-initiated stop so the clean-auto-stop carryover does
+    // NOT fire — a toggle-off / barge-in / typing-pause must discard a
+    // half-finished utterance rather than carry or commit it.
+    explicitStopRef.current = true;
+    turnCarryoverRef.current = "";
     turnAggregatorRef.current?.reset();
     if (handle) {
       void handle.stop().catch(() => {});
@@ -291,6 +310,7 @@ export function useShellController(): ShellController {
                   !shouldRespondToVoiceTurn(turn, {
                     recentAgentReply: reply.text,
                     replyAgeMs,
+                    agentSpeaking: speakingRef.current,
                   })
                 ) {
                   return;
@@ -303,6 +323,12 @@ export function useShellController(): ShellController {
             });
       turnAggregatorRef.current?.dispose();
       turnAggregatorRef.current = aggregator;
+      // Carry a held (unfinished) turn from the previous one-shot capture into
+      // this one so the speaker's continuation appends instead of dropping.
+      if (aggregator && turnCarryoverRef.current) {
+        aggregator.seed(turnCarryoverRef.current);
+      }
+      turnCarryoverRef.current = "";
       // Read the user's VAD thresholds synchronously (local mirror of the
       // `messages.voice` setting) so end-of-turn silence detection honors the
       // configured sensitivity. Only consumed by the local-inference backend.
@@ -346,6 +372,18 @@ export function useShellController(): ShellController {
             // analyser so the shell phase returns to idle/summoned and a later
             // startCapture is not blocked by a stale ref.
             if (captureRef.current === handle) captureRef.current = null;
+            // A CLEAN end-of-turn auto-stop (one-shot backend like
+            // local-inference) on a still-held turn: carry it to the next
+            // capture so the continuation appends. An explicit stop (toggle-off /
+            // barge-in / error) discards it.
+            if (
+              state === "stopped" &&
+              !explicitStopRef.current &&
+              aggregator?.pending
+            ) {
+              turnCarryoverRef.current = aggregator.pending;
+            }
+            explicitStopRef.current = false;
             aggregator?.reset();
             setAnalyser(null);
             setRecording(false);
@@ -385,14 +423,17 @@ export function useShellController(): ShellController {
   // re-engaged by this effect re-running.
   React.useEffect(() => {
     if (autoEngagedHandsFreeRef.current) return;
-    if (!ready || recording || captureRef.current || handsFree) return;
+    // Defer while a reply is mid-flight (voice is gated while responding); the
+    // ref stays unset so this retries the instant `chatSending` clears.
+    if (!ready || recording || captureRef.current || handsFree || chatSending)
+      return;
     if (loadContinuousChatMode() !== "always-on") return;
     autoEngagedHandsFreeRef.current = true;
     priorContinuousModeRef.current = "off";
     setHandsFree(true);
     setIsOpen(true);
     startCapture("converse");
-  }, [ready, recording, handsFree, startCapture]);
+  }, [ready, recording, handsFree, chatSending, startCapture]);
 
   const open = React.useCallback(() => {
     setIsOpen(true);
@@ -422,22 +463,34 @@ export function useShellController(): ShellController {
   // whole turn — not just the text phase, leaving a dead gap while TTS plays.
   // Stop/error clears `recording` (see startCapture/stopCapture), dropping the
   // phase back to responding → summoned → idle.
+  // The RAW in-flight predicate — text streaming (chatSending) OR the reply being
+  // spoken (speaking). Unlike `phase === "responding"`, this stays true even
+  // after the mic opens (which flips phase to "listening"), so the composer-send
+  // and voice-gating logic both read one honest "a reply is in flight" signal.
+  const responding = chatSending || voiceOutput.speaking;
   const phase: ShellPhase = !ready
     ? "booting"
     : recording
       ? "listening"
-      : chatSending || voiceOutput.speaking
+      : responding
         ? "responding"
         : !isOpen
           ? "idle"
           : "summoned";
 
-  // The composer's stop control halts the WHOLE turn — text generation and the
-  // spoken reply — so one tap cleanly interrupts the agent mid-sentence.
+  // Live mirror of whether the agent is speaking, for the converse commit
+  // closure's echo guard (it reads at send time, after this render).
+  const speakingRef = React.useRef(false);
+  speakingRef.current = voiceOutput.speaking;
+
+  // The composer's stop control halts the turn — the spoken reply always, and
+  // text generation ONLY while it's actually streaming. During pure TTS playback
+  // `handleChatStop` must not fire: it's the broad chat-stop that also tears down
+  // unrelated coding-agent PTY sessions; here we just want to stop the speech.
   const stopTurn = React.useCallback(() => {
-    handleChatStop();
+    if (chatSending) handleChatStop();
     voiceOutput.stopSpeaking();
-  }, [handleChatStop, voiceOutput.stopSpeaking]);
+  }, [chatSending, handleChatStop, voiceOutput.stopSpeaking]);
 
   // Tap-to-talk: toggle a hands-free conversation. Enabling unlocks audio (the
   // tap is the gesture) and opens the mic in "converse" mode; disabling stops
@@ -459,9 +512,12 @@ export function useShellController(): ShellController {
       setHandsFree(true);
       setIsOpen(true);
       voiceOutput.unlockAudio();
-      startCapture("converse");
+      // Voice is gated while a reply is in flight: open the mic now only if
+      // nothing is responding; otherwise the hands-free loop opens it the
+      // instant the reply finishes.
+      if (!responding) startCapture("converse");
     }
-  }, [startCapture, stopCapture, voiceOutput]);
+  }, [responding, startCapture, stopCapture, voiceOutput]);
 
   // Typing pauses always-on: when a draft appears while the hands-free mic is
   // live, stop the capture so it doesn't transcribe the room over the keyboard.
@@ -512,16 +568,19 @@ export function useShellController(): ShellController {
         : "idle";
 
   // Accept input while the agent is still booting; pre-ready sends queue (see
-  // `send`) and flush on ready. Still block mid-response or when the agent is
-  // stopped. This mirrors the canonical ChatView composer, which does NOT gate
-  // on local text-model readiness: the overlay is the single chat input on the
-  // /chat tab, so a missing/loading local model must still submit the send.
-  // The server returns a failureKind gate ("Connect a provider") that
-  // the transcript renders, exactly as the in-view composer relied on.
-  const canSend = !chatSending && agentStatus?.state !== "stopped";
+  // `send`) and flush on ready. Send stays enabled mid-response: typing + sending
+  // again queues another message into the room (Option A — serialized turns), so
+  // a stopped agent is the only thing that disables it. Voice, by contrast, IS
+  // gated while responding (the mic/PTT below read `responding`). This mirrors the
+  // canonical ChatView composer, which does NOT gate on local text-model
+  // readiness: the overlay is the single chat input on the /chat tab, so a
+  // missing/loading local model must still submit the send. The server returns a
+  // failureKind gate ("Connect a provider") that the transcript renders.
+  const canSend = agentStatus?.state !== "stopped";
 
   return {
     phase,
+    responding,
     messages,
     canSend,
     modelStatus,
