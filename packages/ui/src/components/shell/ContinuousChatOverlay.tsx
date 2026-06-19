@@ -668,12 +668,16 @@ export function ContinuousChatOverlay({
   // scrollable history). The ONLY open/close driver — opened by a pull-up drag,
   // by focusing the composer, or by sending; closed by a pull-down drag or
   // Escape. Never by click-out, scroll, or blur.
-  const [sheetOpen, setSheetOpen] = React.useState(false);
-  // iOS-style 3 detents: PEEK (sheet closed) → HALF → FULL. `sheetOpen` stays
-  // the primary peek-vs-open gate (suggestions, scroll-pin, scrim); `expanded`
-  // selects FULL vs HALF while open. Grabber pulls step through the detents
-  // (each cross fires a light haptic); programmatic opens (send/focus) go FULL.
-  const [expanded, setExpanded] = React.useState(false);
+  // The sheet's vertical position is ONE ordinal — the single source of truth for
+  // how far the chat is open: `input` (composer-only peek) → `half` (reading
+  // height) → `full` (near-fullscreen). `sheetOpen`/`expanded` are derived
+  // read-only views so the two can never disagree (no impossible "open but not
+  // open" combos). `pilled` sits BELOW input; `maximized` drops the inset at full.
+  // Grabber pulls step through the detents (each cross haptics); programmatic
+  // opens (send/focus) go full.
+  const [detent, setDetent] = React.useState<"input" | "half" | "full">("input");
+  const sheetOpen = detent !== "input";
+  const expanded = detent === "full";
   // PILL is the detent BELOW input: the whole chat collapses to a small pill at
   // the bottom (input hidden) so it can get out of the way entirely, yet stays
   // one flick away. Pull down from input → pill; flick/pull up from pill → input
@@ -858,10 +862,9 @@ export function ContinuousChatOverlay({
         send(trimmed);
       }
       // Programmatic open → FULL detent (see the reply). Clear any free-rest so
-      // the height can't stay pinned below full while the flags claim full.
+      // the height can't stay pinned below full.
       setFreeH(null);
-      setSheetOpen(true);
-      setExpanded(true);
+      setDetent("full");
       detentHaptic();
       inputRef.current?.focus();
     },
@@ -880,8 +883,7 @@ export function ContinuousChatOverlay({
       setDraft("");
       send(text);
       setFreeH(null);
-      setSheetOpen(true);
-      setExpanded(true);
+      setDetent("full");
       detentHaptic();
       inputRef.current?.focus();
     },
@@ -1085,8 +1087,7 @@ export function ContinuousChatOverlay({
     draggingRef.current = false;
     setFreeH(null);
     setMaximized(false);
-    setSheetOpen(false);
-    setExpanded(false);
+    setDetent("input");
   }, []);
 
   // Leaving the chat for Settings/Home: animate OUT of maximize and collapse the
@@ -1115,8 +1116,7 @@ export function ContinuousChatOverlay({
       return;
     }
     setFreeH(null);
-    setSheetOpen(true);
-    setExpanded(true);
+    setDetent("full");
     setMaximized(true);
   }, [maximized]);
 
@@ -1140,17 +1140,17 @@ export function ContinuousChatOverlay({
   // "collapsed" hides the history entirely (just the input); "half" is the
   // comfortable reading height; "full" the near-fullscreen reading mode.
   const goToDetent = React.useCallback(
-    (detent: "collapsed" | "half" | "full") => {
+    (to: "collapsed" | "half" | "full") => {
       // Flip the settled detent; the [baseH] effect springs the height to it.
       // A detent always clears any free-drag rest height and (since only FULL
       // can be maximized) drops full-bleed when stepping anywhere else.
       draggingRef.current = false;
       setFreeH(null);
-      if (detent !== "full") setMaximized(false);
-      setSheetOpen(detent !== "collapsed");
-      setExpanded(detent === "full");
+      if (to !== "full") setMaximized(false);
+      // "collapsed" is the input peek (sheet closed); half/full open the thread.
+      setDetent(to === "collapsed" ? "input" : to);
       // Stepping all the way down closes the keyboard (the chat is dismissed).
-      if (detent === "collapsed") inputRef.current?.blur();
+      if (to === "collapsed") inputRef.current?.blur();
       detentHaptic();
     },
     [],
@@ -1185,7 +1185,8 @@ export function ContinuousChatOverlay({
     if (!hasThread) return;
     preFocusCollapsedRef.current = !sheetOpen;
     setFreeH(null);
-    setSheetOpen(true);
+    // Open to at least HALF; if already at half/full, keep the taller detent.
+    setDetent((d) => (d === "input" ? "half" : d));
   }, [hasThread, sheetOpen]);
 
   // Push-to-talk dictation drops its final transcript into the composer draft
@@ -1456,10 +1457,10 @@ export function ContinuousChatOverlay({
       } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
         goToDetent("half");
       } else {
-        // In a gap between detents → rest exactly where released.
+        // In a gap between detents → rest exactly where released. `half` is the
+        // open base; `freeH` overrides the actual height to where the finger left.
         setFreeH(h);
-        setSheetOpen(true);
-        setExpanded(false);
+        setDetent("half");
       }
     },
   });
