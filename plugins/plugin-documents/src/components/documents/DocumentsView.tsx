@@ -21,6 +21,7 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PresentedDocument } from "../../document-presenter.js";
@@ -98,7 +99,7 @@ const defaultFetchers: DocumentsFetchers = {
 };
 
 export interface DocumentsViewProps {
-  /** Owner display name shown in the header subtitle. */
+  /** Owner display name. Accepted for host compatibility; not rendered. */
   ownerName?: string;
   /** Test/host injection seam. Defaults to real `/api/documents*` GETs. */
   fetchers?: DocumentsFetchers;
@@ -255,8 +256,6 @@ const dimStyle: CSSProperties = {
   lineHeight: 1.5,
 };
 
-const subtitleStyle: CSSProperties = { ...dimStyle, marginTop: 2 };
-
 const statsRowStyle: CSSProperties = {
   display: "flex",
   gap: 16,
@@ -331,10 +330,10 @@ function RefreshButton({
       className="documents-view-btn documents-view-btn-neutral"
       onClick={onActivate}
       disabled={disabled}
-      aria-label="Refresh documents"
+      aria-label="Refresh"
       {...agentProps}
     >
-      Refresh
+      <RefreshCw className="h-4 w-4" aria-hidden />
     </button>
   );
 }
@@ -381,11 +380,9 @@ function SearchInput({
 }
 
 function DocumentsHeader({
-  ownerName,
   refetch,
   busy,
 }: {
-  ownerName: string;
   refetch: () => void;
   busy: boolean;
 }): ReactNode {
@@ -394,9 +391,6 @@ function DocumentsHeader({
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Documents</h1>
         <RefreshButton onActivate={refetch} disabled={busy} />
-      </div>
-      <div style={subtitleStyle}>
-        {`Browse and search ${ownerName}'s document store.`}
       </div>
     </header>
   );
@@ -515,7 +509,6 @@ type SearchState =
 export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
   useDocumentsViewStyles();
 
-  const ownerName = props.ownerName ?? "your";
   const fetchers = props.fetchers ?? defaultFetchers;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [query, setQuery] = useState("");
@@ -589,7 +582,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="documents-loading">
-        <DocumentsHeader ownerName={ownerName} refetch={load} busy={true} />
+        <DocumentsHeader refetch={load} busy={true} />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading documents…</div>
       </div>
     );
@@ -598,7 +591,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="documents-error">
-        <DocumentsHeader ownerName={ownerName} refetch={load} busy={false} />
+        <DocumentsHeader refetch={load} busy={false} />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load documents</div>
           <div style={dimStyle}>{state.message}</div>
@@ -623,7 +616,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
   if (documents.length === 0) {
     return (
       <div style={containerStyle} data-testid="documents-empty">
-        <DocumentsHeader ownerName={ownerName} refetch={load} busy={false} />
+        <DocumentsHeader refetch={load} busy={false} />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>No documents yet</div>
           <div style={dimStyle}>
@@ -637,7 +630,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
 
   return (
     <div style={containerStyle} data-testid="documents-populated">
-      <DocumentsHeader ownerName={ownerName} refetch={load} busy={false} />
+      <DocumentsHeader refetch={load} busy={false} />
       <div style={statsRowStyle} data-testid="documents-stats">
         <span>
           {documentCount} document{documentCount === 1 ? "" : "s"}
