@@ -10,14 +10,26 @@ const repoRoot = join(appRoot, "..", "..");
 const cloudSharedRoot = join(repoRoot, "packages", "cloud-shared");
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
 const extraArgs = process.argv.slice(2);
-const apiPort = process.env.API_DEV_PORT || "8787";
+
+// Per-run unique port offset. Self-hosted CI runners share one host/localhost,
+// so concurrent e2e runs (a production deploy + a develop-push staging deploy,
+// say) used to collide on the fixed apiPort/pglitePort — and the orphan-port
+// reclaim then KILLED the other live run's PGlite server, surfacing as
+// `connect ECONNREFUSED 127.0.0.1:55433` on the second migrate. Derive a stable
+// offset from the CI run id (unique per workflow run + attempt) or the pid
+// locally, so concurrent runs never share a port. Explicit env still wins.
+const runSeed =
+  Number(process.env.GITHUB_RUN_ID) * 13 +
+    Number(process.env.GITHUB_RUN_ATTEMPT || 1) || process.pid;
+const portOffset = Math.abs(runSeed) % 4000;
+const apiPort = process.env.API_DEV_PORT || String(41000 + portOffset);
 const baseUrl =
   process.env.TEST_API_BASE_URL ||
   process.env.TEST_BASE_URL ||
   `http://localhost:${apiPort}`;
 const configuredDatabaseUrl =
   process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || "";
-const pglitePort = process.env.TEST_PGLITE_PORT || "55433";
+const pglitePort = process.env.TEST_PGLITE_PORT || String(46000 + portOffset);
 const pgliteHost = process.env.PGLITE_HOST || "127.0.0.1";
 const pgliteDataDir =
   process.env.TEST_PGLITE_DATA_DIR || ".eliza/.pgdata-cloud-api-e2e";
