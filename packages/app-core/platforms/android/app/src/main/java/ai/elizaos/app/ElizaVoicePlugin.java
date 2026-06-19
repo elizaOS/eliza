@@ -51,7 +51,7 @@ public class ElizaVoicePlugin extends Plugin {
             result.put("supported", supported);
             call.resolve(result);
         } catch (UnsatisfiedLinkError e) {
-            call.reject("Native voice ABI call failed", e);
+            call.reject("Native voice ABI call failed: " + e.getMessage());
         }
     }
 
@@ -81,7 +81,7 @@ public class ElizaVoicePlugin extends Plugin {
             result.put("result", json);
             call.resolve(result);
         } catch (UnsatisfiedLinkError e) {
-            call.reject("Native VAD self-test failed", e);
+            call.reject("Native VAD self-test failed: " + e.getMessage());
         }
     }
 }
