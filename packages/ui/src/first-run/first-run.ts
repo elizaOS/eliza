@@ -9,7 +9,13 @@ import {
 } from "./first-run-config";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
 
-export type FirstRunStep = "runtime" | "inference" | "remote";
+// "pick-agent" is a transient cloud-only step shown after sign-in when the user
+// already has cloud agents (choose one or create new). It is entered
+// programmatically via setStep, NOT via the linear next/previous nav, so it is
+// deliberately kept OUT of FIRST_RUN_STEPS and out of isFirstRunStep — a
+// persisted "pick-agent" therefore coerces back to "runtime" on reload (the
+// agent list is in-memory only), restarting the cloud flow cleanly.
+export type FirstRunStep = "runtime" | "inference" | "remote" | "pick-agent";
 export type FirstRunRuntime = "local" | "cloud" | "remote";
 
 /**

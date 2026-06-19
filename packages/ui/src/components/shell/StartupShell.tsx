@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { getBootConfig } from "../../config/boot-config-store";
 import { ElizaMark } from "../brand/eliza-mark";
 import { BootstrapStep } from "../setup/BootstrapStep";
 import { PairingView } from "./PairingView";
@@ -6,6 +7,22 @@ import { StartupFailureView } from "./StartupFailureView";
 import type { StartupShellProps } from "./startup-shell-types";
 
 const FONT = "'Poppins', Arial, system-ui, sans-serif";
+
+// Brand surface for the startup splash: the active theme's accent (gold for
+// Milady via brand-gold.css; the elizaOS accent otherwise) with its readable
+// foreground. Whitelabel seam — no hardcoded brand color.
+const BRAND_SURFACE =
+  "bg-[var(--accent,#FF5800)] text-[var(--accent-foreground,#fff)]";
+
+function brandName(): string {
+  return getBootConfig().branding?.appName ?? "elizaOS";
+}
+
+// Host-overridable brand glyph (whitelabel seam); falls back to the elizaOS mark.
+function BrandMark(props: { className?: string }) {
+  const Mark = getBootConfig().brandMark ?? ElizaMark;
+  return <Mark {...props} />;
+}
 
 export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
   if (view.kind === "error") {
@@ -39,7 +56,7 @@ function StartupFirstRunBackground({ children }: { children: ReactNode }) {
   return (
     <div
       data-testid="startup-first-run-background"
-      className="fixed inset-0 overflow-hidden bg-[#FF5800] text-white"
+      className={`fixed inset-0 overflow-hidden ${BRAND_SURFACE}`}
       style={{ fontFamily: FONT }}
     >
       {children}
@@ -55,20 +72,20 @@ function StartupLoading(props: { phase: string; status: string }) {
       role="status"
       aria-live="polite"
       aria-busy="true"
-      className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[#FF5800] text-white"
+      className={`fixed inset-0 flex items-center justify-center overflow-hidden ${BRAND_SURFACE}`}
       style={{ fontFamily: FONT }}
     >
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
-          <ElizaMark className="h-12 w-12" />
+          <BrandMark className="h-12 w-12" />
           <span className="text-4xl font-medium leading-none tracking-normal">
-            elizaOS
+            {brandName()}
           </span>
         </div>
 
         <p
           style={{ fontFamily: FONT }}
-          className="min-h-5 text-sm text-white/80 animate-pulse motion-reduce:animate-none"
+          className="min-h-5 text-sm opacity-80 animate-pulse motion-reduce:animate-none"
         >
           {props.status}
         </p>

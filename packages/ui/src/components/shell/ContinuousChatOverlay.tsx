@@ -1236,6 +1236,14 @@ export function ContinuousChatOverlay({
   const revealed = useTransform(threadHeight, (h) =>
     Math.min(1, Math.max(0, h / Math.max(1, openH))),
   );
+  // At rest (threadHeight 0 = INPUT/CLOSED) the full-viewport dimming scrim sits
+  // at opacity 0 but stays a live composited layer the glass backdrop-filter
+  // samples through. Drive `visibility` off the SAME motion value so it drops out
+  // of compositing/paint at rest (no reflow, compositor-only, zero re-render) and
+  // flips back the instant the thread opens.
+  const scrimVisibility = useTransform(threadHeight, (h) =>
+    h > 0 ? "visible" : "hidden",
+  );
   const suggestionsOpacity = useTransform(threadHeight, (h) =>
     Math.max(0, 1 - h / Math.max(1, openH * 0.5)),
   );
@@ -1843,6 +1851,7 @@ export function ContinuousChatOverlay({
         // during a drag. Capture clicks only once open.
         style={{
           opacity: revealed,
+          visibility: scrimVisibility,
           pointerEvents: sheetOpen ? "auto" : "none",
         }}
       />

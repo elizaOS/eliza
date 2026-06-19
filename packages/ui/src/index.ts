@@ -255,6 +255,11 @@ export {
   type ChatSurfaceProps,
 } from "./components/shell/ChatSurface";
 export { HomePill, type HomePillProps } from "./components/shell/HomePill";
+export {
+  HomeScreen,
+  type HomeScreenProps,
+  type HomeTileTarget,
+} from "./components/shell/HomeScreen";
 export type {
   ShellMessage,
   ShellPhase,

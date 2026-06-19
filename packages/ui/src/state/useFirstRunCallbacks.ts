@@ -103,6 +103,7 @@ import {
   clearPersistedSetupStep,
   createPersistedActiveServer,
   type FirstRunNextOptions,
+  loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "./internal";
 import type { AppState, CompleteFirstRunOptions, SetupStep } from "./types";
@@ -650,11 +651,29 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
           // Reuse the user's existing cloud agent instead of creating a new one
           // on every setup (matches finishCloud). Returns a valid per-agent REST
           // adapter base, never the agent-id-less collection URL.
+          //
+          // Honor a remembered choice: if a cloud:<agentId> server is already
+          // persisted, pass that id as preferAgentId so we re-bind it instead of
+          // silently auto-reusing whatever pickPreferredCloudAgent picks. The
+          // full picker UI on this mobile-callback path (it has no React step
+          // machine) is a follow-up — the controller path (web/desktop) is the
+          // primary picker surface.
+          const rememberedActive = loadPersistedActiveServer();
+          const rememberedCloudAgentId =
+            rememberedActive?.kind === "cloud" &&
+            rememberedActive.id?.startsWith("cloud:")
+              ? rememberedActive.id.slice("cloud:".length)
+              : "";
+          const preferAgentId =
+            rememberedCloudAgentId && !rememberedCloudAgentId.includes("/")
+              ? rememberedCloudAgentId
+              : null;
           const selectedAgent = await client.selectOrProvisionCloudAgent({
             cloudApiBase,
             authToken,
             name: firstRunName,
             bio: style?.bio ?? ["An autonomous AI agent."],
+            ...(preferAgentId ? { preferAgentId } : {}),
             onProgress: () => {},
           });
 

@@ -1259,6 +1259,9 @@ function ContinuousChatOverlayMount(): ReactNode {
  */
 function HomeScreenMount(): ReactNode {
   const { setTab } = useApp();
+  // Host apps can override the home screen via the `homeScreen` boot-config slot
+  // (whitelabel seam); fall back to the built-in HomeScreen.
+  const { homeScreen: HomeScreenOverride } = useBootConfig();
   const onOpenTile = useCallback(
     (target: HomeTileTarget) => {
       if (target.kind === "tab") {
@@ -1273,11 +1276,9 @@ function HomeScreenMount(): ReactNode {
     },
     [setTab],
   );
+  const Home = HomeScreenOverride ?? HomeScreen;
   return (
-    <HomeScreen
-      onOpenTile={onOpenTile}
-      showNativeOsTiles={isAospShellEnabled()}
-    />
+    <Home onOpenTile={onOpenTile} showNativeOsTiles={isAospShellEnabled()} />
   );
 }
 

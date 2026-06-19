@@ -206,21 +206,53 @@ export function useShellController(): ShellController {
     [],
   );
 
+  // Identity-preserving projection: reuse the previously-mapped ShellMessage for
+  // any turn whose content/failureKind/reasoning is unchanged, so the React.memo
+  // on each ThreadLine short-circuits. Without this, every streamed token (which
+  // hands `conversationMessages` a new array reference) re-wrapped EVERY message
+  // into a fresh object, re-rendering all ~80 historical bubbles per token. The
+  // reducer (useStreamingText) already preserves per-message identity one layer
+  // down; this stops the projection from throwing it away. The Map is rebuilt
+  // fresh each pass so dropped ids are evicted (no long-session leak), and the
+  // returned array is still NEW whenever anything changes (latestAgentReply /
+  // visibleMessages / scroll-follow still recompute). Cache key omits
+  // role/createdAt — invariant per id.
+  const shellMessageCacheRef = React.useRef<Map<string, ShellMessage>>(
+    new Map(),
+  );
   const messages = React.useMemo<ShellMessage[]>(() => {
     const source = Array.isArray(conversationMessages)
       ? conversationMessages
       : [];
-    return source.map((message) => ({
-      id: message.id,
-      role: message.role,
-      content: message.text,
-      createdAt: message.timestamp,
-      failureKind: message.failureKind,
-      ...(message.reasoning ? { reasoning: message.reasoning } : {}),
-      ...(message.attachments?.length
-        ? { attachments: message.attachments }
-        : {}),
-    }));
+    const prev = shellMessageCacheRef.current;
+    const next = new Map<string, ShellMessage>();
+    const out = source.map((message) => {
+      const cached = prev.get(message.id);
+      if (
+        cached &&
+        cached.content === message.text &&
+        cached.failureKind === message.failureKind &&
+        (cached.reasoning || undefined) === (message.reasoning || undefined)
+      ) {
+        next.set(message.id, cached);
+        return cached;
+      }
+      const mapped: ShellMessage = {
+        id: message.id,
+        role: message.role,
+        content: message.text,
+        createdAt: message.timestamp,
+        failureKind: message.failureKind,
+        ...(message.reasoning ? { reasoning: message.reasoning } : {}),
+        ...(message.attachments?.length
+          ? { attachments: message.attachments }
+          : {}),
+      };
+      next.set(message.id, mapped);
+      return mapped;
+    });
+    shellMessageCacheRef.current = next;
+    return out;
   }, [conversationMessages]);
 
   // The agent's most recent reply, for the always-on shouldRespond echo guard

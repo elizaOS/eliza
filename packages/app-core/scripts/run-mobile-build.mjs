@@ -3340,7 +3340,7 @@ const IOS_PERMISSION_KEYS = [
   ],
   [
     "NSLocalNetworkUsageDescription",
-    "This app discovers and connects to your elizaOS gateway on the local network.",
+    `This app discovers and connects to your ${APP.appName} gateway on the local network.`,
   ],
 ];
 

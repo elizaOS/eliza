@@ -1088,10 +1088,9 @@ test.describe("Android communications app interactions", () => {
       { selector: '[data-testid="contacts-shell"]' },
     ]);
     await expect(page.getByText("Ada Relay")).toBeVisible();
-    await page.getByTestId("contacts-search").fill("Grace");
-    await expect(page.getByText("Grace Hopper")).toBeVisible();
-    await expect(page.getByText("Ada Relay")).toHaveCount(0);
-    await page.getByTestId("contacts-search").fill("");
+    // Per-view search moved to the chat — the overlay shows a hint, not a box.
+    await expect(page.getByTestId("contacts-search")).toHaveCount(0);
+    await expect(page.getByTestId("contacts-search-hint")).toBeVisible();
     await page.getByRole("button", { name: /Ada Relay/ }).click();
     await expect(
       page.getByRole("heading", { level: 2, name: "Ada Relay" }),

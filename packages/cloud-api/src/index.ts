@@ -80,12 +80,12 @@ export function redirectFrontendHost(
     normalizeHostname(env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ??
     DEFAULT_AGENT_BASE_DOMAIN;
   const hostname = normalizeHostname(url.hostname);
-  // `www.` and `app.` both 308 to the apex (the canonical login + dashboard
-  // origin). `app.<base>` is an intuitive host humans type/bookmark for "the
-  // app", but the API Worker's `*.<base>/*` route claims it — so
-  // `app.<base>/login` hits the Worker and 404s (no SPA) and the user cannot
-  // sign in. Redirect the whole host to the apex, preserving path + query.
-  if (hostname !== `www.${baseDomain}` && hostname !== `app.${baseDomain}`) {
+  // `www.` 308s to the apex (the canonical lander + dashboard / "console"
+  // origin), preserving path + query. `app.<base>` is deliberately NOT
+  // redirected: under the D5 topology split it serves the Eliza agent app
+  // (the `eliza-app` Pages project), a separate surface from the apex console.
+  // Redirecting it here would bury the app under the console.
+  if (hostname !== `www.${baseDomain}`) {
     return null;
   }
 

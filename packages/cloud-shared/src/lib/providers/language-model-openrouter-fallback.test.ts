@@ -32,9 +32,7 @@ function completion(model: string, content: string): Response {
       object: "chat.completion",
       created: 0,
       model,
-      choices: [
-        { index: 0, message: { role: "assistant", content }, finish_reason: "stop" },
-      ],
+      choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
       usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },

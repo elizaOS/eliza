@@ -356,7 +356,7 @@ function softwareGateFailures() {
     ...sourceTokenFailures("plugins/plugin-facewear/src/register.ts", [
       'id: "smartglasses"',
       'path: "/apps/smartglasses"',
-      "Component: SmartglassesView",
+      "loadSmartglassesView",
       "@elizaos/plugin-facewear",
     ]),
   );

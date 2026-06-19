@@ -10,8 +10,10 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { ElizaMark } from "../components/brand/eliza-mark";
+import { getBootConfig } from "../config/boot-config-store";
 import { TRAY_ACTION_EVENT } from "../events";
 import { openExternalUrl } from "../utils/openExternalUrl";
+import { AgentPicker } from "./AgentPicker";
 import { trayActionToOnboardingChoice } from "./onboarding-intent";
 import { useFirstRunController } from "./use-first-run-controller";
 
@@ -19,6 +21,11 @@ export function CompactOnboarding(): React.ReactElement {
   const c = useFirstRunController();
   const { busyText, cloudError, error, submitting, step, draft, cloudOnly } = c;
   const busy = submitting;
+  // Brand wordmark from the active branding (whitelabel seam) — falls back to
+  // the elizaOS name when no host branding is configured.
+  const appName = getBootConfig().branding?.appName ?? "elizaOS";
+  // Host-overridable brand glyph (whitelabel seam); falls back to ElizaMark.
+  const BrandMark = getBootConfig().brandMark ?? ElizaMark;
 
   // Detect whether this component is running inside the onboarding overlay
   // shell (a separate transparent NSWindow). If so, closing the window after
@@ -116,9 +123,9 @@ export function CompactOnboarding(): React.ReactElement {
           <div className="flex w-full flex-col items-center gap-8 motion-safe:animate-[shell-overlay-in_220ms_ease-out]">
             {/* Brand lockup — matches the loading screen for visual continuity. */}
             <div className="flex items-center justify-center gap-3">
-              <ElizaMark className="h-11 w-11" />
+              <BrandMark className="h-11 w-11" />
               <span className="text-3xl font-medium leading-none tracking-normal">
-                elizaOS
+                {appName}
               </span>
             </div>
 
@@ -218,6 +225,20 @@ export function CompactOnboarding(): React.ReactElement {
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
+            ) : step === "pick-agent" ? (
+              // PICK AGENT — after cloud sign-in, when the user already has cloud
+              // agents, choose an existing one or create a new one.
+              <AgentPicker
+                agents={c.pickerAgents}
+                activeAgentId={c.pickerActiveAgentId}
+                phase={c.pickerPhase}
+                errorMessage={c.pickerError}
+                bindingAgentId={c.pickerBindingId}
+                onPick={c.onPickAgent}
+                onCreateNew={c.onCreateNewAgent}
+                onRetry={c.onRetryPicker}
+                onBack={c.onBackFromPicker}
+              />
             ) : onInference ? (
               // INFERENCE — after picking the on-device agent, choose where it
               // thinks: Eliza Cloud (recommended — fast, best models) or fully
@@ -303,7 +324,7 @@ export function CompactOnboarding(): React.ReactElement {
               // quiet link so a first-timer never sees jargon.
               <>
                 <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.01em]">
-                  How should Eliza run?
+                  How should {appName} run?
                 </h1>
                 <div className="mt-1 flex w-full flex-col gap-3">
                   {/* PRIMARY — the simplest "just start" path (cloud). */}

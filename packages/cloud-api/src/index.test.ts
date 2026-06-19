@@ -16,16 +16,15 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
-  test("redirects app.* frontend host to apex (the /login 404 sign-in fix) without dropping path or query", () => {
-    const response = redirectFrontendHost(
-      new URL("https://app.elizacloud.ai/login?next=%2Fdashboard"),
-      { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai" },
-    );
-
-    expect(response?.status).toBe(308);
-    expect(response?.headers.get("location")).toBe(
-      "https://elizacloud.ai/login?next=%2Fdashboard",
-    );
+  test("does NOT redirect app.* — it serves the Eliza agent app (D5 topology split)", () => {
+    // Under D5, app.elizacloud.ai is the `eliza-app` Pages project, not the
+    // apex console. The Worker must not 308 it to the apex.
+    expect(
+      redirectFrontendHost(
+        new URL("https://app.elizacloud.ai/login?next=%2Fdashboard"),
+        { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai" },
+      ),
+    ).toBeNull();
   });
 
   test("does not redirect the apex or the api host", () => {
