@@ -14,6 +14,7 @@
  */
 
 import { and, desc, eq, type SQL, sql } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
@@ -24,6 +25,7 @@ import {
   prepareJobInsertData,
 } from "../../db/repositories/jobs";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { apps } from "../../db/schemas/apps";
 import { jobs } from "../../db/schemas/jobs";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
@@ -1393,84 +1395,109 @@ export class ProvisioningJobService {
         const errorMsg = err instanceof Error ? err.message : String(err);
         result.errors.push({ jobId: job.id, error: errorMsg });
 
-        // Increment attempt; will auto-fail if max_attempts reached
-        const updated = await jobsRepository.incrementAttempt(job.id, errorMsg, job.max_attempts);
+        // When retries are exhausted (permanent failure) the dependent
+        // status row must flip too — and it must flip ATOMICALLY with the
+        // job-status `failed` write, not in a best-effort follow-up that can
+        // silently swallow. A separate write that fails leaves the sandbox
+        // stuck in "provisioning" until the 10-min stuck-recovery cron
+        // (markStuckProvisioningWithoutActiveJobAsError) catches it. Folding
+        // the dependent flip into incrementAttempt's transaction via
+        // `onFailedInTx` makes both commit together (or roll back together,
+        // so the recovery cron re-runs the whole thing). The cron stays as
+        // the backstop, never the primary signal.
+        const onFailedInTx = this.buildPermanentFailureWriteback(job, errorMsg);
+        const updated = await jobsRepository.incrementAttempt(
+          job.id,
+          errorMsg,
+          job.max_attempts,
+          onFailedInTx,
+        );
 
-        // When retries are exhausted (permanent failure), mark the
-        // sandbox as "error" immediately so the UI reflects reality
-        // instead of staying stuck in "provisioning".
-        if (updated?.status === "failed" && job.type === JOB_TYPES.AGENT_PROVISION) {
-          const data = readAgentProvisionJobData(job);
-          try {
-            await agentSandboxesRepository.update(data.agentId, {
-              status: "error",
-              error_message: `Provisioning permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
-            });
-            logger.warn("[provisioning-jobs] Marked sandbox as error after permanent failure", {
-              jobId: job.id,
-              agentId: data.agentId,
-            });
-          } catch (sandboxErr) {
-            logger.error("[provisioning-jobs] Failed to mark sandbox as error", {
-              jobId: job.id,
-              agentId: data.agentId,
-              error: sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr),
-            });
-          }
-        }
-
-        // Symmetric handling for app_deploy (Apps / Product 2): a permanently
-        // failed deploy must flip the app off `building`, or the deploy-status
-        // route (which echoes `apps.deployment_status`) reports BUILDING forever
-        // — the CLI/dashboard never sees the failure. Mirrors the createDeployment
-        // enqueue-side catch, which only covers the synchronous enqueue, not this
-        // async daemon execution. Especially relevant during the lane-migration
-        // window, when the agent CP worker (still default=all lanes) claims an
-        // APP_DEPLOY it can't run and exhausts retries.
+        // app_deploy keeps a post-commit cache invalidation (the apps read
+        // cache is invalidated outside the DB transaction); the row flip
+        // itself already committed atomically inside onFailedInTx above.
         if (updated?.status === "failed" && job.type === JOB_TYPES.APP_DEPLOY) {
           const { appId } = readAppDeployJobData(job);
-          try {
-            await appsService.update(appId, { deployment_status: "failed" });
-            logger.warn(
-              "[provisioning-jobs] Marked app deployment as failed after permanent failure",
-              {
-                jobId: job.id,
-                appId,
-              },
-            );
-          } catch (appErr) {
-            logger.error("[provisioning-jobs] Failed to mark app deployment as failed", {
-              jobId: job.id,
-              appId,
-              error: appErr instanceof Error ? appErr.message : String(appErr),
-            });
-          }
-        }
-
-        // Symmetric handling for agent_delete: when the daemon gives up,
-        // flip the row to `deletion_failed` so ops can see the stuck
-        // sandboxes (and the container that probably survived on the core)
-        // instead of leaving the row stuck in `deletion_pending` forever.
-        if (updated?.status === "failed" && job.type === JOB_TYPES.AGENT_DELETE) {
-          const data = readAgentDeleteJobData(job);
-          try {
-            await agentSandboxesRepository.update(data.agentId, {
-              status: "deletion_failed",
-              error_message: `Deletion permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
-            });
-            logger.warn(
-              "[provisioning-jobs] Marked sandbox as deletion_failed after permanent failure",
-              { jobId: job.id, agentId: data.agentId },
-            );
-          } catch (sandboxErr) {
-            logger.error("[provisioning-jobs] Failed to mark sandbox as deletion_failed", {
-              jobId: job.id,
-              agentId: data.agentId,
-              error: sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr),
-            });
-          }
+          await appsService.invalidateCache(appId);
         }
       }
+    }
+  }
+
+  /**
+   * Builds the in-transaction dependent-row writeback for a job that has just
+   * exhausted its retries. Returned callback runs INSIDE incrementAttempt's
+   * transaction (atomic with the job-status `failed` flip). Returns undefined
+   * for job types that have no dependent status row to flip.
+   */
+  private buildPermanentFailureWriteback(
+    job: Job,
+    errorMsg: string,
+  ): ((tx: DbTransaction, failedJob: Job) => Promise<void>) | undefined {
+    switch (job.type) {
+      // Mark the sandbox "error" so the UI reflects reality instead of staying
+      // stuck in "provisioning".
+      case JOB_TYPES.AGENT_PROVISION: {
+        const { agentId } = readAgentProvisionJobData(job);
+        return async (tx) => {
+          await tx
+            .update(agentSandboxes)
+            .set({
+              status: "error",
+              error_message: `Provisioning permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
+              updated_at: new Date(),
+            })
+            .where(eq(agentSandboxes.id, agentId));
+          logger.warn("[provisioning-jobs] Marked sandbox as error after permanent failure", {
+            jobId: job.id,
+            agentId,
+          });
+        };
+      }
+      // Apps / Product 2: a permanently failed deploy must flip the app off
+      // `building`, or the deploy-status route (which echoes
+      // `apps.deployment_status`) reports BUILDING forever — the CLI/dashboard
+      // never sees the failure. The read-cache invalidation runs post-commit
+      // in the caller (cache work must not live inside a DB transaction).
+      // Especially relevant during the lane-migration window, when the agent
+      // CP worker (still default=all lanes) claims an APP_DEPLOY it can't run
+      // and exhausts retries.
+      case JOB_TYPES.APP_DEPLOY: {
+        const { appId } = readAppDeployJobData(job);
+        return async (tx) => {
+          await tx
+            .update(apps)
+            .set({ deployment_status: "failed", updated_at: new Date() })
+            .where(eq(apps.id, appId));
+          logger.warn(
+            "[provisioning-jobs] Marked app deployment as failed after permanent failure",
+            { jobId: job.id, appId },
+          );
+        };
+      }
+      // agent_delete: when the daemon gives up, flip the row to
+      // `deletion_failed` so ops can see the stuck sandboxes (and the container
+      // that probably survived on the core) instead of leaving the row stuck in
+      // `deletion_pending` forever.
+      case JOB_TYPES.AGENT_DELETE: {
+        const { agentId } = readAgentDeleteJobData(job);
+        return async (tx) => {
+          await tx
+            .update(agentSandboxes)
+            .set({
+              status: "deletion_failed",
+              error_message: `Deletion permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
+              updated_at: new Date(),
+            })
+            .where(eq(agentSandboxes.id, agentId));
+          logger.warn(
+            "[provisioning-jobs] Marked sandbox as deletion_failed after permanent failure",
+            { jobId: job.id, agentId },
+          );
+        };
+      }
+      default:
+        return undefined;
     }
   }
 
@@ -1512,12 +1539,23 @@ export class ProvisioningJobService {
       // Apps lane (Product 2): generic app-container lifecycle. Routed to the
       // standalone container-job-service (kept out of the agent-coupled paths
       // above); the executor backend is wired at boot via setContainerExecutorDeps.
+      //
+      // Self-mark completed on success so recoverStaleJobs() can't re-sweep a
+      // slow-but-successful job back to `pending` (the same foot-gun the
+      // AGENT_* arms and APP_DB_DEPROVISION already close): a CONTAINER_PROVISION
+      // that crosses PER_JOB_TIMEOUT_MS while the provider is still creating the
+      // container would, without a terminal row, get re-claimed and provision a
+      // SECOND container. The dispatchers are NOT all idempotent across separate
+      // successful runs; a terminal row is the only safe gate.
       case JOB_TYPES.CONTAINER_PROVISION:
       case JOB_TYPES.CONTAINER_DELETE:
       case JOB_TYPES.CONTAINER_RESTART:
       case JOB_TYPES.CONTAINER_UPGRADE:
       case JOB_TYPES.CONTAINER_LOGS:
         await dispatchContainerJob(job, getContainerExecutorDeps());
+        await jobsRepository.updateStatus(job.id, "completed", {
+          completed_at: new Date(),
+        });
         break;
       // Billing-suspend stop (#8342): the container-billing cron (Worker, no SSH)
       // enqueues this when an org runs out of credit; the daemon runs the real
@@ -1538,8 +1576,19 @@ export class ProvisioningJobService {
       }
       // Apps lane (Product 2): the node deploy. The Worker enqueues this; the
       // daemon runs the real isolated provision via the injected AppDeployRunner.
+      //
+      // Self-mark completed on success (mirrors the AGENT_* arms). The runner is
+      // NOT idempotent across separate successful runs — it ensures the tenant
+      // DB, creates a `containers` row, and enqueues a CONTAINER_PROVISION. A
+      // slow-but-successful deploy that crosses PER_JOB_TIMEOUT_MS would, without
+      // a terminal row, get re-swept by recoverStaleJobs() and double-provision
+      // (a second container row + a second CONTAINER_PROVISION). A completed row
+      // is the only thing that prevents the re-sweep.
       case JOB_TYPES.APP_DEPLOY:
         await dispatchAppDeployJob(job);
+        await jobsRepository.updateStatus(job.id, "completed", {
+          completed_at: new Date(),
+        });
         break;
       // Apps lane (Product 2): tear down a deleted app's isolated tenant DB.
       // The Worker enqueues this; the daemon runs the real DROP + slot release

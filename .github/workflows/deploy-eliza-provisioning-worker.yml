@@ -286,6 +286,17 @@ jobs:
             # "HEADSCALE_API_KEY is not configured" when a route is required).
             ENV_FILE=/opt/eliza/cloud/.env.local
             sudo touch "$ENV_FILE"
+            # Pin this control-plane daemon to the AGENT lane. Unset, a single
+            # daemon claims ALL job types (agent + apps); it would claim
+            # APP_DEPLOY / CONTAINER_* jobs it can't run (no apps backend wired
+            # here) and burn them down through retries. The dedicated apps
+            # daemon (apps-provisioning-worker.ts) owns the apps lane. Reconciled
+            # here so CI is the single source of truth and the box self-heals on
+            # every deploy (same mechanism as the HEADSCALE_* keys below). This
+            # value is constant — not a GH var — so it's reconciled directly,
+            # never blanked.
+            sudo sed -i "/^PROVISIONING_JOB_LANES=/d" "$ENV_FILE"
+            printf 'PROVISIONING_JOB_LANES=%s\n' "agent" | sudo tee -a "$ENV_FILE" >/dev/null
             for kv in \
               "HEADSCALE_API_URL=$HEADSCALE_API_URL" \
               "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
