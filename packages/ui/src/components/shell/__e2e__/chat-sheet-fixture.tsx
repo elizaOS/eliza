@@ -118,11 +118,16 @@ function Harness(): React.JSX.Element {
     );
   }, [phase, messages.length, recording]);
 
-  const send = React.useCallback((text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    console.log(`[fixture] send: ${JSON.stringify(trimmed)}`);
-    setMessages((m) => [
+  const send = React.useCallback(
+    (text: string, options?: { channelType?: string }) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      console.log(
+        `[fixture] send: ${JSON.stringify(trimmed)}${
+          options?.channelType ? ` (${options.channelType})` : ""
+        }`,
+      );
+      setMessages((m) => [
       ...m,
       { id: uid(), role: "user", content: trimmed, createdAt: nextId },
     ]);
@@ -141,12 +146,22 @@ function Harness(): React.JSX.Element {
     }, 500);
   }, []);
 
-  const startRecording = React.useCallback(() => {
-    console.log("[fixture] startRecording");
-    setRecording(true);
-    setTranscript("tell me the plan for…");
-    setPhase("listening");
-  }, []);
+  // Capture intent of the active mic session — mirrors the real controller:
+  // PTT press → "dictate" (transcript fills the composer draft, no send);
+  // hands-free tap → "converse" (final transcript sends a VOICE_DM).
+  const captureIntentRef = React.useRef<"converse" | "dictate">("converse");
+  const dictationSinkRef = React.useRef<((text: string) => void) | null>(null);
+
+  const startRecording = React.useCallback(
+    (intent: "converse" | "dictate" = "converse") => {
+      captureIntentRef.current = intent;
+      console.log(`[fixture] startRecording(${intent})`);
+      setRecording(true);
+      setTranscript("tell me the plan for…");
+      setPhase("listening");
+    },
+    [],
+  );
   const stopRecording = React.useCallback(() => {
     console.log("[fixture] stopRecording");
     setRecording(false);
@@ -169,17 +184,43 @@ function Harness(): React.JSX.Element {
     setHandsFree((h) => {
       const next = !h;
       console.log(`[fixture] toggleHandsFree -> ${next}`);
+      // Like the real controller, turning hands-free ON opens a "converse"
+      // capture (recording + intent), so a final transcript sends a VOICE_DM.
+      captureIntentRef.current = "converse";
+      setRecording(next);
       setPhase(next ? "listening" : "summoned");
       return next;
     });
   }, []);
   // Push-to-talk dictation routes a final transcript into the composer draft.
-  // The overlay registers/clears the sink on mount/unmount — accept it as a
-  // no-op so the registration effect doesn't throw.
+  // The overlay registers/clears the sink on mount/unmount; store it so the
+  // __emitDictation/__emitVoiceFinal test hooks can drive it.
   const setDictationSink = React.useCallback(
-    (_sink: ((text: string) => void) | null) => {},
+    (sink: ((text: string) => void) | null) => {
+      dictationSinkRef.current = sink;
+    },
     [],
   );
+  // Test hooks for BIDIRECTIONAL voice (asserted by the e2e): a final transcript
+  // either fills the composer draft (dictate) or sends a VOICE_DM (converse),
+  // routed by the active capture intent — exactly the two real directions.
+  React.useEffect(() => {
+    const w = window as unknown as {
+      __emitDictation?: (t: string) => void;
+      __emitVoiceFinal?: (t: string) => void;
+    };
+    w.__emitDictation = (t) => dictationSinkRef.current?.(t);
+    w.__emitVoiceFinal = (t) => {
+      if (captureIntentRef.current === "dictate") dictationSinkRef.current?.(t);
+      else send(t, { channelType: "VOICE_DM" });
+      setRecording(false);
+      setPhase("summoned");
+    };
+    return () => {
+      w.__emitDictation = undefined;
+      w.__emitVoiceFinal = undefined;
+    };
+  }, [send]);
   const toggleAgentVoiceMute = React.useCallback(() => {
     setAgentVoiceMuted((m) => {
       console.log(`[fixture] toggleAgentVoiceMute -> ${!m}`);
@@ -201,7 +242,8 @@ function Harness(): React.JSX.Element {
     toggleRecording,
     toggleHandsFree,
     setDictationSink,
-    setComposerHasDraft: (_hasDraft: boolean) => {},
+    setComposerHasDraft: (hasDraft: boolean) =>
+      console.log(`[fixture] setComposerHasDraft -> ${hasDraft}`),
     startRecording,
     stopRecording,
     toggleAgentVoiceMute,

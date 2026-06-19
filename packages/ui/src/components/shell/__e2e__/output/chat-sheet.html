@@ -12891,24 +12891,45 @@
   ];
   var Maximize2 = createLucideIcon("maximize-2", __iconNode2);
 
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/minimize-2.mjs
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/mic.mjs
   var __iconNode3 = [
+    ["path", { d: "M12 19v3", key: "npa21l" }],
+    ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
+    ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
+  ];
+  var Mic = createLucideIcon("mic", __iconNode3);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/minimize-2.mjs
+  var __iconNode4 = [
     ["path", { d: "m14 10 7-7", key: "oa77jy" }],
     ["path", { d: "M20 10h-6V4", key: "mjg0md" }],
     ["path", { d: "m3 21 7-7", key: "tjx5ai" }],
     ["path", { d: "M4 14h6v6", key: "rmj7iw" }]
   ];
-  var Minimize2 = createLucideIcon("minimize-2", __iconNode3);
+  var Minimize2 = createLucideIcon("minimize-2", __iconNode4);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/rotate-ccw.mjs
-  var __iconNode4 = [
+  var __iconNode5 = [
     ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
     ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
   ];
-  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode4);
+  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode5);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/send-horizontal.mjs
+  var __iconNode6 = [
+    [
+      "path",
+      {
+        d: "M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z",
+        key: "117uat"
+      }
+    ],
+    ["path", { d: "M6 12h16", key: "s4cdu5" }]
+  ];
+  var SendHorizontal = createLucideIcon("send-horizontal", __iconNode6);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
-  var __iconNode5 = [
+  var __iconNode7 = [
     [
       "path",
       {
@@ -12918,7 +12939,7 @@
     ],
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ];
-  var Settings = createLucideIcon("settings", __iconNode5);
+  var Settings = createLucideIcon("settings", __iconNode7);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/index.mjs
   var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
@@ -21791,14 +21812,20 @@
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/components/motion/proxy.mjs
   var motion = /* @__PURE__ */ createMotionProxy(featureBundle, createDomVisualElement);
 
-  // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/value/use-motion-value.mjs
+  // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/use-motion-value-event.mjs
   var import_react27 = __toESM(require_react(), 1);
+  function useMotionValueEvent(value, event, callback) {
+    (0, import_react27.useInsertionEffect)(() => value.on(event, callback), [value, event, callback]);
+  }
+
+  // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/value/use-motion-value.mjs
+  var import_react28 = __toESM(require_react(), 1);
   function useMotionValue(initial) {
     const value = useConstant(() => motionValue(initial));
-    const { isStatic } = (0, import_react27.useContext)(MotionConfigContext);
+    const { isStatic } = (0, import_react28.useContext)(MotionConfigContext);
     if (isStatic) {
-      const [, setLatest] = (0, import_react27.useState)(initial);
-      (0, import_react27.useEffect)(() => value.on("change", setLatest), []);
+      const [, setLatest] = (0, import_react28.useState)(initial);
+      (0, import_react28.useEffect)(() => value.on("change", setLatest), []);
     }
     return value;
   }
@@ -21873,10 +21900,10 @@
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/reduced-motion/use-reduced-motion.mjs
-  var import_react28 = __toESM(require_react(), 1);
+  var import_react29 = __toESM(require_react(), 1);
   function useReducedMotion() {
     !hasReducedMotionListener.current && initPrefersReducedMotion();
-    const [shouldReduceMotion] = (0, import_react28.useState)(prefersReducedMotion.current);
+    const [shouldReduceMotion] = (0, import_react29.useState)(prefersReducedMotion.current);
     if (false) {
       warnOnce(shouldReduceMotion !== true, "You have Reduced Motion enabled on your device. Animations may not appear as expected.", "reduced-motion-disabled");
     }
@@ -25959,11 +25986,16 @@
     damping: 34,
     mass: 0.9
   };
+  var OPEN_SPRING = {
+    type: "spring",
+    stiffness: 300,
+    damping: 26,
+    mass: 0.85
+  };
+  var PILL_OPEN_DISTANCE = 120;
   function rubberBand(overshoot) {
     return Math.sign(overshoot) * Math.sqrt(Math.abs(overshoot)) * 6;
   }
-  var SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
-  var MIC_GLYPH = "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
   var PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
   var STOP_GLYPH = "M12 12H24V24H12Z";
   var SPEAKER_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
@@ -25973,6 +26005,7 @@
   }
   function SoftButton({
     glyph,
+    icon: Icon2,
     label,
     onClick,
     onPointerDown,
@@ -26002,7 +26035,7 @@
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
           disabled && "opacity-40"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: glyph })
+        children: Icon2 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Icon2, { className: "h-[22px] w-[22px]", "aria-hidden": true }) : glyph ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: glyph }) : null
       }
     );
   }
@@ -26073,7 +26106,7 @@
           // vertically-centered textarea, so a tap on the composer lands natively
           // on the textarea and raises the keyboard (a programmatic focus from the
           // handle wouldn't). Pull gestures start from the bar / the upward zone.
-          "before:absolute before:-inset-x-4 before:-top-10 before:bottom-0 before:content-['']",
+          "before:absolute before:-inset-x-6 before:-top-16 before:bottom-0 before:content-['']",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
         children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -26082,7 +26115,7 @@
             "aria-hidden": "true",
             className: cn(
               // 30% wider bar (w-11 → w-14), a touch taller, brighter.
-              "h-2 w-14 rounded-full transition-colors duration-300",
+              "h-2.5 w-16 rounded-full transition-colors duration-300",
               glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45"
             )
           }
@@ -26112,7 +26145,7 @@
         className: cn(
           // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
           // floating mid-air; the tall pt keeps a generous upward grab/flick zone.
-          "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-12 pb-1.5 pt-7 active:cursor-grabbing",
+          "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-16 pb-1.5 pt-10 active:cursor-grabbing",
           "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         ),
         children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -26122,7 +26155,7 @@
             className: cn(
               // Identical to the SheetGrabber bar — the handle keeps the same white
               // shape + color whether the chat is open or fully collapsed to the pill.
-              "h-2 w-14 rounded-full transition-colors duration-300",
+              "h-2.5 w-16 rounded-full transition-colors duration-300",
               glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45"
             )
           }
@@ -26353,14 +26386,18 @@
     const [draft, setDraft] = React7.useState("");
     const viewChatBinding = useViewChatBinding();
     const [slashDismissed, setSlashDismissed] = React7.useState(false);
-    const [sheetOpen, setSheetOpen] = React7.useState(false);
-    const [expanded, setExpanded] = React7.useState(false);
+    const [detent, setDetent] = React7.useState(
+      "input"
+    );
+    const sheetOpen = detent !== "input";
+    const expanded = detent === "full";
     const [pilled, setPilled] = React7.useState(false);
     const [freeH, setFreeH] = React7.useState(null);
     const [maximized, setMaximized] = React7.useState(false);
     const preFocusCollapsedRef = React7.useRef(true);
     const [composerFocused, setComposerFocused] = React7.useState(false);
     const threadHeight = useMotionValue(0);
+    const openProgress = useMotionValue(pilled ? 0 : 1);
     const draggingRef = React7.useRef(false);
     const [pushToTalkActive, setPushToTalkActive] = React7.useState(false);
     const [pendingImages, setPendingImages] = React7.useState(
@@ -26377,7 +26414,6 @@
     const pushToTalkTimerRef = React7.useRef(null);
     const pushToTalkActiveRef = React7.useRef(false);
     const suppressMicClickRef = React7.useRef(false);
-    const prevPilledRef = React7.useRef(pilled);
     const visibleMessages = React7.useMemo(
       () => messages.filter((m2) => m2.content.trim()).slice(-MAX_RENDERED_MESSAGES),
       [messages]
@@ -26390,10 +26426,6 @@
     const responding = phase === "responding";
     const hasDraft = draft.trim().length > 0;
     const hasImages = pendingImages.length > 0;
-    const justUnpilled = prevPilledRef.current && !pilled;
-    React7.useEffect(() => {
-      prevPilledRef.current = pilled;
-    });
     const suggestionsVisible = SHOW_PROMPT_SUGGESTIONS && !pilled && !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
     const suggestions = usePromptSuggestions(messages, {
       enabled: suggestionsVisible
@@ -26455,8 +26487,7 @@
           send(trimmed);
         }
         setFreeH(null);
-        setSheetOpen(true);
-        setExpanded(true);
+        setDetent("full");
         detentHaptic();
         inputRef.current?.focus();
       },
@@ -26471,8 +26502,7 @@
         setDraft("");
         send(text);
         setFreeH(null);
-        setSheetOpen(true);
-        setExpanded(true);
+        setDetent("full");
         detentHaptic();
         inputRef.current?.focus();
       },
@@ -26575,8 +26605,19 @@
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
     const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
     const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
-    const chatState = pilled ? "CLOSED" : !sheetOpen ? "INPUT" : maximized ? "MAXIMIZED" : baseH >= halfH - 1 ? "OPEN_HALF_OR_OVER" : "OPEN_UNDER_HALF";
-    const headerVisible = chatState === "OPEN_HALF_OR_OVER" || chatState === "MAXIMIZED";
+    const chatState = pilled ? "CLOSED" : !sheetOpen ? "INPUT" : fullBleed ? "MAXIMIZED" : baseH >= halfH - 1 ? "OPEN_HALF_OR_OVER" : "OPEN_UNDER_HALF";
+    const evalHeaderVisible = React7.useCallback(
+      (h) => !pilled && (fullBleed || h >= halfH - 1),
+      [pilled, fullBleed, halfH]
+    );
+    const [headerVisible, setHeaderVisible] = React7.useState(false);
+    useMotionValueEvent(threadHeight, "change", (h) => {
+      const next = evalHeaderVisible(h);
+      setHeaderVisible((prev) => prev === next ? prev : next);
+    });
+    React7.useEffect(() => {
+      setHeaderVisible(evalHeaderVisible(threadHeight.get()));
+    }, [evalHeaderVisible]);
     const clampHeight = React7.useCallback(
       (raw) => raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
       [openH]
@@ -26593,17 +26634,37 @@
     const panelRadius = useTransform(threadHeight, [0, 12], [9999, 24], {
       clamp: true
     });
+    const panelScale = useTransform(openProgress, [0, 1], [0.9, 1]);
+    const glassOpacity = useTransform(openProgress, [0, 1], [0, 1]);
+    const pillOpacity = useTransform(openProgress, [0, 0.55], [1, 0], {
+      clamp: true
+    });
     const settleDrag = React7.useCallback(() => {
       draggingRef.current = false;
-      if (reduce) threadHeight.set(baseH);
-      else animate(threadHeight, baseH, SHEET_SPRING);
-    }, [threadHeight, baseH, reduce]);
+      const open = pilled ? 0 : 1;
+      if (reduce) {
+        threadHeight.set(baseH);
+        openProgress.set(open);
+      } else {
+        animate(threadHeight, baseH, SHEET_SPRING);
+        animate(openProgress, open, OPEN_SPRING);
+      }
+    }, [threadHeight, openProgress, baseH, pilled, reduce]);
+    React7.useEffect(() => {
+      if (draggingRef.current) return;
+      const open = pilled ? 0 : 1;
+      if (reduce) {
+        openProgress.set(open);
+        return;
+      }
+      const controls = animate(openProgress, open, OPEN_SPRING);
+      return () => controls.stop();
+    }, [pilled, reduce]);
     const closeSheet = React7.useCallback(() => {
       draggingRef.current = false;
       setFreeH(null);
       setMaximized(false);
-      setSheetOpen(false);
-      setExpanded(false);
+      setDetent("input");
     }, []);
     const navigateAndClose = React7.useCallback(
       (go) => {
@@ -26618,11 +26679,12 @@
         setMaximized(false);
         return;
       }
+      draggingRef.current = false;
+      openProgress.set(1);
       setFreeH(null);
-      setSheetOpen(true);
-      setExpanded(true);
+      setDetent("full");
       setMaximized(true);
-    }, [maximized]);
+    }, [maximized, openProgress]);
     React7.useEffect(() => {
       if (draggingRef.current) return;
       if (reduce) {
@@ -26632,18 +26694,14 @@
       const controls = animate(threadHeight, baseH, SHEET_SPRING);
       return () => controls.stop();
     }, [baseH, reduce]);
-    const goToDetent = React7.useCallback(
-      (detent) => {
-        draggingRef.current = false;
-        setFreeH(null);
-        if (detent !== "full") setMaximized(false);
-        setSheetOpen(detent !== "collapsed");
-        setExpanded(detent === "full");
-        if (detent === "collapsed") inputRef.current?.blur();
-        detentHaptic();
-      },
-      []
-    );
+    const goToDetent = React7.useCallback((to) => {
+      draggingRef.current = false;
+      setFreeH(null);
+      if (to !== "full") setMaximized(false);
+      setDetent(to === "collapsed" ? "input" : to);
+      if (to === "collapsed") inputRef.current?.blur();
+      detentHaptic();
+    }, []);
     const collapse = React7.useCallback(() => {
       if (typeof document !== "undefined" && threadRef.current && document.activeElement instanceof HTMLElement && threadRef.current.contains(document.activeElement)) {
         document.activeElement.blur();
@@ -26655,7 +26713,7 @@
       if (!hasThread) return;
       preFocusCollapsedRef.current = !sheetOpen;
       setFreeH(null);
-      setSheetOpen(true);
+      setDetent((d) => d === "input" ? "half" : d);
     }, [hasThread, sheetOpen]);
     React7.useEffect(() => {
       setDictationSink((text) => {
@@ -26669,7 +26727,7 @@
       setComposerHasDraft(hasDraft);
     }, [hasDraft, setComposerHasDraft]);
     const slashMenu = useSlashMenu(draft, slash);
-    const isSlashDraft = parseSlashDraft(draft).isSlash;
+    const isSlashDraft = draft.startsWith("/") && parseSlashDraft(draft).isSlash;
     const slashOpen = slashMenu.open && !slashDismissed;
     const comboboxAria = slashProp ? {
       role: "combobox",
@@ -26747,12 +26805,26 @@
     }, [draft]);
     const onDragOffset = React7.useCallback(
       (offset) => {
-        if (pilled) return;
         draggingRef.current = true;
+        if (pilled) {
+          const up = Math.max(0, offset);
+          openProgress.set(Math.min(1, up / PILL_OPEN_DISTANCE));
+          const excess = up - PILL_OPEN_DISTANCE;
+          threadHeight.set(excess > 0 ? clampHeight(excess) : 0);
+          return;
+        }
         const off = !sheetOpen ? Math.max(0, offset) : expanded ? Math.min(0, offset) : offset;
         threadHeight.set(clampHeight(baseH + off));
       },
-      [pilled, sheetOpen, expanded, baseH, clampHeight, threadHeight]
+      [
+        pilled,
+        sheetOpen,
+        expanded,
+        baseH,
+        clampHeight,
+        threadHeight,
+        openProgress
+      ]
     );
     const pullBinding = usePullGesture({
       onDrag: onDragOffset,
@@ -26761,9 +26833,16 @@
       // rebuilt every render, so they always read the current detent.
       onPullUp: () => {
         if (pilled) {
+          draggingRef.current = false;
           setPilled(false);
-          settleDrag();
-          detentHaptic();
+          if (hasThread) {
+            focusThreadRef.current = true;
+            goToDetent("half");
+          } else {
+            if (reduce) threadHeight.set(0);
+            else animate(threadHeight, 0, SHEET_SPRING);
+            detentHaptic();
+          }
           return;
         }
         if (!sheetOpen) {
@@ -26817,12 +26896,19 @@
       onSettleFree: (direction) => {
         draggingRef.current = false;
         if (pilled) {
-          if (direction === "up") {
-            setPilled(false);
-            if (hasThread) {
-              focusThreadRef.current = true;
-              goToDetent("half");
-            } else settleDrag();
+          const opened = direction === "up" && openProgress.get() >= 0.5;
+          if (!opened) {
+            settleDrag();
+            return;
+          }
+          setPilled(false);
+          if (hasThread) {
+            focusThreadRef.current = true;
+            goToDetent(threadHeight.get() >= halfH ? "full" : "half");
+          } else if (reduce) {
+            threadHeight.set(0);
+          } else {
+            animate(threadHeight, 0, SHEET_SPRING);
           }
           return;
         }
@@ -26844,8 +26930,7 @@
           goToDetent("half");
         } else {
           setFreeH(h);
-          setSheetOpen(true);
-          setExpanded(false);
+          setDetent("half");
         }
       }
     });
@@ -26885,7 +26970,7 @@
               }
             }
           ),
-          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
             "div",
             {
               role: "status",
@@ -26895,10 +26980,10 @@
                 "pointer-events-none relative mb-2 w-full max-w-3xl text-center text-sm italic text-white/85",
                 FLOAT_SHADOW2
               ),
-              children: [
+              children: transcript ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
                 transcript,
                 /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
-              ]
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "text-white/60", children: "Listening\u2026" })
             }
           ) : null,
           needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -26978,7 +27063,7 @@
                     glow: listening || responding
                   }
                 ) : null,
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
                   motion.fieldset,
                   {
                     ref: panelRef,
@@ -26989,381 +27074,411 @@
                     "data-maximized": fullBleed ? "true" : void 0,
                     "data-revealed": sheetOpen ? "true" : "false",
                     "data-chat-state": chatState,
-                    style: pilled ? void 0 : {
+                    style: {
                       maxHeight: panelMaxH,
-                      // Full-bleed (maximized) → square edge-to-edge; otherwise the
-                      // live motion radius (pill → 24px).
-                      borderRadius: fullBleed ? 0 : panelRadius
+                      // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
+                      // bottom transform-origin would drop the top edge below the status
+                      // bar (the "gap at the top when maximized" bug).
+                      scale: fullBleed ? 1 : panelScale,
+                      // Grow UP out of the pill at the bottom.
+                      transformOrigin: "bottom center",
+                      // Pilled: span the (invisible) input area but pass taps through to the
+                      // home screen — only the pill-capsule child re-enables pointer events.
+                      pointerEvents: pilled ? "none" : "auto"
                     },
                     className: cn(
-                      "pointer-events-auto relative m-0 flex min-w-0 flex-col border-0 p-0",
-                      pilled ? (
-                        // PILL: a bare, transparent container — the capsule carries its own
-                        // glass, and the panel shrinks to fit it.
-                        "w-auto"
-                      ) : cn(
-                        "w-full overflow-hidden",
-                        // Liquid glass: a translucent, blurred, slightly over-saturated
-                        // pane with a bright top specular edge + a faint refractive stroke.
-                        // Full-bleed drops the refractive stroke so it's truly edge-to-edge.
-                        fullBleed ? "border-0" : "border border-white/[0.14]",
-                        // backdrop-blur-lg (16px), not -2xl (40px): the sheet height
-                        // resizes this surface every drag frame, and a 40px backdrop
-                        // re-blur per frame is the dominant paint cost — lg keeps the
-                        // glass look at a fraction of the GPU cost.
-                        "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
-                        fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
-                      )
+                      "relative m-0 flex w-full min-w-0 flex-col border-0 p-0",
+                      // overflow-hidden clips the thread when open; visible while pilled so
+                      // the pill's tall upward grab zone isn't cut off.
+                      pilled ? "overflow-visible" : "overflow-hidden"
                     ),
-                    children: pilled ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                      PillHandle,
-                      {
-                        binding: pullBinding,
-                        onOpen: () => setPilled(false),
-                        glow: listening || responding
-                      }
-                    ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                        "div",
-                        {
-                          "aria-hidden": "true",
-                          className: "pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
-                        }
-                      ),
+                    children: [
                       /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                         motion.div,
                         {
                           "aria-hidden": "true",
-                          className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,180,120,0.30)]",
-                          initial: false,
-                          animate: { opacity: listening ? 1 : 0 },
-                          transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
-                        }
-                      ),
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                        motion.div,
-                        {
-                          "aria-hidden": "true",
-                          className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,140,80,0.18)]",
-                          initial: false,
-                          animate: { opacity: responding ? 1 : 0 },
-                          transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
-                        }
-                      ),
-                      headerVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-                        "div",
-                        {
                           className: cn(
-                            "relative z-10 flex shrink-0 items-center justify-between gap-1.5 px-3",
-                            // Maximized goes edge-to-edge under the status bar, so the
-                            // buttons must clear the safe-area inset (the clock/battery)
-                            // or they sit under it and become untappable.
-                            fullBleed ? "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]" : "pt-2.5"
+                            "pointer-events-none absolute inset-0 z-0",
+                            fullBleed ? "border-0" : "border border-white/[0.14]",
+                            "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+                            fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
                           ),
-                          children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                HeaderButton,
+                          style: {
+                            opacity: glassOpacity,
+                            borderRadius: fullBleed ? 0 : panelRadius
+                          }
+                        }
+                      ),
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                        motion.div,
+                        {
+                          "data-testid": "chat-content",
+                          inert: pilled || void 0,
+                          className: "relative z-10 flex min-h-0 w-full flex-col",
+                          style: {
+                            opacity: glassOpacity,
+                            pointerEvents: pilled ? "none" : "auto"
+                          },
+                          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              "div",
+                              {
+                                "aria-hidden": "true",
+                                className: "pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              motion.div,
+                              {
+                                "aria-hidden": "true",
+                                className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,180,120,0.30)]",
+                                initial: false,
+                                animate: { opacity: listening ? 1 : 0 },
+                                transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              motion.div,
+                              {
+                                "aria-hidden": "true",
+                                className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,140,80,0.18)]",
+                                initial: false,
+                                animate: { opacity: responding ? 1 : 0 },
+                                transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
+                              }
+                            ),
+                            headerVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                              "div",
+                              {
+                                className: cn(
+                                  "relative z-10 flex shrink-0 items-center justify-between gap-1.5 px-3",
+                                  // Maximized goes edge-to-edge under the status bar, so the
+                                  // buttons must clear the safe-area inset (the clock/battery)
+                                  // or they sit under it and become untappable.
+                                  fullBleed ? "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]" : "pt-2.5"
+                                ),
+                                children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                      HeaderButton,
+                                      {
+                                        icon: maximized ? Minimize2 : Maximize2,
+                                        label: maximized ? "exit full screen" : "full screen",
+                                        active: maximized,
+                                        onClick: toggleMaximize,
+                                        testId: "chat-full-maximize"
+                                      }
+                                    ),
+                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                      HeaderButton,
+                                      {
+                                        icon: RotateCcw,
+                                        label: "clear conversation",
+                                        onClick: () => clearConversation(),
+                                        testId: "chat-full-clear"
+                                      }
+                                    )
+                                  ] }),
+                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+                                    currentTab !== "chat" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                      HeaderButton,
+                                      {
+                                        icon: House,
+                                        label: "home",
+                                        onClick: () => navigateAndClose(() => navigateHome?.()),
+                                        testId: "chat-full-home"
+                                      }
+                                    ) : null,
+                                    currentTab !== "settings" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                      HeaderButton,
+                                      {
+                                        icon: Settings,
+                                        label: "settings",
+                                        onClick: () => navigateAndClose(() => openSettings()),
+                                        testId: "chat-full-settings"
+                                      }
+                                    ) : null
+                                  ] })
+                                ]
+                              }
+                            ) : null,
+                            hasThread ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              motion.div,
+                              {
+                                "data-testid": "chat-thread",
+                                className: cn(
+                                  "relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden",
+                                  // When open, fade the top edge into the glass so the topmost
+                                  // message dissolves under the drag handle instead of butting
+                                  // against it.
+                                  sheetOpen && "[mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)]"
+                                ),
+                                style: { flexBasis: threadFlexBasis },
+                                children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  "div",
+                                  {
+                                    id: "continuous-thread",
+                                    ref: threadRef,
+                                    role: "log",
+                                    "aria-label": "conversation history",
+                                    "aria-live": "polite",
+                                    "aria-hidden": !sheetOpen ? true : void 0,
+                                    tabIndex: sheetOpen ? 0 : -1,
+                                    onKeyDown: (e) => {
+                                      if (e.key === "Escape") {
+                                        e.preventDefault();
+                                        collapse();
+                                      }
+                                    },
+                                    className: "relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden",
+                                    children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
+                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                        ThreadLine,
+                                        {
+                                          message: m2,
+                                          floating: true,
+                                          reduce,
+                                          onCopy: handleCopyMessage,
+                                          onOpenSettings: openSettings
+                                        },
+                                        m2.id
+                                      )) }),
+                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: responding ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDots, { reduce }) : null }),
+                                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { ref: endRef })
+                                    ] })
+                                  }
+                                )
+                              }
+                            ) : null,
+                            hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
+                              hasImages ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                                "div",
                                 {
-                                  icon: maximized ? Minimize2 : Maximize2,
-                                  label: maximized ? "exit full screen" : "full screen",
-                                  active: maximized,
-                                  onClick: toggleMaximize,
-                                  testId: "chat-full-maximize"
-                                }
-                              ),
-                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                HeaderButton,
+                                  className: "group relative h-14 w-14 shrink-0",
+                                  children: [
+                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                      "img",
+                                      {
+                                        src: `data:${img.mimeType};base64,${img.data}`,
+                                        alt: img.name,
+                                        className: "h-14 w-14 rounded-lg border border-white/20 object-cover"
+                                      }
+                                    ),
+                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                      "button",
+                                      {
+                                        type: "button",
+                                        "aria-label": `remove ${img.name}`,
+                                        onClick: () => removeImage(i),
+                                        className: "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90",
+                                        children: "\xD7"
+                                      }
+                                    )
+                                  ]
+                                },
+                                `${img.name}-${img.mimeType}-${img.data.length}`
+                              )) }) : null,
+                              imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                "p",
                                 {
-                                  icon: RotateCcw,
-                                  label: "clear conversation",
-                                  onClick: () => clearConversation(),
-                                  testId: "chat-full-clear"
-                                }
-                              )
-                            ] }),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-                              currentTab !== "chat" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                HeaderButton,
-                                {
-                                  icon: House,
-                                  label: "home",
-                                  onClick: () => navigateAndClose(() => navigateHome?.()),
-                                  testId: "chat-full-home"
-                                }
-                              ) : null,
-                              currentTab !== "settings" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                HeaderButton,
-                                {
-                                  icon: Settings,
-                                  label: "settings",
-                                  onClick: () => navigateAndClose(() => openSettings()),
-                                  testId: "chat-full-settings"
+                                  role: "alert",
+                                  className: cn("text-xs text-red-200/90", FLOAT_SHADOW2),
+                                  children: imageError
                                 }
                               ) : null
-                            ] })
-                          ]
+                            ] }) : null,
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              "input",
+                              {
+                                ref: fileInputRef,
+                                type: "file",
+                                accept: "image/*",
+                                multiple: true,
+                                className: "hidden",
+                                onChange: (e) => {
+                                  if (e.target.files) addImageFiles(e.target.files);
+                                  e.target.value = "";
+                                }
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                              "div",
+                              {
+                                className: cn(
+                                  // items-center vertically centers a single-line composer with
+                                  // the round +/mic buttons (the common case); a multi-line draft
+                                  // grows the textarea and the buttons stay centered. shrink-0
+                                  // keeps the input fully visible when the panel hits its
+                                  // maxHeight cap (only the thread above gives way).
+                                  // Equal inset on all sides (px == py): a round button nested in
+                                  // the pill's round end-cap reads as concentric, with the same
+                                  // gap on the sides as top/bottom.
+                                  "relative z-10 flex min-w-0 shrink-0 items-center gap-1.5 px-2 py-2 sm:gap-2",
+                                  sheetOpen ? "border-t border-white/10" : ""
+                                ),
+                                style: fullBleed && !composerFocused ? {
+                                  paddingBottom: "calc(0.5rem + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))"
+                                } : void 0,
+                                children: [
+                                  slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    SlashCommandMenu,
+                                    {
+                                      state: slashMenu,
+                                      loading: isSlashDraft && slash.loading,
+                                      onPick: pickSlashItem
+                                    }
+                                  ) : null,
+                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    SoftButton,
+                                    {
+                                      glyph: PLUS_GLYPH,
+                                      label: "attach image",
+                                      disabled: pendingImages.length >= MAX_CHAT_IMAGES,
+                                      onClick: () => fileInputRef.current?.click(),
+                                      testId: "chat-composer-attach"
+                                    }
+                                  ),
+                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    "textarea",
+                                    {
+                                      ref: inputRef,
+                                      rows: 1,
+                                      value: draft,
+                                      onChange: (e) => {
+                                        setDraft(e.target.value);
+                                        viewChatBinding?.onQuery?.(e.target.value);
+                                        if (e.target.value.trim().length > 0) expand();
+                                      },
+                                      onFocus: () => {
+                                        setComposerFocused(true);
+                                        expand();
+                                      },
+                                      onBlur: () => setComposerFocused(false),
+                                      onKeyDown: (e) => {
+                                        if (slashOpen) {
+                                          if (e.key === "ArrowDown") {
+                                            e.preventDefault();
+                                            slashMenu.move(1);
+                                            return;
+                                          }
+                                          if (e.key === "ArrowUp") {
+                                            e.preventDefault();
+                                            slashMenu.move(-1);
+                                            return;
+                                          }
+                                          if (e.key === "Tab") {
+                                            const completed = slashMenu.complete();
+                                            if (completed != null) {
+                                              e.preventDefault();
+                                              setDraft(completed);
+                                              return;
+                                            }
+                                          }
+                                          if (e.key === "Enter" && !e.shiftKey) {
+                                            const exec = slashMenu.resolve();
+                                            if (exec) {
+                                              e.preventDefault();
+                                              runExecution(exec);
+                                              return;
+                                            }
+                                          }
+                                          if (e.key === "Escape") {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setSlashDismissed(true);
+                                            return;
+                                          }
+                                        }
+                                        if (e.key === "Enter" && !e.shiftKey) {
+                                          e.preventDefault();
+                                          submit();
+                                        } else if (e.key === "Escape" && sheetOpen) {
+                                          e.preventDefault();
+                                          collapse();
+                                        }
+                                      },
+                                      placeholder: booting ? `Ask ${agentName} \u2014 waking up\u2026` : viewChatBinding?.placeholder ?? `Ask ${agentName}`,
+                                      "aria-label": "message",
+                                      "data-testid": "chat-composer-textarea",
+                                      "aria-describedby": booting ? "cc-booting-hint" : void 0,
+                                      ...comboboxAria,
+                                      className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
+                                    }
+                                  ),
+                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
+                                    agentName,
+                                    " is waking up \u2014 you can type now; your message sends and the reply arrives in a moment."
+                                  ] }),
+                                  speaking || agentVoiceMuted ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    SoftButton,
+                                    {
+                                      glyph: agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH,
+                                      label: agentVoiceMuted ? "unmute assistant voice" : "mute assistant voice",
+                                      active: agentVoiceMuted,
+                                      onClick: toggleAgentVoiceMute,
+                                      testId: "chat-voice-mute"
+                                    }
+                                  ) : null,
+                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    SoftButton,
+                                    {
+                                      icon: SendHorizontal,
+                                      label: canSend ? "send" : "send (waiting for reply)",
+                                      disabled: !canSend,
+                                      onPointerDown: (e) => e.preventDefault(),
+                                      onClick: submit,
+                                      testId: "chat-composer-action"
+                                    }
+                                  ) : !recording && responding ? (
+                                    // While a reply is streaming and nothing is typed, the mic becomes a
+                                    // stop control so the user can interrupt a runaway generation.
+                                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                      SoftButton,
+                                      {
+                                        glyph: STOP_GLYPH,
+                                        label: "stop generating",
+                                        onClick: () => stop(),
+                                        testId: "chat-composer-stop"
+                                      }
+                                    )
+                                  ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    SoftButton,
+                                    {
+                                      icon: Mic,
+                                      label: pushToTalkActive ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
+                                      active: recording || handsFree,
+                                      onClick: handleMicClick,
+                                      onPointerDown: beginPushToTalkPress,
+                                      onPointerUp: endPushToTalkPress,
+                                      onPointerCancel: endPushToTalkPress,
+                                      testId: "chat-composer-mic"
+                                    }
+                                  ) })
+                                ]
+                              }
+                            )
+                          ] })
                         }
-                      ) : null,
-                      hasThread ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      ),
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                         motion.div,
                         {
-                          "data-testid": "chat-thread",
-                          className: cn(
-                            "relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden",
-                            // When open, fade the top edge into the glass so the topmost
-                            // message dissolves under the drag handle instead of butting
-                            // against it.
-                            sheetOpen && "[mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)]"
-                          ),
-                          style: { flexBasis: threadFlexBasis },
+                          className: "absolute inset-x-0 bottom-0 z-30 flex justify-center",
+                          style: {
+                            opacity: pillOpacity,
+                            pointerEvents: pilled ? "auto" : "none"
+                          },
                           children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                            "div",
+                            PillHandle,
                             {
-                              id: "continuous-thread",
-                              ref: threadRef,
-                              role: "log",
-                              "aria-label": "conversation history",
-                              "aria-live": "polite",
-                              "aria-hidden": !sheetOpen ? true : void 0,
-                              tabIndex: sheetOpen ? 0 : -1,
-                              onKeyDown: (e) => {
-                                if (e.key === "Escape") {
-                                  e.preventDefault();
-                                  collapse();
-                                }
-                              },
-                              className: "relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden",
-                              children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
-                                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                  ThreadLine,
-                                  {
-                                    message: m2,
-                                    floating: true,
-                                    reduce,
-                                    onCopy: handleCopyMessage,
-                                    onOpenSettings: openSettings
-                                  },
-                                  m2.id
-                                )) }),
-                                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: responding ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDots, { reduce }) : null }),
-                                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { ref: endRef })
-                              ] })
+                              binding: pullBinding,
+                              onOpen: () => setPilled(false),
+                              glow: listening || responding
                             }
                           )
                         }
-                      ) : null,
-                      hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
-                        hasImages ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-                          "div",
-                          {
-                            className: "group relative h-14 w-14 shrink-0",
-                            children: [
-                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                "img",
-                                {
-                                  src: `data:${img.mimeType};base64,${img.data}`,
-                                  alt: img.name,
-                                  className: "h-14 w-14 rounded-lg border border-white/20 object-cover"
-                                }
-                              ),
-                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                "button",
-                                {
-                                  type: "button",
-                                  "aria-label": `remove ${img.name}`,
-                                  onClick: () => removeImage(i),
-                                  className: "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90",
-                                  children: "\xD7"
-                                }
-                              )
-                            ]
-                          },
-                          `${img.name}-${img.mimeType}-${img.data.length}`
-                        )) }) : null,
-                        imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                          "p",
-                          {
-                            role: "alert",
-                            className: cn("text-xs text-red-200/90", FLOAT_SHADOW2),
-                            children: imageError
-                          }
-                        ) : null
-                      ] }) : null,
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                        "input",
-                        {
-                          ref: fileInputRef,
-                          type: "file",
-                          accept: "image/*",
-                          multiple: true,
-                          className: "hidden",
-                          onChange: (e) => {
-                            if (e.target.files) addImageFiles(e.target.files);
-                            e.target.value = "";
-                          }
-                        }
-                      ),
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-                        motion.div,
-                        {
-                          initial: justUnpilled && !reduce ? { opacity: 0, y: 14 } : false,
-                          animate: { opacity: 1, y: 0 },
-                          transition: { duration: reduce ? 0 : 0.26, ease: OVERLAY_EASE },
-                          className: cn(
-                            // items-center vertically centers a single-line composer with
-                            // the round +/mic buttons (the common case); a multi-line draft
-                            // grows the textarea and the buttons stay centered. shrink-0
-                            // keeps the input fully visible when the panel hits its
-                            // maxHeight cap (only the thread above gives way).
-                            // Equal inset on all sides (px == py): a round button nested in
-                            // the pill's round end-cap reads as concentric, with the same
-                            // gap on the sides as top/bottom.
-                            "relative z-10 flex min-w-0 shrink-0 items-center gap-1.5 px-2 py-2 sm:gap-2",
-                            sheetOpen ? "border-t border-white/10" : ""
-                          ),
-                          style: fullBleed && !composerFocused ? {
-                            paddingBottom: "calc(0.5rem + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))"
-                          } : void 0,
-                          children: [
-                            slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              SlashCommandMenu,
-                              {
-                                state: slashMenu,
-                                loading: isSlashDraft && slash.loading,
-                                onPick: pickSlashItem
-                              }
-                            ) : null,
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              SoftButton,
-                              {
-                                glyph: PLUS_GLYPH,
-                                label: "attach image",
-                                disabled: pendingImages.length >= MAX_CHAT_IMAGES,
-                                onClick: () => fileInputRef.current?.click(),
-                                testId: "chat-composer-attach"
-                              }
-                            ),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              "textarea",
-                              {
-                                ref: inputRef,
-                                rows: 1,
-                                value: draft,
-                                onChange: (e) => {
-                                  setDraft(e.target.value);
-                                  viewChatBinding?.onQuery?.(e.target.value);
-                                  if (e.target.value.trim().length > 0) expand();
-                                },
-                                onFocus: () => {
-                                  setComposerFocused(true);
-                                  expand();
-                                },
-                                onBlur: () => setComposerFocused(false),
-                                onKeyDown: (e) => {
-                                  if (slashOpen) {
-                                    if (e.key === "ArrowDown") {
-                                      e.preventDefault();
-                                      slashMenu.move(1);
-                                      return;
-                                    }
-                                    if (e.key === "ArrowUp") {
-                                      e.preventDefault();
-                                      slashMenu.move(-1);
-                                      return;
-                                    }
-                                    if (e.key === "Tab") {
-                                      const completed = slashMenu.complete();
-                                      if (completed != null) {
-                                        e.preventDefault();
-                                        setDraft(completed);
-                                        return;
-                                      }
-                                    }
-                                    if (e.key === "Enter" && !e.shiftKey) {
-                                      const exec = slashMenu.resolve();
-                                      if (exec) {
-                                        e.preventDefault();
-                                        runExecution(exec);
-                                        return;
-                                      }
-                                    }
-                                    if (e.key === "Escape") {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setSlashDismissed(true);
-                                      return;
-                                    }
-                                  }
-                                  if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
-                                    submit();
-                                  } else if (e.key === "Escape" && sheetOpen) {
-                                    e.preventDefault();
-                                    collapse();
-                                  }
-                                },
-                                placeholder: booting ? `Ask ${agentName} \u2014 waking up\u2026` : viewChatBinding?.placeholder ?? `Ask ${agentName}`,
-                                "aria-label": "message",
-                                "data-testid": "chat-composer-textarea",
-                                "aria-describedby": booting ? "cc-booting-hint" : void 0,
-                                ...comboboxAria,
-                                className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
-                              }
-                            ),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
-                              agentName,
-                              " is waking up \u2014 you can type now; your message sends and the reply arrives in a moment."
-                            ] }),
-                            speaking || agentVoiceMuted ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              SoftButton,
-                              {
-                                glyph: agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH,
-                                label: agentVoiceMuted ? "unmute assistant voice" : "mute assistant voice",
-                                active: agentVoiceMuted,
-                                onClick: toggleAgentVoiceMute,
-                                testId: "chat-voice-mute"
-                              }
-                            ) : null,
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              SoftButton,
-                              {
-                                glyph: SEND_GLYPH,
-                                label: canSend ? "send" : "send (waiting for reply)",
-                                disabled: !canSend,
-                                onPointerDown: (e) => e.preventDefault(),
-                                onClick: submit,
-                                testId: "chat-composer-action"
-                              }
-                            ) : !recording && responding ? (
-                              // While a reply is streaming and nothing is typed, the mic becomes a
-                              // stop control so the user can interrupt a runaway generation.
-                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                SoftButton,
-                                {
-                                  glyph: STOP_GLYPH,
-                                  label: "stop generating",
-                                  onClick: () => stop(),
-                                  testId: "chat-composer-stop"
-                                }
-                              )
-                            ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              SoftButton,
-                              {
-                                glyph: MIC_GLYPH,
-                                label: pushToTalkActive ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
-                                active: recording || handsFree,
-                                onClick: handleMicClick,
-                                onPointerDown: beginPushToTalkPress,
-                                onPointerUp: endPushToTalkPress,
-                                onPointerCancel: endPushToTalkPress,
-                                testId: "chat-composer-mic"
-                              }
-                            ) })
-                          ]
-                        }
                       )
-                    ] })
+                    ]
                   }
                 )
               ]
@@ -27455,34 +27570,45 @@
         `[fixture] phase=${phase} messages=${messages.length} recording=${recording}`
       );
     }, [phase, messages.length, recording]);
-    const send = React8.useCallback((text) => {
-      const trimmed = text.trim();
-      if (!trimmed) return;
-      console.log(`[fixture] send: ${JSON.stringify(trimmed)}`);
-      setMessages((m2) => [
-        ...m2,
-        { id: uid(), role: "user", content: trimmed, createdAt: nextId }
-      ]);
-      setPhase("responding");
-      window.setTimeout(() => {
+    const send = React8.useCallback(
+      (text, options) => {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        console.log(
+          `[fixture] send: ${JSON.stringify(trimmed)}${options?.channelType ? ` (${options.channelType})` : ""}`
+        );
         setMessages((m2) => [
           ...m2,
-          {
-            id: uid(),
-            role: "assistant",
-            content: `On it \u2014 \u201C${trimmed}\u201D. Here is a reply that runs a little long so the open transcript has something to scroll through and the latest line stays pinned to the bottom near the composer.`,
-            createdAt: nextId
-          }
+          { id: uid(), role: "user", content: trimmed, createdAt: nextId }
         ]);
-        setPhase("summoned");
-      }, 500);
-    }, []);
-    const startRecording = React8.useCallback(() => {
-      console.log("[fixture] startRecording");
-      setRecording(true);
-      setTranscript("tell me the plan for\u2026");
-      setPhase("listening");
-    }, []);
+        setPhase("responding");
+        window.setTimeout(() => {
+          setMessages((m2) => [
+            ...m2,
+            {
+              id: uid(),
+              role: "assistant",
+              content: `On it \u2014 \u201C${trimmed}\u201D. Here is a reply that runs a little long so the open transcript has something to scroll through and the latest line stays pinned to the bottom near the composer.`,
+              createdAt: nextId
+            }
+          ]);
+          setPhase("summoned");
+        }, 500);
+      },
+      []
+    );
+    const captureIntentRef = React8.useRef("converse");
+    const dictationSinkRef = React8.useRef(null);
+    const startRecording = React8.useCallback(
+      (intent = "converse") => {
+        captureIntentRef.current = intent;
+        console.log(`[fixture] startRecording(${intent})`);
+        setRecording(true);
+        setTranscript("tell me the plan for\u2026");
+        setPhase("listening");
+      },
+      []
+    );
     const stopRecording = React8.useCallback(() => {
       console.log("[fixture] stopRecording");
       setRecording(false);
@@ -27502,15 +27628,32 @@
       setHandsFree((h) => {
         const next = !h;
         console.log(`[fixture] toggleHandsFree -> ${next}`);
+        captureIntentRef.current = "converse";
+        setRecording(next);
         setPhase(next ? "listening" : "summoned");
         return next;
       });
     }, []);
     const setDictationSink = React8.useCallback(
-      (_sink) => {
+      (sink) => {
+        dictationSinkRef.current = sink;
       },
       []
     );
+    React8.useEffect(() => {
+      const w = window;
+      w.__emitDictation = (t) => dictationSinkRef.current?.(t);
+      w.__emitVoiceFinal = (t) => {
+        if (captureIntentRef.current === "dictate") dictationSinkRef.current?.(t);
+        else send(t, { channelType: "VOICE_DM" });
+        setRecording(false);
+        setPhase("summoned");
+      };
+      return () => {
+        w.__emitDictation = void 0;
+        w.__emitVoiceFinal = void 0;
+      };
+    }, [send]);
     const toggleAgentVoiceMute = React8.useCallback(() => {
       setAgentVoiceMuted((m2) => {
         console.log(`[fixture] toggleAgentVoiceMute -> ${!m2}`);
@@ -27531,8 +27674,7 @@
       toggleRecording,
       toggleHandsFree,
       setDictationSink,
-      setComposerHasDraft: (_hasDraft) => {
-      },
+      setComposerHasDraft: (hasDraft) => console.log(`[fixture] setComposerHasDraft -> ${hasDraft}`),
       startRecording,
       stopRecording,
       toggleAgentVoiceMute,
@@ -27664,8 +27806,10 @@ lucide-react/dist/esm/Icon.mjs:
 lucide-react/dist/esm/createLucideIcon.mjs:
 lucide-react/dist/esm/icons/house.mjs:
 lucide-react/dist/esm/icons/maximize-2.mjs:
+lucide-react/dist/esm/icons/mic.mjs:
 lucide-react/dist/esm/icons/minimize-2.mjs:
 lucide-react/dist/esm/icons/rotate-ccw.mjs:
+lucide-react/dist/esm/icons/send-horizontal.mjs:
 lucide-react/dist/esm/icons/settings.mjs:
 lucide-react/dist/esm/lucide-react.mjs:
   (**

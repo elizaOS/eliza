@@ -945,15 +945,9 @@ function PluginListView({
           if (groupPlugins.length === 0) return null;
           return (
             <section key={groupId}>
-              <div className="mb-3 flex items-baseline gap-2">
-                <h3 className="text-2xs font-bold uppercase tracking-[0.18em] text-muted-strong">
-                  {SUBGROUP_LABELS[groupId] ?? groupId}
-                </h3>
-                <span className="font-mono text-3xs text-muted/60">
-                  {groupPlugins.length}
-                </span>
-                <span className="h-px flex-1 bg-border/40" />
-              </div>
+              <h3 className="mb-3 text-sm font-medium text-txt-strong">
+                {SUBGROUP_LABELS[groupId] ?? groupId}
+              </h3>
               {renderPluginGrid(groupPlugins)}
             </section>
           );
@@ -1286,22 +1280,9 @@ function PluginListView({
         <PagePanel.ContentArea>
           <main className="chat-native-scrollbar flex h-full flex-col overflow-y-auto px-4 pb-32 pt-5 sm:px-6 lg:px-8">
             <header className="mb-5">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <span className="text-2xs font-bold uppercase tracking-[0.2em] text-accent">
-                    {t("nav.advanced")}
-                  </span>
-                  <h1 className="mt-1 text-2xl font-bold tracking-tight text-txt">
-                    {pluginSectionTitle}
-                  </h1>
-                </div>
-                <span className="rounded-full border border-border/45 px-3 py-1 text-2xs font-bold tracking-[0.14em] text-muted">
-                  {t("pluginsview.VisibleCount", {
-                    defaultValue: "{{count}} shown",
-                    count: visiblePlugins.length,
-                  })}
-                </span>
-              </div>
+              <h1 className="text-2xl font-semibold tracking-tight text-txt">
+                {pluginSectionTitle}
+              </h1>
 
               <ChatSearchHint
                 noun="plugins"

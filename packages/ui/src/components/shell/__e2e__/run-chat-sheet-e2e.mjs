@@ -74,6 +74,13 @@ const variant = (p) =>
   p.getByTestId("chat-sheet").getAttribute("data-variant");
 const detent = (p) =>
   p.getByTestId("chat-sheet").getAttribute("data-detent");
+// The canonical state-machine value (CLOSED | INPUT | OPEN_UNDER_HALF |
+// OPEN_HALF_OR_OVER | MAXIMIZED) — the single source the overlay derives.
+const chatState = (p) =>
+  p.getByTestId("chat-sheet").getAttribute("data-chat-state");
+// Header buttons (maximize/clear/home/settings) show only at half-or-over.
+const headerButtonCount = (p) =>
+  p.getByTestId("chat-sheet").locator('[data-testid^="chat-full-"]').count();
 // The history (thread) is the element whose height animates 0 → half → full;
 // the panel (chat-sheet) also holds the always-present input, so measure the
 // thread for detent heights.
@@ -123,9 +130,17 @@ const SETTLE = 480; // spring settle time before measuring a detent
 async function gesture(
   p,
   up,
-  { pointer = "mouse", slow = false, hold = false, steps = 12 } = {},
+  {
+    pointer = "mouse",
+    slow = false,
+    hold = false,
+    steps = 12,
+    // Which handle to drag: the open-sheet grabber (default) or the collapsed
+    // pill — the pill→input→chat open paths must be driven from the pill itself.
+    target = "chat-sheet-grabber",
+  } = {},
 ) {
-  const b = await grabberBox(p);
+  const b = await p.getByTestId(target).boundingBox();
   const cx = b.x + b.width / 2;
   const cy = b.y + b.height / 2;
   const targetY = (i) => cy - (up * i) / steps;
@@ -139,8 +154,8 @@ async function gesture(
     if (!hold) await p.mouse.up();
   } else {
     await p.evaluate(
-      ({ cx, cy }) => {
-        const el = document.querySelector('[data-testid="chat-sheet-grabber"]');
+      ({ cx, cy, target }) => {
+        const el = document.querySelector(`[data-testid="${target}"]`);
         window.__g = el;
         el.dispatchEvent(
           new PointerEvent("pointerdown", {
@@ -152,7 +167,7 @@ async function gesture(
           }),
         );
       },
-      { cx, cy },
+      { cx, cy, target },
     );
     for (let i = 1; i <= steps; i += 1) {
       await p.evaluate(
@@ -598,6 +613,141 @@ try {
     await p.close();
   }
 
+  // VOICE ↔ CHAT, direction 1 — DICTATION fills the chat box (transcription into
+  // the composer, editable, then sent as a normal turn). The user explicitly
+  // asked this be tested both ways.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-textarea"]');
+    await p.waitForTimeout(500);
+    await p.evaluate(() => window.__emitDictation?.("buy oat milk"));
+    await p.waitForTimeout(200);
+    let draft = await p.getByTestId("chat-composer-textarea").inputValue();
+    assert(
+      draft.includes("buy oat milk"),
+      `DICTATION: final transcript fills the composer box (draft="${draft}")`,
+    );
+    assert(
+      await p.getByTestId("chat-composer-action").isVisible(),
+      "DICTATION: send control morphs in once the box holds the dictated text",
+    );
+    await snap(p, "state-dictation-in-box");
+    // A second transcript APPENDS (proves it's an editable draft, not a replace).
+    await p.evaluate(() => window.__emitDictation?.("at noon"));
+    await p.waitForTimeout(150);
+    draft = await p.getByTestId("chat-composer-textarea").inputValue();
+    assert(
+      draft.includes("buy oat milk") && draft.includes("at noon"),
+      `DICTATION: a second transcript appends to the draft (draft="${draft}")`,
+    );
+    // Send the dictated draft → the box clears (the normal send path).
+    const n = sink.logs.length;
+    await p.getByTestId("chat-composer-action").click();
+    await p.waitForTimeout(300);
+    assert(
+      (await p.getByTestId("chat-composer-textarea").inputValue()) === "",
+      "DICTATION: sending the dictated draft clears the box",
+    );
+    assert(
+      sink.logs.slice(n).some((l) => l.includes("[fixture] send:")),
+      "DICTATION: the dictated text sends as a chat turn",
+    );
+    await p.close();
+  }
+
+  // VOICE ↔ CHAT, direction 2 — CONTINUOUS (hands-free) converse: a tap on the
+  // mic opens the loop and a final transcript sends a VOICE_DM (spoken reply),
+  // NOT a typed draft. Asserted via the fixture's channel-tagged send log.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForTimeout(500);
+    await p.getByTestId("chat-composer-mic").click(); // tap = hands-free converse
+    await p.waitForTimeout(200);
+    assert(
+      (await p.getByTestId("chat-composer-mic").getAttribute("aria-pressed")) === "true",
+      "CONTINUOUS: tapping the mic starts the hands-free loop",
+    );
+    const n = sink.logs.length;
+    await p.evaluate(() => window.__emitVoiceFinal?.("what is the weather"));
+    await p.waitForTimeout(300);
+    assert(
+      sink.logs.slice(n).some((l) => l.includes("(VOICE_DM)")),
+      "CONTINUOUS: a final transcript sends a VOICE_DM (spoken-reply turn), not a draft",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-textarea").inputValue()) === "",
+      "CONTINUOUS: converse does NOT leave text in the composer box",
+    );
+    await p.close();
+  }
+
+  // PUSH-TO-TALK: press-and-hold the mic (>200ms, no drag) starts a "dictate"
+  // capture; release stops it — and it must NOT toggle hands-free (the
+  // suppress-click guard). Asserted via the fixture intent log.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForTimeout(500);
+    const mic = p.getByTestId("chat-composer-mic");
+    const box = await mic.boundingBox();
+    const mx = box.x + box.width / 2;
+    const my = box.y + box.height / 2;
+    const n = sink.logs.length;
+    await p.mouse.move(mx, my);
+    await p.mouse.down();
+    await p.waitForTimeout(280); // exceed the 200ms press threshold (no movement)
+    await p.mouse.up();
+    await p.waitForTimeout(200);
+    assert(
+      sink.logs.slice(n).some((l) => l.includes("startRecording(dictate)")),
+      "PTT: press-and-hold starts a DICTATE capture",
+    );
+    assert(
+      sink.logs.slice(n).some((l) => l.includes("stopRecording")),
+      "PTT: release stops the capture",
+    );
+    assert(
+      !sink.logs.slice(n).some((l) => l.includes("toggleHandsFree")),
+      "PTT: a held press does NOT toggle hands-free (suppress-click guard)",
+    );
+    await p.close();
+  }
+
+  // TYPING-PAUSE: while the hands-free loop is on, typing a draft must signal the
+  // controller (setComposerHasDraft -> true) so the always-on mic pauses over the
+  // keyboard; clearing it resumes.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForTimeout(500);
+    await p.getByTestId("chat-composer-mic").click(); // hands-free on
+    await p.waitForTimeout(150);
+    const n = sink.logs.length;
+    await p.getByTestId("chat-composer-textarea").fill("hold on");
+    await p.waitForTimeout(150);
+    assert(
+      sink.logs.slice(n).some((l) => l.includes("setComposerHasDraft -> true")),
+      "TYPING-PAUSE: a draft pauses the always-on loop (setComposerHasDraft true)",
+    );
+    const m = sink.logs.length;
+    await p.getByTestId("chat-composer-textarea").fill("");
+    await p.waitForTimeout(150);
+    assert(
+      sink.logs.slice(m).some((l) => l.includes("setComposerHasDraft -> false")),
+      "TYPING-PAUSE: clearing the draft resumes the loop (setComposerHasDraft false)",
+    );
+    await p.close();
+  }
+
   // suggestions are feature-flagged off — no strip, no chips at rest
   {
     const p = await ctrl();
@@ -826,10 +976,21 @@ try {
       (await p.getByTestId("chat-pill").count()) === 1,
       "PILL: the recoverable pill capsule is shown",
     );
-    assert(
-      (await p.getByTestId("chat-composer-textarea").count()) === 0,
-      "PILL: the input is fully hidden in pill mode",
-    );
+    // Persistent panel: the composer stays MOUNTED across pill↔input (so the
+    // morph is continuous, never a remount) but is hidden — opacity 0 + `inert`.
+    {
+      const contentOpacity = await p
+        .getByTestId("chat-content")
+        .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+      assert(
+        contentOpacity <= 0.05,
+        `PILL: the input is visually hidden in pill mode (content opacity ${contentOpacity})`,
+      );
+      assert(
+        (await p.getByTestId("chat-content").getAttribute("inert")) !== null,
+        "PILL: the input is inert (out of tab order / a11y tree) in pill mode",
+      );
+    }
     await snap(p, "state-pill");
     await p.getByTestId("chat-pill").click();
     await p.waitForTimeout(SETTLE);
@@ -953,6 +1114,192 @@ try {
         box?.y ?? -1,
       )}, bottom=${Math.round((box?.y ?? 0) + (box?.height ?? 0))}, vh=${vh})`,
     );
+    await p.close();
+  }
+
+  // ── ALL FIVE CHATSTATES (the canonical machine) — assert data-chat-state + the
+  // header-button gate, screenshot each (the user asked for a shot of every
+  // state). Driven by real gestures on the grabber + the pill.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    const vh = await viewportH(p);
+    const halfH = Math.round(vh * 0.46);
+
+    assert((await chatState(p)) === "INPUT", "STATES: rest is INPUT");
+    assert(
+      (await headerButtonCount(p)) === 0,
+      "STATES: INPUT shows no header buttons",
+    );
+    await snap(p, "state-INPUT");
+
+    await gesture(p, halfH, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await chatState(p)) === "OPEN_HALF_OR_OVER",
+      `STATES: flick-up → OPEN_HALF_OR_OVER (got ${await chatState(p)})`,
+    );
+    assert(
+      (await headerButtonCount(p)) > 0,
+      "STATES: OPEN_HALF_OR_OVER shows header buttons",
+    );
+    await snap(p, "state-OPEN_HALF_OR_OVER");
+
+    await p.getByTestId("chat-full-maximize").click();
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await chatState(p)) === "MAXIMIZED",
+      `STATES: maximize → MAXIMIZED (got ${await chatState(p)})`,
+    );
+    await snap(p, "state-MAXIMIZED");
+    await p.close();
+  }
+
+  // OPEN_UNDER_HALF + CLOSED on a fresh page (cleaner than stepping down from
+  // MAXIMIZED, which is full-bleed and has no grabber to drag).
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    const vh = await viewportH(p);
+    const halfH = Math.round(vh * 0.46);
+
+    // OPEN_UNDER_HALF — a slow short pull from INPUT rests in the gap below half.
+    await gesture(p, Math.round(halfH * 0.5), { pointer: "mouse", slow: true });
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await chatState(p)) === "OPEN_UNDER_HALF",
+      `STATES: slow free-rest below half → OPEN_UNDER_HALF (got ${await chatState(p)})`,
+    );
+    assert(
+      (await headerButtonCount(p)) === 0,
+      "STATES: OPEN_UNDER_HALF hides header buttons",
+    );
+    await snap(p, "state-OPEN_UNDER_HALF");
+
+    // CLOSED — flick down to input, then down again to the pill. Touch pointer:
+    // the grabber sits near the screen bottom, so a downward mouse drag clamps at
+    // the viewport edge; dispatched touch events carry the full downward delta.
+    await gesture(p, -vh, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await chatState(p)) === "CLOSED",
+      `STATES: flick-down from input → CLOSED (got ${await chatState(p)})`,
+    );
+    await snap(p, "state-CLOSED");
+    await p.close();
+  }
+
+  // ── PILL → INPUT → CHAT liquid-glass morph. A flick-up from the pill reaches
+  // the chat (B4 fix — used to dead-stop at the bare input); a slow drag LERPS
+  // the morph (content opacity strictly between 0 and 1 mid-pull).
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert((await chatState(p)) === "CLOSED", "PILL-MORPH: collapsed to pill");
+
+    // MID-DRAG hold: slow-pull the PILL up ~half the open distance and HOLD —
+    // the glass/content crossfades in proportionally (not a discrete pop).
+    await gesture(p, 60, {
+      pointer: "mouse",
+      slow: true,
+      hold: true,
+      steps: 8,
+      target: "chat-pill",
+    });
+    const midOpacity = await p
+      .getByTestId("chat-content")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+    assert(
+      midOpacity > 0.05 && midOpacity < 0.95,
+      `PILL-MORPH: content lerps in mid-drag (opacity ${midOpacity})`,
+    );
+    await snap(p, "transition-pill-to-input-mid-drag");
+    await release(p, "mouse");
+    await p.waitForTimeout(SETTLE);
+
+    // FLICK up from the pill → reaches the chat (history present), not a stop.
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    await gesture(p, 140, {
+      pointer: "mouse",
+      slow: false,
+      steps: 2,
+      target: "chat-pill",
+    });
+    await p.waitForTimeout(SETTLE);
+    const after = await chatState(p);
+    assert(
+      after === "OPEN_HALF_OR_OVER" || after === "OPEN_UNDER_HALF",
+      `PILL-MORPH: a flick from the pill reaches the chat (got ${after})`,
+    );
+    await snap(p, "transition-pill-to-chat-flick");
+    await p.close();
+  }
+
+  // ── HEADER tracks the LIVE height (bug 1): dragging the panel below half must
+  // HIDE the top buttons MID-DRAG, not keep them on a too-short panel. And the
+  // MAXIMIZED enum can never disagree with the full-bleed layout.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    const vh = await viewportH(p);
+    const halfH = Math.round(vh * 0.46);
+
+    // Open to full so the header is shown and the grabber sits high (a downward
+    // drag stays on-screen).
+    await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await headerButtonCount(p)) > 0,
+      "HEADER-LIVE: header shown at full before the drag",
+    );
+    // Slow-drag DOWN well below half and HOLD (don't release) — the header must
+    // already be gone while the finger is still down.
+    await gesture(p, -Math.round(halfH * 1.3), {
+      pointer: "mouse",
+      slow: true,
+      hold: true,
+      steps: 10,
+    });
+    assert(
+      (await headerButtonCount(p)) === 0,
+      "HEADER-LIVE: header is HIDDEN mid-drag once the panel renders below half",
+    );
+    await snap(p, "state-mid-drag-below-half-no-header");
+    await release(p, "mouse");
+    await p.waitForTimeout(SETTLE);
+
+    // Invariant: data-chat-state==="MAXIMIZED" IFF data-maximized==="true".
+    await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    await p.getByTestId("chat-full-maximize").click();
+    await p.waitForTimeout(SETTLE);
+    {
+      const cs = await chatState(p);
+      const max = await p
+        .getByTestId("chat-sheet")
+        .getAttribute("data-maximized");
+      assert(
+        (cs === "MAXIMIZED") === (max === "true"),
+        `HEADER-LIVE: chat-state MAXIMIZED iff data-maximized (state=${cs}, maximized=${max})`,
+      );
+    }
     await p.close();
   }
 } finally {

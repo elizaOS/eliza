@@ -69,14 +69,14 @@ export function AppsPageView({
           className="settings-content-area"
           style={
             {
-              "--accent": "var(--section-accent-apps, #10b981)",
+              "--accent": "var(--section-accent-apps, #ff8a24)",
               "--surface": "rgba(255, 255, 255, 0.06)",
-              "--s-accent": "#10b981",
-              "--s-text-txt": "#10b981",
-              "--s-accent-glow": "rgba(16, 185, 129, 0.35)",
-              "--s-accent-subtle": "rgba(16, 185, 129, 0.12)",
-              "--s-grid-line": "rgba(16, 185, 129, 0.02)",
-              "--s-glow-edge": "rgba(16, 185, 129, 0.08)",
+              "--s-accent": "#ff8a24",
+              "--s-text-txt": "#ff8a24",
+              "--s-accent-glow": "rgba(255, 138, 36, 0.35)",
+              "--s-accent-subtle": "rgba(255, 138, 36, 0.12)",
+              "--s-grid-line": "rgba(255, 138, 36, 0.02)",
+              "--s-glow-edge": "rgba(255, 138, 36, 0.08)",
             } as React.CSSProperties
           }
         >

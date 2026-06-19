@@ -20,7 +20,6 @@ let appPromise: Promise<Hono<AppEnv>> | undefined;
 const AGENT_ID_RE =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
-const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai";
 const FRONTEND_ALIAS_TARGETS: Record<
   string,
   { appHost: string; apiHost: string }
@@ -141,27 +140,15 @@ function proxyGeneratedAgentRequest(
   env: AppEnv["Bindings"],
   url: URL,
 ): Promise<Response> | null {
-  if (!getGeneratedAgentId(url, env)) return null;
+  const agentId = getGeneratedAgentId(url, env);
+  if (!agentId) return null;
 
-  const originHost =
-    normalizeHostname(env.AGENT_ROUTER_ORIGIN_HOST) ??
-    DEFAULT_AGENT_ROUTER_ORIGIN_HOST;
-  const targetUrl = new URL(request.url);
-  targetUrl.hostname = originHost;
-  const headers = new Headers(request.headers);
-  headers.delete("host");
-  headers.set("x-forwarded-host", url.host);
-  headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
-  const init: RequestInit = {
-    method: request.method,
-    headers,
-    redirect: "manual",
-  };
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = request.body;
-  }
-
-  return fetch(new Request(targetUrl, init));
+  // Unified cloud-token auth + tailnet proxy for dedicated agents. Lazy-imported
+  // so this entrypoint stays thin (Cloudflare startup-CPU budget) — the auth/DB
+  // module only loads on an actual UUID-subdomain request.
+  return import("./dedicated-agent-proxy").then((m) =>
+    m.handleDedicatedAgentProxy(request, env, url, agentId),
+  );
 }
 
 const scheduled = makeCronHandler(async (request, env, ctx) =>

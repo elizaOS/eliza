@@ -23,6 +23,7 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -127,7 +128,7 @@ const defaultFetchers: FinancesFetchers = {
 };
 
 export interface FinancesViewProps {
-  /** Owner display name shown in the header subtitle. */
+  /** Owner display name (host injection seam). */
   ownerName?: string;
   /** Test/host injection seam. Defaults to real `/api/lifeops/money/*` GETs. */
   fetchers?: FinancesFetchers;
@@ -233,7 +234,7 @@ function formatDate(value: string | null): string {
 }
 
 // ---------------------------------------------------------------------------
-// Styling — dark theme, CSS vars, orange accent only.
+// Styling — CSS vars, orange accent only.
 // ---------------------------------------------------------------------------
 
 const STYLE_TAG_ID = "finances-view-styles";
@@ -255,21 +256,21 @@ const FINANCES_VIEW_CSS = `
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .finances-view-btn-primary {
-  background: var(--primary, #ff6a00);
-  color: var(--primary-foreground, #0a0a0a);
-  border: 1px solid var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
+  color: var(--primary-foreground, #fff);
+  border: 1px solid var(--primary, #ff8a24);
 }
 .finances-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
 }
 .finances-view-btn-neutral {
-  background: var(--surface, rgba(255, 255, 255, 0.04));
-  color: var(--foreground, #f5f5f5);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(0, 0, 0, 0.04));
+  color: var(--foreground, #111);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
 }
 .finances-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground, #111) 8%, transparent);
 }
 .finances-view-btn:disabled {
   opacity: 0.5;
@@ -296,8 +297,8 @@ const containerStyle: CSSProperties = {
   height: "100%",
   boxSizing: "border-box",
   overflowY: "auto",
-  background: "var(--background, #0a0a0a)",
-  color: "var(--foreground, #f5f5f5)",
+  background: "var(--background, #fff)",
+  color: "var(--foreground, #111)",
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -321,8 +322,8 @@ const h2Style: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600 };
 const cardStyle: CSSProperties = {
   padding: 16,
   borderRadius: 8,
-  border: "1px solid var(--border, rgba(255,255,255,0.08))",
-  background: "var(--surface, rgba(255,255,255,0.02))",
+  border: "1px solid var(--border, rgba(0,0,0,0.08))",
+  background: "var(--surface, rgba(0,0,0,0.02))",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -333,8 +334,6 @@ const dimStyle: CSSProperties = {
   fontSize: 13,
   lineHeight: 1.5,
 };
-
-const subtitleStyle: CSSProperties = { ...dimStyle, marginTop: 2 };
 
 const statRowStyle: CSSProperties = {
   display: "flex",
@@ -352,7 +351,7 @@ const rowStyle: CSSProperties = {
   alignItems: "baseline",
   gap: 12,
   padding: "8px 0",
-  borderBottom: "1px solid var(--border, rgba(255,255,255,0.06))",
+  borderBottom: "1px solid var(--border, rgba(0,0,0,0.06))",
   fontSize: 14,
 };
 
@@ -397,10 +396,10 @@ function RefreshButton({
       className="finances-view-btn finances-view-btn-neutral"
       onClick={onActivate}
       disabled={disabled}
-      aria-label="Refresh finances"
+      aria-label="Refresh"
       {...agentProps}
     >
-      Refresh
+      <RefreshCw className="h-4 w-4" />
     </button>
   );
 }
@@ -429,11 +428,9 @@ function ConnectButton({ onActivate }: { onActivate: () => void }): ReactNode {
 }
 
 function FinancesHeader({
-  ownerName,
   refetch,
   busy,
 }: {
-  ownerName: string;
   refetch: () => void;
   busy: boolean;
 }): ReactNode {
@@ -442,9 +439,6 @@ function FinancesHeader({
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Finances</h1>
         <RefreshButton onActivate={refetch} disabled={busy} />
-      </div>
-      <div style={subtitleStyle}>
-        {`Balance, transactions, and recurring charges for ${ownerName}.`}
       </div>
     </header>
   );
@@ -576,7 +570,6 @@ type LoadState =
 export function FinancesView(props: FinancesViewProps = {}): ReactNode {
   useFinancesViewStyles();
 
-  const ownerName = props.ownerName ?? "Owner";
   const fetchers = props.fetchers ?? defaultFetchers;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
@@ -631,7 +624,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="finances-loading">
-        <FinancesHeader ownerName={ownerName} refetch={load} busy={true} />
+        <FinancesHeader refetch={load} busy={true} />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading finances…</div>
       </div>
     );
@@ -640,7 +633,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="finances-error">
-        <FinancesHeader ownerName={ownerName} refetch={load} busy={false} />
+        <FinancesHeader refetch={load} busy={false} />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load finances</div>
           <div style={dimStyle}>{state.message}</div>
@@ -666,7 +659,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
   if (!hasSource) {
     return (
       <div style={containerStyle} data-testid="finances-empty">
-        <FinancesHeader ownerName={ownerName} refetch={load} busy={false} />
+        <FinancesHeader refetch={load} busy={false} />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>No money sources connected</div>
           <div style={dimStyle}>
@@ -684,7 +677,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
 
   return (
     <div style={containerStyle} data-testid="finances-populated">
-      <FinancesHeader ownerName={ownerName} refetch={load} busy={false} />
+      <FinancesHeader refetch={load} busy={false} />
       <section style={sectionStyle}>
         <BalanceCard balance={balance} />
         <TransactionsCard transactions={transactions} />

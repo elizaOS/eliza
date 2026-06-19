@@ -1,5 +1,4 @@
-import { Check, Monitor, Moon, Sun } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import { useApp, useContentPack } from "../../state";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
@@ -49,50 +48,8 @@ function LanguageTileButton({
   );
 }
 
-function ThemeModeButton({
-  modeId,
-  active,
-  icon,
-  label,
-  onClick,
-}: {
-  modeId: string;
-  active: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `appearance-mode-${modeId}`,
-    role: "tab",
-    label,
-    group: "appearance-mode",
-    status: active ? "active" : "inactive",
-    onActivate: onClick,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-current={active ? "true" : undefined}
-      title={label}
-      className={`flex h-10 w-10 items-center justify-center rounded-sm border text-sm font-medium transition-colors ${
-        active
-          ? "border-accent bg-accent/8 text-txt"
-          : "border-border/50 text-muted hover:border-accent/40 hover:bg-bg-hover hover:text-txt"
-      }`}
-      {...agentProps}
-    >
-      {icon}
-    </button>
-  );
-}
-
 export function AppearanceSettingsSection() {
-  const { setUiLanguage, uiThemeMode, uiLanguage, setUiThemeMode, t } =
-    useApp();
+  const { setUiLanguage, uiLanguage, t } = useApp();
   const { activePack, loadedPacks, toggle } = useContentPack();
 
   return (
@@ -112,35 +69,6 @@ export function AppearanceSettingsSection() {
               onSelect={() => setUiLanguage(language.id)}
             />
           ))}
-        </div>
-      </SettingsGroup>
-
-      <SettingsGroup
-        bare
-        title={t("settings.appearance.mode", { defaultValue: "Mode" })}
-      >
-        <div className="flex gap-2">
-          <ThemeModeButton
-            modeId="system"
-            active={uiThemeMode === "system"}
-            icon={<Monitor className="h-4 w-4" />}
-            label={t("settings.appearance.system", { defaultValue: "System" })}
-            onClick={() => setUiThemeMode("system")}
-          />
-          <ThemeModeButton
-            modeId="light"
-            active={uiThemeMode === "light"}
-            icon={<Sun className="h-4 w-4" />}
-            label={t("settings.appearance.light", { defaultValue: "Light" })}
-            onClick={() => setUiThemeMode("light")}
-          />
-          <ThemeModeButton
-            modeId="dark"
-            active={uiThemeMode === "dark"}
-            icon={<Moon className="h-4 w-4" />}
-            label={t("settings.appearance.dark", { defaultValue: "Dark" })}
-            onClick={() => setUiThemeMode("dark")}
-          />
         </div>
       </SettingsGroup>
 

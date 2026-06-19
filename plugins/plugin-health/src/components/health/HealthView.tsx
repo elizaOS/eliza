@@ -17,6 +17,7 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -263,7 +264,7 @@ function RefreshButton({
       aria-label="Refresh sleep data"
       {...agentProps}
     >
-      Refresh
+      <RefreshCw className="h-4 w-4" aria-hidden />
     </button>
   );
 }

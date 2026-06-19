@@ -26,7 +26,7 @@ export function SettingsStack({
 
 export interface SettingsGroupProps
   extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
-  /** Small uppercase kicker shown above the card. */
+  /** Group heading shown above the card. */
   title?: React.ReactNode;
   /** Supporting copy under the title. */
   description?: React.ReactNode;
@@ -56,9 +56,7 @@ export function SettingsGroup({
         <div className="flex items-end justify-between gap-3 px-1">
           <div className="min-w-0">
             {title ? (
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
-                {title}
-              </h3>
+              <h3 className="text-sm font-medium text-txt-strong">{title}</h3>
             ) : null}
             {description ? (
               <p className="mt-1 text-xs leading-relaxed text-muted/90">

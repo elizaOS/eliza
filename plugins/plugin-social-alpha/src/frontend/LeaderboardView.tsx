@@ -83,14 +83,14 @@ export function SocialAlphaView() {
 	return (
 		<div className="flex min-h-full flex-col gap-4 bg-background pt-4 pb-24 text-foreground">
 			<div className="container mx-auto flex-grow px-4">
-				<header className="py-6 text-center">
-					<h1 className="bg-gradient-to-r from-primary via-orange-400 to-secondary bg-clip-text font-bold text-5xl text-transparent tracking-tight">
+				<header className="py-6">
+					<h1 className="font-semibold text-xl text-foreground tracking-tight">
 						Alpha Leaderboard
 					</h1>
 				</header>
 
 				<main className="flex flex-col gap-8">
-					<Card className="border-border/40 shadow-xl">
+					<Card className="border-border/40">
 						<CardHeader className="border-border/30 border-b">
 							<CardTitle className="text-center text-2xl">
 								Top Callers

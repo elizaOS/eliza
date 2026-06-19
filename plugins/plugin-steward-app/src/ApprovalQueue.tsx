@@ -406,8 +406,8 @@ export function ApprovalQueue({
             ref={refreshElement.ref}
             {...refreshElement.agentProps}
             variant="outline"
-            size="sm"
-            className="h-8 rounded-xl px-3 text-xs"
+            size="icon"
+            className="h-8 w-8 rounded-xl"
             onClick={() => {
               setLoading(true);
               void loadData();
@@ -418,7 +418,6 @@ export function ApprovalQueue({
             <RefreshCw
               className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
             />
-            Refresh
           </Button>
         </PagePanel.Toolbar>
       ) : null}

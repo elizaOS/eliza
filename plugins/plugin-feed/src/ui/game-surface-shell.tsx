@@ -1,10 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
 
-// Shared visual shell for game/app operator surfaces: a hero banner over the
-// plugin's registered hero art, a horizontal status strip of stat chips, and a
-// content zone. Inline styles only — the view bundle does not ship Tailwind, so
-// utility classes do not paint here. Theme tokens (--accent, --card, --border …)
-// are read via CSS var() so light + dark both work.
+// Shared visual shell for game/app operator surfaces: a compact header (title +
+// status + CTA), a horizontal status strip of stat chips, and a content zone.
+// Inline styles only — the view bundle does not ship Tailwind, so utility
+// classes do not paint here. Theme tokens (--accent, --card, --border …) are
+// read via CSS var().
 
 export type ChipState = "ready" | "pending" | "active" | "idle" | "danger";
 
@@ -17,7 +17,7 @@ export interface StatChip {
 
 const STATE_COLOR: Record<ChipState, string> = {
   ready: "var(--ok, #22c55e)",
-  active: "var(--accent, #ff5800)",
+  active: "var(--accent, #ff8a24)",
   pending: "var(--warn, #f59e0b)",
   idle: "var(--muted, #9ca3af)",
   danger: "var(--danger, #ef4444)",
@@ -37,13 +37,11 @@ export function GameSurfaceShell({ children }: { children: ReactNode }) {
 }
 
 export function GameSurfaceHero({
-  heroUrl,
   title,
   statusLabel,
   statusState = "pending",
   cta,
 }: {
-  heroUrl: string;
   title: string;
   statusLabel: string;
   statusState?: ChipState;
@@ -52,89 +50,49 @@ export function GameSurfaceHero({
   return (
     <div
       style={{
-        position: "relative",
-        width: "100%",
-        height: "34vh",
-        minHeight: 200,
-        maxHeight: 320,
-        backgroundImage: `url("${heroUrl}")`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        overflow: "hidden",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "14px 16px",
         borderBottom: "1px solid var(--border, rgba(0,0,0,0.1))",
+        background: "var(--card, rgba(0,0,0,0.02))",
       }}
     >
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "linear-gradient(to bottom, rgba(0,0,0,0) 30%, rgba(0,0,0,0.55) 78%, rgba(0,0,0,0.78) 100%)",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          display: "flex",
-          alignItems: "flex-end",
-          justifyContent: "space-between",
-          gap: 12,
-          padding: "16px 20px",
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 26,
-              fontWeight: 800,
-              letterSpacing: "-0.01em",
-              color: "#fff",
-              textShadow: "0 2px 12px rgba(0,0,0,0.6)",
-              lineHeight: 1.05,
-            }}
-          >
-            {title}
-          </div>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 7,
-              marginTop: 8,
-              padding: "4px 10px",
-              borderRadius: 999,
-              background: "rgba(0,0,0,0.42)",
-              backdropFilter: "blur(6px)",
-              border: "1px solid rgba(255,255,255,0.16)",
-            }}
-          >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 999,
-                background: STATE_COLOR[statusState],
-                boxShadow: `0 0 0 3px ${STATE_COLOR[statusState]}33`,
-              }}
-            />
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.12em",
-                color: "#f5f5f5",
-              }}
-            >
-              {statusLabel}
-            </span>
-          </div>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 16,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
+            color: "var(--foreground, #111)",
+            lineHeight: 1.2,
+          }}
+        >
+          {title}
         </div>
-        {cta ? <div style={{ flexShrink: 0 }}>{cta}</div> : null}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            marginTop: 6,
+            fontSize: 12,
+            color: "var(--muted, #6b7280)",
+          }}
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              background: STATE_COLOR[statusState],
+            }}
+          />
+          <span>{statusLabel}</span>
+        </div>
       </div>
+      {cta ? <div style={{ flexShrink: 0 }}>{cta}</div> : null}
     </div>
   );
 }
@@ -143,7 +101,7 @@ export function HeroCta({
   label,
   onClick,
   disabled,
-  accent = "var(--accent, #ff5800)",
+  accent = "var(--accent, #ff8a24)",
 }: {
   label: string;
   onClick?: () => void;
@@ -277,7 +235,7 @@ export function GameSurfaceZone({ children }: { children: ReactNode }) {
 }
 
 export function WaitingForSession({
-  accent = "var(--accent, #ff5800)",
+  accent = "var(--accent, #ff8a24)",
   message,
 }: {
   accent?: string;

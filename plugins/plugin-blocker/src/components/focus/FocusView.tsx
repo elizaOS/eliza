@@ -12,6 +12,7 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SelfControlStatus } from "../../services/website-blocker/index.ts";
@@ -207,7 +208,7 @@ function RefreshButton({
       aria-label="Refresh focus status"
       {...agentProps}
     >
-      Refresh
+      <RefreshCw className="h-4 w-4" aria-hidden />
     </button>
   );
 }
@@ -312,7 +313,6 @@ function OverrideView({
     <div style={containerStyle} data-testid="focus-overrides">
       <header style={sectionStyle}>
         <h1 style={h1Style}>Focus</h1>
-        <div style={dimStyle}>Website + app blocking.</div>
       </header>
       <section style={sectionStyle}>
         <h2 style={h2Style}>Active</h2>

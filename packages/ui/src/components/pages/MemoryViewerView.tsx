@@ -83,21 +83,21 @@ const MEMORY_FEED_EMPTY_FEATURES = [
     labelKey: "memoryviewer.empty.chat",
     defaultLabel: "Chat",
     icon: MessageSquareText,
-    tone: "text-info",
+    tone: "text-muted-strong",
   },
   {
     id: "facts",
     labelKey: "memoryviewer.empty.facts",
     defaultLabel: "Facts",
     icon: Sparkles,
-    tone: "text-warning",
+    tone: "text-muted-strong",
   },
   {
     id: "docs",
     labelKey: "memoryviewer.empty.docs",
     defaultLabel: "Docs",
     icon: FileText,
-    tone: "text-ok",
+    tone: "text-muted-strong",
   },
 ] as const;
 

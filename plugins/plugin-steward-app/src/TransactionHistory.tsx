@@ -312,8 +312,8 @@ export function TransactionHistory({
               ref={refreshElement.ref}
               {...refreshElement.agentProps}
               variant="outline"
-              size="sm"
-              className="h-9 rounded-xl px-3 text-xs font-semibold"
+              size="icon"
+              className="h-9 w-9 rounded-xl"
               onClick={() => void loadData()}
               disabled={loading}
               aria-label="Refresh transactions"
@@ -321,7 +321,6 @@ export function TransactionHistory({
               <RefreshCw
                 className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
               />
-              Refresh
             </Button>
 
             <span className="ml-auto text-xs text-muted">

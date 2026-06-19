@@ -1,7 +1,6 @@
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { useApp } from "../../state";
-import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import { Button } from "../ui/button";
 import { PluginVisual } from "./PluginVisual";
 import {
@@ -79,27 +78,6 @@ export interface PluginCardProps {
   installLabel: string;
   loadFailedLabel: string;
   notInstalledLabel: string;
-}
-
-function pluginProvenanceLabels(plugin: PluginInfo): {
-  originLabel: string | null;
-  supportLabel: string | null;
-  title: string | undefined;
-} {
-  const flags = getProvenanceFlags(plugin);
-  return {
-    originLabel: flags.isThirdParty
-      ? "third party"
-      : flags.isBuiltIn
-        ? "built in"
-        : null,
-    supportLabel: flags.isCommunity
-      ? "community"
-      : flags.isFirstParty
-        ? "first party"
-        : null,
-    title: getProvenanceTitle(flags, "package"),
-  };
 }
 
 export function PluginCard({
@@ -220,11 +198,6 @@ export function PluginCard({
   const isInstalling = installingPlugins.has(p.id);
   const isUpdating = updatingPlugins.has(p.id);
   const isUninstalling = uninstallingPlugins.has(p.id);
-  const categoryLabel = isShowcase
-    ? "showcase"
-    : p.category === "ai-provider"
-      ? "ai provider"
-      : p.category;
   const notLoadedLabel = t("pluginsview.NotLoaded", {
     defaultValue: "Not loaded",
   });
@@ -250,7 +223,6 @@ export function PluginCard({
   const isDragging = draggingId === p.id;
   const isDragOver = dragOverId === p.id && draggingId !== p.id;
   const pluginLinks = getPluginResourceLinks(p);
-  const provenanceLabels = pluginProvenanceLabels(p);
 
   const needsConfig = hasParams && !allParamsSet && !isShowcase;
   const openDetail = () => {
@@ -310,9 +282,6 @@ export function PluginCard({
               </span>
             )}
           </div>
-          <span className="mt-0.5 block text-2xs font-semibold uppercase tracking-wide text-muted/70">
-            {categoryLabel}
-          </span>
         </div>
         {isShowcase ? (
           <span className="shrink-0 rounded-full border border-accent bg-accent-subtle px-2.5 py-[3px] text-2xs font-bold tracking-wider text-txt">
@@ -355,12 +324,6 @@ export function PluginCard({
       </p>
 
       <div className="mt-auto flex flex-wrap items-center gap-1.5 px-4 pb-4 pt-3">
-        {p.enabled && allParamsSet && !isShowcase && (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok/10 px-2 py-[2px] text-2xs font-bold tracking-wide text-ok">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-ok" />
-            {t("common.ready", { defaultValue: "Ready" })}
-          </span>
-        )}
         {needsConfig && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-warn/45 bg-warn/10 px-2 py-[2px] text-2xs font-bold tracking-wide text-warn">
             {t("pluginsview.NeedsConfigCount", {
@@ -368,11 +331,6 @@ export function PluginCard({
               set: setCount,
               total: totalCount,
             })}
-          </span>
-        )}
-        {!hasParams && !isShowcase && (
-          <span className="rounded-full border border-border/50 bg-bg-accent/70 px-2 py-[2px] text-2xs font-semibold tracking-wide text-muted/70">
-            {t("pluginsview.NoConfigNeeded")}
           </span>
         )}
         {p.enabled && !p.isActive && !isShowcase && (
@@ -392,18 +350,6 @@ export function PluginCard({
         {isToggleBusy && (
           <span className="rounded-full border border-accent/50 bg-accent-subtle px-2 py-[2px] text-2xs font-bold tracking-wide text-txt">
             {t("pluginsview.restarting")}
-          </span>
-        )}
-        {provenanceLabels.supportLabel && (
-          <span
-            className={`rounded-full border px-2 py-[2px] text-2xs font-semibold tracking-wide ${
-              provenanceLabels.supportLabel === "community"
-                ? "border-warn/40 bg-warn/10 text-warn"
-                : "border-accent/35 bg-accent-subtle text-txt"
-            }`}
-            title={provenanceLabels.title}
-          >
-            {provenanceLabels.supportLabel}
           </span>
         )}
 

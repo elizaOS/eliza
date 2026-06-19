@@ -55,3 +55,12 @@ export function getCloudAwareEnv(): NodeJS.ProcessEnv {
     },
   }) as NodeJS.ProcessEnv;
 }
+
+/**
+ * Read a non-string Worker binding (e.g. a Hyperdrive config) from the current
+ * request store. `getCloudAwareEnv` only exposes string secrets, so object
+ * bindings must be read here. Returns `undefined` outside a Worker request.
+ */
+export function getCloudBinding<T = unknown>(name: string): T | undefined {
+  return als.getStore()?.[name] as T | undefined;
+}

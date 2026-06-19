@@ -276,7 +276,7 @@ describe("ViewCatalog", () => {
     expect(screen.queryByText("Terminal TUI")).toBeNull();
   });
 
-  it("renders context-rich cards with real hero images, icons, and hidden raw tags", () => {
+  it("renders launcher tiles with hero images and hides raw metadata (description, tags)", () => {
     getActiveViewModalityMock.mockReturnValue("gui");
     useAvailableViewsMock.mockReturnValue({
       views: [
@@ -312,8 +312,10 @@ describe("ViewCatalog", () => {
     expect(
       screen.getByTestId("view-card-nohero").querySelector("img"),
     ).toBeNull();
-    expect(screen.getByText("visible description")).toBeTruthy();
-    expect(screen.getByText("also visible")).toBeTruthy();
+    // Launcher tiles are icon + label only — descriptions and raw tags are not
+    // rendered (search/context lives in chat).
+    expect(screen.queryByText("visible description")).toBeNull();
+    expect(screen.queryByText("also visible")).toBeNull();
     expect(screen.queryByText("hiddentag")).toBeNull();
   });
 

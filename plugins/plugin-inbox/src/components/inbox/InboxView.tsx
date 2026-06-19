@@ -22,6 +22,7 @@
 
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { RefreshCw } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -92,7 +93,7 @@ const defaultFetchers: InboxFetchers = {
 };
 
 export interface InboxViewProps {
-  /** Owner display name shown in the header subtitle. */
+  /** Owner display name. Reserved for host wiring; not currently rendered. */
   ownerName?: string;
   /** Test/host injection seam. Defaults to the real `/api/lifeops/inbox` GET. */
   fetchers?: InboxFetchers;
@@ -169,13 +170,13 @@ const INBOX_VIEW_CSS = `
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .inbox-view-btn-primary {
-  background: var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
   color: var(--primary-foreground, #0a0a0a);
-  border: 1px solid var(--primary, #ff6a00);
+  border: 1px solid var(--primary, #ff8a24);
 }
 .inbox-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
 }
 .inbox-view-btn-neutral {
   background: var(--surface, rgba(255, 255, 255, 0.04));
@@ -208,13 +209,13 @@ const INBOX_VIEW_CSS = `
   background: color-mix(in srgb, var(--foreground, #f5f5f5) 8%, transparent);
 }
 .inbox-view-chip[aria-pressed="true"] {
-  background: var(--primary, #ff6a00);
+  background: var(--primary, #ff8a24);
   color: var(--primary-foreground, #0a0a0a);
-  border-color: var(--primary, #ff6a00);
+  border-color: var(--primary, #ff8a24);
 }
 .inbox-view-chip[aria-pressed="true"]:hover {
-  background: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff6a00) 82%, black);
+  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
+  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
 }
 `;
 
@@ -274,8 +275,6 @@ const dimStyle: CSSProperties = {
   fontSize: 13,
   lineHeight: 1.5,
 };
-
-const subtitleStyle: CSSProperties = { ...dimStyle, marginTop: 2 };
 
 const chipRowStyle: CSSProperties = {
   display: "flex",
@@ -350,10 +349,10 @@ function RefreshButton({
       className="inbox-view-btn inbox-view-btn-neutral"
       onClick={onActivate}
       disabled={disabled}
-      aria-label="Refresh inbox"
+      aria-label="Refresh"
       {...agentProps}
     >
-      Refresh
+      <RefreshCw size={16} aria-hidden />
     </button>
   );
 }
@@ -397,11 +396,9 @@ function ChannelChip({
 }
 
 function InboxHeader({
-  ownerName,
   refetch,
   busy,
 }: {
-  ownerName: string;
   refetch: () => void;
   busy: boolean;
 }): ReactNode {
@@ -410,9 +407,6 @@ function InboxHeader({
       <div style={headerRowStyle}>
         <h1 style={h1Style}>Inbox</h1>
         <RefreshButton onActivate={refetch} disabled={busy} />
-      </div>
-      <div style={subtitleStyle}>
-        {`Unified triage across every connected channel for ${ownerName}.`}
       </div>
     </header>
   );
@@ -447,7 +441,7 @@ function ChannelFilters({
 }
 
 const unreadDotStyle: CSSProperties = {
-  color: "var(--primary, #ff6a00)",
+  color: "var(--primary, #ff8a24)",
   marginRight: 6,
 };
 
@@ -525,7 +519,6 @@ function requestConnect(): void {
 export function InboxView(props: InboxViewProps = {}): ReactNode {
   useInboxViewStyles();
 
-  const ownerName = props.ownerName ?? "Owner";
   const fetchers = props.fetchers ?? defaultFetchers;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [activeChannels, setActiveChannels] = useState<Set<InboxChannel>>(
@@ -587,7 +580,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="inbox-loading">
-        <InboxHeader ownerName={ownerName} refetch={refetch} busy={true} />
+        <InboxHeader refetch={refetch} busy={true} />
         <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
         <div style={{ ...cardStyle, ...dimStyle }}>Loading inbox…</div>
       </div>
@@ -597,7 +590,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="inbox-error">
-        <InboxHeader ownerName={ownerName} refetch={refetch} busy={false} />
+        <InboxHeader refetch={refetch} busy={false} />
         <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load inbox</div>
@@ -632,7 +625,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
     const noChannels = connected.length === 0 && activeChannels.size === 0;
     return (
       <div style={containerStyle} data-testid="inbox-empty">
-        <InboxHeader ownerName={ownerName} refetch={refetch} busy={false} />
+        <InboxHeader refetch={refetch} busy={false} />
         <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
         <div style={cardStyle}>
           {noChannels ? (
@@ -671,7 +664,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
 
   return (
     <div style={containerStyle} data-testid="inbox-populated">
-      <InboxHeader ownerName={ownerName} refetch={refetch} busy={false} />
+      <InboxHeader refetch={refetch} busy={false} />
       <ChannelFilters active={activeChannels} onToggle={toggleChannel} />
       <section style={sectionStyle} aria-label="Triage queue">
         {groups.map((group) => (

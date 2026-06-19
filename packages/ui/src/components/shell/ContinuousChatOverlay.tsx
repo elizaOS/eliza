@@ -1,8 +1,10 @@
 import {
   Home,
   Maximize2,
+  Mic,
   Minimize2,
   RotateCcw,
+  SendHorizontal,
   Settings as SettingsIcon,
 } from "lucide-react";
 import {
@@ -10,6 +12,7 @@ import {
   animate,
   motion,
   useMotionValue,
+  useMotionValueEvent,
   useReducedMotion,
   useTransform,
 } from "motion/react";
@@ -152,16 +155,26 @@ const SHEET_SPRING = {
   damping: 34,
   mass: 0.9,
 };
+// Slightly springier preset for the pill→input "liquid glass" open: a touch
+// less damping than the height spring so the input reads as springing IN on a
+// flick, while the live drag-tracking gives a slow pull its "lerp" character.
+const OPEN_SPRING = {
+  type: "spring" as const,
+  stiffness: 300,
+  damping: 26,
+  mass: 0.85,
+};
+// Finger travel (px) that fully opens the input from the pill. A live pill drag
+// maps offset → openProgress ∈ [0,1] over this distance; past it, the excess
+// flows into the thread height so pill → input → chat is one continuous motion.
+const PILL_OPEN_DISTANCE = 120;
 // Rubber-band resistance applied to drag past a detent (iOS-style overscroll).
 function rubberBand(overshoot: number): number {
   return Math.sign(overshoot) * Math.sqrt(Math.abs(overshoot)) * 6;
 }
 
-// Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip — the
-// up-arrow (send) and five-bar waveform (mic) from the shared composer language.
-const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
-const MIC_GLYPH =
-  "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
+// Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip. Send
+// + mic now use lucide icons (SendHorizontal / Mic); the rest stay hand-drawn.
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
 // Stop generating: a centered rounded square (the universal "stop" affordance).
 const STOP_GLYPH = "M12 12H24V24H12Z";
@@ -182,6 +195,7 @@ function Glyph({ d }: { d: string }): React.JSX.Element {
 /** A soft round glass control that dissolves into the bar; brightens only when active. */
 function SoftButton({
   glyph,
+  icon: Icon,
   label,
   onClick,
   onPointerDown,
@@ -191,7 +205,9 @@ function SoftButton({
   active,
   testId,
 }: {
-  glyph: string;
+  /** A hand-drawn SVG path glyph (legacy), OR pass `icon` for a lucide icon. */
+  glyph?: string;
+  icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   label: string;
   onClick?: () => void;
   onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
@@ -225,7 +241,11 @@ function SoftButton({
         disabled && "opacity-40",
       )}
     >
-      <Glyph d={glyph} />
+      {Icon ? (
+        <Icon className="h-[22px] w-[22px]" aria-hidden={true} />
+      ) : glyph ? (
+        <Glyph d={glyph} />
+      ) : null}
     </button>
   );
 }
@@ -324,7 +344,7 @@ function SheetGrabber({
         // vertically-centered textarea, so a tap on the composer lands natively
         // on the textarea and raises the keyboard (a programmatic focus from the
         // handle wouldn't). Pull gestures start from the bar / the upward zone.
-        "before:absolute before:-inset-x-4 before:-top-10 before:bottom-0 before:content-['']",
+        "before:absolute before:-inset-x-6 before:-top-16 before:bottom-0 before:content-['']",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
       )}
     >
@@ -332,7 +352,7 @@ function SheetGrabber({
         aria-hidden="true"
         className={cn(
           // 30% wider bar (w-11 → w-14), a touch taller, brighter.
-          "h-2 w-14 rounded-full transition-colors duration-300",
+          "h-2.5 w-16 rounded-full transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -370,7 +390,7 @@ function PillHandle({
       className={cn(
         // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
         // floating mid-air; the tall pt keeps a generous upward grab/flick zone.
-        "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-12 pb-1.5 pt-7 active:cursor-grabbing",
+        "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-16 pb-1.5 pt-10 active:cursor-grabbing",
         "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50",
       )}
     >
@@ -379,7 +399,7 @@ function PillHandle({
         className={cn(
           // Identical to the SheetGrabber bar — the handle keeps the same white
           // shape + color whether the chat is open or fully collapsed to the pill.
-          "h-2 w-14 rounded-full transition-colors duration-300",
+          "h-2.5 w-16 rounded-full transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -668,12 +688,18 @@ export function ContinuousChatOverlay({
   // scrollable history). The ONLY open/close driver — opened by a pull-up drag,
   // by focusing the composer, or by sending; closed by a pull-down drag or
   // Escape. Never by click-out, scroll, or blur.
-  const [sheetOpen, setSheetOpen] = React.useState(false);
-  // iOS-style 3 detents: PEEK (sheet closed) → HALF → FULL. `sheetOpen` stays
-  // the primary peek-vs-open gate (suggestions, scroll-pin, scrim); `expanded`
-  // selects FULL vs HALF while open. Grabber pulls step through the detents
-  // (each cross fires a light haptic); programmatic opens (send/focus) go FULL.
-  const [expanded, setExpanded] = React.useState(false);
+  // The sheet's vertical position is ONE ordinal — the single source of truth for
+  // how far the chat is open: `input` (composer-only peek) → `half` (reading
+  // height) → `full` (near-fullscreen). `sheetOpen`/`expanded` are derived
+  // read-only views so the two can never disagree (no impossible "open but not
+  // open" combos). `pilled` sits BELOW input; `maximized` drops the inset at full.
+  // Grabber pulls step through the detents (each cross haptics); programmatic
+  // opens (send/focus) go full.
+  const [detent, setDetent] = React.useState<"input" | "half" | "full">(
+    "input",
+  );
+  const sheetOpen = detent !== "input";
+  const expanded = detent === "full";
   // PILL is the detent BELOW input: the whole chat collapses to a small pill at
   // the bottom (input hidden) so it can get out of the way entirely, yet stays
   // one flick away. Pull down from input → pill; flick/pull up from pill → input
@@ -703,6 +729,11 @@ export function ContinuousChatOverlay({
   // with NO component re-render, so the gesture stays buttery. `draggingRef`
   // gates the settle effect so it doesn't fight an in-flight finger drag.
   const threadHeight = useMotionValue(0);
+  // Pill → input morph progress (0 = pill capsule, 1 = full input bar), OFF React
+  // state like threadHeight so a pill drag morphs the glass at 60fps with no
+  // re-render. Drives the glass/content crossfade + scale; `threadHeight` stays
+  // 0 until the input is fully formed, then takes over for input → chat.
+  const openProgress = useMotionValue(pilled ? 0 : 1);
   const draggingRef = React.useRef(false);
   const [pushToTalkActive, setPushToTalkActive] = React.useState(false);
   const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
@@ -719,11 +750,6 @@ export function ContinuousChatOverlay({
   const pushToTalkTimerRef = React.useRef<number | null>(null);
   const pushToTalkActiveRef = React.useRef(false);
   const suppressMicClickRef = React.useRef(false);
-  // Tracks the previous `pilled` so the composer can animate IN only when it
-  // just opened FROM the pill (CLOSED→INPUT) — not on app load or when the
-  // thread opens above an already-visible input. Updated after every render.
-  const prevPilledRef = React.useRef(pilled);
-
   // Recomputed only when the thread changes — NOT on every drag/draft re-render.
   // Filter empty turns, then keep only the most recent window (cap DOM nodes).
   const visibleMessages = React.useMemo(
@@ -743,14 +769,6 @@ export function ContinuousChatOverlay({
   const responding = phase === "responding";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
-  // True on the render where the sheet just left the pill — drives the input
-  // bar's rise-in entrance so opening from the pill (slow-drag OR flick) reads
-  // as a smooth morph rather than an instant swap. The ref is advanced after
-  // render (effect below), so this is true for exactly that one transition.
-  const justUnpilled = prevPilledRef.current && !pilled;
-  React.useEffect(() => {
-    prevPilledRef.current = pilled;
-  });
 
   // The suggestion strip is a keyboard-style row of one-tap prompts shown in the
   // RESTING (closed) state — ready, nothing typed or attached, not recording. It
@@ -858,10 +876,9 @@ export function ContinuousChatOverlay({
         send(trimmed);
       }
       // Programmatic open → FULL detent (see the reply). Clear any free-rest so
-      // the height can't stay pinned below full while the flags claim full.
+      // the height can't stay pinned below full.
       setFreeH(null);
-      setSheetOpen(true);
-      setExpanded(true);
+      setDetent("full");
       detentHaptic();
       inputRef.current?.focus();
     },
@@ -880,8 +897,7 @@ export function ContinuousChatOverlay({
       setDraft("");
       send(text);
       setFreeH(null);
-      setSheetOpen(true);
-      setExpanded(true);
+      setDetent("full");
       detentHaptic();
       inputRef.current?.focus();
     },
@@ -1041,17 +1057,39 @@ export function ContinuousChatOverlay({
   // Transitions: pill tap / flick-up → INPUT; focus·type·flick·send → an OPEN_*
   // state; pull-down → INPUT → CLOSED; maximize toggle ↔ MAXIMIZED; Home/Settings
   // animate out of MAXIMIZED then collapse (see navigateAndClose).
+  // MAXIMIZED is keyed off the SAME `fullBleed` predicate the styles use, so the
+  // enum and the full-bleed layout can never disagree (no "maximized at half"
+  // ghost state).
   const chatState: ChatState = pilled
     ? "CLOSED"
     : !sheetOpen
       ? "INPUT"
-      : maximized
+      : fullBleed
         ? "MAXIMIZED"
         : baseH >= halfH - 1
           ? "OPEN_HALF_OR_OVER"
           : "OPEN_UNDER_HALF";
-  const headerVisible =
-    chatState === "OPEN_HALF_OR_OVER" || chatState === "MAXIMIZED";
+  // Header buttons (maximize/clear/home/settings) are gated on the LIVE rendered
+  // height, NOT the settled enum — otherwise dragging the panel below half keeps
+  // the header mounted on a too-short panel (the "buttons between input and half"
+  // bug). They show only when the panel actually renders at/over half (or is
+  // full-bleed), tracking the finger frame-by-frame; the prev===next guard keeps
+  // re-renders to the two threshold crossings.
+  const evalHeaderVisible = React.useCallback(
+    (h: number) => !pilled && (fullBleed || h >= halfH - 1),
+    [pilled, fullBleed, halfH],
+  );
+  const [headerVisible, setHeaderVisible] = React.useState(false);
+  useMotionValueEvent(threadHeight, "change", (h) => {
+    const next = evalHeaderVisible(h);
+    setHeaderVisible((prev) => (prev === next ? prev : next));
+  });
+  // Re-evaluate on settled-state changes that don't tick the height (programmatic
+  // pill/maximize/open with the spring already at rest).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: threadHeight is a stable motion ref
+  React.useEffect(() => {
+    setHeaderVisible(evalHeaderVisible(threadHeight.get()));
+  }, [evalHeaderVisible]);
   // Map a raw drag height: rubber-band past FULL, hard-clamp the bottom to 0.
   const clampHeight = React.useCallback(
     (raw: number) =>
@@ -1073,20 +1111,55 @@ export function ContinuousChatOverlay({
   const panelRadius = useTransform(threadHeight, [0, 12], [9999, 24], {
     clamp: true,
   });
+  // --- Liquid-glass pill → input morph (driven by openProgress) ---------------
+  // The panel is ONE persistent element; the pill capsule and the full glass
+  // input crossfade by opacity (compositor-cheap — never tween backdrop-blur)
+  // while the whole panel scales up from a capsule. transform + opacity only.
+  const panelScale = useTransform(openProgress, [0, 1], [0.9, 1]);
+  // Glass surface + its content crossfade IN as the input forms (one wrapper, so
+  // sheen/glow/thread/composer resolve together with the glass).
+  const glassOpacity = useTransform(openProgress, [0, 1], [0, 1]);
+  // The pill capsule fades OUT over the first half of the open so it has cleared
+  // before the input controls resolve (no double-image mid-morph).
+  const pillOpacity = useTransform(openProgress, [0, 0.55], [1, 0], {
+    clamp: true,
+  });
 
   // Sub-threshold release: spring back to the current detent (no state change).
+  // Also settles the pill→input morph to its resting end (0 while pilled, 1 once
+  // open) so a half-finished pill drag springs cleanly back to the capsule.
   const settleDrag = React.useCallback(() => {
     draggingRef.current = false;
-    if (reduce) threadHeight.set(baseH);
-    else animate(threadHeight, baseH, SHEET_SPRING);
-  }, [threadHeight, baseH, reduce]);
+    const open = pilled ? 0 : 1;
+    if (reduce) {
+      threadHeight.set(baseH);
+      openProgress.set(open);
+    } else {
+      animate(threadHeight, baseH, SHEET_SPRING);
+      animate(openProgress, open, OPEN_SPRING);
+    }
+  }, [threadHeight, openProgress, baseH, pilled, reduce]);
+
+  // Drive openProgress from the pilled flag for NON-drag transitions (tap the
+  // pill, programmatic open/close): a live finger drag owns openProgress itself
+  // (draggingRef gates this so it never fights the gesture).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: openProgress is a stable motion value ref
+  React.useEffect(() => {
+    if (draggingRef.current) return;
+    const open = pilled ? 0 : 1;
+    if (reduce) {
+      openProgress.set(open);
+      return;
+    }
+    const controls = animate(openProgress, open, OPEN_SPRING);
+    return () => controls.stop();
+  }, [pilled, reduce]);
 
   const closeSheet = React.useCallback(() => {
     draggingRef.current = false;
     setFreeH(null);
     setMaximized(false);
-    setSheetOpen(false);
-    setExpanded(false);
+    setDetent("input");
   }, []);
 
   // Leaving the chat for Settings/Home: animate OUT of maximize and collapse the
@@ -1114,11 +1187,14 @@ export function ContinuousChatOverlay({
       setMaximized(false);
       return;
     }
+    // Snap the morph fully open BEFORE flipping to full-bleed so no in-flight
+    // pill-open spring can leak a sub-1 scale into the maximized frame (top gap).
+    draggingRef.current = false;
+    openProgress.set(1);
     setFreeH(null);
-    setSheetOpen(true);
-    setExpanded(true);
+    setDetent("full");
     setMaximized(true);
-  }, [maximized]);
+  }, [maximized, openProgress]);
 
   // The single detent→detent animator: whenever the settled detent (or viewport)
   // changes and we're not mid finger-drag, spring the history height to it. The
@@ -1139,22 +1215,19 @@ export function ContinuousChatOverlay({
   // detent change fires a light haptic so the snap feels physical on device.
   // "collapsed" hides the history entirely (just the input); "half" is the
   // comfortable reading height; "full" the near-fullscreen reading mode.
-  const goToDetent = React.useCallback(
-    (detent: "collapsed" | "half" | "full") => {
-      // Flip the settled detent; the [baseH] effect springs the height to it.
-      // A detent always clears any free-drag rest height and (since only FULL
-      // can be maximized) drops full-bleed when stepping anywhere else.
-      draggingRef.current = false;
-      setFreeH(null);
-      if (detent !== "full") setMaximized(false);
-      setSheetOpen(detent !== "collapsed");
-      setExpanded(detent === "full");
-      // Stepping all the way down closes the keyboard (the chat is dismissed).
-      if (detent === "collapsed") inputRef.current?.blur();
-      detentHaptic();
-    },
-    [],
-  );
+  const goToDetent = React.useCallback((to: "collapsed" | "half" | "full") => {
+    // Flip the settled detent; the [baseH] effect springs the height to it.
+    // A detent always clears any free-drag rest height and (since only FULL
+    // can be maximized) drops full-bleed when stepping anywhere else.
+    draggingRef.current = false;
+    setFreeH(null);
+    if (to !== "full") setMaximized(false);
+    // "collapsed" is the input peek (sheet closed); half/full open the thread.
+    setDetent(to === "collapsed" ? "input" : to);
+    // Stepping all the way down closes the keyboard (the chat is dismissed).
+    if (to === "collapsed") inputRef.current?.blur();
+    detentHaptic();
+  }, []);
 
   // Collapsing always drops input focus, so the mobile keyboard goes away the
   // moment the chat is dismissed (pull-down, Escape, or click-out) — the chat is
@@ -1185,7 +1258,8 @@ export function ContinuousChatOverlay({
     if (!hasThread) return;
     preFocusCollapsedRef.current = !sheetOpen;
     setFreeH(null);
-    setSheetOpen(true);
+    // Open to at least HALF; if already at half/full, keep the taller detent.
+    setDetent((d) => (d === "input" ? "half" : d));
   }, [hasThread, sheetOpen]);
 
   // Push-to-talk dictation drops its final transcript into the composer draft
@@ -1211,7 +1285,9 @@ export function ContinuousChatOverlay({
   // Inline command autocomplete: the menu derives from the draft + the loaded
   // catalog; Escape dismisses it (without clearing the draft); typing reopens.
   const slashMenu = useSlashMenu(draft, slash);
-  const isSlashDraft = parseSlashDraft(draft).isSlash;
+  // Short-circuit the slash parse on the common (non-slash) keystroke path — a
+  // draft that doesn't start with "/" is never a slash command, so skip the work.
+  const isSlashDraft = draft.startsWith("/") && parseSlashDraft(draft).isSlash;
   const slashOpen = slashMenu.open && !slashDismissed;
   // Combobox a11y for the composer input — only when a slash catalog is wired
   // in. Spread so the input is a plain message box (no role) otherwise.
@@ -1329,12 +1405,19 @@ export function ContinuousChatOverlay({
   // usePullGesture) to snap to a detent.
   const onDragOffset = React.useCallback(
     (offset: number) => {
-      // While pilled, the thread stays hidden (height 0): dragging the pill is a
-      // discrete pill↔input/chat transition decided on release, not a live
-      // height drag. Growing it here is what made a flick-up flash a sliver of
-      // chat (the grown height showing for a frame on un-pill) before settling.
-      if (pilled) return;
       draggingRef.current = true;
+      // PILL drag: map the upward travel to the pill→input morph (openProgress).
+      // The thread stays at 0 until the input is fully formed; only the EXCESS
+      // past PILL_OPEN_DISTANCE flows into the thread height, so a single
+      // continuous pull reads pill → input → chat (and a flick-up no longer
+      // flashes a chat sliver, since the thread only grows after the morph).
+      if (pilled) {
+        const up = Math.max(0, offset);
+        openProgress.set(Math.min(1, up / PILL_OPEN_DISTANCE));
+        const excess = up - PILL_OPEN_DISTANCE;
+        threadHeight.set(excess > 0 ? clampHeight(excess) : 0);
+        return;
+      }
       // Pin the dead direction at each end so the panel feels held: collapsed →
       // only upward (positive); full → only downward (negative); half → both.
       const off = !sheetOpen
@@ -1344,7 +1427,15 @@ export function ContinuousChatOverlay({
           : offset;
       threadHeight.set(clampHeight(baseH + off));
     },
-    [pilled, sheetOpen, expanded, baseH, clampHeight, threadHeight],
+    [
+      pilled,
+      sheetOpen,
+      expanded,
+      baseH,
+      clampHeight,
+      threadHeight,
+      openProgress,
+    ],
   );
 
   const pullBinding: PullGestureBinding = usePullGesture({
@@ -1354,12 +1445,20 @@ export function ContinuousChatOverlay({
     // rebuilt every render, so they always read the current detent.
     onPullUp: () => {
       if (pilled) {
-        // PILL → INPUT: a flick/pull up brings the input bar back. settleDrag
-        // clears draggingRef and springs the thread height back to its detent
-        // (0) — without it the leftover drag state parks the peek wrong.
+        // PILL → INPUT, or straight into the chat when there's history: a flick
+        // up opens. Mirror the slow-drag path so a flick and a slow drag BOTH
+        // reach the chat (no hard stop at the bare input). Releasing draggingRef
+        // first lets the pilled→openProgress effect spring the morph 0→1.
+        draggingRef.current = false;
         setPilled(false);
-        settleDrag();
-        detentHaptic();
+        if (hasThread) {
+          focusThreadRef.current = true;
+          goToDetent("half");
+        } else {
+          if (reduce) threadHeight.set(0);
+          else animate(threadHeight, 0, SHEET_SPRING);
+          detentHaptic();
+        }
         return;
       }
       if (!sheetOpen) {
@@ -1419,15 +1518,24 @@ export function ContinuousChatOverlay({
     onSettleFree: (direction) => {
       draggingRef.current = false;
       if (pilled) {
-        // From the pill: a slow drag up PASSES through the input into the chat
-        // (half) when there's a thread to show; a flick only reaches the input
-        // (onPullUp). With no thread there's nothing to open → just the input.
-        if (direction === "up") {
-          setPilled(false);
-          if (hasThread) {
-            focusThreadRef.current = true;
-            goToDetent("half");
-          } else settleDrag();
+        // From the pill: lerp-to-nearest. A slow drag that crossed at least the
+        // halfway open (openProgress ≥ 0.5) commits to opening; a shorter pull
+        // springs back to the capsule. An opening drag flows straight into the
+        // chat — half, or full if the same pull already pushed the thread past
+        // the half mark — so pill → input → chat is one continuous motion.
+        const opened = direction === "up" && openProgress.get() >= 0.5;
+        if (!opened) {
+          settleDrag(); // springs openProgress → 0 (pilled still true) + thread → 0
+          return;
+        }
+        setPilled(false);
+        if (hasThread) {
+          focusThreadRef.current = true;
+          goToDetent(threadHeight.get() >= halfH ? "full" : "half");
+        } else if (reduce) {
+          threadHeight.set(0);
+        } else {
+          animate(threadHeight, 0, SHEET_SPRING);
         }
         return;
       }
@@ -1456,10 +1564,10 @@ export function ContinuousChatOverlay({
       } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
         goToDetent("half");
       } else {
-        // In a gap between detents → rest exactly where released.
+        // In a gap between detents → rest exactly where released. `half` is the
+        // open base; `freeH` overrides the actual height to where the finger left.
         setFreeH(h);
-        setSheetOpen(true);
-        setExpanded(false);
+        setDetent("half");
       }
     },
   });
@@ -1517,8 +1625,11 @@ export function ContinuousChatOverlay({
         }}
       />
 
-      {/* Live interim transcript while listening */}
-      {recording && transcript ? (
+      {/* Live interim transcript while listening. Before the first words land we
+          still show a "Listening…" cue the instant the mic opens, so the user
+          always has confirmation it's hot (the native recognizer streams partials
+          in as they're heard, replacing the placeholder). */}
+      {recording ? (
         <div
           role="status"
           aria-live="polite"
@@ -1528,8 +1639,14 @@ export function ContinuousChatOverlay({
             FLOAT_SHADOW,
           )}
         >
-          {transcript}
-          <span aria-hidden="true">…</span>
+          {transcript ? (
+            <>
+              {transcript}
+              <span aria-hidden="true">…</span>
+            </>
+          ) : (
+            <span className="text-white/60">Listening…</span>
+          )}
         </div>
       ) : null}
 
@@ -1644,51 +1761,61 @@ export function ContinuousChatOverlay({
           data-maximized={fullBleed ? "true" : undefined}
           data-revealed={sheetOpen ? "true" : "false"}
           data-chat-state={chatState}
-          // Never taller than the visible viewport (above the keyboard) minus the
-          // overlay's safe-area padding + a top margin: the thread scrolls instead
-          // of the panel spilling off the top of the screen. borderRadius is a
-          // live motion value (pill → 24px) so the corners never flash as a tall
-          // full-pill mid-pull.
-          style={
-            pilled
-              ? undefined
-              : {
-                  maxHeight: panelMaxH,
-                  // Full-bleed (maximized) → square edge-to-edge; otherwise the
-                  // live motion radius (pill → 24px).
-                  borderRadius: fullBleed ? 0 : panelRadius,
-                }
-          }
+          // ONE persistent element across pill ↔ input ↔ chat (never remounts —
+          // that pop was the core jank). It's a transparent scale/position
+          // container; the liquid glass lives in an inner layer faded by
+          // openProgress, so pill → input is a continuous scale + crossfade.
+          // maxHeight keeps it from spilling off the top (thread scrolls instead).
+          style={{
+            maxHeight: panelMaxH,
+            // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
+            // bottom transform-origin would drop the top edge below the status
+            // bar (the "gap at the top when maximized" bug).
+            scale: fullBleed ? 1 : panelScale,
+            // Grow UP out of the pill at the bottom.
+            transformOrigin: "bottom center",
+            // Pilled: span the (invisible) input area but pass taps through to the
+            // home screen — only the pill-capsule child re-enables pointer events.
+            pointerEvents: pilled ? "none" : "auto",
+          }}
           className={cn(
-            "pointer-events-auto relative m-0 flex min-w-0 flex-col border-0 p-0",
-            pilled
-              ? // PILL: a bare, transparent container — the capsule carries its own
-                // glass, and the panel shrinks to fit it.
-                "w-auto"
-              : cn(
-                  "w-full overflow-hidden",
-                  // Liquid glass: a translucent, blurred, slightly over-saturated
-                  // pane with a bright top specular edge + a faint refractive stroke.
-                  // Full-bleed drops the refractive stroke so it's truly edge-to-edge.
-                  fullBleed ? "border-0" : "border border-white/[0.14]",
-                  // backdrop-blur-lg (16px), not -2xl (40px): the sheet height
-                  // resizes this surface every drag frame, and a 40px backdrop
-                  // re-blur per frame is the dominant paint cost — lg keeps the
-                  // glass look at a fraction of the GPU cost.
-                  "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
-                  fullBleed
-                    ? "shadow-none"
-                    : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]",
-                ),
+            "relative m-0 flex w-full min-w-0 flex-col border-0 p-0",
+            // overflow-hidden clips the thread when open; visible while pilled so
+            // the pill's tall upward grab zone isn't cut off.
+            pilled ? "overflow-visible" : "overflow-hidden",
           )}
         >
-          {pilled ? (
-            <PillHandle
-              binding={pullBinding}
-              onOpen={() => setPilled(false)}
-              glow={listening || responding}
-            />
-          ) : (
+          {/* GLASS SURFACE — absolute fill; the blur/bg/border/shadow + the live
+              corner radius. Crossfades in by openProgress (compositor opacity —
+              never the blur radius, which would repaint per frame). */}
+          <motion.div
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute inset-0 z-0",
+              fullBleed ? "border-0" : "border border-white/[0.14]",
+              "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+              fullBleed
+                ? "shadow-none"
+                : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]",
+            )}
+            style={{
+              opacity: glassOpacity,
+              borderRadius: fullBleed ? 0 : panelRadius,
+            }}
+          />
+          {/* CONTENT — sheen, glow, thread, composer. Crossfades with the glass
+              and goes fully inert while pilled (opacity 0 + `inert` removes it
+              from pointer, tab order, and the a11y tree) so it can't be reached
+              behind the pill capsule. */}
+          <motion.div
+            data-testid="chat-content"
+            inert={pilled || undefined}
+            className="relative z-10 flex min-h-0 w-full flex-col"
+            style={{
+              opacity: glassOpacity,
+              pointerEvents: pilled ? "none" : "auto",
+            }}
+          >
             <>
               {/* Specular sheen — a soft light from the top edge, the liquid-glass
             highlight. Subtle + non-interactive. */}
@@ -1882,15 +2009,10 @@ export function ContinuousChatOverlay({
                 }}
               />
               {/* The input row — the base of the panel, always visible. A hairline
-            divider sits above it whenever the history is open. Opening FROM the
-            pill, it rises + fades in (transform/opacity only) so pill→input is a
-            smooth morph in both slow-drag and flick; otherwise it's static. */}
-              <motion.div
-                initial={
-                  justUnpilled && !reduce ? { opacity: 0, y: 14 } : false
-                }
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: reduce ? 0 : 0.26, ease: OVERLAY_EASE }}
+            divider sits above it whenever the history is open. The whole content
+            wrapper crossfades + scales in from the pill (openProgress), so this
+            row needs no separate entrance — it just sits at the panel base. */}
+              <div
                 className={cn(
                   // items-center vertically centers a single-line composer with
                   // the round +/mic buttons (the common case); a multi-line draft
@@ -2036,7 +2158,7 @@ export function ContinuousChatOverlay({
                 <div className="shrink-0">
                   {(hasDraft || hasImages) && !recording ? (
                     <SoftButton
-                      glyph={SEND_GLYPH}
+                      icon={SendHorizontal}
                       label={canSend ? "send" : "send (waiting for reply)"}
                       disabled={!canSend}
                       // Keep focus in the textarea on tap: without this the
@@ -2062,7 +2184,7 @@ export function ContinuousChatOverlay({
                     />
                   ) : (
                     <SoftButton
-                      glyph={MIC_GLYPH}
+                      icon={Mic}
                       label={
                         pushToTalkActive
                           ? "release to send"
@@ -2081,9 +2203,24 @@ export function ContinuousChatOverlay({
                     />
                   )}
                 </div>
-              </motion.div>
+              </div>
             </>
-          )}
+          </motion.div>
+          {/* PILL CAPSULE — the collapsed handle, crossfaded out as the input
+              forms. Interactive only while pilled; sits over the (faded) input. */}
+          <motion.div
+            className="absolute inset-x-0 bottom-0 z-30 flex justify-center"
+            style={{
+              opacity: pillOpacity,
+              pointerEvents: pilled ? "auto" : "none",
+            }}
+          >
+            <PillHandle
+              binding={pullBinding}
+              onOpen={() => setPilled(false)}
+              glow={listening || responding}
+            />
+          </motion.div>
         </motion.fieldset>
       </div>
     </div>

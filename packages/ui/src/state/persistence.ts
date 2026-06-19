@@ -50,20 +50,20 @@ function normalizeUiThemeMode(value: unknown): UiThemeMode {
 export { normalizeUiThemeMode };
 
 /**
- * Resolve the OS-preferred color scheme. Defaults to `dark` when
- * `matchMedia` is unavailable (SSR, old runtimes) so behavior matches the
- * historical app default.
+ * The app ships a single curated light look — there is no dark theme. Kept as a
+ * function (not a constant) so existing callers and the system-change listener
+ * keep their shape.
  */
 export function getSystemTheme(): UiTheme {
-  if (typeof window === "undefined" || !window.matchMedia) return "dark";
-  return window.matchMedia("(prefers-color-scheme: light)").matches
-    ? "light"
-    : "dark";
+  return "light";
 }
 
-/** Resolve a {@link UiThemeMode} to a concrete {@link UiTheme}. */
-export function resolveUiTheme(mode: UiThemeMode): UiTheme {
-  return mode === "system" ? getSystemTheme() : mode;
+/**
+ * Resolve a {@link UiThemeMode} to a concrete {@link UiTheme}. The app is
+ * light-only, so every mode resolves to `light`.
+ */
+export function resolveUiTheme(_mode: UiThemeMode): UiTheme {
+  return "light";
 }
 
 /**

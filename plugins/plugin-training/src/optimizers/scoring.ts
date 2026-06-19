@@ -166,17 +166,74 @@ export function extractPlannerAction(text: string): string | null {
 }
 
 /**
+ * Pull a target-view id out of a planner argument object. View navigation
+ * carries the surface in one of a few alias keys (`view`/`viewId`/`id`/`target`)
+ * — the VIEWS action declares all of them. `name` is intentionally excluded: at
+ * tool-call top level `name` is the ACTION name, so reading it as a view would
+ * mislabel every call.
+ */
+function readViewFromArgs(obj: unknown): string | null {
+  if (!obj || typeof obj !== "object") return null;
+  const r = obj as Record<string, unknown>;
+  const v = r.view ?? r.viewId ?? r.id ?? r.target;
+  return typeof v === "string" && v.trim() ? v.trim().toLowerCase() : null;
+}
+
+/**
+ * Extract the target view id from planner output when the chosen action is a
+ * view navigation. Understands the same shapes as {@link extractPlannerAction}:
+ *   1. tool-call: `{toolCalls:[{name:"VIEWS", args/arguments/parameters:{view}}]}`
+ *   2. bare action: `{action:"VIEWS", parameters/args:{view}}`
+ *   3. top-level alias: `{view}` / `{viewId}`
+ * Returns the lower-cased view id, or `null` when none is present.
+ */
+export function extractPlannerView(text: string): string | null {
+  if (!text) return null;
+  const parsed = parsePlannerObject(text);
+  if (!parsed) return null;
+  if (Array.isArray(parsed.toolCalls)) {
+    const first = parsed.toolCalls[0];
+    if (first && typeof first === "object") {
+      const record = first as Record<string, unknown>;
+      const fromCall = readViewFromArgs(
+        record.args ?? record.arguments ?? record.parameters,
+      );
+      if (fromCall) return fromCall;
+    }
+  }
+  const fromParams = readViewFromArgs(
+    parsed.parameters ?? parsed.args ?? parsed.arguments,
+  );
+  if (fromParams) return fromParams;
+  return readViewFromArgs(parsed);
+}
+
+/**
  * Action-name comparator: returns 1.0 when both outputs resolve to the same
  * planner action name, 0.0 otherwise. This is the right primitive for
  * optimizing the `action_planner` task because token overlap under-credits
  * correct choices when surrounding rationale varies stochastically.
+ *
+ * View-aware refinement: when the expected output pins a specific view (a VIEWS
+ * navigation target), a matching action alone is NOT full credit — the view has
+ * to match too. Without this the optimizer can never learn correct view
+ * selection, because every `VIEWS/<anything>` would score 1.0 against a
+ * `VIEWS/calendar` reference (the exact gap that made the 0.8B's wrong-view
+ * outputs look perfect). Partial credit (right action, wrong/missing view =
+ * 0.5) keeps a usable gradient for the optimizer. Expected outputs without a
+ * view (every non-navigation action) are scored action-only, unchanged.
  */
 export function scorePlannerAction(actual: string, expected: string): number {
   const actualAction = extractPlannerAction(actual);
   const expectedAction = extractPlannerAction(expected);
   if (!expectedAction) return 0;
   if (!actualAction) return 0;
-  return actualAction === expectedAction ? 1 : 0;
+  if (actualAction !== expectedAction) return 0;
+  const expectedView = extractPlannerView(expected);
+  if (!expectedView) return 1;
+  const actualView = extractPlannerView(actual);
+  if (!actualView) return 0.5;
+  return actualView === expectedView ? 1 : 0.5;
 }
 
 /**

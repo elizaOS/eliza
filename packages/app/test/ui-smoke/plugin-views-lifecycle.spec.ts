@@ -56,11 +56,12 @@ async function expectViewManagerPage(page: Page) {
     ).toBeVisible();
   } else {
     // #8597 moved the views search out of <main> and into the floating chat
-    // composer, which takes over the composer placeholder ("Search views…").
-    // Look page-wide rather than inside <main>.
+    // composer ("Search views…"). The catalog renders as a flat launcher grid
+    // of icon tiles (no per-source section headers), so assert a view tile is
+    // present rather than a "Plugins" heading.
     await expect(page.getByPlaceholder(/Search views/)).toBeVisible();
     await expect(
-      main.getByRole("heading", { level: 2, name: "Plugins" }),
+      main.locator('[data-testid^="view-card-"]').first(),
     ).toBeVisible();
   }
   await expect(main.getByText("dynamic view smoke surface")).toHaveCount(0);

@@ -241,17 +241,9 @@ export {
 } from "./components/shell/ChatSurface";
 export { HomePill, type HomePillProps } from "./components/shell/HomePill";
 export {
-  initialShellState,
-  type ShellAction,
   type ShellMessage,
   type ShellPhase,
-  type ShellState,
-  shellReducer,
 } from "./components/shell/shell-state";
-export {
-  type UseShellStateResult,
-  useShellState,
-} from "./components/shell/useShellState";
 export {
   Select,
   SelectContent,

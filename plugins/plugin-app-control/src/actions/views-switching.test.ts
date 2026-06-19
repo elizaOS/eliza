@@ -355,6 +355,50 @@ describe("view switching — VIEWS action resolver", () => {
 		});
 	});
 
+	describe("model param hallucination — user's words win over a wrong view param", () => {
+		// A weak/local planner (the 0.8B) frequently emits VIEWS with a WRONG view
+		// param (e.g. view:"wallet" for "open my calendar"). The user's own words
+		// are authoritative when they name a registered domain surface, so the
+		// hallucinated param must not mis-navigate. This is the "structured
+		// guidance so the model doesn't have to guess the parameter" guarantee.
+		const HALLUCINATION_CASES: ReadonlyArray<
+			readonly [string, string, string]
+		> = [
+			["open my calendar", "wallet", "calendar"],
+			["check my messages", "calendar", "inbox"],
+			["show my wallet", "calendar", "wallet"],
+			["muéstrame mi calendario", "wallet", "calendar"],
+			["我的钱包", "calendar", "wallet"],
+		];
+		it.each(HALLUCINATION_CASES)(
+			'"%s" + bogus view param "%s" still navigates to "%s"',
+			async (phrase, bogusView, expected) => {
+				const { navigated } = installNavigateCapture();
+				const { result } = await runShow(REGISTRY, phrase, {
+					action: "show",
+					view: bogusView,
+				});
+				expect(result?.success).toBe(true);
+				expect(navigated).toEqual([expected]);
+			},
+		);
+
+		// But when the intent maps to a surface this deployment does NOT have, the
+		// planner's explicit, registered target is honored (no over-correction).
+		it("keeps a registered explicit target when the intent view is not registered", async () => {
+			const { navigated } = installNavigateCapture();
+			// "add a feature" → task-coordinator (not in REGISTRY); planner picked
+			// the registered plugins-page → honor it.
+			const { result } = await runShow(
+				REGISTRY,
+				"I want to add a new feature to my app",
+				{ action: "show", view: "plugins-page" },
+			);
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["plugins-page"]);
+		});
+	});
+
 	describe("ambiguity + miss handling", () => {
 		it("returns no-match (not a wrong view) for an unknown target", async () => {
 			const { navigated } = installNavigateCapture();
