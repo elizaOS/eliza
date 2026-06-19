@@ -42,9 +42,7 @@ describe("DiffReviewPanel", () => {
 
   it("renders an empty state when the change set has no files", () => {
     render(
-      <DiffReviewPanel
-        changeSet={changeSet({ changedFiles: [], diff: "" })}
-      />,
+      <DiffReviewPanel changeSet={changeSet({ changedFiles: [], diff: "" })} />,
     );
     expect(
       screen.getByText("No file changes captured for this task."),
@@ -96,9 +94,7 @@ describe("DiffReviewPanel", () => {
 
   it("renders a truncation warning when truncated is true", () => {
     render(<DiffReviewPanel changeSet={changeSet({ truncated: true })} />);
-    expect(
-      screen.getByText(/This diff is truncated/),
-    ).toBeTruthy();
+    expect(screen.getByText(/This diff is truncated/)).toBeTruthy();
   });
 
   it("does not render a truncation warning when truncated is false", () => {

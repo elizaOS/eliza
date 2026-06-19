@@ -1360,7 +1360,11 @@ async function runSpawnSubAgent(request: {
   label?: string;
   framework?: string;
   workdir?: string;
-}): Promise<{ success: boolean; text: string; data?: Record<string, unknown> }> {
+}): Promise<{
+  success: boolean;
+  text: string;
+  data?: Record<string, unknown>;
+}> {
   const log = getLogger(request.runtime);
   const data = {
     actionName: PARENT_AGENT_BROKER_SLUG,
@@ -1439,7 +1443,11 @@ async function runSpawnSubAgent(request: {
       },
       `${LOG_PREFIX} spawn sub-agent failed`,
     );
-    return { success: false, text: `Failed to spawn sub-agent: ${message}`, data };
+    return {
+      success: false,
+      text: `Failed to spawn sub-agent: ${message}`,
+      data,
+    };
   }
 }
 

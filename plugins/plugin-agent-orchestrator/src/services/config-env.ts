@@ -85,7 +85,9 @@ export function readConfigMcpServers(): AcpMcpServerConfig[] | undefined {
     return undefined;
   }
   const out: AcpMcpServerConfig[] = [];
-  for (const [name, raw] of Object.entries(servers as Record<string, unknown>)) {
+  for (const [name, raw] of Object.entries(
+    servers as Record<string, unknown>,
+  )) {
     if (!name || !raw || typeof raw !== "object") continue;
     const entry = raw as Record<string, unknown>;
     const type = typeof entry.type === "string" ? entry.type : undefined;
@@ -97,7 +99,8 @@ export function readConfigMcpServers(): AcpMcpServerConfig[] | undefined {
       continue;
     }
     // Local stdio MCP: requires a command.
-    const command = typeof entry.command === "string" ? entry.command : undefined;
+    const command =
+      typeof entry.command === "string" ? entry.command : undefined;
     if (!command) continue;
     const args = Array.isArray(entry.args)
       ? entry.args.filter((a): a is string => typeof a === "string")

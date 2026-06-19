@@ -6,13 +6,13 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { NativeAcpClient } from "./acp-native-transport.js";
-import { readConfigMcpServers } from "./config-env.js";
 import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
   resolveCodingAccountStrategy,
   selectCodingAccount,
 } from "./coding-account-selection.js";
+import { readConfigMcpServers } from "./config-env.js";
 import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,

@@ -15,80 +15,93 @@ let dir: string;
 let prevPath: string | undefined;
 
 beforeEach(() => {
-	prevPath = process.env.ELIZA_CONFIG_PATH;
-	dir = mkdtempSync(join(tmpdir(), "acp-mcp-"));
+  prevPath = process.env.ELIZA_CONFIG_PATH;
+  dir = mkdtempSync(join(tmpdir(), "acp-mcp-"));
 });
 
 afterEach(() => {
-	if (prevPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
-	else process.env.ELIZA_CONFIG_PATH = prevPath;
-	try {
-		rmSync(dir, { recursive: true, force: true });
-	} catch {
-		// best-effort cleanup
-	}
+  if (prevPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
+  else process.env.ELIZA_CONFIG_PATH = prevPath;
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // best-effort cleanup
+  }
 });
 
 function writeConfig(obj: unknown): void {
-	const p = join(dir, "eliza.json");
-	writeFileSync(p, JSON.stringify(obj));
-	process.env.ELIZA_CONFIG_PATH = p;
+  const p = join(dir, "eliza.json");
+  writeFileSync(p, JSON.stringify(obj));
+  process.env.ELIZA_CONFIG_PATH = p;
 }
 
 describe("readConfigMcpServers — auto-inherit parent MCP servers", () => {
-	it("returns undefined when nothing is configured (env-var fallback applies)", () => {
-		writeConfig({});
-		expect(readConfigMcpServers()).toBeUndefined();
-		writeConfig({ mcp: {} });
-		expect(readConfigMcpServers()).toBeUndefined();
-		writeConfig({ mcp: { servers: {} } });
-		expect(readConfigMcpServers()).toBeUndefined();
-	});
+  it("returns undefined when nothing is configured (env-var fallback applies)", () => {
+    writeConfig({});
+    expect(readConfigMcpServers()).toBeUndefined();
+    writeConfig({ mcp: {} });
+    expect(readConfigMcpServers()).toBeUndefined();
+    writeConfig({ mcp: { servers: {} } });
+    expect(readConfigMcpServers()).toBeUndefined();
+  });
 
-	it("converts a stdio server (env record -> name/value array)", () => {
-		writeConfig({
-			mcp: {
-				servers: {
-					fs: { command: "mcp-fs", args: ["--root", "/tmp"], env: { TOKEN: "x" } },
-				},
-			},
-		});
-		const out = readConfigMcpServers();
-		expect(out).toEqual([
-			{ name: "fs", command: "mcp-fs", args: ["--root", "/tmp"], env: [{ name: "TOKEN", value: "x" }] },
-		]);
-	});
+  it("converts a stdio server (env record -> name/value array)", () => {
+    writeConfig({
+      mcp: {
+        servers: {
+          fs: {
+            command: "mcp-fs",
+            args: ["--root", "/tmp"],
+            env: { TOKEN: "x" },
+          },
+        },
+      },
+    });
+    const out = readConfigMcpServers();
+    expect(out).toEqual([
+      {
+        name: "fs",
+        command: "mcp-fs",
+        args: ["--root", "/tmp"],
+        env: [{ name: "TOKEN", value: "x" }],
+      },
+    ]);
+  });
 
-	it("converts an http server (url + headers record)", () => {
-		writeConfig({
-			mcp: {
-				servers: {
-					search: { type: "http", url: "https://mcp.example/x", headers: { Authorization: "Bearer y" } },
-				},
-			},
-		});
-		const out = readConfigMcpServers();
-		expect(out).toEqual([
-			{
-				name: "search",
-				type: "http",
-				url: "https://mcp.example/x",
-				headers: [{ name: "Authorization", value: "Bearer y" }],
-			},
-		]);
-	});
+  it("converts an http server (url + headers record)", () => {
+    writeConfig({
+      mcp: {
+        servers: {
+          search: {
+            type: "http",
+            url: "https://mcp.example/x",
+            headers: { Authorization: "Bearer y" },
+          },
+        },
+      },
+    });
+    const out = readConfigMcpServers();
+    expect(out).toEqual([
+      {
+        name: "search",
+        type: "http",
+        url: "https://mcp.example/x",
+        headers: [{ name: "Authorization", value: "Bearer y" }],
+      },
+    ]);
+  });
 
-	it("drops malformed entries (no command and no url)", () => {
-		writeConfig({
-			mcp: { servers: { bad: { foo: "bar" }, ok: { command: "x" } } },
-		});
-		const out = readConfigMcpServers();
-		expect(out).toHaveLength(1);
-		expect(out?.[0]?.name).toBe("ok");
-	});
+  it("drops malformed entries (no command and no url)", () => {
+    writeConfig({
+      mcp: { servers: { bad: { foo: "bar" }, ok: { command: "x" } } },
+    });
+    const out = readConfigMcpServers();
+    expect(out).toHaveLength(1);
+    expect(out?.[0]?.name).toBe("ok");
+  });
 
-	it("returns undefined for a missing/unreadable config (never throws)", () => {
-		process.env.ELIZA_CONFIG_PATH = join(dir, "does-not-exist.json");
-		expect(readConfigMcpServers()).toBeUndefined();
-	});
+  it("returns undefined for a missing/unreadable config (never throws)", () => {
+    process.env.ELIZA_CONFIG_PATH = join(dir, "does-not-exist.json");
+    expect(readConfigMcpServers()).toBeUndefined();
+  });
 });

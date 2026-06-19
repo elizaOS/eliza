@@ -136,6 +136,7 @@ function FileSection({ file }: { file: FileDiff }) {
         <div className="border-t border-border bg-background/40 px-3 py-2">
           {hasHunks ? (
             file.lines.map((line, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: diff lines are an immutable, never-reordered render — line index is the only stable identity
               <DiffLineRow key={`${file.path}:${index}`} line={line} />
             ))
           ) : (
@@ -149,7 +150,10 @@ function FileSection({ file }: { file: FileDiff }) {
   );
 }
 
-export function DiffReviewPanel({ changeSet, className }: DiffReviewPanelProps) {
+export function DiffReviewPanel({
+  changeSet,
+  className,
+}: DiffReviewPanelProps) {
   const files = useMemo(
     () => (changeSet ? parseDiff(changeSet) : []),
     [changeSet],
@@ -157,12 +161,7 @@ export function DiffReviewPanel({ changeSet, className }: DiffReviewPanelProps) 
 
   if (!changeSet || changeSet.changedFiles.length === 0) {
     return (
-      <div
-        className={cn(
-          "text-[13px] text-muted-foreground",
-          className,
-        )}
-      >
+      <div className={cn("text-[13px] text-muted-foreground", className)}>
         No file changes captured for this task.
       </div>
     );
@@ -171,9 +170,7 @@ export function DiffReviewPanel({ changeSet, className }: DiffReviewPanelProps) 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[13px] font-medium text-foreground">
-          Changes
-        </span>
+        <span className="text-[13px] font-medium text-foreground">Changes</span>
         {changeSet.diffStat ? (
           <span className="font-mono text-[12px] text-muted-foreground">
             {changeSet.diffStat}

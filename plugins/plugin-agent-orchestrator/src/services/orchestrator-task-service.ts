@@ -86,10 +86,7 @@ import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
-import {
-  captureChangeSet,
-  type WorkspaceChangeSet,
-} from "./workspace-diff.js";
+import { captureChangeSet, type WorkspaceChangeSet } from "./workspace-diff.js";
 
 /**
  * Recoverable operator-recovery conflict.
@@ -748,7 +745,10 @@ export class OrchestratorTaskService extends Service {
       const found = await this.store.findSession(sessionId);
       if (!found) return;
       await this.store.updateSession(sessionId, {
-        metadata: { ...(found.session.metadata ?? {}), lastChangeSet: changeSet },
+        metadata: {
+          ...(found.session.metadata ?? {}),
+          lastChangeSet: changeSet,
+        },
       });
     } catch (err) {
       this.log("debug", "mirror change-set to store failed", {

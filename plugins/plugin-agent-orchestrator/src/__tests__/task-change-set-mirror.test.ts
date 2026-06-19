@@ -38,7 +38,10 @@ function makeFakeAcp(sessionMetadata: Record<string, unknown>) {
     })),
     // No tracked git change to capture; the change set comes from ACP metadata.
     getChangedPaths: vi.fn(() => [] as string[]),
-    sendToSession: vi.fn(async () => ({ stopReason: "end_turn", finalText: "" })),
+    sendToSession: vi.fn(async () => ({
+      stopReason: "end_turn",
+      finalText: "",
+    })),
     stopSession: vi.fn(async () => undefined),
   };
   return {
