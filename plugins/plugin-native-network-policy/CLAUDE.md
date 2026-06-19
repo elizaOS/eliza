@@ -29,7 +29,7 @@ Bridge methods:
 | `getMeteredHint()` | Android (safe fallback on iOS/web) | `ConnectivityManager.getNetworkCapabilities(activeNetwork).hasCapability(NET_CAPABILITY_NOT_METERED)`. Returns `metered: null` when there is no active network, permission is denied, or the capability object is unavailable. |
 | `getPathHints()` | iOS (safe fallback on Android/web) | `NWPathMonitor.currentPath.isExpensive` and `.isConstrained`. Returns `false/false` on Android. |
 
-Web fallback (`src/web.ts`): reads `navigator.connection.saveData`; returns `metered: null` when `saveData` is false or unavailable — never assumes "not metered", so the policy decision falls through to `unknown → ask`.
+Web fallback (`src/web.ts`): reads `navigator.connection.saveData`; returns `metered: true` when `saveData` is true, `metered: null` when `saveData` is false or unavailable — never assumes "not metered", so the policy decision falls through to `unknown → ask`.
 
 ## Layout
 
@@ -39,6 +39,7 @@ plugins/plugin-native-network-policy/
     definitions.ts          TypeScript interfaces: MeteredHint, PathHints, NetworkPolicyPlugin
     index.ts                registerPlugin("ElizaNetworkPolicy") + installNetworkPolicyGlobal()
     web.ts                  Browser WebPlugin fallback (navigator.connection.saveData)
+    web.test.ts             Vitest unit tests for the web fallback
   android/
     src/main/java/ai/eliza/plugins/networkpolicy/
       NetworkPolicyPlugin.kt  Android impl — ConnectivityManager + NET_CAPABILITY_NOT_METERED
@@ -56,9 +57,10 @@ plugins/plugin-native-network-policy/
 ```bash
 bun run --cwd plugins/plugin-native-network-policy build    # clean + tsc + rollup
 bun run --cwd plugins/plugin-native-network-policy clean    # remove dist/
+bun run --cwd plugins/plugin-native-network-policy test     # vitest run
 ```
 
-No test or lint scripts are defined in this package's `package.json`; use repo-root tooling.
+No lint script is defined in this package's `package.json`; use repo-root tooling.
 
 ## Config / env vars
 

@@ -35,6 +35,7 @@ plugins/plugin-native-location/
                          LocationResult, LocationPermissionStatus, LocationOptions,
                          WatchLocationOptions, LocationErrorEvent, LocationAccuracy
     web.ts             — LocationWeb: browser Geolocation API implementation (WebPlugin subclass)
+    web.test.ts        — Vitest unit tests for the LocationWeb browser implementation
     index.ts           — registerPlugin("ElizaLocation") entry point; re-exports definitions
   ios/Sources/LocationPlugin/
     LocationPlugin.swift — CLLocationManager bridge (getCurrentPosition, watchPosition,
@@ -54,7 +55,7 @@ Only scripts that exist in this package's `package.json`:
 # Build TypeScript + rollup bundles
 bun run --cwd plugins/plugin-native-location build
 
-# Build with generated API docs (runs docgen → tsc → rollup)
+# Cleans dist/, then runs docgen → tsc → rollup bundles
 bun run --cwd plugins/plugin-native-location build:docs
 
 # Delete dist/
@@ -62,6 +63,9 @@ bun run --cwd plugins/plugin-native-location clean
 
 # Generate README.md from JSDoc (requires @capacitor/docgen)
 bun run --cwd plugins/plugin-native-location docgen
+
+# Run unit tests (vitest)
+bun run --cwd plugins/plugin-native-location test
 ```
 
 ## Config / env vars

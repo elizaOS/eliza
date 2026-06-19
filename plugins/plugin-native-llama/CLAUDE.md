@@ -40,7 +40,6 @@ src/
   generate-stream.test.ts
   kv-cache-resolver.test.ts
   token-tree-codec.test.ts
-android/                    Reserved for Android-specific native sources (currently empty)
 rollup.config.mjs           Rollup bundle config (IIFE + CJS outputs; ESM comes from tsc)
 ```
 
@@ -49,10 +48,9 @@ rollup.config.mjs           Rollup bundle config (IIFE + CJS outputs; ESM comes 
 ```bash
 bun run --cwd plugins/plugin-native-llama build    # clean + tsc + rollup
 bun run --cwd plugins/plugin-native-llama clean    # rm dist/
+bun run --cwd plugins/plugin-native-llama test     # vitest run
 bun run --cwd plugins/plugin-native-llama watch    # tsc --watch
 ```
-
-There is no standalone test script in package.json; tests are run by the repo-level `bun run test` harness via vitest.
 
 ## Config / env vars
 
