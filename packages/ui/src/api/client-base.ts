@@ -239,6 +239,27 @@ function shouldTreatAsConnectedWithoutWebSocket(
   );
 }
 
+// A dedicated cloud agent lives on its own subdomain (<id>.elizacloud.ai) and
+// serves chat over REST as well as the realtime WS. Unlike the shared-runtime
+// adapter it DOES have a usable `/ws`, so we still attempt the WebSocket — but
+// if it can't connect (cold start, resume window, a slow backend) the agent is
+// still usable over REST. So on WS-reconnect exhaustion we degrade to a
+// non-fatal connected-over-REST state instead of raising the catastrophic
+// full-screen "Lost backend connection" overlay (see connectWs.onclose).
+function isDedicatedCloudAgentBase(value: string | null | undefined): boolean {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized) return false;
+  try {
+    const host = new URL(normalized).hostname.toLowerCase();
+    return (
+      host.endsWith(".elizacloud.ai") &&
+      !ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(host)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function getInjectedWsBase(): string | undefined {
   if (typeof window === "undefined") return undefined;
   const values = [
@@ -607,6 +628,20 @@ export class ElizaClient {
       if (init?.signal?.aborted) break;
       resumeRetries += 1;
       res = await this.rawRequestOnce(path, requestUrl, init, options, token);
+    }
+    // Resume budget exhausted while the agent is still 202 (resuming): surface a
+    // distinguishable error instead of returning the empty 202 placeholder as a
+    // success — otherwise the chat/stream path renders an empty reply. allowNonOk
+    // callers and aborted requests still get the raw response.
+    if (res.status === 202 && !options?.allowNonOk && !init?.signal?.aborted) {
+      throw new ApiError({
+        kind: "http",
+        path,
+        status: 202,
+        message: "Agent is still starting up — please try again in a moment.",
+        code: "agent_resuming",
+        retryAfter: resumeRetryDelayMs(res) / 1000,
+      });
     }
     if (!res.ok && !options?.allowNonOk) {
       const body = (await this.readBodyText(res, path, options?.timeoutMs, init)
@@ -1011,7 +1046,17 @@ export class ElizaClient {
       this.reconnectAttempt++;
       // Update state based on attempt count
       if (this.reconnectAttempt >= this.maxReconnectAttempts) {
-        this.connectionState = "failed";
+        // A dedicated cloud agent serves chat over REST independently of the
+        // realtime WS, so a WS that can't connect must NOT raise the fatal
+        // full-screen "Lost backend connection" overlay. Degrade to a non-fatal
+        // connected-over-REST state and keep probing in the background (see
+        // scheduleReconnect's 30s loop) so live updates resume on WS recovery.
+        if (isDedicatedCloudAgentBase(this.baseUrl)) {
+          this.connectionState = "connected";
+          this.disconnectedAt = null;
+        } else {
+          this.connectionState = "failed";
+        }
       } else {
         this.connectionState = "reconnecting";
       }
@@ -1206,6 +1251,7 @@ export class ElizaClient {
   // --- Text normalization helpers (used by chat domain methods) ---
 
   normalizeAssistantText(text: string): string {
+    if (typeof text !== "string") return GENERIC_NO_RESPONSE_TEXT;
     const stripped = stripAssistantStageDirections(
       extractAssistantReplyText(text) ?? text,
     );

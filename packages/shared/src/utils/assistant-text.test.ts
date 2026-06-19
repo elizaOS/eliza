@@ -87,4 +87,16 @@ describe("assistant text helpers", () => {
       extractAssistantReplyText("Sure — my reply is that the sky is blue."),
     ).toBeNull();
   });
+
+  it("is null/undefined-safe (e.g. a 202 placeholder body with no text)", () => {
+    // Non-string input must not throw — degrade gracefully.
+    expect(
+      extractAssistantReplyText(undefined as unknown as string),
+    ).toBeNull();
+    expect(extractAssistantReplyText(null as unknown as string)).toBeNull();
+    expect(stripAssistantStageDirections(undefined as unknown as string)).toBe(
+      "",
+    );
+    expect(stripAssistantStageDirections(null as unknown as string)).toBe("");
+  });
 });

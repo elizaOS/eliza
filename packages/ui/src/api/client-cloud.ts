@@ -2889,17 +2889,15 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     }
   }
 
-  // Create a NEW agent. We create a SHARED (Tier-0) agent FOR NOW because it is
-  // the only tier reachable from the app today: instant (no container to boot),
-  // served at the public REST adapter, cheap. DEDICATED (the billed container
-  // product) is the goal, but is currently unreachable from the app — the cloud
-  // has not deployed the per-agent public subdomain ingress
-  // (https://<id>.elizacloud.ai) and dedicated provisioning is blocked on
-  // headscale_ip registration (see ~/ELIZA_CLOUD_DEDICATED_AGENT_ENABLEMENT_SPEC.md).
-  // The app is otherwise dedicated-ready: resolveCloudAgentApiBase already prefers
-  // a dedicated agent's public web_ui_url, so once the cloud returns a reachable
-  // one, flip this create to provision dedicated (alwaysOn) — no other app change
-  // needed. createCloudCompatAgent omits alwaysOn → tier "shared", serving immediately.
+  // Create a NEW agent. createCloudCompatAgent provisions a DEDICATED (alwaysOn)
+  // agent — the billed container product served at its own public subdomain
+  // (https://<id>.elizacloud.ai), reached with the cloud token via the
+  // unified-auth Worker. A dedicated agent's reachable base is that subdomain,
+  // NOT the shared REST adapter (which 404s for non-shared agents), so resolve
+  // the base from the agent's web_ui_url exactly like the reuse branch above.
+  // The subdomain is returned as soon as the agent record exists (before the
+  // container finishes booting), so re-read the created agent to pick it up;
+  // if that lookup fails or has no URL yet, fall back to the shared-adapter base.
   onProgress?.("creating", `Creating ${name}...`);
   const created = await this.createCloudCompatAgent({
     agentName: name,
@@ -2909,13 +2907,23 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     throw new Error(created.data.message || "Failed to create cloud agent");
   }
   const agentId = created.data.agentId;
-  const apiBase = buildCloudSharedAgentApiBase(resolvedCloudApiBase, agentId);
+  const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
+  const detailAgent = detail?.success ? detail.data : null;
+  const apiBase =
+    detailAgent?.web_ui_url || detailAgent?.bridge_url
+      ? resolveCloudAgentApiBase({
+          bridgeUrl: detailAgent.bridge_url,
+          webUiUrl: detailAgent.web_ui_url ?? detailAgent.webUiUrl,
+          agentId,
+          cloudApiBase: resolvedCloudApiBase,
+        })
+      : buildCloudSharedAgentApiBase(resolvedCloudApiBase, agentId);
   onProgress?.("ready", "Cloud agent ready!");
   return {
     agentId,
     agentName: created.data.agentName || name,
     apiBase,
-    bridgeUrl: null,
+    bridgeUrl: detailAgent?.bridge_url ?? null,
     created: true,
   };
 };
