@@ -744,3 +744,21 @@ inward-only architecture law and silently breaking the per-tick reminder deliver
 and `rg "@elizaos/plugin-reminders" plugins/plugin-scheduling/src` (ZERO), plus the
 "scheduling ALONE ⇒ reminderAttempts=[] / scheduling+reminders ⇒ populated" integration
 test, are the non-negotiable tripwires — do not advance a slice until both pass.
+
+---
+
+## 6. Execution status (2026-06-18)
+
+**Landed (committed + pushed to develop):**
+- ✅ **Slice 1** — LifeOps overview view + builtin tab removed across PA / packages-ui / app-core; route-coverage 10/10, decomposition 6/6, all typecheck clean. (`2cd13115b4`)
+- ✅ **Slice 2** — vestigial `app_goals` routines/reminders/alarms/checkins tables deleted. (`d286dbae73`)
+- ✅ **Slice 7** — `@elizaos/plugin-scheduling` scaffolded (empty Plugin shell + package/tsconfig/CLAUDE; `bun install` links it; typechecks). (`5b12de8344`)
+- ✅ **Slice 20** — dead `@elizaos/core` scheduled-task stub deleted. (`33d9918038`)
+- Plus the earlier review: `lifeops-cleanup-review.md` + 3,578 LOC of dead graph/identity code removed (context-graph, identity-observations).
+
+**Not yet executed (the deep arcs — DELIBERATELY deferred as careful, reviewed PRs):**
+- Slices 3, 4 — runtime-service promotions (pending-prompts/global-pause/handoff/approval-queue → `@elizaos/agent`). Standalone SAFE-NOW; next-up.
+- Slices 5, 6 — goals/calendar schema carve-outs (atomic dual-writer migrations).
+- **Slices 8–19 — the spine + reminders engine extraction.** This is the bulk of "scheduling → plugin-scheduling, reminders → plugin-reminders" and is an **atomic multi-PR effort**: moving ~7k LOC of spine + a 5,468-LOC reminders mixin out of a 137k-LOC monolith fused to an 8.4k-LOC `repository.ts`, with the per-tick reminder delivery interleaved in one `processScheduledWork` method. Rushing it on the shared `develop` branch (where PA's typecheck baseline is already ~472 errors, masking new breakage) risks silently breaking the agent's scheduling + reminders. It must land as the tight, reviewed slice series in §2, each gated by the §0/§2 tripwires (no inward import leak; `reminderAttempts` shape preserved; the "scheduling-alone ⇒ [] / scheduling+reminders ⇒ populated" integration test).
+
+**Recommendation:** land slices 3–6 next (each a clean single PR), then the spine arc (8–12) as one reviewed PR, then the reminders arc (13–19) as one reviewed PR.
