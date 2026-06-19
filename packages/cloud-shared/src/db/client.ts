@@ -156,7 +156,7 @@ export function shouldSkipTlsVerification(url: string): boolean {
  * operator explicitly opts into `no-verify` for a self-signed managed proxy
  * (the connection remains encrypted; only CA verification is relaxed).
  */
-function enforceTlsForRemote(url: string): {
+export function enforceTlsForRemote(url: string): {
   url: string;
   ssl: PoolConfig["ssl"];
 } {
@@ -253,6 +253,16 @@ function createConnection(url: string): Database {
   const hyperdriveUrl = getCloudBinding<{ connectionString?: string }>(
     "HYPERDRIVE",
   )?.connectionString;
+  // Fail closed: a direct node-pg TCP/TLS connection to an external Postgres
+  // terminates mid-query on workerd (#8629). If we're in a Worker reaching a
+  // remote origin without a Hyperdrive binding, refuse loudly instead of
+  // silently opening a doomed per-request connection.
+  if (isCloudflareWorkerRuntime() && !hyperdriveUrl && !isLocalTcpPostgresUrl(url)) {
+    throw new Error(
+      "Refusing direct node-pg to external Postgres from a Worker: HYPERDRIVE binding missing. " +
+        "Bind [[hyperdrive]] in wrangler.toml so the Worker proxies to the origin (see #8629).",
+    );
+  }
   const pool = createPgPool(url, hyperdriveUrl);
   return registerDatabaseCloser(drizzleNode(pool, { schema }) as Database, () => pool.end());
 }
