@@ -185,6 +185,7 @@ export {
   EmptyWidgetState,
   WidgetSection,
 } from "./components/chat/widgets/shared";
+export { registerTaskWidget } from "./components/chat/widgets/task-widget";
 export type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,

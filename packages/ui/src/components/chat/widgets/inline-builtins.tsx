@@ -1,10 +1,12 @@
 /**
  * Built-in inline chat-reply widgets, registered into the inline-widget
  * registry at module load. Importing this module (a side effect) is what makes
- * `[CHOICE]`, `[FOLLOWUPS]`, `[FORM]`, and `[TASK]` markers render in chat.
+ * `[CHOICE]`, `[FOLLOWUPS]`, and `[FORM]` markers render in chat.
  *
  * Each entry pairs the marker's parser (the parsing semantics) with its React
- * renderer, the same contract a plugin uses via `registerInlineWidget`.
+ * renderer, the same contract a plugin uses via `registerInlineWidget`. The
+ * `[TASK]` widget is intentionally NOT here — it is owned and registered by the
+ * orchestrator plugin (see `registerTaskWidget` in `./task-widget`).
  */
 
 import { type ChoiceMatch, findChoiceRegions } from "../message-choice-parser";
@@ -13,12 +15,10 @@ import {
   findFollowupsRegions,
 } from "../message-followups-parser";
 import { type FormMatch, findFormRegions } from "../message-form-parser";
-import { findTaskRegions, type TaskRegion } from "../message-task-parser";
 import { ChoiceWidget } from "./ChoiceWidget";
 import { FollowupsWidget } from "./followups";
 import { FormRequest } from "./form-request";
 import { registerInlineWidget } from "./inline-registry";
-import { TaskWidget } from "./task-widget";
 
 registerInlineWidget<ChoiceMatch>({
   kind: "choice",
@@ -58,14 +58,5 @@ registerInlineWidget<FormMatch>({
   keyFor: (m) => `form:${m.form.id}`,
   render: (m, ctx, key) => (
     <FormRequest key={key} form={m.form} onSubmit={ctx.submitForm} />
-  ),
-});
-
-registerInlineWidget<TaskRegion>({
-  kind: "task",
-  parse: (text) => findTaskRegions(text).map((m) => ({ ...m, data: m })),
-  keyFor: (m) => `task:${m.threadId}`,
-  render: (m, _ctx, key) => (
-    <TaskWidget key={key} threadId={m.threadId} fallbackTitle={m.title} />
   ),
 });
