@@ -250,7 +250,9 @@ function createConnection(url: string): Database {
   // Non-Neon remote Postgres (e.g. Railway): on workerd a direct node-pg TCP
   // connection terminates mid-query, so prefer a Cloudflare Hyperdrive binding
   // when present and let it proxy to the origin.
-  const hyperdriveUrl = getCloudBinding<{ connectionString?: string }>("HYPERDRIVE")?.connectionString;
+  const hyperdriveUrl = getCloudBinding<{ connectionString?: string }>(
+    "HYPERDRIVE",
+  )?.connectionString;
   // Fail closed: a direct node-pg TCP/TLS connection to an external Postgres
   // terminates mid-query on workerd (#8629). If we're in a Worker reaching a
   // remote origin without a Hyperdrive binding, refuse loudly instead of

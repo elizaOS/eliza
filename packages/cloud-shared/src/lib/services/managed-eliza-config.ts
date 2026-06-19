@@ -1,9 +1,6 @@
 import crypto from "node:crypto";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
-import {
-  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
-  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
-} from "../models";
+import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
 
