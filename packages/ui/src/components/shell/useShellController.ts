@@ -403,21 +403,6 @@ export function useShellController(): ShellController {
     if (captureRef.current) stopCapture();
   }, [stopCapture]);
 
-  // `recording` (push-to-talk press or continuous capture) wins over an
-  // in-flight response so the pill shows the red "listening" pulse the instant
-  // the mic opens, even while the previous turn is still streaming (barge-in).
-  // Stop/error clears `recording` (see startCapture/stopCapture), dropping the
-  // phase back to responding → summoned → idle.
-  const phase: ShellPhase = !ready
-    ? "booting"
-    : recording
-      ? "listening"
-      : chatSending
-        ? "responding"
-        : !isOpen
-          ? "idle"
-          : "summoned";
-
   const voiceOutput = useShellVoiceOutput({
     conversationMessages: Array.isArray(conversationMessages)
       ? conversationMessages
@@ -428,6 +413,31 @@ export function useShellController(): ShellController {
     uiLanguage,
     cloudConnected: elizaCloudVoiceProxyAvailable,
   });
+
+  // `recording` (push-to-talk press or continuous capture) wins over an
+  // in-flight response so the pill shows the red "listening" pulse the instant
+  // the mic opens, even while the previous turn is still streaming (barge-in).
+  // "responding" covers BOTH the text streaming in (chatSending) AND the reply
+  // being spoken aloud (voiceOutput.speaking), so the UI reads as busy for the
+  // whole turn — not just the text phase, leaving a dead gap while TTS plays.
+  // Stop/error clears `recording` (see startCapture/stopCapture), dropping the
+  // phase back to responding → summoned → idle.
+  const phase: ShellPhase = !ready
+    ? "booting"
+    : recording
+      ? "listening"
+      : chatSending || voiceOutput.speaking
+        ? "responding"
+        : !isOpen
+          ? "idle"
+          : "summoned";
+
+  // The composer's stop control halts the WHOLE turn — text generation and the
+  // spoken reply — so one tap cleanly interrupts the agent mid-sentence.
+  const stopTurn = React.useCallback(() => {
+    handleChatStop();
+    voiceOutput.stopSpeaking();
+  }, [handleChatStop, voiceOutput.stopSpeaking]);
 
   // Tap-to-talk: toggle a hands-free conversation. Enabling unlocks audio (the
   // tap is the gesture) and opens the mic in "converse" mode; disabling stops
@@ -497,7 +507,7 @@ export function useShellController(): ShellController {
   const waveformMode =
     phase === "listening"
       ? "listening"
-      : phase === "responding" || voiceOutput.speaking
+      : phase === "responding"
         ? "responding"
         : "idle";
 
@@ -539,6 +549,6 @@ export function useShellController(): ShellController {
     openSettings,
     navigateHome,
     currentTab: app.tab,
-    stop: handleChatStop,
+    stop: stopTurn,
   };
 }
