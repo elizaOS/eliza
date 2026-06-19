@@ -23,7 +23,6 @@ import type { VoiceSessionMode } from "../../../voice/voice-chat-types";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 import type { ChatVariant } from "./chat-types";
-import { CreateTaskPopover } from "./create-task-popover";
 
 const INLINE_TEXTAREA_MIN_HEIGHT_PX = 32;
 const INLINE_TEXTAREA_MAX_HEIGHT_PX = 128;
@@ -122,8 +121,6 @@ export interface ChatComposerProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   variant: ChatVariant;
   voice: ChatComposerVoiceState;
-  codingAgentsAvailable?: boolean;
-  onCreateTask?: (description: string, agentType: string) => void;
   /** Hide the attach-image button (used where outbound attachments aren't supported). */
   hideAttachButton?: boolean;
   /** Placeholder override for the textarea. */
@@ -150,8 +147,6 @@ export function ChatComposer({
   onStop,
   onStopSpeaking,
   onToggleAgentVoice,
-  codingAgentsAvailable = false,
-  onCreateTask,
   hideAttachButton = false,
   placeholder,
   textareaAriaLabel,
@@ -351,28 +346,6 @@ export function ChatComposer({
     void voice.startListening("compose");
   };
 
-  const renderCreateTaskButton = () => {
-    if (isGameModal || !codingAgentsAvailable || !onCreateTask) {
-      return null;
-    }
-
-    return (
-      <CreateTaskPopover
-        chatInput={chatInput}
-        disabled={isComposerLocked}
-        onCreateTask={onCreateTask}
-        t={t}
-        triggerVariant={isInline ? "ghost" : "surface"}
-        triggerClassName={
-          isInline
-            ? "h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt"
-            : "h-[46px] w-[46px] shrink-0"
-        }
-        triggerIconClassName={isInline ? "h-4.5 w-4.5" : "h-4 w-4"}
-      />
-    );
-  };
-
   if (isInline) {
     const inlineAttachButton =
       !isGameModal && !hideAttachButton ? (
@@ -540,7 +513,6 @@ export function ChatComposer({
             {inlineTextarea}
             <div className="flex min-w-0 items-center gap-1">
               {inlineAttachButton}
-              {renderCreateTaskButton()}
               <div className="min-w-0 flex-1" />
               {inlineTrailingActions}
             </div>
@@ -548,7 +520,6 @@ export function ChatComposer({
         ) : (
           <>
             {inlineAttachButton}
-            {renderCreateTaskButton()}
             {inlineTextarea}
             {inlineTrailingActions}
           </>
@@ -595,8 +566,6 @@ export function ChatComposer({
           )}
         </Button>
       ) : null}
-
-      {renderCreateTaskButton()}
 
       {!isInline && showVoiceButton ? (
         <Button
