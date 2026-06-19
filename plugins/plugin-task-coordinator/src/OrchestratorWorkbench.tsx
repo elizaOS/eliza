@@ -593,6 +593,8 @@ function HeaderStat({
   );
 }
 
+/** A borderless inspector section: a small uppercase label over its content,
+ * separated from its neighbours by whitespace alone — no card, no border. */
 function InspectorSection({
   title,
   action,
@@ -603,9 +605,9 @@ function InspectorSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-border/50 bg-bg-accent/20 p-2.5">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+    <section className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
           {title}
         </h3>
         {action}
@@ -1584,7 +1586,7 @@ function ControlButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`flex items-center justify-center rounded-md border border-border/50 p-1.5 transition-colors disabled:opacity-50 ${
+      className={`flex items-center justify-center rounded-md p-1.5 transition-colors disabled:opacity-50 ${
         tone === "danger"
           ? "text-muted hover:bg-danger/10 hover:text-danger"
           : "text-muted hover:bg-bg-hover/60 hover:text-txt"
@@ -1739,7 +1741,7 @@ export function TaskInspector({
 
   return (
     <div
-      className={`shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-border/60 bg-bg p-2.5 ${className ?? "flex w-80"}`}
+      className={`shrink-0 flex-col gap-4 overflow-y-auto bg-bg p-3 ${className ?? "flex w-80"}`}
       style={style}
       data-testid="orchestrator-inspector"
     >
