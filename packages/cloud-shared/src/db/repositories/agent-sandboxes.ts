@@ -281,23 +281,31 @@ export class AgentSandboxesRepository {
    */
   async listReconcilableDisconnected(
     maxAgeMs = 24 * 60 * 60 * 1000,
+    limit = 20,
   ): Promise<Array<{ id: string; organization_id: string }>> {
     const cutoff = new Date(Date.now() - maxAgeMs);
-    return dbRead
-      .select({
-        id: agentSandboxes.id,
-        organization_id: agentSandboxes.organization_id,
-      })
-      .from(agentSandboxes)
-      .where(
-        and(
-          eq(agentSandboxes.status, "disconnected"),
-          ne(agentSandboxes.execution_tier, "shared"),
-          sql`${agentSandboxes.bridge_url} IS NOT NULL`,
-          sql`${agentSandboxes.deleted_at} IS NULL`,
-          sql`${agentSandboxes.updated_at} > ${cutoff}`,
-        ),
-      );
+    return (
+      dbRead
+        .select({
+          id: agentSandboxes.id,
+          organization_id: agentSandboxes.organization_id,
+        })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.status, "disconnected"),
+            ne(agentSandboxes.execution_tier, "shared"),
+            sql`${agentSandboxes.bridge_url} IS NOT NULL`,
+            sql`${agentSandboxes.deleted_at} IS NULL`,
+            sql`${agentSandboxes.updated_at} > ${cutoff}`,
+          ),
+        )
+        // Bound the per-cycle candidate set (mirrors listRunningWithDigestOtherThan):
+        // disconnected rows are the most likely to hit full probe timeouts, so an
+        // unbounded set could make one reconcile cycle run long. Self-draining —
+        // recovered rows leave the set and dead rows age out at maxAgeMs.
+        .limit(limit)
+    );
   }
 
   async findDisconnectedSandbox(id: string, orgId: string): Promise<AgentSandbox | undefined> {
@@ -314,6 +322,34 @@ export class AgentSandboxesRepository {
         ),
       )
       .limit(1);
+    return r;
+  }
+
+  /**
+   * Atomically restore a still-disconnected agent to `running` after a
+   * successful bridge re-probe. The reconcile read→probe→write window spans
+   * seconds, during which the row may move to `deletion_pending` (delete
+   * enqueue), `stopped` (shutdown nulls `bridge_url`), or `provisioning`
+   * (re-provision). This compare-and-set only flips a row that is STILL
+   * `disconnected` with a live bridge and not soft-deleted, so a blind write
+   * can never resurrect a being-deleted agent or wedge a stopped one at
+   * `running` with a dead bridge. Returns the row when it won, undefined when
+   * it lost the race.
+   */
+  async markReconnectedFromDisconnected(id: string): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    const [r] = await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "running", last_heartbeat_at: new Date(), updated_at: new Date() })
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.status, "disconnected"),
+          sql`${agentSandboxes.bridge_url} IS NOT NULL`,
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+        ),
+      )
+      .returning();
     return r;
   }
 

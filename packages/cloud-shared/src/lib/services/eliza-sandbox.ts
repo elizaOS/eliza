@@ -3360,10 +3360,13 @@ export class ElizaSandboxService {
     const alive = await this.probeBridgeHealth(rec);
     if (!alive) return false;
 
-    await agentSandboxesRepository.update(rec.id, {
-      status: "running",
-      last_heartbeat_at: new Date(),
-    });
+    // Guarded compare-and-set, not a blind update: the row can move to
+    // deletion_pending / stopped / provisioning during the multi-second probe.
+    // Only flip it back if it is STILL disconnected — otherwise we'd resurrect a
+    // being-deleted agent or wedge a stopped one at `running` with a dead bridge.
+    const restored = await agentSandboxesRepository.markReconnectedFromDisconnected(rec.id);
+    if (!restored) return false;
+
     logger.info("[agent-sandbox] Disconnected agent reachable again, restored to running", {
       agentId,
     });
