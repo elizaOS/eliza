@@ -19,7 +19,7 @@ Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, 
 
 ### Services
 
-- **BrowserService** (`src/browser-service.ts`) — Pluggable target registry. Built-in targets: `workspace` (always registered), `bridge` (registered when `BrowserBridgeRouteService` is available), `stagehand` (registered when `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` or `STAGEHAND_SERVER_URL` is configured). External plugins register additional targets via `BrowserService.registerTarget(target)`. Service type constant: `BROWSER_SERVICE_TYPE = "browser"`.
+- **BrowserService** (`src/browser-service.ts`) — Pluggable target registry. Built-in targets: `workspace` (always registered), `bridge` (registered when `BrowserBridgeRouteService` is available), `stagehand` (registered when any stagehand URL env var is configured and the target is not disabled). External plugins register additional targets via `BrowserService.registerTarget(target)`. Service type constant: `BROWSER_SERVICE_TYPE = "browser"`.
 - **BrowserBridgeRouteService** (`src/service.ts`) — Interface (`BROWSER_BRIDGE_ROUTE_SERVICE_TYPE = "lifeops_browser_plugin"`) that a consumer (e.g. plugin-lifeops) implements. Owns companion pairing, sync, tab/page-context CRUD, and browser session management. The routes in this plugin call into the registered implementor.
 - **Browser bridge policy** (`src/bridge-policy.ts`) — Pure token TTL / expiry, focus-window, and URL-domain helpers shared by host plugins.
 - **Browser bridge readiness** (`src/bridge-readiness.ts`) — Pure companion recency, permission, pause, and readiness-state policy used by host plugins and UI surfaces that summarize bridge setup.
@@ -49,6 +49,9 @@ src/
   bridge-policy.ts                 Browser bridge token TTL / expiry, focus-window, and URL-domain helpers
   bridge-readiness.ts              Browser bridge readiness / permission policy helpers
   bridge-records.ts                Browser bridge companion/tab/page-context record constructors
+  companion-auth.ts                BrowserBridgeCompanion auth types and token-validation helpers
+  message-adapter.ts               BrowserBridgeAdapter — MessageAdapter implementation over bridge page-contexts
+  password-manager-bridge.ts       Dual-backend (1Password CLI / ProtonPass CLI) credential injection bridge
   service.ts                       BrowserBridgeRouteService interface + BROWSER_BRIDGE_ROUTE_SERVICE_TYPE
   schema.ts                        Drizzle tables
   contracts.ts                     BrowserBridge* shared types (companions, settings, tabs, sessions)
@@ -102,11 +105,20 @@ bun run --cwd plugins/plugin-browser clean       # rm -rf dist
 | Variable | Required | Purpose |
 |---|---|---|
 | `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` | no | Full URL to the Stagehand command endpoint; activates the `stagehand` target |
+| `STAGEHAND_BROWSER_COMMAND_URL` | no | Alias for the stagehand command URL |
+| `ELIZA_STAGEHAND_COMMAND_URL` | no | Alias for the stagehand command URL |
 | `STAGEHAND_SERVER_URL` | no | Base URL for Stagehand; commands go to `<url>/api/browser-command` |
 | `ELIZA_BROWSER_STAGEHAND_URL` | no | Alias for `STAGEHAND_SERVER_URL` |
+| `ELIZA_STAGEHAND_SERVER_URL` | no | Alias for `STAGEHAND_SERVER_URL` |
+| `ELIZA_BROWSER_STAGEHAND_ENABLED` | no | Set to a falsy value to disable the stagehand target entirely |
 | `ELIZA_BROWSER_STAGEHAND_AUTO_SETUP` | no | Set `false` to disable automatic `bun install` + build for the stagehand-server dir |
+| `ELIZA_BROWSER_STAGEHAND_HEALTH_URL` | no | Health-check URL for the stagehand server |
+| `ELIZA_BROWSER_STAGEHAND_DIR` | no | Custom path to the stagehand-server directory |
 | `ELIZA_BROWSER_ALLOW_STAGEHAND_ON_MOBILE` | no | Set `true` to allow stagehand target on mobile runtimes |
 | `ELIZA_MOBILE_PLATFORM` / `ELIZA_PLATFORM` / `CAPACITOR_PLATFORM` | no | Platform hint (`ios`/`android`/`mobile`) — changes target scoring |
+| `ELIZA_BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS` | no | Overrides the default companion pairing token TTL (milliseconds) |
+| `ELIZA_BROWSER_BRIDGE_CHROME_STORE_URL` | no | Custom Chrome Web Store URL for the companion extension |
+| `ELIZA_BROWSER_BRIDGE_SAFARI_STORE_URL` | no | Custom Safari App Store URL for the companion extension |
 
 Autofill-login vault keys (set by user via Settings → Vault → Logins, not env vars):
 - `creds.<domain>.:autoallow = "1"` — enables agent autofill for that domain.

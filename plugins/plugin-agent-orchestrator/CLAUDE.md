@@ -75,6 +75,7 @@ All under the elizaOS runtime HTTP server:
 | `/api/coding-agents/:id/credentials/*` | `handleBridgeRoutes` | Credential bridge (request + long-poll redemption) for spawned sub-agents |
 | `/api/coding-agents/:id/context` | `handleParentContextRoutes` | Read-only parent-context bridge: memory, workspace state |
 | `/api/workspace/*` | `handleWorkspaceRoutes` | Git workspace: provision, status, commit, push, PR, delete |
+| `/api/issues/*` | `handleIssueRoutes` | GitHub issue CRUD (separate from manage_issues action) |
 | `/api/task-agents/*` | (aliased to `/api/coding-agents/*`) | Legacy path alias |
 
 ### Events
@@ -118,6 +119,8 @@ plugins/plugin-agent-orchestrator/
       workspace-lifecycle.ts     GC, scratch dir cleanup
       workspace-git-ops.ts       Status, commit, push, PR creation
       workspace-github.ts        GitHub issue management, OAuth, PAT auth
+      workspace-types.ts         Shared workspace type definitions
+      workspace-diff.ts          Git diff utilities for workspace
       session-store.ts           AcpSessionStore / RuntimeDbSessionStore /
                                  FileSessionStore / InMemorySessionStore
       types.ts                   AgentType, SessionStatus, SessionEventName,
@@ -131,8 +134,30 @@ plugins/plugin-agent-orchestrator/
       skill-recommender.ts       Skill recommendation service
       ansi-utils.ts              ANSI escape stripping for terminal output
       spawn-trajectory.ts        Trajectory capture for spawned sessions
+      trajectory-context.ts      Trajectory context helpers
+      trajectory-feedback.ts     Trajectory feedback processing
       parent-agent-broker.ts     Parent-agent context broker
+      parent-agent-dispatch.ts   Dispatch helpers for parent-agent context
       skill-lifeops-context-broker.ts LifeOps context broker for skills
+      agent-name-assignment.ts   Agent name assignment helpers
+      audit.ts                   Audit log utilities (TASK_AUDIT_EVENT)
+      coding-account-selection.ts Account/credential selection for spawned agents
+      goal-llm-verifier.ts       LLM-based goal verification for task completion
+      goal-prompt.ts             Goal prompt construction helpers
+      interruption-decider.ts    Decides whether to interrupt a running sub-agent
+      json-model-output.ts       Structured JSON output helpers for model calls
+      opencode-config.ts         OpenCode-specific ACP configuration
+      repo-input.ts              Repository input parsing and validation
+      session-event-queue.ts     Per-session event queue for ordered delivery
+      smithers-task-executor.ts  TaskStepExecutor impl — drives ACP turns per step
+      smithers-task-integration.ts Integration layer; gates smithers via ELIZA_ORCHESTRATOR_SMITHERS
+      smithers-task-runner.ts    High-level smithers task runner (provision→turn→submit loop)
+      smithers-task-types.ts     Types for the smithers task execution model
+      spend-allowance.ts         Per-session spend allowance / budget enforcement
+      ssrf-guard.ts              SSRF protection for outbound URL fetches
+      sub-agent-identity.ts      Sub-agent identity and credential helpers
+      sub-agent-inbox.ts         Per-session message inbox for the interruption decider
+      workdir-validation.ts      Working directory validation and sandboxing
     api/
       routes.ts                  Top-level route dispatcher
       agent-routes.ts            /api/coding-agents/* handlers
@@ -149,16 +174,20 @@ plugins/plugin-agent-orchestrator/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-agent-orchestrator build       # Build Node ESM + CJS + .d.ts
-bun run --cwd plugins/plugin-agent-orchestrator dev         # Watch mode rebuild
-bun run --cwd plugins/plugin-agent-orchestrator typecheck   # Type-check without emit
-bun run --cwd plugins/plugin-agent-orchestrator test        # Run vitest suite
-bun run --cwd plugins/plugin-agent-orchestrator test:unit   # Unit tests only
-bun run --cwd plugins/plugin-agent-orchestrator test:e2e:manual  # acpx+codex smoke (requires installed acpx)
-bun run --cwd plugins/plugin-agent-orchestrator lint        # Biome check + write
-bun run --cwd plugins/plugin-agent-orchestrator lint:check  # Biome check only
-bun run --cwd plugins/plugin-agent-orchestrator format      # Biome format + write
-bun run --cwd plugins/plugin-agent-orchestrator clean       # Remove dist/.turbo/tsconfig artifacts
+bun run --cwd plugins/plugin-agent-orchestrator build           # Build Node ESM + CJS + .d.ts
+bun run --cwd plugins/plugin-agent-orchestrator build:ts        # TypeScript-only build
+bun run --cwd plugins/plugin-agent-orchestrator dev             # Watch mode rebuild
+bun run --cwd plugins/plugin-agent-orchestrator typecheck       # Type-check without emit
+bun run --cwd plugins/plugin-agent-orchestrator test            # Run vitest suite
+bun run --cwd plugins/plugin-agent-orchestrator test:unit       # Unit tests only
+bun run --cwd plugins/plugin-agent-orchestrator test:watch      # Vitest watch mode
+bun run --cwd plugins/plugin-agent-orchestrator test:e2e:manual # acpx+codex smoke (requires installed acpx)
+bun run --cwd plugins/plugin-agent-orchestrator test:e2e:multi-account  # Multi-account smoke test
+bun run --cwd plugins/plugin-agent-orchestrator lint            # Biome check + write
+bun run --cwd plugins/plugin-agent-orchestrator lint:check      # Biome check only
+bun run --cwd plugins/plugin-agent-orchestrator format          # Biome format + write
+bun run --cwd plugins/plugin-agent-orchestrator format:check    # Biome format check only
+bun run --cwd plugins/plugin-agent-orchestrator clean           # Remove dist/.turbo/tsconfig artifacts
 ```
 
 ## Config / env vars
@@ -180,6 +209,22 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acp` | Session state persistence dir when no runtime DB |
+| `ELIZA_ACP_SESSION_STORE_BACKEND` | unset | Override session store backend (`db`, `file`, or `memory`) |
+| `ELIZA_ACP_MCP_SERVERS` | unset | JSON list of MCP servers to pass to spawned sub-agents |
+| `ELIZA_MAX_CONCURRENT_SPAWNS` | unset | Cap on simultaneous spawn operations |
+| `ELIZA_WORKSPACE_DIR` | unset | Default workspace root for provisioned coding workspaces |
+| `ELIZA_CODING_DIRECTORY` | unset | Preferred directory for new coding tasks |
+| `TASK_AGENT_WORKDIR_ROOTS` | unset | Colon-separated list of allowed workdir roots |
+| `TASK_AGENT_WORKDIR_ROUTES` | unset | JSON routing rules mapping task labels to workdirs |
+| `ELIZA_ORCHESTRATOR_SMITHERS` | `1` (enabled) | Set to `0` to disable the smithers task execution path and fall back to direct prompt |
+| `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` | unset | Enable LLM-based goal verification on task completion |
+| `SMITHERS_DB_PROVIDER` | unset | Database provider for smithers task storage |
+| `SMITHERS_DB_URL` | unset | Database URL for smithers task storage |
+| `SMITHERS_DB_DATA_DIR` | unset | Data directory for smithers file-backed storage |
+| `ELIZA_SCRATCH_RETENTION` | unset | How long to retain scratch workspace dirs |
+| `ELIZA_SCRATCH_DECISION_TTL_MS` | unset | TTL for scratch workspace GC decisions |
+| `ELIZA_CLOUD_API_KEY` / `ELIZAOS_CLOUD_API_KEY` | unset | Cloud API key forwarded to spawned sub-agents |
+| `ELIZA_CLOUD_URL` / `ELIZAOS_CLOUD_URL` | unset | Cloud base URL forwarded to spawned sub-agents |
 | `ACPX_DEFAULT_TIMEOUT_MS` | `300000` | Per-prompt timeout in ms |
 | `ACPX_APPROVE_ALL` | `false` | When `true`, defaults sessions to approve-all preset |
 | `ACPX_NO_TERMINAL` | `true` | Pass `--no-terminal` so agents use ACP events, not terminal UI |
@@ -231,6 +276,10 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 - **Session persistence is tiered.** `RuntimeDbSessionStore` → `FileSessionStore`
   → `InMemorySessionStore`. The in-memory fallback logs a warning and sessions
   don't survive restart.
+- **Smithers task path.** By default (`ELIZA_ORCHESTRATOR_SMITHERS` not `0`), task
+  execution goes through the smithers runner (`smithers-task-runner.ts`), which
+  drives a structured provision→turn→submit loop. Set `ELIZA_ORCHESTRATOR_SMITHERS=0`
+  to revert to the direct prompt path.
 - **`ACPX_SUB_AGENT_ROUND_TRIP_CAP`** (default 32) force-stops runaway sub-agent
   loops. Lower it in test environments.
 - **`coding-agent-adapters`** is the adapter registry/API dependency, not a bundled
