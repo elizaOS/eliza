@@ -221,7 +221,7 @@ export function TaskSearchInput({
 }) {
   return (
     <div
-      className={`relative flex h-9 items-center rounded-full border border-border/50 bg-surface/60 transition-colors focus-within:border-accent/50 focus-within:bg-surface ${className ?? "flex-1"}`}
+      className={`relative flex h-9 items-center rounded-full bg-surface/60 transition-colors focus-within:bg-surface ${className ?? "flex-1"}`}
     >
       <Search
         className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted"
@@ -416,7 +416,7 @@ export function BackChip({
       type="button"
       onClick={onClick}
       data-testid={testId}
-      className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-bg-accent/40 px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:text-txt"
+      className="inline-flex items-center gap-1.5 rounded-full bg-bg-accent/40 px-3 py-1 text-xs font-medium text-muted transition-colors hover:bg-bg-hover/50 hover:text-txt"
       {...agentProps}
     >
       <span aria-hidden>←</span>
