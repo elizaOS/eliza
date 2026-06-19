@@ -53,7 +53,6 @@ import {
   GitFork,
   Layers,
   type LucideIcon,
-  MessageSquare,
   OctagonX,
   PanelRightOpen,
   Pause,
@@ -571,10 +570,6 @@ function renderCost(
 
 /** A vertical hairline divider between header summary segments (the token kit
  * has no Separator export, so this is a thin local primitive). */
-function HeaderDivider() {
-  return <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />;
-}
-
 /** One labeled count in the header summary — a baseline-aligned number + tiny
  * uppercase label, no pill/border (replaces the old cryptic icon chips). */
 function HeaderStat({
@@ -649,48 +644,36 @@ function WorkbenchHeader({
   // counts — reads "12 tasks · 1 active · 3 done", not a six-pill debug strip.
   const summary = (
     <div
-      className="flex min-w-0 items-center gap-2.5 overflow-x-auto"
+      className="flex min-w-0 items-center gap-4 overflow-x-auto"
       style={isMobile ? undefined : { flex: "1 1 0%" }}
     >
       <HeaderStat value={String(status?.taskCount ?? 0)} label="tasks" />
       {status?.activeTaskCount ? (
-        <>
-          <HeaderDivider />
-          <HeaderStat
-            value={String(status.activeTaskCount)}
-            label="active"
-            toneClass="text-ok"
-          />
-        </>
+        <HeaderStat
+          value={String(status.activeTaskCount)}
+          label="active"
+          toneClass="text-ok"
+        />
       ) : null}
       {status?.blockedTaskCount ? (
-        <>
-          <HeaderDivider />
-          <HeaderStat
-            value={String(status.blockedTaskCount)}
-            label="blocked"
-            toneClass="text-warn"
-          />
-        </>
+        <HeaderStat
+          value={String(status.blockedTaskCount)}
+          label="blocked"
+          toneClass="text-warn"
+        />
       ) : null}
       {status?.validatingTaskCount ? (
-        <>
-          <HeaderDivider />
-          <HeaderStat
-            value={String(status.validatingTaskCount)}
-            label="validating"
-            toneClass="text-accent"
-          />
-        </>
+        <HeaderStat
+          value={String(status.validatingTaskCount)}
+          label="validating"
+          toneClass="text-accent"
+        />
       ) : null}
       {status?.activeSessionCount ? (
-        <>
-          <HeaderDivider />
-          <HeaderStat
-            value={`${status.activeSessionCount}/${status.sessionCount}`}
-            label="agents"
-          />
-        </>
+        <HeaderStat
+          value={`${status.activeSessionCount}/${status.sessionCount}`}
+          label="agents"
+        />
       ) : null}
     </div>
   );
@@ -773,7 +756,7 @@ function WorkbenchHeader({
 
   if (isMobile) {
     return (
-      <header className="flex flex-col gap-2 border-b border-border/50 bg-bg px-4 py-2.5">
+      <header className="flex flex-col gap-2 bg-bg px-4 py-2.5">
         <div className="flex items-center gap-2">
           {title}
           {actions}
@@ -787,9 +770,8 @@ function WorkbenchHeader({
   }
 
   return (
-    <header className="flex items-center gap-3 border-b border-border/50 bg-bg px-4 py-2.5">
+    <header className="flex items-center gap-4 bg-bg px-4 py-2.5">
       {title}
-      <HeaderDivider />
       {summary}
       {usageReadout}
       {actions}
@@ -3502,10 +3484,9 @@ export function OrchestratorWorkbench() {
       />
 
       {backendAbsent ? (
-        <div className="border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/55">
+        <div className="px-4 py-1.5 text-2xs text-muted">
           {t("orchestrator.backendAbsent", {
-            defaultValue:
-              "The orchestrator runs on a cloud or desktop agent. Connect one to create and manage multi-agent tasks.",
+            defaultValue: "Connect a cloud or desktop agent to run tasks.",
           })}
         </div>
       ) : null}
@@ -3722,15 +3703,7 @@ export function OrchestratorWorkbench() {
                   </button>
                 </div>
               ) : null}
-              <div className="border-t border-border/50 bg-bg px-4 pb-24 pt-2">
-                <div className="flex items-center gap-2 text-2xs text-muted">
-                  <MessageSquare className="h-3.5 w-3.5 text-accent" />
-                  {t("orchestrator.overlayChatHint", {
-                    defaultValue:
-                      "Use the overlay chat for follow-up instructions.",
-                  })}
-                </div>
-              </div>
+              <div className="pb-24" />
             </>
           ) : (
             <>
