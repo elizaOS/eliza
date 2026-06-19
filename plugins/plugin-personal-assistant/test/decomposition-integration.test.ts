@@ -25,10 +25,13 @@ import { personalAssistantPlugin } from "../src/plugin.ts";
  * deterministic.
  */
 
-// The plugins PA integrates. calendar/finances/inbox/remote-desktop are
-// auto-registered by PA.init() (so PA's own umbrella registers first and wins);
-// goals/health/blocker are the standalone PA-free topology surfaces that PA
-// reuses by direct import. The union below is the full composed surface.
+// The plugins PA integrates. calendar/finances/inbox/remote-desktop/goals/health
+// are auto-registered by PA.init(); calendar/goals are registered in that
+// topology without their standalone action arrays so their scaffold/standalone
+// parents cannot shadow PA's richer owner-operation umbrellas. Health registers
+// views and registry contributions only; PA owns the host-adapted owner actions.
+// blocker is a standalone PA-free topology surface that PA reuses by direct
+// import. The union below is the full composed surface.
 const SUBPLUGINS: Plugin[] = [
   calendarPlugin,
   financesPlugin,
@@ -38,13 +41,21 @@ const SUBPLUGINS: Plugin[] = [
   healthPlugin,
   blockerPlugin,
 ];
-// PA auto-registers these inside init() AFTER its own actions array is
-// processed, so PA's umbrella wins their overlapping names (CALENDAR, …).
+// Runtime registerPlugin() runs init() before processing the plugin's actions,
+// so PA auto-dependencies are registered first. Model the PA topology by
+// stripping action arrays from dependencies whose canonical parent actions
+// remain PA-owned.
+function withoutActions(plugin: Plugin): Plugin {
+  return { ...plugin, actions: [] };
+}
+
 const AUTO_REGISTERED: Plugin[] = [
-  calendarPlugin,
+  withoutActions(calendarPlugin),
   financesPlugin,
   inboxPlugin,
   remoteDesktopPlugin,
+  withoutActions(goalsPlugin),
+  healthPlugin,
 ];
 
 const ALL: Plugin[] = [personalAssistantPlugin, ...SUBPLUGINS];
@@ -170,10 +181,15 @@ describe("LifeOps decomposition — composed plugin surface", () => {
   });
 
   it("PA's umbrella wins the auto-registered overlaps (first-wins ordering)", () => {
-    // PA registers its own actions, then init() auto-registers calendar/finances/
-    // inbox/remote-desktop, so PA owns the names both define.
-    const reg = firstWinsActionOwners([personalAssistantPlugin, ...AUTO_REGISTERED]);
-    for (const name of ["CALENDAR", "CONFLICT_DETECT"]) {
+    const reg = firstWinsActionOwners([...AUTO_REGISTERED, personalAssistantPlugin]);
+    for (const name of [
+      "CALENDAR",
+      "CONFLICT_DETECT",
+      "OWNER_GOALS",
+      "OWNER_ROUTINES",
+      "OWNER_REMINDERS",
+      "OWNER_ALARMS",
+    ]) {
       expect(reg.get(name)?.plugin, `${name} winner`).toBe(
         personalAssistantPlugin.name,
       );

@@ -70,9 +70,12 @@ app.post("/", async (c) => {
     // Cookies are already cleared, so the user is logged out client-side; a
     // failed server-side teardown must not turn logout into a 500 that strands
     // stale cookies.
-    logger.warn("[Logout] server-side teardown failed (cookies already cleared)", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn(
+      "[Logout] server-side teardown failed (cookies already cleared)",
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
   }
 
   return c.json({ success: true, message: "Logged out successfully" });

@@ -163,8 +163,18 @@ function toWriteNode(
     typeVersion: node.typeVersion ?? 1,
     position: node.position ?? [0, 0],
     parameters: node.parameters ?? {},
+    credentials: node.credentials,
+    disabled: node.disabled,
     notes: node.notes,
     notesInFlow: node.notesInFlow,
+    color: node.color,
+    continueOnFail: node.continueOnFail,
+    executeOnce: node.executeOnce,
+    alwaysOutputData: node.alwaysOutputData,
+    retryOnFail: node.retryOnFail,
+    maxTries: node.maxTries,
+    waitBetweenTries: node.waitBetweenTries,
+    onError: node.onError,
   };
 }
 

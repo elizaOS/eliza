@@ -150,8 +150,10 @@ function validatePack(pack: DefaultPack): string[] {
 }
 
 describe("W1-D default-pack registry — shape", () => {
-  it("registers exactly 7 packs", () => {
-    expect(getAllDefaultPacks().length).toBe(7);
+  const HEALTH_PACK_KEYS = ["bedtime", "wake-up", "sleep-recap"] as const;
+
+  it("registers exactly 10 packs", () => {
+    expect(getAllDefaultPacks().length).toBe(10);
   });
 
   it("registers the documented pack keys", () => {
@@ -168,17 +170,19 @@ describe("W1-D default-pack registry — shape", () => {
         INBOX_TRIAGE_STARTER_PACK_KEY,
         MORNING_BRIEF_PACK_KEY,
         QUIET_USER_WATCHER_PACK_KEY,
+        ...HEALTH_PACK_KEYS,
       ].sort(),
     );
   });
 
   it("getDefaultPack(key) returns the matching pack or null", () => {
     expect(getDefaultPack(DAILY_RHYTHM_PACK_KEY)).toBe(dailyRhythmPack);
+    expect(getDefaultPack("wake-up")?.key).toBe("wake-up");
     expect(getDefaultPack("does-not-exist")).toBeNull();
   });
 
   it("getOfferedDefaultPacks returns all packs", () => {
-    expect(getOfferedDefaultPacks().length).toBe(7);
+    expect(getOfferedDefaultPacks().length).toBe(10);
   });
 });
 
@@ -260,7 +264,7 @@ describe("W1-D default-pack registry — defaultEnabled gating", () => {
     ).toContain(INBOX_TRIAGE_STARTER_PACK_KEY);
   });
 
-  it("daily-rhythm and morning-brief are always auto-enabled", () => {
+  it("daily-rhythm, morning-brief, and health wake-up are always auto-enabled", () => {
     const enabled = getDefaultEnabledPacks({ connectorRegistry: null });
     expect(enabled.map((p) => p.key)).toEqual(
       expect.arrayContaining([
@@ -268,21 +272,17 @@ describe("W1-D default-pack registry — defaultEnabled gating", () => {
         MORNING_BRIEF_PACK_KEY,
         QUIET_USER_WATCHER_PACK_KEY,
         FOLLOWUP_STARTER_PACK_KEY,
+        "wake-up",
       ]),
+    );
+    expect(enabled.map((p) => p.key)).not.toEqual(
+      expect.arrayContaining(["bedtime", "sleep-recap"]),
     );
   });
 });
 
 describe("W1-D default-pack registry — schema per pack", () => {
-  for (const pack of [
-    dailyRhythmPack,
-    morningBriefPack,
-    quietUserWatcherPack,
-    followupStarterPack,
-    inboxTriageStarterPack,
-    habitStartersPack,
-    executiveAssistantPack,
-  ]) {
+  for (const pack of getAllDefaultPacks()) {
     it(`${pack.key} pack records validate`, () => {
       const errs = validatePack(pack);
       if (errs.length > 0) {

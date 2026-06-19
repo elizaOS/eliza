@@ -646,10 +646,7 @@ export function RelationshipsView(
   if (state.kind === "error") {
     return (
       <div style={containerStyle} data-testid="relationships-error">
-        <RelationshipsHeader
-          refetch={load}
-          busy={false}
-        />
+        <RelationshipsHeader refetch={load} busy={false} />
         <KindFilters active={activeKinds} onToggle={toggleKind} />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>Couldn’t load relationships</div>
@@ -674,10 +671,7 @@ export function RelationshipsView(
   if (state.nodes.length === 0) {
     return (
       <div style={containerStyle} data-testid="relationships-empty">
-        <RelationshipsHeader
-          refetch={load}
-          busy={false}
-        />
+        <RelationshipsHeader refetch={load} busy={false} />
         <div style={cardStyle}>
           <div style={{ fontWeight: 600 }}>No people or relationships yet</div>
           <div style={dimStyle}>

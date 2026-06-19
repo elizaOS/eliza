@@ -22,6 +22,7 @@ def capacitor_pods
   pod 'Capacitor', :path => node_package_path('@capacitor/ios')
   pod 'CapacitorCordova', :path => node_package_path('@capacitor/ios')
   pod 'CapacitorApp', :path => node_package_path('@capacitor/app')
+  pod 'CapacitorBackgroundRunner', :path => node_package_path('@capacitor/background-runner')
   pod 'CapacitorBarcodeScanner', :path => node_package_path('@capacitor/barcode-scanner')
   pod 'CapacitorBrowser', :path => node_package_path('@capacitor/browser')
   pod 'CapacitorHaptics', :path => node_package_path('@capacitor/haptics')

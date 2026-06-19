@@ -46,6 +46,7 @@ import {
   sleepRecapDefaultPack,
   wakeUpDefaultPack,
 } from "../default-packs/index.js";
+import { healthPlugin } from "../index.js";
 import type { LifeOpsScheduleMergedStateRecord } from "../sleep/sleep-wake-events.js";
 import { deriveSleepWakeEvents } from "../sleep/sleep-wake-events.js";
 
@@ -130,6 +131,10 @@ function makeStateRecord(
 }
 
 describe("plugin-health smoke (W1-B)", () => {
+  it("does not register host-adapted owner actions directly", () => {
+    expect(healthPlugin.actions ?? []).toEqual([]);
+  });
+
   it("registers 6 connectors, 4 anchors, 8 bus families", () => {
     expect(HEALTH_CONNECTOR_KINDS).toEqual([
       "apple_health",

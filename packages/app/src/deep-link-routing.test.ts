@@ -73,6 +73,23 @@ describe("assistant launch deep-link routing", () => {
     expect(params(hashRoute ?? "").get("lifeops.section")).toBeNull();
   });
 
+  it("routes iOS App Intent smart replies through chat with source metadata", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "chat/smart-reply",
+      new URLSearchParams(
+        "text=Can%20you%20send%20me%20the%20deck%3F&source=ios-app-intents",
+      ),
+      { generateLaunchId: () => "launch-smart-reply" },
+    );
+
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("ios-app-intents");
+    expect(params(hashRoute ?? "").get("action")).toBe("smart-reply");
+    expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
+      "launch-smart-reply",
+    );
+  });
+
   it("routes Android feature-open inventory to voice chat", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
       "feature/open",
@@ -134,6 +151,8 @@ describe("assistant launch deep-link routing", () => {
       "ask",
       "assistant",
       "chat/ask",
+      "smart-reply",
+      "chat/smart-reply",
       "chat",
       "voice",
       "chat/voice",
@@ -195,6 +214,8 @@ describe("assistant launch deep-link routing", () => {
             "ask",
             "assistant",
             "chat/ask",
+            "smart-reply",
+            "chat/smart-reply",
             "chat",
             "voice",
             "chat/voice",

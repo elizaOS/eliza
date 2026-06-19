@@ -7,6 +7,9 @@ const ALLOWED_ORIGINS = [
   "https://www.eliza.ai",
   "https://elizacloud.ai",
   "https://www.elizacloud.ai",
+  // The Eliza agent app on its own subdomain (Pages project `eliza-app`).
+  "https://app.elizacloud.ai",
+  "https://app-staging.elizacloud.ai",
   "https://eliza.ai",
   "https://www.eliza.ai",
   // Capacitor native shells (iOS WKWebView / Android WebView). The

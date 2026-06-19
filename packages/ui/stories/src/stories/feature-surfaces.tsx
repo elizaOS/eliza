@@ -13,6 +13,7 @@ import {
   ModelUpdatesPanel,
   type VoiceUpdatePreferencesView,
 } from "@ui-src/components/local-inference/ModelUpdatesPanel.tsx";
+import { PermissionRecoveryCallout } from "@ui-src/components/permissions/PermissionRecoveryCallout.tsx";
 import { ApprovedAddressesSection } from "@ui-src/components/policy-controls/ApprovedAddressesSection.tsx";
 import { AutoApproveSection } from "@ui-src/components/policy-controls/AutoApproveSection.tsx";
 import { PolicyToggle } from "@ui-src/components/policy-controls/PolicyToggle.tsx";
@@ -313,6 +314,37 @@ function ApprovedAddressesStory() {
   );
 }
 
+function PermissionRecoveryStory() {
+  return (
+    <div className="grid w-[min(960px,92vw)] gap-4 md:grid-cols-2">
+      <PermissionRecoveryCallout
+        permission="camera"
+        title="Camera access is off"
+        description="Enable camera access for Eliza, then return here to start the preview."
+        onRetry={noop}
+        testId="catalog-camera-permission-callout"
+      />
+      <PermissionRecoveryCallout
+        permission="messages"
+        title="SMS access is off"
+        description="Eliza needs SMS permission before it can read threads or send a message from this device."
+        onRetry={noop}
+        testId="catalog-messages-permission-callout"
+      />
+      <div className="md:col-span-2">
+        <PermissionRecoveryCallout
+          permission="usage-access"
+          title="Usage access is off"
+          description="Open Android Usage Access, choose Eliza, and turn on Permit usage access to let app-blocking and focus checks work."
+          settingsLabel="Open Usage Access"
+          onRetry={noop}
+          testId="catalog-usage-permission-callout"
+        />
+      </div>
+    </div>
+  );
+}
+
 export const featureSurfaceStories: StoryDefinition[] = [
   {
     id: "feature-running-apps-row",
@@ -390,5 +422,12 @@ export const featureSurfaceStories: StoryDefinition[] = [
     importPath:
       'import { ApprovedAddressesSection } from "@elizaos/ui/components/policy-controls/ApprovedAddressesSection"',
     render: () => <ApprovedAddressesStory />,
+  },
+  {
+    id: "feature-permission-recovery-callout",
+    name: "PermissionRecoveryCallout",
+    importPath:
+      'import { PermissionRecoveryCallout } from "@elizaos/ui/components/permissions/PermissionRecoveryCallout"',
+    render: () => <PermissionRecoveryStory />,
   },
 ];

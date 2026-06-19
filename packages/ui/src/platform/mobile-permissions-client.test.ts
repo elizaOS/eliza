@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   AppleCalendarPermissionStatus,
   AppleCalendarPluginLike,
+  ContactsPluginLike,
   MobileSignalsPermissionStatus,
   MobileSignalsPluginLike,
   PushNotificationPermissionStatus,
   PushNotificationsPluginLike,
+  SystemPluginLike,
 } from "../bridge/native-plugins";
 import {
   createMobileSignalsPermissionsRegistry,
@@ -317,6 +319,72 @@ describe("createMobileSignalsPermissionsRegistry", () => {
 
     expect(state).toBe(fallbackState);
     expect(fallback.getPermission).toHaveBeenCalledWith("reminders");
+  });
+
+  it("checks and requests contacts through the native contacts plugin", async () => {
+    const contacts = {
+      checkPermissions: vi.fn(async () => ({ contacts: "prompt" as const })),
+      requestPermissions: vi.fn(async () => ({
+        contacts: "granted" as const,
+      })),
+    } as unknown as ContactsPluginLike;
+    const registry = createMobileSignalsPermissionsRegistry(
+      plugin(),
+      undefined,
+      appleCalendarPlugin(),
+      pushNotificationsPlugin(),
+      { contacts },
+    );
+
+    const checked = await registry.check("contacts");
+    expect(checked).toMatchObject({
+      id: "contacts",
+      status: "not-determined",
+      canRequest: true,
+    });
+
+    const requested = await registry.request("contacts", {
+      reason: "Resolve a contact name.",
+      feature: { app: "contacts", action: "list" },
+    });
+
+    expect(contacts.requestPermissions).toHaveBeenCalled();
+    expect(requested).toMatchObject({
+      id: "contacts",
+      status: "granted",
+      canRequest: false,
+    });
+  });
+
+  it("opens Android Write Settings through the system plugin", async () => {
+    const system = {
+      getDeviceSettings: vi.fn(async () => ({
+        brightness: 0.5,
+        brightnessMode: "manual" as const,
+        canWriteSettings: false,
+        volumes: [],
+      })),
+      openWriteSettings: vi.fn(async () => {}),
+    } as unknown as SystemPluginLike;
+    const registry = createMobileSignalsPermissionsRegistry(
+      plugin(),
+      undefined,
+      appleCalendarPlugin(),
+      pushNotificationsPlugin(),
+      { system },
+    );
+
+    const state = await registry.request("write-settings", {
+      reason: "Adjust screen brightness.",
+      feature: { app: "device", action: "brightness.set" },
+    });
+
+    expect(system.openWriteSettings).toHaveBeenCalled();
+    expect(state).toMatchObject({
+      id: "write-settings",
+      status: "not-determined",
+      canRequest: true,
+    });
   });
 });
 

@@ -26,7 +26,11 @@ export const lifeReminderPlans = remindersSchema.table(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
-    index("idx_life_reminder_plans_owner").on(t.agentId, t.ownerType, t.ownerId),
+    index("idx_life_reminder_plans_owner").on(
+      t.agentId,
+      t.ownerType,
+      t.ownerId,
+    ),
   ],
 );
 
@@ -45,7 +49,9 @@ export const lifeReminderAttempts = remindersSchema.table(
     attemptedAt: text("attempted_at"),
     outcome: text("outcome").notNull().default("pending"),
     connectorRef: text("connector_ref"),
-    deliveryMetadataJson: text("delivery_metadata_json").notNull().default("{}"),
+    deliveryMetadataJson: text("delivery_metadata_json")
+      .notNull()
+      .default("{}"),
     reviewAt: text("review_at"),
     reviewStatus: text("review_status"),
     reviewClaimedAt: text("review_claimed_at"),
@@ -55,7 +61,11 @@ export const lifeReminderAttempts = remindersSchema.table(
     reviewLastError: text("review_last_error"),
   },
   (t) => [
-    index("idx_life_reminder_attempts_plan").on(t.planId, t.ownerType, t.ownerId),
+    index("idx_life_reminder_attempts_plan").on(
+      t.planId,
+      t.ownerType,
+      t.ownerId,
+    ),
     index("idx_life_reminder_attempts_review_scan").on(
       t.agentId,
       t.outcome,
@@ -83,7 +93,10 @@ export const lifeEscalationStates = remindersSchema.table(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
-    index("idx_life_escalation_states_agent_resolved").on(t.agentId, t.resolved),
+    index("idx_life_escalation_states_agent_resolved").on(
+      t.agentId,
+      t.resolved,
+    ),
   ],
 );
 

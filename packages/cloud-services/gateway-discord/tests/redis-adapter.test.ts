@@ -1,5 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { UpstashCompatRedis, createMockRedis, createNativeRedis } from "../src/redis-adapter";
+import {
+  createMockRedis,
+  createNativeRedis,
+  UpstashCompatRedis,
+} from "../src/redis-adapter";
 
 const PREV_MOCK = process.env.MOCK_REDIS;
 

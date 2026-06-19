@@ -528,7 +528,7 @@ function byPriorityThenAge(
   return aLast - bLast; // older first
 }
 
-function byLeastUsedThenPriority(
+function _byLeastUsedThenPriority(
   a: LinkedAccountConfig,
   b: LinkedAccountConfig,
 ): number {

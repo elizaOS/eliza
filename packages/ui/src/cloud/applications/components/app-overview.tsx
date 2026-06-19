@@ -62,7 +62,7 @@ type DeploymentStatus =
   | "failed"
   | "draft";
 
-function DeploymentStatusBadge({
+function _DeploymentStatusBadge({
   status,
 }: {
   status: DeploymentStatus;

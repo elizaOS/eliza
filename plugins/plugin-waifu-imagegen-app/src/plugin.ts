@@ -24,6 +24,7 @@ export const waifuImageGenPlugin: Plugin = {
       description:
         "Generate images with the agent's image-gen mini-app, settled in credits",
       icon: "ImageIcon",
+      heroImagePath: "assets/hero.png",
       path: "/waifu-imagegen",
       bundlePath: "dist/views/bundle.js",
       componentExport: "ImageGenAppView",
@@ -37,6 +38,7 @@ export const waifuImageGenPlugin: Plugin = {
       description:
         "Generate images with the agent's image-gen mini-app, settled in credits",
       icon: "ImageIcon",
+      heroImagePath: "assets/hero.png",
       path: "/waifu-imagegen",
       viewType: "xr",
       bundlePath: "dist/views/bundle.js",

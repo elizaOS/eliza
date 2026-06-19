@@ -1177,6 +1177,7 @@ async function handleBuiltinOptionalRoutes(
 }
 
 // ---------------------------------------------------------------------------
+import { serveMediaFile } from "./media-store.ts";
 import {
   injectApiBaseIntoHtml,
   isAuthProtectedRoute,
@@ -1824,6 +1825,10 @@ async function handleRequest(
   // while steward-managed containers can still reach the built-in dashboard.
   if (method === "GET" || method === "HEAD") {
     if (serveStaticUi(req, res, pathname)) return;
+    // Chat media (uploaded + generated). Content-addressed sha256 filenames act
+    // as unguessable capabilities, so media loads from <img>/<audio> without an
+    // auth header — same rationale as static assets above.
+    if (serveMediaFile(req, res, pathname)) return;
   }
 
   if (

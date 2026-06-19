@@ -20,6 +20,15 @@ import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { financesPlugin } from "@elizaos/plugin-finances";
 import { goalsPlugin } from "@elizaos/plugin-goals";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google";
+import {
+  createDefaultCircadianInsightContract,
+  healthPlugin,
+  registerCircadianInsightContract,
+  registerHealthAnchors,
+  registerHealthBusFamilies,
+  registerHealthConnectors,
+  registerHealthDefaultPacks,
+} from "@elizaos/plugin-health";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
 import { inboxPlugin } from "@elizaos/plugin-inbox";
 import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
@@ -557,7 +566,10 @@ export async function ensureLifeOpsCalendarPluginRegistered(
   if (runtime.plugins.some((plugin) => plugin.name === calendarPlugin.name)) {
     return;
   }
-  await runtime.registerPlugin(calendarPlugin);
+  await runtime.registerPlugin({
+    ...calendarPlugin,
+    actions: [],
+  });
 }
 
 /**
@@ -650,7 +662,31 @@ export async function ensureLifeOpsGoalsPluginRegistered(
   if (runtime.plugins.some((plugin) => plugin.name === goalsPlugin.name)) {
     return;
   }
-  await runtime.registerPlugin(goalsPlugin);
+  await runtime.registerPlugin({
+    ...goalsPlugin,
+    actions: [],
+  });
+}
+
+export async function ensureLifeOpsHealthPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (!runtime.plugins.some((plugin) => plugin.name === healthPlugin.name)) {
+    await runtime.registerPlugin(healthPlugin);
+  }
+
+  // Health is often loaded as a support package before PA creates the
+  // registries it contributes to. Re-run the idempotent contribution hooks
+  // after PA has attached those registries so boot order cannot drop health
+  // connectors, anchors, bus families, default packs, or the circadian seam.
+  registerHealthConnectors(runtime);
+  registerHealthAnchors(runtime);
+  registerHealthBusFamilies(runtime);
+  registerHealthDefaultPacks(runtime);
+  registerCircadianInsightContract(
+    runtime,
+    createDefaultCircadianInsightContract(),
+  );
 }
 
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
@@ -892,6 +928,8 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     const activitySignalBus = createActivitySignalBus({ familyRegistry });
     registerActivitySignalBus(runtime, activitySignalBus);
+
+    await ensureLifeOpsHealthPluginRegistered(runtime);
 
     const ownerFactStore = createOwnerFactStore(runtime);
     registerOwnerFactStore(runtime, ownerFactStore);

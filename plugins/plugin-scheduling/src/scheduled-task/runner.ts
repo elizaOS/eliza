@@ -132,7 +132,7 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
     },
     async claimForFire({ taskId, firedAtIso }) {
       const existing = map.get(taskId);
-      if (!existing || existing.state.status !== "scheduled") {
+      if (existing?.state.status !== "scheduled") {
         return { kind: "raced" };
       }
       const next: ScheduledTask = structuredClone(existing);
@@ -199,7 +199,9 @@ export interface ScheduledTaskDispatchRecord {
 }
 
 export interface ScheduledTaskDispatcher {
-  dispatch(record: ScheduledTaskDispatchRecord): Promise<DispatchResult | void>;
+  dispatch(
+    record: ScheduledTaskDispatchRecord,
+  ): Promise<DispatchResult | undefined>;
 }
 
 /**
@@ -1077,7 +1079,7 @@ export function createScheduledTaskRunner(
       });
     }
 
-    let dispatchResult: DispatchResult | void | undefined;
+    let dispatchResult: DispatchResult | undefined | undefined;
     try {
       dispatchResult = await dispatcher.dispatch({
         taskId: claimed.taskId,

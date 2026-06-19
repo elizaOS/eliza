@@ -46,12 +46,54 @@ type VectorBrowserRuntime = {
   createVectorBrowserRenderer: () => Promise<Three.WebGLRenderer>;
 };
 
-function resolveVectorBrowserRuntime(): VectorBrowserRuntime {
+function resolveConfiguredVectorBrowserRuntime(): VectorBrowserRuntime | null {
   const runtime = getBootConfig().companionVectorBrowser;
   if (!runtime) {
-    throw new Error("Vector browser runtime is not registered in boot config.");
+    return null;
   }
   return runtime as VectorBrowserRuntime;
+}
+
+let defaultVectorBrowserRuntimePromise: Promise<VectorBrowserRuntime> | null =
+  null;
+
+function getDefaultVectorBrowserRuntime(): Promise<VectorBrowserRuntime> {
+  defaultVectorBrowserRuntimePromise ??= (async () => {
+    const THREE = await import("three");
+    return {
+      THREE,
+      createVectorBrowserRenderer: async () => {
+        try {
+          if (
+            typeof navigator !== "undefined" &&
+            "gpu" in navigator &&
+            navigator.gpu
+          ) {
+            const webgpuModule = (await import("three/webgpu")) as Record<
+              string,
+              unknown
+            >;
+            const WebGPURenderer = webgpuModule.WebGPURenderer as
+              | (new (options: {
+                  antialias?: boolean;
+                }) => Three.WebGLRenderer & { init?: () => Promise<void> })
+              | undefined;
+            if (WebGPURenderer) {
+              const renderer = new WebGPURenderer({ antialias: true });
+              if (typeof renderer.init === "function") {
+                await renderer.init();
+              }
+              return renderer;
+            }
+          }
+        } catch {
+          // Fall back to WebGL below.
+        }
+        return new THREE.WebGLRenderer({ antialias: true });
+      },
+    };
+  })();
+  return defaultVectorBrowserRuntimePromise;
 }
 
 function formatMemoryDate(value: string | null | undefined): string {
@@ -367,10 +409,10 @@ export function VectorGraph3D({
   const isDraggingRef = useRef(false);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
-  const vectorRuntime = useMemo(resolveVectorBrowserRuntime, []);
-  const THREE = vectorRuntime.THREE;
-  const resolvedCreateRenderer =
-    createRenderer ?? vectorRuntime.createVectorBrowserRenderer;
+  const configuredVectorRuntime = useMemo(
+    resolveConfiguredVectorBrowserRuntime,
+    [],
+  );
 
   const withEmbeddings = useMemo(
     () => memories.filter(hasEmbedding),
@@ -410,6 +452,21 @@ export function VectorGraph3D({
     // All scene setup runs inside this async IIFE so the useEffect callback
     // itself remains synchronous (required for React cleanup return).
     void (async () => {
+      let vectorRuntime: VectorBrowserRuntime;
+      try {
+        vectorRuntime =
+          configuredVectorRuntime ?? (await getDefaultVectorBrowserRuntime());
+      } catch {
+        if (!cancelled) {
+          setRendererUnavailable(true);
+        }
+        return;
+      }
+      if (cancelled) return;
+
+      const THREE = vectorRuntime.THREE;
+      const resolvedCreateRenderer =
+        createRenderer ?? vectorRuntime.createVectorBrowserRenderer;
       const W = container.clientWidth;
       const H = 550;
 
@@ -775,8 +832,8 @@ export function VectorGraph3D({
       cleanupRef.current = null;
     };
   }, [
-    THREE,
-    resolvedCreateRenderer,
+    configuredVectorRuntime,
+    createRenderer,
     points3D,
     withEmbeddings,
     typeColors,

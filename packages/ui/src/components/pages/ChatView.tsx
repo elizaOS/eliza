@@ -31,6 +31,8 @@ import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";
 import {
+  CHAT_UPLOAD_ACCEPT,
+  chatUploadKind,
   filesToImageAttachments,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
@@ -55,6 +57,7 @@ import { ChatSourceIcon } from "../composites/chat/chat-source";
 import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
 import { ChatTranscript } from "../composites/chat/chat-transcript";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
+import type { ChatMessageData } from "../composites/chat/chat-types";
 import {
   useChatVoiceController,
   useGameModalMessages,
@@ -513,19 +516,34 @@ export function ChatView({
     [setChatPendingImages],
   );
 
-  const chatMessageLabels = {
-    cancel: t("common.cancel"),
-    delete: t("aria.deleteMessage"),
-    edit: t("aria.editMessage"),
-    play: t("aria.playMessage"),
-    responseInterrupted: t("chatmessage.ResponseInterrupte"),
-    saveAndResend: t("chatmessage.SaveAndResend", {
-      defaultValue: "Save and resend",
+  const chatMessageLabels = useMemo(
+    () => ({
+      cancel: t("common.cancel"),
+      delete: t("aria.deleteMessage"),
+      edit: t("aria.editMessage"),
+      play: t("aria.playMessage"),
+      responseInterrupted: t("chatmessage.ResponseInterrupte"),
+      saveAndResend: t("chatmessage.SaveAndResend", {
+        defaultValue: "Save and resend",
+      }),
+      saving: t("common.saving", {
+        defaultValue: "Saving...",
+      }),
     }),
-    saving: t("common.saving", {
-      defaultValue: "Saving...",
-    }),
-  };
+    [t],
+  );
+  const handleCopyMessageText = useCallback((text: string) => {
+    void copyToClipboard(text);
+  }, []);
+  const renderChatMessageContent = useCallback(
+    (message: ChatMessageData) => (
+      <MessageContent
+        message={message as ConversationMessage}
+        analysisMode={analysisMode}
+      />
+    ),
+    [analysisMode],
+  );
 
   const messagesContent =
     visibleMsgs.length === 0 && !chatSending ? (
@@ -544,15 +562,8 @@ export function ChatView({
         messages={isGameModal ? gameModalVisibleMsgs : visibleMsgs}
         onEdit={handleEditMessage}
         onSpeak={handleSpeakMessage}
-        onCopy={(text) => {
-          void copyToClipboard(text);
-        }}
-        renderMessageContent={(message) => (
-          <MessageContent
-            message={message as ConversationMessage}
-            analysisMode={analysisMode}
-          />
-        )}
+        onCopy={handleCopyMessageText}
+        renderMessageContent={renderChatMessageContent}
         typingIndicator={
           chatSending && !chatFirstTokenReceived && !typingStalled ? (
             isGameModal ? (
@@ -619,10 +630,11 @@ export function ChatView({
           alt: img.name,
           name: img.name,
           src: `data:${img.mimeType};base64,${img.data}`,
+          kind: chatUploadKind(img.mimeType),
         }))}
         removeLabel={(item) =>
           t("chat.removeImage", {
-            defaultValue: "Remove image {{name}}",
+            defaultValue: "Remove {{name}}",
             name: item.name,
           })
         }
@@ -648,7 +660,7 @@ export function ChatView({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept={CHAT_UPLOAD_ACCEPT}
         multiple
         className="hidden"
         onChange={handleFileInputChange}

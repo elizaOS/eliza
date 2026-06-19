@@ -20,8 +20,6 @@
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { ownerHealthAction } from "./actions/owner-health.js";
-import { ownerScreentimeAction } from "./actions/owner-screentime.js";
 import {
   HEALTH_ANCHORS,
   HEALTH_BUS_FAMILIES,
@@ -68,10 +66,10 @@ export const healthPlugin: Plugin = {
   description:
     "Health, sleep, circadian and screen-time domain plugin — extracted from app-lifeops in Wave-1 (W1-B).",
   services: [],
-  // Owner-facing action scaffolds extracted from plugin-lifeops. Handlers
-  // currently return typed `scaffold_stub` failures; see each action file for
-  // the TODO(migrate: …) pointer at the source.
-  actions: [ownerHealthAction, ownerScreentimeAction],
+  // Host-adapted action factories live in ./actions. The plugin does not
+  // register owner actions directly because access, storage, and route context
+  // are provided by the host (currently plugin-personal-assistant).
+  actions: [],
   providers: [],
   tests: [],
   views: [

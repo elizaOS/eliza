@@ -1,8 +1,8 @@
 /**
  * Shared system permission contracts.
  *
- * `PermissionId` is the canonical 16-id union covering OS integrations across
- * macOS / win32 / linux.
+ * `PermissionId` is the canonical union covering OS integrations across
+ * macOS / win32 / linux / iOS / Android / web.
  */
 
 export type PermissionId =
@@ -21,7 +21,19 @@ export type PermissionId =
   | "website-blocking"
   | "notifications"
   | "full-disk"
-  | "automation";
+  | "automation"
+  | "speech-recognition"
+  | "photos"
+  | "phone"
+  | "messages"
+  | "wifi"
+  | "bluetooth"
+  | "app-blocking"
+  | "usage-access"
+  | "overlay"
+  | "write-settings"
+  | "local-network"
+  | "battery-optimization";
 
 /** Legacy narrow alias for older dashboard callers. New code should use PermissionId. */
 export type SystemPermissionId =
@@ -50,6 +62,18 @@ export const PERMISSION_IDS: readonly PermissionId[] = [
   "notifications",
   "full-disk",
   "automation",
+  "speech-recognition",
+  "photos",
+  "phone",
+  "messages",
+  "wifi",
+  "bluetooth",
+  "app-blocking",
+  "usage-access",
+  "overlay",
+  "write-settings",
+  "local-network",
+  "battery-optimization",
 ] as const;
 
 export function isPermissionId(value: unknown): value is PermissionId {

@@ -51,6 +51,7 @@ const subscribers = new Map<string, Set<() => void>>();
 interface Poller {
   intervalId: ReturnType<typeof setInterval>;
   refCount: number;
+  visibilityHandler?: () => void;
 }
 const pollers = new Map<string, Poller>();
 
@@ -222,13 +223,31 @@ export function startPolling(
   if (existing) {
     existing.refCount += 1;
   } else {
-    const intervalId = setInterval(() => {
+    const run = () => {
       void revalidate(key, fetcher, false, true).catch(() => {
         // Poll failures surface through the consuming hook's own revalidate
         // call; the background timer just keeps ticking.
       });
+    };
+    const intervalId = setInterval(() => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+      run();
     }, intervalMs);
-    pollers.set(key, { intervalId, refCount: 1 });
+    const visibilityHandler =
+      typeof document !== "undefined"
+        ? () => {
+            if (document.visibilityState === "visible") run();
+          }
+        : undefined;
+    if (visibilityHandler) {
+      document.addEventListener("visibilitychange", visibilityHandler);
+    }
+    pollers.set(key, { intervalId, refCount: 1, visibilityHandler });
   }
 
   let released = false;
@@ -240,6 +259,12 @@ export function startPolling(
     poller.refCount -= 1;
     if (poller.refCount <= 0) {
       clearInterval(poller.intervalId);
+      if (poller.visibilityHandler && typeof document !== "undefined") {
+        document.removeEventListener(
+          "visibilitychange",
+          poller.visibilityHandler,
+        );
+      }
       pollers.delete(key);
     }
   };
@@ -251,6 +276,14 @@ export function __resetResourceCache(): void {
   inflight.clear();
   requestSeq.clear();
   subscribers.clear();
-  for (const poller of pollers.values()) clearInterval(poller.intervalId);
+  for (const poller of pollers.values()) {
+    clearInterval(poller.intervalId);
+    if (poller.visibilityHandler && typeof document !== "undefined") {
+      document.removeEventListener(
+        "visibilitychange",
+        poller.visibilityHandler,
+      );
+    }
+  }
   pollers.clear();
 }

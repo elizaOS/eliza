@@ -11,6 +11,7 @@ import {
   BookOpen,
   CreditCard,
   KeyRound,
+  MessageSquare,
   Server,
   Share2,
   Store,
@@ -27,6 +28,7 @@ import { useApiKeys } from "../lib/data/api-keys";
 import { useApps } from "../lib/data/apps";
 import { useCreditsBalance } from "../lib/data/credits";
 import { useAgents } from "../lib/data/eliza-agents";
+import { getElizaAppUrl } from "../lib/eliza-app-url";
 import {
   AgentsSection,
   AgentsSectionSkeleton,
@@ -185,6 +187,38 @@ export default function DashboardPage() {
                       defaultValue: "Welcome back",
                     })}
               </h1>
+            </section>
+
+            {/* Launch — open the Eliza agent app (separate subdomain; the
+                Steward cookie carries the session so the user lands signed in). */}
+            <section>
+              <a
+                href={getElizaAppUrl()}
+                className="group relative flex flex-col justify-between gap-4 overflow-hidden rounded-sm bg-[#FF5800] p-6 text-black transition-colors duration-200 hover:bg-[#e54f00] sm:flex-row sm:items-center"
+              >
+                <div className="flex items-start gap-4">
+                  <MessageSquare className="mt-0.5 h-6 w-6 shrink-0" />
+                  <div>
+                    <div className="text-xl font-semibold tracking-tight">
+                      {t("cloud.dashboard.launch.title", {
+                        defaultValue: "Talk to your agent",
+                      })}
+                    </div>
+                    <div className="mt-1 text-sm text-black/70">
+                      {t("cloud.dashboard.launch.subtitle", {
+                        defaultValue:
+                          "Open the Eliza app to chat and run tasks",
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <span className="inline-flex shrink-0 items-center gap-2 self-start rounded-sm bg-black/10 px-4 py-2 text-sm font-medium transition-transform duration-200 group-hover:translate-x-0.5 sm:self-auto">
+                  {t("cloud.dashboard.launch.cta", {
+                    defaultValue: "Open Eliza",
+                  })}
+                  <ArrowRight className="h-4 w-4" />
+                </span>
+              </a>
             </section>
 
             {/* Balance + Top-up */}

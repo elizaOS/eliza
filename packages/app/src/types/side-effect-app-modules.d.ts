@@ -10,7 +10,7 @@ declare module "@elizaos/plugin-hyperliquid-app";
 declare module "@elizaos/plugin-polymarket-app";
 declare module "@elizaos/plugin-waifu-imagegen-app";
 declare module "@elizaos/plugin-waifu-swap-app";
-declare module "@elizaos/plugin-wallet-ui";
+declare module "@elizaos/plugin-wallet-ui/register";
 declare module "@elizaos/app-model-tester";
 declare module "@elizaos/plugin-vector-browser/register";
 declare module "@elizaos/plugin-contacts/register";

@@ -37,9 +37,15 @@ describe("isFirstPartyOrigin", () => {
   test("recognizes the production SPA + localhost, rejects third-party", () => {
     expect(isFirstPartyOrigin("https://www.elizacloud.ai")).toBe(true);
     expect(isFirstPartyOrigin("https://elizacloud.ai")).toBe(true);
+    // The Eliza agent app on its own subdomain is first-party.
+    expect(isFirstPartyOrigin("https://app.elizacloud.ai")).toBe(true);
+    expect(isFirstPartyOrigin("https://app-staging.elizacloud.ai")).toBe(true);
     expect(isFirstPartyOrigin("http://localhost:5173")).toBe(true);
     expect(isFirstPartyOrigin("https://supakan.nubs.site")).toBe(false);
     expect(isFirstPartyOrigin("https://evil.example.com")).toBe(false);
+    // A user-controlled subdomain under the third-party apps zone must NOT be
+    // mistaken for the first-party app subdomain.
+    expect(isFirstPartyOrigin("https://malicious.apps.elizacloud.ai")).toBe(false);
   });
 });
 

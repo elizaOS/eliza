@@ -26,6 +26,11 @@ declare module "@elizaos/ui/agent-surface" {
 }
 
 declare module "@elizaos/ui/app-shell-registry" {
+  export type AppShellPageLoader = () => Promise<{
+    default: ComponentType<Record<string, unknown>>;
+    cleanup?: () => void | Promise<void>;
+  }>;
+
   export interface AppShellPageRegistration {
     id: string;
     pluginId: string;
@@ -35,7 +40,8 @@ declare module "@elizaos/ui/app-shell-registry" {
     order?: number;
     developerOnly?: boolean;
     group?: string;
-    Component: ComponentType<unknown>;
+    Component?: ComponentType<unknown>;
+    loader?: AppShellPageLoader;
   }
 
   export function registerAppShellPage(

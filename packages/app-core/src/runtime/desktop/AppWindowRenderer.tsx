@@ -96,6 +96,9 @@ function RegisteredWalletInventoryView(): JSX.Element {
     return <AppWindowError message="Wallet is not registered in this build." />;
   }
   const Component = registration.Component;
+  if (!Component) {
+    return <AppWindowError message="Wallet is not available in this window." />;
+  }
   return <Component />;
 }
 
@@ -105,6 +108,13 @@ function RegisteredAppShellPageView({
   registration: ReturnType<typeof listAppShellPages>[number];
 }): JSX.Element {
   const Component = registration.Component;
+  if (!Component) {
+    return (
+      <AppWindowError
+        message={`${registration.label || registration.id} is not available in this window.`}
+      />
+    );
+  }
   return <Component />;
 }
 
@@ -465,7 +475,6 @@ export function AppWindowRenderer({
     // We cannot reverse-look-up by slug directly, so iterate the descriptors.
     return resolveInternalToolTabFromSlug(slug);
   }, [slug]);
-
 
   if (internalTab) {
     const view = renderInternalToolTab(internalTab);

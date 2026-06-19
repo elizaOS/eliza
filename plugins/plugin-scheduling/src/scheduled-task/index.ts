@@ -49,14 +49,6 @@ export {
   type TaskGateRegistry,
 } from "./gate-registry.js";
 export { computeNextFireAt } from "./next-fire-at.js";
-// Value constants from types.ts (the type-only re-export block below cannot
-// carry runtime values).
-export {
-  APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
-  DEFAULT_TASK_EXECUTION_PROFILE,
-  TASK_EXECUTION_PROFILES,
-} from "./types.js";
-
 export {
   ChannelKeyError,
   createInMemoryScheduledTaskStore,
@@ -122,4 +114,11 @@ export type {
   TaskExecutionProfile,
   TaskGateContribution,
   TerminalState,
+} from "./types.js";
+// Value constants from types.ts (the type-only re-export block below cannot
+// carry runtime values).
+export {
+  APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
+  DEFAULT_TASK_EXECUTION_PROFILE,
+  TASK_EXECUTION_PROFILES,
 } from "./types.js";

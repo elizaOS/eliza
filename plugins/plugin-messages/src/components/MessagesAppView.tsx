@@ -4,6 +4,7 @@ import { System, type SystemStatus } from "@elizaos/capacitor-system";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { consumePendingMessageRecipient } from "@elizaos/ui/app-navigate-view";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
+import { PermissionRecoveryCallout } from "@elizaos/ui/components/permissions/PermissionRecoveryCallout";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
 import { Textarea } from "@elizaos/ui/components/ui/textarea";
@@ -73,6 +74,17 @@ function threadInitial(address: string): string {
   if (firstLetter) return firstLetter.toUpperCase();
   const firstDigit = trimmed.replace(/[^0-9]/g, "").slice(-1);
   return firstDigit || "#";
+}
+
+function isMessagesPermissionError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("permission") ||
+    normalized.includes("denied") ||
+    normalized.includes("access is needed") ||
+    normalized.includes("read_sms") ||
+    normalized.includes("send_sms")
+  );
 }
 
 function StatChip({
@@ -569,7 +581,21 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       ) : null}
 
-      {(error || notice) && (
+      {error && isMessagesPermissionError(error) ? (
+        <div className="shrink-0 px-4 pt-3">
+          <PermissionRecoveryCallout
+            permission="messages"
+            title={t("messages.permissionTitle", {
+              defaultValue: "SMS access is off",
+            })}
+            description={error}
+            onRetry={refresh}
+            retryLabel={t("actions.retry", { defaultValue: "Try again" })}
+            className="mx-auto max-w-5xl"
+            testId="messages-permission-callout"
+          />
+        </div>
+      ) : error || notice ? (
         <div className="shrink-0 px-4 pt-3">
           <div
             role={error ? "alert" : "status"}
@@ -582,7 +608,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
             {error ?? notice}
           </div>
         </div>
-      )}
+      ) : null}
 
       <main className="flex min-h-0 flex-1 flex-col">
         <section

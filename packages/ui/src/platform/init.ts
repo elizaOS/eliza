@@ -1,7 +1,7 @@
 /** Platform detection and initialization utilities. */
 
 import { Capacitor } from "@capacitor/core";
-import { isElectrobunRuntime } from "../bridge";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { userAgentHasElizaOSMarker } from "./aosp-user-agent";
 

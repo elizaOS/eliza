@@ -54,8 +54,8 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       load: () => import("@elizaos/plugin-waifu-swap-app"),
     },
     {
-      key: "@elizaos/plugin-wallet-ui",
-      load: () => import("@elizaos/plugin-wallet-ui"),
+      key: "@elizaos/plugin-wallet-ui/register",
+      load: () => import("@elizaos/plugin-wallet-ui/register"),
     },
     {
       key: "@elizaos/app-model-tester",

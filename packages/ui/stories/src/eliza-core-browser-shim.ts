@@ -56,6 +56,89 @@ export type IAgentRuntime = Record<string, unknown>;
 export type AgentRuntime = Record<string, unknown>;
 export type PluginWidgetDeclaration = Record<string, unknown>;
 
+export const ModelType = {
+  NANO: "TEXT_NANO",
+  SMALL: "TEXT_SMALL",
+  MEDIUM: "TEXT_MEDIUM",
+  LARGE: "TEXT_LARGE",
+  MEGA: "TEXT_MEGA",
+  TEXT_NANO: "TEXT_NANO",
+  TEXT_SMALL: "TEXT_SMALL",
+  TEXT_MEDIUM: "TEXT_MEDIUM",
+  TEXT_LARGE: "TEXT_LARGE",
+  TEXT_MEGA: "TEXT_MEGA",
+  RESPONSE_HANDLER: "RESPONSE_HANDLER",
+  ACTION_PLANNER: "ACTION_PLANNER",
+  TEXT_EMBEDDING: "TEXT_EMBEDDING",
+  TEXT_TOKENIZER_ENCODE: "TEXT_TOKENIZER_ENCODE",
+  TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
+  TEXT_REASONING_SMALL: "REASONING_SMALL",
+  TEXT_REASONING_LARGE: "REASONING_LARGE",
+  TEXT_COMPLETION: "TEXT_COMPLETION",
+  IMAGE: "IMAGE",
+  IMAGE_DESCRIPTION: "IMAGE_DESCRIPTION",
+  TRANSCRIPTION: "TRANSCRIPTION",
+  TEXT_TO_SPEECH: "TEXT_TO_SPEECH",
+  AUDIO: "AUDIO",
+  VIDEO: "VIDEO",
+  RESEARCH: "RESEARCH",
+} as const;
+
+export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
+
+const noopLogger = (): void => undefined;
+
+export const logger = {
+  trace: noopLogger,
+  debug: noopLogger,
+  info: noopLogger,
+  warn: noopLogger,
+  error: noopLogger,
+  fatal: noopLogger,
+  child: () => logger,
+};
+
+const MODEL_CODE_FENCE_PATTERN =
+  /^\s*```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+
+function stripModelWrappers(raw: string): string {
+  let candidate = raw.trim();
+  const thinkEnd = candidate.indexOf("</think>");
+  if (candidate.startsWith("<think>") && thinkEnd !== -1) {
+    candidate = candidate.slice(thinkEnd + "</think>".length).trim();
+  }
+  const fenced = candidate.match(MODEL_CODE_FENCE_PATTERN);
+  if (fenced) {
+    candidate = (fenced[1] ?? "").trim();
+  }
+  return candidate;
+}
+
+export function parseJsonModelOutput(raw: string): unknown | null {
+  const candidate = stripModelWrappers(raw);
+  if (!candidate) return null;
+  try {
+    return JSON.parse(candidate) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+export function parseJsonModelRecord<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(raw: string): T | null {
+  const parsed = parseJsonModelOutput(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  return parsed as T;
+}
+
+export function parseJsonModelArray<T = unknown>(raw: string): T[] | null {
+  const parsed = parseJsonModelOutput(raw);
+  return Array.isArray(parsed) ? (parsed as T[]) : null;
+}
+
 function readBrowserEnv(
   env: Record<string, string | undefined> | undefined,
   key: string,

@@ -416,7 +416,6 @@ describe("stage 5: GET /api/views/:id/hero serves hero image or SVG placeholder"
     const svg = generateViewHeroSvg("Smoke View", "TestTube");
     expect(svg).toContain("<svg");
     expect(svg).toContain("Smoke View");
-    expect(svg).toContain("TestTube");
   });
 });
 

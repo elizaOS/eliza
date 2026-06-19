@@ -19,6 +19,7 @@ import { Phone } from "@elizaos/capacitor-phone";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, useAgentElement } from "@elizaos/ui";
 import { consumePendingPhoneNumber } from "@elizaos/ui/app-navigate-view";
+import { PermissionRecoveryCallout } from "@elizaos/ui/components/permissions/PermissionRecoveryCallout";
 import {
   Tabs,
   TabsContent,
@@ -109,6 +110,17 @@ function callIconFor(type: CallLogType) {
     default:
       return <PhoneIcon className="h-4 w-4 text-muted" aria-hidden />;
   }
+}
+
+function isPhonePermissionError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("permission") ||
+    normalized.includes("denied") ||
+    normalized.includes("access is needed") ||
+    normalized.includes("call_phone") ||
+    normalized.includes("read_call_log")
+  );
 }
 
 function PhoneTabTrigger({
@@ -640,7 +652,19 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                   </span>
                 )}
               </output>
-              {callError ? (
+              {callError && isPhonePermissionError(callError) ? (
+                <PermissionRecoveryCallout
+                  permission="phone"
+                  title={t("phone.permissionTitle", {
+                    defaultValue: "Phone access is off",
+                  })}
+                  description={callError}
+                  onRetry={() => void refreshCalls()}
+                  retryLabel={t("actions.retry", { defaultValue: "Try again" })}
+                  className="w-full max-w-sm"
+                  testId="phone-permission-callout"
+                />
+              ) : callError ? (
                 <p className="w-full text-center text-sm text-danger">
                   {callError}
                 </p>
@@ -721,7 +745,19 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           className="flex-1 overflow-hidden focus-visible:outline-none"
         >
           <div className="chat-native-scrollbar h-full overflow-y-auto px-4 pb-32 pt-3">
-            {callsError ? (
+            {callsError && isPhonePermissionError(callsError) ? (
+              <PermissionRecoveryCallout
+                permission="phone"
+                title={t("phone.permissionTitle", {
+                  defaultValue: "Phone access is off",
+                })}
+                description={callsError}
+                onRetry={refreshCalls}
+                retryLabel={t("actions.retry", { defaultValue: "Try again" })}
+                className="mb-3"
+                testId="phone-recent-permission-callout"
+              />
+            ) : callsError ? (
               <p className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
                 {callsError}
               </p>

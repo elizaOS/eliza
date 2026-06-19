@@ -2212,6 +2212,35 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "index.ts"),
       },
+      ...[
+        [
+          "@elizaos/plugin-companion/components/companion/companion-app",
+          "plugins/plugin-companion/src/components/companion/companion-app.ts",
+        ],
+        [
+          "@elizaos/plugin-companion/components/companion/companion-scene-status-context",
+          "plugins/plugin-companion/src/components/companion/companion-scene-status-context.ts",
+        ],
+        [
+          "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice",
+          "plugins/plugin-companion/src/components/companion/resolve-companion-inference-notice.ts",
+        ],
+        [
+          "@elizaos/plugin-companion/components/companion/CompanionShell",
+          "plugins/plugin-companion/src/components/companion/CompanionShell.tsx",
+        ],
+        [
+          "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay",
+          "plugins/plugin-companion/src/components/companion/GlobalEmoteOverlay.tsx",
+        ],
+        [
+          "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
+          "plugins/plugin-companion/src/components/companion/InferenceCloudAlertButton.tsx",
+        ],
+      ].map(([pkgName, relativeEntry]) => ({
+        find: new RegExp(`^${escapeRegExp(pkgName)}$`),
+        replacement: path.resolve(elizaRoot, relativeEntry),
+      })),
       // Side-effect app modules are loaded by the renderer only to register
       // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[
@@ -2257,7 +2286,10 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-waifu-swap-app",
           "plugins/plugin-waifu-swap-app/src/register.ts",
         ],
-        ["@elizaos/plugin-wallet-ui", "plugins/plugin-wallet-ui/src/index.ts"],
+        [
+          "@elizaos/plugin-wallet-ui",
+          "plugins/plugin-wallet-ui/src/register.ts",
+        ],
         [
           "@elizaos/plugin-contacts/register",
           "plugins/plugin-contacts/src/register.ts",

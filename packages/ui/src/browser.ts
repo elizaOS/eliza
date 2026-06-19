@@ -27,6 +27,7 @@ export * from "./api/response.ts";
 export { sendJson, sendJsonError } from "./api/response.ts";
 export { registerAppShellPage } from "./app-shell-registry.ts";
 export * from "./bridge/index.ts";
+export * from "./cache-telemetry.ts";
 export * from "./chat/index.ts";
 export * from "./components/apps/AppWindowRenderer.helpers.ts";
 export * from "./components/apps/AppWindowRenderer.tsx";

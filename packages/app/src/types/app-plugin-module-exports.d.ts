@@ -19,6 +19,40 @@ declare module "@elizaos/plugin-companion" {
   export function useCompanionSceneStatus(): import("@elizaos/ui").CompanionSceneStatus;
 }
 
+declare module "@elizaos/plugin-companion/components/companion/companion-app" {
+  export function registerCompanionApp(): void;
+}
+
+declare module "@elizaos/plugin-companion/components/companion/companion-scene-status-context" {
+  export function useCompanionSceneStatus(): import("@elizaos/ui").CompanionSceneStatus;
+}
+
+declare module "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice" {
+  export function resolveCompanionInferenceNotice(
+    args: import("@elizaos/ui").ResolveCompanionInferenceNoticeArgs,
+  ): import("@elizaos/ui").CompanionInferenceNotice | null;
+}
+
+declare module "@elizaos/plugin-companion/components/companion/CompanionShell" {
+  export const CompanionShell: import("react").ComponentType<
+    import("@elizaos/ui").CompanionShellComponentProps
+  >;
+}
+
+declare module "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay" {
+  export const GlobalEmoteOverlay: import("react").ComponentType<
+    Record<string, never>
+  >;
+}
+
+declare module "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton" {
+  export const InferenceCloudAlertButton: import("react").ComponentType<{
+    notice: import("@elizaos/ui").CompanionInferenceNotice;
+    onClick: () => void;
+    onPointerDown?: (...args: unknown[]) => unknown;
+  }>;
+}
+
 declare module "@elizaos/plugin-personal-assistant" {
   export const AppBlockerSettingsCard: import("react").ComponentType<
     import("@elizaos/ui").AppBlockerSettingsCardProps

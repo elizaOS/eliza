@@ -183,6 +183,7 @@ export * from "./chat/AccountRequiredCard";
 export * from "./chat/AgentActivityBox";
 export * from "./chat/ConnectorAccountPicker";
 export * from "./chat/connector-send-as";
+export * from "./chat/MessageAttachments";
 export * from "./chat/MessageContent";
 export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
@@ -242,8 +243,9 @@ export * from "./pages/TrajectoryDetailView";
 // here in ./pages/vector-browser-utils (re-exported from the root barrel).
 export * from "./pages/WorkflowEditor";
 export * from "./pages/workflow-graph-events";
-export * from "./settings/ApiKeyConfig";
 // DesktopWorkspaceSection omitted — App.tsx lazy-loads it.
+export * from "./permissions/PermissionRecoveryCallout";
+export * from "./settings/ApiKeyConfig";
 export * from "./settings/PermissionsSection";
 export * from "./settings/PolicyControlsView";
 export * from "./settings/ProviderSwitcher";

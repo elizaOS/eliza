@@ -1,4 +1,5 @@
-import { type ComponentType, lazy } from "react";
+import { createElement, type ComponentType } from "react";
+import { RetainedLazyComponent } from "../../retained-lazy";
 import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
 
 const lazyComponentCache = new WeakMap<
@@ -12,7 +13,14 @@ export function getOverlayAppLazyComponent(
   if (!app.loader) return null;
   const existing = lazyComponentCache.get(app.loader);
   if (existing) return existing;
-  const created = lazy(app.loader);
+  const loader = app.loader;
+  const created = function RetainedOverlayApp(props: OverlayAppContext) {
+    return createElement(RetainedLazyComponent<OverlayAppContext>, {
+      loader,
+      componentProps: props,
+      fallback: null,
+    });
+  };
   lazyComponentCache.set(app.loader, created);
   return created;
 }

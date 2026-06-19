@@ -68,6 +68,7 @@ type WorkflowDefinitionClient = Pick<
   | 'deleteWorkflow'
   | 'activateWorkflow'
   | 'deactivateWorkflow'
+  | 'executeWorkflow'
   | 'updateWorkflowTags'
   | 'createCredential'
   | 'listExecutions'
@@ -814,6 +815,24 @@ export class WorkflowService extends Service {
   async getWorkflow(workflowId: string): Promise<WorkflowDefinitionResponse> {
     const client = this.getClient();
     return client.getWorkflow(workflowId);
+  }
+
+  async runWorkflow(
+    workflowId: string,
+    options?: {
+      mode?: WorkflowExecution['mode'];
+      triggerData?: Record<string, unknown>;
+      idempotencyKey?: string;
+      throwOnError?: boolean;
+    }
+  ): Promise<WorkflowExecution> {
+    const client = this.getClient();
+    return client.executeWorkflow(workflowId, {
+      mode: options?.mode ?? 'manual',
+      triggerData: options?.triggerData,
+      idempotencyKey: options?.idempotencyKey,
+      throwOnError: options?.throwOnError,
+    });
   }
 
   async getWorkflowExecutions(workflowId: string, limit?: number): Promise<WorkflowExecution[]> {

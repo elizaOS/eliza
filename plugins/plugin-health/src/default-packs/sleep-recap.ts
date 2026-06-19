@@ -18,6 +18,7 @@ export const sleepRecapDefaultPack: DefaultPack = {
   description:
     "Surfaces a one-line recap of last night's sleep duration, regularity, and any anomalies. Quiet on days where the personal baseline has fewer than 5 sealed episodes (insufficient_data).",
   defaultEnabled: false,
+  requiredCapabilities: [],
   records: [
     {
       kind: "recap",

@@ -48,7 +48,9 @@ describe("RemindersMigration", () => {
     const r = await migrateReminderTable(exec, "life_escalation_states");
     expect(r.outcome).toBe("copied");
     expect(
-      log.some((s) => /INSERT INTO .*app_reminders.*life_escalation_states/s.test(s)),
+      log.some((s) =>
+        /INSERT INTO .*app_reminders.*life_escalation_states/s.test(s),
+      ),
     ).toBe(true);
     // never touches the source
     expect(log.some((s) => /DROP|ALTER .*app_lifeops/.test(s))).toBe(false);
@@ -65,8 +67,8 @@ describe("RemindersMigration", () => {
     );
     const results = await migrateReminderTables(exec);
     expect(results.map((r) => r.table)).toEqual([...MIGRATED_REMINDER_TABLES]);
-    expect(log.some((s) => /CREATE SCHEMA IF NOT EXISTS app_reminders/.test(s))).toBe(
-      true,
-    );
+    expect(
+      log.some((s) => /CREATE SCHEMA IF NOT EXISTS app_reminders/.test(s)),
+    ).toBe(true);
   });
 });

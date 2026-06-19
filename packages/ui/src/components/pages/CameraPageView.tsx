@@ -3,15 +3,10 @@ import {
   type CameraDirection,
   type PhotoResult,
 } from "@elizaos/capacitor-camera";
-import {
-  AlertTriangle,
-  Camera as CameraIcon,
-  Loader2,
-  RotateCcw,
-  SwitchCamera,
-} from "lucide-react";
+import { AlertTriangle, Loader2, RotateCcw, SwitchCamera } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { PermissionRecoveryCallout } from "../permissions/PermissionRecoveryCallout";
 import { Button } from "../ui/button";
 
 /**
@@ -38,6 +33,15 @@ function photoDataUrl(photo: PhotoResult): string {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function isPermissionDeniedError(err: unknown): boolean {
+  const message = errorMessage(err).toLowerCase();
+  return (
+    message.includes("permission") ||
+    message.includes("notallowed") ||
+    message.includes("denied")
+  );
 }
 
 export function CameraPageView(): React.JSX.Element {
@@ -76,6 +80,10 @@ export function CameraPageView(): React.JSX.Element {
         setStatus("live");
       } catch (err) {
         if (cancelled) return;
+        if (isPermissionDeniedError(err)) {
+          setStatus("denied");
+          return;
+        }
         setError(errorMessage(err));
         setStatus("error");
       }
@@ -101,6 +109,10 @@ export function CameraPageView(): React.JSX.Element {
       await Camera.startPreview({ element, direction: facing, mirror: false });
       setStatus("live");
     } catch (err) {
+      if (isPermissionDeniedError(err)) {
+        setStatus("denied");
+        return;
+      }
       setError(errorMessage(err));
       setStatus("error");
     }
@@ -166,18 +178,23 @@ export function CameraPageView(): React.JSX.Element {
           data-testid="camera-denied"
           className="absolute inset-0 grid place-items-center p-6 text-center"
         >
-          <div className="flex max-w-xs flex-col items-center gap-3">
-            <CameraIcon className="h-8 w-8 text-white/70" aria-hidden />
-            <p className="text-sm text-white/80">
-              {t("camera.denied", {
-                defaultValue:
-                  "Camera access is off. Enable it to take photos and video.",
-              })}
-            </p>
-            <Button onClick={retryStart} data-testid="camera-grant">
-              {t("camera.grant", { defaultValue: "Grant access" })}
-            </Button>
-          </div>
+          <PermissionRecoveryCallout
+            permission="camera"
+            title={t("camera.deniedTitle", {
+              defaultValue: "Camera access is off",
+            })}
+            description={t("camera.denied", {
+              defaultValue:
+                "Enable camera access for Eliza, then return here to start the preview.",
+            })}
+            retryLabel={t("camera.retry", { defaultValue: "Try again" })}
+            settingsLabel={t("camera.openSettings", {
+              defaultValue: "Open Settings",
+            })}
+            onRetry={retryStart}
+            className="max-w-sm border-white/20 bg-bg/95 shadow-2xl"
+            testId="camera-permission-callout"
+          />
         </div>
       ) : null}
 

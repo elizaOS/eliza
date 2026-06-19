@@ -15,6 +15,7 @@ import { fullDiskProber } from "./full-disk.js";
 import { healthProber } from "./health.js";
 import { locationProber } from "./location.js";
 import { microphoneProber } from "./microphone.js";
+import { nativePlatformProbers } from "./native-platform.js";
 import { notesProber } from "./notes.js";
 import { notificationsProber } from "./notifications.js";
 import { remindersProber } from "./reminders.js";
@@ -33,6 +34,7 @@ export const ALL_PROBERS: readonly Prober[] = [
   healthProber,
   locationProber,
   microphoneProber,
+  ...nativePlatformProbers,
   notesProber,
   notificationsProber,
   remindersProber,
