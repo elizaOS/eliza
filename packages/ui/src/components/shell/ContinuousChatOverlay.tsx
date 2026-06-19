@@ -1590,8 +1590,11 @@ export function ContinuousChatOverlay({
         }}
       />
 
-      {/* Live interim transcript while listening */}
-      {recording && transcript ? (
+      {/* Live interim transcript while listening. Before the first words land we
+          still show a "Listening…" cue the instant the mic opens, so the user
+          always has confirmation it's hot (the native recognizer streams partials
+          in as they're heard, replacing the placeholder). */}
+      {recording ? (
         <div
           role="status"
           aria-live="polite"
@@ -1601,8 +1604,14 @@ export function ContinuousChatOverlay({
             FLOAT_SHADOW,
           )}
         >
-          {transcript}
-          <span aria-hidden="true">…</span>
+          {transcript ? (
+            <>
+              {transcript}
+              <span aria-hidden="true">…</span>
+            </>
+          ) : (
+            <span className="text-white/60">Listening…</span>
+          )}
         </div>
       ) : null}
 

@@ -18,7 +18,14 @@
  * `SpeechRecognition`). This factory adds nothing on top besides routing.
  */
 
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+
 import type { AsrProvider } from "../api/client-types-config";
+import {
+  getTalkModePlugin,
+  type TalkModeErrorEvent,
+  type TalkModeTranscriptEvent,
+} from "../bridge/native-plugins";
 import {
   isLocalAsrCaptureSupported,
   type LocalAsrAutoStopOptions,
@@ -33,10 +40,11 @@ import {
   getSpeechRecognitionCtor,
   type SpeechRecognitionInstance,
   type SpeechRecognitionResultEvent,
+  TALKMODE_STOP_SETTLE_MS,
 } from "./voice-chat-types";
 
 /** Backend the factory ended up using for the current capture. */
-export type VoiceCaptureBackend = "local-inference" | "browser";
+export type VoiceCaptureBackend = "local-inference" | "browser" | "talkmode";
 
 /** Single transcript chunk delivered to the caller. */
 export interface VoiceCaptureTranscriptSegment {
@@ -84,6 +92,15 @@ export interface VoiceCaptureFactoryOptions {
   /** Locale string forwarded to the browser SpeechRecognition API. Default `en-US`. */
   lang?: string;
   localAsrAutoStop?: LocalAsrAutoStopOptions;
+  /**
+   * When the chosen backend is native `talkmode`, emit the latest interim
+   * transcript as a FINAL segment on `stop()`. Set for push-to-talk dictation —
+   * the press-release ends the turn, so the running text must be committed even
+   * if the native silence-window final hasn't fired yet. Leave false for
+   * hands-free "converse" capture, where finals arrive from the silence detector
+   * and a manual stop must NOT submit a partial turn.
+   */
+  finalizeOnStop?: boolean;
 }
 
 export interface VoiceCaptureHandle {
@@ -112,16 +129,41 @@ export interface VoiceCaptureHandle {
   getAnalyser(): AnalyserNode | null;
 }
 
+/**
+ * True on a native mobile platform whose `TalkMode` plugin is present. On
+ * Android/iOS the OS speech recognizer (exposed by TalkMode) is the real STT
+ * engine — it transcribes on-device with live INTERIM results — and the
+ * local-inference whisper assets are not staged on mobile, so that path 502s.
+ * `getNativePlugin` returns `{}` when the plugin is absent, hence the method
+ * feature-check.
+ */
+function isNativeTalkModeCaptureAvailable(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!Capacitor.isNativePlatform()) return false;
+  const talkMode = getTalkModePlugin();
+  return (
+    typeof talkMode.start === "function" &&
+    typeof talkMode.addListener === "function"
+  );
+}
+
 async function resolveBackendKind(
   preferred: AsrProvider | "browser" | undefined,
 ): Promise<VoiceCaptureBackend> {
   if (preferred === "browser") {
     return "browser";
   }
-  // local-inference is the default, but it needs BOTH the client mic-capture
-  // primitives AND a server that can actually transcribe. Probe the server's
-  // readiness (GET /api/asr/local-inference/status) so an unconfigured box
-  // (no whisper model / native adapter) degrades to browser SpeechRecognition
+  // Native mobile: the platform speech recognizer (TalkMode) is the working STT
+  // path and the only one that streams interim transcripts. Prefer it ahead of
+  // the local-inference probe — on mobile that probe can report ready while the
+  // whisper assets are missing, then 502 at stop() with no recoverable fallback.
+  if (isNativeTalkModeCaptureAvailable()) {
+    return "talkmode";
+  }
+  // local-inference is the default elsewhere, but it needs BOTH the client
+  // mic-capture primitives AND a server that can actually transcribe. Probe the
+  // server's readiness (GET /api/asr/local-inference/status) so an unconfigured
+  // box (no whisper model / native adapter) degrades to browser SpeechRecognition
   // instead of capturing audio it can only 502 on at stop().
   if (
     (preferred === "local-inference" || preferred === undefined) &&
@@ -145,6 +187,7 @@ export function createVoiceCapture(
     asrProvider,
     lang = "en-US",
     localAsrAutoStop,
+    finalizeOnStop = false,
   } = options;
   // Resolved on start() — the server-readiness probe is async, so the backend
   // choice is deferred from construction to the first start() call.
@@ -157,6 +200,9 @@ export function createVoiceCapture(
   let recognition: SpeechRecognitionInstance | null = null;
   let browserStopWait: Promise<void> | null = null;
   let resolveBrowserStop: (() => void) | null = null;
+  // Native TalkMode (Android/iOS SpeechRecognizer) capture state.
+  let talkModeHandles: PluginListenerHandle[] = [];
+  let lastTalkModeInterim = "";
 
   function setState(next: VoiceCaptureState, error?: Error): void {
     if (state === next) return;
@@ -172,6 +218,69 @@ export function createVoiceCapture(
       },
     });
     recorder = next;
+    active = true;
+    setState("listening");
+  }
+
+  async function removeTalkModeHandles(): Promise<void> {
+    const handles = talkModeHandles;
+    talkModeHandles = [];
+    for (const handle of handles) {
+      try {
+        await handle.remove();
+      } catch {
+        /* listener already gone — fine */
+      }
+    }
+  }
+
+  async function startTalkMode(): Promise<void> {
+    const talkMode = getTalkModePlugin();
+    let permissions = await talkMode.checkPermissions().catch(() => null);
+    if (permissions?.speechRecognition === "not_supported") {
+      throw new Error("Speech recognition is not available on this device");
+    }
+    if (permissions?.microphone === "prompt") {
+      await talkMode.requestPermissions().catch(() => {});
+      permissions = await talkMode.checkPermissions().catch(() => permissions);
+    }
+    lastTalkModeInterim = "";
+    // The recognizer streams partials (`isFinal:false`) live + a final per
+    // silence window; both route through onTranscript so the caller can show the
+    // interim and act on the final (send / fill the draft).
+    const transcriptHandle = await talkMode.addListener(
+      "transcript",
+      (event: TalkModeTranscriptEvent) => {
+        const text = (event.transcript ?? "").trim();
+        if (!text) return;
+        const final = event.isFinal === true;
+        lastTalkModeInterim = final ? "" : text;
+        onTranscript({ text, final, backend: "talkmode" });
+      },
+    );
+    const errorHandle = await talkMode.addListener(
+      "error",
+      (event: TalkModeErrorEvent) => {
+        setState(
+          "error",
+          new Error(
+            `Speech recognition error: ${event.message ?? event.code ?? "unknown"}`,
+          ),
+        );
+      },
+    );
+    talkModeHandles = [transcriptHandle, errorHandle];
+    const result = await talkMode.start({
+      config: {
+        stt: { language: lang, modelSize: "base", sampleRate: 16000 },
+        silenceWindowMs: 350,
+        interruptOnSpeech: true,
+      },
+    });
+    if (!result?.started) {
+      await removeTalkModeHandles();
+      throw new Error(result?.error ?? "Speech recognition failed to start");
+    }
     active = true;
     setState("listening");
   }
@@ -231,7 +340,9 @@ export function createVoiceCapture(
     setState("starting");
     try {
       backendKind = await resolveBackendKind(asrProvider);
-      if (backendKind === "local-inference") {
+      if (backendKind === "talkmode") {
+        await startTalkMode();
+      } else if (backendKind === "local-inference") {
         await startLocalInference();
       } else {
         startBrowser();
@@ -245,6 +356,28 @@ export function createVoiceCapture(
 
   async function stop(): Promise<void> {
     if (!active && state !== "starting") return;
+
+    if (backendKind === "talkmode") {
+      active = false;
+      // Tear listeners down first so the native stop() can't slip in a late
+      // final that double-submits.
+      await removeTalkModeHandles();
+      // Push-to-talk dictation: the release ends the turn, so commit the running
+      // interim as the final even if the silence-window final never fired.
+      const pending = lastTalkModeInterim;
+      lastTalkModeInterim = "";
+      if (finalizeOnStop && pending) {
+        onTranscript({ text: pending, final: true, backend: "talkmode" });
+      }
+      await getTalkModePlugin()
+        .stop()
+        .catch(() => {});
+      await new Promise((resolve) =>
+        setTimeout(resolve, TALKMODE_STOP_SETTLE_MS),
+      );
+      setState("stopped");
+      return;
+    }
 
     if (backendKind === "local-inference") {
       const current = recorder;
@@ -287,6 +420,13 @@ export function createVoiceCapture(
   function dispose(): void {
     if (disposed) return;
     disposed = true;
+    if (talkModeHandles.length > 0) {
+      void removeTalkModeHandles();
+      void getTalkModePlugin()
+        .stop?.()
+        .catch(() => {});
+      lastTalkModeInterim = "";
+    }
     if (recorder) {
       recorder.cancel();
       recorder = null;

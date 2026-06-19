@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
+import { Capacitor } from "@capacitor/core";
 import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getTalkModePlugin } from "../bridge/native-plugins";
 import {
   isLocalAsrCaptureSupported,
   type LocalAsrRecorderOptions,
@@ -23,10 +25,44 @@ vi.mock("./local-asr-transcribe", () => ({
   transcribeLocalInferenceWav: vi.fn(),
 }));
 
+// Preserve the real bridge module (other importers in the graph need its full
+// export surface) and override ONLY the TalkMode accessor. Native-platform
+// detection is a spy on the real Capacitor, defaulted off so the existing
+// local-inference/browser tests are unaffected; the talkmode tests flip it on.
+vi.mock("../bridge/native-plugins", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../bridge/native-plugins")>()),
+  getTalkModePlugin: vi.fn(() => ({})),
+}));
+
 const isLocalAsrCaptureSupportedMock = vi.mocked(isLocalAsrCaptureSupported);
 const startLocalAsrRecorderMock = vi.mocked(startLocalAsrRecorder);
 const isLocalInferenceAsrReadyMock = vi.mocked(isLocalInferenceAsrReady);
 const transcribeLocalInferenceWavMock = vi.mocked(transcribeLocalInferenceWav);
+const isNativePlatformMock = vi.spyOn(Capacitor, "isNativePlatform");
+const getTalkModePluginMock = vi.mocked(getTalkModePlugin);
+
+/** A fake native TalkMode plugin whose `transcript`/`error` callbacks are captured. */
+function makeFakeTalkMode(overrides?: { started?: boolean; error?: string }) {
+  const listeners: Record<string, (event: unknown) => void> = {};
+  const plugin = {
+    checkPermissions: vi.fn().mockResolvedValue({
+      microphone: "granted",
+      speechRecognition: "granted",
+    }),
+    requestPermissions: vi.fn().mockResolvedValue({}),
+    addListener: vi.fn(async (event: string, cb: (e: unknown) => void) => {
+      listeners[event] = cb;
+      return { remove: vi.fn().mockResolvedValue(undefined) };
+    }),
+    start: vi.fn().mockResolvedValue({
+      started: overrides?.started ?? true,
+      ...(overrides?.error ? { error: overrides.error } : {}),
+    }),
+    stop: vi.fn().mockResolvedValue(undefined),
+    emit: (event: string, payload: unknown) => listeners[event]?.(payload),
+  };
+  return plugin;
+}
 
 describe("createVoiceCapture", () => {
   beforeEach(() => {
@@ -35,6 +71,8 @@ describe("createVoiceCapture", () => {
     transcribeLocalInferenceWavMock.mockResolvedValue({
       text: "Ada Lovelace",
     });
+    isNativePlatformMock.mockReturnValue(false);
+    getTalkModePluginMock.mockReturnValue({} as never);
   });
 
   afterEach(() => {
@@ -120,5 +158,88 @@ describe("createVoiceCapture", () => {
     await expect(capture.start()).rejects.toThrow(/SpeechRecognition/);
     expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
     expect(onStateChange).toHaveBeenLastCalledWith("error", expect.any(Error));
+  });
+
+  it("prefers native TalkMode on a native platform and streams interim + final", async () => {
+    isNativePlatformMock.mockReturnValue(true);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    const onTranscript = vi.fn();
+    const onStateChange = vi.fn();
+
+    const capture = createVoiceCapture({ onTranscript, onStateChange });
+    await capture.start();
+
+    // Native recognizer chosen — not the whisper recorder or the readiness probe.
+    expect(talkMode.start).toHaveBeenCalledTimes(1);
+    expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
+    expect(isLocalInferenceAsrReadyMock).not.toHaveBeenCalled();
+    expect(onStateChange).toHaveBeenLastCalledWith("listening", undefined);
+
+    // Interim partials surface live; finals are flagged for the caller to act on.
+    talkMode.emit("transcript", {
+      transcript: "what's the wea",
+      isFinal: false,
+    });
+    expect(onTranscript).toHaveBeenLastCalledWith({
+      text: "what's the wea",
+      final: false,
+      backend: "talkmode",
+    });
+    talkMode.emit("transcript", {
+      transcript: "what's the weather",
+      isFinal: true,
+    });
+    expect(onTranscript).toHaveBeenLastCalledWith({
+      text: "what's the weather",
+      final: true,
+      backend: "talkmode",
+    });
+  });
+
+  it("finalizeOnStop commits the running interim as the final turn (push-to-talk)", async () => {
+    isNativePlatformMock.mockReturnValue(true);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    const onTranscript = vi.fn();
+
+    const capture = createVoiceCapture({ onTranscript, finalizeOnStop: true });
+    await capture.start();
+    talkMode.emit("transcript", {
+      transcript: "remind me at noon",
+      isFinal: false,
+    });
+    onTranscript.mockClear();
+
+    await capture.stop();
+
+    // The release commits the partial as a final, then the recognizer stops.
+    expect(onTranscript).toHaveBeenCalledWith({
+      text: "remind me at noon",
+      final: true,
+      backend: "talkmode",
+    });
+    expect(talkMode.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("converse stop does NOT submit a partial when finalizeOnStop is false", async () => {
+    isNativePlatformMock.mockReturnValue(true);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    const onTranscript = vi.fn();
+
+    const capture = createVoiceCapture({ onTranscript });
+    await capture.start();
+    talkMode.emit("transcript", {
+      transcript: "half a sentence",
+      isFinal: false,
+    });
+    onTranscript.mockClear();
+
+    await capture.stop();
+
+    // A hands-free toggle-off must not send a half-finished utterance.
+    expect(onTranscript).not.toHaveBeenCalled();
+    expect(talkMode.stop).toHaveBeenCalledTimes(1);
   });
 });

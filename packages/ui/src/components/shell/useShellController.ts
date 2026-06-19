@@ -250,6 +250,11 @@ export function useShellController(): ShellController {
       // configured sensitivity. Only consumed by the local-inference backend.
       const handle = createVoiceCapture({
         localAsrAutoStop: loadVadAutoStop(),
+        // Push-to-talk dictation ends on release, so the native recognizer must
+        // commit its running interim as the final turn even if its silence
+        // window hasn't fired. Converse stops only on toggle-off, where a
+        // partial must NOT be submitted.
+        finalizeOnStop: intent === "dictate",
         onTranscript: (segment) => {
           const text = segment.text.trim();
           if (!segment.final) {
