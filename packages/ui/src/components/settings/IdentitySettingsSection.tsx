@@ -508,16 +508,11 @@ export function IdentitySettingsSection() {
           previewDisabled={!activeVoicePreset?.previewUrl || voiceLoading}
           onPreviewToggle={voiceTesting ? stopVoicePreview : handlePreviewVoice}
         />
-      </SettingsGroup>
 
-      <SettingsGroup>
         <SettingsTextareaRow
           agentId="identity-system-prompt"
           label={t("settings.identity.systemPromptLabel", {
             defaultValue: "System prompt",
-          })}
-          description={t("settings.identity.systemPromptHint", {
-            defaultValue: "The agent's core instructions.",
           })}
           value={draftSystem}
           onValueChange={(value) => handleCharacterFieldInput("system", value)}
